@@ -7875,6 +7875,10 @@ func (*activityProjectionRepoStub) PrepareRuntimeOperation(context.Context, agen
 	return agentactivitybiz.RuntimeOperation{}, false, nil
 }
 
+func (*activityProjectionRepoStub) PrepareInteractiveRuntimeOperation(context.Context, agentactivitybiz.RuntimeOperationPrepare) (agentactivitybiz.RuntimeOperation, agentactivitybiz.Interaction, agentactivitybiz.InteractionTransitionResult, error) {
+	return agentactivitybiz.RuntimeOperation{}, agentactivitybiz.Interaction{}, agentactivitybiz.InteractionTransitionConflict, nil
+}
+
 func (*activityProjectionRepoStub) GetRuntimeOperation(context.Context, string, string) (agentactivitybiz.RuntimeOperation, bool, error) {
 	return agentactivitybiz.RuntimeOperation{}, false, nil
 }

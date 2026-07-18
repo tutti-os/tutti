@@ -121,7 +121,7 @@ ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
 `, workspaceID, agentSessionID, turnID, merged.Phase, nullString(merged.Outcome),
 		encodeTurnErrorJSON(merged.ErrorMessage, merged.ErrorCode),
 		fileChangesJSON,
-		encodeCompletedCommandJSON(merged.CompletedCommandKind, merged.CompletedCommandStatus),
+		encodeCompletedCommandJSON(merged.CompletedCommandKind, merged.CompletedCommandStatus, merged.FinalAssistantMessageID),
 		merged.StartedAtUnixMS, nullInt64(merged.SettledAtUnixMS),
 		merged.CreatedAtUnixMS, merged.UpdatedAtUnixMS, merged.Origin,
 		nullString(merged.SourceGoalOperationID), nullInt64(merged.SourceGoalRevision), nullInt64WhenAbsent(merged.SourceGoalRepairEpoch, merged.SourceGoalOperationID != "")); err != nil {
@@ -245,6 +245,9 @@ func mergeTurnTransition(existing Turn, hasExisting bool, transition TurnTransit
 	if transition.CompletedCommandKind != "" {
 		merged.CompletedCommandKind = strings.TrimSpace(transition.CompletedCommandKind)
 		merged.CompletedCommandStatus = strings.TrimSpace(transition.CompletedCommandStatus)
+	}
+	if transition.FinalAssistantMessageID != "" {
+		merged.FinalAssistantMessageID = strings.TrimSpace(transition.FinalAssistantMessageID)
 	}
 	startedAt := transition.StartedAtUnixMS
 	if startedAt <= 0 {
@@ -778,14 +781,24 @@ func encodeTurnErrorJSON(message string, code string) any {
 	return encoded
 }
 
-func encodeCompletedCommandJSON(kind string, status string) any {
+func encodeCompletedCommandJSON(kind string, status string, finalAssistantMessageIDs ...string) any {
 	kind = strings.TrimSpace(kind)
-	if kind == "" {
+	finalAssistantMessageID := ""
+	if len(finalAssistantMessageIDs) > 0 {
+		finalAssistantMessageID = strings.TrimSpace(finalAssistantMessageIDs[0])
+	}
+	if kind == "" && finalAssistantMessageID == "" {
 		return nil
 	}
-	payload := map[string]any{"kind": kind}
+	payload := map[string]any{}
+	if kind != "" {
+		payload["kind"] = kind
+	}
 	if status = strings.TrimSpace(status); status != "" {
 		payload["status"] = status
+	}
+	if finalAssistantMessageID != "" {
+		payload["finalAssistantMessageId"] = finalAssistantMessageID
 	}
 	encoded, err := marshalJSONMap(payload)
 	if err != nil {

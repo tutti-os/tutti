@@ -8,6 +8,7 @@ import (
 )
 
 type ListMessagesInput struct {
+	MessageID     string
 	TurnID        string
 	AfterVersion  uint64
 	BeforeVersion uint64
@@ -65,6 +66,9 @@ func (s *Service) ListMessages(
 	agentSessionID string,
 	input ListMessagesInput,
 ) (SessionMessagesPage, error) {
+	if err := ctx.Err(); err != nil {
+		return SessionMessagesPage{}, err
+	}
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
@@ -92,6 +96,7 @@ func (s *Service) ListMessages(
 		page, ok := s.MessageReader.ListSessionMessages(agentactivitybiz.ListSessionMessagesInput{
 			WorkspaceID:    workspaceID,
 			AgentSessionID: agentSessionID,
+			MessageID:      strings.TrimSpace(input.MessageID),
 			TurnID:         strings.TrimSpace(input.TurnID),
 			AfterVersion:   input.AfterVersion,
 			BeforeVersion:  input.BeforeVersion,
@@ -99,6 +104,9 @@ func (s *Service) ListMessages(
 			Order:          input.Order,
 		})
 		if ok {
+			if err := ctx.Err(); err != nil {
+				return SessionMessagesPage{}, err
+			}
 			if strings.TrimSpace(page.AgentSessionID) == "" {
 				page.AgentSessionID = agentSessionID
 			}

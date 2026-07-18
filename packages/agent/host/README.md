@@ -50,6 +50,14 @@ behind `SettingsPolicy`. `UpdatePin` mutates canonical metadata only.
 authorization, shared bindings, transport DTOs, and local view cleanup remain
 adapter responsibilities.
 
+Interactive responses establish their winner at the canonical interaction
+transition, not in a GUI or CLI adapter. Preparing an interactive runtime
+operation atomically moves the interaction from `pending` to `answered` with
+the requested action, option, and payload. A competing response compares its
+request with that durable output: an identical response is `answered`, while a
+different response is `superseded`; neither path leaks operation-conflict or
+in-progress errors to the responder.
+
 Adapters retain authorization and identity, transport, runtime process or VM
 selection, desktop APIs, attachment ingress, and cloud inbox/outbox behavior.
 Adapter-only create fields such as transcript source paths and materialized

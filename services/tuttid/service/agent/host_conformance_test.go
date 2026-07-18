@@ -513,17 +513,14 @@ func (d *legacyHostConformanceDriver) SubmitInteractive(
 	ref agenthost.SessionRef,
 	requestID string,
 	input agenthost.SubmitInteractiveInput,
-) (hostconformance.SessionObservation, error) {
-	if d.directHost {
-		_, err := d.service.ApplicationHost().SubmitInteractive(ctx, ref, requestID, input)
-		if err != nil {
-			return hostconformance.SessionObservation{}, err
-		}
-		session, err := d.service.Get(ctx, ref.WorkspaceID, ref.AgentSessionID)
-		return legacyHostSessionObservation(session), err
+) (hostconformance.InteractiveObservation, error) {
+	result, err := d.service.ApplicationHost().SubmitInteractive(ctx, ref, requestID, input)
+	if err != nil {
+		return hostconformance.InteractiveObservation{Disposition: result.Disposition}, err
 	}
-	session, err := d.service.SubmitInteractive(ctx, ref.WorkspaceID, ref.AgentSessionID, requestID, input)
-	return legacyHostSessionObservation(session), err
+	return hostconformance.InteractiveObservation{
+		Disposition: result.Disposition,
+	}, nil
 }
 
 func (d *legacyHostConformanceDriver) SubmitPlanDecision(

@@ -35,16 +35,6 @@ func ReportActivityAsSessionUpdates(
 			}
 		}
 	}
-	for _, stateInput := range SessionStateInputsFromActivity(input) {
-		stateReply, err := reporter.ReportSessionState(ctx, stateInput)
-		if err != nil {
-			return reply, err
-		}
-		if stateReply.Accepted {
-			reply.AcceptedStatePatchCount++
-		}
-		reply.RequestBodyBytes += stateReply.RequestBodyBytes
-	}
 	for _, auditInput := range SessionAuditInputsFromActivity(input) {
 		auditReply, err := reporter.ReportSessionMessages(ctx, auditInput)
 		if err != nil {
@@ -65,7 +55,43 @@ func ReportActivityAsSessionUpdates(
 		reply.AcceptedMessageUpdateCount += messagesReply.AcceptedCount
 		reply.RequestBodyBytes += messagesReply.RequestBodyBytes
 	}
+	stateInputs := SessionStateInputsFromActivity(input)
+	anchorFinalAssistantMessages(stateInputs, messageInputs)
+	for _, stateInput := range stateInputs {
+		stateReply, err := reporter.ReportSessionState(ctx, stateInput)
+		if err != nil {
+			return reply, err
+		}
+		if stateReply.Accepted {
+			reply.AcceptedStatePatchCount++
+		}
+		reply.RequestBodyBytes += stateReply.RequestBodyBytes
+	}
 	return reply, nil
+}
+
+func anchorFinalAssistantMessages(states []ReportSessionStateInput, messages []ReportSessionMessagesInput) {
+	anchors := make(map[string]string)
+	for _, input := range messages {
+		for _, update := range input.Updates {
+			if !strings.EqualFold(strings.TrimSpace(update.Role), "assistant") ||
+				!strings.EqualFold(strings.TrimSpace(update.Kind), "text") {
+				continue
+			}
+			turnID := strings.TrimSpace(update.TurnID)
+			messageID := strings.TrimSpace(update.MessageID)
+			if turnID != "" && messageID != "" {
+				anchors[strings.TrimSpace(input.AgentSessionID)+"\x00"+turnID] = messageID
+			}
+		}
+	}
+	for index := range states {
+		turn := states[index].State.Turn
+		if turn == nil || !strings.EqualFold(strings.TrimSpace(turn.Phase), "settled") {
+			continue
+		}
+		turn.FinalAssistantMessageID = anchors[strings.TrimSpace(states[index].AgentSessionID)+"\x00"+strings.TrimSpace(turn.TurnID)]
+	}
 }
 
 func SessionAuditInputsFromActivity(input ReportActivityInput) []ReportSessionMessagesInput {
@@ -279,20 +305,21 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 	}
 	if patch.Turn != nil {
 		out.Turn = &WorkspaceAgentTurnStateUpdate{
-			TurnID:                strings.TrimSpace(patch.Turn.TurnID),
-			Origin:                strings.TrimSpace(patch.Turn.Origin),
-			SourceGoalOperationID: strings.TrimSpace(patch.Turn.SourceGoalOperationID),
-			SourceGoalRevision:    patch.Turn.SourceGoalRevision,
-			SourceGoalRepairEpoch: patch.Turn.SourceGoalRepairEpoch,
-			ActiveTurnID:          cloneStringPointer(patch.Turn.ActiveTurnID),
-			Phase:                 strings.TrimSpace(patch.Turn.Phase),
-			Outcome:               strings.TrimSpace(patch.Turn.Outcome),
-			Settling:              patch.Turn.Settling,
-			CompletedCommand:      cloneCompletedCommand(patch.Turn.CompletedCommand),
-			SubmitAvailability:    cloneSubmitAvailability(patch.Turn.SubmitAvailability),
-			FileChanges:           clonePayloadMap(patch.Turn.FileChanges),
-			StartedAtUnixMS:       patch.Turn.StartedAtUnixMS,
-			CompletedAtUnixMS:     patch.Turn.CompletedAtUnixMS,
+			TurnID:                  strings.TrimSpace(patch.Turn.TurnID),
+			Origin:                  strings.TrimSpace(patch.Turn.Origin),
+			SourceGoalOperationID:   strings.TrimSpace(patch.Turn.SourceGoalOperationID),
+			SourceGoalRevision:      patch.Turn.SourceGoalRevision,
+			SourceGoalRepairEpoch:   patch.Turn.SourceGoalRepairEpoch,
+			ActiveTurnID:            cloneStringPointer(patch.Turn.ActiveTurnID),
+			Phase:                   strings.TrimSpace(patch.Turn.Phase),
+			Outcome:                 strings.TrimSpace(patch.Turn.Outcome),
+			Settling:                patch.Turn.Settling,
+			CompletedCommand:        cloneCompletedCommand(patch.Turn.CompletedCommand),
+			SubmitAvailability:      cloneSubmitAvailability(patch.Turn.SubmitAvailability),
+			FileChanges:             clonePayloadMap(patch.Turn.FileChanges),
+			StartedAtUnixMS:         patch.Turn.StartedAtUnixMS,
+			CompletedAtUnixMS:       patch.Turn.CompletedAtUnixMS,
+			FinalAssistantMessageID: strings.TrimSpace(patch.Turn.FinalAssistantMessageID),
 		}
 	}
 	return out

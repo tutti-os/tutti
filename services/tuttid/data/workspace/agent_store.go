@@ -254,6 +254,10 @@ func (s *SQLiteStore) PrepareRuntimeOperation(ctx context.Context, input agentac
 	return s.agentStore().PrepareRuntimeOperation(ctx, input)
 }
 
+func (s *SQLiteStore) PrepareInteractiveRuntimeOperation(ctx context.Context, input agentactivitybiz.RuntimeOperationPrepare) (agentactivitybiz.RuntimeOperation, agentactivitybiz.Interaction, agentactivitybiz.InteractionTransitionResult, error) {
+	return s.agentStore().PrepareInteractiveRuntimeOperation(ctx, input)
+}
+
 func (s *SQLiteStore) PrepareGoalControlOperation(ctx context.Context, input agentactivitybiz.GoalControlOperationPrepare) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error) {
 	return s.agentStore().PrepareGoalControlOperation(ctx, input)
 }

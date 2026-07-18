@@ -356,11 +356,20 @@ before the historical call row resolves.
 Likewise, a runtime session snapshot may describe provider-local execution
 state but must not enrich a report with an Interaction transition. Runtime
 reports may submit only `pending` and `superseded`; `answered` belongs solely to
-the durable `interactive_response` operation. That operation reads the typed
-runtime disposition (`pending`, `resolving`, `answered`, `superseded`, or
-`interrupted`) and atomically commits the answered/superseded Interaction,
-completed operation, and outbox event. Absence from an in-memory request map is
-not evidence of success.
+the durable `interactive_response` operation. Preparing that operation
+atomically claims the interaction with a `pending` to `answered` transition and
+stores the requested action, option, and payload. Completion still records the
+typed runtime disposition (`pending`, `resolving`, `answered`, `superseded`, or
+`interrupted`) and commits the completed operation and outbox event. Competing
+responders compare against the claimed output and normalize to `answered` or
+`superseded`; absence from an in-memory request map is not evidence of success.
+
+Activity compatibility projection commits session audits and turn messages
+before session state. This is the write-side barrier for settlement: once a
+settled Turn is visible, all messages from the same report are durable. The
+settled Turn stores the final assistant text message ID in its existing
+completed-command payload so result readers can select the exact message;
+legacy turns use only a bounded fallback scan.
 
 Cancellation of the caller waiting on an interactive-response operation is not
 a provider outcome and must not terminalize the runtime request. Before a

@@ -705,7 +705,7 @@ func TestWaitCommandReturnsStopPointWithoutMessages(t *testing.T) {
 		!ok ||
 		waitAfterVersion != 7 ||
 		sessions.waitInput.MessageLimit != 0 ||
-		sessions.waitInput.SkipMessages ||
+		!sessions.waitInput.SkipMessages ||
 		sessions.waitInput.Timeout != 2500*time.Millisecond {
 		t.Fatalf("wait input = %#v", sessions.waitInput)
 	}
@@ -770,8 +770,8 @@ func TestWaitCommandUsesDefaultTimeout(t *testing.T) {
 	if sessions.waitInput.AfterVersion != nil {
 		t.Fatalf("after version = %#v, want nil when omitted", sessions.waitInput.AfterVersion)
 	}
-	if sessions.waitInput.SkipMessages {
-		t.Fatalf("skip messages = true, want false")
+	if !sessions.waitInput.SkipMessages {
+		t.Fatalf("skip messages = false, want true")
 	}
 	if sessions.waitInput.Timeout != 5*time.Minute {
 		t.Fatalf("timeout = %v, want 5m", sessions.waitInput.Timeout)

@@ -28,27 +28,20 @@ func (s *Service) Respond(ctx context.Context, input RespondInput) (RespondResul
 		return RespondResult{}, err
 	}
 	matches := make([]agentactivitybiz.Interaction, 0, 1)
-	pending := make([]agentactivitybiz.Interaction, 0, 1)
 	for _, interaction := range interactions {
 		if strings.TrimSpace(interaction.RequestID) != requestID {
 			continue
 		}
 		matches = append(matches, interaction)
-		if interaction.Status == agentactivitybiz.InteractionStatusPending {
-			pending = append(pending, interaction)
-		}
 	}
 	if len(matches) == 0 {
 		return RespondResult{}, fmt.Errorf("%w: %q", ErrInteractionRequestNotFound, requestID)
 	}
-	if len(pending) == 0 {
-		return RespondResult{}, fmt.Errorf("%w: %q", ErrInteractionRequestNotPending, requestID)
-	}
-	if len(pending) != 1 {
-		return RespondResult{}, fmt.Errorf("%w: %q matched %d pending interactions", ErrInteractionRequestAmbiguous, requestID, len(pending))
+	if len(matches) != 1 {
+		return RespondResult{}, fmt.Errorf("%w: %q matched %d interactions", ErrInteractionRequestAmbiguous, requestID, len(matches))
 	}
 
-	interaction := pending[0]
+	interaction := matches[0]
 	action := input.Action
 	if semantic != "" {
 		matchingActions := make([]InteractionAction, 0, 1)

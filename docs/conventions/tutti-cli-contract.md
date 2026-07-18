@@ -165,6 +165,11 @@ transcript; callers that need broader context should follow with
 `agent session-summary`. Keep message window controls such as `limit` out of
 the public wait command shape, and keep timeout output free of result or
 interaction detail.
+The wait implementation skips transcript pagination and performs result
+enrichment separately. Settled turns may carry a durable final-assistant
+message anchor; anchored reads select that exact message, while legacy turns
+fall back to at most three descending message pages. If neither path finds the
+message, omit `finalMessage` rather than returning an older assistant response.
 When a caller continues an existing session with `agent send`, the send action
 should return a `waitAfterVersion` cursor, and the next wait call should pass
 that cursor as `agent wait --after-version <waitAfterVersion> ...` so the wait
@@ -176,9 +181,11 @@ session stop state.
 `--payload` map directly to the Host interactive input. `--semantic` is a thin
 shortcut that resolves exactly one matching `actions[].semantic` from the
 stored interaction; the CLI must not keep a provider-to-semantic mapping.
-Unknown or non-pending requests and missing or ambiguous semantics are invalid
-input errors. The result exposes the request and turn ids plus the Host
-disposition (`answered` or `superseded`).
+Unknown requests and missing or ambiguous semantics are invalid input errors.
+The first responder atomically claims the pending interaction. Later responses
+with the same action/option/payload return `answered`; different responses
+return `superseded`. The result exposes the request and turn ids plus that Host
+disposition, without surfacing raw operation conflict or in-progress errors.
 
 `agent turn-resources --json` is the narrow helper for looking up resources from
 one explicit session turn. It requires `--session-id` and `--turn-id`, filters at

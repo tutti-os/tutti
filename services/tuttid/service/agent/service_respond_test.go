@@ -24,11 +24,6 @@ func TestRespondRejectsInvalidInteractionSelectionsBeforeHostSubmission(t *testi
 		want         error
 	}{
 		{name: "request missing", requestID: "missing", semantic: "approve", interactions: []agentactivitybiz.Interaction{base}, want: ErrInteractionRequestNotFound},
-		{name: "request answered", requestID: "request-1", semantic: "approve", interactions: []agentactivitybiz.Interaction{func() agentactivitybiz.Interaction {
-			value := base
-			value.Status = agentactivitybiz.InteractionStatusAnswered
-			return value
-		}()}, want: ErrInteractionRequestNotPending},
 		{name: "semantic missing", requestID: "request-1", semantic: "deny", interactions: []agentactivitybiz.Interaction{base}, want: ErrInteractionSemanticNotFound},
 		{name: "semantic ambiguous", requestID: "request-1", semantic: "approve", interactions: []agentactivitybiz.Interaction{func() agentactivitybiz.Interaction {
 			value := base

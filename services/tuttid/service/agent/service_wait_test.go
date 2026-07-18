@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +20,7 @@ type waitRuntime struct {
 	unsubscribeCalled bool
 	interactionInput  map[string]any
 	interactionMeta   map[string]any
+	turnOverride      *agentactivitybiz.Turn
 }
 
 func newWaitRuntime() *waitRuntime {
@@ -65,6 +67,13 @@ func (r *waitRuntime) didUnsubscribe() bool {
 }
 
 func (r *waitRuntime) persistedTurn(workspaceID string, sessionID string) (agentactivitybiz.Turn, bool) {
+	r.mu.RLock()
+	if r.turnOverride != nil && r.turnOverride.WorkspaceID == workspaceID && r.turnOverride.AgentSessionID == sessionID {
+		turn := *r.turnOverride
+		r.mu.RUnlock()
+		return turn, true
+	}
+	r.mu.RUnlock()
 	session, ok := r.runtimeSession(workspaceID, sessionID)
 	if !ok || session.TurnLifecycle == nil || session.TurnLifecycle.ActiveTurnID == nil {
 		return agentactivitybiz.Turn{}, false
@@ -330,6 +339,201 @@ func TestFinalAssistantMessageScansOlderTurnPagesWithoutTruncating(t *testing.T)
 	}
 	if message == nil || message.TurnID != "turn-1" || message.Text != fullText {
 		t.Fatalf("final message = %#v", message)
+	}
+}
+
+func TestFinalAssistantMessageUsesSettlementAnchor(t *testing.T) {
+	reader := &waitMessageReader{list: func(input agentactivitybiz.ListSessionMessagesInput) (SessionMessagesPage, bool) {
+		if input.MessageID != "assistant-middle" || input.TurnID != "turn-1" || input.Limit != 1 {
+			t.Fatalf("anchored message query = %#v", input)
+		}
+		return SessionMessagesPage{AgentSessionID: input.AgentSessionID, Messages: []SessionMessage{{
+			TurnID: "turn-1", MessageID: "assistant-middle", Role: "assistant", Kind: "text",
+			Payload: map[string]any{"text": "anchored result"}, Version: 8,
+		}}}, true
+	}}
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.MessageReader = reader
+	message, err := service.finalAssistantMessage(context.Background(), "ws-1", "session-1", Session{
+		LatestTurn: &agentactivitybiz.Turn{
+			TurnID: "turn-1", Phase: agentactivitybiz.TurnPhaseSettled,
+			FinalAssistantMessageID: "assistant-middle",
+		},
+	})
+	if err != nil {
+		t.Fatalf("finalAssistantMessage() error = %v", err)
+	}
+	if message == nil || message.Text != "anchored result" {
+		t.Fatalf("final message = %#v", message)
+	}
+}
+
+func TestFinalAssistantMessageFallbackIsBoundedForUserOnlyTail(t *testing.T) {
+	reader := &waitMessageReader{list: func(input agentactivitybiz.ListSessionMessagesInput) (SessionMessagesPage, bool) {
+		messages := make([]SessionMessage, defaultListMessagesLimit)
+		start := uint64(1000)
+		if input.BeforeVersion > 0 {
+			start = input.BeforeVersion - 1
+		}
+		for index := range messages {
+			messages[index] = SessionMessage{
+				TurnID: "turn-1", MessageID: fmt.Sprintf("user-%d-%d", start, index),
+				Role: "user", Kind: "text", Version: start - uint64(index),
+			}
+		}
+		return SessionMessagesPage{AgentSessionID: input.AgentSessionID, Messages: messages, HasMore: true}, true
+	}}
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.MessageReader = reader
+	message, err := service.finalAssistantMessage(context.Background(), "ws-1", "session-1", Session{
+		LatestTurn: &agentactivitybiz.Turn{TurnID: "turn-1", Phase: agentactivitybiz.TurnPhaseSettled},
+	})
+	if err != nil {
+		t.Fatalf("finalAssistantMessage() error = %v", err)
+	}
+	if message != nil {
+		t.Fatalf("final message = %#v, want nil", message)
+	}
+	if len(reader.calls) != finalAssistantMessageFallbackPages {
+		t.Fatalf("fallback message queries = %d, want %d", len(reader.calls), finalAssistantMessageFallbackPages)
+	}
+}
+
+func TestWaitUserOnlyLongTailHasBoundedMessageQueries(t *testing.T) {
+	runtime := newWaitRuntime()
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID: "session-1", WorkspaceID: "ws-1", Provider: "codex", Status: "completed",
+		TurnLifecycle: &TurnLifecycle{Phase: agentactivitybiz.TurnPhaseSettled}, Visible: true,
+	}
+	runtime.turnOverride = &agentactivitybiz.Turn{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeCompleted,
+	}
+	reader := &waitMessageReader{list: func(input agentactivitybiz.ListSessionMessagesInput) (SessionMessagesPage, bool) {
+		if input.Limit == 1 {
+			return SessionMessagesPage{AgentSessionID: input.AgentSessionID, LatestVersion: 1000}, true
+		}
+		messages := make([]SessionMessage, defaultListMessagesLimit)
+		start := uint64(1000)
+		if input.BeforeVersion > 0 {
+			start = input.BeforeVersion - 1
+		}
+		for index := range messages {
+			messages[index] = SessionMessage{
+				TurnID: "turn-1", MessageID: fmt.Sprintf("user-tail-%d-%d", start, index),
+				Role: "user", Kind: "text", Version: start - uint64(index),
+			}
+		}
+		return SessionMessagesPage{AgentSessionID: input.AgentSessionID, Messages: messages, HasMore: true}, true
+	}}
+	service := newIsolatedAgentService(runtime)
+	service.TurnStore = runtime
+	service.MessageReader = reader
+	result, err := service.Wait(context.Background(), WaitInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", SkipMessages: true,
+	})
+	if err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	if result.Reason != WaitReasonCompleted || result.FinalMessage != nil {
+		t.Fatalf("wait result = %#v", result)
+	}
+	wantQueries := 2 + finalAssistantMessageFallbackPages
+	if len(reader.calls) != wantQueries {
+		t.Fatalf("wait message queries = %d, want bounded %d", len(reader.calls), wantQueries)
+	}
+}
+
+func TestWaitSkipMessagesStillEnrichesCompletedResult(t *testing.T) {
+	runtime := newWaitRuntime()
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID: "session-1", WorkspaceID: "ws-1", Provider: "codex", Status: "completed",
+		TurnLifecycle: &TurnLifecycle{Phase: agentactivitybiz.TurnPhaseSettled}, Visible: true,
+	}
+	runtime.turnOverride = &agentactivitybiz.Turn{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeCompleted,
+		FinalAssistantMessageID: "assistant-final",
+	}
+	reader := &waitMessageReader{list: func(input agentactivitybiz.ListSessionMessagesInput) (SessionMessagesPage, bool) {
+		if input.MessageID == "assistant-final" {
+			return SessionMessagesPage{AgentSessionID: input.AgentSessionID, Messages: []SessionMessage{{
+				TurnID: "turn-1", MessageID: "assistant-final", Role: "assistant", Kind: "text",
+				Payload: map[string]any{"text": "done"}, Version: 4,
+			}}}, true
+		}
+		return SessionMessagesPage{AgentSessionID: input.AgentSessionID, LatestVersion: 4}, true
+	}}
+	service := newIsolatedAgentService(runtime)
+	service.TurnStore = runtime
+	service.MessageReader = reader
+	result, err := service.Wait(context.Background(), WaitInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", SkipMessages: true,
+	})
+	if err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	if result.FinalMessage == nil || result.FinalMessage.Text != "done" || len(result.Messages) != 0 {
+		t.Fatalf("wait result = %#v", result)
+	}
+}
+
+func TestWaitCompletedNearTimeoutUsesIndependentEnrichmentBudget(t *testing.T) {
+	runtime := newWaitRuntime()
+	turnID := "turn-1"
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID: "session-1", WorkspaceID: "ws-1", Provider: "codex", Status: "working",
+		TurnLifecycle: &TurnLifecycle{ActiveTurnID: &turnID, Phase: agentactivitybiz.TurnPhaseRunning}, Visible: true,
+	}
+	reader := &waitMessageReader{list: func(input agentactivitybiz.ListSessionMessagesInput) (SessionMessagesPage, bool) {
+		if input.MessageID == "assistant-final" {
+			time.Sleep(75 * time.Millisecond)
+			return SessionMessagesPage{AgentSessionID: input.AgentSessionID, Messages: []SessionMessage{{
+				TurnID: turnID, MessageID: "assistant-final", Role: "assistant", Kind: "text",
+				Payload: map[string]any{"text": "completed near timeout"}, Version: 2,
+			}}}, true
+		}
+		return SessionMessagesPage{AgentSessionID: input.AgentSessionID, LatestVersion: 2}, true
+	}}
+	service := newIsolatedAgentService(runtime)
+	service.TurnStore = runtime
+	service.MessageReader = reader
+
+	done := make(chan WaitResult, 1)
+	errs := make(chan error, 1)
+	go func() {
+		result, err := service.Wait(context.Background(), WaitInput{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", AfterVersion: uint64Ptr(0),
+			SkipMessages: true, Timeout: 50 * time.Millisecond,
+		})
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- result
+	}()
+	<-runtime.subscribeStarted
+	runtime.mu.Lock()
+	runtime.turnOverride = &agentactivitybiz.Turn{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: turnID,
+		Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeCompleted,
+		FinalAssistantMessageID: "assistant-final",
+	}
+	runtime.mu.Unlock()
+	runtime.setSession(ProviderRuntimeSession{
+		ID: "session-1", WorkspaceID: "ws-1", Provider: "codex", Status: "completed",
+		TurnLifecycle: &TurnLifecycle{Phase: agentactivitybiz.TurnPhaseSettled}, Visible: true,
+	})
+	runtime.events <- RuntimeStreamEvent{EventType: "state_patch"}
+	select {
+	case err := <-errs:
+		t.Fatalf("Wait() error = %v", err)
+	case result := <-done:
+		if result.TimedOut || result.Reason != WaitReasonCompleted || result.FinalMessage == nil || result.FinalMessage.Text != "completed near timeout" {
+			t.Fatalf("wait result = %#v", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Wait() did not return")
 	}
 }
 

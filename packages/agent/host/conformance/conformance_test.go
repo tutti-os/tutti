@@ -14,7 +14,7 @@ func TestPublishedScenariosHaveUniqueNames(t *testing.T) {
 		}
 		seen[scenario.Name] = struct{}{}
 	}
-	if len(seen) != 13 {
-		t.Fatalf("scenario count=%d, want 13", len(seen))
+	if len(seen) != 14 {
+		t.Fatalf("scenario count=%d, want 14", len(seen))
 	}
 }

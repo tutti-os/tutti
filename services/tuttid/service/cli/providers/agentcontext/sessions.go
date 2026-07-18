@@ -201,6 +201,7 @@ func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, i
 		AgentSessionID: input.SessionID,
 		AfterVersion:   afterVersion,
 		Timeout:        timeout,
+		SkipMessages:   true,
 	})
 	if err != nil {
 		return nil, err

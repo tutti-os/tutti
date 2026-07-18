@@ -30,6 +30,61 @@ func TestRuntimeOperationPrepareIsSubjectIdempotentAndCrashRecoverable(t *testin
 	}
 }
 
+func TestPrepareInteractiveRuntimeOperationClaimsInteractionAtomically(t *testing.T) {
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	seedRuntimeInteractiveSubject(t, store, "session-claim", "turn-claim", "request-claim")
+	start := make(chan struct{})
+	type result struct {
+		interaction Interaction
+		transition  InteractionTransitionResult
+		err         error
+	}
+	results := make(chan result, 2)
+	var group sync.WaitGroup
+	for index, option := range []string{"approve", "deny"} {
+		index, option := index, option
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			_, interaction, transition, err := store.PrepareInteractiveRuntimeOperation(context.Background(), RuntimeOperationPrepare{
+				OperationID: fmt.Sprintf("operation-%d", index), WorkspaceID: "ws-1", AgentSessionID: "session-claim",
+				Kind: RuntimeOperationKindInteractiveResponse, TurnID: "turn-claim", RequestID: "request-claim",
+				Payload: map[string]any{"action": "", "optionId": option, "payload": (map[string]any)(nil)}, OccurredAtMS: int64(10 + index),
+			})
+			results <- result{interaction: interaction, transition: transition, err: err}
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(results)
+	applied := 0
+	claimedOption := ""
+	for got := range results {
+		if got.err != nil {
+			t.Fatalf("PrepareInteractiveRuntimeOperation() error = %v", got.err)
+		}
+		if got.transition == InteractionTransitionApplied {
+			applied++
+		}
+		option, _ := got.interaction.Output["optionId"].(string)
+		if claimedOption == "" {
+			claimedOption = option
+		} else if option != claimedOption {
+			t.Fatalf("competing calls observed different claimed outputs: %q and %q", claimedOption, option)
+		}
+	}
+	if applied != 1 || (claimedOption != "approve" && claimedOption != "deny") {
+		t.Fatalf("applied claims=%d claimed option=%q", applied, claimedOption)
+	}
+	interactions, err := store.ListSessionInteractions(context.Background(), ListSessionInteractionsInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-claim",
+	})
+	if err != nil || len(interactions) != 1 || interactions[0].Status != InteractionStatusAnswered {
+		t.Fatalf("stored interactions=%#v error=%v", interactions, err)
+	}
+}
+
 func TestRuntimeOperationLeaseUsesClockAndAllowsExpiredTakeover(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))

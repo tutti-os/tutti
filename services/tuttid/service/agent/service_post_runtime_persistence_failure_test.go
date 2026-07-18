@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -401,6 +402,7 @@ func runtimeOperationTurnStore(turnID string, requestID string) failingTurnStore
 }
 
 type runtimeOperationMemoryStore struct {
+	mu                sync.Mutex
 	operation         agentactivitybiz.RuntimeOperation
 	completeErr       error
 	events            []agentactivitybiz.RuntimeOperationEvent
@@ -455,7 +457,30 @@ func (s *runtimeOperationMemoryStore) PrepareRuntimeOperation(_ context.Context,
 	return s.operation, true, nil
 }
 
+func (s *runtimeOperationMemoryStore) PrepareInteractiveRuntimeOperation(_ context.Context, input agentactivitybiz.RuntimeOperationPrepare) (agentactivitybiz.RuntimeOperation, agentactivitybiz.Interaction, agentactivitybiz.InteractionTransitionResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	transition := agentactivitybiz.InteractionTransitionAlreadyApplied
+	if s.operation.OperationID == "" {
+		s.operation = agentactivitybiz.RuntimeOperation{OperationID: input.OperationID, WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID, Kind: input.Kind, Status: agentactivitybiz.RuntimeOperationStatusPrepared, TurnID: input.TurnID, RequestID: input.RequestID, Payload: input.Payload, CreatedAtUnixMS: input.OccurredAtMS, UpdatedAtUnixMS: input.OccurredAtMS}
+		transition = agentactivitybiz.InteractionTransitionApplied
+	}
+	interaction := agentactivitybiz.Interaction{
+		WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		TurnID: input.TurnID, RequestID: input.RequestID,
+		Status: agentactivitybiz.InteractionStatusAnswered,
+		Output: map[string]any{
+			"action":   payloadText(s.operation.Payload, "action"),
+			"optionId": payloadText(s.operation.Payload, "optionId"),
+			"payload":  s.operation.Payload["payload"],
+		},
+	}
+	return s.operation, interaction, transition, nil
+}
+
 func (s *runtimeOperationMemoryStore) GetRuntimeOperation(_ context.Context, workspaceID string, operationID string) (agentactivitybiz.RuntimeOperation, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.operation, s.operation.WorkspaceID == workspaceID && s.operation.OperationID == operationID, nil
 }
 
@@ -467,6 +492,8 @@ func (s *runtimeOperationMemoryStore) ListClaimableRuntimeOperations(_ context.C
 }
 
 func (s *runtimeOperationMemoryStore) ClaimRuntimeOperationLease(_ context.Context, input agentactivitybiz.ClaimRuntimeOperationLeaseInput) (agentactivitybiz.RuntimeOperation, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	claimable := (s.operation.Status == agentactivitybiz.RuntimeOperationStatusPrepared && s.operation.NextAttemptAtMS <= input.NowUnixMS) || (s.operation.Status == agentactivitybiz.RuntimeOperationStatusLeased && s.operation.LeaseExpiresAtMS <= input.NowUnixMS)
 	if !claimable {
 		return s.operation, false, nil
@@ -497,6 +524,8 @@ func (s *runtimeOperationMemoryStore) RequeueLeasedRuntimeOperationsOnStartup(_ 
 }
 
 func (s *runtimeOperationMemoryStore) CompleteInteractiveRuntimeOperation(_ context.Context, input agentactivitybiz.CompleteInteractiveRuntimeOperationInput) (agentactivitybiz.RuntimeOperationCompletion, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.completeErr != nil {
 		return agentactivitybiz.RuntimeOperationCompletion{}, false, s.completeErr
 	}

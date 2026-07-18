@@ -70,6 +70,7 @@ type RuntimeController interface {
 // transport-facing half of the state machine.
 type RuntimeOperationStore interface {
 	PrepareRuntimeOperation(context.Context, storesqlite.RuntimeOperationPrepare) (storesqlite.RuntimeOperation, bool, error)
+	PrepareInteractiveRuntimeOperation(context.Context, storesqlite.RuntimeOperationPrepare) (storesqlite.RuntimeOperation, storesqlite.Interaction, storesqlite.InteractionTransitionResult, error)
 	GetRuntimeOperation(context.Context, string, string) (storesqlite.RuntimeOperation, bool, error)
 	ListClaimableRuntimeOperations(context.Context, storesqlite.ListClaimableRuntimeOperationsInput) ([]storesqlite.RuntimeOperation, error)
 	ClaimRuntimeOperationLease(context.Context, storesqlite.ClaimRuntimeOperationLeaseInput) (storesqlite.RuntimeOperation, bool, error)

@@ -12,6 +12,8 @@ import (
 
 const defaultWaitMessageLimit = 20
 const waitInteractionInputSummaryLimit = 2 * 1024
+const finalAssistantMessageFallbackPages = 3
+const waitEnrichmentTimeout = 2 * time.Second
 
 func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
@@ -86,7 +88,7 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 	progressedPastStaleStop = nextProgressed
 	if done {
 		reason, _ := waitReasonForSession(currentSession)
-		return s.waitResult(waitCtx, workspaceID, agentSessionID, currentSession, reason, false, effectiveAfter, messageLimit)
+		return s.waitResult(ctx, workspaceID, agentSessionID, currentSession, reason, false, effectiveAfter, messageLimit)
 	}
 
 	for {
@@ -118,7 +120,7 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 				}
 				if done {
 					reason, _ := waitReasonForSession(currentSession)
-					return s.waitResult(waitCtx, workspaceID, agentSessionID, currentSession, reason, false, effectiveAfter, messageLimit)
+					return s.waitResult(ctx, workspaceID, agentSessionID, currentSession, reason, false, effectiveAfter, messageLimit)
 				}
 				return s.waitResult(ctx, workspaceID, agentSessionID, session, WaitReasonTimeout, true, effectiveAfter, messageLimit)
 			}
@@ -142,7 +144,7 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 			progressedPastStaleStop = nextProgressed
 			if done {
 				reason, _ := waitReasonForSession(currentSession)
-				return s.waitResult(waitCtx, workspaceID, agentSessionID, currentSession, reason, false, effectiveAfter, messageLimit)
+				return s.waitResult(ctx, workspaceID, agentSessionID, currentSession, reason, false, effectiveAfter, messageLimit)
 			}
 		}
 	}
@@ -188,34 +190,32 @@ func (s *Service) waitResult(
 	effectiveAfter uint64,
 	messageLimit int,
 ) (WaitResult, error) {
+	result := WaitResult{
+		Session: cloneSession(session), Reason: reason, TimedOut: timedOut,
+		EffectiveAfter: effectiveAfter,
+	}
 	if messageLimit < 0 {
 		latestVersion, err := s.latestSessionVersion(ctx, workspaceID, agentSessionID)
 		if err != nil {
 			return WaitResult{}, err
 		}
-		return WaitResult{
-			Session:        cloneSession(session),
-			LatestVersion:  latestVersion,
-			Reason:         reason,
-			TimedOut:       timedOut,
-			EffectiveAfter: effectiveAfter,
-		}, nil
+		result.LatestVersion = latestVersion
+	} else {
+		messages, latestVersion, hasMore, err := s.recentAgentExecutionMessages(ctx, workspaceID, agentSessionID, effectiveAfter, messageLimit)
+		if err != nil {
+			return WaitResult{}, err
+		}
+		result.Messages = messages
+		result.LatestVersion = latestVersion
+		result.HasMore = hasMore
 	}
-	messages, latestVersion, hasMore, err := s.recentAgentExecutionMessages(ctx, workspaceID, agentSessionID, effectiveAfter, messageLimit)
-	if err != nil {
-		return WaitResult{}, err
+	if timedOut {
+		return result, nil
 	}
-	result := WaitResult{
-		Session:        cloneSession(session),
-		Messages:       messages,
-		LatestVersion:  latestVersion,
-		HasMore:        hasMore,
-		Reason:         reason,
-		TimedOut:       timedOut,
-		EffectiveAfter: effectiveAfter,
-	}
+	enrichmentCtx, cancel := context.WithTimeout(ctx, waitEnrichmentTimeout)
+	defer cancel()
 	if !timedOut && (reason == WaitReasonCompleted || reason == WaitReasonFailed) {
-		finalMessage, err := s.finalAssistantMessage(ctx, workspaceID, agentSessionID, session)
+		finalMessage, err := s.finalAssistantMessage(enrichmentCtx, workspaceID, agentSessionID, session)
 		if err != nil {
 			return WaitResult{}, err
 		}
@@ -240,8 +240,21 @@ func (s *Service) finalAssistantMessage(
 	if turnID == "" {
 		return nil, nil
 	}
+	anchor := strings.TrimSpace(session.LatestTurn.FinalAssistantMessageID)
+	if anchor != "" {
+		page, err := s.ListMessages(ctx, workspaceID, agentSessionID, ListMessagesInput{
+			MessageID: anchor, TurnID: turnID, Limit: 1, Order: agentactivitybiz.MessageOrderDesc,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if len(page.Messages) != 1 || strings.TrimSpace(page.Messages[0].MessageID) != anchor {
+			return nil, nil
+		}
+		return waitFinalAssistantMessage(turnID, page.Messages[0]), nil
+	}
 	var beforeVersion uint64
-	for {
+	for pageNumber := 0; pageNumber < finalAssistantMessageFallbackPages; pageNumber++ {
 		page, err := s.ListMessages(ctx, workspaceID, agentSessionID, ListMessagesInput{
 			TurnID: turnID, BeforeVersion: beforeVersion, Limit: defaultListMessagesLimit,
 			Order: agentactivitybiz.MessageOrderDesc,
@@ -250,11 +263,8 @@ func (s *Service) finalAssistantMessage(
 			return nil, err
 		}
 		for _, message := range page.Messages {
-			if !strings.EqualFold(strings.TrimSpace(message.Role), "assistant") || !strings.EqualFold(strings.TrimSpace(message.Kind), "text") {
-				continue
-			}
-			if text, ok := assistantMessageText(message.Payload); ok {
-				return &WaitFinalMessage{TurnID: turnID, Text: text}, nil
+			if final := waitFinalAssistantMessage(turnID, message); final != nil {
+				return final, nil
 			}
 		}
 		if !page.HasMore || len(page.Messages) == 0 {
@@ -265,6 +275,19 @@ func (s *Service) finalAssistantMessage(
 			return nil, nil
 		}
 	}
+	return nil, nil
+}
+
+func waitFinalAssistantMessage(turnID string, message SessionMessage) *WaitFinalMessage {
+	if !strings.EqualFold(strings.TrimSpace(message.Role), "assistant") ||
+		!strings.EqualFold(strings.TrimSpace(message.Kind), "text") {
+		return nil
+	}
+	text, ok := assistantMessageText(message.Payload)
+	if !ok {
+		return nil
+	}
+	return &WaitFinalMessage{TurnID: turnID, Text: text}
 }
 
 func assistantMessageText(payload map[string]any) (string, bool) {
