@@ -502,6 +502,23 @@ Diagnose in owner order:
 
 Do not start by adding a fallback to the visible component.
 
+### 8.1 Agent settings surface
+
+The desktop settings panel's agent section has two tabs: General Settings and
+an Agents tab. The Agents tab renders provider rows from the authoritative
+identity catalog plus the live `IAgentProviderStatusService`; it does not copy
+a provider registry. Per-agent sidebar visibility is one source of truth — the
+device-global provider-rail preferences (`@tutti-os/agent-gui/agent-sidebar-preferences`,
+same record the rail reads) — so the tab and the rail never diverge. Staged
+(Beta/Preview/in-progress) agents are gated by the `lab.previewAgents` switch
+via the provider-neutral `agentGuiWorkbenchPreviewProviders` predicate; stable
+agents always show. Deep links reach the tab through the existing
+`openWorkspaceSettingsPanel` intent (now carrying optional `pane`/`provider`)
+plus a bumped `agentFocus` request that scrolls and briefly highlights the row;
+a link to a hidden preview agent surfaces an "enable Preview Agents" hint rather
+than failing silently. This is a settings surface, not a second Agent-visibility
+store.
+
 ## 9. Folder guide
 
 | Path                                                      | Responsibility                                      |
