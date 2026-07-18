@@ -356,30 +356,29 @@ export function reduceWorkbenchState<TData>(
       ) {
         return state;
       }
+      const resizedNodes = state.nodes.map((node) => {
+        const frame =
+          node.displayMode === "fullscreen"
+            ? getWorkbenchFullscreenRect(
+                action.size,
+                state.layoutConstraints,
+                node.sizeConstraints
+              )
+            : clampWorkbenchRectToVisibleArea(
+                node.frame,
+                action.size,
+                state.layoutConstraints,
+                undefined,
+                node.sizeConstraints
+              );
+        return rectsEqual(node.frame, frame) ? node : { ...node, frame };
+      });
       const resizedState: WorkbenchState<TData> = {
         ...state,
         surfaceSize: action.size,
-        nodes: state.nodes.map((node) =>
-          node.displayMode === "fullscreen"
-            ? {
-                ...node,
-                frame: getWorkbenchFullscreenRect(
-                  action.size,
-                  state.layoutConstraints,
-                  node.sizeConstraints
-                )
-              }
-            : {
-                ...node,
-                frame: clampWorkbenchRectToVisibleArea(
-                  node.frame,
-                  action.size,
-                  state.layoutConstraints,
-                  undefined,
-                  node.sizeConstraints
-                )
-              }
-        )
+        nodes: resizedNodes.every((node, index) => node === state.nodes[index])
+          ? state.nodes
+          : resizedNodes
       };
       // When a layout is locked, re-apply the layout at the new surface size so
       // the locked nodes keep scaling proportionally with the window. Preserve

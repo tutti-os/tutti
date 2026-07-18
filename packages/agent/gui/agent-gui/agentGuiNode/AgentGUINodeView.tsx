@@ -554,6 +554,14 @@ export function AgentGUINodeView({
       workspaceUserProjectI18n
     ]
   );
+  const agentTargetPresentationKey = JSON.stringify(
+    viewModel.rail.agentTargets.map((target) => [
+      target.agentTargetId ?? null,
+      target.iconUrl ?? null,
+      target.label,
+      target.provider
+    ])
+  );
   const agentTargetPresentations = useMemo<
     readonly AgentMessageMarkdownAgentTarget[]
   >(
@@ -571,7 +579,7 @@ export function AgentGUINodeView({
             ]
           : []
       ),
-    [viewModel.rail.agentTargets, viewModel.shell.workspaceId]
+    [agentTargetPresentationKey, viewModel.shell.workspaceId]
   );
 
   const content = (

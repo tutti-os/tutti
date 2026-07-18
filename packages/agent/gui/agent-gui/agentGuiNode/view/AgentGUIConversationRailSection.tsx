@@ -87,7 +87,7 @@ interface AgentGUIConversationRailSectionProps {
     event: React.DragEvent<HTMLElement>
   ) => void;
   onProjectDrop: (event: React.DragEvent<HTMLElement>) => void;
-  onProjectMenuOpenChange: (open: boolean) => void;
+  onProjectMenuOpenChange: (sectionId: string, open: boolean) => void;
 }
 
 export const AgentGUIConversationRailSection = memo(
@@ -146,6 +146,10 @@ export const AgentGUIConversationRailSection = memo(
     const isProjectSection = section.kind === "project";
     const projectPinned = (section.project?.pinnedAtUnixMs ?? 0) > 0;
     const projectId = section.project?.id?.trim() ?? "";
+    const handleProjectMenuOpenChange = useCallback(
+      (open: boolean) => onProjectMenuOpenChange(section.id, open),
+      [onProjectMenuOpenChange, section.id]
+    );
     const pageableItems = section.items.filter(
       (item) => item.projectionSource !== "pending_activation"
     );
@@ -360,7 +364,7 @@ export const AgentGUIConversationRailSection = memo(
                 </Tooltip>
               )}
               {projectPath ? (
-                <DropdownMenu onOpenChange={onProjectMenuOpenChange}>
+                <DropdownMenu onOpenChange={handleProjectMenuOpenChange}>
                   {previewMode ? (
                     <DropdownMenuTrigger asChild>
                       <span

@@ -390,6 +390,23 @@ test("recomputes fullscreen nodes against the bottom edge when surface size chan
   });
 });
 
+test("preserves unchanged floating node references when surface size changes", () => {
+  const state = createWorkbenchInitialState({
+    surfaceSize: { width: 900, height: 600 },
+    nodes: [makeNode("floating")],
+    nodeStack: ["floating"]
+  });
+  const nextState = reduceWorkbenchState(state, {
+    type: "setSurfaceSize",
+    size: { width: 960, height: 640 }
+  });
+
+  assert.notEqual(nextState, state);
+  assert.equal(nextState.nodes, state.nodes);
+  assert.equal(nextState.nodes[0], state.nodes[0]);
+  assert.equal(nextState.nodes[0]?.frame, state.nodes[0]?.frame);
+});
+
 test("keeps floating nodes visible near the bottom when surface size changes", () => {
   let state = createWorkbenchInitialState({
     surfaceSize: { width: 900, height: 600 },

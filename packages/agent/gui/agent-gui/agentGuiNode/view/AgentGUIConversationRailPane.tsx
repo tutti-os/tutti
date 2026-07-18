@@ -50,6 +50,7 @@ import {
 } from "./agentGUIViewUtils";
 import styles from "../AgentGUINode.styles";
 import { useAgentGUIConversationRailViewState } from "./useAgentGUIConversationRailViewState";
+import { useAgentGUIProjectMenuState } from "./useAgentGUIProjectMenuState";
 
 function useDelayedBoolean(value: boolean, delayMs: number): boolean {
   const [delayedValue, setDelayedValue] = useState(false);
@@ -205,9 +206,6 @@ export const AgentGUIConversationRailPane = memo(
       useState<AgentGUIProjectActionDialog | null>(null);
     const [isRequestingBatchDeletion, setIsRequestingBatchDeletion] =
       useState(false);
-    const [openProjectMenuSectionId, setOpenProjectMenuSectionId] = useState<
-      string | null
-    >(null);
     const { railSearch } = railQuery;
     const railElementRef = useRef<HTMLElement | null>(null);
     const railActiveConversationRef = useRef<
@@ -225,6 +223,11 @@ export const AgentGUIConversationRailPane = memo(
       runtimeRailSectionsPending,
       sectionPageStates
     } = railQuery;
+    const { isProjectActionLocked, onProjectMenuOpenChange, projectMenuOpen } =
+      useAgentGUIProjectMenuState(
+        isInteractionLocked,
+        isUserProjectMutationPending
+      );
 
     const railConversationEntitiesById = new Map(
       runtimeRailConversations.map((conversation) => [
@@ -247,7 +250,7 @@ export const AgentGUIConversationRailPane = memo(
       isUserProjectMutationPending ||
       pendingDeleteConversationId !== null ||
       pendingProjectAction !== null ||
-      openProjectMenuSectionId !== null ||
+      projectMenuOpen ||
       previewMode;
     const backendSearchConversations = backendSearchActive
       ? railSearch.sessionIds.flatMap((id) => {
@@ -697,9 +700,7 @@ export const AgentGUIConversationRailPane = memo(
                           : (sectionPageState?.isLoading ?? false)
                       }
                       isRailInteractionLocked={isInteractionLocked}
-                      isProjectActionLocked={() =>
-                        isInteractionLocked() || isUserProjectMutationPending
-                      }
+                      isProjectActionLocked={isProjectActionLocked}
                       projectDragDisabled={projectDragLocked}
                       projectDragging={
                         projectDragState !== null &&
@@ -757,15 +758,7 @@ export const AgentGUIConversationRailPane = memo(
                       onProjectDragEnd={clearProjectDrag}
                       onProjectDragOver={updateProjectDropTarget}
                       onProjectDrop={dropProject}
-                      onProjectMenuOpenChange={(open) => {
-                        setOpenProjectMenuSectionId((current) =>
-                          open
-                            ? section.id
-                            : current === section.id
-                              ? null
-                              : current
-                        );
-                      }}
+                      onProjectMenuOpenChange={onProjectMenuOpenChange}
                     />
                   </Fragment>
                 );
