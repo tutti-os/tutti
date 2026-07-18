@@ -22,16 +22,17 @@ func TestScanExternalImportsAppliesCodexSQLiteTitle(t *testing.T) {
 	t.Setenv("CODEX_HOME", codexHome)
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
 
-	// Relative to now: the scan applies a rolling recency window, and a
-	// hardcoded date ages out of it and starts failing (fixture rot).
-	sessionStamp := time.Now().UTC().Add(-24 * time.Hour)
+	// The scan applies a rolling 30-day cutoff, so a fixed fixture date rots:
+	// hardcoded stamps aged out of the window exactly 30 days after they were
+	// written and the scan silently returned nothing. Stamp relative to now.
+	recent := time.Now().UTC().Add(-time.Hour)
 	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "codex-x.jsonl"),
 		map[string]any{
-			"timestamp": sessionStamp.Format(time.RFC3339),
+			"timestamp": recent.Format(time.RFC3339),
 			"type":      "session_meta",
 			"payload":   map[string]any{"id": "codex-x", "cwd": project},
 		},
-		map[string]any{"timestamp": sessionStamp.Add(time.Second).Format(time.RFC3339), "type": "response_item", "payload": map[string]any{
+		map[string]any{"timestamp": recent.Add(time.Second).Format(time.RFC3339), "type": "response_item", "payload": map[string]any{
 			"type": "message", "id": "codex-x-1", "role": "user",
 			"content": []any{map[string]any{"type": "input_text", "text": "First raw prompt"}},
 		}},
