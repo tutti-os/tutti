@@ -1,4 +1,3 @@
-//nolint:unused // Retain migrated test fixtures until the next agent-daemon decomposition pass.
 package agentsessionstore
 
 import (
@@ -1413,206 +1412,50 @@ func TestStoreBuildsSnapshotMessagesFromCanonicalSessionMessages(t *testing.T) {
 	}
 }
 
-func TestStoreAppliesProviderOnlyMessageUpdateToExistingSession(t *testing.T) {
-	svc := New(nil)
-	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{{
-			AgentSessionID:    "runtime-1",
-			Provider:          "codex",
-			ProviderSessionID: "provider-1",
-			SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-		}},
-	})
+func TestStoreReconcilesProviderOnlyMessageUpdates(t *testing.T) {
+	runtime := ProviderActivitySessionProjection{AgentSessionID: "runtime-1", Provider: "codex", ProviderSessionID: "provider-1", SessionOrigin: WorkspaceAgentSessionOriginRuntime}
+	tests := []struct {
+		name, provider, providerSessionID, messageID, messageSessionID, sourceOrigin, kind, status, wantBucket string
+		payload                                                                                                map[string]any
+		sessions                                                                                               []ProviderActivitySessionProjection
+		lateMetadata                                                                                           bool
+		forbidBuckets                                                                                          []string
+	}{
+		{name: "unique alias uses canonical runtime session", provider: "codex", providerSessionID: "provider-1", messageID: "approval-1", messageSessionID: "provider-1", sourceOrigin: WorkspaceAgentSessionOriginRuntime, kind: "tool_call", status: "waiting", payload: map[string]any{"toolName": "Bash"}, sessions: []ProviderActivitySessionProjection{runtime}, wantBucket: "runtime-1", forbidBuckets: []string{"provider-1"}},
+		{name: "late metadata migrates provider bucket", provider: "codex", providerSessionID: "provider-1", messageID: "approval-1", kind: "tool_call", status: "waiting", payload: map[string]any{"toolName": "Bash"}, sessions: []ProviderActivitySessionProjection{runtime}, lateMetadata: true, wantBucket: "runtime-1", forbidBuckets: []string{"provider-1"}},
+		{name: "same origin resolves unique alias", provider: "codex", providerSessionID: "provider-1", messageID: "runtime-message-1", messageSessionID: "provider-1", sourceOrigin: WorkspaceAgentSessionOriginRuntime, kind: "text", status: "completed", payload: map[string]any{"text": "runtime"}, sessions: []ProviderActivitySessionProjection{runtime}, wantBucket: "runtime-1", forbidBuckets: []string{"provider-1"}},
+		{name: "ambiguous candidates stay in provider bucket", provider: "codex", providerSessionID: "provider-1", messageID: "ambiguous-message-1", messageSessionID: "provider-1", kind: "text", status: "completed", payload: map[string]any{"text": "ambiguous"}, sessions: []ProviderActivitySessionProjection{runtime, {AgentSessionID: "runtime-2", Provider: "codex", ProviderSessionID: "provider-1", SessionOrigin: WorkspaceAgentSessionOriginRuntime}}, wantBucket: "provider-1", forbidBuckets: []string{"runtime-1", "runtime-2"}},
+		{name: "provider mismatch stays in provider bucket", provider: "claude", providerSessionID: "shared-provider-session", messageID: "claude-message-1", messageSessionID: "shared-provider-session", sourceOrigin: WorkspaceAgentSessionOriginRuntime, kind: "text", status: "completed", payload: map[string]any{"text": "claude"}, sessions: []ProviderActivitySessionProjection{{AgentSessionID: "codex-session-1", Provider: "codex", ProviderSessionID: "shared-provider-session", SessionOrigin: WorkspaceAgentSessionOriginRuntime}}, wantBucket: "shared-provider-session", forbidBuckets: []string{"codex-session-1"}},
+	}
 
-	svc.ApplyActivity("room-1", EventSource{
-		Provider:          "codex",
-		ProviderSessionID: "provider-1",
-		SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-	}, nil, nil, []WorkspaceAgentMessageUpdate{{
-		AgentSessionID:   "provider-1",
-		MessageID:        "approval-1",
-		Role:             "assistant",
-		Kind:             "tool_call",
-		Status:           "waiting",
-		Payload:          map[string]any{"toolName": "Bash"},
-		OccurredAtUnixMS: 1000,
-	}})
-
-	snapshot, ok := svc.GetAgentSnapshot("room-1")
-	if !ok {
-		t.Fatal("GetAgentSnapshot() ok = false, want true")
-	}
-	if _, ok := snapshot.SessionMessagesByID["provider-1"]; ok {
-		t.Fatalf("provider bucket = %#v, want no alias message bucket", snapshot.SessionMessagesByID["provider-1"])
-	}
-	messages := snapshot.SessionMessagesByID["runtime-1"]
-	if len(messages) != 1 {
-		t.Fatalf("runtime messages = %#v, want one canonical message", snapshot.SessionMessagesByID)
-	}
-	if messages[0].AgentSessionID != "runtime-1" || messages[0].MessageID != "approval-1" {
-		t.Fatalf("message = %#v, want canonical runtime session id", messages[0])
-	}
-}
-
-func TestStoreMigratesProviderMessageBucketWhenSessionMetadataArrives(t *testing.T) {
-	svc := New(nil)
-	svc.TrackRoom("room-1")
-
-	svc.ApplyActivity("room-1", EventSource{
-		Provider:          "codex",
-		ProviderSessionID: "provider-1",
-	}, nil, nil, []WorkspaceAgentMessageUpdate{{
-		MessageID:        "approval-1",
-		Role:             "assistant",
-		Kind:             "tool_call",
-		Status:           "waiting",
-		Payload:          map[string]any{"toolName": "Bash"},
-		OccurredAtUnixMS: 1000,
-	}})
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{{
-			AgentSessionID:    "runtime-1",
-			Provider:          "codex",
-			ProviderSessionID: "provider-1",
-			SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-		}},
-	})
-
-	snapshot, ok := svc.GetAgentSnapshot("room-1")
-	if !ok {
-		t.Fatal("GetAgentSnapshot() ok = false, want true")
-	}
-	if _, ok := snapshot.SessionMessagesByID["provider-1"]; ok {
-		t.Fatalf("provider bucket = %#v, want migrated message bucket", snapshot.SessionMessagesByID["provider-1"])
-	}
-	messages := snapshot.SessionMessagesByID["runtime-1"]
-	if len(messages) != 1 || messages[0].AgentSessionID != "runtime-1" {
-		t.Fatalf("runtime messages = %#v, want migrated canonical message", messages)
-	}
-}
-
-func TestStoreAppliesProviderOnlyMessageUpdateToSameOriginSession(t *testing.T) {
-	svc := New(nil)
-	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{{
-			AgentSessionID:    "runtime-1",
-			Provider:          "codex",
-			ProviderSessionID: "provider-1",
-			SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-		}},
-	})
-
-	svc.ApplyActivity("room-1", EventSource{
-		Provider:          "codex",
-		ProviderSessionID: "provider-1",
-		SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-	}, nil, nil, []WorkspaceAgentMessageUpdate{{
-		AgentSessionID:   "provider-1",
-		MessageID:        "runtime-message-1",
-		Role:             "assistant",
-		Kind:             "text",
-		Status:           "completed",
-		Payload:          map[string]any{"text": "runtime"},
-		OccurredAtUnixMS: 1000,
-	}})
-
-	snapshot, ok := svc.GetAgentSnapshot("room-1")
-	if !ok {
-		t.Fatal("GetAgentSnapshot() ok = false, want true")
-	}
-	if _, ok := snapshot.SessionMessagesByID["provider-1"]; ok {
-		t.Fatalf("provider bucket = %#v, want no alias message bucket", snapshot.SessionMessagesByID["provider-1"])
-	}
-	messages := snapshot.SessionMessagesByID["runtime-1"]
-	if len(messages) != 1 || messages[0].AgentSessionID != "runtime-1" || messages[0].MessageID != "runtime-message-1" {
-		t.Fatalf("runtime messages = %#v, want provider-only message on runtime session", messages)
-	}
-}
-
-func TestStoreKeepsProviderOnlyMessageUpdateAmbiguousWithoutOrigin(t *testing.T) {
-	svc := New(nil)
-	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{
-			{
-				AgentSessionID:    "runtime-1",
-				Provider:          "codex",
-				ProviderSessionID: "provider-1",
-				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-			},
-			{
-				AgentSessionID:    "runtime-2",
-				Provider:          "codex",
-				ProviderSessionID: "provider-1",
-				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-			},
-		},
-	})
-
-	svc.ApplyActivity("room-1", EventSource{
-		Provider:          "codex",
-		ProviderSessionID: "provider-1",
-	}, nil, nil, []WorkspaceAgentMessageUpdate{{
-		AgentSessionID:   "provider-1",
-		MessageID:        "ambiguous-message-1",
-		Role:             "assistant",
-		Kind:             "text",
-		Status:           "completed",
-		Payload:          map[string]any{"text": "ambiguous"},
-		OccurredAtUnixMS: 1000,
-	}})
-
-	snapshot, ok := svc.GetAgentSnapshot("room-1")
-	if !ok {
-		t.Fatal("GetAgentSnapshot() ok = false, want true")
-	}
-	if len(snapshot.SessionMessagesByID["runtime-1"]) != 0 || len(snapshot.SessionMessagesByID["runtime-2"]) != 0 {
-		t.Fatalf("canonical buckets = %#v, want ambiguous message left unmapped", snapshot.SessionMessagesByID)
-	}
-	messages := snapshot.SessionMessagesByID["provider-1"]
-	if len(messages) != 1 || messages[0].AgentSessionID != "provider-1" {
-		t.Fatalf("provider messages = %#v, want conservative alias bucket", messages)
-	}
-}
-
-func TestStoreKeepsProviderOnlyMessageUpdateForDifferentProvider(t *testing.T) {
-	svc := New(nil)
-	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{{
-			AgentSessionID:    "codex-session-1",
-			Provider:          "codex",
-			ProviderSessionID: "shared-provider-session",
-			SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-		}},
-	})
-
-	svc.ApplyActivity("room-1", EventSource{
-		Provider:          "claude",
-		ProviderSessionID: "shared-provider-session",
-		SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-	}, nil, nil, []WorkspaceAgentMessageUpdate{{
-		AgentSessionID:   "shared-provider-session",
-		MessageID:        "claude-message-1",
-		Role:             "assistant",
-		Kind:             "text",
-		Status:           "completed",
-		Payload:          map[string]any{"text": "claude"},
-		OccurredAtUnixMS: 1000,
-	}})
-
-	snapshot, ok := svc.GetAgentSnapshot("room-1")
-	if !ok {
-		t.Fatal("GetAgentSnapshot() ok = false, want true")
-	}
-	if len(snapshot.SessionMessagesByID["codex-session-1"]) != 0 {
-		t.Fatalf("codex messages = %#v, want provider mismatch not attached", snapshot.SessionMessagesByID["codex-session-1"])
-	}
-	messages := snapshot.SessionMessagesByID["shared-provider-session"]
-	if len(messages) != 1 || messages[0].AgentSessionID != "shared-provider-session" {
-		t.Fatalf("provider messages = %#v, want conservative alias bucket for provider mismatch", messages)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := New(nil)
+			svc.TrackRoom("room-1")
+			if !tt.lateMetadata {
+				svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: tt.sessions})
+			}
+			svc.ApplyActivity("room-1", EventSource{Provider: tt.provider, ProviderSessionID: tt.providerSessionID, SessionOrigin: tt.sourceOrigin}, nil, nil, []WorkspaceAgentMessageUpdate{{
+				AgentSessionID: tt.messageSessionID, MessageID: tt.messageID, Role: "assistant", Kind: tt.kind, Status: tt.status, Payload: tt.payload, OccurredAtUnixMS: 1000,
+			}})
+			if tt.lateMetadata {
+				svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: tt.sessions})
+			}
+			snapshot, ok := svc.GetAgentSnapshot("room-1")
+			if !ok {
+				t.Fatal("GetAgentSnapshot() ok = false")
+			}
+			for _, bucket := range tt.forbidBuckets {
+				if messages, exists := snapshot.SessionMessagesByID[bucket]; exists {
+					t.Fatalf("bucket %q = %#v, want key absent", bucket, messages)
+				}
+			}
+			messages := snapshot.SessionMessagesByID[tt.wantBucket]
+			if len(messages) != 1 || messages[0].AgentSessionID != tt.wantBucket || messages[0].MessageID != tt.messageID ||
+				messages[0].Kind != tt.kind || messages[0].Status != tt.status || !reflect.DeepEqual(messages[0].Payload, tt.payload) {
+				t.Fatalf("messages = %#v, want %s in %s", snapshot.SessionMessagesByID, tt.messageID, tt.wantBucket)
+			}
+		})
 	}
 }
 
@@ -2190,441 +2033,199 @@ func TestStoreKeepsProviderOnlyStatePatchAmbiguousForDuplicateRuntimeSessions(t 
 	}
 }
 
-func TestStoreInterruptWorkspaceAgentsReportsWorkingSessions(t *testing.T) {
-	client := &fakeInterruptReporter{}
-	svc := New(client)
-	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{
-			{
-				AgentSessionID:    "agent-working",
-				Provider:          "codex",
-				ProviderSessionID: "codex-session",
-				CWD:               "/workspace/room-1",
-				LifecycleStatus:   "active",
-				TurnPhase:         "working",
-				EffectiveStatus:   "working",
+func TestStoreInterruptWorkspaceAgents(t *testing.T) {
+	t.Run("all-working filters non-working sessions", func(t *testing.T) {
+		client := &fakeInterruptReporter{}
+		svc := New(client)
+		svc.TrackRoom("room-1")
+		svc.updateState("room-1", WorkspaceAgentSnapshot{
+			Sessions: []ProviderActivitySessionProjection{
+				interruptSession("agent-working", "codex-session", "working", "working"),
+				interruptSession("agent-ready", "claude-session", "working", "ready"),
 			},
-			{
-				AgentSessionID:    "agent-ready",
-				Provider:          "claude-code",
-				ProviderSessionID: "claude-session",
-				LifecycleStatus:   "active",
-				TurnPhase:         "working",
-				EffectiveStatus:   "ready",
-			},
-		},
-	})
-	if err := svc.InterruptWorkspaceAgents(context.Background(), " room-1 ", "workspace-leave"); err != nil {
-		t.Fatalf("InterruptWorkspaceAgents() error = %v", err)
-	}
+		})
+		if err := svc.InterruptWorkspaceAgents(context.Background(), " room-1 ", "workspace-leave"); err != nil {
+			t.Fatalf("InterruptWorkspaceAgents() error = %v", err)
+		}
 
-	if len(client.reportInputs) != 1 {
-		t.Fatalf("reported inputs = %#v, want one state report per patch", client.reportInputs)
-	}
-	for _, report := range client.reportInputs {
-		if report.WorkspaceID != "room-1" {
-			t.Fatalf("reported workspace = %q, want room-1", report.WorkspaceID)
+		if len(client.reportInputs) != 1 {
+			t.Fatalf("reported inputs = %#v, want one state report per patch", client.reportInputs)
 		}
-		if len(report.TimelineItems) != 0 {
-			t.Fatalf("reported timeline items = %#v, want no timeline forwarding", report.TimelineItems)
-		}
-		if len(report.StatePatches) != 1 {
-			t.Fatalf("reported state patches = %#v, want one patch per report", report.StatePatches)
+		report := client.reportInputs[0]
+		if report.WorkspaceID != "room-1" || len(report.TimelineItems) != 0 || len(report.StatePatches) != 1 {
+			t.Fatalf("report = %#v, want one state-only report for room-1", report)
 		}
 		patch := report.StatePatches[0]
-		if patch.AgentSessionID != "agent-working" || patch.Provider != "codex" || patch.ProviderSessionID != "codex-session" {
-			t.Fatalf("reported patch identity = %#v", patch)
+		if patch.AgentSessionID != "agent-working" || patch.Provider != "codex" || patch.ProviderSessionID != "codex-session" ||
+			patch.LifecycleStatus != string(activityshared.SessionStatusCompleted) ||
+			patch.CurrentPhase != string(activityshared.TurnPhaseIdle) || patch.OccurredAtUnixMS == 0 {
+			t.Fatalf("reported patch = %#v", patch)
 		}
-		if patch.OccurredAtUnixMS == 0 {
-			t.Fatalf("reported patch missing time: %#v", patch)
+		state, ok := svc.GetAgentState("room-1")
+		if !ok || len(state.Sessions) != 2 {
+			t.Fatalf("state = %#v, ok=%v", state, ok)
 		}
-	}
-	var foundSessionPatch bool
-	for _, patch := range client.statePatches {
-		if patch.AgentSessionID == "agent-working" &&
-			patch.LifecycleStatus == string(activityshared.SessionStatusCompleted) &&
-			patch.CurrentPhase == string(activityshared.TurnPhaseIdle) {
-			foundSessionPatch = true
+		if state.Sessions[0].LifecycleStatus != "ended" || state.Sessions[0].EffectiveStatus != "completed" || state.Sessions[0].TurnPhase != "idle" {
+			t.Fatalf("interrupted session state = %#v", state.Sessions[0])
 		}
-	}
-	if !foundSessionPatch {
-		t.Fatalf("state patches = %#v, want session completion patch", client.statePatches)
+		if state.Sessions[1].EffectiveStatus != "ready" {
+			t.Fatalf("ready session was changed: %#v", state.Sessions[1])
+		}
+	})
+
+	t.Run("multiple runtime sessions fan out separately", func(t *testing.T) {
+		client := &fakeInterruptReporter{}
+		svc := New(client)
+		svc.TrackRoom("room-1")
+		svc.updateState("room-1", WorkspaceAgentSnapshot{
+			Sessions: []ProviderActivitySessionProjection{
+				interruptRuntimeSession("runtime-1", "shared-provider-session"),
+				interruptRuntimeSession("runtime-2", "shared-provider-session"),
+			},
+		})
+		if err := svc.InterruptWorkspaceAgents(context.Background(), "room-1", "user_interrupt"); err != nil {
+			t.Fatalf("InterruptWorkspaceAgents() error = %v", err)
+		}
+
+		if len(client.reportInputs) != 2 {
+			t.Fatalf("reported inputs = %#v, want one report per runtime session", client.reportInputs)
+		}
+		for index, input := range client.reportInputs {
+			wantID := []string{"runtime-1", "runtime-2"}[index]
+			if input.Source.SessionOrigin != WorkspaceAgentSessionOriginRuntime || len(input.StatePatches) != 1 || input.StatePatches[0].AgentSessionID != wantID {
+				t.Fatalf("report[%d] = %#v, want runtime report for %s", index, input, wantID)
+			}
+			if input.Source.Provider != "codex" || input.Source.ProviderSessionID != "shared-provider-session" {
+				t.Fatalf("report source = %#v, want provider identity preserved", input.Source)
+			}
+		}
+	})
+}
+
+func TestStoreInterruptWorkspaceAgentSessions(t *testing.T) {
+	tests := []struct {
+		name               string
+		sessions           []ProviderActivitySessionProjection
+		targets            []string
+		wantReportIDs      []string
+		wantProviderIDs    []string
+		syntheticReportID  string
+		wantUntouchedID    string
+		wantUntouchedState string
+	}{
+		{
+			name:     "explicit target leaves peer untouched",
+			sessions: []ProviderActivitySessionProjection{interruptSession("agent-local", "codex-local", "working", "working"), interruptSession("agent-other-user", "codex-other-user", "working", "working")},
+			targets:  []string{"agent-local"}, wantReportIDs: []string{"agent-local"}, wantProviderIDs: []string{"codex-local"},
+			wantUntouchedID: "agent-other-user", wantUntouchedState: "working",
+		},
+		{
+			name:     "explicit idle target closes locally",
+			sessions: []ProviderActivitySessionProjection{interruptSession("agent-local", "codex-local", "idle", "idle"), interruptSession("agent-other-user", "codex-other-user", "idle", "idle")},
+			targets:  []string{"agent-local"}, wantReportIDs: []string{"agent-local"}, wantProviderIDs: []string{"codex-local"},
+			wantUntouchedID: "agent-other-user", wantUntouchedState: "idle",
+		},
+		{
+			name:     "provider session id aliases runtime target",
+			sessions: []ProviderActivitySessionProjection{interruptSession("runtime-session", "provider-session", "idle", "idle")},
+			targets:  []string{"provider-session"}, wantReportIDs: []string{"runtime-session"}, wantProviderIDs: []string{"provider-session"},
+		},
+		{
+			name:     "single-session fallback folds unmatched targets",
+			sessions: []ProviderActivitySessionProjection{interruptSession("folded-session", "folded-provider-session", "idle", "idle")},
+			targets:  []string{"runtime-session", "provider-session"}, wantReportIDs: []string{"folded-session"}, wantProviderIDs: []string{"folded-provider-session"},
+		},
+		{
+			name:     "runtime-origin reports retain stable order",
+			sessions: []ProviderActivitySessionProjection{interruptRuntimeSession("peer-session", "provider-session"), interruptRuntimeSession("runtime-session", "provider-session")},
+			targets:  []string{"peer-session", "runtime-session"}, wantReportIDs: []string{"peer-session", "runtime-session"}, wantProviderIDs: []string{"provider-session", "provider-session"},
+		},
+		{
+			name:     "provider context adds missing runtime fallback",
+			sessions: []ProviderActivitySessionProjection{interruptRuntimeSession("peer-session", "provider-session")},
+			targets:  []string{"runtime-session", "provider-session"}, wantReportIDs: []string{"peer-session", "runtime-session"}, wantProviderIDs: []string{"provider-session", "provider-session"}, syntheticReportID: "runtime-session",
+		},
 	}
 
-	state, ok := svc.GetAgentState("room-1")
-	if !ok || len(state.Sessions) != 2 {
-		t.Fatalf("state = %#v, ok=%v", state, ok)
-	}
-	if state.Sessions[0].LifecycleStatus != "ended" || state.Sessions[0].EffectiveStatus != "completed" || state.Sessions[0].TurnPhase != "idle" {
-		t.Fatalf("interrupted session state = %#v", state.Sessions[0])
-	}
-	if state.Sessions[1].EffectiveStatus != "ready" {
-		t.Fatalf("ready session was changed: %#v", state.Sessions[1])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &fakeInterruptReporter{}
+			svc := New(client)
+			svc.TrackRoom("room-1")
+			svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: tt.sessions})
+			if err := svc.InterruptWorkspaceAgentSessions(context.Background(), "room-1", "workspace-leave", tt.targets); err != nil {
+				t.Fatalf("InterruptWorkspaceAgentSessions() error = %v", err)
+			}
+			if len(client.reportInputs) != len(tt.wantReportIDs) {
+				t.Fatalf("reported inputs = %#v, want ids %v", client.reportInputs, tt.wantReportIDs)
+			}
+			for i, wantID := range tt.wantReportIDs {
+				report := client.reportInputs[i]
+				if len(report.StatePatches) != 1 || report.StatePatches[0].AgentSessionID != wantID {
+					t.Fatalf("report[%d] = %#v, want %s", i, report, wantID)
+				}
+				patch := report.StatePatches[0]
+				if patch.Provider != "codex" || patch.ProviderSessionID != tt.wantProviderIDs[i] ||
+					report.Source.Provider != "codex" || report.Source.ProviderSessionID != tt.wantProviderIDs[i] {
+					t.Fatalf("report identity = %#v, want codex/%s", report, tt.wantProviderIDs[i])
+				}
+				if patch.LifecycleStatus != "completed" || patch.CurrentPhase != "idle" {
+					t.Fatalf("patch = %#v, want completed idle", patch)
+				}
+				if tt.sessions[0].SessionOrigin == WorkspaceAgentSessionOriginRuntime && report.Source.SessionOrigin != WorkspaceAgentSessionOriginRuntime {
+					t.Fatalf("report source = %#v, want runtime origin", report.Source)
+				}
+			}
+
+			state, ok := svc.GetAgentState("room-1")
+			if !ok {
+				t.Fatal("GetAgentState() ok = false")
+			}
+			if tt.wantUntouchedID != "" {
+				peer := findInterruptSession(state.Sessions, tt.wantUntouchedID)
+				if peer == nil || peer.EffectiveStatus != tt.wantUntouchedState || peer.LifecycleStatus != "active" {
+					t.Fatalf("untouched session = %#v, want %s", peer, tt.wantUntouchedState)
+				}
+			}
+			for _, wantID := range tt.wantReportIDs {
+				session := findInterruptSession(state.Sessions, wantID)
+				if session == nil {
+					if wantID != tt.syntheticReportID {
+						t.Fatalf("target session %q missing from state", wantID)
+					}
+					continue
+				}
+				if session.Status != "completed" || session.LifecycleStatus != "ended" || session.EffectiveStatus != "completed" || session.TurnPhase != "idle" {
+					t.Fatalf("target session = %#v, want completed", session)
+				}
+			}
+		})
 	}
 }
 
-func TestStoreInterruptWorkspaceAgentsReportsRuntimeSessionsSeparately(t *testing.T) {
-	client := &fakeInterruptReporter{}
-	svc := New(client)
-	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{
-			{
-				AgentSessionID:    "runtime-1",
-				Provider:          "codex",
-				ProviderSessionID: "shared-provider-session",
-				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-				CWD:               "/workspace/room-1",
-				LifecycleStatus:   "active",
-				TurnPhase:         "working",
-				EffectiveStatus:   "working",
-			},
-			{
-				AgentSessionID:    "runtime-2",
-				Provider:          "codex",
-				ProviderSessionID: "shared-provider-session",
-				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-				CWD:               "/workspace/room-1",
-				LifecycleStatus:   "active",
-				TurnPhase:         "working",
-				EffectiveStatus:   "working",
-			},
-		},
-	})
-	if err := svc.InterruptWorkspaceAgents(context.Background(), "room-1", "user_interrupt"); err != nil {
-		t.Fatalf("InterruptWorkspaceAgents() error = %v", err)
+func interruptSession(agentSessionID, providerSessionID, turnPhase, effectiveStatus string) ProviderActivitySessionProjection {
+	return ProviderActivitySessionProjection{
+		AgentSessionID: agentSessionID, Provider: "codex", ProviderSessionID: providerSessionID,
+		CWD: "/workspace/room-1", LifecycleStatus: "active", TurnPhase: turnPhase, EffectiveStatus: effectiveStatus,
 	}
+}
 
-	if len(client.reportInputs) != 2 {
-		t.Fatalf("reported inputs = %#v, want one report per runtime session", client.reportInputs)
-	}
-	var runtimeReports int
-	for index := range client.reportInputs {
-		input := &client.reportInputs[index]
-		if input.Source.SessionOrigin == WorkspaceAgentSessionOriginRuntime {
-			runtimeReports++
-		}
-		if input.Source.Provider != "codex" || input.Source.ProviderSessionID != "shared-provider-session" {
-			t.Fatalf("report source = %#v, want provider identity preserved", input.Source)
-		}
-		if len(input.TimelineItems) != 0 {
-			t.Fatalf("report timeline items = %#v, want no timeline forwarding", input.TimelineItems)
-		}
-		if len(input.StatePatches) != 1 {
-			t.Fatalf("report state patches = %#v, want one patch per report", input.StatePatches)
+func interruptRuntimeSession(agentSessionID, providerSessionID string) ProviderActivitySessionProjection {
+	session := interruptSession(agentSessionID, providerSessionID, "working", "working")
+	session.SessionOrigin = WorkspaceAgentSessionOriginRuntime
+	return session
+}
+
+func findInterruptSession(sessions []ProviderActivitySessionProjection, id string) *ProviderActivitySessionProjection {
+	for i := range sessions {
+		if sessions[i].AgentSessionID == id {
+			return &sessions[i]
 		}
 	}
-	if runtimeReports != 2 {
-		t.Fatalf("reported inputs = %#v, want runtime reports", client.reportInputs)
-	}
-}
-
-func TestStoreInterruptWorkspaceAgentSessionsOnlyReportsTargets(t *testing.T) {
-	client := &fakeInterruptReporter{}
-	svc := New(client)
-	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{
-			{
-				AgentSessionID:    "agent-local",
-				Provider:          "codex",
-				ProviderSessionID: "codex-local",
-				CWD:               "/workspace/room-1",
-				LifecycleStatus:   "active",
-				TurnPhase:         "working",
-				EffectiveStatus:   "working",
-			},
-			{
-				AgentSessionID:    "agent-other-user",
-				Provider:          "codex",
-				ProviderSessionID: "codex-other-user",
-				CWD:               "/workspace/room-1",
-				LifecycleStatus:   "active",
-				TurnPhase:         "working",
-				EffectiveStatus:   "working",
-			},
-		},
-	})
-
-	if err := svc.InterruptWorkspaceAgentSessions(
-		context.Background(),
-		"room-1",
-		"workspace-leave",
-		[]string{"agent-local"},
-	); err != nil {
-		t.Fatalf("InterruptWorkspaceAgentSessions() error = %v", err)
-	}
-
-	state, ok := svc.GetAgentState("room-1")
-	if !ok || len(state.Sessions) != 2 {
-		t.Fatalf("state = %#v, ok=%v", state, ok)
-	}
-	if state.Sessions[0].AgentSessionID != "agent-local" ||
-		state.Sessions[0].LifecycleStatus != "ended" ||
-		state.Sessions[0].EffectiveStatus != "completed" ||
-		state.Sessions[0].TurnPhase != "idle" {
-		t.Fatalf("target session state = %#v, want completed local session", state.Sessions[0])
-	}
-	if state.Sessions[1].AgentSessionID != "agent-other-user" ||
-		state.Sessions[1].EffectiveStatus != "working" ||
-		state.Sessions[1].LifecycleStatus != "active" {
-		t.Fatalf("non-target session state = %#v, want untouched", state.Sessions[1])
-	}
-	if len(client.reportInputs) != 1 {
-		t.Fatalf("reported inputs = %#v, want only target report", client.reportInputs)
-	}
-	if len(client.reportInputs[0].StatePatches) != 1 || client.reportInputs[0].StatePatches[0].AgentSessionID != "agent-local" {
-		t.Fatalf("reported state patches = %#v, want only target session", client.reportInputs[0].StatePatches)
-	}
-}
-
-func TestStoreInterruptWorkspaceAgentSessionsCompletesTargetAfterLocalClose(t *testing.T) {
-	client := &fakeInterruptReporter{}
-	svc := New(client)
-	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{
-			{
-				AgentSessionID:    "agent-local",
-				Provider:          "codex",
-				ProviderSessionID: "codex-local",
-				CWD:               "/workspace/room-1",
-				LifecycleStatus:   "active",
-				TurnPhase:         "idle",
-				EffectiveStatus:   "idle",
-			},
-			{
-				AgentSessionID:    "agent-other-user",
-				Provider:          "codex",
-				ProviderSessionID: "codex-other-user",
-				CWD:               "/workspace/room-1",
-				LifecycleStatus:   "active",
-				TurnPhase:         "idle",
-				EffectiveStatus:   "idle",
-			},
-		},
-	})
-
-	if err := svc.InterruptWorkspaceAgentSessions(
-		context.Background(),
-		"room-1",
-		"workspace-leave",
-		[]string{"agent-local"},
-	); err != nil {
-		t.Fatalf("InterruptWorkspaceAgentSessions() error = %v", err)
-	}
-
-	state, ok := svc.GetAgentState("room-1")
-	if !ok || len(state.Sessions) != 2 {
-		t.Fatalf("state = %#v, ok=%v", state, ok)
-	}
-	if state.Sessions[0].AgentSessionID != "agent-local" ||
-		state.Sessions[0].LifecycleStatus != "ended" ||
-		state.Sessions[0].EffectiveStatus != "completed" ||
-		state.Sessions[0].TurnPhase != "idle" {
-		t.Fatalf("target session state = %#v, want completed local session", state.Sessions[0])
-	}
-	if state.Sessions[1].AgentSessionID != "agent-other-user" ||
-		state.Sessions[1].LifecycleStatus != "active" ||
-		state.Sessions[1].EffectiveStatus != "idle" {
-		t.Fatalf("non-target session state = %#v, want untouched", state.Sessions[1])
-	}
-	if len(client.statePatches) != 1 ||
-		client.statePatches[0].AgentSessionID != "agent-local" ||
-		client.statePatches[0].LifecycleStatus != "completed" {
-		t.Fatalf("reported state patches = %#v, want target session completed patch", client.statePatches)
-	}
-}
-
-func TestStoreInterruptWorkspaceAgentSessionsMatchesTargetProviderSessionID(t *testing.T) {
-	client := &fakeInterruptReporter{}
-	svc := New(client)
-	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{
-			{
-				AgentSessionID:    "runtime-session",
-				Provider:          "codex",
-				ProviderSessionID: "provider-session",
-				CWD:               "/workspace/room-1",
-				LifecycleStatus:   "active",
-				TurnPhase:         "idle",
-				EffectiveStatus:   "idle",
-			},
-		},
-	})
-
-	if err := svc.InterruptWorkspaceAgentSessions(
-		context.Background(),
-		"room-1",
-		"workspace-leave",
-		[]string{"provider-session"},
-	); err != nil {
-		t.Fatalf("InterruptWorkspaceAgentSessions() error = %v", err)
-	}
-
-	state, ok := svc.GetAgentState("room-1")
-	if !ok || len(state.Sessions) != 1 {
-		t.Fatalf("state = %#v, ok=%v", state, ok)
-	}
-	if state.Sessions[0].LifecycleStatus != "ended" ||
-		state.Sessions[0].EffectiveStatus != "completed" ||
-		state.Sessions[0].Status != "completed" {
-		t.Fatalf("target session state = %#v, want completed session", state.Sessions[0])
-	}
-	if len(client.statePatches) != 1 ||
-		client.statePatches[0].AgentSessionID != "runtime-session" ||
-		client.statePatches[0].ProviderSessionID != "provider-session" ||
-		client.statePatches[0].LifecycleStatus != "completed" {
-		t.Fatalf("reported state patches = %#v, want runtime session completed patch", client.statePatches)
-	}
-}
-
-func TestStoreInterruptWorkspaceAgentSessionsCompletesSingleFoldedTarget(t *testing.T) {
-	client := &fakeInterruptReporter{}
-	svc := New(client)
-	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{
-			{
-				AgentSessionID:    "folded-session",
-				Provider:          "codex",
-				ProviderSessionID: "folded-provider-session",
-				CWD:               "/workspace/room-1",
-				LifecycleStatus:   "active",
-				TurnPhase:         "idle",
-				EffectiveStatus:   "idle",
-			},
-		},
-	})
-
-	if err := svc.InterruptWorkspaceAgentSessions(
-		context.Background(),
-		"room-1",
-		"workspace-leave",
-		[]string{"runtime-session", "provider-session"},
-	); err != nil {
-		t.Fatalf("InterruptWorkspaceAgentSessions() error = %v", err)
-	}
-
-	state, ok := svc.GetAgentState("room-1")
-	if !ok || len(state.Sessions) != 1 {
-		t.Fatalf("state = %#v, ok=%v", state, ok)
-	}
-	if state.Sessions[0].AgentSessionID != "folded-session" ||
-		state.Sessions[0].LifecycleStatus != "ended" ||
-		state.Sessions[0].EffectiveStatus != "completed" {
-		t.Fatalf("target session state = %#v, want completed folded session", state.Sessions[0])
-	}
-	if len(client.statePatches) != 1 ||
-		client.statePatches[0].AgentSessionID != "folded-session" ||
-		client.statePatches[0].LifecycleStatus != "completed" {
-		t.Fatalf("reported state patches = %#v, want folded session completed patch", client.statePatches)
-	}
-}
-
-func TestStoreInterruptWorkspaceAgentSessionsReportsRuntimeTargetsSeparately(t *testing.T) {
-	client := &fakeInterruptReporter{}
-	svc := New(client)
-	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{
-			{
-				AgentSessionID:    "peer-session",
-				Provider:          "codex",
-				ProviderSessionID: "provider-session",
-				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-				CWD:               "/workspace/room-1",
-				LifecycleStatus:   "active",
-				TurnPhase:         "working",
-				EffectiveStatus:   "working",
-			},
-			{
-				AgentSessionID:    "runtime-session",
-				Provider:          "codex",
-				ProviderSessionID: "provider-session",
-				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-				CWD:               "/workspace/room-1",
-				LifecycleStatus:   "active",
-				TurnPhase:         "working",
-				EffectiveStatus:   "working",
-			},
-		},
-	})
-
-	if err := svc.InterruptWorkspaceAgentSessions(
-		context.Background(),
-		"room-1",
-		"workspace-leave",
-		[]string{"peer-session", "runtime-session"},
-	); err != nil {
-		t.Fatalf("InterruptWorkspaceAgentSessions() error = %v", err)
-	}
-
-	if len(client.reportInputs) != 2 {
-		t.Fatalf("reported inputs = %#v, want runtime reports", client.reportInputs)
-	}
-	if client.reportInputs[0].Source.SessionOrigin != WorkspaceAgentSessionOriginRuntime ||
-		len(client.reportInputs[0].StatePatches) != 1 ||
-		client.reportInputs[0].StatePatches[0].AgentSessionID != "peer-session" {
-		t.Fatalf("first report = %#v, want peer runtime patch", client.reportInputs[0])
-	}
-	if client.reportInputs[1].Source.SessionOrigin != WorkspaceAgentSessionOriginRuntime ||
-		len(client.reportInputs[1].StatePatches) != 1 ||
-		client.reportInputs[1].StatePatches[0].AgentSessionID != "runtime-session" {
-		t.Fatalf("second report = %#v, want runtime patch", client.reportInputs[1])
-	}
-}
-
-func TestStoreInterruptWorkspaceAgentSessionsReportsRuntimeTargetFromProviderContext(t *testing.T) {
-	client := &fakeInterruptReporter{}
-	svc := New(client)
-	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []ProviderActivitySessionProjection{
-			{
-				AgentSessionID:    "peer-session",
-				Provider:          "codex",
-				ProviderSessionID: "provider-session",
-				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-				CWD:               "/workspace/room-1",
-				LifecycleStatus:   "active",
-				TurnPhase:         "working",
-				EffectiveStatus:   "working",
-			},
-		},
-	})
-
-	if err := svc.InterruptWorkspaceAgentSessions(
-		context.Background(),
-		"room-1",
-		"workspace-leave",
-		[]string{"runtime-session", "provider-session"},
-	); err != nil {
-		t.Fatalf("InterruptWorkspaceAgentSessions() error = %v", err)
-	}
-
-	if len(client.reportInputs) != 2 {
-		t.Fatalf("reported inputs = %#v, want runtime fallback and existing session reports", client.reportInputs)
-	}
-	if client.reportInputs[0].Source.SessionOrigin != WorkspaceAgentSessionOriginRuntime ||
-		len(client.reportInputs[0].StatePatches) != 1 ||
-		client.reportInputs[0].StatePatches[0].AgentSessionID != "peer-session" {
-		t.Fatalf("first report = %#v, want existing runtime patch", client.reportInputs[0])
-	}
-	if client.reportInputs[1].Source.SessionOrigin != WorkspaceAgentSessionOriginRuntime ||
-		len(client.reportInputs[1].StatePatches) != 1 ||
-		client.reportInputs[1].StatePatches[0].AgentSessionID != "runtime-session" ||
-		client.reportInputs[1].StatePatches[0].ProviderSessionID != "provider-session" {
-		t.Fatalf("second report = %#v, want runtime fallback patch", client.reportInputs[1])
-	}
+	return nil
 }
 
 type fakeInterruptReporter struct {
-	inputs       []ReportActivityInput
-	workspaceID  string
-	statePatches []WorkspaceAgentStatePatch
 	reportInputs []ReportActivityInput
 }
 
@@ -2637,7 +2238,6 @@ func (*fakeInterruptReporter) ListSessionMessages(context.Context, ListSessionMe
 }
 
 func (f *fakeInterruptReporter) ReportSessionState(_ context.Context, input ReportSessionStateInput) (ReportSessionStateReply, error) {
-	f.workspaceID = input.WorkspaceID
 	patch := WorkspaceAgentStatePatch{
 		AgentSessionID:    input.AgentSessionID,
 		Provider:          input.State.Provider,
@@ -2659,7 +2259,6 @@ func (f *fakeInterruptReporter) ReportSessionState(_ context.Context, input Repo
 			CompletedAtUnixMS: input.State.Turn.CompletedAtUnixMS,
 		}
 	}
-	f.statePatches = append(f.statePatches, patch)
 	f.reportInputs = append(f.reportInputs, ReportActivityInput{
 		WorkspaceID:  input.WorkspaceID,
 		Source:       input.Source,
@@ -2671,8 +2270,7 @@ func (f *fakeInterruptReporter) ReportSessionState(_ context.Context, input Repo
 	}, nil
 }
 
-func (f *fakeInterruptReporter) ReportSessionMessages(_ context.Context, input ReportSessionMessagesInput) (ReportSessionMessagesReply, error) {
-	f.workspaceID = input.WorkspaceID
+func (*fakeInterruptReporter) ReportSessionMessages(_ context.Context, input ReportSessionMessagesInput) (ReportSessionMessagesReply, error) {
 	return ReportSessionMessagesReply{AcceptedCount: len(input.Updates)}, nil
 }
 
