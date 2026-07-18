@@ -6,7 +6,6 @@ import (
 	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
-	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
@@ -97,153 +96,6 @@ type IssuePlanningTimelineReporter interface {
 	)
 }
 
-// IssueAssignmentAgentTargetReader resolves a task's assigned agent target at
-// dispatch time.
-type IssueAssignmentAgentTargetReader interface {
-	GetAgentTarget(context.Context, string) (agenttargetbiz.Target, error)
-}
-
-type ListIssueManagerItemsInput struct {
-	PageSize     int
-	PageToken    string
-	TopicID      string
-	StatusFilter string
-	SearchQuery  string
-}
-
-type CreateIssueManagerIssueInput struct {
-	IssueID             string
-	TopicID             string
-	Title               string
-	Content             string
-	PlanningSource      string
-	SourceSessionID     string
-	SequentialExecution bool
-	ParallelExecution   bool
-	ExecutionProfile    workspaceissues.ExecutionProfile
-	HasExecutionProfile bool
-	Budget              workspaceissues.Budget
-	HasBudget           bool
-	// TuttiModeWorkflowOwned is an internal authority marker. Transport and
-	// generic CLI adapters never set it; only the accepted workflow materializer
-	// may create an Issue in the reserved deterministic namespace.
-	TuttiModeWorkflowOwned bool
-}
-
-type CreateIssueManagerIssueFromPlanInput struct {
-	Issue CreateIssueManagerIssueInput
-	Tasks []CreateIssueManagerTaskItemInput
-}
-
-type CreateIssueManagerTopicInput struct {
-	TopicID string
-	Title   string
-	Summary string
-}
-
-type UpdateIssueManagerTopicInput struct {
-	Title      string
-	HasTitle   bool
-	Summary    string
-	HasSummary bool
-	Pinned     bool
-	HasPinned  bool
-}
-
-type UpdateIssueManagerIssueInput struct {
-	Title               string
-	HasTitle            bool
-	Content             string
-	HasContent          bool
-	Status              string
-	HasStatus           bool
-	DispatchPaused      bool
-	HasDispatchPaused   bool
-	ExecutionProfile    workspaceissues.ExecutionProfile
-	HasExecutionProfile bool
-	Budget              workspaceissues.Budget
-	HasBudget           bool
-}
-
-type CreateIssueManagerTaskInput struct {
-	TaskID         string
-	Title          string
-	Content        string
-	Priority       string
-	DueAtUnixMS    int64
-	Parallelizable bool
-	AutoAccept     bool
-}
-
-type CreateIssueManagerTaskItemInput struct {
-	TaskID             string
-	Title              string
-	Content            string
-	Priority           string
-	DueAtUnixMS        int64
-	AgentTargetID      string
-	ModelPlanID        string
-	Model              string
-	PermissionModeID   string
-	ReasoningEffort    string
-	ExecutionDirectory string
-	DependencyTaskIDs  []string
-	Parallelizable     bool
-	AutoAccept         bool
-}
-
-type CreateIssueManagerTasksInput struct {
-	Tasks []CreateIssueManagerTaskItemInput
-}
-
-type UpdateIssueManagerTaskInput struct {
-	Title                string
-	HasTitle             bool
-	Content              string
-	HasContent           bool
-	Status               string
-	HasStatus            bool
-	Priority             string
-	HasPriority          bool
-	DueAtUnixMS          int64
-	HasDueAt             bool
-	SortIndex            int
-	HasSortIndex         bool
-	Parallelizable       bool
-	HasParallelizable    bool
-	AutoAccept           bool
-	HasAutoAccept        bool
-	AcceptanceState      string
-	HasAcceptanceState   bool
-	AcceptanceSummary    string
-	HasAcceptanceSummary bool
-}
-
-type AddIssueManagerContextRefsInput struct {
-	Refs []workspaceissues.AddContextRefInput
-}
-
-type CreateIssueManagerRunInput struct {
-	RunID              string
-	AgentTargetID      string
-	AgentProvider      string
-	AgentUserID        string
-	AgentSessionID     string
-	ModelPlanID        string
-	Model              string
-	ExecutionDirectory string
-}
-
-type CompleteIssueManagerRunInput struct {
-	Status                   string
-	Summary                  string
-	ErrorMessage             string
-	Outputs                  []workspaceissues.CompleteRunOutputInput
-	Usage                    workspaceissues.TokenUsage
-	RemainingQuotaPercent    float64
-	HasRemainingQuotaPercent bool
-}
-
 func (s IssueManagerService) ListIssues(ctx context.Context, workspaceID string, input ListIssueManagerItemsInput) (workspaceissues.IssueList, error) {
 	s.reconcileWorkspaceRunsBestEffort(ctx, workspaceID)
 	service := s.domainService()
@@ -293,7 +145,6 @@ func (s IssueManagerService) UpdateTopic(ctx context.Context, workspaceID string
 		WorkspaceID: workspaceID,
 		ActorUserID: issueManagerLocalActorUserID,
 		Title:       input.Title,
-		HasTitle:    input.HasTitle,
 		Summary:     input.Summary,
 		HasSummary:  input.HasSummary,
 		Pinned:      input.Pinned,
@@ -388,6 +239,11 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 			HasExecutionProfile: input.Issue.HasExecutionProfile,
 			Budget:              input.Issue.Budget,
 			HasBudget:           input.Issue.HasBudget,
+			AutoTokenBudgetHistoryHint: s.historicalAutoTokenBudgetHint(
+				ctx,
+				workspaceID,
+				input.Tasks,
+			),
 		},
 		Tasks: taskItems,
 	})
@@ -422,6 +278,24 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 		s.dispatchEligibleIssueTasks(ctx, workspaceID, issue.IssueID)
 	}
 	return s.GetIssueDetail(ctx, workspaceID, issue.IssueID)
+}
+
+// EstimateAutoTokenBudget exposes the same compiler used by atomic Plan
+// conversion without persisting the proposed Issue. This keeps the mandatory
+// review value and the eventual durable budget identical for the same graph.
+func (s IssueManagerService) EstimateAutoTokenBudget(ctx context.Context, workspaceID string, input EstimateIssueManagerAutoTokenBudgetInput) (IssueManagerAutoTokenBudgetEstimate, error) {
+	profile, ok := workspaceissues.NormalizeExecutionProfile(input.ExecutionProfile)
+	if !ok || len(input.Tasks) == 0 {
+		return IssueManagerAutoTokenBudgetEstimate{}, workspaceissues.ErrInvalidArgument
+	}
+	historical, matched := s.historicalAutoTokenBudgetEstimate(ctx, workspaceID, input.Tasks)
+	deterministic := workspaceissues.CompileAutoTokenBudget(len(input.Tasks), profile)
+	return IssueManagerAutoTokenBudgetEstimate{
+		TokenLimit:                 workspaceissues.CompileAutoTokenBudgetWithHistory(len(input.Tasks), profile, historical),
+		DeterministicTokenLimit:    deterministic,
+		HistoricalTokenEstimate:    historical,
+		MatchedHistoricalTaskCount: matched,
+	}, nil
 }
 
 func (s IssueManagerService) GetIssueDetail(ctx context.Context, workspaceID string, issueID string) (workspaceissues.IssueDetail, error) {
@@ -538,13 +412,18 @@ func (s IssueManagerService) ListTasks(ctx context.Context, workspaceID string, 
 func (s IssueManagerService) CreateTask(ctx context.Context, workspaceID string, issueID string, input CreateIssueManagerTaskInput) (workspaceissues.Task, error) {
 	tasks, err := s.CreateTasks(ctx, workspaceID, issueID, CreateIssueManagerTasksInput{
 		Tasks: []CreateIssueManagerTaskItemInput{{
-			TaskID:         input.TaskID,
-			Title:          input.Title,
-			Content:        input.Content,
-			Priority:       input.Priority,
-			DueAtUnixMS:    input.DueAtUnixMS,
-			Parallelizable: input.Parallelizable,
-			AutoAccept:     input.AutoAccept,
+			TaskID:             input.TaskID,
+			Title:              input.Title,
+			Content:            input.Content,
+			Priority:           input.Priority,
+			DueAtUnixMS:        input.DueAtUnixMS,
+			AgentTargetID:      input.AgentTargetID,
+			ModelPlanID:        input.ModelPlanID,
+			Model:              input.Model,
+			ExecutionDirectory: input.ExecutionDirectory,
+			DependencyTaskIDs:  input.DependencyTaskIDs,
+			Parallelizable:     input.Parallelizable,
+			AutoAccept:         input.AutoAccept,
 		}},
 	})
 	if err != nil {
@@ -609,30 +488,40 @@ func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string,
 
 func (s IssueManagerService) updateTaskLocked(ctx context.Context, workspaceID string, issueID string, taskID string, input UpdateIssueManagerTaskInput) (workspaceissues.Task, error) {
 	task, err := s.domainService().UpdateTask(ctx, workspaceissues.UpdateTaskInput{
-		TaskID:               taskID,
-		IssueID:              issueID,
-		WorkspaceID:          workspaceID,
-		ActorUserID:          issueManagerLocalActorUserID,
-		Title:                input.Title,
-		HasTitle:             input.HasTitle,
-		Content:              input.Content,
-		HasContent:           input.HasContent,
-		Status:               input.Status,
-		HasStatus:            input.HasStatus,
-		Priority:             input.Priority,
-		HasPriority:          input.HasPriority,
-		DueAtUnixMS:          input.DueAtUnixMS,
-		HasDueAt:             input.HasDueAt,
-		SortIndex:            input.SortIndex,
-		HasSortIndex:         input.HasSortIndex,
-		Parallelizable:       input.Parallelizable,
-		HasParallelizable:    input.HasParallelizable,
-		AutoAccept:           input.AutoAccept,
-		HasAutoAccept:        input.HasAutoAccept,
-		AcceptanceState:      input.AcceptanceState,
-		HasAcceptanceState:   input.HasAcceptanceState,
-		AcceptanceSummary:    input.AcceptanceSummary,
-		HasAcceptanceSummary: input.HasAcceptanceSummary,
+		TaskID:                taskID,
+		IssueID:               issueID,
+		WorkspaceID:           workspaceID,
+		ActorUserID:           issueManagerLocalActorUserID,
+		Title:                 input.Title,
+		HasTitle:              input.HasTitle,
+		Content:               input.Content,
+		HasContent:            input.HasContent,
+		Status:                input.Status,
+		HasStatus:             input.HasStatus,
+		Priority:              input.Priority,
+		HasPriority:           input.HasPriority,
+		DueAtUnixMS:           input.DueAtUnixMS,
+		HasDueAt:              input.HasDueAt,
+		SortIndex:             input.SortIndex,
+		HasSortIndex:          input.HasSortIndex,
+		AgentTargetID:         input.AgentTargetID,
+		HasAgentTargetID:      input.HasAgentTargetID,
+		ModelPlanID:           input.ModelPlanID,
+		HasModelPlanID:        input.HasModelPlanID,
+		Model:                 input.Model,
+		HasModel:              input.HasModel,
+		ExecutionDirectory:    input.ExecutionDirectory,
+		HasExecutionDirectory: input.HasExecutionDirectory,
+		DependencyTaskIDs:     input.DependencyTaskIDs,
+		HasDependencyTaskIDs:  input.HasDependencyTaskIDs,
+		Parallelizable:        input.Parallelizable,
+		HasParallelizable:     input.HasParallelizable,
+		AutoAccept:            input.AutoAccept,
+		HasAutoAccept:         input.HasAutoAccept,
+		AcceptanceState:       input.AcceptanceState,
+		HasAcceptanceState:    input.HasAcceptanceState,
+		AcceptanceSummary:     input.AcceptanceSummary,
+		HasAcceptanceSummary:  input.HasAcceptanceSummary,
 	})
 	if err != nil {
 		return workspaceissues.Task{}, err
@@ -747,189 +636,6 @@ func (s IssueManagerService) AddTaskContextRefs(ctx context.Context, workspaceID
 		})
 	}
 	return refs, nil
-}
-
-func (s IssueManagerService) ListRuns(ctx context.Context, workspaceID string, issueID string, taskID string) ([]workspaceissues.Run, error) {
-	s.reconcileWorkspaceRunsBestEffort(ctx, workspaceID)
-	return s.domainService().ListRuns(ctx, workspaceID, issueID, taskID)
-}
-
-func (s IssueManagerService) CreateRun(ctx context.Context, workspaceID string, issueID string, taskID string, input CreateIssueManagerRunInput) (workspaceissues.Run, error) {
-	unlock := s.MutationLocks.Lock(workspaceID, issueID)
-	defer unlock()
-	return s.createRunLocked(ctx, workspaceID, issueID, taskID, input)
-}
-
-func (s IssueManagerService) createRunLocked(ctx context.Context, workspaceID string, issueID string, taskID string, input CreateIssueManagerRunInput) (workspaceissues.Run, error) {
-	run, err := s.domainService().CreateRun(ctx, workspaceissues.CreateRunInput{
-		RunID:              input.RunID,
-		TaskID:             taskID,
-		IssueID:            issueID,
-		WorkspaceID:        workspaceID,
-		ActorUserID:        issueManagerLocalActorUserID,
-		AgentTargetID:      input.AgentTargetID,
-		AgentProvider:      input.AgentProvider,
-		AgentUserID:        input.AgentUserID,
-		AgentSessionID:     input.AgentSessionID,
-		ModelPlanID:        input.ModelPlanID,
-		Model:              input.Model,
-		ExecutionDirectory: input.ExecutionDirectory,
-	})
-	if err != nil {
-		return workspaceissues.Run{}, err
-	}
-	s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
-		WorkspaceID: run.WorkspaceID,
-		IssueID:     run.IssueID,
-		TaskID:      run.TaskID,
-		RunID:       run.RunID,
-		ChangeKind:  eventstreamservice.WorkspaceIssueChangeRunCreated,
-	})
-	s.enqueueWorkspaceRunReconcile(run.WorkspaceID)
-	return run, nil
-}
-
-func (s IssueManagerService) GetRunDetail(ctx context.Context, workspaceID string, issueID string, taskID string, runID string) (workspaceissues.RunDetail, error) {
-	return s.domainService().GetRunDetail(ctx, workspaceID, issueID, taskID, runID)
-}
-
-func (s IssueManagerService) CompleteRun(ctx context.Context, workspaceID string, issueID string, taskID string, runID string, input CompleteIssueManagerRunInput) (workspaceissues.RunDetail, error) {
-	unlock := s.MutationLocks.Lock(workspaceID, issueID)
-	defer unlock()
-	return s.completeRunLocked(ctx, workspaceID, issueID, taskID, runID, input)
-}
-
-func (s IssueManagerService) completeRunLocked(ctx context.Context, workspaceID string, issueID string, taskID string, runID string, input CompleteIssueManagerRunInput) (workspaceissues.RunDetail, error) {
-	// An idempotent replay of an already-terminal run must not re-fire the
-	// planning-conversation notifications: their in-process dedupe does not
-	// survive a daemon restart, and a stale wake would misreport a long-settled
-	// run as fresh news.
-	alreadySettled := false
-	if runDetail, err := s.domainService().GetRunDetail(ctx, workspaceID, issueID, taskID, runID); err == nil {
-		switch runDetail.Run.Status {
-		case workspaceissues.StatusCompleted, workspaceissues.StatusFailed, workspaceissues.StatusCanceled:
-			alreadySettled = true
-		}
-	}
-	run, outputs, err := s.domainService().CompleteRun(ctx, workspaceissues.CompleteRunInput{
-		RunID:                    runID,
-		TaskID:                   taskID,
-		IssueID:                  issueID,
-		WorkspaceID:              workspaceID,
-		ActorUserID:              issueManagerLocalActorUserID,
-		Status:                   input.Status,
-		Summary:                  input.Summary,
-		ErrorMessage:             input.ErrorMessage,
-		Outputs:                  input.Outputs,
-		Usage:                    input.Usage,
-		RemainingQuotaPercent:    input.RemainingQuotaPercent,
-		HasRemainingQuotaPercent: input.HasRemainingQuotaPercent,
-	})
-	if err != nil {
-		return workspaceissues.RunDetail{}, err
-	}
-	s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
-		WorkspaceID: run.WorkspaceID,
-		IssueID:     run.IssueID,
-		TaskID:      run.TaskID,
-		RunID:       run.RunID,
-		ChangeKind:  eventstreamservice.WorkspaceIssueChangeRunCompleted,
-	})
-	// A task the plan review marked auto-accept skips the human gate: its
-	// successful completion is accepted programmatically, which advances
-	// dispatch and the whole-issue completion check through the same path a
-	// manual acceptance takes. Either way the planning conversation is woken
-	// with the settled result so the planning agent orchestrates what happens
-	// next instead of the daemon silently chaining tasks.
-	if run.Status == workspaceissues.StatusCompleted {
-		autoAccepted := false
-		if taskDetail, taskErr := s.domainService().GetTaskDetail(ctx, workspaceID, issueID, taskID); taskErr == nil &&
-			taskDetail.Task.AutoAccept && taskDetail.Task.Status == workspaceissues.StatusPendingAcceptance {
-			if _, acceptErr := s.updateTaskLocked(ctx, workspaceID, issueID, taskID, UpdateIssueManagerTaskInput{
-				Status:    string(workspaceissues.StatusCompleted),
-				HasStatus: true,
-			}); acceptErr == nil {
-				autoAccepted = true
-			}
-		}
-		if !alreadySettled {
-			s.notifyTuttiPlanIssueTaskSettledBestEffort(ctx, workspaceID, issueID, taskID, run, !autoAccepted)
-		}
-		if autoAccepted {
-			return workspaceissues.RunDetail{Run: run, Outputs: outputs}, nil
-		}
-	}
-	// A failed run freezes the dispatch frontier; the planning conversation
-	// must hear about it instead of waiting in silence.
-	if run.Status == workspaceissues.StatusFailed && !alreadySettled {
-		s.notifyTuttiPlanIssueTaskFailedBestEffort(ctx, workspaceID, issueID, taskID, run)
-	}
-	// Parallel Issues keep their bounded workspace slots full as independent
-	// runs settle. Sequential successors still remain gated on user acceptance.
-	s.dispatchEligibleIssueTasksLocked(ctx, workspaceID, issueID)
-	return workspaceissues.RunDetail{Run: run, Outputs: outputs}, nil
-}
-
-// notifyTuttiPlanIssueTaskSettledBestEffort wakes the planning conversation
-// with one settled task result. It stays silent when the whole Issue just
-// finished — the dedicated completion notification already hands control back
-// — so the source session never receives two messages for one event.
-func (s IssueManagerService) notifyTuttiPlanIssueTaskSettledBestEffort(
-	ctx context.Context,
-	workspaceID string,
-	issueID string,
-	taskID string,
-	run workspaceissues.Run,
-	decisionNeeded bool,
-) {
-	if s.CompletionNotifier == nil {
-		return
-	}
-	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
-	if err != nil ||
-		detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan ||
-		strings.TrimSpace(detail.Issue.SourceSessionID) == "" {
-		return
-	}
-	allDone := len(detail.Tasks) > 0
-	var settled *workspaceissues.Task
-	for index, task := range detail.Tasks {
-		if task.TaskID == taskID {
-			settled = &detail.Tasks[index]
-		}
-		if task.Status == workspaceissues.StatusCanceled {
-			continue
-		}
-		if task.Status != workspaceissues.StatusCompleted ||
-			task.AcceptanceState != workspaceissues.AcceptanceUserAccepted {
-			allDone = false
-		}
-	}
-	if settled == nil || allDone {
-		return
-	}
-	s.CompletionNotifier.NotifyTuttiPlanIssueTaskSettled(ctx, workspaceID, detail.Issue, *settled, run, detail.Tasks, decisionNeeded)
-}
-
-// notifyTuttiPlanIssueTaskFailedBestEffort reports a failed run of a
-// tutti-mode-plan Issue task back to the source conversation. The notifier
-// dedupes per run, so reconcile replays cannot spam the session.
-func (s IssueManagerService) notifyTuttiPlanIssueTaskFailedBestEffort(ctx context.Context, workspaceID string, issueID string, taskID string, run workspaceissues.Run) {
-	if s.CompletionNotifier == nil {
-		return
-	}
-	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
-	if err != nil ||
-		detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan ||
-		strings.TrimSpace(detail.Issue.SourceSessionID) == "" {
-		return
-	}
-	for _, task := range detail.Tasks {
-		if task.TaskID == taskID {
-			s.CompletionNotifier.NotifyTuttiPlanIssueTaskFailed(ctx, workspaceID, detail.Issue, task, run)
-			return
-		}
-	}
 }
 
 func (s IssueManagerService) RemoveIssueContextRef(ctx context.Context, workspaceID string, issueID string, contextRefID string) (bool, error) {

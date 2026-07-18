@@ -140,30 +140,40 @@ type CreateTasksInput struct {
 }
 
 type UpdateTaskInput struct {
-	TaskID               string
-	IssueID              string
-	WorkspaceID          string
-	ActorUserID          string
-	Title                string
-	HasTitle             bool
-	Content              string
-	HasContent           bool
-	Status               string
-	HasStatus            bool
-	Priority             string
-	HasPriority          bool
-	DueAtUnixMS          int64
-	HasDueAt             bool
-	SortIndex            int
-	HasSortIndex         bool
-	Parallelizable       bool
-	HasParallelizable    bool
-	AutoAccept           bool
-	HasAutoAccept        bool
-	AcceptanceState      string
-	HasAcceptanceState   bool
-	AcceptanceSummary    string
-	HasAcceptanceSummary bool
+	TaskID                string
+	IssueID               string
+	WorkspaceID           string
+	ActorUserID           string
+	Title                 string
+	HasTitle              bool
+	Content               string
+	HasContent            bool
+	Status                string
+	HasStatus             bool
+	Priority              string
+	HasPriority           bool
+	DueAtUnixMS           int64
+	HasDueAt              bool
+	SortIndex             int
+	HasSortIndex          bool
+	AgentTargetID         string
+	HasAgentTargetID      bool
+	ModelPlanID           string
+	HasModelPlanID        bool
+	Model                 string
+	HasModel              bool
+	ExecutionDirectory    string
+	HasExecutionDirectory bool
+	DependencyTaskIDs     []string
+	HasDependencyTaskIDs  bool
+	Parallelizable        bool
+	HasParallelizable     bool
+	AutoAccept            bool
+	HasAutoAccept         bool
+	AcceptanceState       string
+	HasAcceptanceState    bool
+	AcceptanceSummary     string
+	HasAcceptanceSummary  bool
 }
 
 type CreateRunInput struct {

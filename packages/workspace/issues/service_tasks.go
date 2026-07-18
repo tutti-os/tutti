@@ -205,6 +205,24 @@ func (s Service) UpdateTask(ctx context.Context, input UpdateTaskInput) (Task, e
 		}
 		task.SortIndex = input.SortIndex
 	}
+	if input.HasAgentTargetID {
+		task.AgentTargetID = strings.TrimSpace(input.AgentTargetID)
+	}
+	if input.HasModelPlanID {
+		task.ModelPlanID = strings.TrimSpace(input.ModelPlanID)
+	}
+	if input.HasModel {
+		task.Model = strings.TrimSpace(input.Model)
+	}
+	if task.AgentTargetID == "" && (task.ModelPlanID != "" || task.Model != "") {
+		return Task{}, ErrInvalidArgument
+	}
+	if input.HasExecutionDirectory {
+		task.ExecutionDirectory = strings.TrimSpace(input.ExecutionDirectory)
+	}
+	if input.HasDependencyTaskIDs {
+		task.DependencyTaskIDs = NormalizeDependencyTaskIDs(input.DependencyTaskIDs)
+	}
 	if input.HasParallelizable {
 		task.Parallelizable = input.Parallelizable
 	}
