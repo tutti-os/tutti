@@ -36,6 +36,80 @@ test("workspace app external bridge proxies app context", async () => {
   assert.equal(await bridge.app.getContext(), context);
 });
 
+test("workspace app external bridge proxies agent activity without user activation", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send: unexpectedSend,
+    async invoke<TResult>(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+      return { channel } as TResult;
+    }
+  });
+  const activateInput = {
+    agentSessionId: "session-1",
+    agentTargetId: "codex",
+    clientSubmitId: "batch-1",
+    initialContent: [{ type: "text" as const, text: "Run test" }],
+    visible: true
+  };
+  const composerInput = {
+    agentTargetId: "codex",
+    provider: "codex"
+  };
+  const sendInput = {
+    agentSessionId: "session-1",
+    clientSubmitId: "turn-2",
+    content: [{ type: "text" as const, text: "Continue test" }]
+  };
+  const cancelInput = {
+    agentSessionId: "session-1",
+    turnId: "turn-1"
+  };
+
+  await bridge.agentActivity.listTargets();
+  await bridge.agentActivity.getComposerOptions(composerInput);
+  await bridge.agentActivity.activateSession(activateInput);
+  await bridge.agentActivity.sendInput(sendInput);
+  await bridge.agentActivity.cancelTurn(cancelInput);
+  await bridge.agentActivity.getSnapshot();
+
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.agentActivityListTargets,
+      payload: undefined
+    },
+    {
+      channel: workspaceAppExternalChannels.agentActivityGetComposerOptions,
+      payload: composerInput
+    },
+    {
+      channel: workspaceAppExternalChannels.agentActivityActivateSession,
+      payload: activateInput
+    },
+    {
+      channel: workspaceAppExternalChannels.agentActivitySendInput,
+      payload: sendInput
+    },
+    {
+      channel: workspaceAppExternalChannels.agentActivityCancelTurn,
+      payload: cancelInput
+    },
+    {
+      channel: workspaceAppExternalChannels.agentActivityGetSnapshot,
+      payload: undefined
+    }
+  ]);
+});
+
 test("workspace app external bridge subscribes to app context", () => {
   const context: DesktopWorkspaceAppContext = {
     appId: "automation",

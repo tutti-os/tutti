@@ -4,6 +4,10 @@ import {
   normalizeTuttiExternalAtQueryInput,
   normalizeTuttiExternalAtResolveInput,
   normalizeTuttiExternalAtInvalidation,
+  normalizeTuttiExternalAgentActivityActivateSessionInput,
+  normalizeTuttiExternalAgentActivityCancelTurnInput,
+  normalizeTuttiExternalAgentActivityComposerOptionsInput,
+  normalizeTuttiExternalAgentActivitySendInput,
   normalizeTuttiExternalBrowserOpenUrlInput,
   normalizeTuttiExternalFileOpenInput,
   normalizeTuttiExternalFileSelectInput,
@@ -120,6 +124,130 @@ test("keeps the default provider set explicit", () => {
     "agent-session",
     "agent-generated-file"
   ]);
+});
+
+test("normalizes agent activity session inputs without dropping prompt assets", () => {
+  assert.deepEqual(
+    normalizeTuttiExternalAgentActivityActivateSessionInput({
+      agentSessionId: " session-1 ",
+      agentTargetId: " codex ",
+      clientSubmitId: " batch-1 ",
+      cwd: " /workspace/project ",
+      initialContent: [
+        { type: "text", text: "Run the provider smoke test." },
+        {
+          type: "file",
+          name: "fixture.txt",
+          path: "fixtures/fixture.txt",
+          sizeBytes: 42
+        }
+      ],
+      initialDisplayPrompt: " provider smoke test ",
+      settings: {
+        browserUse: false,
+        model: " test-model ",
+        planMode: null
+      },
+      title: " Provider Core Lab ",
+      visible: true
+    }),
+    {
+      agentSessionId: "session-1",
+      agentTargetId: "codex",
+      clientSubmitId: "batch-1",
+      cwd: "/workspace/project",
+      initialContent: [
+        { type: "text", text: "Run the provider smoke test." },
+        {
+          type: "file",
+          name: "fixture.txt",
+          path: "fixtures/fixture.txt",
+          sizeBytes: 42
+        }
+      ],
+      initialDisplayPrompt: "provider smoke test",
+      settings: {
+        browserUse: false,
+        model: "test-model",
+        planMode: null
+      },
+      title: "Provider Core Lab",
+      visible: true
+    }
+  );
+  assert.deepEqual(
+    normalizeTuttiExternalAgentActivitySendInput({
+      agentSessionId: " session-1 ",
+      clientSubmitId: " turn-2 ",
+      content: [{ type: "image", data: "base64", mimeType: "image/png" }],
+      displayPrompt: " image assertion ",
+      guidance: false
+    }),
+    {
+      agentSessionId: "session-1",
+      clientSubmitId: "turn-2",
+      content: [{ type: "image", data: "base64", mimeType: "image/png" }],
+      displayPrompt: "image assertion",
+      guidance: false
+    }
+  );
+});
+
+test("normalizes agent activity target inputs", () => {
+  assert.deepEqual(
+    normalizeTuttiExternalAgentActivityComposerOptionsInput({
+      agentTargetId: " codex ",
+      cwd: null,
+      provider: " codex ",
+      settings: null
+    }),
+    {
+      agentTargetId: "codex",
+      cwd: null,
+      provider: "codex"
+    }
+  );
+  assert.deepEqual(
+    normalizeTuttiExternalAgentActivityCancelTurnInput({
+      agentSessionId: " session-1 ",
+      turnId: " turn-1 "
+    }),
+    { agentSessionId: "session-1", turnId: "turn-1" }
+  );
+});
+
+test("rejects malformed agent activity inputs", () => {
+  assert.throws(
+    () =>
+      normalizeTuttiExternalAgentActivityActivateSessionInput({
+        agentSessionId: "session-1",
+        agentTargetId: "codex",
+        clientSubmitId: "batch-1",
+        initialContent: [],
+        visible: true
+      }),
+    /initialContent must be a non-empty array/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalAgentActivitySendInput({
+        agentSessionId: "session-1",
+        clientSubmitId: "turn-2",
+        content: [{ type: "file", sizeBytes: -1 }]
+      }),
+    /sizeBytes must be a non-negative number/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalAgentActivityActivateSessionInput({
+        agentSessionId: "session-1",
+        agentTargetId: "codex",
+        clientSubmitId: "batch-1",
+        initialContent: [{ type: "text", text: "test" }],
+        visible: "yes"
+      }),
+    /visible must be a boolean/
+  );
 });
 
 test("normalizes browser open URL input", () => {

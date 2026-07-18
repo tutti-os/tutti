@@ -144,7 +144,14 @@ For a full agent-enabled app repository, prefer `$tutti-agent-workspace-app` fir
 
 Agent app main flows must call `loadTuttiAgentCatalog` and lazy `loadTuttiAgentComposerOptions` from `@tutti-os/agent-acp-kit/tutti`. Do not use the deprecated provider-catalog projection because it cannot represent multiple agents sharing a provider. The kit automatically uses `TUTTI_CLI` inside Tutti and standalone runtime detection when the CLI is absent. App code must not pass a mode, app ID, daemon URL, token, provider alias map, or CLI arguments. Follow `$tutti-agent-workspace-app` and its `references/dynamic-agent-providers.md`. Show every returned agent, persist exact agent target ids, keep unavailable agents disabled with a reason, and treat provider as derived runtime metadata. A configured CLI failure is explicit; never synthesize a fixed catalog.
 
-Do not assume a Tutti API token, browser extension, daemon internals, or broad desktop APIs. The only browser-side host surface a generated app may optionally consume is the app context described in `references/runtime-env.md`.
+Do not assume a Tutti API token, browser extension, daemon internals, or
+undocumented desktop APIs. Generated apps may consume the documented
+`window.tuttiExternal` browser surfaces described in `references/runtime-env.md`.
+Use `agentActivity` only when the app intentionally orchestrates the official
+host-owned Agent GUI runtime, such as a provider test lab; do not use it to
+rebuild an app-owned Agent runtime. Apps that own their Agent policy or runtime
+must still follow `$tutti-agent-workspace-app` and
+`@tutti-os/agent-acp-kit`.
 
 ## Dependency Rules
 

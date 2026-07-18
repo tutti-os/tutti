@@ -822,6 +822,9 @@ importers:
 
   packages/workspace/external-core:
     dependencies:
+      "@tutti-os/agent-activity-core":
+        specifier: workspace:*
+        version: link:../../agent/activity-core
       "@tutti-os/ui-rich-text":
         specifier: workspace:*
         version: link:../../ui/rich-text

@@ -63,7 +63,41 @@ function subscribeHostLocale(listener) {
 }
 ```
 
-`subscribe` replays the latest context after registration, so apps do not need host-injected DOM events for initial locale delivery. Agent lists, default agent selection, and Agent composer options are not part of browser external context. Agent-enabled apps should expose an app-owned backend endpoint whose implementation calls `@tutti-os/agent-acp-kit/tutti`; the kit automatically uses `TUTTI_CLI` inside Tutti and standalone runtime discovery outside it. App code must not spawn or parse the Agent CLI itself. Follow `$tutti-agent-workspace-app` and its `references/dynamic-agent-providers.md`. The browser context remains optional so generated apps continue to run in a normal browser during development.
+`subscribe` replays the latest context after registration, so apps do not need host-injected DOM events for initial locale delivery. The browser context remains optional so generated apps continue to run in a normal browser during development.
+
+## Browser Agent Activity Automation
+
+Trusted automation apps may use `window.tuttiExternal.agentActivity` to drive
+the official host-owned Agent GUI runtime. This is the correct surface for an
+app that batches provider tests and observes the same sessions, turns, and
+messages shown in Agent GUI. It is not a general replacement for an app-owned
+Agent runtime.
+
+Supporting hosts advertise `agentActivity@1` through
+`app.getContext().capabilities`; keep bridge feature detection for normal-browser
+development and older hosts.
+
+The surface provides:
+
+- `listTargets()` for exact host target IDs and availability.
+- `getComposerOptions(input)` for target-specific composer capabilities.
+- `activateSession(input)` for creating a visible Agent GUI session.
+- `sendInput(input)` and `cancelTurn(input)` for subsequent turn control.
+- `getSnapshot()` for the current workspace Activity snapshot.
+
+The host injects the current workspace ID and ignores workspace identities from
+app input. Use exact `agentTargetId` values from `listTargets()` and set
+`visible: true` for sessions users should inspect. The app may poll
+`getSnapshot()` to aggregate terminal turn outcomes and message failures; it
+must not add a second Activity engine, provider adapter, or provider-specific
+transport.
+
+Apps that own Agent policy, run an independent local Agent, or need app-owned
+MCP/tool gateways should instead expose an app backend using
+`@tutti-os/agent-acp-kit/tutti`. The kit automatically uses `TUTTI_CLI` inside
+Tutti and standalone runtime discovery outside it. App code must not spawn or
+parse the Agent CLI itself. Follow `$tutti-agent-workspace-app` and its
+`references/dynamic-agent-providers.md`.
 
 For theme, use CSS media queries and `matchMedia`:
 
@@ -99,7 +133,7 @@ const uploaded = await window.tuttiExternal?.files?.upload?.(file, {
   onProgress(progress) {
     console.log(progress.loadedBytes, progress.totalBytes, progress.ratio);
   },
-  signal: abortController.signal
+  signal: abortController.signal,
 });
 ```
 
@@ -119,7 +153,7 @@ When a workspace app runs inside Tutti Desktop, prefer writing browser-side diag
 window.tuttiExternal?.logs?.write?.({
   event: "page.loaded",
   level: "info",
-  details: { route: location.pathname }
+  details: { route: location.pathname },
 });
 ```
 
