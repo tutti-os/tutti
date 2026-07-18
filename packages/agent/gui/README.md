@@ -174,7 +174,7 @@ export interface AgentGUIAgent {
   agentTargetId: string;
   name: string;
   iconUrl: string;
-  sidebarIconUrl?: string | null;
+  maskIconUrl?: string | null;
   heroImageUrl?: string | null;
   description?: string | null;
   owner?: {
@@ -207,12 +207,10 @@ Runnable provider targets are host-supplied. If the target catalog is absent,
 AgentGUI presents an explicit unavailable state; it does not synthesize local
 targets from presentation metadata.
 
-Agent names, primary icons, optional conversation-mask icons, optional
-rail-specific icons, and optional home-carousel artwork come from
-`agents[].name`, `agents[].iconUrl`, `agents[].maskIconUrl`,
-`agents[].sidebarIconUrl`, and `agents[].heroImageUrl`. Provider rail surfaces
-prefer `sidebarIconUrl`; conversation rows use `maskIconUrl` where present;
-other identity surfaces retain `iconUrl`.
+Agent names, primary icons, optional conversation-mask icons, and optional
+home-carousel artwork come from `agents[].name`, `agents[].iconUrl`,
+`agents[].maskIconUrl`, and `agents[].heroImageUrl`. All identity surfaces use
+`iconUrl`; conversation rows use `maskIconUrl` where present.
 `owner.avatarUrl` is rendered separately as an ownership badge. Invalid entries
 and duplicate `agentTargetId` values are discarded by
 `normalizeAgentGUIAgents`, with the first occurrence preserving host order.

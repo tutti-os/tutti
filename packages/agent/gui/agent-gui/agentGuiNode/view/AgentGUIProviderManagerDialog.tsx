@@ -525,8 +525,7 @@ export function AgentGUIProviderManagerDialog({
                         ariaHidden
                         icon={agentGUIProviderRailIconPresentation(
                           target.provider,
-                          target.iconUrl,
-                          target.sidebarIconUrl
+                          target.iconUrl
                         )}
                         imageClassName="size-9 shrink-0 rounded-[9px] object-cover"
                       />
@@ -673,8 +672,7 @@ export function AgentGUIProviderManagerDialog({
                         ariaHidden
                         icon={agentGUIProviderRailIconPresentation(
                           target.provider,
-                          target.iconUrl,
-                          target.sidebarIconUrl
+                          target.iconUrl
                         )}
                         imageClassName="size-9 shrink-0 rounded-[9px] object-cover opacity-70 grayscale-[0.25]"
                       />

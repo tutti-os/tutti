@@ -736,8 +736,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
                   imageClassName={styles.providerRailAvatarImage}
                   icon={agentGUIProviderRailIconPresentation(
                     target.provider,
-                    target.iconUrl,
-                    target.sidebarIconUrl
+                    target.iconUrl
                   )}
                 />
                 {target.badge?.iconUrl ? (

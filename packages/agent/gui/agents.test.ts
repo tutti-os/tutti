@@ -39,7 +39,7 @@ describe("normalizeAgentGUIAgents", () => {
       createAgent(" alice ", {
         name: " Alice ",
         iconUrl: " app://agents/alice.png ",
-        sidebarIconUrl: " app://agents/alice-sidebar.png ",
+        maskIconUrl: " app://agents/alice-mask.png ",
         heroImageUrl: " app://agents/alice-hero.jpg ",
         description: " Shared agent ",
         owner: { name: " Owner ", avatarUrl: " app://owner.png " },
@@ -57,7 +57,7 @@ describe("normalizeAgentGUIAgents", () => {
         agentTargetId: "alice",
         name: "Alice",
         iconUrl: "app://agents/alice.png",
-        sidebarIconUrl: "app://agents/alice-sidebar.png",
+        maskIconUrl: "app://agents/alice-mask.png",
         heroImageUrl: "app://agents/alice-hero.jpg",
         description: "Shared agent",
         owner: { name: "Owner", avatarUrl: "app://owner.png" },
@@ -85,16 +85,16 @@ describe("projectAgentGUIAgentsToInternalTargets", () => {
     });
   });
 
-  it("projects the sidebar icon independently from the canonical icon", () => {
+  it("projects the mask icon independently from the canonical icon", () => {
     const [target] = projectAgentGUIAgentsToInternalTargets([
       createAgent("agent-a", {
-        sidebarIconUrl: "app://agents/agent-a-sidebar.png"
+        maskIconUrl: "app://agents/agent-a-mask.png"
       })
     ]);
 
     expect(target).toMatchObject({
       iconUrl: "app://agents/agent-a.png",
-      sidebarIconUrl: "app://agents/agent-a-sidebar.png"
+      maskIconUrl: "app://agents/agent-a-mask.png"
     });
   });
 

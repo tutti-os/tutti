@@ -468,7 +468,7 @@ export type AgentTarget = {
   name: string;
   iconKey?: string | null;
   iconUrl?: string | null;
-  sidebarIconUrl?: string | null;
+  maskIconUrl?: string | null;
   heroImageUrl?: string | null;
   availability?: AgentProviderAvailability | null;
   enabled: boolean;

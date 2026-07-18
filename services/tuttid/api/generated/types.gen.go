@@ -2664,9 +2664,9 @@ type AgentTarget struct {
 	IconUrl         *string                    `json:"iconUrl,omitempty"`
 	Id              string                     `json:"id"`
 	LaunchRef       AgentTargetLaunchRef       `json:"launchRef"`
+	MaskIconUrl     *string                    `json:"maskIconUrl,omitempty"`
 	Name            string                     `json:"name"`
 	Provider        AgentTargetProvider        `json:"provider"`
-	SidebarIconUrl  *string                    `json:"sidebarIconUrl,omitempty"`
 	SortOrder       int                        `json:"sortOrder"`
 	Source          AgentTargetSource          `json:"source"`
 	UpdatedAtUnixMs int64                      `json:"updatedAtUnixMs"`

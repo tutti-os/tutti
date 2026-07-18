@@ -78,6 +78,21 @@ func (s *Store) applyAgentTargetsV4(ctx context.Context) error {
 	return s.recordMigration(ctx, schemaMigrationAgentTargetsV4)
 }
 
+func (s *Store) applyAgentTargetsV5(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationAgentTargetsV5)
+	if err != nil || applied {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE agent_targets RENAME COLUMN sidebar_icon_url TO mask_icon_url;
+UPDATE agent_targets SET mask_icon_url = NULL;
+DELETE FROM agent_targets WHERE launch_ref_json LIKE '%"type":"agent_extension"%';
+`); err != nil {
+		return fmt.Errorf("replace agent target sidebar icon with mask icon: %w", err)
+	}
+	return s.recordMigration(ctx, schemaMigrationAgentTargetsV5)
+}
+
 func (s *Store) seedSystemAgentTargets(ctx context.Context, now int64) error {
 	legacyIDs := make([]string, 0, len(s.opts.LegacySystemTargetIDRenames))
 	for legacyID := range s.opts.LegacySystemTargetIDRenames {

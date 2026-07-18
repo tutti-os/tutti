@@ -50,12 +50,10 @@ function agentGUIConversationIconUrl(
     agentTargets,
     workspaceId
   });
-  return (
-    resolveAgentGuiSessionProviderFlatIconUrl(provider) ||
+  const targetIconUrl =
     targetPresentation?.maskIconUrl?.trim() ||
-    targetPresentation?.iconUrl?.trim() ||
-    null
-  );
+    targetPresentation?.iconUrl?.trim();
+  return targetIconUrl || resolveAgentGuiSessionProviderFlatIconUrl(provider);
 }
 
 function agentGUIConversationRailTitle(

@@ -48,6 +48,7 @@ const schemaMigrationAgentTargetsV1 = "agent_targets_v1"
 const schemaMigrationAgentTargetsV2 = "agent_targets_v2"
 const schemaMigrationAgentTargetsV3 = "agent_targets_v3"
 const schemaMigrationAgentTargetsV4 = "agent_targets_v4"
+const schemaMigrationAgentTargetsV5 = "agent_targets_v5"
 const schemaMigrationWorkspaceAgentSessionTitlesV1 = "workspace_agent_session_titles_v1"
 const schemaMigrationWorkspaceAgentSessionTitlesV2 = "workspace_agent_session_titles_v2"
 const schemaMigrationWorkspaceAgentChildSessionsV1 = "workspace_agent_child_sessions_v1"
@@ -132,6 +133,9 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 		return err
 	}
 	if err := s.applyAgentTargetsV4(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentTargetsV5(ctx); err != nil {
 		return err
 	}
 	if err := s.applyWorkspaceAgentActivityRailV1(ctx); err != nil {

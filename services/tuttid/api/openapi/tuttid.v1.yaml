@@ -5296,7 +5296,7 @@ components:
         iconUrl:
           type: string
           nullable: true
-        sidebarIconUrl:
+        maskIconUrl:
           type: string
           nullable: true
         heroImageUrl:

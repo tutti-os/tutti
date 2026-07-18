@@ -299,15 +299,13 @@ idle | loading | ready | error
 
 The directory owns Agent presentation. `agents[].iconUrl` is the primary
 identity used by conversation identity, Message Center, mentions, and the
-empty-home carousel. `sidebarIconUrl` may specialize Provider Rail artwork;
-`maskIconUrl` may supply the monochrome conversation-row glyph. Host
-projections preserve these roles independently and do not create
-provider-specific renderer catalogs.
+empty-home carousel and Provider Rail. `maskIconUrl` may supply the monochrome
+conversation-row glyph. Host projections preserve these roles independently
+and do not create provider-specific renderer catalogs.
 
-For a signed Agent Extension, Desktop promotes package `sidebarIcon` to the
-primary identity and Provider Rail artwork, while retaining package `icon` as
-the conversation-row mask. A package without `sidebarIcon` falls back to its
-package icon. All assets remain pinned to the verified active installation.
+For a signed Agent Extension, package `icon` is the primary identity and
+optional package `maskIcon` is the conversation-row glyph. All assets remain
+pinned to the verified active installation.
 
 Target-managed setup uses exact `agentTargetId`; daemon persists its state and actions. Setup gates only the empty new-conversation surface. Active/history conversations follow Session recovery and capability.
 

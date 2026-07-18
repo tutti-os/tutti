@@ -30,15 +30,15 @@ func TestGeneratedListAgentTargetsResponseFromBizSkipsInvalidTargets(t *testing.
 	}
 }
 
-func TestGeneratedAgentTargetFromBizProjectsSidebarIconURL(t *testing.T) {
+func TestGeneratedAgentTargetFromBizProjectsMaskIconURL(t *testing.T) {
 	target := agenttargetbiz.DefaultSystemTargets(0)[0]
-	target.SidebarIconURL = " data:image/svg+xml;base64,sidebar "
+	target.MaskIconURL = " data:image/svg+xml;base64,mask "
 
 	generated, err := GeneratedAgentTargetFromBiz(target)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if generated.SidebarIconUrl == nil || *generated.SidebarIconUrl != strings.TrimSpace(target.SidebarIconURL) {
-		t.Fatalf("generated sidebar icon URL = %#v", generated.SidebarIconUrl)
+	if generated.MaskIconUrl == nil || *generated.MaskIconUrl != strings.TrimSpace(target.MaskIconURL) {
+		t.Fatalf("generated mask icon URL = %#v", generated.MaskIconUrl)
 	}
 }

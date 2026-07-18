@@ -42,9 +42,9 @@ func GeneratedAgentTargetFromBiz(target agenttargetbiz.Target) (tuttigenerated.A
 	if normalized.IconURL == "" {
 		iconURL = nil
 	}
-	sidebarIconURL := &normalized.SidebarIconURL
-	if normalized.SidebarIconURL == "" {
-		sidebarIconURL = nil
+	maskIconURL := &normalized.MaskIconURL
+	if normalized.MaskIconURL == "" {
+		maskIconURL = nil
 	}
 	heroImageURL := &normalized.HeroImageURL
 	if normalized.HeroImageURL == "" {
@@ -84,7 +84,7 @@ func GeneratedAgentTargetFromBiz(target agenttargetbiz.Target) (tuttigenerated.A
 		Enabled:         normalized.Enabled,
 		IconKey:         iconKey,
 		IconUrl:         iconURL,
-		SidebarIconUrl:  sidebarIconURL,
+		MaskIconUrl:     maskIconURL,
 		HeroImageUrl:    heroImageURL,
 		Id:              normalized.ID,
 		LaunchRef:       launchRef,

@@ -211,26 +211,21 @@ export function mapAgentTargetsToPresentations(
 ): readonly AgentTargetPresentation[] {
   return [...targets].sort(compareAgentTargetsForDisplay).map((target) => {
     const isExtension = target.launchRef.type === "agent_extension";
-    const packageIconUrl = target.iconUrl?.trim() || "";
-    const packageSidebarIconUrl = target.sidebarIconUrl?.trim() || "";
-    const fallbackIconUrl =
-      options.resolveAgentTargetIconUrl?.({
-        iconKey: target.iconKey?.trim() || null,
-        provider: target.provider
-      }) ?? "";
-    const iconUrl = isExtension
-      ? packageSidebarIconUrl || packageIconUrl || fallbackIconUrl
-      : packageIconUrl || fallbackIconUrl;
+    const iconUrl =
+      target.iconUrl?.trim() ||
+      (isExtension
+        ? ""
+        : (options.resolveAgentTargetIconUrl?.({
+            iconKey: target.iconKey?.trim() || null,
+            provider: target.provider
+          }) ?? ""));
     return {
       agentTargetId: target.id,
       createdAtUnixMs: target.createdAtUnixMs,
       enabled: target.enabled === true,
       iconKey: target.iconKey ?? null,
       iconUrl,
-      ...(isExtension && packageSidebarIconUrl && packageIconUrl
-        ? { maskIconUrl: packageIconUrl }
-        : {}),
-      sidebarIconUrl: target.sidebarIconUrl?.trim() || null,
+      maskIconUrl: target.maskIconUrl?.trim() || null,
       heroImageUrl: target.heroImageUrl?.trim() || null,
       availability: {
         status:
@@ -263,9 +258,6 @@ export function mapAgentTargetPresentationsToAgents(
       name: target.name,
       iconUrl: target.iconUrl,
       ...(target.maskIconUrl ? { maskIconUrl: target.maskIconUrl } : {}),
-      ...(target.sidebarIconUrl
-        ? { sidebarIconUrl: target.sidebarIconUrl }
-        : {}),
       ...(target.heroImageUrl ? { heroImageUrl: target.heroImageUrl } : {}),
       availability: target.availability,
       provider: target.provider as AgentGUIProvider,

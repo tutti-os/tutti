@@ -102,8 +102,8 @@ func TestManagerReconcileInstallsVerifiedPackageAndFallsBackOffline(t *testing.T
 	if target.Provider != "acp:gemini" || !strings.HasPrefix(target.IconURL, "data:image/svg+xml") {
 		t.Fatalf("registered target = %#v", target)
 	}
-	if !strings.HasPrefix(target.SidebarIconURL, "data:image/svg+xml") {
-		t.Fatalf("registered target sidebar icon = %q", target.SidebarIconURL)
+	if !strings.HasPrefix(target.MaskIconURL, "data:image/svg+xml") {
+		t.Fatalf("registered target mask icon = %q", target.MaskIconURL)
 	}
 	if !strings.HasPrefix(target.HeroImageURL, "data:image/jpeg;base64,") {
 		t.Fatalf("registered target hero image = %q", target.HeroImageURL)
@@ -488,6 +488,18 @@ func TestExtractPackageRejectsExecutableEntry(t *testing.T) {
 	}
 }
 
+func TestValidateInstalledPackageRejectsManifestV1(t *testing.T) {
+	manifest := testManifest()
+	manifest.SchemaVersion = "tutti.agent.manifest.v1"
+	root := t.TempDir()
+	if err := extractPackage(testPackageZIPFor(t, manifest, `{"schemaVersion":"tutti.agent.discovery.v1","candidates":[]}`), root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateInstalledPackage(root, manifest.AgentKey, manifest.Version); err == nil {
+		t.Fatal("validateInstalledPackage() accepted manifest v1")
+	}
+}
+
 func testPackageZIP(t *testing.T) []byte {
 	return testPackageZIPFor(t, testManifest(), `{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["gemini"],"version":{"args":["--version"],"constraint":">=0.50.0 <1.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`)
 }
@@ -506,7 +518,7 @@ func testPackageZIPFor(t *testing.T, manifest Manifest, discovery string) []byte
 	files := map[string][]byte{
 		"tutti.agent.json":        mustJSON(t, manifest),
 		"assets/icon.svg":         []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`),
-		"assets/sidebar-icon.svg": []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`),
+		"assets/mask-icon.svg":    []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`),
 		"assets/hero-image.jpg":   []byte("hero-image"),
 		"profiles/discovery.json": []byte(discovery),
 		"profiles/tools.json":     []byte(`{"schemaVersion":"tutti.agent.tools.v1","tools":[{"match":{"ids":["replace"]},"canonicalId":"Edit","category":"file-change","presentation":{"renderer":"diff","titleKey":"tools.edit.title"},"fileEffect":{"source":"acp-content-diff"}}]}`),
@@ -539,8 +551,8 @@ func testManifest() Manifest {
 	value.Description = "Gemini through ACP"
 	value.Icon.Type = "asset"
 	value.Icon.Src = "assets/icon.svg"
-	value.SidebarIcon.Type = "asset"
-	value.SidebarIcon.Src = "assets/sidebar-icon.svg"
+	value.MaskIcon.Type = "asset"
+	value.MaskIcon.Src = "assets/mask-icon.svg"
 	value.HeroImage.Type = "asset"
 	value.HeroImage.Src = "assets/hero-image.jpg"
 	value.Runtime.Kind = "standard-acp"
