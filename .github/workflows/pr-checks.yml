@@ -29,54 +29,10 @@ jobs:
         id: changed-files
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          run_go=false
-          run_pack=false
-          run_tooling=false
-          run_ts=false
-
-          while IFS= read -r path; do
-            [[ -z "${path}" ]] && continue
-
-            case "${path}" in
-              *.go|go.mod|go.sum|go.work|go.work.sum|*/go.mod|*/go.sum|services/tuttid/.golangci*)
-                run_go=true
-                run_tooling=true
-                ;;
-            esac
-
-            case "${path}" in
-              *.cjs|*.cts|*.js|*.jsx|*.mjs|*.mts|*.ts|*.tsx|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|tsconfig*.json|*/tsconfig*.json|packages/configs/**)
-                run_ts=true
-                run_pack=true
-                ;;
-            esac
-
-            case "${path}" in
-              package.json|pnpm-lock.yaml|pnpm-workspace.yaml|packages/*/package.json|packages/*/*/package.json)
-                run_pack=true
-                ;;
-            esac
-
-            case "${path}" in
-              .github/workflows/pr-checks.yml|tools/scripts/**|services/tuttid/.golangci-lint-version)
-                run_go=true
-                run_pack=true
-                run_tooling=true
-                run_ts=true
-                ;;
-            esac
-          done < <(git diff --name-only "${BASE_SHA}...HEAD")
-
-          {
-            echo "run_go=${run_go}"
-            echo "run_pack=${run_pack}"
-            echo "run_tooling=${run_tooling}"
-            echo "run_ts=${run_ts}"
-          } >> "${GITHUB_OUTPUT}"
-
-          printf 'change classification: run_go=%s run_pack=%s run_tooling=%s run_ts=%s\n' \
-            "${run_go}" "${run_pack}" "${run_tooling}" "${run_ts}"
+        run: >-
+          node ./tools/scripts/change-classification.mjs
+          --base "${BASE_SHA}"
+          --github-output "${GITHUB_OUTPUT}"
 
   tooling-consistency:
     name: Tooling Consistency

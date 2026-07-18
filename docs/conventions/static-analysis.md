@@ -33,15 +33,20 @@ Repository entrypoints:
 
 `pnpm check:full` remains the full local and CI validation command and includes linting and typechecking.
 
-The pull-request workflow classifies changed files inline before running
-expensive validation jobs. TypeScript and JavaScript paths select TypeScript
-lint, typecheck, tests, and package packing; Go paths select Go tests and Go
-lint; package manifest and lockfile paths select package packing; CI and
-repository tooling paths conservatively select all affected lanes. Documentation
-only changes therefore skip code validation while still producing workflow check
-results through job-level conditions. Do not use workflow-level `paths-ignore`
-for this gate because missing required checks can leave documentation-only PRs
-waiting on branch protection.
+`tools/scripts/change-classification.mjs` owns the top-level changed-file risk
+domains shared by pull-request CI and `check:changed`: TypeScript and JavaScript
+paths select TypeScript validation and package packing; Go paths select Go and
+tooling validation; package manifest and lockfile paths select package packing;
+CI and repository tooling paths conservatively select every domain. The
+pull-request workflow invokes that script before starting expensive jobs, while
+`check:changed` builds its more precise package, boundary, test, and build lanes
+on top of the same classification. Do not duplicate these top-level path rules
+inside workflow YAML.
+
+Documentation-only changes therefore skip code validation while still
+producing workflow check results through job-level conditions. Do not use
+workflow-level `paths-ignore` for this gate because missing required checks can
+leave documentation-only PRs waiting on branch protection.
 
 Validation runners that spawn nested pnpm commands should read the root
 `packageManager` field and invoke that pinned version through Corepack. Do not

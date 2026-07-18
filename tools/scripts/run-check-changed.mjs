@@ -16,6 +16,7 @@ import {
   isToolTestRelevant,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
+import { classifyChangedFiles } from "./change-classification.mjs";
 import { formatFailureExcerpt } from "./run-validation-lanes.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -35,7 +36,8 @@ const latestSummaryPath = join(tmpRoot, "latest.json");
 const packageInfos = loadPackageInfos();
 
 export async function main() {
-  const lanes = failedOnly ? readFailedLanes() : buildChangedLanes();
+  const plan = failedOnly ? null : buildChangedPlan();
+  const lanes = failedOnly ? readFailedLanes() : plan.lanes;
 
   if (lanes.length === 0) {
     console.log(
@@ -65,6 +67,7 @@ export async function main() {
   const durationMs = Date.now() - startedAt;
   const summary = {
     baseRef,
+    classification: plan?.classification ?? null,
     durationMs,
     failedOnly,
     pushReady,
@@ -88,8 +91,16 @@ export async function main() {
   }
 }
 
-function buildChangedLanes() {
+function buildChangedPlan() {
   const changedFiles = listChangedFiles(baseRef);
+  const classification = classifyChangedFiles(changedFiles);
+  return {
+    classification,
+    lanes: buildChangedLanes(changedFiles, classification)
+  };
+}
+
+function buildChangedLanes(changedFiles, classification) {
   const lanesByKey = new Map();
   const addLane = (lane) => {
     if (!lanesByKey.has(lane.key)) {
@@ -111,7 +122,9 @@ function buildChangedLanes() {
     ]
   });
 
-  const lintFiles = selectExistingLintFiles(changedFiles);
+  const lintFiles = classification.runTs
+    ? selectExistingLintFiles(changedFiles)
+    : [];
   if (lintFiles.length > 0) {
     addLane({
       key: "lint:changed",
@@ -184,7 +197,9 @@ function buildChangedLanes() {
     });
   }
 
-  const goValidationTargets = resolveGoValidationTargets(changedFiles);
+  const goValidationTargets = classification.runGo
+    ? resolveGoValidationTargets(changedFiles)
+    : null;
   const forceBuiltinGenerate = isBuiltinGenerateRequired(changedFiles);
   if (goValidationTargets) {
     for (const [moduleRoot, targets] of goValidationTargets.lintByModule) {
@@ -218,7 +233,8 @@ function buildChangedLanes() {
     }
   }
 
-  const rootGlobalChange = changedFiles.some(isGlobalTypecheckRelevant);
+  const rootGlobalChange =
+    classification.runTs && changedFiles.some(isGlobalTypecheckRelevant);
   if (rootGlobalChange) {
     addLane({
       key: "typecheck:all",

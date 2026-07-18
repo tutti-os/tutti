@@ -58,6 +58,12 @@ selects only the relevant validation lanes, and adds build lanes for changed Go
 or package surfaces that require push-time build confidence. Unrelated
 TypeScript, Go, package, and boundary lanes do not run.
 
+Top-level TypeScript, Go, package, and tooling risk domains come from
+`tools/scripts/change-classification.mjs`, which is also called by the
+pull-request workflow. `check:changed` adds its more precise local lanes on top
+of that shared classification rather than maintaining a competing top-level
+path list.
+
 `check:full` remains the stable root command for explicit local full validation
 and CI. It is no longer the default gate for every push.
 
