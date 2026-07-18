@@ -2150,7 +2150,26 @@ func TestServiceRunActionStartsInstallTimeoutAfterLockAcquisition(t *testing.T) 
 	}
 }
 
-func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T) {
+type claudeAuthCommandResult struct {
+	auth AuthInfo
+	ok   bool
+}
+
+type claudeAuthListHarness struct {
+	t          *testing.T
+	home       string
+	claudePath string
+	service    Service
+	calls      int
+	responses  []claudeAuthCommandResult
+}
+
+func newClaudeAuthListHarness(
+	t *testing.T,
+	environ []string,
+	responses ...claudeAuthCommandResult,
+) *claudeAuthListHarness {
+	t.Helper()
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -2168,19 +2187,17 @@ func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T)
 	}
 	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
+	harness := &claudeAuthListHarness{
+		t:          t,
+		home:       home,
+		claudePath: claudePath,
+		responses:  responses,
+	}
+	harness.service = Service{
+		Environ:  func() []string { return environ },
+		HomeDir:  func() (string, error) { return home, nil },
+		LookPath: func(_ string) (string, error) { return "", errors.New("not found") },
+		Now:      func() time.Time { return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC) },
 		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
 			if spec.Provider != "claude-code" {
 				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
@@ -2188,422 +2205,202 @@ func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T)
 			if binaryPath != claudePath {
 				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
 			}
-			return AuthInfo{Status: AuthRequired}, true
+			if harness.calls >= len(harness.responses) {
+				t.Fatalf("unexpected auth status command call %d", harness.calls+1)
+			}
+			response := harness.responses[harness.calls]
+			harness.calls++
+			return response.auth, response.ok
 		},
 		ExternalAgentRegistry: registryStore,
 		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
+	return harness
+}
 
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
+func (h *claudeAuthListHarness) writeSettings(content string) {
+	h.t.Helper()
+	settingsDir := filepath.Join(h.home, ".claude")
+	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
+		h.t.Fatalf("mkdir .claude dir: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(settingsDir, "settings.json"), []byte(content), 0o600); err != nil {
+		h.t.Fatalf("write settings.json: %v", err)
+	}
+}
 
-	status := onlyStatus(t, snapshot)
+func (h *claudeAuthListHarness) writeMarker(content string) {
+	h.t.Helper()
+	if err := os.WriteFile(filepath.Join(h.home, ".claude.json"), []byte(content), 0o600); err != nil {
+		h.t.Fatalf("write claude marker: %v", err)
+	}
+}
+
+func (h *claudeAuthListHarness) list() ProviderStatus {
+	h.t.Helper()
+	snapshot, err := h.service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	if err != nil {
+		h.t.Fatalf("List() error = %v", err)
+	}
+	return onlyStatus(h.t, snapshot)
+}
+
+func assertClaudeAuthListStatus(
+	t *testing.T,
+	status ProviderStatus,
+	claudePath string,
+	availability AvailabilityStatus,
+	authStatus AuthStatus,
+	authMethod string,
+	accountLabel string,
+) {
+	t.Helper()
+	if status.Availability.Status != availability {
+		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, availability)
+	}
+	if status.Auth.Status != authStatus {
+		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, authStatus)
+	}
+	if status.Auth.AuthMethod != authMethod {
+		t.Fatalf("Auth.AuthMethod = %q, want %q", status.Auth.AuthMethod, authMethod)
+	}
+	if status.Auth.AccountLabel != accountLabel {
+		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, accountLabel)
+	}
 	if status.CLI.BinaryPath != claudePath {
 		t.Fatalf("CLI.BinaryPath = %q, want %q", status.CLI.BinaryPath, claudePath)
 	}
-	if status.Availability.Status != AvailabilityAuthRequired {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityAuthRequired)
-	}
-	if status.Auth.Status != AuthRequired {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthRequired)
-	}
 }
 
-func TestServiceListReportsReadyForClaudeAPIBillingWithEnvKey(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
+func TestServiceListReportsClaudeAuthentication(t *testing.T) {
+	tests := []struct {
+		name         string
+		environ      []string
+		settings     string
+		commandAuth  AuthInfo
+		availability AvailabilityStatus
+		authStatus   AuthStatus
+		authMethod   string
+		accountLabel string
+	}{
+		{
+			name:         "auth required from CLI status",
+			environ:      []string{"PATH=/usr/bin:/bin"},
+			commandAuth:  AuthInfo{Status: AuthRequired},
+			availability: AvailabilityAuthRequired,
+			authStatus:   AuthRequired,
+		},
+		{
+			name:         "environment API key uses API billing",
+			environ:      []string{"PATH=/usr/bin:/bin", "ANTHROPIC_API_KEY=sk-test"},
+			commandAuth:  AuthInfo{Status: AuthRequired},
+			availability: AvailabilityReady,
+			authStatus:   AuthAuthenticated,
+			authMethod:   "apiKey",
+			accountLabel: "API Usage Billing",
+		},
+		{
+			name:         "settings API key uses API billing",
+			environ:      []string{"PATH=/usr/bin:/bin"},
+			settings:     `{"env":{"ANTHROPIC_API_KEY":"sk-test"}}`,
+			commandAuth:  AuthInfo{Status: AuthRequired},
+			availability: AvailabilityReady,
+			authStatus:   AuthAuthenticated,
+			authMethod:   "apiKey",
+			accountLabel: "API Usage Billing",
+		},
+		{
+			name:         "settings token and base URL override CLI OAuth",
+			environ:      []string{"PATH=/usr/bin:/bin"},
+			settings:     `{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-test","ANTHROPIC_BASE_URL":"https://api.moonshot.cn/anthropic"}}`,
+			commandAuth:  AuthInfo{Status: AuthAuthenticated, AuthMethod: "oauth_token", AccountLabel: "oauth_token"},
+			availability: AvailabilityReady,
+			authStatus:   AuthAuthenticated,
+			authMethod:   "apiKey",
+			accountLabel: "API Usage Billing",
+		},
+		{
+			name:         "bare endpoint preserves CLI OAuth identity",
+			environ:      []string{"PATH=/usr/bin:/bin"},
+			settings:     `{"env":{"ANTHROPIC_BASE_URL":"https://gw.local"}}`,
+			commandAuth:  AuthInfo{Status: AuthAuthenticated, AuthMethod: "oauth", AccountLabel: "me@x.com"},
+			availability: AvailabilityReady,
+			authStatus:   AuthAuthenticated,
+			authMethod:   "oauth",
+			accountLabel: "me@x.com",
+		},
 	}
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	registryStore, prefixDir := fakeExternalAgentRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
-	if err := os.MkdirAll(packageDir, 0o755); err != nil {
-		t.Fatalf("mkdir package dir: %v", err)
-	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin", "ANTHROPIC_API_KEY=sk-test"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
-			if spec.Provider != "claude-code" {
-				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			harness := newClaudeAuthListHarness(t, tt.environ, claudeAuthCommandResult{auth: tt.commandAuth, ok: true})
+			if tt.settings != "" {
+				harness.writeSettings(tt.settings)
 			}
-			if binaryPath != claudePath {
-				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
+
+			status := harness.list()
+			assertClaudeAuthListStatus(
+				t,
+				status,
+				harness.claudePath,
+				tt.availability,
+				tt.authStatus,
+				tt.authMethod,
+				tt.accountLabel,
+			)
+			if harness.calls != 1 {
+				t.Fatalf("auth status command calls = %d, want 1", harness.calls)
 			}
-			return AuthInfo{Status: AuthRequired}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
-	}
-	if status.Auth.AccountLabel != "API Usage Billing" {
-		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, "API Usage Billing")
-	}
-}
-
-func TestServiceListReportsReadyForClaudeAPIBillingWithSettingsKey(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
-		t.Fatalf("mkdir .claude dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"env":{"ANTHROPIC_API_KEY":"sk-test"}}`), 0o600); err != nil {
-		t.Fatalf("write settings.json: %v", err)
-	}
-	registryStore, prefixDir := fakeExternalAgentRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
-	if err := os.MkdirAll(packageDir, 0o755); err != nil {
-		t.Fatalf("mkdir package dir: %v", err)
-	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
-			if spec.Provider != "claude-code" {
-				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
-			}
-			if binaryPath != claudePath {
-				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
-			}
-			return AuthInfo{Status: AuthRequired}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
-	}
-	if status.Auth.AccountLabel != "API Usage Billing" {
-		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, "API Usage Billing")
-	}
-}
-
-func TestServiceListReportsReadyForClaudeAPIBillingDespiteOauthTokenStatus(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
-		t.Fatalf("mkdir .claude dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-test","ANTHROPIC_BASE_URL":"https://api.moonshot.cn/anthropic"}}`), 0o600); err != nil {
-		t.Fatalf("write settings.json: %v", err)
-	}
-	registryStore, prefixDir := fakeExternalAgentRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
-	if err := os.MkdirAll(packageDir, 0o755); err != nil {
-		t.Fatalf("mkdir package dir: %v", err)
-	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
-			if spec.Provider != "claude-code" {
-				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
-			}
-			if binaryPath != claudePath {
-				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
-			}
-			// Simulate a CLI that reports an OAuth-style authMethod even though
-			// the user is actually configured for API Usage Billing.
-			return AuthInfo{Status: AuthAuthenticated, AuthMethod: "oauth_token", AccountLabel: "oauth_token"}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
-	}
-	if status.Auth.AuthMethod != "apiKey" {
-		t.Fatalf("Auth.AuthMethod = %q, want %q", status.Auth.AuthMethod, "apiKey")
-	}
-	if status.Auth.AccountLabel != "API Usage Billing" {
-		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, "API Usage Billing")
-	}
-}
-
-// A bare custom endpoint (no API credential) must NOT be mislabeled as API
-// Usage Billing. The user may be on an OAuth/subscription session against that
-// endpoint, so the CLI-reported auth status and label must be preserved.
-func TestServiceListDoesNotMislabelCustomEndpointOnlyAsAPIBilling(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
-		t.Fatalf("mkdir .claude dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"env":{"ANTHROPIC_BASE_URL":"https://gw.local"}}`), 0o600); err != nil {
-		t.Fatalf("write settings.json: %v", err)
-	}
-	registryStore, prefixDir := fakeExternalAgentRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
-	if err := os.MkdirAll(packageDir, 0o755); err != nil {
-		t.Fatalf("mkdir package dir: %v", err)
-	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		RunAuthStatusCommand: func(_ context.Context, _ ProviderSpec, _ string) (AuthInfo, bool) {
-			return AuthInfo{Status: AuthAuthenticated, AuthMethod: "oauth", AccountLabel: "me@x.com"}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.AuthMethod != "oauth" {
-		t.Fatalf("Auth.AuthMethod = %q, want oauth (not overridden to apiKey)", status.Auth.AuthMethod)
-	}
-	if status.Auth.AccountLabel != "me@x.com" {
-		t.Fatalf("Auth.AccountLabel = %q, want me@x.com (CLI label preserved)", status.Auth.AccountLabel)
+		})
 	}
 }
 
 func TestServiceListRetriesClaudeAuthStatusCommandWhenOutputIsUnrecognized(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	registryStore, prefixDir := fakeExternalAgentRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
-	if err := os.MkdirAll(packageDir, 0o755); err != nil {
-		t.Fatalf("mkdir package dir: %v", err)
-	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	authStatusCommandCalls := 0
+	harness := newClaudeAuthListHarness(
+		t,
+		[]string{"PATH=/usr/bin:/bin"},
+		claudeAuthCommandResult{auth: AuthInfo{}, ok: false},
+		claudeAuthCommandResult{auth: AuthInfo{Status: AuthAuthenticated, AccountLabel: "dev@example.com"}, ok: true},
+	)
+	harness.service.AuthStatusCommandRetryDelay = time.Nanosecond
 
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		AuthStatusCommandRetryDelay: time.Nanosecond,
-		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
-			if spec.Provider != "claude-code" {
-				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
-			}
-			if binaryPath != claudePath {
-				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
-			}
-			authStatusCommandCalls++
-			if authStatusCommandCalls == 1 {
-				return AuthInfo{}, false
-			}
-			return AuthInfo{Status: AuthAuthenticated, AccountLabel: "dev@example.com"}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
-	}
-	if status.Auth.AccountLabel != "dev@example.com" {
-		t.Fatalf("AccountLabel = %q, want dev@example.com", status.Auth.AccountLabel)
-	}
-	if authStatusCommandCalls != 2 {
-		t.Fatalf("auth status command calls = %d, want 2", authStatusCommandCalls)
+	status := harness.list()
+	assertClaudeAuthListStatus(
+		t,
+		status,
+		harness.claudePath,
+		AvailabilityReady,
+		AuthAuthenticated,
+		"",
+		"dev@example.com",
+	)
+	if harness.calls != 2 {
+		t.Fatalf("auth status command calls = %d, want 2", harness.calls)
 	}
 }
 
 func TestServiceListFallsBackToClaudeAuthMarkerWhenAuthStatusCommandIsUnrecognized(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
-	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"userID":"user_123"}`), 0o600); err != nil {
-		t.Fatalf("write claude marker: %v", err)
-	}
-	registryStore, prefixDir := fakeExternalAgentRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
-	if err := os.MkdirAll(packageDir, 0o755); err != nil {
-		t.Fatalf("mkdir package dir: %v", err)
-	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
+	harness := newClaudeAuthListHarness(
+		t,
+		[]string{"PATH=/usr/bin:/bin"},
+		claudeAuthCommandResult{auth: AuthInfo{}, ok: false},
+		claudeAuthCommandResult{auth: AuthInfo{}, ok: false},
+	)
+	harness.service.AuthStatusCommandRetryDelay = time.Nanosecond
+	harness.writeMarker(`{"userID":"user_123"}`)
 
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		AuthStatusCommandRetryDelay: time.Nanosecond,
-		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
-			if spec.Provider != "claude-code" {
-				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
-			}
-			if binaryPath != claudePath {
-				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
-			}
-			return AuthInfo{}, false
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
+	status := harness.list()
+	assertClaudeAuthListStatus(
+		t,
+		status,
+		harness.claudePath,
+		AvailabilityReady,
+		AuthAuthenticated,
+		"",
+		"user_123",
+	)
+	if harness.calls != 2 {
+		t.Fatalf("auth status command calls = %d, want 2", harness.calls)
 	}
 }
 
