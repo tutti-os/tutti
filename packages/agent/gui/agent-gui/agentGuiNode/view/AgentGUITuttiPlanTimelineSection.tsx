@@ -50,6 +50,7 @@ export function AgentGUITuttiPlanTimelineSection({
               ? review.cancelPlanIssueExecution
               : undefined
           }
+          onOpenTask={review.openPlanIssueTaskSession}
         />
       ) : null}
       {panels.error ? (

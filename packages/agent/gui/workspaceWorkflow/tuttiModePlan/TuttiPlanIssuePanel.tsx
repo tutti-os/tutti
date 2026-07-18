@@ -123,6 +123,11 @@ export function groupTuttiPlanIssueTasksIntoStages(
 /** The acceptance decision the embedded panel can settle on one task. */
 export type TuttiPlanIssueTaskDecision = "accept" | "rework";
 
+/** A task that has launched has a delegate conversation to jump into. */
+function taskHasConversation(task: TuttiPlanIssueTaskSnapshot): boolean {
+  return task.status !== "not_started";
+}
+
 /**
  * Embedded "issue panel view" for the source conversation: once the accepted
  * plan materialized an Issue, the conversation shows its subtasks as a live
@@ -135,7 +140,8 @@ export function TuttiPlanIssuePanel({
   labels,
   onOpenIssue,
   onDecideTask,
-  onCancelExecution
+  onCancelExecution,
+  onOpenTask
 }: {
   issue: TuttiPlanIssueSnapshot;
   labels: TuttiPlanIssuePanelLabels;
@@ -145,6 +151,8 @@ export function TuttiPlanIssuePanel({
     decision: TuttiPlanIssueTaskDecision
   ) => Promise<void>;
   onCancelExecution?: () => Promise<void>;
+  /** Jump into the delegate conversation of a task that has launched. */
+  onOpenTask?: (taskId: string) => void | Promise<void>;
 }): React.JSX.Element {
   const [viewMode, setViewMode] = useState<TuttiPlanIssueViewMode>("board");
   const [decidingTaskIds, setDecidingTaskIds] = useState<readonly string[]>([]);
@@ -260,6 +268,7 @@ export function TuttiPlanIssuePanel({
             labels={labels}
             decideTask={decideTask}
             decidingTaskIds={decidingTaskIds}
+            openTask={onOpenTask}
           />
         ) : (
           <TuttiPlanIssueList
@@ -267,6 +276,7 @@ export function TuttiPlanIssuePanel({
             labels={labels}
             decideTask={decideTask}
             decidingTaskIds={decidingTaskIds}
+            openTask={onOpenTask}
           />
         )}
       </CardContent>
@@ -336,7 +346,12 @@ function TaskDecisionActions({
           className="h-6 bg-[var(--tutti-purple)] px-2 text-[11px] text-white hover:bg-[color-mix(in_srgb,var(--tutti-purple)_85%,black)]"
           disabled={deciding}
           data-testid={`tutti-plan-issue-accept-${task.taskId}`}
-          onClick={() => decideTask(task.taskId, "accept")}
+          onClick={(event) => {
+            // The card itself jumps into the conversation; a decision stays a
+            // decision.
+            event.stopPropagation();
+            decideTask(task.taskId, "accept");
+          }}
         >
           {labels.accept}
         </Button>
@@ -348,7 +363,10 @@ function TaskDecisionActions({
         className="h-6 px-2 text-[11px]"
         disabled={deciding}
         data-testid={`tutti-plan-issue-rework-${task.taskId}`}
-        onClick={() => decideTask(task.taskId, "rework")}
+        onClick={(event) => {
+          event.stopPropagation();
+          decideTask(task.taskId, "rework");
+        }}
       >
         {labels.rework}
       </Button>
@@ -360,12 +378,14 @@ function TuttiPlanIssueBoard({
   issue,
   labels,
   decideTask,
-  decidingTaskIds
+  decidingTaskIds,
+  openTask
 }: {
   issue: TuttiPlanIssueSnapshot;
   labels: TuttiPlanIssuePanelLabels;
   decideTask?: (taskId: string, decision: TuttiPlanIssueTaskDecision) => void;
   decidingTaskIds: readonly string[];
+  openTask?: (taskId: string) => void | Promise<void>;
 }): React.JSX.Element {
   const groups = new Map<BoardStatus, TuttiPlanIssueTaskSnapshot[]>();
   for (const task of issue.tasks) {
@@ -411,27 +431,49 @@ function TuttiPlanIssueBoard({
                 </span>
               </div>
               <div className="grid gap-1.5">
-                {tasks.map((task) => (
-                  <div
-                    key={task.taskId}
-                    className="rounded-md bg-background px-2 py-1.5"
-                  >
-                    <span className="line-clamp-2 text-xs font-medium text-foreground">
-                      {task.title}
-                    </span>
-                    <span className="mt-1 block empty:hidden">
-                      <TaskStructureChips labels={labels} task={task} />
-                    </span>
-                    <span className="mt-1.5 block empty:hidden">
-                      <TaskDecisionActions
-                        labels={labels}
-                        task={task}
-                        decideTask={decideTask}
-                        deciding={decidingTaskIds.includes(task.taskId)}
-                      />
-                    </span>
-                  </div>
-                ))}
+                {tasks.map((task) => {
+                  const openable = openTask && taskHasConversation(task);
+                  return (
+                    <div
+                      key={task.taskId}
+                      role={openable ? "button" : undefined}
+                      tabIndex={openable ? 0 : undefined}
+                      data-testid={`tutti-plan-issue-task-${task.taskId}`}
+                      className={cn(
+                        "rounded-md bg-background px-2 py-1.5",
+                        openable &&
+                          "cursor-pointer transition-colors hover:bg-muted/60"
+                      )}
+                      onClick={
+                        openable ? () => void openTask(task.taskId) : undefined
+                      }
+                      onKeyDown={
+                        openable
+                          ? (event) => {
+                              if (event.key === "Enter") {
+                                void openTask(task.taskId);
+                              }
+                            }
+                          : undefined
+                      }
+                    >
+                      <span className="line-clamp-2 text-xs font-medium text-foreground">
+                        {task.title}
+                      </span>
+                      <span className="mt-1 block empty:hidden">
+                        <TaskStructureChips labels={labels} task={task} />
+                      </span>
+                      <span className="mt-1.5 block empty:hidden">
+                        <TaskDecisionActions
+                          labels={labels}
+                          task={task}
+                          decideTask={decideTask}
+                          deciding={decidingTaskIds.includes(task.taskId)}
+                        />
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
@@ -445,12 +487,14 @@ function TuttiPlanIssueList({
   issue,
   labels,
   decideTask,
-  decidingTaskIds
+  decidingTaskIds,
+  openTask
 }: {
   issue: TuttiPlanIssueSnapshot;
   labels: TuttiPlanIssuePanelLabels;
   decideTask?: (taskId: string, decision: TuttiPlanIssueTaskDecision) => void;
   decidingTaskIds: readonly string[];
+  openTask?: (taskId: string) => void | Promise<void>;
 }): React.JSX.Element {
   const showStages = issue.tasks.some((task) => task.parallelizable);
   const stages = showStages
@@ -475,10 +519,30 @@ function TuttiPlanIssueList({
           ) : null}
           {stage.tasks.map((task) => {
             const status = boardStatusOf(task);
+            const openable = openTask && taskHasConversation(task);
             return (
               <div
                 key={task.taskId}
-                className="flex items-start justify-between gap-3 border-b border-border/70 px-3 py-2 last:border-b-0"
+                role={openable ? "button" : undefined}
+                tabIndex={openable ? 0 : undefined}
+                data-testid={`tutti-plan-issue-row-${task.taskId}`}
+                className={cn(
+                  "flex items-start justify-between gap-3 border-b border-border/70 px-3 py-2 last:border-b-0",
+                  openable &&
+                    "cursor-pointer transition-colors hover:bg-muted/40"
+                )}
+                onClick={
+                  openable ? () => void openTask(task.taskId) : undefined
+                }
+                onKeyDown={
+                  openable
+                    ? (event) => {
+                        if (event.key === "Enter") {
+                          void openTask(task.taskId);
+                        }
+                      }
+                    : undefined
+                }
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-center gap-1.5">

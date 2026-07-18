@@ -30,6 +30,7 @@ export interface DesktopTuttiModePlanReviewRuntimeInput {
     | "listWorkspaceIssues"
     | "listWorkspaceIssueTopics"
     | "getWorkspaceIssueDetail"
+    | "getWorkspaceIssueTaskDetail"
     | "updateWorkspaceIssueTask"
     | "cancelWorkspaceIssueExecution"
   >;
@@ -442,6 +443,15 @@ function createPlanIssueSource(
         workspaceId,
         issueId
       );
+    },
+    async resolveTaskSession({ workspaceId, issueId, taskId }) {
+      const detail = await input.tuttidClient.getWorkspaceIssueTaskDetail(
+        workspaceId,
+        issueId,
+        taskId
+      );
+      const agentSessionId = detail.latestRun?.agentSessionId?.trim() ?? "";
+      return agentSessionId ? { agentSessionId } : null;
     }
   };
 }
