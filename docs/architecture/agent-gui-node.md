@@ -2032,9 +2032,13 @@ hide the failure entirely). Desktop must not rediscover this relationship by
 sweeping Issue topics or matching mutable Issue list metadata.
 
 A plan proposed mid-turn announces itself through one `workspace.workflow.updated`
-event; if that single event is lost, no later signal re-reads review state.
-The active conversation's working→settled transition is the read-repair point:
-it triggers a non-destructive re-read of pending reviews and the plan Issue.
+event; if that single event is lost, no later workflow signal re-reads review
+state. Read-repair therefore lives in the desktop runtime adapter, not a
+component effect: it derives a `session_settled` invalidation from the daemon's
+canonical turn fan-out (`agent.activity.updated` `turn_update` with phase
+`settled`) and relays it on the review subscription channel, where it triggers
+a non-destructive re-read of pending reviews and the plan Issue — as does
+`connection_restored` for reconnect gaps.
 
 Desktop owns only the transport adapter:
 
