@@ -495,7 +495,7 @@ func TestScanExternalAgentSessionsArchiveIgnoresDefaultDayWindow(t *testing.T) {
 			}),
 		)),
 	})
-	data, err := scanExternalAgentSessions(context.Background(), nil, 0, archivePath)
+	data, err := scanExternalAgentSessions(context.Background(), nil, 0, archivePath, "")
 	if err != nil {
 		t.Fatalf("scan archive with default days: %v", err)
 	}
@@ -503,7 +503,7 @@ func TestScanExternalAgentSessionsArchiveIgnoresDefaultDayWindow(t *testing.T) {
 		t.Fatalf("ScannedSessions = %d, want 1", data.result.ScannedSessions)
 	}
 	// An explicit positive window still narrows the archive scan.
-	data, err = scanExternalAgentSessions(context.Background(), nil, 7, archivePath)
+	data, err = scanExternalAgentSessions(context.Background(), nil, 7, archivePath, "")
 	if err != nil {
 		t.Fatalf("scan archive with 7-day window: %v", err)
 	}
@@ -514,11 +514,11 @@ func TestScanExternalAgentSessionsArchiveIgnoresDefaultDayWindow(t *testing.T) {
 
 func TestScanExternalAgentSessionsRejectsArchiveWithoutClaudeProvider(t *testing.T) {
 	archivePath := writeClaudeExportArchive(t, []map[string]any{})
-	_, err := scanExternalAgentSessions(context.Background(), []string{"codex"}, 0, archivePath)
+	_, err := scanExternalAgentSessions(context.Background(), []string{"codex"}, 0, archivePath, "")
 	if !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("error = %v, want ErrInvalidArgument for a provider filter excluding claude-code", err)
 	}
-	if _, err := scanExternalAgentSessions(context.Background(), []string{"codex", "claude-code"}, 0, archivePath); err != nil {
+	if _, err := scanExternalAgentSessions(context.Background(), []string{"codex", "claude-code"}, 0, archivePath, ""); err != nil {
 		t.Fatalf("scan with claude-code included: %v", err)
 	}
 }
@@ -526,7 +526,7 @@ func TestScanExternalAgentSessionsRejectsArchiveWithoutClaudeProvider(t *testing
 func TestScanExternalAgentSessionsSurfacesCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := scanExternalAgentSessions(ctx, nil, 0, ""); !errors.Is(err, context.Canceled) {
+	if _, err := scanExternalAgentSessions(ctx, nil, 0, "", ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want context.Canceled", err)
 	}
 }

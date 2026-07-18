@@ -339,7 +339,25 @@ export const en = {
       archiveSelectDescription:
         "Search and check the Claude conversations to import",
       back: "Back",
+      chatgptEmpty:
+        "No supported conversations were found in this ChatGPT export",
+      chatgptGroupLabel: "ChatGPT chats",
+      chatgptOptionDescription:
+        "Choose the ZIP file downloaded from ChatGPT's data export",
+      chatgptOptionTitle: "Import ChatGPT export data",
+      chatgptPickFailed: "We couldn't open the ChatGPT export file picker.",
+      chatgptResult:
+        "Imported {{sessions}} conversations and {{messages}} messages from the ChatGPT export",
+      chatgptScanFailed:
+        "This ZIP could not be read as a supported ChatGPT data export.",
+      chatgptScanning: "Reading ChatGPT export conversations...",
+      chatgptSearchPlaceholder: "Search ChatGPT conversations",
+      chatgptSelectDescription:
+        "Search and check the ChatGPT conversations to import",
+      chatgptSelectionReady:
+        "ChatGPT export scan complete. {{count}} conversations are ready to review.",
       chooseArchive: "Choose ZIP",
+      chooseChatgptArchive: "Choose ZIP",
       description:
         "Import local Codex and Claude Code history or a Claude data export",
       done: "Done",

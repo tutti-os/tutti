@@ -1,16 +1,25 @@
 import type * as React from "react";
-import type { ExternalAgentImportResultResponse } from "@tutti-os/client-tuttid-ts";
+import type {
+  ExternalAgentImportArchiveKind,
+  ExternalAgentImportResultResponse
+} from "@tutti-os/client-tuttid-ts";
 import { SuccessFilledIcon } from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
 
 export function ExternalAgentSessionImportResultSummary({
   archive,
+  archiveKind,
   result
 }: {
   archive: boolean;
+  archiveKind: ExternalAgentImportArchiveKind;
   result: ExternalAgentImportResultResponse;
 }) {
   const { t } = useTranslation();
+  const archiveResultKey =
+    archiveKind === "chatgpt"
+      ? "workspace.externalImport.chatgptResult"
+      : "workspace.externalImport.archiveResult";
   return (
     <div aria-live="polite" className="flex flex-col gap-4" role="status">
       <CenteredExternalAgentSessionImportState
@@ -18,9 +27,7 @@ export function ExternalAgentSessionImportResultSummary({
           <SuccessFilledIcon className="size-7 text-[var(--tutti-purple)]" />
         }
         text={t(
-          archive
-            ? "workspace.externalImport.archiveResult"
-            : "workspace.externalImport.result",
+          archive ? archiveResultKey : "workspace.externalImport.result",
           {
             messages: result.importedMessages,
             projects: result.importedProjects,

@@ -1,5 +1,12 @@
 package agent
 
+// Archive export formats accepted by the external import flow. Empty defaults
+// to Claude for backward compatibility with clients that only send ArchivePath.
+const (
+	ExternalImportArchiveKindClaude  = "claude"
+	ExternalImportArchiveKindChatGPT = "chatgpt"
+)
+
 type ExternalImportScanInput struct {
 	Providers []string
 	// Days limits the scan window to conversations updated within the last N
@@ -11,11 +18,17 @@ type ExternalImportScanInput struct {
 	// ArchivePath selects a supported provider data-export ZIP instead of the
 	// provider's local CLI transcript directory.
 	ArchivePath string
+	// ArchiveKind selects which export format ArchivePath is parsed as. Empty
+	// defaults to the Claude data-export format.
+	ArchiveKind string
 }
 
 type ExternalImportInput struct {
 	Projects    []ExternalImportProjectSelection
 	ArchivePath string
+	// ArchiveKind selects which export format ArchivePath is parsed as. Empty
+	// defaults to the Claude data-export format.
+	ArchiveKind string
 }
 
 type ExternalImportProjectSelection struct {

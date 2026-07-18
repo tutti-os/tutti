@@ -19,7 +19,7 @@ import (
 )
 
 func (*Service) ScanExternalImports(ctx context.Context, input ExternalImportScanInput) (ExternalImportScanResult, error) {
-	data, err := scanExternalAgentSessions(ctx, normalizeExternalImportProviders(input.Providers), input.Days, input.ArchivePath)
+	data, err := scanExternalAgentSessions(ctx, normalizeExternalImportProviders(input.Providers), input.Days, input.ArchivePath, input.ArchiveKind)
 	if err != nil {
 		return ExternalImportScanResult{}, err
 	}
@@ -46,6 +46,7 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		providersFromExternalImportSelections(selections),
 		-1,
 		input.ArchivePath,
+		input.ArchiveKind,
 	)
 	if err != nil {
 		return ExternalImportResult{}, err
@@ -114,9 +115,20 @@ func normalizeExternalImportProviders(input []string) []string {
 	out := make([]string, 0, len(input))
 	for _, provider := range input {
 		normalized := agentproviderbiz.Normalize(provider)
-		descriptor, ok := providerregistry.Find(normalized)
-		if !ok || !descriptor.ExternalImport.Enabled {
-			continue
+		if normalized == "" {
+			// Import-only archive providers (e.g. the ChatGPT data export) are
+			// deliberately not runnable registry providers, so they never
+			// resolve through providerregistry. Preserve their identity here so
+			// import selections that reference them survive normalization.
+			normalized = normalizeExternalArchiveImportProvider(provider)
+			if normalized == "" {
+				continue
+			}
+		} else {
+			descriptor, ok := providerregistry.Find(normalized)
+			if !ok || !descriptor.ExternalImport.Enabled {
+				continue
+			}
 		}
 		if _, ok := seen[normalized]; ok {
 			continue
@@ -125,6 +137,18 @@ func normalizeExternalImportProviders(input []string) []string {
 		out = append(out, normalized)
 	}
 	return out
+}
+
+// normalizeExternalArchiveImportProvider recognizes import-only archive
+// providers that have no runnable providerregistry descriptor. Returns the
+// canonical identity, or "" if the value is not a known archive-only provider.
+func normalizeExternalArchiveImportProvider(provider string) string {
+	switch strings.TrimSpace(strings.ToLower(provider)) {
+	case chatgptExportProvider:
+		return chatgptExportProvider
+	default:
+		return ""
+	}
 }
 
 func normalizeExternalImportSelections(input []ExternalImportProjectSelection) []ExternalImportProjectSelection {
@@ -202,9 +226,14 @@ func externalImportAgentTargetID(provider string) string {
 	return ""
 }
 
-func scanExternalAgentSessions(ctx context.Context, providers []string, days int, archivePath string) (externalScanData, error) {
+func scanExternalAgentSessions(ctx context.Context, providers []string, days int, archivePath string, archiveKind string) (externalScanData, error) {
 	if strings.TrimSpace(archivePath) != "" {
-		if len(providers) > 0 && !providersIncludeArchiveImportParser(providers) {
+		archiveKind = normalizeExternalImportArchiveKind(archiveKind)
+		// The Claude archive scan still requires the claude-code provider to be
+		// selected (its historical gate); ChatGPT archives are a standalone
+		// import-only source and carry no such provider requirement.
+		if archiveKind == ExternalImportArchiveKindClaude &&
+			len(providers) > 0 && !providersIncludeArchiveImportParser(providers) {
 			return externalScanData{}, fmt.Errorf(
 				"%w: a Claude export archive scan requires the claude-code provider",
 				ErrInvalidArgument,
@@ -216,7 +245,12 @@ func scanExternalAgentSessions(ctx context.Context, providers []string, days int
 		if days > 0 {
 			cutoffUnixMS = externalScanCutoffUnixMS(days)
 		}
-		return scanClaudeExportArchive(ctx, archivePath, cutoffUnixMS)
+		switch archiveKind {
+		case ExternalImportArchiveKindChatGPT:
+			return scanChatGPTExportArchive(ctx, archivePath, cutoffUnixMS)
+		default:
+			return scanClaudeExportArchive(ctx, archivePath, cutoffUnixMS)
+		}
 	}
 	data := externalScanData{}
 	projects := map[string]*ExternalImportProject{}
@@ -263,6 +297,22 @@ func scanExternalAgentSessions(ctx context.Context, providers []string, days int
 		return externalScanData{}, err
 	}
 	return data, nil
+}
+
+// normalizeExternalImportArchiveKind resolves a request archive kind, defaulting
+// an empty value to Claude for backward compatibility with clients that only
+// send archivePath.
+func normalizeExternalImportArchiveKind(kind string) string {
+	switch strings.TrimSpace(strings.ToLower(kind)) {
+	case ExternalImportArchiveKindChatGPT:
+		return ExternalImportArchiveKindChatGPT
+	case "", ExternalImportArchiveKindClaude:
+		return ExternalImportArchiveKindClaude
+	default:
+		// Unknown kinds fall back to Claude rather than silently importing
+		// nothing; the API layer validates the enum before reaching here.
+		return ExternalImportArchiveKindClaude
+	}
 }
 
 func providersIncludeArchiveImportParser(providers []string) bool {
@@ -528,7 +578,33 @@ func (s *Service) existingExternalImportMessageIDs(ctx context.Context, workspac
 }
 
 func externalImportedSessionID(provider string, providerSessionID string) string {
-	return "imported-" + agentproviderbiz.Normalize(provider) + "-" + externalStableHash(providerSessionID)[:24]
+	return "imported-" + externalImportProviderSlug(provider) + "-" + externalStableHash(providerSessionID)[:24]
+}
+
+// externalImportProviderSlug resolves a stable, filesystem-safe provider slug
+// for imported session identities. Registered runnable providers normalize to
+// their canonical id; import-only sources (e.g. the ChatGPT data export, which
+// is deliberately not a runnable registry provider) fall back to a sanitized
+// form of their raw identity so their session ids stay readable and unique
+// instead of collapsing to an empty segment.
+func externalImportProviderSlug(provider string) string {
+	if normalized := agentproviderbiz.Normalize(provider); normalized != "" {
+		return normalized
+	}
+	var builder strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(provider)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			builder.WriteRune(r)
+		default:
+			builder.WriteRune('-')
+		}
+	}
+	slug := strings.Trim(builder.String(), "-")
+	if slug == "" {
+		return "import"
+	}
+	return slug
 }
 
 func externalImportedMessageID(provider string, providerSessionID string, rawID string, index int) string {

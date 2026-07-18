@@ -25,6 +25,7 @@ func (*Service) ExternalImportValidProjectPaths(ctx context.Context, input Exter
 		providersFromExternalImportSelections(selections),
 		-1,
 		input.ArchivePath,
+		input.ArchiveKind,
 	)
 	if err != nil {
 		return nil, err
@@ -286,9 +287,15 @@ func externalSessionSelected(session externalImportedSession, sessionIDs []strin
 }
 
 func externalProviderSelected(provider string, providers []string) bool {
-	provider = agentproviderbiz.Normalize(provider)
+	normalized := agentproviderbiz.Normalize(provider)
+	if normalized == "" {
+		// Import-only archive providers (e.g. chatgpt) are not runnable
+		// registry providers, so normalize them the same way the selection
+		// providers are normalized below.
+		normalized = normalizeExternalArchiveImportProvider(provider)
+	}
 	for _, candidate := range normalizeExternalImportProviders(providers) {
-		if candidate == provider {
+		if candidate == normalized {
 			return true
 		}
 	}

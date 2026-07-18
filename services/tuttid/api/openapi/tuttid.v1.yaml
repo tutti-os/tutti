@@ -8485,6 +8485,15 @@ components:
           minLength: 1
         page:
           $ref: "#/components/schemas/WorkspaceAgentSessionPage"
+    ExternalAgentImportArchiveKind:
+      type: string
+      description: >-
+        Selects which provider data-export archive format to parse. Omit for
+        backward compatibility with clients that only send archivePath; the
+        daemon then defaults to the Claude data-export format.
+      enum:
+        - claude
+        - chatgpt
     ExternalAgentImportScanRequest:
       type: object
       additionalProperties: false
@@ -8495,6 +8504,8 @@ components:
           description: >-
             Absolute path to a supported provider data-export ZIP archive.
             When supplied, scan the archive instead of local CLI history.
+        archiveKind:
+          $ref: "#/components/schemas/ExternalAgentImportArchiveKind"
         providers:
           type: array
           items:
@@ -8568,7 +8579,6 @@ components:
         - id
         - projectPath
         - provider
-        - sourcePath
         - title
         - messageCount
       properties:
@@ -8583,6 +8593,7 @@ components:
         sourcePath:
           type: string
           minLength: 1
+          nullable: true
         title:
           type: string
           minLength: 1
@@ -8676,6 +8687,8 @@ components:
             Absolute path to the same provider data-export ZIP archive used
             for the preceding scan. The daemon revalidates and rereads the
             archive before importing the selected conversations.
+        archiveKind:
+          $ref: "#/components/schemas/ExternalAgentImportArchiveKind"
         projects:
           type: array
           minItems: 1

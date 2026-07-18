@@ -3,6 +3,7 @@
 // is plain node:test over *.test.ts and has no React rendering harness).
 
 import type {
+  ExternalAgentImportArchiveKind,
   ExternalAgentImportScanRequest,
   ExternalAgentImportScanResponse,
   ExternalAgentImportSession,
@@ -20,6 +21,7 @@ export type ExternalImportScanSource =
   | {
       kind: "archive";
       archivePath: string;
+      archiveKind: ExternalAgentImportArchiveKind;
       days: number;
     }
   | {
@@ -50,10 +52,12 @@ export function isExternalImportArchiveMode(
 }
 
 export function externalImportScanSource({
+  archiveKind,
   archivePath,
   days,
   providers
 }: {
+  archiveKind: ExternalAgentImportArchiveKind;
   archivePath: string | null;
   days: number;
   providers: WorkspaceAgentProvider[];
@@ -63,6 +67,7 @@ export function externalImportScanSource({
     return {
       kind: "archive",
       archivePath: normalizedArchivePath,
+      archiveKind,
       days
     };
   }
@@ -77,7 +82,11 @@ export function externalImportScanRequest(
   source: ExternalImportScanSource
 ): ExternalAgentImportScanRequest {
   return source.kind === "archive"
-    ? { archivePath: source.archivePath, days: source.days }
+    ? {
+        archivePath: source.archivePath,
+        archiveKind: source.archiveKind,
+        days: source.days
+      }
     : { days: source.days, providers: source.providers };
 }
 
@@ -108,7 +117,10 @@ function externalImportScanSourcesEqual(
     return false;
   }
   if (left.kind === "archive" && right.kind === "archive") {
-    return left.archivePath === right.archivePath;
+    return (
+      left.archivePath === right.archivePath &&
+      left.archiveKind === right.archiveKind
+    );
   }
   if (left.kind === "local" && right.kind === "local") {
     return (
@@ -121,12 +133,22 @@ function externalImportScanSourcesEqual(
 
 export function externalImportRequestSource(
   archivePath: string | null,
+  archiveKind: ExternalAgentImportArchiveKind | null,
   registerProjects: boolean
-): { archivePath?: string; registerUserProjects: boolean } {
+): {
+  archivePath?: string;
+  archiveKind?: ExternalAgentImportArchiveKind;
+  registerUserProjects: boolean;
+} {
   const normalizedArchivePath = archivePath?.trim();
-  return normalizedArchivePath
-    ? { archivePath: normalizedArchivePath, registerUserProjects: false }
-    : { registerUserProjects: registerProjects };
+  if (!normalizedArchivePath) {
+    return { registerUserProjects: registerProjects };
+  }
+  return {
+    archivePath: normalizedArchivePath,
+    ...(archiveKind ? { archiveKind } : {}),
+    registerUserProjects: false
+  };
 }
 
 /**
