@@ -494,22 +494,33 @@ test("plan issue source tolerates the daemon omitting empty dependency arrays", 
   // plan has no dependencies, so this fired on every plan).
   const runtime = createDesktopTuttiModePlanReviewRuntime({
     tuttidClient: {
-      async listWorkspaceIssueTopics() {
-        return { topics: [{ topicId: "default" }] };
-      },
-      async listWorkspaceIssues() {
-        return {
-          issues: [
-            {
-              issueId: "tutti-mode-plan-1",
-              topicId: "default",
-              title: "Plan issue",
-              planningSource: "tutti_mode_plan",
-              sourceSessionId: "session-1",
-              updatedAtUnix: 100
-            }
-          ]
-        };
+      async listWorkspaceWorkflows() {
+        return [
+          {
+            ...snapshot,
+            workflow: {
+              ...snapshot.workflow,
+              status: "accepted",
+              updatedAtUnixMs: 100
+            },
+            operations: [
+              {
+                id: "operation-1",
+                workflowId: "workflow-1",
+                kind: "create_issue",
+                status: "succeeded",
+                revisionId: "revision-1",
+                issueId: "tutti-mode-plan-1",
+                errorCode: null,
+                errorMessage: null,
+                createdAtUnixMs: 90,
+                updatedAtUnixMs: 100,
+                startedAtUnixMs: 90,
+                completedAtUnixMs: 100
+              }
+            ]
+          }
+        ];
       },
       async getWorkspaceIssueDetail() {
         return {
@@ -546,16 +557,69 @@ test("plan issue source tolerates the daemon omitting empty dependency arrays", 
     eventStreamClient: null
   });
 
-  const issue = await runtime.planIssues!.getSessionPlanIssue({
+  const result = await runtime.planIssues!.getSessionPlanIssue({
     workspaceId: "workspace-1",
     sourceSessionId: "session-1"
   });
-  assert.ok(issue, "expected the plan issue to resolve, not reject");
+  assert.ok(result, "expected the plan issue to resolve, not reject");
+  assert.equal(result.kind, "issue");
+  const issue = result.kind === "issue" ? result.issue : null;
+  assert.ok(issue);
+  assert.equal(issue.workflowId, "workflow-1");
+  assert.equal(issue.sourceTurnId, "turn-1");
   assert.equal(issue.issueId, "tutti-mode-plan-1");
   assert.deepEqual(
     issue.tasks.map((task) => task.dependencyTaskIds),
     [[], ["task-1"]]
   );
+});
+
+test("plan issue source surfaces a durably failed create_issue operation", async () => {
+  // An accepted workflow whose create_issue failed has no pending checkpoint
+  // and no Issue; the conversation must render the failure instead of nothing.
+  const runtime = createDesktopTuttiModePlanReviewRuntime({
+    tuttidClient: {
+      async listWorkspaceWorkflows() {
+        return [
+          {
+            ...snapshot,
+            workflow: {
+              ...snapshot.workflow,
+              status: "accepted",
+              updatedAtUnixMs: 100
+            },
+            operations: [
+              {
+                id: "operation-1",
+                workflowId: "workflow-1",
+                kind: "create_issue",
+                status: "failed",
+                revisionId: "revision-1",
+                errorCode: "issue_materialization_failed",
+                errorMessage: "issue manager argument is invalid",
+                createdAtUnixMs: 90,
+                updatedAtUnixMs: 100,
+                startedAtUnixMs: 90,
+                completedAtUnixMs: 100
+              }
+            ]
+          }
+        ];
+      }
+    } as never,
+    eventStreamClient: null
+  });
+
+  const result = await runtime.planIssues!.getSessionPlanIssue({
+    workspaceId: "workspace-1",
+    sourceSessionId: "session-1"
+  });
+  assert.deepEqual(result, {
+    kind: "materialization_failed",
+    workflowId: "workflow-1",
+    sourceTurnId: "turn-1",
+    errorMessage: "issue manager argument is invalid"
+  });
 });
 
 test("desktop workflow runtime invalidates current scopes on every connected state", async () => {

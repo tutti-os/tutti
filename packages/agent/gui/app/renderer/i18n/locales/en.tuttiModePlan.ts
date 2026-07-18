@@ -45,5 +45,7 @@ export const enTuttiModePlan = {
   issueStripPending: "{{count}} awaiting acceptance",
   issueStripFailed: "{{count}} failed",
   issueStripDone: "{{done}}/{{total}} done",
-  issueStripJump: "View the subtask board"
+  issueStripJump: "View the subtask board",
+  issueCreateFailed:
+    "The approved plan could not create its Issue: {{message}}. Ask the Agent to revise the plan."
 } as const;

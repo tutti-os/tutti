@@ -6,6 +6,7 @@ type AgentGUITuttiModeLabels = Pick<
   | "tuttiModeDescription"
   | "tuttiModeLabel"
   | "tuttiModePlanBanner"
+  | "tuttiModePlanIssueCreateFailed"
   | "tuttiModePlanIssuePanel"
   | "tuttiModePlanIssueStrip"
   | "tuttiModePlanLoadFailed"
@@ -108,6 +109,8 @@ export function agentGUITuttiModeLabels(
       jump: t("agentHost.agentGui.tuttiModePlan.issueStripJump")
     },
     tuttiModePlanLoadFailed: t("agentHost.agentGui.tuttiModePlan.loadFailed"),
-    tuttiModePlanRetry: t("agentHost.agentGui.tuttiModePlan.retry")
+    tuttiModePlanRetry: t("agentHost.agentGui.tuttiModePlan.retry"),
+    tuttiModePlanIssueCreateFailed: (message) =>
+      t("agentHost.agentGui.tuttiModePlan.issueCreateFailed", { message })
   };
 }

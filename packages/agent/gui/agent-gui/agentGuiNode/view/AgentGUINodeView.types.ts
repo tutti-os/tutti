@@ -150,6 +150,8 @@ export interface AgentGUIViewLabels {
   tuttiModePlanReplanFeedbackSuffix: (to: string) => string;
   tuttiModePlanLoadFailed: string;
   tuttiModePlanRetry: string;
+  /** Accepted plan whose Issue creation durably failed; message is the cause. */
+  tuttiModePlanIssueCreateFailed: (message: string) => string;
   planModeDescription?: string;
   planModeOnLabel: string;
   planModeOffLabel: string;

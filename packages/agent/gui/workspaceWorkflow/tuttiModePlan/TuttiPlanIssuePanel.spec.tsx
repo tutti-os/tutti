@@ -30,6 +30,8 @@ const labels: TuttiPlanIssuePanelLabels = {
 };
 
 const issue: TuttiPlanIssueSnapshot = {
+  workflowId: "wf-1",
+  sourceTurnId: "turn-1",
   issueId: "tutti-mode-plan-wf-1",
   topicId: "default",
   title: "Neon chase MVP",

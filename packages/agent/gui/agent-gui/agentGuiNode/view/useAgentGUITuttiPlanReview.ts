@@ -1,4 +1,4 @@
-import { useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import {
   mergeTaskAssignmentDraft,
@@ -21,6 +21,7 @@ import type {
 } from "../AgentGUINodeView";
 import type { TuttiPlanIssueStatusStripCounts } from "../TuttiPlanIssueStatusStrip";
 import { useStableEventCallback } from "./agentGUIViewUtils";
+import type { AgentTranscriptAttachmentLocator } from "../../../shared/agentConversation/components/AgentTranscriptView";
 
 export interface AgentGUITuttiPlanReview {
   tuttiModePlanPanels: ReturnType<typeof useTuttiModePlanPanels>;
@@ -79,7 +80,7 @@ export function useAgentGUITuttiPlanReview(input: {
   viewModel: AgentGUINodeViewModel;
   previewMode: boolean;
   labels: AgentGUIViewLabels;
-  timelineRef: RefObject<HTMLDivElement | null>;
+  timelineAttachmentLocatorRef: RefObject<AgentTranscriptAttachmentLocator | null>;
   stableLinkAction: ((action: WorkspaceLinkAction) => void) | undefined;
   setTuttiModeActive: (active: boolean) => void;
   updateDraftContent: AgentGUINodeViewProps["actions"]["updateDraftContent"];
@@ -91,7 +92,7 @@ export function useAgentGUITuttiPlanReview(input: {
     viewModel,
     previewMode,
     labels,
-    timelineRef,
+    timelineAttachmentLocatorRef,
     stableLinkAction,
     setTuttiModeActive,
     updateDraftContent,
@@ -103,6 +104,20 @@ export function useAgentGUITuttiPlanReview(input: {
     sourceSessionId: viewModel.rail.activeConversationId,
     decidedBy: viewModel.shell.currentUserId?.trim() || "local"
   });
+  // A plan proposed mid-turn announces itself through one workflow event; if
+  // that single event is lost (reconnect gap, transient scope teardown), no
+  // later signal re-reads the review state and the panel stays invisible
+  // until a remount. The turn settling is the natural read-repair point.
+  const activeConversationWorking =
+    viewModel.rail.activeConversation?.status === "working";
+  const wasWorkingRef = useRef(false);
+  const refetchPlanPanels = tuttiModePlanPanels.refetch;
+  useEffect(() => {
+    if (wasWorkingRef.current && !activeConversationWorking) {
+      refetchPlanPanels();
+    }
+    wasWorkingRef.current = activeConversationWorking;
+  }, [activeConversationWorking, refetchPlanPanels]);
   // Assignment drafts are host-owned (keyed by panel id) so a composer-driven
   // accept can carry them; the panel only renders and reports edits.
   const [planAssignmentDrafts, setPlanAssignmentDrafts] = useState<
@@ -238,24 +253,8 @@ export function useAgentGUITuttiPlanReview(input: {
     });
   });
   const jumpToPlanIssuePanel = useStableEventCallback((): void => {
-    const target = timelineRef.current?.querySelector<HTMLElement>(
-      '[data-testid="tutti-plan-issue-panel"]'
-    );
-    if (!target) return;
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
-    // The panel usually sits at the timeline tail and is often already in
-    // view, so the jump always answers with a visible pulse, not just a
-    // (possibly zero-distance) scroll.
-    const accent =
-      getComputedStyle(target).getPropertyValue("--tutti-purple").trim() ||
-      "#7c5cff";
-    target.animate?.(
-      [
-        { boxShadow: `0 0 0 2px ${accent}` },
-        { boxShadow: "0 0 0 2px transparent" }
-      ],
-      { duration: 1400, easing: "ease-out" }
-    );
+    if (!planIssue) return;
+    timelineAttachmentLocatorRef.current?.(`workflow:${planIssue.workflowId}`);
   });
   return {
     tuttiModePlanPanels,

@@ -23,6 +23,8 @@ export type {
   TuttiModePlanReviewSnapshot,
   TuttiModePlanReviewRuntime,
   TuttiModePlanTaskAssignmentInput,
+  TuttiPlanIssueMaterializationFailure,
+  TuttiPlanIssueQueryResult,
   TuttiPlanIssueSnapshot,
   TuttiPlanIssueSource,
   TuttiPlanIssueTaskSnapshot

@@ -44,5 +44,7 @@ export const zhCNTuttiModePlan = {
   issueStripPending: "{{count}} 待验收",
   issueStripFailed: "{{count}} 失败",
   issueStripDone: "{{done}}/{{total}} 已完成",
-  issueStripJump: "查看子任务面板"
+  issueStripJump: "查看子任务面板",
+  issueCreateFailed:
+    "已核准的计划未能创建 Issue：{{message}}。请让 Agent 修订计划。"
 } as const;
