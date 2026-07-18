@@ -163,9 +163,11 @@ export function TuttiPlanIssuePanel({
           current.includes(taskId) ? current : [...current, taskId]
         );
         void onDecideTask(taskId, decision)
-          .catch(() => {
+          .catch((error: unknown) => {
             // Best-effort mutation; the live issue stream re-syncs status and
-            // the buttons return for a retry.
+            // the buttons return for a retry. Keep the failure observable —
+            // a swallowed transport error otherwise reads as a dead button.
+            console.error("tutti plan issue task decision failed", error);
           })
           .finally(() => {
             setDecidingTaskIds((current) =>
@@ -183,9 +185,12 @@ export function TuttiPlanIssuePanel({
       ? (): void => {
           setStopping(true);
           void onCancelExecution()
-            .catch(() => {
+            .catch((error: unknown) => {
               // Best-effort; the live issue stream re-syncs and the button
-              // returns for a retry while runs remain live.
+              // returns for a retry while runs remain live. Keep the failure
+              // observable — a swallowed transport error (e.g. an unregistered
+              // daemon route answering 404) otherwise reads as a dead button.
+              console.error("tutti plan issue stop failed", error);
             })
             .finally(() => {
               setStopping(false);
