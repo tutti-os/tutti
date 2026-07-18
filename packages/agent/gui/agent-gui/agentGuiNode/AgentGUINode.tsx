@@ -42,6 +42,7 @@ import { areAgentGUINodePropsEqual } from "./AgentGUINode.types";
 import { AgentGUIMentionServiceBoundary } from "./AgentGUIMentionServiceBoundary";
 import {
   useAgentGUIViewLabels,
+  useAgentGUIConversationRailLabels,
   useAgentGUIWorkspaceFileReferenceCopy
 } from "./AgentGUINode.labels";
 import {
@@ -75,7 +76,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     fileReferenceAdapter: workspaceFileReferenceAdapter = null,
     onRequestGitBranches = null,
     selectProjectDirectory,
-    resolveDroppedFileReferences = null,
+    prepareExternalPromptFiles = null,
+    promptAssetLimit = null,
     referenceSourceAggregator = null,
     resolveReferenceEntryIconUrl: resolveWorkspaceReferenceEntryIconUrl,
     resolveMentionReferenceTarget = null,
@@ -104,6 +106,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     composerAppend: composerAppendRequest = null,
     composerFocusSequence: composerFocusRequestSequence = null,
     newConversationSequence: newConversationRequestSequence = null,
+    sessionAction: sessionActionRequest = null,
     openSession: openSessionRequest = null,
     prefillPrompt: prefillPromptRequest = null,
     agentProbes: workspaceAgentProbes,
@@ -123,7 +126,6 @@ export const AgentGUINode = memo(function AgentGUINode({
     providerReadinessGates = null,
     defaultAgentTargetId = null,
     providerAuthAccountLabels,
-    contextMentionProviders,
     mentionService,
     workspaceAppIcons,
     disabledHomeSuggestions,
@@ -351,6 +353,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   const displayProviderLabel = viewModel.rail.activeConversation
     ? resolveAgentGUIProviderDisplayLabel(activeProvider, fallbackAgentTitle)
     : selectedAgentTargetLabel;
+  const conversationRailLabels = useAgentGUIConversationRailLabels(t);
   const labels = useAgentGUIViewLabels({
     disabledHomeSuggestions,
     displayProviderLabel,
@@ -544,10 +547,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   ]);
 
   return (
-    <AgentGUIMentionServiceBoundary
-      legacyProviders={contextMentionProviders}
-      service={mentionService}
-    >
+    <AgentGUIMentionServiceBoundary service={mentionService}>
       <WorkspaceNodeWindow
         nodeId={nodeId}
         kind="agentGui"
@@ -631,6 +631,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               onEngagementEvent={onEngagementEvent}
               composerFocusRequestSequence={composerFocusRequestSequence}
               newConversationRequestSequence={newConversationRequestSequence}
+              sessionActionRequest={sessionActionRequest}
               slashStatusLimits={slashStatusLimits}
               slashStatusLimitsLoading={
                 workspaceAgentProbes?.isLoadingUsage ?? false
@@ -675,11 +676,13 @@ export const AgentGUINode = memo(function AgentGUINode({
                   ? handleWorkspaceFileReferencesAdded
                   : undefined
               }
-              resolveDroppedFileReferences={resolveDroppedFileReferences}
+              prepareExternalPromptFiles={prepareExternalPromptFiles}
+              promptAssetLimit={promptAssetLimit}
               onConversationRailWidthChanged={
                 handleConversationRailWidthChanged
               }
               labels={labels}
+              conversationRailLabels={conversationRailLabels}
               workspaceUserProjectI18n={workspaceUserProjectI18n}
               workspaceFileManagerCopy={workspaceFileManagerI18n}
               workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
@@ -695,7 +698,6 @@ export const AgentGUINode = memo(function AgentGUINode({
                 resolveWorkspaceReferenceInitialTarget
               }
               workspaceFileReferenceCopy={workspaceFileReferenceCopy}
-              contextMentionProviders={contextMentionProviders}
               workspaceAppIcons={workspaceAppIcons}
               referenceProvenanceFilter={referenceProvenanceFilter}
             />

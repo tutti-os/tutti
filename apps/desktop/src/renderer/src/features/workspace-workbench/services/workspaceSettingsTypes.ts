@@ -113,6 +113,7 @@ export interface WorkspaceSettingsStoreState {
   generalFocusRequestID: number;
   managedModels: WorkspaceSettingsManagedModelsMutableState;
   open: boolean;
+  purgingDeletedConversations: boolean;
   tuttiAgentSwitchEnabled: boolean;
   workspaceID: string | null;
 }
@@ -125,6 +126,7 @@ export interface WorkspaceSettingsReadableStoreState {
   readonly generalFocusRequestID: number;
   readonly managedModels: WorkspaceSettingsManagedModelsSnapshotState;
   readonly open: boolean;
+  readonly purgingDeletedConversations: boolean;
   readonly tuttiAgentSwitchEnabled: boolean;
   readonly workspaceID: string | null;
 }

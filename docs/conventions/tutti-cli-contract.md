@@ -8,6 +8,50 @@ The bundled CLI is a thin client. It discovers command capabilities from
 `InputSchema`, invokes the daemon command endpoint, and renders the returned
 `CommandOutput`.
 
+## Error Output
+
+`--json` applies to failure output as well as successful command output.
+Expected invocation, transport, and domain failures write one JSON object to
+stdout and do not fall back to free-form stderr text:
+
+```json
+{
+  "error": {
+    "reasonCode": "workspace_agent_session_not_found",
+    "message": "agent session was not found"
+  }
+}
+```
+
+The CLI preserves the daemon protocol `reason` as `reasonCode`, falling back to
+the daemon error `code` when no narrower reason exists. Optional daemon
+`retryable` and `correlationId` fields are preserved. Errors detected before a
+daemon invocation use stable CLI-owned reason codes such as `invalid_input`,
+`command_not_found`, and `daemon_unavailable`.
+
+Exit codes stay intentionally small and stable: `0` means success, `2` means
+the command invocation or input was invalid, and `1` means authentication,
+transport, domain, or runtime failure. A daemon HTTP 400 response is invalid
+input and therefore exits with `2`; other daemon failures exit with `1`.
+Without `--json`, ordinary human-facing failures continue to write concise
+text to stderr.
+
+## Agent Turn Cancellation
+
+Agent cancellation is Turn-scoped. Use
+`agent cancel-turn --session-id <id> --turn-id <id>` to cancel one exact Turn
+while preserving the session for later input. The explicit Turn id prevents a
+caller from accidentally canceling a newer Turn that became active after it
+last inspected the session.
+
+JSON output returns `agentSessionId`, `turnId`, `canceled`, and the idempotent
+result `reason` (`turn_canceled`, `already_settled`, or `not_found`). There is
+no CLI operation that cancels or terminates an Agent session.
+
+The old `agent cancel --session-id <id>` path remains an integration-only
+compatibility alias. It resolves the currently active Turn, emits a
+`deprecated_agent_cancel` warning, and must not be used by new integrations.
+
 ## Boundaries
 
 The daemon has two CLI command surfaces:
@@ -126,6 +170,13 @@ published. Existing-session consumers must validate `agentTargetId` before
 sending or attaching; provider equality is not sufficient because several
 Agent Targets may share one provider.
 
+Agent submission actions also return the exact top-level `turnId` established
+or targeted by that command. `agent start` returns the initial Turn created for
+its prompt, and `agent send` returns the Turn created by a normal send or
+targeted by active-turn guidance. Callers must use this exact identity for
+`agent turn-resources` and later Turn-scoped operations instead of inferring it
+from `session.activeTurnId` or querying the transcript.
+
 Agent session detail JSON uses the same protocol-v2 entities as HTTP/OpenAPI:
 `activeTurnId`, `activeTurn`, `latestTurn`, and pending Interaction records.
 It must not expose the provider-runtime `turnLifecycle` or
@@ -155,16 +206,47 @@ recovery.
 `agent wait --json` is the blocking progress helper for launched or continued
 agent sessions. It should wait for the next meaningful stop point such as turn
 completion, failure, cancellation, waiting for approval, waiting for user
-input, or timeout. Its JSON result should stay narrow: compact session status,
-wait reason, latest version, effective wait cursor, and timeout flag. It must
-not return execution messages, pagination state, or a full transcript; callers
-that need broader context should follow with `agent session-summary`. Keep
-message window controls such as `limit` out of the public wait command shape.
+input, or timeout. Its JSON result stays narrow: compact session status, the
+exact top-level `turnId` associated with the stop point when one exists, wait
+reason, latest version, effective wait cursor, and timeout flag. A completed or
+failed turn additionally returns its last assistant text as `finalMessage`;
+that nested record repeats the owning `turnId` for local correlation. An
+approval or input stop additionally returns the pending `interactions` with
+self-described actions and a JSON input summary of at most 2 KiB. It must not
+reuse a historical settled Turn for an idle timeout: timeout carries a
+`turnId` only while a Turn is active. It must not return execution-message
+pagination or a full transcript; callers that need
+broader context should follow with `agent session-summary`. Keep message window
+controls such as `limit` out of the public wait command shape, and keep timeout
+output free of result or interaction detail.
+The wait implementation skips transcript pagination and performs result
+enrichment separately. New settled turns carry a durable final-assistant
+resolution marker and, when present at settlement, the exact message anchor.
+Anchored reads select that exact message; a resolved marker with no anchor means
+the Turn had no final assistant text and must return no `finalMessage`, even if
+an assistant message arrives later. Only legacy turns without resolution
+metadata fall back to at most three descending message pages. If neither path
+finds the message, omit `finalMessage` rather than returning an older assistant
+response.
 When a caller continues an existing session with `agent send`, the send action
 should return a `waitAfterVersion` cursor, and the next wait call should pass
 that cursor as `agent wait --after-version <waitAfterVersion> ...` so the wait
 blocks for the new stop point instead of immediately replaying the previous
 session stop state.
+
+`agent respond --json` answers one pending interaction selected by
+`--session-id` and `--request-id`. `--action`, `--option`, and object-valued
+`--payload` map directly to the Host interactive input. `--semantic` is a thin
+shortcut that resolves exactly one matching `actions[].semantic` from the
+stored interaction; the CLI must not keep a provider-to-semantic mapping.
+Unknown requests and missing or ambiguous semantics are invalid input errors.
+The first responder atomically claims the pending interaction. Later responses
+with the same action/option/payload return `answered`; different responses
+return `superseded`. The result exposes the request and turn ids plus that Host
+disposition, without surfacing raw operation conflict or in-progress errors.
+After a successful claim, an authoritative terminal runtime disposition still
+wins; for example, a runtime `superseded` result must not be rewritten to
+`answered` merely because the durable claim already marked the Interaction.
 
 `agent turn-resources --json` is the narrow helper for looking up resources from
 one explicit session turn. It requires `--session-id` and `--turn-id`, filters at
@@ -244,6 +326,7 @@ Examples:
 
 - `issue list`
 - `agent session-summary`
+- `agent respond`
 - `topic-id`
 - `wait`
 - `page-size`

@@ -178,6 +178,8 @@ Host owns recovery for runtime operations, Goal operations, and the reconcile in
 
 On daemon restart, Host recovery first restores durable operations, then settles unrecoverable active Turns as `settled/interrupted` and supersedes pending Interactions.
 
+Codex's restored Full access warning is presentation-only, device-local safety chrome. Show it only when an empty home composer restores an unacknowledged Full access target default; do not show it for another provider or permission mode, an active or historical Session, preview chrome, or while defaults are loading. Explicit Full access confirmation and “Don't show again” persist the same browser-local acknowledgement, while the close action affects only the current mount. This acknowledgement must not enter Session lifecycle, target defaults, Workbench node data, or `AgentActivityRuntime` state.
+
 ### 3.5 Messages and ordering
 
 A durable message has two independent ordering values:
@@ -235,6 +237,8 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 - otherwise send-now performs exact cancel-then-send
 - user Stop pauses the queue; cancellation must not leak the next prompt
 - uncertain delivery reconciles by `clientSubmitId` and exact `turnId`; it never resends merely because the Session appears idle
+- the delivery barrier serializes new-Turn sends only; a guidance head steering the running barrier Turn is exempt and may steer it repeatedly, while in-flight, uncertain-delivery, suspension, and failed-head blockers still gate guidance sends
+- drain readiness is one pure decision over the queue record and canonical availability; a new blocker joins that single decision with an explicit priority against every existing blocker, never as another independent pre-check in the drain path
 
 ### 4.5 Rail query and presentation state
 
@@ -243,6 +247,10 @@ The Rail query cache stores section metadata, ordered Session IDs, cursors, and 
 When runtime sections are enabled, projection unions IDs from the current section, search, and reconciliation, then joins canonical Sessions. Unchanged summaries preserve structural sharing so unrelated engine updates do not rebuild the whole Rail snapshot.
 
 Scroll, section collapse, visible limits, and search query belong to mounted view scope. Non-search state is isolated by `workspaceId + agentTargetId/all`; search creates a temporary navigation scope. `activeConversationId` expresses selection only. Scrolling requires an explicit reveal intent.
+
+Contain selection and presentation identity at the Rail boundary. Each section receives the active ID only when it owns the canonical or overlay row; unrelated sections receive `null` so their memoized props remain equal. Rail pane, section, and row receive a dedicated Rail-label projection whose identity changes for locale changes, not provider-specific detail copy. Event handlers shared by every section keep stable identities and read the current scope and lock state when invoked.
+
+Keep section header/action chrome independent from changing item collections. A memoized header receives scalar presentation fields and stable event-time actions; it must not receive the section object or rebuild project/session semantics. Split the header into narrow render islands. Frequently changing derived booleans such as project drag disabled, project action locked, and batch deletion disabled may cross the Section presentation boundary through separate primitive Context projections. The Rail pane owns those providers outside the memoized Section so a projection-only update does not execute item projection; only the frame, forwarded-ref button leaf, or open menu content that renders the value may consume it. Do not combine those values into one Context object or copy them into persistent state. Menu disclosure is view-local state: keep each Radix root and trigger mounted for focus and keyboard behavior, but instantiate portaled content only while that menu is open. A closed menu has no availability-state consumer. The project header remains the native drag source, each project section updates the insertion position across its full area, and the Rail scroll viewport owns the final drop so section gaps cannot discard an already visible insertion target. This is a presentation boundary, not a second Rail or lifecycle store; stable event-time guards remain authoritative for action delivery.
 
 Relative time uses one renderer-realm minute clock. Timestamp leaves subscribe directly; do not thread a tick prop through Rail pane/section/row and rerender the interactive subtree every minute.
 
@@ -293,15 +301,19 @@ idle | loading | ready | error
 
 The directory owns Agent presentation. `agents[].iconUrl` is the primary
 identity used by conversation identity, Message Center, mentions, and the
-empty-home carousel. `sidebarIconUrl` may specialize Provider Rail artwork;
-`maskIconUrl` may supply the monochrome conversation-row glyph. Host
-projections preserve these roles independently and do not create
-provider-specific renderer catalogs.
+empty-home carousel and Provider Rail. `maskIconUrl` may supply the monochrome
+conversation-row glyph. Host projections preserve these roles independently
+and do not create provider-specific renderer catalogs.
 
-For a signed Agent Extension, Desktop promotes package `sidebarIcon` to the
-primary identity and Provider Rail artwork, while retaining package `icon` as
-the conversation-row mask. A package without `sidebarIcon` falls back to its
-package icon. All assets remain pinned to the verified active installation.
+When the Desktop host projects built-in Agent mentions into a workspace app,
+it replaces host-local file URLs with bounded 64px WebP data URLs. The external
+bridge is the serialization owner: workspace apps must not read host paths,
+register an Electron-only asset protocol, or re-encode the icon. Remote and
+already-inline extension icons retain their authoritative URL.
+
+For a signed Agent Extension, package `icon` is the primary identity and
+optional package `maskIcon` is the conversation-row glyph. All assets remain
+pinned to the verified active installation.
 
 Target-managed setup uses exact `agentTargetId`; daemon persists its state and actions. Setup gates only the empty new-conversation surface. Active/history conversations follow Session recovery and capability.
 
@@ -334,6 +346,10 @@ A controller may compose flows but cannot become a second lifecycle state machin
 
 Activation and existing-Session submit share a canonical prompt envelope. Submit eligibility includes text and renderable structured content; an individual composer does not redefine it.
 
+External OS file paste and drop create snapshot prompt attachments. AgentGUI owns clipboard/drop classification, inline mention position, and draft reconciliation. The injected `prepareExternalPromptFiles` host port owns native-path lookup, byte-size enforcement, persistence, and remote transport. Each input file has one `sourceIndex` result; one failure must not fail sibling files. A prepared result includes a provider-readable `path` or `url`, while a failure carries a typed error code. Host count and byte limits are enforced before expensive reads or persistence.
+
+Workspace picker results and internal workspace-reference drags remain live references. They enter the rich-text document as mentions and never pass through external-file preparation. Removing an inline external-file mention removes its draft intent; a later async result must not revive it or lose its error reason when the draft is in another scope.
+
 ### 6.2 Public node contract
 
 `AgentGUINodeProps` groups fields by semantic responsibility:
@@ -362,6 +378,8 @@ Do not restore flat compatibility props or hide workflow inside a render slot.
 AgentGUI, Message Center, dock/header, workspace window, and standalone Agent window consume the same workspace engine.
 
 Opening a panel/window creates presentation state only. It does not clone a Session, copy engine entities, or start another event stream. Standalone tools are Desktop chrome, not AgentGUI lifecycle.
+
+The reusable standalone-tool sidebar contract lives in `packages/agent/gui/workbench/tool-sidebar`. Hosts provide the supported panel catalog and render adapters; the shared component owns tab selection, picker, sizing, toolbar mechanics, and the boundary between draggable header space and interactive controls. Native Electron hosts keep the default native-window drag mode, while embedded Workbench hosts select host drag mode and provide their pointer and double-click handlers. The shared component disables native app-region handling in host mode so one header never has two competing drag owners.
 
 ## 7. Key flows
 
@@ -419,6 +437,44 @@ select/open existing Session
 
 If resume is unavailable, return an explicit state. Do not create a shadow Session.
 
+### 7.5 Conversation actions and copy
+
+```text
+rail row More menu / row context menu / workbench header menu
+  -> one shared action-group contract (AgentGUIConversationActionsMenu)
+  -> rename | copy as reference | copy as Markdown | open window | mark unread
+```
+
+All three surfaces render the same action groups; the header dispatches
+through `sessionActions.ts` and the node resolves the target session against
+canonical rail entities under the rail interaction lock. While either row
+menu is open the row keeps its hover layout (short title truncation, actions
+visible) so titles cannot overlap the action cluster.
+
+Copy as reference copies the session-mention markdown link the @ panel
+produces, so pasting into any composer reconstructs the session chip; it is
+synchronous and only requires a writable host clipboard. Copy as Markdown
+loads every canonical message page and serializes a lean transcript: user
+inputs blockquoted in full, per-turn final agent replies plain, interim
+narration collapsed in a `<details>` block; tool payloads (except image
+outputs), thinking, `agent_system_notice` messages, and JSON fallbacks are
+dropped. The clipboard write is dual-format: `text/plain` keeps short image
+references and never carries base64, while `text/html` embeds images as
+data URIs hydrated from inline data, the attachment store, and host
+`workspace.readFile` — verified empirically: rich-paste targets (Feishu
+docs) consume data URIs and re-upload them, but never fetch local paths or
+localhost URLs. Images over the per-image embed cap, or with failed reads,
+keep the lean reference and surface a toast that counts the omissions and
+points at per-image copy. Because history loading and image hydration take
+a noticeable moment on long conversations, selecting copy as Markdown opens
+one toast immediately (`AgentHostToastApi.loading`): it shows busy with a
+spinner and never auto-dismisses, and the handle it returns settles that
+same toast in place to success, the omitted-images info tone, or failure —
+at which point it starts auto-dismissing like any other toast. This is one
+continuous toast, not a loading toast followed by a separate result toast.
+Hosts without the `loading` capability get the prior plain info toast
+instead, and the result lands as an ordinary second toast.
+
 ## 8. Change routing
 
 Answer before editing:
@@ -466,7 +522,8 @@ Do not start by adding a fallback to the visible component.
 
 ## 10. Validation
 
-Architecture boundaries:
+Follow the repository [Validation Selection](../conventions/testing.md#validation-selection).
+The Agent architecture boundary commands available to that workflow are:
 
 ```sh
 pnpm check:agent-host-boundary
@@ -474,15 +531,6 @@ pnpm check:agent-activity-runtime-boundaries
 pnpm check:agent-provider-strategy-boundaries
 pnpm check:agent-gui-degradation
 pnpm check:renderer-boundaries
-```
-
-Focused AgentGUI checks:
-
-```sh
-pnpm --filter @tutti-os/agent-gui test
-pnpm --filter @tutti-os/agent-gui typecheck
-pnpm --filter @tutti-os/agent-activity-core test
-pnpm check:changed
 ```
 
 `check:agent-gui-degradation` is executable architecture. Its business-file 800-line limit and budgets for effects, memoization, render-mirror refs, provider branches, timers, component stores, and module globals may only stay level or decrease. Tighten the baseline when a metric drops; never raise it to merge new drift.

@@ -50,6 +50,31 @@ behind `SettingsPolicy`. `UpdatePin` mutates canonical metadata only.
 authorization, shared bindings, transport DTOs, and local view cleanup remain
 adapter responsibilities.
 
+`PurgeDeletedSessions` is the separate permanent-removal command for bounded
+batches of canonical tombstones. Host owns the command boundary and delegates
+the atomic hard delete to its narrow `SessionPurgeStore`; retention timing,
+daemon-idle scheduling, HTTP exposure, and optional compaction stay in the host
+adapter. The current retention adapter deliberately performs no filesystem
+deletion. Each candidate is fenced by the exact persisted
+`deleted_at` value, so a concurrently restored or recreated row is preserved.
+Leaf-first selection retains an ancestor while any child or nested descendant
+row remains without starving deep trees, so a restored descendant can never be
+orphaned by maintenance. Purge results expose only content-free session
+descriptors and aggregate message/payload counts. The shared conformance
+scenario verifies live and too-new preservation, exact-cutoff removal, and
+idempotent replay through Host.
+
+Interactive responses establish their winner at the canonical interaction
+transition, not in a GUI or CLI adapter. Preparing an interactive runtime
+operation atomically moves the interaction from `pending` to `answered` with
+the requested action, option, and payload. A competing response compares its
+request with that durable output: an identical response is `answered`, while a
+different response is `superseded`; neither path leaks operation-conflict or
+in-progress errors to the responder. The Interaction's pre-delivery `answered`
+state is a durable claim marker, not the runtime's terminal result; completed
+operation and responder dispositions follow an authoritative runtime
+`superseded` result instead of being overwritten by that marker.
+
 Adapters retain authorization and identity, transport, runtime process or VM
 selection, desktop APIs, attachment ingress, and cloud inbox/outbox behavior.
 Adapter-only create fields such as transcript source paths and materialized
@@ -95,7 +120,8 @@ runtime fakes in `Reset`, and runs every value returned by
 adapters share one behavior baseline without importing one another.
 Coordinator, goal, and commit-observer scenario groups extend the same driver
 with recovery ordering through the worktree sweep, recovery failure
-propagation, and post-commit failure semantics.
+propagation, post-commit failure semantics, and exact-tombstone permanent
+removal semantics.
 
 The conformance package keeps its shared fixture and driver contract in
 `conformance.go`, explicit scenario membership in `scenarios.go`, and scenario

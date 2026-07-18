@@ -19,7 +19,7 @@ import {
 import { RichTextMentionReadonly } from "@tutti-os/ui-rich-text/editor";
 
 describe("RichTextMentionReadonly compatibility", () => {
-  it("keeps the persisted @ prefix while using MentionPill", () => {
+  it("uses the resolved label without adding the persisted trigger", () => {
     render(
       <RichTextMentionReadonly
         mention={{
@@ -31,7 +31,8 @@ describe("RichTextMentionReadonly compatibility", () => {
       />
     );
 
-    expect(screen.getByText("@Canvas")).toBeInTheDocument();
+    expect(screen.getByText("Canvas")).toBeInTheDocument();
+    expect(screen.queryByText("@Canvas")).not.toBeInTheDocument();
     expect(document.querySelector('[data-slot="mention-pill"]')).not.toBeNull();
   });
 });
@@ -1355,7 +1356,12 @@ describe("AgentMessageMarkdown", () => {
     expect(image).toHaveAttribute("src", iconUrl);
     expect(
       mention?.querySelector('[data-agent-mention-fallback-icon="true"]')
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(
+      mention?.querySelectorAll(
+        '[data-agent-mention-app-icon="true"] img, [data-agent-mention-app-icon="true"] svg'
+      )
+    ).toHaveLength(1);
 
     fireEvent.error(image!);
 
@@ -1365,6 +1371,11 @@ describe("AgentMessageMarkdown", () => {
     expect(
       mention?.querySelector('[data-agent-mention-fallback-icon="true"]')
     ).toBeInTheDocument();
+    expect(
+      mention?.querySelectorAll(
+        '[data-agent-mention-app-icon="true"] img, [data-agent-mention-app-icon="true"] svg'
+      )
+    ).toHaveLength(1);
     expect(mention).toHaveTextContent("Weather");
   });
 

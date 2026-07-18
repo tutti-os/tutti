@@ -321,6 +321,9 @@ func validateDesktopPreferencesUpdateRequestedPayload(payload []byte) error {
 	if !preferencesbiz.IsDesktopDockPlacement(decoded.DockPlacement) {
 		return fmt.Errorf("preferences.dockPlacement is unsupported")
 	}
+	if !preferencesbiz.IsDeletedAgentConversationRetentionDays(decoded.DeletedAgentConversationRetentionDays) {
+		return fmt.Errorf("preferences.deletedAgentConversationRetentionDays is unsupported")
+	}
 	if strings.TrimSpace(decoded.AgentDockLayout) == "" {
 		return fmt.Errorf("preferences.agentDockLayout is required")
 	}
@@ -406,6 +409,10 @@ func validateDesktopPreferencesUpdatedPayload(payload []byte) error {
 	}
 	if !preferencesbiz.IsDesktopDockPlacement(decoded.Preferences.DockPlacement) {
 		return fmt.Errorf("preferences.dockPlacement is unsupported")
+	}
+	if decoded.Preferences.DeletedAgentConversationRetentionDays != 0 &&
+		!preferencesbiz.IsDeletedAgentConversationRetentionDays(decoded.Preferences.DeletedAgentConversationRetentionDays) {
+		return fmt.Errorf("preferences.deletedAgentConversationRetentionDays is unsupported")
 	}
 	if decoded.Preferences.AgentConversationDetailMode == "" {
 		return fmt.Errorf("preferences.agentConversationDetailMode is required")

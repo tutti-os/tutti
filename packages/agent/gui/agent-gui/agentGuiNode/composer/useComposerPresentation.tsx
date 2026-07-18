@@ -191,7 +191,6 @@ export function useComposerPresentation(input: Input) {
       : null;
   const disabledReasonText = disabledReason?.trim() ?? "";
   const effectivePlaceholder = disabledReasonText || placeholder;
-  const visibleDraftFiles = draftFiles;
   const visibleDraftLargeTexts = draftLargeTexts;
   useEffect(() => {
     if (previousSelectedProjectPathRef.current === selectedProjectPath) {
@@ -350,7 +349,6 @@ export function useComposerPresentation(input: Input) {
     promptTipNode,
     submitInteractivePromptAndDismiss,
     visibleActivePrompt,
-    visibleDraftFiles,
     visibleDraftLargeTexts
   };
 }

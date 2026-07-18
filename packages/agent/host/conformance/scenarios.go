@@ -8,6 +8,7 @@ var (
 	duplicateClientSubmitIDScenario   = Scenario{Name: "duplicate client submit id", run: runDuplicateClientSubmitID}
 	exactTurnCancelScenario           = Scenario{Name: "exact turn cancel", run: runExactTurnCancel}
 	interactiveResponseScenario       = Scenario{Name: "interactive response", run: runInteractiveResponse}
+	interactiveResponseRaceScenario   = Scenario{Name: "interactive response race", run: runInteractiveResponseRace}
 	planDecisionScenario              = Scenario{Name: "plan decision", run: runPlanDecision}
 	initialTitleCASScenario           = Scenario{Name: "initial title cas", run: runInitialTitleCAS}
 	getSessionScenario                = Scenario{Name: "get session", run: runGetSession}
@@ -15,8 +16,9 @@ var (
 		Name: "historical and live settings",
 		run:  runHistoricalAndLiveSettings,
 	}
-	pinSessionScenario    = Scenario{Name: "pin session", run: runPinSession}
-	deleteSessionScenario = Scenario{Name: "delete session", run: runDeleteSession}
+	pinSessionScenario           = Scenario{Name: "pin session", run: runPinSession}
+	deleteSessionScenario        = Scenario{Name: "delete session", run: runDeleteSession}
+	purgeDeletedSessionsScenario = Scenario{Name: "purge deleted sessions", run: runPurgeDeletedSessions}
 )
 
 // Scenarios returns the lifecycle surface that every host adapter must support.
@@ -29,12 +31,14 @@ func Scenarios() []Scenario {
 		duplicateClientSubmitIDScenario,
 		exactTurnCancelScenario,
 		interactiveResponseScenario,
+		interactiveResponseRaceScenario,
 		planDecisionScenario,
 		initialTitleCASScenario,
 		getSessionScenario,
 		historicalAndLiveSettingsScenario,
 		pinSessionScenario,
 		deleteSessionScenario,
+		purgeDeletedSessionsScenario,
 	}
 }
 
@@ -61,6 +65,7 @@ func CoordinatorScenarios() []Scenario {
 	return []Scenario{
 		exactTurnCancelScenario,
 		interactiveResponseScenario,
+		interactiveResponseRaceScenario,
 		planDecisionScenario,
 		{Name: "recover operations before stale turns and worktree sweep", run: runRecoveryOrder},
 		{Name: "worktree sweep failure propagates", run: runWorktreeSweepFailure},
@@ -101,5 +106,6 @@ func ApplicationCoreScenarios() []Scenario {
 		historicalAndLiveSettingsScenario,
 		pinSessionScenario,
 		deleteSessionScenario,
+		purgeDeletedSessionsScenario,
 	}
 }

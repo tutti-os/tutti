@@ -29,6 +29,7 @@ import {
   canRequestQueuedPromptSendNow,
   type PromptQueueSendNowStrategy
 } from "./promptQueue.sendNow.ts";
+import { resolveQueueDrainDecision } from "./promptQueue.drainDecision.ts";
 import {
   deriveCanonicalSubmitAvailability,
   type CanonicalSessionLifecycleView
@@ -159,7 +160,8 @@ function reduceQueueOwnedState(
 
 function enqueuePrompt(
   state: PromptQueueState,
-  intent: Extract<PromptQueueIntent, { type: "queue/enqueued" }>
+  intent: Extract<PromptQueueIntent, { type: "queue/enqueued" }>,
+  options?: { insertAtFront?: boolean }
 ): EngineReducerResult<PromptQueueState> {
   const agentSessionId = intent.agentSessionId.trim();
   const workspaceId = intent.workspaceId.trim();
@@ -174,7 +176,9 @@ function enqueuePrompt(
   return result(
     replaceRecord(state, agentSessionId, {
       ...current,
-      prompts: [...current.prompts, prompt]
+      prompts: options?.insertAtFront
+        ? [prompt, ...current.prompts]
+        : [...current.prompts, prompt]
     })
   );
 }
@@ -203,33 +207,44 @@ function enqueueSubmit(
     current?.deliveryBarrierTurnId ||
     availability.state !== "available"
   );
+  // An ordinary submit that resumes a queue the user just explicitly
+  // stopped is the user's next instruction, not a continuation of whatever
+  // was already queued before the stop: it jumps ahead of that stale
+  // backlog instead of preserving FIFO order behind it.
+  const resumingFromUserStop = current?.suspendReason === "user_stop";
   const resumed = resumeQueue(state, agentSessionId);
-  return enqueuePrompt(resumed.state, {
-    agentSessionId,
-    prompt: {
-      clientSubmitId: intent.clientSubmitId,
-      content: intent.content,
-      createdAtUnixMs: intent.requestedAtUnixMs,
-      ...(intent.displayPrompt ? { displayPrompt: intent.displayPrompt } : {}),
-      id: intent.clientSubmitId,
-      ...clonePromptRequiredSettingsPatch(intent.requiredSettingsPatch),
-      submitDiagnostics: {
-        ...(intent.submitDiagnostics ?? {}),
-        blockCount:
-          intent.submitDiagnostics?.blockCount ?? intent.content.length,
-        queued: visibleInQueue,
-        submittedAtUnixMs:
-          intent.submitDiagnostics?.submittedAtUnixMs ??
-          intent.requestedAtUnixMs
+  return enqueuePrompt(
+    resumed.state,
+    {
+      agentSessionId,
+      prompt: {
+        clientSubmitId: intent.clientSubmitId,
+        content: intent.content,
+        createdAtUnixMs: intent.requestedAtUnixMs,
+        ...(intent.displayPrompt
+          ? { displayPrompt: intent.displayPrompt }
+          : {}),
+        id: intent.clientSubmitId,
+        ...clonePromptRequiredSettingsPatch(intent.requiredSettingsPatch),
+        submitDiagnostics: {
+          ...(intent.submitDiagnostics ?? {}),
+          blockCount:
+            intent.submitDiagnostics?.blockCount ?? intent.content.length,
+          queued: visibleInQueue,
+          submittedAtUnixMs:
+            intent.submitDiagnostics?.submittedAtUnixMs ??
+            intent.requestedAtUnixMs
+        },
+        ...(intent.runtimeContent
+          ? { runtimeContent: intent.runtimeContent }
+          : {}),
+        visibleInQueue
       },
-      ...(intent.runtimeContent
-        ? { runtimeContent: intent.runtimeContent }
-        : {}),
-      visibleInQueue
+      type: "queue/enqueued",
+      workspaceId: intent.workspaceId
     },
-    type: "queue/enqueued",
-    workspaceId: intent.workspaceId
-  });
+    { insertAtFront: resumingFromUserStop }
+  );
 }
 
 function sendCommandFromImmediateSubmit(
@@ -550,55 +565,61 @@ function drainSession(
   const originalState = state;
   let record = state.recordsBySessionId[agentSessionId];
   if (!record) return unchanged(state);
+  let barrierPending = false;
   if (record.deliveryBarrierTurnId) {
     const barrierTurn =
       lifecycle.turnsById[
         canonicalTurnKey(agentSessionId, record.deliveryBarrierTurnId)
       ];
     if (!barrierTurn || barrierTurn.phase !== "settled") {
-      return unchanged(state);
+      // The barrier only serializes plain new-turn sends; it does not gate
+      // drain readiness on its own. Whether it blocks the head is decided
+      // below, alongside every other blocker, so a guidance head steering
+      // this very turn is not deadlocked behind its own barrier.
+      barrierPending = true;
+    } else {
+      record = { ...record, deliveryBarrierTurnId: null };
+      const compacted = compactQueueRecord(record);
+      state = compacted
+        ? replaceRecord(state, agentSessionId, compacted)
+        : deleteRecord(state, agentSessionId);
+      if (!compacted) return result(state);
     }
-    record = { ...record, deliveryBarrierTurnId: null };
-    const compacted = compactQueueRecord(record);
-    state = compacted
-      ? replaceRecord(state, agentSessionId, compacted)
-      : deleteRecord(state, agentSessionId);
-    if (!compacted) return result(state);
-  }
-  const head = record.prompts[0];
-  if (
-    !head ||
-    record.inFlight ||
-    record.uncertainDelivery ||
-    record.suspendReason ||
-    record.failedPromptId === head.id
-  ) {
-    return state === originalState ? unchanged(state) : result(state);
   }
   const availability = deriveCanonicalSubmitAvailability(
     lifecycle,
     agentSessionId
   );
-  if (
-    availability.state !== "available" &&
-    !(
-      head.guidance === true &&
-      availability.state === "blocked" &&
-      availability.reason === "active_turn"
-    )
-  ) {
-    return result(state);
+  // The guidance flag was resolved when the prompt entered the queue; whether
+  // it can steer is decided here, against the availability observed at drain
+  // time. A prompt queued as guidance behind a turn that has since settled is
+  // sent as a plain new-turn submit instead of a doomed steer.
+  const decision = resolveQueueDrainDecision(
+    record,
+    availability,
+    barrierPending
+  );
+  if (decision.kind === "blocked") {
+    return state === originalState ? unchanged(state) : result(state);
   }
+  const head = record.prompts[0]!;
   const sequence = state.nextCommandSequence;
   const commandId = queueSendCommandId(record.agentSessionId, sequence);
   return {
-    commands: [sendCommandFromQueuedPrompt(record, head, commandId)],
+    commands: [
+      sendCommandFromQueuedPrompt(record, head, commandId, decision.guidance)
+    ],
     state: replaceRecord(
       { ...state, nextCommandSequence: sequence + 1 },
       record.agentSessionId,
       {
         ...record,
-        inFlight: { commandId, kind: "send", promptId: head.id }
+        inFlight: {
+          commandId,
+          ...(decision.guidance ? { guidance: true as const } : {}),
+          kind: "send",
+          promptId: head.id
+        }
       }
     )
   };
@@ -607,7 +628,8 @@ function drainSession(
 function sendCommandFromQueuedPrompt(
   record: PromptQueueRecord,
   head: PromptQueueRecord["prompts"][number],
-  commandId: string
+  commandId: string,
+  guidance: boolean
 ): Extract<EngineCommand, { type: "queue/sendPrompt" }> {
   return {
     agentSessionId: record.agentSessionId,
@@ -616,7 +638,7 @@ function sendCommandFromQueuedPrompt(
     clientSubmitId: head.clientSubmitId ?? head.id,
     content: head.runtimeContent ?? head.content,
     ...(head.displayPrompt ? { displayPrompt: head.displayPrompt } : {}),
-    ...(head.guidance === true ? { guidance: true } : {}),
+    ...(guidance ? { guidance: true } : {}),
     ...(head.submitDiagnostics
       ? { submitDiagnostics: head.submitDiagnostics }
       : {}),

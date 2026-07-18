@@ -3,7 +3,11 @@ import type {
   DesktopDeveloperApi,
   DesktopRuntimeApi
 } from "@preload/types";
-import type { AgentTarget, TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  AgentTarget,
+  DeletedAgentConversationPurgeResult,
+  TuttidClient
+} from "@tutti-os/client-tuttid-ts";
 import type {
   ClearDeveloperLogsResult,
   DesktopComputerUseActionResult,
@@ -82,6 +86,7 @@ export interface DesktopWorkspaceSettingsClient {
   clearWorkspaceAgentSessions(
     workspaceID: string
   ): Promise<ClearWorkspaceAgentSessionsResponse>;
+  purgeDeletedAgentConversations(): Promise<DeletedAgentConversationPurgeResult>;
   deleteManagedModelProvider(
     workspaceID: string,
     providerID: WorkspaceManagedModelProviderID
@@ -115,7 +120,9 @@ export function createDesktopWorkspaceSettingsClient(input: {
   runtimeApi: DesktopRuntimeApi;
   tuttidClient: Pick<
     TuttidClient,
-    "listAgentTargets" | "setSystemAgentTargetEnabled"
+    | "listAgentTargets"
+    | "setSystemAgentTargetEnabled"
+    | "purgeDeletedAgentConversations"
   >;
 }): DesktopWorkspaceSettingsClient {
   return {
@@ -160,6 +167,9 @@ export function createDesktopWorkspaceSettingsClient(input: {
         agentTargetID,
         enabled
       );
+    },
+    purgeDeletedAgentConversations() {
+      return input.tuttidClient.purgeDeletedAgentConversations();
     },
     clearLogs() {
       return input.developerApi.clearLogs();

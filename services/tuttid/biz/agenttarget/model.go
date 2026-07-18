@@ -45,7 +45,7 @@ type Target struct {
 	Name               string
 	IconKey            string
 	IconURL            string
-	SidebarIconURL     string
+	MaskIconURL        string
 	HeroImageURL       string
 	Enabled            bool
 	Source             string
@@ -184,7 +184,7 @@ func NormalizeTarget(value Target) (Target, error) {
 	value.Name = strings.TrimSpace(value.Name)
 	value.IconKey = strings.TrimSpace(value.IconKey)
 	value.IconURL = strings.TrimSpace(value.IconURL)
-	value.SidebarIconURL = strings.TrimSpace(value.SidebarIconURL)
+	value.MaskIconURL = strings.TrimSpace(value.MaskIconURL)
 	value.HeroImageURL = strings.TrimSpace(value.HeroImageURL)
 	value.Source = normalizeSource(value.Source)
 	value.AvailabilityStatus = strings.TrimSpace(value.AvailabilityStatus)

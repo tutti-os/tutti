@@ -323,6 +323,14 @@ export type DesktopBrowserUseConnectionMode = "isolated" | "autoConnect";
 
 export type DesktopAppCatalogChannel = "production" | "staging";
 
+export type DeletedAgentConversationRetentionDays = 15 | 30;
+
+export type DeletedAgentConversationPurgeResult = {
+  removedSessions: number;
+  removedMessages: number;
+  payloadBytes: number;
+};
+
 export type DesktopPreferences = {
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
@@ -334,6 +342,7 @@ export type DesktopPreferences = {
   defaultAgentProvider: DesktopDefaultAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   featureFlags: DesktopFeatureFlags;
   workbenchShortcuts: DesktopWorkbenchShortcuts;
@@ -468,7 +477,7 @@ export type AgentTarget = {
   name: string;
   iconKey?: string | null;
   iconUrl?: string | null;
-  sidebarIconUrl?: string | null;
+  maskIconUrl?: string | null;
   heroImageUrl?: string | null;
   availability?: AgentProviderAvailability | null;
   enabled: boolean;
@@ -3332,6 +3341,45 @@ export type PutDesktopPreferencesResponses = {
 
 export type PutDesktopPreferencesResponse =
   PutDesktopPreferencesResponses[keyof PutDesktopPreferencesResponses];
+
+export type PurgeDeletedAgentConversationsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-maintenance/deleted-conversations/purge";
+};
+
+export type PurgeDeletedAgentConversationsErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type PurgeDeletedAgentConversationsError =
+  PurgeDeletedAgentConversationsErrors[keyof PurgeDeletedAgentConversationsErrors];
+
+export type PurgeDeletedAgentConversationsResponses = {
+  /**
+   * Purge completed
+   */
+  200: DeletedAgentConversationPurgeResult;
+};
+
+export type PurgeDeletedAgentConversationsResponse =
+  PurgeDeletedAgentConversationsResponses[keyof PurgeDeletedAgentConversationsResponses];
 
 export type DeleteUserProjectData = {
   body: DeleteUserProjectRequest;

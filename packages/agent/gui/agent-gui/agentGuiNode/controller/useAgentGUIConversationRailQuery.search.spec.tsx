@@ -515,7 +515,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
             onConfirmDeleteProjectConversations={async () => []}
             onConversationQueryChange={() => {}}
             onCreateConversation={() => {}}
-            onMarkConversationUnread={() => {}}
             onRemoveProject={() => {}}
             onMoveProject={async () => {}}
             onRequestDeleteConversation={() => {}}
@@ -524,6 +523,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
             onSelectConversationFilterTarget={() => {}}
             onToggleConversationPinned={() => {}}
             onToggleProjectPinned={async () => {}}
+            onMarkConversationUnread={() => {}}
             onUpdateConversationFilter={() => {}}
           />
         </Profiler>
@@ -633,7 +633,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           onConfirmDeleteProjectConversations={async () => []}
           onConversationQueryChange={() => {}}
           onCreateConversation={() => {}}
-          onMarkConversationUnread={() => {}}
           onRemoveProject={() => {}}
           onMoveProject={async () => {}}
           onRequestDeleteConversation={() => {}}
@@ -642,6 +641,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
           onSelectConversationFilterTarget={() => {}}
           onToggleConversationPinned={() => {}}
           onToggleProjectPinned={async () => {}}
+          onMarkConversationUnread={() => {}}
           onUpdateConversationFilter={() => {}}
         />
       );
@@ -792,7 +792,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
       .getByText("Conversations")
       .closest("section");
     const alphaHeader = alphaSection?.firstElementChild as HTMLElement;
-    const gammaHeader = gammaSection?.firstElementChild as HTMLElement;
     const setDragImage = vi.fn();
     const dataTransfer = {
       dropEffect: "none",
@@ -862,9 +861,10 @@ describe("useAgentGUIConversationRailQuery search", () => {
       });
     }
     animationFrames.length = 0;
-    const currentGammaHeader = screen.getByText("Gamma").closest("section")
-      ?.firstElementChild as HTMLElement;
-    fireEvent.dragOver(currentGammaHeader, { clientY: 1, dataTransfer });
+    fireEvent.dragOver(gammaSection as HTMLElement, {
+      clientY: 1,
+      dataTransfer
+    });
     expect(animationFrames.length).toBeGreaterThan(0);
     expect(projectDragAutoScrollDelta(1, { bottom: 200, top: 0 })).toBeLessThan(
       0
@@ -875,7 +875,12 @@ describe("useAgentGUIConversationRailQuery search", () => {
     expect(gammaSection?.getAttribute("data-project-drop-indicator")).toBe(
       "after"
     );
-    fireEvent.drop(gammaHeader, { dataTransfer });
+    fireEvent.drop(
+      gammaSection?.closest(
+        '[data-slot="scroll-area-viewport"]'
+      ) as HTMLElement,
+      { dataTransfer }
+    );
     await waitFor(() =>
       expect(moveProject).toHaveBeenCalledWith("alpha", null)
     );
@@ -942,7 +947,6 @@ const RAIL_LABELS = {
   emptyProjectConversations: "No conversations",
   fallbackAgentTitle: "Agent",
   loadingConversations: "Loading conversations",
-  markSessionUnread: "Mark unread",
   newConversation: "New conversation",
   noConversations: "No conversations",
   openConversationWindow: "Open in window",

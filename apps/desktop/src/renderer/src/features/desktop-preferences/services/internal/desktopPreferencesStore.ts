@@ -9,6 +9,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DeletedAgentConversationRetentionDays,
   DesktopFeatureFlags,
   DesktopFileDefaultOpenersByExtension,
   DesktopMinimizeAnimation,
@@ -32,6 +33,7 @@ export function createDesktopPreferencesStore(input: {
   defaultAgentProvider: DesktopDefaultAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
   featureFlags: DesktopFeatureFlags;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
@@ -51,6 +53,7 @@ export function createDesktopPreferencesStore(input: {
     changingBrowserUseConnectionMode: null,
     changingDockIconStyle: null,
     changingDockPlacement: null,
+    changingDeletedAgentConversationRetentionDays: null,
     changingLocale: null,
     changingFeatureFlags: null,
     changingMinimizeAnimation: null,
@@ -72,6 +75,8 @@ export function createDesktopPreferencesStore(input: {
     defaultAgentProvider: input.defaultAgentProvider,
     dockIconStyle: input.dockIconStyle,
     dockPlacement: input.dockPlacement,
+    deletedAgentConversationRetentionDays:
+      input.deletedAgentConversationRetentionDays,
     featureFlags: input.featureFlags,
     fileDefaultOpenersByExtension: input.fileDefaultOpenersByExtension,
     locale: input.locale,

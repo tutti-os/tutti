@@ -5,6 +5,7 @@ import {
   workspaceProtocolErrorCodes
 } from "@tutti-os/client-tuttid-ts";
 import { toDesktopIpcResult } from "./result.ts";
+import { DESKTOP_AGENT_PROMPT_FILE_TOO_LARGE_ERROR_CODE } from "../../shared/agentPromptAssets.ts";
 
 test("toDesktopIpcResult preserves protocol error details for renderer i18n", async () => {
   const result = await toDesktopIpcResult(async () => {
@@ -43,6 +44,22 @@ test("toDesktopIpcResult preserves non-protocol errors as plain desktop errors",
     error: {
       code: "transport_request_failed",
       message: "plain failure"
+    }
+  });
+});
+
+test("toDesktopIpcResult preserves prompt file size errors", async () => {
+  const result = await toDesktopIpcResult(async () => {
+    throw Object.assign(new Error("Agent prompt file is too large."), {
+      code: DESKTOP_AGENT_PROMPT_FILE_TOO_LARGE_ERROR_CODE
+    });
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: {
+      code: DESKTOP_AGENT_PROMPT_FILE_TOO_LARGE_ERROR_CODE,
+      message: "Agent prompt file is too large."
     }
   });
 });

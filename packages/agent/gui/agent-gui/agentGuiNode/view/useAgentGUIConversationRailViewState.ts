@@ -5,6 +5,7 @@ import {
   reduceAgentGUIConversationRailViewState,
   type AgentGUIConversationRailRevealRequest
 } from "../model/agentGuiConversationRailViewState";
+import { useStableEventCallback } from "./agentGUIViewUtils";
 
 interface UseAgentGUIConversationRailViewStateInput {
   activeConversationId: string | null;
@@ -164,7 +165,7 @@ export function useAgentGUIConversationRailViewState(
     },
     []
   );
-  const setSectionVisibleItemLimit = useCallback(
+  const setSectionVisibleItemLimit = useStableEventCallback(
     (sectionId: string, limit: number) => {
       dispatch({
         type: "section-visible-limit-set",
@@ -172,18 +173,16 @@ export function useAgentGUIConversationRailViewState(
         scopeKey: input.scopeKey,
         sectionId
       });
-    },
-    [input.scopeKey]
+    }
   );
-  const toggleProjectSectionCollapsed = useCallback(
+  const toggleProjectSectionCollapsed = useStableEventCallback(
     (sectionId: string) => {
       dispatch({
         type: "section-collapsed-toggled",
         scopeKey: input.scopeKey,
         sectionId
       });
-    },
-    [input.scopeKey]
+    }
   );
 
   return {

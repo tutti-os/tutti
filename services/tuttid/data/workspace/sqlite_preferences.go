@@ -20,7 +20,7 @@ func (s *SQLiteStore) GetDesktopPreferences(ctx context.Context) (preferencesbiz
 	}
 
 	row := s.readDB.QueryRowContext(ctx, `
-SELECT default_agent_provider, agent_conversation_detail_mode, agent_dock_layout, dock_icon_style, dock_placement, locale, theme_source, sleep_prevention_mode, update_channel, update_policy, agent_composer_defaults_by_provider_json, agent_composer_defaults_by_agent_target_json, agent_gui_conversation_rail_collapsed_by_provider_json, browser_use_connection_mode, file_default_openers_by_extension_json, app_catalog_channel, minimize_animation, show_app_developer_sources, workbench_window_snapping_enabled, workbench_window_snapping_shortcut_preset, feature_flags_json, workbench_shortcuts_json
+SELECT default_agent_provider, agent_conversation_detail_mode, agent_dock_layout, dock_icon_style, dock_placement, deleted_agent_conversation_retention_days, locale, theme_source, sleep_prevention_mode, update_channel, update_policy, agent_composer_defaults_by_provider_json, agent_composer_defaults_by_agent_target_json, agent_gui_conversation_rail_collapsed_by_provider_json, browser_use_connection_mode, file_default_openers_by_extension_json, app_catalog_channel, minimize_animation, show_app_developer_sources, workbench_window_snapping_enabled, workbench_window_snapping_shortcut_preset, feature_flags_json, workbench_shortcuts_json
 FROM desktop_preferences
 WHERE id = ?
 `, desktopPreferencesRowID)
@@ -32,6 +32,7 @@ WHERE id = ?
 	var browserUseConnectionMode string
 	var dockIconStyle string
 	var dockPlacement string
+	var deletedAgentConversationRetentionDays int
 	var locale string
 	var minimizeAnimation string
 	var showAppDeveloperSources bool
@@ -47,7 +48,7 @@ WHERE id = ?
 	var agentComposerDefaultsByAgentTargetJSON string
 	var agentGUIConversationRailCollapsedJSON string
 	var fileDefaultOpenersJSON string
-	if err := row.Scan(&defaultAgentProvider, &agentConversationDetailMode, &agentDockLayout, &dockIconStyle, &dockPlacement, &locale, &themeSource, &sleepPreventionMode, &updateChannel, &updatePolicy, &agentComposerDefaultsJSON, &agentComposerDefaultsByAgentTargetJSON, &agentGUIConversationRailCollapsedJSON, &browserUseConnectionMode, &fileDefaultOpenersJSON, &appCatalogChannel, &minimizeAnimation, &showAppDeveloperSources, &windowSnappingEnabled, &windowSnappingShortcutPreset, &featureFlagsJSON, &workbenchShortcutsJSON); err != nil {
+	if err := row.Scan(&defaultAgentProvider, &agentConversationDetailMode, &agentDockLayout, &dockIconStyle, &dockPlacement, &deletedAgentConversationRetentionDays, &locale, &themeSource, &sleepPreventionMode, &updateChannel, &updatePolicy, &agentComposerDefaultsJSON, &agentComposerDefaultsByAgentTargetJSON, &agentGUIConversationRailCollapsedJSON, &browserUseConnectionMode, &fileDefaultOpenersJSON, &appCatalogChannel, &minimizeAnimation, &showAppDeveloperSources, &windowSnappingEnabled, &windowSnappingShortcutPreset, &featureFlagsJSON, &workbenchShortcutsJSON); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return preferencesbiz.DefaultDesktopPreferences(), nil
 		}
@@ -86,6 +87,7 @@ WHERE id = ?
 		DefaultAgentProvider:                        defaultAgentProvider,
 		DockIconStyle:                               dockIconStyle,
 		DockPlacement:                               dockPlacement,
+		DeletedAgentConversationRetentionDays:       preferencesbiz.NormalizeDeletedAgentConversationRetentionDays(deletedAgentConversationRetentionDays),
 		FeatureFlags:                                featureFlags,
 		FileDefaultOpenersByExtension:               fileDefaultOpeners,
 		Initialized:                                 true,
@@ -140,6 +142,7 @@ INSERT INTO desktop_preferences (
   agent_dock_layout,
   dock_icon_style,
   dock_placement,
+  deleted_agent_conversation_retention_days,
   locale,
   theme_source,
   sleep_prevention_mode,
@@ -159,13 +162,14 @@ INSERT INTO desktop_preferences (
   workbench_shortcuts_json,
   updated_at_unix_ms
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   default_agent_provider = excluded.default_agent_provider,
   agent_conversation_detail_mode = excluded.agent_conversation_detail_mode,
   agent_dock_layout = excluded.agent_dock_layout,
   dock_icon_style = excluded.dock_icon_style,
   dock_placement = excluded.dock_placement,
+  deleted_agent_conversation_retention_days = excluded.deleted_agent_conversation_retention_days,
   locale = excluded.locale,
   theme_source = excluded.theme_source,
   sleep_prevention_mode = excluded.sleep_prevention_mode,
@@ -183,7 +187,7 @@ ON CONFLICT(id) DO UPDATE SET
   feature_flags_json = excluded.feature_flags_json,
   workbench_shortcuts_json = excluded.workbench_shortcuts_json,
   updated_at_unix_ms = excluded.updated_at_unix_ms
-`, desktopPreferencesRowID, preferences.DefaultAgentProvider, preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode), preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout), preferences.DockIconStyle, preferences.DockPlacement, preferences.Locale, preferences.ThemeSource, preferences.SleepPreventionMode, preferences.UpdateChannel, preferences.UpdatePolicy, agentComposerDefaultsJSON, agentComposerDefaultsByAgentTargetJSON, agentGUIConversationRailCollapsedJSON, fileDefaultOpenersJSON, preferences.AppCatalogChannel, preferences.BrowserUseConnectionMode, preferences.MinimizeAnimation, preferences.ShowAppDeveloperSources, preferences.WindowSnappingEnabled, preferences.WindowSnappingShortcutPreset, featureFlagsJSON, workbenchShortcutsJSON, now)
+`, desktopPreferencesRowID, preferences.DefaultAgentProvider, preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode), preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout), preferences.DockIconStyle, preferences.DockPlacement, preferencesbiz.NormalizeDeletedAgentConversationRetentionDays(preferences.DeletedAgentConversationRetentionDays), preferences.Locale, preferences.ThemeSource, preferences.SleepPreventionMode, preferences.UpdateChannel, preferences.UpdatePolicy, agentComposerDefaultsJSON, agentComposerDefaultsByAgentTargetJSON, agentGUIConversationRailCollapsedJSON, fileDefaultOpenersJSON, preferences.AppCatalogChannel, preferences.BrowserUseConnectionMode, preferences.MinimizeAnimation, preferences.ShowAppDeveloperSources, preferences.WindowSnappingEnabled, preferences.WindowSnappingShortcutPreset, featureFlagsJSON, workbenchShortcutsJSON, now)
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("put desktop preferences: %w", err)
 	}

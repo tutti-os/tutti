@@ -438,7 +438,7 @@ func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollecto
 		return nil
 	}
 	return agenthost.New(agenthost.Config{
-		CanonicalStore: serviceHostStore{service: s}, SessionManagement: serviceHostStore{service: s},
+		CanonicalStore: serviceHostStore{service: s}, SessionManagement: serviceHostStore{service: s}, SessionPurge: s.SessionPurgeStore,
 		Runtime:            serviceHostRuntime{service: s},
 		RuntimePreparation: serviceHostPreparation{service: s}, Attachments: s.PromptAttachmentStore,
 		SettingsPolicy: serviceHostSettingsPolicy{service: s},

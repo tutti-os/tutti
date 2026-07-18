@@ -106,6 +106,147 @@ INSERT INTO workspace_agent_runtime_operations (
 	return op, true, nil
 }
 
+// PrepareInteractiveRuntimeOperation atomically establishes the response claim
+// by transitioning the interaction from pending to answered and persists the
+// durable operation that will deliver that answer to the runtime. A terminal
+// interaction returns its stored disposition without creating another
+// operation, allowing competing GUI/CLI responders to normalize the result.
+func (s *Store) PrepareInteractiveRuntimeOperation(
+	ctx context.Context,
+	input RuntimeOperationPrepare,
+) (RuntimeOperation, Interaction, InteractionTransitionResult, error) {
+	if s == nil || s.db == nil {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, errors.New("workspace database is not initialized")
+	}
+	input.OperationID = strings.TrimSpace(input.OperationID)
+	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
+	input.AgentSessionID = strings.TrimSpace(input.AgentSessionID)
+	input.TurnID = strings.TrimSpace(input.TurnID)
+	input.RequestID = strings.TrimSpace(input.RequestID)
+	if input.Kind != RuntimeOperationKindInteractiveResponse {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, errors.New("interactive runtime operation kind is required")
+	}
+	if err := validateRuntimeOperationPrepare(input); err != nil {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, err
+	}
+	now := input.OccurredAtMS
+	if now <= 0 {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, errors.New("runtime operation occurred time is required")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, fmt.Errorf("begin prepare interactive runtime operation: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	existingInteraction, found, err := getAgentInteractionTx(ctx, tx, input.WorkspaceID, input.AgentSessionID, input.TurnID, input.RequestID)
+	if err != nil {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, err
+	}
+	if !found {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, ErrRuntimeOperationSubjectState
+	}
+	existingOperation, operationFound, err := getRuntimeOperationBySubjectTx(
+		ctx, tx, input.WorkspaceID, input.AgentSessionID, input.Kind, input.RequestID,
+	)
+	if err != nil {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, err
+	}
+	claimPayload := input.Payload
+	if operationFound {
+		claimPayload = existingOperation.Payload
+	}
+	response := InteractionUpsert{
+		WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		RequestID: input.RequestID, TurnID: input.TurnID,
+		Kind: existingInteraction.Kind, Status: InteractionStatusAnswered,
+		ToolName: existingInteraction.ToolName, Input: existingInteraction.Input,
+		Metadata: existingInteraction.Metadata, Output: interactiveResponseOutput(claimPayload),
+		OccurredAtUnixMS: now,
+	}
+	interaction, transitionResult, err := s.upsertInteractionTx(ctx, tx, response, now)
+	if err != nil {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, err
+	}
+	mutations := make([]TransactionMutation, 0, 2)
+	if transitionResult == InteractionTransitionApplied {
+		mutations = append(mutations, transactionMutation(
+			input.WorkspaceID, input.AgentSessionID, MutationEntityInteraction,
+			interactionMutationEntityID(input.TurnID, input.RequestID), "answer", interaction.UpdatedAtUnixMS,
+		))
+	}
+	if operationFound {
+		delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
+		if err != nil {
+			return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, fmt.Errorf("commit duplicate interactive runtime operation prepare: %w", err)
+		}
+		committed = true
+		existingOperation.CommitTransactionID = delta.TransactionID
+		existingOperation.CommitDelta = delta
+		return existingOperation, interaction, transitionResult, nil
+	}
+	if transitionResult != InteractionTransitionApplied {
+		if _, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations); err != nil {
+			return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, fmt.Errorf("commit terminal interactive response observation: %w", err)
+		}
+		committed = true
+		return RuntimeOperation{}, interaction, transitionResult, nil
+	}
+	if err := validateRuntimeOperationSubjectTx(ctx, tx, input); err != nil {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, err
+	}
+	payloadJSON, err := marshalJSONMap(input.Payload)
+	if err != nil {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, err
+	}
+	if byID, idFound, err := getRuntimeOperationTx(ctx, tx, input.WorkspaceID, input.OperationID); err != nil {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, err
+	} else if idFound {
+		_ = byID
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, ErrRuntimeOperationConflict
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO workspace_agent_runtime_operations (
+  operation_id, workspace_id, agent_session_id, kind, status, subject_id, turn_id,
+  request_id, payload_json, next_attempt_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, input.OperationID, input.WorkspaceID, input.AgentSessionID, input.Kind,
+		RuntimeOperationStatusPrepared, input.RequestID, input.TurnID, input.RequestID,
+		payloadJSON, now, now, now); err != nil {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, fmt.Errorf("insert interactive runtime operation: %w", err)
+	}
+	operation, _, err := getRuntimeOperationTx(ctx, tx, input.WorkspaceID, input.OperationID)
+	if err != nil {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, err
+	}
+	mutations = append(mutations, transactionMutation(
+		input.WorkspaceID, input.AgentSessionID, MutationEntityRuntimeOperation,
+		input.OperationID, "prepare", operation.Version,
+	))
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
+	if err != nil {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, fmt.Errorf("commit interactive runtime operation prepare: %w", err)
+	}
+	committed = true
+	operation.CommitTransactionID = delta.TransactionID
+	operation.CommitDelta = delta
+	return operation, interaction, transitionResult, nil
+}
+
+func interactiveResponseOutput(payload map[string]any) map[string]any {
+	responsePayload, _ := payload["payload"].(map[string]any)
+	return map[string]any{
+		"action":   payloadString(payload, "action"),
+		"optionId": payloadString(payload, "optionId"),
+		"payload":  cloneJSONMap(responsePayload),
+	}
+}
+
 func (s *Store) GetRuntimeOperation(ctx context.Context, workspaceID string, operationID string) (RuntimeOperation, bool, error) {
 	if s == nil || s.db == nil {
 		return RuntimeOperation{}, false, errors.New("workspace database is not initialized")

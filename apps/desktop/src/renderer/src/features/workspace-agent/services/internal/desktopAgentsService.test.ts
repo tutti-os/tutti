@@ -125,7 +125,7 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
       createAgentTarget({
         id: "local:codex",
         heroImageUrl: "data:image/jpeg;base64,hero",
-        sidebarIconUrl: "data:image/svg+xml;base64,sidebar",
+        maskIconUrl: "data:image/svg+xml;base64,mask",
         iconKey: "codex-descriptor",
         name: "Codex",
         provider: "codex",
@@ -142,8 +142,8 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
     presentations.map((target) => ({
       agentTargetId: target.agentTargetId,
       iconUrl: target.iconUrl,
+      maskIconUrl: target.maskIconUrl,
       heroImageUrl: target.heroImageUrl,
-      sidebarIconUrl: target.sidebarIconUrl,
       launchRefType: target.launchRefType,
       provider: target.provider
     })),
@@ -151,16 +151,16 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
       {
         agentTargetId: "local:codex",
         iconUrl: "tutti-asset://agent/codex-descriptor.png",
+        maskIconUrl: "data:image/svg+xml;base64,mask",
         heroImageUrl: "data:image/jpeg;base64,hero",
-        sidebarIconUrl: "data:image/svg+xml;base64,sidebar",
         launchRefType: "builtin_local",
         provider: "codex"
       },
       {
         agentTargetId: "local:claude-code",
         iconUrl: "tutti-asset://agent/claude-code.png",
+        maskIconUrl: null,
         heroImageUrl: null,
-        sidebarIconUrl: null,
         launchRefType: "builtin_local",
         provider: "claude-code"
       }
@@ -172,22 +172,23 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
       agentTargetId: "local:codex",
       availability: { status: "ready" },
       iconUrl: "tutti-asset://agent/codex-descriptor.png",
+      maskIconUrl: "data:image/svg+xml;base64,mask",
       heroImageUrl: "data:image/jpeg;base64,hero",
-      sidebarIconUrl: "data:image/svg+xml;base64,sidebar",
       name: "Codex",
       provider: "codex"
     }
   ]);
 });
 
-test("desktop agents service reuses an Extension sidebar icon as its identity while retaining its mask icon", () => {
+test("desktop agents service preserves Extension primary and mask icons", () => {
   const presentations = mapAgentTargetsToPresentations([
     {
       createdAtUnixMs: 1780272000000,
       enabled: true,
       heroImageUrl: null,
       iconKey: "extension:gemini",
-      iconUrl: "data:image/svg+xml;base64,mask",
+      iconUrl: "data:image/svg+xml;base64,colored",
+      maskIconUrl: "data:image/svg+xml;base64,mask",
       id: "extension:gemini",
       launchRef: {
         extensionInstallationId: "gemini@1.0.3",
@@ -195,7 +196,6 @@ test("desktop agents service reuses an Extension sidebar icon as its identity wh
       },
       name: "Gemini CLI",
       provider: "acp:gemini",
-      sidebarIconUrl: "data:image/svg+xml;base64,colored",
       sortOrder: 700,
       source: "system",
       updatedAtUnixMs: 1780272000000
@@ -206,8 +206,7 @@ test("desktop agents service reuses an Extension sidebar icon as its identity wh
     {
       agentTargetId: "extension:gemini",
       iconUrl: "data:image/svg+xml;base64,colored",
-      maskIconUrl: "data:image/svg+xml;base64,mask",
-      sidebarIconUrl: "data:image/svg+xml;base64,colored"
+      maskIconUrl: "data:image/svg+xml;base64,mask"
     }
   ]);
   assert.deepEqual(
@@ -218,8 +217,7 @@ test("desktop agents service reuses an Extension sidebar icon as its identity wh
       {
         agentTargetId: "extension:gemini",
         iconUrl: "data:image/svg+xml;base64,colored",
-        maskIconUrl: "data:image/svg+xml;base64,mask",
-        sidebarIconUrl: "data:image/svg+xml;base64,colored"
+        maskIconUrl: "data:image/svg+xml;base64,mask"
       }
     ]
   );
@@ -229,13 +227,11 @@ function selectIconPresentation(input: {
   agentTargetId: string;
   iconUrl: string;
   maskIconUrl?: string | null;
-  sidebarIconUrl?: string | null;
 }) {
   return {
     agentTargetId: input.agentTargetId,
     iconUrl: input.iconUrl,
-    maskIconUrl: input.maskIconUrl ?? null,
-    sidebarIconUrl: input.sidebarIconUrl ?? null
+    maskIconUrl: input.maskIconUrl ?? null
   };
 }
 
@@ -244,7 +240,7 @@ function createAgentTarget(input: {
   id: string;
   iconKey?: string | null;
   heroImageUrl?: string | null;
-  sidebarIconUrl?: string | null;
+  maskIconUrl?: string | null;
   name: string;
   provider: "claude-code" | "codex";
   sortOrder: number;
@@ -254,7 +250,7 @@ function createAgentTarget(input: {
     enabled: input.enabled ?? true,
     iconKey: input.iconKey ?? null,
     heroImageUrl: input.heroImageUrl ?? null,
-    sidebarIconUrl: input.sidebarIconUrl ?? null,
+    maskIconUrl: input.maskIconUrl ?? null,
     id: input.id,
     launchRef: {
       provider: input.provider,

@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:58c3153c2fddede7"
+	BusinessEventCatalogRevision = "sha256:39e753d5c669864b"
 )
 
 type Topic string
@@ -129,16 +129,17 @@ type PreferencesDesktopPreferences struct {
 		Openclaw   *bool `json:"openclaw,omitempty"`
 		Opencode   *bool `json:"opencode,omitempty"`
 	} `json:"agentGuiConversationRailCollapsedByProvider"`
-	AgentConversationDetailMode   string            `json:"agentConversationDetailMode"`
-	AgentDockLayout               string            `json:"agentDockLayout"`
-	AppCatalogChannel             string            `json:"appCatalogChannel"`
-	BrowserUseConnectionMode      *string           `json:"browserUseConnectionMode,omitempty"`
-	DefaultAgentProvider          string            `json:"defaultAgentProvider"`
-	DockIconStyle                 string            `json:"dockIconStyle"`
-	DockPlacement                 string            `json:"dockPlacement"`
-	FileDefaultOpenersByExtension map[string]string `json:"fileDefaultOpenersByExtension"`
-	FeatureFlags                  map[string]bool   `json:"featureFlags"`
-	WorkbenchShortcuts            struct {
+	AgentConversationDetailMode           string            `json:"agentConversationDetailMode"`
+	AgentDockLayout                       string            `json:"agentDockLayout"`
+	AppCatalogChannel                     string            `json:"appCatalogChannel"`
+	BrowserUseConnectionMode              *string           `json:"browserUseConnectionMode,omitempty"`
+	DefaultAgentProvider                  string            `json:"defaultAgentProvider"`
+	DockIconStyle                         string            `json:"dockIconStyle"`
+	DockPlacement                         string            `json:"dockPlacement"`
+	DeletedAgentConversationRetentionDays int               `json:"deletedAgentConversationRetentionDays"`
+	FileDefaultOpenersByExtension         map[string]string `json:"fileDefaultOpenersByExtension"`
+	FeatureFlags                          map[string]bool   `json:"featureFlags"`
+	WorkbenchShortcuts                    struct {
 		NewAgentConversation *string `json:"newAgentConversation"`
 		NewSameTypeWindow    *string `json:"newSameTypeWindow"`
 	} `json:"workbenchShortcuts"`

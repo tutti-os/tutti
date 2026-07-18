@@ -76,10 +76,9 @@ external contract and is included in the durable npm release conventions.
 
 ## Testing defaults
 
-- For TypeScript package changes, run `pnpm typecheck`
-- If a package change affects `@tutti-os/ui-system` exports or import boundaries, also run `pnpm check:ui-boundaries`
-- If a package change affects desktop integration, also run `pnpm --filter @tutti-os/desktop build`
-- If a package change affects daemon behavior, also run the relevant `services/tuttid` checks
+Packages do not override the repository validation workflow. Follow
+[Validation Selection](../docs/conventions/testing.md#validation-selection)
+and add only checks required by the closest package `AGENTS.md`.
 
 ## Related docs
 

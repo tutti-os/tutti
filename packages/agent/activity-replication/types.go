@@ -53,7 +53,7 @@ type Target struct {
 	Name            string          `json:"name"`
 	IconKey         *string         `json:"iconKey"`
 	IconURL         string          `json:"iconUrl"`
-	SidebarIconURL  string          `json:"sidebarIconUrl,omitempty"`
+	MaskIconURL     string          `json:"maskIconUrl,omitempty"`
 	HeroImageURL    string          `json:"heroImageUrl"`
 	Enabled         bool            `json:"enabled"`
 	Source          string          `json:"source"`

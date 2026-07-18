@@ -273,6 +273,108 @@ test("command failure feeds back as a failed result with the error message", asy
   });
 });
 
+test("a steer that loses the settle race is retried as a plain send", async () => {
+  const { commandPort, engine } = createHarness();
+  const runningSession = {
+    activeTurn: {
+      agentSessionId: "session-1",
+      origin: "user_prompt" as const,
+      phase: "running" as const,
+      startedAtUnixMs: 1,
+      turnId: "turn-1",
+      updatedAtUnixMs: 1
+    },
+    activeTurnId: "turn-1",
+    agentSessionId: "session-1",
+    capabilities: {
+      activeTurnGuidance: true,
+      browserUse: false,
+      compact: false,
+      computerUse: false,
+      goalPause: false,
+      imageInput: false,
+      interrupt: false,
+      modelImageInputRequired: false,
+      permissionModeChangeDeferred: false,
+      permissionModeChangeDuringTurn: false,
+      planImplementation: false,
+      planMode: false,
+      rateLimits: false,
+      resumeRunningTurn: false,
+      review: false,
+      skills: false,
+      tokenUsage: false
+    },
+    cwd: "/workspace",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: "claude-code",
+    title: "Session",
+    updatedAtUnixMs: 1,
+    workspaceId: "ws-1"
+  };
+  engine.dispatch({
+    sessions: [runningSession],
+    type: "session/snapshotReceived"
+  });
+  engine.dispatch({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "steer" }],
+    expiresAtUnixMs: 120_000,
+    requestedAtUnixMs: 1,
+    routing: "send_now",
+    type: "submit/requested",
+    workspaceId: "ws-1"
+  });
+  const steer = commandPort.executedCommands.find(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(steer?.type, "queue/sendPrompt");
+  assert.equal(steer?.type === "queue/sendPrompt" && steer.guidance, true);
+
+  // The daemon settled the turn before the steer landed and rejected it.
+  assert.ok(steer && "commandId" in steer);
+  commandPort.fail(
+    steer.commandId,
+    Object.assign(new Error("agent session has no active turn"), {
+      code: "invalid_request",
+      reason: "agent.no_active_turn"
+    })
+  );
+  await flushMicrotasks();
+
+  engine.dispatch({
+    sessions: [
+      {
+        ...runningSession,
+        activeTurn: {
+          ...runningSession.activeTurn,
+          phase: "settled" as const,
+          settledAtUnixMs: 2,
+          updatedAtUnixMs: 2
+        },
+        activeTurnId: null,
+        updatedAtUnixMs: 2
+      }
+    ],
+    type: "session/snapshotReceived"
+  });
+  const sends = commandPort.executedCommands.filter(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(sends.length, 2);
+  const resend = sends[1];
+  assert.equal(
+    resend?.type === "queue/sendPrompt" ? resend.clientSubmitId : "",
+    "submit-1"
+  );
+  assert.equal(
+    resend?.type === "queue/sendPrompt" ? resend.guidance : true,
+    undefined
+  );
+});
+
 test("command timeout settles as timedOut and a late result is ignored", async () => {
   const { commandPort, diagnosticEvents, engine, timer } = createHarness();
   engine.dispatch({

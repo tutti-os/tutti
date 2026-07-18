@@ -11,6 +11,9 @@ type Repository = agentstore.Repository
 
 type ClearSessionsResult = agentstore.ClearSessionsResult
 type DeleteSessionResult = agentstore.DeleteSessionResult
+type PurgeDeletedSessionsInput = agentstore.PurgeDeletedSessionsInput
+type PurgedSession = agentstore.PurgedSession
+type PurgeDeletedSessionsResult = agentstore.PurgeDeletedSessionsResult
 type ListSessionSectionDeletionCandidatesInput = agentstore.ListSessionSectionDeletionCandidatesInput
 type SessionSectionDeletionCandidates = agentstore.SessionSectionDeletionCandidates
 type DeleteSessionsBatchInput = agentstore.DeleteSessionsBatchInput

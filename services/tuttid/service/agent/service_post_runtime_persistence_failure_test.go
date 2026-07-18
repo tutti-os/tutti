@@ -3,10 +3,13 @@ package agent
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
 func TestSubmitInteractiveCompletionFailureIsRecoveredFromLeasedOperation(t *testing.T) {
@@ -291,23 +294,57 @@ func TestTerminalRuntimeDispositionCompletesInteractiveOperationAsSuperseded(t *
 		RuntimeInteractiveDispositionInterrupted,
 	} {
 		t.Run(string(disposition), func(t *testing.T) {
+			ctx := context.Background()
+			store := openAgentServiceSQLiteStore(t)
+			if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}); err != nil {
+				t.Fatalf("Create workspace error = %v", err)
+			}
+			if _, err := store.ReportActivityState(ctx, agentactivitybiz.ActivityStateReport{
+				Session: agentactivitybiz.SessionStateReport{
+					WorkspaceID: "ws-1", AgentSessionID: "session-1", Kind: agentactivitybiz.SessionKindRoot,
+					Origin: "runtime", Provider: "codex", Status: "active", CurrentPhase: "waiting_approval", OccurredAtUnixMS: 1,
+				},
+				Turn: &agentactivitybiz.TurnTransition{
+					WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+					Phase: agentactivitybiz.TurnPhaseWaiting, Origin: agentactivitybiz.TurnOriginProviderInitiated, OccurredAtUnixMS: 1,
+				},
+				Interaction: &agentactivitybiz.InteractionUpsert{
+					WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1", RequestID: "request-1",
+					Kind: agentactivitybiz.InteractionKindApproval, Status: agentactivitybiz.InteractionStatusPending,
+					ToolName: "shell", Input: map[string]any{"command": "git status"}, OccurredAtUnixMS: 2,
+				},
+			}); err != nil {
+				t.Fatalf("seed interactive state error = %v", err)
+			}
 			runtime := newFakeRuntime()
-			runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{ID: "session-1", WorkspaceID: "ws-1", Provider: "codex", Status: "working"}
+			activeTurnID := "turn-1"
+			runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+				ID: "session-1", WorkspaceID: "ws-1", Provider: "codex", Status: "working",
+				TurnLifecycle: &TurnLifecycle{ActiveTurnID: &activeTurnID, Phase: agentactivitybiz.TurnPhaseWaiting},
+			}
 			runtime.submitInteractiveErr = ErrInteractiveRequestNotLive
 			runtime.interactiveDisposition = disposition
-			store := &runtimeOperationMemoryStore{}
 			service := newIsolatedAgentService(runtime)
 			service.RuntimeOperationStore = store
+			service.TurnStore = store
 			service.RuntimeOperationOwner = "worker-a"
 			service.RuntimeOperationClock = func() time.Time { return time.UnixMilli(1000) }
-			service.TurnStore = runtimeOperationTurnStore("turn-1", "request-1")
 
-			if _, err := service.SubmitInteractive(context.Background(), "ws-1", "session-1", "request-1", SubmitInteractiveInput{OptionID: stringRef("approve")}); err != nil {
-				t.Fatalf("SubmitInteractive() error = %v", err)
+			result, err := service.ApplicationHost().SubmitInteractive(ctx,
+				agenthost.SessionRef{WorkspaceID: "ws-1", AgentSessionID: "session-1"},
+				"request-1", agenthost.SubmitInteractiveInput{TurnID: "turn-1", OptionID: stringRef("approve")},
+			)
+			if err != nil {
+				t.Fatalf("Host.SubmitInteractive() error = %v", err)
 			}
-			if store.operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted ||
-				store.operation.Result != agentactivitybiz.RuntimeOperationResultSuperseded {
-				t.Fatalf("operation = %#v, want completed superseded", store.operation)
+			if result.Disposition != RuntimeInteractiveDispositionSuperseded ||
+				result.Operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted ||
+				result.Operation.Result != agentactivitybiz.RuntimeOperationResultSuperseded {
+				t.Fatalf("Host result = %#v, want completed superseded", result)
+			}
+			operation, found, err := store.GetRuntimeOperation(ctx, "ws-1", result.Operation.OperationID)
+			if err != nil || !found || operation.Result != agentactivitybiz.RuntimeOperationResultSuperseded {
+				t.Fatalf("stored operation = %#v found=%v error=%v", operation, found, err)
 			}
 		})
 	}
@@ -401,6 +438,7 @@ func runtimeOperationTurnStore(turnID string, requestID string) failingTurnStore
 }
 
 type runtimeOperationMemoryStore struct {
+	mu                sync.Mutex
 	operation         agentactivitybiz.RuntimeOperation
 	completeErr       error
 	events            []agentactivitybiz.RuntimeOperationEvent
@@ -455,7 +493,30 @@ func (s *runtimeOperationMemoryStore) PrepareRuntimeOperation(_ context.Context,
 	return s.operation, true, nil
 }
 
+func (s *runtimeOperationMemoryStore) PrepareInteractiveRuntimeOperation(_ context.Context, input agentactivitybiz.RuntimeOperationPrepare) (agentactivitybiz.RuntimeOperation, agentactivitybiz.Interaction, agentactivitybiz.InteractionTransitionResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	transition := agentactivitybiz.InteractionTransitionAlreadyApplied
+	if s.operation.OperationID == "" {
+		s.operation = agentactivitybiz.RuntimeOperation{OperationID: input.OperationID, WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID, Kind: input.Kind, Status: agentactivitybiz.RuntimeOperationStatusPrepared, TurnID: input.TurnID, RequestID: input.RequestID, Payload: input.Payload, CreatedAtUnixMS: input.OccurredAtMS, UpdatedAtUnixMS: input.OccurredAtMS}
+		transition = agentactivitybiz.InteractionTransitionApplied
+	}
+	interaction := agentactivitybiz.Interaction{
+		WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		TurnID: input.TurnID, RequestID: input.RequestID,
+		Status: agentactivitybiz.InteractionStatusAnswered,
+		Output: map[string]any{
+			"action":   payloadText(s.operation.Payload, "action"),
+			"optionId": payloadText(s.operation.Payload, "optionId"),
+			"payload":  s.operation.Payload["payload"],
+		},
+	}
+	return s.operation, interaction, transition, nil
+}
+
 func (s *runtimeOperationMemoryStore) GetRuntimeOperation(_ context.Context, workspaceID string, operationID string) (agentactivitybiz.RuntimeOperation, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.operation, s.operation.WorkspaceID == workspaceID && s.operation.OperationID == operationID, nil
 }
 
@@ -467,6 +528,8 @@ func (s *runtimeOperationMemoryStore) ListClaimableRuntimeOperations(_ context.C
 }
 
 func (s *runtimeOperationMemoryStore) ClaimRuntimeOperationLease(_ context.Context, input agentactivitybiz.ClaimRuntimeOperationLeaseInput) (agentactivitybiz.RuntimeOperation, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	claimable := (s.operation.Status == agentactivitybiz.RuntimeOperationStatusPrepared && s.operation.NextAttemptAtMS <= input.NowUnixMS) || (s.operation.Status == agentactivitybiz.RuntimeOperationStatusLeased && s.operation.LeaseExpiresAtMS <= input.NowUnixMS)
 	if !claimable {
 		return s.operation, false, nil
@@ -497,6 +560,8 @@ func (s *runtimeOperationMemoryStore) RequeueLeasedRuntimeOperationsOnStartup(_ 
 }
 
 func (s *runtimeOperationMemoryStore) CompleteInteractiveRuntimeOperation(_ context.Context, input agentactivitybiz.CompleteInteractiveRuntimeOperationInput) (agentactivitybiz.RuntimeOperationCompletion, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.completeErr != nil {
 		return agentactivitybiz.RuntimeOperationCompletion{}, false, s.completeErr
 	}

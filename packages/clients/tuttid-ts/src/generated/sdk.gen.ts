@@ -331,6 +331,9 @@ import type {
   PublishWorkspaceAppFactoryJobData,
   PublishWorkspaceAppFactoryJobErrors,
   PublishWorkspaceAppFactoryJobResponses,
+  PurgeDeletedAgentConversationsData,
+  PurgeDeletedAgentConversationsErrors,
+  PurgeDeletedAgentConversationsResponses,
   PutDesktopPreferencesData,
   PutDesktopPreferencesErrors,
   PutDesktopPreferencesResponses,
@@ -719,6 +722,24 @@ export const putDesktopPreferences = <ThrowOnError extends boolean = false>(
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Permanently purge all soft-deleted Agent conversations
+ */
+export const purgeDeletedAgentConversations = <
+  ThrowOnError extends boolean = false
+>(
+  options?: Options<PurgeDeletedAgentConversationsData, ThrowOnError>
+) =>
+  (options?.client ?? client).post<
+    PurgeDeletedAgentConversationsResponses,
+    PurgeDeletedAgentConversationsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-maintenance/deleted-conversations/purge",
+    ...options
   });
 
 /**

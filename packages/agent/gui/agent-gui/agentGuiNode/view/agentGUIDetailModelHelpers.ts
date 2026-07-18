@@ -2,10 +2,7 @@ import { useRef } from "react";
 import { normalizeOptionalWorkspaceAgentStatus } from "../../../shared/workspaceAgentStatusNormalizer";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
-import {
-  createAgentSessionMentionHref,
-  formatAgentMentionMarkdown
-} from "../agentRichText/agentFileMentionExtension";
+import { createAgentSessionHandoffPrompt } from "../agentRichText/agentFileMentionExtension";
 import type {
   AgentComposerSlashStatus,
   AgentComposerSlashStatusLimit
@@ -278,26 +275,12 @@ export function buildAgentConversationHandoffPrompt(input: {
     input.uiLanguage
   );
   const mentionLabel = title || sourceAgentLabel;
-  const href = createAgentSessionMentionHref({
+  return createAgentSessionHandoffPrompt({
     agentTargetId: conversation.agentTargetId,
     agentSessionId: conversation.id,
     label: mentionLabel,
     workspaceId: input.workspaceId
   });
-  return `${formatAgentMentionMarkdown({
-    kind: "session",
-    href,
-    workspaceId: input.workspaceId,
-    targetId: conversation.id,
-    agentTargetId: conversation.agentTargetId ?? undefined,
-    name: mentionLabel,
-    title: title || sourceAgentLabel,
-    scope: "my_sessions",
-    initiatorName: input.currentUserId?.trim() || sourceAgentLabel,
-    agentName: sourceAgentLabel,
-    status: conversation.status,
-    updatedAtUnixMs: conversation.updatedAtUnixMs
-  })} `;
 }
 
 export function handoffProjectPathForConversation(

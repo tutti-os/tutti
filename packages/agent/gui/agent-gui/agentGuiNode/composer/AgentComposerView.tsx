@@ -22,6 +22,7 @@ import {
   AgentProjectMissingStatusProbe
 } from "../AgentComposerSettingsMenus";
 import { AgentChromeNotice } from "../AgentSessionChrome";
+import { AgentFullAccessRestoredWarning } from "../AgentFullAccessRestoredWarning";
 import {
   AgentRichTextEditor,
   type AgentRichTextEditorHandle
@@ -34,7 +35,6 @@ import { AgentSlashStatusPanel } from "../AgentSlashStatusPanel";
 import { AgentReviewPickerPanel } from "../AgentReviewPickerPanel";
 import { ComposerFloatingMenuSurface } from "../composerFloatingMenu/ComposerFloatingMenuSurface";
 import type { AgentComposerProps } from "./AgentComposer.types";
-import type { AgentHostApi } from "../../../host/agentHostApi";
 import {
   EMPTY_PROVIDER_SKILLS,
   EMPTY_WORKSPACE_APP_ICONS,
@@ -76,9 +76,6 @@ interface Props {
   promptTipRef: RefObject<HTMLSpanElement | null>;
   editorHandleRef: RefObject<AgentRichTextEditorHandle | null>;
   mentionControllerRef: MutableRefObject<AgentMentionSearchController | null>;
-  getReferenceForFile:
-    | AgentHostApi["workspace"]["getReferenceForFile"]
-    | undefined;
   promptFilesSupported: boolean;
   onDismissProjectMenuAutoFocus?: (event: Event) => void;
   paletteDraftPrompt: string;
@@ -170,7 +167,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     selectFileMention
   } = input.mentionActions;
   const {
-    applyDroppedFileReferences,
+    addDraftFiles,
     clearGoalModeBadge,
     expandDraftLargeTextToPrompt,
     handleDraftChange,
@@ -178,7 +175,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     handleOpenReferencesForEntity,
     handlePastedLargeText,
     handleWorkspaceReferencePicker,
-    removeDraftFile,
     removeDraftImage,
     removeDraftLargeText
   } = input.attachments;
@@ -218,7 +214,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     promptTipNode,
     submitInteractivePromptAndDismiss,
     visibleActivePrompt,
-    visibleDraftFiles,
     visibleDraftLargeTexts
   } = input.presentation;
 
@@ -303,6 +298,16 @@ export function AgentComposerView(input: Props): React.JSX.Element {
           onProjectMissingChange={input.setIsSelectedProjectMissing}
         />
       ) : null}
+      <AgentFullAccessRestoredWarning
+        isSettingsLoading={composerSettings.isSettingsLoading}
+        permissionModeId={
+          composerSettings.selectedPermissionModeValue ??
+          composerSettings.draftSettings.permissionModeId
+        }
+        previewMode={previewMode}
+        provider={provider}
+        visibleOnHome={isHeroLayout}
+      />
       <div
         className={cn(
           styles.composerInputGroup,
@@ -352,11 +357,9 @@ export function AgentComposerView(input: Props): React.JSX.Element {
               >
                 <ComposerDraftAttachments
                   draftImages={draftImages}
-                  draftFiles={visibleDraftFiles}
                   draftLargeTexts={visibleDraftLargeTexts}
                   removeLabel={labels.removeMention}
                   onRemoveImage={removeDraftImage}
-                  onRemoveFile={removeDraftFile}
                   onRemoveLargeText={removeDraftLargeText}
                   onExpandLargeText={expandDraftLargeTextToPrompt}
                 />
@@ -406,11 +409,11 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                     onPromptImagesUnsupported={onPromptImagesUnsupported}
                     onPasteImages={handlePastedImages}
                     onPasteLargeText={handlePastedLargeText}
-                    getReferenceForFile={input.getReferenceForFile}
+                    onPasteFiles={
+                      input.promptFilesSupported ? addDraftFiles : undefined
+                    }
                     onDropFiles={
-                      input.promptFilesSupported
-                        ? applyDroppedFileReferences
-                        : undefined
+                      input.promptFilesSupported ? addDraftFiles : undefined
                     }
                   />
                   {!isHeroLayout ? composerActionButton : null}

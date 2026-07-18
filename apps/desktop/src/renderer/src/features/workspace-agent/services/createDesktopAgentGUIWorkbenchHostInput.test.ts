@@ -133,7 +133,7 @@ test("desktop agent GUI workbench host input reuses workspace runtime services",
   );
 });
 
-test("desktop agent GUI preserves dropped system file and folder references", async () => {
+test("desktop agent GUI prepares path-backed and in-memory external files", async () => {
   const droppedFileA = new File(["a"], "report.pdf", {
     type: "application/pdf"
   });
@@ -142,15 +142,28 @@ test("desktop agent GUI preserves dropped system file and folder references", as
   });
   const droppedFolder = new File([], "assets");
   const resolvedFiles: File[][] = [];
+  const archiveRequests: Parameters<
+    DesktopHostFilesApi["archiveAgentPromptFile"]
+  >[0][] = [];
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({
-    hostFilesApi: createHostFilesApi(),
+    hostFilesApi: {
+      ...createHostFilesApi(),
+      async archiveAgentPromptFile(input) {
+        archiveRequests.push(input);
+        return {
+          name: input.displayName ?? "attachment",
+          path: `/prompt-assets/${input.displayName ?? "attachment"}`,
+          sizeBytes: 1
+        };
+      }
+    },
     tuttidClient: createTuttidClient(),
     platformApi: createPlatformApi({
       resolveDroppedEntries(files) {
         resolvedFiles.push([...files]);
         return [
           { kind: "file", path: "/Users/local/Downloads/report.pdf" },
-          { kind: "file", path: "/Users/local/Downloads/notes.txt" },
+          { kind: "file", path: "" },
           { kind: "folder", path: "/Users/local/Downloads/assets" }
         ];
       }
@@ -162,36 +175,57 @@ test("desktop agent GUI preserves dropped system file and folder references", as
   });
 
   assert.deepEqual(
-    await hostInput.resolveDroppedFileReferences([
+    await hostInput.prepareExternalPromptFiles([
       droppedFileA,
       droppedFileB,
       droppedFolder
     ]),
     [
       {
-        displayName: "report.pdf",
-        hostPath: "/Users/local/Downloads/report.pdf",
-        kind: "file",
-        path: "/Users/local/Downloads/report.pdf",
-        sourceId: "host-local-file"
+        sourceIndex: 0,
+        status: "prepared",
+        file: {
+          mimeType: "application/pdf",
+          name: "report.pdf",
+          path: "/prompt-assets/report.pdf",
+          sizeBytes: 1,
+          uploadStatus: "uploaded"
+        }
       },
       {
-        displayName: "notes.txt",
-        hostPath: "/Users/local/Downloads/notes.txt",
-        kind: "file",
-        path: "/Users/local/Downloads/notes.txt",
-        sourceId: "host-local-file"
+        sourceIndex: 1,
+        status: "prepared",
+        file: {
+          mimeType: "text/plain",
+          name: "notes.txt",
+          path: "/prompt-assets/notes.txt",
+          sizeBytes: 1,
+          uploadStatus: "uploaded"
+        }
       },
       {
-        displayName: "assets",
-        kind: "folder",
-        path: "/Users/local/Downloads/assets",
-        sourceId: "host-local-file"
+        sourceIndex: 2,
+        status: "error",
+        errorCode: "folder_unsupported"
       }
     ]
   );
   assert.deepEqual(resolvedFiles, [
     [droppedFileA, droppedFileB, droppedFolder]
+  ]);
+  assert.deepEqual(archiveRequests, [
+    {
+      displayName: "report.pdf",
+      hostPath: "/Users/local/Downloads/report.pdf",
+      mimeType: "application/pdf",
+      workspaceID: workspaceId
+    },
+    {
+      dataBase64: "Yg==",
+      displayName: "notes.txt",
+      mimeType: "text/plain",
+      workspaceID: workspaceId
+    }
   ]);
 });
 

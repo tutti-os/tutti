@@ -84,6 +84,38 @@ test("tutti asset protocol resolves packaged codex rounded asset", () => {
   }
 });
 
+for (const [agent, builtFileName] of [
+  ["cursor", "cursor-colorful-abc123.png"],
+  ["hermes", "hermes-rounded-abc123.png"],
+  ["openclaw", "openclaw-rounded-abc123.png"],
+  ["opencode", "opencode-rounded-abc123.png"]
+] as const) {
+  test(`tutti asset protocol resolves packaged ${agent} asset`, () => {
+    const appPath = mkdtempSync(join(tmpdir(), `tutti-asset-${agent}-`));
+    const builtAssetPath = join(
+      appPath,
+      "out",
+      "renderer",
+      "assets",
+      builtFileName
+    );
+    mkdirSync(dirname(builtAssetPath), { recursive: true });
+    writeFileSync(builtAssetPath, "");
+
+    try {
+      assert.equal(
+        resolveTuttiAssetProtocolFilePath(
+          `tutti-asset://agent/${agent}.png`,
+          appPath
+        ),
+        builtAssetPath
+      );
+    } finally {
+      rmSync(appPath, { force: true, recursive: true });
+    }
+  });
+}
+
 test("tutti asset protocol resolves issue default asset route", () => {
   const appPath = mkdtempSync(join(tmpdir(), "tutti-asset-issue-"));
   const sourcePath = join(

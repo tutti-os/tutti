@@ -24,6 +24,10 @@ import {
   normalizeTuttiExternalAtQueryInput,
   normalizeTuttiExternalAtResolveInput,
   normalizeTuttiExternalAtInvalidation,
+  normalizeTuttiExternalAgentActivityActivateSessionInput,
+  normalizeTuttiExternalAgentActivityCancelTurnInput,
+  normalizeTuttiExternalAgentActivityComposerOptionsInput,
+  normalizeTuttiExternalAgentActivitySendInput,
   normalizeTuttiExternalFileOpenInput,
   normalizeTuttiExternalFileSelectInput,
   normalizeTuttiExternalFileUploadInput,
@@ -42,6 +46,12 @@ import {
 import type {
   TuttiExternalAtQueryResult,
   TuttiExternalAtResolveResult,
+  TuttiExternalAgentActivityActivateSessionResult,
+  TuttiExternalAgentActivityCancelTurnResult,
+  TuttiExternalAgentActivityComposerOptions,
+  TuttiExternalAgentActivitySendResult,
+  TuttiExternalAgentActivitySnapshot,
+  TuttiExternalAgentTargetCatalog,
   TuttiExternalFileOpenInput,
   TuttiExternalFileSelectResult,
   TuttiExternalManagedAiModel,
@@ -166,6 +176,106 @@ export function registerWorkspaceAppContextIpc(
           workspaceId: context.workspaceID
         });
       }
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.agentActivityActivateSession,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input =
+        normalizeTuttiExternalAgentActivityActivateSessionInput(payload);
+      return requestWorkspaceAppExternalRenderer<TuttiExternalAgentActivityActivateSessionResult>(
+        context,
+        {
+          appId: context.appID,
+          input,
+          operation: "agentActivity.activateSession",
+          requestId: randomUUID(),
+          workspaceId: context.workspaceID
+        }
+      );
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.agentActivityCancelTurn,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input = normalizeTuttiExternalAgentActivityCancelTurnInput(payload);
+      return requestWorkspaceAppExternalRenderer<TuttiExternalAgentActivityCancelTurnResult>(
+        context,
+        {
+          appId: context.appID,
+          input,
+          operation: "agentActivity.cancelTurn",
+          requestId: randomUUID(),
+          workspaceId: context.workspaceID
+        }
+      );
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.agentActivityGetComposerOptions,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input =
+        normalizeTuttiExternalAgentActivityComposerOptionsInput(payload);
+      return requestWorkspaceAppExternalRenderer<TuttiExternalAgentActivityComposerOptions>(
+        context,
+        {
+          appId: context.appID,
+          input,
+          operation: "agentActivity.getComposerOptions",
+          requestId: randomUUID(),
+          workspaceId: context.workspaceID
+        }
+      );
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.agentActivityGetSnapshot,
+    (event) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      return requestWorkspaceAppExternalRenderer<TuttiExternalAgentActivitySnapshot>(
+        context,
+        {
+          appId: context.appID,
+          operation: "agentActivity.getSnapshot",
+          requestId: randomUUID(),
+          workspaceId: context.workspaceID
+        }
+      );
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.agentActivityListTargets,
+    (event) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      return requestWorkspaceAppExternalRenderer<TuttiExternalAgentTargetCatalog>(
+        context,
+        {
+          appId: context.appID,
+          operation: "agentActivity.listTargets",
+          requestId: randomUUID(),
+          workspaceId: context.workspaceID
+        }
+      );
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.agentActivitySendInput,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input = normalizeTuttiExternalAgentActivitySendInput(payload);
+      return requestWorkspaceAppExternalRenderer<TuttiExternalAgentActivitySendResult>(
+        context,
+        {
+          appId: context.appID,
+          input,
+          operation: "agentActivity.sendInput",
+          requestId: randomUUID(),
+          workspaceId: context.workspaceID
+        }
+      );
     }
   );
   registerDesktopIpcHandler(
@@ -1275,6 +1385,7 @@ function createWorkspaceAppContext(
   return {
     appId: context.appID,
     capabilities: [
+      "agentActivity@1",
       "browser.openUrl@1",
       "files.open@1",
       "files.upload@1",

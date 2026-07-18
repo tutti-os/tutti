@@ -13,6 +13,7 @@ import {
   defaultDesktopBrowserUseConnectionMode,
   defaultDesktopDockIconStyle,
   defaultDesktopDockPlacement,
+  defaultDeletedAgentConversationRetentionDays,
   defaultDesktopFeatureFlags,
   defaultDesktopFileDefaultOpenersByExtension,
   defaultDesktopMinimizeAnimation,
@@ -26,6 +27,7 @@ import {
   mergeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopAgentComposerDefaultsByAgentTarget,
   normalizeDesktopAgentConversationDetailMode,
+  normalizeDeletedAgentConversationRetentionDays,
   normalizeDesktopFeatureFlags,
   normalizeDesktopFileDefaultOpenersByExtension,
   normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
@@ -45,6 +47,7 @@ import {
   type DesktopBrowserUseConnectionMode,
   type DesktopDockIconStyle,
   type DesktopDockPlacement,
+  type DeletedAgentConversationRetentionDays,
   type DesktopFeatureFlags,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
@@ -92,6 +95,8 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       dockIconStyle: defaultDesktopDockIconStyle,
       dockPlacement:
         this.dependencies.initialDockPlacement ?? defaultDesktopDockPlacement,
+      deletedAgentConversationRetentionDays:
+        defaultDeletedAgentConversationRetentionDays,
       featureFlags: defaultDesktopFeatureFlags,
       fileDefaultOpenersByExtension:
         defaultDesktopFileDefaultOpenersByExtension,
@@ -263,6 +268,38 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     } finally {
       if (this.store.changingDockPlacement === placement) {
         this.store.changingDockPlacement = null;
+      }
+    }
+  }
+
+  async setDeletedAgentConversationRetentionDays(
+    days: DeletedAgentConversationRetentionDays
+  ): Promise<DeletedAgentConversationRetentionDays> {
+    const nextDays = normalizeDeletedAgentConversationRetentionDays(days);
+    if (this.store.changingDeletedAgentConversationRetentionDays === nextDays) {
+      return nextDays;
+    }
+    const previousDays = this.store.deletedAgentConversationRetentionDays;
+    this.store.changingDeletedAgentConversationRetentionDays = nextDays;
+    this.store.deletedAgentConversationRetentionDays = nextDays;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({
+            deletedAgentConversationRetentionDays: nextDays
+          })
+        });
+      return normalizeDeletedAgentConversationRetentionDays(
+        authoritativePreferences.deletedAgentConversationRetentionDays
+      );
+    } catch (error) {
+      this.store.deletedAgentConversationRetentionDays = previousDays;
+      throw error;
+    } finally {
+      if (
+        this.store.changingDeletedAgentConversationRetentionDays === nextDays
+      ) {
+        this.store.changingDeletedAgentConversationRetentionDays = null;
       }
     }
   }
@@ -728,6 +765,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     defaultAgentProvider: DesktopDefaultAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
+    deletedAgentConversationRetentionDays?: DeletedAgentConversationRetentionDays;
     featureFlags?: DesktopFeatureFlags;
     fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
     locale: DesktopLocale;
@@ -760,6 +798,10 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     this.store.defaultAgentProvider = preferences.defaultAgentProvider;
     this.store.dockIconStyle = preferences.dockIconStyle;
     this.store.dockPlacement = preferences.dockPlacement;
+    this.store.deletedAgentConversationRetentionDays =
+      normalizeDeletedAgentConversationRetentionDays(
+        preferences.deletedAgentConversationRetentionDays
+      );
     this.store.fileDefaultOpenersByExtension =
       normalizeDesktopFileDefaultOpenersByExtension(
         preferences.fileDefaultOpenersByExtension
@@ -806,6 +848,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       defaultAgentProvider: DesktopDefaultAgentProvider;
       dockIconStyle: DesktopDockIconStyle;
       dockPlacement: DesktopDockPlacement;
+      deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
       featureFlags: DesktopFeatureFlags;
       fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
       locale: DesktopLocale;
@@ -829,6 +872,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     defaultAgentProvider: DesktopDefaultAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
+    deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
     featureFlags: DesktopFeatureFlags;
     fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
     locale: DesktopLocale;
@@ -871,6 +915,9 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         overrides.defaultAgentProvider ?? this.store.defaultAgentProvider,
       dockIconStyle: overrides.dockIconStyle ?? this.store.dockIconStyle,
       dockPlacement: overrides.dockPlacement ?? this.store.dockPlacement,
+      deletedAgentConversationRetentionDays:
+        overrides.deletedAgentConversationRetentionDays ??
+        this.store.deletedAgentConversationRetentionDays,
       featureFlags: normalizeDesktopFeatureFlags(
         overrides.featureFlags ?? this.store.featureFlags
       ),

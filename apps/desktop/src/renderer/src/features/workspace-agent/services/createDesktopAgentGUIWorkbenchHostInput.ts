@@ -47,13 +47,12 @@ import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivitySer
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 import { translate } from "../../../i18n/appRuntime.ts";
 import { createDesktopAgentGeneratedFileMentionProvider } from "./internal/createDesktopAgentGeneratedFileMentionProvider.ts";
+import { createDesktopAgentExternalPromptFilePreparer } from "./internal/prepareDesktopAgentExternalPromptFiles.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi: AgentHostInputApi;
-  contextMentionProviders: NonNullable<
-    AgentGUIProps["hostCapabilities"]["contextMentionProviders"]
-  >;
+  contextMentionProviders: readonly AgentContextMentionProvider[];
   trackAgentProviderChatReady: (input: { provider: string }) => Promise<void>;
   createAgentGUIEngagementEventSink: (
     surface: AgentGUIAnalyticsSurface
@@ -65,8 +64,8 @@ export interface DesktopAgentGUIWorkbenchHostInput {
   workspaceFileReferenceAdapter: NonNullable<
     AgentGUIProps["workspace"]["fileReferenceAdapter"]
   >;
-  resolveDroppedFileReferences: NonNullable<
-    AgentGUIProps["workspace"]["resolveDroppedFileReferences"]
+  prepareExternalPromptFiles: NonNullable<
+    AgentGUIProps["workspace"]["prepareExternalPromptFiles"]
   >;
   onRequestGitBranches: NonNullable<
     AgentGUIProps["workspace"]["onRequestGitBranches"]
@@ -234,29 +233,12 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       })
     ])
   );
-  const resolveDroppedFileReferences: NonNullable<
-    AgentGUIProps["workspace"]["resolveDroppedFileReferences"]
-  > = (files) => {
-    const droppedEntries = platformApi.resolveDroppedEntries([...files]);
-    return files.flatMap((file, index): WorkspaceFileReference[] => {
-      const droppedEntry = droppedEntries[index];
-      const path = droppedEntry?.path.trim() ?? "";
-      if (!path) {
-        return [];
-      }
-      const kind = droppedEntry?.kind === "folder" ? "folder" : "file";
-      const displayName = file.name.trim() || path.split(/[\\/]/).at(-1);
-      return [
-        {
-          path,
-          ...(kind === "file" ? { hostPath: path } : {}),
-          kind,
-          ...(displayName ? { displayName } : {}),
-          sourceId: "host-local-file"
-        }
-      ];
+  const prepareExternalPromptFiles =
+    createDesktopAgentExternalPromptFilePreparer({
+      agentActivityRuntime,
+      platformApi,
+      workspaceId
     });
-  };
   return {
     agentActivityRuntime,
     agentHostApi: resolvedAgentHostApi,
@@ -284,7 +266,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
     trackWorkspaceFileReferences: (input) =>
       workspaceFileReferenceTracker.track(input),
     workspaceFileReferenceAdapter,
-    resolveDroppedFileReferences,
+    prepareExternalPromptFiles,
     onRequestGitBranches: async ({ agentSessionId, workingDirectory }) => {
       const result = agentSessionId
         ? await tuttidClient.listWorkspaceAgentSessionGitBranches(

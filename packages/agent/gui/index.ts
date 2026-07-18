@@ -17,7 +17,15 @@ export type {
   AgentGUIReferenceProvenanceFilterCatalog
 } from "./AgentGUI";
 export type { AgentGUIComposerAppendRequest } from "./agent-gui/agentGuiNode/controller/useAgentGUIComposerAppendRequest";
+export { createAgentSessionHandoffPrompt } from "./agent-gui/agentGuiNode/agentRichText/agentMentionMarkdown";
+export type { CreateAgentSessionHandoffPromptInput } from "./agent-gui/agentGuiNode/agentRichText/agentMentionMarkdown";
 export type { AgentComposerDraftFile } from "./agent-gui/agentGuiNode/model/agentGuiNodeTypes";
+export type {
+  AgentExternalPromptFilePreparationErrorCode,
+  AgentExternalPromptFilePreparationResult,
+  AgentExternalPromptFilePreparer,
+  AgentPreparedExternalPromptFile
+} from "./agent-gui/agentGuiNode/model/agentExternalPromptFiles";
 export type { AgentGUIAccountMenuState } from "./agent-gui/agentGuiNode/accountMenuState";
 export type {
   AgentGUIComposerContentType,

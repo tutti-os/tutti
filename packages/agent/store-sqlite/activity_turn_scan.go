@@ -81,6 +81,8 @@ func scanAgentTurn(scanner rowScanner) (Turn, error) {
 		}
 		turn.CompletedCommandKind, _ = decoded["kind"].(string)
 		turn.CompletedCommandStatus, _ = decoded["status"].(string)
+		turn.FinalAssistantMessageID, _ = decoded["finalAssistantMessageId"].(string)
+		turn.FinalAssistantMessageResolved, _ = decoded["finalAssistantMessageResolved"].(bool)
 	}
 	if rootProviderTurnErrorJSON.Valid && strings.TrimSpace(rootProviderTurnErrorJSON.String) != "" {
 		decoded, err := unmarshalJSONMap(rootProviderTurnErrorJSON.String)

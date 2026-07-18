@@ -1,6 +1,7 @@
 import { enAgentGuiProviderIdentity } from "./en.agentGuiProviderIdentity.ts";
 import { enAgentGuiRuntimeNotices } from "./en.agentGuiRuntimeNotices.ts";
 import { enAgentGuiSlashPalette } from "./en.agentGuiSlashPalette.ts";
+import { enAgentGuiSessionActions } from "./en.agentGuiSessionActions.ts";
 
 export const enAgentGui = {
   initialPlaceholder: "Type @ to reference sessions, files, tasks, and apps",
@@ -113,6 +114,13 @@ export const enAgentGui = {
     learnMore: "Learn more",
     cancel: "Cancel",
     confirm: "Enable full access"
+  },
+  fullAccessRestoredWarning: {
+    title: "Full access is on",
+    description:
+      "Codex can run commands, use the internet, and create, modify, upload, or delete files anywhere on this computer without asking. This can cause data loss and expose you to prompt-injection attacks.",
+    dontShowAgain: "Don't show again",
+    dismissLabel: "Dismiss full access warning"
   },
   permissionSemantics: {
     "ask-before-write": {
@@ -603,14 +611,13 @@ export const enAgentGui = {
   showLessConversations: "Show less",
   deleteSession: "Delete session",
   pinSession: "Pin session",
-  copySessionLink: "Copy session link",
+  ...enAgentGuiSessionActions,
   renameSession: "Rename session",
   renameSessionTitle: "Rename conversation",
   renameSessionDescription: "Keep it short and easy to recognize.",
   renameSessionPlaceholder: "Conversation title",
   renameSessionSave: "Save",
   unpinSession: "Unpin session",
-  markSessionUnread: "Mark as unread",
   deleteSessionTitle: "Delete session?",
   deleteSessionBody:
     "This session cannot be recovered after deletion. It will no longer appear in the session list, session timeline, room timeline, or room status.",
@@ -671,6 +678,9 @@ export const enAgentGui = {
   fileMentionTabHint:
     "Tab switch category | ←→ enter/leave folder | ↑↓ switch selection",
   fileDropHint: "Drop files to add them to the session",
+  composerFileFolderUnsupported: "Folders cannot be attached here",
+  composerFileTooLarge: "File is too large",
+  composerFilePreparationFailed: "File preparation failed",
   mentionPalette: "Mention context",
   addReference: "Add reference",
   addContent: "Add files and more",

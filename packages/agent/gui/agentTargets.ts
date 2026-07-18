@@ -62,7 +62,6 @@ export function createSharedAgentGUIAgentTarget(input: {
   ownerLabel?: string | null;
   iconUrl?: string | null;
   maskIconUrl?: string | null;
-  sidebarIconUrl?: string | null;
   unavailableReason?: string | null;
   disabled?: boolean;
   ref?: Record<string, unknown> | null;
@@ -90,9 +89,6 @@ export function createSharedAgentGUIAgentTarget(input: {
     ...(input.iconUrl?.trim() ? { iconUrl: input.iconUrl.trim() } : {}),
     ...(input.maskIconUrl?.trim()
       ? { maskIconUrl: input.maskIconUrl.trim() }
-      : {}),
-    ...(input.sidebarIconUrl?.trim()
-      ? { sidebarIconUrl: input.sidebarIconUrl.trim() }
       : {}),
     ...(input.unavailableReason?.trim()
       ? { unavailableReason: input.unavailableReason.trim() }
@@ -251,7 +247,6 @@ function normalizeAgentGUIAgentTarget(
     description,
     iconUrl,
     maskIconUrl,
-    sidebarIconUrl,
     heroImageUrl,
     ownerLabel,
     unavailableReason,
@@ -281,9 +276,6 @@ function normalizeAgentGUIAgentTarget(
     ...(description?.trim() ? { description: description.trim() } : {}),
     ...(iconUrl?.trim() ? { iconUrl: iconUrl.trim() } : {}),
     ...(maskIconUrl?.trim() ? { maskIconUrl: maskIconUrl.trim() } : {}),
-    ...(sidebarIconUrl?.trim()
-      ? { sidebarIconUrl: sidebarIconUrl.trim() }
-      : {}),
     ...(heroImageUrl?.trim() ? { heroImageUrl: heroImageUrl.trim() } : {}),
     ...(ownerLabel?.trim() ? { ownerLabel: ownerLabel.trim() } : {}),
     ...(unavailableReason?.trim()

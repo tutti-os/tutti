@@ -44,8 +44,20 @@ local persistence and returns `{ path, name, sizeBytes }`.
 If the method is absent or staging fails, the attachment remains in an explicit
 failed state and retains its in-memory text. AgentGUI must not silently put the
 payload back into the input. The user can explicitly choose “Show in text
-field” to do that. Generic `uploadPromptContent` remains the contract for
-images and host-local files; it is not a pasted-text capability signal.
+field” to do that. Generic `uploadPromptContent` remains the image-upload
+contract; it is not a pasted-text or external-file capability signal.
+
+## External File Preparation
+
+OS clipboard and drop files use the required workspace
+`prepareExternalPromptFiles` host port. AgentGUI owns classification, pending
+mentions, and draft reconciliation. The host owns native-path lookup, size
+enforcement, persistence, and remote transport.
+
+The preparer returns one result per input `sourceIndex`. Prepared files require
+a provider-readable `path` or `url`; failures require a typed `errorCode`.
+Hosts must isolate per-file failures and reject oversized inputs before reading
+or persisting their bytes.
 
 Slash commands come from the runtime session command snapshot. AgentGUI keeps
 legacy provider-default slash entries unless the host passes
@@ -72,6 +84,14 @@ accepted for host capabilities that are not agent activity data:
 
 AgentGUI has no host-API activity fallback. A host must inject the runtime and
 the grouped `AgentGUINodeProps` responsibility objects.
+
+## Session Handoff Drafts
+
+External AgentGUI hosts can use `createAgentSessionHandoffPrompt` to prefill a
+destination Agent composer with the same canonical complete-session mention as
+AgentGUI's built-in Handoff menu. The helper owns mention serialization and the
+trailing rich-text caret space; hosts continue to own destination selection and
+window launch behavior.
 
 ## Boundary Rule
 
@@ -154,7 +174,7 @@ export interface AgentGUIAgent {
   agentTargetId: string;
   name: string;
   iconUrl: string;
-  sidebarIconUrl?: string | null;
+  maskIconUrl?: string | null;
   heroImageUrl?: string | null;
   description?: string | null;
   owner?: {
@@ -187,12 +207,10 @@ Runnable provider targets are host-supplied. If the target catalog is absent,
 AgentGUI presents an explicit unavailable state; it does not synthesize local
 targets from presentation metadata.
 
-Agent names, primary icons, optional conversation-mask icons, optional
-rail-specific icons, and optional home-carousel artwork come from
-`agents[].name`, `agents[].iconUrl`, `agents[].maskIconUrl`,
-`agents[].sidebarIconUrl`, and `agents[].heroImageUrl`. Provider rail surfaces
-prefer `sidebarIconUrl`; conversation rows use `maskIconUrl` where present;
-other identity surfaces retain `iconUrl`.
+Agent names, primary icons, optional conversation-mask icons, and optional
+home-carousel artwork come from `agents[].name`, `agents[].iconUrl`,
+`agents[].maskIconUrl`, and `agents[].heroImageUrl`. All identity surfaces use
+`iconUrl`; conversation rows use `maskIconUrl` where present.
 `owner.avatarUrl` is rendered separately as an ownership badge. Invalid entries
 and duplicate `agentTargetId` values are discarded by
 `normalizeAgentGUIAgents`, with the first occurrence preserving host order.

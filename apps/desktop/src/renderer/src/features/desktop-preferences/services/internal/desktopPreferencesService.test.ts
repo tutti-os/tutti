@@ -39,6 +39,7 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
           agentGuiConversationRailCollapsedByProvider: {},
           agentConversationDetailMode: "coding",
           agentDockLayout: "unified",
+          deletedAgentConversationRetentionDays: 30,
           appCatalogChannel: "production",
           browserUseConnectionMode: "isolated",
           defaultAgentProvider: "codex",
@@ -141,6 +142,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
+      deletedAgentConversationRetentionDays: 30,
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
@@ -167,6 +169,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
     agentDockLayout: "unified",
+    deletedAgentConversationRetentionDays: 30,
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
@@ -204,6 +207,28 @@ test("DesktopPreferencesService rolls back optimistic locale changes when publis
   await assert.rejects(() => service.setLocale("zh-CN"), /publish failed/);
   assert.equal(service.store.locale, "en");
   assert.deepEqual(appliedLocales, ["zh-CN", "en"]);
+  cleanup();
+});
+
+test("DesktopPreferencesService publishes deleted conversation retention changes", async () => {
+  const client = createDesktopPreferencesClient({});
+  const { service, cleanup } = await createServiceHarness({ client });
+
+  const saved = service.setDeletedAgentConversationRetentionDays(15);
+  assert.equal(service.store.deletedAgentConversationRetentionDays, 15);
+  assert.equal(
+    client.updatedRequests[0]?.deletedAgentConversationRetentionDays,
+    15
+  );
+  client.emitDesktopPreferencesUpdated(
+    createPreferences({ deletedAgentConversationRetentionDays: 15 })
+  );
+
+  assert.equal(await saved, 15);
+  assert.equal(
+    service.store.changingDeletedAgentConversationRetentionDays,
+    null
+  );
   cleanup();
 });
 
@@ -416,6 +441,7 @@ test("DesktopPreferencesService keeps featureFlags identity when authoritative f
       initialized: true,
       preferences: createPreferences({
         agentDockLayout: "legacySplit",
+        deletedAgentConversationRetentionDays: 30,
         featureFlags: initialFeatureFlags
       })
     })
@@ -426,6 +452,7 @@ test("DesktopPreferencesService keeps featureFlags identity when authoritative f
   client.emitDesktopPreferencesUpdated(
     createPreferences({
       agentDockLayout: "legacySplit",
+      deletedAgentConversationRetentionDays: 30,
       featureFlags: { "lab.enabled": true },
       locale: "zh-CN"
     })
@@ -564,6 +591,7 @@ test("DesktopPreferencesService merges conversation rail collapsed state per pro
     },
     agentConversationDetailMode: "coding",
     agentDockLayout: "unified",
+    deletedAgentConversationRetentionDays: 30,
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
@@ -599,6 +627,7 @@ function createPreferences(overrides: Partial<Preferences> = {}): Preferences {
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
     agentDockLayout: "unified",
+    deletedAgentConversationRetentionDays: 30,
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
@@ -626,6 +655,7 @@ function createPublishedPreferences(
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
     agentDockLayout: "unified",
+    deletedAgentConversationRetentionDays: 30,
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",

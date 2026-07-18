@@ -167,6 +167,7 @@ func TestRunExactLegacyAgentCommandRetriesIntegrationDiscovery(t *testing.T) {
 func TestLegacyAgentCompatibilityInvocationIsExactAllowlist(t *testing.T) {
 	for _, args := range [][]string{
 		{"agent", "providers"},
+		{"agent", "cancel", "--session-id", "SESSION-1"},
 		{"codex", "start", "--prompt", "review"},
 		{"claude", "start", "--prompt", "review"},
 	} {
@@ -234,6 +235,39 @@ func TestRunStatusAuthFailure(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "daemon authentication failed") {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestRunStatusJSONAuthFailureIsStructured(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "nope", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"status", "--json"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "unauthorized", "daemon authentication failed")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunStatusJSONDaemonUnavailableIsStructured(t *testing.T) {
+	t.Setenv("TUTTID_LISTENER_INFO_PATH", filepath.Join(t.TempDir(), "missing-listener.json"))
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"status", "--json"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "daemon_unavailable", "daemon endpoint is not available")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
 }
 
@@ -618,6 +652,133 @@ func TestRunDynamicCommandRejectsUnexpectedPositionalArgument(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), `unexpected argument "ISS-1"`) {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestRunDynamicJSONRejectsInvalidInputWithStructuredError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/cli/capabilities" {
+			_, _ = w.Write([]byte(`{"commands":[{"id":"issue-manager.issue.get","path":["issue","get"],"summary":"Get issue","output":{"defaultMode":"json","json":true}}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "issue", "get", "ISS-1"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "invalid_input", `unexpected argument "ISS-1"`)
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunDynamicJSONPreservesDaemonReasonCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.get","path":["agent","get"],"summary":"Get agent session","output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.get/invoke":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"code":"workspace_not_found","reason":"workspace_agent_session_not_found","developerMessage":"agent session was not found"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "agent", "get"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "workspace_agent_session_not_found", "agent session was not found")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunDynamicJSONMapsDaemonInvalidInputToExitCodeTwo(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.get","path":["agent","get"],"summary":"Get agent session","output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.get/invoke":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"code":"invalid_request","reason":"malformed_request","developerMessage":"session id is required"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "agent", "get"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "malformed_request", "session id is required")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunDynamicJSONUnknownCommandIsStructured(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/cli/capabilities" {
+			_, _ = w.Write([]byte(`{"commands":[]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "unknown", "command"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "command_not_found", "unknown command: unknown command")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunManagedModelJSONInvalidInputIsStructured(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "managed-model", "unknown"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "invalid_input", "expected grant exchange, models, credential, or revoke")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func assertCLIJSONError(t *testing.T, content []byte, reasonCode string, message string) {
+	t.Helper()
+	var envelope cliErrorEnvelope
+	if err := json.Unmarshal(content, &envelope); err != nil {
+		t.Fatalf("decode CLI error: %v\n%s", err, content)
+	}
+	if envelope.Error.ReasonCode != reasonCode || !strings.Contains(envelope.Error.Message, message) {
+		t.Fatalf("error = %#v, want reasonCode %q message containing %q", envelope.Error, reasonCode, message)
 	}
 }
 

@@ -16,6 +16,8 @@ import type {
   AgentGUIProviderSkillOption
 } from "../model/agentGuiNodeTypes";
 import type { AgentRichTextEditorHandle } from "../agentRichText/AgentRichTextEditor";
+import { agentComposerFileMentionReferences } from "../agentRichText/agentMentionMarkdown";
+import { useOptionalAgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentSlashPaletteEntry } from "../AgentSlashCommandPalette";
 import type {
   AgentSlashCommand,
@@ -43,11 +45,13 @@ import {
 import { resolvePermissionModeControlsDisabled } from "../model/composerModeSelection";
 import { GOAL_MODE_SLASH_COMMAND } from "./AgentComposerChrome";
 import type { AgentComposerProps } from "./AgentComposer.types";
+import { reportAgentComposerDiagnostic } from "./agentComposerDiagnostics";
 
 type TriggerMatch = ReturnType<typeof getAgentComposerTriggerQueryMatch>;
 
 type Props = Pick<
   AgentComposerProps,
+  | "workspaceId"
   | "provider"
   | "disabled"
   | "submitDisabled"
@@ -103,7 +107,9 @@ function useStableEventCallback<Args extends unknown[], Result>(
 }
 
 export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
+  const agentActivityRuntime = useOptionalAgentActivityRuntime();
   const {
+    workspaceId,
     provider,
     disabled,
     submitDisabled,
@@ -458,6 +464,32 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       const submission = projectAgentComposerDraftSubmission({
         draft: nextDraftContent,
         skills: availableSkills
+      });
+      const fileReferences = agentComposerFileMentionReferences(nextPrompt);
+      const draftFileIds = new Set(currentDraftFiles.map((file) => file.id));
+      reportAgentComposerDiagnostic(agentActivityRuntime, {
+        details: {
+          contentBlockCount: submission.content.length,
+          contentFileBlockCount: submission.content.filter(
+            (block) => block.type === "file" && block.kind === "file"
+          ).length,
+          contentTypes: submission.content.map((block) => block.type),
+          draftFileCount: currentDraftFiles.length,
+          failedDraftFileCount: currentDraftFiles.filter((file) =>
+            Boolean(file.uploadError)
+          ).length,
+          fileMentionCount: fileReferences.length,
+          missingDraftFileCount: fileReferences.filter(
+            (reference) => !draftFileIds.has(reference.id)
+          ).length,
+          uploadingDraftFileCount: currentDraftFiles.filter(
+            (file) => file.uploading
+          ).length
+        },
+        event: "agent.gui.composer.file_preparation.submission_projection",
+        level: "info",
+        source: "agent-gui",
+        workspaceId
       });
       if (options?.guidance === true) {
         if (!onSubmitGuidance) {

@@ -28,29 +28,6 @@ func runExactTurnCancel(ctx context.Context, driver Driver) error {
 	return nil
 }
 
-func runInteractiveResponse(ctx context.Context, driver Driver) error {
-	fixture := liveSessionFixture("session-interactive", "turn-interactive")
-	fixture.Turn = &TurnSeed{TurnID: "turn-interactive", Phase: canonical.TurnPhaseWaiting}
-	fixture.Interaction = &InteractionSeed{
-		RequestID: "request-1", TurnID: "turn-interactive", Kind: canonical.InteractionKindApproval, Status: canonical.InteractionStatusPending,
-	}
-	if err := driver.Reset(ctx, fixture); err != nil {
-		return err
-	}
-	optionID := "approve"
-	if _, err := driver.SubmitInteractive(ctx,
-		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-interactive"},
-		"request-1", agenthost.SubmitInteractiveInput{TurnID: "turn-interactive", OptionID: &optionID},
-	); err != nil {
-		return fmt.Errorf("submit interactive: %w", err)
-	}
-	metrics := driver.Metrics()
-	if metrics.InteractiveCalls != 1 || metrics.LastInteractiveTurnID != "turn-interactive" || metrics.LastInteractiveRequestID != "request-1" {
-		return fmt.Errorf("interactive metrics=%#v", metrics)
-	}
-	return nil
-}
-
 func runPlanDecision(ctx context.Context, driver Driver) error {
 	fixture := liveSessionFixture("session-plan", "plan-turn")
 	fixture.Turn = &TurnSeed{TurnID: "plan-turn", Phase: canonical.TurnPhaseWaiting}

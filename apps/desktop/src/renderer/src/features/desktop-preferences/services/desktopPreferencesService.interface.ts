@@ -9,6 +9,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DeletedAgentConversationRetentionDays,
   DesktopFeatureFlags,
   DesktopFileDefaultOpenersByExtension,
   DesktopMinimizeAnimation,
@@ -48,6 +49,9 @@ export interface IDesktopPreferencesService {
   setDockPlacement(
     placement: DesktopDockPlacement
   ): Promise<DesktopDockPlacement>;
+  setDeletedAgentConversationRetentionDays(
+    days: DeletedAgentConversationRetentionDays
+  ): Promise<DeletedAgentConversationRetentionDays>;
   setDockIconStyle(style: DesktopDockIconStyle): Promise<DesktopDockIconStyle>;
   setFeatureFlags(flags: DesktopFeatureFlags): Promise<DesktopFeatureFlags>;
   setFileDefaultOpenersByExtension(

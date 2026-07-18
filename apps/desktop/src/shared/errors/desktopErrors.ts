@@ -3,8 +3,10 @@ import type {
   WorkspaceProtocolErrorCode
 } from "@tutti-os/client-tuttid-ts";
 import { getTuttidProtocolErrorCode } from "@tutti-os/client-tuttid-ts";
+import { DESKTOP_AGENT_PROMPT_FILE_TOO_LARGE_ERROR_CODE } from "../agentPromptAssets.ts";
 
 export const desktopErrorCodes = {
+  agentPromptFileTooLarge: DESKTOP_AGENT_PROMPT_FILE_TOO_LARGE_ERROR_CODE,
   daemonUnavailable: "daemon_unavailable",
   electronDebugRequired: "electron_debug_required",
   loggerFallback: "logger_file_unavailable",

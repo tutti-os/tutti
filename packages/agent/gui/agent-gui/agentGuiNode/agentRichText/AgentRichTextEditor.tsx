@@ -11,7 +11,6 @@ import type { Editor } from "@tiptap/core";
 import { useEditor } from "@tiptap/react";
 import { cn } from "../../../app/renderer/lib/utils";
 import { useTranslation } from "../../../i18n/index";
-import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import { createAgentRichTextInputExtensions } from "./agentRichTextExtensions";
 import {
   agentRichTextContentToPromptText,
@@ -19,13 +18,13 @@ import {
   plainTextToAgentRichTextInlineContent,
   plainTextToAgentRichTextDoc
 } from "./agentRichTextDocument";
-import { createAgentFileMentionContent } from "./agentWorkspaceFileReferences";
 import { isAgentRichTextImeComposing } from "./agentRichTextIme";
 import {
   hasWorkspaceFileDropData,
   readWorkspaceFileDropEntries
 } from "../../terminalNode/workspaceFileDrop";
 import {
+  classifyAgentRichTextExternalFiles,
   imageFilesFromDataTransfer,
   nonImageFilesFromDataTransfer,
   readAgentRichTextPromptImages,
@@ -92,7 +91,7 @@ export const AgentRichTextEditor = forwardRef<
     onPromptImagesUnsupported,
     onPasteImages,
     onPasteLargeText,
-    getReferenceForFile,
+    onPasteFiles,
     onDropFiles
   },
   ref
@@ -118,9 +117,9 @@ export const AgentRichTextEditor = forwardRef<
   const onPromptImagesUnsupportedRef = useRef(onPromptImagesUnsupported);
   const onPasteImagesRef = useRef(onPasteImages);
   const onPasteLargeTextRef = useRef(onPasteLargeText);
+  const onPasteFilesRef = useRef(onPasteFiles);
   const onDropFilesRef = useRef(onDropFiles);
   const promptImagesSupportedRef = useRef(promptImagesSupported);
-  const getReferenceForFileRef = useRef(getReferenceForFile);
   const placeholderRef = useRef(placeholder);
   const removeMentionLabelRef = useRef(removeMentionLabel);
   const availableSkillsRef = useRef(availableSkills);
@@ -275,9 +274,9 @@ export const AgentRichTextEditor = forwardRef<
   onPromptImagesUnsupportedRef.current = onPromptImagesUnsupported;
   onPasteImagesRef.current = onPasteImages;
   onPasteLargeTextRef.current = onPasteLargeText;
+  onPasteFilesRef.current = onPasteFiles;
   onDropFilesRef.current = onDropFiles;
   promptImagesSupportedRef.current = promptImagesSupported;
-  getReferenceForFileRef.current = getReferenceForFile;
   placeholderRef.current = placeholder;
   removeMentionLabelRef.current = removeMentionLabel;
   availableSkillsRef.current = availableSkills;
@@ -390,59 +389,30 @@ export const AgentRichTextEditor = forwardRef<
           return true;
         },
         paste: (_view, event) => {
-          const imageFiles = imageFilesFromDataTransfer(event.clipboardData);
-          if (imageFiles.length > 0) {
+          const { imageFiles, regularFiles } =
+            classifyAgentRichTextExternalFiles(event.clipboardData);
+          if (
+            imageFiles.length > 0 ||
+            (regularFiles.length > 0 && onPasteFilesRef.current)
+          ) {
             event.preventDefault();
-            if (!promptImagesSupportedRef.current) {
-              onPromptImagesUnsupportedRef.current?.();
-              return true;
+            if (regularFiles.length > 0) {
+              onPasteFilesRef.current?.(regularFiles);
             }
-            void readAgentRichTextPromptImages(imageFiles).then((images) => {
-              if (images.length > 0) {
-                onPasteImagesRef.current?.(images);
-              }
-            });
-            return true;
-          }
-          const getReferenceForFileFn = getReferenceForFileRef.current;
-          if (getReferenceForFileFn) {
-            const nonImageFiles = nonImageFilesFromDataTransfer(
-              event.clipboardData
-            );
-            if (nonImageFiles.length > 0) {
-              const references = nonImageFiles
-                .map((file) => {
-                  try {
-                    return getReferenceForFileFn(file);
-                  } catch {
-                    return null;
+            if (imageFiles.length > 0) {
+              if (!promptImagesSupportedRef.current) {
+                onPromptImagesUnsupportedRef.current?.();
+              } else {
+                void readAgentRichTextPromptImages(imageFiles).then(
+                  (images) => {
+                    if (images.length > 0) {
+                      onPasteImagesRef.current?.(images);
+                    }
                   }
-                })
-                .filter((reference): reference is WorkspaceFileReference =>
-                  Boolean(reference?.path)
                 );
-              if (references.length > 0) {
-                event.preventDefault();
-                const currentEditor = editorRef.current;
-                if (!currentEditor) {
-                  return true;
-                }
-                if (!currentEditor.isFocused) {
-                  currentEditor.commands.setTextSelection(
-                    currentEditor.state.doc.content.size
-                  );
-                }
-                currentEditor.commands.insertContent(
-                  createAgentFileMentionContent(references, {
-                    prefixCaretAnchor: isPromptVisualLineStart(
-                      currentEditor,
-                      currentEditor.state.selection.from
-                    )
-                  })
-                );
-                return true;
               }
             }
+            return true;
           }
           const html = event.clipboardData?.getData("text/html") ?? "";
           const text = event.clipboardData?.getData("text/plain") ?? "";

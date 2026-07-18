@@ -42,7 +42,7 @@ import type {
   AgentGUINodeViewProps,
   AgentGUIViewLabels
 } from "../AgentGUINodeView";
-import type { ChromeLabels } from "./AgentGUIDetailHeader";
+import type { ChromeLabels } from "./AgentGUINodeView.types";
 import { AgentGUIEmptyHeroCarouselStage } from "./AgentGUIEmptyHeroCarouselStage";
 import { AgentTargetSetupGate } from "./AgentTargetSetupGate.tsx";
 import {
@@ -68,8 +68,7 @@ export function resolveAgentGUIHeroIconUrl(
 
 export function agentGUIProviderRailIconPresentation(
   provider: string | undefined,
-  iconUrl?: string | null,
-  sidebarIconUrl?: string | null
+  iconUrl?: string | null
 ): AgentGUIProviderIconPresentation {
   const normalizedProvider = normalizeManagedAgentProvider(provider);
   const providerRailIconUrl =
@@ -77,8 +76,6 @@ export function agentGUIProviderRailIconPresentation(
   return {
     provider: normalizedProvider,
     iconUrl:
-      (normalizedProvider === "cursor" ? providerRailIconUrl : null) ||
-      sidebarIconUrl?.trim() ||
       iconUrl?.trim() ||
       providerRailIconUrl ||
       resolveAgentGUIHeroIconUrl(normalizedProvider)
@@ -662,8 +659,7 @@ function EmptyHeroTitle({
                     src={
                       agentGUIProviderRailIconPresentation(
                         target.provider,
-                        target.iconUrl,
-                        target.sidebarIconUrl
+                        target.iconUrl
                       ).iconUrl
                     }
                   />

@@ -83,7 +83,10 @@ func statePatchFromSessionEvent(source canonical.EventSource, event activityshar
 	if event.Type == activityshared.EventRootProviderTurnStarted || event.Type == activityshared.EventRootProviderTurnCompleted {
 		// A provider lifecycle snapshot may update the controller/session view,
 		// but root-provider aliases never create canonical Turns implicitly.
-		// The verified Goal-start proposal below is the only exception.
+		// The verified Goal-start proposal below is the only exception. Completed
+		// events retain their explicit RootProviderTurn identity below so the
+		// compatibility writer can apply a per-Turn settlement barrier even though
+		// this ordinary Turn patch is deliberately absent.
 		patch.Turn = nil
 	}
 	switch event.Type {

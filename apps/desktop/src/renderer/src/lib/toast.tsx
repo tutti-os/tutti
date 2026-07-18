@@ -8,7 +8,11 @@ import {
   ToastViewport,
   Toaster
 } from "@tutti-os/ui-system";
-import { enqueueDesktopToast, type DesktopToastItem } from "./toastQueue";
+import {
+  enqueueDesktopToast,
+  type DesktopToastItem,
+  type DesktopToastTone
+} from "./toastQueue";
 
 const toastLimit = 4;
 const workspaceChromeHeightPx = 52;
@@ -23,6 +27,15 @@ const desktopSonnerCloseButtonClassName =
 let nextToastID = 0;
 let toasts: DesktopToastItem[] = [];
 const listeners = new Set<() => void>();
+
+export interface DesktopToastHandle {
+  /** Settles the toast to a neutral, non-error, non-success tone. */
+  info(title: string, description?: string): void;
+  /** Settles the toast to the destructive tone. */
+  reject(title: string, description?: string): void;
+  /** Settles the toast to the success tone. */
+  resolve(title: string, description?: string): void;
+}
 
 export const Toast = {
   Error(title: string, description?: string): void {
@@ -45,6 +58,44 @@ export const Toast = {
       title,
       tone: "default"
     });
+  },
+  // One toast that stays mounted across the async work: it opens busy
+  // (spinner, no auto-dismiss) and the returned handle settles it in place
+  // to success/info/destructive, at which point it starts auto-dismissing.
+  // Settling after the toast was dismissed by the user is a silent no-op.
+  Loading(title: string): DesktopToastHandle {
+    const id = `desktop-toast-${++nextToastID}`;
+    const loadingToast: DesktopToastItem = {
+      busy: true,
+      id,
+      title,
+      tone: "default"
+    };
+    toasts = [loadingToast, ...toasts].slice(0, toastLimit);
+    emitToastChange();
+    const settle = (
+      tone: DesktopToastTone,
+      nextTitle: string,
+      description?: string
+    ): void => {
+      if (!toasts.some((toast) => toast.id === id)) {
+        return;
+      }
+      toasts = toasts.map((toast) =>
+        toast.id === id
+          ? { busy: false, description, id, title: nextTitle, tone }
+          : toast
+      );
+      emitToastChange();
+    };
+    return {
+      info: (nextTitle, description) =>
+        settle("default", nextTitle, description),
+      reject: (nextTitle, description) =>
+        settle("destructive", nextTitle, description),
+      resolve: (nextTitle, description) =>
+        settle("success", nextTitle, description)
+    };
   }
 };
 
@@ -76,6 +127,11 @@ export function DesktopToastProvider({
       {snapshot.map((toast) => (
         <ToastRoot
           key={toast.id}
+          busy={toast.busy}
+          // A busy toast never auto-dismisses; once settle() flips busy to
+          // false it re-renders with the provider's default duration, which
+          // Radix picks up and restarts the auto-dismiss timer from there.
+          duration={toast.busy ? Infinity : undefined}
           variant={toast.tone}
           onOpenChange={(open) => {
             if (!open) {

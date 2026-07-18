@@ -42,6 +42,7 @@ import {
   permissionModeSelectionPatch
 } from "./model/composerModeSelection";
 import { requiresFullAccessSafetyConfirmation } from "./model/agentPermissionModeSafetyPolicy";
+import { acknowledgeCodexFullAccessWarning } from "./view/agentFullAccessWarningPreference";
 import {
   buildComposerModelMenuModel,
   type AgentComposerSettingsMenuLabels,
@@ -256,6 +257,7 @@ export function AgentPermissionModeDropdown({
           }
           const permissionModeId = pendingFullAccessModeId;
           setPendingFullAccessModeId(null);
+          acknowledgeCodexFullAccessWarning();
           commitPermissionModeId(permissionModeId);
         }}
         onLinkAction={onLinkAction}

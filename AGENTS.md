@@ -125,17 +125,10 @@ documentation impact was found.
 ## Common Checks
 
 - UI-only exception: if a change modifies only UI presentation and does not alter logic or behavior, do not run any checks. This exception takes precedence over the checks below and includes tests, lint, typecheck, builds, boundary checks, and visual checks.
-- Local iteration: `pnpm check:changed`
-- TS/desktop/shared changes: `pnpm lint:ts` and `pnpm typecheck`
-- Desktop-facing behavior: also `pnpm --filter @tutti-os/desktop build`
-- UI-system exports, CSS, SVG/icon rules: `pnpm check:ui-boundaries`
-- Renderer feature boundaries: `pnpm check:renderer-boundaries`
-- User-visible copy or locale resources: `pnpm check:i18n`
-- Defaults source under `config/tutti.defaults.json`: `pnpm generate:defaults` and `pnpm check:defaults-generated`
-- Daemon changes: `pnpm lint:go` and `cd services/tuttid && go test ./... && go build ./...`
-- TypeScript + Go surface changes: `pnpm lint`
-
-Avoid full validation unless it is necessary for the risk or requested workflow.
+- For every other change, follow the single validation-selection policy in
+  [Testing](docs/conventions/testing.md#validation-selection). Closest-area
+  instructions may add a domain-specific check, but they do not redefine the
+  repository workflow.
 
 ## Hooks
 
@@ -144,7 +137,8 @@ Local hooks use Husky.
 - `pre-commit`: `lint-staged`, staged Electron/UI/renderer boundary checks
 - `pre-push`: `pnpm check:changed -- --push-ready`
 
-Prefer `pnpm check:changed` before broader validation during normal AI iteration. It runs selected lanes concurrently, prints compact summaries, and stores full logs under `.tmp/check-runs`; use `--tail-lines <n>` to tune failure tails.
+Changed-aware command behavior and rerun options are documented in
+[Local Git Hooks](docs/conventions/local-git-hooks.md#changed-aware-validation).
 
 ## Conflict Workflows
 

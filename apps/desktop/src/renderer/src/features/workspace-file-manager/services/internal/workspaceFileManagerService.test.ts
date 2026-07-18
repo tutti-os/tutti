@@ -1038,6 +1038,7 @@ function createDependenciesStub(): {
       startEnabledWorkspaceApps: fail,
       stopAllWorkspaceApps: fail,
       putDesktopPreferences: fail,
+      purgeDeletedAgentConversations: fail,
       terminateWorkspaceTerminal: fail,
       trackEvents: async () => {},
       updateWorkspaceIssue: fail,

@@ -11,6 +11,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DeletedAgentConversationRetentionDays,
   DesktopFeatureFlags,
   DesktopWorkspaceUiMode,
   DesktopMinimizeAnimation,
@@ -571,6 +572,22 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     await this.featureFlagSettings.change(flags);
   }
 
+  async changeDeletedAgentConversationRetentionDays(
+    days: DeletedAgentConversationRetentionDays
+  ): Promise<void> {
+    try {
+      await this.desktopPreferences.setDeletedAgentConversationRetentionDays(
+        days
+      );
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.deletedConversationRetentionSaveFailed"
+        )
+      });
+    }
+  }
+
   async changeWorkspaceUiMode(mode: DesktopWorkspaceUiMode): Promise<void> {
     const currentFlags =
       this.desktopPreferences.store.changingFeatureFlags ??
@@ -805,6 +822,31 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       });
     } finally {
       this.store.developerLogs.clearingConversationHistory = false;
+    }
+  }
+
+  async purgeDeletedConversations(): Promise<void> {
+    if (this.store.purgingDeletedConversations) {
+      return;
+    }
+    this.store.purgingDeletedConversations = true;
+    try {
+      const result =
+        await this.dependencies.client.purgeDeletedAgentConversations();
+      this.notifications.success({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.deletedConversationPurgeCompleted",
+          { count: String(result.removedSessions) }
+        )
+      });
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.deletedConversationPurgeFailed"
+        )
+      });
+    } finally {
+      this.store.purgingDeletedConversations = false;
     }
   }
 
@@ -1370,6 +1412,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   changingDefaultAgentProvider: null,
   changingDockIconStyle: null,
   changingDockPlacement: null,
+  changingDeletedAgentConversationRetentionDays: null,
   changingFeatureFlags: null,
   changingLocale: null,
   changingMinimizeAnimation: null,
@@ -1382,6 +1425,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   defaultAgentProvider: "codex",
   dockIconStyle: "default",
   dockPlacement: "bottom",
+  deletedAgentConversationRetentionDays: 30,
   featureFlags: defaultDesktopFeatureFlags,
   fileDefaultOpenersByExtension: {},
   locale: "en",
@@ -1415,6 +1459,9 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setDockPlacement(placement) {
     return Promise.resolve(placement);
+  },
+  setDeletedAgentConversationRetentionDays(days) {
+    return Promise.resolve(days);
   },
   setDockIconStyle(style) {
     return Promise.resolve(style);

@@ -5,6 +5,63 @@ import (
 	"testing"
 )
 
+func TestSettledTurnFreezesLastPersistedAssistantTextAsFinalMessageAnchor(t *testing.T) {
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-anchor")
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-anchor", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 1,
+	}); err != nil || !accepted {
+		t.Fatalf("record running turn accepted=%v error=%v", accepted, err)
+	}
+	if result, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-anchor", Origin: "runtime",
+		Messages: []MessageUpdate{{
+			MessageID: "assistant-a", TurnID: "turn-1", Role: "assistant", Kind: "text",
+			Status: "completed", Payload: map[string]any{"text": "A"}, OccurredAtUnixMS: 2,
+		}},
+	}); err != nil || result.AcceptedCount != 1 {
+		t.Fatalf("persist message A result=%#v error=%v", result, err)
+	}
+	settled, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "session-anchor", Kind: SessionKindRoot,
+			Origin: "runtime", Provider: "codex", Status: "ready", CurrentPhase: "idle", OccurredAtUnixMS: 3,
+		},
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-anchor", TurnID: "turn-1",
+			Phase: TurnPhaseSettled, Outcome: TurnOutcomeCompleted, OccurredAtUnixMS: 3,
+		},
+	})
+	if err != nil || !settled.TurnAccepted {
+		t.Fatalf("settled report result=%#v error=%v", settled, err)
+	}
+	if result, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-anchor", Origin: "runtime",
+		Messages: []MessageUpdate{{
+			MessageID: "assistant-c", TurnID: "turn-1", Role: "assistant", Kind: "text",
+			Status: "completed", Payload: map[string]any{"text": "C"}, OccurredAtUnixMS: 4,
+		}},
+	}); err != nil || result.AcceptedCount != 1 {
+		t.Fatalf("persist late message C result=%#v error=%v", result, err)
+	}
+	turn, found, err := store.GetTurn(ctx, "ws-1", "session-anchor", "turn-1")
+	if err != nil || !found {
+		t.Fatalf("GetTurn() found=%v error=%v", found, err)
+	}
+	if !turn.FinalAssistantMessageResolved || turn.FinalAssistantMessageID != "assistant-a" {
+		t.Fatalf("final assistant anchor = %q, want message A frozen at settlement", turn.FinalAssistantMessageID)
+	}
+	var payload string
+	if err := store.db.QueryRowContext(ctx, `SELECT completed_command_json FROM workspace_agent_turns WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-anchor' AND turn_id = 'turn-1'`).Scan(&payload); err != nil {
+		t.Fatalf("read turn payload: %v", err)
+	}
+	if payload != `{"finalAssistantMessageId":"assistant-a","finalAssistantMessageResolved":true}` {
+		t.Fatalf("completed command payload = %s", payload)
+	}
+}
+
 func TestLatestTurnsUseCompositeSessionScopeAndDurableOrdering(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))

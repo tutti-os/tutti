@@ -120,6 +120,7 @@ export interface PreferencesDesktopPreferencesV1 {
   defaultAgentProvider: "claude-code" | "codex" | "cursor" | "opencode";
   dockIconStyle: "default" | "flat";
   dockPlacement: "bottom" | "left";
+  deletedAgentConversationRetentionDays: 15 | 30;
   fileDefaultOpenersByExtension: Record<
     string,
     "appBrowser" | "defaultBrowser" | "fileViewer" | "system"

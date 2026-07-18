@@ -153,6 +153,12 @@ export const zhCN = {
       untitledConversation: "未命名对话",
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
       openSessionUnavailableTitle: "会话不可用",
+      sessionMenu: {
+        copyAsMarkdown: "复制为 Markdown",
+        copyAsReference: "复制为引用",
+        moreActions: "更多会话操作",
+        rename: "重命名会话"
+      },
       browserElementContext: {
         cancel: "取消选择元素",
         failed: "无法将这个页面元素添加到 Agent 输入框",
@@ -522,6 +528,22 @@ export const zhCN = {
           generalDescription: "同样强大，技术细节更少"
         },
         agentConversationDetailModeSaveFailed: "暂时无法更新工作模式",
+        deletedConversationRetentionLabel: "已删除会话清理",
+        deletedConversationRetentionDescription:
+          "在所选期限后永久移除软删除的 Agent 会话，仅清理 Tutti 管理的数据",
+        deletedConversationRetentionDays: "{{count}} 天",
+        deletedConversationRetentionSaveFailed: "暂时无法更新清理期限",
+        deletedConversationPurgeAction: "立即清理",
+        deletedConversationPurging: "正在清理…",
+        deletedConversationPurgeTitle: "永久清理已删除会话？",
+        deletedConversationPurgeDescription:
+          "这会移除本设备上全部软删除的 Agent 会话且无法撤销，请输入「{{phrase}}」继续",
+        deletedConversationPurgeConfirmationPhrase: "永久清理",
+        deletedConversationPurgeConfirmationLabel: "确认文字",
+        deletedConversationPurgeConfirm: "永久清理",
+        deletedConversationPurgeCompleted: "已清理 {{count}} 个已删除会话",
+        deletedConversationPurgeFailed:
+          "暂时无法清理，请先结束正在运行的 Agent 任务后重试",
         computerUseLabel: "电脑控制",
         computerUseDescription:
           "让 Agent 控制你的 Mac 桌面——截图、点击、键盘输入等",

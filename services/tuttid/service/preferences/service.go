@@ -49,6 +49,7 @@ type PutInput struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
+	DeletedAgentConversationRetentionDays       int
 	FileDefaultOpenersByExtension               map[string]string
 	FeatureFlags                                map[string]bool
 	WorkbenchShortcuts                          preferencesbiz.DesktopWorkbenchShortcuts
@@ -152,6 +153,7 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		DefaultAgentProvider:                        normalizeDefaultAgentProvider(input.DefaultAgentProvider),
 		DockIconStyle:                               strings.TrimSpace(input.DockIconStyle),
 		DockPlacement:                               strings.TrimSpace(input.DockPlacement),
+		DeletedAgentConversationRetentionDays:       preferencesbiz.NormalizeDeletedAgentConversationRetentionDays(input.DeletedAgentConversationRetentionDays),
 		FileDefaultOpenersByExtension:               normalizeFileDefaultOpenersByExtension(input.FileDefaultOpenersByExtension),
 		Initialized:                                 true,
 		FeatureFlags:                                preferencesbiz.NormalizeDesktopFeatureFlags(input.FeatureFlags),

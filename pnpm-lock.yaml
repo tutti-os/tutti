@@ -290,6 +290,9 @@ importers:
       "@tutti-os/agent-activity-core":
         specifier: workspace:*
         version: link:../activity-core
+      "@tutti-os/browser-node":
+        specifier: workspace:*
+        version: link:../../browser/workbench-node
       "@tutti-os/ui-i18n-runtime":
         specifier: workspace:*
         version: link:../../ui/i18n-runtime
@@ -819,6 +822,9 @@ importers:
 
   packages/workspace/external-core:
     dependencies:
+      "@tutti-os/agent-activity-core":
+        specifier: workspace:*
+        version: link:../../agent/activity-core
       "@tutti-os/ui-rich-text":
         specifier: workspace:*
         version: link:../../ui/rich-text

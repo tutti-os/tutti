@@ -10,6 +10,37 @@ This document defines the repository-managed test discovery and gate policy.
 - `pnpm test:go:prepared`: run the blocking Go workspace test set when builtin app assets are already prepared
 - `pnpm test:go:agent-daemon`: run the blocking agent daemon module as a focused lane
 
+## Validation Selection
+
+Validation entrypoints are scopes, not a cumulative checklist. For normal
+non-UI-only work, inspect `pnpm check:changed -- --dry-run`, then run one final
+`pnpm check:changed` after the change has settled. The final plan owns its
+selected package tests, typechecks, lint, and boundary checks; do not run those
+same commands as a separate final preflight or follow-up.
+
+Direct package or boundary commands are iteration tools for a failing or
+uncertain surface. After a failed changed-aware run, use
+`pnpm check:changed -- --failed-only` when only failed lanes need another pass.
+A focused command run before subsequent edits is evidence for that iteration,
+not for the final worktree; some narrow coverage may therefore run again in the
+final changed-aware gate.
+
+Add a standalone final check only when the dry-run plan omits a capability the
+changed surface requires:
+
+- Desktop runtime/build behavior: `pnpm --filter @tutti-os/desktop build`
+- user-visible copy or locale resources: `pnpm check:i18n`
+- defaults under `config/tutti.defaults.json`: `pnpm generate:defaults` and `pnpm check:defaults-generated`
+- provider strategy/capability contracts: `pnpm check:agent-provider-strategy-boundaries`
+- daemon build confidence: `cd services/tuttid && go build ./...`
+
+Use a full package suite or `pnpm check:full` only when broad impact, release
+risk, an explicit workflow, or concrete uncertainty in changed-test selection
+requires wider confidence. If wider confidence is required, avoid separately
+pre-running every boundary/typecheck lane that `check:changed` already owns;
+some overlap between its selected tests and an intentionally broader suite may
+be unavoidable.
+
 `pnpm check:full` prepares builtin app assets once, then uses the prepared Go
 lint and test entrypoints. This prevents concurrent validation lanes from
 writing the same generated assets. It captures complete task output under

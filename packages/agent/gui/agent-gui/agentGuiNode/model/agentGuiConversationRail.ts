@@ -106,6 +106,19 @@ export function conversationRailSectionHeaderVisibility(
   };
 }
 
+export function conversationRailSectionActiveConversationId(input: {
+  activeConversation: ConversationSection["items"][number] | null;
+  activeConversationId: string | null;
+  section: ConversationSection;
+}): string | null {
+  const activeConversationId = input.activeConversationId;
+  if (!activeConversationId) return null;
+  return input.activeConversation?.id === activeConversationId ||
+    input.section.items.some((item) => item.id === activeConversationId)
+    ? activeConversationId
+    : null;
+}
+
 export function partitionConversationRailUserProjects<
   T extends { pinnedAtUnixMs: number }
 >(projects: readonly T[]): T[] {

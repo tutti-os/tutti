@@ -13,6 +13,26 @@ const tuttiAssetRoutes = {
     sourceRelativePath:
       "src/renderer/src/assets/workspace-canvas/dock/default/codex.png"
   },
+  "agent/cursor.png": {
+    builtFilePrefixes: ["cursor-colorful-", "cursor-rounded-", "cursor-"],
+    sourceRelativePath:
+      "src/renderer/src/assets/workspace-canvas/dock/default/cursor.png"
+  },
+  "agent/hermes.png": {
+    builtFilePrefixes: ["hermes-rounded-", "hermes-"],
+    sourceRelativePath:
+      "src/renderer/src/assets/workspace-canvas/dock/default/hermes.png"
+  },
+  "agent/openclaw.png": {
+    builtFilePrefixes: ["openclaw-rounded-", "openclaw-"],
+    sourceRelativePath:
+      "src/renderer/src/assets/workspace-canvas/dock/default/openclaw.png"
+  },
+  "agent/opencode.png": {
+    builtFilePrefixes: ["opencode-rounded-", "opencode-"],
+    sourceRelativePath:
+      "src/renderer/src/assets/workspace-canvas/dock/default/opencode.png"
+  },
   "agent/tutti.png": {
     builtFilePrefixes: ["tutti-"],
     sourceRelativePath:

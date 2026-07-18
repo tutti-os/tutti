@@ -12,12 +12,12 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 		scenarios []Scenario
 		wantCount int
 	}{
-		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 13},
-		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 10},
+		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 15},
+		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 11},
 		{name: "resume policy", scenarios: ResumePolicyScenarios(), wantCount: 4},
 		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
 		{name: "title policy", scenarios: TitlePolicyScenarios(), wantCount: 1},
-		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 5},
+		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 6},
 		{name: "goal", scenarios: GoalScenarios(), wantCount: 5},
 		{name: "commit observer", scenarios: CommitObserverScenarios(), wantCount: 2},
 	}
@@ -55,10 +55,12 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"historical and live settings",
 		"pin session",
 		"delete session",
+		"purge deleted sessions",
 	}
 	wantCoordinator := []string{
 		"exact turn cancel",
 		"interactive response",
+		"interactive response race",
 		"plan decision",
 		"recover operations before stale turns and worktree sweep",
 		"worktree sweep failure propagates",

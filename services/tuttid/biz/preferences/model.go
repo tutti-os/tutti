@@ -14,21 +14,22 @@ const (
 	DesktopAgentConversationDetailModeCoding  = "coding"
 	DesktopAgentConversationDetailModeGeneral = "general"
 
-	DefaultDesktopAppCatalogChannel           = "production"
-	DefaultDesktopAgentDockLayout             = DesktopAgentDockLayoutUnified
-	DefaultDesktopAgentConversationDetailMode = DesktopAgentConversationDetailModeCoding
-	DefaultDesktopDockIconStyle               = "default"
-	DefaultDesktopDockPlacement               = "bottom"
-	DefaultDesktopBrowserUseConnectionMode    = "isolated"
-	DefaultDesktopLocale                      = "en"
-	DefaultDesktopMinimizeAnimation           = "scale"
-	DefaultDesktopSleepPreventionMode         = "never"
-	DefaultDesktopShowAppDeveloperSources     = false
-	DefaultDesktopThemeSource                 = "dark"
-	DefaultDesktopUpdateChannel               = "rc"
-	DefaultDesktopUpdatePolicy                = "prompt"
-	DefaultDesktopWindowSnappingEnabled       = false
-	DefaultDesktopWindowSnappingShortcut      = "commandArrows"
+	DefaultDesktopAppCatalogChannel              = "production"
+	DefaultDesktopAgentDockLayout                = DesktopAgentDockLayoutUnified
+	DefaultDesktopAgentConversationDetailMode    = DesktopAgentConversationDetailModeCoding
+	DefaultDesktopDockIconStyle                  = "default"
+	DefaultDesktopDockPlacement                  = "bottom"
+	DefaultDeletedAgentConversationRetentionDays = 30
+	DefaultDesktopBrowserUseConnectionMode       = "isolated"
+	DefaultDesktopLocale                         = "en"
+	DefaultDesktopMinimizeAnimation              = "scale"
+	DefaultDesktopSleepPreventionMode            = "never"
+	DefaultDesktopShowAppDeveloperSources        = false
+	DefaultDesktopThemeSource                    = "dark"
+	DefaultDesktopUpdateChannel                  = "rc"
+	DefaultDesktopUpdatePolicy                   = "prompt"
+	DefaultDesktopWindowSnappingEnabled          = false
+	DefaultDesktopWindowSnappingShortcut         = "commandArrows"
 )
 
 var DefaultDesktopDefaultAgentProvider = defaultDesktopAgentProvider()
@@ -60,6 +61,7 @@ type DesktopPreferences struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
+	DeletedAgentConversationRetentionDays       int
 	FeatureFlags                                map[string]bool
 	FileDefaultOpenersByExtension               map[string]string
 	Initialized                                 bool
@@ -125,6 +127,7 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		DefaultAgentProvider:                        DefaultDesktopDefaultAgentProvider,
 		DockIconStyle:                               DefaultDesktopDockIconStyle,
 		DockPlacement:                               DefaultDesktopDockPlacement,
+		DeletedAgentConversationRetentionDays:       DefaultDeletedAgentConversationRetentionDays,
 		FeatureFlags:                                map[string]bool{},
 		FileDefaultOpenersByExtension: map[string]string{
 			"htm":   "appBrowser",
@@ -144,6 +147,17 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		WindowSnappingShortcutPreset: DefaultDesktopWindowSnappingShortcut,
 		WorkbenchShortcuts:           DesktopWorkbenchShortcuts{},
 	}
+}
+
+func NormalizeDeletedAgentConversationRetentionDays(value int) int {
+	if IsDeletedAgentConversationRetentionDays(value) {
+		return value
+	}
+	return DefaultDeletedAgentConversationRetentionDays
+}
+
+func IsDeletedAgentConversationRetentionDays(value int) bool {
+	return value == 15 || value == 30
 }
 
 func NormalizeDesktopAgentDockLayout(value string) string {

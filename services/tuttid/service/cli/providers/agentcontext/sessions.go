@@ -120,7 +120,7 @@ func (p Provider) newWaitCommand() cliservice.Command {
 		ID:          appID + ".agent.wait",
 		Path:        []string{"agent", "wait"},
 		Summary:     "Wait for an agent session stop point",
-		Description: "Block until the session reaches a stop point. Use `agent session-summary` for context recovery.",
+		Description: "Block until the session reaches a stop point and return its final answer or pending interactions inline.",
 		Kind:        framework.KindAction,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
@@ -200,8 +200,8 @@ func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, i
 		WorkspaceID:    invoke.WorkspaceID,
 		AgentSessionID: input.SessionID,
 		AfterVersion:   afterVersion,
-		SkipMessages:   true,
 		Timeout:        timeout,
+		SkipMessages:   true,
 	})
 	if err != nil {
 		return nil, err
@@ -263,14 +263,46 @@ func turnResourcesJSONValue(result any) map[string]any {
 
 func waitJSONValue(result any) map[string]any {
 	waited := result.(waitCommandResult)
-	return map[string]any{
+	value := map[string]any{
 		"agentSessionId": waited.Result.Session.ID,
+		"turnId":         nil,
 		"session":        sessionSummaryValue(waited.Result.Session),
 		"latestVersion":  waited.Result.LatestVersion,
 		"effectiveAfter": waited.Result.EffectiveAfter,
 		"timedOut":       waited.Result.TimedOut,
 		"reason":         string(waited.Result.Reason),
 	}
+	if turnID := strings.TrimSpace(waited.Result.TurnID); turnID != "" {
+		value["turnId"] = turnID
+	}
+	if (waited.Result.Reason == agentservice.WaitReasonCompleted || waited.Result.Reason == agentservice.WaitReasonFailed) && waited.Result.FinalMessage != nil {
+		value["finalMessage"] = map[string]any{
+			"turnId": waited.Result.FinalMessage.TurnID,
+			"text":   waited.Result.FinalMessage.Text,
+		}
+	}
+	if waited.Result.Reason == agentservice.WaitReasonWaitingApproval || waited.Result.Reason == agentservice.WaitReasonWaitingInput {
+		value["interactions"] = waitInteractionValues(waited.Result.Interactions)
+	}
+	return value
+}
+
+func waitInteractionValues(interactions []agentservice.WaitInteraction) []any {
+	values := make([]any, 0, len(interactions))
+	for _, interaction := range interactions {
+		actions := make([]any, 0, len(interaction.Actions))
+		for _, action := range interaction.Actions {
+			actions = append(actions, map[string]any{
+				"id": action.ID, "label": action.Label, "semantic": action.Semantic,
+			})
+		}
+		values = append(values, map[string]any{
+			"requestId": interaction.RequestID, "turnId": interaction.TurnID,
+			"kind": interaction.Kind, "toolName": interaction.ToolName, "actions": actions,
+			"input": map[string]any{"summary": interaction.InputSummary, "truncated": interaction.InputTruncated},
+		})
+	}
+	return values
 }
 
 func turnResourceMessageValues(messages []agentservice.SessionMessage, imageLocalPath imageLocalPathResolver) []any {

@@ -65,9 +65,24 @@ export type AgentHostPersistenceApi = AgentHostRecord & {
   ) => AgentHostAsyncResult<PersistWriteResult>;
 };
 
+export type AgentHostToastHandle = {
+  /** Settles the toast to a neutral, non-error, non-success tone. */
+  info: (title: string, description?: string) => void;
+  /** Settles the toast to the destructive tone. */
+  reject: (title: string, description?: string) => void;
+  /** Settles the toast to the success tone. */
+  resolve: (title: string, description?: string) => void;
+};
+
 export type AgentHostToastApi = AgentHostRecord & {
   error: (title: string, description?: string) => void;
   info?: (title: string, description?: string) => void;
+  /**
+   * Opens one toast that stays mounted across async work: it shows busy
+   * (spinner, no auto-dismiss) until the returned handle settles it in
+   * place, at which point it starts auto-dismissing like any other toast.
+   */
+  loading?: (title: string) => AgentHostToastHandle;
   success?: (title: string, description?: string) => void;
 };
 
@@ -121,10 +136,6 @@ export type AgentHostWorkspaceApi = AgentHostRecord & {
   ) => AgentHostAsyncResult<AgentHostResolveWorkspaceGitPatchSupportResult>;
   copyPath?: (input: { path: string }) => AgentHostAsyncResult<void>;
   ensureDirectory: (input: { path: string }) => AgentHostAsyncResult<void>;
-  getReferenceForFile?: (file: File) => {
-    kind: "file" | "folder";
-    path: string;
-  };
   readFile: (input: {
     path: string;
   }) => AgentHostAsyncResult<AgentHostReadWorkspaceFileResult>;

@@ -83,13 +83,14 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderPayloadFromBiz(
 				preferences.AgentGUIConversationRailCollapsedByProvider,
 			),
-			AgentConversationDetailMode: preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode),
-			AgentDockLayout:             preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout),
-			AppCatalogChannel:           preferences.AppCatalogChannel,
-			BrowserUseConnectionMode:    preferences.BrowserUseConnectionMode,
-			DefaultAgentProvider:        preferences.DefaultAgentProvider,
-			DockIconStyle:               preferences.DockIconStyle,
-			DockPlacement:               preferences.DockPlacement,
+			AgentConversationDetailMode:           preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode),
+			AgentDockLayout:                       preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout),
+			AppCatalogChannel:                     preferences.AppCatalogChannel,
+			BrowserUseConnectionMode:              preferences.BrowserUseConnectionMode,
+			DefaultAgentProvider:                  preferences.DefaultAgentProvider,
+			DockIconStyle:                         preferences.DockIconStyle,
+			DockPlacement:                         preferences.DockPlacement,
+			DeletedAgentConversationRetentionDays: preferencesbiz.NormalizeDeletedAgentConversationRetentionDays(preferences.DeletedAgentConversationRetentionDays),
 			FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionPayloadFromBiz(
 				preferences.FileDefaultOpenersByExtension,
 			),
@@ -173,6 +174,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			DefaultAgentProvider:                        decoded.DefaultAgentProvider,
 			DockIconStyle:                               decoded.DockIconStyle,
 			DockPlacement:                               decoded.DockPlacement,
+			DeletedAgentConversationRetentionDays:       decoded.DeletedAgentConversationRetentionDays,
 			FileDefaultOpenersByExtension:               decoded.FileDefaultOpenersByExtension,
 			FeatureFlags:                                decoded.FeatureFlags,
 			WorkbenchShortcuts:                          decoded.WorkbenchShortcuts,
@@ -203,6 +205,7 @@ type decodedDesktopPreferencesMutationPayload struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
+	DeletedAgentConversationRetentionDays       int
 	FileDefaultOpenersByExtension               map[string]string
 	FeatureFlags                                map[string]bool
 	WorkbenchShortcuts                          preferencesbiz.DesktopWorkbenchShortcuts
@@ -228,6 +231,10 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 			ShortcutPreset: decoded.Preferences.WorkbenchWindowSnapping.ShortcutPreset,
 		}
 	}
+	deletedAgentConversationRetentionDays := decoded.Preferences.DeletedAgentConversationRetentionDays
+	if deletedAgentConversationRetentionDays == 0 {
+		deletedAgentConversationRetentionDays = preferencesbiz.DefaultDeletedAgentConversationRetentionDays
+	}
 
 	return decodedDesktopPreferencesMutationPayload{
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromPayload(
@@ -239,13 +246,14 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderFromPayload(
 			decoded.Preferences.AgentGUIConversationRailCollapsedByProvider,
 		),
-		AgentConversationDetailMode: decoded.Preferences.AgentConversationDetailMode,
-		AgentDockLayout:             decoded.Preferences.AgentDockLayout,
-		AppCatalogChannel:           decoded.Preferences.AppCatalogChannel,
-		BrowserUseConnectionMode:    decoded.Preferences.BrowserUseConnectionMode,
-		DefaultAgentProvider:        decoded.Preferences.DefaultAgentProvider,
-		DockIconStyle:               decoded.Preferences.DockIconStyle,
-		DockPlacement:               decoded.Preferences.DockPlacement,
+		AgentConversationDetailMode:           decoded.Preferences.AgentConversationDetailMode,
+		AgentDockLayout:                       decoded.Preferences.AgentDockLayout,
+		AppCatalogChannel:                     decoded.Preferences.AppCatalogChannel,
+		BrowserUseConnectionMode:              decoded.Preferences.BrowserUseConnectionMode,
+		DefaultAgentProvider:                  decoded.Preferences.DefaultAgentProvider,
+		DockIconStyle:                         decoded.Preferences.DockIconStyle,
+		DockPlacement:                         decoded.Preferences.DockPlacement,
+		DeletedAgentConversationRetentionDays: deletedAgentConversationRetentionDays,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromPayload(
 			decoded.Preferences.FileDefaultOpenersByExtension,
 		),

@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
 import { AgentGUIConversationRailSection } from "./AgentGUIConversationRailSection";
+import { AgentGUIConversationRailSectionPresentationProvider } from "./agentGUIConversationRailSectionPresentationContext";
 
 describe("AgentGUIConversationRailSection project pin presentation", () => {
   it("renders pinned accessibility, empty state, ordered menu, and unpin action", async () => {
@@ -61,77 +62,188 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
       screen.getByRole("button", { name: "Project actions" })
     ).toBeDisabled();
   });
+
+  it("mounts project menu content only while open", async () => {
+    const onProjectMenuOpenChange = vi.fn();
+    renderProjectSection({
+      pinnedAtUnixMs: 0,
+      onProjectMenuOpenChange,
+      onToggleProjectPinned: vi.fn(() => Promise.resolve())
+    });
+
+    expect(screen.queryByRole("menuitem")).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Project actions" }),
+      { button: 0, ctrlKey: false }
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: "Open folder" })
+    ).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menuitem")).toBeNull());
+    expect(onProjectMenuOpenChange).toHaveBeenNthCalledWith(1, true);
+    expect(onProjectMenuOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("updates only open menu availability when section locks change", async () => {
+    const onToggleProjectPinned = vi.fn(() => Promise.resolve());
+    const initialInput = {
+      hasMore: true,
+      pinnedAtUnixMs: 0,
+      onToggleProjectPinned
+    };
+    const { rerender } = renderProjectSection(initialInput);
+    const projectActionsButton = screen.getByRole("button", {
+      name: "Project actions"
+    });
+
+    fireEvent.pointerDown(projectActionsButton, { button: 0, ctrlKey: false });
+    const deleteItem = await screen.findByRole("menuitem", {
+      name: "Delete sessions"
+    });
+    expect(deleteItem).not.toHaveAttribute("data-disabled");
+
+    rerender(
+      renderProjectSectionElement({
+        ...initialInput,
+        projectActionLocked: true,
+        searchActive: true
+      })
+    );
+
+    expect(projectActionsButton).toBeDisabled();
+    expect(deleteItem).toHaveAttribute("data-disabled");
+    expect(
+      screen.getByRole("menuitem", { name: "Pin project" })
+    ).toHaveAttribute("data-disabled");
+    expect(
+      screen.getByRole("menuitem", { name: "Remove project" })
+    ).toHaveAttribute("data-disabled");
+    expect(projectActionsButton).toBeDisabled();
+    expect(projectActionsButton.isConnected).toBe(true);
+  });
+
+  it("restores native dragging after the presentation lock clears", () => {
+    const onProjectDragStart = vi.fn();
+    const initialInput = {
+      pinnedAtUnixMs: 0,
+      projectDragDisabled: true,
+      onProjectDragStart,
+      onToggleProjectPinned: vi.fn(() => Promise.resolve())
+    };
+    const { rerender } = renderProjectSection(initialInput);
+    const section = screen.getByText("Alpha").closest("section");
+    const header = section?.firstElementChild as HTMLElement;
+
+    expect(header.draggable).toBe(false);
+    rerender(
+      renderProjectSectionElement({
+        ...initialInput,
+        projectDragDisabled: false
+      })
+    );
+
+    const unlockedHeader = screen.getByText("Alpha").closest("section")
+      ?.firstElementChild as HTMLElement;
+    expect(unlockedHeader).toBe(header);
+    expect(unlockedHeader.draggable).toBe(true);
+    fireEvent.dragStart(unlockedHeader);
+    expect(onProjectDragStart).toHaveBeenCalledTimes(1);
+  });
 });
 
 function renderProjectSection(input: {
+  hasMore?: boolean;
   pinnedAtUnixMs: number;
   searchActive?: boolean;
   projectActionLocked?: boolean;
+  projectDragDisabled?: boolean;
+  onProjectDragStart?: (event: React.DragEvent<HTMLElement>) => void;
+  onProjectMenuOpenChange?: (open: boolean) => void;
   onToggleProjectPinned: (projectId: string, pinned: boolean) => Promise<void>;
 }) {
-  return render(
+  return render(renderProjectSectionElement(input));
+}
+
+function renderProjectSectionElement(input: {
+  hasMore?: boolean;
+  pinnedAtUnixMs: number;
+  searchActive?: boolean;
+  projectActionLocked?: boolean;
+  projectDragDisabled?: boolean;
+  onProjectDragStart?: (event: React.DragEvent<HTMLElement>) => void;
+  onProjectMenuOpenChange?: (open: boolean) => void;
+  onToggleProjectPinned: (projectId: string, pinned: boolean) => Promise<void>;
+}) {
+  return (
     <TooltipProvider>
-      <AgentGUIConversationRailSection
-        activeConversation={null}
-        activeConversationCountsTowardTotal={false}
-        activeConversationId={null}
-        createConversationDisabled={false}
-        isConversationSearchActive={input.searchActive ?? false}
-        isDeletingConversation={false}
-        isDeletingProjectConversations={false}
-        isLoadingMoreConversations={false}
-        isProjectActionLocked={() => input.projectActionLocked ?? false}
-        isRailInteractionLocked={() => false}
-        isRequestingBatchDeletion={false}
-        isSectionCollapsed={false}
-        labels={LABELS}
-        pendingDeleteConversationId={null}
-        previewMode={false}
-        projectDragDisabled={false}
-        projectDragging={false}
-        projectDropIndicator={null}
-        projectLabel="Alpha"
-        projectPath="/alpha"
-        registerItemElement={() => {}}
-        section={{
-          id: "project:/alpha",
-          items: [],
-          kind: "project",
-          label: "Alpha",
-          project: {
-            id: "alpha",
+      <AgentGUIConversationRailSectionPresentationProvider
+        batchDeletionDisabled={
+          (input.searchActive ?? false) || !(input.hasMore ?? false)
+        }
+        projectActionLocked={input.projectActionLocked ?? false}
+        projectDragDisabled={input.projectDragDisabled ?? false}
+      >
+        <AgentGUIConversationRailSection
+          activeConversation={null}
+          activeConversationCountsTowardTotal={false}
+          activeConversationId={null}
+          createConversationDisabled={false}
+          isDeletingConversation={false}
+          isLoadingMoreConversations={false}
+          isProjectActionLocked={() => input.projectActionLocked ?? false}
+          isRailInteractionLocked={() => false}
+          isSectionCollapsed={false}
+          labels={LABELS}
+          pendingDeleteConversationId={null}
+          previewMode={false}
+          projectDragging={false}
+          projectDropIndicator={null}
+          projectLabel="Alpha"
+          projectPath="/alpha"
+          registerItemElement={() => {}}
+          section={{
+            id: "project:/alpha",
+            items: [],
+            kind: "project",
             label: "Alpha",
-            path: "/alpha",
-            pinnedAtUnixMs: input.pinnedAtUnixMs,
-            sectionKey: "project:/alpha"
+            project: {
+              id: "alpha",
+              label: "Alpha",
+              path: "/alpha",
+              pinnedAtUnixMs: input.pinnedAtUnixMs,
+              sectionKey: "project:/alpha"
+            }
+          }}
+          sectionHasMore={input.hasMore ?? false}
+          sectionTotalCount={input.hasMore ? 1 : 0}
+          uiLanguage="en"
+          visibleItemLimit={5}
+          workspaceId="workspace-1"
+          onCancelDeleteConversation={() => {}}
+          onConfirmDeleteConversation={() => {}}
+          onCreateConversation={() => {}}
+          onLoadMoreConversations={() => {}}
+          onMarkConversationUnread={() => {}}
+          onOpenProjectFiles={() => {}}
+          onProjectDragEnd={() => {}}
+          onProjectDragOver={() => {}}
+          onProjectDragStart={(_, event) => input.onProjectDragStart?.(event)}
+          onProjectMenuOpenChange={(_, open) =>
+            input.onProjectMenuOpenChange?.(open)
           }
-        }}
-        sectionHasMore={false}
-        sectionTotalCount={0}
-        uiLanguage="en"
-        visibleItemLimit={5}
-        workspaceId="workspace-1"
-        onCancelDeleteConversation={() => {}}
-        onConfirmDeleteConversation={() => {}}
-        onCreateConversation={() => {}}
-        onLoadMoreConversations={() => {}}
-        onMarkConversationUnread={() => {}}
-        onOpenProjectFiles={() => {}}
-        onProjectDragEnd={() => {}}
-        onProjectDragOver={() => {}}
-        onProjectDragStart={() => {}}
-        onProjectDrop={() => {}}
-        onProjectMenuOpenChange={() => {}}
-        onRequestDeleteConversation={() => {}}
-        onRequestRenameConversation={() => {}}
-        onRequestSectionBatchDeletion={() => {}}
-        onSelectConversation={() => {}}
-        onToggleConversationPinned={() => {}}
-        onToggleProjectPinned={input.onToggleProjectPinned}
-        onToggleProjectSectionCollapsed={() => {}}
-        onVisibleItemLimitChange={() => {}}
-        setPendingProjectAction={() => {}}
-      />
+          onRequestDeleteConversation={() => {}}
+          onRequestRenameConversation={() => {}}
+          onRequestSectionBatchDeletion={() => {}}
+          onSelectConversation={() => {}}
+          onToggleConversationPinned={() => {}}
+          onToggleProjectPinned={input.onToggleProjectPinned}
+          onToggleProjectSectionCollapsed={() => {}}
+          onVisibleItemLimitChange={() => {}}
+          setPendingProjectAction={() => {}}
+        />
+      </AgentGUIConversationRailSectionPresentationProvider>
     </TooltipProvider>
   );
 }

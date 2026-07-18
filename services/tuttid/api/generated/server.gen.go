@@ -37,6 +37,9 @@ type ServerInterface interface {
 	// Get current desktop account user
 	// (GET /v1/account/user_info)
 	GetAccountUserInfo(w http.ResponseWriter, r *http.Request)
+	// Permanently purge all soft-deleted Agent conversations
+	// (POST /v1/agent-maintenance/deleted-conversations/purge)
+	PurgeDeletedAgentConversations(w http.ResponseWriter, r *http.Request)
 	// Get local agent provider availability and action status
 	// (GET /v1/agent-providers/status)
 	GetAgentProviderStatuses(w http.ResponseWriter, r *http.Request, params GetAgentProviderStatusesParams)
@@ -616,6 +619,26 @@ func (siw *ServerInterfaceWrapper) GetAccountUserInfo(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAccountUserInfo(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PurgeDeletedAgentConversations operation middleware
+func (siw *ServerInterfaceWrapper) PurgeDeletedAgentConversations(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PurgeDeletedAgentConversations(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6956,6 +6979,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/product_summary", wrapper.GetAccountProductSummary)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/account/registration_credits_reward/dismiss", wrapper.DismissAccountRegistrationCreditsReward)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/user_info", wrapper.GetAccountUserInfo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-maintenance/deleted-conversations/purge", wrapper.PurgeDeletedAgentConversations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-providers/status", wrapper.GetAgentProviderStatuses)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/actions/{actionID}/run", wrapper.RunAgentProviderAction)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/composer-options", wrapper.GetAgentProviderComposerOptions)
@@ -7543,6 +7567,89 @@ type GetAccountUserInfo503JSONResponse struct {
 }
 
 func (response GetAccountUserInfo503JSONResponse) VisitGetAccountUserInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PurgeDeletedAgentConversationsRequestObject struct {
+}
+
+type PurgeDeletedAgentConversationsResponseObject interface {
+	VisitPurgeDeletedAgentConversationsResponse(w http.ResponseWriter) error
+}
+
+type PurgeDeletedAgentConversations200JSONResponse DeletedAgentConversationPurgeResult
+
+func (response PurgeDeletedAgentConversations200JSONResponse) VisitPurgeDeletedAgentConversationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PurgeDeletedAgentConversations401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response PurgeDeletedAgentConversations401JSONResponse) VisitPurgeDeletedAgentConversationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PurgeDeletedAgentConversations405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response PurgeDeletedAgentConversations405JSONResponse) VisitPurgeDeletedAgentConversationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PurgeDeletedAgentConversations502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response PurgeDeletedAgentConversations502JSONResponse) VisitPurgeDeletedAgentConversationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PurgeDeletedAgentConversations503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response PurgeDeletedAgentConversations503JSONResponse) VisitPurgeDeletedAgentConversationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -24232,6 +24339,9 @@ type StrictServerInterface interface {
 	// Get current desktop account user
 	// (GET /v1/account/user_info)
 	GetAccountUserInfo(ctx context.Context, request GetAccountUserInfoRequestObject) (GetAccountUserInfoResponseObject, error)
+	// Permanently purge all soft-deleted Agent conversations
+	// (POST /v1/agent-maintenance/deleted-conversations/purge)
+	PurgeDeletedAgentConversations(ctx context.Context, request PurgeDeletedAgentConversationsRequestObject) (PurgeDeletedAgentConversationsResponseObject, error)
 	// Get local agent provider availability and action status
 	// (GET /v1/agent-providers/status)
 	GetAgentProviderStatuses(ctx context.Context, request GetAgentProviderStatusesRequestObject) (GetAgentProviderStatusesResponseObject, error)
@@ -24849,6 +24959,30 @@ func (sh *strictHandler) GetAccountUserInfo(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAccountUserInfoResponseObject); ok {
 		if err := validResponse.VisitGetAccountUserInfoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PurgeDeletedAgentConversations operation middleware
+func (sh *strictHandler) PurgeDeletedAgentConversations(w http.ResponseWriter, r *http.Request) {
+	var request PurgeDeletedAgentConversationsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PurgeDeletedAgentConversations(ctx, request.(PurgeDeletedAgentConversationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PurgeDeletedAgentConversations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PurgeDeletedAgentConversationsResponseObject); ok {
+		if err := validResponse.VisitPurgeDeletedAgentConversationsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

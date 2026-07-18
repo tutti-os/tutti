@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
@@ -23,6 +24,7 @@ import (
 	accountservice "github.com/tutti-os/tutti/services/tuttid/service/account"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
+	agentmaintenanceservice "github.com/tutti-os/tutti/services/tuttid/service/agentmaintenance"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
@@ -371,6 +373,11 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	agentSessionService.SessionInitializer = agentActivityProjection
 	agentSessionService.SessionReader = agentActivityProjection
+	agentSessionPurgeStore, ok := agentActivityRepo.(agenthost.SessionPurgeStore)
+	if !ok {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent session purge store is unavailable")
+	}
+	agentSessionService.SessionPurgeStore = agentSessionPurgeStore
 	agentSessionService.UserProjectReader = userProjectService
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
@@ -433,6 +440,17 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 			slog.ErrorContext(ctx, "agent Host worker lifecycle stopped", "error", err)
 		}
 	}()
+	var agentMaintenance *agentmaintenanceservice.Service
+	if maintenanceState, ok := store.(agentmaintenanceservice.StateStore); ok {
+		agentMaintenance = &agentmaintenanceservice.Service{
+			Host: agentHost, Preferences: preferences, State: maintenanceState,
+			IsIdle: agentSessionService.IdleForDataMaintenance,
+		}
+		if compactor, ok := store.(agentmaintenanceservice.DatabaseCompactor); ok {
+			agentMaintenance.Compactor = compactor
+		}
+		go agentMaintenance.Run(ctx)
+	}
 
 	workspaceService := workspaceservice.CatalogService{
 		Store:            store,
@@ -594,6 +612,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		AgentTargetService:        agentTargets,
 		AgentTargetSetupService:   agentTargetSetup,
 		PreferencesService:        preferences,
+		AgentMaintenanceService:   agentMaintenance,
 		ManagedCredentialsService: managedCredentials,
 		EventStreamService:        events,
 		WorkspaceService:          workspaceService,

@@ -111,19 +111,20 @@ func turnTransitionFromStateInput(
 			return agentactivitybiz.TurnTransition{}, false
 		}
 		transition := agentactivitybiz.TurnTransition{
-			WorkspaceID:           workspaceID,
-			AgentSessionID:        agentSessionID,
-			TurnID:                strings.TrimSpace(turn.TurnID),
-			Phase:                 phase,
-			Outcome:               normalizeTurnOutcomeV2(turn.Outcome),
-			FileChanges:           clonePayload(turn.FileChanges),
-			StartedAtUnixMS:       turn.StartedAtUnixMS,
-			SettledAtUnixMS:       turn.CompletedAtUnixMS,
-			OccurredAtUnixMS:      state.OccurredAtUnixMS,
-			Origin:                strings.TrimSpace(turn.Origin),
-			SourceGoalOperationID: strings.TrimSpace(turn.SourceGoalOperationID),
-			SourceGoalRevision:    turn.SourceGoalRevision,
-			SourceGoalRepairEpoch: turn.SourceGoalRepairEpoch,
+			WorkspaceID:             workspaceID,
+			AgentSessionID:          agentSessionID,
+			TurnID:                  strings.TrimSpace(turn.TurnID),
+			Phase:                   phase,
+			Outcome:                 normalizeTurnOutcomeV2(turn.Outcome),
+			FileChanges:             clonePayload(turn.FileChanges),
+			StartedAtUnixMS:         turn.StartedAtUnixMS,
+			SettledAtUnixMS:         turn.CompletedAtUnixMS,
+			OccurredAtUnixMS:        state.OccurredAtUnixMS,
+			Origin:                  strings.TrimSpace(turn.Origin),
+			SourceGoalOperationID:   strings.TrimSpace(turn.SourceGoalOperationID),
+			SourceGoalRevision:      turn.SourceGoalRevision,
+			SourceGoalRepairEpoch:   turn.SourceGoalRepairEpoch,
+			FinalAssistantMessageID: strings.TrimSpace(turn.FinalAssistantMessageID),
 		}
 		if turn.CompletedCommand != nil {
 			transition.CompletedCommandKind = strings.TrimSpace(turn.CompletedCommand.Kind)

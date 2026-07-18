@@ -1,5 +1,5 @@
 import { ConfirmationDialog } from "@tutti-os/ui-system";
-import type { AgentGUIViewLabels } from "../AgentGUINodeView";
+import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailLabels";
 import type { AgentGUIProjectActionDialog } from "./AgentGUIConversationRailPane";
 
 const DIALOG_CLASS_NAME =
@@ -9,7 +9,7 @@ export function AgentGUIProjectActionConfirmationDialog(props: {
   action: AgentGUIProjectActionDialog | null;
   isDeletingProjectConversations: boolean;
   isInteractionLocked: () => boolean;
-  labels: AgentGUIViewLabels;
+  labels: AgentGUIConversationRailLabels;
   onConfirmDeleteConversations: (sessionIds: string[]) => void;
   onRemoveProject: (path: string) => void;
   setAction: (action: AgentGUIProjectActionDialog | null) => void;

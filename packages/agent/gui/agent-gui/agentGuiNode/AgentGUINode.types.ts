@@ -6,6 +6,7 @@ import type {
   ReferenceProvenanceCatalog
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
+import type { AgentGuiWorkbenchSessionActionRequest } from "../../workbench/sessionActions";
 import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
@@ -45,7 +46,6 @@ import type {
   AgentComposerGitBranchLoader,
   AgentComposerProps
 } from "./AgentComposer";
-import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import type { RichTextMentionService } from "@tutti-os/ui-rich-text/service";
 import type { AgentGUIEngagementEventSink } from "./engagement/agentGUIEngagement.types";
@@ -64,7 +64,8 @@ export interface AgentGUINodeWorkspace {
   fileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
-  resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
+  prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
+  promptAssetLimit?: number | null;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
   resolveReferenceEntryIconUrl?: (
     entry: WorkspaceFileEntry
@@ -97,10 +98,14 @@ export interface AgentGUINodeFrameLayout {
   conversationRailAutoCollapseWidthPx?: number | null;
 }
 
+export type AgentGUISessionActionRequest =
+  AgentGuiWorkbenchSessionActionRequest;
+
 export interface AgentGUINodeRuntimeRequests {
   composerAppend?: AgentGUIComposerAppendRequest | null;
   composerFocusSequence?: number | null;
   newConversationSequence?: number | null;
+  sessionAction?: AgentGUISessionActionRequest | null;
   openSession?: AgentGUIOpenSessionRequest | null;
   prefillPrompt?: AgentGUIPrefillPromptRequest | null;
   agentProbes?: WorkspaceDesktopAgentProbesState | null;
@@ -133,7 +138,6 @@ export interface AgentGUINodeHostCapabilities {
   > | null;
   defaultAgentTargetId?: string | null;
   providerAuthAccountLabels?: Partial<Record<string, string>>;
-  contextMentionProviders?: readonly AgentContextMentionProvider[];
   mentionService?: RichTextMentionService;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   disabledHomeSuggestions?: readonly AgentGUIHomeSuggestionId[];
@@ -316,7 +320,8 @@ export function areAgentGUINodePropsEqual(
     pw.fileReferenceAdapter === nw.fileReferenceAdapter &&
     pw.onRequestGitBranches === nw.onRequestGitBranches &&
     pw.selectProjectDirectory === nw.selectProjectDirectory &&
-    pw.resolveDroppedFileReferences === nw.resolveDroppedFileReferences &&
+    pw.prepareExternalPromptFiles === nw.prepareExternalPromptFiles &&
+    pw.promptAssetLimit === nw.promptAssetLimit &&
     pw.referenceSourceAggregator === nw.referenceSourceAggregator &&
     pw.resolveReferenceEntryIconUrl === nw.resolveReferenceEntryIconUrl &&
     pw.resolveMentionReferenceTarget === nw.resolveMentionReferenceTarget &&
@@ -345,6 +350,7 @@ export function areAgentGUINodePropsEqual(
     pr.composerFocusSequence === nr.composerFocusSequence &&
     pr.composerAppend === nr.composerAppend &&
     pr.newConversationSequence === nr.newConversationSequence &&
+    pr.sessionAction === nr.sessionAction &&
     pr.openSession === nr.openSession &&
     pr.prefillPrompt === nr.prefillPrompt &&
     pr.agentProbes === nr.agentProbes &&
@@ -363,7 +369,6 @@ export function areAgentGUINodePropsEqual(
     pc.providerReadinessGates === nc.providerReadinessGates &&
     pc.defaultAgentTargetId === nc.defaultAgentTargetId &&
     pc.providerAuthAccountLabels === nc.providerAuthAccountLabels &&
-    pc.contextMentionProviders === nc.contextMentionProviders &&
     pc.mentionService === nc.mentionService &&
     pc.workspaceAppIcons === nc.workspaceAppIcons &&
     pc.disabledHomeSuggestions === nc.disabledHomeSuggestions &&

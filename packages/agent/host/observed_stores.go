@@ -19,6 +19,17 @@ func (s *observedRuntimeOperationStore) PrepareRuntimeOperation(ctx context.Cont
 	return op, changed, err
 }
 
+func (s *observedRuntimeOperationStore) PrepareInteractiveRuntimeOperation(
+	ctx context.Context,
+	input storesqlite.RuntimeOperationPrepare,
+) (storesqlite.RuntimeOperation, storesqlite.Interaction, storesqlite.InteractionTransitionResult, error) {
+	op, interaction, transition, err := s.RuntimeOperationStore.PrepareInteractiveRuntimeOperation(ctx, input)
+	if err == nil && transition == storesqlite.InteractionTransitionApplied {
+		s.host.notifyCommitted(ctx, runtimeOperationDelta(RuntimeOperationPrepared, op, nil))
+	}
+	return op, interaction, transition, err
+}
+
 func (s *observedRuntimeOperationStore) CheckpointRuntimeOperation(ctx context.Context, input storesqlite.CheckpointRuntimeOperationInput) (storesqlite.RuntimeOperation, bool, error) {
 	op, changed, err := s.RuntimeOperationStore.CheckpointRuntimeOperation(ctx, input)
 	if err == nil && changed {

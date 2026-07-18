@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAgentGUIConversationRailViewState } from "./useAgentGUIConversationRailViewState";
 
 interface HarnessProps {
+  actionsRef?: {
+    current: HarnessActions | null;
+  };
   activeConversationId: string | null;
   contentReady: boolean;
   identity: string;
@@ -14,6 +17,11 @@ interface HarnessProps {
   } | null;
   searchQuery?: string;
   scopeKey: string;
+}
+
+interface HarnessActions {
+  setSectionVisibleItemLimit: (sectionId: string, limit: number) => void;
+  toggleProjectSectionCollapsed: (sectionId: string) => void;
 }
 
 const scrollIntoView = vi.fn();
@@ -292,9 +300,74 @@ describe("useAgentGUIConversationRailViewState", () => {
       "10"
     );
   });
+
+  it("keeps section actions stable and applies them to the latest target", () => {
+    const actionsRef: HarnessProps["actionsRef"] = { current: null };
+    const view = render(
+      <Harness
+        actionsRef={actionsRef}
+        activeConversationId={null}
+        contentReady
+        identity="codex-list"
+        itemIds={[]}
+        scopeKey="codex"
+      />
+    );
+    const firstActions = actionsRef.current!;
+
+    view.rerender(
+      <Harness
+        actionsRef={actionsRef}
+        activeConversationId={null}
+        contentReady
+        identity="claude-list"
+        itemIds={[]}
+        scopeKey="claude"
+      />
+    );
+
+    expect(actionsRef.current?.setSectionVisibleItemLimit).toBe(
+      firstActions.setSectionVisibleItemLimit
+    );
+    expect(actionsRef.current?.toggleProjectSectionCollapsed).toBe(
+      firstActions.toggleProjectSectionCollapsed
+    );
+    act(() => {
+      firstActions.toggleProjectSectionCollapsed("project-1");
+      firstActions.setSectionVisibleItemLimit("project-1", 10);
+    });
+    expect(screen.getByTestId("section-state")).toHaveAttribute(
+      "data-collapsed",
+      "true"
+    );
+    expect(screen.getByTestId("section-state")).toHaveAttribute(
+      "data-limit",
+      "10"
+    );
+
+    view.rerender(
+      <Harness
+        actionsRef={actionsRef}
+        activeConversationId={null}
+        contentReady
+        identity="codex-list"
+        itemIds={[]}
+        scopeKey="codex"
+      />
+    );
+    expect(screen.getByTestId("section-state")).toHaveAttribute(
+      "data-collapsed",
+      "false"
+    );
+    expect(screen.getByTestId("section-state")).toHaveAttribute(
+      "data-limit",
+      "5"
+    );
+  });
 });
 
 function Harness({
+  actionsRef,
   activeConversationId,
   contentReady,
   identity,
@@ -311,6 +384,12 @@ function Harness({
     searchQuery,
     scopeKey
   });
+  if (actionsRef) {
+    actionsRef.current = {
+      setSectionVisibleItemLimit: state.setSectionVisibleItemLimit,
+      toggleProjectSectionCollapsed: state.toggleProjectSectionCollapsed
+    };
+  }
   return (
     <div>
       <div data-testid="viewport" ref={state.conversationListRef}>

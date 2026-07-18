@@ -223,12 +223,21 @@ export function rootEngineReducer(
   const queueRecord = submitIntent
     ? state.promptQueue.recordsBySessionId[submitSessionId]
     : undefined;
+  // A session whose activation is still in flight is not in sessionsById yet.
+  // Plain submits for it are accepted into the queue (they drain once the
+  // session upserts) instead of being silently dropped; routings that dispatch
+  // straight to the daemon still require the canonical session record.
+  const submitSessionScopeValid =
+    submitSession !== undefined
+      ? submitSession.workspaceId === submitWorkspaceId
+      : submitIntent?.type === "submit/requested" &&
+        submitIntent.routing !== "immediate";
   const submitRequestAccepted = Boolean(
     submitIntent &&
     submitId &&
     submitSessionId &&
     submitWorkspaceId &&
-    submitSession?.workspaceId === submitWorkspaceId &&
+    submitSessionScopeValid &&
     submitIntent.content.length > 0 &&
     (submitIntent.type !== "submit/requested" ||
       submitIntent.routing !== "send_now" ||

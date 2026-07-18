@@ -13,6 +13,7 @@
     "defaultAgentProvider",
     "dockIconStyle",
     "dockPlacement",
+    "deletedAgentConversationRetentionDays",
     "fileDefaultOpenersByExtension",
     "featureFlags",
     "workbenchShortcuts",
@@ -84,6 +85,10 @@
     "dockPlacement": {
       "type": "string",
       "enum": ["bottom", "left"]
+    },
+    "deletedAgentConversationRetentionDays": {
+      "type": "integer",
+      "enum": [15, 30]
     },
     "fileDefaultOpenersByExtension": {
       "type": "object",

@@ -105,6 +105,10 @@ WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
 
 	canonicalPhase := TurnPhaseRunning
 	if phase == RootProviderTurnPhaseCompleted {
+		// With no active child, this provider fact is itself the canonical
+		// settlement transition. Compatibility reporters therefore classify the
+		// completed RootProviderTurn patch as terminal and persist its Turn
+		// messages before entering this transaction.
 		activeChildren, err := countActiveChildTurnsTx(ctx, tx, workspaceID, rootAgentSessionID, rootTurnID)
 		if err != nil {
 			return Turn{}, false, err

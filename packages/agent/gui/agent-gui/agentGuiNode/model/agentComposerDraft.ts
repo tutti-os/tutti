@@ -13,6 +13,14 @@ import {
   AGENT_PASTED_TEXT_BLOCK_KIND,
   AGENT_PASTED_TEXT_MENTION_KIND
 } from "./agentGuiNodeTypes";
+import {
+  agentPromptContentToComposerPrompt,
+  agentPromptFileBlocks,
+  agentPromptPastedTextBlocks,
+  agentPreparedPromptFileToDraftFile,
+  materializeAgentComposerFileMentions
+} from "./agentExternalPromptFiles";
+import { agentComposerFileMentionReferences } from "../agentRichText/agentMentionMarkdown";
 
 const PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS = 10;
 
@@ -225,11 +233,31 @@ export function updateAgentComposerDraft(
 export function agentComposerDraftHasContent(
   draft: AgentComposerDraft
 ): boolean {
+  const prompt = agentComposerDraftPrompt(draft);
+  const references = agentComposerFileMentionReferences(prompt);
+  let cursor = 0;
+  let textWithoutComposerFiles = "";
+  for (const reference of references) {
+    textWithoutComposerFiles += prompt.slice(cursor, reference.start);
+    cursor = reference.end;
+  }
+  textWithoutComposerFiles += prompt.slice(cursor);
+  const referencedFileIds = new Set(
+    references.map((reference) => reference.id)
+  );
+  if (
+    textWithoutComposerFiles.trim() ||
+    agentComposerDraftFiles(draft).some((file) =>
+      referencedFileIds.has(file.id)
+    )
+  ) {
+    return true;
+  }
   return draft.some((block) => {
-    if (block.type === "text") return block.text.trim() !== "";
+    if (block.type === "text") return false;
     if (block.type === "image") return true;
     return block.kind === "file"
-      ? true
+      ? false
       : block.text.trim() !== "" || Boolean(block.path);
   });
 }
@@ -280,7 +308,10 @@ export function normalizeAgentPromptContentBlocks(
     if (block.type === "file") {
       const filePath = block.path?.trim();
       const hostPath = block.hostPath?.trim();
-      if (!filePath && !hostPath) {
+      const url = block.url?.trim();
+      const uri = block.uri?.trim();
+      const assetId = block.assetId?.trim();
+      if (!filePath && !hostPath && !url && !uri && !assetId) {
         continue;
       }
       result.push({
@@ -288,12 +319,13 @@ export function normalizeAgentPromptContentBlocks(
         ...(block.mimeType?.trim() ? { mimeType: block.mimeType.trim() } : {}),
         ...(filePath ? { path: filePath } : {}),
         ...(hostPath ? { hostPath } : {}),
+        ...(url ? { url } : {}),
         ...(block.name?.trim() ? { name: block.name.trim() } : {}),
-        ...(block.uri?.trim() ? { uri: block.uri.trim() } : {}),
+        ...(uri ? { uri } : {}),
         ...(block.uploadStatus?.trim()
           ? { uploadStatus: block.uploadStatus.trim() }
           : {}),
-        ...(block.assetId?.trim() ? { assetId: block.assetId.trim() } : {}),
+        ...(assetId ? { assetId } : {}),
         ...(typeof block.sizeBytes === "number"
           ? { sizeBytes: block.sizeBytes }
           : {}),
@@ -373,16 +405,17 @@ export function agentPromptContentToComposerDraft(
   const largeTexts = agentPromptPastedTextBlocks(normalizedContent).map(
     (block) => agentPromptPastedTextBlockToDraftLargeText(block)
   );
+  const files = agentPromptFileBlocks(normalizedContent).map((file, index) =>
+    agentPreparedPromptFileToDraftFile(file, idPrefix, index)
+  );
   return buildAgentComposerDraft({
-    prompt: agentPromptContentDisplayText(normalizedContent),
+    prompt: agentPromptContentToComposerPrompt(normalizedContent, files),
     images: agentPromptContentImageBlocks(normalizedContent)
       .slice(0, MAX_AGENT_COMPOSER_DRAFT_IMAGES)
       .map((image, index) =>
         agentPromptImageBlockToDraftImage(image, idPrefix, index)
       ),
-    files: agentPromptFileBlocks(normalizedContent).map((file, index) =>
-      agentPromptFileBlockToDraftFile(file, idPrefix, index)
-    ),
+    files,
     largeTexts
   });
 }
@@ -405,8 +438,12 @@ export function agentComposerDraftToPromptContent(input: {
   draft: AgentComposerDraft;
   skills: readonly AgentGUIProviderSkillOption[];
 }): AgentPromptContentBlock[] {
+  const providerPrompt = materializeAgentComposerFileMentions(
+    agentComposerDraftPrompt(input.draft),
+    agentComposerDraftFiles(input.draft)
+  );
   const prompt = promptForProviderSkills({
-    prompt: agentComposerDraftPrompt(input.draft),
+    prompt: providerPrompt,
     skills: input.skills
   });
   return normalizeAgentPromptContentBlocks([
@@ -428,18 +465,6 @@ export function agentComposerDraftToPromptContent(input: {
             ? { path: image.path }
             : { data: image.data }),
         name: image.name
-      })),
-    ...agentComposerDraftFiles(input.draft)
-      .filter((file) => !file.uploading && !file.uploadError)
-      .map((file) => ({
-        type: "file" as const,
-        ...(file.mimeType ? { mimeType: file.mimeType } : {}),
-        ...(file.path ? { path: file.path } : {}),
-        ...(!file.path && file.hostPath ? { hostPath: file.hostPath } : {}),
-        ...(file.assetId ? { assetId: file.assetId } : {}),
-        ...(file.sizeBytes ? { sizeBytes: file.sizeBytes } : {}),
-        name: file.name,
-        kind: "file"
       })),
     ...largeTextPromptContent(agentComposerDraftLargeTexts(input.draft))
   ]);
@@ -494,26 +519,6 @@ export function projectAgentComposerDraftSubmission(input: {
     content,
     ...(displayPrompt ? { displayPrompt } : {})
   };
-}
-
-function agentPromptFileBlocks(
-  content: readonly AgentPromptContentBlock[]
-): Array<AgentPromptContentBlock & { type: "file" }> {
-  return normalizeAgentPromptContentBlocks(content).filter(
-    (block): block is AgentPromptContentBlock & { type: "file" } =>
-      block.type === "file" &&
-      !isPastedTextPromptBlock(block) &&
-      (typeof block.path === "string" || typeof block.hostPath === "string")
-  );
-}
-
-function agentPromptPastedTextBlocks(
-  content: readonly AgentPromptContentBlock[]
-): Array<AgentPromptContentBlock & { type: "file" }> {
-  return normalizeAgentPromptContentBlocks(content).filter(
-    (block): block is AgentPromptContentBlock & { type: "file" } =>
-      isPastedTextPromptBlock(block) && typeof block.path === "string"
-  );
 }
 
 function promptItemBlocksForProviderSkills(input: {
@@ -771,21 +776,5 @@ function agentPromptImageBlockToDraftImage(
       typeof image.data === "string" && image.data
         ? `data:${image.mimeType};base64,${image.data}`
         : (image.url ?? image.path ?? "")
-  };
-}
-
-function agentPromptFileBlockToDraftFile(
-  file: AgentPromptContentBlock & { type: "file" },
-  idPrefix: string,
-  index: number
-): AgentComposerDraftFile {
-  return {
-    id: `${idPrefix}:file:${index}`,
-    name: file.name?.trim() || `file-${index + 1}`,
-    mimeType: file.mimeType,
-    path: file.path,
-    hostPath: file.hostPath,
-    assetId: file.assetId,
-    sizeBytes: file.sizeBytes
   };
 }

@@ -111,6 +111,16 @@ type CommandWarning struct {
 	Message string `json:"message"`
 }
 
+type apiErrorEnvelope struct {
+	Error struct {
+		Code             string `json:"code"`
+		Reason           string `json:"reason"`
+		Retryable        bool   `json:"retryable"`
+		DeveloperMessage string `json:"developerMessage"`
+		CorrelationID    string `json:"correlationId"`
+	} `json:"error"`
+}
+
 func NewClient(endpoint Endpoint) (*Client, error) {
 	baseURL, err := endpoint.BaseURL()
 	if err != nil {
@@ -169,7 +179,7 @@ func (client *Client) DoJSON(ctx context.Context, method string, path string, bo
 	if body != nil {
 		encoded, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("encode request body: %w", err)
+			return newRequestError(ErrorDetails{ReasonCode: "daemon_request_invalid", Message: fmt.Sprintf("encode request body: %v", err)})
 		}
 		requestBody = bytes.NewReader(encoded)
 	}
@@ -177,7 +187,7 @@ func (client *Client) DoJSON(ctx context.Context, method string, path string, bo
 	url := client.baseURL + path
 	request, err := http.NewRequestWithContext(ctx, method, url, requestBody)
 	if err != nil {
-		return fmt.Errorf("create daemon request: %w", err)
+		return newRequestError(ErrorDetails{ReasonCode: "daemon_request_invalid", Message: fmt.Sprintf("create daemon request: %v", err)})
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Authorization", "Bearer "+client.token)
@@ -193,38 +203,64 @@ func (client *Client) DoJSON(ctx context.Context, method string, path string, bo
 
 	content, err := io.ReadAll(response.Body)
 	if err != nil {
-		return fmt.Errorf("read daemon response: %w", err)
-	}
-	if response.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("daemon authentication failed")
+		return newRequestError(ErrorDetails{ReasonCode: "daemon_response_read_failed", Message: fmt.Sprintf("read daemon response: %v", err)})
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		message := strings.TrimSpace(string(content))
-		if message == "" {
-			message = response.Status
-		}
-		return fmt.Errorf("daemon request failed: %s", message)
+		return daemonResponseError(response.StatusCode, response.Status, content)
 	}
 	if result == nil {
 		return nil
 	}
 	if err := json.Unmarshal(content, result); err != nil {
-		return fmt.Errorf("decode daemon response: %w", err)
+		return newRequestError(ErrorDetails{ReasonCode: "daemon_response_invalid", Message: fmt.Sprintf("decode daemon response: %v", err)})
 	}
 	return nil
 }
 
+func daemonResponseError(statusCode int, status string, content []byte) error {
+	var envelope apiErrorEnvelope
+	if err := json.Unmarshal(content, &envelope); err == nil {
+		reasonCode := strings.TrimSpace(envelope.Error.Reason)
+		if reasonCode == "" {
+			reasonCode = strings.TrimSpace(envelope.Error.Code)
+		}
+		if reasonCode != "" {
+			message := strings.TrimSpace(envelope.Error.DeveloperMessage)
+			if message == "" {
+				message = reasonCode
+			}
+			return newRequestError(ErrorDetails{
+				ReasonCode: reasonCode, Message: message, Retryable: envelope.Error.Retryable,
+				CorrelationID: strings.TrimSpace(envelope.Error.CorrelationID), StatusCode: statusCode,
+			})
+		}
+	}
+	if statusCode == http.StatusUnauthorized {
+		return newRequestError(ErrorDetails{ReasonCode: "unauthorized", Message: "daemon authentication failed", StatusCode: statusCode})
+	}
+	message := strings.TrimSpace(string(content))
+	if message == "" {
+		message = strings.TrimSpace(status)
+	}
+	return newRequestError(ErrorDetails{
+		ReasonCode: "daemon_request_failed", Message: "daemon request failed: " + message, StatusCode: statusCode,
+	})
+}
+
 func daemonRequestError(err error) error {
 	if errors.Is(err, context.Canceled) {
-		return fmt.Errorf("daemon request canceled")
+		return newRequestError(ErrorDetails{ReasonCode: "daemon_request_canceled", Message: "daemon request canceled"})
 	}
 	if errors.Is(err, context.DeadlineExceeded) || os.IsTimeout(err) {
-		return fmt.Errorf("daemon request timed out")
+		return newRequestError(ErrorDetails{ReasonCode: "daemon_request_timed_out", Message: "daemon request timed out", Retryable: true})
 	}
 	if runningInAgentEnvironment() {
-		return fmt.Errorf("daemon is not reachable from this agent execution environment; rerun the command in an execution environment with localhost/IPC access")
+		return newRequestError(ErrorDetails{
+			ReasonCode: "daemon_unavailable", Retryable: true,
+			Message: "daemon is not reachable from this agent execution environment; rerun the command in an execution environment with localhost/IPC access",
+		})
 	}
-	return fmt.Errorf("daemon is not reachable")
+	return newRequestError(ErrorDetails{ReasonCode: "daemon_unavailable", Message: "daemon is not reachable", Retryable: true})
 }
 
 func runningInAgentEnvironment() bool {

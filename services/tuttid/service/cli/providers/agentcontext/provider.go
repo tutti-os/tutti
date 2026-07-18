@@ -16,7 +16,7 @@ const appID = "agent-context"
 
 type AgentSessions interface {
 	CancelTurn(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
-	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
+	CreateWithResult(context.Context, string, agentservice.CreateSessionInput) (agentservice.CreateSessionResult, error)
 	Get(context.Context, string, string) (agentservice.Session, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	GetSkillBundle(context.Context, string, agentservice.SkillBundleInput) (agentservice.SkillBundle, error)
@@ -25,6 +25,7 @@ type AgentSessions interface {
 	ListMessages(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
 	ListProviderAvailability(context.Context, agentservice.ProviderAvailabilityInput) ([]agentservice.ProviderAvailability, error)
 	LocalAttachmentPath(context.Context, string, string, string, string) (string, error)
+	Respond(context.Context, agentservice.RespondInput) (agentservice.RespondResult, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 	Wait(context.Context, agentservice.WaitInput) (agentservice.WaitResult, error)
 }
@@ -95,7 +96,9 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newGetCommand(),
 		p.newOpenCommand(),
 		p.newSendCommand(),
-		p.newCancelCommand(),
+		p.newRespondCommand(),
+		p.newCancelTurnCommand(),
+		p.newLegacyCancelCommand(),
 		p.newSessionsCommand([]string{"agent", "sessions"}, appID+".agent.sessions"),
 		p.newWaitCommand(),
 		p.newSessionSummaryCommand(),

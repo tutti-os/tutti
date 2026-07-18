@@ -157,6 +157,12 @@ export const en = {
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
       openSessionUnavailableTitle: "Session unavailable",
+      sessionMenu: {
+        copyAsMarkdown: "Copy as Markdown",
+        copyAsReference: "Copy as reference",
+        moreActions: "More session actions",
+        rename: "Rename session"
+      },
       browserElementContext: {
         cancel: "Cancel element selection",
         failed: "Unable to add this page element to the Agent input",
@@ -552,6 +558,25 @@ export const en = {
         },
         agentConversationDetailModeSaveFailed:
           "We couldn't update the work mode right now.",
+        deletedConversationRetentionLabel: "Deleted conversation cleanup",
+        deletedConversationRetentionDescription:
+          "Permanently remove soft-deleted Agent conversations after the selected period. Only Tutti-managed data is removed.",
+        deletedConversationRetentionDays: "{{count}} days",
+        deletedConversationRetentionSaveFailed:
+          "We couldn't update the cleanup period right now.",
+        deletedConversationPurgeAction: "Clean up now",
+        deletedConversationPurging: "Cleaning up…",
+        deletedConversationPurgeTitle:
+          "Permanently clean up deleted conversations?",
+        deletedConversationPurgeDescription:
+          "This removes every soft-deleted Agent conversation on this device and cannot be undone. Type “{{phrase}}” to continue.",
+        deletedConversationPurgeConfirmationPhrase: "permanently delete",
+        deletedConversationPurgeConfirmationLabel: "Confirmation phrase",
+        deletedConversationPurgeConfirm: "Permanently clean up",
+        deletedConversationPurgeCompleted:
+          "Cleaned up {{count}} deleted conversations.",
+        deletedConversationPurgeFailed:
+          "Cleanup couldn't run right now. Finish active Agent work and try again.",
         computerUseLabel: "Computer use",
         computerUseDescription:
           "Allows the agent to control your Mac desktop — take screenshots, click, type, and more.",

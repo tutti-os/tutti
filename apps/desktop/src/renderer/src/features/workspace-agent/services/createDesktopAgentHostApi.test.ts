@@ -583,13 +583,7 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     }),
     platformApi: createPlatformApi({
       homeDirectory: "/Users/local",
-      os: "darwin",
-      resolveDroppedEntries(files) {
-        return files.map((file) => ({
-          path: `/resolved/${file.name}`,
-          kind: file.name === "assets" ? "folder" : "file"
-        }));
-      }
+      os: "darwin"
     })
   });
 
@@ -627,17 +621,6 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     content: "hello",
     path: "/workspace/file.txt"
   });
-  assert.deepEqual(api.workspace.getReferenceForFile?.(new File([], "drop")), {
-    path: "/resolved/drop",
-    kind: "file"
-  });
-  assert.deepEqual(
-    api.workspace.getReferenceForFile?.(new File([], "assets")),
-    {
-      path: "/resolved/assets",
-      kind: "folder"
-    }
-  );
   assert.deepEqual(
     await api.filesystem.readFileText({ uri: "file:///tmp/prompt.md" }),
     {
@@ -845,16 +828,11 @@ function createHostFilesApi(
 }
 
 function createPlatformApi(
-  overrides: Partial<
-    Pick<DesktopPlatformApi, "homeDirectory" | "os" | "resolveDroppedEntries">
-  > = {}
-): Pick<DesktopPlatformApi, "homeDirectory" | "os" | "resolveDroppedEntries"> {
+  overrides: Partial<Pick<DesktopPlatformApi, "homeDirectory" | "os">> = {}
+): Pick<DesktopPlatformApi, "homeDirectory" | "os"> {
   return {
     homeDirectory: "/Users/local",
     os: "darwin",
-    resolveDroppedEntries() {
-      return [];
-    },
     ...overrides
   };
 }

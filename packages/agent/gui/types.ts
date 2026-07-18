@@ -117,7 +117,6 @@ export interface AgentGUIAgent {
   iconUrl: string;
   /** Single-color artwork rendered through the conversation rail CSS mask. */
   maskIconUrl?: string | null;
-  sidebarIconUrl?: string | null;
   heroImageUrl?: string | null;
   description?: string | null;
   owner?: AgentGUIAgentOwner | null;
@@ -169,7 +168,6 @@ export interface AgentGUIAgentTarget {
   description?: string;
   iconUrl?: string | null;
   maskIconUrl?: string | null;
-  sidebarIconUrl?: string | null;
   heroImageUrl?: string | null;
   badge?: AgentGUIAgentTargetBadge | null;
   ownerLabel?: string;

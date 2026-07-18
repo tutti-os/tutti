@@ -1,8 +1,45 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAgentConversationHandoffPrompt,
   handoffProjectPathForConversation,
   shouldShowAgentGUIStopButton
 } from "./agentGUIDetailModelHelpers.ts";
+
+describe("buildAgentConversationHandoffPrompt", () => {
+  it("delegates the active conversation to the canonical session handoff draft", () => {
+    expect(
+      buildAgentConversationHandoffPrompt({
+        activeConversation: {
+          id: "session-1",
+          agentTargetId: "local:claude-code",
+          provider: "claude-code",
+          title: "Session 1",
+          titleFallback: null,
+          status: "completed",
+          cwd: "/workspace/project-a",
+          updatedAtUnixMs: 1
+        },
+        currentUserId: "user-1",
+        labels: { untitledConversationTitle: "Untitled conversation" },
+        selectedAgentTarget: {
+          targetId: "local:claude-code",
+          agentTargetId: "local:claude-code",
+          label: "Claude Code",
+          provider: "claude-code",
+          ref: {
+            kind: "agent-directory",
+            provider: "claude-code",
+            agentTargetId: "local:claude-code"
+          }
+        },
+        uiLanguage: "en",
+        workspaceId: "room-1"
+      })
+    ).toBe(
+      "[@Session 1](mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=room-1) "
+    );
+  });
+});
 
 describe("shouldShowAgentGUIStopButton", () => {
   const idle = {

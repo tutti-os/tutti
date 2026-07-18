@@ -24,7 +24,6 @@ func (s *Store) CompleteInteractiveRuntimeOperation(ctx context.Context, input C
 			if !found || interaction.TurnID != op.TurnID {
 				return "", "", nil, ErrRuntimeOperationSubjectState
 			}
-			result := input.Disposition
 			if interaction.Status == InteractionStatusPending {
 				outputJSON, err := marshalJSONMap(input.Output)
 				if err != nil {
@@ -44,11 +43,9 @@ WHERE workspace_id = ? AND agent_session_id = ? AND request_id = ?
 				if err != nil || !changed {
 					return "", "", nil, ErrRuntimeOperationSubjectState
 				}
-			} else {
-				result = interaction.Status
 			}
-			return result, RuntimeOperationEventInteractiveCompleted, map[string]any{
-				"requestId": op.RequestID, "turnId": op.TurnID, "status": result,
+			return input.Disposition, RuntimeOperationEventInteractiveCompleted, map[string]any{
+				"requestId": op.RequestID, "turnId": op.TurnID, "status": input.Disposition,
 			}, nil
 		})
 }

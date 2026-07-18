@@ -37,3 +37,26 @@ test("workspace app at resolution is scoped by the registered guest context", ()
     /appExternal\.atResolve,[\s\S]*?requireWorkspaceAppGuestContext\(event\.sender\)[\s\S]*?normalizeTuttiExternalAtResolveInput\(payload\)[\s\S]*?appId: context\.appID,[\s\S]*?operation: "at\.resolve",[\s\S]*?workspaceId: context\.workspaceID/
   );
 });
+
+test("workspace app agent activity requests are scoped by the registered guest context", () => {
+  for (const [channel, operation] of [
+    ["agentActivityActivateSession", "agentActivity.activateSession"],
+    ["agentActivityCancelTurn", "agentActivity.cancelTurn"],
+    ["agentActivityGetComposerOptions", "agentActivity.getComposerOptions"],
+    ["agentActivityGetSnapshot", "agentActivity.getSnapshot"],
+    ["agentActivityListTargets", "agentActivity.listTargets"],
+    ["agentActivitySendInput", "agentActivity.sendInput"]
+  ] as const) {
+    const handlerPattern = new RegExp(
+      `appExternal\\.${channel},[\\s\\S]*?requireWorkspaceAppGuestContext\\(event\\.sender\\)[\\s\\S]*?operation: "${operation.replace(".", "\\.")}",[\\s\\S]*?workspaceId: context\\.workspaceID`
+    );
+    assert.match(workspaceAppContextSource, handlerPattern);
+  }
+});
+
+test("workspace app context advertises the Agent Activity automation capability", () => {
+  assert.match(
+    workspaceAppContextSource,
+    /capabilities:\s*\[[\s\S]*?"agentActivity@1"/
+  );
+});

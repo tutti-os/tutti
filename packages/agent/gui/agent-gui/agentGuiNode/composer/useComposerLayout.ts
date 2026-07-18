@@ -7,7 +7,6 @@ import {
   type SetStateAction
 } from "react";
 import type {
-  AgentComposerDraftFile,
   AgentComposerDraftImage,
   AgentComposerDraftLargeText,
   AgentGUIComposerSettingsVM
@@ -48,7 +47,6 @@ interface UseComposerLayoutInput {
   selectedProjectPath: string;
   promptTipRef: RefObject<HTMLSpanElement | null>;
   promptInputAreaRef: RefObject<HTMLDivElement | null>;
-  isPromptTipOverflowing: boolean;
   setIsPromptTipOverflowing: Dispatch<SetStateAction<boolean>>;
   dockComposerInputHeight: number;
   setDockComposerInputHeight: Dispatch<SetStateAction<number>>;
@@ -59,7 +57,6 @@ interface UseComposerLayoutInput {
   dockComposerTextHeight: number;
   setDockComposerTextHeight: Dispatch<SetStateAction<number>>;
   draftImages: AgentComposerDraftImage[];
-  draftFiles: AgentComposerDraftFile[];
   draftLargeTexts: AgentComposerDraftLargeText[];
 }
 
@@ -76,7 +73,6 @@ export function useComposerLayout({
   selectedProjectPath,
   promptTipRef,
   promptInputAreaRef,
-  isPromptTipOverflowing,
   setIsPromptTipOverflowing,
   dockComposerInputHeight,
   setDockComposerInputHeight,
@@ -87,7 +83,6 @@ export function useComposerLayout({
   dockComposerTextHeight,
   setDockComposerTextHeight,
   draftImages,
-  draftFiles,
   draftLargeTexts
 }: UseComposerLayoutInput) {
   const labels = { promptTipsPrefix };
@@ -156,12 +151,7 @@ export function useComposerLayout({
       resizeObserver?.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [
-    activePromptTipId,
-    activePromptTipText,
-    isPromptTipOverflowing,
-    previewMode
-  ]);
+  }, [activePromptTipId, activePromptTipText, previewMode]);
   useLayoutEffect(() => {
     if (isHeroLayout) {
       setDockComposerInputHeight(DOCK_COMPOSER_INPUT_MIN_HEIGHT);
@@ -296,7 +286,6 @@ export function useComposerLayout({
       window.removeEventListener("resize", measure);
     };
   }, [
-    draftFiles.length,
     draftImages.length,
     draftLargeTexts.length,
     isHeroLayout,

@@ -61,6 +61,7 @@ import {
   openWorkspace,
   preflightUploadWorkspaceFiles,
   putDesktopPreferences,
+  purgeDeletedAgentConversations,
   putWorkspaceWorkbench,
   checkWorkspaceTerminalCloseGuard,
   readWorkspaceFilePreview,
@@ -452,6 +453,12 @@ export function createTuttidClient(
       return unwrapData(
         await getDesktopPreferences({ client }),
         "Desktop preferences request failed."
+      );
+    },
+    async purgeDeletedAgentConversations() {
+      return unwrapData(
+        await purgeDeletedAgentConversations({ client }),
+        "Deleted Agent conversation purge request failed."
       );
     },
     async getHealth() {

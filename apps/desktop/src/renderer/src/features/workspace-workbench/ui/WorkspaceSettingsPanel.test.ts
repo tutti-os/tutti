@@ -62,6 +62,21 @@ test("workspace settings forwards workspace mode and sleep prevention changes", 
   );
 });
 
+test("workspace settings requires the exact destructive confirmation before cleanup", () => {
+  assert.match(source, /deletedAgentConversationRetentionDaysOptions/);
+  assert.match(source, /settingsService\.purgeDeletedConversations\(\)/);
+  assert.match(
+    source,
+    /purgeConfirmation !== purgeConfirmationPhrase[\s\S]{0,300}variant="destructive"/
+  );
+  assert.match(source, /deletedConversationPurgeConfirmationPhrase/);
+  assert.match(
+    source,
+    /size="icon"[\s\S]{0,120}variant="destructive-secondary"/
+  );
+  assert.doesNotMatch(source, /var\(--z-modal\)/);
+});
+
 test("workspace settings unlocks developer mode after seven version taps", () => {
   assert.match(source, /const developerPanelUnlockTaps = 7/);
   assert.match(

@@ -28,6 +28,7 @@ export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
       testingProvider: null
     },
     open: false,
+    purgingDeletedConversations: false,
     tuttiAgentSwitchEnabled: false,
     workspaceID: null
   });

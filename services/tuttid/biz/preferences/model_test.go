@@ -29,3 +29,14 @@ func TestDefaultDesktopPreferencesHasEmptyFlags(t *testing.T) {
 		t.Fatalf("want empty flags, got %v", d.FeatureFlags)
 	}
 }
+
+func TestNormalizeDeletedAgentConversationRetentionDays(t *testing.T) {
+	for _, test := range []struct {
+		input int
+		want  int
+	}{{15, 15}, {30, 30}, {0, 30}, {7, 30}, {90, 30}} {
+		if got := NormalizeDeletedAgentConversationRetentionDays(test.input); got != test.want {
+			t.Fatalf("NormalizeDeletedAgentConversationRetentionDays(%d) = %d, want %d", test.input, got, test.want)
+		}
+	}
+}

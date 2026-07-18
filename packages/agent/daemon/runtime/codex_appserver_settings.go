@@ -187,10 +187,7 @@ func (a *CodexAppServerAdapter) SubmitInteractive(ctx context.Context, session S
 		return SubmitInteractiveResult{}, fmt.Errorf("%w: %q", ErrInteractiveRequestNotLive, requestID)
 	}
 	if pending.callType == "approval" {
-		optionID := strings.TrimSpace(input.OptionID)
-		if optionID == "" && input.Payload != nil {
-			optionID = strings.TrimSpace(asString(input.Payload["optionId"]))
-		}
+		optionID := interactiveApprovalOptionID(input)
 		if optionID == "" {
 			return SubmitInteractiveResult{}, errors.New("interactive option id is required")
 		}

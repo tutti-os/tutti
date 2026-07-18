@@ -40,9 +40,11 @@ describe("MentionPill", () => {
     );
     const image = container.querySelector("img");
 
+    expect(image).toBeInTheDocument();
     expect(
       container.querySelector('[data-mention-pill-fallback-icon="true"]')
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(container.querySelectorAll("img, svg")).toHaveLength(1);
 
     fireEvent.error(image!);
 
@@ -50,6 +52,7 @@ describe("MentionPill", () => {
     expect(
       container.querySelector('[data-mention-pill-fallback-icon="true"]')
     ).toBeInTheDocument();
+    expect(container.querySelectorAll("img, svg")).toHaveLength(1);
   });
 
   it("retries image loading when the resolved URL changes", () => {
@@ -75,9 +78,13 @@ describe("MentionPill", () => {
       "src",
       "https://example.test/new.png"
     );
+    expect(
+      container.querySelector('[data-mention-pill-fallback-icon="true"]')
+    ).not.toBeInTheDocument();
+    expect(container.querySelectorAll("img, svg")).toHaveLength(1);
   });
 
-  it("keeps the semantic icon underneath a transparent image", () => {
+  it("renders only the custom icon for a transparent image", () => {
     const transparentPixel =
       "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
     const { container } = render(
@@ -90,7 +97,8 @@ describe("MentionPill", () => {
     );
     expect(
       container.querySelector('[data-mention-pill-fallback-icon="true"]')
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(container.querySelectorAll("img, svg")).toHaveLength(1);
   });
 
   it("uses a semantic icon when no image URL is available", () => {
@@ -100,5 +108,6 @@ describe("MentionPill", () => {
     expect(
       container.querySelector('[data-mention-pill-fallback-icon="true"]')
     ).toBeInTheDocument();
+    expect(container.querySelectorAll("img, svg")).toHaveLength(1);
   });
 });

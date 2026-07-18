@@ -1060,6 +1060,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   Dynamic Agent Extension adapters are created on demand and cached only for
   the daemon lifetime. Computing `resumable` from that cache maps restart state
   to a false domain result before Resume can re-resolve the persisted Target.
+  The same false result occurs when an adapter rebuilds the runtime resume input
+  but drops `agentTargetId`: the fixed Target ref then fails the controller's
+  complete binding check even though persistence and Target resolution are
+  correct.
 - Fix:
   At the service boundary, re-derive `ProviderTargetRef` from the persisted
   session's enabled `agentTargetId`. At the runtime boundary, validate the
@@ -1068,6 +1072,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   Keep installation validation and ACP `session/load` in the actual Resume
   path. Never use an open provider id or adapter-cache presence as launch
   authority.
+  Every bridge from the Host resume input to the runtime resume input must
+  preserve `agentTargetId` and `ProviderTargetRef` together. Cover the complete
+  service-to-adapter-to-controller path instead of testing each endpoint with
+  independently constructed valid inputs.
 - Validation:
   Start from a controller with no cached extension adapter. Assert a persisted
   Target-bound session is resumable, malformed or mismatched bindings fail
@@ -1075,6 +1083,7 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `go test ./packages/agent/daemon/runtime ./services/tuttid/service/agent`.
 - References:
   [controller_session_registry.go](../../../packages/agent/daemon/runtime/controller_session_registry.go)
+  [agent_runtime_adapter.go](../../../services/tuttid/agent_runtime_adapter.go)
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
   [agent-extensions.md](../../architecture/agent-extensions.md)
 

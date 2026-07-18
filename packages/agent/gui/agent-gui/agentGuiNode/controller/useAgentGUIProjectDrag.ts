@@ -226,6 +226,15 @@ export function useAgentGUIProjectDrag(input: {
     [clear, input.onMoveProject, runtime]
   );
 
+  const keepValidDropTarget = useCallback(
+    (event: React.DragEvent<HTMLElement>) => {
+      if (!runtime.active || !runtime.dragState?.canDrop) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    },
+    [runtime]
+  );
+
   const installGlobalListeners = useCallback(() => {
     const clearOnGlobalEnd = () => clear();
     const trackGlobalPosition = (event: DragEvent) =>
@@ -247,6 +256,7 @@ export function useAgentGUIProjectDrag(input: {
     drop,
     installGlobalListeners,
     isMovePending,
+    keepValidDropTarget,
     start,
     updateTarget
   };

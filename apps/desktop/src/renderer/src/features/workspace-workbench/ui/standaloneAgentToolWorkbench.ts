@@ -1,10 +1,4 @@
-import {
-  createBrowserNodeFeature,
-  isBrowserNodeSurfaceEvent,
-  type BrowserNodeFeature,
-  type BrowserNodeHostApi
-} from "@tutti-os/browser-node";
-import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import type { AgentToolPanelId } from "@tutti-os/agent-gui/workbench/tool-sidebar";
 import type {
   WorkbenchContribution,
   WorkbenchHostHandle,
@@ -13,11 +7,7 @@ import type {
   WorkbenchHostSnapshotRepository,
   WorkbenchState
 } from "@tutti-os/workbench-surface";
-import { resolveWorkspaceBrowserSearchUrl } from "../services/workspaceBrowserSearch.ts";
-import { getDesktopChromeCookieImportPromptAdapter } from "../services/chromeCookieImportPrompt.ts";
-import type { StandaloneAgentSharedToolPanelId } from "./standaloneAgentToolSidebarModel.ts";
-
-export const standaloneAgentBrowserDefaultUrl = "https://www.google.com/";
+type StandaloneAgentSharedToolPanelId = Extract<AgentToolPanelId, "terminal">;
 
 const contributionIdByPanel: Record<StandaloneAgentSharedToolPanelId, string> =
   {
@@ -68,38 +58,6 @@ export function createStandaloneAgentToolSnapshotRepository(): WorkbenchHostSnap
   return {
     load: async () => null,
     save: (_workspaceId, snapshot) => snapshot
-  };
-}
-
-export function createStandaloneAgentBrowserToolFeature(input: {
-  browserApi: BrowserNodeHostApi;
-  i18n: I18nRuntime<string>;
-  nodeId: string;
-}): BrowserNodeFeature {
-  return createBrowserNodeFeature({
-    chromeCookieImportPrompt: getDesktopChromeCookieImportPromptAdapter(),
-    hostApi: createStandaloneAgentBrowserHostApi(
-      input.browserApi,
-      input.nodeId
-    ),
-    i18n: input.i18n,
-    resolveSearchUrl: resolveWorkspaceBrowserSearchUrl
-  });
-}
-
-function createStandaloneAgentBrowserHostApi(
-  browserApi: BrowserNodeHostApi,
-  nodeId: string
-): BrowserNodeHostApi {
-  return {
-    ...browserApi,
-    onEvent(listener) {
-      return browserApi.onEvent((event) => {
-        if (isBrowserNodeSurfaceEvent(nodeId, event)) {
-          listener(event);
-        }
-      });
-    }
   };
 }
 

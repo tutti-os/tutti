@@ -119,16 +119,6 @@ function MentionPill({
           iconContainerProps?.className
         )}
       >
-        <Icon
-          {...fallbackIconProps}
-          className={cn(
-            "col-start-1 row-start-1 text-current transition-opacity",
-            removable && "group-hover:opacity-0 group-focus-within:opacity-0",
-            iconSizeClassName,
-            fallbackIconProps?.className
-          )}
-          data-mention-pill-fallback-icon="true"
-        />
         {normalizedIconUrl && failedIconUrl !== normalizedIconUrl ? (
           <img
             src={normalizedIconUrl}
@@ -144,7 +134,18 @@ function MentionPill({
               setFailedIconUrl(normalizedIconUrl);
             }}
           />
-        ) : null}
+        ) : (
+          <Icon
+            {...fallbackIconProps}
+            className={cn(
+              "col-start-1 row-start-1 text-current transition-opacity",
+              removable && "group-hover:opacity-0 group-focus-within:opacity-0",
+              iconSizeClassName,
+              fallbackIconProps?.className
+            )}
+            data-mention-pill-fallback-icon="true"
+          />
+        )}
         {removable ? (
           <button
             aria-label={removeButtonProps?.["aria-label"]}

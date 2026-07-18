@@ -46,6 +46,12 @@ type SessionManagementStore interface {
 	DeleteSession(context.Context, string, string) (bool, error)
 }
 
+// SessionPurgeStore is the narrow permanent-removal boundary. Retention and
+// local-file ownership policies remain outside Host.
+type SessionPurgeStore interface {
+	PurgeDeletedSessions(context.Context, storesqlite.PurgeDeletedSessionsInput) (storesqlite.PurgeDeletedSessionsResult, error)
+}
+
 // RuntimeController is the provider-neutral live-runtime surface needed by
 // create, resume, send, exact cancel, interactive, plan, title, and visibility
 // workflows. Process transport and provider implementations stay behind it.
@@ -70,6 +76,7 @@ type RuntimeController interface {
 // transport-facing half of the state machine.
 type RuntimeOperationStore interface {
 	PrepareRuntimeOperation(context.Context, storesqlite.RuntimeOperationPrepare) (storesqlite.RuntimeOperation, bool, error)
+	PrepareInteractiveRuntimeOperation(context.Context, storesqlite.RuntimeOperationPrepare) (storesqlite.RuntimeOperation, storesqlite.Interaction, storesqlite.InteractionTransitionResult, error)
 	GetRuntimeOperation(context.Context, string, string) (storesqlite.RuntimeOperation, bool, error)
 	ListClaimableRuntimeOperations(context.Context, storesqlite.ListClaimableRuntimeOperationsInput) ([]storesqlite.RuntimeOperation, error)
 	ClaimRuntimeOperationLease(context.Context, storesqlite.ClaimRuntimeOperationLeaseInput) (storesqlite.RuntimeOperation, bool, error)

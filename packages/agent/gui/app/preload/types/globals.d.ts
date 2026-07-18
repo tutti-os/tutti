@@ -217,10 +217,6 @@ export interface AgentHostPreloadApi {
     }) => Promise<WorkspaceFileSelection[]>;
     selectContextEntries: () => Promise<WorkspaceContextSelection>;
     ensureDirectory: (payload: EnsureDirectoryInput) => Promise<void>;
-    getReferenceForFile?: (file: File) => {
-      kind: "file" | "folder";
-      path: string;
-    };
     readFile: (
       payload: ReadWorkspaceFileInput
     ) => Promise<ReadWorkspaceFileResult>;

@@ -9,6 +9,7 @@ import (
 	preferencesapi "github.com/tutti-os/tutti/services/tuttid/api/preferences"
 	workspaceapi "github.com/tutti-os/tutti/services/tuttid/api/workspace"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
+	agentmaintenanceservice "github.com/tutti-os/tutti/services/tuttid/service/agentmaintenance"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
@@ -32,6 +33,7 @@ type DaemonAPI struct {
 	AgentTargetService        AgentTargetService
 	AgentTargetSetupService   AgentTargetSetupService
 	PreferencesService        preferencesapi.Service
+	AgentMaintenanceService   AgentMaintenanceService
 	ManagedCredentialsService *managedcredentialsservice.Service
 	AccountService            AccountService
 	EventStreamService        EventStreamService
@@ -46,6 +48,10 @@ type DaemonAPI struct {
 	IssueService              workspaceapi.IssueManagerService
 	CLIRegistry               *cliservice.Registry
 	AnalyticsReporter         reporterservice.Reporter
+}
+
+type AgentMaintenanceService interface {
+	PurgeNow(context.Context) (agentmaintenanceservice.PurgeResult, error)
 }
 
 type AgentProviderStatusService interface {

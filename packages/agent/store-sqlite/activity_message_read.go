@@ -30,8 +30,13 @@ func (s *Store) ListSessionMessages(
 		queryLimit++
 	}
 	turnID := strings.TrimSpace(input.TurnID)
+	messageID := strings.TrimSpace(input.MessageID)
 	where := []string{"workspace_id = ?", "agent_session_id = ?", "deleted_at_unix_ms = 0"}
 	args := []any{workspaceID, agentSessionID}
+	if messageID != "" {
+		where = append(where, "message_id = ?")
+		args = append(args, messageID)
+	}
 	if turnID != "" {
 		where = append(where, "turn_id = ?")
 		args = append(args, turnID)

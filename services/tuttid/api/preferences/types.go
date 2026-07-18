@@ -25,6 +25,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		DefaultAgentProvider:                        tuttigenerated.DesktopDefaultAgentProvider(value.DefaultAgentProvider),
 		DockIconStyle:                               tuttigenerated.DesktopDockIconStyle(value.DockIconStyle),
 		DockPlacement:                               tuttigenerated.DesktopDockPlacement(value.DockPlacement),
+		DeletedAgentConversationRetentionDays:       tuttigenerated.DeletedAgentConversationRetentionDays(preferencesbiz.NormalizeDeletedAgentConversationRetentionDays(value.DeletedAgentConversationRetentionDays)),
 		FileDefaultOpenersByExtension:               generatedFileDefaultOpenersByExtension(value.FileDefaultOpenersByExtension),
 		FeatureFlags:                                tuttigenerated.DesktopFeatureFlags(value.FeatureFlags),
 		WorkbenchShortcuts:                          workbenchShortcuts,

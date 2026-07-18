@@ -16,20 +16,21 @@ import { createLocalAgentGUIAgentTarget } from "../../agentTargets";
 import { buildAgentComposerDraft } from "./model/agentComposerDraft";
 import { resolveNextAgentGUIConversationRailWidthPx } from "./model/agentGuiRailLayout";
 
-const { agentGuiNodeViewSpy } = vi.hoisted(() => ({
-  agentGuiNodeViewSpy: vi.fn()
+const { agentGuiNodeViewSpy, translate } = vi.hoisted(() => ({
+  agentGuiNodeViewSpy: vi.fn(),
+  translate: (key: string, options?: Record<string, unknown>) => {
+    if (key === "agentHost.workspaceAgentSessionDetailToolCalls") {
+      return `${options?.count ?? 0} tool calls`;
+    }
+    return key;
+  }
 }));
 
 let mockViewModel: AgentGUINodeViewModel;
 
 vi.mock("../../i18n/index", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: Record<string, unknown>) => {
-      if (key === "agentHost.workspaceAgentSessionDetailToolCalls") {
-        return `${options?.count ?? 0} tool calls`;
-      }
-      return key;
-    }
+    t: translate
   })
 }));
 
@@ -262,6 +263,42 @@ describe("AgentGUINode memoization", () => {
         requestedWidthPx: 600,
         containerWidthPx: props.frame.width
       })
+    );
+  });
+
+  it("keeps rail labels stable when provider-facing labels change", () => {
+    mockViewModel = createViewModel();
+    const props = createProps();
+    const { rerender } = render(<AgentGUINode {...props} />);
+    const firstViewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          conversationRailLabels: unknown;
+          labels: unknown;
+        }
+      | undefined;
+    expect(firstViewProps).toBeDefined();
+
+    mockViewModel = createViewModel({
+      selectedAgentTarget: createLocalAgentGUIAgentTarget("claude-code"),
+      agentTargets: [createLocalAgentGUIAgentTarget("claude-code")]
+    });
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({ provider: "claude-code" })}
+      />
+    );
+    const secondViewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          conversationRailLabels: unknown;
+          labels: unknown;
+        }
+      | undefined;
+    expect(secondViewProps).toBeDefined();
+
+    expect(secondViewProps!.labels).not.toBe(firstViewProps!.labels);
+    expect(secondViewProps!.conversationRailLabels).toBe(
+      firstViewProps!.conversationRailLabels
     );
   });
 });

@@ -61,25 +61,7 @@ reference architecture:
 
 ## Checks
 
-After changing AgentGUI data flow, run:
-
-```sh
-pnpm check:agent-activity-runtime-boundaries
-```
-
-Also select the boundary matching the change:
-
-```sh
-pnpm check:agent-provider-strategy-boundaries # provider strategy/capability
-pnpm check:agent-gui-degradation              # AgentGUI structure/state ownership
-pnpm check:agent-host-boundary                 # Host/tuttid lifecycle boundary
-```
-
-For focused package changes, prefer:
-
-```sh
-pnpm --filter @tutti-os/agent-gui test
-```
-
-Use `pnpm check:changed` before handing off mixed AgentGUI, desktop workbench,
-or host adapter changes.
+Follow the repository [Validation Selection](../../../docs/conventions/testing.md#validation-selection).
+AgentGUI adds one domain-specific supplement: run
+`pnpm check:agent-provider-strategy-boundaries` when provider strategy or
+capability contracts change and the changed-aware plan does not select it.

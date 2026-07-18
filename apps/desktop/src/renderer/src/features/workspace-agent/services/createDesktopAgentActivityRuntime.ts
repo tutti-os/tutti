@@ -44,9 +44,9 @@ import {
 import {
   logAgentComposerSettingsDiagnostic,
   promptContentDisplayText,
-  reportAgentSubmitTraceDiagnostic,
-  uint8ArrayToBase64
+  reportAgentSubmitTraceDiagnostic
 } from "./desktopAgentRuntimeSubmitDiagnostics.ts";
+import { uint8ArrayToBase64 } from "./internal/desktopAgentPromptAssetEncoding.ts";
 
 interface CreateDesktopAgentActivityRuntimeOptions {
   reporterNow?: () => number;

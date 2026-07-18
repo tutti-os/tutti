@@ -435,6 +435,9 @@ function createTransportClient(
     async putDesktopPreferences() {
       throw new Error("not used");
     },
+    async purgeDeletedAgentConversations() {
+      throw new Error("not used");
+    },
     async updateWorkspaceIssue() {
       throw new Error("not used");
     },

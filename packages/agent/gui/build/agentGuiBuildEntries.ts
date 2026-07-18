@@ -24,6 +24,9 @@ export const agentGUIBuildEntries = {
   "workbench/providerCatalog": "workbench/providerCatalog.ts",
   "workbench/sessionTitle": "workbench/sessionTitle.ts",
   "workbench/state": "workbench/state.ts",
+  "workbench/browser-element-context/index":
+    "workbench/browser-element-context/index.ts",
+  "workbench/tool-sidebar/index": "workbench/tool-sidebar/index.ts",
   "workbench/types": "workbench/types.ts",
   "workspace-agent-generated-files": "shared/workspaceAgentGeneratedFiles.ts",
   "workspace-query-cache": "shared/query/workspaceQueryCache.ts"
@@ -63,6 +66,8 @@ export const agentGUIDtsEntryGroups = [
     "workbench/providerCatalog",
     "workbench/sessionTitle",
     "workbench/state",
+    "workbench/browser-element-context/index",
+    "workbench/tool-sidebar/index",
     "workbench/types"
   ]
 ] as const satisfies readonly (readonly AgentGUIBuildEntry[])[];

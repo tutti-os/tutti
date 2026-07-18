@@ -17,6 +17,7 @@ import {
   normalizeAgentPromptContentBlocks,
   projectAgentComposerDraftSubmission
 } from "./agentComposerDraft";
+import { createAgentComposerFileMentionMarkdown } from "../agentRichText/agentMentionMarkdown";
 
 describe("agentComposerDraft", () => {
   it("stores text, images, files, and pasted text in one ordered content array", () => {
@@ -86,6 +87,114 @@ describe("agentComposerDraft", () => {
         }
       ])
     ).toEqual([]);
+  });
+
+  it("materializes prepared URL file locators as Markdown links", () => {
+    const content = [
+      {
+        type: "file" as const,
+        name: "shared.txt",
+        mimeType: "text/plain",
+        sizeBytes: 12,
+        assetId: "asset-1",
+        uri: "object://shared.txt",
+        url: "https://assets.example/shared.txt",
+        uploadStatus: "uploaded",
+        kind: "file"
+      }
+    ];
+
+    const draft = agentPromptContentToComposerDraft(content, "restored");
+
+    expect(agentComposerDraftFiles(draft)).toEqual([
+      expect.objectContaining({
+        assetId: "asset-1",
+        uri: "object://shared.txt",
+        url: "https://assets.example/shared.txt",
+        uploadStatus: "uploaded"
+      })
+    ]);
+    expect(agentComposerDraftToPromptContent({ draft, skills: [] })).toEqual([
+      {
+        type: "text",
+        text: "[@shared.txt](https://assets.example/shared.txt)"
+      }
+    ]);
+  });
+
+  it("projects composer files at their inline mention positions", () => {
+    const firstMention = createAgentComposerFileMentionMarkdown({
+      id: "file-1",
+      name: "first.pdf",
+      status: "ready"
+    });
+    const secondMention = createAgentComposerFileMentionMarkdown({
+      id: "file-2",
+      name: "second.txt",
+      status: "ready"
+    });
+    const draft = buildAgentComposerDraft({
+      prompt: `before ${firstMention} middle ${secondMention} after`,
+      files: [
+        { id: "file-1", name: "first.pdf", path: "/runtime/first.pdf" },
+        { id: "file-2", name: "second.txt", path: "/runtime/second.txt" }
+      ]
+    });
+
+    expect(agentComposerDraftToPromptContent({ draft, skills: [] })).toEqual([
+      {
+        type: "text",
+        text: "before [@first.pdf](/runtime/first.pdf) middle [@second.txt](/runtime/second.txt) after"
+      }
+    ]);
+  });
+
+  it("does not submit or count a file registry entry without an editor mention", () => {
+    const draft = buildAgentComposerDraft({
+      prompt: "",
+      files: [{ id: "file-1", name: "orphan.pdf", path: "/runtime/orphan.pdf" }]
+    });
+
+    expect(agentComposerDraftHasContent(draft)).toBe(false);
+    expect(agentComposerDraftToPromptContent({ draft, skills: [] })).toEqual(
+      []
+    );
+  });
+
+  it("does not count a composer file mention without a registry entry", () => {
+    const draft = buildAgentComposerDraft({
+      prompt: createAgentComposerFileMentionMarkdown({
+        id: "missing-file",
+        name: "missing.pdf",
+        status: "ready"
+      })
+    });
+
+    expect(agentComposerDraftHasContent(draft)).toBe(false);
+  });
+
+  it("restores ordered file blocks as inline composer mentions and resubmits Markdown", () => {
+    const content = [
+      { type: "text" as const, text: "before" },
+      {
+        type: "file" as const,
+        kind: "file",
+        name: "report.pdf",
+        path: "/runtime/report.pdf"
+      },
+      { type: "text" as const, text: "after" }
+    ];
+    const draft = agentPromptContentToComposerDraft(content, "queued");
+
+    expect(agentComposerDraftPrompt(draft)).toContain(
+      "mention://composer-file/queued:file:0"
+    );
+    expect(agentComposerDraftToPromptContent({ draft, skills: [] })).toEqual([
+      {
+        type: "text",
+        text: "before[@report.pdf](/runtime/report.pdf)after"
+      }
+    ]);
   });
 
   it("normalizes empty drafts", () => {
@@ -734,7 +843,11 @@ describe("agentComposerDraft", () => {
     expect(
       agentComposerDraftToPromptContent({
         draft: buildAgentComposerDraft({
-          prompt: "",
+          prompt: createAgentComposerFileMentionMarkdown({
+            id: "file-1",
+            name: "report.pdf",
+            status: "ready"
+          }),
           images: [],
           files: [
             {
@@ -752,13 +865,8 @@ describe("agentComposerDraft", () => {
       })
     ).toEqual([
       {
-        type: "file",
-        mimeType: "application/pdf",
-        path: "/var/cache/tsh/local-assets/workspace-1/user-1/report.pdf",
-        assetId: "asset-1",
-        sizeBytes: 42,
-        name: "report.pdf",
-        kind: "file"
+        type: "text",
+        text: "[@report.pdf](/var/cache/tsh/local-assets/workspace-1/user-1/report.pdf)"
       }
     ]);
   });

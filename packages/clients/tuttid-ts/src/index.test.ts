@@ -82,6 +82,24 @@ function assertRequest(
   if (expected.signal) assert.equal(request.signal, expected.signal);
 }
 
+test("shared tuttid client purges deleted Agent conversations", async () => {
+  const response = {
+    removedSessions: 2,
+    removedMessages: 5,
+    payloadBytes: 128
+  };
+  const { client, requests } = captureClient(jsonResponse(response));
+
+  assert.deepEqual(await client.purgeDeletedAgentConversations(), response);
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "POST",
+    path: "/v1/agent-maintenance/deleted-conversations/purge",
+    query: {}
+  });
+});
+
 test("generated tuttid client returns parsed health response", async () => {
   const client = createClient({
     baseUrl: "http://localhost:4545/",

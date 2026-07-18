@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentGUIConversationSummary } from "./agentGuiConversationModel";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import {
+  conversationRailSectionActiveConversationId,
   conversationRailSectionHeaderVisibility,
   insertConversationRailSectionOverlay,
   conversationSummariesRenderEqual,
@@ -56,6 +57,40 @@ describe("conversationRailSectionHeaderVisibility", () => {
       showPinnedHeader: false,
       showProjectsHeader: true
     });
+  });
+});
+
+describe("conversationRailSectionActiveConversationId", () => {
+  it("projects selection only into the section that owns the row", () => {
+    const first = section([conversation("first")])[0]!;
+    const second = {
+      ...first,
+      id: "project:/second",
+      items: [conversation("second")]
+    };
+
+    expect(
+      [first, second].map((railSection) =>
+        conversationRailSectionActiveConversationId({
+          activeConversation: null,
+          activeConversationId: "second",
+          section: railSection
+        })
+      )
+    ).toEqual([null, "second"]);
+  });
+
+  it("keeps a selected overlay active in its projected section", () => {
+    const railSection = section([])[0]!;
+    const activeConversation = conversation("historical");
+
+    expect(
+      conversationRailSectionActiveConversationId({
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        section: railSection
+      })
+    ).toBe(activeConversation.id);
   });
 });
 

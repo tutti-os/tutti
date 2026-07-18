@@ -29,6 +29,9 @@ func TestSQLiteStoreGetDesktopPreferencesDefaultsWhenUnset(t *testing.T) {
 	if preferences.DockIconStyle != "default" {
 		t.Fatalf("GetDesktopPreferences() dockIconStyle = %q, want default", preferences.DockIconStyle)
 	}
+	if preferences.DeletedAgentConversationRetentionDays != 30 {
+		t.Fatalf("GetDesktopPreferences() retention days = %d, want 30", preferences.DeletedAgentConversationRetentionDays)
+	}
 	if preferences.DefaultAgentProvider != "codex" {
 		t.Fatalf("GetDesktopPreferences() defaultAgentProvider = %q, want codex", preferences.DefaultAgentProvider)
 	}
@@ -86,10 +89,11 @@ func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
 		AgentDockLayout:             "unified",
 		DefaultAgentProvider:        "claude-code",
 
-		BrowserUseConnectionMode: "autoConnect",
-		AppCatalogChannel:        "staging",
-		DockIconStyle:            "default",
-		DockPlacement:            "left",
+		BrowserUseConnectionMode:              "autoConnect",
+		AppCatalogChannel:                     "staging",
+		DockIconStyle:                         "default",
+		DockPlacement:                         "left",
+		DeletedAgentConversationRetentionDays: 15,
 		FileDefaultOpenersByExtension: map[string]string{
 			"html": "fileViewer",
 			"pdf":  "defaultBrowser",
@@ -121,6 +125,9 @@ func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
 	}
 	if reloaded.DockPlacement != "left" {
 		t.Fatalf("GetDesktopPreferences() dockPlacement = %q, want left", reloaded.DockPlacement)
+	}
+	if reloaded.DeletedAgentConversationRetentionDays != 15 {
+		t.Fatalf("GetDesktopPreferences() retention days = %d, want 15", reloaded.DeletedAgentConversationRetentionDays)
 	}
 	if reloaded.DefaultAgentProvider != "claude-code" {
 		t.Fatalf("GetDesktopPreferences() defaultAgentProvider = %q, want claude-code", reloaded.DefaultAgentProvider)

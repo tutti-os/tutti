@@ -1,6 +1,7 @@
 import { zhCNAgentGuiProviderIdentity } from "./zh-CN.agentGuiProviderIdentity.ts";
 import { zhCNAgentGuiRuntimeNotices } from "./zh-CN.agentGuiRuntimeNotices.ts";
 import { zhCNAgentGuiSlashPalette } from "./zh-CN.agentGuiSlashPalette.ts";
+import { zhCNAgentGuiSessionActions } from "./zh-CN.agentGuiSessionActions.ts";
 
 export const zhCNAgentGui = {
   initialPlaceholder: "输入 @ 引用会话、文件、任务和应用",
@@ -104,6 +105,13 @@ export const zhCNAgentGui = {
     learnMore: "了解详情",
     cancel: "取消",
     confirm: "启用完全访问权限"
+  },
+  fullAccessRestoredWarning: {
+    title: "完全访问权限已开启",
+    description:
+      "Codex 可以在未经你同意的情况下运行命令、使用互联网，以及在这台电脑的任意位置创建、修改、上传或删除文件。这可能导致数据丢失，也会带来提示词注入风险。",
+    dontShowAgain: "不再显示",
+    dismissLabel: "关闭完全访问权限警告"
   },
   permissionSemantics: {
     "ask-before-write": {
@@ -558,14 +566,13 @@ export const zhCNAgentGui = {
   showLessConversations: "收起",
   deleteSession: "删除会话",
   pinSession: "置顶会话",
-  copySessionLink: "复制会话链接",
+  ...zhCNAgentGuiSessionActions,
   renameSession: "重命名会话",
   renameSessionTitle: "重命名对话",
   renameSessionDescription: "保持简短且易于识别。",
   renameSessionPlaceholder: "对话标题",
   renameSessionSave: "保存",
   unpinSession: "取消置顶",
-  markSessionUnread: "标记为未读",
   deleteSessionTitle: "删除会话？",
   deleteSessionBody:
     "删除后无法恢复。该会话将不再出现在会话列表、会话时间线、房间时间线或房间状态中。",
@@ -620,6 +627,9 @@ export const zhCNAgentGui = {
   fileMentionError: "无法搜索工作区文件。",
   fileMentionTabHint: "Tab 切换分类 ｜ ←→ 进入/返回文件夹 ｜ ↑↓ 切换选中",
   fileDropHint: "拖放文件以添加到会话",
+  composerFileFolderUnsupported: "暂不支持在这里附加文件夹",
+  composerFileTooLarge: "文件过大",
+  composerFilePreparationFailed: "文件处理失败",
   mentionPalette: "提及上下文",
   addReference: "添加引用",
   addContent: "添加文件等内容",

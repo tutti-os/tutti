@@ -5,12 +5,12 @@ import { describe, expect, it } from "vitest";
 const source = readFileSync(
   join(
     process.cwd(),
-    "agent-gui/agentGuiNode/view/AgentGUIConversationRailSection.tsx"
+    "agent-gui/agentGuiNode/view/AgentGUIConversationRailSectionHeader.tsx"
   ),
   "utf8"
 );
 
-describe("AgentGUIConversationRailSection trigger composition", () => {
+describe("AgentGUIConversationRailSectionHeader trigger composition", () => {
   it("keeps tooltip and dropdown refs on separate DOM elements", () => {
     expect(source).not.toMatch(
       /<DropdownMenuTrigger asChild>\s*<TooltipTrigger asChild>/u

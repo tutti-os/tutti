@@ -177,8 +177,8 @@ export function createWorkspaceAgentGuiContribution(input: {
         agentGUIWorkbenchHostInput.trackWorkspaceFileReferences,
       workspaceFileReferenceAdapter:
         agentGUIWorkbenchHostInput.workspaceFileReferenceAdapter,
-      resolveDroppedFileReferences:
-        agentGUIWorkbenchHostInput.resolveDroppedFileReferences,
+      prepareExternalPromptFiles:
+        agentGUIWorkbenchHostInput.prepareExternalPromptFiles,
       onRequestGitBranches: agentGUIWorkbenchHostInput.onRequestGitBranches,
       referenceSourceAggregator:
         agentGUIWorkbenchHostInput.referenceSourceAggregator,
@@ -207,7 +207,19 @@ export function createWorkspaceAgentGuiContribution(input: {
       nodeTitle: input.i18n.t(workspaceWorkbenchDesktopI18nKeys.nodes.agent),
       untitledConversation: input.appI18n.t(
         "workspace.agentGui.untitledConversation"
-      )
+      ),
+      sessionMenu: {
+        copyAsMarkdown: input.appI18n.t(
+          "workspace.agentGui.sessionMenu.copyAsMarkdown"
+        ),
+        copyAsReference: input.appI18n.t(
+          "workspace.agentGui.sessionMenu.copyAsReference"
+        ),
+        moreSessionActions: input.appI18n.t(
+          "workspace.agentGui.sessionMenu.moreActions"
+        ),
+        renameSession: input.appI18n.t("workspace.agentGui.sessionMenu.rename")
+      }
     },
     dockIconUrls: input.dockIconUrls,
     unifiedDockIconUrl: input.unifiedDockIconUrl,

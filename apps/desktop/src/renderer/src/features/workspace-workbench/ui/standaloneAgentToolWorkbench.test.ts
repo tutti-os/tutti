@@ -1,27 +1,45 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import type { BrowserNodeEvent } from "@tutti-os/browser-node";
-import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type {
   WorkbenchContribution,
   WorkbenchHostHandle,
   WorkbenchHostLaunchRequest
 } from "@tutti-os/workbench-surface";
 import {
-  createStandaloneAgentBrowserToolFeature,
   createStandaloneAgentDirectToolHost,
   createStandaloneAgentToolHostGroup,
   createStandaloneAgentToolSnapshotRepository,
   resolveStandaloneAgentToolContribution
 } from "./standaloneAgentToolWorkbench.ts";
 
-const standaloneAgentToolSidebarSource = readFileSync(
+const standaloneAgentToolSidebarAdapterSource = readFileSync(
   new URL("./StandaloneAgentToolSidebar.tsx", import.meta.url),
   "utf8"
 );
+const sharedAgentToolSidebarSource = readFileSync(
+  new URL(
+    "../../../../../../../../packages/agent/gui/workbench/tool-sidebar/AgentToolSidebar.tsx",
+    import.meta.url
+  ),
+  "utf8"
+);
+const sharedAgentToolSidebarControllerSource = readFileSync(
+  new URL(
+    "../../../../../../../../packages/agent/gui/workbench/tool-sidebar/useAgentToolSidebarController.ts",
+    import.meta.url
+  ),
+  "utf8"
+);
+const standaloneAgentToolSidebarSource =
+  standaloneAgentToolSidebarAdapterSource +
+  sharedAgentToolSidebarSource +
+  sharedAgentToolSidebarControllerSource;
 const standaloneAgentToolSidebarPickerSource = readFileSync(
-  new URL("./StandaloneAgentToolSidebarPicker.tsx", import.meta.url),
+  new URL(
+    "../../../../../../../../packages/agent/gui/workbench/tool-sidebar/Picker.tsx",
+    import.meta.url
+  ),
   "utf8"
 );
 const standaloneAgentToolSidebarPanelSource = readFileSync(
@@ -39,12 +57,22 @@ const standaloneAgentBrowserToolPanelSource = readFileSync(
   new URL("./StandaloneAgentBrowserToolPanel.tsx", import.meta.url),
   "utf8"
 );
+const sharedAgentToolBrowserPanelSource = readFileSync(
+  new URL(
+    "../../../../../../../../packages/agent/gui/workbench/tool-sidebar/AgentToolBrowserPanel.tsx",
+    import.meta.url
+  ),
+  "utf8"
+);
 const standaloneAgentTerminalPanelSource = readFileSync(
   new URL("./StandaloneAgentTerminalPanel.tsx", import.meta.url),
   "utf8"
 );
 const standaloneAgentToolSidebarToolbarSource = readFileSync(
-  new URL("./StandaloneAgentToolSidebarToolbar.tsx", import.meta.url),
+  new URL(
+    "../../../../../../../../packages/agent/gui/workbench/tool-sidebar/Toolbar.tsx",
+    import.meta.url
+  ),
   "utf8"
 );
 const standaloneAgentMessageCenterToolPanelSource = readFileSync(
@@ -73,8 +101,21 @@ const workspaceAgentMessageCenterActionSource = readFileSync(
 );
 
 test("standalone Agent tools load their OS node UI on demand", () => {
-  assert.match(standaloneAgentBrowserToolPanelSource, /<LazyBrowserNode/);
-  assert.match(standaloneAgentBrowserToolPanelSource, /hidden=\{hidden\}/);
+  assert.match(standaloneAgentBrowserToolPanelSource, /<AgentToolBrowserPanel/);
+  assert.match(
+    standaloneAgentBrowserToolPanelSource,
+    /chromeCookieImportPrompt=\{getDesktopChromeCookieImportPromptAdapter\(\)\}/
+  );
+  assert.match(
+    standaloneAgentBrowserToolPanelSource,
+    /@tutti-os\/agent-gui\/workbench\/browser-element-context/
+  );
+  assert.match(
+    standaloneAgentBrowserToolPanelSource,
+    /navigationActions=\{[\s\S]*?<BrowserElementContextAction/
+  );
+  assert.match(sharedAgentToolBrowserPanelSource, /<LazyBrowserNode/);
+  assert.match(sharedAgentToolBrowserPanelSource, /hidden=\{hidden\}/);
   assert.match(
     standaloneAgentToolSidebarPanelSource,
     /<StandaloneAgentBrowserToolPanel[\s\S]*?hidden=\{!active\}/
@@ -105,17 +146,14 @@ test("standalone Agent opens an empty right sidebar with the core tool picker", 
     /const isEmptySidebar = isSidebarOpen && state\.mountedTabs\.length === 0/
   );
   assert.match(
-    standaloneAgentToolSidebarSource,
-    /isEmptySidebar \? \([\s\S]*?<StandaloneAgentToolSidebarPicker/
+    sharedAgentToolSidebarSource,
+    /isEmptySidebar \|\| isEmptySidebarClosing \? \([\s\S]*?<AgentToolSidebarPicker\s+panels=\{panels\}/
   );
   assert.match(
-    standaloneAgentToolSidebarPickerSource,
+    standaloneAgentToolSidebarAdapterSource,
     /id: "files"[\s\S]*?id: "terminal"[\s\S]*?id: "browser"[\s\S]*?id: "tasks"[\s\S]*?id: "apps"[\s\S]*?id: "messages"/
   );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /labels=\{\{[\s\S]*?apps: copy\.apps[\s\S]*?browser: copy\.browser[\s\S]*?files: copy\.files[\s\S]*?messages: copy\.messages[\s\S]*?tasks: copy\.tasks[\s\S]*?terminal: copy\.terminal/
-  );
+  assert.match(standaloneAgentToolSidebarAdapterSource, /panels=\{panels\}/);
   assert.match(
     standaloneAgentToolSidebarPickerSource,
     /data-standalone-agent-tool-sidebar-picker="true"/
@@ -124,20 +162,16 @@ test("standalone Agent opens an empty right sidebar with the core tool picker", 
 
 test("standalone Agent quick actions open the apps and messages panel tabs", () => {
   assert.match(
-    standaloneAgentToolSidebarToolbarSource,
-    /activePanel === null && !isOpen \? \([\s\S]*?data-standalone-agent-tool-sidebar-quick-action="apps"[\s\S]*?variant="chrome"[\s\S]*?onClick=\{\(\) => onOpenPanel\("apps"\)\}/
+    standaloneAgentToolSidebarAdapterSource,
+    /quickActionPanels=\{\["tasks", "apps", "messages"\]\}/
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
-    /data-standalone-agent-tool-sidebar-quick-action="messages"[\s\S]*?variant="chrome"[\s\S]*?onClick=\{\(\) => onOpenPanel\("messages"\)\}/
+    /activePanel === null && !isOpen[\s\S]*?quickActions\.map[\s\S]*?data-standalone-agent-tool-sidebar-quick-action=\{panel\}[\s\S]*?variant="chrome"[\s\S]*?onClick=\{\(\) => onOpenPanel\(panel\)\}/
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
-    /quick-action="messages"[\s\S]*?ReminderBadge count=\{reminders\.messages\}/
-  );
-  assert.match(
-    standaloneAgentToolSidebarToolbarSource,
-    /ToolbarQuickActionTooltip label=\{copy\.tasks\}[\s\S]*?ToolbarQuickActionTooltip label=\{copy\.apps\}[\s\S]*?ToolbarQuickActionTooltip label=\{copy\.messages\}/
+    /<ReminderBadge count=\{reminders\[panel\]\}/
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
@@ -145,7 +179,7 @@ test("standalone Agent quick actions open the apps and messages panel tabs", () 
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
-    /\{activePanel === null && !isOpen \? \([\s\S]*?\) : null\}/
+    /activePanel === null && !isOpen[\s\S]*?quickActions\.map/
   );
 });
 
@@ -167,7 +201,7 @@ test("standalone Agent right sidebar reserves layout space and reveals requested
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /fileOpenRequestTabIdRef\.current = filesTabId;[\s\S]*?dispatch\(\{ panel: "files", tabId: filesTabId, type: "open-panel" \}\)/
+    /fileOpenRequestTabIdRef\.current =[\s\S]*?sidebarRef\.current\?\.openPanel\("files"\) \?\? null/
   );
   assert.match(
     standaloneAgentToolSidebarPanelSource,
@@ -209,33 +243,33 @@ test("standalone Agent resizes the native window when panels open, switch, and c
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /const closePanelTab = useCallback\([\s\S]*?nextTab === null[\s\S]*?scheduleResizeForPanel\("files", standaloneAgentEmptyToolSidebarWidth[\s\S]*?scheduleResizeForPanel\(nextTab\.panel\)/
+    /const closePanelTab = useCallback\([\s\S]*?nextState\.activePanel === null[\s\S]*?scheduleResizeForPanel\(fallbackPanel, agentToolEmptySidebarWidth[\s\S]*?scheduleResizeForPanel\(nextState\.activePanel\)/
   );
 });
 
 test("standalone Agent restores the resize baseline after closing the empty picker", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
-    /setIsEmptySidebarClosing\(true\);\s+scheduleResizeForPanel\(null, undefined, \{\s+animateWindow: true,\s+preserveBaseline: true/
+    /setIsEmptySidebarClosing\(true\);\s+scheduleResizeForPanel\(null, undefined, \{\s+animateContainer: true,\s+preserveBaseline: true/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /setIsEmptySidebarClosing\(false\);\s+resetWindowResizeBaseline\(\)/
+    /setIsEmptySidebarClosing\(false\);\s+layout\.resetContainerResizeBaseline\(\)/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /state\.mountedTabs\.length === 0[\s\S]*?scheduleResizeForPanel\("files", standaloneAgentEmptyToolSidebarWidth/
+    /state\.mountedTabs\.length === 0[\s\S]*?scheduleResizeForPanel\(nextPanel, agentToolEmptySidebarWidth/
   );
 });
 
 test("standalone Agent toolbar exposes task management in the unified panel", () => {
   assert.match(
-    standaloneAgentToolSidebarToolbarSource,
-    /data-standalone-agent-tool-sidebar-quick-action="tasks"[\s\S]*?onClick=\{\(\) => onOpenPanel\("tasks"\)\}/
+    standaloneAgentToolSidebarAdapterSource,
+    /quickActionPanels=\{\["tasks", "apps", "messages"\]\}/
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
-    /onSelect=\{\(\) => onAddPanel\("tasks"\)\}[\s\S]*?panel="tasks"/
+    /panels\.map\(\(panel\)[\s\S]*?onSelect=\{\(\) => onAddPanel\(panel\.id\)\}[\s\S]*?panel=\{panel\.id\}/
   );
   assert.match(standaloneAgentToolSidebarToolbarSource, /tasks: TaskIcon/);
   assert.match(
@@ -259,8 +293,8 @@ test("standalone Agent toolbar exposes task management in the unified panel", ()
     /const context: WorkbenchHostNodeBodyContext = \{\s*activation,/
   );
   assert.match(
-    standaloneAgentToolSidebarSource,
-    /const tabId = resolveToolTabId\(state\.mountedTabs, "tasks"\)[\s\S]*?dispatch\(\{ panel: "tasks", tabId, type: "open-panel" \}\)/
+    standaloneAgentToolSidebarAdapterSource,
+    /issueManagerOpenRequestTabIdRef\.current =[\s\S]*?sidebarRef\.current\?\.openPanel\("tasks"\) \?\? null/
   );
   assert.match(
     standaloneAgentIssueManagerToolPanelSource,
@@ -291,7 +325,7 @@ test("standalone Agent message reminders remain activity-driven", () => {
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
-    /ReminderBadge count=\{reminders\.messages\}/
+    /ReminderBadge count=\{reminders\[panel\]\}/
   );
   assert.doesNotMatch(
     standaloneAgentToolSidebarToolbarSource,
@@ -393,71 +427,6 @@ test("standalone Agent terminal contribution keeps the real renderer and opens f
 test("standalone Agent tool snapshot repository never restores OS workbench windows", async () => {
   const repository = createStandaloneAgentToolSnapshotRepository();
   assert.equal(await repository.load("workspace-1"), null);
-});
-
-test("standalone Agent browser tool uses the BrowserNode event lifecycle for its own guest", () => {
-  let emitBrowserEvent = (_event: BrowserNodeEvent): void => undefined;
-  const feature = createStandaloneAgentBrowserToolFeature({
-    browserApi: {
-      activate: async () => undefined,
-      close: async () => undefined,
-      goBack: async () => undefined,
-      goForward: async () => undefined,
-      navigate: async () => undefined,
-      onEvent(listener) {
-        emitBrowserEvent = listener;
-        return () => {
-          emitBrowserEvent = () => undefined;
-        };
-      },
-      prepareSession: async () => undefined,
-      registerGuest: async () => undefined,
-      reload: async () => undefined,
-      unregisterGuest: async () => undefined
-    },
-    i18n: { t: (key) => key } as I18nRuntime<string>,
-    nodeId: "browser:standalone-agent-tool:one"
-  });
-  const disconnect = feature.connect();
-
-  emitBrowserEvent({
-    canGoBack: false,
-    canGoForward: false,
-    isLoading: false,
-    isOccluded: false,
-    lifecycle: "active",
-    nodeId: "browser:another-window",
-    title: "Other browser",
-    type: "state",
-    url: "https://example.com/other"
-  });
-  assert.equal(
-    feature.runtimeStore.getNodeState("browser:standalone-agent-tool:one").url,
-    null
-  );
-
-  emitBrowserEvent({
-    canGoBack: true,
-    canGoForward: false,
-    isLoading: false,
-    isOccluded: false,
-    lifecycle: "active",
-    nodeId: "browser:standalone-agent-tool:one:tab:1",
-    title: "Tutti",
-    type: "state",
-    url: "https://tutti.app/"
-  });
-  assert.equal(
-    feature.runtimeStore.getNodeState("browser:standalone-agent-tool:one:tab:1")
-      .url,
-    "https://tutti.app/"
-  );
-  assert.equal(
-    feature.resolveAddressInput("browser tool").url,
-    "https://www.google.com/search?q=browser+tool"
-  );
-
-  disconnect();
 });
 
 test("standalone Agent tool host group aggregates terminal close effects and routes node commands", async () => {

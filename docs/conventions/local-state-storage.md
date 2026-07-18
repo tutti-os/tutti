@@ -194,6 +194,40 @@ receive it through `CODEX_HOME`; Tutti Agent sessions use `tutti-agent-home`
 and receive it through `TUTTI_AGENT_HOME`. `agent/attachments` stores persisted
 prompt attachments by agent session.
 
+## Deleted Agent Conversation Retention
+
+Soft-deleted Agent conversations remain recoverable canonical tombstones until
+the device-global retention period expires. The supported values are 15 and 30
+days, with 30 days as the default. Existing tombstones use their original
+deletion timestamp; upgrades do not add another grace period. The daemon runs
+small permanent-removal batches only while Agent work is idle, no more than one
+successful automatic sweep per 24 hours. The desktop setting also exposes an
+explicitly confirmed manual cleanup that targets all current tombstones.
+
+The filesystem cleanup checklist considered these Tutti-owned session roots:
+
+- `agent/attachments/<agent-session-id>`: persisted prompt attachments owned by
+  the purged session.
+- `agent/runs/<agent-session-id>`: residual provider sidecar state left when the
+  normal session-delete cleanup could not finish.
+
+This checklist is deliberately **not activated** by retention cleanup. A
+canonical row can be purged immediately before another workspace starts a new
+session with the same externally supplied id, and a real directory beneath a
+run root can be a filesystem mount rather than Tutti-owned content. Neither
+ownership can be proven safely across supported platforms without coordinating
+all session creation and mount topology. The conservative policy is therefore
+to delete no files at all. A session cwd, user project, worktree, provider
+installation, shared provider home, custom `CODEX_HOME`, the two candidate
+roots above, and every other filesystem path remain untouched.
+
+Deleted SQLite pages are immediately reusable by the database. After an
+explicit manual sweep only, the daemon may additionally run a three-second
+best-effort `VACUUM` when the whole database is no larger than 64 MiB, at least
+8 MiB and one quarter of its pages are free, and Agent work is still idle.
+Automatic maintenance never performs this compaction; a busy, timed-out, or
+failed attempt does not roll back the committed purge.
+
 `agent/worktrees/<agent-session-id>` is a daemon-managed Git checkout for a
 worktree-isolated agent session. The tuttid agent adapter owns the corresponding
 `.metadata/<agent-session-id>.json` record used for enumeration, failed-create

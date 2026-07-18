@@ -177,6 +177,7 @@ func pendingInteractionTransition(turnID string, pending *pendingInteractiveRequ
 			metadata[key] = value
 		}
 	}
+	metadata["actions"] = normalizedInteractionActions(pending.options)
 	return activityshared.InteractionTransition{
 		RequestID: strings.TrimSpace(pending.requestID),
 		TurnID:    firstNonEmptyString(strings.TrimSpace(turnID), strings.TrimSpace(pending.turnID)),
@@ -185,6 +186,49 @@ func pendingInteractionTransition(turnID string, pending *pendingInteractiveRequ
 		Input:     clonePayload(pending.input),
 		Metadata:  clonePayload(metadata),
 	}
+}
+
+func normalizedInteractionActions(options []map[string]any) []any {
+	actions := make([]any, 0, len(options))
+	for _, option := range options {
+		id := firstNonEmpty(asString(option["optionId"]), asString(option["id"]))
+		if id == "" {
+			continue
+		}
+		label := firstNonEmpty(asString(option["name"]), asString(option["label"]), id)
+		actions = append(actions, map[string]any{
+			"id": id, "label": label, "semantic": interactionActionSemantic(asString(option["kind"])),
+		})
+	}
+	return actions
+}
+
+func interactionActionSemantic(kind string) string {
+	switch normalizePermissionOptionToken(kind) {
+	case "allowonce":
+		return "approve"
+	case "allowalways":
+		return "approve_always"
+	case "rejectonce":
+		return "deny"
+	case "rejectalways":
+		return "deny_and_stop"
+	default:
+		return ""
+	}
+}
+
+func interactiveApprovalOptionID(input SubmitInteractiveInput) string {
+	if optionID := strings.TrimSpace(input.OptionID); optionID != "" {
+		return optionID
+	}
+	if action := strings.TrimSpace(input.Action); action != "" {
+		return action
+	}
+	if input.Payload != nil {
+		return strings.TrimSpace(asString(input.Payload["optionId"]))
+	}
+	return ""
 }
 
 func (p *pendingInteractiveRequest) snapshotPrompt() *SessionInteractivePrompt {

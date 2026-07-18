@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { AgentActivityGoalControlAction } from "@tutti-os/agent-activity-core";
+import type { AgentGuiWorkbenchSessionActionRequest } from "../../../workbench/sessionActions";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type {
   ReferenceLocateTarget,
@@ -27,7 +28,6 @@ import type {
   AgentComposerPromptTip,
   AgentComposerSlashStatusLimit
 } from "../AgentComposer";
-import type { AgentContextMentionProvider } from "../agentContextMentionProvider";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
 import type {
   AgentComposerDraft,
@@ -254,7 +254,18 @@ export interface AgentGUIViewLabels {
   showLessConversations: string;
   deleteSession: string;
   pinSession: string;
-  copySessionLink: string;
+  moreSessionActions: string;
+  copyAsMarkdown: string;
+  copyAsReference: string;
+  conversationCopyImage: string;
+  conversationCopyImagesOmitted: string;
+  conversationCopyInProgress: string;
+  conversationCopyMentionPrefix: string;
+  conversationCopyFile: string;
+  conversationCopyPreviousMessages: string;
+  copiedToClipboard: string;
+  copyFailed: string;
+  sessionActionUnavailable: string;
   renameSession: string;
   renameSessionTitle: string;
   renameSessionDescription: string;
@@ -372,6 +383,99 @@ export interface AgentGUIViewLabels {
   reviewPicker: AgentComposerProps["labels"]["reviewPicker"];
 }
 
+export type ChromeLabels = {
+  approvalRequired: string;
+  authRequired: string;
+  activatingSession: string;
+  retryActivation: string;
+  continueInNewConversation: string;
+};
+
+export type InteractivePromptLabels = {
+  approvalLead: string;
+  fileChangeApprovalLead: string;
+  planLead: string;
+  planModes: Array<{ id: string; label: string; description: string }>;
+  stayInPlan: string;
+  sendFeedback: string;
+  feedbackPlaceholder: string;
+  previousQuestion: string;
+  nextQuestion: string;
+  submitAnswers: string;
+  answerPlaceholder: string;
+  waitingForAnswer: string;
+  planImplementationLead: string;
+  planImplementationConfirm: string;
+  planImplementationFeedbackPlaceholder: string;
+  planImplementationSend: string;
+  planImplementationSkip: string;
+};
+
+export type AgentGUIConversationRailLabels = Pick<
+  AgentGUIViewLabels,
+  | "batchDeleteConversations"
+  | "batchDeleteConversationsBody"
+  | "batchDeleteConversationsConfirm"
+  | "batchDeleteConversationsTitle"
+  | "batchDeleteProjectSessions"
+  | "batchDeleteProjectSessionsBody"
+  | "batchDeleteProjectSessionsConfirm"
+  | "batchDeleteProjectSessionsTitle"
+  | "cancel"
+  | "conversationUnavailable"
+  | "conversationsSectionMoreActions"
+  | "copyAsMarkdown"
+  | "copyAsReference"
+  | "conversationCopyFile"
+  | "conversationCopyImage"
+  | "conversationCopyImagesOmitted"
+  | "conversationCopyInProgress"
+  | "conversationCopyMentionPrefix"
+  | "conversationCopyPreviousMessages"
+  | "copiedToClipboard"
+  | "copyFailed"
+  | "moreSessionActions"
+  | "deleteSession"
+  | "deleteSessionConfirm"
+  | "emptyProjectConversations"
+  | "loadingConversations"
+  | "markSessionUnread"
+  | "newConversation"
+  | "noConversations"
+  | "openConversationWindow"
+  | "pinProject"
+  | "pinSession"
+  | "pinnedProjectAccessibleName"
+  | "projectRailCreateProject"
+  | "projectRailLinkExistingProject"
+  | "projectSectionEdit"
+  | "projectSectionMoreActions"
+  | "projectSectionViewFiles"
+  | "relativeTimeDays"
+  | "relativeTimeHours"
+  | "relativeTimeJustNow"
+  | "relativeTimeMinutes"
+  | "relativeTimeMonths"
+  | "relativeTimeYears"
+  | "removeProject"
+  | "removeProjectConfirmDescription"
+  | "removeProjectConfirmTitle"
+  | "renameSession"
+  | "retrySearch"
+  | "searchFailed"
+  | "searchNoConversations"
+  | "searchPlaceholder"
+  | "sectionConversations"
+  | "sectionPinned"
+  | "selectConversation"
+  | "showLessConversations"
+  | "showMoreConversations"
+  | "startConversation"
+  | "unpinProject"
+  | "unpinSession"
+  | "untitledConversationTitle"
+>;
+
 export interface AgentGUINodeViewProps {
   viewModel: AgentGUINodeViewModel;
   referenceProvenanceFilter?: AgentComposerReferenceProvenanceFilter | null;
@@ -398,6 +502,7 @@ export interface AgentGUINodeViewProps {
   onEngagementEvent?: AgentGUIEngagementEventSink;
   composerFocusRequestSequence?: number | null;
   newConversationRequestSequence?: number | null;
+  sessionActionRequest?: AgentGuiWorkbenchSessionActionRequest | null;
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
   slashStatusLimitsUnavailable?: boolean;
@@ -507,9 +612,11 @@ export interface AgentGUINodeViewProps {
   onWorkspaceFileReferencesAdded?: (
     references: readonly WorkspaceFileReference[]
   ) => void | Promise<void>;
-  resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
+  prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
+  promptAssetLimit?: number | null;
   onConversationRailWidthChanged: (widthPx: number) => void;
   labels: AgentGUIViewLabels;
+  conversationRailLabels: AgentGUIConversationRailLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   workspaceFileManagerCopy?: WorkspaceFileManagerI18nRuntime | null;
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
@@ -517,7 +624,6 @@ export interface AgentGUINodeViewProps {
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   workspaceFileReferenceCopy?: WorkspaceFileReferenceCopy | null;
-  contextMentionProviders?: readonly AgentContextMentionProvider[];
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
   resolveWorkspaceReferenceEntryIconUrl?: (
     entry: WorkspaceFileEntry

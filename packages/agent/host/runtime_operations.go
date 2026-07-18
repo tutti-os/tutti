@@ -41,9 +41,9 @@ func (h *Host) prepareInteractiveRuntimeOperation(
 	requestID string,
 	input SubmitInteractiveInput,
 	rootAgentSessionID string,
-) (storesqlite.RuntimeOperation, error) {
+) (storesqlite.RuntimeOperation, RuntimeInteractiveDisposition, bool, error) {
 	if h.operations == nil || h.store == nil {
-		return storesqlite.RuntimeOperation{}, errors.New("agent runtime operation store is unavailable")
+		return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, errors.New("agent runtime operation store is unavailable")
 	}
 	expectedTurnID := strings.TrimSpace(input.TurnID)
 	operationSubjectID := requestID
@@ -57,37 +57,67 @@ func (h *Host) prepareInteractiveRuntimeOperation(
 		"payload": cloneMap(input.Payload), "turnId": expectedTurnID,
 	}
 	if existing, found, err := h.operations.GetRuntimeOperation(ctx, ref.WorkspaceID, operationID); err != nil {
-		return storesqlite.RuntimeOperation{}, err
+		return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, err
 	} else if found {
 		if existing.WorkspaceID != ref.WorkspaceID || existing.AgentSessionID != ref.AgentSessionID ||
 			existing.Kind != storesqlite.RuntimeOperationKindInteractiveResponse || existing.RequestID != requestID ||
-			(expectedTurnID != "" && existing.TurnID != expectedTurnID) || !runtimeOperationPayloadEqual(existing.Payload, payload) {
-			return storesqlite.RuntimeOperation{}, storesqlite.ErrRuntimeOperationConflict
+			(expectedTurnID != "" && existing.TurnID != expectedTurnID) {
+			return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, storesqlite.ErrRuntimeOperationConflict
 		}
-		return existing, nil
+		switch existing.Status {
+		case storesqlite.RuntimeOperationStatusCompleted:
+			disposition := RuntimeInteractiveDispositionSuperseded
+			if existing.Result == storesqlite.RuntimeOperationResultAnswered && runtimeOperationPayloadEqual(existing.Payload, payload) {
+				disposition = RuntimeInteractiveDispositionAnswered
+			}
+			return existing, disposition, false, nil
+		case storesqlite.RuntimeOperationStatusFailed:
+			if !runtimeOperationPayloadEqual(existing.Payload, payload) {
+				return existing, RuntimeInteractiveDispositionSuperseded, false, nil
+			}
+			return existing, RuntimeInteractiveDispositionUnknown, true, nil
+		}
 	}
-	pending, err := h.store.ListSessionInteractions(ctx, storesqlite.ListSessionInteractionsInput{
-		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, Status: storesqlite.InteractionStatusPending,
+	interactions, err := h.store.ListSessionInteractions(ctx, storesqlite.ListSessionInteractionsInput{
+		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
 	})
 	if err != nil {
-		return storesqlite.RuntimeOperation{}, err
+		return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, err
 	}
-	turnID := ""
-	for _, interaction := range pending {
+	var target storesqlite.Interaction
+	for _, interaction := range interactions {
 		if strings.TrimSpace(interaction.RequestID) == requestID && (expectedTurnID == "" || strings.TrimSpace(interaction.TurnID) == expectedTurnID) {
-			turnID = strings.TrimSpace(interaction.TurnID)
+			target = interaction
 			break
 		}
 	}
+	turnID := strings.TrimSpace(target.TurnID)
 	if turnID == "" {
-		return storesqlite.RuntimeOperation{}, fmt.Errorf("%w: pending interaction %q was not found", ErrInvalidArgument, requestID)
+		return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, fmt.Errorf("%w: interaction %q was not found", ErrInvalidArgument, requestID)
 	}
-	operation, _, err := h.operations.PrepareRuntimeOperation(ctx, storesqlite.RuntimeOperationPrepare{
+	operation, interaction, transition, err := h.operations.PrepareInteractiveRuntimeOperation(ctx, storesqlite.RuntimeOperationPrepare{
 		OperationID: operationID, WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
 		Kind: storesqlite.RuntimeOperationKindInteractiveResponse, TurnID: turnID, RequestID: requestID,
 		Payload: payload, OccurredAtMS: h.now().UnixMilli(),
 	})
-	return operation, err
+	if err != nil {
+		return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, err
+	}
+	disposition := RuntimeInteractiveDispositionSuperseded
+	if interaction.Status == storesqlite.InteractionStatusAnswered && interactiveClaimMatches(interaction, input) {
+		disposition = RuntimeInteractiveDispositionAnswered
+	}
+	return operation, disposition, transition == storesqlite.InteractionTransitionApplied && disposition == RuntimeInteractiveDispositionAnswered, nil
+}
+
+func interactiveClaimOutput(input SubmitInteractiveInput) map[string]any {
+	return map[string]any{
+		"action": value(input.Action), "optionId": value(input.OptionID), "payload": cloneMap(input.Payload),
+	}
+}
+
+func interactiveClaimMatches(interaction storesqlite.Interaction, input SubmitInteractiveInput) bool {
+	return runtimeOperationPayloadEqual(interaction.Output, interactiveClaimOutput(input))
 }
 
 func (h *Host) prepareCancelRuntimeOperation(

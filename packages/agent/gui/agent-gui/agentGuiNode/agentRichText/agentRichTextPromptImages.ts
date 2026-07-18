@@ -71,6 +71,19 @@ export function nonImageFilesFromDataTransfer(
   return files;
 }
 
+export function classifyAgentRichTextExternalFiles(
+  dataTransfer: DataTransfer | null
+): { imageFiles: File[]; regularFiles: File[] } {
+  const imageFiles = imageFilesFromDataTransfer(dataTransfer);
+  const imageFileSet = new Set(imageFiles);
+  return {
+    imageFiles,
+    regularFiles: nonImageFilesFromDataTransfer(dataTransfer).filter(
+      (file) => !imageFileSet.has(file)
+    )
+  };
+}
+
 export function systemFileDragInfoFromDataTransfer(
   dataTransfer: DataTransfer | null
 ): { hasImageFiles: boolean; hasRegularFiles: boolean } {

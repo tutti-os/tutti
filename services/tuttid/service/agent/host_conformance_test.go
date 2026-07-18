@@ -208,7 +208,10 @@ type legacyHostConformanceDriver struct {
 
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
 	d.runtime = newFakeRuntime()
-	d.sessions = &fakeSessionReader{sessions: map[string]PersistedSession{}, tombstoned: map[string]bool{}}
+	d.sessions = &fakeSessionReader{
+		sessions: map[string]PersistedSession{}, tombstoned: map[string]bool{}, deletedAt: map[string]int64{},
+		parentByKey: map[string]string{},
+	}
 	d.turns = &legacyHostConformanceTurnStore{
 		sessions:     map[string]agentactivitybiz.Session{},
 		turns:        map[string]agentactivitybiz.Turn{},
@@ -223,6 +226,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.commitObserver = &conformanceCommitObserver{fail: fixture.FailCommitObserver}
 	d.service.CommitObserver = d.commitObserver
 	d.service.SessionReader = d.sessions
+	d.service.SessionPurgeStore = d.sessions
 	d.service.SessionInitializer = legacyHostConformanceSessionInitializer{sessions: d.sessions}
 	canonicalStore := openAgentServiceSQLiteStore(d.t)
 	d.service.SubmitClaimStore = canonicalStore
@@ -311,7 +315,35 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		PinnedAtUnixMS:  boolUnixMS(seed.Pinned),
 		CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2, LastEventUnixMS: 2,
 	}
-	d.sessions.sessions[seed.WorkspaceID+":"+seed.AgentSessionID] = persisted
+	seedKey := seed.WorkspaceID + ":" + seed.AgentSessionID
+	d.sessions.sessions[seedKey] = persisted
+	if parentID := strings.TrimSpace(seed.ParentAgentSessionID); parentID != "" {
+		d.sessions.parentByKey[seedKey] = seed.WorkspaceID + ":" + parentID
+	}
+	for _, additional := range fixture.AdditionalSessions {
+		additionalKind := strings.TrimSpace(additional.Kind)
+		if additionalKind == "" {
+			additionalKind = agentactivitybiz.SessionKindChild
+		}
+		additionalKey := additional.WorkspaceID + ":" + additional.AgentSessionID
+		d.sessions.sessions[additionalKey] = PersistedSession{
+			ID: additional.AgentSessionID, WorkspaceID: additional.WorkspaceID, Kind: additionalKind,
+			Provider: additional.Provider, Cwd: additional.Cwd, RailSectionKey: "conversations",
+			Metadata:        agentactivitybiz.SessionMetadata{Visible: true, Capabilities: []string{}},
+			CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2, LastEventUnixMS: 2,
+		}
+		if parentID := strings.TrimSpace(additional.ParentAgentSessionID); parentID != "" {
+			d.sessions.parentByKey[additionalKey] = additional.WorkspaceID + ":" + parentID
+		}
+		if additional.Deleted {
+			d.sessions.tombstoned[additionalKey] = true
+			deletedAt := additional.DeletedAtUnixMS
+			if deletedAt <= 0 {
+				deletedAt = 1
+			}
+			d.sessions.deletedAt[additionalKey] = deletedAt
+		}
+	}
 	if fixture.PreparedSubmitID != "" {
 		if _, _, err := d.service.SubmitClaimStore.PrepareSubmitClaim(context.Background(), agentactivitybiz.SubmitClaimPrepare{
 			WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID,
@@ -321,7 +353,13 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		}
 	}
 	if seed.Deleted {
-		d.sessions.tombstoned[seed.WorkspaceID+":"+seed.AgentSessionID] = true
+		key := seed.WorkspaceID + ":" + seed.AgentSessionID
+		d.sessions.tombstoned[key] = true
+		deletedAt := seed.DeletedAtUnixMS
+		if deletedAt <= 0 {
+			deletedAt = 1
+		}
+		d.sessions.deletedAt[key] = deletedAt
 	}
 	d.turns.sessions[seed.AgentSessionID] = agentactivitybiz.Session{
 		ID: seed.AgentSessionID, WorkspaceID: seed.WorkspaceID, Kind: agentactivitybiz.SessionKindRoot,
@@ -513,17 +551,14 @@ func (d *legacyHostConformanceDriver) SubmitInteractive(
 	ref agenthost.SessionRef,
 	requestID string,
 	input agenthost.SubmitInteractiveInput,
-) (hostconformance.SessionObservation, error) {
-	if d.directHost {
-		_, err := d.service.ApplicationHost().SubmitInteractive(ctx, ref, requestID, input)
-		if err != nil {
-			return hostconformance.SessionObservation{}, err
-		}
-		session, err := d.service.Get(ctx, ref.WorkspaceID, ref.AgentSessionID)
-		return legacyHostSessionObservation(session), err
+) (hostconformance.InteractiveObservation, error) {
+	result, err := d.service.ApplicationHost().SubmitInteractive(ctx, ref, requestID, input)
+	if err != nil {
+		return hostconformance.InteractiveObservation{Disposition: result.Disposition}, err
 	}
-	session, err := d.service.SubmitInteractive(ctx, ref.WorkspaceID, ref.AgentSessionID, requestID, input)
-	return legacyHostSessionObservation(session), err
+	return hostconformance.InteractiveObservation{
+		Disposition: result.Disposition,
+	}, nil
 }
 
 func (d *legacyHostConformanceDriver) SubmitPlanDecision(
@@ -613,6 +648,10 @@ func (d *legacyHostConformanceDriver) DeleteSession(ctx context.Context, ref age
 	return agenthost.DeleteSessionResult{
 		Deleted: deleted, RuntimeClosed: live && deleted, CanonicalRemoved: persisted && deleted,
 	}, err
+}
+
+func (d *legacyHostConformanceDriver) PurgeDeletedSessions(ctx context.Context, input agenthost.PurgeDeletedSessionsInput) (agenthost.PurgeDeletedSessionsResult, error) {
+	return d.service.ApplicationHost().PurgeDeletedSessions(ctx, input)
 }
 
 func (d *legacyHostConformanceDriver) GoalControl(ctx context.Context, input agenthost.GoalControlInput) (hostconformance.GoalObservation, error) {

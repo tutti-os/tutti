@@ -58,6 +58,7 @@ test("tuttid event stream client dispatches typed topic events", async () => {
         preferences: {
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
+          deletedAgentConversationRetentionDays: 30,
           agentGuiConversationRailCollapsedByProvider: {},
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
@@ -91,6 +92,7 @@ test("tuttid event stream client dispatches typed topic events", async () => {
         preferences: {
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
+          deletedAgentConversationRetentionDays: 30,
           agentGuiConversationRailCollapsedByProvider: {},
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
@@ -232,6 +234,7 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
         preferences: {
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
+          deletedAgentConversationRetentionDays: 30,
           agentGuiConversationRailCollapsedByProvider: {},
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
@@ -265,6 +268,7 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
         preferences: {
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
+          deletedAgentConversationRetentionDays: 30,
           agentGuiConversationRailCollapsedByProvider: {},
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
@@ -299,6 +303,7 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
         preferences: {
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
+          deletedAgentConversationRetentionDays: 30,
           agentGuiConversationRailCollapsedByProvider: {},
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
@@ -387,6 +392,7 @@ test("tuttid event stream client can opt out of a default scope", async () => {
         preferences: {
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
+          deletedAgentConversationRetentionDays: 30,
           agentGuiConversationRailCollapsedByProvider: {},
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
@@ -446,6 +452,7 @@ test("tuttid event stream client publishes typed intents after connect", async (
       preferences: {
         agentComposerDefaultsByProvider: {},
         agentDockLayout: "legacySplit",
+        deletedAgentConversationRetentionDays: 30,
         agentGuiConversationRailCollapsedByProvider: {},
         agentConversationDetailMode: "coding",
         appCatalogChannel: "production",
@@ -475,6 +482,7 @@ test("tuttid event stream client publishes typed intents after connect", async (
         preferences: {
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
+          deletedAgentConversationRetentionDays: 30,
           agentGuiConversationRailCollapsedByProvider: {},
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
@@ -552,6 +560,7 @@ test("tuttid event stream client fails handshake on unexpected pre-ready frames"
           preferences: {
             agentComposerDefaultsByProvider: {},
             agentDockLayout: "legacySplit",
+            deletedAgentConversationRetentionDays: 30,
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
             appCatalogChannel: "production",
@@ -788,6 +797,7 @@ test("tuttid event stream client tears down a failed handshake before retrying",
       preferences: {
         agentComposerDefaultsByProvider: {},
         agentDockLayout: "legacySplit",
+        deletedAgentConversationRetentionDays: 30,
         agentGuiConversationRailCollapsedByProvider: {},
         agentConversationDetailMode: "coding",
         appCatalogChannel: "production",

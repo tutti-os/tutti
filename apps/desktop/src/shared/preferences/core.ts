@@ -89,6 +89,21 @@ export type DesktopAgentConversationDetailMode =
 export const defaultDesktopAgentConversationDetailMode: DesktopAgentConversationDetailMode =
   "coding";
 
+export const deletedAgentConversationRetentionDaysOptions = [15, 30] as const;
+
+export type DeletedAgentConversationRetentionDays =
+  (typeof deletedAgentConversationRetentionDaysOptions)[number];
+
+export const defaultDeletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays = 30;
+
+export function normalizeDeletedAgentConversationRetentionDays(
+  value: unknown
+): DeletedAgentConversationRetentionDays {
+  return value === 15 || value === 30
+    ? value
+    : defaultDeletedAgentConversationRetentionDays;
+}
+
 export function readInitialDockPlacementFromLocation(
   locationSearch?: string
 ): DesktopDockPlacement {

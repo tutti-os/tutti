@@ -1,9 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentPermissionModeDropdown } from "./AgentComposerSettingsMenus";
 import type { AgentGUIComposerSettingsVM } from "./model/agentGuiNodeTypes";
+import {
+  CODEX_FULL_ACCESS_WARNING_ACKNOWLEDGEMENT_STORAGE_KEY,
+  isCodexFullAccessWarningAcknowledged
+} from "./view/agentFullAccessWarningPreference";
 
 beforeAll(() => {
   Object.defineProperties(HTMLElement.prototype, {
@@ -11,6 +15,10 @@ beforeAll(() => {
     releasePointerCapture: { configurable: true, value: () => undefined },
     setPointerCapture: { configurable: true, value: () => undefined }
   });
+});
+
+beforeEach(() => {
+  globalThis.localStorage.clear();
 });
 
 describe("AgentPermissionModeDropdown", () => {
@@ -82,6 +90,12 @@ describe("AgentPermissionModeDropdown", () => {
       permissionModeId: "full-access",
       planMode: false
     });
+    expect(isCodexFullAccessWarningAcknowledged()).toBe(true);
+    expect(
+      globalThis.localStorage.getItem(
+        CODEX_FULL_ACCESS_WARNING_ACKNOWLEDGEMENT_STORAGE_KEY
+      )
+    ).toBe("1");
   });
 
   it("keeps full access selected after confirmation", async () => {

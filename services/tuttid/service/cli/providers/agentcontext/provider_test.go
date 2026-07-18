@@ -79,6 +79,11 @@ type fakeAgentSessions struct {
 	availabilityErr error
 	availabilityIn  []agentservice.ProviderAvailabilityInput
 	waitResult      agentservice.WaitResult
+	respondInput    agentservice.RespondInput
+	respondResult   agentservice.RespondResult
+	respondErr      error
+	cancelResult    agentservice.CancelTurnResult
+	cancelErr       error
 }
 
 func newTestProvider(workspaces cliservice.WorkspaceCatalog, sessions AgentSessions) Provider {
@@ -99,14 +104,21 @@ func newTestClaudeStartCommand(provider Provider) cliservice.Command {
 	return provider.newStartCommand()
 }
 
-func (f *fakeAgentSessions) CancelTurn(_ context.Context, workspaceID string, sessionID string, _ string) (agentservice.CancelTurnResult, error) {
+func (f *fakeAgentSessions) CancelTurn(_ context.Context, workspaceID string, sessionID string, turnID string) (agentservice.CancelTurnResult, error) {
 	f.workspaceID = workspaceID
 	f.sessionID = sessionID
+	f.turnID = turnID
 	f.cancelCallCount++
-	return agentservice.CancelTurnResult{Canceled: true, Reason: agentservice.CancelTurnReasonTurnCanceled}, nil
+	if f.cancelResult.Reason == "" {
+		f.cancelResult = agentservice.CancelTurnResult{
+			Canceled: true,
+			Reason:   agentservice.CancelTurnReasonTurnCanceled,
+		}
+	}
+	return f.cancelResult, f.cancelErr
 }
 
-func (f *fakeAgentSessions) Create(_ context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
+func (f *fakeAgentSessions) CreateWithResult(_ context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.CreateSessionResult, error) {
 	f.workspaceID = workspaceID
 	f.createCallCount++
 	f.createInput = input
@@ -129,7 +141,7 @@ func (f *fakeAgentSessions) Create(_ context.Context, workspaceID string, input 
 		session.Isolation = &agentservice.SessionIsolation{Mode: "worktree", WorktreePath: "/state/worktree", Branch: "tutti/SESSION-NEW", BaseCommit: "abc123"}
 		session.Warnings = []agentservice.SessionWarning{{Code: "worktree_base_dirty", Message: "dirty source"}}
 	}
-	return session, nil
+	return agentservice.CreateSessionResult{Session: session, TurnID: "turn-new"}, nil
 }
 
 func (f *fakeAgentSessions) Get(_ context.Context, workspaceID string, sessionID string) (agentservice.Session, error) {
@@ -340,6 +352,7 @@ func (f *fakeAgentSessions) SendInput(_ context.Context, workspaceID string, ses
 	f.sendInput = input
 	return agentservice.SendInputResult{
 		Session: agentservice.Session{ID: sessionID, Provider: "codex", ActiveTurnID: "turn-1", Visible: true},
+		TurnID:  "turn-1",
 	}, nil
 }
 
@@ -361,6 +374,7 @@ func (f *fakeAgentSessions) Wait(_ context.Context, input agentservice.WaitInput
 			ActiveTurnID: "turn-1",
 			Visible:      true,
 		},
+		TurnID: "turn-1",
 		Messages: []agentservice.SessionMessage{{
 			AgentSessionID: input.AgentSessionID,
 			MessageID:      "message-2",
@@ -373,6 +387,18 @@ func (f *fakeAgentSessions) Wait(_ context.Context, input agentservice.WaitInput
 		LatestVersion:  6,
 		Reason:         agentservice.WaitReasonWaitingInput,
 		EffectiveAfter: effectiveAfter,
+	}, nil
+}
+
+func (f *fakeAgentSessions) Respond(_ context.Context, input agentservice.RespondInput) (agentservice.RespondResult, error) {
+	f.workspaceID = input.WorkspaceID
+	f.sessionID = input.AgentSessionID
+	f.respondInput = input
+	if f.respondResult.RequestID != "" || f.respondResult.Disposition != "" || f.respondErr != nil {
+		return f.respondResult, f.respondErr
+	}
+	return agentservice.RespondResult{
+		RequestID: input.RequestID, TurnID: "turn-1", Disposition: agentservice.RuntimeInteractiveDispositionAnswered,
 	}, nil
 }
 
@@ -413,6 +439,13 @@ func waitAfterVersionValue(value *uint64) (uint64, bool) {
 		return 0, false
 	}
 	return *value, true
+}
+
+func optionalTestString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func TestSessionSummaryCommandUsesLimitAndAfterVersion(t *testing.T) {
@@ -756,17 +789,164 @@ func TestWaitCommandUsesDefaultTimeout(t *testing.T) {
 	}
 }
 
+func TestWaitCommandReturnsFinalMessageAndDetailedInteractions(t *testing.T) {
+	t.Run("completed", func(t *testing.T) {
+		sessions := &fakeAgentSessions{waitResult: agentservice.WaitResult{
+			Session:      agentservice.Session{ID: "SESSION-1", Provider: "codex", Visible: true},
+			TurnID:       "turn-1",
+			Reason:       agentservice.WaitReasonCompleted,
+			FinalMessage: &agentservice.WaitFinalMessage{TurnID: "turn-1", Text: strings.Repeat("complete ", 600)},
+		}}
+		command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+		output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+			Input: map[string]any{"session-id": "SESSION-1"}, OutputMode: cliservice.OutputModeJSON,
+		})
+		if err != nil {
+			t.Fatalf("Handler: %v", err)
+		}
+		final := output.Value["finalMessage"].(map[string]any)
+		if output.Value["turnId"] != "turn-1" {
+			t.Fatalf("turnId = %#v, want turn-1", output.Value["turnId"])
+		}
+		if final["turnId"] != "turn-1" || final["text"] != sessions.waitResult.FinalMessage.Text {
+			t.Fatalf("finalMessage = %#v", final)
+		}
+		if _, ok := output.Value["interactions"]; ok {
+			t.Fatalf("completed output has interactions: %#v", output.Value)
+		}
+	})
+
+	t.Run("waiting approval", func(t *testing.T) {
+		sessions := &fakeAgentSessions{waitResult: agentservice.WaitResult{
+			Session: agentservice.Session{ID: "SESSION-1", Provider: "claude-code", Visible: true},
+			TurnID:  "turn-1",
+			Reason:  agentservice.WaitReasonWaitingApproval,
+			Interactions: []agentservice.WaitInteraction{{
+				RequestID: "request-1", TurnID: "turn-1", Kind: "approval", ToolName: "Approval",
+				Actions:      []agentservice.InteractionAction{{ID: "allow", Label: "Allow", Semantic: "approve"}},
+				InputSummary: `{"command":"go test ./..."}`, InputTruncated: false,
+			}},
+		}}
+		command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+		output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+			Input: map[string]any{"session-id": "SESSION-1"}, OutputMode: cliservice.OutputModeJSON,
+		})
+		if err != nil {
+			t.Fatalf("Handler: %v", err)
+		}
+		interactions := output.Value["interactions"].([]any)
+		interaction := interactions[0].(map[string]any)
+		if output.Value["turnId"] != "turn-1" {
+			t.Fatalf("turnId = %#v, want turn-1", output.Value["turnId"])
+		}
+		action := interaction["actions"].([]any)[0].(map[string]any)
+		input := interaction["input"].(map[string]any)
+		if interaction["requestId"] != "request-1" || interaction["toolName"] != "Approval" ||
+			action["id"] != "allow" || action["semantic"] != "approve" || input["truncated"] != false {
+			t.Fatalf("interaction = %#v", interaction)
+		}
+	})
+
+	t.Run("timeout shape unchanged", func(t *testing.T) {
+		sessions := &fakeAgentSessions{waitResult: agentservice.WaitResult{
+			Session: agentservice.Session{ID: "SESSION-1", Provider: "codex", Visible: true},
+			Reason:  agentservice.WaitReasonTimeout, TimedOut: true,
+			FinalMessage: &agentservice.WaitFinalMessage{TurnID: "ignored", Text: "ignored"},
+			Interactions: []agentservice.WaitInteraction{{RequestID: "ignored"}},
+		}}
+		command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+		output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+			Input: map[string]any{"session-id": "SESSION-1"}, OutputMode: cliservice.OutputModeJSON,
+		})
+		if err != nil {
+			t.Fatalf("Handler: %v", err)
+		}
+		for _, key := range []string{"finalMessage", "interactions", "messages", "hasMore"} {
+			if _, ok := output.Value[key]; ok {
+				t.Fatalf("timeout output should omit %q: %#v", key, output.Value)
+			}
+		}
+		if output.Value["turnId"] != nil {
+			t.Fatalf("idle timeout turnId = %#v, want null", output.Value["turnId"])
+		}
+	})
+}
+
+func TestRespondCommandPassesResponseAndReturnsDisposition(t *testing.T) {
+	sessions := &fakeAgentSessions{respondResult: agentservice.RespondResult{
+		RequestID: "request-1", TurnID: "turn-1", Disposition: agentservice.RuntimeInteractiveDispositionSuperseded,
+	}}
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newRespondCommand()
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"session-id": "SESSION-1", "request-id": "request-1", "action": "approve",
+			"option": "allow-once", "payload": `{"answer":"yes"}`,
+		},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.respondInput.WorkspaceID != "workspace-1" || sessions.respondInput.AgentSessionID != "SESSION-1" ||
+		sessions.respondInput.RequestID != "request-1" || optionalTestString(sessions.respondInput.Action) != "approve" ||
+		optionalTestString(sessions.respondInput.OptionID) != "allow-once" || sessions.respondInput.Payload["answer"] != "yes" {
+		t.Fatalf("respond input = %#v", sessions.respondInput)
+	}
+	if output.Value["requestId"] != "request-1" || output.Value["turnId"] != "turn-1" || output.Value["disposition"] != "superseded" {
+		t.Fatalf("output = %#v", output.Value)
+	}
+}
+
+func TestRespondCommandPassesSemanticWithoutProviderMapping(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newRespondCommand()
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1", "request-id": "request-1", "semantic": "approve"},
+		OutputMode: cliservice.OutputModeJSON,
+	}); err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.respondInput.Semantic != "approve" || sessions.respondInput.Action != nil || sessions.respondInput.OptionID != nil {
+		t.Fatalf("respond input = %#v", sessions.respondInput)
+	}
+}
+
+func TestRespondCommandReturnsStructuredInputErrors(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		input    map[string]any
+		sessions *fakeAgentSessions
+	}{
+		{name: "missing response", input: map[string]any{"session-id": "SESSION-1", "request-id": "request-1"}, sessions: &fakeAgentSessions{}},
+		{name: "invalid payload", input: map[string]any{"session-id": "SESSION-1", "request-id": "request-1", "payload": `[]`}, sessions: &fakeAgentSessions{}},
+		{name: "action and semantic", input: map[string]any{"session-id": "SESSION-1", "request-id": "request-1", "action": "approve", "semantic": "approve"}, sessions: &fakeAgentSessions{}},
+		{name: "unknown request", input: map[string]any{"session-id": "SESSION-1", "request-id": "missing", "action": "approve"}, sessions: &fakeAgentSessions{respondErr: agentservice.ErrInteractionRequestNotFound}},
+		{name: "non pending", input: map[string]any{"session-id": "SESSION-1", "request-id": "answered", "action": "approve"}, sessions: &fakeAgentSessions{respondErr: agentservice.ErrInteractionRequestNotPending}},
+		{name: "semantic missing", input: map[string]any{"session-id": "SESSION-1", "request-id": "request-1", "semantic": "approve"}, sessions: &fakeAgentSessions{respondErr: agentservice.ErrInteractionSemanticNotFound}},
+		{name: "semantic ambiguous", input: map[string]any{"session-id": "SESSION-1", "request-id": "request-1", "semantic": "approve"}, sessions: &fakeAgentSessions{respondErr: agentservice.ErrInteractionSemanticAmbiguous}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, test.sessions).newRespondCommand()
+			_, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: test.input, OutputMode: cliservice.OutputModeJSON})
+			if !errors.Is(err, cliservice.ErrInvalidInput) {
+				t.Fatalf("error = %v, want ErrInvalidInput", err)
+			}
+		})
+	}
+}
+
 func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
-	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
 			"agent-id":       agenttargetbiz.IDLocalCodex,
 			"model":          "gpt-5",
 			"prompt":         "real automation prompt",
 			"display-prompt": "Run Automation",
 		},
+		OutputMode: cliservice.OutputModeJSON,
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
@@ -779,6 +959,9 @@ func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	}
 	if sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalCodex {
 		t.Fatalf("agent target id = %q, want %s", sessions.createInput.AgentTargetID, agenttargetbiz.IDLocalCodex)
+	}
+	if output.Value["turnId"] != "turn-new" {
+		t.Fatalf("output turnId = %#v, want turn-new", output.Value["turnId"])
 	}
 }
 
@@ -1708,6 +1891,9 @@ func TestSendCommandReturnsWaitAfterVersionInJSON(t *testing.T) {
 	if output.Value["waitAfterVersion"] != uint64(2) {
 		t.Fatalf("output = %#v", output.Value)
 	}
+	if output.Value["turnId"] != "turn-1" {
+		t.Fatalf("output turnId = %#v, want turn-1", output.Value["turnId"])
+	}
 }
 
 func TestSendCommandExposesGuidanceFlagInSchema(t *testing.T) {
@@ -1733,14 +1919,104 @@ func TestSendCommandExposesGuidanceFlagInSchema(t *testing.T) {
 	}
 }
 
-func TestCancelCommandCancelsSession(t *testing.T) {
-	sessions := &fakeAgentSessions{getSession: agentservice.Session{
-		ID: "SESSION-1", Provider: "codex", ActiveTurnID: "turn-1", Visible: true,
-	}}
+func TestCancelTurnCommandCancelsExactTurn(t *testing.T) {
+	sessions := &fakeAgentSessions{}
 	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
-	).newCancelCommand()
+	).newCancelTurnCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1", "turn-id": "turn-1"},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.cancelCallCount != 1 || sessions.sessionID != "SESSION-1" || sessions.turnID != "turn-1" {
+		t.Fatalf("sessions = %#v", sessions)
+	}
+	if output.Value["agentSessionId"] != "SESSION-1" || output.Value["turnId"] != "turn-1" ||
+		output.Value["canceled"] != true || output.Value["reason"] != "turn_canceled" {
+		t.Fatalf("output = %#v", output.Value)
+	}
+}
+
+func TestCancelTurnCommandReturnsIdempotentResult(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		reason agentservice.CancelTurnReason
+	}{
+		{name: "already settled", reason: agentservice.CancelTurnReasonAlreadySettled},
+		{name: "not found", reason: agentservice.CancelTurnReasonNotFound},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			sessions := &fakeAgentSessions{cancelResult: agentservice.CancelTurnResult{Reason: test.reason}}
+			command := newTestProvider(
+				fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions,
+			).newCancelTurnCommand()
+
+			output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+				Input:      map[string]any{"session-id": "SESSION-1", "turn-id": "turn-1"},
+				OutputMode: cliservice.OutputModeJSON,
+			})
+			if err != nil {
+				t.Fatalf("Handler: %v", err)
+			}
+			if output.Value["canceled"] != false || output.Value["reason"] != string(test.reason) {
+				t.Fatalf("output = %#v", output.Value)
+			}
+		})
+	}
+}
+
+func TestCancelTurnCommandRequiresExactTurnID(t *testing.T) {
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{},
+	).newCancelTurnCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"session-id": "SESSION-1"},
+	})
+	if !errors.Is(err, cliservice.ErrInvalidInput) {
+		t.Fatalf("Handler error = %v, want invalid input", err)
+	}
+}
+
+func TestLegacyCancelCommandCancelsActiveTurnWithWarning(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		getSession: agentservice.Session{ID: "SESSION-1", ActiveTurnID: "turn-active"},
+		cancelResult: agentservice.CancelTurnResult{
+			Session:  agentservice.Session{ID: "SESSION-1"},
+			Canceled: true,
+			Reason:   agentservice.CancelTurnReasonTurnCanceled,
+		},
+	}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions,
+	).newLegacyCancelCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1"},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if command.Capability.Visibility != cliservice.CapabilityVisibilityIntegration ||
+		sessions.turnID != "turn-active" || sessions.cancelCallCount != 1 {
+		t.Fatalf("command = %#v sessions = %#v", command.Capability, sessions)
+	}
+	if len(output.Warnings) != 1 || output.Warnings[0].Code != "deprecated_agent_cancel" {
+		t.Fatalf("warnings = %#v", output.Warnings)
+	}
+}
+
+func TestLegacyCancelCommandWithoutActiveTurnIsNoOpWithWarning(t *testing.T) {
+	sessions := &fakeAgentSessions{getSession: agentservice.Session{ID: "SESSION-1"}}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions,
+	).newLegacyCancelCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"session-id": "SESSION-1"},
@@ -1748,11 +2024,8 @@ func TestCancelCommandCancelsSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if sessions.cancelCallCount != 1 || sessions.sessionID != "SESSION-1" {
-		t.Fatalf("sessions = %#v", sessions)
-	}
-	if output.Rows[0]["id"] != "SESSION-1" {
-		t.Fatalf("output = %#v", output)
+	if sessions.cancelCallCount != 0 || len(output.Warnings) != 1 {
+		t.Fatalf("sessions = %#v warnings = %#v", sessions, output.Warnings)
 	}
 }
 

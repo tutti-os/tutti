@@ -74,7 +74,11 @@ const styles = {
   conversationItem: "agent-gui-node__conversation-item",
   conversationList: "agent-gui-node__conversation-list",
   conversationMeta: "agent-gui-node__conversation-meta",
+  conversationMoreButton: "agent-gui-node__conversation-more-button",
+  conversationProviderImage: "agent-gui-node__conversation-provider-image",
   conversationProviderIcon: "agent-gui-node__conversation-provider-icon",
+  conversationProviderMaskIcon:
+    "agent-gui-node__conversation-provider-mask-icon",
   conversationOpenWindowButton:
     "agent-gui-node__conversation-open-window-button",
   conversationPinButton: "agent-gui-node__conversation-pin-button",
@@ -110,10 +114,6 @@ const styles = {
     "agent-gui-node__conversation-title-mention-icon",
   conversationTitleRow: "agent-gui-node__conversation-title-row",
   conversationUnreadLamp: "agent-gui-node__conversation-unread-lamp",
-  detailHeader: "agent-gui-node__detail-header",
-  detailHeaderPathInfo: "agent-gui-node__detail-header-path-info",
-  detailHeaderTitle: "agent-gui-node__detail-header-title",
-  detailHeaderTitleGroup: "agent-gui-node__detail-header-title-group",
   detail: "agent-gui-node__detail",
   detailPanel: "agent-gui-node__detail-panel",
   empty: "agent-gui-node__empty",

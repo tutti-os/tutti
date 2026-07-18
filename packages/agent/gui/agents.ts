@@ -14,7 +14,6 @@ export function normalizeAgentGUIAgents(
     const name = agent.name.trim();
     const iconUrl = agent.iconUrl.trim();
     const maskIconUrl = agent.maskIconUrl?.trim() ?? "";
-    const sidebarIconUrl = agent.sidebarIconUrl?.trim() ?? "";
     const heroImageUrl = agent.heroImageUrl?.trim() ?? "";
     if (
       !agentTargetId ||
@@ -33,7 +32,6 @@ export function normalizeAgentGUIAgents(
       name,
       iconUrl,
       ...(maskIconUrl ? { maskIconUrl } : {}),
-      ...(sidebarIconUrl ? { sidebarIconUrl } : {}),
       ...(heroImageUrl ? { heroImageUrl } : {}),
       ...(agent.description?.trim()
         ? { description: agent.description.trim() }
@@ -111,7 +109,6 @@ export function projectAgentGUIAgentsToInternalTargets(
     ...(agent.description ? { description: agent.description } : {}),
     iconUrl: agent.iconUrl,
     ...(agent.maskIconUrl ? { maskIconUrl: agent.maskIconUrl } : {}),
-    ...(agent.sidebarIconUrl ? { sidebarIconUrl: agent.sidebarIconUrl } : {}),
     ...(agent.heroImageUrl ? { heroImageUrl: agent.heroImageUrl } : {}),
     ...(agent.owner?.avatarUrl
       ? {

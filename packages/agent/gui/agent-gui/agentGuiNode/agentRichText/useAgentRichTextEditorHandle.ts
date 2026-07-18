@@ -121,6 +121,66 @@ export function useAgentRichTextEditorHandle(input: {
           )
           .run();
       },
+      insertComposerFiles(items) {
+        const currentEditor = input.editorRef.current;
+        if (!currentEditor || currentEditor.isDestroyed || items.length === 0) {
+          return;
+        }
+        if (!currentEditor.isFocused) input.onBeforeProgrammaticFocus?.();
+        currentEditor
+          .chain()
+          .focus()
+          .insertContent(
+            createAgentMentionContent(
+              items.map((item) => ({
+                kind: "file" as const,
+                href: "",
+                path: "",
+                name: item.name,
+                entryKind: "file" as const,
+                directoryPath: "",
+                attachmentId: item.id,
+                attachmentStatus: item.status,
+                attachmentErrorCode: item.errorCode
+              })),
+              {
+                prefixCaretAnchor: isPromptVisualLineStart(
+                  currentEditor,
+                  currentEditor.state.selection.from
+                )
+              }
+            )
+          )
+          .run();
+      },
+      updateComposerFiles(items) {
+        const currentEditor = input.editorRef.current;
+        if (!currentEditor || currentEditor.isDestroyed || items.length === 0) {
+          return false;
+        }
+        const updateById = new Map(items.map((item) => [item.id, item]));
+        let transaction = currentEditor.state.tr;
+        let changed = false;
+        currentEditor.state.doc.descendants((node, position) => {
+          if (node.type.name !== "agentFileMention") return true;
+          const attachmentId =
+            typeof node.attrs.attachmentId === "string"
+              ? node.attrs.attachmentId
+              : "";
+          const update = updateById.get(attachmentId);
+          if (!update) return false;
+          transaction = transaction.setNodeMarkup(position, undefined, {
+            ...node.attrs,
+            name: update.name,
+            attachmentStatus: update.status,
+            attachmentErrorCode: update.errorCode ?? ""
+          });
+          changed = true;
+          return false;
+        });
+        if (changed) currentEditor.view.dispatch(transaction);
+        return changed;
+      },
       replaceTextBeforeSelection(length, text) {
         const currentEditor = input.editorRef.current;
         if (!currentEditor || currentEditor.isDestroyed || length <= 0) {

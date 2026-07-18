@@ -76,6 +76,7 @@ import {
 import {
   type DesktopDefaultAgentProvider,
   desktopAgentConversationDetailModes,
+  deletedAgentConversationRetentionDaysOptions,
   desktopBrowserUseConnectionModes,
   desktopDockPlacements,
   desktopMinimizeAnimations,
@@ -86,6 +87,7 @@ import {
   type DesktopAgentConversationDetailMode,
   type DesktopBrowserUseConnectionMode,
   type DesktopDockPlacement,
+  type DeletedAgentConversationRetentionDays,
   type DesktopFeatureFlags,
   type DesktopWorkspaceUiMode,
   type DesktopMinimizeAnimation,
@@ -333,6 +335,12 @@ export function WorkspaceSettingsPanel({
                 changingSleepPreventionMode={
                   desktopPreferencesState.changingSleepPreventionMode
                 }
+                changingDeletedAgentConversationRetentionDays={
+                  desktopPreferencesState.changingDeletedAgentConversationRetentionDays
+                }
+                deletedAgentConversationRetentionDays={
+                  desktopPreferencesState.deletedAgentConversationRetentionDays
+                }
                 featureFlags={desktopPreferencesState.featureFlags}
                 locale={desktopPreferencesState.locale}
                 onLocaleChange={(nextLocale) => {
@@ -341,6 +349,17 @@ export function WorkspaceSettingsPanel({
                 onSleepPreventionModeChange={(mode) => {
                   void settingsService.changeSleepPreventionMode(mode);
                 }}
+                onDeletedAgentConversationRetentionDaysChange={(days) => {
+                  void settingsService.changeDeletedAgentConversationRetentionDays(
+                    days
+                  );
+                }}
+                onPurgeDeletedConversations={() =>
+                  settingsService.purgeDeletedConversations()
+                }
+                purgingDeletedConversations={
+                  settingsState.purgingDeletedConversations
+                }
                 onWorkspaceUiModeChange={(mode) => {
                   void settingsService.changeWorkspaceUiMode(mode);
                 }}
@@ -3259,24 +3278,36 @@ function WorkspaceAgentSettingsSection({
 }
 
 function WorkspaceGeneralSettingsSection({
+  changingDeletedAgentConversationRetentionDays,
   changingFeatureFlags,
   changingLocale,
   changingSleepPreventionMode,
+  deletedAgentConversationRetentionDays,
   featureFlags,
   locale,
+  onDeletedAgentConversationRetentionDaysChange,
   onLocaleChange,
+  onPurgeDeletedConversations,
   onSleepPreventionModeChange,
   onWorkspaceUiModeChange,
+  purgingDeletedConversations,
   sleepPreventionMode
 }: {
+  changingDeletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays | null;
   changingFeatureFlags: DesktopFeatureFlags | null;
   changingLocale: DesktopLocale | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
+  deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
   featureFlags: DesktopFeatureFlags;
   locale: DesktopLocale;
+  onDeletedAgentConversationRetentionDaysChange: (
+    days: DeletedAgentConversationRetentionDays
+  ) => void;
   onLocaleChange: (locale: DesktopLocale) => void;
+  onPurgeDeletedConversations: () => Promise<void>;
   onSleepPreventionModeChange: (mode: DesktopSleepPreventionMode) => void;
   onWorkspaceUiModeChange: (mode: DesktopWorkspaceUiMode) => void;
+  purgingDeletedConversations: boolean;
   sleepPreventionMode: DesktopSleepPreventionMode;
 }) {
   const { t } = useTranslation();
@@ -3286,6 +3317,14 @@ function WorkspaceGeneralSettingsSection({
   const isUpdatingSleepPrevention = changingSleepPreventionMode !== null;
   const pendingSleepPreventionMode =
     changingSleepPreventionMode ?? sleepPreventionMode;
+  const pendingRetentionDays =
+    changingDeletedAgentConversationRetentionDays ??
+    deletedAgentConversationRetentionDays;
+  const [purgeDialogOpen, setPurgeDialogOpen] = useState(false);
+  const [purgeConfirmation, setPurgeConfirmation] = useState("");
+  const purgeConfirmationPhrase = t(
+    "workspace.settings.general.deletedConversationPurgeConfirmationPhrase"
+  );
   const isUpdatingWorkspaceUiMode = changingFeatureFlags !== null;
   const pendingWorkspaceUiMode = resolveDesktopWorkspaceUiMode(
     changingFeatureFlags ?? featureFlags
@@ -3460,6 +3499,133 @@ function WorkspaceGeneralSettingsSection({
           onCheckedChange={setAgentDiagnosticsConsent}
         />
       </div>
+
+      <div className="order-5 flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.general.deletedConversationRetentionLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t(
+              "workspace.settings.general.deletedConversationRetentionDescription"
+            )}
+          </p>
+        </div>
+        <div className="flex w-[220px] min-w-[220px] items-center gap-2 max-[560px]:w-full max-[560px]:min-w-0">
+          <div className="min-w-0 flex-1">
+            <Select
+              disabled={
+                changingDeletedAgentConversationRetentionDays !== null ||
+                purgingDeletedConversations
+              }
+              value={String(pendingRetentionDays)}
+              onValueChange={(value) =>
+                onDeletedAgentConversationRetentionDaysChange(
+                  Number(value) as DeletedAgentConversationRetentionDays
+                )
+              }
+            >
+              <SelectTrigger
+                aria-label={t(
+                  "workspace.settings.general.deletedConversationRetentionLabel"
+                )}
+                className={workspaceSettingsSelectTriggerClass}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent
+                className={workspaceSettingsSelectContentClass}
+                style={{ zIndex: "var(--z-panel-popover)" }}
+              >
+                {deletedAgentConversationRetentionDaysOptions.map((days) => (
+                  <SelectItem key={days} value={String(days)}>
+                    {t(
+                      "workspace.settings.general.deletedConversationRetentionDays",
+                      { count: String(days) }
+                    )}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label={t(
+                  purgingDeletedConversations
+                    ? "workspace.settings.general.deletedConversationPurging"
+                    : "workspace.settings.general.deletedConversationPurgeAction"
+                )}
+                className="size-8 rounded-[6px]"
+                disabled={purgingDeletedConversations}
+                size="icon"
+                variant="destructive-secondary"
+                onClick={() => {
+                  setPurgeConfirmation("");
+                  setPurgeDialogOpen(true);
+                }}
+              >
+                {purgingDeletedConversations ? (
+                  <LoadingIcon className="size-3.5" />
+                ) : (
+                  <DeleteIcon className="size-3.5" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {t(
+                purgingDeletedConversations
+                  ? "workspace.settings.general.deletedConversationPurging"
+                  : "workspace.settings.general.deletedConversationPurgeAction"
+              )}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+
+      <Dialog open={purgeDialogOpen} onOpenChange={setPurgeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t("workspace.settings.general.deletedConversationPurgeTitle")}
+            </DialogTitle>
+            <DialogDescription>
+              {t(
+                "workspace.settings.general.deletedConversationPurgeDescription",
+                { phrase: purgeConfirmationPhrase }
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            aria-label={t(
+              "workspace.settings.general.deletedConversationPurgeConfirmationLabel"
+            )}
+            autoComplete="off"
+            value={purgeConfirmation}
+            onChange={(event) => setPurgeConfirmation(event.target.value)}
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPurgeDialogOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={
+                purgeConfirmation !== purgeConfirmationPhrase ||
+                purgingDeletedConversations
+              }
+              variant="destructive"
+              onClick={() => {
+                void onPurgeDeletedConversations().finally(() => {
+                  setPurgeDialogOpen(false);
+                  setPurgeConfirmation("");
+                });
+              }}
+            >
+              {t("workspace.settings.general.deletedConversationPurgeConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

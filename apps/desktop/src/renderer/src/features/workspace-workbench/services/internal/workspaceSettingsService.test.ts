@@ -1191,6 +1191,38 @@ test("WorkspaceSettingsService clears workspace conversation history", async () 
   assert.equal(service.store.developerLogs.clearingConversationHistory, false);
 });
 
+test("WorkspaceSettingsService purges deleted conversations once and reports the result", async () => {
+  let calls = 0;
+  const notifications = createNotificationRecorder();
+  notifications.service.success = (input) => {
+    notifications.items.push(input.title);
+  };
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({
+        purgeDeletedAgentConversations: async () => {
+          calls += 1;
+          return {
+            removedSessions: 2,
+            removedMessages: 5,
+            payloadBytes: 128
+          };
+        }
+      })
+    },
+    createDesktopPreferencesService({ state: createPreferencesState({}) }),
+    notifications.service
+  );
+
+  await service.purgeDeletedConversations();
+
+  assert.equal(calls, 1);
+  assert.equal(service.store.purgingDeletedConversations, false);
+  assert.deepEqual(notifications.items, [
+    "Cleaned up 2 deleted conversations."
+  ]);
+});
+
 test("WorkspaceSettingsService tracks language changes", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const service = new WorkspaceSettingsService(
@@ -1340,6 +1372,11 @@ function createWorkspaceSettingsClient(
       removedMessages: 0,
       removedSessions: 0
     }),
+    purgeDeletedAgentConversations: async () => ({
+      removedSessions: 0,
+      removedMessages: 0,
+      payloadBytes: 0
+    }),
     exportLogs: async () => ({
       canceled: true,
       fileCount: 0,
@@ -1406,6 +1443,7 @@ function createDesktopPreferencesService(input: {
   onSetBrowserUseConnectionMode?: IDesktopPreferencesService["setBrowserUseConnectionMode"];
   onSetDockIconStyle?: IDesktopPreferencesService["setDockIconStyle"];
   onSetDockPlacement?: IDesktopPreferencesService["setDockPlacement"];
+  onSetDeletedAgentConversationRetentionDays?: IDesktopPreferencesService["setDeletedAgentConversationRetentionDays"];
   onSetFeatureFlags?: IDesktopPreferencesService["setFeatureFlags"];
   onSetFileDefaultOpenersByExtension?: IDesktopPreferencesService["setFileDefaultOpenersByExtension"];
   onSetLocale?: IDesktopPreferencesService["setLocale"];
@@ -1437,6 +1475,9 @@ function createDesktopPreferencesService(input: {
     setDockIconStyle: input.onSetDockIconStyle ?? (async (style) => style),
     setDockPlacement:
       input.onSetDockPlacement ?? (async (placement) => placement),
+    setDeletedAgentConversationRetentionDays:
+      input.onSetDeletedAgentConversationRetentionDays ??
+      (async (days) => days),
     setFeatureFlags: input.onSetFeatureFlags ?? (async (flags) => flags),
     setFileDefaultOpenersByExtension:
       input.onSetFileDefaultOpenersByExtension ??
@@ -1474,6 +1515,7 @@ function createPreferencesState(
     changingDefaultAgentProvider: null,
     changingDockIconStyle: null,
     changingDockPlacement: null,
+    changingDeletedAgentConversationRetentionDays: null,
     changingFeatureFlags: null,
     changingLocale: null,
     changingMinimizeAnimation: null,
@@ -1486,6 +1528,7 @@ function createPreferencesState(
     defaultAgentProvider: "codex",
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    deletedAgentConversationRetentionDays: 30,
     featureFlags: {},
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",

@@ -17,6 +17,13 @@ const toolSidebarSource = readFileSync(
   resolve(currentDirectory, "StandaloneAgentToolSidebar.tsx"),
   "utf8"
 );
+const sharedToolSidebarSource = readFileSync(
+  resolve(
+    currentDirectory,
+    "../../../../../../../../packages/agent/gui/workbench/tool-sidebar/AgentToolSidebar.tsx"
+  ),
+  "utf8"
+);
 const toolSidebarPanelSource = readFileSync(
   resolve(currentDirectory, "StandaloneAgentToolSidebarPanel.tsx"),
   "utf8"
@@ -86,7 +93,11 @@ test("OS and standalone Agent routes statically own the AgentGUI body", () => {
 test("standalone Agent tool panels expose loading UI while deferred modules start", () => {
   assert.match(
     toolSidebarSource,
-    /activeTabId === tab\.id \? \(\s*<StandaloneAgentToolLoadingState/
+    /renderLoading=\{\(\) => \(\s*<StandaloneAgentToolLoadingState/
+  );
+  assert.match(
+    sharedToolSidebarSource,
+    /activeTabId === tab\.id \? \(\s*\(renderLoading\?\.\(tab\) \?\? null\)/
   );
   assert.match(toolLoadingStateSource, /<Spinner/);
   const deferredPanelSources = [

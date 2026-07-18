@@ -177,6 +177,28 @@ Codex app-server adapter must pass the active preset instructions in
 mode matches Codex App behavior. Plan Mode and explicit planning-only flows
 remain higher priority than conversation detail mode prompt guidance.
 
+## Deleted Agent Conversation Retention
+
+`deletedAgentConversationRetentionDays` is a device-global desktop preference
+and must stay aligned across the OpenAPI `DesktopPreferences` schema and the
+desktop preferences event schema. It is the closed integer set `15 | 30`; the
+daemon normalizes missing durable values to 30 and rejects other transport
+values. The renderer must publish the complete preference object through the
+existing authoritative preference event flow rather than storing this setting
+locally.
+
+`POST /v1/agent-maintenance/deleted-conversations/purge` is the explicit manual
+command. It accepts no path or workspace input and returns only aggregate row,
+message, and payload-byte counts. The command performs no filesystem deletion.
+The API reports an idle conflict as service unavailable and a maintenance
+failure as a workspace operation failure. The high-risk typed confirmation is
+a desktop interaction, not an HTTP request field; unattended automatic
+maintenance is daemon-owned and is not exposed as a second client scheduler.
+After a successful manual sweep, the daemon may make a strictly bounded
+best-effort compaction attempt for a small database with substantial free
+pages; this optional post-step is not run by automatic maintenance and is not
+part of the aggregate response contract.
+
 ## Desktop Lab Preferences
 
 `lab` is a top-level desktop preference group and must stay on both the

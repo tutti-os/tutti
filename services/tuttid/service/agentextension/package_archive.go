@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	manifestSchema = "tutti.agent.manifest.v1"
+	manifestSchema = "tutti.agent.manifest.v2"
 	maxFiles       = 256
 )
 
@@ -91,8 +91,8 @@ func validateInstalledPackage(root, key, version string) (Manifest, error) {
 	if manifest.HeroImage.Src != "" && (manifest.HeroImage.Type != "asset" || !safeRelativePath(manifest.HeroImage.Src)) {
 		return Manifest{}, errors.New("installed extension hero image is invalid")
 	}
-	if manifest.SidebarIcon.Src != "" && (manifest.SidebarIcon.Type != "asset" || !safeRelativePath(manifest.SidebarIcon.Src)) {
-		return Manifest{}, errors.New("installed extension sidebar icon is invalid")
+	if manifest.MaskIcon.Src != "" && (manifest.MaskIcon.Type != "asset" || !safeRelativePath(manifest.MaskIcon.Src)) {
+		return Manifest{}, errors.New("installed extension mask icon is invalid")
 	}
 	if err := validateRuntimeContract(manifest); err != nil {
 		return Manifest{}, err
@@ -100,7 +100,7 @@ func validateInstalledPackage(root, key, version string) (Manifest, error) {
 	if !safeRelativePath(manifest.LocalizationInfo.DefaultFile) {
 		return Manifest{}, errors.New("installed extension default locale is invalid")
 	}
-	for _, referenced := range []string{manifest.Icon.Src, manifest.SidebarIcon.Src, manifest.HeroImage.Src, manifest.LocalizationInfo.DefaultFile, manifest.Profiles.Discovery, manifest.Profiles.Tools, manifest.Profiles.Capabilities, manifest.Profiles.Composer, manifest.Profiles.Events} {
+	for _, referenced := range []string{manifest.Icon.Src, manifest.MaskIcon.Src, manifest.HeroImage.Src, manifest.LocalizationInfo.DefaultFile, manifest.Profiles.Discovery, manifest.Profiles.Tools, manifest.Profiles.Capabilities, manifest.Profiles.Composer, manifest.Profiles.Events} {
 		if referenced == "" {
 			continue
 		}

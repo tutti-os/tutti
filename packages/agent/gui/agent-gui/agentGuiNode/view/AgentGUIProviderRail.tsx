@@ -406,7 +406,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
           )
         )
           .map((element) => {
-            const targetId = element.dataset.agentTargetId?.trim() ?? "";
+            const targetId = element.dataset.providerTargetId?.trim() ?? "";
             if (!targetId || targetId === activeDragState.draggedTargetId) {
               return null;
             }
@@ -564,7 +564,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
       );
       const dropTargets = tileElements
         .map((element) => {
-          const targetId = element.dataset.agentTargetId?.trim() ?? "";
+          const targetId = element.dataset.providerTargetId?.trim() ?? "";
           if (!targetId || targetId === activeDragState.draggedTargetId) {
             return null;
           }
@@ -736,8 +736,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
                   imageClassName={styles.providerRailAvatarImage}
                   icon={agentGUIProviderRailIconPresentation(
                     target.provider,
-                    target.iconUrl,
-                    target.sidebarIconUrl
+                    target.iconUrl
                   )}
                 />
                 {target.badge?.iconUrl ? (

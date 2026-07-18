@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -21,13 +22,16 @@ func TestScanExternalImportsAppliesCodexSQLiteTitle(t *testing.T) {
 	t.Setenv("CODEX_HOME", codexHome)
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
 
+	// Relative to now: the scan applies a rolling recency window, and a
+	// hardcoded date ages out of it and starts failing (fixture rot).
+	sessionStamp := time.Now().UTC().Add(-24 * time.Hour)
 	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "codex-x.jsonl"),
 		map[string]any{
-			"timestamp": "2026-06-18T00:00:00Z",
+			"timestamp": sessionStamp.Format(time.RFC3339),
 			"type":      "session_meta",
 			"payload":   map[string]any{"id": "codex-x", "cwd": project},
 		},
-		map[string]any{"timestamp": "2026-06-18T00:00:01Z", "type": "response_item", "payload": map[string]any{
+		map[string]any{"timestamp": sessionStamp.Add(time.Second).Format(time.RFC3339), "type": "response_item", "payload": map[string]any{
 			"type": "message", "id": "codex-x-1", "role": "user",
 			"content": []any{map[string]any{"type": "input_text", "text": "First raw prompt"}},
 		}},

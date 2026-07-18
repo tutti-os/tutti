@@ -127,6 +127,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		}
 	})
 
+	mux.HandleFunc("/v1/agent-maintenance/deleted-conversations/purge", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.PurgeDeletedAgentConversations(w, r)
+	})
+
 	registerAgentTargetRoutes(mux, wrapper)
 
 	registerUserProjectRoutes(mux, wrapper)

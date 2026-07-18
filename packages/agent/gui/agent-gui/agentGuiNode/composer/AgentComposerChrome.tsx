@@ -19,7 +19,6 @@ import type {
   AgentComposerPromptTip,
   AgentComposerProps
 } from "./AgentComposer.types";
-import type { AgentContextMentionProvider } from "../agentContextMentionProvider";
 import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import { formatSlashStatusTokenCount } from "../AgentSlashStatusPanel";
@@ -288,8 +287,6 @@ export const DRAFT_IMAGE_PREVIEW_MIN_WIDTH_PX = 56;
 export const DRAFT_IMAGE_PREVIEW_MAX_WIDTH_PX = 180;
 export const DRAFT_IMAGE_PREVIEW_MIN_RATIO = 0.5;
 export const DRAFT_IMAGE_PREVIEW_MAX_RATIO = 3;
-export const EMPTY_CONTEXT_MENTION_PROVIDERS: readonly AgentContextMentionProvider[] =
-  [];
 export const EMPTY_PROMPT_TIPS: readonly AgentComposerPromptTip[] = [];
 export const EMPTY_PROVIDER_SKILLS: readonly AgentGUIProviderSkillOption[] = [];
 export const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =

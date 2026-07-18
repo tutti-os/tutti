@@ -24,8 +24,7 @@ func RunWithProgram(ctx context.Context, program string, args []string, stdout i
 	commandName := displayCommandName(program)
 	opts, rest, err := parseOptions(args)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
+		return writeCLIError(stdout, stderr, jsonRequested(args), "", reasonInvalidInput, err, 2)
 	}
 	if len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h" {
 		return runHelp(ctx, commandName, stdout)
@@ -34,8 +33,10 @@ func RunWithProgram(ctx context.Context, program string, args []string, stdout i
 	switch rest[0] {
 	case "status":
 		if len(rest) != 1 {
-			fmt.Fprintf(stderr, "usage: %s status [--json]\n", commandName)
-			return 2
+			return writeCLIError(
+				stdout, stderr, opts.json, "", reasonInvalidInput,
+				fmt.Errorf("usage: %s status [--json]", commandName), 2,
+			)
 		}
 		return runStatus(ctx, commandName, opts, stdout, stderr)
 	case "managed-model":
@@ -83,13 +84,11 @@ func parseOptions(args []string) (options, []string, error) {
 func runStatus(ctx context.Context, commandName string, opts options, stdout io.Writer, stderr io.Writer) int {
 	client, err := discoverClient()
 	if err != nil {
-		fmt.Fprintf(stderr, "%s status: %v\n", commandName, err)
-		return 1
+		return writeCLIError(stdout, stderr, opts.json, commandName+" status", reasonDaemonUnavailable, err, 1)
 	}
 	health, err := client.GetHealth(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s status: %v\n", commandName, err)
-		return 1
+		return writeCLIError(stdout, stderr, opts.json, commandName+" status", reasonDaemonRequestFailed, err, daemonErrorExitCode(err))
 	}
 
 	if opts.json {
@@ -101,18 +100,17 @@ func runStatus(ctx context.Context, commandName string, opts options, stdout io.
 }
 
 func runDynamic(ctx context.Context, commandName string, opts options, args []string, stdout io.Writer, stderr io.Writer) int {
+	invocationPrefix := strings.TrimSpace(commandName + " " + strings.Join(args, " "))
 	client, err := discoverClient()
 	if err != nil {
-		fmt.Fprintf(stderr, "%s %s: %v\n", commandName, strings.Join(args, " "), err)
-		return 1
+		return writeCLIError(stdout, stderr, opts.json, invocationPrefix, reasonDaemonUnavailable, err, 1)
 	}
 	invokeContext := cliInvokeContextFromEnv()
 	capabilities, err := client.ListCapabilitiesForWorkspaceWithOptions(ctx, invokeContext.WorkspaceID, daemon.CapabilityListOptions{
 		IncludeIntegration: includeIntegrationCapabilitiesFromEnv(),
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "%s %s: %v\n", commandName, strings.Join(args, " "), err)
-		return 1
+		return writeCLIError(stdout, stderr, opts.json, invocationPrefix, reasonDaemonRequestFailed, err, daemonErrorExitCode(err))
 	}
 	command, commandArgs, ok := matchCapability(capabilities.Commands, args)
 	if !ok && legacyAgentCompatibilityInvocation(args) && !includeIntegrationCapabilitiesFromEnv() {
@@ -129,11 +127,13 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 				return 0
 			}
 		}
-		if printCommandPrefixHelp(stdout, commandName, args, capabilities.Commands) {
+		if !opts.json && printCommandPrefixHelp(stdout, commandName, args, capabilities.Commands) {
 			return 2
 		}
-		fmt.Fprintf(stderr, "unknown command: %s\n", strings.Join(args, " "))
-		return 2
+		return writeCLIError(
+			stdout, stderr, opts.json, "", reasonCommandNotFound,
+			fmt.Errorf("unknown command: %s", strings.Join(args, " ")), 2,
+		)
 	}
 	if isCommandHelpRequest(commandArgs) {
 		printDynamicCommandHelp(stdout, commandName, command)
@@ -141,8 +141,8 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 	}
 	input, err := parseCommandInput(command, commandArgs)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s %s: %v\n", commandName, strings.Join(command.Path, " "), err)
-		return 2
+		prefix := strings.TrimSpace(commandName + " " + strings.Join(command.Path, " "))
+		return writeCLIError(stdout, stderr, opts.json, prefix, reasonInvalidInput, err, 2)
 	}
 	outputMode := command.Output.DefaultMode
 	if opts.json {
@@ -154,8 +154,8 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 		Context:    invokeContext,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "%s %s: %v\n", commandName, strings.Join(command.Path, " "), err)
-		return 1
+		prefix := strings.TrimSpace(commandName + " " + strings.Join(command.Path, " "))
+		return writeCLIError(stdout, stderr, opts.json, prefix, reasonDaemonRequestFailed, err, daemonErrorExitCode(err))
 	}
 	if response.Output == nil {
 		return 0
@@ -171,7 +171,7 @@ func legacyAgentCompatibilityInvocation(args []string) bool {
 		return false
 	}
 	path := strings.Join(args[:2], " ")
-	return path == "agent providers" || path == "codex start" || path == "claude start"
+	return path == "agent providers" || path == "agent cancel" || path == "codex start" || path == "claude start"
 }
 
 func runHelp(ctx context.Context, commandName string, stdout io.Writer) int {

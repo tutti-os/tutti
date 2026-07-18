@@ -1,5 +1,6 @@
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import type {
+  AgentComposerFileMentionStatus,
   AgentFileMentionSuggestionState,
   AgentContextMentionItem
 } from "./agentFileMentionExtension";
@@ -33,7 +34,7 @@ export interface AgentRichTextEditorProps {
   onPromptImagesUnsupported?: () => void;
   onPasteImages?: (images: AgentRichTextPastedImage[]) => void;
   onPasteLargeText?: (text: string) => void;
-  getReferenceForFile?: (file: File) => WorkspaceFileReference | null;
+  onPasteFiles?: (files: readonly File[]) => void;
   onDropFiles?: (files: readonly File[]) => void;
 }
 
@@ -44,7 +45,20 @@ export interface AgentRichTextEditorHandle {
   openMentionPalette: () => void;
   insertWorkspaceReferences: (items: readonly WorkspaceFileReference[]) => void;
   insertMentionItems: (items: readonly AgentContextMentionItem[]) => void;
+  insertComposerFiles: (
+    items: readonly AgentRichTextComposerFileMention[]
+  ) => void;
+  updateComposerFiles: (
+    items: readonly AgentRichTextComposerFileMention[]
+  ) => boolean;
   replaceTextBeforeSelection: (length: number, text: string) => string | null;
+}
+
+export interface AgentRichTextComposerFileMention {
+  errorCode?: string;
+  id: string;
+  name: string;
+  status: AgentComposerFileMentionStatus;
 }
 
 export type AgentRichTextPastedImage = AgentRichTextPromptImage;

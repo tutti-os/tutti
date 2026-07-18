@@ -16,6 +16,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DeletedAgentConversationRetentionDays,
   DesktopFeatureFlags,
   DesktopWorkspaceUiMode,
   DesktopMinimizeAnimation,
@@ -100,6 +101,9 @@ export interface IWorkspaceSettingsService {
   ): Promise<void>;
   changeDockIconStyle(style: DesktopDockIconStyle): Promise<void>;
   changeDockPlacement(placement: DesktopDockPlacement): Promise<void>;
+  changeDeletedAgentConversationRetentionDays(
+    days: DeletedAgentConversationRetentionDays
+  ): Promise<void>;
   changeFeatureFlags(flags: DesktopFeatureFlags): Promise<void>;
   changeWorkspaceUiMode(mode: DesktopWorkspaceUiMode): Promise<void>;
   changeWorkbenchShortcuts(shortcuts: DesktopWorkbenchShortcuts): Promise<void>;
@@ -114,6 +118,7 @@ export interface IWorkspaceSettingsService {
   changeUpdateChannel(channel: DesktopUpdateChannel): Promise<void>;
   changeUpdatePolicy(policy: DesktopUpdatePolicy): Promise<void>;
   clearConversationHistory(): Promise<void>;
+  purgeDeletedConversations(): Promise<void>;
   clearDeveloperLogs(): Promise<void>;
   exportDeveloperLogs(): Promise<void>;
   openLogDirectory(): Promise<void>;

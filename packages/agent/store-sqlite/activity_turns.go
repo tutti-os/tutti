@@ -96,6 +96,15 @@ func (*Store) recordTurnTransitionTx(
 	}
 
 	merged := mergeTurnTransition(existing, hasExisting, transition, phase, occurred, now)
+	if merged.Phase == TurnPhaseSettled {
+		merged.FinalAssistantMessageID, err = finalAssistantMessageIDAtSettlementTx(
+			ctx, tx, workspaceID, agentSessionID, turnID, transition.FinalAssistantMessageID,
+		)
+		if err != nil {
+			return Turn{}, false, err
+		}
+		merged.FinalAssistantMessageResolved = true
+	}
 
 	fileChangesJSON, err := marshalNullableJSONMap(merged.FileChanges)
 	if err != nil {
@@ -121,7 +130,9 @@ ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
 `, workspaceID, agentSessionID, turnID, merged.Phase, nullString(merged.Outcome),
 		encodeTurnErrorJSON(merged.ErrorMessage, merged.ErrorCode),
 		fileChangesJSON,
-		encodeCompletedCommandJSON(merged.CompletedCommandKind, merged.CompletedCommandStatus),
+		encodeCompletedCommandJSON(merged.CompletedCommandKind, merged.CompletedCommandStatus, finalAssistantWatermark{
+			MessageID: merged.FinalAssistantMessageID, Resolved: merged.FinalAssistantMessageResolved,
+		}),
 		merged.StartedAtUnixMS, nullInt64(merged.SettledAtUnixMS),
 		merged.CreatedAtUnixMS, merged.UpdatedAtUnixMS, merged.Origin,
 		nullString(merged.SourceGoalOperationID), nullInt64(merged.SourceGoalRevision), nullInt64WhenAbsent(merged.SourceGoalRepairEpoch, merged.SourceGoalOperationID != "")); err != nil {
@@ -245,6 +256,9 @@ func mergeTurnTransition(existing Turn, hasExisting bool, transition TurnTransit
 	if transition.CompletedCommandKind != "" {
 		merged.CompletedCommandKind = strings.TrimSpace(transition.CompletedCommandKind)
 		merged.CompletedCommandStatus = strings.TrimSpace(transition.CompletedCommandStatus)
+	}
+	if transition.FinalAssistantMessageID != "" {
+		merged.FinalAssistantMessageID = strings.TrimSpace(transition.FinalAssistantMessageID)
 	}
 	startedAt := transition.StartedAtUnixMS
 	if startedAt <= 0 {
@@ -760,38 +774,6 @@ func isKnownInteractionKind(kind string) bool {
 
 func isKnownInteractionStatus(status string) bool {
 	return canonical.IsKnownInteractionStatus(status)
-}
-
-func encodeTurnErrorJSON(message string, code string) any {
-	message = strings.TrimSpace(message)
-	if message == "" {
-		return nil
-	}
-	payload := map[string]any{"message": message}
-	if code = strings.TrimSpace(code); code != "" {
-		payload["code"] = code
-	}
-	encoded, err := marshalJSONMap(payload)
-	if err != nil {
-		return nil
-	}
-	return encoded
-}
-
-func encodeCompletedCommandJSON(kind string, status string) any {
-	kind = strings.TrimSpace(kind)
-	if kind == "" {
-		return nil
-	}
-	payload := map[string]any{"kind": kind}
-	if status = strings.TrimSpace(status); status != "" {
-		payload["status"] = status
-	}
-	encoded, err := marshalJSONMap(payload)
-	if err != nil {
-		return nil
-	}
-	return encoded
 }
 
 func marshalNullableJSONMap(value map[string]any) (any, error) {

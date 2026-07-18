@@ -20,6 +20,7 @@ import {
   defaultDesktopAgentProvider,
   defaultDesktopDockIconStyle,
   defaultDesktopDockPlacement,
+  defaultDeletedAgentConversationRetentionDays,
   defaultDesktopFeatureFlags,
   defaultDesktopFileDefaultOpenersByExtension,
   defaultDesktopMinimizeAnimation,
@@ -451,6 +452,8 @@ async function resolveInitialDesktopPreferences(
           defaultAgentProvider: defaultDesktopAgentProvider,
           dockIconStyle: defaultDesktopDockIconStyle,
           dockPlacement: defaultDesktopDockPlacement,
+          deletedAgentConversationRetentionDays:
+            defaultDeletedAgentConversationRetentionDays,
           featureFlags: defaultDesktopFeatureFlags,
           fileDefaultOpenersByExtension:
             defaultDesktopFileDefaultOpenersByExtension,
@@ -483,6 +486,8 @@ async function resolveInitialDesktopPreferences(
       defaultAgentProvider: defaultDesktopAgentProvider,
       dockIconStyle: defaultDesktopDockIconStyle,
       dockPlacement: defaultDesktopDockPlacement,
+      deletedAgentConversationRetentionDays:
+        defaultDeletedAgentConversationRetentionDays,
       featureFlags: defaultDesktopFeatureFlags,
       fileDefaultOpenersByExtension:
         defaultDesktopFileDefaultOpenersByExtension,

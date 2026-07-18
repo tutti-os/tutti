@@ -90,12 +90,22 @@ func (h *Host) SubmitInteractive(ctx context.Context, ref SessionRef, requestID 
 	if err != nil {
 		return SubmitInteractiveResult{}, err
 	}
-	operation, err := h.prepareInteractiveRuntimeOperation(ctx, ref, requestID, input, route.RootAgentSessionID)
+	operation, claimDisposition, claimed, err := h.prepareInteractiveRuntimeOperation(ctx, ref, requestID, input, route.RootAgentSessionID)
 	if err != nil {
 		return SubmitInteractiveResult{}, err
 	}
+	if !claimed {
+		canonical, sessionFound, readErr := h.store.GetSession(ctx, ref.WorkspaceID, ref.AgentSessionID)
+		if readErr != nil {
+			return SubmitInteractiveResult{}, readErr
+		}
+		if !sessionFound {
+			return SubmitInteractiveResult{}, ErrSessionNotFound
+		}
+		return SubmitInteractiveResult{Canonical: canonical, Operation: operation, Disposition: claimDisposition}, nil
+	}
 	processed, err := h.processRuntimeOperation(ctx, operation, false)
-	result := SubmitInteractiveResult{Operation: processed}
+	result := SubmitInteractiveResult{Operation: processed, Disposition: claimDisposition}
 	switch processed.Result {
 	case storesqlite.RuntimeOperationResultAnswered:
 		result.Disposition = RuntimeInteractiveDispositionAnswered

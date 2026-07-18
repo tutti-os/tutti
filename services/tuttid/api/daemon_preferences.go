@@ -359,6 +359,21 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 			),
 		}, nil
 	}
+	deletedAgentConversationRetentionDays := int(request.Body.Preferences.DeletedAgentConversationRetentionDays)
+	if deletedAgentConversationRetentionDays == 0 {
+		deletedAgentConversationRetentionDays = preferencesbiz.DefaultDeletedAgentConversationRetentionDays
+	}
+	if !preferencesbiz.IsDeletedAgentConversationRetentionDays(deletedAgentConversationRetentionDays) {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonUnsupportedDeletedAgentConversationRetention,
+					apierrors.WithDeveloperMessage("deleted agent conversation retention is unsupported"),
+					apierrors.WithParams(map[string]any{"field": "preferences.deletedAgentConversationRetentionDays"}),
+				),
+			),
+		}, nil
+	}
 
 	var windowSnapping *preferencesservice.DesktopWindowSnappingInput
 	if request.Body.Preferences.WorkbenchWindowSnapping != nil {
@@ -402,13 +417,14 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderFromGenerated(
 			request.Body.Preferences.AgentGuiConversationRailCollapsedByProvider,
 		),
-		AgentConversationDetailMode: agentConversationDetailMode,
-		AgentDockLayout:             agentDockLayout,
-		AppCatalogChannel:           appCatalogChannel,
-		BrowserUseConnectionMode:    browserUseConnectionMode,
-		DefaultAgentProvider:        defaultAgentProvider,
-		DockIconStyle:               dockIconStyle,
-		DockPlacement:               dockPlacement,
+		AgentConversationDetailMode:           agentConversationDetailMode,
+		AgentDockLayout:                       agentDockLayout,
+		AppCatalogChannel:                     appCatalogChannel,
+		BrowserUseConnectionMode:              browserUseConnectionMode,
+		DefaultAgentProvider:                  defaultAgentProvider,
+		DockIconStyle:                         dockIconStyle,
+		DockPlacement:                         dockPlacement,
+		DeletedAgentConversationRetentionDays: deletedAgentConversationRetentionDays,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromGenerated(
 			request.Body.Preferences.FileDefaultOpenersByExtension,
 		),

@@ -6,10 +6,19 @@ import type { AgentGUIHomeSuggestionId } from "../../types";
 import { resolveAgentGUIProviderDisplayLabel } from "./model/agentGuiProviderIdentity";
 import { buildAgentHomeSuggestions } from "./model/agentHomeSuggestions";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView";
-import { agentGUIConversationRailLabels } from "./view/agentGUIConversationRailLabels";
+import {
+  agentGUIConversationRailLabels,
+  type AgentGUIConversationRailLabels
+} from "./view/agentGUIConversationRailLabels";
 import { agentGUIProviderManagerLabels } from "./view/agentGUIProviderManagerLabels";
 
 export { buildAgentHomeSuggestions };
+
+export function useAgentGUIConversationRailLabels(
+  t: TranslateFn
+): AgentGUIConversationRailLabels {
+  return useMemo(() => agentGUIConversationRailLabels(t), [t]);
+}
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
@@ -323,7 +332,6 @@ export function useAgentGUIViewLabels(input: {
       emptyProviderForProvider: (provider: string) =>
         resolveAgentGUIProviderDisplayLabel(provider, fallbackAgentTitle),
       conversations: t("agentHost.agentGui.conversations"),
-      newConversation: t("agentHost.agentGui.newConversation"),
       accountMenuTitle: t("agentHost.agentGui.accountMenuTitle"),
       accountMenuMember: t("agentHost.agentGui.accountMenuMember"),
       accountMenuUpgrade: t("agentHost.agentGui.accountMenuUpgrade"),
@@ -502,7 +510,29 @@ export function useAgentGUIViewLabels(input: {
       showLessConversations: t("agentHost.agentGui.showLessConversations"),
       deleteSession: t("agentHost.agentGui.deleteSession"),
       pinSession: t("agentHost.agentGui.pinSession"),
-      copySessionLink: t("agentHost.agentGui.copySessionLink"),
+      moreSessionActions: t("agentHost.agentGui.moreSessionActions"),
+      copyAsMarkdown: t("agentHost.agentGui.copyAsMarkdown"),
+      copyAsReference: t("agentHost.agentGui.copyAsReference"),
+      markSessionUnread: t("agentHost.agentGui.markSessionUnread"),
+      conversationCopyImage: t("agentHost.agentGui.conversationCopyImage"),
+      conversationCopyMentionPrefix: t(
+        "agentHost.agentGui.conversationCopyMentionPrefix"
+      ),
+      conversationCopyFile: t("agentHost.agentGui.conversationCopyFile"),
+      // Template label; the serializer substitutes {{count}} itself, and the
+      // i18n runtime keeps the placeholder intact when t() gets no params.
+      conversationCopyPreviousMessages: t(
+        "agentHost.agentGui.conversationCopyPreviousMessages"
+      ),
+      // Template label; the copy hook substitutes {{count}} itself.
+      conversationCopyImagesOmitted: t(
+        "agentHost.agentGui.conversationCopyImagesOmitted"
+      ),
+      copiedToClipboard: t("agentHost.agentGui.messageCopied"),
+      copyFailed: t("common.copyFailed"),
+      sessionActionUnavailable: t(
+        "agentHost.agentGui.sessionActionUnavailable"
+      ),
       renameSession: t("agentHost.agentGui.renameSession"),
       renameSessionTitle: t("agentHost.agentGui.renameSessionTitle"),
       renameSessionDescription: t(
@@ -513,7 +543,6 @@ export function useAgentGUIViewLabels(input: {
       ),
       renameSessionSave: t("agentHost.agentGui.renameSessionSave"),
       unpinSession: t("agentHost.agentGui.unpinSession"),
-      markSessionUnread: t("agentHost.agentGui.markSessionUnread"),
       deleteSessionTitle: t("agentHost.agentGui.deleteSessionTitle"),
       deleteSessionBody: t("agentHost.agentGui.deleteSessionBody"),
       deleteSessionConfirm: t("agentHost.agentGui.deleteSessionConfirm"),

@@ -10,6 +10,11 @@ trusted app APIs may read or update host workspace state directly.
 `window.tuttiExternal` currently exposes:
 
 - `app.getContext()` and `app.subscribe()` for host workspace/app context.
+- `agentActivity.*` for trusted automation apps to list exact Agent targets,
+  inspect composer options, create visible sessions, send or cancel turns, and
+  read the host-owned Activity snapshot. These calls delegate to the same
+  runtime and state used by Agent GUI; workspace apps must not create a second
+  Activity engine or provider adapter around this surface.
 - `at.query()` for host-provided mention candidates, plus optional
   `at.resolve()` and `at.subscribe()` for exact mention hydration and dirty
   invalidation.
@@ -28,6 +33,23 @@ trusted app APIs may read or update host workspace state directly.
 - `workspace.openFeature()` for user-activated host workspace navigation, such as opening the message center.
 - `logs.write()` for fire-and-forget frontend diagnostics that append to the workspace app `web.log`.
 
+## Agent Activity Automation
+
+`agentActivity` is intended for testing, orchestration, and other trusted apps
+that need to drive official Agent GUI sessions. Calls are scoped to the current
+workspace by the host; callers provide exact `agentTargetId` values returned by
+`listTargets()` and should set `visible: true` when users need to inspect the
+created sessions in Agent GUI.
+
+Supporting hosts advertise this surface as `agentActivity@1` in
+`app.getContext().capabilities`. Apps should also feature-detect the bridge when
+they need to remain usable in a normal browser or on an older host.
+
+Use `getSnapshot()` to observe session, turn, and message outcomes. The browser
+app may poll this method; the host remains the owner of synchronization and
+provider-specific transport. Apps that need an independent, app-owned Agent
+runtime should continue to use `@tutti-os/agent-acp-kit` instead.
+
 ## Rich Text At Providers
 
 Workspace apps that use `@tutti-os/ui-rich-text` should create one mention
@@ -38,7 +60,7 @@ import { createTuttiExternalRichTextMentionService } from "@tutti-os/workspace-e
 
 const mentionService = createTuttiExternalRichTextMentionService({
   getBridge: () => window.tuttiExternal,
-  providerIds: ["workspace-app", "agent-session", "agent-generated-file"]
+  providerIds: ["workspace-app", "agent-session", "agent-generated-file"],
 });
 ```
 

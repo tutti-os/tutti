@@ -9,6 +9,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DeletedAgentConversationRetentionDays,
   DesktopFeatureFlags,
   DesktopFileDefaultOpenersByExtension,
   DesktopMinimizeAnimation,
@@ -27,6 +28,7 @@ export interface DesktopPreferencesStoreState {
   changingBrowserUseConnectionMode: DesktopBrowserUseConnectionMode | null;
   changingDockIconStyle: DesktopDockIconStyle | null;
   changingDockPlacement: DesktopDockPlacement | null;
+  changingDeletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays | null;
   changingLocale: DesktopLocale | null;
   changingFeatureFlags: DesktopFeatureFlags | null;
   changingMinimizeAnimation: DesktopMinimizeAnimation | null;
@@ -45,6 +47,7 @@ export interface DesktopPreferencesStoreState {
   defaultAgentProvider: DesktopDefaultAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
   featureFlags: DesktopFeatureFlags;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
@@ -65,6 +68,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingBrowserUseConnectionMode: DesktopBrowserUseConnectionMode | null;
   readonly changingDockIconStyle: DesktopDockIconStyle | null;
   readonly changingDockPlacement: DesktopDockPlacement | null;
+  readonly changingDeletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays | null;
   readonly changingLocale: DesktopLocale | null;
   readonly changingFeatureFlags: DesktopFeatureFlags | null;
   readonly changingMinimizeAnimation: DesktopMinimizeAnimation | null;
@@ -83,6 +87,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly defaultAgentProvider: DesktopDefaultAgentProvider;
   readonly dockIconStyle: DesktopDockIconStyle;
   readonly dockPlacement: DesktopDockPlacement;
+  readonly deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
   readonly featureFlags: DesktopFeatureFlags;
   readonly fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   readonly locale: DesktopLocale;

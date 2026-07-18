@@ -17,7 +17,7 @@ interface Input {
   promptFilesSupported: boolean;
   promptImagesSupported: boolean;
   addDraftImages: (images: AgentRichTextPastedImage[]) => void;
-  applyDroppedFileReferences: (files: readonly File[]) => Promise<void>;
+  addDraftFiles: (files: readonly File[]) => void;
   onPromptImagesUnsupported?: () => void;
 }
 
@@ -34,7 +34,7 @@ export function useComposerFocusAndDrop(input: Input) {
     promptFilesSupported,
     promptImagesSupported,
     addDraftImages,
-    applyDroppedFileReferences,
+    addDraftFiles,
     onPromptImagesUnsupported
   } = input;
   const handleMentionPaletteButton = useCallback((): void => {
@@ -67,7 +67,7 @@ export function useComposerFocusAndDrop(input: Input) {
     promptFilesSupported,
     promptImagesSupported,
     addDraftImages,
-    applyDroppedFileReferences,
+    addDraftFiles,
     scheduleComposerFocus,
     onPromptImagesUnsupported
   });

@@ -60,6 +60,16 @@ import type {
   TuttiExternalAtResolveResult,
   TuttiExternalAtResolveInput,
   TuttiExternalAtInvalidation,
+  TuttiExternalAgentActivityActivateSessionResult,
+  TuttiExternalAgentActivityActivateSessionInput,
+  TuttiExternalAgentActivityCancelTurnResult,
+  TuttiExternalAgentActivityCancelTurnInput,
+  TuttiExternalAgentActivityComposerOptions,
+  TuttiExternalAgentActivityComposerOptionsInput,
+  TuttiExternalAgentActivitySendInput,
+  TuttiExternalAgentActivitySendResult,
+  TuttiExternalAgentActivitySnapshot,
+  TuttiExternalAgentTargetCatalog,
   TuttiExternalSettingsOpenInput,
   TuttiExternalUserProjectCreateInput,
   TuttiExternalUserProjectPathInput,
@@ -99,6 +109,14 @@ export const desktopIpcChannels = {
   },
   appExternal: {
     activityReportActive: "workspace-app-activity:report-active",
+    agentActivityActivateSession:
+      "workspace-app-agent-activity:activate-session",
+    agentActivityCancelTurn: "workspace-app-agent-activity:cancel-turn",
+    agentActivityGetComposerOptions:
+      "workspace-app-agent-activity:get-composer-options",
+    agentActivityGetSnapshot: "workspace-app-agent-activity:get-snapshot",
+    agentActivityListTargets: "workspace-app-agent-activity:list-targets",
+    agentActivitySendInput: "workspace-app-agent-activity:send-input",
     atQuery: "workspace-app-at:query",
     atResolve: "workspace-app-at:resolve",
     filesOpen: "workspace-app-files:open",
@@ -628,6 +646,12 @@ export type DesktopIpcResult<TResult> =
   | DesktopIpcFailure;
 
 export type DesktopWorkspaceAppExternalRendererResult =
+  | TuttiExternalAgentActivityActivateSessionResult
+  | TuttiExternalAgentActivityCancelTurnResult
+  | TuttiExternalAgentActivityComposerOptions
+  | TuttiExternalAgentActivitySendResult
+  | TuttiExternalAgentActivitySnapshot
+  | TuttiExternalAgentTargetCatalog
   | TuttiExternalAtQueryResult[]
   | TuttiExternalAtResolveResult
   | TuttiExternalFileSelectResult
@@ -845,6 +869,16 @@ export interface DesktopInvokePayloadByChannel {
     | undefined;
   [desktopIpcChannels.appContext.get]: undefined;
   [desktopIpcChannels.appExternal.activityReportActive]: undefined;
+  [desktopIpcChannels.appExternal
+    .agentActivityActivateSession]: TuttiExternalAgentActivityActivateSessionInput;
+  [desktopIpcChannels.appExternal
+    .agentActivityCancelTurn]: TuttiExternalAgentActivityCancelTurnInput;
+  [desktopIpcChannels.appExternal
+    .agentActivityGetComposerOptions]: TuttiExternalAgentActivityComposerOptionsInput;
+  [desktopIpcChannels.appExternal.agentActivityGetSnapshot]: undefined;
+  [desktopIpcChannels.appExternal.agentActivityListTargets]: undefined;
+  [desktopIpcChannels.appExternal
+    .agentActivitySendInput]: TuttiExternalAgentActivitySendInput;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryInput;
   [desktopIpcChannels.appExternal.atResolve]: TuttiExternalAtResolveInput;
   [desktopIpcChannels.appExternal.filesOpen]: TuttiExternalFileOpenInput;
@@ -1006,6 +1040,18 @@ export interface DesktopInvokeResultByChannel {
     .restartDriver]: DesktopComputerUseRestartDriverResult;
   [desktopIpcChannels.appContext.get]: DesktopWorkspaceAppContext;
   [desktopIpcChannels.appExternal.activityReportActive]: void;
+  [desktopIpcChannels.appExternal
+    .agentActivityActivateSession]: TuttiExternalAgentActivityActivateSessionResult;
+  [desktopIpcChannels.appExternal
+    .agentActivityCancelTurn]: TuttiExternalAgentActivityCancelTurnResult;
+  [desktopIpcChannels.appExternal
+    .agentActivityGetComposerOptions]: TuttiExternalAgentActivityComposerOptions;
+  [desktopIpcChannels.appExternal
+    .agentActivityGetSnapshot]: TuttiExternalAgentActivitySnapshot;
+  [desktopIpcChannels.appExternal
+    .agentActivityListTargets]: TuttiExternalAgentTargetCatalog;
+  [desktopIpcChannels.appExternal
+    .agentActivitySendInput]: TuttiExternalAgentActivitySendResult;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryResult[];
   [desktopIpcChannels.appExternal
     .atResolve]: TuttiExternalAtResolveResult | null;

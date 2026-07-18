@@ -21,7 +21,6 @@ import type {
   AgentComposerSlashStatusLimit,
   WorkspaceReferencePickResult
 } from "../AgentComposer";
-import type { AgentContextMentionProvider } from "../agentContextMentionProvider";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
 import type {
   AgentHomeSuggestionAction,
@@ -47,7 +46,6 @@ import {
   EMPTY_HOME_SUGGESTIONS,
   resolveAgentGUIHeroIconUrl
 } from "./AgentGUIEmptyState";
-import { AgentGUIDetailHeader } from "./AgentGUIDetailHeader";
 import { AgentGUIContentToast } from "./AgentGUIContentToast";
 import { AgentGUIConversationTimelinePane } from "./AgentGUIConversationTimelinePane";
 import {
@@ -78,7 +76,6 @@ export interface AgentGUIDetailPaneProps {
   labels: AgentGUIViewLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   uiLanguage: UiLanguage;
-  hideDetailHeader: boolean;
   isActive: boolean;
   previewMode: boolean;
   workspaceReferencePickerOpen: boolean;
@@ -97,11 +94,11 @@ export interface AgentGUIDetailPaneProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
-  resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
+  prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
+  promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   onRequestComposerFocus: () => void;
-  contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
 }
@@ -161,7 +158,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   labels,
   workspaceUserProjectI18n,
   uiLanguage,
-  hideDetailHeader,
   isActive,
   previewMode,
   workspaceReferencePickerOpen,
@@ -176,11 +172,11 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
-  resolveDroppedFileReferences = null,
+  prepareExternalPromptFiles = null,
+  promptAssetLimit = null,
   selectProjectDirectory,
   onRequestGitBranches,
   onRequestComposerFocus,
-  contextMentionProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
   renderProviderUnavailableState
 }: AgentGUIDetailPaneProps): React.JSX.Element {
@@ -483,10 +479,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onLinkAction: stableLinkAction,
       onHandoffConversation: stableHandoffConversation,
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
-      resolveDroppedFileReferences,
+      prepareExternalPromptFiles,
+      promptAssetLimit,
       selectProjectDirectory: stableSelectProjectDirectory,
-      onRequestGitBranches: stableRequestGitBranches,
-      contextMentionProviders
+      onRequestGitBranches: stableRequestGitBranches
     }),
     [
       canQueueWhileBusy,
@@ -519,9 +515,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       composerActivePrompt,
       editQueuedPrompt,
       onCapabilitySettingsRequest,
-      contextMentionProviders,
       removeQueuedPrompt,
-      resolveDroppedFileReferences,
+      prepareExternalPromptFiles,
+      promptAssetLimit,
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
       showStopButton,
@@ -626,17 +622,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       {viewModel.operations.goalClearNoticeSequence > 0 ? (
         <AgentGUIContentToast
           key={viewModel.operations.goalClearNoticeSequence}
-          insetTopPx={hideDetailHeader ? 16 : 80}
+          insetTopPx={16}
           message={labels.goalRemoved}
         />
       ) : null}
-      <AgentGUIDetailHeader
-        activeConversation={viewModel.rail.activeConversation}
-        hidden={hideDetailHeader}
-        labels={labels}
-        uiLanguage={uiLanguage}
-        previewMode={previewMode}
-      />
       <ScrollArea
         scrollbarMode="native"
         className="flex h-full min-h-0 flex-1 flex-col [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"

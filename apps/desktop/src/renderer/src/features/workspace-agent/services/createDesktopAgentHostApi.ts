@@ -32,10 +32,7 @@ import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivitySer
 interface CreateDesktopAgentHostApiInput {
   hostFilesApi: DesktopHostFilesApi;
   tuttidClient: TuttidClient;
-  platformApi: Pick<
-    DesktopPlatformApi,
-    "homeDirectory" | "os" | "resolveDroppedEntries"
-  >;
+  platformApi: Pick<DesktopPlatformApi, "homeDirectory" | "os">;
   runtimeApi: DesktopRuntimeApi;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
@@ -342,15 +339,6 @@ export function createDesktopAgentHostApi({
         await navigator.clipboard.writeText(payload.path);
       },
       ensureDirectory: async () => {},
-      getReferenceForFile: (file: File) => {
-        const entry = platformApi.resolveDroppedEntries([file])[0] ?? null;
-        const kind: "file" | "folder" =
-          entry?.kind === "folder" ? "folder" : "file";
-        return {
-          path: entry?.path || file.name,
-          kind
-        };
-      },
       readFile: async (payload: { path: string }) => {
         const bytes = await hostFilesApi.readPreviewFile(
           workspaceId,

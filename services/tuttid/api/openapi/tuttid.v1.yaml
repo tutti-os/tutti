@@ -348,6 +348,27 @@ paths:
           $ref: "#/components/responses/PreferencesOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-maintenance/deleted-conversations/purge:
+    post:
+      operationId: purgeDeletedAgentConversations
+      tags:
+        - agent-maintenance
+      summary: Permanently purge all soft-deleted Agent conversations
+      responses:
+        "200":
+          description: Purge completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedAgentConversationPurgeResult"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/user-projects:
     get:
       operationId: listUserProjects
@@ -4992,6 +5013,29 @@ components:
       enum:
         - production
         - staging
+    DeletedAgentConversationRetentionDays:
+      type: integer
+      enum:
+        - 15
+        - 30
+    DeletedAgentConversationPurgeResult:
+      type: object
+      additionalProperties: false
+      required:
+        - removedSessions
+        - removedMessages
+        - payloadBytes
+      properties:
+        removedSessions:
+          type: integer
+          minimum: 0
+        removedMessages:
+          type: integer
+          minimum: 0
+        payloadBytes:
+          type: integer
+          format: int64
+          minimum: 0
     DesktopPreferences:
       type: object
       additionalProperties: false
@@ -5004,6 +5048,7 @@ components:
         - defaultAgentProvider
         - dockIconStyle
         - dockPlacement
+        - deletedAgentConversationRetentionDays
         - fileDefaultOpenersByExtension
         - featureFlags
         - workbenchShortcuts
@@ -5035,6 +5080,8 @@ components:
           $ref: "#/components/schemas/DesktopDockIconStyle"
         dockPlacement:
           $ref: "#/components/schemas/DesktopDockPlacement"
+        deletedAgentConversationRetentionDays:
+          $ref: "#/components/schemas/DeletedAgentConversationRetentionDays"
         fileDefaultOpenersByExtension:
           $ref: "#/components/schemas/DesktopFileDefaultOpenersByExtension"
         featureFlags:
@@ -5296,7 +5343,7 @@ components:
         iconUrl:
           type: string
           nullable: true
-        sidebarIconUrl:
+        maskIconUrl:
           type: string
           nullable: true
         heroImageUrl:

@@ -48,6 +48,7 @@ import type {
   DeleteWorkspaceAppResponse,
   DeleteUserProjectRequest,
   DesktopPreferencesStateResponse,
+  DeletedAgentConversationPurgeResult,
   ExportWorkspaceAppRequest,
   ExportWorkspaceAppResponse,
   ExternalAgentImportResultResponse,
@@ -308,6 +309,7 @@ export interface TuttidClient {
     request: CopyWorkspaceFileEntryRequest
   ): Promise<WorkspaceFileEntryResponse>;
   getDesktopPreferences(): Promise<DesktopPreferencesStateResponse>;
+  purgeDeletedAgentConversations(): Promise<DeletedAgentConversationPurgeResult>;
   getHealth(): Promise<HealthStatusResponse>;
   getStartupWorkspace(): Promise<WorkspaceSummary | null>;
   getWorkspace(workspaceID: string): Promise<WorkspaceSummary>;

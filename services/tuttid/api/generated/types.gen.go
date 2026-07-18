@@ -793,6 +793,24 @@ func (e CliOutputMode) Valid() bool {
 	}
 }
 
+// Defines values for DeletedAgentConversationRetentionDays.
+const (
+	N15 DeletedAgentConversationRetentionDays = 15
+	N30 DeletedAgentConversationRetentionDays = 30
+)
+
+// Valid indicates whether the value is a known member of the DeletedAgentConversationRetentionDays enum.
+func (e DeletedAgentConversationRetentionDays) Valid() bool {
+	switch e {
+	case N15:
+		return true
+	case N30:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DesktopAgentConversationDetailMode.
 const (
 	Coding  DesktopAgentConversationDetailMode = "coding"
@@ -2664,9 +2682,9 @@ type AgentTarget struct {
 	IconUrl         *string                    `json:"iconUrl,omitempty"`
 	Id              string                     `json:"id"`
 	LaunchRef       AgentTargetLaunchRef       `json:"launchRef"`
+	MaskIconUrl     *string                    `json:"maskIconUrl,omitempty"`
 	Name            string                     `json:"name"`
 	Provider        AgentTargetProvider        `json:"provider"`
-	SidebarIconUrl  *string                    `json:"sidebarIconUrl,omitempty"`
 	SortOrder       int                        `json:"sortOrder"`
 	Source          AgentTargetSource          `json:"source"`
 	UpdatedAtUnixMs int64                      `json:"updatedAtUnixMs"`
@@ -3233,6 +3251,16 @@ type DeleteWorkspaceResponse struct {
 	WorkspaceId string `json:"workspaceId"`
 }
 
+// DeletedAgentConversationPurgeResult defines model for DeletedAgentConversationPurgeResult.
+type DeletedAgentConversationPurgeResult struct {
+	PayloadBytes    int64 `json:"payloadBytes"`
+	RemovedMessages int   `json:"removedMessages"`
+	RemovedSessions int   `json:"removedSessions"`
+}
+
+// DeletedAgentConversationRetentionDays defines model for DeletedAgentConversationRetentionDays.
+type DeletedAgentConversationRetentionDays int
+
 // DesktopAgentComposerDefaults defines model for DesktopAgentComposerDefaults.
 type DesktopAgentComposerDefaults struct {
 	Model            *string `json:"model,omitempty"`
@@ -3314,6 +3342,7 @@ type DesktopPreferences struct {
 	AppCatalogChannel                           DesktopAppCatalogChannel                           `json:"appCatalogChannel"`
 	BrowserUseConnectionMode                    *DesktopBrowserUseConnectionMode                   `json:"browserUseConnectionMode,omitempty"`
 	DefaultAgentProvider                        DesktopDefaultAgentProvider                        `json:"defaultAgentProvider"`
+	DeletedAgentConversationRetentionDays       DeletedAgentConversationRetentionDays              `json:"deletedAgentConversationRetentionDays"`
 	DockIconStyle                               DesktopDockIconStyle                               `json:"dockIconStyle"`
 	DockPlacement                               DesktopDockPlacement                               `json:"dockPlacement"`
 	FeatureFlags                                DesktopFeatureFlags                                `json:"featureFlags"`

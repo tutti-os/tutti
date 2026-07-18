@@ -245,11 +245,14 @@ The stable package entrypoints are:
 @tutti-os/agent-gui/i18n
 @tutti-os/agent-gui/styles.css
 @tutti-os/agent-gui/workbench
+@tutti-os/agent-gui/workbench/browser-element-context
+@tutti-os/agent-gui/workbench/tool-sidebar
 @tutti-os/browser-node
 @tutti-os/browser-node/assets/workspace-dock-website.png
 @tutti-os/browser-node/bridge
 @tutti-os/browser-node/electron-main
 @tutti-os/browser-node/electron-preload
+@tutti-os/browser-node/electron-renderer
 @tutti-os/browser-node/i18n
 @tutti-os/browser-node/react
 @tutti-os/browser-node/workbench

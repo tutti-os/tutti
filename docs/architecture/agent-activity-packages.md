@@ -73,6 +73,30 @@ runtime mutation; provider normalization stays in an adapter policy. Pin and
 canonical delete are Host commands, while authorization, transport DTOs,
 shared bindings, and local view cleanup remain adapter-owned.
 
+Permanent deletion is intentionally distinct from the normal canonical delete
+command. `Host.PurgeDeletedSessions` accepts a cutoff and bounded batch limits,
+while `store-sqlite` selects tombstones globally by deletion time, fences every
+candidate with its exact `deleted_at` value, and removes session-scoped rows in
+one transaction. Candidate selection starts from current leaves, so large or
+deep trees cannot let blocked ancestors starve unrelated tombstones. Ancestors
+remain until every descendant has been safely removed, which preserves a
+concurrently restored child tree. Host does not choose retention periods or
+filesystem paths.
+The `tuttid` maintenance adapter owns the device-global 15/30-day preference,
+idle-aware scheduling, once-per-day durable eligibility marker, manual purge
+route, and optional database compaction. This retention flow performs no
+filesystem deletion.
+
+Automatic maintenance starts ten minutes after daemon readiness, checks at
+30-minute intervals, and records completion at most once per 24 hours. It runs
+only while no Agent turn is active and stops between short batches when Agent
+work begins. Manual cleanup uses the same serialized maintenance service but
+targets every current tombstone.
+Only an explicit manual sweep may request database compaction. The daemon
+attempts it after the final idle batch only when the database is small and at
+least one quarter of its pages are reclaimable; automatic maintenance never
+runs a full-database compaction.
+
 `store-sqlite` owns the transaction implementation. Its caller-owned
 `TransactionParticipant` seam lets an adapter append a durable outbox marker
 to the same transaction as runtime/goal operation intent, canonical facts, and
@@ -363,11 +387,33 @@ before the historical call row resolves.
 Likewise, a runtime session snapshot may describe provider-local execution
 state but must not enrich a report with an Interaction transition. Runtime
 reports may submit only `pending` and `superseded`; `answered` belongs solely to
-the durable `interactive_response` operation. That operation reads the typed
-runtime disposition (`pending`, `resolving`, `answered`, `superseded`, or
-`interrupted`) and atomically commits the answered/superseded Interaction,
-completed operation, and outbox event. Absence from an in-memory request map is
-not evidence of success.
+the durable `interactive_response` operation. Preparing that operation
+atomically claims the interaction with a `pending` to `answered` transition and
+stores the requested action, option, and payload. Completion still records the
+typed runtime disposition (`pending`, `resolving`, `answered`, `superseded`, or
+`interrupted`) and commits the completed operation and outbox event. Competing
+responders compare against the claimed output and normalize to `answered` or
+`superseded`; absence from an in-memory request map is not evidence of success.
+The claim's provisional Interaction status must not overwrite the terminal
+runtime disposition: the completed operation result follows the runtime even
+when the claim already moved the Interaction to `answered`.
+
+Activity compatibility projection uses a causal, segmented write barrier. It
+scans state patches in provider order. Non-terminal state first creates the
+session, Turn, and Interaction required by message foreign keys; immediately
+before each terminal patch, it flushes that Turn's messages and the session
+audits, then commits the terminal state. Later non-terminal patches are never
+moved ahead of an earlier settlement. A completed root-provider transition is
+also terminal because, when no child remains active, SQLite uses it to settle
+the canonical root Turn. During the first SQLite settlement transaction, the
+store selects the latest already persisted assistant text message for that Turn
+and freezes its ID in the existing completed-command payload. A same-report
+anchor is only a validated fast path; cross-report provider event batches
+derive the same watermark from durable messages. The payload also records an
+explicit resolution marker when settlement found no assistant text, so a late
+message cannot become the result of an already settled Turn. Result readers use
+the exact frozen message, return no message for a resolved-empty watermark, and
+reserve the bounded fallback scan for legacy turns without resolution metadata.
 
 Cancellation of the caller waiting on an interactive-response operation is not
 a provider outcome and must not terminalize the runtime request. Before a

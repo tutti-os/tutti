@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS desktop_preferences (
   agent_dock_layout TEXT NOT NULL DEFAULT 'unified',
   dock_icon_style TEXT NOT NULL DEFAULT 'flat',
   dock_placement TEXT NOT NULL DEFAULT 'bottom',
+  deleted_agent_conversation_retention_days INTEGER NOT NULL DEFAULT 30,
   default_agent_provider TEXT NOT NULL DEFAULT 'codex',
   agent_conversation_detail_mode TEXT NOT NULL DEFAULT 'coding',
   agent_composer_defaults_by_provider_json TEXT NOT NULL DEFAULT '{}',
@@ -53,6 +54,36 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return fmt.Errorf("migrate workspace database for desktop preferences: %w", err)
 	}
 
+	return nil
+}
+
+func (s *SQLiteStore) applyDesktopPreferencesDeletedAgentRetentionV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesDeletedAgentRetentionV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	hasColumn, err := s.hasColumn(ctx, "desktop_preferences", "deleted_agent_conversation_retention_days")
+	if err != nil {
+		return err
+	}
+	if !hasColumn {
+		if _, err := s.writeDB.ExecContext(ctx, `
+ALTER TABLE desktop_preferences
+  ADD COLUMN deleted_agent_conversation_retention_days INTEGER NOT NULL DEFAULT 30;
+`); err != nil {
+			return fmt.Errorf("migrate desktop deleted agent conversation retention: %w", err)
+		}
+	}
+	_, err = s.writeDB.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesDeletedAgentRetentionV1, unixMs(time.Now().UTC()))
+	if err != nil {
+		return fmt.Errorf("record desktop deleted agent conversation retention migration: %w", err)
+	}
 	return nil
 }
 

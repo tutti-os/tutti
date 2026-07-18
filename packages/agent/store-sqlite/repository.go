@@ -39,6 +39,7 @@ type Repository interface {
 	ReportSessionMessages(context.Context, SessionMessageReport) (MessageReportResult, error)
 	ReportSessionState(context.Context, SessionStateReport) (StateReportResult, error)
 	PrepareRuntimeOperation(context.Context, RuntimeOperationPrepare) (RuntimeOperation, bool, error)
+	PrepareInteractiveRuntimeOperation(context.Context, RuntimeOperationPrepare) (RuntimeOperation, Interaction, InteractionTransitionResult, error)
 	GetRuntimeOperation(context.Context, string, string) (RuntimeOperation, bool, error)
 	ListClaimableRuntimeOperations(context.Context, ListClaimableRuntimeOperationsInput) ([]RuntimeOperation, error)
 	ClaimRuntimeOperationLease(context.Context, ClaimRuntimeOperationLeaseInput) (RuntimeOperation, bool, error)
@@ -78,6 +79,30 @@ type DeleteSessionResult struct {
 	RemovedSessionIDs []string
 }
 
+// PurgeDeletedSessionsInput bounds one permanent-removal transaction. The
+// caller owns retention policy and supplies an absolute cutoff.
+type PurgeDeletedSessionsInput struct {
+	CutoffUnixMS    int64
+	MaxSessions     int
+	MaxPayloadBytes int64
+}
+
+// PurgedSession is the content-free descriptor returned after a successful
+// canonical commit for aggregate accounting and bounded maintenance progress.
+type PurgedSession struct {
+	WorkspaceID     string
+	AgentSessionID  string
+	DeletedAtUnixMS int64
+	PayloadBytes    int64
+}
+
+type PurgeDeletedSessionsResult struct {
+	Sessions        []PurgedSession
+	RemovedMessages int
+	PayloadBytes    int64
+	HasMore         bool
+}
+
 type MessageOrder string
 
 const (
@@ -88,6 +113,7 @@ const (
 type ListSessionMessagesInput struct {
 	WorkspaceID    string
 	AgentSessionID string
+	MessageID      string
 	TurnID         string
 	// AfterVersion and BeforeVersion are per-session change cursors. Current
 	// message snapshots may skip cursor values when the same message is updated.
@@ -293,6 +319,8 @@ type Turn struct {
 	FileChanges                            map[string]any
 	CompletedCommandKind                   string
 	CompletedCommandStatus                 string
+	FinalAssistantMessageID                string
+	FinalAssistantMessageResolved          bool
 	Backfilled                             bool
 	StartedAtUnixMS                        int64
 	SettledAtUnixMS                        int64
@@ -336,23 +364,24 @@ type RootProviderTurnTransition struct {
 // and rejects further transitions, which makes replays and cancel races
 // idempotent.
 type TurnTransition struct {
-	WorkspaceID            string
-	AgentSessionID         string
-	TurnID                 string
-	Phase                  string
-	Outcome                string
-	ErrorMessage           string
-	ErrorCode              string
-	FileChanges            map[string]any
-	CompletedCommandKind   string
-	CompletedCommandStatus string
-	Origin                 string
-	SourceGoalOperationID  string
-	SourceGoalRevision     int64
-	SourceGoalRepairEpoch  int64
-	StartedAtUnixMS        int64
-	SettledAtUnixMS        int64
-	OccurredAtUnixMS       int64
+	WorkspaceID             string
+	AgentSessionID          string
+	TurnID                  string
+	Phase                   string
+	Outcome                 string
+	ErrorMessage            string
+	ErrorCode               string
+	FileChanges             map[string]any
+	CompletedCommandKind    string
+	CompletedCommandStatus  string
+	FinalAssistantMessageID string
+	Origin                  string
+	SourceGoalOperationID   string
+	SourceGoalRevision      int64
+	SourceGoalRepairEpoch   int64
+	StartedAtUnixMS         int64
+	SettledAtUnixMS         int64
+	OccurredAtUnixMS        int64
 }
 
 // Closed protocol v2 interaction vocabulary; mirrors the openapi

@@ -8,6 +8,7 @@ import type {
   AgentGUIProps,
   AgentHostInputApi
 } from "@tutti-os/agent-gui";
+import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
 import {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
   type AgentGuiWorkbenchConversationRailToggleDetail
@@ -80,9 +81,7 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   defaultAgentTargetId?: string | null;
-  contextMentionProviders: NonNullable<
-    AgentGUIProps["hostCapabilities"]["contextMentionProviders"]
-  >;
+  contextMentionProviders: readonly AgentContextMentionProvider[];
   runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   trackAgentProviderChatReady?: (input: { provider: string }) => Promise<void>;
   onEngagementEvent?: AgentGUIProps["hostActions"]["onEngagementEvent"];
@@ -90,8 +89,8 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   workspaceFileReferenceAdapter: NonNullable<
     AgentGUIProps["workspace"]["fileReferenceAdapter"]
   >;
-  resolveDroppedFileReferences: NonNullable<
-    AgentGUIProps["workspace"]["resolveDroppedFileReferences"]
+  prepareExternalPromptFiles: NonNullable<
+    AgentGUIProps["workspace"]["prepareExternalPromptFiles"]
   >;
   onRequestGitBranches: NonNullable<
     AgentGUIProps["workspace"]["onRequestGitBranches"]
@@ -136,9 +135,7 @@ export function handleDesktopAgentGUIShowMessage(
 
 export const AGENT_PROBE_REFRESH_DEBOUNCE_MS = 300;
 export const DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS =
-  [] satisfies NonNullable<
-    AgentGUIProps["hostCapabilities"]["contextMentionProviders"]
-  >;
+  [] satisfies readonly AgentContextMentionProvider[];
 export const DESKTOP_AGENT_GUI_EMPTY_PROVIDER_STATUS_SNAPSHOT = {
   capturedAt: null,
   defaultProvider: null,
@@ -186,8 +183,7 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
       next.trackWorkspaceFileReferences &&
     previous.workspaceFileReferenceAdapter ===
       next.workspaceFileReferenceAdapter &&
-    previous.resolveDroppedFileReferences ===
-      next.resolveDroppedFileReferences &&
+    previous.prepareExternalPromptFiles === next.prepareExternalPromptFiles &&
     previous.onRequestGitBranches === next.onRequestGitBranches &&
     previous.referenceSourceAggregator === next.referenceSourceAggregator &&
     previous.renderSidebarFooter === next.renderSidebarFooter &&

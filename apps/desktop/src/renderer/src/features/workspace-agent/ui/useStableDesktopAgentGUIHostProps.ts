@@ -7,7 +7,8 @@ export type DesktopAgentGUIHostProps = {
     | "path"
     | "fileReferenceAdapter"
     | "onRequestGitBranches"
-    | "resolveDroppedFileReferences"
+    | "prepareExternalPromptFiles"
+    | "promptAssetLimit"
     | "referenceSourceAggregator"
     | "resolveReferenceEntryIconUrl"
     | "resolveMentionReferenceTarget"
@@ -25,7 +26,7 @@ export type DesktopAgentGUIHostProps = {
     | "providerReadinessGates"
     | "defaultAgentTargetId"
     | "providerAuthAccountLabels"
-    | "contextMentionProviders"
+    | "mentionService"
     | "workspaceAppIcons"
   >;
   hostActions: Pick<
@@ -67,7 +68,8 @@ export function useStableDesktopAgentGUIHostProps({
       path: nextWorkspace.path,
       fileReferenceAdapter: nextWorkspace.fileReferenceAdapter,
       onRequestGitBranches: nextWorkspace.onRequestGitBranches,
-      resolveDroppedFileReferences: nextWorkspace.resolveDroppedFileReferences,
+      prepareExternalPromptFiles: nextWorkspace.prepareExternalPromptFiles,
+      promptAssetLimit: nextWorkspace.promptAssetLimit,
       referenceSourceAggregator: nextWorkspace.referenceSourceAggregator,
       resolveReferenceEntryIconUrl: nextWorkspace.resolveReferenceEntryIconUrl,
       resolveMentionReferenceTarget:
@@ -81,6 +83,7 @@ export function useStableDesktopAgentGUIHostProps({
       composerAppend: nextRuntimeRequests.composerAppend,
       composerFocusSequence: nextRuntimeRequests.composerFocusSequence,
       newConversationSequence: nextRuntimeRequests.newConversationSequence,
+      sessionAction: nextRuntimeRequests.sessionAction,
       openSession: nextRuntimeRequests.openSession,
       prefillPrompt: nextRuntimeRequests.prefillPrompt,
       agentProbes: nextRuntimeRequests.agentProbes,
@@ -96,7 +99,7 @@ export function useStableDesktopAgentGUIHostProps({
       providerReadinessGates: nextHostCapabilities.providerReadinessGates,
       defaultAgentTargetId: nextHostCapabilities.defaultAgentTargetId,
       providerAuthAccountLabels: nextHostCapabilities.providerAuthAccountLabels,
-      contextMentionProviders: nextHostCapabilities.contextMentionProviders,
+      mentionService: nextHostCapabilities.mentionService,
       workspaceAppIcons: nextHostCapabilities.workspaceAppIcons
     },
     hostActions: {

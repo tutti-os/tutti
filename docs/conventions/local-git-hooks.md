@@ -126,10 +126,13 @@ matches the pushed `HEAD`.
 
 ## Changed-Aware Validation
 
-Use `pnpm check:changed` as the preferred local iteration check before running
-broader validation. It selects checks from the changed file set, runs
-independent lanes concurrently, prints compact summaries, and stores full logs
-under `.tmp/check-runs`.
+The selection and non-duplication policy lives in
+[Testing](./testing.md#validation-selection). This section only defines the
+changed-aware runner and hook behavior.
+
+The runner selects checks from the changed file set, runs independent lanes
+concurrently, prints compact summaries, and stores full logs under
+`.tmp/check-runs`.
 
 `pnpm check:changed -- --push-ready` is the `pre-push` mode. In addition to the
 normal changed-aware lanes, it schedules Go or package builds when the changed
@@ -138,6 +141,9 @@ surface requires them.
 Failure output prints an 80-line tail by default. Use
 `pnpm check:changed -- --tail-lines <n>` when a larger or smaller tail is more
 useful; full logs remain in `.tmp/check-runs`.
+
+After failures, prefer `pnpm check:changed -- --failed-only` to rerun failed
+lanes instead of repeating successful lanes.
 
 When the changed set includes deleted package test files, `check:changed` should
 not pass those missing paths to Vitest as explicit targets. Deleting source files

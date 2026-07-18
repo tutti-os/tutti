@@ -1,7 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentGUIAgentTarget } from "../../../types";
+import {
+  AGENT_GUI_PROVIDER_RAIL_PREFERENCES_STORAGE_KEY,
+  parseAgentGUIProviderRailPreferences
+} from "../model/agentGuiProviderRailOrder";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
 import { AgentGUIProviderRail } from "./AgentGUIProviderRail";
 
@@ -163,7 +167,87 @@ describe("AgentGUIProviderRail selection", () => {
       kind: "all"
     });
   });
+
+  it("resolves rail container drop targets from provider tile identities", () => {
+    const codex = target({
+      agentTargetId: "agent:codex",
+      label: "Codex",
+      provider: "codex",
+      targetId: "local:codex"
+    });
+    const claude = target({
+      agentTargetId: "agent:claude",
+      label: "Claude",
+      provider: "claude-code",
+      targetId: "local:claude"
+    });
+    const cursor = target({
+      agentTargetId: "agent:cursor",
+      label: "Cursor",
+      provider: "cursor",
+      targetId: "local:cursor"
+    });
+    render(
+      providerRail(providerRailProps({ agentTargets: [codex, claude, cursor] }))
+    );
+    const codexTile = screen.getByRole("tab", { name: "Codex" });
+    const claudeTile = screen.getByRole("tab", { name: "Claude" });
+    const cursorTile = screen.getByRole("tab", { name: "Cursor" });
+    mockVerticalBounds(codexTile, 0);
+    mockVerticalBounds(claudeTile, 40);
+    mockVerticalBounds(cursorTile, 80);
+    const dataTransfer = createDataTransfer();
+
+    fireEvent.dragStart(cursorTile, { dataTransfer });
+    const tablist = screen.getByRole("tablist");
+    const dragOverEvent = createEvent.dragOver(tablist, { dataTransfer });
+    Object.defineProperty(dragOverEvent, "clientY", { value: 5 });
+    fireEvent(tablist, dragOverEvent);
+
+    expect(codexTile).toHaveAttribute("data-drag-over", "before");
+
+    const dropEvent = createEvent.drop(tablist, { dataTransfer });
+    Object.defineProperty(dropEvent, "clientY", { value: 5 });
+    fireEvent(tablist, dropEvent);
+
+    expect(
+      parseAgentGUIProviderRailPreferences(
+        globalThis.localStorage.getItem(
+          AGENT_GUI_PROVIDER_RAIL_PREFERENCES_STORAGE_KEY
+        )
+      ).order
+    ).toEqual(["local:cursor", "local:codex", "local:claude"]);
+    expect(
+      screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
+    ).toEqual(["All agents", "Cursor", "Codex", "Claude"]);
+  });
 });
+
+function mockVerticalBounds(element: HTMLElement, top: number): void {
+  vi.spyOn(element, "getBoundingClientRect").mockReturnValue({
+    bottom: top + 32,
+    height: 32,
+    left: 0,
+    right: 52,
+    toJSON: () => ({}),
+    top,
+    width: 52,
+    x: 0,
+    y: top
+  });
+}
+
+function createDataTransfer(): DataTransfer {
+  const values = new Map<string, string>();
+  return {
+    dropEffect: "none",
+    effectAllowed: "uninitialized",
+    getData: (format: string) => values.get(format) ?? "",
+    setData: (format: string, value: string) => {
+      values.set(format, value);
+    }
+  } as unknown as DataTransfer;
+}
 
 function expectOnlySelectedTab(name: string): void {
   const tabs = screen.getAllByRole("tab");

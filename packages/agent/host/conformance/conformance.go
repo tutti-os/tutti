@@ -21,7 +21,9 @@ type SessionSeed struct {
 	Live                    bool
 	Kind                    string
 	Origin                  string
+	ParentAgentSessionID    string
 	Deleted                 bool
+	DeletedAtUnixMS         int64
 	ExternalResumeSupported *bool
 	Settings                agenthost.ComposerSettings
 	Pinned                  bool
@@ -42,6 +44,7 @@ type InteractionSeed struct {
 
 type Fixture struct {
 	Session            *SessionSeed
+	AdditionalSessions []SessionSeed
 	Turn               *TurnSeed
 	Interaction        *InteractionSeed
 	PreparedSubmitID   string
@@ -90,6 +93,11 @@ type OperationObservation struct {
 	Result      string
 }
 
+type InteractiveObservation struct {
+	Session     SessionObservation
+	Disposition agenthost.RuntimeInteractiveDisposition
+}
+
 type Metrics struct {
 	StartCalls               int
 	ResumeCalls              int
@@ -120,13 +128,14 @@ type Driver interface {
 	EnsureSession(context.Context, agenthost.SessionRef) (SessionObservation, error)
 	SendInput(context.Context, agenthost.SessionRef, agenthost.SendInput) (SendObservation, error)
 	CancelTurn(context.Context, agenthost.CancelTurnInput) (CancelObservation, error)
-	SubmitInteractive(context.Context, agenthost.SessionRef, string, agenthost.SubmitInteractiveInput) (SessionObservation, error)
+	SubmitInteractive(context.Context, agenthost.SessionRef, string, agenthost.SubmitInteractiveInput) (InteractiveObservation, error)
 	SubmitPlanDecision(context.Context, agenthost.SessionRef, string, string, agenthost.SubmitPlanDecisionInput) (OperationObservation, error)
 	UpdateTitle(context.Context, agenthost.UpdateTitleInput) (SessionObservation, error)
 	GetSession(context.Context, agenthost.SessionRef) (SessionObservation, error)
 	UpdateSettings(context.Context, agenthost.UpdateSettingsInput) (SessionObservation, error)
 	UpdatePin(context.Context, agenthost.UpdatePinInput) (SessionObservation, error)
 	DeleteSession(context.Context, agenthost.SessionRef) (agenthost.DeleteSessionResult, error)
+	PurgeDeletedSessions(context.Context, agenthost.PurgeDeletedSessionsInput) (agenthost.PurgeDeletedSessionsResult, error)
 	GoalControl(context.Context, agenthost.GoalControlInput) (GoalObservation, error)
 	GetGoalState(context.Context, agenthost.SessionRef) (GoalObservation, error)
 	ReconcileGoal(context.Context, agenthost.SessionRef) (GoalObservation, error)

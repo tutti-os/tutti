@@ -280,7 +280,12 @@ describe("AgentQueuedPromptPanel", () => {
     expect(image).toHaveAttribute("src", iconUrl);
     expect(
       mention?.querySelector('[data-agent-mention-fallback-icon="true"]')
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(
+      mention?.querySelectorAll(
+        '[data-agent-mention-app-icon="true"] img, [data-agent-mention-app-icon="true"] svg'
+      )
+    ).toHaveLength(1);
 
     fireEvent.error(image!);
 
@@ -290,6 +295,11 @@ describe("AgentQueuedPromptPanel", () => {
     expect(
       mention?.querySelector('[data-agent-mention-fallback-icon="true"]')
     ).toBeInTheDocument();
+    expect(
+      mention?.querySelectorAll(
+        '[data-agent-mention-app-icon="true"] img, [data-agent-mention-app-icon="true"] svg'
+      )
+    ).toHaveLength(1);
     expect(mention).toHaveTextContent("AI Media Canvas");
     expect(screen.queryByText(/mention:\/\/workspace-app/)).toBeNull();
   });

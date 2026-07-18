@@ -202,6 +202,10 @@ func (s *SQLiteStore) ClearSessions(ctx context.Context, workspaceID string) (ag
 	return s.agentStore().ClearSessions(ctx, workspaceID)
 }
 
+func (s *SQLiteStore) PurgeDeletedSessions(ctx context.Context, input agentactivitybiz.PurgeDeletedSessionsInput) (agentactivitybiz.PurgeDeletedSessionsResult, error) {
+	return s.agentStore().PurgeDeletedSessions(ctx, input)
+}
+
 func (s *SQLiteStore) UpdateSessionPinned(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (agentactivitybiz.Session, bool, error) {
 	return s.agentStore().UpdateSessionPinned(ctx, workspaceID, agentSessionID, pinned)
 }
@@ -252,6 +256,10 @@ func (s *SQLiteStore) ListSessionInteractions(ctx context.Context, input agentac
 
 func (s *SQLiteStore) PrepareRuntimeOperation(ctx context.Context, input agentactivitybiz.RuntimeOperationPrepare) (agentactivitybiz.RuntimeOperation, bool, error) {
 	return s.agentStore().PrepareRuntimeOperation(ctx, input)
+}
+
+func (s *SQLiteStore) PrepareInteractiveRuntimeOperation(ctx context.Context, input agentactivitybiz.RuntimeOperationPrepare) (agentactivitybiz.RuntimeOperation, agentactivitybiz.Interaction, agentactivitybiz.InteractionTransitionResult, error) {
+	return s.agentStore().PrepareInteractiveRuntimeOperation(ctx, input)
 }
 
 func (s *SQLiteStore) PrepareGoalControlOperation(ctx context.Context, input agentactivitybiz.GoalControlOperationPrepare) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error) {
@@ -429,7 +437,7 @@ func agentTargetToStore(target agenttargetbiz.Target) agentstore.Target {
 		Name:            target.Name,
 		IconKey:         target.IconKey,
 		IconURL:         target.IconURL,
-		SidebarIconURL:  target.SidebarIconURL,
+		MaskIconURL:     target.MaskIconURL,
 		HeroImageURL:    target.HeroImageURL,
 		Enabled:         target.Enabled,
 		Source:          target.Source,
@@ -447,7 +455,7 @@ func agentTargetFromStore(target agentstore.Target) agenttargetbiz.Target {
 		Name:            target.Name,
 		IconKey:         target.IconKey,
 		IconURL:         target.IconURL,
-		SidebarIconURL:  target.SidebarIconURL,
+		MaskIconURL:     target.MaskIconURL,
 		HeroImageURL:    target.HeroImageURL,
 		Enabled:         target.Enabled,
 		Source:          target.Source,

@@ -1,9 +1,6 @@
 import type { CSSProperties, JSX, MouseEvent, ReactNode } from "react";
 import { MentionPill } from "@tutti-os/ui-system/components";
-import {
-  getRichTextMentionDisplayText,
-  resolveRichTextMentionView
-} from "../plugins/mention.ts";
+import { resolveRichTextMentionView } from "../plugins/mention.ts";
 import {
   resolveMentionPillIconUrl,
   resolveMentionPillKind
@@ -85,9 +82,7 @@ export function RichTextMentionReadonly<TResolved = unknown>({
     mention,
     resolved: view as RichTextResolvedMentionView<TResolved>
   };
-  const label =
-    renderLabel?.(payload) ??
-    getRichTextMentionDisplayText({ ...mention, label: view.label });
+  const label = renderLabel?.(payload) ?? view.label;
   const content = (
     <MentionPill
       className="top-0"

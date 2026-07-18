@@ -309,6 +309,7 @@ function createPreferences(
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
+    deletedAgentConversationRetentionDays: 30,
     dockIconStyle: "default",
     dockPlacement: "bottom",
     featureFlags: {},

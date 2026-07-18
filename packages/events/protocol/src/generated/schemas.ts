@@ -15,6 +15,7 @@ export const preferencesDesktopPreferencesSchema = {
     "defaultAgentProvider",
     "dockIconStyle",
     "dockPlacement",
+    "deletedAgentConversationRetentionDays",
     "fileDefaultOpenersByExtension",
     "featureFlags",
     "workbenchShortcuts",
@@ -255,6 +256,10 @@ export const preferencesDesktopPreferencesSchema = {
     dockPlacement: {
       type: "string",
       enum: ["bottom", "left"]
+    },
+    deletedAgentConversationRetentionDays: {
+      type: "integer",
+      enum: [15, 30]
     },
     fileDefaultOpenersByExtension: {
       type: "object",
@@ -1432,6 +1437,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "defaultAgentProvider",
         "dockIconStyle",
         "dockPlacement",
+        "deletedAgentConversationRetentionDays",
         "fileDefaultOpenersByExtension",
         "featureFlags",
         "workbenchShortcuts",
@@ -1672,6 +1678,10 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         dockPlacement: {
           type: "string",
           enum: ["bottom", "left"]
+        },
+        deletedAgentConversationRetentionDays: {
+          type: "integer",
+          enum: [15, 30]
         },
         fileDefaultOpenersByExtension: {
           type: "object",
@@ -1791,6 +1801,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "defaultAgentProvider",
         "dockIconStyle",
         "dockPlacement",
+        "deletedAgentConversationRetentionDays",
         "fileDefaultOpenersByExtension",
         "featureFlags",
         "workbenchShortcuts",
@@ -2031,6 +2042,10 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         dockPlacement: {
           type: "string",
           enum: ["bottom", "left"]
+        },
+        deletedAgentConversationRetentionDays: {
+          type: "integer",
+          enum: [15, 30]
         },
         fileDefaultOpenersByExtension: {
           type: "object",

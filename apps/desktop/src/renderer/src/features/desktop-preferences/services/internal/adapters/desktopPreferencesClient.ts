@@ -258,6 +258,7 @@ function createPreferencesKey(
     preferences.defaultAgentProvider,
     preferences.dockIconStyle,
     preferences.dockPlacement,
+    preferences.deletedAgentConversationRetentionDays ?? 30,
     preferences.minimizeAnimation ?? defaultDesktopMinimizeAnimation,
     stableFileDefaultOpenersByExtensionKey(
       preferences.fileDefaultOpenersByExtension
@@ -300,6 +301,8 @@ function preferencesEqual(
     left.defaultAgentProvider === right.defaultAgentProvider &&
     left.dockIconStyle === right.dockIconStyle &&
     left.dockPlacement === right.dockPlacement &&
+    (left.deletedAgentConversationRetentionDays ?? 30) ===
+      (right.deletedAgentConversationRetentionDays ?? 30) &&
     (left.minimizeAnimation ?? defaultDesktopMinimizeAnimation) ===
       (right.minimizeAnimation ?? defaultDesktopMinimizeAnimation) &&
     stableFileDefaultOpenersByExtensionKey(

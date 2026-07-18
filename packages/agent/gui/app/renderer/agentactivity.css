@@ -4403,6 +4403,12 @@ aside.workspace-agents-status-panel
   color: var(--folder);
 }
 
+[data-agent-file-mention="true"][data-agent-mention-kind="file"][data-upload-error="true"].tsh-agent-object-token--file {
+  border-color: color-mix(in srgb, var(--state-danger) 42%, transparent);
+  background: color-mix(in srgb, var(--state-danger) 8%, transparent);
+  color: var(--state-danger);
+}
+
 [data-agent-file-mention="true"][data-agent-mention-kind="file"][data-agent-file-entry-kind="directory"]
   .tsh-agent-object-token__icon {
   mask-image: url("./assets/icons/folder-filled.svg");
@@ -4691,11 +4697,6 @@ aside.workspace-agents-status-panel
 .workbench-window:has([data-agent-gui-workbench-header="true"])
   .agent-gui-node__detail-panel {
   position: relative;
-}
-
-.workbench-window:has([data-agent-gui-workbench-header="true"])
-  .agent-gui-node__detail-header {
-  display: none;
 }
 
 .workbench-window:has([data-agent-gui-workbench-header="true"])
@@ -5066,10 +5067,11 @@ aside.workspace-agents-status-panel
    the whole rich title can share the Agent icon's vertical center directly. */
 .agent-gui-workbench-header__rich-title {
   display: block;
-  width: 0;
+  width: max-content;
   min-width: 0;
+  max-width: calc(100% - 36px);
   height: 24px;
-  flex: 1 1 0;
+  flex: 0 1 auto;
   overflow: hidden;
 }
 
@@ -5139,7 +5141,7 @@ aside.workspace-agents-status-panel
 
 .agent-gui-workbench-header__session-title {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   max-width: min(100%, var(--agent-gui-workbench-header-title-max-width));
   margin-left: 4px;
   align-items: center;
@@ -5171,13 +5173,28 @@ aside.workspace-agents-status-panel
 .agent-gui-workbench-header__detail-title {
   display: flex;
   height: 100%;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   max-width: min(100%, var(--agent-gui-workbench-header-title-max-width));
   min-width: 0;
   align-items: center;
   gap: 8px;
   padding: 0 20px;
   pointer-events: none;
+}
+
+.agent-gui-workbench-header__session-title:has(
+    .agent-gui-workbench-header__session-menu-trigger
+  )
+  > .agent-gui-workbench-header__title-text,
+.agent-gui-workbench-header__detail-title:has(
+    .agent-gui-workbench-header__session-menu-trigger
+  )
+  > .agent-gui-workbench-header__title-text {
+  max-width: calc(100% - 36px);
+}
+
+.agent-gui-workbench-header__session-menu-trigger {
+  pointer-events: auto;
 }
 
 .workbench-window:has(
@@ -6344,7 +6361,11 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__conversation-item:focus-within,
-.agent-gui-node__conversation-item:hover {
+.agent-gui-node__conversation-item:hover,
+.agent-gui-node__conversation-item[data-state="open"],
+.agent-gui-node__conversation-item:has(
+  .agent-gui-node__conversation-actions [data-state="open"]
+) {
   background-color: var(--agent-gui-surface-hover);
 }
 
@@ -6387,7 +6408,13 @@ button.agent-gui-node__conversation-section-toggle:hover
   padding-left: 26px;
 }
 
-.agent-gui-node__conversation-item:hover .agent-gui-node__conversation-select {
+.agent-gui-node__conversation-item:hover .agent-gui-node__conversation-select,
+.agent-gui-node__conversation-item[data-state="open"]
+  .agent-gui-node__conversation-select,
+.agent-gui-node__conversation-item:has(
+    .agent-gui-node__conversation-actions [data-state="open"]
+  )
+  .agent-gui-node__conversation-select {
   grid-template-columns: minmax(0, 1fr) 0;
   padding-right: 96px;
 }
@@ -6436,6 +6463,22 @@ button.agent-gui-node__conversation-section-toggle:hover
   transform: translateY(-50%);
 }
 
+.agent-gui-node__conversation-more-button {
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.agent-gui-node__conversation-more-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.agent-gui-node__conversation-more-button:not(:disabled):hover,
+.agent-gui-node__conversation-more-button:not(:disabled):focus-visible {
+  background: var(--transparency-hover);
+  color: var(--text-primary);
+}
+
 .agent-gui-node__conversation-delete-button,
 .agent-gui-node__conversation-open-window-button,
 .agent-gui-node__conversation-pin-button {
@@ -6452,7 +6495,10 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__conversation-item:hover .agent-gui-node__conversation-actions,
-.agent-gui-node__conversation-actions:focus-within {
+.agent-gui-node__conversation-item[data-state="open"]
+  .agent-gui-node__conversation-actions,
+.agent-gui-node__conversation-actions:focus-within,
+.agent-gui-node__conversation-actions:has([data-state="open"]) {
   opacity: 1;
   /* Only in the visible state: fading in on hover stays smooth while
      leaving the row swaps back to the meta icon instantly, with no
@@ -6492,8 +6538,14 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__conversation-item[data-pending-delete="true"]
   .agent-gui-node__conversation-meta,
 .agent-gui-node__conversation-item:hover .agent-gui-node__conversation-meta,
+.agent-gui-node__conversation-item[data-state="open"]
+  .agent-gui-node__conversation-meta,
 .agent-gui-node__conversation-item:has(
     .agent-gui-node__conversation-actions:focus-within
+  )
+  .agent-gui-node__conversation-meta,
+.agent-gui-node__conversation-item:has(
+    .agent-gui-node__conversation-actions [data-state="open"]
   )
   .agent-gui-node__conversation-meta {
   width: 0;
@@ -6513,16 +6565,26 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__conversation-provider-icon {
-  display: inline-block;
   flex: 0 0 14px;
   width: 14px;
   height: 14px;
+}
+
+.agent-gui-node__conversation-provider-image {
+  display: block;
+  object-fit: contain;
+}
+
+.agent-gui-node__conversation-provider-mask-icon {
+  display: inline-block;
   color: var(--text-tertiary);
   background-color: currentColor;
-  mask: var(--agent-gui-conversation-provider-icon-url) center / contain
-    no-repeat;
-  -webkit-mask: var(--agent-gui-conversation-provider-icon-url) center / contain
-    no-repeat;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
 }
 
 .agent-gui-node__conversation-title-mention-icon {
@@ -7337,73 +7399,6 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__timeline-row[data-kind="system"] {
   justify-content: center;
-}
-
-.agent-gui-node__detail-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex: 0 0 auto;
-  box-sizing: border-box;
-  height: 64px;
-  min-height: 64px;
-  padding: 0 var(--agent-gui-detail-padding-x);
-}
-
-.agent-gui-node__detail-header-title-group {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  align-items: center;
-  gap: 6px;
-}
-
-.agent-gui-node__detail-header-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-primary);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 20px;
-}
-
-.agent-gui-node__detail-header-path-info {
-  display: inline-flex;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-secondary);
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    background-color 120ms ease,
-    color 120ms ease,
-    opacity 120ms ease,
-    visibility 120ms ease;
-}
-
-.agent-gui-node__detail-header-title-group:hover
-  .agent-gui-node__detail-header-path-info,
-.agent-gui-node__detail-header-title-group:focus-within
-  .agent-gui-node__detail-header-path-info {
-  opacity: 1;
-  visibility: visible;
-}
-
-.agent-gui-node__detail-header-path-info:hover,
-.agent-gui-node__detail-header-path-info:focus-visible {
-  background: var(--transparency-hover);
-  color: var(--text-primary);
-  outline: none;
 }
 
 .agent-gui-node__layout [data-slot="status-dot"],

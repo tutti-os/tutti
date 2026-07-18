@@ -135,7 +135,7 @@ func (b *sqliteProjectionBuilder) seedMutation(ctx context.Context, mutation act
 		target := mutation.Target
 		if _, err := b.store.PutAgentTarget(ctx, storesqlite.Target{
 			ID: target.ID, Provider: target.Provider, LaunchRefJSON: string(target.LaunchRef), Name: target.Name,
-			IconKey: dereference(target.IconKey), IconURL: target.IconURL, SidebarIconURL: target.SidebarIconURL, HeroImageURL: target.HeroImageURL,
+			IconKey: dereference(target.IconKey), IconURL: target.IconURL, MaskIconURL: target.MaskIconURL, HeroImageURL: target.HeroImageURL,
 			Enabled: target.Enabled, Source: target.Source, SortOrder: int(target.SortOrder), CreatedAtUnixMS: target.CreatedAtUnixMS,
 		}); err != nil {
 			return err
@@ -281,7 +281,7 @@ func (b *sqliteProjectionBuilder) buildMutation(ctx context.Context, descriptor 
 		}
 		mutation.Target = &activityreplication.Target{
 			ID: stored.ID, Provider: stored.Provider, LaunchRef: json.RawMessage(stored.LaunchRefJSON), Name: stored.Name,
-			IconKey: nullable(stored.IconKey), IconURL: stored.IconURL, SidebarIconURL: stored.SidebarIconURL, HeroImageURL: stored.HeroImageURL,
+			IconKey: nullable(stored.IconKey), IconURL: stored.IconURL, MaskIconURL: stored.MaskIconURL, HeroImageURL: stored.HeroImageURL,
 			Enabled: stored.Enabled, Source: stored.Source, SortOrder: int64(stored.SortOrder),
 			CreatedAtUnixMS: stored.CreatedAtUnixMS, UpdatedAtUnixMS: stored.UpdatedAtUnixMS,
 		}

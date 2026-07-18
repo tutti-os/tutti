@@ -18,7 +18,7 @@ interface UseComposerFileDropInput {
   promptFilesSupported: boolean;
   promptImagesSupported: boolean;
   addDraftImages: (images: AgentRichTextPastedImage[]) => void;
-  applyDroppedFileReferences: (files: readonly File[]) => Promise<void>;
+  addDraftFiles: (files: readonly File[]) => void;
   scheduleComposerFocus: () => void;
   onPromptImagesUnsupported?: () => void;
 }
@@ -44,7 +44,7 @@ export function useComposerFileDrop({
   promptFilesSupported,
   promptImagesSupported,
   addDraftImages,
-  applyDroppedFileReferences,
+  addDraftFiles,
   scheduleComposerFocus,
   onPromptImagesUnsupported
 }: UseComposerFileDropInput) {
@@ -155,11 +155,8 @@ export function useComposerFileDrop({
       clearDropOverlay();
       if (drop.regularFiles.length > 0) {
         editorHandleRef.current?.focusAtEnd();
-        void applyDroppedFileReferences(drop.regularFiles).then(() => {
-          if (!isDisposed) {
-            scheduleComposerFocus();
-          }
-        });
+        addDraftFiles(drop.regularFiles);
+        scheduleComposerFocus();
       }
       if (drop.imageFiles.length === 0) {
         return;
@@ -237,7 +234,7 @@ export function useComposerFileDrop({
     };
   }, [
     addDraftImages,
-    applyDroppedFileReferences,
+    addDraftFiles,
     inputDisabled,
     onPromptImagesUnsupported,
     promptFilesSupported,
