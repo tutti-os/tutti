@@ -179,24 +179,31 @@ describe("AgentToolSidebar", () => {
 
   it("routes host-owned panel-header drag gestures while controls remain interactive", () => {
     const handleDoubleClick = vi.fn();
+    const handleParentDoubleClick = vi.fn();
+    const handleParentPointerDown = vi.fn();
     const handlePointerDown = vi.fn();
     const { container } = render(
-      <AgentToolSidebar
-        containerWidth={900}
-        copy={copy}
-        headerDrag={{
-          mode: "host",
-          onDoubleClick: handleDoubleClick,
-          onPointerDown: handlePointerDown
-        }}
-        headerPlacement="panel"
-        panels={panels}
-        renderHeader={(actions) => <div>{actions}</div>}
-        renderPanel={({ tab }) => <div>{tab.panel} content</div>}
-        resizeContainerContentWidth={async (width) => ({ width })}
+      <div
+        onDoubleClick={handleParentDoubleClick}
+        onPointerDown={handleParentPointerDown}
       >
-        <main>Agent content</main>
-      </AgentToolSidebar>
+        <AgentToolSidebar
+          containerWidth={900}
+          copy={copy}
+          headerDrag={{
+            mode: "host",
+            onDoubleClick: handleDoubleClick,
+            onPointerDown: handlePointerDown
+          }}
+          headerPlacement="panel"
+          panels={panels}
+          renderHeader={(actions) => <div>{actions}</div>}
+          renderPanel={({ tab }) => <div>{tab.panel} content</div>}
+          resizeContainerContentWidth={async (width) => ({ width })}
+        >
+          <main>Agent content</main>
+        </AgentToolSidebar>
+      </div>
     );
 
     fireEvent.click(screen.getByLabelText("Open right panel"));
@@ -228,6 +235,8 @@ describe("AgentToolSidebar", () => {
     fireEvent.doubleClick(tabList as HTMLElement);
     expect(handlePointerDown).toHaveBeenCalledOnce();
     expect(handleDoubleClick).toHaveBeenCalledOnce();
+    expect(handleParentPointerDown).not.toHaveBeenCalled();
+    expect(handleParentDoubleClick).not.toHaveBeenCalled();
 
     fireEvent.pointerDown(screen.getByRole("tab", { name: "Files" }));
     fireEvent.doubleClick(screen.getByRole("tab", { name: "Files" }));
@@ -236,6 +245,8 @@ describe("AgentToolSidebar", () => {
 
     expect(handlePointerDown).toHaveBeenCalledOnce();
     expect(handleDoubleClick).toHaveBeenCalledOnce();
+    expect(handleParentPointerDown).not.toHaveBeenCalled();
+    expect(handleParentDoubleClick).not.toHaveBeenCalled();
   });
 
   it("keeps native-window header dragging as the default", () => {
