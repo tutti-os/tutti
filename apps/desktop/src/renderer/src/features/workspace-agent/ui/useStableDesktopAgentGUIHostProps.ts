@@ -26,7 +26,7 @@ export type DesktopAgentGUIHostProps = {
     | "providerReadinessGates"
     | "defaultAgentTargetId"
     | "providerAuthAccountLabels"
-    | "contextMentionProviders"
+    | "mentionService"
     | "workspaceAppIcons"
   >;
   hostActions: Pick<
@@ -98,7 +98,7 @@ export function useStableDesktopAgentGUIHostProps({
       providerReadinessGates: nextHostCapabilities.providerReadinessGates,
       defaultAgentTargetId: nextHostCapabilities.defaultAgentTargetId,
       providerAuthAccountLabels: nextHostCapabilities.providerAuthAccountLabels,
-      contextMentionProviders: nextHostCapabilities.contextMentionProviders,
+      mentionService: nextHostCapabilities.mentionService,
       workspaceAppIcons: nextHostCapabilities.workspaceAppIcons
     },
     hostActions: {

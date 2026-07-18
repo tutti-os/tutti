@@ -6,7 +6,6 @@ import type { AgentPromptContentBlock } from "../../../shared/contracts/dto/agen
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
-import type { AgentContextMentionProvider } from "../agentContextMentionProvider";
 import type { AgentExternalPromptFilePreparer } from "../model/agentExternalPromptFiles";
 import type { AgentProjectPathChangeMetadata } from "../AgentComposerSettingsMenus";
 import type { AgentSlashCommandCapability } from "../model/agentSlashCommandProviderPolicy";
@@ -313,7 +312,6 @@ export interface AgentComposerProps {
   promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
-  contextMentionProviders?: readonly AgentContextMentionProvider[];
   referenceProvenanceFilter?: AgentComposerReferenceProvenanceFilter | null;
 }
 

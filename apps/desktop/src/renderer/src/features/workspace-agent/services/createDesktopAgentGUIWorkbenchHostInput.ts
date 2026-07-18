@@ -52,9 +52,7 @@ import { createDesktopAgentExternalPromptFilePreparer } from "./internal/prepare
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi: AgentHostInputApi;
-  contextMentionProviders: NonNullable<
-    AgentGUIProps["hostCapabilities"]["contextMentionProviders"]
-  >;
+  contextMentionProviders: readonly AgentContextMentionProvider[];
   trackAgentProviderChatReady: (input: { provider: string }) => Promise<void>;
   createAgentGUIEngagementEventSink: (
     surface: AgentGUIAnalyticsSurface

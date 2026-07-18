@@ -21,7 +21,6 @@ import type {
   AgentComposerSlashStatusLimit,
   WorkspaceReferencePickResult
 } from "../AgentComposer";
-import type { AgentContextMentionProvider } from "../agentContextMentionProvider";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
 import type {
   AgentHomeSuggestionAction,
@@ -102,7 +101,6 @@ export interface AgentGUIDetailPaneProps {
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   onRequestComposerFocus: () => void;
-  contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
 }
@@ -182,7 +180,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   selectProjectDirectory,
   onRequestGitBranches,
   onRequestComposerFocus,
-  contextMentionProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
   renderProviderUnavailableState
 }: AgentGUIDetailPaneProps): React.JSX.Element {
@@ -488,8 +485,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       prepareExternalPromptFiles,
       promptAssetLimit,
       selectProjectDirectory: stableSelectProjectDirectory,
-      onRequestGitBranches: stableRequestGitBranches,
-      contextMentionProviders
+      onRequestGitBranches: stableRequestGitBranches
     }),
     [
       canQueueWhileBusy,
@@ -522,7 +518,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       composerActivePrompt,
       editQueuedPrompt,
       onCapabilitySettingsRequest,
-      contextMentionProviders,
       removeQueuedPrompt,
       prepareExternalPromptFiles,
       promptAssetLimit,

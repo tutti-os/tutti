@@ -1,7 +1,11 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useSnapshot } from "valtio";
-import type { AgentActivityRuntime, AgentGUIProps } from "@tutti-os/agent-gui";
-import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/context-mention-provider";
+import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
+import {
+  AGENT_CONTEXT_MENTION_PROVIDER_IDS,
+  type AgentContextMentionProvider
+} from "@tutti-os/agent-gui/context-mention-provider";
+import { createRichTextMentionService } from "@tutti-os/ui-rich-text/service";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type {
   WorkbenchDockPreviewCache,
@@ -17,9 +21,7 @@ import { DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS } from "./desktopAgen
 export function useDesktopAgentGUIContextMentions(input: {
   agentActivityRuntime: AgentActivityRuntime;
   appCenterService: IWorkspaceAppCenterService;
-  contextMentionProviders: NonNullable<
-    AgentGUIProps["hostCapabilities"]["contextMentionProviders"]
-  >;
+  contextMentionProviders: readonly AgentContextMentionProvider[];
   dockPreviewCache: WorkbenchDockPreviewCache;
   host: WorkbenchHostNodeBodyContext["host"];
   previewMode: boolean;
@@ -88,5 +90,17 @@ export function useDesktopAgentGUIContextMentions(input: {
     contextMentionProviders,
     workspaceAppMentionProvider
   ]);
-  return { effectiveContextMentionProviders, workspaceAppIcons };
+  const mentionService = useMemo(
+    () =>
+      createRichTextMentionService({
+        providers: effectiveContextMentionProviders
+      }),
+    [effectiveContextMentionProviders]
+  );
+  useEffect(() => () => mentionService.dispose(), [mentionService]);
+  return {
+    effectiveContextMentionProviders,
+    mentionService,
+    workspaceAppIcons
+  };
 }

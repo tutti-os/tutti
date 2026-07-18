@@ -9,14 +9,9 @@ import { repairMentionPaletteHighlight } from "@tutti-os/ui-rich-text/at-panel";
 import { clampSlashCommandHighlight } from "./model/agentSlashCommands";
 import type { AgentRichTextEditorHandle } from "./agentRichText/AgentRichTextEditor";
 import {
-  AgentMentionSearchController,
-  type AgentMentionSearchState
-} from "./AgentMentionSearchController";
-import {
   agentMentionItemKey,
   isAgentMentionItemDisabled
 } from "./AgentFileMentionPalette";
-import { DEFAULT_AGENT_MENTION_FILTER } from "./agentMentionSearchHelpers";
 import { type AgentFileMentionSuggestionState } from "./agentRichText/agentFileMentionExtension";
 import { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
@@ -32,10 +27,10 @@ import { useComposerFocusAndDrop } from "./composer/useComposerFocusAndDrop";
 import { useComposerPresentation } from "./composer/useComposerPresentation";
 import { AgentComposerView } from "./composer/AgentComposerView";
 import {
-  EMPTY_CONTEXT_MENTION_PROVIDERS,
   EMPTY_PROMPT_TIPS,
   EMPTY_PROVIDER_SKILLS
 } from "./composer/AgentComposerChrome";
+import { useAgentMentionSearchController } from "./composer/useAgentMentionSearchController";
 import type { AgentComposerProps } from "./composer/AgentComposer.types";
 import {
   agentComposerDraftAttachmentProjection,
@@ -137,7 +132,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     prepareExternalPromptFiles = null,
     promptAssetLimit = null,
     onRequestGitBranches = null,
-    contextMentionProviders = EMPTY_CONTEXT_MENTION_PROVIDERS,
     referenceProvenanceFilter = null
   } = props;
   const draftPrompt = agentComposerDraftPrompt(draftContent);
@@ -195,16 +189,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const selectedProjectSectionKey =
     composerSettings.selectedProjectSectionKey?.trim() ?? "";
   const previousSelectedProjectPathRef = useRef(selectedProjectPath);
-  const [mentionSearchState, setMentionSearchState] =
-    useState<AgentMentionSearchState>({
-      status: "idle",
-      query: "",
-      mode: "browse",
-      filter: DEFAULT_AGENT_MENTION_FILTER,
-      categories: [],
-      groups: [],
-      error: null
-    });
   const composerRef = useRef<HTMLFormElement | null>(null);
   const inputShellRef = useRef<HTMLDivElement | null>(null);
   const promptInputAreaRef = useRef<HTMLDivElement | null>(null);
@@ -219,9 +203,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   });
   draftByScopeKeyRef.current[draftScopeKey] = draftContent;
   const promptTipRef = useRef<HTMLSpanElement | null>(null);
-  const mentionControllerRef = useRef<AgentMentionSearchController | null>(
-    null
-  );
+  const { mentionControllerRef, mentionSearchState } =
+    useAgentMentionSearchController(referenceProvenanceFilter);
   const editorHandleRef = useRef<AgentRichTextEditorHandle | null>(null);
   const wasActiveRef = useRef(isActive);
   const lastComposerFocusRequestRef = useRef<number | null>(null);
@@ -333,27 +316,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   ]);
 
   useEffect(() => {
-    const controller = new AgentMentionSearchController({
-      contextMentionProviders
-    });
-    controller.setProvenanceCatalog(
-      referenceProvenanceFilter?.snapshot.catalog ?? null
-    );
-    // A provider replacement creates a fresh controller, so seed it with the
-    // filter captured by the same render before exposing it through the ref.
-    controller.setProvenanceFilter(
-      referenceProvenanceFilter?.snapshot.value ?? null
-    );
-    mentionControllerRef.current = controller;
-    const unsubscribe = controller.subscribe(setMentionSearchState);
-    return () => {
-      unsubscribe();
-      controller.dispose();
-      mentionControllerRef.current = null;
-    };
-  }, [contextMentionProviders]);
-
-  useEffect(() => {
     draftImagesRef.current = agentComposerDraftImages(draftContent);
     draftFilesRef.current = agentComposerDraftFiles(draftContent);
     draftLargeTextsRef.current = agentComposerDraftLargeTexts(draftContent);
@@ -370,18 +332,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       });
     }
   }, [draftContent, draftPrompt, goalDraftObjective]);
-
-  useEffect(() => {
-    mentionControllerRef.current?.setProvenanceCatalog(
-      referenceProvenanceFilter?.snapshot.catalog ?? null
-    );
-    mentionControllerRef.current?.setProvenanceFilter(
-      referenceProvenanceFilter?.snapshot.value ?? null
-    );
-  }, [
-    referenceProvenanceFilter?.snapshot.catalog,
-    referenceProvenanceFilter?.snapshot.value
-  ]);
 
   useEffect(() => {
     if (

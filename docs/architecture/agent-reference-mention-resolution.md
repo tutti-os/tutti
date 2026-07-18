@@ -50,6 +50,12 @@ surfaces. That snapshot is never written back to the mention URI or Markdown;
 if it is unavailable, the stored label and `MentionPill` semantic glyph are the
 required fallback.
 
+The same workspace-scoped service is the provider authority for composer `@`
+search. AgentGUI reads providers from the nearest `RichTextMentionService`
+boundary; hosts must not propagate a second provider list through AgentGUI view
+or composer props. This keeps candidate search, mention resolution, and
+read-only rendering on one capability contract.
+
 `workspace-reference` is a passive artifact reference. It is distinct from:
 
 - `workspace-app`, which routes an agent to an app command surface;
