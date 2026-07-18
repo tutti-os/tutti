@@ -105,7 +105,7 @@ func serviceSession(session ProviderRuntimeSession, resumable bool) Session {
 		normalizedProvider,
 		cloneComposerSettingsPointerValue(session.Settings),
 	)
-	metadata, _, err := agentactivitybiz.SplitSessionRuntimeContext(session.RuntimeContext)
+	metadata, internalRuntimeContext, err := agentactivitybiz.SplitSessionRuntimeContext(session.RuntimeContext)
 	if err != nil {
 		metadata = agentactivitybiz.SessionMetadata{Visible: session.Visible, Capabilities: []string{}}
 	}
@@ -127,6 +127,7 @@ func serviceSession(session ProviderRuntimeSession, resumable bool) Session {
 		CreatedAt:         createdAt,
 		UpdatedAt:         updatedAt,
 		Metadata:          metadata,
+		Isolation:         sessionIsolationFromRuntimeContext(internalRuntimeContext),
 	}
 }
 
@@ -193,6 +194,7 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 	result.ParentTurnID = strings.TrimSpace(session.ParentTurnID)
 	result.ParentToolCallID = strings.TrimSpace(session.ParentToolCallID)
 	result.Metadata = session.Metadata
+	result.Isolation = sessionIsolationFromRuntimeContext(session.InternalRuntimeContext)
 	return result
 }
 
@@ -236,6 +238,9 @@ func mergePersistedSessionState(session Session, persisted PersistedSession) Ses
 		session.UpdatedAt = timeFromUnixMSPointer(persisted.UpdatedAtUnixMS)
 	}
 	session.Metadata = persisted.Metadata
+	if isolation := sessionIsolationFromRuntimeContext(persisted.InternalRuntimeContext); isolation != nil {
+		session.Isolation = isolation
+	}
 	return session
 }
 

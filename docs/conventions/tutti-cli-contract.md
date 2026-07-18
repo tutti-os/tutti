@@ -214,6 +214,28 @@ change the created session's visibility. User-started sessions should stay on
 the normal visible default; only an explicit `--hidden` launcher input should
 create a hidden session.
 
+`agent start --isolation worktree` creates the session in
+`<state-dir>/agent/worktrees/<session-id>` on branch `tutti/<session-id>`, based
+on the resolved launch cwd's `HEAD`. The resolved cwd follows the normal
+explicit-cwd then caller-session-cwd chain. Isolation is fail-closed: a missing
+git executable, non-git cwd, nested repository or submodule, or failed
+`git worktree add` rejects the launch before a session is created. Source
+checkout changes are not copied; a dirty source checkout produces a warning.
+The session runtime context persists the worktree path, branch, and base commit,
+and compact session/action JSON exposes those coordinates as `isolation`.
+
+Successful isolated worktrees are reclaimed only by the startup and periodic
+agent worktree GC. GC retains a tree when it is dirty, its branch is ahead of
+the recorded base commit, its creating session remains resumable, or another
+session cwd points inside it. Runtime idleness, turn completion, and session
+end timestamps must not trigger worktree deletion. Every session create is
+synchronized with GC from cwd resolution through canonical session persistence
+or failure rollback. This prevents a sweep both from observing an isolated tree
+as an in-progress orphan and from deleting a managed tree while a non-isolated
+session is adopting a cwd inside it. Session creates remain concurrent with one
+another; only a GC sweep takes the exclusive side of this synchronization
+boundary.
+
 ## Naming Rules
 
 Command path segments and input names use lowercase kebab-case.

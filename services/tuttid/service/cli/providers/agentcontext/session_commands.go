@@ -30,6 +30,7 @@ type startInput struct {
 	DisplayPrompt   string   `cli:"display-prompt"`
 	Hidden          bool     `cli:"hidden"`
 	Images          []string `cli:"image" description:"Image file to attach to the initial prompt. May be passed multiple times."`
+	Isolation       string   `cli:"isolation" enum:"worktree" description:"Run the new session in a dedicated git worktree."`
 	Model           string   `cli:"model"`
 	PermissionMode  string   `cli:"permission-mode"`
 	Prompt          string   `cli:"prompt" validate:"required"`
@@ -55,6 +56,7 @@ type sessionActionResult struct {
 	Session          agentservice.Session
 	LaunchRequested  bool
 	WaitAfterVersion *uint64
+	Warnings         []cliservice.CommandWarning
 }
 
 func (p Provider) newStartCommand() cliservice.Command {
@@ -78,6 +80,7 @@ func (p Provider) newStartCommand() cliservice.Command {
 				DisplayPrompt:   input.DisplayPrompt,
 				Hidden:          input.Hidden,
 				Images:          input.Images,
+				Isolation:       input.Isolation,
 				Model:           input.Model,
 				PermissionMode:  input.PermissionMode,
 				Prompt:          input.Prompt,
@@ -95,6 +98,7 @@ type startFields struct {
 	DisplayPrompt   string
 	Hidden          bool
 	Images          []string
+	Isolation       string
 	Model           string
 	PermissionMode  string
 	Prompt          string
@@ -134,6 +138,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		Title:                  optionalStringPointer(input.Title),
 		Visible:                hiddenVisibleOverride(input.Hidden),
 		ConversationDetailMode: p.composerConversationDetailMode(ctx),
+		Isolation:              input.Isolation,
 	})
 	if err != nil {
 		return nil, err
@@ -145,7 +150,11 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		}
 		launchRequested = true
 	}
-	return sessionActionResult{Session: session, LaunchRequested: launchRequested}, nil
+	warnings := make([]cliservice.CommandWarning, 0, len(session.Warnings))
+	for _, warning := range session.Warnings {
+		warnings = append(warnings, cliservice.CommandWarning{Code: warning.Code, Message: warning.Message})
+	}
+	return sessionActionResult{Session: session, LaunchRequested: launchRequested, Warnings: warnings}, nil
 }
 
 func (p Provider) composerConversationDetailMode(ctx context.Context) string {
@@ -407,6 +416,9 @@ func sessionActionOutputSpec() framework.OutputSpec {
 				}
 				return value
 			},
+		},
+		Warnings: func(result any) []cliservice.CommandWarning {
+			return append([]cliservice.CommandWarning(nil), result.(sessionActionResult).Warnings...)
 		},
 	}
 }

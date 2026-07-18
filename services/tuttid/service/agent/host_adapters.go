@@ -430,6 +430,10 @@ func (p serviceHostRuntimeOperationEventPublisher) PublishRuntimeOperationEvent(
 // adapters. Production wiring constructs exactly one Host and installs it on
 // Service; isolated package consumers may use ApplicationHost for lazy setup.
 func NewApplicationHost(s *Service) *agenthost.Host {
+	return newApplicationHost(s, s)
+}
+
+func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollector) *agenthost.Host {
 	if s == nil {
 		return nil
 	}
@@ -444,7 +448,8 @@ func NewApplicationHost(s *Service) *agenthost.Host {
 		CommitObserver:    serviceHostCommitObserver{service: s},
 		RuntimeOperations: s.RuntimeOperationStore, OperationEvents: serviceHostRuntimeOperationEventPublisher{service: s},
 		OperationOwner: s.RuntimeOperationOwner, StaleTurnSettler: s.StaleTurnSettler,
-		GoalStore: s.GoalStateStore, GoalRuntime: serviceHostGoalRuntime{service: s}, GoalInbox: s.GoalReconcileInboxStore,
+		WorktreeGC: worktreeGC,
+		GoalStore:  s.GoalStateStore, GoalRuntime: serviceHostGoalRuntime{service: s}, GoalInbox: s.GoalReconcileInboxStore,
 		GoalOwner: s.GoalOperationOwner, GoalClock: serviceHostGoalClock{service: s},
 		GoalAttemptTimeout: s.GoalOperationAttemptTimeout, GoalRecoveryBudget: s.GoalOperationRecoveryBudget,
 		GoalMaxAttempts: s.GoalOperationMaxAttempts, GoalDispatchDeadline: s.GoalOperationDispatchDeadline,

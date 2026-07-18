@@ -41,6 +41,9 @@ func sessionSummaryValue(session agentservice.Session) map[string]any {
 	if session.Title != nil {
 		value["title"] = strings.TrimSpace(*session.Title)
 	}
+	if session.Isolation != nil {
+		value["isolation"] = isolationCompactValue(*session.Isolation)
+	}
 	return value
 }
 
@@ -65,7 +68,17 @@ func sessionActionValue(session agentservice.Session) map[string]any {
 			value["title"] = title
 		}
 	}
+	if session.Isolation != nil {
+		value["isolation"] = isolationCompactValue(*session.Isolation)
+	}
 	return value
+}
+
+func isolationCompactValue(isolation agentservice.SessionIsolation) map[string]any {
+	return map[string]any{
+		"mode": strings.TrimSpace(isolation.Mode), "worktreePath": strings.TrimSpace(isolation.WorktreePath),
+		"branch": strings.TrimSpace(isolation.Branch), "baseCommit": strings.TrimSpace(isolation.BaseCommit),
+	}
 }
 
 func sessionSummaryValues(sessions []agentservice.Session) []any {

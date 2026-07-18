@@ -51,6 +51,7 @@ type Fixture struct {
 	RecoverInteractive bool
 	DisableGoalInbox   bool
 	FailCommitObserver bool
+	WorktreeGCSweepErr error
 }
 
 type SessionObservation struct {
@@ -177,14 +178,17 @@ func TitlePolicyScenarios() []Scenario {
 }
 
 func CoordinatorScenarios() []Scenario {
-	result := make([]Scenario, 0, 4)
+	result := make([]Scenario, 0, 5)
 	for _, scenario := range Scenarios() {
 		switch scenario.Name {
 		case "exact turn cancel", "interactive response", "plan decision":
 			result = append(result, scenario)
 		}
 	}
-	return append(result, Scenario{Name: "recover operations before stale turns", run: runRecoveryOrder})
+	return append(result,
+		Scenario{Name: "recover operations before stale turns and worktree sweep", run: runRecoveryOrder},
+		Scenario{Name: "worktree sweep failure propagates", run: runWorktreeSweepFailure},
+	)
 }
 
 func GoalScenarios() []Scenario {
@@ -668,7 +672,7 @@ func runRecoveryOrder(ctx context.Context, driver Driver) error {
 		return fmt.Errorf("recover host: %w", err)
 	}
 	steps := driver.Metrics().RecoverySteps
-	want := []string{"runtime_requeue", "runtime_complete", "goal_requeue", "goal_inbox_requeue", "stale_settle"}
+	want := []string{"runtime_requeue", "runtime_complete", "goal_requeue", "goal_inbox_requeue", "stale_settle", "worktree_sweep"}
 	if len(steps) != len(want) {
 		return fmt.Errorf("recovery steps=%v, want %v", steps, want)
 	}

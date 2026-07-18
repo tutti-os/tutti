@@ -118,13 +118,18 @@ func (f *fakeAgentSessions) Create(_ context.Context, workspaceID string, input 
 	if input.Visible != nil {
 		visible = *input.Visible
 	}
-	return agentservice.Session{
+	session := agentservice.Session{
 		ID:            "SESSION-NEW",
 		AgentTargetID: input.AgentTargetID,
 		Provider:      input.Provider,
 		Cwd:           cwd,
 		Visible:       visible,
-	}, nil
+	}
+	if input.Isolation == "worktree" {
+		session.Isolation = &agentservice.SessionIsolation{Mode: "worktree", WorktreePath: "/state/worktree", Branch: "tutti/SESSION-NEW", BaseCommit: "abc123"}
+		session.Warnings = []agentservice.SessionWarning{{Code: "worktree_base_dirty", Message: "dirty source"}}
+	}
+	return session, nil
 }
 
 func (f *fakeAgentSessions) Get(_ context.Context, workspaceID string, sessionID string) (agentservice.Session, error) {
@@ -1288,6 +1293,33 @@ func TestStartCommandInheritsCallerSessionCwd(t *testing.T) {
 	}
 	if sessions.createInput.Cwd == nil || *sessions.createInput.Cwd != "/workspace/a" {
 		t.Fatalf("Cwd = %#v, want /workspace/a", sessions.createInput.Cwd)
+	}
+}
+
+func TestStartCommandExposesAndPassesWorktreeIsolation(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+	properties := command.Capability.InputSchema["properties"].(map[string]any)
+	isolationSchema, ok := properties["isolation"].(map[string]any)
+	if !ok {
+		t.Fatalf("isolation schema = %#v", properties["isolation"])
+	}
+	enum, ok := isolationSchema["enum"].([]string)
+	if !ok || len(enum) != 1 || enum[0] != "worktree" {
+		t.Fatalf("isolation enum = %#v", isolationSchema["enum"])
+	}
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"agent-id": agenttargetbiz.IDLocalCodex, "cwd": "/workspace/a", "isolation": "worktree", "prompt": "do work"},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sessions.createInput.Isolation != "worktree" {
+		t.Fatalf("CreateSessionInput.Isolation = %q", sessions.createInput.Isolation)
+	}
+	if len(output.Warnings) != 1 || output.Warnings[0].Code != "worktree_base_dirty" {
+		t.Fatalf("output warnings = %#v", output.Warnings)
 	}
 }
 

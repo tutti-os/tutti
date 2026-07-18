@@ -135,6 +135,10 @@ Migrated agent runtime state should derive from the same root:
           assets/
     sessions/
       <date>-<sequence>/
+    worktrees/
+      <agent-session-id>/
+      .metadata/
+        <agent-session-id>.json
     runs/
       <agent-session-id>/
         sidecar-manifest.json
@@ -189,6 +193,18 @@ live under the matching run directory. Codex sessions use `codex-home` and
 receive it through `CODEX_HOME`; Tutti Agent sessions use `tutti-agent-home`
 and receive it through `TUTTI_AGENT_HOME`. `agent/attachments` stores persisted
 prompt attachments by agent session.
+
+`agent/worktrees/<agent-session-id>` is a daemon-managed Git checkout for a
+worktree-isolated agent session. The tuttid agent adapter owns the corresponding
+`.metadata/<agent-session-id>.json` record used for enumeration, failed-create
+rollback, and orphan recovery; it records the repository root, branch, base
+commit, and session scope. Canonical isolation coordinates remain in the
+session's existing runtime-context/metadata JSON, so this layout does not add a
+SQLite schema. Host startup recovery and the periodic Host worker only schedule
+cleanup through the adapter port. A tree is deleted only when it is clean with
+no commits ahead of its base, its creator is absent or not resumable, and no
+session cwd is inside the tree. Turn/runtime completion and session end times
+must never trigger this cleanup.
 
 `agent/extensions` is daemon-owned verified Agent Extension state. Version
 directories are immutable after installation; `active.json` selects the

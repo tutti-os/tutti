@@ -33,6 +33,10 @@ const (
 	ReasonEventStreamServiceUnavailable                  = "event_stream_service_unavailable"
 	ReasonInvalidEntryKind                               = "invalid_entry_kind"
 	ReasonInvalidPath                                    = "invalid_path"
+	ReasonNotAGitRepo                                    = "not_a_git_repo"
+	ReasonGitUnavailable                                 = "git_unavailable"
+	ReasonUnsupportedRepoLayout                          = "unsupported_repo_layout"
+	ReasonWorktreeCreateFailed                           = "worktree_create_failed"
 	ReasonInvalidUploadSource                            = "invalid_upload_source"
 	ReasonInvalidWorkbenchSnapshot                       = "invalid_workbench_snapshot"
 	ReasonMalformedRequest                               = "malformed_request"
@@ -324,6 +328,15 @@ func Classify(err error) *ProtocolError {
 		return InvalidRequest("agent.invalid_model", WithCause(err), WithParams(params))
 	}
 	switch {
+	case errors.Is(err, agentservice.ErrNotAGitRepo):
+		return InvalidRequest(ReasonNotAGitRepo, WithCause(err))
+	case errors.Is(err, agentservice.ErrGitUnavailable):
+		return ServiceUnavailable(ReasonGitUnavailable, WithCause(err))
+	case errors.Is(err, agentservice.ErrUnsupportedRepoLayout):
+		return InvalidRequest(ReasonUnsupportedRepoLayout, WithCause(err))
+	case errors.Is(err, agentservice.ErrWorktreeCreateFailed):
+		return New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, ReasonWorktreeCreateFailed,
+			WithCause(err), WithParams(map[string]any{"detail": err.Error()}))
 	case errors.Is(err, agentservice.ErrSubmitDeliveryUnknown):
 		return New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, ReasonAgentSubmitDeliveryUnknown, WithCause(err))
 	case errors.Is(err, workspacedata.ErrWorkspaceNotFound):

@@ -46,6 +46,8 @@ type Service struct {
 	GoalOperationMaxAttempts       int
 	GoalOperationDispatchDeadline  time.Duration
 	SessionDirectoryAllocator      SessionDirectoryAllocator
+	WorktreeStateDir               string
+	WorkspaceIDs                   func(context.Context) ([]string, error)
 	PromptAttachmentStore          PromptAttachmentStore
 	RuntimePreparer                runtimeprep.Preparer
 	ComputerUseAvailable           func() bool
@@ -71,6 +73,7 @@ type Service struct {
 	sessionSettingsLocks           map[string]*serviceSessionSettingsLock
 	applicationHostMu              sync.Mutex
 	applicationHost                *agenthost.Host
+	worktreeIsolationMu            sync.RWMutex
 	generatedFilesCacheMu          sync.Mutex
 	generatedFilesCache            map[string]generatedFilesCacheEntry
 	// liveModelPersistedScanMissAtUnixMS memoizes, per live-model cache key,
@@ -182,6 +185,8 @@ type Session struct {
 	UpdatedAt            *time.Time
 	EndedAt              *time.Time
 	Metadata             agentactivitybiz.SessionMetadata
+	Isolation            *SessionIsolation
+	Warnings             []SessionWarning
 	// Protocol v2 turn state (agent-gui refactor plan): the session keeps an
 	// activeTurnId reference; phase/outcome/error live on the turn entity.
 	ActiveTurnID           string
@@ -189,6 +194,18 @@ type Session struct {
 	LatestTurn             *agentactivitybiz.Turn
 	LatestTurnInteractions []agentactivitybiz.Interaction
 	PendingInteractions    []agentactivitybiz.Interaction
+}
+
+type SessionIsolation struct {
+	Mode         string `json:"mode"`
+	WorktreePath string `json:"worktreePath"`
+	Branch       string `json:"branch"`
+	BaseCommit   string `json:"baseCommit"`
+}
+
+type SessionWarning struct {
+	Code    string
+	Message string
 }
 
 type ListSessionsInput struct {
@@ -455,6 +472,7 @@ type CreateSessionInput struct {
 	ProviderTargetRef      map[string]any
 	ReasoningEffort        *string
 	RuntimeContext         map[string]any
+	Isolation              string
 	Speed                  *string
 	ConversationDetailMode string
 	Visible                *bool

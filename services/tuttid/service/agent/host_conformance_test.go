@@ -239,6 +239,10 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	if fixture.DisableGoalInbox {
 		d.service.GoalReconcileInboxStore = nil
 	}
+	d.service.SetApplicationHost(newApplicationHost(d.service, conformanceWorktreeGarbageCollector{
+		steps: &steps,
+		err:   fixture.WorktreeGCSweepErr,
+	}))
 
 	var goalMu sync.Mutex
 	var providerGoal map[string]any
@@ -777,6 +781,16 @@ type conformanceStaleTurnSettler struct{ steps *[]string }
 func (s conformanceStaleTurnSettler) SettleStaleTurnsOnStartup(context.Context) error {
 	*s.steps = append(*s.steps, "stale_settle")
 	return nil
+}
+
+type conformanceWorktreeGarbageCollector struct {
+	steps *[]string
+	err   error
+}
+
+func (c conformanceWorktreeGarbageCollector) SweepWorktreeIsolation(context.Context) error {
+	*c.steps = append(*c.steps, "worktree_sweep")
+	return c.err
 }
 
 func (d *legacyHostConformanceDriver) recordSubmittedTurn(workspaceID, sessionID, turnID string) {

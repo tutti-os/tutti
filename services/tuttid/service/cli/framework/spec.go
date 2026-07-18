@@ -82,6 +82,7 @@ type OutputSpec struct {
 	PlainText     func(any) string
 	Markdown      func(any) string
 	ListCompact   bool
+	Warnings      func(any) []cliservice.CommandWarning
 }
 
 type TableOutputSpec struct {

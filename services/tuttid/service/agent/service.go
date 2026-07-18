@@ -101,7 +101,18 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		value(input.Model),
 		input.ReasoningEffort,
 	)
+	isolationMode := strings.TrimSpace(input.Isolation)
+	if isolationMode != "" && isolationMode != WorktreeIsolationMode {
+		return Session{}, fmt.Errorf("%w: unsupported session isolation mode %q", ErrInvalidArgument, isolationMode)
+	}
+	s.worktreeIsolationMu.RLock()
+	defer s.worktreeIsolationMu.RUnlock()
 	nodeStartedAt = time.Now()
+	if isolationMode == WorktreeIsolationMode && strings.TrimSpace(value(input.Cwd)) == "" {
+		err := &WorktreeIsolationError{Kind: ErrNotAGitRepo}
+		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
+		return Session{}, err
+	}
 	cwd, err := s.resolveCwd(ctx, input.Cwd)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
@@ -111,6 +122,25 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	logAgentSubmitTrace("service.create.cwd_resolved", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
 		"cwd": cwd,
 	})
+	var isolation *SessionIsolation
+	var isolationWarnings []SessionWarning
+	keepWorktree := false
+	if isolationMode == WorktreeIsolationMode {
+		created, warnings, createErr := s.createSessionWorktree(ctx, workspaceID, cwd, input.AgentSessionID)
+		if createErr != nil {
+			return Session{}, createErr
+		}
+		isolation = &created
+		isolationWarnings = warnings
+		cwd = created.WorktreePath
+		input.Cwd = stringPointer(cwd)
+		input.RuntimeContext = sessionIsolationRuntimeContext(input.RuntimeContext, created)
+		defer func() {
+			if !keepWorktree {
+				s.rollbackSessionWorktree(context.Background(), created)
+			}
+		}()
+	}
 	if providerTargetRefKind(input.ProviderTargetRef) == "agent_extension" {
 		nodeStartedAt = time.Now()
 		if err := s.validateExtensionComposerSettingsForCreate(ctx, workspaceID, cwd, input); err != nil {
@@ -124,6 +154,9 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt, err)
 		return Session{}, err
+	}
+	if isolation != nil {
+		prepared.Cwd = isolation.WorktreePath
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.runtime_prepared", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{"cwd": prepared.Cwd, "env_count": len(prepared.Env)})
@@ -156,30 +189,44 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	if err != nil {
 		return Session{}, err
 	}
+	keepWorktree = true
 	session := hostResult.Session
 	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.Metadata, map[string]any{"provider_runtime_status": session.Status})
 	persistedSession := persistedSessionFromHost(hostResult.Canonical)
 	if strings.TrimSpace(session.ID) == "" && strings.TrimSpace(hostResult.TurnID) != "" {
-		return s.Get(ctx, workspaceID, input.AgentSessionID)
+		result, getErr := s.Get(ctx, workspaceID, input.AgentSessionID)
+		return decorateIsolatedSession(result, isolation, isolationWarnings), getErr
 	}
 	if hostResult.Kind == "goalControl" {
-		return s.Get(ctx, workspaceID, session.ID)
+		result, getErr := s.Get(ctx, workspaceID, session.ID)
+		return decorateIsolatedSession(result, isolation, isolationWarnings), getErr
 	}
 	if len(normalizedContent) == 0 {
-		return serviceSessionWithPersistedFreshness(
+		return decorateIsolatedSession(serviceSessionWithPersistedFreshness(
 			session,
 			persistedSession,
 			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
-		), nil
+		), isolation, isolationWarnings), nil
 	}
 	logAgentSubmitTrace("service.create.prompt_validated", workspaceID, session.ID, input.Metadata, nil)
 	logAgentSubmitTrace("service.create.prompt_prepared", workspaceID, session.ID, input.Metadata, map[string]any{"content_block_count": len(normalizedContent)})
 	logAgentSubmitTrace("service.create.exec_resolved", workspaceID, session.ID, input.Metadata, map[string]any{"turn_id": hostResult.TurnID})
-	return serviceSessionWithPersistedFreshness(
+	return decorateIsolatedSession(serviceSessionWithPersistedFreshness(
 		session,
 		persistedSession,
 		s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
-	), nil
+	), isolation, isolationWarnings), nil
+}
+
+func decorateIsolatedSession(session Session, isolation *SessionIsolation, warnings []SessionWarning) Session {
+	if isolation != nil {
+		copy := *isolation
+		session.Isolation = &copy
+	}
+	if len(warnings) > 0 {
+		session.Warnings = append([]SessionWarning(nil), warnings...)
+	}
+	return session
 }
 
 func (s *Service) applyCreateSessionComposerDefaults(ctx context.Context, input *CreateSessionInput) error {

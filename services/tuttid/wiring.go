@@ -400,6 +400,18 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.SessionDirectoryAllocator = agentservice.LocalSessionDirectoryAllocator{
 		StateDir: tuttitypes.DefaultStateDir(),
 	}
+	agentSessionService.WorktreeStateDir = tuttitypes.DefaultStateDir()
+	agentSessionService.WorkspaceIDs = func(ctx context.Context) ([]string, error) {
+		workspaces, err := store.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]string, 0, len(workspaces))
+		for _, workspace := range workspaces {
+			ids = append(ids, workspace.ID)
+		}
+		return ids, nil
+	}
 	agentSessionService.PromptAttachmentStore = agentservice.PromptAttachmentStore{
 		RootDir:       tuttitypes.DefaultStateDir(),
 		SourceRootDir: filepath.Join(tuttitypes.DefaultStateDir(), "agent-prompt-assets"),
@@ -419,6 +431,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	go agentHost.RunRuntimeOperationWorker(ctx)
 	go agentHost.RunGoalOperationWorker(ctx)
 	go agentHost.RunGoalReconcileInboxWorker(ctx)
+	go agentHost.RunWorktreeGarbageCollectionWorker(ctx)
 
 	workspaceService := workspaceservice.CatalogService{
 		Store:            store,

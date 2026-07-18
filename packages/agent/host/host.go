@@ -22,6 +22,7 @@ type Config struct {
 	OperationOwner       string
 	Scheduler            Scheduler
 	StaleTurnSettler     StaleTurnSettler
+	WorktreeGC           WorktreeGarbageCollector
 	GoalStore            GoalStateStore
 	GoalRuntime          GoalRuntimeController
 	GoalInbox            GoalReconcileInboxStore
@@ -51,6 +52,7 @@ type Host struct {
 	owner                string
 	scheduler            Scheduler
 	staleTurns           StaleTurnSettler
+	worktreeGC           WorktreeGarbageCollector
 	goals                GoalStateStore
 	goalRuntime          GoalRuntimeController
 	goalInbox            GoalReconcileInboxStore
@@ -75,7 +77,8 @@ func New(config Config) *Host {
 		observer: config.LifecycleObserver, commitObserver: config.CommitObserver,
 		operations: config.RuntimeOperations, events: config.OperationEvents,
 		owner: config.OperationOwner, scheduler: config.Scheduler, staleTurns: config.StaleTurnSettler,
-		goals: config.GoalStore, goalRuntime: config.GoalRuntime, goalInbox: config.GoalInbox,
+		worktreeGC: config.WorktreeGC,
+		goals:      config.GoalStore, goalRuntime: config.GoalRuntime, goalInbox: config.GoalInbox,
 		goalOwner: config.GoalOwner, goalClock: config.GoalClock,
 		goalAttemptTimeout: config.GoalAttemptTimeout, goalRecoveryBudget: config.GoalRecoveryBudget,
 		goalMaxAttempts: config.GoalMaxAttempts, goalDispatchDeadline: config.GoalDispatchDeadline,

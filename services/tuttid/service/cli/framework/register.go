@@ -40,7 +40,14 @@ func Register[T any](spec CommandSpec[T]) cliservice.Command {
 			if err != nil {
 				return cliservice.CommandOutput{}, err
 			}
-			return FormatOutput(spec.Output, request.OutputMode, result)
+			output, err := FormatOutput(spec.Output, request.OutputMode, result)
+			if err != nil {
+				return cliservice.CommandOutput{}, err
+			}
+			if spec.Output.Warnings != nil {
+				output.Warnings = spec.Output.Warnings(result)
+			}
+			return output, nil
 		},
 	}
 }

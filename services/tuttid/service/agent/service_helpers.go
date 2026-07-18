@@ -42,6 +42,11 @@ func cloneSession(session Session) Session {
 		title := *session.Title
 		cloned.Title = &title
 	}
+	if session.Isolation != nil {
+		isolation := *session.Isolation
+		cloned.Isolation = &isolation
+	}
+	cloned.Warnings = append([]SessionWarning(nil), session.Warnings...)
 	if session.UpdatedAt != nil {
 		updatedAt := *session.UpdatedAt
 		cloned.UpdatedAt = &updatedAt
