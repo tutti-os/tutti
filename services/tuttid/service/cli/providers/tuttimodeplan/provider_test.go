@@ -61,7 +61,7 @@ func (plans *recordingPlans) GetViewForAgent(_ context.Context, input tuttimodep
 }
 
 func TestProviderExposesOnlyAgentProposalObservationCommands(t *testing.T) {
-	commands := NewProvider(nil, &recordingPlans{}).Commands()
+	commands := NewProvider(nil, &recordingPlans{}, nil).Commands()
 	wantIDs := []string{
 		"tutti-mode-plan.plan.propose",
 		"tutti-mode-plan.plan.revise",
@@ -98,7 +98,7 @@ func TestRunProposeUsesAgentSessionWithoutInventingToolCallProvenance(t *testing
 		t.Fatalf("write proposal: %v", err)
 	}
 	plans := &recordingPlans{}
-	result, err := NewProvider(nil, plans).runPropose(context.Background(), framework.InvokeContext{
+	result, err := NewProvider(nil, plans, nil).runPropose(context.Background(), framework.InvokeContext{
 		WorkspaceID: "workspace-1",
 		Request: cliservice.InvokeRequest{Context: cliservice.InvokeContext{
 			AgentSessionID:  "session-1",
@@ -119,12 +119,57 @@ func TestRunProposeUsesAgentSessionWithoutInventingToolCallProvenance(t *testing
 	}
 }
 
+type stubActiveTurns struct {
+	turnID         string
+	err            error
+	gotWorkspaceID string
+	gotSessionID   string
+}
+
+func (turns *stubActiveTurns) PersistedActiveTurnID(_ context.Context, workspaceID string, agentSessionID string) (string, error) {
+	turns.gotWorkspaceID = workspaceID
+	turns.gotSessionID = agentSessionID
+	return turns.turnID, turns.err
+}
+
+func TestRunProposeStampsCallerActiveTurnBestEffort(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "proposal.md")
+	if err := os.WriteFile(path, configurationMarkdownFixture(), 0o600); err != nil {
+		t.Fatalf("write proposal: %v", err)
+	}
+	for name, testCase := range map[string]struct {
+		turns *stubActiveTurns
+		want  string
+	}{
+		"stamps the persisted active turn": {turns: &stubActiveTurns{turnID: " turn-9 "}, want: "turn-9"},
+		// Anchoring is decoration; a pointer read failure must not fail propose.
+		"resolver failure degrades to no anchor": {turns: &stubActiveTurns{err: errors.New("pointer read failed")}, want: ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			plans := &recordingPlans{}
+			_, err := NewProvider(nil, plans, testCase.turns).runPropose(context.Background(), framework.InvokeContext{
+				WorkspaceID: "workspace-1",
+				Request:     cliservice.InvokeRequest{Context: cliservice.InvokeContext{AgentSessionID: "session-1"}},
+			}, proposeInput{File: path, RequestID: "proposal-request-1"})
+			if err != nil {
+				t.Fatalf("runPropose() error = %v", err)
+			}
+			if plans.proposeInput.SourceTurnID != testCase.want {
+				t.Fatalf("SourceTurnID = %q, want %q", plans.proposeInput.SourceTurnID, testCase.want)
+			}
+			if testCase.turns.gotWorkspaceID != "workspace-1" || testCase.turns.gotSessionID != "session-1" {
+				t.Fatalf("resolver scope = (%q, %q)", testCase.turns.gotWorkspaceID, testCase.turns.gotSessionID)
+			}
+		})
+	}
+}
+
 func TestAgentPlanCommandsRequireAndPropagateCallerSession(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "revision.md")
 	if err := os.WriteFile(path, configurationMarkdownFixture(), 0o600); err != nil {
 		t.Fatalf("write revision: %v", err)
 	}
-	provider := NewProvider(nil, &recordingPlans{})
+	provider := NewProvider(nil, &recordingPlans{}, nil)
 	missingSession := framework.InvokeContext{WorkspaceID: "workspace-1"}
 	for name, invoke := range map[string]func() error{
 		"revise": func() error {
@@ -145,7 +190,7 @@ func TestAgentPlanCommandsRequireAndPropagateCallerSession(t *testing.T) {
 	}
 
 	plans := &recordingPlans{}
-	provider = NewProvider(nil, plans)
+	provider = NewProvider(nil, plans, nil)
 	invoke := framework.InvokeContext{
 		WorkspaceID: "workspace-1",
 		Request:     cliservice.InvokeRequest{Context: cliservice.InvokeContext{AgentSessionID: " session-1 "}},
@@ -163,7 +208,7 @@ func TestAgentPlanCommandsRequireAndPropagateCallerSession(t *testing.T) {
 
 func TestAgentPlanScopeMismatchIsReportedAsNotFoundInput(t *testing.T) {
 	plans := &recordingPlans{getForAgentError: workspacedata.ErrWorkspaceWorkflowNotFound}
-	_, err := NewProvider(nil, plans).runGet(context.Background(), framework.InvokeContext{
+	_, err := NewProvider(nil, plans, nil).runGet(context.Background(), framework.InvokeContext{
 		WorkspaceID: "workspace-1",
 		Request:     cliservice.InvokeRequest{Context: cliservice.InvokeContext{AgentSessionID: "session-2"}},
 	}, getInput{WorkflowID: "workflow-1"})

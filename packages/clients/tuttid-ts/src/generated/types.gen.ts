@@ -4937,7 +4937,7 @@ export type ListWorkspaceWorkflowsData = {
   query: {
     sourceSessionId: string;
     /**
-     * Currently only pending checkpoints are listable.
+     * When omitted, returns every workflow for the source session. Pass pending to return only workflows with a pending checkpoint.
      */
     checkpointStatus?: "pending";
   };

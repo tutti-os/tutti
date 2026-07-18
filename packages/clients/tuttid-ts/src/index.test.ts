@@ -1750,6 +1750,29 @@ test("shared tuttid client lists recoverable workspace workflows by session", as
   );
 });
 
+test("shared tuttid client lists every workspace workflow by session", async () => {
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      assert.equal(request.method, "GET");
+      assert.equal(url.pathname, "/v1/workspaces/workspace-1/workflows");
+      assert.equal(url.searchParams.get("sourceSessionId"), "session-1");
+      assert.equal(url.searchParams.has("checkpointStatus"), false);
+      return new Response(JSON.stringify({ workflows: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+  });
+
+  assert.deepEqual(
+    await client.listWorkspaceWorkflows("workspace-1", "session-1"),
+    []
+  );
+});
+
 test("shared tuttid client reads and revision-updates Tutti mode activation", async () => {
   const activation = {
     agentSessionId: "session-1",

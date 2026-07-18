@@ -18,6 +18,7 @@ import (
 
 type TuttiModePlanService interface {
 	GetView(context.Context, tuttimodeplanservice.GetInput) (tuttimodeplanservice.SnapshotView, error)
+	ListBySourceSession(context.Context, string, string) ([]tuttimodeplanservice.SnapshotView, error)
 	ListPendingBySourceSession(context.Context, string, string) ([]tuttimodeplanservice.SnapshotView, error)
 	Decide(context.Context, tuttimodeplanservice.DecideInput) (tuttimodeplanservice.DecisionResult, error)
 }
@@ -33,7 +34,13 @@ func (api DaemonAPI) ListWorkspaceWorkflows(ctx context.Context, request tuttige
 	if api.TuttiModePlanService == nil {
 		return tuttigenerated.ListWorkspaceWorkflows503JSONResponse{ServiceUnavailableErrorJSONResponse: workflowServiceUnavailable()}, nil
 	}
-	views, err := api.TuttiModePlanService.ListPendingBySourceSession(ctx, request.WorkspaceID, request.Params.SourceSessionId)
+	var views []tuttimodeplanservice.SnapshotView
+	var err error
+	if request.Params.CheckpointStatus == nil {
+		views, err = api.TuttiModePlanService.ListBySourceSession(ctx, request.WorkspaceID, request.Params.SourceSessionId)
+	} else {
+		views, err = api.TuttiModePlanService.ListPendingBySourceSession(ctx, request.WorkspaceID, request.Params.SourceSessionId)
+	}
 	if err != nil {
 		return listWorkspaceWorkflowsError(err), nil
 	}

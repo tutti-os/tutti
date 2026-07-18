@@ -32,6 +32,7 @@ type Store interface {
 	CreateWorkspaceWorkflowProposalWithMutation(context.Context, workspacedata.CreateWorkspaceWorkflowProposalMutationInput) (workflowbiz.WorkflowMutation, bool, error)
 	GetWorkspaceWorkflowMutation(context.Context, workspacedata.GetWorkspaceWorkflowMutationInput) (workflowbiz.WorkflowMutation, bool, error)
 	GetWorkspaceWorkflowSnapshot(context.Context, string, string) (workflowbiz.Snapshot, error)
+	ListWorkflowsBySourceSession(context.Context, string, string) ([]workflowbiz.Workflow, error)
 	ListPendingWorkflowCheckpointsBySourceSession(context.Context, string, string) ([]workflowbiz.PendingCheckpoint, error)
 	AppendWorkspaceWorkflowPlanRevisionWithMutation(context.Context, workspacedata.AppendWorkspaceWorkflowPlanRevisionMutationInput) (workflowbiz.WorkflowMutation, bool, error)
 	AppendWorkspaceWorkflowTurnLink(context.Context, string, workflowbiz.WorkflowTurnLink) error

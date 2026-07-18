@@ -94,6 +94,18 @@ func TestSQLiteStoreCreatesWorkspaceWorkflowProposalAtomically(t *testing.T) {
 	if len(pending) != 1 || pending[0].Checkpoint.ID != "checkpoint-1" || pending[0].Workflow.ID != "workflow-1" {
 		t.Fatalf("pending = %#v, want checkpoint-1 projection", pending)
 	}
+
+	workflows, err := store.ListWorkflowsBySourceSession(
+		ctx,
+		"ws-workflow",
+		"agent-session-not-owned-by-workspace-store",
+	)
+	if err != nil {
+		t.Fatalf("ListWorkflowsBySourceSession() error = %v", err)
+	}
+	if len(workflows) != 1 || workflows[0] != aggregate.Workflow {
+		t.Fatalf("workflows = %#v, want workflow-1 projection", workflows)
+	}
 }
 
 func TestSQLiteStoreAppendPlanRevisionSupersedesPendingCheckpoint(t *testing.T) {

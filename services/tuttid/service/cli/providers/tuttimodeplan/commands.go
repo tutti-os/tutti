@@ -113,6 +113,7 @@ func (p Provider) runPropose(ctx context.Context, invoke framework.InvokeContext
 	result, err := p.plans.Propose(ctx, tuttimodeplanservice.ProposeInput{
 		WorkspaceID:     invoke.WorkspaceID,
 		SourceSessionID: sessionID,
+		SourceTurnID:    p.callerActiveTurnID(ctx, invoke.WorkspaceID, sessionID),
 		RequestID:       input.RequestID,
 		Markdown:        markdown,
 	})
@@ -162,6 +163,20 @@ func (p Provider) runGet(ctx context.Context, invoke framework.InvokeContext, in
 		return nil, agentPlanError(err)
 	}
 	return snapshotJSON(view, ""), nil
+}
+
+// callerActiveTurnID is best-effort decoration: the timeline anchors the plan
+// panel on this turn when present, and a missing pointer (unwired store, read
+// race) degrades the panel to the timeline tail rather than failing propose.
+func (p Provider) callerActiveTurnID(ctx context.Context, workspaceID string, sessionID string) string {
+	if p.turns == nil {
+		return ""
+	}
+	turnID, err := p.turns.PersistedActiveTurnID(ctx, workspaceID, sessionID)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(turnID)
 }
 
 func callerAgentSessionID(invoke framework.InvokeContext) (string, error) {
