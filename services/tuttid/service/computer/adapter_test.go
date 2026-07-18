@@ -185,6 +185,53 @@ func TestStableWindowActionsNeverUseDesktopScope(t *testing.T) {
 	}
 }
 
+func TestStableKeyboardActionsPreserveExplicitWindowTarget(t *testing.T) {
+	tests := []struct {
+		name string
+		tool string
+		args map[string]any
+		want recordedNativeToolCall
+	}{
+		{
+			name: "type text",
+			tool: "type_text",
+			args: map[string]any{"pid": 42, "window_id": 99, "text": "hello"},
+			want: recordedNativeToolCall{name: "type_text", args: map[string]any{
+				"pid": float64(42), "window_id": float64(99), "text": "hello",
+			}},
+		},
+		{
+			name: "single key",
+			tool: "press_key",
+			args: map[string]any{"pid": 42, "window_id": 99, "key": "return"},
+			want: recordedNativeToolCall{name: "press_key", args: map[string]any{
+				"pid": float64(42), "window_id": float64(99), "key": "return",
+			}},
+		},
+		{
+			name: "hotkey",
+			tool: "press_key",
+			args: map[string]any{"pid": 42, "window_id": 99, "key": "cmd+w"},
+			want: recordedNativeToolCall{name: "hotkey", args: map[string]any{
+				"pid": float64(42), "window_id": float64(99), "keys": []any{"cmd", "w"},
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			session, conn := newAdapterTestSession(t)
+			if _, err := session.adaptToolCall(context.Background(), tt.tool, tt.args); err != nil {
+				t.Fatalf("adaptToolCall(%s): %v", tt.tool, err)
+			}
+			calls := conn.recordedCalls()
+			if len(calls) != 1 || !reflect.DeepEqual(calls[0], tt.want) {
+				t.Fatalf("calls = %#v, want %#v", calls, []recordedNativeToolCall{tt.want})
+			}
+		})
+	}
+}
+
 func TestSplitKeySpec(t *testing.T) {
 	tests := []struct {
 		in   string

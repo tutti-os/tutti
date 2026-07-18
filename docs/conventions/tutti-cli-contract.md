@@ -177,7 +177,9 @@ verification through a fresh screenshot rather than the agent-cursor overlay
 (a separate visual channel that can render offset after display-configuration
 changes), and escalates unresponsive background clicks via the native
 `delivery_mode: "foreground"` contract instead of repeating the same pixel
-click.
+click. See
+[Computer Use Troubleshooting](./troubleshooting/computer-use.md#a-computer-click-reports-success-but-the-ui-does-not-change)
+for the symptom-driven verification and recovery checklist.
 
 Desktop automation follows each native cua-driver tool's real contract rather
 than a Tutti-wide scope model:

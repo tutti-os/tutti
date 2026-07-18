@@ -112,14 +112,16 @@ func (s *computerSession) adaptPressKey(ctx context.Context, args map[string]any
 	parts := splitKeySpec(keySpec)
 	if len(parts) > 1 {
 		return s.callTool(ctx, "hotkey", map[string]any{
-			"pid":  target.PID,
-			"keys": parts,
+			"pid":       target.PID,
+			"window_id": target.WindowID,
+			"keys":      parts,
 		})
 	}
 
 	return s.callTool(ctx, "press_key", map[string]any{
-		"pid": target.PID,
-		"key": parts[0],
+		"pid":       target.PID,
+		"window_id": target.WindowID,
+		"key":       parts[0],
 	})
 }
 
@@ -129,7 +131,7 @@ func (s *computerSession) adaptPIDRequiredTool(ctx context.Context, tool string,
 		return ToolResult{}, err
 	}
 
-	out := map[string]any{"pid": target.PID}
+	out := map[string]any{"pid": target.PID, "window_id": target.WindowID}
 	for key, value := range args {
 		switch key {
 		case "x", "y", "scope", "pid", "window_id":
