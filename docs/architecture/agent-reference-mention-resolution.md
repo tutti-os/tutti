@@ -54,7 +54,10 @@ The same workspace-scoped service is the provider authority for composer `@`
 search. AgentGUI reads providers from the nearest `RichTextMentionService`
 boundary; hosts must not propagate a second provider list through AgentGUI view
 or composer props. This keeps candidate search, mention resolution, and
-read-only rendering on one capability contract.
+read-only rendering on one capability contract. A surface may expose an
+extended provider catalog through a composed service view, but providers already
+owned by the workspace service must keep that service's resolution cache,
+subscriptions, and invalidation lifecycle.
 
 `workspace-reference` is a passive artifact reference. It is distinct from:
 
