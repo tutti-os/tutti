@@ -83,10 +83,6 @@ func Catalog() ([]App, error) {
 	return CatalogForHost(CatalogHost{})
 }
 
-func CatalogForTuttiVersion(tuttiVersion string) ([]App, error) {
-	return CatalogForHost(CatalogHost{TuttiVersion: tuttiVersion})
-}
-
 func CatalogForHost(host CatalogHost) ([]App, error) {
 	snapshot, err := snapshot(false, host)
 	if err != nil {
@@ -99,44 +95,16 @@ func Snapshot() (CatalogSnapshot, error) {
 	return SnapshotForHost(CatalogHost{})
 }
 
-func SnapshotForTuttiVersion(tuttiVersion string) (CatalogSnapshot, error) {
-	return SnapshotForHost(CatalogHost{TuttiVersion: tuttiVersion})
-}
-
 func SnapshotForHost(host CatalogHost) (CatalogSnapshot, error) {
 	return snapshot(false, host)
-}
-
-func SnapshotForRemoteURL(catalogURL string) (CatalogSnapshot, error) {
-	return SnapshotForRemoteURLAndHost(catalogURL, CatalogHost{})
-}
-
-func SnapshotForRemoteURLAndTuttiVersion(catalogURL string, tuttiVersion string) (CatalogSnapshot, error) {
-	return SnapshotForRemoteURLAndHost(catalogURL, CatalogHost{TuttiVersion: tuttiVersion})
 }
 
 func SnapshotForRemoteURLAndHost(catalogURL string, host CatalogHost) (CatalogSnapshot, error) {
 	return snapshotWithSource(remoteCatalogSourceForURL(catalogURL, host), false)
 }
 
-func RefreshRemoteCatalogAndWait(ctx context.Context) (CatalogSnapshot, error) {
-	return RefreshRemoteCatalogAndWaitForHost(ctx, CatalogHost{})
-}
-
-func RefreshRemoteCatalogAndWaitForTuttiVersion(ctx context.Context, tuttiVersion string) (CatalogSnapshot, error) {
-	return RefreshRemoteCatalogAndWaitForHost(ctx, CatalogHost{TuttiVersion: tuttiVersion})
-}
-
 func RefreshRemoteCatalogAndWaitForHost(ctx context.Context, host CatalogHost) (CatalogSnapshot, error) {
 	return snapshotAndWaitWithSource(ctx, currentRemoteCatalogSource(host))
-}
-
-func RefreshRemoteCatalogAndWaitForRemoteURL(ctx context.Context, catalogURL string) (CatalogSnapshot, error) {
-	return RefreshRemoteCatalogAndWaitForRemoteURLAndHost(ctx, catalogURL, CatalogHost{})
-}
-
-func RefreshRemoteCatalogAndWaitForRemoteURLAndTuttiVersion(ctx context.Context, catalogURL string, tuttiVersion string) (CatalogSnapshot, error) {
-	return RefreshRemoteCatalogAndWaitForRemoteURLAndHost(ctx, catalogURL, CatalogHost{TuttiVersion: tuttiVersion})
 }
 
 func RefreshRemoteCatalogAndWaitForRemoteURLAndHost(ctx context.Context, catalogURL string, host CatalogHost) (CatalogSnapshot, error) {

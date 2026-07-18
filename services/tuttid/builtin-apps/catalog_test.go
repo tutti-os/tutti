@@ -229,7 +229,7 @@ func TestRefreshRemoteCatalogAndWaitReturnsReadyCatalog(t *testing.T) {
 		err      error
 	}, 1)
 	go func() {
-		snapshot, err := RefreshRemoteCatalogAndWait(context.Background())
+		snapshot, err := RefreshRemoteCatalogAndWaitForHost(context.Background(), CatalogHost{})
 		resultCh <- struct {
 			snapshot CatalogSnapshot
 			err      error
@@ -238,14 +238,14 @@ func TestRefreshRemoteCatalogAndWaitReturnsReadyCatalog(t *testing.T) {
 
 	select {
 	case result := <-resultCh:
-		t.Fatalf("RefreshRemoteCatalogAndWait() returned before response: %#v", result)
+		t.Fatalf("RefreshRemoteCatalogAndWaitForHost() returned before response: %#v", result)
 	case <-time.After(50 * time.Millisecond):
 	}
 	release()
 	select {
 	case result := <-resultCh:
 		if result.err != nil {
-			t.Fatalf("RefreshRemoteCatalogAndWait() error = %v", result.err)
+			t.Fatalf("RefreshRemoteCatalogAndWaitForHost() error = %v", result.err)
 		}
 		if result.snapshot.RemoteCatalog.Status != RemoteCatalogLoadStatusReady {
 			t.Fatalf("remote catalog status = %q, want ready", result.snapshot.RemoteCatalog.Status)
@@ -254,7 +254,7 @@ func TestRefreshRemoteCatalogAndWaitReturnsReadyCatalog(t *testing.T) {
 			t.Fatalf("remote app missing from waited snapshot: %#v", result.snapshot.Apps)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("RefreshRemoteCatalogAndWait() did not return after response")
+		t.Fatal("RefreshRemoteCatalogAndWaitForHost() did not return after response")
 	}
 }
 
@@ -267,9 +267,9 @@ func TestRefreshRemoteCatalogAndWaitReturnsFailedCatalog(t *testing.T) {
 	t.Cleanup(server.Close)
 	t.Setenv(remoteCatalogURLEnv, server.URL+"/catalog.json")
 
-	snapshot, err := RefreshRemoteCatalogAndWait(context.Background())
+	snapshot, err := RefreshRemoteCatalogAndWaitForHost(context.Background(), CatalogHost{})
 	if err != nil {
-		t.Fatalf("RefreshRemoteCatalogAndWait() error = %v", err)
+		t.Fatalf("RefreshRemoteCatalogAndWaitForHost() error = %v", err)
 	}
 	if snapshot.RemoteCatalog.Status != RemoteCatalogLoadStatusFailed {
 		t.Fatalf("remote catalog status = %q, want failed", snapshot.RemoteCatalog.Status)
