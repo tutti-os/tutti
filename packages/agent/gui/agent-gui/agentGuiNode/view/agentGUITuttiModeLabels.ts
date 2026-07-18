@@ -64,6 +64,7 @@ export function agentGUITuttiModeLabels(
       t("agentHost.agentGui.tuttiModePlan.replanFeedbackSuffix", { to }),
     tuttiModePlanIssuePanel: {
       openIssue: t("agentHost.agentGui.tuttiModePlan.issueOpen"),
+      stopExecution: t("agentHost.agentGui.tuttiModePlan.issueStopExecution"),
       listView: t("agentHost.agentGui.tuttiModePlan.issueListView"),
       boardView: t("agentHost.agentGui.tuttiModePlan.issueBoardView"),
       parallelizable: t("agentHost.agentGui.tuttiModePlan.parallelizable"),

@@ -10,6 +10,7 @@ import type { TuttiPlanIssueSnapshot } from "../workspaceWorkflowRuntime";
 
 const labels: TuttiPlanIssuePanelLabels = {
   openIssue: "Open Issue",
+  stopExecution: "Stop",
   listView: "List",
   boardView: "Board",
   parallelizable: "Parallel",
@@ -177,6 +178,48 @@ describe("TuttiPlanIssuePanel", () => {
     );
     fireEvent.click(screen.getByTestId("tutti-plan-issue-open"));
     expect(onOpenIssue).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers stop only while runs are live and forwards the cascade", async () => {
+    const liveTask = {
+      taskId: "live",
+      title: "Working",
+      content: "",
+      status: "running",
+      sortIndex: 1,
+      parallelizable: false,
+      autoAccept: false,
+      dependencyTaskIds: []
+    };
+    const runningIssue: TuttiPlanIssueSnapshot = {
+      ...issue,
+      tasks: [liveTask]
+    };
+    const onCancelExecution = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <TuttiPlanIssuePanel
+        issue={runningIssue}
+        labels={labels}
+        onCancelExecution={onCancelExecution}
+      />
+    );
+    fireEvent.click(screen.getByTestId("tutti-plan-issue-stop"));
+    expect(onCancelExecution).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(screen.getByTestId("tutti-plan-issue-stop")).toBeEnabled()
+    );
+    // Once nothing runs anymore the stop affordance disappears.
+    rerender(
+      <TuttiPlanIssuePanel
+        issue={{
+          ...runningIssue,
+          tasks: [{ ...liveTask, status: "canceled" }]
+        }}
+        labels={labels}
+        onCancelExecution={onCancelExecution}
+      />
+    );
+    expect(screen.queryByTestId("tutti-plan-issue-stop")).toBeNull();
   });
 
   it("shows the auto-accept chip on flagged tasks", () => {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ExternalLink, ListChecks } from "lucide-react";
+import { ExternalLink, ListChecks, Square } from "lucide-react";
 import { Button, Card, CardContent, CardHeader, cn } from "@tutti-os/ui-system";
 import composerStyles from "../../agent-gui/agentGuiNode/AgentGUINode.styles";
 import type {
@@ -9,6 +9,7 @@ import type {
 
 export interface TuttiPlanIssuePanelLabels {
   openIssue: string;
+  stopExecution: string;
   listView: string;
   boardView: string;
   parallelizable: string;
@@ -133,7 +134,8 @@ export function TuttiPlanIssuePanel({
   issue,
   labels,
   onOpenIssue,
-  onDecideTask
+  onDecideTask,
+  onCancelExecution
 }: {
   issue: TuttiPlanIssueSnapshot;
   labels: TuttiPlanIssuePanelLabels;
@@ -142,9 +144,11 @@ export function TuttiPlanIssuePanel({
     taskId: string,
     decision: TuttiPlanIssueTaskDecision
   ) => Promise<void>;
+  onCancelExecution?: () => Promise<void>;
 }): React.JSX.Element {
   const [viewMode, setViewMode] = useState<TuttiPlanIssueViewMode>("board");
   const [decidingTaskIds, setDecidingTaskIds] = useState<readonly string[]>([]);
+  const [stopping, setStopping] = useState(false);
   const decideTask = onDecideTask
     ? (taskId: string, decision: TuttiPlanIssueTaskDecision): void => {
         setDecidingTaskIds((current) =>
@@ -166,6 +170,20 @@ export function TuttiPlanIssuePanel({
   const running = issue.tasks.filter(
     (task) => task.status === "running"
   ).length;
+  const stopExecution =
+    onCancelExecution && running > 0
+      ? (): void => {
+          setStopping(true);
+          void onCancelExecution()
+            .catch(() => {
+              // Best-effort; the live issue stream re-syncs and the button
+              // returns for a retry while runs remain live.
+            })
+            .finally(() => {
+              setStopping(false);
+            });
+        }
+      : undefined;
   return (
     <Card className="w-full" data-testid="tutti-plan-issue-panel">
       <CardHeader className="gap-2">
@@ -206,6 +224,20 @@ export function TuttiPlanIssuePanel({
                 </button>
               ))}
             </div>
+            {stopExecution ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="text-[var(--state-danger)] hover:text-[var(--state-danger)]"
+                disabled={stopping}
+                data-testid="tutti-plan-issue-stop"
+                onClick={stopExecution}
+              >
+                <Square aria-hidden className="size-3.5" />
+                {labels.stopExecution}
+              </Button>
+            ) : null}
             {onOpenIssue ? (
               <Button
                 type="button"

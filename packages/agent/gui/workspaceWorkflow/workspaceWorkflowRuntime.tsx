@@ -126,6 +126,14 @@ export interface TuttiPlanIssueSource {
     issueId: string;
     taskId: string;
   }): Promise<void>;
+  /**
+   * Stops the Issue's execution: pauses future dispatch and cancels every
+   * running task run. Idempotent; the daemon owns the cascade.
+   */
+  cancelExecution(input: {
+    workspaceId: string;
+    issueId: string;
+  }): Promise<void>;
 }
 
 /**
