@@ -260,6 +260,7 @@ export interface AgentGUIViewLabels {
   copyAsReference: string;
   conversationCopyImage: string;
   conversationCopyImagesOmitted: string;
+  conversationCopyInProgress: string;
   conversationCopyMentionPrefix: string;
   conversationCopyFile: string;
   conversationCopyPreviousMessages: string;
@@ -429,6 +430,7 @@ export type AgentGUIConversationRailLabels = Pick<
   | "conversationCopyFile"
   | "conversationCopyImage"
   | "conversationCopyImagesOmitted"
+  | "conversationCopyInProgress"
   | "conversationCopyMentionPrefix"
   | "conversationCopyPreviousMessages"
   | "copiedToClipboard"

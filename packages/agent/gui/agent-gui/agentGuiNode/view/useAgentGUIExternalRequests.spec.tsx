@@ -12,6 +12,7 @@ const LABELS = {
   conversationCopyImage: "Image",
   conversationCopyImagesOmitted:
     "{{count}} image(s) omitted — copy them individually",
+  conversationCopyInProgress: "Copying conversation…",
   conversationCopyMentionPrefix: "@",
   conversationCopyPreviousMessages: "{{count}} previous messages",
   copiedToClipboard: "Copied",
@@ -290,6 +291,32 @@ describe("useAgentGUIExternalRequests session actions", () => {
 
     expect(writeText).not.toHaveBeenCalled();
     expect(toastError).toHaveBeenCalledWith(LABELS.sessionActionUnavailable);
+  });
+
+  it("signals the copy is running before history finishes loading", async () => {
+    const { toastInfo } = installHostApi();
+    installRuntime();
+    const active = makeConversation({ id: "session-1" });
+    const props = baseProps({
+      viewModel: makeViewModel({
+        activeConversation: active,
+        conversations: [active]
+      })
+    });
+    const { rerender } = renderHook(useAgentGUIExternalRequests, {
+      initialProps: props
+    });
+
+    rerender({
+      ...props,
+      sessionActionRequest: {
+        action: "copy-markdown",
+        agentSessionId: "session-1",
+        sequence: 1
+      }
+    });
+
+    expect(toastInfo).toHaveBeenCalledWith(LABELS.conversationCopyInProgress);
   });
 
   it("writes the copy value for the targeted conversation and reports success", async () => {

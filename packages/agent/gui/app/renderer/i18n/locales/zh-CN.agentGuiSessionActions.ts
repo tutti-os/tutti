@@ -11,5 +11,6 @@ export const zhCNAgentGuiSessionActions = {
   conversationCopyPreviousMessages: "{{count}} 条先前消息",
   conversationCopyImagesOmitted:
     "{{count}} 张图片过大未嵌入副本，可在对话中右键单张图片单独复制",
+  conversationCopyInProgress: "正在复制会话…",
   sessionActionUnavailable: "当前无法执行会话操作"
 };

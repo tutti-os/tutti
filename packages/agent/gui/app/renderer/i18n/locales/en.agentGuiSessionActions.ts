@@ -11,5 +11,6 @@ export const enAgentGuiSessionActions = {
   conversationCopyPreviousMessages: "{{count}} previous messages",
   conversationCopyImagesOmitted:
     "{{count}} image(s) were too large to embed — right-click an image in the conversation to copy it separately",
+  conversationCopyInProgress: "Copying conversation…",
   sessionActionUnavailable: "Session action is unavailable right now"
 };

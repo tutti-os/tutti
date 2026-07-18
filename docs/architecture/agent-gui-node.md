@@ -446,19 +446,23 @@ menu is open the row keeps its hover layout (short title truncation, actions
 visible) so titles cannot overlap the action cluster.
 
 Copy as reference copies the session-mention markdown link the @ panel
-produces, so pasting into any composer reconstructs the session chip. Copy
-as Markdown loads every canonical message page and serializes a lean
-transcript: user inputs blockquoted in full, per-turn final agent replies
-plain, interim narration collapsed in a `<details>` block; tool payloads
-(except image outputs), thinking, `agent_system_notice` messages, and JSON
-fallbacks are dropped. The clipboard write is dual-format: `text/plain`
-keeps short image references and never carries base64, while `text/html`
-embeds images as data URIs hydrated from inline data, the attachment store,
-and host `workspace.readFile` — verified empirically: rich-paste targets
-(Feishu docs) consume data URIs and re-upload them, but never fetch local
-paths or localhost URLs. Images over the per-image embed cap, or with
-failed reads, keep the lean reference and surface a toast that counts the
-omissions and points at per-image copy.
+produces, so pasting into any composer reconstructs the session chip; it is
+synchronous and only requires a writable host clipboard. Copy as Markdown
+loads every canonical message page and serializes a lean transcript: user
+inputs blockquoted in full, per-turn final agent replies plain, interim
+narration collapsed in a `<details>` block; tool payloads (except image
+outputs), thinking, `agent_system_notice` messages, and JSON fallbacks are
+dropped. The clipboard write is dual-format: `text/plain` keeps short image
+references and never carries base64, while `text/html` embeds images as
+data URIs hydrated from inline data, the attachment store, and host
+`workspace.readFile` — verified empirically: rich-paste targets (Feishu
+docs) consume data URIs and re-upload them, but never fetch local paths or
+localhost URLs. Images over the per-image embed cap, or with failed reads,
+keep the lean reference and surface a toast that counts the omissions and
+points at per-image copy. Because history loading and image hydration take
+a noticeable moment on long conversations, selecting copy as Markdown fires
+an immediate info toast before the async work starts, so the action always
+gives feedback rather than appearing to do nothing until it lands.
 
 ## 8. Change routing
 

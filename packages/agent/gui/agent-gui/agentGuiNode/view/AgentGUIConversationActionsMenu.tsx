@@ -161,6 +161,7 @@ export function useAgentGUIConversationCopyAction(
     | "conversationCopyFile"
     | "conversationCopyImage"
     | "conversationCopyImagesOmitted"
+    | "conversationCopyInProgress"
     | "conversationCopyMentionPrefix"
     | "conversationCopyPreviousMessages"
     | "copiedToClipboard"
@@ -200,6 +201,9 @@ export function useAgentGUIConversationCopyAction(
       }
       const readSessionAttachment = agentActivityRuntime.readSessionAttachment;
       const readWorkspaceFile = agentHostApi?.workspace?.readFile;
+      // History load + image hydration can take a noticeable moment on long
+      // conversations; signal that the copy is running before it lands.
+      agentHostApi?.toast?.info?.(labels.conversationCopyInProgress);
       void (async () => {
         const messages = await loadCompleteAgentConversationMessages({
           agentSessionId: conversation.id,
@@ -283,6 +287,7 @@ type ConversationActionsMenuLabels = Pick<
   | "conversationCopyFile"
   | "conversationCopyImage"
   | "conversationCopyImagesOmitted"
+  | "conversationCopyInProgress"
   | "conversationCopyMentionPrefix"
   | "conversationCopyPreviousMessages"
   | "markSessionUnread"

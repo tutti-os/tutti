@@ -53,6 +53,7 @@ export function useAgentGUIExternalRequests(input: {
     | "conversationCopyFile"
     | "conversationCopyImage"
     | "conversationCopyImagesOmitted"
+    | "conversationCopyInProgress"
     | "conversationCopyMentionPrefix"
     | "conversationCopyPreviousMessages"
     | "copiedToClipboard"

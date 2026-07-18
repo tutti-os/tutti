@@ -44,6 +44,9 @@ export function agentGUIConversationRailLabels(
     conversationCopyImagesOmitted: t(
       "agentHost.agentGui.conversationCopyImagesOmitted"
     ),
+    conversationCopyInProgress: t(
+      "agentHost.agentGui.conversationCopyInProgress"
+    ),
     conversationCopyMentionPrefix: t(
       "agentHost.agentGui.conversationCopyMentionPrefix"
     ),
