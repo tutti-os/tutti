@@ -106,6 +106,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     composerAppend: composerAppendRequest = null,
     composerFocusSequence: composerFocusRequestSequence = null,
     newConversationSequence: newConversationRequestSequence = null,
+    sessionAction: sessionActionRequest = null,
     openSession: openSessionRequest = null,
     prefillPrompt: prefillPromptRequest = null,
     agentProbes: workspaceAgentProbes,
@@ -634,6 +635,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               onEngagementEvent={onEngagementEvent}
               composerFocusRequestSequence={composerFocusRequestSequence}
               newConversationRequestSequence={newConversationRequestSequence}
+              sessionActionRequest={sessionActionRequest}
               slashStatusLimits={slashStatusLimits}
               slashStatusLimitsLoading={
                 workspaceAgentProbes?.isLoadingUsage ?? false

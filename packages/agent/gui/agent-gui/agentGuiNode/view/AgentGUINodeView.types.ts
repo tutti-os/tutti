@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { AgentActivityGoalControlAction } from "@tutti-os/agent-activity-core";
+import type { AgentGuiWorkbenchSessionActionRequest } from "../../../workbench/sessionActions";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type {
   ReferenceLocateTarget,
@@ -254,7 +255,18 @@ export interface AgentGUIViewLabels {
   showLessConversations: string;
   deleteSession: string;
   pinSession: string;
-  copySessionLink: string;
+  moreSessionActions: string;
+  copyAsMarkdown: string;
+  copyAsReference: string;
+  conversationCopyImage: string;
+  conversationCopyImagesOmitted: string;
+  conversationCopyInProgress: string;
+  conversationCopyMentionPrefix: string;
+  conversationCopyFile: string;
+  conversationCopyPreviousMessages: string;
+  copiedToClipboard: string;
+  copyFailed: string;
+  sessionActionUnavailable: string;
   renameSession: string;
   renameSessionTitle: string;
   renameSessionDescription: string;
@@ -372,6 +384,34 @@ export interface AgentGUIViewLabels {
   reviewPicker: AgentComposerProps["labels"]["reviewPicker"];
 }
 
+export type ChromeLabels = {
+  approvalRequired: string;
+  authRequired: string;
+  activatingSession: string;
+  retryActivation: string;
+  continueInNewConversation: string;
+};
+
+export type InteractivePromptLabels = {
+  approvalLead: string;
+  fileChangeApprovalLead: string;
+  planLead: string;
+  planModes: Array<{ id: string; label: string; description: string }>;
+  stayInPlan: string;
+  sendFeedback: string;
+  feedbackPlaceholder: string;
+  previousQuestion: string;
+  nextQuestion: string;
+  submitAnswers: string;
+  answerPlaceholder: string;
+  waitingForAnswer: string;
+  planImplementationLead: string;
+  planImplementationConfirm: string;
+  planImplementationFeedbackPlaceholder: string;
+  planImplementationSend: string;
+  planImplementationSkip: string;
+};
+
 export type AgentGUIConversationRailLabels = Pick<
   AgentGUIViewLabels,
   | "batchDeleteConversations"
@@ -385,7 +425,17 @@ export type AgentGUIConversationRailLabels = Pick<
   | "cancel"
   | "conversationUnavailable"
   | "conversationsSectionMoreActions"
-  | "copySessionLink"
+  | "copyAsMarkdown"
+  | "copyAsReference"
+  | "conversationCopyFile"
+  | "conversationCopyImage"
+  | "conversationCopyImagesOmitted"
+  | "conversationCopyInProgress"
+  | "conversationCopyMentionPrefix"
+  | "conversationCopyPreviousMessages"
+  | "copiedToClipboard"
+  | "copyFailed"
+  | "moreSessionActions"
   | "deleteSession"
   | "deleteSessionConfirm"
   | "emptyProjectConversations"
@@ -453,6 +503,7 @@ export interface AgentGUINodeViewProps {
   onEngagementEvent?: AgentGUIEngagementEventSink;
   composerFocusRequestSequence?: number | null;
   newConversationRequestSequence?: number | null;
+  sessionActionRequest?: AgentGuiWorkbenchSessionActionRequest | null;
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
   slashStatusLimitsUnavailable?: boolean;

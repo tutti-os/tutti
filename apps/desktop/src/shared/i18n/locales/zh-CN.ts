@@ -145,6 +145,12 @@ export const zhCN = {
       untitledConversation: "未命名对话",
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
       openSessionUnavailableTitle: "会话不可用",
+      sessionMenu: {
+        copyAsMarkdown: "复制为 Markdown",
+        copyAsReference: "复制为引用",
+        moreActions: "更多会话操作",
+        rename: "重命名会话"
+      },
       browserElementContext: {
         cancel: "取消选择元素",
         failed: "无法将这个页面元素添加到 Agent 输入框",

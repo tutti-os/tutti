@@ -47,7 +47,6 @@ import {
   EMPTY_HOME_SUGGESTIONS,
   resolveAgentGUIHeroIconUrl
 } from "./AgentGUIEmptyState";
-import { AgentGUIDetailHeader } from "./AgentGUIDetailHeader";
 import { AgentGUIContentToast } from "./AgentGUIContentToast";
 import { AgentGUIConversationTimelinePane } from "./AgentGUIConversationTimelinePane";
 import {
@@ -78,7 +77,6 @@ export interface AgentGUIDetailPaneProps {
   labels: AgentGUIViewLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   uiLanguage: UiLanguage;
-  hideDetailHeader: boolean;
   isActive: boolean;
   previewMode: boolean;
   workspaceReferencePickerOpen: boolean;
@@ -162,7 +160,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   labels,
   workspaceUserProjectI18n,
   uiLanguage,
-  hideDetailHeader,
   isActive,
   previewMode,
   workspaceReferencePickerOpen,
@@ -630,17 +627,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       {viewModel.operations.goalClearNoticeSequence > 0 ? (
         <AgentGUIContentToast
           key={viewModel.operations.goalClearNoticeSequence}
-          insetTopPx={hideDetailHeader ? 16 : 80}
+          insetTopPx={16}
           message={labels.goalRemoved}
         />
       ) : null}
-      <AgentGUIDetailHeader
-        activeConversation={viewModel.rail.activeConversation}
-        hidden={hideDetailHeader}
-        labels={labels}
-        uiLanguage={uiLanguage}
-        previewMode={previewMode}
-      />
       <ScrollArea
         scrollbarMode="native"
         className="flex h-full min-h-0 flex-1 flex-col [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"

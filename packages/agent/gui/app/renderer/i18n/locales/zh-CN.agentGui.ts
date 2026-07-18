@@ -1,6 +1,7 @@
 import { zhCNAgentGuiProviderIdentity } from "./zh-CN.agentGuiProviderIdentity.ts";
 import { zhCNAgentGuiRuntimeNotices } from "./zh-CN.agentGuiRuntimeNotices.ts";
 import { zhCNAgentGuiSlashPalette } from "./zh-CN.agentGuiSlashPalette.ts";
+import { zhCNAgentGuiSessionActions } from "./zh-CN.agentGuiSessionActions.ts";
 
 export const zhCNAgentGui = {
   initialPlaceholder: "输入 @ 引用会话、文件、任务和应用",
@@ -565,14 +566,13 @@ export const zhCNAgentGui = {
   showLessConversations: "收起",
   deleteSession: "删除会话",
   pinSession: "置顶会话",
-  copySessionLink: "复制会话链接",
+  ...zhCNAgentGuiSessionActions,
   renameSession: "重命名会话",
   renameSessionTitle: "重命名对话",
   renameSessionDescription: "保持简短且易于识别。",
   renameSessionPlaceholder: "对话标题",
   renameSessionSave: "保存",
   unpinSession: "取消置顶",
-  markSessionUnread: "标记为未读",
   deleteSessionTitle: "删除会话？",
   deleteSessionBody:
     "删除后无法恢复。该会话将不再出现在会话列表、会话时间线、房间时间线或房间状态中。",

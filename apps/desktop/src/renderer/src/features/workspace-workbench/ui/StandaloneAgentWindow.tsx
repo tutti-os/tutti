@@ -23,8 +23,10 @@ import {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
   agentGuiWorkbenchProviderRailWidthPx,
+  dispatchAgentGuiWorkbenchSessionAction,
   type AgentGuiWorkbenchConversationRailToggleDetail,
-  type AgentGuiWorkbenchNewConversationDetail
+  type AgentGuiWorkbenchNewConversationDetail,
+  type AgentGuiWorkbenchSessionAction
 } from "@tutti-os/agent-gui/workbench/contribution";
 import type {
   WorkbenchContribution,
@@ -592,6 +594,16 @@ export function StandaloneAgentWindow({
       )
     );
   }, [instanceId]);
+  const handleSessionAction = useCallback(
+    (action: AgentGuiWorkbenchSessionAction) => {
+      dispatchAgentGuiWorkbenchSessionAction({
+        action,
+        agentSessionId: nodeState.lastActiveAgentSessionId,
+        instanceId
+      });
+    },
+    [instanceId, nodeState.lastActiveAgentSessionId]
+  );
   const {
     handleLinkAction,
     handleOpenMessageCenterChat,
@@ -696,7 +708,19 @@ export function StandaloneAgentWindow({
                 openDetachedWindow: i18n.t("workspace.agentGui.openNewWindow"),
                 untitledConversation: i18n.t(
                   "workspace.agentGui.untitledConversation"
-                )
+                ),
+                sessionMenu: {
+                  copyAsMarkdown: i18n.t(
+                    "workspace.agentGui.sessionMenu.copyAsMarkdown"
+                  ),
+                  copyAsReference: i18n.t(
+                    "workspace.agentGui.sessionMenu.copyAsReference"
+                  ),
+                  moreSessionActions: i18n.t(
+                    "workspace.agentGui.sessionMenu.moreActions"
+                  ),
+                  renameSession: i18n.t("workspace.agentGui.sessionMenu.rename")
+                }
               }}
               conversationRailWidthPx={headerConversationRailWidthPx}
               data-agent-gui-standalone-window-content-loading={
@@ -728,6 +752,7 @@ export function StandaloneAgentWindow({
               }}
               onCreateConversation={handleCreateConversation}
               onOpenDetachedWindow={handleDuplicateStandaloneWindow}
+              onSessionAction={handleSessionAction}
               onToggleConversationRail={handleConversationRailToggle}
             />
           )}

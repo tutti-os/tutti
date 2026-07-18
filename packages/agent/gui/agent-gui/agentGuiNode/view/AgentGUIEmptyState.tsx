@@ -42,7 +42,7 @@ import type {
   AgentGUINodeViewProps,
   AgentGUIViewLabels
 } from "../AgentGUINodeView";
-import type { ChromeLabels } from "./AgentGUIDetailHeader";
+import type { ChromeLabels } from "./AgentGUINodeView.types";
 import { AgentGUIEmptyHeroCarouselStage } from "./AgentGUIEmptyHeroCarouselStage";
 import { AgentTargetSetupGate } from "./AgentTargetSetupGate.tsx";
 import {

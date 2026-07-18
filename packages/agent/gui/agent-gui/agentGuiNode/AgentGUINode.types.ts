@@ -6,6 +6,7 @@ import type {
   ReferenceProvenanceCatalog
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
+import type { AgentGuiWorkbenchSessionActionRequest } from "../../workbench/sessionActions";
 import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
@@ -98,10 +99,14 @@ export interface AgentGUINodeFrameLayout {
   conversationRailAutoCollapseWidthPx?: number | null;
 }
 
+export type AgentGUISessionActionRequest =
+  AgentGuiWorkbenchSessionActionRequest;
+
 export interface AgentGUINodeRuntimeRequests {
   composerAppend?: AgentGUIComposerAppendRequest | null;
   composerFocusSequence?: number | null;
   newConversationSequence?: number | null;
+  sessionAction?: AgentGUISessionActionRequest | null;
   openSession?: AgentGUIOpenSessionRequest | null;
   prefillPrompt?: AgentGUIPrefillPromptRequest | null;
   agentProbes?: WorkspaceDesktopAgentProbesState | null;
@@ -347,6 +352,7 @@ export function areAgentGUINodePropsEqual(
     pr.composerFocusSequence === nr.composerFocusSequence &&
     pr.composerAppend === nr.composerAppend &&
     pr.newConversationSequence === nr.newConversationSequence &&
+    pr.sessionAction === nr.sessionAction &&
     pr.openSession === nr.openSession &&
     pr.prefillPrompt === nr.prefillPrompt &&
     pr.agentProbes === nr.agentProbes &&

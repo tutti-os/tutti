@@ -82,6 +82,11 @@ export interface AgentGUIConversationRailControllerProps {
   agentTargetsLoading: AgentGUINodeViewModel["rail"]["agentTargetsLoading"];
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
   sectionAgentTargetFallbackId: string | null;
+  /**
+   * Lets the host subtree observe the rail query controller's interaction
+   * lock (e.g. so header-dispatched session actions honor the same lock).
+   */
+  registerInteractionLockProbe?: (probe: (() => boolean) | null) => void;
   onUpdateConversationFilter: (
     filter: AgentGUINodeViewModel["rail"]["conversationFilter"]
   ) => void;

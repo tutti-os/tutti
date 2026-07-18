@@ -2,7 +2,10 @@ import { useEffect, useState, type JSX } from "react";
 import { resolveWorkspaceImageMimeType } from "@tutti-os/workspace-file-manager/services";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
 import { ZoomableImage } from "../../../app/renderer/components/ZoomableImage";
-import { resolveImageGenerationPreviewSrc } from "../../imageGenerationTool";
+import {
+  isLocalImagePath,
+  resolveImageGenerationPreviewSrc
+} from "../../imageGenerationTool";
 
 interface AgentGeneratedImagePreviewProps {
   uri: string;
@@ -92,17 +95,5 @@ export function AgentGeneratedImagePreview({
       src={src}
       wrapElement="span"
     />
-  );
-}
-
-function isLocalImagePath(path: string): boolean {
-  const candidate = path.trim();
-  return (
-    (candidate.length > 1 &&
-      candidate.startsWith("/") &&
-      !candidate.startsWith("//") &&
-      !candidate.includes("://") &&
-      !/\s/.test(candidate)) ||
-    /^[a-zA-Z]:[\\/]/.test(candidate)
   );
 }

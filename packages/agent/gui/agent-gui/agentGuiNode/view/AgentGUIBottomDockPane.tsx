@@ -18,7 +18,7 @@ import type { AgentGUINodeViewProps } from "../AgentGUINodeView";
 import type {
   ChromeLabels,
   InteractivePromptLabels
-} from "./AgentGUIDetailHeader";
+} from "./AgentGUINodeView.types";
 import { numberValue, objectRecord, stringValue } from "./agentGUIViewUtils";
 
 interface AgentGUIBottomDockPaneProps {

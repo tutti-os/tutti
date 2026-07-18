@@ -73,6 +73,7 @@ export {
   resolveAgentGUIHeroIconUrl,
   shouldEmphasizeEmptyHeroProvider
 } from "./view/AgentGUIEmptyState";
+import { useAgentGUIExternalRequests } from "./view/useAgentGUIExternalRequests";
 export function AgentGUINodeView({
   viewModel,
   referenceProvenanceFilter = null,
@@ -89,6 +90,7 @@ export function AgentGUINodeView({
   onEngagementEvent,
   composerFocusRequestSequence = null,
   newConversationRequestSequence = null,
+  sessionActionRequest = null,
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
   slashStatusLimitsUnavailable = false,
@@ -159,9 +161,6 @@ export function AgentGUINodeView({
     localComposerFocusRequestSequence,
     setLocalComposerFocusRequestSequence
   ] = useState(0);
-  const handledNewConversationRequestSequenceRef = useRef(
-    newConversationRequestSequence
-  );
   const {
     closeWorkspaceReferencePicker,
     confirmWorkspaceReferenceBundles,
@@ -245,25 +244,6 @@ export function AgentGUINodeView({
       viewModel.composer.composerSettings.selectedProjectPath
     ]
   );
-  useEffect(() => {
-    if (
-      newConversationRequestSequence === null ||
-      handledNewConversationRequestSequenceRef.current ===
-        newConversationRequestSequence
-    ) {
-      return;
-    }
-
-    handledNewConversationRequestSequenceRef.current =
-      newConversationRequestSequence;
-    if (!createConversationDisabled) {
-      requestCreateConversation({ source: "external_request" });
-    }
-  }, [
-    createConversationDisabled,
-    newConversationRequestSequence,
-    requestCreateConversation
-  ]);
   const effectiveWorkspaceAppIcons = useMemo(
     () =>
       mergeWorkspaceAppIconsFromCommands({
@@ -481,6 +461,17 @@ export function AgentGUINodeView({
     },
     []
   );
+  const { registerRailInteractionLockProbe } = useAgentGUIExternalRequests({
+    createConversationDisabled,
+    labels,
+    newConversationRequestSequence,
+    previewMode,
+    requestCreateConversation,
+    requestRenameConversation,
+    sessionActionRequest,
+    uiLanguage,
+    viewModel
+  });
   const conversationRailStoreState = useMemo<AgentGUIConversationRailState>(
     () => ({
       activeConversation: viewModel.rail.activeConversation,
@@ -672,6 +663,7 @@ export function AgentGUINodeView({
             <AgentGUIConversationRailController
               {...conversationRailStoreState}
               conversations={viewModel.rail.conversations}
+              registerInteractionLockProbe={registerRailInteractionLockProbe}
               userProjects={viewModel.rail.userProjects}
               workspaceId={viewModel.shell.workspaceId}
               footer={
@@ -723,7 +715,6 @@ export function AgentGUINodeView({
               actions={actions}
               labels={labels}
               uiLanguage={uiLanguage}
-              hideDetailHeader={conversationRailCollapsed}
               isActive={isActive}
               workspaceReferencePickerOpen={workspaceReferencePickerOpen}
               composerFocusRequestSequence={detailComposerFocusRequestSequence}

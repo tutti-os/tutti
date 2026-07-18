@@ -1,6 +1,7 @@
 import { enAgentGuiProviderIdentity } from "./en.agentGuiProviderIdentity.ts";
 import { enAgentGuiRuntimeNotices } from "./en.agentGuiRuntimeNotices.ts";
 import { enAgentGuiSlashPalette } from "./en.agentGuiSlashPalette.ts";
+import { enAgentGuiSessionActions } from "./en.agentGuiSessionActions.ts";
 
 export const enAgentGui = {
   initialPlaceholder: "Type @ to reference sessions, files, tasks, and apps",
@@ -610,14 +611,13 @@ export const enAgentGui = {
   showLessConversations: "Show less",
   deleteSession: "Delete session",
   pinSession: "Pin session",
-  copySessionLink: "Copy session link",
+  ...enAgentGuiSessionActions,
   renameSession: "Rename session",
   renameSessionTitle: "Rename conversation",
   renameSessionDescription: "Keep it short and easy to recognize.",
   renameSessionPlaceholder: "Conversation title",
   renameSessionSave: "Save",
   unpinSession: "Unpin session",
-  markSessionUnread: "Mark as unread",
   deleteSessionTitle: "Delete session?",
   deleteSessionBody:
     "This session cannot be recovered after deletion. It will no longer appear in the session list, session timeline, room timeline, or room status.",

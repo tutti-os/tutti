@@ -3257,6 +3257,58 @@
       "description": "Selectable action row for ContextMenu content.",
       "useCases": ["Context menu actions", "Right-click menu items"],
       "migrationHints": []
+    },
+    {
+      "id": "context-menu-separator",
+      "layer": "base",
+      "name": "ContextMenuSeparator",
+      "export": "ContextMenuSeparator",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/context-menu/context-menu.tsx",
+      "description": "Visual divider between groups of ContextMenu actions.",
+      "useCases": ["Context menu action grouping"],
+      "migrationHints": []
+    },
+    {
+      "id": "context-menu-sub",
+      "layer": "base",
+      "name": "ContextMenuSub",
+      "export": "ContextMenuSub",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/context-menu/context-menu.tsx",
+      "description": "Submenu root for nested ContextMenu actions.",
+      "useCases": ["Nested context menu actions"],
+      "migrationHints": []
+    },
+    {
+      "id": "context-menu-sub-trigger",
+      "layer": "base",
+      "name": "ContextMenuSubTrigger",
+      "export": "ContextMenuSubTrigger",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/context-menu/context-menu.tsx",
+      "description": "Trigger row that opens a nested ContextMenu submenu.",
+      "useCases": ["Nested context menu action groups"],
+      "migrationHints": []
+    },
+    {
+      "id": "context-menu-sub-content",
+      "layer": "base",
+      "name": "ContextMenuSubContent",
+      "export": "ContextMenuSubContent",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/context-menu/context-menu.tsx",
+      "description": "Popup surface for nested ContextMenu actions.",
+      "useCases": ["Nested context menu panels"],
+      "migrationHints": []
     }
   ]
 }
