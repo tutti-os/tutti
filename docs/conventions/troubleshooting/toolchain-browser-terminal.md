@@ -295,8 +295,8 @@ emitted before this method can be called`, especially after HMR, navigation,
   guest action is bundled with the standalone Agent browser adapter, then reload
   the standalone Agent window before a manual page-selection smoke test.
 - References:
-  [browserElementWebview.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/browser-element-context/browserElementWebview.ts)
-  [BrowserElementContextAction.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/browser-element-context/BrowserElementContextAction.tsx)
+  [browserElementWebview.ts](../../../packages/agent/gui/workbench/browser-element-context/browserElementWebview.ts)
+  [BrowserElementContextAction.tsx](../../../packages/agent/gui/workbench/browser-element-context/BrowserElementContextAction.tsx)
   [webviewController.ts](../../../packages/browser/workbench-node/src/core/webviewController.ts)
 
 ### Hidden Browser Node webview covers another panel

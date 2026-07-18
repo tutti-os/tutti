@@ -8,6 +8,7 @@ export default defineConfig({
     "bridge/index": "src/bridge/index.ts",
     "electron-main/index": "src/electron-main/index.ts",
     "electron-preload/index": "src/electron-preload/index.ts",
+    "electron-renderer/index": "src/electron-renderer/index.ts",
     "i18n/index": "src/i18n/index.ts",
     "react/index": "src/react/index.ts",
     "workbench/index": "src/workbench/index.ts"

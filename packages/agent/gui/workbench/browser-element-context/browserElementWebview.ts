@@ -23,17 +23,20 @@ export async function waitForBrowserElementWebviewReady(
 
   return new Promise((resolve) => {
     let settled = false;
+    let timeoutSignal: AbortSignal | null = null;
     const finish = (ready: boolean): void => {
       if (settled) return;
       settled = true;
-      globalThis.clearTimeout(timeoutId);
+      timeoutSignal?.removeEventListener("abort", handleTimeout);
       webview.removeEventListener("dom-ready", handleDomReady);
       resolve(ready);
     };
     const handleDomReady = (): void => {
       finish(isBrowserElementWebviewReady(webview));
     };
-    const timeoutId = globalThis.setTimeout(() => finish(false), timeoutMs);
+    timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const handleTimeout = (): void => finish(false);
+    timeoutSignal.addEventListener("abort", handleTimeout, { once: true });
     webview.addEventListener("dom-ready", handleDomReady, { once: true });
 
     // Covers a dom-ready event emitted between the initial check and listener
@@ -58,13 +61,22 @@ export async function executeBrowserElementWebviewScript<T>(
 
 export async function cancelBrowserElementWebviewSelection(
   webview: BrowserNodeWebviewTag | null,
-  script: string
+  script: string,
+  onError?: (error: unknown) => void
 ): Promise<void> {
   if (!webview?.executeJavaScript || !webview.isConnected) return;
   try {
     await webview.executeJavaScript(script);
-  } catch {
+  } catch (error) {
     // Cancellation is best-effort because navigation and unmount detach the
     // guest before React cleanup runs.
+    if (onError) {
+      onError(error);
+    } else {
+      console.warn(
+        "[agent-gui] browser element selection cleanup failed",
+        error
+      );
+    }
   }
 }

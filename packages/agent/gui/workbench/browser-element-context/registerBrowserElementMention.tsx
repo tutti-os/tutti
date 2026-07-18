@@ -1,13 +1,13 @@
 import { Badge } from "@tutti-os/ui-system";
 import { InspectIcon } from "@tutti-os/ui-system/icons";
-import { registerAgentCustomMentionKind } from "@tutti-os/agent-gui/custom-mention";
+import { registerAgentCustomMentionKind } from "../../custom-mention";
 import {
   browserElementMentionKind,
   presentBrowserElementMention
 } from "./browserElementMention";
 
-/** Registers the standalone-browser DOM reference before AgentGUI mounts. */
-export function registerDesktopBrowserElementMention(): void {
+/** Registers browser DOM references before the first AgentGUI surface mounts. */
+export function registerBrowserElementMention(): void {
   registerAgentCustomMentionKind({
     kind: browserElementMentionKind,
     materializePromptText: (mention) => {

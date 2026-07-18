@@ -13,6 +13,7 @@
     "./bridge": "./src/bridge/index.ts",
     "./electron-main": "./src/electron-main/index.ts",
     "./electron-preload": "./src/electron-preload/index.ts",
+    "./electron-renderer": "./src/electron-renderer/index.ts",
     "./i18n": "./src/i18n/index.ts",
     "./react": "./src/react/index.ts",
     "./workbench": "./src/workbench/index.ts"
@@ -84,6 +85,10 @@
       "./electron-preload": {
         "types": "./dist/electron-preload/index.d.ts",
         "import": "./dist/electron-preload/index.js"
+      },
+      "./electron-renderer": {
+        "types": "./dist/electron-renderer/index.d.ts",
+        "import": "./dist/electron-renderer/index.js"
       },
       "./i18n": {
         "types": "./dist/i18n/index.d.ts",

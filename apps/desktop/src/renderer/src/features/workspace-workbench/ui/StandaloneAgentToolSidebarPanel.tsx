@@ -1,5 +1,6 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import type { AgentToolTab } from "@tutti-os/agent-gui/workbench/tool-sidebar";
 import type {
   WorkbenchContribution,
   WorkbenchHostHandle
@@ -8,7 +9,6 @@ import type { WorkspaceAgentActivityService } from "@renderer/features/workspace
 import type { DesktopBrowserApi } from "@preload/types";
 import type { useTranslation } from "@renderer/i18n";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
-import type { StandaloneAgentToolTab } from "./standaloneAgentToolSidebarModel.ts";
 import { StandaloneAgentBrowserToolPanel } from "./StandaloneAgentBrowserToolPanel.tsx";
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
 
@@ -97,7 +97,7 @@ export function StandaloneAgentToolSidebarPanel({
     agentSessionId: string;
     provider: string;
   }) => void;
-  tab: StandaloneAgentToolTab;
+  tab: AgentToolTab;
   setToolHost: (instanceId: string, host: WorkbenchHostHandle | null) => void;
   workspaceId: string;
 }): ReactNode {
@@ -119,7 +119,7 @@ export function StandaloneAgentToolSidebarPanel({
       </Suspense>
     );
   }
-  if (panel === "apps" && tab.appId) {
+  if (panel === "apps" && tab.resourceId) {
     return (
       <Suspense
         fallback={
@@ -128,7 +128,7 @@ export function StandaloneAgentToolSidebarPanel({
       >
         <LazyStandaloneAgentAppViewerToolPanel
           active={active}
-          appId={tab.appId}
+          appId={tab.resourceId}
           contributions={contributions}
           unavailableLabel={i18n.t(
             "workspace.agentGui.toolSidebar.unavailable",

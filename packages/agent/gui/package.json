@@ -34,6 +34,8 @@
     "./workbench/providerCatalog": "./workbench/providerCatalog.ts",
     "./workbench/sessionTitle": "./workbench/sessionTitle.ts",
     "./workbench/state": "./workbench/state.ts",
+    "./workbench/browser-element-context": "./workbench/browser-element-context/index.ts",
+    "./workbench/tool-sidebar": "./workbench/tool-sidebar/index.ts",
     "./workbench/types": "./workbench/types.ts",
     "./styles.css": "./app/renderer/agentactivity.css"
   },
@@ -60,6 +62,7 @@
     "@tiptap/starter-kit": "^3.11.1",
     "@tiptap/suggestion": "^3.11.1",
     "@tutti-os/agent-activity-core": "workspace:*",
+    "@tutti-os/browser-node": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
     "@tutti-os/ui-react-hooks": "workspace:*",
     "@tutti-os/ui-rich-text": "workspace:*",
@@ -214,6 +217,14 @@
         "types": "./dist/workbench/state.d.ts",
         "import": "./dist/workbench/state.js"
       },
+      "./workbench/browser-element-context": {
+        "types": "./dist/workbench/browser-element-context/index.d.ts",
+        "import": "./dist/workbench/browser-element-context/index.js"
+      },
+      "./workbench/tool-sidebar": {
+        "types": "./dist/workbench/tool-sidebar/index.d.ts",
+        "import": "./dist/workbench/tool-sidebar/index.js"
+      },
       "./workbench/types": {
         "types": "./dist/workbench/types.d.ts",
         "import": "./dist/workbench/types.js"
@@ -297,6 +308,12 @@
         ],
         "workbench/state": [
           "./dist/workbench/state.d.ts"
+        ],
+        "workbench/browser-element-context": [
+          "./dist/workbench/browser-element-context/index.d.ts"
+        ],
+        "workbench/tool-sidebar": [
+          "./dist/workbench/tool-sidebar/index.d.ts"
         ],
         "workbench/types": [
           "./dist/workbench/types.d.ts"
