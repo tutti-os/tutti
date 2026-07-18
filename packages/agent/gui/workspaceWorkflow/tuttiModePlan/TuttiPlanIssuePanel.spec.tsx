@@ -222,6 +222,63 @@ describe("TuttiPlanIssuePanel", () => {
     expect(screen.queryByTestId("tutti-plan-issue-stop")).toBeNull();
   });
 
+  it("jumps into the delegate conversation from a launched task card", () => {
+    const launchedIssue: TuttiPlanIssueSnapshot = {
+      ...issue,
+      tasks: [
+        {
+          taskId: "live",
+          title: "Working",
+          content: "",
+          status: "running",
+          sortIndex: 1,
+          parallelizable: false,
+          autoAccept: false,
+          dependencyTaskIds: []
+        },
+        {
+          taskId: "gate",
+          title: "Review me",
+          content: "",
+          status: "pending_acceptance",
+          sortIndex: 2,
+          parallelizable: false,
+          autoAccept: false,
+          dependencyTaskIds: []
+        },
+        {
+          taskId: "later",
+          title: "Not launched",
+          content: "",
+          status: "not_started",
+          sortIndex: 3,
+          parallelizable: false,
+          autoAccept: false,
+          dependencyTaskIds: []
+        }
+      ]
+    };
+    const onOpenTask = vi.fn();
+    const onDecideTask = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TuttiPlanIssuePanel
+        issue={launchedIssue}
+        labels={labels}
+        onOpenTask={onOpenTask}
+        onDecideTask={onDecideTask}
+      />
+    );
+    fireEvent.click(screen.getByTestId("tutti-plan-issue-task-live"));
+    expect(onOpenTask).toHaveBeenCalledWith("live");
+    // A task that never launched has no conversation to jump into.
+    fireEvent.click(screen.getByTestId("tutti-plan-issue-task-later"));
+    expect(onOpenTask).toHaveBeenCalledTimes(1);
+    // The acceptance buttons stay decisions: they must not also open the card.
+    fireEvent.click(screen.getByTestId("tutti-plan-issue-accept-gate"));
+    expect(onDecideTask).toHaveBeenCalledWith("gate", "accept");
+    expect(onOpenTask).toHaveBeenCalledTimes(1);
+  });
+
   it("shows the auto-accept chip on flagged tasks", () => {
     render(
       <TuttiPlanIssuePanel

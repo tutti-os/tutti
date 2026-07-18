@@ -61,7 +61,8 @@ function createHarness(): {
     },
     acceptTask: vi.fn().mockResolvedValue(undefined),
     rejectTask: vi.fn().mockResolvedValue(undefined),
-    cancelExecution: vi.fn().mockResolvedValue(undefined)
+    cancelExecution: vi.fn().mockResolvedValue(undefined),
+    resolveTaskSession: vi.fn().mockResolvedValue(null)
   };
   const runtime: TuttiModePlanReviewRuntime = {
     listPending: vi.fn().mockResolvedValue([]),

@@ -51,6 +51,7 @@ export interface AgentGUITuttiPlanReview {
   ) => Promise<void>;
   planIssueCancelAvailable: boolean;
   cancelPlanIssueExecution: () => Promise<void>;
+  openPlanIssueTaskSession: (taskId: string) => Promise<void>;
   openPlanIssue: () => void;
   jumpToPlanIssuePanel: () => void;
   tuttiPlanReview: {
@@ -250,6 +251,26 @@ export function useAgentGUITuttiPlanReview(input: {
         ? tuttiModePlanPanels.cancelPlanIssueExecution()
         : Promise.resolve()
   );
+  // Clicking a task card jumps into the delegate conversation that ran it.
+  const openPlanIssueTaskSession = useStableEventCallback(
+    async (taskId: string): Promise<void> => {
+      const resolve = tuttiModePlanPanels.resolvePlanIssueTaskSession;
+      if (!resolve || !stableLinkAction) return;
+      let target: { agentSessionId: string } | null = null;
+      try {
+        target = await resolve(taskId);
+      } catch {
+        return;
+      }
+      if (!target) return;
+      stableLinkAction({
+        type: "open-agent-session",
+        workspaceId: viewModel.shell.workspaceId,
+        agentSessionId: target.agentSessionId,
+        source: "tutti-plan-issue-panel"
+      });
+    }
+  );
   const openPlanIssue = useStableEventCallback((): void => {
     if (!planIssue) return;
     stableLinkAction?.({
@@ -282,6 +303,7 @@ export function useAgentGUITuttiPlanReview(input: {
     planIssueCancelAvailable:
       tuttiModePlanPanels.cancelPlanIssueExecution !== null,
     cancelPlanIssueExecution,
+    openPlanIssueTaskSession,
     openPlanIssue,
     jumpToPlanIssuePanel,
     tuttiPlanReview: pendingPlanPanel

@@ -90,6 +90,10 @@ export function useTuttiModePlanPanels(input: {
     | null;
   /** Stop the plan issue's execution (pause + cancel runs); null until loaded. */
   cancelPlanIssueExecution: (() => Promise<void>) | null;
+  /** Resolve a task's delegate session for jump-to-conversation; null until loaded. */
+  resolvePlanIssueTaskSession:
+    | ((taskId: string) => Promise<{ agentSessionId: string } | null>)
+    | null;
   retry(): void;
   submittingCheckpointId: string | null;
 } {
@@ -449,6 +453,15 @@ export function useTuttiModePlanPanels(input: {
           });
         }
       : null;
+  const resolvePlanIssueTaskSession =
+    planIssueSource && planIssueId
+      ? (taskId: string): Promise<{ agentSessionId: string } | null> =>
+          planIssueSource.resolveTaskSession({
+            workspaceId,
+            issueId: planIssueId,
+            taskId
+          })
+      : null;
 
   const visibleAssignmentState =
     assignmentState.scopeKey === scopeKey
@@ -468,6 +481,7 @@ export function useTuttiModePlanPanels(input: {
     planIssue: visiblePlanIssue,
     decidePlanIssueTask,
     cancelPlanIssueExecution,
+    resolvePlanIssueTaskSession,
     retry: () => setRetrySequence((current) => current + 1),
     submittingCheckpointId: visibleState.submittingCheckpointId
   };

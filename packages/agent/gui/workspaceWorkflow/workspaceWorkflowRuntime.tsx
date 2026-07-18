@@ -134,6 +134,16 @@ export interface TuttiPlanIssueSource {
     workspaceId: string;
     issueId: string;
   }): Promise<void>;
+  /**
+   * Resolves the delegate agent session that ran (or is running) a task's
+   * latest run, so a task card can jump straight into that conversation.
+   * Null when the task has not launched yet.
+   */
+  resolveTaskSession(input: {
+    workspaceId: string;
+    issueId: string;
+    taskId: string;
+  }): Promise<{ agentSessionId: string } | null>;
 }
 
 /**
