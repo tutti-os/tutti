@@ -1440,7 +1440,7 @@ function ManagedModelProviderFields({
         <div className="flex flex-col gap-1.5">
           {draft.models.map((model, index) => (
             <div
-              key={`${model.provider}:${model.id}:${index}`}
+              key={`${model.provider}:${index}`}
               className="grid grid-cols-[minmax(0,1fr)_32px] items-center gap-1.5"
             >
               <Input

@@ -260,3 +260,11 @@ test("workspace managed provider API key is masked until toggled visible", () =>
   assert.match(source, /workspace\.settings\.apps\.managedModels\.showApiKey/);
   assert.match(source, /workspace\.settings\.apps\.managedModels\.hideApiKey/);
 });
+
+test("workspace managed provider model rows keep stable keys while editing", () => {
+  assert.match(source, /key=\{`\$\{model\.provider\}:\$\{index\}`\}/);
+  assert.doesNotMatch(
+    source,
+    /key=\{`\$\{model\.provider\}:\$\{model\.id\}:\$\{index\}`\}/
+  );
+});

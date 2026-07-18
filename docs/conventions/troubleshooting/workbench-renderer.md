@@ -261,6 +261,29 @@
   [WorkspaceFileReferencePickerTree.tsx](../../../packages/workspace/file-reference/src/ui/internal/reference/WorkspaceFileReferencePickerTree.tsx)
   [IssueManagerSidebarSections.tsx](../../../packages/workspace/issue-manager/src/ui/internal/shell/IssueManagerSidebarSections.tsx)
 
+### Controlled list input loses focus after every edit
+
+- Symptom:
+  Typing or deleting one character in a controlled input inside a rendered list
+  immediately ends the input state or clears focus.
+- Quick checks:
+  Inspect the nearest mapped row's React `key`. Confirm the key does not include
+  the input value or another field that changes in the input's `onChange` path.
+- Root cause:
+  Each edit changes the row key, so React treats the row as a different element
+  and unmounts the focused input before mounting its replacement.
+- Fix:
+  Build list-row keys only from stable row identity. For append/remove-only
+  drafts without a persisted row ID, a stable parent identity plus the row
+  position is acceptable; do not include editable values merely to make the key
+  look unique.
+- Validation:
+  Keep a regression test that rejects editable values in the row key. Manually
+  type and backspace repeatedly in each affected input and confirm that focus
+  and selection remain in the same field.
+- References:
+  [WorkspaceSettingsPanel.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/WorkspaceSettingsPanel.tsx)
+
 ### External-store snapshots churn because derived reads lose reference stability
 
 - Symptom:
