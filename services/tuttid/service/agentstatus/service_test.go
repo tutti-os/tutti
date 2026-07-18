@@ -885,16 +885,15 @@ func TestServiceListTreatsTemporarilyUnsupportedProvidersAsUnsupported(t *testin
 		return "/usr/local/bin/" + name, nil
 	}, map[string]bool{
 		"/home/test/.nexight/auth.json":         true,
-		"/home/test/.hermes/auth.json":          true,
 		"/home/test/.config/openclaw/auth.json": true,
 	})
 
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"nexight", "hermes", "openclaw"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"nexight", "openclaw"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(snapshot.Providers) != 3 {
-		t.Fatalf("len(providers) = %d, want 3", len(snapshot.Providers))
+	if len(snapshot.Providers) != 2 {
+		t.Fatalf("len(providers) = %d, want 2", len(snapshot.Providers))
 	}
 	for _, status := range snapshot.Providers {
 		if status.Availability.Status != AvailabilityUnsupported {
@@ -1039,9 +1038,9 @@ func TestServiceProbeReportsFailureWhenAdapterCommandCannotStart(t *testing.T) {
 func TestServiceProbeTreatsTemporarilyUnsupportedProviderAsUnsupported(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
-	}, map[string]bool{"/home/test/.hermes/auth.json": true})
+	}, map[string]bool{"/home/test/.config/openclaw/auth.json": true})
 
-	result, err := service.Probe(context.Background(), ProbeInput{Provider: "hermes"})
+	result, err := service.Probe(context.Background(), ProbeInput{Provider: "openclaw"})
 	if err != nil {
 		t.Fatalf("Probe() error = %v", err)
 	}
@@ -1709,7 +1708,7 @@ func TestServiceListClaudeCodeSDKReportsMissingSidecarEntry(t *testing.T) {
 func TestServiceRunActionDoesNotInstallTemporarilyUnsupportedProvider(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
-	}, map[string]bool{"/home/test/.hermes/auth.json": true})
+	}, map[string]bool{"/home/test/.config/openclaw/auth.json": true})
 	installCalled := false
 	service.InstallCommand = func(context.Context, InstallCommandInput) (InstallCommandResult, error) {
 		installCalled = true
@@ -1717,7 +1716,7 @@ func TestServiceRunActionDoesNotInstallTemporarilyUnsupportedProvider(t *testing
 	}
 
 	result, err := service.RunAction(context.Background(), RunActionInput{
-		Provider: "hermes",
+		Provider: "openclaw",
 		ActionID: ActionInstall,
 	})
 	if err != nil {

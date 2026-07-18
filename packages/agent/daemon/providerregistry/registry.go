@@ -261,7 +261,7 @@ func Validate(descriptor ProviderDescriptor) error {
 		return fmt.Errorf("provider %q status kind %q is unsupported", providerID, descriptor.Status.Kind)
 	}
 	switch descriptor.Status.AuthOutputParserKind {
-	case AuthOutputParserKindCodex, AuthOutputParserKindClaude, AuthOutputParserKindOpenCode, AuthOutputParserKindCursor:
+	case AuthOutputParserKindCodex, AuthOutputParserKindClaude, AuthOutputParserKindOpenCode, AuthOutputParserKindCursor, AuthOutputParserKindHermes:
 	case "":
 		if descriptor.Status.SupportStatus != "unsupported" && len(descriptor.Status.AuthStatusCommand) > 0 {
 			return fmt.Errorf("provider %q auth output parser kind is required", providerID)
@@ -582,6 +582,11 @@ func validateStandardACPRuntime(descriptor StandardACPRuntimeDescriptor) error {
 	}
 	if descriptor.ProjectCurrentMode && strings.TrimSpace(descriptor.PlanModeRuntimeID) == "" {
 		return fmt.Errorf("current-mode projection requires a plan mode runtime id")
+	}
+	for _, inputID := range descriptor.AutoApprovePermissionModeInputIDs {
+		if _, ok := modeIDs[strings.TrimSpace(inputID)]; !ok {
+			return fmt.Errorf("auto-approve permission mode %q is not declared", inputID)
+		}
 	}
 	environment := descriptor.SettingsEnvironment
 	variable := strings.TrimSpace(environment.Variable)

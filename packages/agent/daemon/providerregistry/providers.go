@@ -92,18 +92,44 @@ func nexightDescriptor() ProviderDescriptor {
 }
 
 func hermesDescriptor() ProviderDescriptor {
-	descriptor := unsupportedACPDescriptor(HermesProviderID, HermesTargetID, RuntimeDescriptor{
-		Kind: RuntimeKindStandardACP, Name: "hermes-acp", Command: []string{"hermes", "acp"}, AuthRequiredMessage: "Hermes ACP requires authentication in the runtime VM; ensure Hermes host credentials are synced before starting Agent GUI",
-		StandardACP: StandardACPRuntimeDescriptor{AdapterStrategy: StandardACPAdapterStrategyGeneric, PermissionModes: []RuntimePermissionModeDescriptor{{InputID: "yolo", RuntimeID: "yolo"}}, DefaultPermissionModeRuntimeID: "yolo", StartupDiagnostics: true, DeriveImageInputFromPrompt: true, DeriveCapabilitiesFromCommands: []string{CapabilityCompact}},
-	}, StatusDescriptor{Kind: StatusKindGenericCLI, BinaryNames: []string{"hermes"}, AuthMarkerPaths: []string{"~/.hermes/auth.json", "~/.config/hermes/auth.json"}, LoginArgs: []string{"login"}}, ComposerProfileDescriptor{
-		Capabilities: []string{CapabilityInterrupt}, DefaultPermissionModeID: "yolo", PermissionModes: []PermissionModeDescriptor{{ID: "yolo", Semantic: "unconfigurable"}},
-	}, 70)
-	descriptor.Events.Aliases = []string{"hermes-agent", "hermes_agent"}
-	descriptor.Sidecar.SkillRoot = ".agent_context/skills"
-	descriptor.Desktop.Managed = true
-	descriptor.Desktop.ManagedOrder = 6
-	descriptor.Desktop.StatusProbePriority = 6
-	return descriptor
+	return ProviderDescriptor{
+		Identity: canonicalProviderIdentity(HermesProviderID),
+		Runtime: RuntimeDescriptor{
+			Kind: RuntimeKindStandardACP, Name: "hermes-acp", Command: []string{"hermes", "acp"},
+			AuthRequiredMessage: "Hermes ACP requires authentication in the runtime VM; ensure Hermes host credentials are synced before starting Agent GUI",
+			StandardACP: StandardACPRuntimeDescriptor{
+				AdapterStrategy: StandardACPAdapterStrategyGeneric,
+				// hermes-agent's session/new advertises modes default/accept_edits/dont_ask
+				// ("yolo" is a top-level `hermes` CLI flag, not an ACP session mode id — the
+				// server accepts unknown modeId values as a silent no-op rather than an error).
+				// "dont_ask" is the closest real match for Tutti's single unconfigurable tier
+				// (auto-allows file edits except sensitive paths). AutoApprovePermissionModeInputIDs
+				// then auto-approves any session/request_permission the server still sends for
+				// those exceptions, so the tier is fully autonomous end-to-end regardless of
+				// server-side mode enforcement. Both are descriptor-driven so the generic-strategy
+				// adapter factory (the default controller's construction path) installs them.
+				// Live-probed against hermes-agent 0.18.2.
+				PermissionModes:                   []RuntimePermissionModeDescriptor{{InputID: "yolo", RuntimeID: "dont_ask"}},
+				DefaultPermissionModeRuntimeID:    "dont_ask",
+				AutoApprovePermissionModeInputIDs: []string{"yolo"},
+				StartupDiagnostics:                true,
+				DeriveImageInputFromPrompt:        true,
+				DeriveCapabilitiesFromCommands:    []string{CapabilityCompact},
+			},
+		},
+		Status: StatusDescriptor{
+			Kind: StatusKindGenericCLI, AuthOutputParserKind: AuthOutputParserKindHermes, AuthMarkerParserKind: AuthMarkerParserKindFileExists, AuthCommandRunnerKind: AuthCommandRunnerKindGeneric, StaticSpecResolverKind: StaticSpecResolverKindGeneric,
+			BinaryNames: []string{"hermes"}, AuthStatusCommand: []string{"status"}, AuthMarkerPaths: []string{"~/.hermes/auth.json", "~/.config/hermes/auth.json"}, LoginArgs: []string{"login"},
+			Install: InstallerDescriptor{Kind: InstallerKindOfficialScript, DisplayCommand: "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash", ScriptURL: "https://hermes-agent.nousresearch.com/install.sh", ScriptShell: "bash"},
+		},
+		ComposerProfile: ComposerProfileDescriptor{
+			Capabilities: []string{CapabilityInterrupt}, DefaultPermissionModeID: "yolo", PermissionModes: []PermissionModeDescriptor{{ID: "yolo", Semantic: "unconfigurable"}},
+		},
+		Target:  TargetDescriptor{ID: HermesTargetID, LaunchRefType: TargetLaunchRefTypeLocalCLI, Enabled: true, SortOrder: 70},
+		Events:  EventsDescriptor{Enabled: true, Aliases: []string{"hermes-agent", "hermes_agent"}, TurnLifecycleProjection: TurnLifecycleProjectionExplicit},
+		Sidecar: SidecarDescriptor{ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".agent_context/skills"},
+		Desktop: DesktopIntegrationDescriptor{Managed: true, ManagedOrder: 6, StatusProbePriority: 6},
+	}
 }
 
 func openClawDescriptor() ProviderDescriptor {

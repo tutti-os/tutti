@@ -1301,15 +1301,15 @@ func TestHermesAdapterStartCreatesStandardACPSession(t *testing.T) {
 	if events[0].ProviderSessionID != "hermes-session-1" {
 		t.Fatalf("provider session id = %q", events[0].ProviderSessionID)
 	}
-	if transport.conn.lastModeID() != "yolo" {
-		t.Fatalf("mode id = %q, want yolo", transport.conn.lastModeID())
+	if transport.conn.lastModeID() != "dont_ask" {
+		t.Fatalf("mode id = %q, want dont_ask", transport.conn.lastModeID())
 	}
 	if got := transport.conn.authenticatedMethodID(); got != "" {
 		t.Fatalf("authenticated method id = %q, want empty", got)
 	}
 }
 
-func TestHermesAdapterStartCoercesReadOnlyModeToYolo(t *testing.T) {
+func TestHermesAdapterStartCoercesReadOnlyModeToDontAsk(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-default")
@@ -1320,12 +1320,12 @@ func TestHermesAdapterStartCoercesReadOnlyModeToYolo(t *testing.T) {
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if transport.conn.lastModeID() != "yolo" {
-		t.Fatalf("mode id = %q, want yolo", transport.conn.lastModeID())
+	if transport.conn.lastModeID() != "dont_ask" {
+		t.Fatalf("mode id = %q, want dont_ask", transport.conn.lastModeID())
 	}
 }
 
-func TestHermesAdapterStartCoercesAutoModeToYolo(t *testing.T) {
+func TestHermesAdapterStartCoercesAutoModeToDontAsk(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-auto")
@@ -1336,8 +1336,40 @@ func TestHermesAdapterStartCoercesAutoModeToYolo(t *testing.T) {
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if transport.conn.lastModeID() != "yolo" {
-		t.Fatalf("mode id = %q, want yolo", transport.conn.lastModeID())
+	if transport.conn.lastModeID() != "dont_ask" {
+		t.Fatalf("mode id = %q, want dont_ask", transport.conn.lastModeID())
+	}
+}
+
+// TestHermesProductionFactoryInstallsAutoApproveHook guards the regression
+// where the auto-approve policy lived only in NewHermesAdapter while the
+// default controller builds adapters through the generic-strategy factory
+// (newAdapterFromProviderDescriptor). Without the descriptor-driven policy the
+// hook is never installed in production and sensitive-path writes hang on an
+// unanswered session/request_permission.
+func TestHermesProductionFactoryInstallsAutoApproveHook(t *testing.T) {
+	t.Parallel()
+
+	descriptor, ok := providerregistry.Find(ProviderHermes)
+	if !ok {
+		t.Fatal("hermes provider descriptor is missing")
+	}
+	transport := newStandardACPTransport("Hermes Agent", "hermes-factory")
+	adapter := newAdapterFromProviderDescriptor(descriptor, transport, LegacyHostMetadata(), nil)
+	std, ok := adapter.(*standardACPAdapter)
+	if !ok {
+		t.Fatalf("adapter type = %T, want *standardACPAdapter", adapter)
+	}
+	if std.config.automaticPermissionDecision == nil {
+		t.Fatal("production factory did not install the auto-approve hook")
+	}
+	if got := std.config.automaticPermissionDecision("yolo"); got != "approved" {
+		t.Fatalf("yolo decision = %q, want approved", got)
+	}
+	for _, tier := range []string{"read-only", "full-access", "auto", ""} {
+		if got := std.config.automaticPermissionDecision(tier); got != "" {
+			t.Fatalf("tier %q decision = %q, want prompt (empty)", tier, got)
+		}
 	}
 }
 

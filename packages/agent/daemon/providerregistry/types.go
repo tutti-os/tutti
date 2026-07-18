@@ -71,6 +71,7 @@ const (
 	AuthOutputParserKindClaude   AuthOutputParserKind = "claude"
 	AuthOutputParserKindOpenCode AuthOutputParserKind = "opencode"
 	AuthOutputParserKindCursor   AuthOutputParserKind = "cursor"
+	AuthOutputParserKindHermes   AuthOutputParserKind = "hermes"
 )
 
 type AuthMarkerParserKind string
@@ -140,6 +141,14 @@ type StandardACPRuntimeDescriptor struct {
 	StartupDiagnostics             bool
 	DeriveImageInputFromPrompt     bool
 	DeriveCapabilitiesFromCommands []string
+	// AutoApprovePermissionModeInputIDs lists the permission-tier input ids
+	// whose incoming session/request_permission calls the client resolves as
+	// approved without prompting. This is the data-driven form of the
+	// per-provider auto-approval policy so the shared (generic-strategy) adapter
+	// factory installs it — provider-specific constructors are not on the
+	// default controller's construction path. Every id must be declared in
+	// PermissionModes.
+	AutoApprovePermissionModeInputIDs []string
 }
 
 type InstallerDescriptor struct {

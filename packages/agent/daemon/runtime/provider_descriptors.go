@@ -87,7 +87,7 @@ func newStandardACPAdapterFromProviderDescriptor(
 	settingsEnvironment := descriptor.Runtime.StandardACP.SettingsEnvironment
 	standardACP := descriptor.Runtime.StandardACP
 	defaultRuntimeModeID := strings.TrimSpace(descriptor.Runtime.StandardACP.DefaultPermissionModeRuntimeID)
-	return &standardACPAdapter{
+	adapter := &standardACPAdapter{
 		config: standardACPConfig{
 			provider:            descriptor.Identity.ID,
 			adapterName:         descriptor.Runtime.Name,
@@ -120,6 +120,36 @@ func newStandardACPAdapterFromProviderDescriptor(
 		transport: transport,
 		host:      host,
 		sessions:  make(map[string]*standardACPSession),
+	}
+	if decision := autoApprovePermissionDecisionFromInputIDs(standardACP.AutoApprovePermissionModeInputIDs); decision != nil {
+		adapter.config.automaticPermissionDecision = decision
+	}
+	return adapter
+}
+
+// autoApprovePermissionDecisionFromInputIDs builds the descriptor-driven
+// automaticPermissionDecision hook: incoming permission requests are resolved
+// as approved without prompting while the session's permission tier is one of
+// the listed input ids. Returns nil when no tier auto-approves, leaving the
+// default prompting behavior in place.
+func autoApprovePermissionDecisionFromInputIDs(inputIDs []string) func(string) string {
+	if len(inputIDs) == 0 {
+		return nil
+	}
+	autoApprove := make(map[string]struct{}, len(inputIDs))
+	for _, id := range inputIDs {
+		if trimmed := strings.TrimSpace(id); trimmed != "" {
+			autoApprove[trimmed] = struct{}{}
+		}
+	}
+	if len(autoApprove) == 0 {
+		return nil
+	}
+	return func(permissionModeID string) string {
+		if _, ok := autoApprove[strings.TrimSpace(permissionModeID)]; ok {
+			return "approved"
+		}
+		return ""
 	}
 }
 
