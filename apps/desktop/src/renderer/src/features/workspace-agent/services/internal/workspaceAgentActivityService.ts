@@ -24,11 +24,13 @@ import type {
   WorkspaceAgentActivityListMessagesInput
 } from "../workspaceAgentActivityService.interface.ts";
 import type { IAgentProviderStatusService } from "../agentProviderStatusService.interface.ts";
+import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../../workspace-user-project/index.ts";
 import {
   createWorkspaceAgentSessionEngineHost,
   type WorkspaceAgentSessionEngineHost
 } from "./workspaceAgentSessionEngineHost.ts";
+import { createWorkspaceAgentEngineSendAnalytics } from "./workspaceAgentEngineSendAnalytics.ts";
 import { WorkspaceAgentActivityReconcileBridge } from "./workspaceAgentActivityReconcileBridge.ts";
 import {
   agentActivitySessionReconcileDiagnosticDetails,
@@ -76,6 +78,7 @@ export interface WorkspaceAgentActivityServiceDependencies {
   tuttidClient: TuttidClient;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   agentProviderStatusService?: Pick<IAgentProviderStatusService, "refresh">;
+  reporterService?: Pick<IReporterService, "trackEvents">;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
 
@@ -96,9 +99,16 @@ export class WorkspaceAgentActivityService
   >();
   private composerOptionsCommandSequence = 1;
   private sessionMutationSequence = 1;
+  private readonly engineSendAnalytics: ReturnType<
+    typeof createWorkspaceAgentEngineSendAnalytics
+  >;
   constructor(dependencies: WorkspaceAgentActivityServiceDependencies) {
     super(dependencies);
     this.dependencies = dependencies;
+    this.engineSendAnalytics = createWorkspaceAgentEngineSendAnalytics({
+      reporterService: dependencies.reporterService,
+      workspaceUserProjectService: dependencies.workspaceUserProjectService
+    });
     this.queryOperations = new WorkspaceAgentActivityQueryOperations(
       dependencies.tuttidClient
     );
@@ -740,12 +750,52 @@ export class WorkspaceAgentActivityService
 
   protected createEntry(workspaceId: string): WorkspaceAgentActivityEntry {
     return createWorkspaceAgentSessionEngineHost({
-      activateSession: (input) => this.activateSession(input),
-      cancelTurn: (input) => this.cancelTurn(input),
+      // 引擎命令口不经过 createDesktopAgentActivityRuntime,业务漏斗埋点
+      // (agent.session_started / agent.message_sent)在这里补报。
+      activateSession: async (input) => {
+        let activation: Awaited<
+          ReturnType<IWorkspaceAgentActivityService["activateSession"]>
+        >;
+        try {
+          activation = await this.activateSession(input);
+        } catch (error) {
+          await this.engineSendAnalytics.trackSessionActivateFailed(
+            input,
+            error
+          );
+          throw error;
+        }
+        await this.engineSendAnalytics.trackSessionActivated(input, activation);
+        return activation;
+      },
+      cancelTurn: async (input) => {
+        const result = await this.cancelTurn(input);
+        if (result.cancel?.canceled) {
+          await this.engineSendAnalytics.trackTurnCanceled({
+            agentSessionId: input.agentSessionId,
+            provider: this.getSnapshot(workspaceId).sessions.find(
+              (session) => session.agentSessionId === input.agentSessionId
+            )?.provider
+          });
+        }
+        return result;
+      },
       reconcileSession: (command) =>
         this.executeSessionReconcileCommand(command),
       runtimeApi: this.dependencies.runtimeApi,
-      sendInput: (input) => this.sendInput(input),
+      sendInput: async (input) => {
+        let result: Awaited<
+          ReturnType<IWorkspaceAgentActivityService["sendInput"]>
+        >;
+        try {
+          result = await this.sendInput(input);
+        } catch (error) {
+          await this.engineSendAnalytics.trackSendInputFailed(input, error);
+          throw error;
+        }
+        await this.engineSendAnalytics.trackSendInputResolved(input, result);
+        return result;
+      },
       submitInteractive: (input) => this.submitInteractive(input),
       submitPlanDecision: (input) => this.submitPlanDecision(input),
       subscribeSessionEvents: (workspaceId, listener) =>

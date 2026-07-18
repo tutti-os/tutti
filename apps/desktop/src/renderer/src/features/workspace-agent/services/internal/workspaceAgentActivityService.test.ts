@@ -185,6 +185,56 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
   });
 });
 
+test("WorkspaceAgentActivityService reports funnel analytics for engine-dispatched activations", async () => {
+  const reportedEvents: { name: string; params?: Record<string, unknown> }[] =
+    [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      createWorkspaceAgentSession: async () => ({
+        ...workspaceAgentSession({ status: "completed" }),
+        createdAtUnixMs: Date.now()
+      }),
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    reporterService: {
+      trackEvents: async (events) => {
+        reportedEvents.push(...events);
+      }
+    },
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+  const engine = service.getSessionEngine("ws-1");
+  const requestedAtUnixMs = Date.now();
+  engine.dispatch({
+    type: "activation/requested",
+    agentSessionId: "session-1",
+    agentTargetId: "local:codex",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "hello agent" }],
+    expiresAtUnixMs: requestedAtUnixMs + 45_000,
+    mode: "new",
+    requestedAtUnixMs,
+    requestId: "activation-1",
+    workspaceId: "ws-1"
+  });
+  for (
+    let attempt = 0;
+    attempt < 20 &&
+    !reportedEvents.some((event) => event.name === "agent.message_sent");
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  const names = reportedEvents.map((event) => event.name);
+  assert.ok(names.includes("agent.session_started"));
+  assert.ok(names.includes("agent.message_sent"));
+});
+
 test("WorkspaceAgentActivityService confirms engine activation from the realtime session upsert", async () => {
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
