@@ -273,6 +273,23 @@ export function WorkspaceAgentsSettingsTab({
                 <span className="text-[12px] text-[var(--text-secondary)]">
                   {t(statusLabelKeys[status])}
                 </span>
+                {status !== "checking" && status !== "unknown" ? (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className="text-[12px] text-[var(--text-tertiary)]"
+                    >
+                      ·
+                    </span>
+                    <span className="text-[12px] text-[var(--text-secondary)]">
+                      {t(
+                        row?.configDetected
+                          ? "workspace.workbenchDesktop.agentProviders.manageConfigDetected"
+                          : "workspace.workbenchDesktop.agentProviders.manageConfigMissing"
+                      )}
+                    </span>
+                  </>
+                ) : null}
               </div>
             </div>
             <label className="flex shrink-0 items-center gap-2 text-[12px] text-[var(--text-secondary)]">
