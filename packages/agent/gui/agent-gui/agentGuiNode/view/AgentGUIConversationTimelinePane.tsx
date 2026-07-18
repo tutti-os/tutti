@@ -1,16 +1,26 @@
-import { memo } from "react";
+import { memo, type Ref } from "react";
 import { AgentConversationFlow } from "../../../shared/agentConversation/components/AgentConversationFlow";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentCollaborationVM } from "../../../shared/agentConversation/contracts/agentCollaborationVM";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
+import type {
+  AgentTranscriptAttachmentLocator,
+  AgentTranscriptTurnAttachment
+} from "../../../shared/agentConversation/components/AgentTranscriptView";
 
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
 
 interface AgentGUIConversationTimelinePaneProps {
   conversation: AgentConversationVM | null;
+  turnAttachments?: readonly AgentTranscriptTurnAttachment[];
+  turnAttachmentLocatorRef?: Ref<AgentTranscriptAttachmentLocator>;
+  onTurnAttachmentVisibilityChange?: (
+    attachmentId: string,
+    visible: boolean
+  ) => void;
   isLoading: boolean;
   isLoadingOlderMessages: boolean;
   loadingLabel: string;
@@ -33,6 +43,9 @@ interface AgentGUIConversationTimelinePaneProps {
 export const AgentGUIConversationTimelinePane = memo(
   function AgentGUIConversationTimelinePane({
     conversation,
+    turnAttachments,
+    turnAttachmentLocatorRef,
+    onTurnAttachmentVisibilityChange,
     isLoading,
     isLoadingOlderMessages,
     loadingLabel,
@@ -60,6 +73,9 @@ export const AgentGUIConversationTimelinePane = memo(
         ) : null}
         <AgentConversationFlow
           conversation={conversation}
+          turnAttachments={turnAttachments}
+          turnAttachmentLocatorRef={turnAttachmentLocatorRef}
+          onTurnAttachmentVisibilityChange={onTurnAttachmentVisibilityChange}
           isLoading={isLoading}
           loadingLabel={loadingLabel}
           empty={empty}
