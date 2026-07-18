@@ -5,6 +5,7 @@ import {
   screen,
   waitFor
 } from "@testing-library/react";
+import { createRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
@@ -54,6 +55,7 @@ vi.mock("@tanstack/react-virtual", () => ({
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AgentTranscriptView } from "./AgentTranscriptView";
+import type { AgentTranscriptAttachmentLocator } from "./AgentTranscriptView";
 
 describe("AgentTranscriptView virtual rendering", () => {
   beforeEach(() => {
@@ -491,6 +493,44 @@ describe("AgentTranscriptView virtual rendering", () => {
         .querySelectorAll(".agent-gui-message-locator__tick");
       expect(ticks).toHaveLength(10);
       expect(ticks[9]).toHaveAttribute("data-selected", "true");
+    });
+  });
+
+  it("scrolls to an unmounted turn before locating its attachment", async () => {
+    virtualizerMockState.virtualIndexes = [10];
+    const locateAttachment = createRef<AgentTranscriptAttachmentLocator>();
+
+    render(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <div data-slot="scroll-area-content">
+          <AgentTranscriptView
+            conversation={conversationWithMultiRowTurns(40)}
+            turnAttachments={[
+              {
+                id: "workflow:workflow-20",
+                anchorTurnId: "turn-20",
+                content: <div>Workflow 20</div>
+              }
+            ]}
+            turnAttachmentLocatorRef={locateAttachment}
+            labels={{
+              thinkingLabel: "Thought process",
+              toolCallsLabel: (count) => `Tool calls (${count})`,
+              processing: "Planning next moves",
+              turnSummary: "Changed files"
+            }}
+          />
+        </div>
+      </div>
+    );
+
+    await waitFor(() => expect(locateAttachment.current).not.toBeNull());
+    locateAttachment.current?.("workflow:workflow-20");
+    expect(virtualizerMockState.scrollToIndex).toHaveBeenCalledWith(20, {
+      align: "center"
     });
   });
 

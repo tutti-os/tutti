@@ -556,6 +556,101 @@ describe("AgentTranscriptView", () => {
     expect(dividers).toHaveLength(1);
   });
 
+  it("keeps a turn attachment after its anchor when later turns are added", () => {
+    const base = detailViewModel();
+    render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({
+            turns: [
+              base.turns[0]!,
+              {
+                id: "turn-2",
+                userMessage: { id: "user-2", body: "Follow-up request" },
+                userMessages: [{ id: "user-2", body: "Follow-up request" }],
+                agentMessages: [
+                  { id: "assistant-2", body: "Follow-up answer" }
+                ],
+                toolCalls: [],
+                toolCallCount: 0,
+                hasFailedToolCall: false,
+                agentItems: [
+                  {
+                    kind: "message",
+                    message: { id: "assistant-2", body: "Follow-up answer" }
+                  }
+                ]
+              }
+            ]
+          })
+        )}
+        turnAttachments={[
+          {
+            id: "workflow:workflow-1",
+            anchorTurnId: "turn-1",
+            content: <div>Anchored workflow</div>
+          }
+        ]}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+      />
+    );
+
+    const attachment = screen
+      .getByText("Anchored workflow")
+      .closest("[data-agent-transcript-attachment]");
+    const firstTurnRow = screen
+      .getByText("User asks for a fix")
+      .closest("[data-agent-transcript-row]");
+    const secondTurnRow = screen
+      .getByText("Follow-up request")
+      .closest("[data-agent-transcript-row]");
+    expect(attachment).toBeInstanceOf(HTMLElement);
+    expect(firstTurnRow).toBeInstanceOf(HTMLElement);
+    expect(secondTurnRow).toBeInstanceOf(HTMLElement);
+    expect(
+      firstTurnRow!.compareDocumentPosition(attachment!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      attachment!.compareDocumentPosition(secondTurnRow!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("treats attachment reference changes as transcript render input", () => {
+    const conversation = projectAgentConversationVM(detailViewModel());
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const attachments = [
+      {
+        id: "workflow:workflow-1",
+        anchorTurnId: "turn-1",
+        content: <div>Review</div>
+      }
+    ];
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        { conversation, labels, turnAttachments: attachments },
+        { conversation, labels, turnAttachments: attachments }
+      )
+    ).toBe(true);
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        { conversation, labels, turnAttachments: attachments },
+        { conversation, labels, turnAttachments: [...attachments] }
+      )
+    ).toBe(false);
+  });
+
   it("renders user message locator ticks and scrolls to the selected message", () => {
     const scrollIntoView = vi.fn();
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;

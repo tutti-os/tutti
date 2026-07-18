@@ -18,7 +18,8 @@ export type {
 } from "./AgentGUI";
 export type {
   TuttiModePlanReviewSnapshot,
-  TuttiModePlanReviewRuntime
+  TuttiModePlanReviewRuntime,
+  TuttiModePlanTaskAssignmentInput
 } from "./workspaceWorkflow";
 export type { AgentGUIComposerAppendRequest } from "./agent-gui/agentGuiNode/controller/useAgentGUIComposerAppendRequest";
 export {

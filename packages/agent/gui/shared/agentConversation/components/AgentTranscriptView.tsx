@@ -6,7 +6,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type JSX
+  type JSX,
+  type Ref
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
@@ -34,6 +35,12 @@ import {
   useEnteringTranscriptRows,
   type AgentMessageLocatorItem
 } from "./agentTranscriptModel";
+import {
+  AgentTranscriptAttachmentView,
+  useAgentTranscriptTurnAttachments,
+  type AgentTranscriptAttachmentLocator,
+  type AgentTranscriptTurnAttachment
+} from "./useAgentTranscriptTurnAttachments";
 
 const AGENT_TRANSCRIPT_VIRTUALIZATION_OVERSCAN = 6;
 const AGENT_TRANSCRIPT_ESTIMATED_TURN_HEIGHT_PX = 280;
@@ -41,8 +48,19 @@ const AGENT_TRANSCRIPT_DISCLOSURE_TURN_GAP_PX = 24;
 const AGENT_TRANSCRIPT_LEGACY_TURN_GAP_PX = 12;
 const AGENT_TRANSCRIPT_FALLBACK_TURN_COUNT = 3;
 const preventVirtualScrollAdjustment = () => false;
+
+export type {
+  AgentTranscriptAttachmentLocator,
+  AgentTranscriptTurnAttachment
+} from "./useAgentTranscriptTurnAttachments";
 interface AgentTranscriptViewProps {
   conversation: AgentConversationVM;
+  turnAttachments?: readonly AgentTranscriptTurnAttachment[];
+  turnAttachmentLocatorRef?: Ref<AgentTranscriptAttachmentLocator>;
+  onTurnAttachmentVisibilityChange?: (
+    attachmentId: string,
+    visible: boolean
+  ) => void;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onAuthLogin?: (provider?: string | null) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
@@ -145,6 +163,10 @@ export function areAgentTranscriptViewPropsEqual(
     previous.onAuthLogin === next.onAuthLogin &&
     previous.availableSkills === next.availableSkills &&
     previous.workspaceAppIcons === next.workspaceAppIcons &&
+    previous.turnAttachments === next.turnAttachments &&
+    previous.turnAttachmentLocatorRef === next.turnAttachmentLocatorRef &&
+    previous.onTurnAttachmentVisibilityChange ===
+      next.onTurnAttachmentVisibilityChange &&
     previous.previewMode === next.previewMode &&
     previous.showRawTimelineJson === next.showRawTimelineJson &&
     transcriptLabelsEqual(previous.labels, next.labels)
@@ -153,6 +175,9 @@ export function areAgentTranscriptViewPropsEqual(
 
 export const AgentTranscriptView = memo(function AgentTranscriptView({
   conversation,
+  turnAttachments = [],
+  turnAttachmentLocatorRef,
+  onTurnAttachmentVisibilityChange,
   onLinkAction,
   onAuthLogin,
   availableSkills,
@@ -263,6 +288,15 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
     shouldVirtualize && hasMovingTurnDisclosure
       ? preventVirtualScrollAdjustment
       : undefined;
+  const attachmentProjection = useAgentTranscriptTurnAttachments({
+    attachments: turnAttachments,
+    locatorRef: turnAttachmentLocatorRef,
+    onVisibilityChange: onTurnAttachmentVisibilityChange,
+    rowVirtualizer,
+    shouldVirtualize,
+    turnGroups,
+    virtualizerHostRef
+  });
   const handleLocateUserMessage = useCallback(
     (item: AgentMessageLocatorItem) => {
       const scrollParent = virtualizerHostRef.current
@@ -400,6 +434,16 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
     );
   };
 
+  const renderAttachment = (
+    attachment: AgentTranscriptTurnAttachment
+  ): JSX.Element => (
+    <AgentTranscriptAttachmentView
+      key={attachment.id}
+      attachment={attachment}
+      onElementChange={attachmentProjection.onElementChange}
+    />
+  );
+
   if (shouldVirtualize) {
     const virtualItems =
       virtualScrollElement === null
@@ -460,10 +504,14 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
                 }}
               >
                 {renderTurnGroup(group)}
+                {attachmentProjection.byGroupIndex
+                  .get(virtualTurn.index)
+                  ?.map(renderAttachment)}
               </div>
             );
           })}
         </div>
+        {attachmentProjection.trailing.map(renderAttachment)}
       </>
     );
   }
@@ -475,7 +523,15 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
         label={labels.userMessageLocator}
         onLocate={handleLocateUserMessage}
       />
-      {turnGroups.map(renderTurnGroup)}
+      {turnGroups.map((group, groupIndex) => (
+        <Fragment key={group.key}>
+          {renderTurnGroup(group)}
+          {attachmentProjection.byGroupIndex
+            .get(groupIndex)
+            ?.map(renderAttachment)}
+        </Fragment>
+      ))}
+      {attachmentProjection.trailing.map(renderAttachment)}
     </>
   );
 }, areAgentTranscriptViewPropsEqual);
