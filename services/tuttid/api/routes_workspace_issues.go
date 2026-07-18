@@ -97,6 +97,14 @@ func registerWorkspaceIssueRoutes(
 		wrapper.RemoveWorkspaceIssueContextRef(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/cancel-execution", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.CancelWorkspaceIssueExecution(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/runs", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
