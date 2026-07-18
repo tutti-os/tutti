@@ -239,6 +239,7 @@ export function createDesktopAgentActivityRuntime(
       if (input.mode === "new" && !activationFailed) {
         await sessionStartedTracker.track({
           agentSessionId: activation.session.agentSessionId,
+          clientSubmitId: input.clientSubmitId,
           hasProject:
             Boolean(activation.session.cwd?.trim()) &&
             !(
@@ -259,12 +260,13 @@ export function createDesktopAgentActivityRuntime(
           provider: activation.session.provider,
           success: true
         });
-        const initialPrompt = promptContentDisplayText(
-          input.initialContent ?? []
-        );
+        const initialPrompt =
+          input.initialDisplayPrompt?.trim() ||
+          promptContentDisplayText(input.initialContent ?? []);
         if (initialPrompt) {
           await messageSentTracker.track({
             agentSessionId: activation.session.agentSessionId,
+            clientSubmitId: input.clientSubmitId,
             prompt: initialPrompt,
             provider: activation.session.provider
           });
@@ -387,7 +389,11 @@ export function createDesktopAgentActivityRuntime(
       });
       await messageSentTracker.track({
         agentSessionId: result.session.agentSessionId,
-        prompt: promptContentDisplayText(input.content),
+        clientSubmitId: input.clientSubmitId,
+        isQueued: input.submitDiagnostics?.queued,
+        prompt:
+          input.displayPrompt?.trim() ||
+          promptContentDisplayText(input.content),
         provider: result.session.provider
       });
       await safeTrackAgentNodeResult(nodeResultTracker, {

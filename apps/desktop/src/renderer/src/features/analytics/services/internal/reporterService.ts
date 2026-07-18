@@ -1,4 +1,5 @@
 import type { TuttidClient, TrackEvent } from "@tutti-os/client-tuttid-ts";
+import type { DesktopWorkspaceUiMode } from "@shared/preferences";
 import type {
   IReporterService,
   ReporterEventInput,
@@ -7,6 +8,7 @@ import type {
 
 export interface ReporterServiceDependencies {
   tuttidClient: Pick<TuttidClient, "trackEvents">;
+  mode: DesktopWorkspaceUiMode;
   now?: () => number;
 }
 
@@ -14,10 +16,12 @@ export class ReporterService implements IReporterService {
   readonly _serviceBrand: undefined;
 
   private readonly tuttidClient: Pick<TuttidClient, "trackEvents">;
+  private readonly mode: DesktopWorkspaceUiMode;
   private readonly now: () => number;
 
   constructor(dependencies: ReporterServiceDependencies) {
     this.tuttidClient = dependencies.tuttidClient;
+    this.mode = dependencies.mode;
     this.now = dependencies.now ?? Date.now;
   }
 
@@ -41,11 +45,12 @@ export class ReporterService implements IReporterService {
   private toTuttidEvent(event: ReporterEventInput): TrackEvent {
     const tuttidEvent: TrackEvent = {
       client_ts: event.clientTS ?? this.now(),
-      name: event.name
+      name: event.name,
+      params: {
+        ...event.params,
+        mode: this.mode
+      }
     };
-    if (event.params) {
-      tuttidEvent.params = { ...event.params };
-    }
     return tuttidEvent;
   }
 }

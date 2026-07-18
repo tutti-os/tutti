@@ -100,6 +100,7 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
       this.dependencies.workspaceUserProjectService
     );
     const title = input.title?.trim();
+    const clientSubmitId = createWorkspaceAgentClientSubmitId();
     await safeTrackAgentNodeResult(this.nodeResultTracker, {
       agentSessionId,
       flow: "session_create",
@@ -115,7 +116,7 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
         await this.dependencies.workspaceAgentActivityService.activateSession({
           agentSessionId,
           agentTargetId,
-          clientSubmitId: createWorkspaceAgentClientSubmitId(),
+          clientSubmitId,
           ...(cwd ? { cwd } : {}),
           initialContent: textPromptContent(prompt),
           mode: "new",
@@ -161,6 +162,7 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
     });
     await this.sessionStartedTracker.track({
       agentSessionId: activation.session.agentSessionId,
+      clientSubmitId,
       hasProject: Boolean(activation.session.cwd?.trim()),
       permissionMode: null,
       provider: activation.session.provider,
@@ -178,6 +180,7 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
     });
     await this.messageSentTracker.track({
       agentSessionId: activation.session.agentSessionId,
+      clientSubmitId,
       prompt,
       provider: activation.session.provider
     });

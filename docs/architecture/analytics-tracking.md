@@ -63,10 +63,27 @@ knows.
 | `os`               | tuttid   | Resolved at startup                                 |
 | `client_ts`        | renderer | Millisecond timestamp at the moment the event fired |
 | `dark_mode`        | renderer | `"1"` or `"0"`                                      |
+| `mode`             | renderer | Current workspace shell: `"os"` or `"agent"`        |
 | UI-specific params | renderer | Passed through `params` object                      |
 
 tuttid never tries to infer UI-state params. Renderer never tries to supply
 identity or platform params.
+
+The renderer derives `mode` from the native window route. `view=agent` reports
+`"agent"`; `view=workspace`, legacy routes, and unknown routes report `"os"`,
+matching the renderer's actual fallback behavior. This remains renderer-owned
+because multiple OS and Agent windows can coexist while sharing one tuttid
+process.
+
+### Agent send funnel ownership
+
+AgentGUI submits through the shared `AgentSessionEngine` command port. The
+successful `session/activate` and `queue/sendPrompt` command boundaries own
+`agent.session_started` and `agent.message_sent` respectively. Do not attach
+these events only to the outer `AgentActivityRuntime` methods: engine commands
+are hosted by `WorkspaceAgentActivityService` and intentionally bypass that
+wrapper. Non-AgentGUI prompt-session integrations keep their explicit tracker
+because they call the activity service without entering the shared engine.
 
 ## Event Naming Convention
 
@@ -114,7 +131,7 @@ types are generated from that source like other daemon routes.
 The request contract is enforced by tuttid:
 
 - `events` must contain 1 to 100 items
-- `name` must match `^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$` and be at most 128
+- `name` must match `^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$` and be at most 128
   characters
 - `client_ts` must be a positive millisecond timestamp
 

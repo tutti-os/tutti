@@ -120,7 +120,8 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     eventStreamClient: tuttidEventStreamClient
   });
   const reporterService = registerReporterServices(registry, {
-    tuttidClient
+    tuttidClient,
+    mode: routeView === "agent" ? "agent" : "os"
   });
   const predefinePageviewAnalytics = shouldReportPredefinePageview(
     window.location.search

@@ -3,11 +3,13 @@ import test from "node:test";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import { TuttidProtocolError } from "@tutti-os/client-tuttid-ts";
 import {
+  selectEnginePromptQueue,
   selectEngineTurnsForSession,
   selectSessionActivationPresentations,
   selectSessionAttention,
   selectSessionMutations
 } from "@tutti-os/agent-activity-core";
+import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
 import { WorkspaceAgentActivityService } from "./workspaceAgentActivityService.ts";
 
 test("WorkspaceAgentActivityService starts one canonical workspace load when the shared engine is created", async () => {
@@ -229,6 +231,231 @@ test("WorkspaceAgentActivityService confirms engine activation from the realtime
     selectSessionActivationPresentations(engine.getSnapshot())["session-1"]
       ?.status,
     "active"
+  );
+});
+
+test("WorkspaceAgentActivityService reports session and message events from the shared engine command path", async (t) => {
+  const reporterEvents: ReporterEventInput[] = [];
+  const completedSession = workspaceAgentSession({ status: "completed" });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      createWorkspaceAgentSession: async () => completedSession,
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: "ws-1"
+      }),
+      sendWorkspaceAgentSessionInput: async () => ({
+        kind: "turn",
+        session: completedSession,
+        turnId: "turn-2",
+        turn: workspaceAgentTurn({ phase: "submitted" })
+      })
+    } as unknown as TuttidClient,
+    reporterNow: () => 1749124800000,
+    reporterService: {
+      async trackEvents(events) {
+        reporterEvents.push(...events);
+      }
+    },
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+  t.after(() => service.dispose());
+  const engine = service.getSessionEngine("ws-1");
+  const requestedAtUnixMs = Date.now();
+
+  engine.dispatch({
+    type: "activation/requested",
+    agentSessionId: "session-1",
+    agentTargetId: "local:codex",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "Create the feature" }],
+    initialDisplayPrompt:
+      "/review [src/App.tsx](mention://file/src%2FApp.tsx?workspaceId=ws-1)",
+    cwd: "/workspace",
+    expiresAtUnixMs: requestedAtUnixMs + 45_000,
+    mode: "new",
+    requestedAtUnixMs,
+    requestId: "activation-analytics-1",
+    settings: {
+      model: "gpt-5",
+      permissionModeId: "auto"
+    },
+    workspaceId: "ws-1"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  engine.dispatch({
+    type: "submit/requested",
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-2",
+    content: [{ type: "text", text: "/review the result" }],
+    expiresAtUnixMs: requestedAtUnixMs + 60_000,
+    requestedAtUnixMs,
+    submitDiagnostics: {
+      blockCount: 1,
+      promptLength: 18,
+      queued: true,
+      source: "agent-gui",
+      submittedAtUnixMs: requestedAtUnixMs
+    },
+    workspaceId: "ws-1"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(
+    reporterEvents
+      .filter((event) =>
+        ["agent.session_started", "agent.message_sent"].includes(event.name)
+      )
+      .map((event) => ({ name: event.name, params: event.params })),
+    [
+      {
+        name: "agent.session_started",
+        params: {
+          agent_session_id: "session-1",
+          error_code: "agent_error_none",
+          error_message: "",
+          has_custom_model: false,
+          has_project: true,
+          permission_mode: "auto",
+          provider: "codex",
+          source: "launchpad"
+        }
+      },
+      {
+        name: "agent.message_sent",
+        params: {
+          agent_session_id: "session-1",
+          conversation_index: 1,
+          error_code: "agent_error_none",
+          error_message: "",
+          has_file_mention: true,
+          has_slash_command: true,
+          is_queued: false,
+          provider: "codex"
+        }
+      },
+      {
+        name: "agent.message_sent",
+        params: {
+          agent_session_id: "session-1",
+          conversation_index: 2,
+          error_code: "agent_error_none",
+          error_message: "",
+          has_file_mention: false,
+          has_slash_command: true,
+          is_queued: false,
+          provider: "codex"
+        }
+      }
+    ]
+  );
+});
+
+test("WorkspaceAgentActivityService does not wait for pending activation analytics", async (t) => {
+  let analyticsCalls = 0;
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      createWorkspaceAgentSession: async () => ({
+        ...workspaceAgentSession({ status: "completed" }),
+        createdAtUnixMs: Date.now()
+      }),
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    reporterService: {
+      trackEvents: () => {
+        analyticsCalls += 1;
+        return new Promise<void>(() => {});
+      }
+    },
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+  t.after(() => service.dispose());
+  const engine = service.getSessionEngine("ws-1");
+  const requestedAtUnixMs = Date.now();
+
+  engine.dispatch({
+    type: "activation/requested",
+    agentSessionId: "session-1",
+    agentTargetId: "local:codex",
+    clientSubmitId: "submit-pending-analytics",
+    content: [{ type: "text", text: "Create the feature" }],
+    expiresAtUnixMs: requestedAtUnixMs + 1_000,
+    mode: "new",
+    requestedAtUnixMs,
+    requestId: "activation-pending-analytics",
+    workspaceId: "ws-1"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(
+    selectSessionActivationPresentations(engine.getSnapshot())["session-1"]
+      ?.status,
+    "active"
+  );
+  assert.equal(analyticsCalls, 2);
+});
+
+test("WorkspaceAgentActivityService isolates rejected send analytics from the prompt command", async (t) => {
+  let sendCalls = 0;
+  const readySession = workspaceAgentSession({ status: "ready" });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [readySession],
+        workspaceId: "ws-1"
+      }),
+      sendWorkspaceAgentSessionInput: async () => {
+        sendCalls += 1;
+        return {
+          kind: "turn",
+          session: readySession,
+          turnId: "turn-analytics-rejected",
+          turn: workspaceAgentTurn({ phase: "submitted" })
+        };
+      }
+    } as unknown as TuttidClient,
+    reporterService: {
+      async trackEvents() {
+        throw new Error("analytics unavailable");
+      }
+    },
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+  t.after(() => service.dispose());
+  const engine = service.getSessionEngine("ws-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  const requestedAtUnixMs = Date.now();
+
+  engine.dispatch({
+    type: "submit/requested",
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-rejected-analytics",
+    content: [{ type: "text", text: "Continue" }],
+    expiresAtUnixMs: requestedAtUnixMs + 45_000,
+    requestedAtUnixMs,
+    workspaceId: "ws-1"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(sendCalls, 1);
+  assert.equal(
+    selectEnginePromptQueue(engine.getSnapshot(), "session-1")?.failureMessage,
+    null
+  );
+  assert.equal(
+    selectEnginePromptQueue(engine.getSnapshot(), "session-1")?.inFlight,
+    null
   );
 });
 

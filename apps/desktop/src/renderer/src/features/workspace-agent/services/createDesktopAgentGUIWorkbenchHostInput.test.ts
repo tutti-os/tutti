@@ -564,17 +564,18 @@ test("desktop agent GUI workbench host input tracks runtime prompt sends", async
     workspaceId
   });
 
-  await hostInput.agentActivityRuntime.sendInput({
+  const sendInput = {
     clientSubmitId: "submit-runtime-send-1",
     workspaceId,
     agentSessionId: "session-runtime-send-1",
-    content: [
-      {
-        type: "text",
-        text: "/review [src/App.tsx](mention://file/src%2FApp.tsx?workspaceId=workspace-1)"
-      }
-    ]
-  });
+    content: [{ type: "text" as const, text: "Expanded runtime prompt" }],
+    displayPrompt:
+      "/review [src/App.tsx](mention://file/src%2FApp.tsx?workspaceId=workspace-1)",
+    submitDiagnostics: { queued: true }
+  };
+
+  await hostInput.agentActivityRuntime.sendInput(sendInput);
+  await hostInput.agentActivityRuntime.sendInput(sendInput);
 
   assert.deepEqual(reporterCalls, [
     [
@@ -586,7 +587,7 @@ test("desktop agent GUI workbench host input tracks runtime prompt sends", async
           conversation_index: 1,
           has_file_mention: true,
           has_slash_command: true,
-          is_queued: false,
+          is_queued: true,
           provider: "codex"
         }
       }
@@ -785,19 +786,26 @@ test("desktop agent GUI workbench host input tracks runtime new session activati
     workspaceId
   });
 
-  await hostInput.agentActivityRuntime.activateSession({
+  const activationInput = {
     workspaceId,
     agentSessionId: "session-runtime-start-1",
     agentTargetId: "local:codex",
     clientSubmitId: "submit-runtime-start-1",
     cwd: "/workspace",
-    initialContent: [{ type: "text", text: "Track initial prompt" }],
-    mode: "new",
+    initialContent: [
+      { type: "text" as const, text: "Expanded initial runtime prompt" }
+    ],
+    initialDisplayPrompt:
+      "/review [src/App.tsx](mention://file/src%2FApp.tsx?workspaceId=workspace-1)",
+    mode: "new" as const,
     settings: {
       model: "gpt-5",
       permissionModeId: "auto"
     }
-  });
+  };
+
+  await hostInput.agentActivityRuntime.activateSession(activationInput);
+  await hostInput.agentActivityRuntime.activateSession(activationInput);
 
   assert.deepEqual(reporterCalls, [
     [
@@ -821,8 +829,8 @@ test("desktop agent GUI workbench host input tracks runtime new session activati
         params: {
           agent_session_id: "session-runtime-start-1",
           conversation_index: 1,
-          has_file_mention: false,
-          has_slash_command: false,
+          has_file_mention: true,
+          has_slash_command: true,
           is_queued: false,
           provider: "codex"
         }
