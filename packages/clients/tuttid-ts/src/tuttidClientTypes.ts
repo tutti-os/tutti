@@ -34,6 +34,7 @@ import type {
   CreateIssueManagerRunRequest,
   CreateIssueManagerTaskRequest,
   CreateIssueManagerTasksRequest,
+  CancelIssueManagerExecutionResponse,
   CreateIssueManagerTopicRequest,
   CreateAgentQuickPromptRequest,
   CreateWorkspaceAgentSessionRequest,
@@ -732,6 +733,10 @@ export interface TuttidClient extends WorkspaceAgentConfigurationClient {
     taskID: string,
     request: UpdateIssueManagerTaskRequest
   ): Promise<IssueManagerTask>;
+  cancelWorkspaceIssueExecution(
+    workspaceID: string,
+    issueID: string
+  ): Promise<CancelIssueManagerExecutionResponse>;
   putWorkspaceWorkbench(
     workspaceID: string,
     snapshot: WorkbenchSnapshot

@@ -996,8 +996,11 @@ func TestReworkFromPendingAcceptanceRedispatchesSequentialHead(t *testing.T) {
 }
 
 type tuttiPlanNotifierRecorder struct {
-	completedIssueIDs []string
-	failedRunIDs      []string
+	completedIssueIDs     []string
+	failedRunIDs          []string
+	settledRunIDs         []string
+	settledDecisionsByRun map[string]bool
+	settledTaskIDs        []string
 }
 
 func (r *tuttiPlanNotifierRecorder) NotifyTuttiPlanIssueCompleted(_ context.Context, _ string, issue workspaceissues.Issue, _ []workspaceissues.Task) {
@@ -1006,6 +1009,196 @@ func (r *tuttiPlanNotifierRecorder) NotifyTuttiPlanIssueCompleted(_ context.Cont
 
 func (r *tuttiPlanNotifierRecorder) NotifyTuttiPlanIssueTaskFailed(_ context.Context, _ string, _ workspaceissues.Issue, _ workspaceissues.Task, run workspaceissues.Run) {
 	r.failedRunIDs = append(r.failedRunIDs, run.RunID)
+}
+
+func (r *tuttiPlanNotifierRecorder) NotifyTuttiPlanIssueTaskSettled(_ context.Context, _ string, _ workspaceissues.Issue, task workspaceissues.Task, run workspaceissues.Run, _ []workspaceissues.Task, decisionNeeded bool) {
+	r.settledRunIDs = append(r.settledRunIDs, run.RunID)
+	r.settledTaskIDs = append(r.settledTaskIDs, task.TaskID)
+	if r.settledDecisionsByRun == nil {
+		r.settledDecisionsByRun = map[string]bool{}
+	}
+	r.settledDecisionsByRun[run.RunID] = decisionNeeded
+}
+
+func TestTaskSettleWakesPlanningConversation(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-settle-wake", Name: "Settle wake"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatalf("PutAgentTarget(%q) error = %v", target.ID, err)
+		}
+	}
+	creator := &sequentialSessionCreatorRecorder{}
+	notifier := &tuttiPlanNotifierRecorder{}
+	service := IssueManagerService{
+		AgentSessionCreator: creator,
+		CompletionNotifier:  notifier,
+		Store:               store,
+		AgentTargetReader:   store,
+	}
+	detail, err := service.CreateIssueFromPlan(ctx, "ws-settle-wake", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:                "tutti-mode-plan-settle-wake",
+			TopicID:                workspaceissues.DefaultTopicID,
+			Title:                  "Settle wake issue",
+			PlanningSource:         string(workspaceissues.PlanningSourceTuttiModePlan),
+			SourceSessionID:        "planning-session",
+			SequentialExecution:    true,
+			TuttiModeWorkflowOwned: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "task-1", Title: "Auto", AgentTargetID: agenttargetbiz.IDLocalCodex, AutoAccept: true},
+			{TaskID: "task-2", Title: "Gated", AgentTargetID: agenttargetbiz.IDLocalCodex, DependencyTaskIDs: []string{"task-1"}},
+			{TaskID: "task-3", Title: "Last", AgentTargetID: agenttargetbiz.IDLocalCodex, DependencyTaskIDs: []string{"task-2"}, AutoAccept: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	// Auto-accepted task: the planning conversation is woken with a progress
+	// report (no decision needed) and dispatch advances mechanically.
+	first := detail.Tasks[0]
+	if _, err := service.CompleteRun(ctx, "ws-settle-wake", detail.Issue.IssueID, first.TaskID, first.LatestRunID, CompleteIssueManagerRunInput{
+		Status: string(workspaceissues.StatusCompleted),
+	}); err != nil {
+		t.Fatalf("CompleteRun(task-1) error = %v", err)
+	}
+	if len(notifier.settledRunIDs) != 1 || notifier.settledTaskIDs[0] != "task-1" {
+		t.Fatalf("settle notifications after task-1 = %#v, want task-1", notifier.settledTaskIDs)
+	}
+	if notifier.settledDecisionsByRun[first.LatestRunID] {
+		t.Fatalf("auto-accepted settle reported decisionNeeded = true, want false")
+	}
+	// Non-autoAccept task: the wake carries the acceptance decision.
+	updated, err := service.GetIssueDetail(ctx, "ws-settle-wake", detail.Issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	second := updated.Tasks[1]
+	if second.Status != workspaceissues.StatusRunning {
+		t.Fatalf("task-2 status = %q, want running", second.Status)
+	}
+	if _, err := service.CompleteRun(ctx, "ws-settle-wake", detail.Issue.IssueID, second.TaskID, second.LatestRunID, CompleteIssueManagerRunInput{
+		Status: string(workspaceissues.StatusCompleted),
+	}); err != nil {
+		t.Fatalf("CompleteRun(task-2) error = %v", err)
+	}
+	if len(notifier.settledRunIDs) != 2 || notifier.settledTaskIDs[1] != "task-2" {
+		t.Fatalf("settle notifications after task-2 = %#v, want task-1, task-2", notifier.settledTaskIDs)
+	}
+	if !notifier.settledDecisionsByRun[second.LatestRunID] {
+		t.Fatalf("gated settle reported decisionNeeded = false, want true")
+	}
+	// Acceptance re-opens the frontier; the final auto-accepted task completes
+	// the whole issue, so only the dedicated completion notification fires.
+	acceptIssueTask(t, service, "ws-settle-wake", detail.Issue.IssueID, "task-2")
+	updated, err = service.GetIssueDetail(ctx, "ws-settle-wake", detail.Issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	last := updated.Tasks[2]
+	if last.Status != workspaceissues.StatusRunning {
+		t.Fatalf("task-3 status = %q, want running", last.Status)
+	}
+	if _, err := service.CompleteRun(ctx, "ws-settle-wake", detail.Issue.IssueID, last.TaskID, last.LatestRunID, CompleteIssueManagerRunInput{
+		Status: string(workspaceissues.StatusCompleted),
+	}); err != nil {
+		t.Fatalf("CompleteRun(task-3) error = %v", err)
+	}
+	if len(notifier.settledRunIDs) != 2 {
+		t.Fatalf("settle notifications after final task = %#v, want no extra settle wake", notifier.settledTaskIDs)
+	}
+	if len(notifier.completedIssueIDs) != 1 || notifier.completedIssueIDs[0] != detail.Issue.IssueID {
+		t.Fatalf("completion notifications = %#v, want exactly the issue", notifier.completedIssueIDs)
+	}
+}
+
+type runSessionCancellerRecorder struct {
+	canceledSessionIDs []string
+}
+
+func (r *runSessionCancellerRecorder) CancelTargetSession(_ context.Context, _ string, agentSessionID string) error {
+	r.canceledSessionIDs = append(r.canceledSessionIDs, agentSessionID)
+	return nil
+}
+
+func TestStopOnPlanningSessionCancelsAllRunningIssueRuns(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-stop-cascade", Name: "Stop cascade"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatalf("PutAgentTarget(%q) error = %v", target.ID, err)
+		}
+	}
+	creator := &sequentialSessionCreatorRecorder{}
+	canceller := &runSessionCancellerRecorder{}
+	service := IssueManagerService{
+		AgentSessionCreator: creator,
+		Store:               store,
+		AgentTargetReader:   store,
+		RunSessionCanceller: canceller,
+		MutationLocks:       NewIssueMutationLocks(),
+	}
+	detail, err := service.CreateIssueFromPlan(ctx, "ws-stop-cascade", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:                "tutti-mode-plan-stop-cascade",
+			TopicID:                workspaceissues.DefaultTopicID,
+			Title:                  "Stop cascade issue",
+			PlanningSource:         string(workspaceissues.PlanningSourceTuttiModePlan),
+			SourceSessionID:        "planning-session",
+			SequentialExecution:    true,
+			TuttiModeWorkflowOwned: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "task-1", Title: "First", AgentTargetID: agenttargetbiz.IDLocalCodex},
+			{TaskID: "task-2", Title: "Second", AgentTargetID: agenttargetbiz.IDLocalCodex, DependencyTaskIDs: []string{"task-1"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	if len(creator.inputs) != 1 {
+		t.Fatalf("initial dispatches = %d, want 1", len(creator.inputs))
+	}
+	// A stop on an unrelated session must not touch this issue.
+	service.ObserveUserTurnCanceled(ctx, "ws-stop-cascade", "some-other-session")
+	if len(canceller.canceledSessionIDs) != 0 {
+		t.Fatalf("unrelated session cancel cascaded = %v, want none", canceller.canceledSessionIDs)
+	}
+	// The planning session's stop cancels the live run, settles it canceled,
+	// and durably pauses dispatch.
+	service.ObserveUserTurnCanceled(ctx, "ws-stop-cascade", "planning-session")
+	if len(canceller.canceledSessionIDs) != 1 {
+		t.Fatalf("canceled sessions = %v, want the running run's session", canceller.canceledSessionIDs)
+	}
+	updated, err := service.GetIssueDetail(ctx, "ws-stop-cascade", detail.Issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	if !updated.Issue.DispatchPaused {
+		t.Fatalf("issue dispatchPaused = false, want true after stop")
+	}
+	if updated.Tasks[0].Status != workspaceissues.StatusCanceled {
+		t.Fatalf("running task status = %q, want canceled", updated.Tasks[0].Status)
+	}
+	if updated.Tasks[1].Status != workspaceissues.StatusNotStarted {
+		t.Fatalf("successor status = %q, want untouched not_started", updated.Tasks[1].Status)
+	}
+	if len(creator.inputs) != 1 {
+		t.Fatalf("dispatches after stop = %d, want no new launches", len(creator.inputs))
+	}
+	// Stop is idempotent.
+	if _, err := service.CancelIssueExecution(ctx, "ws-stop-cascade", detail.Issue.IssueID); err != nil {
+		t.Fatalf("CancelIssueExecution() repeat error = %v", err)
+	}
 }
 
 func TestFailedRunNotifiesPlanningConversationAndReworkRedispatches(t *testing.T) {

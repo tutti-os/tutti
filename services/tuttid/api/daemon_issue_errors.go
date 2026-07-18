@@ -145,6 +145,20 @@ func writeRemoveWorkspaceIssueContextRefError(err error) tuttigenerated.RemoveWo
 	}
 }
 
+func writeCancelWorkspaceIssueExecutionError(err error) tuttigenerated.CancelWorkspaceIssueExecutionResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.CancelWorkspaceIssueExecution400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
+	case tuttigenerated.WorkspaceIssueResourceNotFound:
+		return tuttigenerated.CancelWorkspaceIssueExecution404JSONResponse{WorkspaceIssueResourceNotFoundErrorJSONResponse: workspaceIssueResourceNotFoundError(protocolErr)}
+	case tuttigenerated.ServiceUnavailable:
+		return tuttigenerated.CancelWorkspaceIssueExecution503JSONResponse{ServiceUnavailableErrorJSONResponse: serviceUnavailableError(protocolErr)}
+	default:
+		return tuttigenerated.CancelWorkspaceIssueExecution502JSONResponse{WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr)}
+	}
+}
+
 func writeRemoveWorkspaceIssueTaskContextRefError(err error) tuttigenerated.RemoveWorkspaceIssueTaskContextRefResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {

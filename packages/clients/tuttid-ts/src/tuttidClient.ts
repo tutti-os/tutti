@@ -2,6 +2,7 @@ import {
   authenticateAgentTargetRuntime,
   addWorkspaceIssueContextRefs,
   addWorkspaceIssueTaskContextRefs,
+  cancelWorkspaceIssueExecution,
   checkUserProjectPath,
   completeWorkspaceIssueRun,
   completeWorkspaceIssueTaskRun,
@@ -771,6 +772,16 @@ export function createTuttidClient(
       });
       return unwrapData(response, "Update workspace issue task request failed.")
         .task;
+    },
+    async cancelWorkspaceIssueExecution(workspaceID, issueID) {
+      const response = await cancelWorkspaceIssueExecution({
+        client,
+        path: { issueID, workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Cancel workspace issue execution request failed."
+      );
     },
     async putWorkspaceWorkbench(workspaceID, snapshot) {
       const response = await putWorkspaceWorkbench({

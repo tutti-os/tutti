@@ -48,6 +48,7 @@ type Service struct {
 	TuttiModeActivations           TuttiModeActivationPort
 	SourceSessionDeletions         SourceSessionDeletionPort
 	SessionDeletionEvents          SessionDeletionEventPublisher
+	TurnCancelObserver             TurnCancelObserver
 	RuntimeOperationClock          func() time.Time
 	RuntimeOperationOwner          string
 	StaleTurnSettler               agenthost.StaleTurnSettler

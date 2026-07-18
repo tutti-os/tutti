@@ -375,6 +375,35 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/issues/{issueID}/cancel-execution:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/IssueManagerIssueID"
+    post:
+      operationId: cancelWorkspaceIssueExecution
+      tags:
+        - issue
+      summary: Stop one issue-manager issue's execution
+      description: Durably pauses future task dispatch, cancels the live agent turn of every running run's session, and settles those runs as canceled. Idempotent.
+      responses:
+        "200":
+          description: Workspace issue execution canceled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancelIssueManagerExecutionResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/issues/{issueID}/runs:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -2070,3 +2099,13 @@ components:
       properties:
         removed:
           type: boolean
+    CancelIssueManagerExecutionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - canceledRunCount
+      properties:
+        canceledRunCount:
+          type: integer
+          minimum: 0
+          description: Number of running runs this call settled as canceled.

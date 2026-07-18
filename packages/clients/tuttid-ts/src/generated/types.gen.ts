@@ -3835,6 +3835,13 @@ export type DeleteIssueManagerContextRefResponse = {
   removed: boolean;
 };
 
+export type CancelIssueManagerExecutionResponse = {
+  /**
+   * Number of running runs this call settled as canceled.
+   */
+  canceledRunCount: number;
+};
+
 export type CliCommandId = string;
 
 export type WorkspaceId = string;
@@ -12800,6 +12807,56 @@ export type RemoveWorkspaceIssueContextRefResponses = {
 
 export type RemoveWorkspaceIssueContextRefResponse =
   RemoveWorkspaceIssueContextRefResponses[keyof RemoveWorkspaceIssueContextRefResponses];
+
+export type CancelWorkspaceIssueExecutionData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    issueID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/issues/{issueID}/cancel-execution";
+};
+
+export type CancelWorkspaceIssueExecutionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CancelWorkspaceIssueExecutionError =
+  CancelWorkspaceIssueExecutionErrors[keyof CancelWorkspaceIssueExecutionErrors];
+
+export type CancelWorkspaceIssueExecutionResponses = {
+  /**
+   * Workspace issue execution canceled
+   */
+  200: CancelIssueManagerExecutionResponse;
+};
+
+export type CancelWorkspaceIssueExecutionResponse =
+  CancelWorkspaceIssueExecutionResponses[keyof CancelWorkspaceIssueExecutionResponses];
 
 export type ListWorkspaceIssueRunsData = {
   body?: never;

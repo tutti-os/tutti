@@ -479,6 +479,9 @@ type ServerInterface interface {
 	// Update one issue-manager issue
 	// (PATCH /v1/workspaces/{workspaceID}/issues/{issueID})
 	UpdateWorkspaceIssue(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID IssueManagerIssueID)
+	// Stop one issue-manager issue's execution
+	// (POST /v1/workspaces/{workspaceID}/issues/{issueID}/cancel-execution)
+	CancelWorkspaceIssueExecution(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID IssueManagerIssueID)
 	// Add context references to one issue-manager issue
 	// (POST /v1/workspaces/{workspaceID}/issues/{issueID}/context-refs)
 	AddWorkspaceIssueContextRefs(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID IssueManagerIssueID)
@@ -6742,6 +6745,47 @@ func (siw *ServerInterfaceWrapper) UpdateWorkspaceIssue(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// CancelWorkspaceIssueExecution operation middleware
+func (siw *ServerInterfaceWrapper) CancelWorkspaceIssueExecution(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "issueID" -------------
+	var issueID IssueManagerIssueID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issueID", r.PathValue("issueID"), &issueID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issueID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelWorkspaceIssueExecution(w, r, workspaceID, issueID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AddWorkspaceIssueContextRefs operation middleware
 func (siw *ServerInterfaceWrapper) AddWorkspaceIssueContextRefs(w http.ResponseWriter, r *http.Request) {
 
@@ -9046,6 +9090,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}", wrapper.DeleteWorkspaceIssue)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}", wrapper.GetWorkspaceIssueDetail)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}", wrapper.UpdateWorkspaceIssue)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/cancel-execution", wrapper.CancelWorkspaceIssueExecution)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/context-refs", wrapper.AddWorkspaceIssueContextRefs)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/context-refs/{contextRefID}", wrapper.RemoveWorkspaceIssueContextRef)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/runs", wrapper.ListWorkspaceIssueRuns)
@@ -26065,6 +26110,123 @@ func (response UpdateWorkspaceIssue503JSONResponse) VisitUpdateWorkspaceIssueRes
 	return err
 }
 
+type CancelWorkspaceIssueExecutionRequestObject struct {
+	WorkspaceID WorkspaceID         `json:"workspaceID"`
+	IssueID     IssueManagerIssueID `json:"issueID"`
+}
+
+type CancelWorkspaceIssueExecutionResponseObject interface {
+	VisitCancelWorkspaceIssueExecutionResponse(w http.ResponseWriter) error
+}
+
+type CancelWorkspaceIssueExecution200JSONResponse CancelIssueManagerExecutionResponse
+
+func (response CancelWorkspaceIssueExecution200JSONResponse) VisitCancelWorkspaceIssueExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceIssueExecution400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response CancelWorkspaceIssueExecution400JSONResponse) VisitCancelWorkspaceIssueExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceIssueExecution401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response CancelWorkspaceIssueExecution401JSONResponse) VisitCancelWorkspaceIssueExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceIssueExecution404JSONResponse struct {
+	WorkspaceIssueResourceNotFoundErrorJSONResponse
+}
+
+func (response CancelWorkspaceIssueExecution404JSONResponse) VisitCancelWorkspaceIssueExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceIssueExecution405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response CancelWorkspaceIssueExecution405JSONResponse) VisitCancelWorkspaceIssueExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceIssueExecution502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response CancelWorkspaceIssueExecution502JSONResponse) VisitCancelWorkspaceIssueExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceIssueExecution503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response CancelWorkspaceIssueExecution503JSONResponse) VisitCancelWorkspaceIssueExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type AddWorkspaceIssueContextRefsRequestObject struct {
 	WorkspaceID WorkspaceID         `json:"workspaceID"`
 	IssueID     IssueManagerIssueID `json:"issueID"`
@@ -32008,6 +32170,9 @@ type StrictServerInterface interface {
 	// Update one issue-manager issue
 	// (PATCH /v1/workspaces/{workspaceID}/issues/{issueID})
 	UpdateWorkspaceIssue(ctx context.Context, request UpdateWorkspaceIssueRequestObject) (UpdateWorkspaceIssueResponseObject, error)
+	// Stop one issue-manager issue's execution
+	// (POST /v1/workspaces/{workspaceID}/issues/{issueID}/cancel-execution)
+	CancelWorkspaceIssueExecution(ctx context.Context, request CancelWorkspaceIssueExecutionRequestObject) (CancelWorkspaceIssueExecutionResponseObject, error)
 	// Add context references to one issue-manager issue
 	// (POST /v1/workspaces/{workspaceID}/issues/{issueID}/context-refs)
 	AddWorkspaceIssueContextRefs(ctx context.Context, request AddWorkspaceIssueContextRefsRequestObject) (AddWorkspaceIssueContextRefsResponseObject, error)
@@ -36844,6 +37009,33 @@ func (sh *strictHandler) UpdateWorkspaceIssue(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateWorkspaceIssueResponseObject); ok {
 		if err := validResponse.VisitUpdateWorkspaceIssueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelWorkspaceIssueExecution operation middleware
+func (sh *strictHandler) CancelWorkspaceIssueExecution(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID IssueManagerIssueID) {
+	var request CancelWorkspaceIssueExecutionRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.IssueID = issueID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelWorkspaceIssueExecution(ctx, request.(CancelWorkspaceIssueExecutionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelWorkspaceIssueExecution")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelWorkspaceIssueExecutionResponseObject); ok {
+		if err := validResponse.VisitCancelWorkspaceIssueExecutionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

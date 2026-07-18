@@ -240,6 +240,13 @@ func (s Service) UpdateTask(ctx context.Context, input UpdateTaskInput) (Task, e
 		case StatusNotStarted:
 			task.AcceptanceState = AcceptanceAgentClaimed
 			task.AcceptanceSummary = ""
+		case StatusPendingAcceptance:
+			// An accepted task cannot be pushed back to pending acceptance:
+			// that write would keep user_accepted on a non-completed task and
+			// wedge the dispatch frontier. Rework goes through not_started.
+			if task.AcceptanceState == AcceptanceUserAccepted {
+				return Task{}, ErrInvalidArgument
+			}
 		}
 	}
 	task.UpdatedAtUnixMS = s.nowUnixMS()

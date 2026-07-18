@@ -123,6 +123,148 @@ func (d *tuttiPlanIssueCompletionDispatcher) NotifyTuttiPlanIssueTaskFailed(
 	go send()
 }
 
+// NotifyTuttiPlanIssueTaskSettled wakes the planning conversation with one
+// successfully settled task run so the planning agent — the orchestrator of
+// its accepted plan — decides how execution advances. Deduped per run, so
+// reconcile replays cannot spam the session.
+func (d *tuttiPlanIssueCompletionDispatcher) NotifyTuttiPlanIssueTaskSettled(
+	_ context.Context,
+	workspaceID string,
+	issue workspaceissues.Issue,
+	task workspaceissues.Task,
+	run workspaceissues.Run,
+	allTasks []workspaceissues.Task,
+	decisionNeeded bool,
+) {
+	if d == nil || d.Agents == nil {
+		return
+	}
+	d.mu.Lock()
+	if d.dispatched == nil {
+		d.dispatched = map[string]struct{}{}
+	}
+	key := workspaceID + "/run-settled/" + run.RunID
+	if _, exists := d.dispatched[key]; exists {
+		d.mu.Unlock()
+		return
+	}
+	d.dispatched[key] = struct{}{}
+	d.mu.Unlock()
+	send := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), tuttiPlanIssueCompletionDispatchTimeout)
+		defer cancel()
+		result, err := d.Agents.SendInput(ctx, workspaceID, issue.SourceSessionID, agentservice.SendInput{
+			Content: []agentservice.PromptContentBlock{{
+				Type: "text",
+				Text: tuttiPlanIssueTaskSettledPrompt(issue, task, run, allTasks, decisionNeeded, tuttiModePlanCLICommandName()),
+			}},
+			ClientSubmitID: "tutti-plan-issue-task-settled:" + run.RunID,
+			Metadata: map[string]any{
+				"tuttiModePlanIssueId": issue.IssueID,
+			},
+		})
+		if err != nil {
+			slog.Warn("tutti mode plan issue task settle dispatch failed",
+				"event", "tutti_mode_plan.issue_task_settle_dispatch_failed",
+				"workspaceId", workspaceID,
+				"issueId", issue.IssueID,
+				"taskId", task.TaskID,
+				"runId", run.RunID,
+				"sourceSessionId", issue.SourceSessionID,
+				"error", err)
+			return
+		}
+		slog.Info("tutti mode plan issue task settle dispatched",
+			"event", "tutti_mode_plan.issue_task_settle_dispatched",
+			"workspaceId", workspaceID,
+			"issueId", issue.IssueID,
+			"taskId", task.TaskID,
+			"runId", run.RunID,
+			"decisionNeeded", decisionNeeded,
+			"turnId", strings.TrimSpace(result.TurnID))
+	}
+	if d.Synchronous {
+		send()
+		return
+	}
+	go send()
+}
+
+func tuttiPlanIssueTaskBoardLine(task workspaceissues.Task) string {
+	marks := make([]string, 0, 3)
+	marks = append(marks, string(task.Status))
+	if task.Status == workspaceissues.StatusCompleted && task.AcceptanceState == workspaceissues.AcceptanceUserAccepted {
+		marks = append(marks, "accepted")
+	} else if task.Status == workspaceissues.StatusPendingAcceptance {
+		marks = append(marks, "awaiting acceptance")
+	}
+	if task.AutoAccept {
+		marks = append(marks, "autoAccept")
+	}
+	line := fmt.Sprintf("- %s (%s): %s", task.TaskID, strings.TrimSpace(task.Title), strings.Join(marks, ", "))
+	if len(task.DependencyTaskIDs) > 0 {
+		line += " — depends on " + strings.Join(task.DependencyTaskIDs, ", ")
+	}
+	return line
+}
+
+func tuttiPlanIssueTaskSettledPrompt(
+	issue workspaceissues.Issue,
+	task workspaceissues.Task,
+	run workspaceissues.Run,
+	allTasks []workspaceissues.Task,
+	decisionNeeded bool,
+	cliName string,
+) string {
+	board := make([]string, 0, len(allTasks))
+	for _, item := range allTasks {
+		board = append(board, tuttiPlanIssueTaskBoardLine(item))
+	}
+	summary := strings.TrimSpace(run.Summary)
+	if summary == "" {
+		summary = strings.TrimSpace(task.AcceptanceSummary)
+	}
+	if summary == "" {
+		summary = "The run reported no summary; inspect its outputs in the working directory."
+	}
+	workingDirectory := strings.TrimSpace(run.ExecutionDirectory)
+	if workingDirectory == "" {
+		workingDirectory = "(planning session directory)"
+	}
+	header := fmt.Sprintf(`A task of your accepted Tutti Mode plan finished. You are the orchestrator of this plan: review the result and advance execution in this turn — the daemon does not chain tasks past a pending acceptance on its own.
+
+Issue: %s
+Settled task: %s (%s)
+Working directory: %s
+Result claim:
+%s
+
+Task board:
+%s`,
+		issue.Title,
+		task.TaskID,
+		strings.TrimSpace(task.Title),
+		workingDirectory,
+		summary,
+		strings.Join(board, "\n"),
+	)
+	if decisionNeeded {
+		return header + fmt.Sprintf(`
+
+This task is pending acceptance and its plan did not mark it autoAccept, so the acceptance decision is yours (the user already approved the plan; they can still override from the issue panel or steer you with a message). Every command below is a %[1]s shell command:
+- Verify the claim first (read the produced files, run checks) in this turn.
+- Accept when the result holds: %[1]s issue task update --issue-id %[2]s --task-id %[3]s --status completed
+- Send it back for rework when it does not: %[1]s issue task update --issue-id %[2]s --task-id %[3]s --status not_started  (refine --content first so the retry fixes the gap)
+- Reshape the remaining graph if needed (%[1]s issue task update / create / delete), or pause everything: %[1]s issue update --issue-id %[2]s --dispatch-paused true
+Accepting re-opens the dispatch frontier automatically; end the turn with a one-line progress note for the user.`,
+			cliName, issue.IssueID, task.TaskID)
+	}
+	return header + fmt.Sprintf(`
+
+The task was auto-accepted per the plan and eligible successors are being dispatched automatically. Intervene only if the result claim or the board looks wrong (every command is a %[1]s shell command): send a task back with "%[1]s issue task update --issue-id %[2]s --task-id <id> --status not_started", or pause dispatch with "%[1]s issue update --issue-id %[2]s --dispatch-paused true". Otherwise end the turn with a one-line progress note for the user.`,
+		cliName, issue.IssueID)
+}
+
 func tuttiPlanIssueTaskFailedPrompt(issue workspaceissues.Issue, task workspaceissues.Task, run workspaceissues.Run) string {
 	reason := strings.TrimSpace(run.ErrorMessage)
 	if reason == "" {

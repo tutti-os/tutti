@@ -32,6 +32,13 @@ type IssueManagerService struct {
 	// produced, so a settled turn is matched to the exact Issue run that
 	// initiated it before the run is completed from Agent state.
 	RunTurnResolver IssueRunTurnResolver
+	// MutationLocks serializes task/run mutations per Issue so the concurrent
+	// settle paths cannot interleave read-modify-write cycles into
+	// contradictory task states. Nil (bare test services) means no locking.
+	MutationLocks *IssueMutationLocks
+	// RunSessionCanceller cancels the live agent turn of a run's delegate
+	// session when the user stops the Issue's execution.
+	RunSessionCanceller IssueRunSessionCanceller
 }
 
 // IssueRunTurnResolver looks up the canonical turn created for a client
@@ -55,6 +62,22 @@ type TuttiPlanIssueCompletionNotifier interface {
 		issue workspaceissues.Issue,
 		task workspaceissues.Task,
 		run workspaceissues.Run,
+	)
+	// NotifyTuttiPlanIssueTaskSettled wakes the planning conversation after a
+	// successful task run settles. The planning agent — not a mechanical
+	// daemon chain — decides how execution advances: it reviews the result,
+	// accepts or reworks a task that is pending acceptance, and can reshape
+	// the remaining graph through the Issue CLI. decisionNeeded is true when
+	// the settled task parked at pending_acceptance (no autoAccept), so the
+	// planning agent is now the acceptance authority.
+	NotifyTuttiPlanIssueTaskSettled(
+		ctx context.Context,
+		workspaceID string,
+		issue workspaceissues.Issue,
+		task workspaceissues.Task,
+		run workspaceissues.Run,
+		allTasks []workspaceissues.Task,
+		decisionNeeded bool,
 	)
 }
 
@@ -448,6 +471,14 @@ func (s IssueManagerService) UpdateIssue(ctx context.Context, workspaceID string
 	return issue, nil
 }
 
+// dispatchEligibleIssueTasks is the lock-acquiring entry for callers that do
+// not already hold the Issue mutation lock.
+func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, workspaceID, issueID string) {
+	unlock := s.MutationLocks.Lock(workspaceID, issueID)
+	defer unlock()
+	s.dispatchEligibleIssueTasksLocked(ctx, workspaceID, issueID)
+}
+
 func (s IssueManagerService) DeleteIssue(ctx context.Context, workspaceID string, issueID string) (bool, error) {
 	removed, err := s.domainService().DeleteIssue(ctx, workspaceID, issueID, issueManagerLocalActorUserID)
 	if err != nil {
@@ -571,6 +602,12 @@ func (s IssueManagerService) GetTaskDetail(ctx context.Context, workspaceID stri
 }
 
 func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string, issueID string, taskID string, input UpdateIssueManagerTaskInput) (workspaceissues.Task, error) {
+	unlock := s.MutationLocks.Lock(workspaceID, issueID)
+	defer unlock()
+	return s.updateTaskLocked(ctx, workspaceID, issueID, taskID, input)
+}
+
+func (s IssueManagerService) updateTaskLocked(ctx context.Context, workspaceID string, issueID string, taskID string, input UpdateIssueManagerTaskInput) (workspaceissues.Task, error) {
 	task, err := s.domainService().UpdateTask(ctx, workspaceissues.UpdateTaskInput{
 		TaskID:               taskID,
 		IssueID:              issueID,
@@ -607,13 +644,13 @@ func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string,
 		ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskUpdated,
 	})
 	if task.Status == workspaceissues.StatusCompleted && task.AcceptanceState == workspaceissues.AcceptanceUserAccepted {
-		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
+		s.dispatchEligibleIssueTasksLocked(ctx, workspaceID, issueID)
 		s.notifyTuttiPlanIssueCompletedBestEffort(ctx, workspaceID, issueID)
 	}
 	// A rework (back to not_started) re-opens the execution frontier; without
 	// this the rejected head of a sequential Issue waits for an unrelated event.
 	if input.HasStatus && task.Status == workspaceissues.StatusNotStarted {
-		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
+		s.dispatchEligibleIssueTasksLocked(ctx, workspaceID, issueID)
 	}
 	return task, nil
 }
@@ -718,6 +755,12 @@ func (s IssueManagerService) ListRuns(ctx context.Context, workspaceID string, i
 }
 
 func (s IssueManagerService) CreateRun(ctx context.Context, workspaceID string, issueID string, taskID string, input CreateIssueManagerRunInput) (workspaceissues.Run, error) {
+	unlock := s.MutationLocks.Lock(workspaceID, issueID)
+	defer unlock()
+	return s.createRunLocked(ctx, workspaceID, issueID, taskID, input)
+}
+
+func (s IssueManagerService) createRunLocked(ctx context.Context, workspaceID string, issueID string, taskID string, input CreateIssueManagerRunInput) (workspaceissues.Run, error) {
 	run, err := s.domainService().CreateRun(ctx, workspaceissues.CreateRunInput{
 		RunID:              input.RunID,
 		TaskID:             taskID,
@@ -751,6 +794,23 @@ func (s IssueManagerService) GetRunDetail(ctx context.Context, workspaceID strin
 }
 
 func (s IssueManagerService) CompleteRun(ctx context.Context, workspaceID string, issueID string, taskID string, runID string, input CompleteIssueManagerRunInput) (workspaceissues.RunDetail, error) {
+	unlock := s.MutationLocks.Lock(workspaceID, issueID)
+	defer unlock()
+	return s.completeRunLocked(ctx, workspaceID, issueID, taskID, runID, input)
+}
+
+func (s IssueManagerService) completeRunLocked(ctx context.Context, workspaceID string, issueID string, taskID string, runID string, input CompleteIssueManagerRunInput) (workspaceissues.RunDetail, error) {
+	// An idempotent replay of an already-terminal run must not re-fire the
+	// planning-conversation notifications: their in-process dedupe does not
+	// survive a daemon restart, and a stale wake would misreport a long-settled
+	// run as fresh news.
+	alreadySettled := false
+	if runDetail, err := s.domainService().GetRunDetail(ctx, workspaceID, issueID, taskID, runID); err == nil {
+		switch runDetail.Run.Status {
+		case workspaceissues.StatusCompleted, workspaceissues.StatusFailed, workspaceissues.StatusCanceled:
+			alreadySettled = true
+		}
+	}
 	run, outputs, err := s.domainService().CompleteRun(ctx, workspaceissues.CompleteRunInput{
 		RunID:                    runID,
 		TaskID:                   taskID,
@@ -778,27 +838,77 @@ func (s IssueManagerService) CompleteRun(ctx context.Context, workspaceID string
 	// A task the plan review marked auto-accept skips the human gate: its
 	// successful completion is accepted programmatically, which advances
 	// dispatch and the whole-issue completion check through the same path a
-	// manual acceptance takes.
+	// manual acceptance takes. Either way the planning conversation is woken
+	// with the settled result so the planning agent orchestrates what happens
+	// next instead of the daemon silently chaining tasks.
 	if run.Status == workspaceissues.StatusCompleted {
+		autoAccepted := false
 		if taskDetail, taskErr := s.domainService().GetTaskDetail(ctx, workspaceID, issueID, taskID); taskErr == nil &&
 			taskDetail.Task.AutoAccept && taskDetail.Task.Status == workspaceissues.StatusPendingAcceptance {
-			if _, acceptErr := s.UpdateTask(ctx, workspaceID, issueID, taskID, UpdateIssueManagerTaskInput{
+			if _, acceptErr := s.updateTaskLocked(ctx, workspaceID, issueID, taskID, UpdateIssueManagerTaskInput{
 				Status:    string(workspaceissues.StatusCompleted),
 				HasStatus: true,
 			}); acceptErr == nil {
-				return workspaceissues.RunDetail{Run: run, Outputs: outputs}, nil
+				autoAccepted = true
 			}
+		}
+		if !alreadySettled {
+			s.notifyTuttiPlanIssueTaskSettledBestEffort(ctx, workspaceID, issueID, taskID, run, !autoAccepted)
+		}
+		if autoAccepted {
+			return workspaceissues.RunDetail{Run: run, Outputs: outputs}, nil
 		}
 	}
 	// A failed run freezes the dispatch frontier; the planning conversation
 	// must hear about it instead of waiting in silence.
-	if run.Status == workspaceissues.StatusFailed {
+	if run.Status == workspaceissues.StatusFailed && !alreadySettled {
 		s.notifyTuttiPlanIssueTaskFailedBestEffort(ctx, workspaceID, issueID, taskID, run)
 	}
 	// Parallel Issues keep their bounded workspace slots full as independent
 	// runs settle. Sequential successors still remain gated on user acceptance.
-	s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
+	s.dispatchEligibleIssueTasksLocked(ctx, workspaceID, issueID)
 	return workspaceissues.RunDetail{Run: run, Outputs: outputs}, nil
+}
+
+// notifyTuttiPlanIssueTaskSettledBestEffort wakes the planning conversation
+// with one settled task result. It stays silent when the whole Issue just
+// finished — the dedicated completion notification already hands control back
+// — so the source session never receives two messages for one event.
+func (s IssueManagerService) notifyTuttiPlanIssueTaskSettledBestEffort(
+	ctx context.Context,
+	workspaceID string,
+	issueID string,
+	taskID string,
+	run workspaceissues.Run,
+	decisionNeeded bool,
+) {
+	if s.CompletionNotifier == nil {
+		return
+	}
+	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
+	if err != nil ||
+		detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan ||
+		strings.TrimSpace(detail.Issue.SourceSessionID) == "" {
+		return
+	}
+	allDone := len(detail.Tasks) > 0
+	var settled *workspaceissues.Task
+	for index, task := range detail.Tasks {
+		if task.TaskID == taskID {
+			settled = &detail.Tasks[index]
+		}
+		if task.Status == workspaceissues.StatusCanceled {
+			continue
+		}
+		if task.Status != workspaceissues.StatusCompleted ||
+			task.AcceptanceState != workspaceissues.AcceptanceUserAccepted {
+			allDone = false
+		}
+	}
+	if settled == nil || allDone {
+		return
+	}
+	s.CompletionNotifier.NotifyTuttiPlanIssueTaskSettled(ctx, workspaceID, detail.Issue, *settled, run, detail.Tasks, decisionNeeded)
 }
 
 // notifyTuttiPlanIssueTaskFailedBestEffort reports a failed run of a

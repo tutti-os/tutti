@@ -31,6 +31,8 @@ func (s IssueManagerService) RecordAutomationReviewOutcome(ctx context.Context, 
 		if strings.TrimSpace(run.AgentSessionID) != agentSessionID {
 			continue
 		}
+		unlock := s.MutationLocks.Lock(workspaceID, run.IssueID)
+		defer unlock()
 		task, err := s.Store.GetTask(ctx, workspaceID, run.IssueID, run.TaskID)
 		if err != nil {
 			return err
