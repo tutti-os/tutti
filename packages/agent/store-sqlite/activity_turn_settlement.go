@@ -83,13 +83,19 @@ func encodeTurnErrorJSON(message string, code string) any {
 	return encoded
 }
 
-func encodeCompletedCommandJSON(kind string, status string, finalAssistantMessageIDs ...string) any {
+type finalAssistantWatermark struct {
+	MessageID string
+	Resolved  bool
+}
+
+func encodeCompletedCommandJSON(kind string, status string, finalAssistantWatermarks ...finalAssistantWatermark) any {
 	kind = strings.TrimSpace(kind)
-	finalAssistantMessageID := ""
-	if len(finalAssistantMessageIDs) > 0 {
-		finalAssistantMessageID = strings.TrimSpace(finalAssistantMessageIDs[0])
+	watermark := finalAssistantWatermark{}
+	if len(finalAssistantWatermarks) > 0 {
+		watermark = finalAssistantWatermarks[0]
+		watermark.MessageID = strings.TrimSpace(watermark.MessageID)
 	}
-	if kind == "" && finalAssistantMessageID == "" {
+	if kind == "" && !watermark.Resolved && watermark.MessageID == "" {
 		return nil
 	}
 	payload := map[string]any{}
@@ -99,8 +105,11 @@ func encodeCompletedCommandJSON(kind string, status string, finalAssistantMessag
 	if status = strings.TrimSpace(status); status != "" {
 		payload["status"] = status
 	}
-	if finalAssistantMessageID != "" {
-		payload["finalAssistantMessageId"] = finalAssistantMessageID
+	if watermark.Resolved {
+		payload["finalAssistantMessageResolved"] = true
+	}
+	if watermark.MessageID != "" {
+		payload["finalAssistantMessageId"] = watermark.MessageID
 	}
 	encoded, err := marshalJSONMap(payload)
 	if err != nil {

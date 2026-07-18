@@ -296,6 +296,7 @@ type Turn struct {
 	CompletedCommandKind                   string
 	CompletedCommandStatus                 string
 	FinalAssistantMessageID                string
+	FinalAssistantMessageResolved          bool
 	Backfilled                             bool
 	StartedAtUnixMS                        int64
 	SettledAtUnixMS                        int64

@@ -144,3 +144,149 @@ func TestActivityProjectionReportCreatesProviderInitiatedTurnBeforeMessages(t *t
 		})
 	}
 }
+
+func TestActivityProjectionRootProviderCompletionFlushesTurnMessagesBeforeSettlement(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-root-provider", Name: "Root provider"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	projection := NewActivityProjection(store)
+	activeTurnID := "root-turn"
+	if err := projection.Report(ctx, agentsessionstore.ReportActivityInput{
+		WorkspaceID: "ws-root-provider",
+		Source: agentsessionstore.EventSource{
+			AgentID: "root-session", Provider: "codex",
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		},
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			AgentSessionID: "root-session", Kind: agentactivitybiz.SessionKindRoot,
+			Provider: "codex", LifecycleStatus: "active", CurrentPhase: "working", OccurredAtUnixMS: 1,
+			Turn: &agentsessionstore.WorkspaceAgentTurnPatch{
+				TurnID: "root-turn", Origin: agentactivitybiz.TurnOriginUserPrompt,
+				ActiveTurnID: &activeTurnID, Phase: agentactivitybiz.TurnPhaseRunning,
+			},
+			RootProviderTurn: &agentsessionstore.WorkspaceAgentRootProviderTurnTransition{
+				RootTurnID: "root-turn", ProviderTurnID: "provider-turn",
+				Phase: agentsessionstore.RootProviderTurnPhaseRunning,
+			},
+		}},
+	}); err != nil {
+		t.Fatalf("seed root provider turn error = %v", err)
+	}
+
+	if err := projection.Report(ctx, agentsessionstore.ReportActivityInput{
+		WorkspaceID: "ws-root-provider",
+		Source: agentsessionstore.EventSource{
+			AgentID: "root-session", Provider: "codex",
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		},
+		SessionAudits: []agentsessionstore.WorkspaceAgentSessionAuditUpdate{{
+			AuditID: "audit-root", Role: "user", Content: "audit", OccurredAtUnixMS: 2,
+		}},
+		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{
+			AgentSessionID: "root-session", TurnID: "root-turn", MessageID: "assistant-root-final",
+			Role: "assistant", Kind: "text", Status: "completed",
+			Payload: map[string]any{"text": "root result"}, OccurredAtUnixMS: 3,
+		}},
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			AgentSessionID: "root-session", Kind: agentactivitybiz.SessionKindRoot,
+			Provider: "codex", LifecycleStatus: "ready", CurrentPhase: "idle", OccurredAtUnixMS: 4,
+			RootProviderTurn: &agentsessionstore.WorkspaceAgentRootProviderTurnTransition{
+				RootTurnID: "root-turn", ProviderTurnID: "provider-turn",
+				Phase:   agentsessionstore.RootProviderTurnPhaseCompleted,
+				Outcome: agentactivitybiz.TurnOutcomeCompleted,
+			},
+		}},
+	}); err != nil {
+		t.Fatalf("root provider terminal report error = %v", err)
+	}
+
+	turn, found, err := store.GetTurn(ctx, "ws-root-provider", "root-session", "root-turn")
+	if err != nil || !found || turn.Phase != agentactivitybiz.TurnPhaseSettled {
+		t.Fatalf("root turn = %#v found=%v error=%v", turn, found, err)
+	}
+	if !turn.FinalAssistantMessageResolved || turn.FinalAssistantMessageID != "assistant-root-final" {
+		t.Fatalf("root turn watermark = resolved:%v id:%q", turn.FinalAssistantMessageResolved, turn.FinalAssistantMessageID)
+	}
+	page, found, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID: "ws-root-provider", AgentSessionID: "root-session", Limit: 10,
+	})
+	if err != nil || !found || len(page.Messages) != 2 {
+		t.Fatalf("root terminal messages = %#v found=%v error=%v", page.Messages, found, err)
+	}
+}
+
+func TestActivityProjectionPreservesSettleThenStartPatchOrder(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-causal", Name: "Causal"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	projection := NewActivityProjection(store)
+	turnA := "turn-a"
+	if err := projection.Report(ctx, agentsessionstore.ReportActivityInput{
+		WorkspaceID: "ws-causal",
+		Source: agentsessionstore.EventSource{
+			AgentID: "session-causal", Provider: "codex",
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		},
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			AgentSessionID: "session-causal", Kind: agentactivitybiz.SessionKindRoot,
+			Provider: "codex", LifecycleStatus: "active", CurrentPhase: "working", OccurredAtUnixMS: 1,
+			Turn: &agentsessionstore.WorkspaceAgentTurnPatch{
+				TurnID: turnA, Origin: agentactivitybiz.TurnOriginUserPrompt,
+				ActiveTurnID: &turnA, Phase: agentactivitybiz.TurnPhaseRunning,
+			},
+		}},
+	}); err != nil {
+		t.Fatalf("seed turn A error = %v", err)
+	}
+
+	turnB := "turn-b"
+	if err := projection.Report(ctx, agentsessionstore.ReportActivityInput{
+		WorkspaceID: "ws-causal",
+		Source: agentsessionstore.EventSource{
+			AgentID: "session-causal", Provider: "codex",
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		},
+		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{
+			AgentSessionID: "session-causal", TurnID: turnA, MessageID: "assistant-a-final",
+			Role: "assistant", Kind: "text", Status: "completed",
+			Payload: map[string]any{"text": "A"}, OccurredAtUnixMS: 2,
+		}},
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{
+			{
+				AgentSessionID: "session-causal", Kind: agentactivitybiz.SessionKindRoot,
+				Provider: "codex", LifecycleStatus: "active", CurrentPhase: "idle", OccurredAtUnixMS: 3,
+				Turn: &agentsessionstore.WorkspaceAgentTurnPatch{
+					TurnID: turnA, Phase: agentactivitybiz.TurnPhaseSettled,
+					Outcome: agentactivitybiz.TurnOutcomeCompleted, CompletedAtUnixMS: 3,
+				},
+			},
+			{
+				AgentSessionID: "session-causal", Kind: agentactivitybiz.SessionKindRoot,
+				Provider: "codex", LifecycleStatus: "active", CurrentPhase: "working", OccurredAtUnixMS: 4,
+				Turn: &agentsessionstore.WorkspaceAgentTurnPatch{
+					TurnID: turnB, Origin: agentactivitybiz.TurnOriginUserPrompt,
+					ActiveTurnID: &turnB, Phase: agentactivitybiz.TurnPhaseRunning,
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("settle A then start B report error = %v", err)
+	}
+
+	settledA, found, err := store.GetTurn(ctx, "ws-causal", "session-causal", turnA)
+	if err != nil || !found || settledA.Phase != agentactivitybiz.TurnPhaseSettled || settledA.FinalAssistantMessageID != "assistant-a-final" {
+		t.Fatalf("turn A = %#v found=%v error=%v", settledA, found, err)
+	}
+	runningB, found, err := store.GetTurn(ctx, "ws-causal", "session-causal", turnB)
+	if err != nil || !found || runningB.Phase != agentactivitybiz.TurnPhaseRunning {
+		t.Fatalf("turn B = %#v found=%v error=%v", runningB, found, err)
+	}
+	session, found, err := store.GetSession(ctx, "ws-causal", "session-causal")
+	if err != nil || !found || session.ActiveTurnID != turnB {
+		t.Fatalf("session after causal batch = %#v found=%v error=%v", session, found, err)
+	}
+}

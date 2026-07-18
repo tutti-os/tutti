@@ -241,6 +241,9 @@ func (s *Service) finalAssistantMessage(
 		return nil, nil
 	}
 	anchor := strings.TrimSpace(session.LatestTurn.FinalAssistantMessageID)
+	if session.LatestTurn.FinalAssistantMessageResolved && anchor == "" {
+		return nil, nil
+	}
 	if anchor != "" {
 		page, err := s.ListMessages(ctx, workspaceID, agentSessionID, ListMessagesInput{
 			MessageID: anchor, TurnID: turnID, Limit: 1, Order: agentactivitybiz.MessageOrderDesc,

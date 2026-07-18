@@ -166,10 +166,14 @@ transcript; callers that need broader context should follow with
 the public wait command shape, and keep timeout output free of result or
 interaction detail.
 The wait implementation skips transcript pagination and performs result
-enrichment separately. Settled turns may carry a durable final-assistant
-message anchor; anchored reads select that exact message, while legacy turns
-fall back to at most three descending message pages. If neither path finds the
-message, omit `finalMessage` rather than returning an older assistant response.
+enrichment separately. New settled turns carry a durable final-assistant
+resolution marker and, when present at settlement, the exact message anchor.
+Anchored reads select that exact message; a resolved marker with no anchor means
+the Turn had no final assistant text and must return no `finalMessage`, even if
+an assistant message arrives later. Only legacy turns without resolution
+metadata fall back to at most three descending message pages. If neither path
+finds the message, omit `finalMessage` rather than returning an older assistant
+response.
 When a caller continues an existing session with `agent send`, the send action
 should return a `waitAfterVersion` cursor, and the next wait call should pass
 that cursor as `agent wait --after-version <waitAfterVersion> ...` so the wait

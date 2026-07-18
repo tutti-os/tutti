@@ -50,14 +50,14 @@ func TestSettledTurnFreezesLastPersistedAssistantTextAsFinalMessageAnchor(t *tes
 	if err != nil || !found {
 		t.Fatalf("GetTurn() found=%v error=%v", found, err)
 	}
-	if turn.FinalAssistantMessageID != "assistant-a" {
+	if !turn.FinalAssistantMessageResolved || turn.FinalAssistantMessageID != "assistant-a" {
 		t.Fatalf("final assistant anchor = %q, want message A frozen at settlement", turn.FinalAssistantMessageID)
 	}
 	var payload string
 	if err := store.db.QueryRowContext(ctx, `SELECT completed_command_json FROM workspace_agent_turns WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-anchor' AND turn_id = 'turn-1'`).Scan(&payload); err != nil {
 		t.Fatalf("read turn payload: %v", err)
 	}
-	if payload != `{"finalAssistantMessageId":"assistant-a"}` {
+	if payload != `{"finalAssistantMessageId":"assistant-a","finalAssistantMessageResolved":true}` {
 		t.Fatalf("completed command payload = %s", payload)
 	}
 }

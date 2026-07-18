@@ -367,17 +367,22 @@ The claim's provisional Interaction status must not overwrite the terminal
 runtime disposition: the completed operation result follows the runtime even
 when the claim already moved the Interaction to `answered`.
 
-Activity compatibility projection uses a three-stage write barrier. It first
-commits non-terminal session state so provider-initiated Turns and Interactions
-exist, then commits session audits and turn messages, and finally commits only
-settling or settled state. Thus message foreign keys are satisfied without
-letting settlement visibility overtake messages from the same report. During
-the first SQLite settlement transaction, the store selects the latest already
-persisted assistant text message for that Turn and freezes its ID in the
-existing completed-command payload. A same-report anchor is only a validated
-fast path; cross-report provider event batches derive the same watermark from
-durable messages. Late messages cannot move it. Result readers use that exact
-message, while legacy turns use only a bounded fallback scan.
+Activity compatibility projection uses a causal, segmented write barrier. It
+scans state patches in provider order. Non-terminal state first creates the
+session, Turn, and Interaction required by message foreign keys; immediately
+before each terminal patch, it flushes that Turn's messages and the session
+audits, then commits the terminal state. Later non-terminal patches are never
+moved ahead of an earlier settlement. A completed root-provider transition is
+also terminal because, when no child remains active, SQLite uses it to settle
+the canonical root Turn. During the first SQLite settlement transaction, the
+store selects the latest already persisted assistant text message for that Turn
+and freezes its ID in the existing completed-command payload. A same-report
+anchor is only a validated fast path; cross-report provider event batches
+derive the same watermark from durable messages. The payload also records an
+explicit resolution marker when settlement found no assistant text, so a late
+message cannot become the result of an already settled Turn. Result readers use
+the exact frozen message, return no message for a resolved-empty watermark, and
+reserve the bounded fallback scan for legacy turns without resolution metadata.
 
 Cancellation of the caller waiting on an interactive-response operation is not
 a provider outcome and must not terminalize the runtime request. Before a

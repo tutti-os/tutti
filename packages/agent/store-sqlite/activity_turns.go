@@ -103,6 +103,7 @@ func (*Store) recordTurnTransitionTx(
 		if err != nil {
 			return Turn{}, false, err
 		}
+		merged.FinalAssistantMessageResolved = true
 	}
 
 	fileChangesJSON, err := marshalNullableJSONMap(merged.FileChanges)
@@ -129,7 +130,9 @@ ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
 `, workspaceID, agentSessionID, turnID, merged.Phase, nullString(merged.Outcome),
 		encodeTurnErrorJSON(merged.ErrorMessage, merged.ErrorCode),
 		fileChangesJSON,
-		encodeCompletedCommandJSON(merged.CompletedCommandKind, merged.CompletedCommandStatus, merged.FinalAssistantMessageID),
+		encodeCompletedCommandJSON(merged.CompletedCommandKind, merged.CompletedCommandStatus, finalAssistantWatermark{
+			MessageID: merged.FinalAssistantMessageID, Resolved: merged.FinalAssistantMessageResolved,
+		}),
 		merged.StartedAtUnixMS, nullInt64(merged.SettledAtUnixMS),
 		merged.CreatedAtUnixMS, merged.UpdatedAtUnixMS, merged.Origin,
 		nullString(merged.SourceGoalOperationID), nullInt64(merged.SourceGoalRevision), nullInt64WhenAbsent(merged.SourceGoalRepairEpoch, merged.SourceGoalOperationID != "")); err != nil {

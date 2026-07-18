@@ -9,7 +9,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
 type waitRuntime struct {
@@ -396,6 +398,81 @@ func TestFinalAssistantMessageFallbackIsBoundedForUserOnlyTail(t *testing.T) {
 	}
 	if len(reader.calls) != finalAssistantMessageFallbackPages {
 		t.Fatalf("fallback message queries = %d, want %d", len(reader.calls), finalAssistantMessageFallbackPages)
+	}
+}
+
+func TestWaitResolvedEmptyFinalMessageIgnoresLateAssistant(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-resolved-empty", Name: "Resolved empty"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	projection := NewActivityProjection(store)
+	turnID := "turn-empty"
+	if err := projection.Report(ctx, agentsessionstore.ReportActivityInput{
+		WorkspaceID: "ws-resolved-empty",
+		Source: agentsessionstore.EventSource{
+			AgentID: "session-empty", Provider: "codex",
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		},
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			AgentSessionID: "session-empty", Kind: agentactivitybiz.SessionKindRoot,
+			Provider: "codex", LifecycleStatus: "active", CurrentPhase: "working", OccurredAtUnixMS: 1,
+			Turn: &agentsessionstore.WorkspaceAgentTurnPatch{
+				TurnID: turnID, Origin: agentactivitybiz.TurnOriginUserPrompt,
+				ActiveTurnID: &turnID, Phase: agentactivitybiz.TurnPhaseRunning,
+			},
+		}},
+	}); err != nil {
+		t.Fatalf("seed running turn error = %v", err)
+	}
+	if err := projection.Report(ctx, agentsessionstore.ReportActivityInput{
+		WorkspaceID: "ws-resolved-empty",
+		Source: agentsessionstore.EventSource{
+			AgentID: "session-empty", Provider: "codex",
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		},
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			AgentSessionID: "session-empty", Kind: agentactivitybiz.SessionKindRoot,
+			Provider: "codex", LifecycleStatus: "ready", CurrentPhase: "idle", OccurredAtUnixMS: 2,
+			Turn: &agentsessionstore.WorkspaceAgentTurnPatch{
+				TurnID: turnID, Phase: agentactivitybiz.TurnPhaseSettled,
+				Outcome: agentactivitybiz.TurnOutcomeCompleted, CompletedAtUnixMS: 2,
+			},
+		}},
+	}); err != nil {
+		t.Fatalf("settle empty turn error = %v", err)
+	}
+	if err := projection.Report(ctx, agentsessionstore.ReportActivityInput{
+		WorkspaceID: "ws-resolved-empty",
+		Source: agentsessionstore.EventSource{
+			AgentID: "session-empty", Provider: "codex",
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		},
+		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{
+			AgentSessionID: "session-empty", TurnID: turnID, MessageID: "assistant-late",
+			Role: "assistant", Kind: "text", Status: "completed",
+			Payload: map[string]any{"text": "late result"}, OccurredAtUnixMS: 3,
+		}},
+	}); err != nil {
+		t.Fatalf("persist late assistant error = %v", err)
+	}
+
+	turn, found, err := store.GetTurn(ctx, "ws-resolved-empty", "session-empty", turnID)
+	if err != nil || !found || !turn.FinalAssistantMessageResolved || turn.FinalAssistantMessageID != "" {
+		t.Fatalf("resolved-empty turn = %#v found=%v error=%v", turn, found, err)
+	}
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.TurnStore = store
+	service.MessageReader = projection
+	result, err := service.Wait(ctx, WaitInput{
+		WorkspaceID: "ws-resolved-empty", AgentSessionID: "session-empty", SkipMessages: true,
+	})
+	if err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	if result.Reason != WaitReasonCompleted || result.FinalMessage != nil {
+		t.Fatalf("wait result = %#v, want completed without late final message", result)
 	}
 }
 

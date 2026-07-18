@@ -40,70 +40,124 @@ func ReportActivityAsSessionUpdates(
 	if err != nil {
 		return reply, err
 	}
-	earlyStates, terminalStates := partitionSessionStateInputs(SessionStateInputsFromActivity(input))
-	for _, stateInput := range earlyStates {
+	reportState := func(stateInput ReportSessionStateInput) error {
 		stateReply, err := reporter.ReportSessionState(ctx, stateInput)
 		if err != nil {
-			return reply, err
+			return err
 		}
 		if stateReply.Accepted {
 			reply.AcceptedStatePatchCount++
 		}
 		reply.RequestBodyBytes += stateReply.RequestBodyBytes
+		return nil
 	}
-	for _, auditInput := range auditInputs {
-		auditReply, err := reporter.ReportSessionMessages(ctx, auditInput)
-		if err != nil {
-			return reply, err
-		}
-		reply.AcceptedSessionAuditCount += auditReply.AcceptedCount
-		reply.RequestBodyBytes += auditReply.RequestBodyBytes
-	}
-	for _, messagesInput := range messageInputs {
+	reportMessages := func(messagesInput ReportSessionMessagesInput, audit bool) error {
 		messagesReply, err := reporter.ReportSessionMessages(ctx, messagesInput)
 		if err != nil {
-			return reply, err
+			return err
 		}
-		reply.AcceptedMessageUpdateCount += messagesReply.AcceptedCount
+		if audit {
+			reply.AcceptedSessionAuditCount += messagesReply.AcceptedCount
+		} else {
+			reply.AcceptedMessageUpdateCount += messagesReply.AcceptedCount
+		}
 		reply.RequestBodyBytes += messagesReply.RequestBodyBytes
+		return nil
 	}
-	anchorFinalAssistantMessages(terminalStates, messageInputs)
-	for _, stateInput := range terminalStates {
-		stateReply, err := reporter.ReportSessionState(ctx, stateInput)
-		if err != nil {
+	flushAuditsForSession := func(agentSessionID string) error {
+		agentSessionID = strings.TrimSpace(agentSessionID)
+		for index := range auditInputs {
+			if strings.TrimSpace(auditInputs[index].AgentSessionID) != agentSessionID || len(auditInputs[index].Updates) == 0 {
+				continue
+			}
+			pending := auditInputs[index]
+			auditInputs[index].Updates = nil
+			if err := reportMessages(pending, true); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	flushMessagesForTurn := func(agentSessionID string, turnID string) ([]ReportSessionMessagesInput, error) {
+		agentSessionID = strings.TrimSpace(agentSessionID)
+		turnID = strings.TrimSpace(turnID)
+		flushed := make([]ReportSessionMessagesInput, 0, 1)
+		for index := range messageInputs {
+			if strings.TrimSpace(messageInputs[index].AgentSessionID) != agentSessionID || len(messageInputs[index].Updates) == 0 {
+				continue
+			}
+			matching := make([]WorkspaceAgentSessionMessageUpdate, 0, len(messageInputs[index].Updates))
+			remaining := make([]WorkspaceAgentSessionMessageUpdate, 0, len(messageInputs[index].Updates))
+			for _, update := range messageInputs[index].Updates {
+				if strings.TrimSpace(update.TurnID) == turnID {
+					matching = append(matching, update)
+				} else {
+					remaining = append(remaining, update)
+				}
+			}
+			messageInputs[index].Updates = remaining
+			if len(matching) == 0 {
+				continue
+			}
+			pending := messageInputs[index]
+			pending.Updates = matching
+			if err := reportMessages(pending, false); err != nil {
+				return nil, err
+			}
+			flushed = append(flushed, pending)
+		}
+		return flushed, nil
+	}
+
+	// Preserve state-patch causality. A terminal patch locally flushes only its
+	// own Turn's messages before settlement; later non-terminal patches remain
+	// after that settlement instead of being globally moved ahead of it.
+	stateInputs := SessionStateInputsFromActivity(input)
+	for index := range stateInputs {
+		stateInput := &stateInputs[index]
+		if turnID, terminal := settlementBarrierTurnID(*stateInput); terminal {
+			if err := flushAuditsForSession(stateInput.AgentSessionID); err != nil {
+				return reply, err
+			}
+			flushed, err := flushMessagesForTurn(stateInput.AgentSessionID, turnID)
+			if err != nil {
+				return reply, err
+			}
+			anchorFinalAssistantMessages(stateInputs[index:index+1], flushed)
+		}
+		if err := reportState(*stateInput); err != nil {
 			return reply, err
 		}
-		if stateReply.Accepted {
-			reply.AcceptedStatePatchCount++
+	}
+	for _, auditInput := range auditInputs {
+		if len(auditInput.Updates) > 0 {
+			if err := reportMessages(auditInput, true); err != nil {
+				return reply, err
+			}
 		}
-		reply.RequestBodyBytes += stateReply.RequestBodyBytes
+	}
+	for _, messagesInput := range messageInputs {
+		if len(messagesInput.Updates) > 0 {
+			if err := reportMessages(messagesInput, false); err != nil {
+				return reply, err
+			}
+		}
 	}
 	return reply, nil
 }
 
-// partitionSessionStateInputs builds the three-stage projection barrier used
-// by live activity reports: non-terminal state creates the session, Turn, and
-// Interaction first; audits and messages can then satisfy their foreign keys;
-// settling/settled state is committed last so settlement visibility cannot
-// overtake messages from the same report.
-func partitionSessionStateInputs(inputs []ReportSessionStateInput) ([]ReportSessionStateInput, []ReportSessionStateInput) {
-	early := make([]ReportSessionStateInput, 0, len(inputs))
-	terminal := make([]ReportSessionStateInput, 0, len(inputs))
-	for _, input := range inputs {
-		turn := input.State.Turn
-		phase := ""
-		settling := false
-		if turn != nil {
-			phase = strings.ToLower(strings.TrimSpace(turn.Phase))
-			settling = turn.Settling
-		}
-		if settling || phase == "settling" || phase == "settled" {
-			terminal = append(terminal, input)
-			continue
-		}
-		early = append(early, input)
+func settlementBarrierTurnID(input ReportSessionStateInput) (string, bool) {
+	if root := input.State.RootProviderTurn; root != nil &&
+		strings.EqualFold(strings.TrimSpace(root.Phase), RootProviderTurnPhaseCompleted) {
+		return strings.TrimSpace(root.RootTurnID), strings.TrimSpace(root.RootTurnID) != ""
 	}
-	return early, terminal
+	turn := input.State.Turn
+	if turn == nil {
+		return "", false
+	}
+	phase := strings.ToLower(strings.TrimSpace(turn.Phase))
+	terminal := turn.Settling || phase == "settling" || phase == "settled"
+	return strings.TrimSpace(turn.TurnID), terminal && strings.TrimSpace(turn.TurnID) != ""
 }
 
 func anchorFinalAssistantMessages(states []ReportSessionStateInput, messages []ReportSessionMessagesInput) {
