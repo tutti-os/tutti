@@ -39,15 +39,25 @@ const agentGuiWorkbenchLabelProviders = [
   "nexight"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
-export const agentGuiWorkbenchProviderLabels = Object.fromEntries(
-  agentGuiWorkbenchLabelProviders.map((provider) => {
-    const identity = resolveAgentGUIProviderCatalogIdentity(provider);
-    if (!identity) {
-      throw new Error(`Missing workbench provider identity for ${provider}`);
-    }
-    return [provider, identity.displayName];
-  })
-) as Record<string, string>;
+// Import-only source identities are not runnable registry providers, so they
+// have no descriptor in the provider identity catalog. They still need a human
+// label wherever imported history surfaces (e.g. ChatGPT data-export history).
+const agentGuiWorkbenchImportOnlyProviderLabels: Record<string, string> = {
+  chatgpt: "ChatGPT"
+};
+
+export const agentGuiWorkbenchProviderLabels = {
+  ...Object.fromEntries(
+    agentGuiWorkbenchLabelProviders.map((provider) => {
+      const identity = resolveAgentGUIProviderCatalogIdentity(provider);
+      if (!identity) {
+        throw new Error(`Missing workbench provider identity for ${provider}`);
+      }
+      return [provider, identity.displayName];
+    })
+  ),
+  ...agentGuiWorkbenchImportOnlyProviderLabels
+} as Record<string, string>;
 
 export function resolveAgentGuiWorkbenchProviderLabel(
   provider: AgentGuiWorkbenchProvider

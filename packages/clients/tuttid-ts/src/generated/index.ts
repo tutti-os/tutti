@@ -485,6 +485,7 @@ export type {
   ExportWorkspaceAppResponse,
   ExportWorkspaceAppResponse2,
   ExportWorkspaceAppResponses,
+  ExternalAgentImportArchiveKind,
   ExternalAgentImportError,
   ExternalAgentImportProject,
   ExternalAgentImportProjectSelection,

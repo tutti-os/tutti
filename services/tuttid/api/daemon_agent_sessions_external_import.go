@@ -20,6 +20,15 @@ func (api DaemonAPI) ScanWorkspaceExternalAgentSessionImports(ctx context.Contex
 	input := agentservice.ExternalImportScanInput{}
 	if request.Body != nil {
 		input.ArchivePath = optionalStringValue(request.Body.ArchivePath)
+		if request.Body.ArchiveKind != nil && !request.Body.ArchiveKind.Valid() {
+			return tuttigenerated.ScanWorkspaceExternalAgentSessionImports400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.InvalidRequest(
+					apierrors.ReasonMalformedRequest,
+					apierrors.WithDeveloperMessage("unsupported archiveKind"),
+				)),
+			}, nil
+		}
+		input.ArchiveKind = externalImportArchiveKindValue(request.Body.ArchiveKind)
 		input.Providers = externalImportProvidersFromGenerated(request.Body.Providers)
 		if request.Body.Days != nil {
 			input.Days = *request.Body.Days
@@ -45,8 +54,17 @@ func (api DaemonAPI) ImportWorkspaceExternalAgentSessions(ctx context.Context, r
 			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty project selection"))),
 		}, nil
 	}
+	if request.Body.ArchiveKind != nil && !request.Body.ArchiveKind.Valid() {
+		return tuttigenerated.ImportWorkspaceExternalAgentSessions400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.InvalidRequest(
+				apierrors.ReasonMalformedRequest,
+				apierrors.WithDeveloperMessage("unsupported archiveKind"),
+			)),
+		}, nil
+	}
 	projects := externalImportProjectSelectionsFromGenerated(request.Body.Projects)
 	archivePath := optionalStringValue(request.Body.ArchivePath)
+	archiveKind := externalImportArchiveKindValue(request.Body.ArchiveKind)
 	register := request.Body.RegisterUserProjects == nil || *request.Body.RegisterUserProjects
 	importSessions := request.Body.ImportSessions == nil || *request.Body.ImportSessions
 
@@ -60,6 +78,7 @@ func (api DaemonAPI) ImportWorkspaceExternalAgentSessions(ctx context.Context, r
 		var err error
 		result, err = api.AgentSessionService.ImportExternalSessions(ctx, string(request.WorkspaceID), agentservice.ExternalImportInput{
 			ArchivePath: archivePath,
+			ArchiveKind: archiveKind,
 			Projects:    projects,
 		})
 		if err != nil {
@@ -70,6 +89,7 @@ func (api DaemonAPI) ImportWorkspaceExternalAgentSessions(ctx context.Context, r
 		var err error
 		validPaths, err = api.AgentSessionService.ExternalImportValidProjectPaths(ctx, agentservice.ExternalImportInput{
 			ArchivePath: archivePath,
+			ArchiveKind: archiveKind,
 			Projects:    projects,
 		})
 		if err != nil {
@@ -93,6 +113,13 @@ func externalImportSelectionsFromPaths(paths []string) []agentservice.ExternalIm
 		}
 	}
 	return selections
+}
+
+func externalImportArchiveKindValue(input *tuttigenerated.ExternalAgentImportArchiveKind) string {
+	if input == nil {
+		return ""
+	}
+	return string(*input)
 }
 
 func externalImportProvidersFromGenerated(input *[]tuttigenerated.WorkspaceAgentProvider) []string {

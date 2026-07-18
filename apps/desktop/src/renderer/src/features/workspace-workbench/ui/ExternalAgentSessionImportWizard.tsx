@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type {
+  ExternalAgentImportArchiveKind,
   ExternalAgentImportResultResponse,
   ExternalAgentImportSession,
   WorkspaceAgentProvider,
@@ -59,6 +60,16 @@ const externalImportDefaultDays = 30;
 const externalImportListCheckboxClass =
   "focus-visible:!ring-0 focus-visible:border-[var(--border-1)] data-[state=checked]:focus-visible:border-[var(--text-primary)]";
 
+// Archive-mode copy is branded per source app. Pick the ChatGPT variant when the
+// picked ZIP is parsed as a ChatGPT export, otherwise keep the Claude wording.
+function externalImportArchiveCopyKey<K extends string>(
+  archiveKind: ExternalAgentImportArchiveKind,
+  claudeKey: K,
+  chatgptKey: K
+): K {
+  return archiveKind === "chatgpt" ? chatgptKey : claudeKey;
+}
+
 export function ExternalAgentSessionImportWizard({
   initialProviders,
   onOpenChange,
@@ -86,6 +97,11 @@ export function ExternalAgentSessionImportWizard({
   >(new Set(externalImportProviderOptions));
   const [days, setDays] = useState<number>(externalImportDefaultDays);
   const [archivePath, setArchivePath] = useState<string | null>(null);
+  // Which archive format the picked ZIP is parsed as. Only meaningful while
+  // archivePath is set; defaults to Claude so the source builder always has a
+  // concrete kind.
+  const [archiveKind, setArchiveKind] =
+    useState<ExternalAgentImportArchiveKind>("claude");
   const [search, setSearch] = useState("");
   // Sessions are selected by default; we only track explicit opt-outs so that
   // widening the day range or re-scanning keeps the user's deselections.
@@ -124,6 +140,7 @@ export function ExternalAgentSessionImportWizard({
     setImporting(false);
     setDays(externalImportDefaultDays);
     setArchivePath(null);
+    setArchiveKind("claude");
     setSearch("");
     setDeselectedSessionIds(new Set());
     setRegisterProjects(true);
@@ -134,6 +151,7 @@ export function ExternalAgentSessionImportWizard({
     (provider) => selectedProviders.has(provider)
   );
   const currentScanSource = externalImportScanSource({
+    archiveKind,
     archivePath,
     days,
     providers: selectedProviderList
@@ -146,10 +164,14 @@ export function ExternalAgentSessionImportWizard({
         scan,
         (path) => externalImportProjectLabelFallback(path, t),
         archiveMode
-          ? t("workspace.externalImport.archiveGroupLabel")
+          ? t(
+              archiveKind === "chatgpt"
+                ? "workspace.externalImport.chatgptGroupLabel"
+                : "workspace.externalImport.archiveGroupLabel"
+            )
           : undefined
       ),
-    [archiveMode, scan, t]
+    [archiveKind, archiveMode, scan, t]
   );
   const filteredGroups = useMemo(
     () => filterExternalImportGroups(groups, search),
@@ -195,9 +217,14 @@ export function ExternalAgentSessionImportWizard({
     });
   };
 
-  const runScan = async (nextDays: number, nextArchivePath: string | null) => {
+  const runScan = async (
+    nextDays: number,
+    nextArchivePath: string | null,
+    nextArchiveKind: ExternalAgentImportArchiveKind = archiveKind
+  ) => {
     const generation = ++scanGeneration.current;
     const source = externalImportScanSource({
+      archiveKind: nextArchiveKind,
       archivePath: nextArchivePath,
       days: nextDays,
       providers: selectedProviderList
@@ -239,7 +266,11 @@ export function ExternalAgentSessionImportWizard({
       setError(
         t(
           nextArchivePath
-            ? "workspace.externalImport.archiveScanFailed"
+            ? externalImportArchiveCopyKey(
+                nextArchiveKind,
+                "workspace.externalImport.archiveScanFailed",
+                "workspace.externalImport.chatgptScanFailed"
+              )
             : "workspace.externalImport.scanFailed"
         )
       );
@@ -259,7 +290,9 @@ export function ExternalAgentSessionImportWizard({
     await runScan(days, null);
   };
 
-  const handleSelectArchive = async () => {
+  const handleSelectArchive = async (
+    nextArchiveKind: ExternalAgentImportArchiveKind
+  ) => {
     if (loading || importing) {
       return;
     }
@@ -275,8 +308,9 @@ export function ExternalAgentSessionImportWizard({
         return;
       }
       setArchivePath(nextArchivePath);
+      setArchiveKind(nextArchiveKind);
       setDays(-1);
-      await runScan(-1, nextArchivePath);
+      await runScan(-1, nextArchivePath, nextArchiveKind);
     } catch {
       if (generation !== scanGeneration.current) {
         return;
@@ -284,7 +318,15 @@ export function ExternalAgentSessionImportWizard({
       // Stay on the providers step: no scan ran, so the select-step chrome
       // (title, Import/Back footer) would not match the actual wizard state.
       dispatchScanState({ type: "scan-failed" });
-      setError(t("workspace.externalImport.archivePickFailed"));
+      setError(
+        t(
+          externalImportArchiveCopyKey(
+            nextArchiveKind,
+            "workspace.externalImport.archivePickFailed",
+            "workspace.externalImport.chatgptPickFailed"
+          )
+        )
+      );
     }
   };
 
@@ -314,6 +356,9 @@ export function ExternalAgentSessionImportWizard({
             ...externalImportRequestSource(
               scanState.source.kind === "archive"
                 ? scanState.source.archivePath
+                : null,
+              scanState.source.kind === "archive"
+                ? scanState.source.archiveKind
                 : null,
               registerProjects
             ),
@@ -383,7 +428,11 @@ export function ExternalAgentSessionImportWizard({
             {step === "select"
               ? t(
                   archiveMode
-                    ? "workspace.externalImport.archiveSelectDescription"
+                    ? externalImportArchiveCopyKey(
+                        archiveKind,
+                        "workspace.externalImport.archiveSelectDescription",
+                        "workspace.externalImport.chatgptSelectDescription"
+                      )
                     : "workspace.externalImport.selectDescription"
                 )
               : t("workspace.externalImport.description")}
@@ -406,6 +455,7 @@ export function ExternalAgentSessionImportWizard({
             onToggleSessions={setSessionsSelected}
             disabled={importing}
             archiveMode={archiveMode}
+            archiveKind={archiveKind}
             showProjectRegistration={!archiveMode}
             showRange={!archiveMode}
           />
@@ -418,13 +468,18 @@ export function ExternalAgentSessionImportWizard({
                 role="status"
                 text={t(
                   archiveMode
-                    ? "workspace.externalImport.archiveScanning"
+                    ? externalImportArchiveCopyKey(
+                        archiveKind,
+                        "workspace.externalImport.archiveScanning",
+                        "workspace.externalImport.chatgptScanning"
+                      )
                     : "workspace.externalImport.scanning"
                 )}
               />
             ) : result ? (
               <ExternalAgentSessionImportResultSummary
                 archive={archiveMode}
+                archiveKind={archiveKind}
                 result={result}
               />
             ) : error && step === "select" ? (
@@ -452,8 +507,8 @@ export function ExternalAgentSessionImportWizard({
                   providers={externalImportProviderOptions}
                   selectedProviders={selectedProviders}
                   onToggle={toggleProvider}
-                  onSelectArchive={() => {
-                    void handleSelectArchive();
+                  onSelectArchive={(kind) => {
+                    void handleSelectArchive(kind);
                   }}
                 />
               </>
@@ -482,6 +537,7 @@ export function ExternalAgentSessionImportWizard({
                     setError(null);
                     dispatchScanState({ type: "source-changed" });
                     setArchivePath(null);
+                    setArchiveKind("claude");
                     setDays(externalImportDefaultDays);
                     return;
                   }
@@ -539,6 +595,7 @@ export function ExternalAgentSessionImportWizard({
 }
 
 function ImportSelectStep({
+  archiveKind,
   archiveMode,
   days,
   deselectedSessionIds,
@@ -555,6 +612,7 @@ function ImportSelectStep({
   showRange,
   totalCount
 }: {
+  archiveKind: ExternalAgentImportArchiveKind;
   archiveMode: boolean;
   days: number;
   deselectedSessionIds: Set<string>;
@@ -582,7 +640,11 @@ function ImportSelectStep({
     visibleIds.every((id) => !deselectedSessionIds.has(id));
   const searchPlaceholder = t(
     archiveMode
-      ? "workspace.externalImport.archiveSearchPlaceholder"
+      ? externalImportArchiveCopyKey(
+          archiveKind,
+          "workspace.externalImport.archiveSearchPlaceholder",
+          "workspace.externalImport.chatgptSearchPlaceholder"
+        )
       : "workspace.externalImport.searchPlaceholder"
   );
 
@@ -590,9 +652,16 @@ function ImportSelectStep({
     <div className="flex min-h-0 flex-1 flex-col">
       {archiveMode ? (
         <p aria-live="polite" className="sr-only" role="status">
-          {t("workspace.externalImport.archiveSelectionReady", {
-            count: totalCount
-          })}
+          {t(
+            externalImportArchiveCopyKey(
+              archiveKind,
+              "workspace.externalImport.archiveSelectionReady",
+              "workspace.externalImport.chatgptSelectionReady"
+            ),
+            {
+              count: totalCount
+            }
+          )}
         </p>
       ) : null}
       <div className="flex shrink-0 flex-col gap-3 px-5 pb-3 pt-4">
@@ -659,7 +728,11 @@ function ImportSelectStep({
               totalCount === 0
                 ? t(
                     archiveMode
-                      ? "workspace.externalImport.archiveEmpty"
+                      ? externalImportArchiveCopyKey(
+                          archiveKind,
+                          "workspace.externalImport.archiveEmpty",
+                          "workspace.externalImport.chatgptEmpty"
+                        )
                       : "workspace.externalImport.empty"
                   )
                 : t("workspace.externalImport.noResults")
