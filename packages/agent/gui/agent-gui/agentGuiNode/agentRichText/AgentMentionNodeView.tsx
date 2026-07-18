@@ -8,10 +8,7 @@ import {
   type ReactNode
 } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
-import {
-  MentionPill,
-  TruncatingPillLabel
-} from "@tutti-os/ui-system/components";
+import { MentionPill } from "@tutti-os/ui-system/components";
 import { Spinner } from "@tutti-os/ui-system";
 import { CloseIcon } from "@tutti-os/ui-system/icons";
 import { useTranslation } from "../../../i18n/index";
