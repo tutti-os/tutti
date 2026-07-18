@@ -160,6 +160,7 @@ export const AgentToolSidebar = forwardRef<
       return;
     }
     if (headerDrag?.mode === "host") {
+      event.stopPropagation();
       headerDrag.onDoubleClick?.(event);
     }
   };
@@ -171,6 +172,7 @@ export const AgentToolSidebar = forwardRef<
       return;
     }
     if (headerDrag?.mode === "host") {
+      event.stopPropagation();
       headerDrag.onPointerDown?.(event);
     }
   };
