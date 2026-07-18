@@ -30,8 +30,12 @@ type sessionSummaryInput struct {
 }
 
 type getSessionInput struct {
-	SessionID string `cli:"session-id" validate:"required" description:"Agent session id to inspect."`
-	Messages  *int64 `cli:"messages" validate:"min=1,max=100" description:"Include the most recent N messages in chronological order."`
+	SessionID     string `cli:"session-id" validate:"required" description:"Agent session id to inspect."`
+	View          string `cli:"view" enum:"session,conversation,trace" description:"Context view: session, conversation, or trace."`
+	Turns         *int64 `cli:"turns" validate:"min=1,max=20" description:"Number of recent turns for the conversation view; defaults to 3."`
+	TurnID        string `cli:"turn-id" description:"Exact turn to inspect in conversation or trace view."`
+	Messages      *int64 `cli:"messages" validate:"min=1,max=100" description:"Number of recent trace messages; defaults to 20."`
+	BeforeVersion int64  `cli:"before-version" validate:"min=0" description:"Return an older trace page before this message version."`
 }
 
 type waitInput struct {
@@ -51,12 +55,6 @@ type sessionSummaryResult struct {
 	Page           agentservice.SessionMessagesPage
 	Session        agentservice.Session
 	Warnings       []cliservice.CommandWarning
-}
-
-type sessionGetResult struct {
-	ImageLocalPath imageLocalPathResolver
-	Page           *agentservice.SessionMessagesPage
-	Session        agentservice.Session
 }
 
 type waitCommandResult struct {
@@ -112,7 +110,7 @@ func (p Provider) newSessionSummaryCommand() cliservice.Command {
 		ID:          appID + ".agent.session-summary",
 		Path:        []string{"agent", "session-summary"},
 		Summary:     "Get agent session summary (deprecated)",
-		Description: "Deprecated compatibility alias. Use agent get --messages instead.",
+		Description: "Deprecated compatibility alias. Use the progressive agent get views instead.",
 		Kind:        framework.KindAction,
 		Visibility:  cliservice.CapabilityVisibilityIntegration,
 		Workspace:   framework.WorkspaceRequired,
@@ -198,7 +196,7 @@ func (p Provider) runSessionSummary(ctx context.Context, invoke framework.Invoke
 		Session:        session,
 		Warnings: []cliservice.CommandWarning{{
 			Code:    "deprecated_agent_session_summary",
-			Message: "agent session-summary is deprecated; use agent get --session-id <id> --messages <1-100>",
+			Message: "agent session-summary is deprecated; use agent get --session-id <id>",
 		}},
 	}, nil
 }
@@ -268,19 +266,6 @@ func sessionSummaryJSONValue(result any) map[string]any {
 		"latestVersion":  summary.Page.LatestVersion,
 		"hasMore":        summary.Page.HasMore,
 	}
-}
-
-func sessionGetJSONValue(result any) map[string]any {
-	got := result.(sessionGetResult)
-	value := map[string]any{"session": sessionInspectValue(got.Session)}
-	if got.Page == nil {
-		return value
-	}
-	value["agentSessionId"] = got.Page.AgentSessionID
-	value["messages"] = messageCompactValues(got.Page.Messages, got.ImageLocalPath)
-	value["latestVersion"] = got.Page.LatestVersion
-	value["hasMore"] = got.Page.HasMore
-	return value
 }
 
 func turnResourcesJSONValue(result any) map[string]any {

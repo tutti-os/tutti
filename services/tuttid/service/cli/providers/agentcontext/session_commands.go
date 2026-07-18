@@ -262,7 +262,7 @@ func (p Provider) newGetCommand() cliservice.Command {
 		ID:          appID + ".agent.get",
 		Path:        []string{"agent", "get"},
 		Summary:     "Get an agent session",
-		Description: "Get compact agent session context and optionally include its most recent messages.",
+		Description: "Get recent turn conversation by default, session metadata only, or a detailed trace for one turn.",
 		Kind:        framework.KindGet,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
@@ -278,30 +278,7 @@ func (p Provider) newGetCommand() cliservice.Command {
 }
 
 func (p Provider) runGet(ctx context.Context, invoke framework.InvokeContext, input getSessionInput) (any, error) {
-	if err := p.requireSessions(); err != nil {
-		return nil, err
-	}
-	session, err := p.sessions.Get(ctx, invoke.WorkspaceID, input.SessionID)
-	if err != nil {
-		return nil, err
-	}
-	result := sessionGetResult{Session: session}
-	if input.Messages == nil {
-		return result, nil
-	}
-	page, err := p.sessions.ListMessages(ctx, invoke.WorkspaceID, input.SessionID, agentservice.ListMessagesInput{
-		Limit: int(*input.Messages),
-		Order: agentactivitybiz.MessageOrderDesc,
-	})
-	if err != nil {
-		return nil, err
-	}
-	for left, right := 0, len(page.Messages)-1; left < right; left, right = left+1, right-1 {
-		page.Messages[left], page.Messages[right] = page.Messages[right], page.Messages[left]
-	}
-	result.ImageLocalPath = p.imageLocalPathResolver(ctx, invoke.WorkspaceID)
-	result.Page = &page
-	return result, nil
+	return p.getSessionContext(ctx, invoke.WorkspaceID, input)
 }
 
 func (p Provider) newSendCommand() cliservice.Command {

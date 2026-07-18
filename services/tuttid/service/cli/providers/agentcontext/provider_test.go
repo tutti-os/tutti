@@ -65,6 +65,9 @@ type fakeAgentSessions struct {
 	beforeVersion   uint64
 	order           agentactivitybiz.MessageOrder
 	messages        []agentservice.SessionMessage
+	messagesByTurn  map[string][]agentservice.SessionMessage
+	messageInputs   []agentservice.ListMessagesInput
+	turns           []agentactivitybiz.Turn
 	listCallCount   int
 	messageCallIDs  []string
 	createCallCount int
@@ -154,6 +157,12 @@ func (f *fakeAgentSessions) Get(_ context.Context, workspaceID string, sessionID
 		return f.getSession, nil
 	}
 	return agentservice.Session{ID: sessionID, Provider: "codex", Visible: true}, nil
+}
+
+func (f *fakeAgentSessions) ListTurns(_ context.Context, workspaceID string, sessionID string) ([]agentactivitybiz.Turn, error) {
+	f.workspaceID = workspaceID
+	f.sessionID = sessionID
+	return f.turns, nil
 }
 
 func (f *fakeAgentSessions) GetComposerOptions(_ context.Context, input agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error) {
@@ -315,7 +324,11 @@ func (f *fakeAgentSessions) ListMessages(_ context.Context, workspaceID string, 
 	f.beforeVersion = input.BeforeVersion
 	f.order = input.Order
 	f.messageCallIDs = append(f.messageCallIDs, sessionID)
+	f.messageInputs = append(f.messageInputs, input)
 	messages := f.messages
+	if f.messagesByTurn != nil {
+		messages = f.messagesByTurn[input.TurnID]
+	}
 	if messages == nil {
 		messages = []agentservice.SessionMessage{{
 			ID:             1,
@@ -326,6 +339,16 @@ func (f *fakeAgentSessions) ListMessages(_ context.Context, workspaceID string, 
 			Payload:        map[string]any{"content": "Done."},
 			Version:        2,
 		}}
+	}
+	if input.MessageID != "" {
+		filtered := make([]agentservice.SessionMessage, 0, 1)
+		for _, message := range messages {
+			if message.MessageID == input.MessageID {
+				filtered = append(filtered, message)
+				break
+			}
+		}
+		messages = filtered
 	}
 	return agentservice.SessionMessagesPage{
 		AgentSessionID: sessionID,
@@ -1800,7 +1823,7 @@ func TestOpenCommandPublishesLaunchIntent(t *testing.T) {
 	}
 }
 
-func TestGetCommandReturnsSession(t *testing.T) {
+func TestGetCommandReturnsEmptyConversationWithSession(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
@@ -1818,6 +1841,12 @@ func TestGetCommandReturnsSession(t *testing.T) {
 	if session["agentSessionId"] != "SESSION-1" || sessions.workspaceID != "workspace-1" {
 		t.Fatalf("output = %#v sessions = %#v", output.Value, sessions)
 	}
+	if output.Value["view"] != getViewConversation || output.Value["hasMoreTurns"] != false {
+		t.Fatalf("output = %#v", output.Value)
+	}
+	if turns := output.Value["turns"].([]any); len(turns) != 0 {
+		t.Fatalf("turns = %#v, want empty", turns)
+	}
 	if _, ok := session["runtimeContext"]; ok {
 		t.Fatalf("compact session should not include runtimeContext: %#v", session)
 	}
@@ -1829,52 +1858,179 @@ func TestGetCommandReturnsSession(t *testing.T) {
 	}
 }
 
-func TestGetCommandReturnsRecentMessagesInChronologicalOrder(t *testing.T) {
-	sessions := &fakeAgentSessions{messages: []agentservice.SessionMessage{
-		{
-			AgentSessionID: "SESSION-1", MessageID: "newest", Role: "assistant",
-			Payload: map[string]any{"content": "Second"}, Version: 2,
-		},
-		{
-			AgentSessionID: "SESSION-1", MessageID: "oldest", Role: "user",
-			Payload: map[string]any{"content": "First"}, Version: 1,
-		},
-	}}
+func TestGetCommandReturnsRecentConversationTurnsNewestFirst(t *testing.T) {
+	turns := []agentactivitybiz.Turn{
+		{TurnID: "turn-1", Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeCompleted},
+		{TurnID: "turn-2", Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeCompleted, FinalAssistantMessageID: "final-2"},
+		{TurnID: "turn-3", Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeCompleted, FinalAssistantMessageID: "final-3"},
+		{TurnID: "turn-4", Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeCompleted, FinalAssistantMessageID: "final-4"},
+	}
+	messagesByTurn := map[string][]agentservice.SessionMessage{}
+	for _, turn := range turns[1:] {
+		messagesByTurn[turn.TurnID] = []agentservice.SessionMessage{
+			{
+				AgentSessionID: "SESSION-1", TurnID: turn.TurnID, MessageID: turn.FinalAssistantMessageID,
+				Role: "assistant", Kind: "text", Payload: map[string]any{"content": "final " + turn.TurnID}, Version: 4,
+			},
+			{
+				AgentSessionID: "SESSION-1", TurnID: turn.TurnID, MessageID: "tool-" + turn.TurnID,
+				Role: "assistant", Kind: "tool_call", Payload: map[string]any{"name": "shell"}, Version: 3,
+			},
+			{
+				AgentSessionID: "SESSION-1", TurnID: turn.TurnID, MessageID: "assistant-" + turn.TurnID,
+				Role: "assistant", Kind: "text", Payload: map[string]any{"content": "working " + turn.TurnID}, Version: 2,
+			},
+			{
+				AgentSessionID: "SESSION-1", TurnID: turn.TurnID, MessageID: "user-" + turn.TurnID,
+				Role: "user", Kind: "text", Payload: map[string]any{"content": "request " + turn.TurnID}, Version: 1,
+			},
+		}
+	}
+	sessions := &fakeAgentSessions{turns: turns, messagesByTurn: messagesByTurn}
 	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions,
 	).newGetCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input:      map[string]any{"session-id": "SESSION-1", "messages": "2"},
+		Input:      map[string]any{"session-id": "SESSION-1"},
 		OutputMode: cliservice.OutputModeJSON,
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if sessions.limit != 2 || sessions.order != agentactivitybiz.MessageOrderDesc {
-		t.Fatalf("message query = limit %d order %q", sessions.limit, sessions.order)
-	}
-	messages := output.Value["messages"].([]any)
-	if len(messages) != 2 || messages[0].(map[string]any)["messageId"] != "oldest" ||
-		messages[1].(map[string]any)["messageId"] != "newest" {
-		t.Fatalf("messages = %#v", messages)
-	}
-	if output.Value["agentSessionId"] != "SESSION-1" || output.Value["latestVersion"] != uint64(2) {
+	if output.Value["view"] != getViewConversation || output.Value["hasMoreTurns"] != true {
 		t.Fatalf("output = %#v", output.Value)
+	}
+	gotTurns := output.Value["turns"].([]any)
+	if len(gotTurns) != 3 {
+		t.Fatalf("turns = %#v", gotTurns)
+	}
+	for index, wantTurnID := range []string{"turn-4", "turn-3", "turn-2"} {
+		turn := gotTurns[index].(map[string]any)
+		if turn["turnId"] != wantTurnID || turn["hasMoreMessages"] != false {
+			t.Fatalf("turn %d = %#v", index, turn)
+		}
+		messages := turn["messages"].([]any)
+		if len(messages) != 2 || messages[0].(map[string]any)["role"] != "user" ||
+			messages[1].(map[string]any)["messageId"] != "assistant-"+wantTurnID {
+			t.Fatalf("messages for %s = %#v", wantTurnID, messages)
+		}
+		final := turn["finalMessage"].(map[string]any)
+		if final["messageId"] != "final-"+strings.TrimPrefix(wantTurnID, "turn-") {
+			t.Fatalf("final for %s = %#v", wantTurnID, final)
+		}
+	}
+	if len(sessions.messageInputs) != 3 {
+		t.Fatalf("message inputs = %#v", sessions.messageInputs)
+	}
+	for _, input := range sessions.messageInputs {
+		if input.Limit != defaultConversationMessages || input.Order != agentactivitybiz.MessageOrderDesc {
+			t.Fatalf("message input = %#v", input)
+		}
 	}
 }
 
-func TestGetCommandValidatesMessageCount(t *testing.T) {
+func TestGetCommandReturnsSessionOnlyView(t *testing.T) {
+	sessions := &fakeAgentSessions{turns: []agentactivitybiz.Turn{{TurnID: "turn-1"}}}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions,
+	).newGetCommand()
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1", "view": getViewSession},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if output.Value["view"] != getViewSession || output.Value["session"] == nil {
+		t.Fatalf("output = %#v", output.Value)
+	}
+	if _, ok := output.Value["turns"]; ok {
+		t.Fatalf("session view includes turns: %#v", output.Value)
+	}
+	if len(sessions.messageInputs) != 0 {
+		t.Fatalf("message inputs = %#v, want none", sessions.messageInputs)
+	}
+}
+
+func TestGetCommandReturnsBoundedTurnTraceInChronologicalOrder(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		turns: []agentactivitybiz.Turn{{TurnID: "turn-1", Phase: agentactivitybiz.TurnPhaseSettled}},
+		messagesByTurn: map[string][]agentservice.SessionMessage{"turn-1": {
+			{
+				AgentSessionID: "SESSION-1", TurnID: "turn-1", MessageID: "tool-output", Role: "assistant",
+				Kind: "tool_call", Status: "completed", Payload: map[string]any{"output": "ok"}, Version: 3,
+			},
+			{
+				AgentSessionID: "SESSION-1", TurnID: "turn-1", MessageID: "tool-call", Role: "assistant",
+				Kind: "tool_call", Status: "running", Payload: map[string]any{"command": "make test"}, Version: 2,
+			},
+		}},
+	}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions,
+	).newGetCommand()
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"session-id":     "SESSION-1",
+			"view":           getViewTrace,
+			"turn-id":        "turn-1",
+			"messages":       "2",
+			"before-version": "9",
+		},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if output.Value["view"] != getViewTrace || output.Value["turn"].(map[string]any)["turnId"] != "turn-1" {
+		t.Fatalf("output = %#v", output.Value)
+	}
+	messages := output.Value["messages"].([]any)
+	if len(messages) != 2 || messages[0].(map[string]any)["messageId"] != "tool-call" ||
+		messages[1].(map[string]any)["messageId"] != "tool-output" {
+		t.Fatalf("messages = %#v", messages)
+	}
+	if messages[0].(map[string]any)["payload"].(map[string]any)["command"] != "make test" {
+		t.Fatalf("trace payload = %#v", messages[0])
+	}
+	input := sessions.messageInputs[0]
+	if input.TurnID != "turn-1" || input.Limit != 2 || input.BeforeVersion != 9 || input.Order != agentactivitybiz.MessageOrderDesc {
+		t.Fatalf("message input = %#v", input)
+	}
+}
+
+func TestGetCommandValidatesProgressiveViewSelectors(t *testing.T) {
 	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{},
 	).newGetCommand()
-	for _, messages := range []string{"0", "101"} {
-		_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-			Input: map[string]any{"session-id": "SESSION-1", "messages": messages},
+	for name, input := range map[string]map[string]any{
+		"trace requires turn": {"session-id": "SESSION-1", "view": getViewTrace},
+		"conversation rejects messages": {
+			"session-id": "SESSION-1", "messages": "2",
+		},
+		"session rejects selectors": {
+			"session-id": "SESSION-1", "view": getViewSession, "turns": "2",
+		},
+		"turn selectors are exclusive": {
+			"session-id": "SESSION-1", "turn-id": "turn-1", "turns": "2",
+		},
+		"message lower bound": {
+			"session-id": "SESSION-1", "view": getViewTrace, "turn-id": "turn-1", "messages": "0",
+		},
+		"message upper bound": {
+			"session-id": "SESSION-1", "view": getViewTrace, "turn-id": "turn-1", "messages": "101",
+		},
+		"turn upper bound": {"session-id": "SESSION-1", "turns": "21"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+				Input: input,
+			})
+			if !errors.Is(err, cliservice.ErrInvalidInput) {
+				t.Fatalf("error = %v, want invalid input", err)
+			}
 		})
-		if !errors.Is(err, cliservice.ErrInvalidInput) {
-			t.Fatalf("messages %s error = %v, want invalid input", messages, err)
-		}
 	}
 }
 

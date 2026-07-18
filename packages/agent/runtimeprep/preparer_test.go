@@ -1066,7 +1066,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "Claude Code `Monitor` tool is disabled") ||
 		!strings.Contains(string(systemPrompt), "bounded shell/script") ||
 		!strings.Contains(string(systemPrompt), "agent wait --session-id <session-id> --json") ||
-		!strings.Contains(string(systemPrompt), "agent get --session-id <session-id> --messages 100 --json") ||
+		!strings.Contains(string(systemPrompt), "agent get --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "verify with `agent list`; hand off, do not do it yourself") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
 	}
@@ -1088,7 +1088,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "`mention://...` = internal data. Not URL/path.") ||
 		!strings.Contains(string(systemPrompt), "`mention://agent-target/<targetId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "does not fetch execution messages") ||
-		!strings.Contains(string(systemPrompt), "agent get --session-id <session-id> --messages 100 --json") ||
+		!strings.Contains(string(systemPrompt), "agent get --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") {
 		t.Fatalf("claude system prompt content = %q, want strict Tutti mention routing", string(systemPrompt))
 	}

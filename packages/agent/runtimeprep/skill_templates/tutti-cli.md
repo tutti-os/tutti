@@ -13,7 +13,7 @@ Classify the request before invoking any Tutti CLI command:
 
 1. Workspace issue work uses `issue ...`. If the request is inspection, breakdown, execution, or run reporting for an issue, invoke `$issue-manager` and use this skill only as its CLI reference.
 2. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke `$workspace-app` and use this skill as its command reference.
-3. Agent work uses only `agent ...`. Handoff decisions — who executes, which task to hand off, and where follow-ups go — belong to `$tutti-handoff`; use this skill as its CLI reference. Before starting a new agent session, query `agent list --json` and select an exact agent id from the current catalog rather than assuming which providers exist. For `mention://agent-session/<sessionId>?workspaceId=...`, prefer `agent wait --session-id <session-id> --json` to block until the session's next stop point without fetching execution messages. Use `agent get --session-id <session-id> --messages 100 --json` only when you need the full compact context helper.
+3. Agent work uses only `agent ...`. Handoff decisions — who executes, which task to hand off, and where follow-ups go — belong to `$tutti-handoff`; use this skill as its CLI reference. Before starting a new agent session, query `agent list --json` and select an exact agent id from the current catalog rather than assuming which providers exist. For `mention://agent-session/<sessionId>?workspaceId=...`, prefer `agent wait --session-id <session-id> --json` to block until the session's next stop point without fetching execution messages. Use `agent get --session-id <session-id> --json` only when you need recent conversation context.
 4. Browser automation uses `browser ...`.
 5. macOS desktop automation uses `computer ...`.
 6. If none match, read `command-guide.md` before guessing.
@@ -26,13 +26,13 @@ Tutti mention links are internal handoffs. Parse them as data; do not open them 
 
 - `mention://workspace-issue/<issueId>?workspaceId=...`: use `$issue-manager`.
 - `mention://workspace-app/<appId>?workspaceId=...`: use `$workspace-app`.
-- `mention://agent-session/<sessionId>?workspaceId=...`: a context reference to an existing session, not a work order. Read it when its content helps the current turn — `agent wait --session-id <session-id> --json` to await its next stop point, `agent get --session-id <session-id> --messages 100 --json` for full context recovery.
+- `mention://agent-session/<sessionId>?workspaceId=...`: a context reference to an existing session, not a work order. Read it when its content helps the current turn — `agent wait --session-id <session-id> --json` to await its next stop point, `agent get --session-id <session-id> --json` for recent conversation recovery.
 - `mention://agent-target/<targetId>?workspaceId=...`: behavior per `$tutti-handoff` (an instruction for the mentioned agent is handed off, not absorbed). Verify the id with `agent list --agent-id <targetId> --json`, then use the generic `agent` workflow. This can mean starting a new session, inspecting active peers or historical sessions, or another agent workflow; it is not launch-only.
 - Unknown `mention://...`: parse the URI and ask for clarification if no command family or skill matches.
 
-Agent get JSON is compact and includes session context plus recent messages when `--messages` is provided.
+Agent get JSON is progressive: its default `conversation` view returns the latest three Turns newest-first, with chronological user/assistant body messages and an explicit `finalMessage`; `--view session` returns metadata only. Use `--turn-id <turn-id> --view trace` only when the current task needs that Turn's tool-call details, and page the trace with `--messages` or `--before-version` when necessary.
 
-When you need to wait for a launched or continued session to reach its next stop point, use `agent wait --session-id <session-id> --json`. `agent wait` blocks until the session's next stop point and does not fetch execution messages. Repeatedly calling `agent get --messages` on a running session to check progress is an anti-pattern — it pulls message content an orchestrator should not be consuming between stop points. Use `agent get --session-id <session-id> --messages 100 --json` only when you need the full compact context helper.
+When you need to wait for a launched or continued session to reach its next stop point, use `agent wait --session-id <session-id> --json`. `agent wait` blocks until the session's next stop point and does not fetch execution messages. Repeatedly calling `agent get` on a running session to check progress is an anti-pattern — it pulls message content an orchestrator should not be consuming between stop points. Use `agent get --session-id <session-id> --json` only when you need to consume or recover recent conversation context.
 
 ## Call Protocol
 

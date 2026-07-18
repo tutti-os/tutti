@@ -11,7 +11,7 @@ Before starting a new agent session, run `{{CLI_COMMAND}} agent list --json`. Se
 
 ## Forward Image Context
 
-When a handoff needs images from a caller turn, use `{{CLI_COMMAND}} agent get --session-id <caller-session-id> --messages 100 --json` only to discover candidate turn ids, then query each selected turn with `{{CLI_COMMAND}} agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json`. Treat returned `images[].localPath` values as authoritative; do not scan attachment directories or construct paths from attachment ids.
+When a handoff needs images from a caller turn, use `{{CLI_COMMAND}} agent get --session-id <caller-session-id> --turns 20 --json` only to discover candidate turn ids, then query each selected turn with `{{CLI_COMMAND}} agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json`. Treat returned `images[].localPath` values as authoritative; do not scan attachment directories or construct paths from attachment ids.
 
 Add one `--image <localPath>` to `agent start` for each image chosen as structured visual input. If preserving prompt ordering is more useful, reference the image in the prompt as `[@filename](/absolute/path)` instead. Do not send the same image both ways unless the user explicitly asks, and continue without image arguments when no selected image has a usable local path.
 
@@ -38,12 +38,12 @@ Filter out system behavior. Context compaction, session title or summary generat
 Decide from the user's intent how results should return, before starting anything:
 
 - Delegate (fire-and-forget): start the session, save and report the session id (follow-ups will need it), and let the current conversation move on. Do not block on completion.
-- Fetch (results must come back): read the peer session with `{{CLI_COMMAND}} agent get --session-id <session-id> --messages 100 --json` instead of starting new work there. When you delegate work whose output you must consume, request machine-consumable output, then use the retrieved result to continue the current task — retrieval is not complete until the result is applied.
+- Fetch (results must come back): read the peer session with `{{CLI_COMMAND}} agent get --session-id <session-id> --json` instead of starting new work there. Its default conversation view exposes recent Turn results without tool-call noise. When you delegate work whose output you must consume, request machine-consumable output, then use the retrieved result to continue the current task — retrieval is not complete until the result is applied.
 - Collaborate (parallel work with a peer): state each side's boundary in the handoff prompt, keep outputs mergeable, and do not edit the files the peer session is working on while it runs.
 
 ## Wait Discipline After Delegating
 
-Once work is delegated, trust the executor. Act only at stop points — where `{{CLI_COMMAND}} agent wait` returns with a non-timeout reason. Between stop points nothing is actionable: do not poll `agent get --messages` for progress, do not read or relay partial outputs, and do not broadcast status updates — progress snapshots are context noise that crowds out what you will need at the real stop point, and the user can watch the session live in its own UI. Loop on bounded waits instead: `agent wait` with a timeout returns `timedOut` plus `latestVersion`, which increments with every message — if `latestVersion` is unchanged across several consecutive waits, the session may be stuck; surface that to the user rather than digging into its messages. `agent get --messages` is a context-recovery tool for when you must consume or continue the work, not a progress poll.
+Once work is delegated, trust the executor. Act only at stop points — where `{{CLI_COMMAND}} agent wait` returns with a non-timeout reason. Between stop points nothing is actionable: do not poll `agent get` for progress, do not read or relay partial outputs, and do not broadcast status updates — progress snapshots are context noise that crowds out what you will need at the real stop point, and the user can watch the session live in its own UI. Loop on bounded waits instead: `agent wait` with a timeout returns `timedOut` plus `latestVersion`, which increments with every message — if `latestVersion` is unchanged across several consecutive waits, the session may be stuck; surface that to the user rather than digging into its messages. `agent get` is a context-recovery tool for when you must consume or continue the work, not a progress poll.
 
 ## Handle Launch Failures
 

@@ -38,6 +38,37 @@ type CancelTurnResult struct {
 	Reason   CancelTurnReason
 }
 
+// ListTurns returns the persisted Turn history for one existing session in
+// durable chronological order. It is a read-only adapter query; lifecycle
+// decisions remain in Host.
+func (s *Service) ListTurns(ctx context.Context, workspaceID string, agentSessionID string) ([]agentactivitybiz.Turn, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return nil, ErrInvalidArgument
+	}
+	if s.TurnStore != nil {
+		turns, err := s.TurnStore.ListSessionTurns(ctx, workspaceID, agentSessionID)
+		if err != nil {
+			return nil, err
+		}
+		if len(turns) > 0 {
+			return append([]agentactivitybiz.Turn(nil), turns...), nil
+		}
+	}
+	exists, err := s.sessionExists(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, ErrSessionNotFound
+	}
+	return []agentactivitybiz.Turn{}, nil
+}
+
 // CancelTurn stops one specific turn (protocol v2). It is idempotent: a
 // settled or unknown turn is a no-op success (already_settled / not_found),
 // never an error. An active turn goes through the runtime cancel and its

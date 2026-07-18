@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
@@ -23,6 +24,7 @@ type AgentSessions interface {
 	List(context.Context, string) ([]agentservice.Session, error)
 	ListActivePeers(context.Context, string) (agentservice.ActivePeers, error)
 	ListMessages(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
+	ListTurns(context.Context, string, string) ([]agentactivitybiz.Turn, error)
 	ListProviderAvailability(context.Context, agentservice.ProviderAvailabilityInput) ([]agentservice.ProviderAvailability, error)
 	LocalAttachmentPath(context.Context, string, string, string, string) (string, error)
 	Respond(context.Context, agentservice.RespondInput) (agentservice.RespondResult, error)

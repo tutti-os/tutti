@@ -20,6 +20,28 @@ func TestCancelTurnPropagatesPersistedTurnReadFailure(t *testing.T) {
 	}
 }
 
+func TestListTurnsReturnsPersistedHistory(t *testing.T) {
+	t.Parallel()
+	want := []agentactivitybiz.Turn{{TurnID: "turn-1"}, {TurnID: "turn-2"}}
+	service := &Service{TurnStore: failingTurnStore{sessionTurns: want}}
+
+	got, err := service.ListTurns(context.Background(), "workspace-1", "session-1")
+	if err != nil || len(got) != 2 || got[0].TurnID != "turn-1" || got[1].TurnID != "turn-2" {
+		t.Fatalf("ListTurns() = %#v, error = %v", got, err)
+	}
+}
+
+func TestListTurnsPropagatesPersistedReadFailure(t *testing.T) {
+	t.Parallel()
+	want := errors.New("turn store unavailable")
+	service := &Service{TurnStore: failingTurnStore{sessionTurnsErr: want}}
+
+	_, err := service.ListTurns(context.Background(), "workspace-1", "session-1")
+	if !errors.Is(err, want) {
+		t.Fatalf("ListTurns() error = %v, want %v", err, want)
+	}
+}
+
 func TestProtocolV2ProjectionPropagatesPendingInteractionReadFailure(t *testing.T) {
 	t.Parallel()
 	want := errors.New("interaction store unavailable")
