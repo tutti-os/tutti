@@ -1044,6 +1044,7 @@ function createDependenciesStub(): {
       updateWorkspaceIssue: fail,
       updateWorkspaceIssueTopic: fail,
       updateWorkspaceIssueTask: fail,
+      cancelWorkspaceIssueExecution: fail,
       updateWorkspace: fail,
       uploadWorkspaceFiles: fail,
       useUserProject: fail,

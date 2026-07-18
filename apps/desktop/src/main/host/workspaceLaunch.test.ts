@@ -646,6 +646,9 @@ function createTransportClient(
     async updateWorkspaceIssueTask() {
       throw new Error("not used");
     },
+    async cancelWorkspaceIssueExecution() {
+      throw new Error("not used");
+    },
     async updateWorkspaceIssueTopic() {
       throw new Error("not used");
     },

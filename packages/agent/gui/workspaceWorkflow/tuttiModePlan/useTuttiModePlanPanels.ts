@@ -88,6 +88,8 @@ export function useTuttiModePlanPanels(input: {
   decidePlanIssueTask:
     | ((taskId: string, decision: TuttiPlanIssueTaskDecision) => Promise<void>)
     | null;
+  /** Stop the plan issue's execution (pause + cancel runs); null until loaded. */
+  cancelPlanIssueExecution: (() => Promise<void>) | null;
   retry(): void;
   submittingCheckpointId: string | null;
 } {
@@ -436,6 +438,17 @@ export function useTuttiModePlanPanels(input: {
           });
         }
       : null;
+  const cancelPlanIssueExecution =
+    planIssueSource && planIssueId
+      ? async (): Promise<void> => {
+          // Stop is one daemon-owned cascade: pause dispatch, cancel every
+          // running run. The issue-updated event refreshes the embed.
+          await planIssueSource.cancelExecution({
+            workspaceId,
+            issueId: planIssueId
+          });
+        }
+      : null;
 
   const visibleAssignmentState =
     assignmentState.scopeKey === scopeKey
@@ -454,6 +467,7 @@ export function useTuttiModePlanPanels(input: {
     panels,
     planIssue: visiblePlanIssue,
     decidePlanIssueTask,
+    cancelPlanIssueExecution,
     retry: () => setRetrySequence((current) => current + 1),
     submittingCheckpointId: visibleState.submittingCheckpointId
   };

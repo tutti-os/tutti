@@ -31,6 +31,7 @@ export interface DesktopTuttiModePlanReviewRuntimeInput {
     | "listWorkspaceIssueTopics"
     | "getWorkspaceIssueDetail"
     | "updateWorkspaceIssueTask"
+    | "cancelWorkspaceIssueExecution"
   >;
   eventStreamClient?: Pick<
     TuttidEventStreamClient,
@@ -434,6 +435,12 @@ function createPlanIssueSource(
         issueId,
         taskId,
         { status: "not_started" }
+      );
+    },
+    async cancelExecution({ workspaceId, issueId }): Promise<void> {
+      await input.tuttidClient.cancelWorkspaceIssueExecution(
+        workspaceId,
+        issueId
       );
     }
   };

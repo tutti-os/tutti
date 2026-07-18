@@ -27,6 +27,7 @@ export const enTuttiModePlan = {
   loadFailed: "Tutti mode plans could not be loaded",
   retry: "Try again",
   issueOpen: "Open Issue",
+  issueStopExecution: "Stop",
   issueListView: "List",
   issueBoardView: "Board",
   issueSummary: "{{done}}/{{total}} done · {{running}} running",

@@ -48,6 +48,8 @@ export interface AgentGUITuttiPlanReview {
     taskId: string,
     decision: TuttiPlanIssueTaskDecision
   ) => Promise<void>;
+  planIssueCancelAvailable: boolean;
+  cancelPlanIssueExecution: () => Promise<void>;
   openPlanIssue: () => void;
   jumpToPlanIssuePanel: () => void;
   tuttiPlanReview: {
@@ -227,6 +229,12 @@ export function useAgentGUITuttiPlanReview(input: {
         ? tuttiModePlanPanels.decidePlanIssueTask(taskId, decision)
         : Promise.resolve()
   );
+  const cancelPlanIssueExecution = useStableEventCallback(
+    (): Promise<void> =>
+      tuttiModePlanPanels.cancelPlanIssueExecution
+        ? tuttiModePlanPanels.cancelPlanIssueExecution()
+        : Promise.resolve()
+  );
   const openPlanIssue = useStableEventCallback((): void => {
     if (!planIssue) return;
     stableLinkAction?.({
@@ -272,6 +280,9 @@ export function useAgentGUITuttiPlanReview(input: {
     planIssue,
     planIssueDecideAvailable: tuttiModePlanPanels.decidePlanIssueTask !== null,
     decidePlanIssueTask,
+    planIssueCancelAvailable:
+      tuttiModePlanPanels.cancelPlanIssueExecution !== null,
+    cancelPlanIssueExecution,
     openPlanIssue,
     jumpToPlanIssuePanel,
     tuttiPlanReview: pendingPlanPanel
