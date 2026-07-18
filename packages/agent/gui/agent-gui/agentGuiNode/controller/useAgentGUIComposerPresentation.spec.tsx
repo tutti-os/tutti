@@ -233,14 +233,18 @@ describe("useAgentGUIComposerPresentation", () => {
           modelPlan: { id: "mp-relay", name: "中转接入点" }
         })
       );
+      // The list is non-empty before the async plan load completes (the
+      // plan-bound target's native options render in the interim), so gate on
+      // the aggregation landing, not on the first non-empty list.
       await waitFor(() => {
-        expect(
-          result.current.stableComposerSettings.availableModels.length
-        ).toBeGreaterThan(0);
+        expect(result.current.stableComposerSettings.aggregatedModelPlans).toBe(
+          true
+        );
       });
       const values = result.current.stableComposerSettings.availableModels.map(
         (option) => option.value
       );
+      expect(values.length).toBeGreaterThan(0);
       expect(values.every((value) => value.startsWith("model-plan:"))).toBe(
         true
       );
