@@ -135,9 +135,10 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
       ".agent-gui-node__conversation-provider-icon"
     );
     expect(icon).not.toBeNull();
+    expect(icon?.style.maskImage).toBe(`url("${maskIconUrl}")`);
     expect(
       icon?.style.getPropertyValue("--agent-gui-conversation-provider-icon-url")
-    ).toBe(`url("${maskIconUrl}")`);
+    ).toBe("");
   });
 
   it("blocks the div context-menu trigger while rail reconciliation is pending", () => {

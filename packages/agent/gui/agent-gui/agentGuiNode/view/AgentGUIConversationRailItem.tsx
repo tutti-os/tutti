@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, type CSSProperties } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { ExternalLink } from "lucide-react";
 import { IssueIcon, NewWorkspaceLinedIcon, cn } from "@tutti-os/ui-system";
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
@@ -200,11 +200,10 @@ export const AgentGUIConversationRailItem = memo(
               <span
                 aria-hidden="true"
                 className={styles.conversationProviderIcon}
-                style={
-                  {
-                    "--agent-gui-conversation-provider-icon-url": `url("${conversationIconUrl}")`
-                  } as CSSProperties
-                }
+                style={{
+                  WebkitMaskImage: `url("${conversationIconUrl}")`,
+                  maskImage: `url("${conversationIconUrl}")`
+                }}
               />
             ) : null}
             {item.titleLeadingMentionKind === "task" ? (

@@ -821,3 +821,33 @@
 - References:
   [apierrors.go](../../../services/tuttid/apierrors/apierrors.go)
   [agentGuiController.errors.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiController.errors.ts)
+
+### Mask-backed icon renders as a solid color block
+
+- Symptom:
+  A monochrome icon has the expected size and color but renders as a solid
+  square or rectangle. Other icons backed by the same packaged SVG still render
+  normally.
+- Quick checks:
+  Confirm the SVG import resolves to a CSS-safe self-contained data URL, then
+  inspect how that URL reaches the element. If the icon background applies but
+  the mask does not, look for a dynamic URL passed through a custom property
+  into the `mask` or `-webkit-mask` shorthand.
+- Root cause:
+  The dynamic mask source crossed two parsing boundaries: React serialized a
+  custom-property token stream, then the stylesheet substituted that stream
+  into a mask shorthand. When that composed declaration was rejected, the
+  element retained its background color and dimensions without any mask, which
+  exposed the full box.
+- Fix:
+  Keep the dynamic image source on the element through the explicit
+  `maskImage` and `WebkitMaskImage` longhands. Keep static position, repeat, and
+  size declarations in CSS longhands. Do not route dynamic image URLs through a
+  custom property into a shorthand.
+- Validation:
+  Assert the rendered element owns both mask-image longhands and that the
+  packaged SVG remains a CSS-safe data URL. Verify the affected icon in the
+  consuming renderer rather than inferring success from unrelated icon paths.
+- References:
+  [AgentGUIConversationRailItem.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailItem.tsx)
+  [agentactivity.css](../../../packages/agent/gui/app/renderer/agentactivity.css)
