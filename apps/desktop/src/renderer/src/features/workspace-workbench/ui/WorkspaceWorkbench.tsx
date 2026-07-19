@@ -310,7 +310,11 @@ function ReadyWorkspaceWorkbenchWithSession({
         ? {
             dockHandleLabel: t("workspace.settings.lab.chromeDockHandleLabel"),
             ...(state.platform === "darwin"
-              ? { fullscreenHostControlsMaskHeight: 52 }
+              ? {
+                  fullscreenHostControlsCenterY: 26,
+                  fullscreenHostControlsMaskHeight: 44,
+                  fullscreenHostControlsMaskWidth: 80
+                }
               : {}),
             fullscreenRestoreControlInset:
               state.platform === "darwin" ? 88 : 10,

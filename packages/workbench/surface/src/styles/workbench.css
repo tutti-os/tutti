@@ -2673,37 +2673,36 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
   z-index: 31;
   top: 0;
   left: 0;
-  box-sizing: border-box;
-  width: var(--workbench-fullscreen-restore-content-inset, 128px);
-  height: var(--workbench-fullscreen-host-controls-height, 52px);
-  border-right: 1px solid color-mix(in srgb, var(--border-1) 72%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--border-1) 72%, transparent);
-  border-bottom-right-radius: calc(
-    var(--workbench-fullscreen-host-controls-height, 52px) / 2
-  );
+  width: var(--workbench-fullscreen-host-controls-width, 80px);
+  height: var(--workbench-fullscreen-host-controls-height, 44px);
   border-top-left-radius: var(--workbench-window-radius);
-  background: color-mix(in srgb, var(--background-fronted) 94%, transparent);
-  box-shadow: 8px 10px 24px rgb(0 0 0 / 14%);
+  background: color-mix(
+    in srgb,
+    var(--background-fronted) 90%,
+    var(--text-primary) 10%
+  );
+  clip-path: path(
+    "M0 0H80C80 16.72 79.2 23.76 73.6 29.48C67.2 35.64 56 36.96 54.4 44H0Z"
+  );
+  filter: drop-shadow(7px 8px 14px rgb(0 0 0 / 14%));
+  overflow: hidden;
   pointer-events: none;
-  backdrop-filter: blur(16px);
 }
 
 .workbench-window__fullscreen-restore {
   position: absolute;
   z-index: 32;
-  top: calc(
-    (var(--workbench-fullscreen-host-controls-height, 38px) - 30px) / 2
-  );
+  top: calc(var(--workbench-fullscreen-host-controls-center-y, 19px) - 15px);
   display: inline-flex;
   width: 30px;
   height: 30px;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--border-1) 82%, transparent);
   border-radius: 9px;
-  background: transparent;
-  box-shadow: none;
+  background: color-mix(in srgb, var(--background-panel) 94%, transparent);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 16%);
   color: var(--text-secondary);
   cursor: pointer;
   outline: none;

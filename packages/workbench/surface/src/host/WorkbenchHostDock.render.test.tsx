@@ -167,7 +167,9 @@ describe("WorkbenchHostDock", () => {
           <WorkbenchSurface
             autoHideChrome={{
               dockHandleLabel: "Show Dock",
-              fullscreenHostControlsMaskHeight: 52,
+              fullscreenHostControlsCenterY: 26,
+              fullscreenHostControlsMaskHeight: 44,
+              fullscreenHostControlsMaskWidth: 80,
               fullscreenRestoreControlInset: 88,
               topHandleLabel: "Show app bar"
             }}
@@ -188,9 +190,19 @@ describe("WorkbenchHostDock", () => {
       );
       expect(
         fullscreenShell?.style.getPropertyValue(
+          "--workbench-fullscreen-host-controls-center-y"
+        )
+      ).toBe("26px");
+      expect(
+        fullscreenShell?.style.getPropertyValue(
           "--workbench-fullscreen-host-controls-height"
         )
-      ).toBe("52px");
+      ).toBe("44px");
+      expect(
+        fullscreenShell?.style.getPropertyValue(
+          "--workbench-fullscreen-host-controls-width"
+        )
+      ).toBe("80px");
       expect(
         container.querySelector('[data-workbench-native-controls-mask="true"]')
       ).not.toBeNull();

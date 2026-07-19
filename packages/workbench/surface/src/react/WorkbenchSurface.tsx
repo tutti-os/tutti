@@ -91,7 +91,9 @@ export interface WorkbenchSurfaceProps<TData = unknown> {
 export interface WorkbenchAutoHideChromeConfig {
   collapseDelayMs?: number;
   dockHandleLabel: string;
+  fullscreenHostControlsCenterY?: number;
   fullscreenHostControlsMaskHeight?: number;
+  fullscreenHostControlsMaskWidth?: number;
   fullscreenRestoreControlInset?: number;
   topHandleLabel: string;
 }
@@ -321,8 +323,14 @@ function WorkbenchSurfaceInner<TData>({
         genie={genie}
         interactive={interactive}
         presentation={presentation}
+        fullscreenHostControlsCenterY={
+          autoHideChrome?.fullscreenHostControlsCenterY
+        }
         fullscreenHostControlsMaskHeight={
           autoHideChrome?.fullscreenHostControlsMaskHeight
+        }
+        fullscreenHostControlsMaskWidth={
+          autoHideChrome?.fullscreenHostControlsMaskWidth
         }
         fullscreenRestoreControlInset={
           autoHideChrome === undefined

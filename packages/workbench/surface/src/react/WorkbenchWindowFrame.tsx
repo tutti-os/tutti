@@ -31,7 +31,9 @@ export interface WorkbenchWindowFrameProps<TData = unknown> {
   children: ReactNode;
   genie: WorkbenchGenieController;
   edgeSnapEnabled?: boolean;
+  fullscreenHostControlsCenterY?: number;
   fullscreenHostControlsMaskHeight?: number;
+  fullscreenHostControlsMaskWidth?: number;
   fullscreenRestoreControlInset?: number;
   hiddenMounted?: boolean;
   interactive?: boolean;
@@ -91,7 +93,9 @@ function resolveWorkbenchNodeTypeId(data: unknown): string | undefined {
 export function WorkbenchWindowFrame<TData>({
   children,
   edgeSnapEnabled = false,
+  fullscreenHostControlsCenterY,
   fullscreenHostControlsMaskHeight,
+  fullscreenHostControlsMaskWidth,
   fullscreenRestoreControlInset,
   genie,
   hiddenMounted = false,
@@ -250,10 +254,20 @@ export function WorkbenchWindowFrame<TData>({
           ...(isImmersiveFullscreen
             ? {
                 "--workbench-fullscreen-restore-content-inset": `${fullscreenRestoreControlInset + 40}px`,
+                ...(fullscreenHostControlsCenterY === undefined
+                  ? {}
+                  : {
+                      "--workbench-fullscreen-host-controls-center-y": `${fullscreenHostControlsCenterY}px`
+                    }),
                 ...(fullscreenHostControlsMaskHeight === undefined
                   ? {}
                   : {
                       "--workbench-fullscreen-host-controls-height": `${fullscreenHostControlsMaskHeight}px`
+                    }),
+                ...(fullscreenHostControlsMaskWidth === undefined
+                  ? {}
+                  : {
+                      "--workbench-fullscreen-host-controls-width": `${fullscreenHostControlsMaskWidth}px`
                     })
               }
             : {})
