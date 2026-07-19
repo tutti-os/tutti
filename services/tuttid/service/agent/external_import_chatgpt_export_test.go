@@ -583,7 +583,7 @@ func writeChatGPTExportBundleArchive(t *testing.T, shardConversations map[string
 	writeClaudeExportZipEntryFixturesAt(t, archivePath, []claudeExportZipEntryFixture{
 		{
 			Name:    "User Online Activity/Conversations__test-hash-chatgpt-0001.zip",
-			Content: string(innerBuf.Bytes()),
+			Content: innerBuf.String(),
 		},
 		{Name: "report.html", Content: "<html></html>"},
 	})
