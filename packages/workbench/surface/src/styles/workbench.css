@@ -2671,7 +2671,7 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
 .workbench-window__fullscreen-restore {
   position: absolute;
   z-index: 3;
-  top: 10px;
+  top: 4px;
   display: inline-flex;
   width: 30px;
   height: 30px;
@@ -2693,14 +2693,6 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
   backdrop-filter: blur(12px);
 }
 
-.workbench-window__fullscreen-restore[data-edge="left"] {
-  left: 10px;
-}
-
-.workbench-window__fullscreen-restore[data-edge="right"] {
-  right: 10px;
-}
-
 .workbench-window__fullscreen-restore:hover,
 .workbench-window__fullscreen-restore:focus-visible {
   background: var(--background-fronted);
@@ -2717,6 +2709,11 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
 .workbench-window__fullscreen-restore > svg {
   width: 14px;
   height: 14px;
+}
+
+.workbench-window-shell[data-immersive-fullscreen="true"]
+  .workbench-window__header {
+  padding-left: var(--workbench-fullscreen-restore-content-inset, 50px);
 }
 
 .workbench-surface__bottom-chrome {

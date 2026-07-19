@@ -16,13 +16,19 @@ export function DefaultWorkspaceWindow({
 }) {
   return (
     <WorkspaceWindowContainerHost containerInput={containerInput}>
-      {({ environmentMode, workspaceAppExternalApi, workspaceID }) => (
+      {({
+        environmentMode,
+        hostWindowApi,
+        workspaceAppExternalApi,
+        workspaceID
+      }) => (
         <Suspense
           fallback={<main className="h-screen min-h-0 bg-background" />}
         >
           <LazyWorkspaceWorkbench
             enableWindowCloseGuard={environmentMode === "desktop"}
             headerSlot={<AppUpdateStatus />}
+            hostWindowApi={hostWindowApi}
             workspaceAppExternalApi={workspaceAppExternalApi}
             workspaceID={workspaceID}
           />

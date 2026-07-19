@@ -261,6 +261,12 @@ export function createHostDesktopApi(): DesktopHostApi {
           input
         );
       },
+      setWindowButtonVisibility(visible): Promise<void> {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.window.setWindowButtonVisibility,
+          visible
+        );
+      },
       toggleMaximize(): Promise<void> {
         return invokeDesktopApi(desktopIpcChannels.host.window.toggleMaximize);
       }

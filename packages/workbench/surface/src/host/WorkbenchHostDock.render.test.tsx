@@ -134,7 +134,7 @@ describe("WorkbenchHostDock", () => {
     }
   });
 
-  it("replaces fullscreen traffic lights with a safe-edge restore control", async () => {
+  it("replaces fullscreen traffic lights with an inset restore control", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -167,7 +167,7 @@ describe("WorkbenchHostDock", () => {
           <WorkbenchSurface
             autoHideChrome={{
               dockHandleLabel: "Show Dock",
-              fullscreenRestoreControlEdge: "right",
+              fullscreenRestoreControlInset: 88,
               topHandleLabel: "Show app bar"
             }}
             controller={controller}
@@ -187,10 +187,8 @@ describe("WorkbenchHostDock", () => {
       const restoreControl = container.querySelector<HTMLButtonElement>(
         '[data-workbench-fullscreen-restore="true"]'
       );
-      expect(restoreControl?.getAttribute("data-edge")).toBe("right");
-      expect(restoreControl?.getAttribute("aria-label")).toBe(
-        "Exit Full Screen"
-      );
+      expect(restoreControl?.style.left).toBe("88px");
+      expect(restoreControl?.getAttribute("aria-label")).toBe("Restore Window");
 
       await act(async () => {
         restoreControl?.click();

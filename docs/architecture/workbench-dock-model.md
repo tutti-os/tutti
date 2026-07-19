@@ -76,11 +76,12 @@ The consuming host remains responsible for deciding when the mode is enabled
 and for changing its layout constraints. Tutti's desktop host exposes it as an
 experimental preference and removes the normal top/Dock safe areas while it is
 enabled so maximized workbench windows can use the complete surface. On macOS,
-the desktop host places the fullscreen restore control on the right; other
-platforms place it on the left. This keeps the control opposite the native
-application window controls. While an immersive workbench window is maximized,
-its normal traffic-light group is hidden and the independent restore control is
-the only workbench window control shown.
+the desktop host hides the native application window buttons while an immersive
+workbench window is maximized and restores them when that state ends. The
+workbench surface also hides the maximized window's own traffic-light group and
+places one restore control at a host-provided titlebar inset, after the native
+traffic-light area. This leaves one unambiguous control for returning the
+workbench window to its normal size.
 
 ## Core Model
 

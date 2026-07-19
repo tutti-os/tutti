@@ -4,7 +4,37 @@ import type {
   WorkbenchController,
   WorkbenchHostNodeData
 } from "@tutti-os/workbench-surface";
-import { createWorkspaceChromeController } from "./workspaceChromeController.ts";
+import {
+  createWorkspaceChromeController,
+  shouldHideWorkspaceWindowButtons
+} from "./workspaceChromeController.ts";
+
+test("native workspace buttons hide only for immersive fullscreen on macOS", () => {
+  assert.equal(
+    shouldHideWorkspaceWindowButtons({
+      autoHideChromeEnabled: true,
+      hasFullscreenWorkbenchWindow: true,
+      platform: "darwin"
+    }),
+    true
+  );
+  assert.equal(
+    shouldHideWorkspaceWindowButtons({
+      autoHideChromeEnabled: false,
+      hasFullscreenWorkbenchWindow: true,
+      platform: "darwin"
+    }),
+    false
+  );
+  assert.equal(
+    shouldHideWorkspaceWindowButtons({
+      autoHideChromeEnabled: true,
+      hasFullscreenWorkbenchWindow: true,
+      platform: "win32"
+    }),
+    false
+  );
+});
 
 test("workspace chrome controller derives workbench chrome state", () => {
   const workbenchController = createWorkbenchController([

@@ -91,7 +91,7 @@ export interface WorkbenchSurfaceProps<TData = unknown> {
 export interface WorkbenchAutoHideChromeConfig {
   collapseDelayMs?: number;
   dockHandleLabel: string;
-  fullscreenRestoreControlEdge?: "left" | "right";
+  fullscreenRestoreControlInset?: number;
   topHandleLabel: string;
 }
 
@@ -320,10 +320,10 @@ function WorkbenchSurfaceInner<TData>({
         genie={genie}
         interactive={interactive}
         presentation={presentation}
-        fullscreenRestoreControlEdge={
+        fullscreenRestoreControlInset={
           autoHideChrome === undefined
             ? undefined
-            : (autoHideChrome.fullscreenRestoreControlEdge ?? "right")
+            : (autoHideChrome.fullscreenRestoreControlInset ?? 10)
         }
         renderNode={renderNode}
         edgeSnapEnabled={windowManagement?.edgeSnapEnabled === true}

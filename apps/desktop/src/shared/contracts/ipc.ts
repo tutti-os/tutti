@@ -250,6 +250,7 @@ export const desktopIpcChannels = {
       openAgentWindow: "host:window:openAgentWindow",
       quitShortcutToast: "host:window:quitShortcutToast",
       resizeContentWidth: "host:window:resizeContentWidth",
+      setWindowButtonVisibility: "host:window:setWindowButtonVisibility",
       toggleMaximize: "host:window:toggleMaximize"
     },
     workspace: {
@@ -1016,6 +1017,7 @@ export interface DesktopInvokePayloadByChannel {
     .openAgentWindow]: DesktopHostOpenAgentWindowInput;
   [desktopIpcChannels.host.window
     .resizeContentWidth]: DesktopHostWindowResizeContentWidthInput;
+  [desktopIpcChannels.host.window.setWindowButtonVisibility]: boolean;
   [desktopIpcChannels.host.window.toggleMaximize]: undefined;
   [desktopIpcChannels.host.workspace
     .openWorkspaceAppFolder]: DesktopWorkspaceAppPayload;
@@ -1172,6 +1174,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.window.openAgentWindow]: void;
   [desktopIpcChannels.host.window
     .resizeContentWidth]: DesktopHostWindowResizeContentWidthResult;
+  [desktopIpcChannels.host.window.setWindowButtonVisibility]: void;
   [desktopIpcChannels.host.window.toggleMaximize]: void;
   [desktopIpcChannels.host.workspace.openWorkspaceAppFolder]: void;
   [desktopIpcChannels.host.workspace.replaceWorkspaceWindow]: void;

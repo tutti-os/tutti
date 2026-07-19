@@ -135,6 +135,7 @@ export interface DesktopHostWindowApi {
   resizeContentWidth(
     input: DesktopHostWindowResizeContentWidthInput
   ): Promise<DesktopHostWindowResizeContentWidthResult>;
+  setWindowButtonVisibility(visible: boolean): Promise<void>;
   toggleMaximize(): Promise<void>;
 }
 

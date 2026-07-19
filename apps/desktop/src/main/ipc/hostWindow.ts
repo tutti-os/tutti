@@ -205,6 +205,23 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
   );
 
   registerDesktopIpcHandler(
+    desktopIpcChannels.host.window.setWindowButtonVisibility,
+    (event, visible) => {
+      const ownerWindow = resolveOwnerWindowFromEvent(event);
+      if (
+        process.platform !== "darwin" ||
+        !ownerWindow ||
+        ownerWindow.isDestroyed() ||
+        getWorkspaceWindowKind(ownerWindow) !== "workspace"
+      ) {
+        return;
+      }
+
+      ownerWindow.setWindowButtonVisibility(visible === true);
+    }
+  );
+
+  registerDesktopIpcHandler(
     desktopIpcChannels.host.window.toggleMaximize,
     (event) => {
       const ownerWindow = resolveOwnerWindowFromEvent(event);

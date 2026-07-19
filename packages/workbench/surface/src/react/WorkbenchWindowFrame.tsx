@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import { createI18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { Checkbox, WindowTrafficLightIcon } from "@tutti-os/ui-system";
 import {
@@ -31,7 +31,7 @@ export interface WorkbenchWindowFrameProps<TData = unknown> {
   children: ReactNode;
   genie: WorkbenchGenieController;
   edgeSnapEnabled?: boolean;
-  fullscreenRestoreControlEdge?: "left" | "right";
+  fullscreenRestoreControlInset?: number;
   hiddenMounted?: boolean;
   interactive?: boolean;
   node: WorkbenchNode<TData>;
@@ -90,7 +90,7 @@ function resolveWorkbenchNodeTypeId(data: unknown): string | undefined {
 export function WorkbenchWindowFrame<TData>({
   children,
   edgeSnapEnabled = false,
-  fullscreenRestoreControlEdge,
+  fullscreenRestoreControlInset,
   genie,
   hiddenMounted = false,
   interactive = true,
@@ -134,7 +134,7 @@ export function WorkbenchWindowFrame<TData>({
     }
   } as const;
   const isImmersiveFullscreen =
-    fullscreenRestoreControlEdge !== undefined &&
+    fullscreenRestoreControlInset !== undefined &&
     node.displayMode === "fullscreen";
   const resolvedWindowChromeI18n = windowChromeI18n ?? defaultWindowChromeI18n;
   const defaultActions =
@@ -236,15 +236,22 @@ export function WorkbenchWindowFrame<TData>({
       data-workbench-window-id={node.id}
       data-window-drag-state={isDragging ? "dragging" : "idle"}
       data-window-resize-state={isResizing ? "resizing" : "idle"}
-      style={{
-        height: node.frame.height,
-        left: node.frame.x,
-        top: node.frame.y,
-        transform: shellTransform,
-        transformOrigin: "top left",
-        width: node.frame.width,
-        zIndex
-      }}
+      style={
+        {
+          height: node.frame.height,
+          left: node.frame.x,
+          top: node.frame.y,
+          transform: shellTransform,
+          transformOrigin: "top left",
+          width: node.frame.width,
+          zIndex,
+          ...(isImmersiveFullscreen
+            ? {
+                "--workbench-fullscreen-restore-content-inset": `${fullscreenRestoreControlInset + 40}px`
+              }
+            : {})
+        } as CSSProperties
+      }
       onPointerDown={
         hiddenMounted ||
         isPresentationHidden ||
@@ -299,11 +306,11 @@ export function WorkbenchWindowFrame<TData>({
         presentationMode !== "mission-control" &&
         interactive ? (
           <button
-            aria-label={resolvedWindowChromeI18n.t("exitFullscreen")}
+            aria-label={resolvedWindowChromeI18n.t("restoreWindow")}
             className="workbench-window__fullscreen-restore"
-            data-edge={fullscreenRestoreControlEdge}
             data-workbench-fullscreen-restore="true"
-            title={resolvedWindowChromeI18n.t("exitFullscreen")}
+            style={{ left: fullscreenRestoreControlInset }}
+            title={resolvedWindowChromeI18n.t("restoreWindow")}
             type="button"
             onClick={(event) => {
               event.stopPropagation();
