@@ -129,6 +129,7 @@ func CoreSkillsPack() CapabilityPack {
 			{ID: "tutti/issue-manager", Name: issueManagerSkillName, Files: map[string]string{"SKILL.md": issueManagerSkill(input)}},
 			{ID: "tutti/workspace-app", Name: workspaceAppSkillName, Files: map[string]string{"SKILL.md": workspaceAppSkill(input)}},
 			{ID: "tutti/reference", Name: referenceSkillName, Files: map[string]string{"SKILL.md": referenceSkill(input)}},
+			{ID: "tutti/token-saver", Name: tokenSaverSkillName, Files: map[string]string{"SKILL.md": tokenSaverSkill()}},
 		}}, nil
 	}}
 }

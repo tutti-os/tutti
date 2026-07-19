@@ -108,15 +108,6 @@ func tokenSaverSkill() string {
 	)
 }
 
-func installTokenSaverSystemSkill(systemRoot string) ([]string, error) {
-	return installProviderNativeSkillSpecs(systemRoot, []providerSkillSpec{
-		{
-			baseName: tokenSaverSkillName,
-			files:    map[string]string{"SKILL.md": tokenSaverSkill()},
-		},
-	})
-}
-
 func renderProviderSkillTemplate(path string, replacements map[string]string) string {
 	content, err := providerSkillTemplates.ReadFile(path)
 	if err != nil {
@@ -198,6 +189,10 @@ func providerSkills(input PrepareInput) []providerSkillSpec {
 		{
 			baseName: referenceSkillName,
 			files:    map[string]string{"SKILL.md": referenceSkill(input)},
+		},
+		{
+			baseName: tokenSaverSkillName,
+			files:    map[string]string{"SKILL.md": tokenSaverSkill()},
 		},
 	}
 	// Browser use is a daemon-owned `tutti browser` CLI; inject its skill only

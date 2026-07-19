@@ -22,6 +22,10 @@ const (
 	composerSkillSourceTuttiInjected = "tutti-injected"
 )
 
+// tuttiPluginName is the name of the Tutti Claude Code plugin, used to
+// distinguish Tutti-injected plugin skills from user-installed plugin skills.
+const tuttiPluginName = "tutti-cli"
+
 var hiddenTuttiProviderSkills = map[string]struct{}{
 	"tutti-cli":                   {},
 	"issue-manager":               {},
@@ -91,10 +95,6 @@ func codexComposerSkillRoots(cwd string, env []string) []composerSkillRoot {
 	}
 	if codexHome := envValue(env, "CODEX_HOME"); codexHome != "" {
 		roots = append(roots, composerSkillRoot{
-			path:       filepath.Join(codexHome, "skills", ".system"),
-			sourceKind: composerSkillSourceSystem,
-		})
-		roots = append(roots, composerSkillRoot{
 			path:       filepath.Join(codexHome, "skills"),
 			sourceKind: composerSkillSourceTuttiInjected,
 		})
@@ -116,10 +116,6 @@ func claudeCodeComposerSkillRoots(cwd string, env []string) []composerSkillRoot 
 			path:       filepath.Join(pluginDir, "skills"),
 			sourceKind: composerSkillSourcePlugin,
 			pluginName: claudePluginName(pluginDir),
-		})
-		roots = append(roots, composerSkillRoot{
-			path:       filepath.Join(pluginDir, "skills", ".system"),
-			sourceKind: composerSkillSourceSystem,
 		})
 	}
 	return roots
@@ -297,11 +293,32 @@ func discoverProviderSkillRoots(
 ) []ComposerSkillOption {
 	options := make([]ComposerSkillOption, 0)
 	seen := map[string]struct{}{}
+
+	// Official static skills are inserted first so they always win the dedup
+	// with the correct official sourceKind when the same skill is also
+	// discoverable from a filesystem root.
+	//
+	// Dedup is by skill name (not trigger) so that the same skill discovered
+	// from different roots with different trigger formats (e.g. /token-saver
+	// from the static list vs /tutti-cli:token-saver from the plugin directory)
+	// is merged into a single entry.
+	for _, option := range officialStaticComposerSkillOptions(triggerFor) {
+		key := option.Name
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		options = append(options, option)
+	}
+
 	for _, root := range roots {
 		for _, option := range discoverProviderSkillRoot(root, triggerFor) {
-			key := option.Trigger
+			key := option.Name
 			if key == "" {
-				key = option.Name
+				continue
 			}
 			if _, ok := seen[key]; ok {
 				continue
@@ -577,10 +594,18 @@ func openCodeSkillTrigger(_ composerSkillRoot, name string) string {
 }
 
 func shouldHideComposerSkill(root composerSkillRoot, name string) bool {
-	if _, ok := hiddenTuttiProviderSkills[strings.TrimSpace(name)]; ok {
-		return true
+	// Only hide skills that originate from Tutti-controlled sources.
+	// User-installed skills (project, personal, third-party plugin) are
+	// never hidden by name matching, even if the name coincides with an
+	// internal Tutti skill.
+	isTuttiSource := root.sourceKind == composerSkillSourceTuttiInjected ||
+		root.sourceKind == composerSkillSourceSystem ||
+		(root.sourceKind == composerSkillSourcePlugin && root.pluginName == tuttiPluginName)
+	if !isTuttiSource {
+		return false
 	}
-	return false
+	_, ok := hiddenTuttiProviderSkills[strings.TrimSpace(name)]
+	return ok
 }
 
 func composerSkillOptionsRuntimeContext(options []ComposerSkillOption) []map[string]any {
@@ -685,6 +710,31 @@ func skillSourceRank(sourceKind string) int {
 		return 4
 	default:
 		return 9
+	}
+}
+
+// officialStaticComposerSkillOptions returns hardcoded official Tutti skills
+// that do not depend on filesystem discovery or runtime environment variables.
+// These skills are always available in the composer palette regardless of
+// whether a session runtime has been prepared.
+//
+// IMPORTANT: The name and description for each skill listed here MUST stay in
+// sync with the corresponding template in packages/agent/runtimeprep/skill_templates/.
+// When adding or updating an official skill, update BOTH:
+//  1. The skill template file (runtime installation path)
+//  2. This function (composer discovery path)
+//
+// The test TestOfficialStaticComposerSkillOptions_IncludesTokenSaver verifies
+// the token-saver entry has the expected name and description.
+func officialStaticComposerSkillOptions(triggerFor skillTriggerFunc) []ComposerSkillOption {
+	virtualRoot := composerSkillRoot{sourceKind: composerSkillSourceSystem}
+	return []ComposerSkillOption{
+		{
+			Name:        "token-saver",
+			Trigger:     triggerFor(virtualRoot, "token-saver"),
+			SourceKind:  composerSkillSourceSystem,
+			Description: "Reduce token consumption by instructing the model to use terse, minimal-token responses, skip restating context, avoid echoing large file contents, and prefer targeted reads over whole-file reads where practical.",
+		},
 	}
 }
 

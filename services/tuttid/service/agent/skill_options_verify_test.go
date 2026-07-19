@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"path/filepath"
 	"testing"
 )
 
@@ -56,12 +57,12 @@ func TestSkillSourceRank_ExactValues(t *testing.T) {
 }
 
 // ============================================================
-// Requirement 1: shouldHideComposerSkill — token-saver visible
+// Requirement 1: shouldHideComposerSkill — sourceKind-aware hiding
 // ============================================================
 
 func TestShouldHideComposerSkill_TokenSaverNotHidden(t *testing.T) {
-	// token-saver is NOT in hiddenTuttiProviderSkills and is NOT hidden by sourceKind.
-	// It should return false (not hidden) regardless of sourceKind.
+	// token-saver is NOT in hiddenTuttiProviderSkills.
+	// It should return false (not hidden) for all sourceKinds.
 	kinds := []string{
 		composerSkillSourceTuttiInjected,
 		composerSkillSourceSystem,
@@ -76,7 +77,8 @@ func TestShouldHideComposerSkill_TokenSaverNotHidden(t *testing.T) {
 }
 
 func TestShouldHideComposerSkill_HiddenSkillsStayHidden(t *testing.T) {
-	// Skills in hiddenTuttiProviderSkills should still be hidden.
+	// Skills in hiddenTuttiProviderSkills should be hidden only when they
+	// come from Tutti-controlled sourceKinds.
 	hiddenSkills := []string{
 		"tutti-cli",
 		"issue-manager",
@@ -89,23 +91,40 @@ func TestShouldHideComposerSkill_HiddenSkillsStayHidden(t *testing.T) {
 	for _, name := range hiddenSkills {
 		root := composerSkillRoot{sourceKind: composerSkillSourceTuttiInjected}
 		if !shouldHideComposerSkill(root, name) {
-			t.Errorf("%q should still be hidden", name)
+			t.Errorf("%q should be hidden for sourceKind 'tutti-injected'", name)
+		}
+		root2 := composerSkillRoot{sourceKind: composerSkillSourceSystem}
+		if !shouldHideComposerSkill(root2, name) {
+			t.Errorf("%q should be hidden for sourceKind 'system'", name)
 		}
 	}
 }
 
 func TestShouldHideComposerSkill_UserSkillNotHidden(t *testing.T) {
-	// user-installed skills should not be hidden.
-	userSkill := "my-custom-skill"
-	kinds := []string{
+	// user-installed skills should not be hidden, even if the name matches
+	// a Tutti-internal skill name.
+	userKinds := []string{
 		composerSkillSourceProject,
 		composerSkillSourcePersonal,
 		composerSkillSourcePlugin,
 	}
-	for _, kind := range kinds {
+
+	// A custom skill should never be hidden regardless of name.
+	customSkill := "my-custom-skill"
+	for _, kind := range userKinds {
 		root := composerSkillRoot{sourceKind: kind}
-		if shouldHideComposerSkill(root, userSkill) {
-			t.Errorf("user skill %q should NOT be hidden for sourceKind %q", userSkill, kind)
+		if shouldHideComposerSkill(root, customSkill) {
+			t.Errorf("user skill %q should NOT be hidden for sourceKind %q", customSkill, kind)
+		}
+	}
+
+	// Even a user skill named identically to a hidden Tutti skill
+	// should NOT be hidden when it comes from a user sourceKind.
+	userHiddenName := "reference"
+	for _, kind := range userKinds {
+		root := composerSkillRoot{sourceKind: kind}
+		if shouldHideComposerSkill(root, userHiddenName) {
+			t.Errorf("user skill %q should NOT be hidden for sourceKind %q even if name matches hidden Tutti skill", userHiddenName, kind)
 		}
 	}
 }
@@ -115,9 +134,8 @@ func TestShouldHideComposerSkill_UserSkillNotHidden(t *testing.T) {
 // ============================================================
 
 func TestTokenSaverSourceKindIsOfficial(t *testing.T) {
-	// The token-saver is installed into .system/ subdirectory,
-	// which maps to composerSkillSourceSystem.
-	// Verify that "system" is classified as official.
+	// The token-saver is delivered as an official static skill with
+	// sourceKind 'system'.
 	officialKinds := map[string]bool{
 		composerSkillSourceSystem:        true,
 		composerSkillSourceTuttiInjected: true,
@@ -131,13 +149,13 @@ func TestTokenSaverSourceKindIsOfficial(t *testing.T) {
 
 	// Verify hiddenTuttiProviderSkills contains all expected entries
 	expectedHidden := map[string]bool{
-		"tutti-cli":     false,
-		"issue-manager": false,
-		"workspace-app": false,
-		"tutti-handoff": false,
-		"reference":     false,
-		"browser-use":   false,
-		"computer-use":  false,
+		"tutti-cli":                   false,
+		"issue-manager":               false,
+		"workspace-app":               false,
+		"tutti-handoff":               false,
+		"reference":                   false,
+		"browser-use":                 false,
+		"computer-use":                false,
 		"tutti-workspace-app-factory": false,
 		"tutti-agent-workspace-app":   false,
 	}
@@ -152,30 +170,186 @@ func TestTokenSaverSourceKindIsOfficial(t *testing.T) {
 }
 
 // ============================================================
-// Requirement 2: Claude Code .system root added
+// Requirement 2: Official static skill discovery
 // ============================================================
 
-func TestClaudeCodeSkillRootsIncludesSystemRoot(t *testing.T) {
-	env := []string{"TUTTI_CLAUDE_PLUGIN_DIR=/tmp/test-plugin"}
-	roots := claudeCodeComposerSkillRoots("/tmp/test", env)
+func TestOfficialStaticComposerSkillOptions_IncludesTokenSaver(t *testing.T) {
+	// Official static skills should include token-saver as a system skill
+	// with the exact same description as the template file:
+	// packages/agent/runtimeprep/skill_templates/token-saver.md
+	const wantName = "token-saver"
+	const wantDescription = "Reduce token consumption by instructing the model to use terse, minimal-token responses, skip restating context, avoid echoing large file contents, and prefer targeted reads over whole-file reads where practical."
 
-	foundSystem := false
-	for _, root := range roots {
-		if root.sourceKind == composerSkillSourceSystem {
-			foundSystem = true
-			break
+	for _, triggerFor := range []skillTriggerFunc{
+		codexSkillTrigger,
+		claudeCodeSkillTrigger,
+		cursorSkillTrigger,
+		openCodeSkillTrigger,
+	} {
+		options := officialStaticComposerSkillOptions(triggerFor)
+		found := false
+		for _, opt := range options {
+			if opt.Name == wantName {
+				found = true
+				if opt.SourceKind != composerSkillSourceSystem {
+					t.Errorf("token-saver should have sourceKind 'system', got %q", opt.SourceKind)
+				}
+				if opt.Trigger == "" {
+					t.Error("token-saver should have a non-empty trigger")
+				}
+				if opt.Description != wantDescription {
+					t.Errorf("token-saver description mismatch.\n  got:  %q\n  want: %q\n  (keep in sync with packages/agent/runtimeprep/skill_templates/token-saver.md)", opt.Description, wantDescription)
+				}
+				break
+			}
 		}
-	}
-	if !foundSystem {
-		t.Error("claudeCodeComposerSkillRoots should include a .system root with sourceKind 'system'")
+		if !found {
+			t.Error("officialStaticComposerSkillOptions should include token-saver")
+		}
 	}
 }
 
-func TestClaudeCodeSkillRootsWithoutPluginDir(t *testing.T) {
-	roots := claudeCodeComposerSkillRoots("/tmp/test", nil)
-	for _, root := range roots {
+func TestNoSystemRootWithoutEnv(t *testing.T) {
+	// Without the runtime env, claude and codex roots should NOT contain
+	// a .system sourceKind root. Official skills are delivered via the
+	// static list (officialStaticComposerSkillOptions) instead.
+	codexRoots := codexComposerSkillRoots("/tmp/test", nil)
+	for _, root := range codexRoots {
 		if root.sourceKind == composerSkillSourceSystem {
-			t.Error("without TUTTI_CLAUDE_PLUGIN_DIR, no .system root should be present")
+			t.Error("codex roots should not include .system without CODEX_HOME env")
 		}
+	}
+	claudeRoots := claudeCodeComposerSkillRoots("/tmp/test", nil)
+	for _, root := range claudeRoots {
+		if root.sourceKind == composerSkillSourceSystem {
+			t.Error("claude roots should not include .system without TUTTI_CLAUDE_PLUGIN_DIR env")
+		}
+	}
+}
+
+func TestNoSystemRootWithEnv(t *testing.T) {
+	// Even with the runtime env set, claude and codex roots should NOT
+	// contain a .system sourceKind root. The .system root has been
+	// removed in favor of the static skill list.
+	codexRoots := codexComposerSkillRoots("/tmp/test", []string{"CODEX_HOME=/tmp/codex-home"})
+	for _, root := range codexRoots {
+		if root.sourceKind == composerSkillSourceSystem {
+			t.Error("codex roots should not include .system root (removed in favor of static skills)")
+		}
+	}
+	claudeRoots := claudeCodeComposerSkillRoots("/tmp/test", []string{"TUTTI_CLAUDE_PLUGIN_DIR=/tmp/test-plugin"})
+	for _, root := range claudeRoots {
+		if root.sourceKind == composerSkillSourceSystem {
+			t.Error("claude roots should not include .system root (removed in favor of static skills)")
+		}
+	}
+}
+
+// ============================================================
+// Verify token-saver appears in composer discovery via static list
+// ============================================================
+
+func TestTokenSaverDiscoveredViaStaticList(t *testing.T) {
+	// Even with nil env (the composer API path), token-saver should be
+	// discoverable from the static official skill list.
+	roots, triggerFor := composerSkillDiscoveryPlan("codex", "/tmp/test", nil)
+	if triggerFor == nil {
+		t.Fatal("expected skill discovery for codex")
+	}
+	options := discoverComposerSkillOptionsFromRoots(roots, triggerFor)
+
+	found := false
+	for _, opt := range options {
+		if opt.Name == "token-saver" {
+			found = true
+			if opt.SourceKind != composerSkillSourceSystem {
+				t.Errorf("token-saver from static list should have sourceKind 'system', got %q", opt.SourceKind)
+			}
+			if opt.Trigger != "$token-saver" {
+				t.Errorf("codex token-saver trigger should be $token-saver, got %q", opt.Trigger)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("token-saver should be discoverable from static list even with nil env")
+	}
+}
+
+// ============================================================
+// Verify dedup by name prevents duplicate skills
+// ============================================================
+
+func TestTokenSaverNotDuplicatedWhenAlsoOnDisk(t *testing.T) {
+	// When a session runtime exists, the token-saver skill is also installed
+	// on disk (via CoreSkillsPack → providerSkills). The filesystem root may
+	// discover it with a different trigger format than the static list.
+	// Dedup is by name, so only one entry should appear — the static list
+	// version (inserted first) wins.
+
+	tempDir := t.TempDir()
+	codexHome := filepath.Join(tempDir, "codex-home")
+
+	// Simulate the runtime installation: write token-saver to the codex
+	// home skills directory (as CoreSkillsPack would do).
+	writeSkill(t, filepath.Join(codexHome, "skills", "token-saver", "SKILL.md"), `---
+name: token-saver
+description: Reduce token consumption by instructing the model to use terse, minimal-token responses, skip restating context, avoid echoing large file contents, and prefer targeted reads over whole-file reads where practical.
+---
+`)
+
+	// Discovery with CODEX_HOME set (simulating a session refresh path)
+	options := discoverComposerSkillOptions("codex", tempDir, []string{
+		"CODEX_HOME=" + codexHome,
+	})
+
+	// Count token-saver entries — should be exactly 1
+	count := 0
+	for _, opt := range options {
+		if opt.Name == "token-saver" {
+			count++
+			// The static list version (inserted first) should win
+			if opt.SourceKind != composerSkillSourceSystem {
+				t.Errorf("token-saver should have sourceKind 'system' from static list, got %q", opt.SourceKind)
+			}
+		}
+	}
+	if count != 1 {
+		t.Errorf("token-saver appears %d times in options, want exactly 1 (dedup by name)", count)
+	}
+}
+
+func TestTokenSaverNotDuplicatedForClaudeCodeWithPluginEnv(t *testing.T) {
+	// Claude Code renders plugin skills with a namespaced trigger
+	// (/tutti-cli:token-saver), while the static list uses a plain trigger
+	// (/token-saver). Dedup by name ensures only one entry appears.
+
+	tempDir := t.TempDir()
+	pluginDir := filepath.Join(tempDir, "plugins", "tutti-cli")
+
+	// Simulate the Tutti Claude Code plugin installation
+	writeSkill(t, filepath.Join(pluginDir, "skills", "token-saver", "SKILL.md"), `---
+name: token-saver
+description: Reduce token consumption by instructing the model to use terse, minimal-token responses, skip restating context, avoid echoing large file contents, and prefer targeted reads over whole-file reads where practical.
+---
+`)
+
+	// Discovery with TUTTI_CLAUDE_PLUGIN_DIR set
+	options := discoverComposerSkillOptions("claude-code", tempDir, []string{
+		"TUTTI_CLAUDE_PLUGIN_DIR=" + pluginDir,
+	})
+
+	count := 0
+	for _, opt := range options {
+		if opt.Name == "token-saver" {
+			count++
+			// The static list version wins
+			if opt.SourceKind != composerSkillSourceSystem {
+				t.Errorf("token-saver should have sourceKind 'system', got %q", opt.SourceKind)
+			}
+		}
+	}
+	if count != 1 {
+		t.Errorf("token-saver appears %d times for claude-code, want exactly 1", count)
 	}
 }
