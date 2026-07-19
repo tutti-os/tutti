@@ -61,7 +61,8 @@ test("reconcile requests merge while one command is in flight and rerun once", (
     type: "engine/commandResult",
     commandId: "session:reconcile:session-1:1",
     commandType: "session/reconcile",
-    outcome: "succeeded"
+    outcome: "succeeded",
+    value: foundResult()
   });
   assert.deepEqual(settled.commands, [
     {
@@ -73,6 +74,7 @@ test("reconcile requests merge while one command is in flight and rerun once", (
       workspaceId: "workspace-1"
     }
   ]);
+  assert.equal(settled.followUpIntents?.[0]?.type, "session/upserted");
 });
 
 test("session removal discards queued reconcile demand", () => {
@@ -84,6 +86,7 @@ test("session removal discards queued reconcile demand", () => {
     workspaceId: "workspace-1"
   }).state;
   state = reduce(state, {
+    evidence: { source: "session_deleted_event", deletedAtUnixMs: 1 },
     type: "session/removed",
     agentSessionId: "session-1"
   }).state;
@@ -119,6 +122,157 @@ test("a timed-out reconcile releases merged demand into the next command", () =>
     "state"
   );
 });
+
+test("absent reconcile never tombstones and ignores duplicate settles", () => {
+  let state = reduce(createInitialSessionReconcileState(), {
+    type: "session/reconcileRequested",
+    agentSessionId: "session-1",
+    needsMessages: false,
+    needsState: true,
+    workspaceId: "workspace-1"
+  }).state;
+  const absent = reduce(state, {
+    type: "engine/commandResult",
+    commandId: "session:reconcile:session-1:1",
+    commandType: "session/reconcile",
+    outcome: "succeeded",
+    value: { kind: "absent" }
+  });
+  assert.equal(absent.followUpIntents, undefined);
+  assert.equal(absent.commands.length, 0);
+  assert.equal(absent.state.recordsBySessionId["session-1"]?.lastAbsent, true);
+  assert.equal(
+    absent.state.recordsBySessionId["session-1"]?.inFlightCommandId,
+    null
+  );
+
+  const duplicate = reduce(absent.state, {
+    type: "engine/commandResult",
+    commandId: "session:reconcile:session-1:1",
+    commandType: "session/reconcile",
+    outcome: "succeeded",
+    value: {
+      kind: "deleted",
+      evidence: {
+        source: "session_deleted_event",
+        deletedAtUnixMs: 9
+      }
+    }
+  });
+  assert.equal(duplicate.state, absent.state);
+  assert.equal(duplicate.followUpIntents, undefined);
+});
+
+test("explicit deleted reconcile emits evidenced session/removed", () => {
+  let state = reduce(createInitialSessionReconcileState(), {
+    type: "session/reconcileRequested",
+    agentSessionId: "session-1",
+    needsMessages: false,
+    needsState: true,
+    workspaceId: "workspace-1"
+  }).state;
+  const deleted = reduce(state, {
+    type: "engine/commandResult",
+    commandId: "session:reconcile:session-1:1",
+    commandType: "session/reconcile",
+    outcome: "succeeded",
+    value: {
+      kind: "deleted",
+      evidence: {
+        source: "session_deleted_event",
+        deletedAtUnixMs: 9
+      }
+    }
+  });
+  assert.deepEqual(deleted.followUpIntents, [
+    {
+      agentSessionId: "session-1",
+      evidence: {
+        source: "session_deleted_event",
+        deletedAtUnixMs: 9
+      },
+      type: "session/removed"
+    }
+  ]);
+  assert.equal(deleted.state.recordsBySessionId["session-1"], undefined);
+});
+
+test("found reconcile upserts session and turns atomically via follow-ups", () => {
+  let state = reduce(createInitialSessionReconcileState(), {
+    type: "session/reconcileRequested",
+    agentSessionId: "session-1",
+    needsMessages: true,
+    needsState: true,
+    workspaceId: "workspace-1"
+  }).state;
+  const turn = {
+    agentSessionId: "session-1",
+    origin: "user_prompt" as const,
+    phase: "settled" as const,
+    outcome: "completed" as const,
+    startedAtUnixMs: 1,
+    settledAtUnixMs: 2,
+    turnId: "turn-1",
+    updatedAtUnixMs: 2
+  };
+  const found = reduce(state, {
+    type: "engine/commandResult",
+    commandId: "session:reconcile:session-1:1",
+    commandType: "session/reconcile",
+    outcome: "succeeded",
+    value: {
+      kind: "found",
+      live: true,
+      session: {
+        ...foundResult().session,
+        latestTurn: turn
+      },
+      turns: [turn],
+      messages: [
+        {
+          agentSessionId: "session-1",
+          kind: "text",
+          messageId: "m-1",
+          occurredAtUnixMs: 1,
+          payload: {},
+          role: "assistant",
+          status: "completed",
+          turnId: "turn-1",
+          version: 1,
+          workspaceId: "workspace-1"
+        }
+      ]
+    }
+  });
+  assert.deepEqual(
+    found.followUpIntents?.map((intent) => intent.type),
+    [
+      "session/upserted",
+      "turn/upserted",
+      "turn/upserted",
+      "message/snapshotReceived"
+    ]
+  );
+});
+
+function foundResult() {
+  return {
+    kind: "found" as const,
+    session: {
+      activeTurn: null,
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      cwd: "/workspace",
+      latestTurn: null,
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "codex",
+      title: "Session",
+      updatedAtUnixMs: 1,
+      workspaceId: "workspace-1"
+    }
+  };
+}
 
 function reduce(
   state: ReturnType<typeof createInitialSessionReconcileState>,

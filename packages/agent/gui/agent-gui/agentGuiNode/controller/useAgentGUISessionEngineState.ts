@@ -20,10 +20,12 @@ import {
   selectLatestActivationForSession,
   selectLatestPendingSubmitForSession,
   selectPendingSubmitsForSession,
+  selectSessionAvailability,
   selectSessionHasUnconfirmedSubmit,
   selectSessionIsSubmitting,
   type AgentSessionEngine,
-  type EngineQueuedPrompt
+  type EngineQueuedPrompt,
+  type SessionAvailabilityStatus
 } from "@tutti-os/agent-activity-core";
 import { useMemo } from "react";
 import type {
@@ -36,7 +38,6 @@ import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 import { EMPTY_QUEUED_PROMPTS } from "./agentGuiController.draftMessageHelpers";
 import { agentActivityInteractionListsEqual } from "./agentGuiController.providerHelpers";
 import { agentGUIQueueStatusFromPromptQueue } from "./agentGuiQueueStatus";
-import { isPendingNewConversationActivation } from "./useAgentGUIActivation";
 
 export function useAgentGUISessionEngineState(input: {
   activeConversationId: string | null;
@@ -67,9 +68,11 @@ export function useAgentGUISessionEngineState(input: {
   const activePendingActivation = useEngineSelector(sessionEngine, (state) =>
     selectLatestActivationForSession(state, activeConversationId)
   );
-  const isCreatingConversation = isPendingNewConversationActivation(
-    activePendingActivation
-  );
+  const activeSessionAvailability: SessionAvailabilityStatus =
+    useEngineSelector(sessionEngine, (state) =>
+      selectSessionAvailability(state, activeConversationId)
+    );
+  const isCreatingConversation = activeSessionAvailability === "creating";
   const isSubmitting = useEngineSelector(sessionEngine, (state) =>
     selectSessionIsSubmitting(state, activeConversationId)
   );
@@ -206,6 +209,7 @@ export function useAgentGUISessionEngineState(input: {
     activeEngineSessionDeleted,
     activeLatestPendingSubmit,
     activePendingActivation,
+    activeSessionAvailability,
     activePendingSubmits,
     activeQueuedPromptInFlight: activeQueuedPromptSnapshot?.inFlight ?? null,
     activeQueuedPrompts,

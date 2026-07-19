@@ -53,7 +53,7 @@ test("WorkspaceAgentActivityMutationOperations carries Tutti activation metadata
   });
   assert.equal(createInputs[0]?.cwd, "/workspace");
   assert.equal(createInputs[0]?.workspaceId, "ws-1");
-  assert.deepEqual(upserts, [{ session, source: "create_session_result" }]);
+  assert.deepEqual(upserts, []);
 });
 
 test("WorkspaceAgentActivityMutationOperations sends existing-session Tutti activation updates through the facade-owned adapter", async () => {

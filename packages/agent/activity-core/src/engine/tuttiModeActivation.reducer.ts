@@ -64,7 +64,9 @@ export function tuttiModeActivationReducer(
         context.sessionsById
       );
     case "session/removed":
-      return removeSession(state, intent.agentSessionId);
+      return intent.evidence
+        ? removeSession(state, intent.agentSessionId)
+        : unchanged(state);
     default:
       return unchanged(state);
   }

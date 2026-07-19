@@ -43,11 +43,13 @@ export function sessionMessagesReducer(
     case "session/upserted":
       return canonicalizeMessageBuckets(state, context.sessionsById);
     case "session/removed":
-      return dropSessionBuckets(
-        state,
-        context.previousSessionsById ?? context.sessionsById,
-        intent.agentSessionId
-      );
+      return intent.evidence
+        ? dropSessionBuckets(
+            state,
+            context.previousSessionsById ?? context.sessionsById,
+            intent.agentSessionId
+          )
+        : unchanged(state);
     default:
       return unchanged(state);
   }

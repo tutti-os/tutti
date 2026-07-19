@@ -5,7 +5,10 @@ import {
   createInitialAgentSessionEngineState,
   rootEngineReducer
 } from "./rootReducer.ts";
-import { deriveCanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
+import {
+  deriveCanonicalSubmitAvailability,
+  selectSessionAvailability
+} from "./sessionLifecycle.availability.ts";
 
 test("canonical submit availability covers missing, interaction, active, and settled states", () => {
   const initial = createInitialAgentSessionEngineState();
@@ -69,6 +72,52 @@ test("canonical submit availability covers missing, interaction, active, and set
   assert.deepEqual(deriveCanonicalSubmitAvailability(settled, "session-1"), {
     state: "available"
   });
+});
+
+test("session availability covers creating, missing, deleted, and available", () => {
+  let state = createInitialAgentSessionEngineState();
+  assert.equal(selectSessionAvailability(state, "session-1"), "missing");
+
+  state = rootEngineReducer(state, {
+    type: "activation/requested",
+    agentSessionId: "session-1",
+    agentTargetId: "local:claude-code",
+    clientSubmitId: "submit-1",
+    expiresAtUnixMs: 100_000,
+    mode: "new",
+    requestedAtUnixMs: 1,
+    requestId: "activation-1",
+    workspaceId: "workspace-1"
+  }).state;
+  assert.equal(selectSessionAvailability(state, "session-1"), "creating");
+
+  state = rootEngineReducer(state, {
+    type: "session/removed",
+    agentSessionId: "session-1",
+    evidence: {
+      source: "session_deleted_event",
+      deletedAtUnixMs: 2
+    }
+  }).state;
+  assert.equal(selectSessionAvailability(state, "session-1"), "deleted");
+
+  state = rootEngineReducer(createInitialAgentSessionEngineState(), {
+    type: "session/upserted",
+    session: {
+      activeTurn: null,
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      cwd: "/workspace",
+      latestTurn: null,
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "codex",
+      title: "Session",
+      updatedAtUnixMs: 1,
+      workspaceId: "workspace-1"
+    }
+  }).state;
+  assert.equal(selectSessionAvailability(state, "session-1"), "available");
 });
 
 function session(

@@ -435,9 +435,21 @@ export function rootEngineReducer(
       ...composerOptions.commands,
       ...tuttiModeActivation.commands
     ],
-    ...(sessionMutations.followUpIntents
-      ? { followUpIntents: sessionMutations.followUpIntents }
-      : {}),
+    ...(() => {
+      const followUpIntents = mergeFollowUpIntents(
+        sessionMutations.followUpIntents,
+        sessionReconcile.followUpIntents,
+        pendingIntents.followUpIntents
+      );
+      return followUpIntents ? { followUpIntents } : {};
+    })(),
     state: nextState
   };
+}
+
+function mergeFollowUpIntents(
+  ...groups: Array<readonly EngineIntent[] | undefined>
+): EngineIntent[] | undefined {
+  const merged = groups.flatMap((group) => group ?? []);
+  return merged.length > 0 ? merged : undefined;
 }

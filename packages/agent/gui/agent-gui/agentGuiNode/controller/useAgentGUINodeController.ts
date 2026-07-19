@@ -16,7 +16,6 @@ import type {
   PlanIssueDraft
 } from "../../../shared/agentConversation/planImplementationPresentation";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
-import type { AgentGUIDetailViewModel } from "../model/agentGuiNodeTypes";
 import {
   AGENT_GUI_RUNTIME_SESSION_ORIGIN,
   conversationSummaryFromAgentSession,
@@ -56,6 +55,7 @@ import { useAgentGUIProviderCatalogSelection } from "./useAgentGUIProviderCatalo
 import { useAgentGUISessionEngineState } from "./useAgentGUISessionEngineState";
 import { useAgentGUISessionDetailTransport } from "./useAgentGUISessionDetailTransport";
 import { useAgentGUILocalState } from "./useAgentGUILocalState";
+import { resolveAgentGUIDetailAvailability } from "./resolveAgentGUIDetailAvailability";
 import {
   resolveAgentGUITuttiModeDraftKey,
   useAgentGUITuttiModeActivation
@@ -698,17 +698,13 @@ export function useAgentGUINodeController({
   const isLoadingMessages =
     localState.isLoadingMessages ||
     sessionEngineState.activeSessionDetailLoading;
-  const detailAvailability: AgentGUIDetailViewModel["availability"] =
-    activeConversationId === null
-      ? "ready"
-      : sessionEngineState.activeEngineSessionDeleted
-        ? "not_found"
-        : isLoadingMessages
-          ? "loading"
-          : sessionEngineState.activeSessionReconcileError ||
-              localState.detailError
-            ? "error"
-            : "ready";
+  const detailAvailability = resolveAgentGUIDetailAvailability({
+    activeConversationId,
+    detailError:
+      sessionEngineState.activeSessionReconcileError || localState.detailError,
+    isLoadingMessages,
+    sessionAvailability: sessionEngineState.activeSessionAvailability
+  });
   const viewAssembly = useAgentGUIViewAssembly({
     ...providerCatalogSelection,
     ...localState,

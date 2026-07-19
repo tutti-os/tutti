@@ -146,6 +146,7 @@ test("session/removed drops the session bucket", () => {
     context
   ).state;
   state = sessionMessagesReducer(state, {
+    evidence: { source: "session_deleted_event", deletedAtUnixMs: 1 },
     type: "session/removed",
     agentSessionId: "session-1"
   }).state;
@@ -164,6 +165,7 @@ test("session/removed drops a provider alias bucket using previous identity", ()
   state = sessionMessagesReducer(
     state,
     {
+      evidence: { source: "session_deleted_event", deletedAtUnixMs: 1 },
       type: "session/removed",
       agentSessionId: "session-1"
     },

@@ -3,7 +3,9 @@ package agent
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
@@ -228,6 +230,296 @@ func TestCreateKeepsClaimSessionActivationAndSnapshotOnAmbiguousAcceptedTurn(t *
 	})
 	if claimErr != nil || created || claim.Status != "prepared" || claim.CanonicalTurnID != runtime.execCalls[0].TurnID {
 		t.Fatalf("claim=%#v created=%v error=%v", claim, created, claimErr)
+	}
+}
+
+func TestCreateInitialTuttiActivationPublishesOnlyAfterBlockedCreateCommitsReadableSession(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Activation barrier"}); err != nil {
+		t.Fatal(err)
+	}
+	projection := NewActivityProjection(store)
+	publisher := &testTuttiModeActivationPublisher{store: store}
+	activations := &tuttimodeactivationservice.Service{
+		Store: store, Publisher: publisher, Sessions: &testTuttiModeActivationSessionReader{store: store},
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	runtime := newFakeRuntime()
+	runtime.startHook = func(_ RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
+		close(started)
+		<-release
+		return session
+	}
+	service := newTestService(runtime)
+	service.SessionReader = projection
+	service.SessionInitializer = projection
+	service.TuttiModeActivations = activations
+
+	type createResult struct {
+		session Session
+		err     error
+	}
+	resultCh := make(chan createResult, 1)
+	go func() {
+		session, err := service.Create(ctx, "ws-1", CreateSessionInput{
+			AgentSessionID: "session-blocked", AgentTargetID: agenttargetbiz.IDLocalCodex,
+			InitialTuttiModeActivation: &TuttiModeActivationIntent{
+				State: string(tuttimodeactivationbiz.StateActive), Source: string(tuttimodeactivationbiz.SourceSlashCommand),
+			},
+		})
+		resultCh <- createResult{session: session, err: err}
+	}()
+	<-started
+	if publisher.count() != 0 {
+		t.Fatalf("events while create is blocked=%d", publisher.count())
+	}
+	if activation, err := activations.Get(ctx, "ws-1", "session-blocked"); err != nil || activation != nil {
+		t.Fatalf("public prepared activation=%#v error=%v", activation, err)
+	}
+	close(release)
+	result := <-resultCh
+	if result.err != nil || result.session.ID != "session-blocked" {
+		t.Fatalf("Create() session=%#v error=%v", result.session, result.err)
+	}
+	if publisher.count() != 1 || !publisher.allSessionsReadable() {
+		t.Fatalf("events=%d allSessionsReadable=%v", publisher.count(), publisher.allSessionsReadable())
+	}
+}
+
+func TestCreateInitialContentDoesNotAcceptActivationWhenCreateReturnsWithoutProvenanceBarrier(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Activation retry barrier"}); err != nil {
+		t.Fatal(err)
+	}
+	projection := NewActivityProjection(store)
+	if _, err := projection.InitializeRuntimeSession(ctx, ProviderRuntimeSession{
+		ID: "session-returned-before-provenance", WorkspaceID: "ws-1", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		Provider: "codex", Status: "ready", Visible: true, CreatedAtUnixMS: 10, UpdatedAtUnixMS: 10,
+	}); err != nil {
+		t.Fatalf("InitializeRuntimeSession() error=%v", err)
+	}
+	if _, created, err := store.PrepareSubmitClaim(ctx, agentactivitybiz.SubmitClaimPrepare{
+		WorkspaceID: "ws-1", AgentSessionID: "session-returned-before-provenance",
+		ClientSubmitID: "submit-returned-before-provenance", CanonicalTurnID: "turn-1", NowUnixMS: 20,
+	}); err != nil || !created {
+		t.Fatalf("PrepareSubmitClaim() created=%v error=%v", created, err)
+	}
+	if _, accepted, err := store.AcceptSubmitClaim(
+		ctx, "ws-1", "session-returned-before-provenance", "submit-returned-before-provenance", "turn-1", 30,
+	); err != nil || !accepted {
+		t.Fatalf("AcceptSubmitClaim() accepted=%v error=%v", accepted, err)
+	}
+	publisher := &testTuttiModeActivationPublisher{store: store}
+	activations := &tuttimodeactivationservice.Service{
+		Store: store, Publisher: publisher, Sessions: &testTuttiModeActivationSessionReader{store: store},
+	}
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.SessionReader = projection
+	service.SessionInitializer = projection
+	service.TurnStore = store
+	service.SubmitClaimStore = store
+	service.TuttiModeActivations = activations
+
+	result, err := service.Create(ctx, "ws-1", CreateSessionInput{
+		AgentSessionID: "session-returned-before-provenance", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		InitialContent: TextPromptContent("hello"), ClientSubmitID: "submit-returned-before-provenance",
+		InitialTuttiModeActivation: &TuttiModeActivationIntent{
+			State: string(tuttimodeactivationbiz.StateActive), Source: string(tuttimodeactivationbiz.SourceSlashCommand),
+		},
+	})
+	if err != nil || result.ID != "session-returned-before-provenance" {
+		t.Fatalf("Create() result=%#v error=%v", result, err)
+	}
+	if len(runtime.startCalls) != 0 || len(runtime.execCalls) != 0 || len(runtime.provenanceCalls) != 0 {
+		t.Fatalf("runtime start=%#v exec=%#v provenance=%#v", runtime.startCalls, runtime.execCalls, runtime.provenanceCalls)
+	}
+	prepared, prepareErr := store.ListPreparedTuttiModeActivations(ctx)
+	if prepareErr != nil || len(prepared) != 1 || prepared[0].InitialTurnID != "turn-1" || publisher.count() != 0 {
+		t.Fatalf("prepared=%#v events=%d error=%v", prepared, publisher.count(), prepareErr)
+	}
+	accepted, acceptErr := store.IsTuttiModeTurnSnapshotAccepted(
+		ctx, "ws-1", "session-returned-before-provenance", "turn-1",
+	)
+	if acceptErr != nil || accepted {
+		t.Fatalf("snapshot accepted=%v error=%v", accepted, acceptErr)
+	}
+	if activation, getErr := activations.Get(ctx, "ws-1", "session-returned-before-provenance"); getErr != nil || activation != nil {
+		t.Fatalf("public prepared activation=%#v error=%v", activation, getErr)
+	}
+	if err := activations.RecoverPrepared(ctx); err != nil {
+		t.Fatalf("RecoverPrepared() error=%v", err)
+	}
+	prepared, prepareErr = store.ListPreparedTuttiModeActivations(ctx)
+	if prepareErr != nil || len(prepared) != 1 || publisher.count() != 0 {
+		t.Fatalf("prepared after recovery=%#v events=%d error=%v", prepared, publisher.count(), prepareErr)
+	}
+}
+
+func TestCreateInitialTuttiActivationExplicitFailureAbandonsWithoutEvent(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Activation failure"}); err != nil {
+		t.Fatal(err)
+	}
+	publisher := &testTuttiModeActivationPublisher{store: store}
+	activations := &tuttimodeactivationservice.Service{
+		Store: store, Publisher: publisher, Sessions: &testTuttiModeActivationSessionReader{store: store},
+	}
+	runtime := newFakeRuntime()
+	runtime.startErr = errors.New("provider start rejected")
+	service := newTestService(runtime)
+	service.TuttiModeActivations = activations
+
+	_, err := service.Create(ctx, "ws-1", CreateSessionInput{
+		AgentSessionID: "session-failed", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		InitialTuttiModeActivation: &TuttiModeActivationIntent{
+			State: string(tuttimodeactivationbiz.StateActive), Source: string(tuttimodeactivationbiz.SourceSlashCommand),
+		},
+	})
+	if err == nil {
+		t.Fatal("Create() error=nil")
+	}
+	prepared, prepareErr := store.ListPreparedTuttiModeActivations(ctx)
+	if prepareErr != nil || len(prepared) != 0 || publisher.count() != 0 {
+		t.Fatalf("prepared=%#v events=%d error=%v", prepared, publisher.count(), prepareErr)
+	}
+}
+
+func TestCreateInitialTuttiActivationDeliveryUnknownKeepsPreparedAndInvisible(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Activation unknown"}); err != nil {
+		t.Fatal(err)
+	}
+	projection := NewActivityProjection(store)
+	publisher := &testTuttiModeActivationPublisher{store: store}
+	activations := &tuttimodeactivationservice.Service{
+		Store: store, Publisher: publisher, Sessions: &testTuttiModeActivationSessionReader{store: store},
+	}
+	runtime := newFakeRuntime()
+	runtime.execHook = func(RuntimeExecInput) (RuntimeExecResult, error) {
+		return RuntimeExecResult{TurnID: "provider-mismatch", Accepted: true}, nil
+	}
+	service := newTestService(runtime)
+	service.SessionReader = projection
+	service.SessionInitializer = projection
+	service.TuttiModeActivations = activations
+
+	_, err := service.Create(ctx, "ws-1", CreateSessionInput{
+		AgentSessionID: "session-unknown", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		InitialContent: TextPromptContent("hello"),
+		InitialTuttiModeActivation: &TuttiModeActivationIntent{
+			State: string(tuttimodeactivationbiz.StateActive), Source: string(tuttimodeactivationbiz.SourceSlashCommand),
+		},
+	})
+	if !errors.Is(err, ErrSubmitDeliveryUnknown) {
+		t.Fatalf("Create() error=%v, want delivery unknown", err)
+	}
+	prepared, prepareErr := store.ListPreparedTuttiModeActivations(ctx)
+	if prepareErr != nil || len(prepared) != 1 || publisher.count() != 0 {
+		t.Fatalf("prepared=%#v events=%d error=%v", prepared, publisher.count(), prepareErr)
+	}
+	if activation, getErr := activations.Get(ctx, "ws-1", "session-unknown"); getErr != nil || activation != nil {
+		t.Fatalf("public prepared activation=%#v error=%v", activation, getErr)
+	}
+	accepted, acceptErr := store.IsTuttiModeTurnSnapshotAccepted(ctx, "ws-1", "session-unknown", prepared[0].InitialTurnID)
+	if acceptErr != nil || accepted {
+		t.Fatalf("provisional snapshot accepted=%v error=%v", accepted, acceptErr)
+	}
+}
+
+func TestCreateInitialContentWithoutDurableProvenanceReporterStaysPrepared(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Activation provenance barrier"}); err != nil {
+		t.Fatal(err)
+	}
+	projection := NewActivityProjection(store)
+	publisher := &testTuttiModeActivationPublisher{store: store}
+	activations := &tuttimodeactivationservice.Service{
+		Store: store, Publisher: publisher, Sessions: &testTuttiModeActivationSessionReader{store: store},
+	}
+	runtime := newFakeRuntime()
+	service := newTestService(runtimeWithoutDurableProvenance{RuntimeController: runtime})
+	service.SessionReader = projection
+	service.SessionInitializer = projection
+	service.TuttiModeActivations = activations
+
+	_, err := service.Create(ctx, "ws-1", CreateSessionInput{
+		AgentSessionID: "session-no-provenance-reporter", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		InitialContent: TextPromptContent("hello"),
+		InitialTuttiModeActivation: &TuttiModeActivationIntent{
+			State: string(tuttimodeactivationbiz.StateActive), Source: string(tuttimodeactivationbiz.SourceSlashCommand),
+		},
+	})
+	if !errors.Is(err, ErrSubmitDeliveryUnknown) {
+		t.Fatalf("Create() error=%v, want delivery unknown", err)
+	}
+	if len(runtime.execCalls) != 1 || len(runtime.provenanceCalls) != 0 {
+		t.Fatalf("runtime exec=%#v provenance=%#v", runtime.execCalls, runtime.provenanceCalls)
+	}
+	prepared, prepareErr := store.ListPreparedTuttiModeActivations(ctx)
+	if prepareErr != nil || len(prepared) != 1 || publisher.count() != 0 {
+		t.Fatalf("prepared=%#v events=%d error=%v", prepared, publisher.count(), prepareErr)
+	}
+	accepted, acceptErr := store.IsTuttiModeTurnSnapshotAccepted(
+		ctx, "ws-1", "session-no-provenance-reporter", prepared[0].InitialTurnID,
+	)
+	if acceptErr != nil || accepted {
+		t.Fatalf("snapshot accepted=%v error=%v", accepted, acceptErr)
+	}
+}
+
+func TestCreateInitialTuttiActivationCrashRecoveryAcceptsFromDurableBarrier(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Activation recovery"}); err != nil {
+		t.Fatal(err)
+	}
+	projection := NewActivityProjection(store)
+	publisher := &testTuttiModeActivationPublisher{store: store}
+	sessionReader := &testTuttiModeActivationSessionReader{store: store, failNextExists: errors.New("simulated process stop before activation accept")}
+	activations := &tuttimodeactivationservice.Service{Store: store, Publisher: publisher, Sessions: sessionReader}
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.SessionReader = projection
+	service.SessionInitializer = projection
+	service.TuttiModeActivations = activations
+
+	_, err := service.Create(ctx, "ws-1", CreateSessionInput{
+		AgentSessionID: "session-recovery", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		InitialContent: TextPromptContent("hello"),
+		InitialTuttiModeActivation: &TuttiModeActivationIntent{
+			State: string(tuttimodeactivationbiz.StateActive), Source: string(tuttimodeactivationbiz.SourceSlashCommand),
+		},
+	})
+	if !errors.Is(err, ErrSubmitDeliveryUnknown) || publisher.count() != 0 {
+		t.Fatalf("Create() error=%v events=%d", err, publisher.count())
+	}
+	prepared, prepareErr := store.ListPreparedTuttiModeActivations(ctx)
+	if prepareErr != nil || len(prepared) != 1 {
+		t.Fatalf("prepared=%#v error=%v", prepared, prepareErr)
+	}
+	accepted, acceptErr := store.IsTuttiModeTurnSnapshotAccepted(ctx, "ws-1", "session-recovery", prepared[0].InitialTurnID)
+	if acceptErr != nil || !accepted {
+		t.Fatalf("snapshot accepted=%v error=%v", accepted, acceptErr)
+	}
+
+	recovered := &tuttimodeactivationservice.Service{
+		Store: store, Publisher: publisher, Sessions: &testTuttiModeActivationSessionReader{store: store},
+	}
+	if err := recovered.RecoverPrepared(ctx); err != nil {
+		t.Fatalf("RecoverPrepared() error=%v", err)
+	}
+	if publisher.count() != 1 || !publisher.allSessionsReadable() {
+		t.Fatalf("events=%d allSessionsReadable=%v", publisher.count(), publisher.allSessionsReadable())
+	}
+	if activation, getErr := recovered.Get(ctx, "ws-1", "session-recovery"); getErr != nil || activation == nil {
+		t.Fatalf("recovered activation=%#v error=%v", activation, getErr)
 	}
 }
 
@@ -584,22 +876,82 @@ func seedDurableClientSubmitEvidence(t *testing.T, store *workspacedata.SQLiteSt
 	}
 }
 
+type testTuttiModeActivationSessionReader struct {
+	mu             sync.Mutex
+	store          *workspacedata.SQLiteStore
+	failNextExists error
+}
+
+type runtimeWithoutDurableProvenance struct {
+	RuntimeController
+}
+
+func (r *testTuttiModeActivationSessionReader) SessionExists(ctx context.Context, workspaceID, sessionID string) (bool, error) {
+	r.mu.Lock()
+	if r.failNextExists != nil {
+		err := r.failNextExists
+		r.failNextExists = nil
+		r.mu.Unlock()
+		return false, err
+	}
+	r.mu.Unlock()
+	_, found, err := r.store.GetSession(ctx, workspaceID, sessionID)
+	return found, err
+}
+
+func (r *testTuttiModeActivationSessionReader) SessionDeleted(ctx context.Context, workspaceID, sessionID string) (bool, error) {
+	return r.store.SessionDeleted(ctx, workspaceID, sessionID)
+}
+
+type testTuttiModeActivationPublisher struct {
+	mu                   sync.Mutex
+	store                *workspacedata.SQLiteStore
+	updates              []tuttimodeactivationbiz.Update
+	allReadableAtPublish bool
+}
+
+func (p *testTuttiModeActivationPublisher) PublishTuttiModeActivationUpdated(ctx context.Context, update tuttimodeactivationbiz.Update) error {
+	_, found, err := p.store.GetSession(ctx, update.WorkspaceID, update.AgentSessionID)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.updates) == 0 {
+		p.allReadableAtPublish = true
+	}
+	p.allReadableAtPublish = p.allReadableAtPublish && found && err == nil
+	p.updates = append(p.updates, update)
+	return nil
+}
+
+func (p *testTuttiModeActivationPublisher) count() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.updates)
+}
+
+func (p *testTuttiModeActivationPublisher) allSessionsReadable() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.allReadableAtPublish
+}
+
 type fakeTuttiModeActivationCoordinator struct {
-	activation       *tuttimodeactivationbiz.Activation
-	current          tuttimodeactivationbiz.TurnSnapshot
-	existing         tuttimodeactivationbiz.TurnSnapshot
-	currentCalls     int
-	existingTurnID   string
-	boundTurnID      string
-	bound            tuttimodeactivationbiz.TurnSnapshot
-	abandonedTurnID  string
-	acceptedTurnID   string
-	acceptErr        error
-	acceptHook       func()
-	bindErr          error
-	setInputs        []tuttimodeactivationservice.SetInput
-	deleteSessionIDs []string
-	deleteErrors     []error
+	activation         *tuttimodeactivationbiz.Activation
+	current            tuttimodeactivationbiz.TurnSnapshot
+	existing           tuttimodeactivationbiz.TurnSnapshot
+	currentCalls       int
+	existingTurnID     string
+	boundTurnID        string
+	bound              tuttimodeactivationbiz.TurnSnapshot
+	abandonedTurnID    string
+	acceptedTurnID     string
+	acceptErr          error
+	acceptHook         func()
+	activationAccepts  int
+	activationAbandons int
+	bindErr            error
+	setInputs          []tuttimodeactivationservice.SetInput
+	deleteSessionIDs   []string
+	deleteErrors       []error
 }
 
 func (f *fakeTuttiModeActivationCoordinator) Get(context.Context, string, string) (*tuttimodeactivationbiz.Activation, error) {
@@ -613,6 +965,35 @@ func (*fakeTuttiModeActivationCoordinator) List(context.Context, string, []strin
 func (f *fakeTuttiModeActivationCoordinator) Set(_ context.Context, input tuttimodeactivationservice.SetInput) (tuttimodeactivationservice.SetResult, error) {
 	f.setInputs = append(f.setInputs, input)
 	return tuttimodeactivationservice.SetResult{}, nil
+}
+
+func (f *fakeTuttiModeActivationCoordinator) Prepare(_ context.Context, input tuttimodeactivationservice.SetInput, _ string) (tuttimodeactivationservice.SetResult, error) {
+	f.setInputs = append(f.setInputs, input)
+	activation := activationFromSnapshot(f.current)
+	if activation == nil {
+		now := time.Unix(100, 0).UTC()
+		activation = &tuttimodeactivationbiz.Activation{
+			ID: "activation-initial", WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+			CreatedAt: now, UpdatedAt: now,
+			CurrentRevision: tuttimodeactivationbiz.Revision{
+				ID: "revision-initial", ActivationID: "activation-initial", Revision: 1,
+				State: input.State, Source: input.Source,
+				OrchestrationIntensity: tuttimodeactivationbiz.DefaultOrchestrationIntensity, CreatedAt: now,
+			},
+		}
+	}
+	return tuttimodeactivationservice.SetResult{Activation: activation, Changed: true}, nil
+}
+
+func (f *fakeTuttiModeActivationCoordinator) Accept(context.Context, string, string) (bool, error) {
+	f.activationAccepts++
+	return true, nil
+}
+
+func (f *fakeTuttiModeActivationCoordinator) Abandon(_ context.Context, _, sessionID string) (bool, error) {
+	f.activationAbandons++
+	f.deleteSessionIDs = append(f.deleteSessionIDs, sessionID)
+	return true, nil
 }
 
 func (f *fakeTuttiModeActivationCoordinator) SnapshotForNewTurn(context.Context, string, string) (tuttimodeactivationbiz.TurnSnapshot, error) {
@@ -683,4 +1064,20 @@ func (f *fakeTuttiModeActivationCoordinator) DeleteSessionState(_ context.Contex
 
 func activationSnapshot(activationID, revisionID string, revision int64, state tuttimodeactivationbiz.State, source tuttimodeactivationbiz.Source) tuttimodeactivationbiz.TurnSnapshot {
 	return tuttimodeactivationbiz.TurnSnapshot{ActivationID: activationID, RevisionID: revisionID, Revision: revision, State: state, Source: source}
+}
+
+func activationFromSnapshot(snapshot tuttimodeactivationbiz.TurnSnapshot) *tuttimodeactivationbiz.Activation {
+	if snapshot.ActivationID == "" {
+		return nil
+	}
+	now := time.Unix(100, 0).UTC()
+	return &tuttimodeactivationbiz.Activation{
+		ID: snapshot.ActivationID, WorkspaceID: "ws-1", AgentSessionID: "session-1",
+		CreatedAt: now, UpdatedAt: now,
+		CurrentRevision: tuttimodeactivationbiz.Revision{
+			ID: snapshot.RevisionID, ActivationID: snapshot.ActivationID, Revision: snapshot.Revision,
+			State: snapshot.State, Source: snapshot.Source,
+			OrchestrationIntensity: snapshot.OrchestrationIntensity, CreatedAt: now,
+		},
+	}
 }

@@ -31,21 +31,46 @@ func deliveryUnknownError(cause error) error {
 	return errors.Join(ErrSubmitDeliveryUnknown, cause)
 }
 
-func (s *Service) applyInitialTuttiModeActivation(ctx context.Context, workspaceID, agentSessionID string, intent *TuttiModeActivationIntent) error {
+func (s *Service) prepareInitialTuttiModeActivation(ctx context.Context, workspaceID, agentSessionID, initialTurnID string, intent *TuttiModeActivationIntent) (*tuttimodeactivationbiz.Activation, error) {
 	if intent == nil {
-		return nil
+		return nil, nil
 	}
 	if s.TuttiModeActivations == nil {
-		return fmt.Errorf("%w: Tutti mode activation service is unavailable", ErrInvalidArgument)
+		return nil, fmt.Errorf("%w: Tutti mode activation service is unavailable", ErrInvalidArgument)
 	}
-	_, err := s.TuttiModeActivations.Set(ctx, tuttimodeactivationservice.SetInput{
+	result, err := s.TuttiModeActivations.Prepare(ctx, tuttimodeactivationservice.SetInput{
 		WorkspaceID:            workspaceID,
 		AgentSessionID:         agentSessionID,
 		State:                  tuttimodeactivationbiz.State(strings.TrimSpace(intent.State)),
 		Source:                 tuttimodeactivationbiz.Source(strings.TrimSpace(intent.Source)),
 		OrchestrationIntensity: intent.OrchestrationIntensity,
-	})
+	}, initialTurnID)
+	return result.Activation, err
+}
+
+func (s *Service) acceptInitialTuttiModeActivation(ctx context.Context, workspaceID, agentSessionID string, activation *tuttimodeactivationbiz.Activation) error {
+	if activation == nil || s.TuttiModeActivations == nil {
+		return nil
+	}
+	_, err := s.TuttiModeActivations.Accept(ctx, workspaceID, agentSessionID)
 	return err
+}
+
+func (s *Service) abandonInitialTuttiModeActivation(ctx context.Context, workspaceID, agentSessionID string, activation *tuttimodeactivationbiz.Activation) error {
+	if activation == nil || s.TuttiModeActivations == nil {
+		return nil
+	}
+	_, err := s.TuttiModeActivations.Abandon(ctx, workspaceID, agentSessionID)
+	return err
+}
+
+func (s *Service) prepareInitialTuttiModeExec(ctx context.Context, workspaceID, agentSessionID, turnID string, activation *tuttimodeactivationbiz.Activation) (tuttimodeactivationbiz.TurnSnapshot, error) {
+	snapshot := tuttimodeactivationbiz.SnapshotFromActivation(activation)
+	if s.TuttiModeActivations == nil {
+		return snapshot, nil
+	}
+	bound, _, err := s.TuttiModeActivations.BindTurnSnapshot(ctx, workspaceID, agentSessionID, turnID, snapshot)
+	return bound, err
 }
 
 func (s *Service) tuttiModeSnapshotForExec(ctx context.Context, workspaceID, agentSessionID string, guidance bool, runtimeSession ProviderRuntimeSession) (tuttimodeactivationbiz.TurnSnapshot, error) {

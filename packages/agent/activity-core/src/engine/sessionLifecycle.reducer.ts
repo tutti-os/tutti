@@ -13,6 +13,7 @@ import type {
   EngineIntent,
   EngineReducerResult
 } from "./types.ts";
+import type { SessionDeletionEvidence } from "./sessionDeletion.types.ts";
 import {
   type SessionCancelState,
   type SessionLifecycleState,
@@ -97,7 +98,9 @@ export function sessionLifecycleReducer(
     case "interaction/responseRequested":
       return requestInteractionResponse(state, intent);
     case "session/removed":
-      return removeSession(state, intent.agentSessionId);
+      return intent.evidence
+        ? removeSession(state, intent.agentSessionId, intent.evidence)
+        : unchanged(state);
     case "session/errorRecorded":
       return updateOperation(state, intent.agentSessionId, (operation) => ({
         ...operation,
@@ -591,7 +594,8 @@ function settleCancel(
 
 function removeSession(
   state: SessionLifecycleState,
-  rawId: string
+  rawId: string,
+  evidence: SessionDeletionEvidence
 ): EngineReducerResult<SessionLifecycleState> {
   const id = rawId.trim();
   if (!id || state.deletedSessionIds[id]) return unchanged(state);
@@ -608,7 +612,7 @@ function removeSession(
       : NO_COMMANDS,
     state: {
       ...removed,
-      deletedSessionIds: { ...removed.deletedSessionIds, [id]: true },
+      deletedSessionIds: { ...removed.deletedSessionIds, [id]: evidence },
       interactionResponsesById
     }
   };

@@ -45,7 +45,9 @@ export { createInitialPromptQueueState } from "./promptQueue.initialState.ts";
 
 export interface PromptQueueReducerContext {
   lifecycle: CanonicalSessionLifecycleView;
-  deletedSessionIds: Readonly<Record<string, true>>;
+  deletedSessionIds: Readonly<
+    Record<string, import("./sessionDeletion.types.ts").SessionDeletionEvidence>
+  >;
   planFeedbackAccepted?: boolean;
   submitRequestAccepted?: boolean;
   cancelResultValidation?: CancelResultValidation | null;
@@ -81,6 +83,9 @@ function reduceQueueOwnedState(
 ): EngineReducerResult<PromptQueueState> {
   switch (intent.type) {
     case "session/removed":
+      return intent.evidence
+        ? removeQueue(state, intent.agentSessionId)
+        : unchanged(state);
     case "queue/sessionCleaned":
       return removeQueue(state, intent.agentSessionId);
     case "queue/enqueued":

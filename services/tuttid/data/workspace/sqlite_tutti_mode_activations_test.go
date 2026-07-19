@@ -103,6 +103,75 @@ func TestSQLiteStoreTuttiModeActivationClampsRegressedRevisionTime(t *testing.T)
 	}
 }
 
+func TestSQLiteStoreTuttiModeInitialActivationPreparedLifecycleIsPubliclyInvisible(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-initial-activation", Name: "Initial activation"}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	input := SetTuttiModeActivationInput{
+		WorkspaceID: "ws-initial-activation", AgentSessionID: "session-1",
+		ActivationID: "activation-1", RevisionID: "revision-1",
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand, ChangedAt: now,
+	}
+	prepared, changed, err := store.PrepareTuttiModeActivation(ctx, input, "turn-1")
+	if err != nil || !changed || prepared.ID != "activation-1" {
+		t.Fatalf("prepare activation=%#v changed=%v error=%v", prepared, changed, err)
+	}
+	if _, ok, err := store.GetTuttiModeActivation(ctx, input.WorkspaceID, input.AgentSessionID); err != nil || ok {
+		t.Fatalf("public get prepared activation ok=%v error=%v", ok, err)
+	}
+	listed, err := store.ListTuttiModeActivations(ctx, input.WorkspaceID, []string{input.AgentSessionID})
+	if err != nil || len(listed) != 0 {
+		t.Fatalf("public list prepared activations=%#v error=%v", listed, err)
+	}
+	pending, err := store.ListPreparedTuttiModeActivations(ctx)
+	if err != nil || len(pending) != 1 || pending[0].InitialTurnID != "turn-1" {
+		t.Fatalf("prepared activations=%#v error=%v", pending, err)
+	}
+	accepted, changed, err := store.AcceptTuttiModeActivation(ctx, input.WorkspaceID, input.AgentSessionID, now.Add(time.Second))
+	if err != nil || !changed || accepted.ID != prepared.ID {
+		t.Fatalf("accept activation=%#v changed=%v error=%v", accepted, changed, err)
+	}
+	if got, ok, err := store.GetTuttiModeActivation(ctx, input.WorkspaceID, input.AgentSessionID); err != nil || !ok || got.ID != prepared.ID {
+		t.Fatalf("public get accepted activation=%#v ok=%v error=%v", got, ok, err)
+	}
+	input.ActivationID = "unused-retry-activation"
+	input.RevisionID = "unused-retry-revision"
+	if retry, changed, err := store.PrepareTuttiModeActivation(ctx, input, "turn-1"); err != nil || changed || retry.ID != prepared.ID {
+		t.Fatalf("accepted retry activation=%#v changed=%v error=%v", retry, changed, err)
+	}
+	if abandoned, err := store.AbandonTuttiModeActivation(ctx, input.WorkspaceID, input.AgentSessionID); err != nil || abandoned {
+		t.Fatalf("accepted activation abandoned=%v error=%v", abandoned, err)
+	}
+}
+
+func TestSQLiteStoreTuttiModeInitialActivationCanBeAbandoned(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-abandon-activation", Name: "Abandon activation"}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	if _, changed, err := store.PrepareTuttiModeActivation(ctx, SetTuttiModeActivationInput{
+		WorkspaceID: "ws-abandon-activation", AgentSessionID: "session-1",
+		ActivationID: "activation-1", RevisionID: "revision-1",
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand, ChangedAt: now,
+	}, ""); err != nil || !changed {
+		t.Fatalf("prepare changed=%v error=%v", changed, err)
+	}
+	if abandoned, err := store.AbandonTuttiModeActivation(ctx, "ws-abandon-activation", "session-1"); err != nil || !abandoned {
+		t.Fatalf("abandon changed=%v error=%v", abandoned, err)
+	}
+	prepared, err := store.ListPreparedTuttiModeActivations(ctx)
+	if err != nil || len(prepared) != 0 {
+		t.Fatalf("prepared after abandon=%#v error=%v", prepared, err)
+	}
+}
+
 func TestSQLiteStoreTuttiModeTurnSnapshotIsImmutableForGuidance(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -294,6 +363,35 @@ ALTER TABLE tutti_mode_turn_snapshots DROP COLUMN accepted_at_unix_ms;
 		}
 	}
 	applied, err := store.hasMigration(ctx, schemaMigrationTuttiModeTurnDispatchV2)
+	if err != nil || !applied {
+		t.Fatalf("migration marker present=%v error=%v", applied, err)
+	}
+}
+
+func TestSQLiteStoreTuttiModeActivationDispatchMigrationResumesPartialUpgrade(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+
+	if _, err := store.writeDB.ExecContext(ctx, `
+DELETE FROM tuttid_schema_migrations WHERE id = ?;
+ALTER TABLE tutti_mode_activations DROP COLUMN accepted_at_unix_ms;
+`, schemaMigrationTuttiModeActivationDispatchV4); err != nil {
+		t.Fatalf("simulate partial Tutti mode activation dispatch migration: %v", err)
+	}
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() partial activation dispatch upgrade error=%v", err)
+	}
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() repeated activation dispatch upgrade error=%v", err)
+	}
+	for _, column := range []string{"dispatch_state", "initial_turn_id", "accepted_at_unix_ms"} {
+		hasColumn, err := store.hasColumn(ctx, "tutti_mode_activations", column)
+		if err != nil || !hasColumn {
+			t.Fatalf("column %q present=%v error=%v", column, hasColumn, err)
+		}
+	}
+	applied, err := store.hasMigration(ctx, schemaMigrationTuttiModeActivationDispatchV4)
 	if err != nil || !applied {
 		t.Fatalf("migration marker present=%v error=%v", applied, err)
 	}

@@ -15,7 +15,12 @@ export function sessionCommandsReducer(
   state: SessionCommandsState,
   intent: EngineIntent,
   context: {
-    deletedSessionIds: Readonly<Record<string, true>>;
+    deletedSessionIds: Readonly<
+      Record<
+        string,
+        import("./sessionDeletion.types.ts").SessionDeletionEvidence
+      >
+    >;
   }
 ): EngineReducerResult<SessionCommandsState> {
   if (intent.type === "session/availableCommandsReceived") {
@@ -40,6 +45,7 @@ export function sessionCommandsReducer(
     };
   }
   if (intent.type === "session/removed") {
+    if (!intent.evidence) return unchanged(state);
     const id = intent.agentSessionId.trim();
     if (!state.bySessionId[id]) return unchanged(state);
     const bySessionId = { ...state.bySessionId };

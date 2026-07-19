@@ -19,7 +19,8 @@ func (s *SQLiteStore) GetTuttiModeActivation(ctx context.Context, workspaceID, a
 	if s == nil || s.writeDB == nil {
 		return activationbiz.Activation{}, false, errors.New("workspace database is not initialized")
 	}
-	return getTuttiModeActivation(ctx, s.writeDB, strings.TrimSpace(workspaceID), strings.TrimSpace(agentSessionID))
+	activation, _, ok, err := getTuttiModeActivation(ctx, s.writeDB, strings.TrimSpace(workspaceID), strings.TrimSpace(agentSessionID), true)
+	return activation, ok, err
 }
 
 func (s *SQLiteStore) ListTuttiModeActivations(ctx context.Context, workspaceID string, agentSessionIDs []string) (map[string]activationbiz.Activation, error) {
@@ -59,6 +60,7 @@ JOIN tutti_mode_activation_revisions r
  AND r.revision_id = a.current_revision_id
  AND r.revision = a.current_revision
 WHERE a.workspace_id = ? AND a.agent_session_id IN (`+placeholders+`)
+  AND a.dispatch_state = 'accepted'
 `, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list Tutti mode activations: %w", err)
@@ -93,6 +95,14 @@ WHERE a.workspace_id = ? AND a.agent_session_id IN (`+placeholders+`)
 }
 
 func (s *SQLiteStore) SetTuttiModeActivation(ctx context.Context, input SetTuttiModeActivationInput) (activationbiz.Activation, bool, error) {
+	return s.setTuttiModeActivation(ctx, input, "accepted", "")
+}
+
+func (s *SQLiteStore) PrepareTuttiModeActivation(ctx context.Context, input SetTuttiModeActivationInput, initialTurnID string) (activationbiz.Activation, bool, error) {
+	return s.setTuttiModeActivation(ctx, input, "prepared", strings.TrimSpace(initialTurnID))
+}
+
+func (s *SQLiteStore) setTuttiModeActivation(ctx context.Context, input SetTuttiModeActivationInput, dispatchState, initialTurnID string) (activationbiz.Activation, bool, error) {
 	if s == nil || s.writeDB == nil {
 		return activationbiz.Activation{}, false, errors.New("workspace database is not initialized")
 	}
@@ -120,7 +130,7 @@ func (s *SQLiteStore) SetTuttiModeActivation(ctx context.Context, input SetTutti
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	current, exists, err := getTuttiModeActivation(ctx, tx, input.WorkspaceID, input.AgentSessionID)
+	current, currentDispatch, exists, err := getTuttiModeActivation(ctx, tx, input.WorkspaceID, input.AgentSessionID, false)
 	if err != nil {
 		return activationbiz.Activation{}, false, err
 	}
@@ -139,6 +149,24 @@ func (s *SQLiteStore) SetTuttiModeActivation(ctx context.Context, input SetTutti
 	}
 	if input.OrchestrationIntensity != nil {
 		effectiveIntensity = *input.OrchestrationIntensity
+	}
+	if dispatchState == "prepared" && exists {
+		var storedTurnID string
+		if err := tx.QueryRowContext(ctx, `
+SELECT initial_turn_id
+FROM tutti_mode_activations
+WHERE workspace_id = ? AND agent_session_id = ?
+`, input.WorkspaceID, input.AgentSessionID).Scan(&storedTurnID); err != nil {
+			return activationbiz.Activation{}, false, fmt.Errorf("read prepared Tutti mode activation turn: %w", err)
+		}
+		if current.CurrentRevision.State != input.State || current.CurrentRevision.Source != input.Source ||
+			current.CurrentRevision.OrchestrationIntensity != effectiveIntensity || storedTurnID != initialTurnID {
+			return activationbiz.Activation{}, false, ErrTuttiModeActivationRevisionConflict
+		}
+		return current, false, nil
+	}
+	if exists && currentDispatch != dispatchState {
+		return activationbiz.Activation{}, false, ErrTuttiModeActivationRevisionConflict
 	}
 	if exists && current.CurrentRevision.State == input.State && current.CurrentRevision.Source == input.Source &&
 		current.CurrentRevision.OrchestrationIntensity == effectiveIntensity {
@@ -165,10 +193,12 @@ func (s *SQLiteStore) SetTuttiModeActivation(ctx context.Context, input SetTutti
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO tutti_mode_activations (
   workspace_id, activation_id, agent_session_id, current_revision_id,
-  current_revision, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, 1, ?, ?)
+  current_revision, created_at_unix_ms, updated_at_unix_ms,
+  dispatch_state, initial_turn_id, accepted_at_unix_ms
+) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
 `, input.WorkspaceID, input.ActivationID, input.AgentSessionID, input.RevisionID,
-			unixMs(input.ChangedAt), unixMs(input.ChangedAt)); err != nil {
+			unixMs(input.ChangedAt), unixMs(input.ChangedAt), dispatchState, initialTurnID,
+			acceptedAtUnixMS(dispatchState, input.ChangedAt)); err != nil {
 			return activationbiz.Activation{}, false, fmt.Errorf("insert Tutti mode activation: %w", err)
 		}
 	} else {
@@ -220,14 +250,20 @@ WHERE workspace_id = ? AND activation_id = ? AND current_revision = ?
 	return current, true, nil
 }
 
-func getTuttiModeActivation(ctx context.Context, q tuttiModeActivationRowQuerier, workspaceID, agentSessionID string) (activationbiz.Activation, bool, error) {
+func getTuttiModeActivation(ctx context.Context, q tuttiModeActivationRowQuerier, workspaceID, agentSessionID string, acceptedOnly bool) (activationbiz.Activation, string, bool, error) {
 	if workspaceID == "" || agentSessionID == "" {
-		return activationbiz.Activation{}, false, nil
+		return activationbiz.Activation{}, "", false, nil
 	}
 	var value activationbiz.Activation
+	var dispatchState string
 	var createdAt, updatedAt, revisionCreatedAt int64
+	acceptedClause := ""
+	if acceptedOnly {
+		acceptedClause = " AND a.dispatch_state = 'accepted'"
+	}
 	err := q.QueryRowContext(ctx, `
 SELECT a.activation_id, a.created_at_unix_ms, a.updated_at_unix_ms,
+       a.dispatch_state,
        r.revision_id, r.revision, r.state, r.source, r.orchestration_intensity, r.created_at_unix_ms
 FROM tutti_mode_activations a
 JOIN tutti_mode_activation_revisions r
@@ -235,18 +271,19 @@ JOIN tutti_mode_activation_revisions r
  AND r.activation_id = a.activation_id
  AND r.revision_id = a.current_revision_id
  AND r.revision = a.current_revision
-WHERE a.workspace_id = ? AND a.agent_session_id = ?
+WHERE a.workspace_id = ? AND a.agent_session_id = ?`+acceptedClause+`
 `, workspaceID, agentSessionID).Scan(
 		&value.ID, &createdAt, &updatedAt,
+		&dispatchState,
 		&value.CurrentRevision.ID, &value.CurrentRevision.Revision,
 		&value.CurrentRevision.State, &value.CurrentRevision.Source,
 		&value.CurrentRevision.OrchestrationIntensity, &revisionCreatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return activationbiz.Activation{}, false, nil
+		return activationbiz.Activation{}, "", false, nil
 	}
 	if err != nil {
-		return activationbiz.Activation{}, false, fmt.Errorf("get Tutti mode activation: %w", err)
+		return activationbiz.Activation{}, "", false, fmt.Errorf("get Tutti mode activation: %w", err)
 	}
 	value.WorkspaceID = workspaceID
 	value.AgentSessionID = agentSessionID
@@ -256,9 +293,129 @@ WHERE a.workspace_id = ? AND a.agent_session_id = ?
 	value.UpdatedAt = time.UnixMilli(updatedAt).UTC()
 	normalized, err := activationbiz.NormalizeActivation(value)
 	if err != nil {
-		return activationbiz.Activation{}, false, fmt.Errorf("normalize stored Tutti mode activation: %w", err)
+		return activationbiz.Activation{}, "", false, fmt.Errorf("normalize stored Tutti mode activation: %w", err)
 	}
-	return normalized, true, nil
+	return normalized, dispatchState, true, nil
+}
+
+func (s *SQLiteStore) AcceptTuttiModeActivation(ctx context.Context, workspaceID, agentSessionID string, acceptedAt time.Time) (activationbiz.Activation, bool, error) {
+	if s == nil || s.writeDB == nil {
+		return activationbiz.Activation{}, false, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	acceptedAt = acceptedAt.UTC()
+	if workspaceID == "" || agentSessionID == "" || acceptedAt.IsZero() {
+		return activationbiz.Activation{}, false, activationbiz.ErrInvalidActivation
+	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return activationbiz.Activation{}, false, fmt.Errorf("begin accept Tutti mode activation: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `
+UPDATE tutti_mode_activations
+SET dispatch_state = 'accepted', accepted_at_unix_ms = ?
+WHERE workspace_id = ? AND agent_session_id = ? AND dispatch_state = 'prepared'
+`, unixMs(acceptedAt), workspaceID, agentSessionID)
+	if err != nil {
+		return activationbiz.Activation{}, false, fmt.Errorf("accept Tutti mode activation: %w", err)
+	}
+	changed, err := rowsWereAffected(result, "accept Tutti mode activation")
+	if err != nil {
+		return activationbiz.Activation{}, false, err
+	}
+	activation, dispatchState, exists, err := getTuttiModeActivation(ctx, tx, workspaceID, agentSessionID, false)
+	if err != nil {
+		return activationbiz.Activation{}, false, err
+	}
+	if !exists {
+		return activationbiz.Activation{}, false, nil
+	}
+	if dispatchState != "accepted" {
+		return activationbiz.Activation{}, false, fmt.Errorf("tutti mode activation acceptance is not durable")
+	}
+	if err := tx.Commit(); err != nil {
+		return activationbiz.Activation{}, false, fmt.Errorf("commit Tutti mode activation acceptance: %w", err)
+	}
+	return activation, changed, nil
+}
+
+func (s *SQLiteStore) AbandonTuttiModeActivation(ctx context.Context, workspaceID, agentSessionID string) (bool, error) {
+	if s == nil || s.writeDB == nil {
+		return false, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return false, activationbiz.ErrInvalidActivation
+	}
+	result, err := s.writeDB.ExecContext(ctx, `
+DELETE FROM tutti_mode_activations
+WHERE workspace_id = ? AND agent_session_id = ? AND dispatch_state = 'prepared'
+`, workspaceID, agentSessionID)
+	if err != nil {
+		return false, fmt.Errorf("abandon Tutti mode activation: %w", err)
+	}
+	return rowsWereAffected(result, "abandon Tutti mode activation")
+}
+
+func (s *SQLiteStore) ListPreparedTuttiModeActivations(ctx context.Context) ([]PreparedTuttiModeActivation, error) {
+	if s == nil || s.writeDB == nil {
+		return nil, errors.New("workspace database is not initialized")
+	}
+	rows, err := s.writeDB.QueryContext(ctx, `
+SELECT a.workspace_id, a.agent_session_id, a.activation_id,
+       a.created_at_unix_ms, a.updated_at_unix_ms, a.initial_turn_id,
+       r.revision_id, r.revision, r.state, r.source, r.orchestration_intensity, r.created_at_unix_ms
+FROM tutti_mode_activations a
+JOIN tutti_mode_activation_revisions r
+  ON r.workspace_id = a.workspace_id
+ AND r.activation_id = a.activation_id
+ AND r.revision_id = a.current_revision_id
+ AND r.revision = a.current_revision
+WHERE a.dispatch_state = 'prepared'
+ORDER BY a.workspace_id, a.agent_session_id
+`)
+	if err != nil {
+		return nil, fmt.Errorf("list prepared Tutti mode activations: %w", err)
+	}
+	defer rows.Close()
+	result := make([]PreparedTuttiModeActivation, 0)
+	for rows.Next() {
+		var prepared PreparedTuttiModeActivation
+		var createdAt, updatedAt, revisionCreatedAt int64
+		if err := rows.Scan(
+			&prepared.Activation.WorkspaceID, &prepared.Activation.AgentSessionID, &prepared.Activation.ID,
+			&createdAt, &updatedAt, &prepared.InitialTurnID,
+			&prepared.Activation.CurrentRevision.ID, &prepared.Activation.CurrentRevision.Revision,
+			&prepared.Activation.CurrentRevision.State, &prepared.Activation.CurrentRevision.Source,
+			&prepared.Activation.CurrentRevision.OrchestrationIntensity, &revisionCreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan prepared Tutti mode activation: %w", err)
+		}
+		prepared.Activation.CurrentRevision.ActivationID = prepared.Activation.ID
+		prepared.Activation.CreatedAt = time.UnixMilli(createdAt).UTC()
+		prepared.Activation.UpdatedAt = time.UnixMilli(updatedAt).UTC()
+		prepared.Activation.CurrentRevision.CreatedAt = time.UnixMilli(revisionCreatedAt).UTC()
+		normalized, err := activationbiz.NormalizeActivation(prepared.Activation)
+		if err != nil {
+			return nil, fmt.Errorf("normalize prepared Tutti mode activation: %w", err)
+		}
+		prepared.Activation = normalized
+		result = append(result, prepared)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate prepared Tutti mode activations: %w", err)
+	}
+	return result, nil
+}
+
+func acceptedAtUnixMS(dispatchState string, changedAt time.Time) any {
+	if dispatchState != "accepted" {
+		return nil
+	}
+	return unixMs(changedAt)
 }
 
 func (s *SQLiteStore) GetTuttiModeTurnSnapshot(ctx context.Context, workspaceID, agentSessionID, turnID string) (activationbiz.TurnSnapshot, bool, error) {

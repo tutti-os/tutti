@@ -317,7 +317,11 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     engine.dispatch({
       type: "session/removed",
-      agentSessionId: session.agentSessionId
+      agentSessionId: session.agentSessionId,
+      evidence: {
+        source: "session_deleted_event",
+        deletedAtUnixMs: 1
+      }
     });
     expect(controller.isInteractionLocked()).toBe(true);
     expect(controller.getSnapshot().runtimeRailConversations).toHaveLength(1);

@@ -340,6 +340,9 @@ func (a serviceHostRuntime) DurablyReportSubmitProvenance(ctx context.Context, i
 	reporter, ok := a.service.controller().(interface {
 		DurablyReportSubmitProvenance(context.Context, RuntimeSubmitProvenanceInput) error
 	})
+	if !ok && !input.Guidance && a.service.TuttiModeActivations != nil {
+		return errors.New("agent runtime does not support durable submit provenance")
+	}
 	if ok {
 		if err := reporter.DurablyReportSubmitProvenance(ctx, input); err != nil {
 			return err
@@ -349,6 +352,10 @@ func (a serviceHostRuntime) DurablyReportSubmitProvenance(ctx context.Context, i
 		_, err := a.service.TuttiModeActivations.AcceptTurnSnapshot(
 			ctx, input.WorkspaceID, input.AgentSessionID, input.TurnID,
 		)
+		if err != nil {
+			return err
+		}
+		_, err = a.service.TuttiModeActivations.Accept(ctx, input.WorkspaceID, input.AgentSessionID)
 		return err
 	}
 	return nil

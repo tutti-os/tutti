@@ -204,7 +204,16 @@ into `sessionMessagesById`. The session engine's generated
 - `turn_update`: updates the canonical durable turn projection
 - `interaction_update`: updates the canonical durable interaction projection
 - `session_reconcile_required`: asks the engine transport to reload the session
-- `session_deleted`: removes the session through the engine tombstone flow
+- `session_deleted`: removes the session through the engine tombstone flow when
+  the host supplies explicit deletion evidence
+
+`session/reconcile` command results must be typed as `SessionReconcileResult`
+(`found` / `absent` / `deleted`). Bare HTTP 404 normalizes to `absent` and never
+tombstones; only a successful delete command result's confirmed
+`removedSessionIds` or a real `session_deleted` event may write deletion
+evidence. Create/activate authoritative sessions are applied from the activate
+command result in the same engine drain. Use `selectSessionAvailability` for
+`creating | available | loading | missing | failed | deleted`.
 
 Events with a different `workspaceId` are ignored. Unknown event types are
 ignored.

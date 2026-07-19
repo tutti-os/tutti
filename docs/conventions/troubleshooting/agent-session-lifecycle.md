@@ -1814,6 +1814,47 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
   [workspaceAgentActivityService.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.test.ts)
 
+### New Tutti conversation shows Session unavailable until Electron reload
+
+- Symptom:
+  Sending the first message switches AgentGUI to `Session unavailable` almost
+  immediately. The session and provider Turn continue normally in the daemon,
+  and reloading Electron makes the same conversation render correctly.
+- Quick checks:
+  Correlate the new `agentSessionId` across renderer diagnostics. The race has
+  this order: `activation.requested`, an optimistic activating render,
+  `agent.activity.reconcile_session_absent` (or older
+  `reconcile_session_missing`), then a successful
+  `activity_service.create.resolved`. If create is still pending when the
+  absent reconcile arrives, bare HTTP 404 / absent is not deletion evidence.
+- Root cause:
+  Creating a Session with an initial Tutti activation can publish a
+  Tutti/state invalidation before the Session create transaction is visible to
+  a concurrent detail read. Older desktop/GUI paths treated that transient 404
+  as a permanent tombstone (sometimes gated by a `Date.now` confirmation
+  window). The later authoritative create result could not upsert through the
+  tombstone, leaving only a reload able to reconstruct the Session.
+- Fix:
+  Bare HTTP 404 / reconcile `absent` never tombstones a session. Only a
+  successful delete command/result with confirmed `removedSessionIds`, or a
+  real `session_deleted` event with deletion evidence, may write a tombstone.
+  Pending create / activation publish correctness is owned by the activation
+  prepared/accepted gate and by `selectSessionAvailability` (`creating` while
+  pending), not by a frontend time-window. AgentGUI detail chrome maps
+  lifecycle availability from activity-core and keeps only loading/detail-error
+  presentation locally.
+- Validation:
+  Hold the create transport open, return 404 from a concurrent state reconcile,
+  and verify the engine stays untombstoned with availability `creating`. Then
+  resolve create and verify the authoritative Session upserts without a
+  workspace or Electron reload. An unrelated bare 404 must also remain
+  `absent` / non-deleted (never a ghost tombstone).
+- References:
+  [sessionLifecycle.availability.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.availability.ts)
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [resolveAgentGUIDetailAvailability.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/resolveAgentGUIDetailAvailability.ts)
+  [workspaceAgentActivityService.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.test.ts)
+
 ### AgentGUI submit clears the composer but creates no session or turn
 
 - Symptom:

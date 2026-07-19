@@ -14,6 +14,7 @@ import (
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 )
@@ -216,9 +217,6 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		Speed:                  stringPointer(runtimeSettings.Speed),
 		ConversationDetailMode: input.ConversationDetailMode, Visible: input.Visible,
 	}
-	if err := s.applyInitialTuttiModeActivation(ctx, workspaceID, input.AgentSessionID, input.InitialTuttiModeActivation); err != nil {
-		return CreateSessionResult{}, err
-	}
 	var preparedTuttiModeTurnID string
 	_, typedGoal := agenthost.ParseTypedGoalControl(normalizedContent, false)
 	if len(normalizedContent) > 0 && !typedGoal {
@@ -226,20 +224,45 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		if claimErr != nil {
 			return CreateSessionResult{}, claimErr
 		}
-		turnID, snapshot, snapshotErr := s.prepareTuttiModeExec(ctx, workspaceID, input.AgentSessionID, false, ProviderRuntimeSession{}, canonicalTurnID)
-		if snapshotErr != nil {
-			_ = s.deleteTuttiModeActivationSessionState(context.WithoutCancel(ctx), workspaceID, input.AgentSessionID)
-			return CreateSessionResult{}, snapshotErr
+		if canonicalTurnID == "" {
+			canonicalTurnID = uuid.NewString()
 		}
-		preparedTuttiModeTurnID = turnID
-		hostInput.TurnID = turnID
+		preparedTuttiModeTurnID = canonicalTurnID
+	}
+	initialActivation, err := s.prepareInitialTuttiModeActivation(
+		ctx, workspaceID, input.AgentSessionID, preparedTuttiModeTurnID, input.InitialTuttiModeActivation,
+	)
+	if err != nil {
+		return CreateSessionResult{}, err
+	}
+	var preparedTuttiModeSnapshot *tuttimodeactivationbiz.TurnSnapshot
+	if preparedTuttiModeTurnID != "" {
+		snapshot, snapshotErr := s.prepareInitialTuttiModeExec(
+			ctx, workspaceID, input.AgentSessionID, preparedTuttiModeTurnID, initialActivation,
+		)
+		if snapshotErr != nil {
+			abandonErr := s.abandonInitialTuttiModeActivation(
+				context.WithoutCancel(ctx), workspaceID, input.AgentSessionID, initialActivation,
+			)
+			return CreateSessionResult{}, errors.Join(snapshotErr, abandonErr)
+		}
+		preparedTuttiModeSnapshot = &snapshot
+		hostInput.TurnID = preparedTuttiModeTurnID
 		hostInput.TuttiModeSnapshot = runtimeTuttiModeTurnSnapshot(snapshot)
 	}
 	logAgentSubmitTrace("service.create.runtime_start_requested", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, nil)
 	hostResult, err := s.ApplicationHost().CreateSession(ctx, workspaceID, hostInput)
 	if err != nil {
 		if !errors.Is(err, ErrSubmitDeliveryUnknown) {
-			_ = s.deleteTuttiModeActivationSessionState(context.WithoutCancel(ctx), workspaceID, input.AgentSessionID)
+			cleanupCtx := context.WithoutCancel(ctx)
+			var snapshotErr error
+			if preparedTuttiModeSnapshot != nil {
+				snapshotErr = s.abandonPreparedTuttiModeExec(
+					cleanupCtx, workspaceID, input.AgentSessionID, preparedTuttiModeTurnID, *preparedTuttiModeSnapshot, false,
+				)
+			}
+			activationErr := s.abandonInitialTuttiModeActivation(cleanupCtx, workspaceID, input.AgentSessionID, initialActivation)
+			err = errors.Join(err, snapshotErr, activationErr)
 		}
 		return CreateSessionResult{}, err
 	}
@@ -247,6 +270,14 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	session := hostResult.Session
 	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.ClientSubmitID, input.Metadata, map[string]any{"provider_runtime_status": session.Status})
 	persistedSession := persistedSessionFromHost(hostResult.Canonical)
+	if preparedTuttiModeTurnID != "" && strings.TrimSpace(hostResult.TurnID) != preparedTuttiModeTurnID {
+		return CreateSessionResult{}, ErrSubmitDeliveryUnknown
+	}
+	if preparedTuttiModeTurnID == "" {
+		if err := s.acceptInitialTuttiModeActivation(ctx, workspaceID, input.AgentSessionID, initialActivation); err != nil {
+			return CreateSessionResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
+		}
+	}
 	if strings.TrimSpace(session.ID) == "" && strings.TrimSpace(hostResult.TurnID) != "" {
 		result, getErr := s.Get(ctx, workspaceID, input.AgentSessionID)
 		return CreateSessionResult{
@@ -260,16 +291,6 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 			Session: decorateIsolatedSession(result, isolation, isolationWarnings),
 			TurnID:  strings.TrimSpace(hostResult.TurnID),
 		}, getErr
-	}
-	if preparedTuttiModeTurnID != "" {
-		if strings.TrimSpace(hostResult.TurnID) != preparedTuttiModeTurnID {
-			return CreateSessionResult{}, ErrSubmitDeliveryUnknown
-		}
-		if s.TuttiModeActivations != nil {
-			if _, err := s.TuttiModeActivations.AcceptTurnSnapshot(ctx, workspaceID, session.ID, preparedTuttiModeTurnID); err != nil {
-				return CreateSessionResult{}, deliveryUnknownError(err)
-			}
-		}
 	}
 	s.registerPendingPlanFirstUse(
 		workspaceID,

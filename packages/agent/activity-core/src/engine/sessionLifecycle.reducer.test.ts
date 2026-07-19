@@ -1102,6 +1102,7 @@ test("deleted session tombstone rejects late snapshot resurrection", () => {
     sessions: [session(null, 1)]
   }).state;
   state = reduce(state, {
+    evidence: { source: "session_deleted_event", deletedAtUnixMs: 1 },
     type: "session/removed",
     agentSessionId: "session-1"
   }).state;
@@ -1195,6 +1196,7 @@ test("delete tombstone rejects late orphan turn and interaction upserts", () => 
     sessions: [session(activeTurn(1), 1)]
   }).state;
   state = reduce(state, {
+    evidence: { source: "session_deleted_event", deletedAtUnixMs: 1 },
     type: "session/removed",
     agentSessionId: "session-1"
   }).state;

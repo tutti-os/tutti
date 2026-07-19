@@ -43,7 +43,23 @@ test("successful message reconcile keeps later refreshes non-blocking", () => {
     commandId: "session:reconcile:session-1:1",
     commandType: "session/reconcile",
     outcome: "succeeded",
-    type: "engine/commandResult"
+    type: "engine/commandResult",
+    value: {
+      kind: "found",
+      session: {
+        activeTurn: null,
+        activeTurnId: null,
+        agentSessionId: "session-1",
+        cwd: "/workspace",
+        latestTurn: null,
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "Session",
+        updatedAtUnixMs: 1,
+        workspaceId: "workspace-1"
+      }
+    }
   }).state;
   assert.equal(selectEngineSessionDetailHydrated(state, "session-1"), true);
   assert.equal(selectEngineSessionDetailLoading(state, "session-1"), false);

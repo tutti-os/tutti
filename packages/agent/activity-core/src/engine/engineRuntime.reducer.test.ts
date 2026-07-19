@@ -733,6 +733,7 @@ test("session tombstone blocks late queue and snapshot resurrection across domai
     ]
   }).state;
   state = rootEngineReducer(state, {
+    evidence: { source: "session_deleted_event", deletedAtUnixMs: 1 },
     type: "session/removed",
     agentSessionId: "session-1"
   }).state;

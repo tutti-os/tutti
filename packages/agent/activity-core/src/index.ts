@@ -259,9 +259,19 @@ export type {
   SessionReconcileIntent,
   SessionReconcileRecord,
   SessionReconcileRequestedIntent,
+  SessionReconcileResult,
   SessionReconcileScope,
   SessionReconcileState
 } from "./engine/sessionReconcile.types.ts";
+export type { SessionDeletionEvidence } from "./engine/sessionDeletion.types.ts";
+export { isSessionDeletionEvidence } from "./engine/sessionDeletion.types.ts";
+export {
+  deriveCanonicalSubmitAvailability,
+  selectSessionAvailability,
+  type CanonicalSubmitAvailability,
+  type SessionAvailabilityStatus
+} from "./engine/sessionLifecycle.availability.ts";
+export { validateSessionReconcileResult } from "./engine/sessionReconcileResult.validation.ts";
 export type {
   AgentActivityActivateSessionResult,
   AgentActivityActivationMode,

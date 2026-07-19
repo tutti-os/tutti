@@ -1726,9 +1726,7 @@ test("WorkspaceAgentActivityService fetches detail before combined message recon
       "reconcile.combined.messages_requested",
       "reconcile.combined.messages_resolved",
       "reconcile.combined.state_fetch.requested",
-      "reconcile.combined.state_fetch.resolved",
-      "reconcile.combined.state_upsert",
-      "reconcile.combined.state_upsert.applied"
+      "reconcile.combined.state_fetch.resolved"
     ]
   );
 });
@@ -1970,14 +1968,29 @@ test("WorkspaceAgentActivityService drains every incremental history page", asyn
   );
   mode = "incremental";
   requests.length = 0;
-  await (
+  const reconcileResult = await (
     service as unknown as {
       reconcileAgentSessionMessages(
         workspaceId: string,
         agentSessionId: string
-      ): Promise<unknown>;
+      ): Promise<
+        import("@tutti-os/agent-activity-core").SessionReconcileResult
+      >;
     }
   ).reconcileAgentSessionMessages("ws-1", "session-1");
+  assert.equal(reconcileResult.kind, "found");
+  if (reconcileResult.kind === "found") {
+    const engine = service.getSessionEngine("ws-1");
+    engine.dispatch({
+      session: reconcileResult.session,
+      type: "session/upserted"
+    });
+    engine.dispatch({
+      messages: reconcileResult.messages ?? [],
+      type: "message/snapshotReceived",
+      workspaceId: "ws-1"
+    });
+  }
 
   assert.deepEqual(
     requests.map((request) => request.afterVersion),
@@ -2340,11 +2353,10 @@ test("WorkspaceAgentActivityService deletes one exact session batch", async () =
     removedSessions: 2
   });
   assert.equal(listCalls, 1);
-  assert.deepEqual(engine.getSnapshot().sessionLifecycle.deletedSessionIds, {
-    "child-1": true,
-    "session-1": true,
-    "session-2": true
-  });
+  const deleted = engine.getSnapshot().sessionLifecycle.deletedSessionIds;
+  assert.equal(deleted["session-1"]?.source, "delete_command");
+  assert.equal(deleted["child-1"]?.source, "delete_command");
+  assert.equal(deleted["session-2"], undefined);
 });
 
 test("WorkspaceAgentActivityService pins through the engine command port", async () => {
@@ -2436,10 +2448,9 @@ test("WorkspaceAgentActivityService single delete uses the authoritative batch r
     }
   ]);
   assert.equal(listCalls, 1);
-  assert.deepEqual(engine.getSnapshot().sessionLifecycle.deletedSessionIds, {
-    "child-1": true,
-    "session-1": true
-  });
+  const deleted = engine.getSnapshot().sessionLifecycle.deletedSessionIds;
+  assert.equal(deleted["session-1"]?.source, "delete_command");
+  assert.equal(deleted["child-1"]?.source, "delete_command");
 });
 
 test("WorkspaceAgentActivityService.listPinnedSessionsPage forwards cursor to tuttid", async () => {
@@ -2510,8 +2521,8 @@ test("WorkspaceAgentActivityService.listPinnedSessionsPage forwards cursor to tu
   assert.equal(result.totalCount, 1);
 });
 
-test("WorkspaceAgentActivityService treats missing reconcile sessions as tombstones", async () => {
-  const diagnostics: unknown[] = [];
+test("WorkspaceAgentActivityService treats bare reconcile 404 as absent, not tombstone", async () => {
+  const diagnostics: Array<{ event?: string }> = [];
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
       getWorkspaceAgentSession: async () => {
@@ -2521,7 +2532,12 @@ test("WorkspaceAgentActivityService treats missing reconcile sessions as tombsto
           reason: "workspace_agent_session_not_found",
           statusCode: 404
         });
-      }
+      },
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: "ws-1"
+      })
     } as unknown as TuttidClient,
     runtimeApi: {
       logTerminalDiagnostic: async (payload) => {
@@ -2530,6 +2546,7 @@ test("WorkspaceAgentActivityService treats missing reconcile sessions as tombsto
     }
   });
 
+  const engine = service.getSessionEngine("ws-1");
   await (
     service as unknown as {
       reconcileAgentActivityUpdate(input: {
@@ -2545,15 +2562,159 @@ test("WorkspaceAgentActivityService treats missing reconcile sessions as tombsto
   });
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.deepEqual(diagnostics.at(-1), {
-    details: {
-      agentSessionId: "ghost-session",
-      error: "workspace agent session not found"
-    },
-    event: "agent.activity.reconcile_session_missing",
-    level: "info",
+  assert.equal(
+    engine.getSnapshot().sessionLifecycle.deletedSessionIds["ghost-session"],
+    undefined
+  );
+  assert.ok(
+    diagnostics.some(
+      (entry) => entry.event === "agent.activity.reconcile_session_absent"
+    )
+  );
+});
+
+test("WorkspaceAgentActivityService keeps pending create untombstoned across reconcile 404", async (t) => {
+  const diagnostics: Array<{
+    details?: Record<string, unknown>;
+    event?: string;
+  }> = [];
+  let resolveCreate!: (value: ReturnType<typeof workspaceAgentSession>) => void;
+  const createResult = new Promise<ReturnType<typeof workspaceAgentSession>>(
+    (resolve) => {
+      resolveCreate = resolve;
+    }
+  );
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      createWorkspaceAgentSession: async () => createResult,
+      getWorkspaceAgentSession: async () => {
+        throw new TuttidProtocolError({
+          code: "workspace_not_found",
+          developerMessage: "workspace agent session not found",
+          reason: "workspace_agent_session_not_found",
+          statusCode: 404
+        });
+      },
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async (payload) => {
+        diagnostics.push(payload);
+      }
+    }
+  });
+  t.after(() => service.dispose());
+  const engine = service.getSessionEngine("ws-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  const requestedAtUnixMs = Date.now();
+  engine.dispatch({
+    type: "activation/requested",
+    agentSessionId: "session-1",
+    agentTargetId: "local:claude-code",
+    clientSubmitId: "submit-1",
+    expiresAtUnixMs: requestedAtUnixMs + 45_000,
+    mode: "new",
+    requestedAtUnixMs,
+    requestId: "activation-1",
     workspaceId: "ws-1"
   });
+
+  await (
+    service as unknown as {
+      reconcileAgentActivityUpdate(input: {
+        agentSessionId: string;
+        data: unknown;
+        eventType: string;
+        workspaceId: string;
+      }): Promise<void>;
+    }
+  ).reconcileAgentActivityUpdate({
+    agentSessionId: "session-1",
+    data: {},
+    eventType: "state_patch",
+    workspaceId: "ws-1"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(
+    engine.getSnapshot().sessionLifecycle.deletedSessionIds["session-1"],
+    undefined
+  );
+  assert.ok(
+    diagnostics.some(
+      (entry) => entry.event === "agent.activity.reconcile_session_absent"
+    )
+  );
+
+  resolveCreate({
+    ...workspaceAgentSession({ status: "working" }),
+    createdAtUnixMs: requestedAtUnixMs
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    engine.getSnapshot().sessionLifecycle.sessionsById["session-1"]
+      ?.agentSessionId,
+    "session-1"
+  );
+});
+
+test("WorkspaceAgentActivityService tombstones only on explicit session_deleted evidence", async () => {
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+  const engine = service.getSessionEngine("ws-1");
+  const idle = workspaceAgentSession({ status: "idle" });
+  engine.dispatch({
+    type: "session/upserted",
+    session: {
+      activeTurn: null,
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      cwd: typeof idle.cwd === "string" ? idle.cwd : "/workspace",
+      latestTurn: null,
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: typeof idle.provider === "string" ? idle.provider : "codex",
+      title: typeof idle.title === "string" ? idle.title : "Session",
+      updatedAtUnixMs:
+        typeof idle.updatedAtUnixMs === "number" ? idle.updatedAtUnixMs : 1,
+      workspaceId: "ws-1"
+    }
+  });
+
+  await (
+    service as unknown as {
+      reconcileAgentActivityUpdate(input: {
+        agentSessionId: string;
+        data: unknown;
+        eventType: string;
+        workspaceId: string;
+      }): Promise<void>;
+    }
+  ).reconcileAgentActivityUpdate({
+    agentSessionId: "session-1",
+    data: { deletedAtUnixMs: 42 },
+    eventType: "session_deleted",
+    workspaceId: "ws-1"
+  });
+
+  assert.deepEqual(
+    engine.getSnapshot().sessionLifecycle.deletedSessionIds["session-1"],
+    { deletedAtUnixMs: 42, source: "session_deleted_event" }
+  );
 });
 
 test("WorkspaceAgentActivityService.submitPlanDecision uses one semantic daemon transport", async () => {

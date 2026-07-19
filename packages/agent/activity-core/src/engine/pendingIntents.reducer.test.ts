@@ -464,12 +464,7 @@ test("confirmed activation emits its request-scoped pending settings command onc
       session: { ...session("session-new"), createdAtUnixMs: 1 }
     }
   });
-  assert.deepEqual(confirmed.commands, []);
-  const attached = reduce(confirmed.state, {
-    sessions: [{ ...session("session-new"), createdAtUnixMs: 1 }],
-    type: "session/snapshotReceived"
-  });
-  assert.deepEqual(attached.commands, [
+  assert.deepEqual(confirmed.commands, [
     {
       agentSessionId: "session-new",
       commandId: "activation-settings:activation-1",
@@ -479,14 +474,18 @@ test("confirmed activation emits its request-scoped pending settings command onc
       workspaceId: "workspace-1"
     }
   ]);
+  assert.equal(
+    confirmed.state.activationsByRequestId["activation-1"]?.status,
+    "confirmed"
+  );
   assert.deepEqual(
-    reduce(attached.state, {
+    reduce(confirmed.state, {
       sessions: [{ ...session("session-new"), createdAtUnixMs: 1 }],
       type: "session/snapshotReceived"
     }).commands,
     []
   );
-  const settingsSucceeded = reduce(attached.state, {
+  const settingsSucceeded = reduce(confirmed.state, {
     commandId: "activation-settings:activation-1",
     commandType: "session/updateSettings",
     correlationId: "activation-1",
@@ -522,12 +521,8 @@ test("settings update failure remains request-scoped and retryable without doubl
       session: { ...session("session-new"), createdAtUnixMs: 1 }
     }
   });
-  const attached = reduce(confirmed.state, {
-    sessions: [{ ...session("session-new"), createdAtUnixMs: 1 }],
-    type: "session/snapshotReceived"
-  });
-  assert.equal(attached.commands[0]?.type, "session/updateSettings");
-  const failed = reduce(attached.state, {
+  assert.equal(confirmed.commands[0]?.type, "session/updateSettings");
+  const failed = reduce(confirmed.state, {
     commandId: "activation-settings:activation-1",
     commandType: "session/updateSettings",
     correlationId: "activation-1",

@@ -76,6 +76,7 @@ const schemaMigrationWorkspaceWorkflowRevisionPathReuseV3 = "workspace_workflow_
 const schemaMigrationTuttiModeActivationsV1 = "tutti_mode_activations_v1"
 const schemaMigrationTuttiModeTurnDispatchV2 = "tutti_mode_turn_dispatch_v2"
 const schemaMigrationTuttiModeOrchestrationIntensityV3 = "tutti_mode_orchestration_intensity_v3"
+const schemaMigrationTuttiModeActivationDispatchV4 = "tutti_mode_activation_dispatch_v4"
 const schemaMigrationWorkspaceWorkflowTaskAssignmentsV4 = "workspace_workflow_task_assignments_v4"
 
 func (s *SQLiteStore) Migrate(ctx context.Context) error {
@@ -336,6 +337,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyTuttiModeOrchestrationIntensityV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyTuttiModeActivationDispatchV4(ctx); err != nil {
 		return err
 	}
 	if err := s.applyWorkspaceWorkflowTaskAssignmentsV4(ctx); err != nil {

@@ -566,9 +566,20 @@ test("session removal cleans queue-owned delivery state", () => {
   );
   const removed = reduce(
     queued.state,
-    { type: "session/removed", agentSessionId: "session-1" },
+    {
+      evidence: { source: "session_deleted_event", deletedAtUnixMs: 1 },
+      type: "session/removed",
+      agentSessionId: "session-1"
+    },
     createInitialSessionLifecycleState(),
-    { deletedSessionIds: { "session-1": true } }
+    {
+      deletedSessionIds: {
+        "session-1": {
+          source: "session_deleted_event",
+          deletedAtUnixMs: 1
+        }
+      }
+    }
   );
   assert.equal(removed.state.recordsBySessionId["session-1"], undefined);
 });
@@ -796,7 +807,12 @@ function reduce(
   lifecycle: SessionLifecycleState,
   options: {
     cancelValidation?: CancelResultValidation;
-    deletedSessionIds?: Readonly<Record<string, true>>;
+    deletedSessionIds?: Readonly<
+      Record<
+        string,
+        import("./sessionDeletion.types.ts").SessionDeletionEvidence
+      >
+    >;
     sendValidation?: SendInputResultValidation;
     strategy?: PromptQueueSendNowStrategy;
   } = {}

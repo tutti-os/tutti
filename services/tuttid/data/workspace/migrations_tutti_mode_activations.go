@@ -180,6 +180,59 @@ VALUES (?, ?)
 	return nil
 }
 
+func (s *SQLiteStore) applyTuttiModeActivationDispatchV4(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationTuttiModeActivationDispatchV4)
+	if err != nil || applied {
+		return err
+	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin Tutti mode activation dispatch v4 migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	columns := []struct {
+		name string
+		sql  string
+	}{
+		{
+			name: "dispatch_state",
+			sql: `ALTER TABLE tutti_mode_activations
+  ADD COLUMN dispatch_state TEXT NOT NULL DEFAULT 'accepted'
+  CHECK (dispatch_state IN ('prepared', 'accepted'))`,
+		},
+		{
+			name: "initial_turn_id",
+			sql:  `ALTER TABLE tutti_mode_activations ADD COLUMN initial_turn_id TEXT NOT NULL DEFAULT ''`,
+		},
+		{
+			name: "accepted_at_unix_ms",
+			sql:  `ALTER TABLE tutti_mode_activations ADD COLUMN accepted_at_unix_ms INTEGER`,
+		},
+	}
+	for _, column := range columns {
+		exists, err := tuttiModeColumnExistsTx(ctx, tx, "tutti_mode_activations", column.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, column.sql); err != nil {
+			return fmt.Errorf("add Tutti mode activation column %s: %w", column.name, err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+VALUES (?, ?)
+`, schemaMigrationTuttiModeActivationDispatchV4, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record Tutti mode activation dispatch v4 migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit Tutti mode activation dispatch v4 migration: %w", err)
+	}
+	return nil
+}
+
 func tuttiModeColumnExistsTx(ctx context.Context, tx *sql.Tx, tableName, columnName string) (bool, error) {
 	var count int
 	if err := tx.QueryRowContext(ctx, `

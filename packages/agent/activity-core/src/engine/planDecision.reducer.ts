@@ -24,6 +24,7 @@ export function planDecisionReducer(
   }
 ): EngineReducerResult<PlanDecisionState> {
   if (intent.type === "session/removed") {
+    if (!intent.evidence) return unchanged(state);
     const sessionId = intent.agentSessionId.trim();
     const byId = Object.fromEntries(
       Object.entries(state.byId).filter(

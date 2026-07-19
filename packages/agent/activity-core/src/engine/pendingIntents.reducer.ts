@@ -17,6 +17,16 @@ import {
   settleSubmitCommand
 } from "./pendingSubmit.reducer.ts";
 import { removeSessionPendingIntents } from "./pendingSessionIntents.reducer.ts";
+import {
+  activationExpiryId,
+  deleteActivation,
+  isActivationCommandResult,
+  markSessionActive,
+  markSessionInactive,
+  NO_PENDING_INTENT_COMMANDS,
+  replaceActivation,
+  unchangedPendingIntents
+} from "./pendingIntents.activationHelpers.ts";
 import type {
   EngineCommand,
   EngineCommandResultIntent,
@@ -24,7 +34,8 @@ import type {
   EngineReducerResult
 } from "./types.ts";
 
-const NO_COMMANDS: readonly EngineCommand[] = [];
+const NO_COMMANDS = NO_PENDING_INTENT_COMMANDS;
+const unchanged = unchangedPendingIntents;
 const EXISTING_SESSION_ACTIVATION_COMMAND_TIMEOUT_MS = 30_000;
 // A new activation includes process spawn and ACP initialize before session/new.
 // Keep the outer command alive long enough for session/new to receive its own
@@ -44,7 +55,12 @@ export function pendingIntentsReducer(
   state: PendingIntentsState,
   intent: EngineIntent,
   context: {
-    deletedSessionIds: Readonly<Record<string, true>>;
+    deletedSessionIds: Readonly<
+      Record<
+        string,
+        import("./sessionDeletion.types.ts").SessionDeletionEvidence
+      >
+    >;
     turnsById: Readonly<
       Record<string, import("../types.ts").AgentActivityTurn>
     >;
@@ -136,7 +152,9 @@ export function pendingIntentsReducer(
             dueAtUnixMs: intent.dueAtUnixMs
           });
     case "session/removed":
-      return removeSessionPendingIntents(state, intent.agentSessionId);
+      return intent.evidence
+        ? removeSessionPendingIntents(state, intent.agentSessionId)
+        : unchanged(state);
     default:
       return unchanged(state);
   }
@@ -503,6 +521,30 @@ function settleActivationCommand(
   ) {
     const result = intent.value;
     const failed = result.activation.status === "failed";
+    const session = result.session;
+    // Activate command results are authoritative create/attach evidence; do not
+    // apply the snapshot createdAt window used for opportunistic list confirms.
+    const canConfirm =
+      !failed &&
+      session !== undefined &&
+      session.agentSessionId.trim() === record.agentSessionId &&
+      session.workspaceId.trim() === record.workspaceId;
+    if (canConfirm && session) {
+      const settingsUpdate = attachPendingActivationSettings({
+        ...record,
+        errorCode: null,
+        errorMessage: null,
+        status: "confirmed"
+      });
+      return {
+        commands: settingsUpdate.commands,
+        followUpIntents: [{ session, type: "session/upserted" }],
+        state: replaceActivation(
+          markSessionActive(state, record.agentSessionId),
+          settingsUpdate.record
+        )
+      };
+    }
     return {
       commands: NO_COMMANDS,
       state: replaceActivation(
@@ -696,85 +738,4 @@ function removeActivation(
     ],
     state: deleteActivation(state, id)
   };
-}
-
-function isActivationCommandResult(value: unknown): value is {
-  activation: { status: string };
-  error?: { code?: string; message?: string } | null;
-} {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const result = value as {
-    activation?: { status?: unknown };
-    error?: { code?: string; message?: string } | null;
-  };
-  return Boolean(
-    result.activation && typeof result.activation.status === "string"
-  );
-}
-
-function activationExpiryId(requestId: string): string {
-  return `activation:${requestId}`;
-}
-
-function replaceActivation(
-  state: PendingIntentsState,
-  record: PendingActivationIntentRecord
-): PendingIntentsState {
-  return {
-    ...state,
-    activationsByRequestId: {
-      ...state.activationsByRequestId,
-      [record.requestId]: record
-    }
-  };
-}
-
-function deleteActivation(
-  state: PendingIntentsState,
-  requestId: string
-): PendingIntentsState {
-  const activations = { ...state.activationsByRequestId };
-  delete activations[requestId];
-  return { ...state, activationsByRequestId: activations };
-}
-
-function markSessionActive(
-  state: PendingIntentsState,
-  agentSessionId: string
-): PendingIntentsState {
-  return removeInactiveSession(state, agentSessionId);
-}
-
-function markSessionInactive(
-  state: PendingIntentsState,
-  agentSessionId: string
-): PendingIntentsState {
-  const id = agentSessionId.trim();
-  return state.inactiveSessionIds[id]
-    ? state
-    : {
-        ...state,
-        inactiveSessionIds: { ...state.inactiveSessionIds, [id]: true }
-      };
-}
-
-function removeInactiveSession(
-  state: PendingIntentsState,
-  agentSessionId: string
-): PendingIntentsState {
-  const id = agentSessionId.trim();
-  if (!state.inactiveSessionIds[id]) {
-    return state;
-  }
-  const inactiveSessionIds = { ...state.inactiveSessionIds };
-  delete inactiveSessionIds[id];
-  return { ...state, inactiveSessionIds };
-}
-
-function unchanged(
-  state: PendingIntentsState
-): EngineReducerResult<PendingIntentsState> {
-  return { commands: NO_COMMANDS, state };
 }

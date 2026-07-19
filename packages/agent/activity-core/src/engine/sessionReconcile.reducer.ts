@@ -6,10 +6,12 @@ import type {
 } from "./types.ts";
 import type {
   SessionReconcileRecord,
+  SessionReconcileResult,
   SessionReconcileState
 } from "./sessionReconcile.types.ts";
 import type { CanonicalAgentSession } from "./sessionLifecycle.types.ts";
-
+import type { SessionDeletionEvidence } from "./sessionDeletion.types.ts";
+import { validateSessionReconcileResult } from "./sessionReconcileResult.validation.ts";
 const NO_COMMANDS: readonly EngineCommand[] = [];
 
 export function createInitialSessionReconcileState(): SessionReconcileState {
@@ -20,7 +22,7 @@ export function sessionReconcileReducer(
   state: SessionReconcileState,
   intent: EngineIntent,
   context: {
-    deletedSessionIds: Readonly<Record<string, true>>;
+    deletedSessionIds: Readonly<Record<string, SessionDeletionEvidence>>;
     sessionsById: Readonly<Record<string, CanonicalAgentSession>>;
     workspaceReconcileCommandId: string | null;
   } = {
@@ -55,6 +57,7 @@ export function sessionReconcileReducer(
       }
       return requestReconcile(state, intent);
     case "session/removed":
+      if (!intent.evidence) return unchanged(state);
       return removeRecord(state, intent.agentSessionId);
     case "engine/commandResult":
       if (
@@ -124,6 +127,7 @@ function requestReconcile(
     errorMessage: null,
     inFlightCommandId: null,
     inFlightScope: null,
+    lastAbsent: false,
     messagesHydrated: false,
     pendingMessages: false,
     pendingState: false,
@@ -149,26 +153,117 @@ function settleReconcile(
     (candidate) => candidate.inFlightCommandId === intent.commandId
   );
   if (!record) {
+    // Duplicate or out-of-order settle for a command that is no longer in flight.
     return unchanged(state);
   }
+  if (intent.outcome !== "succeeded") {
+    const settled = {
+      ...record,
+      errorMessage: intent.errorMessage?.trim() || null,
+      inFlightCommandId: null,
+      inFlightScope: null,
+      lastAbsent: false
+    };
+    const next = replaceRecord(state, settled);
+    return settled.pendingMessages || settled.pendingState
+      ? startReconcile(next, settled)
+      : { commands: NO_COMMANDS, state: next };
+  }
+
+  const validation = validateSessionReconcileResult(intent.value, record);
+  if (validation.kind !== "valid") {
+    const settled = {
+      ...record,
+      errorMessage: validation.reason,
+      inFlightCommandId: null,
+      inFlightScope: null,
+      lastAbsent: false
+    };
+    return { commands: NO_COMMANDS, state: replaceRecord(state, settled) };
+  }
+
+  return applyReconcileResult(state, record, validation.result);
+}
+
+function applyReconcileResult(
+  state: SessionReconcileState,
+  record: SessionReconcileRecord,
+  result: SessionReconcileResult
+): EngineReducerResult<SessionReconcileState> {
+  if (result.kind === "absent") {
+    // Transport absence is never deletion. Clear in-flight demand so a 404
+    // cannot busy-loop; pending create settles via activate result, and later
+    // activityObserved/reconcileRequested can request again.
+    const settled = {
+      ...record,
+      errorMessage: null,
+      inFlightCommandId: null,
+      inFlightScope: null,
+      lastAbsent: true,
+      pendingMessages: false,
+      pendingState: false
+    };
+    return { commands: NO_COMMANDS, state: replaceRecord(state, settled) };
+  }
+
+  if (result.kind === "deleted") {
+    return {
+      commands: NO_COMMANDS,
+      followUpIntents: [
+        {
+          agentSessionId: record.agentSessionId,
+          evidence: result.evidence,
+          type: "session/removed"
+        }
+      ],
+      state: removeRecord(state, record.agentSessionId).state
+    };
+  }
+
   const settled = {
     ...record,
-    errorMessage:
-      intent.outcome === "succeeded"
-        ? null
-        : intent.errorMessage?.trim() || null,
+    errorMessage: null,
     inFlightCommandId: null,
     inFlightScope: null,
+    lastAbsent: false,
     messagesHydrated:
       record.messagesHydrated ||
-      (intent.outcome === "succeeded" &&
-        (record.inFlightScope === "messages" ||
-          record.inFlightScope === "state_and_messages"))
+      record.inFlightScope === "messages" ||
+      record.inFlightScope === "state_and_messages" ||
+      (result.messages?.length ?? 0) > 0
   };
+  const followUpIntents: EngineIntent[] = [
+    { session: result.session, type: "session/upserted" }
+  ];
+  for (const child of result.childSessions ?? []) {
+    followUpIntents.push({ session: child, type: "session/upserted" });
+  }
+  for (const turn of result.turns ?? []) {
+    followUpIntents.push({ turn, type: "turn/upserted" });
+  }
+  if (result.live && result.session.latestTurn) {
+    followUpIntents.push({
+      turn: result.session.latestTurn,
+      type: "turn/upserted"
+    });
+  }
+  if ((result.messages?.length ?? 0) > 0) {
+    followUpIntents.push({
+      messages: result.messages ?? [],
+      type: "message/snapshotReceived",
+      workspaceId: record.workspaceId
+    });
+  }
   const next = replaceRecord(state, settled);
-  return settled.pendingMessages || settled.pendingState
-    ? startReconcile(next, settled)
-    : { commands: NO_COMMANDS, state: next };
+  const restarted =
+    settled.pendingMessages || settled.pendingState
+      ? startReconcile(next, settled)
+      : { commands: NO_COMMANDS, state: next };
+  return {
+    commands: restarted.commands,
+    followUpIntents,
+    state: restarted.state
+  };
 }
 
 function startReconcile(

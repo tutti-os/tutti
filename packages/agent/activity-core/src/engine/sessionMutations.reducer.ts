@@ -1,4 +1,5 @@
 import type { AgentActivitySession } from "../types.ts";
+import type { SessionDeletionEvidence } from "./sessionDeletion.types.ts";
 import type { CanonicalAgentSession } from "./sessionLifecycle.types.ts";
 import type {
   EngineCommand,
@@ -22,7 +23,7 @@ export function sessionMutationsReducer(
   state: SessionMutationsState,
   intent: EngineIntent,
   context: {
-    deletedSessionIds: Readonly<Record<string, true>>;
+    deletedSessionIds: Readonly<Record<string, SessionDeletionEvidence>>;
     sessionsById: Readonly<Record<string, CanonicalAgentSession>>;
   }
 ): EngineReducerResult<SessionMutationsState> {
@@ -77,18 +78,29 @@ export function sessionMutationsReducer(
   }
   const deleteResult = validDeleteResult(intent.value);
   if (!deleteResult) return invalidResult(state, record);
+  // Tombstone only sessions the backend explicitly confirmed removed. Requested
+  // ids that are absent from removedSessionIds must remain live.
   const removedSessionIds = [
-    ...new Set([...record.agentSessionIds, ...deleteResult.removedSessionIds])
+    ...new Set(
+      deleteResult.removedSessionIds.map((id) => id.trim()).filter(Boolean)
+    )
   ];
   return {
     commands: NO_COMMANDS,
     followUpIntents: removedSessionIds.map((agentSessionId) => ({
       agentSessionId,
+      evidence: {
+        mutationId: record.mutationId,
+        source: "delete_command" as const
+      },
       type: "session/removed" as const
     })),
     state: withRecord(state, {
       ...record,
-      deleteResult,
+      deleteResult: {
+        ...deleteResult,
+        removedSessionIds
+      },
       status: "succeeded"
     })
   };
@@ -98,7 +110,7 @@ function requestPin(
   state: SessionMutationsState,
   intent: Extract<EngineIntent, { type: "session/pinRequested" }>,
   context: {
-    deletedSessionIds: Readonly<Record<string, true>>;
+    deletedSessionIds: Readonly<Record<string, SessionDeletionEvidence>>;
     sessionsById: Readonly<Record<string, CanonicalAgentSession>>;
   }
 ): EngineReducerResult<SessionMutationsState> {
@@ -154,7 +166,7 @@ function requestDelete(
   state: SessionMutationsState,
   intent: Extract<EngineIntent, { type: "sessions/deleteRequested" }>,
   context: {
-    deletedSessionIds: Readonly<Record<string, true>>;
+    deletedSessionIds: Readonly<Record<string, SessionDeletionEvidence>>;
     sessionsById: Readonly<Record<string, CanonicalAgentSession>>;
   }
 ): EngineReducerResult<SessionMutationsState> {

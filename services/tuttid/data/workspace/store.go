@@ -165,12 +165,21 @@ type TuttiModeActivationsStore interface {
 	GetTuttiModeActivation(context.Context, string, string) (activationbiz.Activation, bool, error)
 	ListTuttiModeActivations(context.Context, string, []string) (map[string]activationbiz.Activation, error)
 	SetTuttiModeActivation(context.Context, SetTuttiModeActivationInput) (activationbiz.Activation, bool, error)
+	PrepareTuttiModeActivation(context.Context, SetTuttiModeActivationInput, string) (activationbiz.Activation, bool, error)
+	AcceptTuttiModeActivation(context.Context, string, string, time.Time) (activationbiz.Activation, bool, error)
+	AbandonTuttiModeActivation(context.Context, string, string) (bool, error)
+	ListPreparedTuttiModeActivations(context.Context) ([]PreparedTuttiModeActivation, error)
 	GetTuttiModeTurnSnapshot(context.Context, string, string, string) (activationbiz.TurnSnapshot, bool, error)
 	PutTuttiModeTurnSnapshot(context.Context, string, string, string, activationbiz.TurnSnapshot, time.Time) (activationbiz.TurnSnapshot, bool, error)
 	AcceptTuttiModeTurnSnapshot(context.Context, string, string, string, time.Time) (bool, error)
 	IsTuttiModeTurnSnapshotAccepted(context.Context, string, string, string) (bool, error)
 	AbandonTuttiModeTurnSnapshot(context.Context, string, string, string, activationbiz.TurnSnapshot) (bool, error)
 	DeleteTuttiModeActivationSessionState(context.Context, string, string) error
+}
+
+type PreparedTuttiModeActivation struct {
+	Activation    activationbiz.Activation
+	InitialTurnID string
 }
 
 type SetTuttiModeActivationInput struct {

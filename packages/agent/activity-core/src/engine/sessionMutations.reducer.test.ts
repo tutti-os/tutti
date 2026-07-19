@@ -114,16 +114,22 @@ test("failed mutation is explicit and emits no canonical follow-up", () => {
   assert.deepEqual(failed.followUpIntents, undefined);
 });
 
-test("delete result emits removals for requested and cascaded sessions", () => {
+test("delete result emits removals only for backend-confirmed removedSessionIds", () => {
   const requested = sessionMutationsReducer(
     createInitialSessionMutationsState(),
     {
-      agentSessionIds: ["session-1"],
+      agentSessionIds: ["session-1", "session-2"],
       mutationId: "delete-1",
       type: "sessions/deleteRequested",
       workspaceId: "workspace-1"
     },
-    { deletedSessionIds: {}, sessionsById: { "session-1": session } }
+    {
+      deletedSessionIds: {},
+      sessionsById: {
+        "session-1": session,
+        "session-2": { ...session, agentSessionId: "session-2" }
+      }
+    }
   );
   const succeeded = sessionMutationsReducer(
     requested.state,
@@ -139,13 +145,35 @@ test("delete result emits removals for requested and cascaded sessions", () => {
         removedSessions: 2
       }
     },
-    { deletedSessionIds: {}, sessionsById: { "session-1": session } }
+    {
+      deletedSessionIds: {},
+      sessionsById: {
+        "session-1": session,
+        "session-2": { ...session, agentSessionId: "session-2" }
+      }
+    }
   );
 
   assert.deepEqual(succeeded.followUpIntents, [
-    { agentSessionId: "session-1", type: "session/removed" },
-    { agentSessionId: "child-1", type: "session/removed" }
+    {
+      agentSessionId: "session-1",
+      evidence: { mutationId: "delete-1", source: "delete_command" },
+      type: "session/removed"
+    },
+    {
+      agentSessionId: "child-1",
+      evidence: { mutationId: "delete-1", source: "delete_command" },
+      type: "session/removed"
+    }
   ]);
+  assert.equal(
+    succeeded.followUpIntents?.some(
+      (intent) =>
+        intent.type === "session/removed" &&
+        intent.agentSessionId === "session-2"
+    ),
+    false
+  );
 });
 
 test("settled mutation history stays bounded across unique sessions", () => {

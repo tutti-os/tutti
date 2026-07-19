@@ -72,6 +72,31 @@ type tuttiWiring struct {
 	providerAuthWatcher *agentservice.ProviderAuthWatcher
 }
 
+type tuttiModeActivationSessionReader struct {
+	host      *agenthost.Host
+	deletions interface {
+		SessionDeleted(context.Context, string, string) (bool, error)
+	}
+}
+
+func (r tuttiModeActivationSessionReader) SessionExists(ctx context.Context, workspaceID, agentSessionID string) (bool, error) {
+	if r.host == nil {
+		return false, nil
+	}
+	_, err := r.host.GetSession(ctx, agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID})
+	if errors.Is(err, agenthost.ErrSessionNotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (r tuttiModeActivationSessionReader) SessionDeleted(ctx context.Context, workspaceID, agentSessionID string) (bool, error) {
+	if r.deletions == nil {
+		return false, nil
+	}
+	return r.deletions.SessionDeleted(ctx, workspaceID, agentSessionID)
+}
+
 type analyticsDebugEventPublisher struct {
 	service analyticsDebugEventStream
 }
@@ -509,10 +534,14 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 
 	agentHost := agentservice.NewApplicationHost(agentSessionService)
 	agentSessionService.SetApplicationHost(agentHost)
+	tuttiModeActivations.Sessions = tuttiModeActivationSessionReader{host: agentHost, deletions: agentActivityProjection}
 	// Host fixes startup order: durable runtime operations first, then goal
 	// operations and reconcile inbox work, and only then stale turns.
 	if err := agentHost.Recover(ctx); err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent host: %w", err)
+	}
+	if err := tuttiModeActivations.RecoverPrepared(ctx); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover prepared Tutti mode activations: %w", err)
 	}
 	go func() {
 		if err := agentHost.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {

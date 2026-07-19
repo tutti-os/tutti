@@ -43,7 +43,7 @@ export interface WorkspaceAgentActivityMutationOperationsDependencies {
   load(workspaceId: string, signal?: AbortSignal): Promise<unknown>;
   markSessionDeleted(input: {
     agentSessionId: string;
-    data?: unknown;
+    evidence: import("@tutti-os/agent-activity-core").SessionDeletionEvidence;
     workspaceId: string;
   }): void;
   resolveCollaborationClient(): Promise<Client>;
@@ -87,7 +87,10 @@ export class WorkspaceAgentActivityMutationOperations {
     for (const agentSessionId of removedSessionIds) {
       this.dependencies.markSessionDeleted({
         agentSessionId,
-        data: { deletedAtUnixMs: Date.now() },
+        evidence: {
+          mutationId: `delete-batch:${agentSessionId}`,
+          source: "delete_command"
+        },
         workspaceId
       });
     }
@@ -153,10 +156,8 @@ export class WorkspaceAgentActivityMutationOperations {
       workspaceId: input.workspaceId,
       fields: { activeTurnPhase: session.activeTurn?.phase ?? null }
     });
-    this.dependencies.upsertAuthoritativeSession(
-      session,
-      "create_session_result"
-    );
+    // Authoritative create Session is applied by the engine when the
+    // session/activate command result settles — do not upsert here.
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
       clientSubmitId: input.clientSubmitId,
@@ -543,7 +544,10 @@ export class WorkspaceAgentActivityMutationOperations {
     if (result.removed) {
       this.dependencies.markSessionDeleted({
         agentSessionId,
-        data: { deletedAtUnixMs: Date.now() },
+        evidence: {
+          mutationId: `delete:${agentSessionId}`,
+          source: "delete_command"
+        },
         workspaceId
       });
       await this.dependencies.load(workspaceId, input.signal);

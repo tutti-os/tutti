@@ -67,6 +67,7 @@ export function attentionReadStateReducer(
       return next === state ? unchanged(state) : changed(next);
     }
     case "session/removed": {
+      if (!intent.evidence) return unchanged(state);
       const id = intent.agentSessionId.trim();
       let next = state;
       for (const [userId, partition] of Object.entries(

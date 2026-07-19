@@ -56,6 +56,7 @@ test("session operation errors do not fall back to canonical Turn errors", () =>
 test("deleted session selector normalizes ids and hides tombstone storage", () => {
   const state = rootEngineReducer(createInitialAgentSessionEngineState(), {
     agentSessionId: "session-1",
+    evidence: { source: "session_deleted_event", deletedAtUnixMs: 1 },
     type: "session/removed"
   }).state;
 

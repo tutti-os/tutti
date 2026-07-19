@@ -5,6 +5,7 @@ import type {
   AgentActivityTurnCancelResponse
 } from "../types.ts";
 import type { AgentActivitySessionInput } from "../sessionNormalization.ts";
+import type { SessionDeletionEvidence } from "./sessionDeletion.types.ts";
 
 export type SessionCancelStatus =
   | "idle"
@@ -72,7 +73,11 @@ export type CanonicalAgentSession = Omit<
 };
 
 export interface SessionLifecycleState {
-  deletedSessionIds: Readonly<Record<string, true>>;
+  /**
+   * Tombstones keyed by session id. Values are explicit deletion evidence;
+   * transport absence must never enter this map.
+   */
+  deletedSessionIds: Readonly<Record<string, SessionDeletionEvidence>>;
   interactionsById: Readonly<Record<string, AgentActivityInteraction>>;
   interactionResponsesById: Readonly<Record<string, InteractionResponseState>>;
   operationBySessionId: Readonly<Record<string, SessionOperationState>>;
@@ -128,6 +133,8 @@ export interface InteractionResponseRequestedIntent {
 export interface SessionRemovedIntent {
   type: "session/removed";
   agentSessionId: string;
+  /** Required for tombstone; omitted intents are ignored. */
+  evidence?: SessionDeletionEvidence;
 }
 
 export interface SessionErrorRecordedIntent {
