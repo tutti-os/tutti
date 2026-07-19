@@ -10,6 +10,7 @@ import type {
 } from "../../../shared/agentConversationTitleProjection.ts";
 import type {
   AgentActivitySession,
+  AgentActivitySessionCapabilities,
   AgentActivitySnapshot,
   AgentActivityTurn
 } from "@tutti-os/agent-activity-core";
@@ -77,6 +78,7 @@ export type AgentGUIConversationProjectionSource = Pick<
   | "activeTurn"
 > & {
   sessionTurns?: readonly AgentActivityTurn[];
+  capabilities?: AgentActivitySessionCapabilities | null;
 };
 
 export interface AgentGUIConversationProjectResolutionContext {

@@ -858,7 +858,7 @@ func TestCodexAppServerAdapterApplyTokenUsagePrefersInputTokens(t *testing.T) {
 	t.Parallel()
 
 	adapter, _, session := startedAppServerAdapter(t)
-	adapter.applyTokenUsage(session.AgentSessionID, map[string]any{
+	adapter.applyTokenUsage(session.AgentSessionID, "", map[string]any{
 		"tokenUsage": map[string]any{
 			"last": map[string]any{
 				"inputTokens":           int64(1000),
@@ -886,7 +886,7 @@ func TestCodexAppServerAdapterApplyTokenUsageFallsBackToLastTotalTokens(t *testi
 	t.Parallel()
 
 	adapter, _, session := startedAppServerAdapter(t)
-	adapter.applyTokenUsage(session.AgentSessionID, map[string]any{
+	adapter.applyTokenUsage(session.AgentSessionID, "", map[string]any{
 		"tokenUsage": map[string]any{
 			"last":               map[string]any{"totalTokens": int64(1200)},
 			"total":              map[string]any{"totalTokens": int64(4800)},
@@ -913,7 +913,7 @@ func TestCodexAppServerAdapterApplyTokenUsageCompactFrameUsesLastTotalTokens(t *
 	adapter, _, session := startedAppServerAdapter(t)
 
 	// Seed turn: window is full at 26017.
-	adapter.applyTokenUsage(session.AgentSessionID, map[string]any{
+	adapter.applyTokenUsage(session.AgentSessionID, "", map[string]any{
 		"tokenUsage": map[string]any{
 			"last":               map[string]any{"inputTokens": int64(26017), "totalTokens": int64(26049)},
 			"total":              map[string]any{"totalTokens": int64(26049)},
@@ -923,7 +923,7 @@ func TestCodexAppServerAdapterApplyTokenUsageCompactFrameUsesLastTotalTokens(t *
 
 	// Compact frame: inputTokens is explicitly 0, totalTokens=5763 is the real
 	// post-compaction context size.
-	adapter.applyTokenUsage(session.AgentSessionID, map[string]any{
+	adapter.applyTokenUsage(session.AgentSessionID, "", map[string]any{
 		"tokenUsage": map[string]any{
 			"last":               map[string]any{"inputTokens": int64(0), "totalTokens": int64(5763)},
 			"total":              map[string]any{"totalTokens": int64(26049)},
@@ -952,7 +952,7 @@ func TestCodexAppServerAdapterApplyTokenUsageNoCumulativeFalsePositive(t *testin
 	// Simulate 10 tool calls, each sending ~27 K tokens.  The cumulative total
 	// grows to 270 K (> window), but the per-request "last" stays at 27 K.
 	for i := range 10 {
-		adapter.applyTokenUsage(session.AgentSessionID, map[string]any{
+		adapter.applyTokenUsage(session.AgentSessionID, "", map[string]any{
 			"tokenUsage": map[string]any{
 				"last":               map[string]any{"totalTokens": perRequest},
 				"total":              map[string]any{"totalTokens": perRequest * int64(i+1)},

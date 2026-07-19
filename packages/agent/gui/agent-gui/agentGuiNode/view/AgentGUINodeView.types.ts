@@ -234,7 +234,8 @@ export interface AgentGUIViewLabels {
   goalResumeAction: string;
   goalClearAction: string;
   goalRemoved: string;
-  processing: string;
+  turnProgressAwaiting: string;
+  turnProgressStreaming: string;
   turnSummary: string;
   userMessageLocator: string;
   planLead: string;

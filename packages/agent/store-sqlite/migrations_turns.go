@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS workspace_agent_turns (
   outcome TEXT CHECK (outcome IS NULL OR outcome IN ('completed','failed','canceled','interrupted')),
   error_json TEXT,
   file_changes_json TEXT,
+  token_usage_json TEXT,
   completed_command_json TEXT,
   backfilled INTEGER NOT NULL DEFAULT 0,
   turn_origin TEXT NOT NULL DEFAULT 'legacy_unknown'
@@ -460,6 +461,35 @@ CREATE INDEX IF NOT EXISTS idx_workspace_agent_turns_session_latest
 	}
 	committed = true
 	return nil
+}
+
+// applyWorkspaceAgentTurnTokenUsageV1 adds the optional per-turn cumulative
+// token counters. Only providers with an input/output token split (Claude
+// Code, Codex) report them; other providers leave the column NULL rather than
+// persisting a fabricated zero.
+func (s *Store) applyWorkspaceAgentTurnTokenUsageV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentTurnTokenUsageV1)
+	if err != nil || applied {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin workspace agent turn token usage v1: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	hasColumn, err := hasColumnTx(ctx, tx, "workspace_agent_turns", "token_usage_json")
+	if err != nil {
+		return err
+	}
+	if !hasColumn {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE workspace_agent_turns ADD COLUMN token_usage_json TEXT`); err != nil {
+			return fmt.Errorf("add workspace agent turn token_usage_json: %w", err)
+		}
+	}
+	if err := recordMigrationTx(ctx, tx, schemaMigrationWorkspaceAgentTurnTokenUsageV1); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func runInConnTx(ctx context.Context, conn *sql.Conn, fn func(*sql.Tx) error) error {

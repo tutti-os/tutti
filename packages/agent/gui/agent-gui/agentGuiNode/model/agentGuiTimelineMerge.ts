@@ -138,7 +138,13 @@ function mergeTimelineItem(
       : earliestPositiveTimestamp(
           previous.createdAtUnixMs,
           next.createdAtUnixMs
+        ),
+    completedAtUnixMs: preserveLatestMessageTimestamp
+      ? latestPositiveTimestamp(
+          previous.completedAtUnixMs,
+          next.completedAtUnixMs
         )
+      : (next.completedAtUnixMs ?? previous.completedAtUnixMs)
   };
 }
 

@@ -326,6 +326,7 @@ export type AgentActivityUpdatedPayloadV1 =
           error: Record<string, unknown> | null;
           fileChanges: unknown;
           completedCommand: Record<string, unknown> | null;
+          tokenUsage?: Record<string, unknown> | null;
           startedAtUnixMs: number;
           settledAtUnixMs: number | null;
           updatedAtUnixMs: number;

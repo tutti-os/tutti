@@ -4541,14 +4541,15 @@ type WorkspaceAgentTurn struct {
 	Outcome *WorkspaceAgentTurnOutcome `json:"outcome"`
 
 	// Phase Protocol v2 closed turn phase vocabulary. submitted -> running -> waiting (interactions) -> settling -> settled.
-	Phase                 WorkspaceAgentTurnPhase `json:"phase"`
-	SettledAtUnixMs       *int64                  `json:"settledAtUnixMs"`
-	SourceGoalOperationId *string                 `json:"sourceGoalOperationId,omitempty"`
-	SourceGoalRepairEpoch *int64                  `json:"sourceGoalRepairEpoch,omitempty"`
-	SourceGoalRevision    *int64                  `json:"sourceGoalRevision,omitempty"`
-	StartedAtUnixMs       int64                   `json:"startedAtUnixMs"`
-	TurnId                string                  `json:"turnId"`
-	UpdatedAtUnixMs       int64                   `json:"updatedAtUnixMs"`
+	Phase                 WorkspaceAgentTurnPhase       `json:"phase"`
+	SettledAtUnixMs       *int64                        `json:"settledAtUnixMs"`
+	SourceGoalOperationId *string                       `json:"sourceGoalOperationId,omitempty"`
+	SourceGoalRepairEpoch *int64                        `json:"sourceGoalRepairEpoch,omitempty"`
+	SourceGoalRevision    *int64                        `json:"sourceGoalRevision,omitempty"`
+	StartedAtUnixMs       int64                         `json:"startedAtUnixMs"`
+	TokenUsage            *WorkspaceAgentTurnTokenUsage `json:"tokenUsage,omitempty"`
+	TurnId                string                        `json:"turnId"`
+	UpdatedAtUnixMs       int64                         `json:"updatedAtUnixMs"`
 }
 
 // WorkspaceAgentTurnOrigin Durable business provenance; steer is input on an existing turn and is never an origin.
@@ -4584,6 +4585,12 @@ type WorkspaceAgentTurnOutcome string
 
 // WorkspaceAgentTurnPhase Protocol v2 closed turn phase vocabulary. submitted -> running -> waiting (interactions) -> settling -> settled.
 type WorkspaceAgentTurnPhase string
+
+// WorkspaceAgentTurnTokenUsage Per-turn cumulative model token counters. Present only for providers with the tokenUsage capability; omitted for providers without an input/output split.
+type WorkspaceAgentTurnTokenUsage struct {
+	InputTokens  int64 `json:"inputTokens"`
+	OutputTokens int64 `json:"outputTokens"`
+}
 
 // WorkspaceAgentUsage defines model for WorkspaceAgentUsage.
 type WorkspaceAgentUsage struct {

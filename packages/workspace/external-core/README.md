@@ -60,7 +60,7 @@ import { createTuttiExternalRichTextMentionService } from "@tutti-os/workspace-e
 
 const mentionService = createTuttiExternalRichTextMentionService({
   getBridge: () => window.tuttiExternal,
-  providerIds: ["workspace-app", "agent-session", "agent-generated-file"],
+  providerIds: ["workspace-app", "agent-session", "agent-generated-file"]
 });
 ```
 

@@ -2,7 +2,6 @@ import { enAgentGuiProviderIdentity } from "./en.agentGuiProviderIdentity.ts";
 import { enAgentGuiRuntimeNotices } from "./en.agentGuiRuntimeNotices.ts";
 import { enAgentGuiSlashPalette } from "./en.agentGuiSlashPalette.ts";
 import { enAgentGuiSessionActions } from "./en.agentGuiSessionActions.ts";
-
 export const enAgentGui = {
   initialPlaceholder: "Type @ to reference sessions, files, tasks, and apps",
   followupPlaceholder: "Request follow-up changes from {{provider}}",
@@ -531,7 +530,11 @@ export const enAgentGui = {
   goalResumeAction: "Resume goal",
   goalClearAction: "Delete goal",
   goalRemoved: "Goal removed",
-  processing: "Planning next moves",
+  turnProgressAwaiting: "Waiting for response",
+  turnProgressStreaming: "Responding",
+  turnDurationShortSeconds: "{{seconds}}s",
+  turnDurationShortMinutes: "{{minutes}}m",
+  turnDurationShortMinutesSeconds: "{{minutes}}m {{seconds}}s",
   turnProcessedSeconds: "Processed for {{seconds}}s",
   turnProcessedMinutes: "Processed for {{minutes}}m",
   turnProcessedMinutesSeconds: "Processed for {{minutes}}m {{seconds}}s",

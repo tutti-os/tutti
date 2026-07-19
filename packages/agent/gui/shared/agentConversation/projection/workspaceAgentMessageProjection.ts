@@ -92,6 +92,9 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
         ...(occurredAtUnixMs !== undefined ? { occurredAtUnixMs } : {}),
         ...(message.startedAtUnixMs !== undefined
           ? { createdAtUnixMs: message.startedAtUnixMs }
+          : {}),
+        ...(message.completedAtUnixMs !== undefined
+          ? { completedAtUnixMs: message.completedAtUnixMs }
           : {})
       };
     }
@@ -325,6 +328,9 @@ function messageTimelineItem({
     ...(occurredAtUnixMs !== undefined ? { occurredAtUnixMs } : {}),
     ...(message.startedAtUnixMs !== undefined
       ? { createdAtUnixMs: message.startedAtUnixMs }
+      : {}),
+    ...(message.completedAtUnixMs !== undefined
+      ? { completedAtUnixMs: message.completedAtUnixMs }
       : {})
   };
 }

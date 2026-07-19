@@ -1207,7 +1207,8 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
           id: "event-31",
           body: "我先检查项目结构和入口文件。",
           turnId: "turn-1",
-          occurredAtUnixMs: null
+          occurredAtUnixMs: null,
+          completedAtUnixMs: null
         }
       },
       {
@@ -1216,7 +1217,8 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
           id: "event-32",
           body: "已经找到主要模块，继续梳理调用链。",
           turnId: "turn-1",
-          occurredAtUnixMs: null
+          occurredAtUnixMs: null,
+          completedAtUnixMs: null
         }
       }
     ]);
@@ -1288,7 +1290,8 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
           id: "event-36",
           body: thinkingBody,
           turnId: "turn-1",
-          occurredAtUnixMs: null
+          occurredAtUnixMs: null,
+          completedAtUnixMs: null
         }
       }
     ]);
@@ -1316,7 +1319,8 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
           id: "event-33",
           body: "先确认配置是否已经注入。",
           turnId: "turn-1",
-          occurredAtUnixMs: null
+          occurredAtUnixMs: null,
+          completedAtUnixMs: null
         }
       }
     ]);
@@ -1352,7 +1356,8 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
           id: "event-35",
           body: "继续分析这个 session。",
           turnId: "turn-1",
-          occurredAtUnixMs: null
+          occurredAtUnixMs: null,
+          completedAtUnixMs: null
         }
       }
     ]);
@@ -1418,7 +1423,8 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
           id: "event-61",
           body: "我先快速扫一下仓库结构和关键配置，确认这是哪类项目，再基于实际代码做架构分析。",
           turnId: "turn-1",
-          occurredAtUnixMs: null
+          occurredAtUnixMs: null,
+          completedAtUnixMs: null
         }
       },
       {
@@ -1444,7 +1450,8 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
           id: "event-64",
           body: "本地工作目录是空的，所以我按当前公开的 OpenCode 项目来分析。",
           turnId: "turn-1",
-          occurredAtUnixMs: null
+          occurredAtUnixMs: null,
+          completedAtUnixMs: null
         }
       }
     ]);
@@ -1515,7 +1522,8 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
           id: "event-92",
           body: "我先确认文档，再更新实现文件。",
           turnId: "turn-1",
-          occurredAtUnixMs: null
+          occurredAtUnixMs: null,
+          completedAtUnixMs: null
         }
       },
       expect.objectContaining({
@@ -1529,7 +1537,8 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
           id: "event-94",
           body: "已经整理好变更。",
           turnId: "turn-1",
-          occurredAtUnixMs: null
+          occurredAtUnixMs: null,
+          completedAtUnixMs: null
         }
       }
     ]);
@@ -1593,7 +1602,8 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
           id: "event-97",
           body: "我还在确认下一步改动。",
           turnId: "turn-1",
-          occurredAtUnixMs: null
+          occurredAtUnixMs: null,
+          completedAtUnixMs: null
         }
       },
       expect.objectContaining({

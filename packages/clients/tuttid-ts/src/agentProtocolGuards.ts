@@ -91,6 +91,7 @@ const workspaceAgentTurnCompletenessExemplar = {
   error: { message: "" },
   fileChanges: null,
   completedCommand: { kind: "review", status: "completed" },
+  tokenUsage: null,
   startedAtUnixMs: 0,
   settledAtUnixMs: null,
   updatedAtUnixMs: 0

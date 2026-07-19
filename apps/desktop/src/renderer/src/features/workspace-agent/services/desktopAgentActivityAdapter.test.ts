@@ -13,6 +13,7 @@ import { TuttidProtocolError } from "@tutti-os/client-tuttid-ts";
 import {
   agentActivityMessageFromTuttidMessage,
   agentActivitySessionFromTuttidSession,
+  agentActivityTurnFromTuttidTurn,
   createDesktopAgentActivityAdapter
 } from "./desktopAgentActivityAdapter.ts";
 
@@ -172,6 +173,43 @@ test("desktop agent activity adapter maps typed canonical session control fields
   assert.equal(session.updatedAtUnixMs, 20);
   assert.equal("runtimeContext" in session, false);
   assert.equal("lastError" in session, false);
+});
+
+test("desktop agent activity adapter maps turn token usage when present", () => {
+  const turn = agentActivityTurnFromTuttidTurn({
+    agentSessionId: "agent-session-1",
+    completedCommand: null,
+    error: null,
+    fileChanges: null,
+    origin: "user_prompt",
+    outcome: null,
+    phase: "running",
+    settledAtUnixMs: null,
+    startedAtUnixMs: 10,
+    tokenUsage: { inputTokens: 1_234, outputTokens: 56 },
+    turnId: "turn-1",
+    updatedAtUnixMs: 20
+  });
+
+  assert.deepEqual(turn.tokenUsage, { inputTokens: 1_234, outputTokens: 56 });
+});
+
+test("desktop agent activity adapter omits turn token usage when absent", () => {
+  const turn = agentActivityTurnFromTuttidTurn({
+    agentSessionId: "agent-session-1",
+    completedCommand: null,
+    error: null,
+    fileChanges: null,
+    origin: "user_prompt",
+    outcome: null,
+    phase: "running",
+    settledAtUnixMs: null,
+    startedAtUnixMs: 10,
+    turnId: "turn-1",
+    updatedAtUnixMs: 20
+  });
+
+  assert.equal("tokenUsage" in turn, false);
 });
 
 test("desktop agent activity adapter maps tuttid sessions and messages", async () => {

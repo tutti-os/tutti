@@ -82,6 +82,8 @@ type MessagePage = agentstore.MessagePage
 
 type Turn = agentstore.Turn
 
+type TurnTokenUsage = agentstore.TurnTokenUsage
+
 type TurnTransition = agentstore.TurnTransition
 type RootProviderTurnTransition = agentstore.RootProviderTurnTransition
 

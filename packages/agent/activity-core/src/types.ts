@@ -408,6 +408,7 @@ export interface AgentActivityEventTurn {
   error: Record<string, unknown> | null;
   fileChanges: unknown;
   completedCommand: Record<string, unknown> | null;
+  tokenUsage?: AgentActivityTurnTokenUsage | null;
   startedAtUnixMs: number;
   settledAtUnixMs: number | null;
   updatedAtUnixMs: number;
@@ -631,6 +632,15 @@ export interface AgentActivityCompletedCommand {
   status: "completed" | "failed" | "canceled";
 }
 
+/**
+ * Per-turn cumulative model token counters. Present only for providers with
+ * the `tokenUsage` capability; providers without an input/output split omit it.
+ */
+export interface AgentActivityTurnTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export interface AgentActivityTurn {
   agentSessionId: string;
   completedCommand?: AgentActivityCompletedCommand | null;
@@ -644,6 +654,7 @@ export interface AgentActivityTurn {
   sourceGoalRepairEpoch?: number | null;
   settledAtUnixMs?: number | null;
   startedAtUnixMs: number;
+  tokenUsage?: AgentActivityTurnTokenUsage | null;
   turnId: string;
   updatedAtUnixMs: number;
 }

@@ -68,7 +68,8 @@ describe("AgentTranscriptView virtual rendering", () => {
           labels={{
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
-            processing: "Planning next moves",
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
             turnSummary: "Changed files"
           }}
         />
@@ -95,7 +96,8 @@ describe("AgentTranscriptView virtual rendering", () => {
           labels={{
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
-            processing: "Planning next moves",
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
             turnSummary: "Changed files"
           }}
         />
@@ -140,7 +142,8 @@ describe("AgentTranscriptView virtual rendering", () => {
           labels={{
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
-            processing: "Planning next moves",
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
             turnSummary: "Changed files"
           }}
         />
@@ -220,7 +223,8 @@ describe("AgentTranscriptView virtual rendering", () => {
           labels={{
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
-            processing: "Planning next moves",
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
             turnSummary: "Changed files"
           }}
         />
@@ -259,7 +263,8 @@ describe("AgentTranscriptView virtual rendering", () => {
           labels={{
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
-            processing: "Planning next moves",
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
             turnSummary: "Changed files"
           }}
         />
@@ -297,7 +302,8 @@ describe("AgentTranscriptView virtual rendering", () => {
           labels={{
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
-            processing: "Planning next moves",
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
             turnSummary: "Changed files"
           }}
         />
@@ -325,7 +331,8 @@ describe("AgentTranscriptView virtual rendering", () => {
           labels={{
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
-            processing: "Planning next moves",
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
             turnSummary: "Changed files"
           }}
         />
@@ -355,7 +362,8 @@ describe("AgentTranscriptView virtual rendering", () => {
             labels={{
               thinkingLabel: "Thought process",
               toolCallsLabel: (count) => `Tool calls (${count})`,
-              processing: "Planning next moves",
+              turnProgressAwaiting: "Waiting for response",
+              turnProgressStreaming: "Responding",
               turnSummary: "Changed files",
               userMessageLocator: "User messages"
             }}
@@ -389,7 +397,8 @@ describe("AgentTranscriptView virtual rendering", () => {
     const labels = {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
-      processing: "Planning next moves",
+      turnProgressAwaiting: "Waiting for response",
+      turnProgressStreaming: "Responding",
       turnSummary: "Changed files"
     };
     const { rerender } = render(

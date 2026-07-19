@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
+import type { AgentActivitySessionCapabilities } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../workspaceAgentSessionDetailViewModel";
 import {
   projectAgentConversationVM,
@@ -1476,7 +1477,7 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
-  it("uses canonical live turn timing instead of generic processing", () => {
+  it("keeps the progress bar on the canonical active turn even when content rows exist", () => {
     const baseDetail = detailViewModel();
     const conversation = projectAgentConversationVM(
       detailViewModel({
@@ -1498,8 +1499,509 @@ describe("projectAgentConversationVM", () => {
       })
     );
 
-    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
-      false
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        id: "processing:turn-1",
+        turnId: "turn-1",
+        modelPhase: "awaiting",
+        phaseStartedAtUnixMs: 5_000,
+        tokenUsage: null
+      })
+    );
+  });
+
+  it("derives the streaming phase from an in-flight assistant message", () => {
+    const baseDetail = detailViewModel();
+    const baseTurn = baseDetail.turns[0]!;
+    const streamingMessage = {
+      id: "assistant-live",
+      body: "Streaming reply",
+      statusKind: "working" as const,
+      occurredAtUnixMs: 6_500
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1"
+        },
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "running",
+            startedAtUnixMs: 5_000,
+            turnId: "turn-1",
+            updatedAtUnixMs: 6_000
+          }
+        ],
+        turns: [
+          {
+            ...baseTurn,
+            agentMessages: [streamingMessage],
+            agentItems: [{ kind: "message", message: streamingMessage }]
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        modelPhase: "streaming",
+        phaseStartedAtUnixMs: 6_500
+      })
+    );
+  });
+
+  it("derives the streaming phase from an in-flight thinking message", () => {
+    const baseDetail = detailViewModel();
+    const baseTurn = baseDetail.turns[0]!;
+    const streamingThinking = {
+      id: "thinking-live",
+      body: "Reasoning",
+      statusKind: "working" as const,
+      occurredAtUnixMs: 7_000
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1"
+        },
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "running",
+            startedAtUnixMs: 5_000,
+            turnId: "turn-1",
+            updatedAtUnixMs: 6_000
+          }
+        ],
+        turns: [
+          {
+            ...baseTurn,
+            agentMessages: [],
+            agentItems: [{ kind: "thinking", thinking: streamingThinking }]
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        modelPhase: "streaming",
+        phaseStartedAtUnixMs: 7_000
+      })
+    );
+  });
+
+  it("anchors the awaiting phase to tool completion instead of tool start", () => {
+    const baseDetail = detailViewModel();
+    const baseTurn = baseDetail.turns[0]!;
+    const completedMessage = {
+      id: "assistant-1",
+      body: "On it",
+      statusKind: "completed" as const,
+      occurredAtUnixMs: 6_000,
+      completedAtUnixMs: 6_300
+    };
+    const completedCall = {
+      id: "call:1",
+      name: "Read file",
+      toolName: "read_file",
+      callType: "tool",
+      status: "Completed",
+      statusKind: "completed" as const,
+      summary: "/workspace/demo/README.md",
+      payload: null,
+      occurredAtUnixMs: 6_200,
+      completedAtUnixMs: 6_400
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1"
+        },
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "submitted",
+            startedAtUnixMs: 5_000,
+            turnId: "turn-1",
+            updatedAtUnixMs: 6_000
+          }
+        ],
+        turns: [
+          {
+            ...baseTurn,
+            agentMessages: [completedMessage],
+            toolCalls: [completedCall],
+            agentItems: [
+              { kind: "message", message: completedMessage },
+              {
+                kind: "tool-calls",
+                id: "tools-1",
+                toolCalls: [completedCall],
+                toolCallCount: 1,
+                hasFailedToolCall: false
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        modelPhase: "awaiting",
+        phaseStartedAtUnixMs: 6_400
+      })
+    );
+  });
+
+  it("anchors the awaiting phase to assistant message completion", () => {
+    const baseDetail = detailViewModel();
+    const baseTurn = baseDetail.turns[0]!;
+    const completedMessage = {
+      id: "assistant-1",
+      body: "On it",
+      statusKind: "completed" as const,
+      occurredAtUnixMs: 6_000,
+      completedAtUnixMs: 6_900
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1"
+        },
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "running",
+            startedAtUnixMs: 5_000,
+            turnId: "turn-1",
+            updatedAtUnixMs: 6_000
+          }
+        ],
+        turns: [
+          {
+            ...baseTurn,
+            agentMessages: [completedMessage],
+            agentItems: [{ kind: "message", message: completedMessage }]
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        modelPhase: "awaiting",
+        phaseStartedAtUnixMs: 6_900
+      })
+    );
+  });
+
+  it("falls back to item start times when completion is missing", () => {
+    const baseDetail = detailViewModel();
+    const baseTurn = baseDetail.turns[0]!;
+    const completedMessage = {
+      id: "assistant-1",
+      body: "On it",
+      statusKind: "completed" as const,
+      occurredAtUnixMs: 6_000
+    };
+    const completedCall = {
+      id: "call:1",
+      name: "Read file",
+      toolName: "read_file",
+      callType: "tool",
+      status: "Completed",
+      statusKind: "completed" as const,
+      summary: "/workspace/demo/README.md",
+      payload: null,
+      occurredAtUnixMs: 6_200
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1"
+        },
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "submitted",
+            startedAtUnixMs: 5_000,
+            turnId: "turn-1",
+            updatedAtUnixMs: 6_000
+          }
+        ],
+        turns: [
+          {
+            ...baseTurn,
+            agentMessages: [completedMessage],
+            toolCalls: [completedCall],
+            agentItems: [
+              { kind: "message", message: completedMessage },
+              {
+                kind: "tool-calls",
+                id: "tools-1",
+                toolCalls: [completedCall],
+                toolCallCount: 1,
+                hasFailedToolCall: false
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        modelPhase: "awaiting",
+        phaseStartedAtUnixMs: 6_200
+      })
+    );
+  });
+
+  it.each(["waiting", "settling", "settled"] as const)(
+    "hides the progress row while the canonical active turn is %s",
+    (phase) => {
+      const baseDetail = detailViewModel();
+      const conversation = projectAgentConversationVM(
+        detailViewModel({
+          session: {
+            ...baseDetail.session,
+            activeTurnId: "turn-1"
+          },
+          sessionTurns: [
+            {
+              agentSessionId: "session-1",
+              origin: "user_prompt",
+              phase,
+              startedAtUnixMs: 5_000,
+              turnId: "turn-1",
+              updatedAtUnixMs: 6_000
+            }
+          ],
+          showProcessingIndicator: true
+        })
+      );
+
+      expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+        false
+      );
+    }
+  );
+
+  it("shows the progress row while the canonical active turn is submitted", () => {
+    const baseDetail = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1"
+        },
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "submitted",
+            startedAtUnixMs: 5_000,
+            turnId: "turn-1",
+            updatedAtUnixMs: 6_000
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        modelPhase: "awaiting",
+        phaseStartedAtUnixMs: 5_000
+      })
+    );
+  });
+
+  it("shows cumulative turn tokens only when the session has the tokenUsage capability", () => {
+    const baseDetail = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1",
+          capabilities: sessionCapabilities({ tokenUsage: true })
+        },
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "running",
+            startedAtUnixMs: 5_000,
+            tokenUsage: { inputTokens: 1_234, outputTokens: 56 },
+            turnId: "turn-1",
+            updatedAtUnixMs: 6_000
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        tokenUsage: { inputTokens: 1_234, outputTokens: 56 }
+      })
+    );
+  });
+
+  it.each([false, null] as const)(
+    "omits turn tokens when the tokenUsage capability is %s",
+    (tokenUsage) => {
+      const baseDetail = detailViewModel();
+      const conversation = projectAgentConversationVM(
+        detailViewModel({
+          session: {
+            ...baseDetail.session,
+            activeTurnId: "turn-1",
+            capabilities:
+              tokenUsage === null ? null : sessionCapabilities({ tokenUsage })
+          },
+          sessionTurns: [
+            {
+              agentSessionId: "session-1",
+              origin: "user_prompt",
+              phase: "running",
+              startedAtUnixMs: 5_000,
+              tokenUsage: { inputTokens: 1_234, outputTokens: 56 },
+              turnId: "turn-1",
+              updatedAtUnixMs: 6_000
+            }
+          ],
+          showProcessingIndicator: true
+        })
+      );
+
+      expect(
+        conversation.rows.find((row) => row.kind === "processing")
+      ).toEqual(expect.objectContaining({ tokenUsage: null }));
+    }
+  );
+
+  it("omits turn tokens when the active turn carries no tokenUsage", () => {
+    const baseDetail = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1",
+          capabilities: sessionCapabilities({ tokenUsage: true })
+        },
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "running",
+            startedAtUnixMs: 5_000,
+            turnId: "turn-1",
+            updatedAtUnixMs: 6_000
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({ tokenUsage: null })
+    );
+  });
+
+  it("marks the fallback progress row as awaiting without tokens", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({ showProcessingIndicator: true })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        id: "processing:turn-1",
+        modelPhase: "awaiting",
+        phaseStartedAtUnixMs: null,
+        tokenUsage: null
+      })
+    );
+  });
+
+  it("starts the fallback timer at the latest activity of the fallback turn", () => {
+    const baseTurn = detailViewModel().turns[0]!;
+    const completedMessage = {
+      id: "assistant-1",
+      body: "On it",
+      statusKind: "completed" as const,
+      occurredAtUnixMs: 42
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            ...baseTurn,
+            agentMessages: [completedMessage],
+            agentItems: [{ kind: "message", message: completedMessage }]
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        id: "processing:turn-1",
+        modelPhase: "awaiting",
+        phaseStartedAtUnixMs: 42,
+        tokenUsage: null
+      })
+    );
+  });
+
+  it("prefers completion over start for the fallback timer", () => {
+    const baseTurn = detailViewModel().turns[0]!;
+    const completedMessage = {
+      id: "assistant-1",
+      body: "On it",
+      statusKind: "completed" as const,
+      occurredAtUnixMs: 42,
+      completedAtUnixMs: 50
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            ...baseTurn,
+            agentMessages: [completedMessage],
+            agentItems: [{ kind: "message", message: completedMessage }]
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        id: "processing:turn-1",
+        modelPhase: "awaiting",
+        phaseStartedAtUnixMs: 50,
+        tokenUsage: null
+      })
     );
   });
 
@@ -2343,6 +2845,31 @@ function detailViewModel(
       }
     ],
     showProcessingIndicator: true,
+    ...overrides
+  };
+}
+
+function sessionCapabilities(
+  overrides: Partial<AgentActivitySessionCapabilities> = {}
+): AgentActivitySessionCapabilities {
+  return {
+    activeTurnGuidance: false,
+    browserUse: false,
+    compact: false,
+    computerUse: false,
+    goalPause: false,
+    imageInput: false,
+    interrupt: false,
+    modelImageInputRequired: false,
+    permissionModeChangeDeferred: false,
+    permissionModeChangeDuringTurn: false,
+    planImplementation: false,
+    planMode: false,
+    rateLimits: false,
+    resumeRunningTurn: false,
+    review: false,
+    skills: false,
+    tokenUsage: false,
     ...overrides
   };
 }

@@ -48,7 +48,12 @@ export function WorkspaceAgentSessionDetail({
     () => ({
       thinkingLabel,
       toolCallsLabel,
-      processing: translate("agentHost.agentGui.processing"),
+      turnProgressAwaiting: translate(
+        "agentHost.agentGui.turnProgressAwaiting"
+      ),
+      turnProgressStreaming: translate(
+        "agentHost.agentGui.turnProgressStreaming"
+      ),
       turnSummary: translate("agentHost.agentGui.turnSummary"),
       rawTimelineJson: rawTimelineJsonLabel
     }),
@@ -90,7 +95,12 @@ export function WorkspaceAgentSessionDetailSkeleton({
       thinkingLabel: translate("agentHost.workspaceAgentSessionDetailThinking"),
       toolCallsLabel: (count: number) =>
         translate("agentHost.workspaceAgentSessionDetailToolCalls", { count }),
-      processing: translate("agentHost.agentGui.processing"),
+      turnProgressAwaiting: translate(
+        "agentHost.agentGui.turnProgressAwaiting"
+      ),
+      turnProgressStreaming: translate(
+        "agentHost.agentGui.turnProgressStreaming"
+      ),
       turnSummary: translate("agentHost.agentGui.turnSummary")
     }),
     []

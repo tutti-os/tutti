@@ -87,7 +87,8 @@ export function buildCanonicalWorkspaceAgentDetailView({
           body,
           turnId,
           occurredAtUnixMs:
-            item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null
+            item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null,
+          completedAtUnixMs: item.completedAtUnixMs ?? null
         },
         [item]
       );
@@ -125,7 +126,8 @@ export function buildCanonicalWorkspaceAgentDetailView({
             ...(statusKind ? { statusKind } : {}),
             turnId,
             occurredAtUnixMs:
-              item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null
+              item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null,
+            completedAtUnixMs: item.completedAtUnixMs ?? null
           },
           [item]
         );
@@ -149,7 +151,8 @@ export function buildCanonicalWorkspaceAgentDetailView({
           ...(statusKind ? { statusKind } : {}),
           turnId,
           occurredAtUnixMs:
-            item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null
+            item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null,
+          completedAtUnixMs: item.completedAtUnixMs ?? null
         },
         [item]
       );
@@ -175,6 +178,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
           turnId,
           occurredAtUnixMs:
             item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null,
+          completedAtUnixMs: item.completedAtUnixMs ?? null,
           ...(visibleError ? { visibleError } : {}),
           ...(systemNotice ? { systemNotice } : {})
         },

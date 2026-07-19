@@ -52,7 +52,8 @@ interface AgentTranscriptViewProps {
   labels: {
     toolCallsLabel: (count: number) => string;
     thinkingLabel: string;
-    processing: string;
+    turnProgressAwaiting: string;
+    turnProgressStreaming: string;
     turnSummary: string;
     rawTimelineJson?: string;
     userMessageLocator?: string;
@@ -66,7 +67,8 @@ function transcriptLabelsEqual(
   return (
     previous === next ||
     (previous.thinkingLabel === next.thinkingLabel &&
-      previous.processing === next.processing &&
+      previous.turnProgressAwaiting === next.turnProgressAwaiting &&
+      previous.turnProgressStreaming === next.turnProgressStreaming &&
       previous.turnSummary === next.turnSummary &&
       previous.rawTimelineJson === next.rawTimelineJson &&
       previous.userMessageLocator === next.userMessageLocator &&
@@ -99,7 +101,9 @@ function transcriptCanonicalTurnsEqual(
           turn.phase === nextTurn.phase &&
           turn.outcome === nextTurn.outcome &&
           turn.startedAtUnixMs === nextTurn.startedAtUnixMs &&
-          turn.settledAtUnixMs === nextTurn.settledAtUnixMs
+          turn.settledAtUnixMs === nextTurn.settledAtUnixMs &&
+          turn.tokenUsage?.inputTokens === nextTurn.tokenUsage?.inputTokens &&
+          turn.tokenUsage?.outputTokens === nextTurn.tokenUsage?.outputTokens
         );
       }) ??
         true))

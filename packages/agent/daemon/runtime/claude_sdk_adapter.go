@@ -52,9 +52,14 @@ type claudeSDKAdapterSession struct {
 	// live, and Finish* closes dangling calls when the turn reaches a terminal
 	// state. Guarded by the adapter mutex.
 	turnNormalizers map[string]*acpTurnNormalizer
-	liveState       claudeSDKLiveState
-	sendMu          sync.Mutex
-	readerStarted   bool
+	// turnTokenUsage owns each Claude turn's cumulative token counters keyed by
+	// canonical (root) turn id. Entries are created by message_start usage and
+	// removed by the final flush when the turn settles. Guarded by the adapter
+	// mutex.
+	turnTokenUsage map[string]*claudeSDKTurnTokenUsage
+	liveState      claudeSDKLiveState
+	sendMu         sync.Mutex
+	readerStarted  bool
 	// invalid is guarded by the adapter mutex. Once set, a stale Resume
 	// attempt must never put this session back into the live registry.
 	invalid bool

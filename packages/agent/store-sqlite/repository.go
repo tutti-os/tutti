@@ -304,6 +304,14 @@ const (
 	TurnOriginLegacyUnknown     = canonical.TurnOriginLegacyUnknown
 )
 
+// TurnTokenUsage is the per-turn cumulative model token counter pair reported
+// by providers with an input/output split (Claude Code, Codex). It stays nil
+// for providers without that signal instead of storing a fabricated zero.
+type TurnTokenUsage struct {
+	InputTokens  int64 `json:"inputTokens"`
+	OutputTokens int64 `json:"outputTokens"`
+}
+
 // Turn is the protocol v2 execution entity inside either a root or child
 // session. It may originate from a user prompt, Goal control, or an explicit
 // provider-initiated interaction and carries both Goal provenance and the
@@ -317,6 +325,7 @@ type Turn struct {
 	ErrorMessage                           string
 	ErrorCode                              string
 	FileChanges                            map[string]any
+	TokenUsage                             *TurnTokenUsage
 	CompletedCommandKind                   string
 	CompletedCommandStatus                 string
 	FinalAssistantMessageID                string
@@ -372,6 +381,7 @@ type TurnTransition struct {
 	ErrorMessage            string
 	ErrorCode               string
 	FileChanges             map[string]any
+	TokenUsage              *TurnTokenUsage
 	CompletedCommandKind    string
 	CompletedCommandStatus  string
 	FinalAssistantMessageID string

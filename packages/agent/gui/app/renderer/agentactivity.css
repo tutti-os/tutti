@@ -2243,6 +2243,28 @@ aside.workspace-agents-status-panel
   box-shadow: none;
 }
 
+.workspace-agents-status-panel__detail-processing-elapsed {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.workspace-agents-status-panel__detail-processing-tokens {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.75em;
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .group\/thinking-disclosure[data-active="true"] {
   color: var(--text-primary);
 }

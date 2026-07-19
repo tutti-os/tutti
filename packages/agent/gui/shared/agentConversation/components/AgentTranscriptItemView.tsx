@@ -17,7 +17,8 @@ interface AgentTranscriptItemViewProps {
   labels: {
     toolCallsLabel: (count: number) => string;
     thinkingLabel: string;
-    processing: string;
+    turnProgressAwaiting: string;
+    turnProgressStreaming: string;
     turnSummary: string;
     rawTimelineJson?: string;
   };
@@ -112,6 +113,12 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
         />
       );
     case "processing":
-      return <AgentProcessingRow row={row} label={labels.processing} />;
+      return (
+        <AgentProcessingRow
+          row={row}
+          awaitingLabel={labels.turnProgressAwaiting}
+          streamingLabel={labels.turnProgressStreaming}
+        />
+      );
   }
 });

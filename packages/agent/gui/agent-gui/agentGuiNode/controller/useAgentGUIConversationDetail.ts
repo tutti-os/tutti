@@ -1,5 +1,6 @@
 import {
   selectEngineAvailableCommands,
+  selectEngineSession,
   selectEngineTurnsForSession,
   type AgentActivityInteraction,
   type AgentActivityMessage,
@@ -98,6 +99,12 @@ export function useAgentGUIConversationDetail(
   const sessionTurns = useEngineSelector(input.sessionEngine, (state) =>
     selectEngineTurnsForSession(state, input.activeConversationId)
   );
+  const sessionCapabilities = useEngineSelector(
+    input.sessionEngine,
+    (state) =>
+      selectEngineSession(state, input.activeConversationId)?.capabilities ??
+      null
+  );
   const projectionConversation =
     useMemo<AgentGUIConversationProjectionSource | null>(() => {
       if (!input.activeConversation) {
@@ -116,7 +123,8 @@ export function useAgentGUIConversationDetail(
         previous.status === current.status &&
         previous.cwd === current.cwd &&
         previous.activeTurn === input.activeTurn &&
-        previous.sessionTurns === sessionTurns
+        previous.sessionTurns === sessionTurns &&
+        previous.capabilities === sessionCapabilities
       ) {
         return previous;
       }
@@ -130,11 +138,17 @@ export function useAgentGUIConversationDetail(
         cwd: current.cwd,
         updatedAtUnixMs: current.updatedAtUnixMs,
         activeTurn: input.activeTurn,
-        sessionTurns
+        sessionTurns,
+        capabilities: sessionCapabilities
       };
       projectionConversationRef.current = next;
       return next;
-    }, [input.activeConversation, input.activeTurn, sessionTurns]);
+    }, [
+      input.activeConversation,
+      input.activeTurn,
+      sessionTurns,
+      sessionCapabilities
+    ]);
 
   const draftContent = input.activeConversationId
     ? (input.draftByScopeKey[

@@ -15,6 +15,7 @@ export interface WorkspaceAgentSessionDetailMessage {
   statusKind?: ToolCallStatusKind | null;
   turnId?: string;
   occurredAtUnixMs?: number | null;
+  completedAtUnixMs?: number | null;
   sourceTimelineItems?: WorkspaceAgentActivityTimelineItem[];
   visibleError?: {
     code: string | null;
@@ -41,6 +42,7 @@ export interface WorkspaceAgentSessionDetailThinking {
   statusKind?: ToolCallStatusKind | null;
   turnId?: string;
   occurredAtUnixMs?: number | null;
+  completedAtUnixMs?: number | null;
   sourceTimelineItems?: WorkspaceAgentActivityTimelineItem[];
 }
 
@@ -56,6 +58,7 @@ export interface WorkspaceAgentSessionDetailToolCall {
   turnId?: string;
   compactSummary?: string | null;
   occurredAtUnixMs?: number | null;
+  completedAtUnixMs?: number | null;
   sourceTimelineItems?: WorkspaceAgentActivityTimelineItem[];
 }
 

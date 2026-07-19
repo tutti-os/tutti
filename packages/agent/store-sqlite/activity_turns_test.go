@@ -900,3 +900,96 @@ INSERT INTO workspace_agent_messages (
 		t.Fatal("insert orphan turn message error = nil, want FK rejection")
 	}
 }
+
+func TestRecordTurnTransitionRoundTripsTokenUsage(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-usage")
+
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-usage", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 100,
+	}); err != nil || !accepted {
+		t.Fatalf("record running turn accepted=%v error=%v", accepted, err)
+	}
+	turn, ok, err := store.GetTurn(ctx, "ws-1", "session-usage", "turn-1")
+	if err != nil || !ok {
+		t.Fatalf("GetTurn() ok=%v error=%v", ok, err)
+	}
+	if turn.TokenUsage != nil {
+		t.Fatalf("turn without token report TokenUsage = %#v, want nil", turn.TokenUsage)
+	}
+	var rawUsage any
+	if err := store.db.QueryRowContext(ctx, `SELECT token_usage_json FROM workspace_agent_turns WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-usage' AND turn_id = 'turn-1'`).Scan(&rawUsage); err != nil {
+		t.Fatalf("read token_usage_json: %v", err)
+	}
+	if rawUsage != nil {
+		t.Fatalf("token_usage_json = %v, want NULL for a turn without a report", rawUsage)
+	}
+
+	// A mid-turn flush persists the cumulative counters.
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-usage", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 200,
+		TokenUsage: &TurnTokenUsage{InputTokens: 1200, OutputTokens: 340},
+	}); err != nil || !accepted {
+		t.Fatalf("record token usage flush accepted=%v error=%v", accepted, err)
+	}
+	turn, ok, err = store.GetTurn(ctx, "ws-1", "session-usage", "turn-1")
+	if err != nil || !ok {
+		t.Fatalf("GetTurn() after flush ok=%v error=%v", ok, err)
+	}
+	if turn.TokenUsage == nil || turn.TokenUsage.InputTokens != 1200 || turn.TokenUsage.OutputTokens != 340 {
+		t.Fatalf("turn token usage = %#v, want {1200 340}", turn.TokenUsage)
+	}
+
+	// The settle transition carries no counters; the stored values survive.
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-usage", TurnID: "turn-1",
+		Phase: TurnPhaseSettled, Outcome: TurnOutcomeCompleted, OccurredAtUnixMS: 300,
+	}); err != nil || !accepted {
+		t.Fatalf("record settle accepted=%v error=%v", accepted, err)
+	}
+	turn, ok, err = store.GetTurn(ctx, "ws-1", "session-usage", "turn-1")
+	if err != nil || !ok {
+		t.Fatalf("GetTurn() after settle ok=%v error=%v", ok, err)
+	}
+	if turn.TokenUsage == nil || turn.TokenUsage.InputTokens != 1200 || turn.TokenUsage.OutputTokens != 340 {
+		t.Fatalf("settled turn token usage = %#v, want counters kept", turn.TokenUsage)
+	}
+
+	// A settled turn is terminal: a late flush is rejected, never persisted.
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-usage", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 400,
+		TokenUsage: &TurnTokenUsage{InputTokens: 9, OutputTokens: 9},
+	}); err != nil || accepted {
+		t.Fatalf("late post-settle flush accepted=%v error=%v, want rejected", accepted, err)
+	}
+	turn, ok, err = store.GetTurn(ctx, "ws-1", "session-usage", "turn-1")
+	if err != nil || !ok {
+		t.Fatalf("GetTurn() after late flush ok=%v error=%v", ok, err)
+	}
+	if turn.TokenUsage == nil || turn.TokenUsage.InputTokens != 1200 || turn.TokenUsage.OutputTokens != 340 {
+		t.Fatalf("token usage after rejected late flush = %#v, want unchanged", turn.TokenUsage)
+	}
+}
+
+func TestMigrateAppliesTurnTokenUsageColumnIdempotently(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+
+	hasColumn, err := store.hasColumn(ctx, "workspace_agent_turns", "token_usage_json")
+	if err != nil || !hasColumn {
+		t.Fatalf("token_usage_json column present=%v error=%v", hasColumn, err)
+	}
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("second Migrate() error = %v", err)
+	}
+	hasColumn, err = store.hasColumn(ctx, "workspace_agent_turns", "token_usage_json")
+	if err != nil || !hasColumn {
+		t.Fatalf("token_usage_json column after second Migrate present=%v error=%v", hasColumn, err)
+	}
+}

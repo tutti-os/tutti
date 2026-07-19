@@ -8,7 +8,7 @@ import (
 
 const agentTurnSelectSQL = `
 SELECT workspace_id, agent_session_id, turn_id, phase, outcome, error_json,
-	       file_changes_json, completed_command_json, backfilled,
+	       file_changes_json, token_usage_json, completed_command_json, backfilled,
 	       started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
 	       turn_origin, COALESCE(source_goal_operation_id, ''), COALESCE(source_goal_revision, 0),
 	       COALESCE(source_goal_repair_epoch, 0),
@@ -22,6 +22,7 @@ func scanAgentTurn(scanner rowScanner) (Turn, error) {
 	var outcome sql.NullString
 	var errorJSON sql.NullString
 	var fileChangesJSON sql.NullString
+	var tokenUsageJSON sql.NullString
 	var completedCommandJSON sql.NullString
 	var settledAt sql.NullInt64
 	var rootProviderTurnID, rootProviderTurnPhase, rootProviderTurnOutcome sql.NullString
@@ -35,6 +36,7 @@ func scanAgentTurn(scanner rowScanner) (Turn, error) {
 		&outcome,
 		&errorJSON,
 		&fileChangesJSON,
+		&tokenUsageJSON,
 		&completedCommandJSON,
 		&backfilled,
 		&turn.StartedAtUnixMS,
@@ -73,6 +75,13 @@ func scanAgentTurn(scanner rowScanner) (Turn, error) {
 		if turn.FileChanges, err = unmarshalJSONMap(fileChangesJSON.String); err != nil {
 			return Turn{}, fmt.Errorf("decode workspace agent turn file changes: %w", err)
 		}
+	}
+	if tokenUsageJSON.Valid && strings.TrimSpace(tokenUsageJSON.String) != "" {
+		usage, err := unmarshalTurnTokenUsage(tokenUsageJSON.String)
+		if err != nil {
+			return Turn{}, fmt.Errorf("decode workspace agent turn token usage: %w", err)
+		}
+		turn.TokenUsage = &usage
 	}
 	if completedCommandJSON.Valid && strings.TrimSpace(completedCommandJSON.String) != "" {
 		decoded, err := unmarshalJSONMap(completedCommandJSON.String)

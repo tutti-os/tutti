@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:39e753d5c669864b"
+	BusinessEventCatalogRevision = "sha256:e260608f7786d220"
 )
 
 type Topic string

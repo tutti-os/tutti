@@ -105,6 +105,7 @@ func TestGeneratedWorkspaceAgentTurnCoversAllFields(t *testing.T) {
 		ErrorMessage:           "provider exploded",
 		ErrorCode:              "provider_error",
 		FileChanges:            map[string]any{"added": 1},
+		TokenUsage:             &agentactivitybiz.TurnTokenUsage{InputTokens: 1200, OutputTokens: 340},
 		CompletedCommandKind:   "review",
 		CompletedCommandStatus: "completed",
 		StartedAtUnixMS:        1717200000000,

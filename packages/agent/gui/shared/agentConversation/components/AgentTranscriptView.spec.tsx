@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
+import type { AgentActivitySessionCapabilities } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../workspaceAgentSessionDetailViewModel";
 import {
   AgentTranscriptView,
@@ -33,7 +34,8 @@ describe("AgentTranscriptView", () => {
     const labels = {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
-      processing: "Planning next moves",
+      turnProgressAwaiting: "Waiting for response",
+      turnProgressStreaming: "Responding",
       turnSummary: "Changed files"
     };
     const conversation = projectAgentConversationVM(detailViewModel());
@@ -57,7 +59,8 @@ describe("AgentTranscriptView", () => {
     const labels = {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
-      processing: "Planning next moves",
+      turnProgressAwaiting: "Waiting for response",
+      turnProgressStreaming: "Responding",
       turnSummary: "Changed files"
     };
     const conversation = projectAgentConversationVM(
@@ -87,7 +90,8 @@ describe("AgentTranscriptView", () => {
     const labels = {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
-      processing: "Planning next moves",
+      turnProgressAwaiting: "Waiting for response",
+      turnProgressStreaming: "Responding",
       turnSummary: "Changed files"
     };
     const conversation = projectAgentConversationVM(
@@ -116,7 +120,8 @@ describe("AgentTranscriptView", () => {
     const labels = {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
-      processing: "Planning next moves",
+      turnProgressAwaiting: "Waiting for response",
+      turnProgressStreaming: "Responding",
       turnSummary: "Changed files"
     };
     const conversation = projectAgentConversationVM(detailViewModel());
@@ -146,7 +151,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -186,7 +192,8 @@ describe("AgentTranscriptView", () => {
           labels={{
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
-            processing: "Planning next moves",
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
             turnSummary: "Changed files"
           }}
         />
@@ -208,7 +215,8 @@ describe("AgentTranscriptView", () => {
     const labels = {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
-      processing: "Planning next moves",
+      turnProgressAwaiting: "Waiting for response",
+      turnProgressStreaming: "Responding",
       turnSummary: "Changed files"
     };
     const settledTurn = canonicalTurn({
@@ -281,7 +289,8 @@ describe("AgentTranscriptView", () => {
     const labels = {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
-      processing: "Planning next moves",
+      turnProgressAwaiting: "Waiting for response",
+      turnProgressStreaming: "Responding",
       turnSummary: "Changed files"
     };
     const settledTurn = canonicalTurn({
@@ -350,7 +359,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -377,7 +387,8 @@ describe("AgentTranscriptView", () => {
     const labels = {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
-      processing: "Planning next moves",
+      turnProgressAwaiting: "Waiting for response",
+      turnProgressStreaming: "Responding",
       turnSummary: "Changed files"
     };
     const { rerender } = render(
@@ -406,12 +417,102 @@ describe("AgentTranscriptView", () => {
     );
 
     const processingRow = screen
-      .getByText("Planning next moves")
+      .getByText("Waiting for response")
       .closest("[data-agent-transcript-row]");
     expect(processingRow).toBeInstanceOf(HTMLElement);
     expect(processingRow).not.toHaveAttribute(
       "data-agent-transcript-row-enter"
     );
+  });
+
+  it("renders the active-turn progress bar with elapsed time and token usage", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(20_000);
+    try {
+      const base = detailViewModel();
+      render(
+        <AgentTranscriptView
+          conversation={projectAgentConversationVM(
+            detailViewModel({
+              session: {
+                ...base.session,
+                activeTurnId: "turn-1",
+                capabilities: sessionCapabilities({ tokenUsage: true })
+              },
+              sessionTurns: [
+                canonicalTurn({
+                  startedAtUnixMs: 8_000,
+                  tokenUsage: { inputTokens: 12_345, outputTokens: 300 }
+                })
+              ],
+              showProcessingIndicator: true
+            })
+          )}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
+            turnSummary: "Changed files"
+          }}
+        />
+      );
+
+      expect(screen.getByText("Waiting for response")).toBeTruthy();
+      expect(screen.getByText("12s")).toBeTruthy();
+      expect(screen.getByText("↑ 12.3k")).toBeTruthy();
+      expect(screen.getByText("↓ 300")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("switches the progress bar to streaming while an assistant message is in flight", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(20_000);
+    try {
+      const base = detailViewModel();
+      const streamingMessage = {
+        id: "assistant-live",
+        body: "Streaming reply",
+        statusKind: "working" as const,
+        occurredAtUnixMs: 18_000
+      };
+      render(
+        <AgentTranscriptView
+          conversation={projectAgentConversationVM(
+            detailViewModel({
+              session: {
+                ...base.session,
+                activeTurnId: "turn-1"
+              },
+              sessionTurns: [canonicalTurn({ startedAtUnixMs: 8_000 })],
+              turns: [
+                {
+                  ...base.turns[0]!,
+                  agentMessages: [streamingMessage],
+                  agentItems: [{ kind: "message", message: streamingMessage }]
+                }
+              ],
+              showProcessingIndicator: true
+            })
+          )}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
+            turnSummary: "Changed files"
+          }}
+        />
+      );
+
+      expect(screen.getByText("Responding")).toBeTruthy();
+      expect(screen.getByText("2s")).toBeTruthy();
+      expect(screen.queryByText("Waiting for response")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renders a divider between transcript turns", () => {
@@ -445,7 +546,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -494,7 +596,8 @@ describe("AgentTranscriptView", () => {
           labels={{
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
-            processing: "Planning next moves",
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
             turnSummary: "Changed files",
             userMessageLocator: "User messages"
           }}
@@ -586,7 +689,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files",
           userMessageLocator: "User messages"
         }}
@@ -639,7 +743,8 @@ describe("AgentTranscriptView", () => {
           labels={{
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
-            processing: "Planning next moves",
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
             turnSummary: "Changed files",
             userMessageLocator: "User messages"
           }}
@@ -724,7 +829,8 @@ describe("AgentTranscriptView", () => {
             labels={{
               thinkingLabel: "Thought process",
               toolCallsLabel: (count) => `Tool calls (${count})`,
-              processing: "Planning next moves",
+              turnProgressAwaiting: "Waiting for response",
+              turnProgressStreaming: "Responding",
               turnSummary: "Changed files",
               userMessageLocator: "User messages"
             }}
@@ -826,7 +932,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files",
           userMessageLocator: "User messages"
         }}
@@ -893,7 +1000,8 @@ describe("AgentTranscriptView", () => {
           labels={{
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
-            processing: "Planning next moves",
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
             turnSummary: "Changed files",
             userMessageLocator: "User messages"
           }}
@@ -952,7 +1060,8 @@ describe("AgentTranscriptView", () => {
           labels={{
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
-            processing: "Planning next moves",
+            turnProgressAwaiting: "Waiting for response",
+            turnProgressStreaming: "Responding",
             turnSummary: "Changed files",
             userMessageLocator: "User messages"
           }}
@@ -990,7 +1099,8 @@ describe("AgentTranscriptView", () => {
     const labels = {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
-      processing: "Planning next moves",
+      turnProgressAwaiting: "Waiting for response",
+      turnProgressStreaming: "Responding",
       turnSummary: "Changed files",
       userMessageLocator: "User messages"
     };
@@ -1036,7 +1146,8 @@ describe("AgentTranscriptView", () => {
     const labels = {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
-      processing: "Planning next moves",
+      turnProgressAwaiting: "Waiting for response",
+      turnProgressStreaming: "Responding",
       turnSummary: "Changed files",
       userMessageLocator: "User messages"
     };
@@ -1155,7 +1266,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -1201,7 +1313,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -1265,7 +1378,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -1315,7 +1429,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -1389,7 +1504,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -1464,7 +1580,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -1517,7 +1634,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -1643,7 +1761,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -1737,7 +1856,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -1810,7 +1930,8 @@ describe("AgentTranscriptView", () => {
         labels={{
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
+          turnProgressAwaiting: "Waiting for response",
+          turnProgressStreaming: "Responding",
           turnSummary: "Changed files"
         }}
       />
@@ -1964,6 +2085,31 @@ function canonicalTurn(
   };
 }
 
+function sessionCapabilities(
+  overrides: Partial<AgentActivitySessionCapabilities> = {}
+): AgentActivitySessionCapabilities {
+  return {
+    activeTurnGuidance: false,
+    browserUse: false,
+    compact: false,
+    computerUse: false,
+    goalPause: false,
+    imageInput: false,
+    interrupt: false,
+    modelImageInputRequired: false,
+    permissionModeChangeDeferred: false,
+    permissionModeChangeDuringTurn: false,
+    planImplementation: false,
+    planMode: false,
+    rateLimits: false,
+    resumeRunningTurn: false,
+    review: false,
+    skills: false,
+    tokenUsage: false,
+    ...overrides
+  };
+}
+
 function translateTestKey(
   key: string,
   options: Record<string, unknown> = {}
@@ -1983,6 +2129,12 @@ function translateTestKey(
       return `Total ${minutes}m`;
     case "agentHost.agentGui.turnTotalMinutesSeconds":
       return `Total ${minutes}m ${seconds}s`;
+    case "agentHost.agentGui.turnDurationShortSeconds":
+      return `${seconds}s`;
+    case "agentHost.agentGui.turnDurationShortMinutes":
+      return `${minutes}m`;
+    case "agentHost.agentGui.turnDurationShortMinutesSeconds":
+      return `${minutes}m ${seconds}s`;
     case "agentHost.agentGui.expandTurnWork":
       return "Expand task details";
     case "agentHost.agentGui.collapseTurnWork":

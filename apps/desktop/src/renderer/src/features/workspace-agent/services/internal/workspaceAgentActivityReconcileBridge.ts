@@ -1,13 +1,15 @@
 import {
   type AgentActivityMessagePage,
   type AgentActivitySession,
-  type AgentActivitySnapshot
+  type AgentActivitySnapshot,
+  type AgentActivityTurnTokenUsage
 } from "@tutti-os/agent-activity-core";
 import {
   createAgentActivitySnapshotProjector,
   parseInlineActivityMessages,
   selectEngineSession
 } from "@tutti-os/agent-activity-core";
+import type { AgentActivityUpdatedPayloadV1 } from "@tutti-os/client-tuttid-ts";
 import type { WorkspaceAgentActivityEnsureSessionSynchronizedInput } from "../workspaceAgentActivityService.interface.ts";
 import type { WorkspaceAgentSessionEngineHost } from "./workspaceAgentSessionEngineHost.ts";
 import {
@@ -398,7 +400,9 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         (event) => {
           const payload = event.payload;
           if (payload.workspaceId.trim() !== workspaceId) return;
-          this.scheduleAgentActivityUpdate(payload);
+          this.scheduleAgentActivityUpdate(
+            bridgeEventFromActivityUpdatedPayload(payload)
+          );
         },
         { scope: { workspaceId } }
       )
@@ -842,4 +846,45 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       this.liveReconcileSessionKeys.add(key);
     }
   }
+}
+
+function bridgeEventFromActivityUpdatedPayload(
+  payload: AgentActivityUpdatedPayloadV1
+): WorkspaceAgentActivityBridgeEvent {
+  if (payload.eventType !== "turn_update") {
+    return payload;
+  }
+  const turn = payload.data?.turn;
+  if (turn == null) {
+    // Defensive: turn_update payloads without a turn body (loose fixtures)
+    // pass through untouched, as they did before the tokenUsage coercion.
+    return payload as unknown as WorkspaceAgentActivityBridgeEvent;
+  }
+  const { tokenUsage: rawTokenUsage, ...restTurn } = turn;
+  return {
+    ...payload,
+    data: {
+      ...payload.data,
+      turn: {
+        ...restTurn,
+        ...(rawTokenUsage !== undefined
+          ? {
+              tokenUsage: agentActivityTurnTokenUsageFromUnknown(rawTokenUsage)
+            }
+          : {})
+      }
+    }
+  };
+}
+
+function agentActivityTurnTokenUsageFromUnknown(
+  value: unknown
+): AgentActivityTurnTokenUsage | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const { inputTokens, outputTokens } = value as Record<string, unknown>;
+  return typeof inputTokens === "number" && typeof outputTokens === "number"
+    ? { inputTokens, outputTokens }
+    : null;
 }

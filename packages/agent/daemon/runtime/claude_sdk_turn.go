@@ -202,7 +202,15 @@ func (a *ClaudeCodeSDKAdapter) finishClaudeSDKTurnLifecycle(
 		hasActiveCompact = false
 	}
 	a.mu.Unlock()
-	events := make([]activityshared.Event, 0, 2)
+	events := make([]activityshared.Event, 0, 3)
+	// The final token counter flush must precede the completing events: a
+	// settled turn rejects later transitions, so a post-settle flush would be
+	// dropped by the store.
+	if inputTokens, outputTokens, ok := a.takeClaudeSDKTurnTokenUsageFinal(adapterSession, turnID); ok {
+		if flush, ok := turnTokenUsageEvent(session, turnID, inputTokens, outputTokens); ok {
+			events = append(events, flush)
+		}
+	}
 	if hasActiveCompact {
 		events = append(events, claudeSDKCompactMessageEvent(
 			session,

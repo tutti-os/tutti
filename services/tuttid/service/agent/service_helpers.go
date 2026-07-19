@@ -94,6 +94,10 @@ func cloneActivityTurn(value *agentactivitybiz.Turn) *agentactivitybiz.Turn {
 	}
 	cloned := *value
 	cloned.FileChanges = clonePayload(value.FileChanges)
+	if value.TokenUsage != nil {
+		tokenUsage := *value.TokenUsage
+		cloned.TokenUsage = &tokenUsage
+	}
 	return &cloned
 }
 

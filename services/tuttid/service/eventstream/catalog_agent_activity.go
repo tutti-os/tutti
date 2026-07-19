@@ -73,9 +73,15 @@ type agentActivityTurnData struct {
 	Error                 *agentActivityTurnErrorData    `json:"error"`
 	FileChanges           *map[string]any                `json:"fileChanges"`
 	CompletedCommand      *agentActivityCompletedCommand `json:"completedCommand"`
+	TokenUsage            *agentActivityTurnTokenUsage   `json:"tokenUsage,omitempty"`
 	StartedAtUnixMS       *int64                         `json:"startedAtUnixMs"`
 	SettledAtUnixMS       *int64                         `json:"settledAtUnixMs"`
 	UpdatedAtUnixMS       *int64                         `json:"updatedAtUnixMs"`
+}
+
+type agentActivityTurnTokenUsage struct {
+	InputTokens  int64 `json:"inputTokens"`
+	OutputTokens int64 `json:"outputTokens"`
 }
 
 type agentActivityTurnErrorData struct {

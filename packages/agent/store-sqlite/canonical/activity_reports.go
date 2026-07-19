@@ -102,9 +102,18 @@ type WorkspaceAgentTurnStateUpdate struct {
 	CompletedCommand        *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
 	SubmitAvailability      *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
 	FileChanges             map[string]any                    `json:"fileChanges,omitempty"`
+	TokenUsage              *WorkspaceAgentTurnTokenUsage     `json:"tokenUsage,omitempty"`
 	StartedAtUnixMS         int64                             `json:"startedAtUnixMs,omitempty"`
 	CompletedAtUnixMS       int64                             `json:"completedAtUnixMs,omitempty"`
 	FinalAssistantMessageID string                            `json:"finalAssistantMessageId,omitempty"`
+}
+
+// WorkspaceAgentTurnTokenUsage carries the per-turn cumulative model token
+// counters across the state-report wire. It is present only for providers
+// with an input/output split (Claude Code, Codex).
+type WorkspaceAgentTurnTokenUsage struct {
+	InputTokens  int64 `json:"inputTokens"`
+	OutputTokens int64 `json:"outputTokens"`
 }
 
 type WorkspaceAgentCompletedCommand struct {

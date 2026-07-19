@@ -935,7 +935,8 @@ function transcriptLabels() {
   return {
     thinkingLabel: "Thought process",
     toolCallsLabel: (count: number) => `Tool calls (${count})`,
-    processing: "Planning next moves",
+    turnProgressAwaiting: "Waiting for response",
+    turnProgressStreaming: "Responding",
     turnSummary: "Changed files"
   };
 }

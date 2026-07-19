@@ -295,6 +295,8 @@ export type {
   AgentActivityTurn,
   AgentActivityTurnOrigin,
   AgentActivityTurnCancelResponse,
+  AgentActivityTurnPhase,
+  AgentActivityTurnTokenUsage,
   AgentActivityInteraction,
   AgentActivityUpdatedApplyResult,
   AgentActivityUpdatedEvent

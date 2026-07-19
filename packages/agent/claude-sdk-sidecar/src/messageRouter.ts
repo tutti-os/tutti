@@ -208,6 +208,13 @@ export class SDKMessageRouter {
     if (streamEvent.type === "message_start") {
       if (!parentToolUseID) {
         this.assistant.setMessageBase(stringValue(streamEvent.message?.id));
+        const usage = recordValue(streamEvent.message?.usage);
+        if (usage) {
+          this.emit({
+            type: "usage_updated",
+            payload: { turnId: this.turns.activeId, messageStart: true, usage }
+          });
+        }
       }
       return;
     }

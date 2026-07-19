@@ -605,6 +605,7 @@ export function agentActivityTurnFromTuttidTurn(
       : {}),
     settledAtUnixMs: turn.settledAtUnixMs,
     startedAtUnixMs: turn.startedAtUnixMs,
+    ...(turn.tokenUsage !== undefined ? { tokenUsage: turn.tokenUsage } : {}),
     turnId: turn.turnId,
     updatedAtUnixMs: turn.updatedAtUnixMs
   };

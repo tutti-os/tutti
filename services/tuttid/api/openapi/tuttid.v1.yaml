@@ -8015,6 +8015,10 @@ components:
           allOf:
             - $ref: "#/components/schemas/WorkspaceAgentCompletedCommand"
           nullable: true
+        tokenUsage:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentTurnTokenUsage"
+          nullable: true
         startedAtUnixMs:
           type: integer
           format: int64
@@ -8025,6 +8029,25 @@ components:
           nullable: true
           minimum: 0
         updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceAgentTurnTokenUsage:
+      type: object
+      description: >-
+        Per-turn cumulative model token counters. Present only for providers
+        with the tokenUsage capability; omitted for providers without an
+        input/output split.
+      additionalProperties: false
+      required:
+        - inputTokens
+        - outputTokens
+      properties:
+        inputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+        outputTokens:
           type: integer
           format: int64
           minimum: 0

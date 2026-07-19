@@ -117,7 +117,8 @@ export function toolCallView(
       payload: normalizedPayload(item.payload),
       turnId: item.turnId?.trim() || undefined,
       compactSummary: display.detail ?? "",
-      occurredAtUnixMs: item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null
+      occurredAtUnixMs: item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null,
+      completedAtUnixMs: item.completedAtUnixMs ?? null
     },
     [item]
   );

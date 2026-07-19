@@ -1215,6 +1215,7 @@ export type {
   WorkspaceAgentTurnError,
   WorkspaceAgentTurnOutcome,
   WorkspaceAgentTurnPhase,
+  WorkspaceAgentTurnTokenUsage,
   WorkspaceAgentUsage,
   WorkspaceAgentUsageContextWindow,
   WorkspaceAgentUsageQuota,

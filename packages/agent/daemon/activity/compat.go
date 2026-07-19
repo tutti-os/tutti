@@ -407,6 +407,7 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 			CompletedCommand:        cloneCompletedCommand(patch.Turn.CompletedCommand),
 			SubmitAvailability:      cloneSubmitAvailability(patch.Turn.SubmitAvailability),
 			FileChanges:             clonePayloadMap(patch.Turn.FileChanges),
+			TokenUsage:              cloneTurnTokenUsage(patch.Turn.TokenUsage),
 			StartedAtUnixMS:         patch.Turn.StartedAtUnixMS,
 			CompletedAtUnixMS:       patch.Turn.CompletedAtUnixMS,
 			FinalAssistantMessageID: strings.TrimSpace(patch.Turn.FinalAssistantMessageID),
@@ -448,6 +449,14 @@ func cloneCompletedCommand(value *WorkspaceAgentCompletedCommand) *WorkspaceAgen
 		Kind:   strings.TrimSpace(value.Kind),
 		Status: strings.TrimSpace(value.Status),
 	}
+}
+
+func cloneTurnTokenUsage(value *WorkspaceAgentTurnTokenUsage) *WorkspaceAgentTurnTokenUsage {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func cloneSubmitAvailability(value *WorkspaceAgentSubmitAvailability) *WorkspaceAgentSubmitAvailability {

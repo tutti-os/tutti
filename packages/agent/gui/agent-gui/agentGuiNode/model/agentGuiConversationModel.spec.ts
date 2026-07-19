@@ -1223,6 +1223,110 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
+  it("keeps the latest message completion timestamp when merging timeline items", () => {
+    const merged = mergeAgentGUITimelineItems(
+      [
+        {
+          id: 31,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          turnId: "turn-1",
+          seq: 2,
+          eventId: "assistant-1",
+          actorType: "agent",
+          actorId: "codex",
+          itemType: "message.assistant",
+          role: "assistant",
+          content: "Working",
+          status: "in_progress",
+          occurredAtUnixMs: 40,
+          createdAtUnixMs: 40,
+          completedAtUnixMs: 50
+        }
+      ],
+      [
+        {
+          id: 32,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          turnId: "turn-1",
+          seq: 3,
+          eventId: "assistant-1",
+          actorType: "agent",
+          actorId: "codex",
+          itemType: "message.assistant",
+          role: "assistant",
+          content: "Working more",
+          status: "completed",
+          occurredAtUnixMs: 40,
+          createdAtUnixMs: 40,
+          completedAtUnixMs: 45
+        }
+      ]
+    );
+
+    expect(merged).toEqual([
+      expect.objectContaining({
+        eventId: "assistant-1",
+        completedAtUnixMs: 50
+      })
+    ]);
+  });
+
+  it("lets the incoming tool call completion timestamp win when merging", () => {
+    const merged = mergeAgentGUITimelineItems(
+      [
+        {
+          id: 41,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          turnId: "turn-1",
+          seq: 2,
+          eventId: "call-1",
+          actorType: "agent",
+          actorId: "codex",
+          itemType: "call.started",
+          role: "assistant",
+          callType: "tool",
+          callId: "call:1",
+          name: "read_file",
+          status: "running",
+          occurredAtUnixMs: 40,
+          createdAtUnixMs: 40,
+          completedAtUnixMs: 42
+        }
+      ],
+      [
+        {
+          id: 42,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          turnId: "turn-1",
+          seq: 3,
+          eventId: "call-1",
+          actorType: "agent",
+          actorId: "codex",
+          itemType: "call.completed",
+          role: "assistant",
+          callType: "tool",
+          callId: "call:1",
+          name: "read_file",
+          status: "completed",
+          occurredAtUnixMs: 60,
+          createdAtUnixMs: 40,
+          completedAtUnixMs: 60
+        }
+      ]
+    );
+
+    expect(merged).toEqual([
+      expect.objectContaining({
+        callId: "call:1",
+        completedAtUnixMs: 60
+      })
+    ]);
+  });
+
   it("keeps distinct user prompts from different turns when event ids are missing but seq matches", () => {
     expect(
       mergeAgentGUITimelineItems(

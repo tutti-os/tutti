@@ -133,6 +133,9 @@ type WorkspaceAgentRootProviderTurnTransition = canonical.WorkspaceAgentRootProv
 // Deprecated: use canonical.WorkspaceAgentTurnStateUpdate.
 type WorkspaceAgentTurnStateUpdate = canonical.WorkspaceAgentTurnStateUpdate
 
+// Deprecated: use canonical.WorkspaceAgentTurnTokenUsage.
+type WorkspaceAgentTurnTokenUsage = canonical.WorkspaceAgentTurnTokenUsage
+
 // Deprecated: use canonical.WorkspaceAgentCompletedCommand.
 type WorkspaceAgentCompletedCommand = canonical.WorkspaceAgentCompletedCommand
 
@@ -341,6 +344,7 @@ type WorkspaceAgentTurnPatch struct {
 	CompletedCommand        *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
 	SubmitAvailability      *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
 	FileChanges             map[string]any                    `json:"fileChanges,omitempty"`
+	TokenUsage              *WorkspaceAgentTurnTokenUsage     `json:"tokenUsage,omitempty"`
 	StartedAtUnixMS         int64                             `json:"startedAtUnixMs,omitempty"`
 	CompletedAtUnixMS       int64                             `json:"completedAtUnixMs,omitempty"`
 	FinalAssistantMessageID string                            `json:"finalAssistantMessageId,omitempty"`

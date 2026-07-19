@@ -117,6 +117,7 @@ func turnTransitionFromStateInput(
 			Phase:                   phase,
 			Outcome:                 normalizeTurnOutcomeV2(turn.Outcome),
 			FileChanges:             clonePayload(turn.FileChanges),
+			TokenUsage:              turnTokenUsageFromStateUpdate(turn.TokenUsage),
 			StartedAtUnixMS:         turn.StartedAtUnixMS,
 			SettledAtUnixMS:         turn.CompletedAtUnixMS,
 			OccurredAtUnixMS:        state.OccurredAtUnixMS,
@@ -137,6 +138,19 @@ func turnTransitionFromStateInput(
 	}
 
 	return agentactivitybiz.TurnTransition{}, false
+}
+
+// turnTokenUsageFromStateUpdate copies the optional token counters from the
+// state-report wire type into the durable transition type; nil stays nil so
+// providers without an input/output split never persist a fabricated zero.
+func turnTokenUsageFromStateUpdate(value *canonical.WorkspaceAgentTurnTokenUsage) *agentactivitybiz.TurnTokenUsage {
+	if value == nil {
+		return nil
+	}
+	return &agentactivitybiz.TurnTokenUsage{
+		InputTokens:  value.InputTokens,
+		OutputTokens: value.OutputTokens,
+	}
 }
 
 // normalizeTurnPhaseV2 maps the open runtime phase vocabulary onto the
@@ -228,6 +242,13 @@ func GeneratedWorkspaceAgentTurn(turn agentactivitybiz.Turn) tuttigenerated.Work
 		cloned := clonePayload(turn.FileChanges)
 		fileChanges = &cloned
 	}
+	var tokenUsage *tuttigenerated.WorkspaceAgentTurnTokenUsage
+	if turn.TokenUsage != nil {
+		tokenUsage = &tuttigenerated.WorkspaceAgentTurnTokenUsage{
+			InputTokens:  turn.TokenUsage.InputTokens,
+			OutputTokens: turn.TokenUsage.OutputTokens,
+		}
+	}
 	var settledAt *int64
 	if turn.SettledAtUnixMS > 0 {
 		value := turn.SettledAtUnixMS
@@ -261,6 +282,7 @@ func GeneratedWorkspaceAgentTurn(turn agentactivitybiz.Turn) tuttigenerated.Work
 		SourceGoalOperationId: sourceGoalOperationID,
 		SourceGoalRevision:    sourceGoalRevision,
 		SourceGoalRepairEpoch: sourceGoalRepairEpoch,
+		TokenUsage:            tokenUsage,
 		TurnId:                strings.TrimSpace(turn.TurnID),
 		UpdatedAtUnixMs:       turn.UpdatedAtUnixMS,
 	}

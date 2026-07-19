@@ -248,6 +248,15 @@ type codexAppServerSession struct {
 	canceledProviderThreads map[string]struct{}
 	activeTurn              *codexAppServerActiveTurn
 	childThreads            map[string]*codexAppServerThreadContext
+	// threadTokenTotals holds each thread's latest cumulative
+	// ThreadTokenUsage.total split (output includes reasoning); a turn's token
+	// baseline snapshots its own thread's value at turn/started. Guarded by
+	// the adapter mutex.
+	threadTokenTotals map[string]codexThreadTokenTotal
+	// turnTokenUsage accumulates per-turn token counters keyed by canonical
+	// turn id; entries are removed by the final pre-settle flush or when the
+	// active turn slot is released. Guarded by the adapter mutex.
+	turnTokenUsage map[string]*codexTurnTokenUsage
 	// recentForeignDrops remembers recently dropped unknown thread ids so a
 	// late registration can report how many events the ordering gap lost.
 	recentForeignDrops map[string]int

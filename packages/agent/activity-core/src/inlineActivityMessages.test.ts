@@ -20,6 +20,7 @@ const completeTurnContract = {
   sourceGoalRepairEpoch: 3,
   sourceGoalRevision: 4,
   startedAtUnixMs: 1,
+  tokenUsage: null,
   turnId: "turn-contract",
   updatedAtUnixMs: 2
 } as const satisfies Required<AgentActivityTurn>;

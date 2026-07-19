@@ -3,22 +3,175 @@ package agentruntime
 import (
 	"log/slog"
 	"strings"
+	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func (a *CodexAppServerAdapter) applyTokenUsage(agentSessionID string, params map[string]any) {
-	usage, ok := appServerTokenUsageState(params)
-	if !ok {
+// codexThreadTokenTotal is one thread's latest cumulative
+// ThreadTokenUsage.total split (output includes reasoning); a turn's token
+// baseline snapshots its own thread's value at turn/started.
+type codexThreadTokenTotal struct {
+	input  int64
+	output int64
+}
+
+// codexTurnTokenUsage tracks one turn's token counters as a diff against the
+// thread-cumulative ThreadTokenUsage.total snapshot taken at turn/started.
+// codex replays cumulative thread totals on resume, so a total below the
+// recorded baseline means the baseline is stale: reset it down to the
+// observed total and clamp the diff at zero rather than reporting negative
+// tokens.
+type codexTurnTokenUsage struct {
+	baselineInput  int64
+	baselineOutput int64
+	inputTokens    int64
+	outputTokens   int64
+	lastFlushAt    time.Time
+}
+
+func (c *codexTurnTokenUsage) snapshotBaseline(inputTokens int64, outputTokens int64) {
+	if c == nil {
 		return
 	}
+	c.baselineInput = inputTokens
+	c.baselineOutput = outputTokens
+}
+
+func (c *codexTurnTokenUsage) applyTotal(inputTokens int64, outputTokens int64) {
+	if c == nil {
+		return
+	}
+	if inputTokens < c.baselineInput {
+		c.baselineInput = inputTokens
+	}
+	if outputTokens < c.baselineOutput {
+		c.baselineOutput = outputTokens
+	}
+	c.inputTokens = inputTokens - c.baselineInput
+	c.outputTokens = outputTokens - c.baselineOutput
+}
+
+// ensureCodexTurnTokenUsageLocked returns the turn's token counter, creating
+// it on first use. Caller must hold the adapter mutex.
+func (appSession *codexAppServerSession) ensureCodexTurnTokenUsageLocked(turnID string) *codexTurnTokenUsage {
+	if appSession.turnTokenUsage == nil {
+		appSession.turnTokenUsage = make(map[string]*codexTurnTokenUsage)
+	}
+	if counter := appSession.turnTokenUsage[turnID]; counter != nil {
+		return counter
+	}
+	counter := &codexTurnTokenUsage{}
+	appSession.turnTokenUsage[turnID] = counter
+	return counter
+}
+
+// snapshotCodexTurnTokenBaseline records the current thread-cumulative totals
+// as the turn's diff baseline at turn/started; with no total seen yet for the
+// turn's thread the baseline is zero. Totals are keyed by thread: codex
+// reports ThreadTokenUsage per thread, and subagent child threads share this
+// session, so a shared slot would mix unrelated cumulative counters.
+func (a *CodexAppServerAdapter) snapshotCodexTurnTokenBaseline(agentSessionID string, turnID string, threadID string) {
+	turnID = strings.TrimSpace(turnID)
+	if a == nil || turnID == "" {
+		return
+	}
+	threadID = strings.TrimSpace(threadID)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession == nil {
 		return
 	}
-	appSession.usage = mergeACPUsageState(appSession.usage, usage)
+	total := appSession.threadTokenTotals[threadID]
+	appSession.ensureCodexTurnTokenUsageLocked(turnID).snapshotBaseline(total.input, total.output)
+}
+
+func (a *CodexAppServerAdapter) applyTokenUsage(agentSessionID string, turnID string, params map[string]any) (int64, int64, bool) {
+	usage, usageOK := appServerTokenUsageState(params)
+	totalInput, totalOutput, totalOK := appServerThreadTokenTotal(params)
+	threadID := strings.TrimSpace(asString(params["threadId"]))
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return 0, 0, false
+	}
+	if usageOK {
+		appSession.usage = mergeACPUsageState(appSession.usage, usage)
+	}
+	if !totalOK {
+		return 0, 0, false
+	}
+	if appSession.threadTokenTotals == nil {
+		appSession.threadTokenTotals = make(map[string]codexThreadTokenTotal)
+	}
+	appSession.threadTokenTotals[threadID] = codexThreadTokenTotal{input: totalInput, output: totalOutput}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return 0, 0, false
+	}
+	counter, tracked := appSession.turnTokenUsage[turnID]
+	if !tracked {
+		// turn/started never produced a baseline for this turn (for example a
+		// notification buffered behind goal-turn adoption): treat the first
+		// observed total as the baseline so earlier turns on the same thread
+		// are not double counted.
+		counter = appSession.ensureCodexTurnTokenUsageLocked(turnID)
+		counter.snapshotBaseline(totalInput, totalOutput)
+	}
+	counter.applyTotal(totalInput, totalOutput)
+	now := time.Now()
+	if now.Sub(counter.lastFlushAt) < tokenUsageFlushInterval {
+		return 0, 0, false
+	}
+	counter.lastFlushAt = now
+	return counter.inputTokens, counter.outputTokens, true
+}
+
+// takeCodexTurnTokenUsageFinal removes the turn's counter and reports its
+// final cumulative values. A settled turn rejects later transitions, so the
+// caller must emit this flush before the turn's completing events.
+func (a *CodexAppServerAdapter) takeCodexTurnTokenUsageFinal(agentSessionID string, turnID string) (int64, int64, bool) {
+	turnID = strings.TrimSpace(turnID)
+	if a == nil || turnID == "" {
+		return 0, 0, false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return 0, 0, false
+	}
+	counter := appSession.turnTokenUsage[turnID]
+	if counter == nil {
+		return 0, 0, false
+	}
+	delete(appSession.turnTokenUsage, turnID)
+	return counter.inputTokens, counter.outputTokens, true
+}
+
+// appServerThreadTokenTotal extracts the thread-cumulative totals used for
+// per-turn diffs: total.inputTokens, and total.outputTokens +
+// total.reasoningOutputTokens (reasoning is model output the turn paid for).
+func appServerThreadTokenTotal(params map[string]any) (int64, int64, bool) {
+	total := payloadObject(payloadObject(params["tokenUsage"])["total"])
+	if len(total) == 0 {
+		return 0, 0, false
+	}
+	input, inputOK := firstInt64Value(total, "inputTokens")
+	output, outputOK := firstInt64Value(total, "outputTokens")
+	reasoning, _ := firstInt64Value(total, "reasoningOutputTokens")
+	if !inputOK && !outputOK {
+		return 0, 0, false
+	}
+	if input < 0 {
+		input = 0
+	}
+	if output += reasoning; output < 0 {
+		output = 0
+	}
+	return input, output, true
 }
 
 // appServerTokenUsageState parses a thread/tokenUsage/updated payload into the

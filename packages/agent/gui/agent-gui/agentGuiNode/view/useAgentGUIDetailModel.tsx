@@ -228,12 +228,14 @@ export function useAgentGUIDetailModel(input: Input) {
     () => ({
       thinkingLabel: labels.thinkingLabel,
       toolCallsLabel: labels.toolCallsLabel,
-      processing: labels.processing,
+      turnProgressAwaiting: labels.turnProgressAwaiting,
+      turnProgressStreaming: labels.turnProgressStreaming,
       turnSummary: labels.turnSummary,
       userMessageLocator: labels.userMessageLocator
     }),
     [
-      labels.processing,
+      labels.turnProgressAwaiting,
+      labels.turnProgressStreaming,
       labels.thinkingLabel,
       labels.toolCallsLabel,
       labels.turnSummary,

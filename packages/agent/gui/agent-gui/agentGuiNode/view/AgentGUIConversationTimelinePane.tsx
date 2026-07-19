@@ -22,7 +22,8 @@ interface AgentGUIConversationTimelinePaneProps {
   labels: {
     thinkingLabel: string;
     toolCallsLabel: (count: number) => string;
-    processing: string;
+    turnProgressAwaiting: string;
+    turnProgressStreaming: string;
     turnSummary: string;
     userMessageLocator: string;
   };

@@ -117,7 +117,11 @@ func (a *CodexAppServerAdapter) endActiveTurn(agentSessionID string, turn *codex
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-	if appSession == nil || appSession.activeTurn != turn {
+	if appSession == nil {
+		return
+	}
+	delete(appSession.turnTokenUsage, strings.TrimSpace(turn.turnID))
+	if appSession.activeTurn != turn {
 		return
 	}
 	providerTurnID := strings.TrimSpace(appSession.activeTurnID)

@@ -184,6 +184,7 @@ export function timelineSessionFromItems(
     cwd: conversation?.cwd?.trim() ?? "",
     activeTurn: conversation?.activeTurn ?? null,
     activeTurnId: conversation?.activeTurn?.turnId ?? null,
+    capabilities: conversation?.capabilities ?? null,
     latestTurnInteractions: [],
     pendingInteractions: [],
     title: conversation?.title ?? "",

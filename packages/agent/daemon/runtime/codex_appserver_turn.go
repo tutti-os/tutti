@@ -135,6 +135,15 @@ func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTu
 	appTurn.settleFinalized.Store(true)
 	session := appTurn.session
 	turnID := appTurn.turnID
+	// The final token counter flush must lead the terminal batch: a settled
+	// turn rejects later transitions, so a post-settle flush would be dropped
+	// by the store.
+	var flushEvents []activityshared.Event
+	if inputTokens, outputTokens, ok := a.takeCodexTurnTokenUsageFinal(agentSessionID, turnID); ok {
+		if flush, ok := turnTokenUsageEvent(session, turnID, inputTokens, outputTokens); ok {
+			flushEvents = []activityshared.Event{flush}
+		}
+	}
 	if terminal.err != nil {
 		if errors.Is(terminal.err, context.Canceled) ||
 			errors.Is(terminal.err, errPermissionRequestCanceled) ||
@@ -149,7 +158,7 @@ func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTu
 				activityshared.TurnOutcomeCanceled,
 				map[string]any{"error": terminal.err.Error()},
 			))
-			appTurn.emitTerminal(terminalEvents)
+			appTurn.emitTerminal(append(flushEvents, terminalEvents...))
 		} else {
 			terminalEvents := appTurn.normalizer.FinishFailed(session, turnID)
 			terminalEvents = append(terminalEvents, appServerRootProviderTurnCompletedEvent(
@@ -159,11 +168,11 @@ func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTu
 				activityshared.TurnOutcomeFailed,
 				acpFailureMetadata(terminal.err),
 			))
-			appTurn.emitTerminal(terminalEvents)
+			appTurn.emitTerminal(append(flushEvents, terminalEvents...))
 		}
 	} else {
 		appTurn.normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(terminal.turn))
-		appTurn.emitTerminal(appServerTurnTerminalEvents(session, turnID, terminal.turn, appTurn.normalizer))
+		appTurn.emitTerminal(append(flushEvents, appServerTurnTerminalEvents(session, turnID, terminal.turn, appTurn.normalizer)...))
 	}
 	appTurn.processMu.Unlock()
 	a.endActiveTurn(agentSessionID, appTurn)

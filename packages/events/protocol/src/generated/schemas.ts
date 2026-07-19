@@ -1166,6 +1166,20 @@ export const agentActivityUpdatedPayloadSchema = {
                     }
                   }
                 },
+                tokenUsage: {
+                  type: ["object", "null"],
+                  required: ["inputTokens", "outputTokens"],
+                  properties: {
+                    inputTokens: {
+                      type: "integer",
+                      minimum: 0
+                    },
+                    outputTokens: {
+                      type: "integer",
+                      minimum: 0
+                    }
+                  }
+                },
                 startedAtUnixMs: {
                   type: "integer",
                   minimum: 0

@@ -1588,9 +1588,18 @@ export type WorkspaceAgentTurn = {
     [key: string]: unknown;
   } | null;
   completedCommand: WorkspaceAgentCompletedCommand | null;
+  tokenUsage?: WorkspaceAgentTurnTokenUsage | null;
   startedAtUnixMs: number;
   settledAtUnixMs: number | null;
   updatedAtUnixMs: number;
+};
+
+/**
+ * Per-turn cumulative model token counters. Present only for providers with the tokenUsage capability; omitted for providers without an input/output split.
+ */
+export type WorkspaceAgentTurnTokenUsage = {
+  inputTokens: number;
+  outputTokens: number;
 };
 
 export type WorkspaceAgentInteractionKind = "approval" | "question" | "plan";

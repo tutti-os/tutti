@@ -156,6 +156,8 @@ completed | failed | canceled | interrupted
 
 Cancellation targets an exact Turn. `cancel_requested`, provider confirmation, and canonical settlement are distinct facts; UI must not manufacture an early terminal outcome.
 
+A Turn may carry cumulative `tokenUsage` (input/output model tokens) for providers with the `tokenUsage` capability. The daemon owns the counters and flushes them through Turn transitions; providers without an input/output split never emit the field, and clients must not estimate tokens locally.
+
 ### 3.3 Interaction
 
 An Interaction represents an approval, question, or plan confirmation that requires user handling:
@@ -259,6 +261,8 @@ Rail selection, detail hydration, older-page loading, and transcript projection 
 A focused controller may own detail paging/loading/error. Canonical messages, Turns, Interactions, and optimistic prompts still come from the engine. An empty message list means neither hydrated nor not-found.
 
 Timeline projection is pure, deterministic, and provider-neutral. React views render rows/cards and dispatch actions.
+
+The active-turn progress row (awaiting-response vs streaming phase, plus its per-phase elapsed timer) is derived in the timeline projection from the canonical Turn phase and in-flight message timestamps, never from a provider-specific wire phase, and it hides while a tool call runs. Token counters shown on that row come only from the canonical Turn's `tokenUsage`.
 
 ## 5. Agent identity and provider architecture
 

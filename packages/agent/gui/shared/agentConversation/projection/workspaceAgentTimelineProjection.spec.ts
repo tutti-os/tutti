@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeAgentActivitySession,
   type AgentActivitySession,
+  type AgentActivitySessionCapabilities,
   type AgentActivityTurn
 } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
@@ -713,6 +714,116 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
 
     expect(detail.showProcessingIndicator).toBe(false);
   });
+
+  it("derives the streaming phase and turn tokens from the canonical active turn", () => {
+    const streamingTimelineItems: WorkspaceAgentActivityTimelineItem[] = [
+      timelineItems()[0]!,
+      {
+        id: 99,
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        turnId: "turn-1",
+        seq: 99,
+        eventId: "event-99",
+        actorType: "agent",
+        actorId: "codex",
+        itemType: "message.assistant",
+        role: "assistant",
+        status: "in_progress",
+        content: "Working on it",
+        occurredAtUnixMs: 99,
+        createdAtUnixMs: 99
+      }
+    ];
+    const liveSession = {
+      ...session({
+        effectiveStatus: "working",
+        turnPhase: "working"
+      }),
+      activeTurn: activeTurn("running"),
+      activeTurnId: "turn-1",
+      capabilities: tokenCapabilities(true)
+    };
+    const liveTurn = {
+      ...activeTurn("running"),
+      tokenUsage: { inputTokens: 1_200, outputTokens: 45 }
+    };
+
+    const conversation = projectWorkspaceAgentTimelineToConversationVM({
+      activity: activity(),
+      session: liveSession,
+      sessionTurns: [liveTurn],
+      workspaceRoot: "/workspace/demo",
+      timelineItems: streamingTimelineItems
+    });
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        modelPhase: "streaming",
+        phaseStartedAtUnixMs: 99,
+        tokenUsage: { inputTokens: 1_200, outputTokens: 45 }
+      })
+    );
+  });
+
+  it("keeps the awaiting phase after a completed reply and gates tokens on capability", () => {
+    const completedReplyTimelineItems: WorkspaceAgentActivityTimelineItem[] = [
+      timelineItems()[0]!,
+      {
+        id: 99,
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        turnId: "turn-1",
+        seq: 99,
+        eventId: "event-99",
+        actorType: "agent",
+        actorId: "codex",
+        itemType: "message.assistant",
+        role: "assistant",
+        status: "completed",
+        content: "I will now dispatch the sub-agents.",
+        occurredAtUnixMs: 99,
+        createdAtUnixMs: 99
+      }
+    ];
+    const liveSession = {
+      ...session({
+        effectiveStatus: "working",
+        turnPhase: "working"
+      }),
+      activeTurn: activeTurn("running"),
+      activeTurnId: "turn-1",
+      capabilities: tokenCapabilities(false)
+    };
+    const liveTurn = {
+      ...activeTurn("running"),
+      tokenUsage: { inputTokens: 1_200, outputTokens: 45 }
+    };
+
+    const detail = buildCanonicalWorkspaceAgentDetailView({
+      activity: activity(),
+      session: liveSession,
+      sessionTurns: [liveTurn],
+      workspaceRoot: "/workspace/demo",
+      timelineItems: completedReplyTimelineItems
+    });
+    const conversation = projectWorkspaceAgentTimelineToConversationVM({
+      activity: activity(),
+      session: liveSession,
+      sessionTurns: [liveTurn],
+      workspaceRoot: "/workspace/demo",
+      timelineItems: completedReplyTimelineItems
+    });
+
+    expect(detail.showProcessingIndicator).toBe(true);
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        modelPhase: "awaiting",
+        phaseStartedAtUnixMs: 99,
+        tokenUsage: null
+      })
+    );
+  });
 });
 
 function activity(
@@ -791,6 +902,30 @@ function activeTurn(phase: "running" | "settled") {
     startedAtUnixMs: 1,
     turnId: "turn-1",
     updatedAtUnixMs: 10
+  };
+}
+
+function tokenCapabilities(
+  tokenUsage: boolean
+): AgentActivitySessionCapabilities {
+  return {
+    activeTurnGuidance: false,
+    browserUse: false,
+    compact: false,
+    computerUse: false,
+    goalPause: false,
+    imageInput: false,
+    interrupt: false,
+    modelImageInputRequired: false,
+    permissionModeChangeDeferred: false,
+    permissionModeChangeDuringTurn: false,
+    planImplementation: false,
+    planMode: false,
+    rateLimits: false,
+    resumeRunningTurn: false,
+    review: false,
+    skills: false,
+    tokenUsage
   };
 }
 

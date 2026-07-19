@@ -159,6 +159,7 @@ func (r codexAppServerReducer) reduceNotification(
 		if providerTurnID == "" {
 			return emit(nil)
 		}
+		a.snapshotCodexTurnTokenBaseline(session.AgentSessionID, turnID, firstNonEmpty(asString(params["threadId"]), session.ProviderSessionID))
 		if ctx, ok := activityEventContext(session, "root-provider-turn-started:"+providerTurnID, turnID); ok {
 			return emit([]activityshared.Event{activityshared.NewRootProviderTurnStarted(ctx, turnID, providerTurnID)})
 		}
@@ -194,11 +195,16 @@ func (r codexAppServerReducer) reduceNotification(
 		events, _ := normalizer.ToolCallEvents(session, turnID, update)
 		return emit(events)
 	case appServerNotifyTokenUsage:
-		a.applyTokenUsage(session.AgentSessionID, params)
-		if event, ok := normalizedUsageUpdatedEvent(session); ok {
-			return emit([]activityshared.Event{event})
+		events := []activityshared.Event{}
+		if inputTokens, outputTokens, ok := a.applyTokenUsage(session.AgentSessionID, turnID, params); ok {
+			if flush, ok := turnTokenUsageEvent(session, turnID, inputTokens, outputTokens); ok {
+				events = append(events, flush)
+			}
 		}
-		return codexAppServerReduction{}
+		if event, ok := normalizedUsageUpdatedEvent(session); ok {
+			events = append(events, event)
+		}
+		return emit(events)
 	case appServerNotifyRateLimitsUpdated:
 		a.applyRateLimits(session.AgentSessionID, payloadObject(params["rateLimits"]))
 		if event, ok := normalizedUsageUpdatedEvent(session); ok {
