@@ -24,6 +24,7 @@ export interface IpcRegistrationDependencies {
     DesktopFileDialogAccess,
     | "selectAppArchive"
     | "selectAppArchiveExportPath"
+    | "selectAgentConversationExportPath"
     | "selectAppIconImage"
     | "selectDirectory"
     | "selectUploadFiles"

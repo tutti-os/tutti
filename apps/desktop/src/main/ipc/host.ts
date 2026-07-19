@@ -12,6 +12,7 @@ export interface HostIpcDependencies {
     DesktopFileDialogAccess,
     | "selectAppArchive"
     | "selectAppArchiveExportPath"
+    | "selectAgentConversationExportPath"
     | "selectAppIconImage"
     | "selectDirectory"
     | "selectUploadFiles"

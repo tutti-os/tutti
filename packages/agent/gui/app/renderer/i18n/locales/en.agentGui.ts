@@ -1,3 +1,4 @@
+import { enAgentConversationExport } from "./en.agentConversationExport.ts";
 import { enAgentGuiProviderIdentity } from "./en.agentGuiProviderIdentity.ts";
 import { enAgentGuiRuntimeNotices } from "./en.agentGuiRuntimeNotices.ts";
 import { enAgentGuiSlashPalette } from "./en.agentGuiSlashPalette.ts";
@@ -323,6 +324,7 @@ export const enAgentGui = {
   copyMessage: "Copy message",
   copyImage: "Copy image",
   messageCopied: "Copied",
+  ...enAgentConversationExport,
   promptTipsPrefix: "Tips: ",
   reviewPicker: {
     title: "Code review",

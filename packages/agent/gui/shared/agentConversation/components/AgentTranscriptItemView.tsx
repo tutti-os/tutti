@@ -27,10 +27,17 @@ interface AgentTranscriptItemViewProps {
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   previewMode?: boolean;
+  printMode?: boolean;
   showRawTimelineJson?: boolean;
   toolGroupExpanded?: boolean;
   toolGroupExpansionKey?: string;
   onToolGroupExpandedChange?: (key: string, expanded: boolean) => void;
+  exportSelection?: {
+    checked: boolean;
+    label: string;
+    onToggle: () => void;
+    selectionMode: boolean;
+  };
 }
 
 export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
@@ -44,10 +51,12 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
   availableSkills,
   workspaceAppIcons,
   previewMode = false,
+  printMode = false,
   showRawTimelineJson = false,
   toolGroupExpanded,
   toolGroupExpansionKey,
-  onToolGroupExpandedChange
+  onToolGroupExpandedChange,
+  exportSelection
 }: AgentTranscriptItemViewProps): JSX.Element {
   "use memo";
 
@@ -67,7 +76,9 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
   );
   switch (row.kind) {
     case "generated-image":
-      return <AgentGeneratedImageRow row={row} />;
+      return (
+        <AgentGeneratedImageRow row={row} exportSelection={exportSelection} />
+      );
     case "message":
       return (
         <AgentMessageBlock
@@ -80,9 +91,11 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           availableSkills={availableSkills}
           workspaceAppIcons={workspaceAppIcons}
           previewMode={previewMode}
+          printMode={printMode}
           thinkingLabel={labels.thinkingLabel}
           showRawTimelineJson={showRawTimelineJson}
           rawTimelineJsonLabel={labels.rawTimelineJson}
+          exportSelection={exportSelection}
         />
       );
     case "tool-group":

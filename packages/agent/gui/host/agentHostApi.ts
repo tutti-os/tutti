@@ -56,6 +56,28 @@ export type AgentHostEnvironmentApi = AgentHostRecord & {
   getBaseUrl?: () => AgentHostAsyncResult<string>;
 };
 
+export type AgentHostConversationExportInput =
+  | {
+      content: string;
+      format: "markdown";
+      suggestedFileName: string;
+    }
+  | {
+      format: "pdf";
+      renderSource: "current-renderer";
+      suggestedFileName: string;
+    };
+
+export type AgentHostConversationExportResult =
+  | { status: "canceled" }
+  | { status: "saved"; path: string };
+
+export type AgentHostConversationExportApi = {
+  save: (
+    input: AgentHostConversationExportInput
+  ) => AgentHostAsyncResult<AgentHostConversationExportResult>;
+};
+
 export type AgentHostPersistenceApi = AgentHostRecord & {
   readWorkspaceAgentReadState: (
     input: ReadWorkspaceAgentReadStateInput
@@ -155,6 +177,7 @@ export interface AgentHostInputApi {
   agentSessions?: AgentHostAgentSessionsApi;
   agentTargetSetup?: AgentHostAgentTargetSetupApi;
   clipboard: AgentHostClipboardApi;
+  conversationExport?: AgentHostConversationExportApi;
   debug?: AgentHostDebugApi;
   filesystem: AgentHostFilesystemApi;
   meta?: AgentHostMetaApi;
@@ -348,6 +371,7 @@ export interface AgentHostRuntimeApi {
   account?: AgentHostAccountApi;
   agentTargetSetup?: AgentHostAgentTargetSetupApi;
   clipboard: AgentHostClipboardApi;
+  conversationExport?: AgentHostConversationExportApi;
   debug?: AgentHostDebugApi;
   filesystem: AgentHostFilesystemApi;
   meta?: AgentHostMetaApi;
@@ -367,6 +391,7 @@ export function toAgentHostRuntimeApi(
     account: hostApi.account,
     agentTargetSetup: hostApi.agentTargetSetup,
     clipboard: hostApi.clipboard,
+    conversationExport: hostApi.conversationExport,
     debug: hostApi.debug,
     filesystem: hostApi.filesystem,
     meta: hostApi.meta,

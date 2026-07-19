@@ -2,6 +2,7 @@ import {
   desktopIpcChannels,
   type DesktopArchiveAgentPromptFileInput,
   type DesktopArchiveAgentPromptFileResult,
+  type DesktopAgentConversationExportInput,
   type DesktopClipboardImagePayload,
   type DesktopCreateUserDocumentsProjectDirectoryInput,
   type DesktopTerminalLinkPathPayload,
@@ -12,10 +13,18 @@ import {
   DESKTOP_AGENT_PROMPT_FILE_MAX_BYTES,
   DESKTOP_AGENT_PROMPT_FILE_TOO_LARGE_ERROR_CODE
 } from "../../shared/agentPromptAssets.ts";
-import { app, shell } from "electron";
-import { createHash } from "node:crypto";
+import { app, shell, type WebContents } from "electron";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { chmod, copyFile, mkdir, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  rename,
+  stat,
+  unlink,
+  writeFile
+} from "node:fs/promises";
 import path from "node:path";
 import {
   writeFilesToSystemClipboard,
@@ -27,12 +36,14 @@ import type { WorkspaceFileIconCacheStore } from "../host/workspaceFileIconCache
 import { registerDesktopIpcHandler } from "./handle";
 import { resolveOwnerWindowFromEvent } from "./ownerWindow";
 import { resolveDesktopDefaultsFromEnv } from "../defaults";
+import { saveAgentConversationExport } from "../agentConversationExport.ts";
 
 export interface HostFilesIpcDependencies {
   fileDialogs: Pick<
     DesktopFileDialogAccess,
     | "selectAppArchive"
     | "selectAppArchiveExportPath"
+    | "selectAgentConversationExportPath"
     | "selectAppIconImage"
     | "selectDirectory"
     | "selectUploadFiles"
@@ -148,6 +159,20 @@ export function registerHostFilesIpc(deps: HostFilesIpcDependencies): void {
       )
   );
   registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.exportAgentConversation,
+    (event, input: DesktopAgentConversationExportInput) =>
+      saveAgentConversationExport(input, {
+        renderPdf: () => renderAgentConversationPdf(event.sender),
+        selectSavePath: (format, suggestedFileName) =>
+          deps.fileDialogs.selectAgentConversationExportPath?.(
+            format,
+            suggestedFileName,
+            resolveOwnerWindowFromEvent(event)
+          ) ?? Promise.resolve(null),
+        writeFile: writeAgentConversationExportAtomically
+      })
+  );
+  registerDesktopIpcHandler(
     desktopIpcChannels.host.files.selectAppIconImage,
     (event) =>
       deps.fileDialogs.selectAppIconImage(resolveOwnerWindowFromEvent(event))
@@ -172,6 +197,31 @@ export function registerHostFilesIpc(deps: HostFilesIpcDependencies): void {
       writeFilesToSystemClipboard(payload);
     }
   );
+}
+
+async function renderAgentConversationPdf(
+  webContents: WebContents
+): Promise<Uint8Array> {
+  return await webContents.printToPDF({
+    displayHeaderFooter: false,
+    pageSize: "A4",
+    preferCSSPageSize: true,
+    printBackground: true
+  });
+}
+
+async function writeAgentConversationExportAtomically(
+  destinationPath: string,
+  content: string | Uint8Array
+): Promise<void> {
+  const temporaryPath = `${destinationPath}.tutti-${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, content);
+    await rename(temporaryPath, destinationPath);
+  } catch (error) {
+    await unlink(temporaryPath).catch(() => undefined);
+    throw error;
+  }
 }
 
 async function archiveAgentPromptFile(

@@ -225,6 +225,9 @@ function createWebPlatformApi(): DesktopPlatformApi {
 function createWebHostApi(): DesktopHostApi {
   return {
     files: {
+      exportAgentConversation() {
+        return Promise.reject(electronDebugRequired("exportAgentConversation"));
+      },
       createUserDocumentsProjectDirectory() {
         return Promise.reject(
           electronDebugRequired("createUserDocumentsProjectDirectory")

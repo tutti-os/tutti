@@ -7,6 +7,7 @@ import {
   type ReactNode
 } from "react";
 import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
+import { Checkbox } from "@tutti-os/ui-system";
 import { formatAgentMessageTimestamp } from "../../../app/renderer/shell/utils/format";
 import { AgentPlanCard } from "./AgentPlanCard";
 import { translate } from "../../../i18n/index";
@@ -57,8 +58,15 @@ interface AgentMessageBlockProps {
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   previewMode?: boolean;
+  printMode?: boolean;
   showRawTimelineJson?: boolean;
   rawTimelineJsonLabel?: string;
+  exportSelection?: {
+    checked: boolean;
+    label: string;
+    onToggle: () => void;
+    selectionMode: boolean;
+  };
 }
 
 export function AgentMessageBlock({
@@ -72,8 +80,10 @@ export function AgentMessageBlock({
   availableSkills,
   workspaceAppIcons,
   previewMode = false,
+  printMode = false,
   showRawTimelineJson = false,
-  rawTimelineJsonLabel = ""
+  rawTimelineJsonLabel = "",
+  exportSelection
 }: AgentMessageBlockProps): JSX.Element {
   "use memo";
   const agentHostApi = useOptionalAgentHostApi();
@@ -213,6 +223,7 @@ export function AgentMessageBlock({
               copyText={message.copyText ?? null}
               occurredAtUnixMs={message.occurredAtUnixMs}
               speaker={row.speaker}
+              exportSelection={exportSelection}
               onCopyMessageText={handleCopyMessageText}
             >
               {content}
@@ -229,7 +240,23 @@ export function AgentMessageBlock({
               copyText={copyText}
               occurredAtUnixMs={message.occurredAtUnixMs}
               speaker={row.speaker}
+              exportSelection={exportSelection}
               onCopyMessageText={handleCopyMessageText}
+            >
+              {content}
+            </AgentCopyableMessageGroup>
+          );
+        }
+
+        if (exportSelection || printMode) {
+          return (
+            <AgentCopyableMessageGroup
+              key={message.id}
+              copyText={null}
+              occurredAtUnixMs={message.occurredAtUnixMs}
+              speaker={row.speaker}
+              onCopyMessageText={handleCopyMessageText}
+              exportSelection={exportSelection}
             >
               {content}
             </AgentCopyableMessageGroup>
@@ -247,13 +274,20 @@ function AgentCopyableMessageGroup({
   copyText,
   occurredAtUnixMs,
   onCopyMessageText,
-  speaker
+  speaker,
+  exportSelection
 }: {
   children: ReactNode;
   copyText: string | null;
   occurredAtUnixMs: number | null;
   onCopyMessageText: (text: string) => Promise<boolean>;
   speaker: AgentMessageRowVM["speaker"];
+  exportSelection?: {
+    checked: boolean;
+    label: string;
+    onToggle: () => void;
+    selectionMode: boolean;
+  };
 }): JSX.Element {
   "use memo";
   const timestamp = formatAgentMessageTimestamp(occurredAtUnixMs);
@@ -261,8 +295,22 @@ function AgentCopyableMessageGroup({
   return (
     <div className={styles.messageGroup} data-agent-message-speaker={speaker}>
       {children}
-      {timestamp || copyText ? (
-        <div className={styles.messageFooter}>
+      {timestamp || copyText || exportSelection ? (
+        <div
+          className={styles.messageFooter}
+          data-export-selected={exportSelection?.checked ? "true" : undefined}
+          data-export-selection-mode={
+            exportSelection?.selectionMode ? "true" : undefined
+          }
+        >
+          {exportSelection ? (
+            <Checkbox
+              aria-label={exportSelection.label}
+              checked={exportSelection.checked}
+              className={styles.messageExportCheckbox}
+              onCheckedChange={() => exportSelection.onToggle()}
+            />
+          ) : null}
           {timestamp ? (
             <span className={styles.messageTimestamp}>{timestamp}</span>
           ) : null}

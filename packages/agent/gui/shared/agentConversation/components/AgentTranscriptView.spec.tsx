@@ -29,6 +29,58 @@ vi.mock("../../../i18n/index", async (importOriginal) => {
 });
 
 describe("AgentTranscriptView", () => {
+  it("renders paired selectors in message footers and toggles one shared turn", () => {
+    const onToggleTurn = vi.fn();
+    const conversation = projectAgentConversationVM(detailViewModel());
+    const props = {
+      conversation,
+      exportSelection: {
+        deselectLabel: "Deselect question and answer",
+        exportableTurnIds: new Set(["turn-1"]),
+        onToggleTurn,
+        selectionMode: false,
+        selectLabel: "Select question and answer",
+        selectedTurnIds: new Set<string>()
+      },
+      labels: {
+        thinkingLabel: "Thought process",
+        toolCallsLabel: (count: number) => `Tool calls (${count})`,
+        processing: "Planning next moves",
+        turnSummary: "Changed files"
+      }
+    };
+    const { rerender } = render(<AgentTranscriptView {...props} />);
+
+    const selectors = screen.getAllByRole("checkbox", {
+      name: "Select question and answer"
+    });
+    expect(selectors.length).toBeGreaterThanOrEqual(2);
+    fireEvent.click(selectors[1]!);
+    expect(onToggleTurn).toHaveBeenCalledWith("turn-1");
+
+    rerender(
+      <AgentTranscriptView
+        {...props}
+        exportSelection={{
+          ...props.exportSelection,
+          selectionMode: true,
+          selectedTurnIds: new Set(["turn-1"])
+        }}
+      />
+    );
+    expect(
+      screen.getAllByRole("checkbox", {
+        name: "Deselect question and answer"
+      })
+    ).toHaveLength(selectors.length);
+    for (const selector of screen.getAllByRole("checkbox")) {
+      expect(selector).toBeChecked();
+    }
+    expect(
+      document.querySelectorAll('[data-export-selection-mode="true"]')
+    ).toHaveLength(selectors.length);
+  });
+
   it("treats status-only conversation object changes as equal for transcript rendering", () => {
     const labels = {
       thinkingLabel: "Thought process",
@@ -162,6 +214,29 @@ describe("AgentTranscriptView", () => {
       container.querySelector("[data-agent-turn-work-section]")
     ).toBeNull();
     expect(container.querySelector(".agent-gui-transcript-turn")).toBeNull();
+  });
+
+  it("renders every selected row without the navigation rail in print mode", () => {
+    const { container } = render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(detailViewModel())}
+        printMode
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+      />
+    );
+
+    expect(
+      container.querySelector('[data-agent-transcript-print-mode="true"]')
+    ).toBeInstanceOf(HTMLElement);
+    expect(container.querySelector(".agent-gui-message-locator")).toBeNull();
+    expect(container.querySelectorAll(".agent-gui-transcript-row").length).toBe(
+      projectAgentConversationVM(detailViewModel()).rows.length
+    );
   });
 
   it("ticks canonical live turn duration once per second", () => {
@@ -1532,6 +1607,7 @@ describe("AgentTranscriptView", () => {
   });
 
   it("renders thinking entries between tool calls inside the grouped disclosure", async () => {
+    const onToolGroupExpandedChange = vi.fn();
     render(
       <AgentTranscriptView
         conversation={projectAgentConversationVM(
@@ -1646,10 +1722,15 @@ describe("AgentTranscriptView", () => {
           processing: "Planning next moves",
           turnSummary: "Changed files"
         }}
+        onToolGroupExpandedChange={onToolGroupExpandedChange}
       />
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Tool calls (2)" }));
+    expect(onToolGroupExpandedChange).toHaveBeenCalledWith(
+      "tool-group:session-1:turn-1:call:1",
+      true
+    );
     await flushCollapsibleRevealFrames();
     expect(
       screen.getByRole("button", {

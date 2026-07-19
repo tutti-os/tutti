@@ -6,6 +6,12 @@ import { ipcRenderer, type IpcRendererEvent } from "electron";
 export function createHostDesktopApi(): DesktopHostApi {
   return {
     files: {
+      exportAgentConversation(input) {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.files.exportAgentConversation,
+          input
+        );
+      },
       createUserDocumentsProjectDirectory(input) {
         return invokeDesktopApi(
           desktopIpcChannels.host.files.createUserDocumentsProjectDirectory,

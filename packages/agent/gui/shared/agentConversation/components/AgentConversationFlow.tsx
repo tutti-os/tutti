@@ -4,8 +4,14 @@ import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMar
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import { AgentTranscriptSkeleton } from "./AgentTranscriptSkeleton";
 import { AgentTranscriptView } from "./AgentTranscriptView";
-import { AgentTurnDisclosureProvider } from "./AgentTurnDisclosureContext";
+import {
+  AgentTurnDisclosureProvider,
+  useAgentTurnDisclosureStore
+} from "./AgentTurnDisclosureContext";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
+import { useAgentConversationExport } from "../export/useAgentConversationExport";
+import { AgentConversationExportToolbar } from "./AgentConversationExportToolbar";
+import { AgentConversationPrintSurface } from "./AgentConversationPrintSurface";
 
 interface AgentConversationFlowProps {
   conversation: AgentConversationVM | null;
@@ -29,7 +35,17 @@ interface AgentConversationFlowProps {
   };
 }
 
-export const AgentConversationFlow = memo(function AgentConversationFlow({
+export const AgentConversationFlow = memo(function AgentConversationFlow(
+  props: AgentConversationFlowProps
+): JSX.Element {
+  return (
+    <AgentTurnDisclosureProvider>
+      <AgentConversationFlowContent {...props} />
+    </AgentTurnDisclosureProvider>
+  );
+});
+
+function AgentConversationFlowContent({
   conversation,
   isLoading,
   loadingLabel,
@@ -44,6 +60,13 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
   labels
 }: AgentConversationFlowProps): JSX.Element {
   "use memo";
+  const turnDisclosureStore = useAgentTurnDisclosureStore();
+  const conversationExport = useAgentConversationExport({
+    conversation,
+    previewMode,
+    toolCallsLabel: labels.toolCallsLabel,
+    turnExpandedOverrides: turnDisclosureStore.expandedOverrides
+  });
 
   let content: JSX.Element;
   if (isLoading) {
@@ -63,9 +86,35 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
         previewMode={previewMode}
         labels={labels}
         showRawTimelineJson={showRawTimelineJson}
+        exportSelection={conversationExport.selection}
+        onToolGroupExpandedChange={conversationExport.onToolGroupExpandedChange}
       />
     );
   }
 
-  return <AgentTurnDisclosureProvider>{content}</AgentTurnDisclosureProvider>;
-});
+  const printRequest = conversationExport.printRequest;
+  return (
+    <>
+      {content}
+      <AgentConversationExportToolbar
+        exportingFormat={conversationExport.exportingFormat}
+        onClear={conversationExport.clearSelection}
+        onCopyMarkdown={conversationExport.copyMarkdown}
+        onExport={conversationExport.exportConversation}
+        selectedCount={conversationExport.selectedCount}
+      />
+      {printRequest ? (
+        <AgentConversationPrintSurface
+          availableSkills={availableSkills}
+          conversation={printRequest.conversation}
+          expandedToolRowKeys={printRequest.expandedToolRowKeys}
+          labels={labels}
+          onReady={conversationExport.onPrintSurfaceReady}
+          requestId={printRequest.requestId}
+          turnExpandedOverrides={printRequest.turnExpandedOverrides}
+          workspaceAppIcons={workspaceAppIcons}
+        />
+      ) : null}
+    </>
+  );
+}

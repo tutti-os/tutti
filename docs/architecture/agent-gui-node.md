@@ -262,6 +262,29 @@ A focused controller may own detail paging/loading/error. Canonical messages, Tu
 
 Timeline projection is pure, deterministic, and provider-neutral. React views render rows/cards and dispatch actions.
 
+Conversation export treats one completed user-prompt/Agent-feedback Turn as the
+smallest selectable unit. Selection is transient view state keyed by exact
+`turnId`; selecting or clearing either visible side updates the same Turn bit.
+Turns without both sides, including an active unsettled Turn, are not
+selectable. Selecting the first Turn enters a temporary selection mode that
+keeps every exportable Turn selector visible for batch selection. The export
+projection preserves timeline order and includes the user prompt, visible tool
+execution records, file changes, generated images, and visible Agent text;
+thinking and raw diagnostic timeline payloads are not export content. Grouped
+tool execution follows the transcript disclosure state: a collapsed group
+exports only its visible count summary, while an expanded group exports its
+visible execution records. Markdown save and clipboard copy share the same
+provider-neutral Markdown projection. PDF export instead mounts a temporary,
+non-virtualized transcript print surface built from the same message and tool
+components as the live conversation. It filters to selected Turns, snapshots
+the current tool/Turn disclosure and theme state, and includes per-message
+timestamps plus processed/total Turn duration. The desktop host prints the
+originating renderer surface with backgrounds enabled and browser headers and
+footers disabled; it must not reconstruct a separate Markdown-derived PDF
+layout. Save dialogs receive a local-time default filename in
+`YYYY.MM.dd-HH.mm.ss_<opening-6-code-points>_<session-id-6>` form, with the
+format-specific extension.
+
 ## 5. Agent identity and provider architecture
 
 ### 5.1 `agentTargetId` is UI identity
@@ -378,7 +401,13 @@ Do not restore flat compatibility props or hide workflow inside a render slot.
 
 `AgentActivityRuntime` is the AgentGUI activity-data and command boundary. Session, messages, activation, send, cancel, Interaction, Goal, settings, composer options, pin, and delete enter through it.
 
-`AgentHostApi` supplies host capabilities only: files, clipboard, project/account lookup, Agent Target setup/probes, diagnostics, and OS/Workbench helpers. It must not become a Session, Turn, timeline, or write source again.
+`AgentHostApi` supplies host capabilities only: files, clipboard, document
+export/save dialogs, project/account lookup, Agent Target setup/probes,
+diagnostics, and OS/Workbench helpers. AgentGUI builds provider-neutral export
+projections and owns the native transcript print surface; the desktop host only
+chooses a destination and persists Markdown or prints the requesting renderer
+to PDF. The Host API must not become a Session, Turn, timeline, or write source
+again.
 
 ### 6.4 Multiple surfaces
 

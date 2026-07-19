@@ -3731,6 +3731,42 @@ aside.workspace-agents-status-panel
     transform 120ms ease;
 }
 
+.agent-gui-conversation__message-export-checkbox {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-2px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.agent-gui-conversation__message-footer[data-export-selected="true"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.agent-gui-conversation__message-footer[data-export-selection-mode="true"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.agent-gui-conversation__message-footer[data-export-selected="true"]
+  > .agent-gui-conversation__message-export-checkbox,
+.agent-gui-conversation__message-footer[data-export-selection-mode="true"]
+  > .agent-gui-conversation__message-export-checkbox,
+.agent-gui-conversation__message-group:hover
+  > .agent-gui-conversation__message-footer
+  > .agent-gui-conversation__message-export-checkbox,
+.agent-gui-conversation__message-group:focus-within
+  > .agent-gui-conversation__message-footer
+  > .agent-gui-conversation__message-export-checkbox {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
 .agent-gui-conversation__message-group[data-agent-message-speaker="user"]
   > .agent-gui-conversation__message-footer {
   right: 0;
@@ -3763,6 +3799,135 @@ aside.workspace-agents-status-panel
 
 .agent-gui-conversation__message-copy-button[data-copied="true"] {
   color: var(--state-success, #22c55e);
+}
+
+.agent-conversation-print-surface.agent-gui-node__shell {
+  position: fixed;
+  top: 0;
+  left: -100000px;
+  width: 794px;
+  height: auto;
+  min-height: 1123px;
+  overflow: visible;
+  visibility: hidden;
+  pointer-events: none;
+  background: var(--agent-gui-session-flow-background);
+  color: var(--agent-gui-text-primary);
+}
+
+.agent-conversation-print-surface__timeline,
+.agent-conversation-print-transcript {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-conversation-print-surface__timeline.agent-gui-node__timeline {
+  min-height: 1123px;
+  overflow: visible;
+  padding: 48px 56px;
+  background: var(--agent-gui-session-flow-background);
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 15mm;
+  }
+
+  html,
+  body {
+    overflow: visible !important;
+    background: var(--background-session-flow, rgb(252 253 255)) !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  body > :not(.agent-conversation-print-surface) {
+    display: none !important;
+  }
+
+  .agent-conversation-print-surface.agent-gui-node__shell {
+    position: static;
+    display: block;
+    width: auto;
+    min-height: 0;
+    overflow: visible;
+    visibility: visible;
+    background: var(--agent-gui-session-flow-background);
+    color: var(--agent-gui-text-primary);
+  }
+
+  .agent-conversation-print-surface__timeline.agent-gui-node__timeline {
+    min-height: 0;
+    overflow: visible;
+    padding: 0;
+    background: var(--agent-gui-session-flow-background);
+  }
+
+  .agent-conversation-print-surface *,
+  .agent-conversation-print-surface *::before,
+  .agent-conversation-print-surface *::after {
+    animation: none !important;
+    transition: none !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .agent-conversation-print-surface .agent-gui-conversation__message-footer {
+    position: static;
+    top: auto;
+    margin-top: 4px;
+    opacity: 1;
+    pointer-events: none;
+    transform: none;
+  }
+
+  .agent-conversation-print-surface
+    .agent-gui-conversation__message-group:has(
+      > .agent-gui-conversation__message-footer
+    ) {
+    margin-bottom: 0;
+  }
+
+  .agent-conversation-print-surface
+    .agent-gui-conversation__message-group[data-agent-message-speaker="user"]
+    > .agent-gui-conversation__message-footer {
+    justify-self: end;
+  }
+
+  .agent-conversation-print-surface
+    .agent-gui-conversation__message-group[data-agent-message-speaker="assistant"]
+    > .agent-gui-conversation__message-footer {
+    justify-self: start;
+  }
+
+  .agent-conversation-print-surface
+    :is(
+      .agent-gui-conversation__message-copy-button,
+      .agent-gui-conversation__message-export-checkbox,
+      .agent-gui-message-locator,
+      [data-testid="markdown-code-copy"]
+    ) {
+    display: none !important;
+  }
+
+  .agent-conversation-print-surface
+    :is(
+      [data-agent-turn-work-header],
+      .workspace-agents-status-panel__detail-tool-row,
+      .workspace-agents-status-panel__detail-turn-summary,
+      .agent-gui-conversation__user-image-thumbnail
+    ) {
+    break-inside: avoid;
+  }
+
+  .agent-conversation-print-surface img {
+    max-width: 100%;
+    break-inside: avoid;
+  }
 }
 
 .agent-gui-conversation__user-message-flow

@@ -16,6 +16,11 @@ export interface DesktopFileDialogAccess {
     defaultPath: string,
     ownerWindow?: BrowserWindow | null
   ): Promise<string | null>;
+  selectAgentConversationExportPath?(
+    format: "markdown" | "pdf",
+    defaultPath: string,
+    ownerWindow?: BrowserWindow | null
+  ): Promise<string | null>;
   selectAppIconImage(
     ownerWindow?: BrowserWindow | null
   ): Promise<string | null>;
@@ -89,6 +94,27 @@ export function createDesktopFileDialogAccess(
       }
 
       return selection.filePath;
+    },
+
+    async selectAgentConversationExportPath(format, defaultPath, ownerWindow) {
+      const translator = createTranslator(deps.getLocale());
+      const selection = await showSaveDialog(ownerWindow, {
+        defaultPath,
+        filters: [
+          format === "pdf"
+            ? {
+                extensions: ["pdf"],
+                name: translator.t("common.pdfDocument")
+              }
+            : {
+                extensions: ["md", "markdown"],
+                name: translator.t("common.markdownDocument")
+              }
+        ]
+      });
+      return selection.canceled || !selection.filePath
+        ? null
+        : selection.filePath;
     },
 
     async selectAppIconImage(ownerWindow) {

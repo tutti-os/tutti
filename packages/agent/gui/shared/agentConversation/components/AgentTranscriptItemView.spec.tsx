@@ -161,6 +161,26 @@ describe("AgentTranscriptItemView render stability", () => {
     );
   });
 
+  it("wraps assistant text with its timestamp when rendering for PDF", () => {
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow()}
+        thinkingLabel="Thought process"
+        printMode
+      />
+    );
+
+    const group = document.querySelector(
+      '[data-agent-message-speaker="assistant"]'
+    );
+    expect(group).toBeInstanceOf(HTMLElement);
+    expect(
+      group?.querySelector(".agent-gui-conversation__message-timestamp")
+    ).toBeInstanceOf(HTMLElement);
+  });
+
   it("routes a clicked app artifact reference from a sent user message to the owning app", () => {
     const onLinkAction = vi.fn();
     render(

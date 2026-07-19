@@ -1,3 +1,4 @@
+import { zhCNAgentConversationExport } from "./zh-CN.agentConversationExport.ts";
 import { zhCNAgentGuiProviderIdentity } from "./zh-CN.agentGuiProviderIdentity.ts";
 import { zhCNAgentGuiRuntimeNotices } from "./zh-CN.agentGuiRuntimeNotices.ts";
 import { zhCNAgentGuiSlashPalette } from "./zh-CN.agentGuiSlashPalette.ts";
@@ -296,6 +297,7 @@ export const zhCNAgentGui = {
   copyMessage: "复制消息",
   copyImage: "复制图片",
   messageCopied: "已复制",
+  ...zhCNAgentConversationExport,
   promptTipsPrefix: "Tips：",
   reviewPicker: {
     title: "代码审查",

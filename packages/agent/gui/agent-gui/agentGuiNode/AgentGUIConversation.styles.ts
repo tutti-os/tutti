@@ -39,6 +39,7 @@ const styles = {
   messageFooter: "agent-gui-conversation__message-footer",
   messageTimestamp: "agent-gui-conversation__message-timestamp",
   messageCopyButton: "agent-gui-conversation__message-copy-button",
+  messageExportCheckbox: "agent-gui-conversation__message-export-checkbox",
   userImageGrid: "agent-gui-conversation__user-image-grid",
   userImageThumbnail: "agent-gui-conversation__user-image-thumbnail",
   userMessageBubble: "agent-gui-conversation__user-message-bubble",

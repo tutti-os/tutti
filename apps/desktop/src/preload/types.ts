@@ -47,6 +47,10 @@ import type {
   DesktopArchiveAgentPromptFileInput,
   DesktopArchiveAgentPromptFileResult
 } from "../shared/contracts/ipc";
+import type {
+  DesktopAgentConversationExportInput,
+  DesktopAgentConversationExportResult
+} from "../shared/contracts/ipc";
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
 
 export interface DesktopRuntimeApi {
@@ -153,6 +157,9 @@ export interface DesktopWorkspaceAppExternalHostApi {
 }
 
 export interface DesktopHostFilesApi {
+  exportAgentConversation?(
+    input: DesktopAgentConversationExportInput
+  ): Promise<DesktopAgentConversationExportResult>;
   createUserDocumentsProjectDirectory(input: {
     name: string;
     allowExisting?: boolean;

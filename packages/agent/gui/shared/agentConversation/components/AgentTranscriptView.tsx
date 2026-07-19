@@ -13,8 +13,12 @@ import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentati
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMarkdown";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
+import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
 import { AgentTranscriptItemView } from "./AgentTranscriptItemView";
-import { useAgentTurnDisclosureStore } from "./AgentTurnDisclosureContext";
+import {
+  useAgentTurnDisclosureStore,
+  type AgentTurnDisclosureStore
+} from "./AgentTurnDisclosureContext";
 import { AgentTurnWorkSection } from "./AgentTurnWorkSection";
 import { buildAgentTurnWorkSectionModel } from "./agentTurnWorkSectionModel";
 import { assessAgentTranscriptComplexity } from "./agentTranscriptComplexity";
@@ -48,7 +52,12 @@ interface AgentTranscriptViewProps {
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   previewMode?: boolean;
+  printMode?: boolean;
   showRawTimelineJson?: boolean;
+  expandedToolRowKeys?: ReadonlySet<string>;
+  exportSelection?: AgentTranscriptExportSelection;
+  onToolGroupExpandedChange?: (key: string, expanded: boolean) => void;
+  turnDisclosureStore?: AgentTurnDisclosureStore;
   labels: {
     toolCallsLabel: (count: number) => string;
     thinkingLabel: string;
@@ -56,6 +65,41 @@ interface AgentTranscriptViewProps {
     turnSummary: string;
     rawTimelineJson?: string;
     userMessageLocator?: string;
+  };
+}
+
+export interface AgentTranscriptExportSelection {
+  deselectLabel: string;
+  exportableTurnIds: ReadonlySet<string>;
+  onToggleTurn: (turnId: string) => void;
+  selectionMode: boolean;
+  selectLabel: string;
+  selectedTurnIds: ReadonlySet<string>;
+}
+
+function resolveRowExportSelection(
+  row: AgentTranscriptRowVM,
+  exportSelection: AgentTranscriptExportSelection | undefined
+):
+  | {
+      checked: boolean;
+      label: string;
+      onToggle: () => void;
+      selectionMode: boolean;
+    }
+  | undefined {
+  const turnId = row.turnId;
+  if (!turnId || !exportSelection?.exportableTurnIds.has(turnId)) {
+    return undefined;
+  }
+  const checked = exportSelection.selectedTurnIds.has(turnId);
+  return {
+    checked,
+    label: checked
+      ? exportSelection.deselectLabel
+      : exportSelection.selectLabel,
+    onToggle: () => exportSelection.onToggleTurn(turnId),
+    selectionMode: exportSelection.selectionMode
   };
 }
 
@@ -146,7 +190,12 @@ export function areAgentTranscriptViewPropsEqual(
     previous.availableSkills === next.availableSkills &&
     previous.workspaceAppIcons === next.workspaceAppIcons &&
     previous.previewMode === next.previewMode &&
+    previous.printMode === next.printMode &&
     previous.showRawTimelineJson === next.showRawTimelineJson &&
+    previous.expandedToolRowKeys === next.expandedToolRowKeys &&
+    previous.exportSelection === next.exportSelection &&
+    previous.onToolGroupExpandedChange === next.onToolGroupExpandedChange &&
+    previous.turnDisclosureStore === next.turnDisclosureStore &&
     transcriptLabelsEqual(previous.labels, next.labels)
   );
 }
@@ -158,7 +207,12 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   availableSkills,
   workspaceAppIcons,
   previewMode = false,
+  printMode = false,
   showRawTimelineJson = false,
+  expandedToolRowKeys,
+  exportSelection,
+  onToolGroupExpandedChange,
+  turnDisclosureStore: providedTurnDisclosureStore,
   labels
 }: AgentTranscriptViewProps): JSX.Element {
   "use memo";
@@ -167,7 +221,9 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   >({});
   const [hasMovingTurnDisclosure, handleDisclosureMotionChange] =
     useTurnDisclosureMotion();
-  const turnDisclosureStore = useAgentTurnDisclosureStore();
+  const contextTurnDisclosureStore = useAgentTurnDisclosureStore();
+  const turnDisclosureStore =
+    providedTurnDisclosureStore ?? contextTurnDisclosureStore;
   const virtualizerHostRef = useRef<HTMLDivElement | null>(null);
   const [virtualScrollElement, setVirtualScrollElement] =
     useState<HTMLElement | null>(null);
@@ -204,8 +260,9 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           [key]: expanded
         };
       });
+      onToolGroupExpandedChange?.(key, expanded);
     },
-    []
+    [onToolGroupExpandedChange]
   );
   const turnIndexById = useMemo(
     () =>
@@ -247,8 +304,10 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   const workspaceRoot = conversation.workspaceRoot;
   const provider = conversation.activity.agentProvider;
   const shouldVirtualize = useMemo(
-    () => assessAgentTranscriptComplexity(turnGroups).shouldVirtualize,
-    [turnGroups]
+    () =>
+      !printMode &&
+      assessAgentTranscriptComplexity(turnGroups).shouldVirtualize,
+    [printMode, turnGroups]
   );
   const rowVirtualizer = useVirtualizer({
     anchorTo: shouldVirtualize && hasMovingTurnDisclosure ? "start" : "end",
@@ -319,7 +378,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
         ? (rowKeys[rowIndex] ?? transcriptRowKey(row))
         : transcriptRowKey(row));
     const shouldAnimateEnter =
-      row.kind !== "processing" && enteringRowKeys.has(rowKey);
+      !printMode && row.kind !== "processing" && enteringRowKeys.has(rowKey);
 
     return (
       <div
@@ -343,10 +402,14 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           availableSkills={availableSkills}
           workspaceAppIcons={workspaceAppIcons}
           previewMode={previewMode}
+          printMode={printMode}
           showRawTimelineJson={showRawTimelineJson}
+          exportSelection={resolveRowExportSelection(row, exportSelection)}
           toolGroupExpanded={
             row.kind === "tool-group"
-              ? expandedToolRows[rowKey] === true
+              ? printMode
+                ? expandedToolRowKeys?.has(rowKey) === true
+                : expandedToolRows[rowKey] === true
               : undefined
           }
           toolGroupExpansionKey={row.kind === "tool-group" ? rowKey : undefined}
@@ -464,6 +527,17 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           })}
         </div>
       </>
+    );
+  }
+
+  if (printMode) {
+    return (
+      <div
+        className="agent-conversation-print-transcript"
+        data-agent-transcript-print-mode="true"
+      >
+        {turnGroups.map(renderTurnGroup)}
+      </div>
     );
   }
 

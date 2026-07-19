@@ -233,6 +233,7 @@ export const desktopIpcChannels = {
       resolveEntryIcon: "host:files:resolveEntryIcon",
       selectAppArchive: "host:files:selectAppArchive",
       selectAppArchiveExportPath: "host:files:selectAppArchiveExportPath",
+      exportAgentConversation: "host:files:exportAgentConversation",
       selectAppIconImage: "host:files:selectAppIconImage",
       selectDirectory: "host:files:selectDirectory",
       selectUploadFiles: "host:files:selectUploadFiles",
@@ -479,6 +480,22 @@ export interface DesktopHostNotificationResult {
 export interface DesktopSelectAppArchiveExportPathInput {
   defaultPath: string;
 }
+
+export type DesktopAgentConversationExportInput =
+  | {
+      content: string;
+      format: "markdown";
+      suggestedFileName: string;
+    }
+  | {
+      format: "pdf";
+      renderSource: "current-renderer";
+      suggestedFileName: string;
+    };
+
+export type DesktopAgentConversationExportResult =
+  | { status: "canceled" }
+  | { status: "saved"; path: string };
 
 export interface DesktopSelectUploadFilesInput {
   allowDirectories?: boolean;
@@ -1000,6 +1017,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.files.selectAppArchive]: undefined;
   [desktopIpcChannels.host.files
     .selectAppArchiveExportPath]: DesktopSelectAppArchiveExportPathInput;
+  [desktopIpcChannels.host.files
+    .exportAgentConversation]: DesktopAgentConversationExportInput;
   [desktopIpcChannels.host.files.selectAppIconImage]: undefined;
   [desktopIpcChannels.host.files.selectDirectory]: undefined;
   [desktopIpcChannels.host.files.selectUploadFiles]:
@@ -1161,6 +1180,8 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.files.resolveEntryIcon]: string | null;
   [desktopIpcChannels.host.files.selectAppArchive]: string | null;
   [desktopIpcChannels.host.files.selectAppArchiveExportPath]: string | null;
+  [desktopIpcChannels.host.files
+    .exportAgentConversation]: DesktopAgentConversationExportResult;
   [desktopIpcChannels.host.files.selectAppIconImage]: string | null;
   [desktopIpcChannels.host.files.selectDirectory]: string | null;
   [desktopIpcChannels.host.files.selectUploadFiles]: string[];

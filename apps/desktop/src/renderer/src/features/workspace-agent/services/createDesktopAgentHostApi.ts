@@ -6,6 +6,7 @@ import type {
   AgentHostAgentTargetSetupSnapshot,
   AgentHostInputApi,
   AgentHostAgentTargetSetupWatch,
+  AgentHostConversationExportInput,
   AgentHostUserProject,
   AgentHostApplyWorkspaceGitPatchInput,
   AgentHostSelectFilesInput,
@@ -161,6 +162,12 @@ export function createDesktopAgentHostApi({
         hostFilesApi.copyImageToClipboard(input),
       writeText: (text: string) => navigator.clipboard.writeText(text)
     },
+    conversationExport: hostFilesApi.exportAgentConversation
+      ? {
+          save: (input: AgentHostConversationExportInput) =>
+            hostFilesApi.exportAgentConversation!(input)
+        }
+      : undefined,
     debug: {
       logRuntimeDiagnostics: (payload: unknown) => {
         void runtimeApi.logTerminalDiagnostic({
