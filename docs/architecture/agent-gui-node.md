@@ -458,6 +458,14 @@ canonical rail entities under the rail interaction lock. While either row
 menu is open the row keeps its hover layout (short title truncation, actions
 visible) so titles cannot overlap the action cluster.
 
+Read-only host surfaces reuse the complete workbench header and declare the
+session actions they support. Omitting that capability list preserves the full
+rename-and-copy menu; a copy-only surface does not render rename or an empty
+separator. Hosts that already own a complete canonical message projection may
+reuse the pure transcript serializer exported by the `agent-conversation`
+entrypoint, while clipboard access, toasts, and session loading remain
+host-owned capabilities.
+
 Copy as reference copies the session-mention markdown link the @ panel
 produces, so pasting into any composer reconstructs the session chip; it is
 synchronous and only requires a writable host clipboard. Copy as Markdown
