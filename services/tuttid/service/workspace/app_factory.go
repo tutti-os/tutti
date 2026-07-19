@@ -554,12 +554,10 @@ func (s *AppFactoryService) validatePackage(ctx context.Context, workspaceID str
 	if err != nil {
 		return err
 	}
-	workspaceRoot, _ := s.workspaceRoot(ctx, workspaceID)
 	factoryWorkspaceID := "factory:" + job.JobID
 	state, err := s.runner().Start(ctx, AppStartInput{
 		WorkspaceID:     factoryWorkspaceID,
 		WorkspaceName:   workspace.Name,
-		WorkspaceRoot:   workspaceRoot.PhysicalRoot,
 		AppID:           manifest.AppID,
 		PackageDir:      draftPackageDir,
 		Bootstrap:       manifest.Runtime.Bootstrap,

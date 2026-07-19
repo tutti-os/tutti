@@ -73,7 +73,7 @@ Tutti package startup:
 - Store durable data under `$TUTTI_APP_DATA_DIR`.
 - Store scratch files under `$TUTTI_APP_RUNTIME_DIR`.
 - Write file logs under `$TUTTI_APP_LOG_DIR` only when needed.
-- Read `$TUTTI_WORKSPACE_ROOT` only for explicit workspace features.
+- Do not expect a workspace-root environment variable. Use `$TUTTI_WORKSPACE_ID` and `$TUTTI_CLI` for explicit workspace-scoped capabilities; app-owned agents receive the selected project directory through their process `cwd`.
 
 ## Host Bridge
 

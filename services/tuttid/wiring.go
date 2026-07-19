@@ -470,7 +470,6 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	appCenterService := &workspaceservice.AppCenterService{
 		Store:                 appStore,
 		AppFactoryStore:       appFactoryStore,
-		WorkspaceRootResolver: workspaceservice.FileService{Adapter: fileAdapter},
 		WorkspaceStore:        store,
 		PreferencesStore:      preferencesStore,
 		Runner:                &workspaceservice.AppRunner{RuntimeResolver: managedRuntimeResolver},

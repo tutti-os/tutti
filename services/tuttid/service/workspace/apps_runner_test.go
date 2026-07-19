@@ -48,11 +48,12 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 	t.Setenv(tuttiAppRuntimeRootEnv, createManagedAppRuntimeFixture(t, root))
 	t.Setenv("TUTTI_ENV", "production")
 	t.Setenv("TUTTI_STATE_DIR", stateRoot)
+	t.Setenv("TUTTI_WORKSPACE_ROOT", "/inherited/workspace")
+	t.Setenv("NEXTOP_WORKSPACE_ROOT", "/inherited/workspace")
 	runner := &AppRunner{HealthcheckTimeout: 10 * time.Second}
 	state, err := runner.Start(context.Background(), AppStartInput{
 		WorkspaceID:     "ws-runner",
 		WorkspaceName:   "Runner Workspace",
-		WorkspaceRoot:   root,
 		AppID:           "hello",
 		PackageDir:      packageDir,
 		Bootstrap:       "bootstrap.sh",
@@ -96,10 +97,14 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 		"dataDir":       dataDir,
 		"logDir":        logDir,
 		"toolchainRoot": filepath.Join(stateRoot, "app-toolchains"),
-		"workspaceRoot": root,
 	} {
 		if probeValues[key] != want {
 			t.Fatalf("probe[%s] = %q, want %q", key, probeValues[key], want)
+		}
+	}
+	for _, key := range []string{"tuttiWorkspaceRoot", "nextopWorkspaceRoot"} {
+		if probeValues[key] != "" {
+			t.Fatalf("probe[%s] = %q, want absent root contract", key, probeValues[key])
 		}
 	}
 	for key, want := range map[string]string{
@@ -129,7 +134,7 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 	if !strings.Contains(string(logData), "runner-started") {
 		t.Fatalf("runtime.log = %q, want runner output", string(logData))
 	}
-	if !strings.Contains(string(logData), "tutti workspace app startup") || !strings.Contains(string(logData), "workspaceRoot="+root) {
+	if !strings.Contains(string(logData), "tutti workspace app startup") || strings.Contains(string(logData), "workspaceRoot=") {
 		t.Fatalf("runtime.log = %q, want startup diagnostic", string(logData))
 	}
 	if !strings.Contains(string(logData), "python=") || !strings.Contains(string(logData), "node=") {
@@ -179,7 +184,6 @@ exec python3 "$TUTTI_APP_PACKAGE_DIR/server.py"
 	state, err := runner.Start(context.Background(), AppStartInput{
 		WorkspaceID:     "ws-runner",
 		WorkspaceName:   "Runner Workspace",
-		WorkspaceRoot:   root,
 		AppID:           "standalone",
 		PackageDir:      packageDir,
 		Bootstrap:       "bootstrap.sh",
@@ -242,7 +246,6 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 	input := AppStartInput{
 		WorkspaceID:     "ws-runner",
 		WorkspaceName:   "Runner Workspace",
-		WorkspaceRoot:   root,
 		AppID:           "hello",
 		PackageDir:      packageDir,
 		Bootstrap:       "bootstrap.sh",
@@ -619,7 +622,6 @@ exec "$TUTTI_APP_NODE" "$TUTTI_APP_PACKAGE_DIR/server.js"
 	state, err := runner.Start(context.Background(), AppStartInput{
 		WorkspaceID:     "ws-fnm",
 		WorkspaceName:   "Fnm Workspace",
-		WorkspaceRoot:   root,
 		AppID:           "fnm-node",
 		PackageDir:      packageDir,
 		Bootstrap:       "bootstrap.sh",
@@ -885,7 +887,8 @@ func pythonAppReadyServerScript(healthcheckPath string, writeProbe bool) string 
                 "appId": os.environ["TUTTI_APP_ID"],
                 "workspaceId": os.environ["TUTTI_WORKSPACE_ID"],
                 "workspaceName": os.environ["TUTTI_WORKSPACE_NAME"],
-                "workspaceRoot": os.environ["TUTTI_WORKSPACE_ROOT"],
+                "tuttiWorkspaceRoot": os.environ.get("TUTTI_WORKSPACE_ROOT", ""),
+                "nextopWorkspaceRoot": os.environ.get("NEXTOP_WORKSPACE_ROOT", ""),
                 "appHost": os.environ["TUTTI_APP_HOST"],
                 "appBaseUrl": os.environ["TUTTI_APP_BASE_URL"],
                 "packageDir": os.environ["TUTTI_APP_PACKAGE_DIR"],

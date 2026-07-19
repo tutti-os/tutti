@@ -20,9 +20,13 @@ Use these environment variables:
 - `TUTTI_API_BASE_URL`: base URL for server-side calls to the Tutti daemon API.
 - `TUTTI_APP_SERVER_TOKEN`: bearer token for this app server's scoped Tutti API calls.
 - `TUTTI_CLI`: explicit command path for invoking local Tutti CLI capabilities. This is the stable app-runtime entrypoint across development and packaged production.
+- `TUTTI_CLI_CONFIG`: optional host-provided Tutti CLI routing configuration. Treat its value as opaque.
 - `TUTTI_WORKSPACE_ID`: current workspace id.
 - `TUTTI_WORKSPACE_NAME`: current workspace display name.
-- `TUTTI_WORKSPACE_ROOT`: workspace path, read-only unless the user explicitly asked the app to write workspace files.
+
+The host does not copy its complete daemon environment into an app process. It inherits only the operating-system baseline needed to launch child processes (path, home and user identity, temporary directories, locale, proxy, certificate, and platform runtime variables) plus the explicit credential, endpoint, provider-home, and command/config variables used by the supported Codex, Claude Code, Cursor, Tutti Agent, and OpenCode targets. App runtime values such as `TUTTI_APP_SERVER_TOKEN` and managed executable paths are added as explicit host-owned overrides. Do not depend on unrelated ambient daemon, database, release, or publishing variables being present.
+
+The runner does not inject a workspace filesystem root. Use `TUTTI_WORKSPACE_ID` only as identity metadata and use `TUTTI_CLI` for explicit workspace-scoped capabilities. When a caller supplies an absolute input path, treat it as opaque caller data; do not derive a workspace root or default output location from it. Relative path inputs must be resolved by the caller against its own working directory before invoking the app.
 
 `PATH` includes the managed runtime bin directories, but generated apps must still use the explicit `TUTTI_APP_NODE`, `TUTTI_APP_NPM`, and, when applicable, `TUTTI_APP_PYTHON` variables. Do not rely on system `node`, `npm`, `python`, or `python3` commands.
 

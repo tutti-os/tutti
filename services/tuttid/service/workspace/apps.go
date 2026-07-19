@@ -22,7 +22,6 @@ import (
 type AppCenterService struct {
 	Store                  workspacedata.AppStore
 	AppFactoryStore        workspacedata.AppFactoryStore
-	WorkspaceRootResolver  WorkspaceRootResolver
 	WorkspaceStore         workspacedata.CatalogStore
 	PreferencesStore       workspacedata.PreferencesStore
 	Runner                 *AppRunner
@@ -483,13 +482,6 @@ func (s *AppCenterService) workspaceSummary(ctx context.Context, workspaceID str
 	}
 
 	return s.WorkspaceStore.Get(ctx, workspaceID)
-}
-
-func (s *AppCenterService) workspaceRoot(ctx context.Context, workspaceID string) (workspacefiles.WorkspaceRoot, error) {
-	if s.WorkspaceRootResolver == nil {
-		return workspacefiles.WorkspaceRoot{}, nil
-	}
-	return s.WorkspaceRootResolver.ResolveWorkspaceRoot(ctx, workspaceID)
 }
 
 func (s *AppCenterService) runner() *AppRunner {

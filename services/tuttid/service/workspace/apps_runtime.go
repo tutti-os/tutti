@@ -267,15 +267,10 @@ func (s *AppCenterService) startPackage(ctx context.Context, workspaceID string,
 	if err != nil {
 		return workspacebiz.AppRuntimeState{}, err
 	}
-	workspaceRoot, err := s.workspaceRoot(ctx, workspaceID)
-	if err != nil {
-		slog.Warn("workspace app root resolution failed; app will start without TUTTI_WORKSPACE_ROOT", "workspaceId", workspaceID, "appId", appPackage.AppID, "error", err)
-	}
 	root := s.workspaceAppStateRoot(workspaceID, appPackage.AppID)
 	return s.runner().Start(ctx, AppStartInput{
 		WorkspaceID:     workspaceID,
 		WorkspaceName:   workspace.Name,
-		WorkspaceRoot:   workspaceRoot.PhysicalRoot,
 		AppID:           appPackage.AppID,
 		PackageDir:      appPackage.PackageDir,
 		Bootstrap:       appPackage.Manifest.Runtime.Bootstrap,

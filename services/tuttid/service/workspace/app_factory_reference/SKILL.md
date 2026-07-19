@@ -121,7 +121,7 @@ The runtime must:
 - Write logs only under `$TUTTI_APP_LOG_DIR` when backend/server-side file logs are needed.
 - Store reusable app-managed binaries only under `$TUTTI_APP_TOOLCHAIN_ROOT`.
 - Prefer `window.tuttiExternal?.logs?.write?.()` for browser-side diagnostics in Tutti Desktop; reserve `$TUTTI_APP_LOG_DIR` for backend process logs.
-- Read `$TUTTI_WORKSPACE_ROOT` only when the app needs workspace context.
+- Do not expect a workspace-root environment variable. Use `$TUTTI_WORKSPACE_ID` and `$TUTTI_CLI` for explicit workspace-scoped capabilities, and treat caller-supplied absolute file paths as opaque inputs rather than deriving a root from them.
 - Launch Python with `$TUTTI_APP_PYTHON` and Node with `$TUTTI_APP_NODE`; use `$TUTTI_APP_NPM` for npm install/build work.
 - When the app exposes an open command, support the routed pages in the app runtime itself: direct navigation to the route must render the intended page, and an already-mounted frontend should handle repeated open intents through `window.tuttiExternal?.workspace?.onLaunchIntent?.(...)`.
 - When the generated app calls another local Tutti capability at runtime, use `$TUTTI_CLI` and follow `references/tutti-cli-commands.md`.

@@ -44,7 +44,6 @@ type AppRunnerStateChanged func(workspaceID string, appID string, state workspac
 type AppStartInput struct {
 	WorkspaceID     string
 	WorkspaceName   string
-	WorkspaceRoot   string
 	AppID           string
 	PackageDir      string
 	Bootstrap       string
@@ -210,7 +209,6 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		"TUTTI_APP_ID=" + input.AppID,
 		"TUTTI_WORKSPACE_ID=" + input.WorkspaceID,
 		"TUTTI_WORKSPACE_NAME=" + input.WorkspaceName,
-		"TUTTI_WORKSPACE_ROOT=" + input.WorkspaceRoot,
 		"TUTTI_APP_HOST=127.0.0.1",
 		"TUTTI_APP_PACKAGE_DIR=" + input.PackageDir,
 		"TUTTI_APP_RUNTIME_DIR=" + input.RuntimeDir,
@@ -532,7 +530,6 @@ func writeAppStartupDiagnostic(logFile *os.File, input AppStartInput, bootstrapP
 	_, _ = fmt.Fprintf(logFile, "  appId=%s\n", input.AppID)
 	_, _ = fmt.Fprintf(logFile, "  workspaceId=%s\n", input.WorkspaceID)
 	_, _ = fmt.Fprintf(logFile, "  workspaceName=%s\n", input.WorkspaceName)
-	_, _ = fmt.Fprintf(logFile, "  workspaceRoot=%s\n", input.WorkspaceRoot)
 	_, _ = fmt.Fprintf(logFile, "  bootstrap=%s\n", bootstrapPath)
 	_, _ = fmt.Fprintf(logFile, "  runtimeRoot=%s\n", appRuntime.Root)
 	_, _ = fmt.Fprintf(logFile, "  python=%s\n", appRuntime.Python)
