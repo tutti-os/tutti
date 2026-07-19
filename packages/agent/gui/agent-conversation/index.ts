@@ -34,3 +34,12 @@ export type {
 export type { AgentConversationVM } from "../shared/agentConversation/contracts/agentConversationVM";
 export type { WorkspaceAgentActivityTimelineItem } from "../shared/workspaceAgentTimelineTypes";
 export type { WorkspaceAgentActivityCard } from "../shared/workspaceAgentActivityListViewModel";
+
+export {
+  serializeAgentConversationForClipboard,
+  type AgentGUIConversationAttachment,
+  type AgentGUIConversationCopyAction,
+  type AgentGUIConversationCopyLabels,
+  type AgentGUIConversationLocalImageReader,
+  type AgentGUIConversationSerializedTranscript
+} from "../agent-gui/agentGuiNode/model/agentConversationCopy";

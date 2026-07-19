@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AgentGuiWorkbenchSessionMenu } from "./AgentGuiWorkbenchSessionMenu";
+import { AgentGuiWorkbenchHeader } from "./header";
 
 const copy = {
   copyAsMarkdown: "Copy as Markdown",
@@ -44,5 +45,70 @@ describe("AgentGuiWorkbenchSessionMenu", () => {
     fireEvent.click(markdown);
     await waitFor(() => expect(onAction).toHaveBeenCalledTimes(1));
     expect(onAction).toHaveBeenCalledWith("copy-markdown");
+  });
+
+  it("renders only the actions supported by a read-only host surface", async () => {
+    const onAction = vi.fn();
+    render(
+      <AgentGuiWorkbenchSessionMenu
+        actions={["copy-markdown", "copy-reference"]}
+        copy={copy}
+        onAction={onAction}
+      />
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: copy.moreSessionActions }),
+      { button: 0, ctrlKey: false }
+    );
+
+    expect(
+      await screen.findByRole("menuitem", { name: copy.copyAsMarkdown })
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: copy.copyAsReference })
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("menuitem", { name: copy.renameSession })
+    ).toBeNull();
+    expect(screen.queryByRole("separator")).toBeNull();
+  });
+
+  it("lets the complete header constrain its session menu actions", async () => {
+    render(
+      <AgentGuiWorkbenchHeader
+        copy={{
+          collapseConversationRail: "Collapse",
+          expandConversationRail: "Expand",
+          fallbackAgentLabel: "Agent",
+          newConversation: "New conversation",
+          sessionMenu: copy
+        }}
+        conversationIconUrl="agent.png"
+        conversationTitle="Shared session title"
+        hasConversation
+        isConversationRailAutoCollapsed
+        isConversationRailCollapsed
+        nodeId="activity-center-session-1"
+        sessionMenuActions={["copy-markdown", "copy-reference"]}
+        showConversationRailToggle={false}
+        showWindowControls={false}
+        onSessionAction={vi.fn()}
+        onToggleConversationRail={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Shared session title")).toBeTruthy();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: copy.moreSessionActions }),
+      { button: 0, ctrlKey: false }
+    );
+
+    expect(
+      await screen.findByRole("menuitem", { name: copy.copyAsMarkdown })
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("menuitem", { name: copy.renameSession })
+    ).toBeNull();
   });
 });
