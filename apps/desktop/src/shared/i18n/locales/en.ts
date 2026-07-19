@@ -928,9 +928,6 @@ export const en = {
           "Automatically retracts the app bar and Dock. Use the edge handles to bring either one back.",
         autoHideWorkspaceChromeLabel: "Auto-hide app bar and Dock",
         chromeDockHandleLabel: "Show Dock",
-        chromeFullscreenNoticeDescription:
-          "The leftmost controls belong to the Tutti app. The controls beside them affect only the maximized workbench window.",
-        chromeFullscreenNoticeTitle: "Workbench window is maximized",
         chromeTopHandleLabel: "Show app bar",
         clearShortcutLabel: "Clear {{label}}",
         newAgentConversationShortcutLabel: "New Agent conversation",

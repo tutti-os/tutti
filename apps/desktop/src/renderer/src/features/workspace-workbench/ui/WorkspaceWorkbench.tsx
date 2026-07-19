@@ -15,6 +15,7 @@ import { defaultIssueManagerWorkbenchTypeId } from "@tutti-os/workspace-issue-ma
 import {
   isEditableShortcutTarget,
   type WorkbenchContribution,
+  type WorkbenchAutoHideChromeConfig,
   type WorkbenchHostHandle,
   type WorkbenchHostDockEntry,
   type WorkbenchWindowManagementConfig,
@@ -301,12 +302,15 @@ function ReadyWorkspaceWorkbenchWithSession({
     runtime.featureFlags,
     LAB_AUTO_HIDE_WORKSPACE_CHROME_FLAG
   );
-  const autoHideChromeConfig = useMemo(
+  const autoHideChromeConfig = useMemo<
+    WorkbenchAutoHideChromeConfig | undefined
+  >(
     () =>
       autoHideWorkspaceChrome
         ? {
             dockHandleLabel: t("workspace.settings.lab.chromeDockHandleLabel"),
-            fullscreenWindowControlsInset: state.platform === "darwin" ? 68 : 0,
+            fullscreenRestoreControlEdge:
+              state.platform === "darwin" ? "right" : "left",
             topHandleLabel: t("workspace.settings.lab.chromeTopHandleLabel")
           }
         : undefined,
@@ -863,7 +867,6 @@ function ReadyWorkspaceWorkbenchWithSession({
           onNodeCloseRequest={hostInput.onNodeCloseRequest}
           renderTopChrome={(chromeContext) => (
             <WorkspaceChrome
-              autoHideChromeEnabled={autoHideWorkspaceChrome}
               headerSlot={headerSlot}
               launchNode={chromeContext.launchNode}
               missionControl={runtime.missionControl}

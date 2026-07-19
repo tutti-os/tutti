@@ -2657,15 +2657,66 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
   pointer-events: none;
 }
 
-/* Hosts with native window controls can reserve an inset for workbench window
-   controls once auto-hide lets fullscreen nodes reach the physical top edge. */
-.workbench-surface[data-workbench-auto-hide-chrome="enabled"]
-  .workbench-window-shell[data-display-mode="fullscreen"]
+/* Immersive fullscreen windows replace their header traffic lights with one
+   restore control on the host-selected safe side of the application chrome. */
+.workbench-window-shell[data-immersive-fullscreen="true"]
   .workbench-window__traffic-light-actions,
-.workbench-surface[data-workbench-auto-hide-chrome="enabled"]
-  .workbench-window-shell[data-display-mode="fullscreen"]
+.workbench-window-shell[data-immersive-fullscreen="true"]
+  .workbench-window-traffic-lights,
+.workbench-window-shell[data-immersive-fullscreen="true"]
   [data-workbench-window-controls="true"] {
-  margin-left: var(--workbench-fullscreen-window-controls-inset, 0px);
+  display: none;
+}
+
+.workbench-window__fullscreen-restore {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--border-1) 82%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--background-fronted) 88%, transparent);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+  color: var(--text-secondary);
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
+  -webkit-app-region: no-drag;
+  backdrop-filter: blur(12px);
+}
+
+.workbench-window__fullscreen-restore[data-edge="left"] {
+  left: 10px;
+}
+
+.workbench-window__fullscreen-restore[data-edge="right"] {
+  right: 10px;
+}
+
+.workbench-window__fullscreen-restore:hover,
+.workbench-window__fullscreen-restore:focus-visible {
+  background: var(--background-fronted);
+  color: var(--text-primary);
+  transform: scale(1.05);
+}
+
+.workbench-window__fullscreen-restore:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--border-focus),
+    0 4px 16px rgb(0 0 0 / 18%);
+}
+
+.workbench-window__fullscreen-restore > svg {
+  width: 14px;
+  height: 14px;
 }
 
 .workbench-surface__bottom-chrome {
@@ -2729,21 +2780,21 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
 }
 
 .workbench-auto-hide-handle[data-edge="top"] {
-  top: 2px;
+  top: 8px;
   left: 50%;
   transform: translateX(-50%);
 }
 
 .workbench-auto-hide-handle[data-edge="bottom"] {
   right: auto;
-  bottom: 2px;
+  bottom: 8px;
   left: 50%;
   transform: translateX(-50%);
 }
 
 .workbench-auto-hide-handle[data-edge="left"] {
   top: 50%;
-  left: 2px;
+  left: 8px;
   width: 14px;
   height: 64px;
   transform: translateY(-50%);

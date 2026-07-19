@@ -91,7 +91,7 @@ export interface WorkbenchSurfaceProps<TData = unknown> {
 export interface WorkbenchAutoHideChromeConfig {
   collapseDelayMs?: number;
   dockHandleLabel: string;
-  fullscreenWindowControlsInset?: number;
+  fullscreenRestoreControlEdge?: "left" | "right";
   topHandleLabel: string;
 }
 
@@ -281,13 +281,6 @@ function WorkbenchSurfaceInner<TData>({
         autoHideChrome === undefined ? "disabled" : "enabled"
       }
       data-workbench-interactive={interactive ? "true" : "false"}
-      style={
-        autoHideChrome?.fullscreenWindowControlsInset
-          ? ({
-              "--workbench-fullscreen-window-controls-inset": `${autoHideChrome.fullscreenWindowControlsInset}px`
-            } as CSSProperties)
-          : undefined
-      }
     >
       {wallpaper ? (
         <div
@@ -327,6 +320,11 @@ function WorkbenchSurfaceInner<TData>({
         genie={genie}
         interactive={interactive}
         presentation={presentation}
+        fullscreenRestoreControlEdge={
+          autoHideChrome === undefined
+            ? undefined
+            : (autoHideChrome.fullscreenRestoreControlEdge ?? "right")
+        }
         renderNode={renderNode}
         edgeSnapEnabled={windowManagement?.edgeSnapEnabled === true}
         renderWindowActions={renderWindowActions}

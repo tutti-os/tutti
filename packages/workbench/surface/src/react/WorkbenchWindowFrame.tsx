@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import { createI18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import { Checkbox } from "@tutti-os/ui-system";
+import { Checkbox, WindowTrafficLightIcon } from "@tutti-os/ui-system";
 import {
   selectFocusedWorkbenchNode,
   selectWorkbenchNodeZIndex
@@ -31,6 +31,7 @@ export interface WorkbenchWindowFrameProps<TData = unknown> {
   children: ReactNode;
   genie: WorkbenchGenieController;
   edgeSnapEnabled?: boolean;
+  fullscreenRestoreControlEdge?: "left" | "right";
   hiddenMounted?: boolean;
   interactive?: boolean;
   node: WorkbenchNode<TData>;
@@ -89,6 +90,7 @@ function resolveWorkbenchNodeTypeId(data: unknown): string | undefined {
 export function WorkbenchWindowFrame<TData>({
   children,
   edgeSnapEnabled = false,
+  fullscreenRestoreControlEdge,
   genie,
   hiddenMounted = false,
   interactive = true,
@@ -131,30 +133,35 @@ export function WorkbenchWindowFrame<TData>({
       genie.minimizeNodeToAnchor(nodeID, minimize);
     }
   } as const;
-  const defaultActions = interactive ? (
-    <div
-      className="workbench-window__traffic-light-actions"
-      onDoubleClick={(event) => {
-        event.stopPropagation();
-      }}
-      onPointerDown={(event) => {
-        event.stopPropagation();
-      }}
-    >
-      {renderActions
-        ? renderActions({
-            controller,
-            genie: genieControls,
-            node
-          })
-        : null}
-      <WorkbenchWindowFullscreenToggle
-        controller={controller}
-        i18n={windowChromeI18n ?? defaultWindowChromeI18n}
-        node={node}
-      />
-    </div>
-  ) : null;
+  const isImmersiveFullscreen =
+    fullscreenRestoreControlEdge !== undefined &&
+    node.displayMode === "fullscreen";
+  const resolvedWindowChromeI18n = windowChromeI18n ?? defaultWindowChromeI18n;
+  const defaultActions =
+    interactive && !isImmersiveFullscreen ? (
+      <div
+        className="workbench-window__traffic-light-actions"
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+        }}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        {renderActions
+          ? renderActions({
+              controller,
+              genie: genieControls,
+              node
+            })
+          : null}
+        <WorkbenchWindowFullscreenToggle
+          controller={controller}
+          i18n={resolvedWindowChromeI18n}
+          node={node}
+        />
+      </div>
+    ) : null;
   const resolvedHeader = resolveWorkbenchWindowHeader({
     controller,
     defaultActions,
@@ -219,6 +226,7 @@ export function WorkbenchWindowFrame<TData>({
       data-focused={isFocused ? "true" : "false"}
       data-display-mode={node.displayMode}
       data-genie-state={genie.isNodeGenieHidden(node.id) ? "hidden" : "visible"}
+      data-immersive-fullscreen={isImmersiveFullscreen ? "true" : "false"}
       data-launch-source={resolveWorkbenchNodeLaunchSource(node.data)}
       data-minimized-mount={hiddenMounted ? "hidden" : "visible"}
       data-presentation-mode={presentationMode ?? "default"}
@@ -286,6 +294,28 @@ export function WorkbenchWindowFrame<TData>({
           </div>
           <div className="workbench-window__body">{children}</div>
         </div>
+        {isImmersiveFullscreen &&
+        !hiddenMounted &&
+        presentationMode !== "mission-control" &&
+        interactive ? (
+          <button
+            aria-label={resolvedWindowChromeI18n.t("exitFullscreen")}
+            className="workbench-window__fullscreen-restore"
+            data-edge={fullscreenRestoreControlEdge}
+            data-workbench-fullscreen-restore="true"
+            title={resolvedWindowChromeI18n.t("exitFullscreen")}
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              controller.commands.focusNode(node.id);
+              controller.commands.exitFullscreen(node.id);
+            }}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <WindowTrafficLightIcon aria-hidden iconName="unfullscreen" />
+          </button>
+        ) : null}
         {node.displayMode === "floating" &&
         !hiddenMounted &&
         presentationMode !== "mission-control" &&

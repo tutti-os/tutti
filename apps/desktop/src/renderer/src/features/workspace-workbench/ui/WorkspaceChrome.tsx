@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type * as React from "react";
 import type {
   WorkspaceAgentProvider,
@@ -12,9 +12,6 @@ import type {
 } from "@tutti-os/workbench-surface";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "@tutti-os/agent-gui/workbench/contribution";
 import { cn } from "@renderer/lib/format";
-import { useService } from "@tutti-os/infra/di";
-import { INotificationService } from "@tutti-os/ui-notifications";
-import { useTranslation } from "@renderer/i18n";
 import { ExternalAgentSessionImportPrompt } from "./ExternalAgentSessionImportPrompt";
 import { ExternalAgentSessionImportWizard } from "./ExternalAgentSessionImportWizard";
 import { WorkspaceAccountMenu } from "./WorkspaceAccountMenu";
@@ -37,7 +34,6 @@ const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_RESERVED_WIDTH_PX =
   WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX;
 
 export function WorkspaceChrome({
-  autoHideChromeEnabled,
   headerSlot,
   missionControl,
   onSelectWallpaper,
@@ -50,7 +46,6 @@ export function WorkspaceChrome({
   workbenchController,
   workspace
 }: {
-  autoHideChromeEnabled: boolean;
   headerSlot?: React.ReactNode;
   missionControl: {
     canOpen: boolean;
@@ -75,9 +70,6 @@ export function WorkspaceChrome({
   workbenchController?: WorkbenchController<WorkbenchHostNodeData>;
   workspace: WorkspaceSummary;
 }) {
-  const { t } = useTranslation();
-  const notifications = useService(INotificationService);
-  const hasShownFullscreenControlNoticeRef = useRef(false);
   const isDarwin = platform === "darwin";
   const isWindows = platform === "win32";
   const chromeState = useWorkspaceChromeState({
@@ -96,30 +88,6 @@ export function WorkspaceChrome({
     useState<WorkspaceAgentProvider[] | undefined>(undefined);
   const [externalImportWizardOpen, setExternalImportWizardOpen] =
     useState(false);
-  useEffect(() => {
-    if (
-      hasShownFullscreenControlNoticeRef.current ||
-      !autoHideChromeEnabled ||
-      !isDarwin ||
-      !chromeState.hasFullscreenWorkbenchWindow
-    ) {
-      return;
-    }
-
-    hasShownFullscreenControlNoticeRef.current = true;
-    notifications.info({
-      description: t(
-        "workspace.settings.lab.chromeFullscreenNoticeDescription"
-      ),
-      title: t("workspace.settings.lab.chromeFullscreenNoticeTitle")
-    });
-  }, [
-    autoHideChromeEnabled,
-    chromeState.hasFullscreenWorkbenchWindow,
-    isDarwin,
-    notifications,
-    t
-  ]);
   const openExternalAgentImport = useCallback(
     (providers?: WorkspaceAgentProvider[]) => {
       setExternalImportWizardProviders(providers);

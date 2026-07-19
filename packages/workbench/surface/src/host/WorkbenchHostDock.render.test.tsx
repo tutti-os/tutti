@@ -133,6 +133,86 @@ describe("WorkbenchHostDock", () => {
       vi.useRealTimers();
     }
   });
+
+  it("replaces fullscreen traffic lights with a safe-edge restore control", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const controller = createWorkbenchController({
+      nodes: [
+        {
+          data: null,
+          displayMode: "fullscreen",
+          frame: { height: 800, width: 1200, x: 0, y: 0 },
+          id: "fullscreen-node",
+          isMinimized: false,
+          kind: "test",
+          restoreFrame: { height: 480, width: 640, x: 80, y: 64 },
+          title: "Fullscreen node"
+        }
+      ],
+      nodeStack: ["fullscreen-node"],
+      surfaceSize: { height: 800, width: 1200 }
+    });
+    const previousActEnvironment = (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT;
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+
+    try {
+      await act(async () => {
+        root.render(
+          <WorkbenchSurface
+            autoHideChrome={{
+              dockHandleLabel: "Show Dock",
+              fullscreenRestoreControlEdge: "right",
+              topHandleLabel: "Show app bar"
+            }}
+            controller={controller}
+            renderNode={() => <div>Node body</div>}
+          />
+        );
+      });
+
+      expect(
+        container.querySelector(".workbench-window__traffic-light-actions")
+      ).toBeNull();
+      expect(
+        container
+          .querySelector(".workbench-window-shell")
+          ?.getAttribute("data-immersive-fullscreen")
+      ).toBe("true");
+      const restoreControl = container.querySelector<HTMLButtonElement>(
+        '[data-workbench-fullscreen-restore="true"]'
+      );
+      expect(restoreControl?.getAttribute("data-edge")).toBe("right");
+      expect(restoreControl?.getAttribute("aria-label")).toBe(
+        "Exit Full Screen"
+      );
+
+      await act(async () => {
+        restoreControl?.click();
+      });
+
+      expect(controller.getSnapshot().nodes[0]?.displayMode).toBe("floating");
+      expect(
+        container.querySelector('[data-workbench-fullscreen-restore="true"]')
+      ).toBeNull();
+      expect(
+        container.querySelector(".workbench-window__traffic-light-actions")
+      ).not.toBeNull();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (
+        globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+    }
+  });
 });
 
 function createDockProps() {

@@ -877,9 +877,6 @@ export const zhCN = {
           "自动收起应用顶栏和 Dock；点击屏幕边缘留下的把手即可分别展开。",
         autoHideWorkspaceChromeLabel: "自动收起应用顶栏和 Dock",
         chromeDockHandleLabel: "展开 Dock",
-        chromeFullscreenNoticeDescription:
-          "最左侧的一组控制属于 Tutti 应用；旁边的一组只控制当前最大化的工作台窗口。",
-        chromeFullscreenNoticeTitle: "工作台窗口已最大化",
         chromeTopHandleLabel: "展开应用顶栏",
         clearShortcutLabel: "清除 {{label}}",
         newAgentConversationShortcutLabel: "新建 Agent 对话",
