@@ -84,7 +84,11 @@ export function WorkbenchImmersiveChromeHeader<TData>({
             );
           }}
         >
-          <WindowTrafficLightIcon aria-hidden iconName="close" />
+          <WindowTrafficLightIcon
+            aria-hidden
+            data-workbench-immersive-tab-icon="minimize"
+            iconName="minimize"
+          />
         </button>
       </div>
       {projectedHeader ? (

@@ -260,6 +260,11 @@ describe("WorkbenchHostDock", () => {
       expect(minimizeControl?.getAttribute("aria-label")).toBe(
         "Minimize to Dock"
       );
+      expect(
+        minimizeControl?.querySelector(
+          '[data-workbench-immersive-tab-icon="minimize"]'
+        )
+      ).not.toBeNull();
 
       await act(async () => {
         minimizeControl?.click();

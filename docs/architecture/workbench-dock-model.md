@@ -82,9 +82,9 @@ group and projects the maximized app's complete header into the workspace top
 chrome. That projected header starts with an app tab after the native-control
 gutter, followed by the app's existing header controls, session identity, and
 actions. The tab title restores the internal window to floating mode. Its
-trailing close glyph deliberately minimizes the window to the Dock instead of
-closing it, so the app state is preserved when the user's intent is to leave
-fullscreen. The tab's accessible label and tooltip describe that minimize
+trailing minimize button sends the window to the Dock without closing it, so
+the app state is preserved when the user's intent is to leave fullscreen. The
+button's icon, accessible label, and tooltip all describe that minimize
 behavior explicitly.
 
 The projected app header is owned by the top-chrome region rather than the
