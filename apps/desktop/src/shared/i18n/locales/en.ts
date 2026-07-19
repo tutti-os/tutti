@@ -480,7 +480,7 @@ export const en = {
           earlyAccessDescription:
             "Show agent integrations that Tutti is still testing and validating.",
           earlyAccessHiddenHint:
-            "Turn on Early access integrations in Agents to manage {{agent}}.",
+            "Turn on Early access integrations in Lab to manage {{agent}}.",
           earlyAccessLabel: "Early access integrations",
           empty: "No agents to show.",
           enableAgent: "Enable {{agent}}",
@@ -950,6 +950,9 @@ export const en = {
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",
         preferencesSaveFailed: "We couldn't update Lab preferences.",
+        previewAgentsDescription:
+          "Show agent integrations that Tutti is still testing and validating.",
+        previewAgentsLabel: "Early access integrations",
         shortcutUnbound: "Unbound",
         workbenchShortcutsDescription:
           "Enables configurable workbench shortcut actions.",

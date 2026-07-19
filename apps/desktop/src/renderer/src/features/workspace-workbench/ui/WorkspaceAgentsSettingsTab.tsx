@@ -152,7 +152,6 @@ export function WorkspaceAgentsSettingsTab({
   onAgentEnabledChange,
   onAutoCheckEnabledChange,
   onOpenEnvironment,
-  onEarlyAccessEnabledChange,
   onExtensionEnabledChange
 }: {
   autoCheckEnabled: boolean;
@@ -170,7 +169,6 @@ export function WorkspaceAgentsSettingsTab({
   ) => Promise<void>;
   onAutoCheckEnabledChange: (enabled: boolean) => void;
   onOpenEnvironment: (provider: WorkspaceAgentProvider) => void;
-  onEarlyAccessEnabledChange: (enabled: boolean) => void;
   onExtensionEnabledChange: (
     flag: AgentExtensionActivationFlag,
     enabled: boolean
@@ -377,23 +375,6 @@ export function WorkspaceAgentsSettingsTab({
       data-testid="workspace-settings-agents-list"
       role="table"
     >
-      <div className="mb-3 flex items-center justify-between gap-4 rounded-lg bg-[var(--transparency-block)] px-3 py-2.5 max-[560px]:items-start">
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-[12px] font-medium text-[var(--text-primary)]">
-            {t("workspace.settings.agent.agents.earlyAccessLabel")}
-          </span>
-          <span className="text-[11px] leading-[1.35] text-[var(--text-tertiary)]">
-            {t("workspace.settings.agent.agents.earlyAccessDescription")}
-          </span>
-        </span>
-        <Switch
-          aria-label={t("workspace.settings.agent.agents.earlyAccessLabel")}
-          checked={earlyAccessEnabled}
-          disabled={featureFlagsPending}
-          size="sm"
-          onCheckedChange={onEarlyAccessEnabledChange}
-        />
-      </div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[var(--transparency-block)] px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
           <Switch

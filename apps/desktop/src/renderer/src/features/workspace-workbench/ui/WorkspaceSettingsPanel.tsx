@@ -440,12 +440,6 @@ export function WorkspaceSettingsPanel({
                           });
                         });
                     }}
-                    onEarlyAccessEnabledChange={(enabled) => {
-                      void settingsService.changeFeatureFlags({
-                        ...pendingFeatureFlags,
-                        [EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG]: enabled
-                      });
-                    }}
                     onExtensionEnabledChange={(flag, enabled) => {
                       return settingsService.changeFeatureFlags({
                         ...pendingFeatureFlags,
@@ -1626,6 +1620,10 @@ function WorkspaceLabSettingsSection({
     pendingFeatureFlags,
     LAB_WORKBENCH_SHORTCUTS_FLAG
   );
+  const previewAgentsEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG
+  );
   const updateFeatureFlag = useCallback(
     (key: string, enabled: boolean) => {
       onFeatureFlagsChange({
@@ -1696,6 +1694,24 @@ function WorkspaceLabSettingsSection({
 
   return (
     <SettingsRows>
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.lab.previewAgentsLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.lab.previewAgentsDescription")}
+          </p>
+        </div>
+        <Switch
+          aria-label={t("workspace.settings.lab.previewAgentsLabel")}
+          checked={previewAgentsEnabled}
+          disabled={isUpdatingFlags}
+          onCheckedChange={(enabled) => {
+            updateFeatureFlag(EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG, enabled);
+          }}
+        />
+      </div>
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">

@@ -462,7 +462,7 @@ export const zhCN = {
           earlyAccessBadge: "抢先体验",
           earlyAccessDescription: "显示仍在 Tutti 中测试和验证的 Agent 集成。",
           earlyAccessHiddenHint:
-            "在 Agents 中开启抢先体验集成即可管理 {{agent}}。",
+            "在实验室中开启抢先体验集成即可管理 {{agent}}。",
           earlyAccessLabel: "抢先体验集成",
           empty: "暂无可显示的 Agent。",
           enableAgent: "启用 {{agent}}",
@@ -897,6 +897,8 @@ export const zhCN = {
         newAgentConversationShortcutLabel: "新建 Agent 对话",
         newSameTypeWindowShortcutLabel: "新建同类型窗口",
         preferencesSaveFailed: "暂时无法更新实验室设置",
+        previewAgentsDescription: "显示仍在 Tutti 中测试和验证的 Agent 集成。",
+        previewAgentsLabel: "抢先体验集成",
         shortcutUnbound: "未绑定",
         workbenchShortcutsDescription: "启用可配置的工作台快捷键操作",
         workbenchShortcutsLabel: "工作台快捷键",

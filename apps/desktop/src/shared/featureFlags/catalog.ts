@@ -111,7 +111,7 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
   {
     key: EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
     default: false,
-    group: "agent"
+    group: "lab"
   }
 ];
 

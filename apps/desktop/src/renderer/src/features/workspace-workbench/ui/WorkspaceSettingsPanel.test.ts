@@ -338,17 +338,21 @@ test("labs keeps the shortcut toggle in the list but moves shortcut config behin
   assert.match(source, /workspace\.settings\.lab\.backLabel/);
 });
 
-test("Agents owns the Early Access integrations gate", () => {
+test("Lab owns the Preview Agents (Early Access) gate", () => {
   assert.match(source, /EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG/);
+  // The toggle lives in the Lab section, wired to the Early Access flag.
+  assert.match(source, /workspace\.settings\.lab\.previewAgentsLabel/);
   assert.match(
+    source,
+    /updateFeatureFlag\(\s*EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG/
+  );
+  // The Agents tab no longer renders its own Early Access switch, and the
+  // bespoke handler is gone from the panel.
+  assert.doesNotMatch(
     agentsTabSource,
     /workspace\.settings\.agent\.agents\.earlyAccessLabel/
   );
-  assert.match(
-    source,
-    /onEarlyAccessEnabledChange=\{\(enabled\) => \{[\s\S]{0,240}\[EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG\]: enabled/
-  );
-  assert.doesNotMatch(source, /workspace\.settings\.lab\.previewAgentsLabel/);
+  assert.doesNotMatch(source, /onEarlyAccessEnabledChange/);
 });
 
 test("agents settings routes Environment status to environment detection", () => {
