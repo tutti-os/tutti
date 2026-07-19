@@ -13,6 +13,23 @@ beforeAll(() => {
 });
 
 describe("AgentHandoffMenu", () => {
+  it("shows its design-system tooltip without relying on a native title", async () => {
+    render(
+      <AgentHandoffMenu labels={labels} targets={targets} onSelect={vi.fn()} />
+    );
+
+    const trigger = screen.getByRole("combobox", { name: "Handoff" });
+    expect(trigger).not.toHaveAttribute("title");
+
+    fireEvent.pointerMove(trigger.parentElement!, {
+      pointerType: "mouse"
+    });
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Hand off to another agent"
+    );
+  });
+
   it("renders self and shared ownership and selects the exact target", async () => {
     const onSelect = vi.fn();
     render(

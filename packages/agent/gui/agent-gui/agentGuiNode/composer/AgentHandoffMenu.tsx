@@ -3,7 +3,11 @@ import {
   Select,
   SelectContent,
   SelectItem,
-  SelectTrigger
+  SelectTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
 } from "@tutti-os/ui-system";
 import { cn } from "../../../app/renderer/lib/utils";
 import type { AgentGUIAgentTarget } from "../../../types";
@@ -96,62 +100,70 @@ export function AgentHandoffMenu({
           onSelect(target);
         }}
       >
-        <SelectTrigger
-          size="sm"
-          aria-label={labels.action}
-          title={labels.tooltip}
-          data-testid={testId}
-          onClick={
-            isolateTriggerEvents
-              ? (event) => {
-                  event.stopPropagation();
-                }
-              : undefined
-          }
-          onKeyDown={
-            isolateTriggerEvents
-              ? (event) => {
-                  event.stopPropagation();
-                }
-              : undefined
-          }
-          onPointerDown={
-            isolateTriggerEvents
-              ? (event) => {
-                  event.stopPropagation();
-                }
-              : undefined
-          }
-          onBlur={() => {
-            setIsIconPlaying(false);
-          }}
-          onFocus={() => {
-            setIsIconPlaying(true);
-          }}
-          onMouseEnter={() => {
-            setIsIconPlaying(true);
-          }}
-          onMouseLeave={() => {
-            setIsIconPlaying(false);
-          }}
-          className={cn(
-            styles.composerMenuTrigger,
-            styles.composerProviderSelect,
-            styles.composerHandoffTrigger,
-            "w-auto max-w-[180px] [&>svg:last-child]:hidden",
-            triggerClassName
-          )}
-        >
-          <span className="flex min-w-0 items-center gap-1.5">
-            <AgentComposerHandoffIcon
-              disabled={menuDisabled}
-              isPlaying={isIconPlaying}
-            />
-            {!iconOnly ? (
-              <span className="min-w-0 truncate">{triggerLabel}</span>
-            ) : null}
-          </span>
-        </SelectTrigger>
+        <TooltipProvider delayDuration={120}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <SelectTrigger
+                  size="sm"
+                  aria-label={labels.action}
+                  data-testid={testId}
+                  onClick={
+                    isolateTriggerEvents
+                      ? (event) => {
+                          event.stopPropagation();
+                        }
+                      : undefined
+                  }
+                  onKeyDown={
+                    isolateTriggerEvents
+                      ? (event) => {
+                          event.stopPropagation();
+                        }
+                      : undefined
+                  }
+                  onPointerDown={
+                    isolateTriggerEvents
+                      ? (event) => {
+                          event.stopPropagation();
+                        }
+                      : undefined
+                  }
+                  onBlur={() => {
+                    setIsIconPlaying(false);
+                  }}
+                  onFocus={() => {
+                    setIsIconPlaying(true);
+                  }}
+                  onMouseEnter={() => {
+                    setIsIconPlaying(true);
+                  }}
+                  onMouseLeave={() => {
+                    setIsIconPlaying(false);
+                  }}
+                  className={cn(
+                    styles.composerMenuTrigger,
+                    styles.composerProviderSelect,
+                    styles.composerHandoffTrigger,
+                    "w-auto max-w-[180px] [&>svg:last-child]:hidden",
+                    triggerClassName
+                  )}
+                >
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <AgentComposerHandoffIcon
+                      disabled={menuDisabled}
+                      isPlaying={isIconPlaying}
+                    />
+                    {!iconOnly ? (
+                      <span className="min-w-0 truncate">{triggerLabel}</span>
+                    ) : null}
+                  </span>
+                </SelectTrigger>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top">{labels.tooltip}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <SelectContent
           align={align}
           className={cn(

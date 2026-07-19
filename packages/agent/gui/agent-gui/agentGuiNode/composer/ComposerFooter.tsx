@@ -157,21 +157,31 @@ export function ComposerFooter({
                   }
                 }}
               >
-                <SelectTrigger
-                  size="sm"
-                  aria-label={labels.referenceWorkspaceFiles}
-                  title={labels.addContent}
-                  className={cn(
-                    styles.composerMenuTrigger,
-                    styles.composerReferenceTrigger,
-                    "group w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden"
-                  )}
-                >
-                  <AgentComposerMaskIcon
-                    iconUrl={addLinedIconUrl}
-                    marker="reference-add"
-                  />
-                </SelectTrigger>
+                <TooltipProvider delayDuration={120}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex">
+                        <SelectTrigger
+                          size="sm"
+                          aria-label={labels.referenceWorkspaceFiles}
+                          className={cn(
+                            styles.composerMenuTrigger,
+                            styles.composerReferenceTrigger,
+                            "group w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden"
+                          )}
+                        >
+                          <AgentComposerMaskIcon
+                            iconUrl={addLinedIconUrl}
+                            marker="reference-add"
+                          />
+                        </SelectTrigger>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {labels.addContent}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </Select>
             )}
             <TooltipProvider delayDuration={120}>
