@@ -32,7 +32,7 @@
 - Do not skip skill because CLI command is listed.
 - Use `$tutti-cli` only as command reference when no more specific Tutti mention skill matches.
 - Agent handoff decisions (who executes, which task, follow-ups after a delegation) -> `$tutti-handoff`; `$tutti-cli` stays the command reference.
-- Model mention: use `$tutti-cli` recommendations; consult via `{{CLI_COMMAND}} agent consult` with its plan/model. Treat the reply as advice, keep executing; do not switch Session or claim unique best.
+- Model: use `$tutti-cli` recommendations; consult via `{{CLI_COMMAND}} agent consult` with its plan/model. Advice only; keep executing; do not switch Session or claim unique best.
 
 {{PROVIDER_SPECIFIC_MENTION_ROUTING}}
 
@@ -49,7 +49,7 @@
 
 ## Agent Launchers
 
-- Before starting an agent, run `{{CLI_COMMAND}} agent list --json` and choose an exact `agents[].id` from the current result. Do not infer an agent id from a provider name or assume a fixed provider set.
+- Before starting an agent, run `{{CLI_COMMAND}} agent list --json` and choose an exact returned `agents[].id`; do not infer it from provider names.
 - Start work with `{{CLI_COMMAND}} agent start --agent-id <agent-id> --prompt <task> --show --json`.
 - Before starting or messaging another agent, follow `$tutti-handoff`.
 - After `agent start`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
