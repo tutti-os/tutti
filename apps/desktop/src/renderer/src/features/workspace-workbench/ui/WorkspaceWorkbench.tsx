@@ -309,6 +309,9 @@ function ReadyWorkspaceWorkbenchWithSession({
       autoHideWorkspaceChrome
         ? {
             dockHandleLabel: t("workspace.settings.lab.chromeDockHandleLabel"),
+            ...(state.platform === "darwin"
+              ? { fullscreenHostControlsMaskHeight: 52 }
+              : {}),
             fullscreenRestoreControlInset:
               state.platform === "darwin" ? 88 : 10,
             topHandleLabel: t("workspace.settings.lab.chromeTopHandleLabel")

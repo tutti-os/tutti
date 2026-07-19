@@ -167,6 +167,7 @@ describe("WorkbenchHostDock", () => {
           <WorkbenchSurface
             autoHideChrome={{
               dockHandleLabel: "Show Dock",
+              fullscreenHostControlsMaskHeight: 52,
               fullscreenRestoreControlInset: 88,
               topHandleLabel: "Show app bar"
             }}
@@ -179,11 +180,20 @@ describe("WorkbenchHostDock", () => {
       expect(
         container.querySelector(".workbench-window__traffic-light-actions")
       ).toBeNull();
+      const fullscreenShell = container.querySelector<HTMLElement>(
+        ".workbench-window-shell"
+      );
+      expect(fullscreenShell?.getAttribute("data-immersive-fullscreen")).toBe(
+        "true"
+      );
       expect(
-        container
-          .querySelector(".workbench-window-shell")
-          ?.getAttribute("data-immersive-fullscreen")
-      ).toBe("true");
+        fullscreenShell?.style.getPropertyValue(
+          "--workbench-fullscreen-host-controls-height"
+        )
+      ).toBe("52px");
+      expect(
+        container.querySelector('[data-workbench-native-controls-mask="true"]')
+      ).not.toBeNull();
       const restoreControl = container.querySelector<HTMLButtonElement>(
         '[data-workbench-fullscreen-restore="true"]'
       );
@@ -197,6 +207,9 @@ describe("WorkbenchHostDock", () => {
       expect(controller.getSnapshot().nodes[0]?.displayMode).toBe("floating");
       expect(
         container.querySelector('[data-workbench-fullscreen-restore="true"]')
+      ).toBeNull();
+      expect(
+        container.querySelector('[data-workbench-native-controls-mask="true"]')
       ).toBeNull();
       expect(
         container.querySelector(".workbench-window__traffic-light-actions")

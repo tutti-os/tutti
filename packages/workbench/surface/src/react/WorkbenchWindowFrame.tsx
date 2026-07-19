@@ -31,6 +31,7 @@ export interface WorkbenchWindowFrameProps<TData = unknown> {
   children: ReactNode;
   genie: WorkbenchGenieController;
   edgeSnapEnabled?: boolean;
+  fullscreenHostControlsMaskHeight?: number;
   fullscreenRestoreControlInset?: number;
   hiddenMounted?: boolean;
   interactive?: boolean;
@@ -90,6 +91,7 @@ function resolveWorkbenchNodeTypeId(data: unknown): string | undefined {
 export function WorkbenchWindowFrame<TData>({
   children,
   edgeSnapEnabled = false,
+  fullscreenHostControlsMaskHeight,
   fullscreenRestoreControlInset,
   genie,
   hiddenMounted = false,
@@ -247,7 +249,12 @@ export function WorkbenchWindowFrame<TData>({
           zIndex,
           ...(isImmersiveFullscreen
             ? {
-                "--workbench-fullscreen-restore-content-inset": `${fullscreenRestoreControlInset + 40}px`
+                "--workbench-fullscreen-restore-content-inset": `${fullscreenRestoreControlInset + 40}px`,
+                ...(fullscreenHostControlsMaskHeight === undefined
+                  ? {}
+                  : {
+                      "--workbench-fullscreen-host-controls-height": `${fullscreenHostControlsMaskHeight}px`
+                    })
               }
             : {})
         } as CSSProperties
@@ -301,6 +308,16 @@ export function WorkbenchWindowFrame<TData>({
           </div>
           <div className="workbench-window__body">{children}</div>
         </div>
+        {isImmersiveFullscreen &&
+        fullscreenHostControlsMaskHeight !== undefined &&
+        !hiddenMounted &&
+        presentationMode !== "mission-control" ? (
+          <div
+            aria-hidden="true"
+            className="workbench-window__native-controls-mask"
+            data-workbench-native-controls-mask="true"
+          />
+        ) : null}
         {isImmersiveFullscreen &&
         !hiddenMounted &&
         presentationMode !== "mission-control" &&

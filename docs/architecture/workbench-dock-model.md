@@ -79,8 +79,12 @@ enabled so maximized workbench windows can use the complete surface. On macOS,
 the desktop host keeps the native application window buttons visible. The
 workbench surface hides only the maximized internal window's own traffic-light
 group and places one restore control at a host-provided titlebar inset, after
-the native traffic-light area. Custom headers reserve that control's width so
-their existing actions continue to its right instead of overlapping it.
+the native traffic-light area. The desktop host also provides the native
+titlebar height, allowing the restore control to share the traffic lights'
+vertical center. A curved, lower-right-closing mask groups those external
+controls visually above the internal window, while custom headers reserve the
+mask's width so their existing actions continue to its right instead of
+overlapping it.
 
 ## Core Model
 

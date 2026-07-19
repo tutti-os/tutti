@@ -2668,20 +2668,42 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
   display: none;
 }
 
+.workbench-window__native-controls-mask {
+  position: absolute;
+  z-index: 31;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: var(--workbench-fullscreen-restore-content-inset, 128px);
+  height: var(--workbench-fullscreen-host-controls-height, 52px);
+  border-right: 1px solid color-mix(in srgb, var(--border-1) 72%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-1) 72%, transparent);
+  border-bottom-right-radius: calc(
+    var(--workbench-fullscreen-host-controls-height, 52px) / 2
+  );
+  border-top-left-radius: var(--workbench-window-radius);
+  background: color-mix(in srgb, var(--background-fronted) 94%, transparent);
+  box-shadow: 8px 10px 24px rgb(0 0 0 / 14%);
+  pointer-events: none;
+  backdrop-filter: blur(16px);
+}
+
 .workbench-window__fullscreen-restore {
   position: absolute;
-  z-index: 3;
-  top: 4px;
+  z-index: 32;
+  top: calc(
+    (var(--workbench-fullscreen-host-controls-height, 38px) - 30px) / 2
+  );
   display: inline-flex;
   width: 30px;
   height: 30px;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--border-1) 82%, transparent);
+  border: 1px solid transparent;
   border-radius: 9px;
-  background: color-mix(in srgb, var(--background-fronted) 88%, transparent);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+  background: transparent;
+  box-shadow: none;
   color: var(--text-secondary);
   cursor: pointer;
   outline: none;
@@ -2690,7 +2712,6 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
     color 0.16s ease,
     transform 0.16s ease;
   -webkit-app-region: no-drag;
-  backdrop-filter: blur(12px);
 }
 
 .workbench-window__fullscreen-restore:hover,
