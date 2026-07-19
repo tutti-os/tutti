@@ -832,18 +832,22 @@
   Confirm the SVG import resolves to a CSS-safe self-contained data URL, then
   inspect how that URL reaches the element. If the icon background applies but
   the mask does not, look for a dynamic URL passed through a custom property
-  into the `mask` or `-webkit-mask` shorthand.
+  into the `mask` or `-webkit-mask` shorthand. If both mask-image longhands are
+  present, verify that their source is the dedicated monochrome `maskIconUrl`,
+  not the target's primary color `iconUrl`.
 - Root cause:
-  The dynamic mask source crossed two parsing boundaries: React serialized a
-  custom-property token stream, then the stylesheet substituted that stream
-  into a mask shorthand. When that composed declaration was rejected, the
-  element retained its background color and dimensions without any mask, which
-  exposed the full box.
+  Either the dynamic mask source crossed two parsing boundaries and the
+  composed declaration was rejected, or the renderer conflated two Agent
+  Directory roles by using the primary identity image as a monochrome mask. An
+  opaque primary image produces a full-box alpha mask even when the CSS is
+  valid.
 - Fix:
   Keep the dynamic image source on the element through the explicit
   `maskImage` and `WebkitMaskImage` longhands. Keep static position, repeat, and
   size declarations in CSS longhands. Do not route dynamic image URLs through a
-  custom property into a shorthand.
+  custom property into a shorthand. Preserve Agent Directory icon roles: render
+  `maskIconUrl` through the mask element and render an `iconUrl` without a
+  matching mask as a normal image.
 - Validation:
   Assert the rendered element owns both mask-image longhands and that the
   packaged SVG remains a CSS-safe data URL. Verify the affected icon in the

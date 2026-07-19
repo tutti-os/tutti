@@ -23,14 +23,20 @@ const menuContentClassName =
   "w-max min-w-44 nodrag [-webkit-app-region:no-drag]";
 
 export interface AgentGuiWorkbenchSessionMenuProps {
+  actions?: readonly AgentGuiWorkbenchSessionAction[];
   copy: AgentGuiWorkbenchSessionMenuCopy;
   onAction: (action: AgentGuiWorkbenchSessionAction) => void;
 }
 
 export function AgentGuiWorkbenchSessionMenu({
+  actions = ["rename", "copy-markdown", "copy-reference"],
   copy,
   onAction
 }: AgentGuiWorkbenchSessionMenuProps): ReactNode {
+  const showRename = actions.includes("rename");
+  const showCopyMarkdown = actions.includes("copy-markdown");
+  const showCopyReference = actions.includes("copy-reference");
+  const showCopyActions = showCopyMarkdown || showCopyReference;
   const pendingActionRef = useRef(false);
   const select = useCallback(
     (action: AgentGuiWorkbenchSessionAction) => {
@@ -97,19 +103,25 @@ export function AgentGuiWorkbenchSessionMenu({
         onPointerUp={stopPointerPropagation}
         sideOffset={6}
       >
-        <DropdownMenuItem {...actionProps("rename")}>
-          <Pencil aria-hidden="true" />
-          <span>{copy.renameSession}</span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem {...actionProps("copy-markdown")}>
-          <FileText aria-hidden="true" />
-          <span>{copy.copyAsMarkdown}</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem {...actionProps("copy-reference")}>
-          <AtSign aria-hidden="true" />
-          <span>{copy.copyAsReference}</span>
-        </DropdownMenuItem>
+        {showRename ? (
+          <DropdownMenuItem {...actionProps("rename")}>
+            <Pencil aria-hidden="true" />
+            <span>{copy.renameSession}</span>
+          </DropdownMenuItem>
+        ) : null}
+        {showRename && showCopyActions ? <DropdownMenuSeparator /> : null}
+        {showCopyMarkdown ? (
+          <DropdownMenuItem {...actionProps("copy-markdown")}>
+            <FileText aria-hidden="true" />
+            <span>{copy.copyAsMarkdown}</span>
+          </DropdownMenuItem>
+        ) : null}
+        {showCopyReference ? (
+          <DropdownMenuItem {...actionProps("copy-reference")}>
+            <AtSign aria-hidden="true" />
+            <span>{copy.copyAsReference}</span>
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

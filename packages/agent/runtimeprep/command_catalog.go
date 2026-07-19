@@ -465,8 +465,10 @@ func commandRank(id string) int {
 		return 110
 	case "agent-context.agent.wait":
 		return 115
-	case "agent-context.agent.session-summary":
+	case "agent-context.agent.get":
 		return 120
+	case "agent-context.agent.session-summary":
+		return 121
 	case "agent-context.agent.turn-resources":
 		return 125
 	case "agent-context.agent.active-peers":
@@ -496,8 +498,10 @@ func fallbackCommandGuide(cliName string) string {
 		fmt.Sprintf("- List available agents: `%s agent list --json` - Use this current catalog before starting an agent; do not assume a fixed provider set.", cliName),
 		fmt.Sprintf("- Start an agent session: `%s agent start --agent-id <agent-id> --prompt <prompt> --json` - Add `--show` to request AgentGUI activation. Omit --model unless the user explicitly requested a model; tuttid uses the selected agent's configured/default model. Pass --image <path> multiple times to include local PNG, JPEG, or WebP image context.", cliName),
 		fmt.Sprintf("- List agent sessions: `%s agent sessions`", cliName),
-		fmt.Sprintf("- Wait for the next agent stop point without fetching execution messages: `%s agent wait --session-id <session-id> --json` - Use this after `agent start` or `agent send`; use `agent session-summary` when you need the full compact session context.", cliName),
-		fmt.Sprintf("- Get agent session summary: `%s agent session-summary --session-id <session-id> --json`", cliName),
+		fmt.Sprintf("- Wait for the next agent stop point without fetching execution messages: `%s agent wait --session-id <session-id> --json` - Use this after `agent start` or `agent send`; use `agent get` when you need recent conversation context.", cliName),
+		fmt.Sprintf("- Get recent agent conversation: `%s agent get --session-id <session-id> --json` - Returns the latest three Turns newest-first, with chronological body messages and an explicit finalMessage for each Turn.", cliName),
+		fmt.Sprintf("- Discover agent Turns without messages: `%s agent get --session-id <session-id> --view turns --json` - Page older Turns with --before-turn-id using the oldest returned turn id when hasMoreTurns is true.", cliName),
+		fmt.Sprintf("- Inspect one agent Turn trace: `%s agent get --session-id <session-id> --turn-id <turn-id> --view trace --json` - Use only when tool-call detail is needed; add --messages or --before-version for bounded paging.", cliName),
 		fmt.Sprintf("- Get resources from one agent turn: `%s agent turn-resources --session-id <session-id> --turn-id <turn-id> --json`", cliName),
 		fmt.Sprintf("- Show active peer agents: `%s agent active-peers --json`", cliName),
 		fmt.Sprintf("- Open an app window: `%s app open --app-id <app-id> --json` - Use only when the user explicitly asks to open or show an app window, or confirms an app window should be opened; prefer app-specific CLI commands for ordinary app work.", cliName),

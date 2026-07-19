@@ -104,6 +104,10 @@ test("standalone Agent tools load their OS node UI on demand", () => {
   assert.match(standaloneAgentBrowserToolPanelSource, /<AgentToolBrowserPanel/);
   assert.match(
     standaloneAgentBrowserToolPanelSource,
+    /chromeCookieImportPrompt=\{getDesktopChromeCookieImportPromptAdapter\(\)\}/
+  );
+  assert.match(
+    standaloneAgentBrowserToolPanelSource,
     /@tutti-os\/agent-gui\/workbench\/browser-element-context/
   );
   assert.match(

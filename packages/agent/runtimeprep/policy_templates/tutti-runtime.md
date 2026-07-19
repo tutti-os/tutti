@@ -54,11 +54,11 @@
 - Before starting or messaging another agent, follow `$tutti-handoff`.
 - After `agent start`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
 - After `agent send`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
-- `agent wait` does not fetch execution messages; use `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` only for the full compact context helper or turn discovery — never as a progress poll on a running session. Ask for the task prompt, not a provider or model.
+- `agent wait` does not fetch execution messages; use `{{CLI_COMMAND}} agent get --session-id <session-id> --json` only for recent conversation recovery — never as a progress poll on a running session. Use `--view turns` for metadata-only Turn discovery and `--turn-id <turn-id> --view trace` only when tool-call detail is needed. Ask for the task prompt, not a provider or model.
 
 ### Image Context
 
-- For image context, use `{{CLI_COMMAND}} agent session-summary --session-id <caller-session-id> --json` to find turn ids, then `{{CLI_COMMAND}} agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json`, and pass chosen images as `--image <localPath>`.
+- For image context, use `{{CLI_COMMAND}} agent get --session-id <caller-session-id> --view turns --turns 20 --json` to find turn ids without loading messages. Continue older pages with `--before-turn-id <oldest-returned-turn-id>` when `hasMoreTurns` is true, then use `{{CLI_COMMAND}} agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json`, and pass chosen images as `--image <localPath>`.
 
 {{SKILL_STRATEGY_POLICY_SECTIONS}}
 

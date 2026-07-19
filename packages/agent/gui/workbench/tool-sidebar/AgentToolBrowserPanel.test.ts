@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  BrowserNodeChromeImportPromptAdapter,
   BrowserNodeEvent,
   BrowserNodeHostApi
 } from "@tutti-os/browser-node";
@@ -36,6 +37,37 @@ describe("AgentToolBrowserPanel", () => {
     );
 
     disconnect();
+  });
+
+  it("forwards the host-owned Chrome import prompt adapter", () => {
+    const prompt: BrowserNodeChromeImportPromptAdapter = {
+      dismiss() {},
+      isDismissed: () => false,
+      subscribe: () => () => undefined
+    };
+    const browserApi = createBrowserApi(() => undefined);
+    browserApi.cancelChromeCookieImport = async () => undefined;
+    browserApi.discoverChromeCookieProfiles = async () => ({
+      profiles: [],
+      status: "available"
+    });
+    browserApi.importChromeCookies = async () => ({
+      canceled: false,
+      failed: 0,
+      imported: 0,
+      partial: false,
+      skipped: 0,
+      status: "completed"
+    });
+
+    const feature = createAgentToolBrowserFeature({
+      browserApi,
+      chromeCookieImportPrompt: prompt,
+      i18n: { t: (key) => key } as I18nRuntime<string>,
+      nodeId: "browser:agent-tool:one"
+    });
+
+    expect(feature.chromeCookieImport?.prompt).toBe(prompt);
   });
 });
 

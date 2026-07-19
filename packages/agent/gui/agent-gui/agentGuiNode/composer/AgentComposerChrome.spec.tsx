@@ -18,6 +18,7 @@ describe("AgentComposerHandoffIcon", () => {
     const firstAnimation = icon?.querySelector("img");
     expect(icon).toHaveAttribute("data-playing", "true");
     expect(firstAnimation).not.toHaveAttribute("data-active");
+    expect(firstAnimation).toHaveAttribute("decoding", "async");
     expect(firstAnimation?.getAttribute("src")).not.toMatch(/^https?:/);
 
     fireEvent.load(firstAnimation!);

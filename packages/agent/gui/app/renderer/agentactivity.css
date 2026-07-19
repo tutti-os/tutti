@@ -4557,13 +4557,17 @@ aside.workspace-agents-status-panel
   transition: none;
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"]) {
+.workbench-window:has(
+  > .workbench-window__header [data-agent-gui-workbench-header="true"]
+) {
   --agent-gui-workbench-header-height: 44px;
 
   grid-template-rows: minmax(0, 1fr);
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window:has(
+    > .workbench-window__header [data-agent-gui-workbench-header="true"]
+  )
   .workbench-window__header {
   position: absolute !important;
   top: 0 !important;
@@ -4583,41 +4587,48 @@ aside.workspace-agents-status-panel
 }
 
 .workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+    > .workbench-window__header
+      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
   )
   .workbench-window__header {
   cursor: grab !important;
 }
 
 .workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+    > .workbench-window__header
+      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
   )
   .workbench-window__header:active {
   cursor: grabbing !important;
 }
 
 .workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+    > .workbench-window__header
+      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
   )
   .workbench-window__header {
   z-index: calc(var(--z-panel) + 1);
 }
 
 .workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+    > .workbench-window__header
+      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
   )
   .agent-gui-workbench-header::after {
   display: none;
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window:has(
+    > .workbench-window__header [data-agent-gui-workbench-header="true"]
+  )
   .workbench-window__body {
   grid-row: 1;
   overflow: hidden;
 }
 
 .workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+    > .workbench-window__header
+      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
   )
   .workbench-window__body {
   display: flex;
@@ -4680,7 +4691,9 @@ aside.workspace-agents-status-panel
   overscroll-behavior: contain;
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window:has(
+    > .workbench-window__header [data-agent-gui-workbench-header="true"]
+  )
   .agent-gui-node__provider-rail-panel {
   padding-top: var(--agent-gui-workbench-header-height);
 }
@@ -4689,22 +4702,30 @@ aside.workspace-agents-status-panel
    breathing room on the inner rail, so the "All" tile sits at header + 2px. The
    toolbar has no such wrapper, so fold the same 2px into its offset to keep the
    search field top aligned with the provider tiles. */
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window:has(
+    > .workbench-window__header [data-agent-gui-workbench-header="true"]
+  )
   .agent-gui-node__rail-toolbar {
   padding-top: calc(var(--agent-gui-workbench-header-height) + 2px);
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window:has(
+    > .workbench-window__header [data-agent-gui-workbench-header="true"]
+  )
   .agent-gui-node__detail-panel {
   position: relative;
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window:has(
+    > .workbench-window__header [data-agent-gui-workbench-header="true"]
+  )
   .agent-gui-node__detail {
   padding-top: var(--agent-gui-workbench-header-height);
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window:has(
+    > .workbench-window__header [data-agent-gui-workbench-header="true"]
+  )
   .agent-gui-node__timeline-with-composer {
   padding-top: 20px;
 }
@@ -5198,11 +5219,13 @@ aside.workspace-agents-status-panel
 }
 
 .workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+    > .workbench-window__header
+      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
   )
   .agent-gui-workbench-header__session-title,
 .workbench-window:has(
-    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+    > .workbench-window__header
+      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
   )
   .agent-gui-workbench-header__detail-title {
   box-sizing: border-box;
@@ -5478,7 +5501,9 @@ aside.workspace-agents-status-panel
   );
 }
 
-.workbench-window:has([data-agent-gui-workbench-header="true"])
+.workbench-window:has(
+    > .workbench-window__header [data-agent-gui-workbench-header="true"]
+  )
   .agent-gui-node__provider-rail-panel::after {
   top: var(--agent-gui-workbench-header-height);
 }
@@ -6565,10 +6590,18 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__conversation-provider-icon {
-  display: inline-block;
   flex: 0 0 14px;
   width: 14px;
   height: 14px;
+}
+
+.agent-gui-node__conversation-provider-image {
+  display: block;
+  object-fit: contain;
+}
+
+.agent-gui-node__conversation-provider-mask-icon {
+  display: inline-block;
   color: var(--text-tertiary);
   background-color: currentColor;
   mask-position: center;
@@ -8729,6 +8762,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
+  contain: layout paint;
 }
 
 .agent-gui-node__composer-handoff-icon[data-playing="true"] {
@@ -8762,10 +8796,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   position: absolute;
   inset: 0;
   /* Match the APNG's padded 44px canvas to the static icon's visual size. */
-  transform: scale(1.3);
+  transform: translateZ(0) scale(1.3);
   filter: var(--agent-gui-handoff-animation-filter, none);
   opacity: 0;
   pointer-events: none;
+  backface-visibility: hidden;
+  will-change: opacity, transform;
 }
 
 .agent-gui-node__composer-handoff-icon-animated[data-active="true"] {
@@ -8775,6 +8811,16 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-handoff-icon[data-disabled="true"]
   .agent-gui-node__composer-handoff-icon-animated {
   opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-node__composer-handoff-icon-animated {
+    display: none;
+  }
+
+  .agent-gui-node__composer-handoff-icon-static {
+    opacity: 1 !important;
+  }
 }
 
 :root[data-theme="dark"] .agent-gui-node__composer-handoff-icon-animated {

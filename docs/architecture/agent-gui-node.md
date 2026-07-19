@@ -311,6 +311,13 @@ bridge is the serialization owner: workspace apps must not read host paths,
 register an Electron-only asset protocol, or re-encode the icon. Remote and
 already-inline extension icons retain their authoritative URL.
 
+Handoff target menus are an AgentGUI presentation contract. The shared
+`AgentHandoffMenu` renders exact `agentTargetId` rows, ownership metadata, and
+temporary disclosure/icon-motion state; a host supplies its authoritative
+ready target projection and retains launch orchestration in `onSelect`. Host
+surfaces must not reconstruct a second handoff row model or infer target
+identity from provider.
+
 For a signed Agent Extension, package `icon` is the primary identity and
 optional package `maskIcon` is the conversation-row glyph. All assets remain
 pinned to the verified active installation.
@@ -450,6 +457,17 @@ through `sessionActions.ts` and the node resolves the target session against
 canonical rail entities under the rail interaction lock. While either row
 menu is open the row keeps its hover layout (short title truncation, actions
 visible) so titles cannot overlap the action cluster.
+
+Read-only host surfaces reuse the complete workbench header and declare the
+session actions they support. Omitting that capability list preserves the full
+rename-and-copy menu; a copy-only surface does not render rename or an empty
+separator. Hosts that already own a complete canonical message projection may
+reuse the pure transcript serializer exported by the `agent-conversation`
+entrypoint, while clipboard access, toasts, and session loading remain
+host-owned capabilities. Window-level Agent chrome applies only when that Header
+is rendered through the Workbench window's own header slot; a complete Header
+nested in another host window's body remains ordinary embedded content and must
+not alter the outer window's layout or drag layer.
 
 Copy as reference copies the session-mention markdown link the @ panel
 produces, so pasting into any composer reconstructs the session chip; it is

@@ -41,7 +41,19 @@ export function createBrowserNodeElectronRendererApi(input: {
             invoke<void>(channels.clearBrowsingData!, payload)
         }
       : {}),
+    ...(channels.cancelChromeCookieImport
+      ? {
+          cancelChromeCookieImport: (payload) =>
+            invoke<void>(channels.cancelChromeCookieImport!, payload)
+        }
+      : {}),
     close: (payload) => invoke<void>(channels.close, payload),
+    ...(channels.discoverChromeCookieProfiles
+      ? {
+          discoverChromeCookieProfiles: () =>
+            invoke(channels.discoverChromeCookieProfiles!, undefined)
+        }
+      : {}),
     ...(channels.findInPage
       ? {
           findInPage: (payload) => invoke<void>(channels.findInPage!, payload)
@@ -50,6 +62,12 @@ export function createBrowserNodeElectronRendererApi(input: {
     ...(channels.importCookies
       ? {
           importCookies: (payload) => invoke(channels.importCookies!, payload)
+        }
+      : {}),
+    ...(channels.importChromeCookies
+      ? {
+          importChromeCookies: (payload) =>
+            invoke(channels.importChromeCookies!, payload)
         }
       : {}),
     goBack: (payload) => invoke<void>(channels.goBack, payload),

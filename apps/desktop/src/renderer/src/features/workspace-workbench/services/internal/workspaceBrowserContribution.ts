@@ -23,6 +23,7 @@ import {
 import { composeWorkbenchNodeLeases } from "./workspaceNodeLifecycleAnalytics.ts";
 import { workspaceBrowserNodeID } from "./workspaceWorkbenchComposition.ts";
 import type { WorkspaceBrowserService } from "./workspaceBrowserService.ts";
+import { getDesktopChromeCookieImportPromptAdapter } from "../chromeCookieImportPrompt.ts";
 
 const browserNodeDefaultUrl = "https://www.google.com/";
 
@@ -45,6 +46,7 @@ export function createWorkspaceBrowserContribution(input: {
     workspaceId: input.workspaceId
   });
   const feature = createBrowserNodeFeature({
+    chromeCookieImportPrompt: getDesktopChromeCookieImportPromptAdapter(),
     hostApi: browserApi,
     i18n: input.i18n,
     reportDiagnostic: (diagnostic) => {

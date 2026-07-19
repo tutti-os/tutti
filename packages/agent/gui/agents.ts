@@ -90,8 +90,8 @@ export function resolveAgentGUISelectedDirectoryAgent(input: {
   );
 }
 
-/** Package-internal bridge while the carried node is migrated to agent names. */
-export function projectAgentGUIAgentsToInternalTargets(
+/** Projects the canonical Agent directory into target rows for selection menus. */
+export function projectAgentGUIAgentsToTargets(
   agents: readonly AgentGUIAgent[]
 ): AgentGUIAgentTarget[] {
   return agents.map((agent) => ({

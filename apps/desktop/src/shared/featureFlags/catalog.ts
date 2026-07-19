@@ -5,6 +5,7 @@ import {
 } from "../preferences/index.ts";
 
 export const LAB_ENABLED_FLAG = "lab.enabled";
+export const BROWSER_CHROME_COOKIE_IMPORT_FLAG = "browser.chromeCookieImport";
 export const LAB_WORKBENCH_SHORTCUTS_FLAG = "lab.workbenchShortcuts";
 export const WORKSPACE_STANDALONE_AGENT_MODE_FLAG =
   "workspace.standaloneAgentMode";
@@ -34,6 +35,11 @@ export interface FeatureFlagDefinition {
 }
 
 export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
+  {
+    key: BROWSER_CHROME_COOKIE_IMPORT_FLAG,
+    default: true,
+    group: "developer"
+  },
   {
     key: AGENT_EXTENSION_GEMINI_FLAG,
     default: false,

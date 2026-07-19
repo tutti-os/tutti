@@ -104,6 +104,12 @@ non-re-derivable deletion tombstones without exposing `*sql.Tx` to Host domain
 code. The seam is reserved for facts that must commit or roll back together;
 re-derivable projection gates are repaired by consumers instead.
 
+For durable workspace activity reads, `store-sqlite.AgentStateReader` returns
+the canonical root Sessions composed with each Session's latest Turn. It does
+not copy entity fields into a presentation model and does not include online
+Presence or host-owned execution attribution. Hosts that own those independent
+authorities compose them only at their API or product-view boundary.
+
 After commit, Host emits typed `CommittedDelta` values through one
 `CommitObserver`. Activity state, messages, root settlement, runtime and goal
 operation milestones, projection-dirty identities, and canonical view

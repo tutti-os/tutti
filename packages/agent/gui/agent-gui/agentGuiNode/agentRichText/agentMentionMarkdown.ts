@@ -89,13 +89,17 @@ export function createAgentSessionMentionHref(input: {
   });
 }
 
-export function createAgentSessionMarkdownLink(input: {
+export interface CreateAgentSessionMarkdownLinkInput {
   agentSessionId: string;
   agentTargetId?: string | null;
   label: string;
   workspaceId: string;
   withAtPrefix: boolean;
-}): string {
+}
+
+export function createAgentSessionMarkdownLink(
+  input: CreateAgentSessionMarkdownLinkInput
+): string {
   const label = normalizeAgentSessionMarkdownLabel(input.label);
   const href = createAgentSessionMentionHref({
     agentSessionId: input.agentSessionId,

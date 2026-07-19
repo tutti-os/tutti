@@ -7,7 +7,6 @@ import type {
   WorkbenchHostSnapshotRepository,
   WorkbenchState
 } from "@tutti-os/workbench-surface";
-
 type StandaloneAgentSharedToolPanelId = Extract<AgentToolPanelId, "terminal">;
 
 const contributionIdByPanel: Record<StandaloneAgentSharedToolPanelId, string> =

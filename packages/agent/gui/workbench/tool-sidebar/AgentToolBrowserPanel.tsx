@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import {
   createBrowserNodeFeature,
   isBrowserNodeSurfaceEvent,
+  type BrowserNodeChromeImportPromptAdapter,
   type BrowserNodeFeature,
   type BrowserNodeHostApi,
   type BrowserNodeSessionMode
@@ -18,6 +19,7 @@ export const agentToolBrowserDefaultUrl = "https://www.google.com/";
 
 export interface AgentToolBrowserPanelProps {
   browserApi: BrowserNodeHostApi;
+  chromeCookieImportPrompt?: BrowserNodeChromeImportPromptAdapter;
   defaultUrl?: string;
   hidden: boolean;
   i18n: I18nRuntime<string>;
@@ -31,6 +33,7 @@ export interface AgentToolBrowserPanelProps {
 
 export function AgentToolBrowserPanel({
   browserApi,
+  chromeCookieImportPrompt,
   defaultUrl = agentToolBrowserDefaultUrl,
   hidden,
   i18n,
@@ -43,8 +46,14 @@ export function AgentToolBrowserPanel({
 }: AgentToolBrowserPanelProps): ReactNode {
   const [nodeId] = useState(() => createAgentToolBrowserNodeId(nodeIdPrefix));
   const feature = useMemo(
-    () => createAgentToolBrowserFeature({ browserApi, i18n, nodeId }),
-    [browserApi, i18n, nodeId]
+    () =>
+      createAgentToolBrowserFeature({
+        browserApi,
+        ...(chromeCookieImportPrompt ? { chromeCookieImportPrompt } : {}),
+        i18n,
+        nodeId
+      }),
+    [browserApi, chromeCookieImportPrompt, i18n, nodeId]
   );
 
   return (
@@ -73,10 +82,14 @@ export function AgentToolBrowserPanel({
 
 export function createAgentToolBrowserFeature(input: {
   browserApi: BrowserNodeHostApi;
+  chromeCookieImportPrompt?: BrowserNodeChromeImportPromptAdapter;
   i18n: I18nRuntime<string>;
   nodeId: string;
 }): BrowserNodeFeature {
   return createBrowserNodeFeature({
+    ...(input.chromeCookieImportPrompt
+      ? { chromeCookieImportPrompt: input.chromeCookieImportPrompt }
+      : {}),
     hostApi: createScopedAgentToolBrowserHostApi(
       input.browserApi,
       input.nodeId

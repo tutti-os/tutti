@@ -26,7 +26,7 @@ import type {
 } from "./types.ts";
 import {
   normalizeAgentGUIAgents,
-  projectAgentGUIAgentsToInternalTargets
+  projectAgentGUIAgentsToTargets
 } from "../agents.ts";
 import type {
   AgentGUIAgentDirectoryPort,
@@ -403,7 +403,7 @@ function resolveUnifiedAgentGuiDockTarget(
     "agentDirectory" | "defaultProvider" | "providerAvailability"
   >
 ): AgentGUIAgentTarget | null {
-  const targets = projectAgentGUIAgentsToInternalTargets(
+  const targets = projectAgentGUIAgentsToTargets(
     normalizeAgentGUIAgents(input.agentDirectory.getSnapshot().agents)
   ).filter(
     (

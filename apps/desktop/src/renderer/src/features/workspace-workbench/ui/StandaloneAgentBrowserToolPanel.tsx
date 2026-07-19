@@ -3,6 +3,7 @@ import { AgentToolBrowserPanel } from "@tutti-os/agent-gui/workbench/tool-sideba
 import { BrowserElementContextAction } from "@tutti-os/agent-gui/workbench/browser-element-context";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { DesktopBrowserApi } from "@preload/types";
+import { getDesktopChromeCookieImportPromptAdapter } from "../services/chromeCookieImportPrompt.ts";
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
 
 export function StandaloneAgentBrowserToolPanel({
@@ -35,6 +36,7 @@ export function StandaloneAgentBrowserToolPanel({
     >
       <AgentToolBrowserPanel
         browserApi={browserApi}
+        chromeCookieImportPrompt={getDesktopChromeCookieImportPromptAdapter()}
         hidden={hidden}
         i18n={appI18n}
         loadingFallback={

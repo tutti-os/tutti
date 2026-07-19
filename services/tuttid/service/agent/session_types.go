@@ -31,6 +31,7 @@ type Service struct {
 	MessageReader                  MessageReader
 	ExternalImportStore            agentactivitybiz.Repository
 	TurnStore                      TurnStore
+	TurnSummaryReader              agentactivitybiz.SessionTurnSummaryReader
 	RuntimeOperationStore          RuntimeOperationStore
 	GoalStateStore                 GoalStateStore
 	CommitObserver                 agenthost.CommitObserver

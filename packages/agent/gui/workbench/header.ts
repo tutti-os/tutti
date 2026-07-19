@@ -74,6 +74,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   providerRailWidthPx?: number | null;
   primaryAccessory?: ReactNode;
   secondaryAccessory?: ReactNode;
+  sessionMenuActions?: readonly AgentGuiWorkbenchSessionAction[];
   conversationTitle?: string | null;
   conversationTitleDisplayPrompt?: string | null;
   nodeId: string;
@@ -106,6 +107,7 @@ export function AgentGuiWorkbenchHeader({
   providerRailWidthPx,
   primaryAccessory,
   secondaryAccessory,
+  sessionMenuActions,
   conversationTitle,
   conversationTitleDisplayPrompt,
   nodeId,
@@ -142,6 +144,7 @@ export function AgentGuiWorkbenchHeader({
   const sessionMenu =
     onSessionAction && copy.sessionMenu && sessionTitle && !hasBodyRenderError
       ? createElement(AgentGuiWorkbenchSessionMenu, {
+          actions: sessionMenuActions,
           copy: copy.sessionMenu,
           onAction: onSessionAction
         })

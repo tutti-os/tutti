@@ -4,6 +4,9 @@ import type { BrowserNodeLoopbackPreviewRoutingOptions } from "./loopbackPreview
 import { createBrowserNodeLoopbackPreviewProxy } from "./loopbackPreviewProxy.ts";
 import type {
   BrowserNodeActivationInput,
+  BrowserNodeCancelChromeCookieImportInput,
+  BrowserNodeChromeCookieImportInput,
+  BrowserNodeChromeProfileDiscoveryResult,
   BrowserNodeSaveScreenshotInput,
   BrowserNodeSetDeviceEmulationInput,
   BrowserNodeDownloadActionInput,
@@ -34,10 +37,13 @@ export interface BrowserNodeElectronMainChannels {
   readonly capturePreview?: string;
   readonly chooseDownloadDirectory?: string;
   readonly clearBrowsingData?: string;
+  readonly cancelChromeCookieImport?: string;
   readonly close: string;
   readonly debugDump?: string;
   readonly event: string;
   readonly findInPage?: string;
+  readonly discoverChromeCookieProfiles?: string;
+  readonly importChromeCookies?: string;
   readonly importCookies?: string;
   readonly goBack: string;
   readonly goForward: string;
@@ -76,13 +82,23 @@ export interface RegisterBrowserNodeElectronMainInput {
   ) => Promise<string | null>;
   readonly getOwnerWindow: (event: unknown) => BrowserWindow | null;
   readonly getPreferredColorScheme?: () => BrowserPreferredColorScheme;
+  readonly discoverChromeCookieProfiles?: () => Promise<BrowserNodeChromeProfileDiscoveryResult>;
   readonly logger?: BrowserNodeElectronLogger;
   readonly loopbackPreviewRouting?: BrowserNodeLoopbackPreviewRoutingOptions;
   readonly openDownloadedFile?: (path: string) => Promise<void> | void;
+  readonly notifyCookieImportResult?: (input: {
+    ownerWindow: BrowserWindow;
+    result: import("../core/types.ts").BrowserNodeCookieImportResult;
+    source: "chrome" | "file";
+  }) => void;
   readonly openExternal: (url: string) => Promise<void> | void;
   readonly prepareSession?: (
     input: BrowserNodePrepareSessionInput
   ) => Promise<void> | void;
+  readonly prepareChromeCookieImport?: (
+    profileId: import("../core/types.ts").BrowserNodeChromeProfileId,
+    signal: AbortSignal
+  ) => Promise<import("./types.ts").BrowserNodeChromeCookiePreparationResult>;
   readonly registerHandler: <TPayload, TResult>(
     channel: string,
     handler: (event: unknown, payload: TPayload) => Promise<TResult> | TResult
@@ -119,6 +135,11 @@ export function registerBrowserNodeElectronMain(
   input: RegisterBrowserNodeElectronMainInput
 ): void {
   const managersByWindow = new WeakMap<BrowserWindow, BrowserGuestManager>();
+  const managers = new Set<BrowserGuestManager>();
+  const chromeImports = new WeakMap<
+    BrowserGuestManager,
+    Map<string, AbortController>
+  >();
   const loopbackPreviewProxy =
     input.loopbackPreviewRouting !== undefined
       ? createBrowserNodeLoopbackPreviewProxy({
@@ -172,6 +193,7 @@ export function registerBrowserNodeElectronMain(
               await loopbackPreviewProxy?.configureSession(payload);
             }
           : undefined,
+      prepareChromeCookieImport: input.prepareChromeCookieImport,
       resolveWebContents: (webContentsId) =>
         input.resolveWebContents({
           event,
@@ -192,8 +214,10 @@ export function registerBrowserNodeElectronMain(
     });
     ownerWindow.once("closed", () => {
       manager.dispose();
+      managers.delete(manager);
       managersByWindow.delete(ownerWindow);
     });
+    managers.add(manager);
     managersByWindow.set(ownerWindow, manager);
     return manager;
   };
@@ -211,6 +235,18 @@ export function registerBrowserNodeElectronMain(
 
   const showDevToolsContextMenu =
     input.showDevToolsContextMenu ?? showElectronDevToolsContextMenu;
+
+  const refreshCookieImportSession = (
+    target: import("./types.ts").BrowserGuestElectronSession | null,
+    result: import("../core/types.ts").BrowserNodeCookieImportResult
+  ): void => {
+    if (!target || result.imported === 0) {
+      return;
+    }
+    for (const manager of managers) {
+      manager.reloadCookieImportSession(target);
+    }
+  };
 
   input.registerHandler(input.channels.prepareSession, (event, payload) =>
     resolveOwnedManager(event).manager.prepareSession(
@@ -258,10 +294,76 @@ export function registerBrowserNodeElectronMain(
     );
   }
   if (input.channels.importCookies) {
-    input.registerHandler(input.channels.importCookies, (event, payload) =>
-      resolveOwnedManager(event).manager.importCookies(
-        payload as BrowserNodeNodeIdInput
-      )
+    input.registerHandler(
+      input.channels.importCookies,
+      async (event, payload) => {
+        const { manager, ownerWindow } = resolveOwnedManager(event);
+        const nodeInput = payload as BrowserNodeNodeIdInput;
+        const target = manager.getCookieImportSession(nodeInput);
+        const result = await manager.importCookies(nodeInput);
+        refreshCookieImportSession(target, result);
+        input.notifyCookieImportResult?.({
+          ownerWindow,
+          result,
+          source: "file"
+        });
+        return result;
+      }
+    );
+  }
+  if (
+    input.channels.discoverChromeCookieProfiles &&
+    input.discoverChromeCookieProfiles
+  ) {
+    input.registerHandler(
+      input.channels.discoverChromeCookieProfiles,
+      (event) => {
+        resolveOwnedManager(event);
+        return input.discoverChromeCookieProfiles!();
+      }
+    );
+  }
+  if (input.channels.importChromeCookies && input.prepareChromeCookieImport) {
+    input.registerHandler(
+      input.channels.importChromeCookies,
+      async (event, payload) => {
+        const { manager, ownerWindow } = resolveOwnedManager(event);
+        const chromeInput = payload as BrowserNodeChromeCookieImportInput;
+        const imports = chromeImports.get(manager) ?? new Map();
+        chromeImports.set(manager, imports);
+        if (!chromeInput.operationId || imports.has(chromeInput.operationId)) {
+          return invalidChromeImportOperation();
+        }
+        const controller = new AbortController();
+        imports.set(chromeInput.operationId, controller);
+        const target = manager.getCookieImportSession(chromeInput);
+        let result;
+        try {
+          result = await manager.importChromeCookies(
+            chromeInput,
+            controller.signal
+          );
+        } finally {
+          imports.delete(chromeInput.operationId);
+        }
+        refreshCookieImportSession(target, result);
+        input.notifyCookieImportResult?.({
+          ownerWindow,
+          result,
+          source: "chrome"
+        });
+        return result;
+      }
+    );
+  }
+  if (input.channels.cancelChromeCookieImport) {
+    input.registerHandler(
+      input.channels.cancelChromeCookieImport,
+      (event, payload) => {
+        const { manager } = resolveOwnedManager(event);
+        const cancelInput = payload as BrowserNodeCancelChromeCookieImportInput;
+        chromeImports.get(manager)?.get(cancelInput.operationId)?.abort();
+      }
     );
   }
   input.registerHandler(input.channels.unregisterGuest, (event, payload) =>
@@ -412,4 +514,17 @@ async function showElectronDevToolsContextMenu(
 function readBrowserNodeIpcSenderId(event: unknown): number | null {
   const sender = (event as { sender?: { id?: unknown } } | null)?.sender;
   return typeof sender?.id === "number" ? sender.id : null;
+}
+
+function invalidChromeImportOperation(): import("../core/types.ts").BrowserNodeCookieImportResult {
+  return {
+    canceled: false,
+    failed: 0,
+    failureCode: "invalid-operation",
+    failureStage: "profile",
+    imported: 0,
+    partial: false,
+    skipped: 0,
+    status: "failed"
+  };
 }

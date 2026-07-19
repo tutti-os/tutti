@@ -91,8 +91,14 @@ export function createWorkspaceBrowserService(
         workspaceId
       };
       routes.add(route);
+      const featureApi = { ...input.browserApi };
+      if (source === "workspace_app") {
+        delete featureApi.discoverChromeCookieProfiles;
+        delete featureApi.importChromeCookies;
+        delete featureApi.cancelChromeCookieImport;
+      }
       return {
-        ...input.browserApi,
+        ...featureApi,
         onEvent(listener) {
           route.listeners.add(listener);
           ensureBrowserEventsConnected();

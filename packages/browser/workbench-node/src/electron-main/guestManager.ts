@@ -23,7 +23,15 @@ import {
   setBrowserGuestDeviceEmulation,
   setBrowserGuestZoomFactor
 } from "./guestPageActions.ts";
-import { importBrowserGuestCookies } from "./cookieImport.ts";
+import {
+  completedCookieImportResult,
+  importBrowserGuestCookies
+} from "./cookieImport.ts";
+import {
+  getBrowserGuestCookieImportSession,
+  importChromeCookiesIntoBrowserGuest,
+  reloadBrowserGuestsForCookieSession
+} from "./chromeCookieImportTarget.ts";
 import {
   canGuestGoBack,
   canGuestGoForward,
@@ -35,6 +43,7 @@ import {
   isGoogleGisOAuthPopupUrl,
   isHttpErrorStatusCode,
   resizeBrowserPreviewImage,
+  resolveOptionalBrowserNodeDesiredUrl,
   resolveBrowserNodeUrlError
 } from "./guestNavigation.ts";
 
@@ -96,6 +105,7 @@ export function createBrowserGuestManager({
   openDownloadedFile,
   openExternal,
   prepareSession,
+  prepareChromeCookieImport,
   resolveWebContents,
   saveScreenshot,
   selectCookieImport,
@@ -433,15 +443,6 @@ export function createBrowserGuestManager({
     return { action: "deny" };
   };
 
-  const resolveOptionalDesiredUrl = (
-    url: string | undefined
-  ): string | undefined => {
-    if (url === undefined) {
-      return undefined;
-    }
-    return resolveHostBrowserNavigationUrl(url).url ?? undefined;
-  };
-
   return {
     async activate(input) {
       const resolved = resolveHostBrowserNavigationUrl(input.url);
@@ -572,10 +573,33 @@ export function createBrowserGuestManager({
     async importCookies(input) {
       const contents = sessions.get(input.nodeId)?.contents;
       if (!contents || contents.isDestroyed() || !contents.session?.cookies) {
-        return { canceled: false, imported: 0, skipped: 0 };
+        return completedCookieImportResult({
+          failed: 0,
+          imported: 0,
+          skipped: 0
+        });
       }
       const source = selectCookieImport ? await selectCookieImport() : null;
       return importBrowserGuestCookies(contents, source);
+    },
+    async importChromeCookies(input, signal) {
+      const browserSession = sessions.get(input.nodeId);
+      return importChromeCookiesIntoBrowserGuest({
+        contents: browserSession?.contents,
+        importInput: input,
+        prepareChromeCookieImport,
+        signal,
+        sessionMode: browserSession?.sessionMode ?? "incognito",
+        sessionPartition: browserSession?.sessionPartition ?? null
+      });
+    },
+    getCookieImportSession(input) {
+      return getBrowserGuestCookieImportSession(
+        sessions.get(input.nodeId)?.contents
+      );
+    },
+    reloadCookieImportSession(target) {
+      reloadBrowserGuestsForCookieSession(sessions.values(), target);
     },
     handleGuestOpenUrl(webContentsId, input) {
       const nodeId = nodeIdByWebContentsId.get(webContentsId);
@@ -640,7 +664,7 @@ export function createBrowserGuestManager({
         profileId: input.profileId,
         sessionMode: input.sessionMode,
         sessionPartition: input.sessionPartition,
-        url: resolveOptionalDesiredUrl(input.url)
+        url: resolveOptionalBrowserNodeDesiredUrl(input.url)
       });
     },
     printPage(input) {
@@ -673,7 +697,7 @@ export function createBrowserGuestManager({
         profileId: input.profileId,
         sessionMode: input.sessionMode,
         sessionPartition: input.sessionPartition,
-        url: resolveOptionalDesiredUrl(input.url)
+        url: resolveOptionalBrowserNodeDesiredUrl(input.url)
       });
       if (
         session.webContentsId === input.webContentsId &&

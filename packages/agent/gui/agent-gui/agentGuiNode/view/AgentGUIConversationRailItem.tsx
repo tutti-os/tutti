@@ -26,21 +26,31 @@ import {
   useConversationActionGroups
 } from "./AgentGUIConversationActionsMenu";
 
-function agentGUIConversationIconUrl(
+type AgentGUIConversationIconPresentation =
+  | { kind: "image"; url: string }
+  | { kind: "mask"; url: string };
+
+function agentGUIConversationIconPresentation(
   provider: string | undefined,
   agentTargetId: string | null | undefined,
   workspaceId: string,
   agentTargets: ReturnType<typeof useAgentTargetPresentations>
-): string | null {
+): AgentGUIConversationIconPresentation | null {
   const targetPresentation = resolveAgentTargetPresentation({
     agentTargetId: agentTargetId ?? "",
     agentTargets,
     workspaceId
   });
-  const targetIconUrl =
-    targetPresentation?.maskIconUrl?.trim() ||
-    targetPresentation?.iconUrl?.trim();
-  return targetIconUrl || resolveAgentGuiSessionProviderFlatIconUrl(provider);
+  const maskIconUrl = targetPresentation?.maskIconUrl?.trim() ?? "";
+  if (maskIconUrl) {
+    return { kind: "mask", url: maskIconUrl };
+  }
+  const iconUrl = targetPresentation?.iconUrl?.trim() ?? "";
+  if (iconUrl) {
+    return { kind: "image", url: iconUrl };
+  }
+  const providerIconUrl = resolveAgentGuiSessionProviderFlatIconUrl(provider);
+  return providerIconUrl ? { kind: "mask", url: providerIconUrl } : null;
 }
 
 function agentGUIConversationRailTitle(
@@ -103,7 +113,7 @@ export const AgentGUIConversationRailItem = memo(
     "use memo";
     const pinned = (item.pinnedAtUnixMs ?? 0) > 0;
     const agentTargets = useAgentTargetPresentations();
-    const conversationIconUrl = agentGUIConversationIconUrl(
+    const conversationIcon = agentGUIConversationIconPresentation(
       item.provider,
       item.agentTargetId,
       workspaceId,
@@ -196,14 +206,28 @@ export const AgentGUIConversationRailItem = memo(
           }}
         >
           <span className={styles.conversationTitleRow}>
-            {conversationIconUrl ? (
+            {conversationIcon?.kind === "mask" ? (
               <span
                 aria-hidden="true"
-                className={styles.conversationProviderIcon}
+                className={cn(
+                  styles.conversationProviderIcon,
+                  styles.conversationProviderMaskIcon
+                )}
                 style={{
-                  WebkitMaskImage: `url("${conversationIconUrl}")`,
-                  maskImage: `url("${conversationIconUrl}")`
+                  WebkitMaskImage: `url("${conversationIcon.url}")`,
+                  maskImage: `url("${conversationIcon.url}")`
                 }}
+              />
+            ) : conversationIcon ? (
+              <img
+                alt=""
+                aria-hidden="true"
+                className={cn(
+                  styles.conversationProviderIcon,
+                  styles.conversationProviderImage
+                )}
+                draggable={false}
+                src={conversationIcon.url}
               />
             ) : null}
             {item.titleLeadingMentionKind === "task" ? (

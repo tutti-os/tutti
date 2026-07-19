@@ -11,7 +11,7 @@ import type {
 import type { AgentGUIAgentsEmptyRenderer } from "./agent-gui/agentGuiNode/AgentGUINodeView";
 import {
   normalizeAgentGUIAgents,
-  projectAgentGUIAgentsToInternalTargets
+  projectAgentGUIAgentsToTargets
 } from "./agents";
 import {
   AgentGUINode,
@@ -78,7 +78,7 @@ export const AgentGUI = memo(function AgentGUI({
     [agentDirectory.agents]
   );
   const agentTargets = useMemo(
-    () => projectAgentGUIAgentsToInternalTargets(normalizedAgents),
+    () => projectAgentGUIAgentsToTargets(normalizedAgents),
     [normalizedAgents]
   );
   const effectiveHandoffAgentDirectory =
@@ -98,7 +98,7 @@ export const AgentGUI = memo(function AgentGUI({
     () =>
       normalizedHandoffAgents === normalizedAgents
         ? agentTargets
-        : projectAgentGUIAgentsToInternalTargets(normalizedHandoffAgents),
+        : projectAgentGUIAgentsToTargets(normalizedHandoffAgents),
     [agentTargets, normalizedAgents, normalizedHandoffAgents]
   );
   const hostCapabilities = props.hostCapabilities;

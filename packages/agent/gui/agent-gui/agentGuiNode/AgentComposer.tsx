@@ -161,7 +161,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   };
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
-  const [isHandoffIconPlaying, setIsHandoffIconPlaying] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [mentionHighlightedKey, setMentionHighlightedKey] = useState<
     string | null
@@ -591,8 +590,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       setIsSelectedProjectMissing={setIsSelectedProjectMissing}
       setIsPaletteOpen={setIsPaletteOpen}
       setHighlightedIndex={setHighlightedIndex}
-      isHandoffIconPlaying={isHandoffIconPlaying}
-      setIsHandoffIconPlaying={setIsHandoffIconPlaying}
       isGoalModeActive={isGoalModeActive}
       isPromptTipOverflowing={isPromptTipOverflowing}
     />

@@ -1,5 +1,7 @@
 import type {
   BrowserNodeActivationInput,
+  BrowserNodeChromeCookieImportInput,
+  BrowserNodeChromeProfileId,
   BrowserNodeCookieImportResult,
   BrowserNodeDebugDump,
   BrowserNodeDownloadDirectoryResult,
@@ -37,6 +39,14 @@ export interface BrowserGuestManager {
   importCookies(
     input: BrowserNodeNodeIdInput
   ): Promise<BrowserNodeCookieImportResult>;
+  importChromeCookies(
+    input: BrowserNodeChromeCookieImportInput,
+    signal: AbortSignal
+  ): Promise<BrowserNodeCookieImportResult>;
+  getCookieImportSession(
+    input: BrowserNodeNodeIdInput
+  ): BrowserGuestElectronSession | null;
+  reloadCookieImportSession(target: BrowserGuestElectronSession): void;
   handleGuestOpenUrl(
     webContentsId: number,
     input: BrowserNodeGuestOpenUrlInput
@@ -68,6 +78,10 @@ export interface BrowserGuestManagerInput {
   getPreferredColorScheme?: () => BrowserPreferredColorScheme;
   chooseDownloadDirectory?: () => Promise<string | null>;
   selectCookieImport?: () => Promise<BrowserNodeCookieImportSource | null>;
+  prepareChromeCookieImport?: (
+    profileId: BrowserNodeChromeProfileId,
+    signal: AbortSignal
+  ) => Promise<BrowserNodeChromeCookiePreparationResult>;
   logger?: BrowserNodeElectronLogger;
   openExternal: (url: string) => Promise<void> | void;
   openDownloadedFile?: (path: string) => Promise<void> | void;
@@ -175,6 +189,21 @@ export interface BrowserGuestCookieDetails {
   url: string;
   value: string;
 }
+
+export type BrowserNodeChromeCookiePreparationResult =
+  | {
+      status: "canceled";
+    }
+  | {
+      cookies: readonly BrowserGuestCookieDetails[];
+      skipped: number;
+      status: "ready";
+    }
+  | {
+      failureCode: string;
+      failureStage: import("../core/types.ts").BrowserNodeCookieImportFailureStage;
+      status: "failed";
+    };
 
 export interface BrowserGuestDebugger {
   attach(protocolVersion?: string): void;

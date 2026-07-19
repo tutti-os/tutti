@@ -141,6 +141,35 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     ).toBe("");
   });
 
+  it("renders a target identity image without treating it as a mask", () => {
+    const iconUrl = "data:image/png;base64,kilo-colored";
+    const { container } = renderRailItem({
+      agentTargets: [
+        {
+          agentTargetId: "extension:kilo",
+          iconUrl,
+          provider: "acp:kilo",
+          workspaceId: "workspace-1"
+        }
+      ],
+      isRailInteractionLocked: () => false,
+      item: {
+        agentTargetId: "extension:kilo",
+        provider: "acp:kilo"
+      }
+    });
+
+    const image = container.querySelector<HTMLImageElement>(
+      ".agent-gui-node__conversation-provider-image"
+    );
+    expect(image?.src).toBe(iconUrl);
+    expect(
+      container.querySelector(
+        ".agent-gui-node__conversation-provider-mask-icon"
+      )
+    ).toBeNull();
+  });
+
   it("blocks the div context-menu trigger while rail reconciliation is pending", () => {
     const onSelectConversation = vi.fn();
     renderRailItem({

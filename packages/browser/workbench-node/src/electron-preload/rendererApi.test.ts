@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { BrowserNodeEvent } from "../core/types.ts";
+import type {
+  BrowserNodeChromeProfileId,
+  BrowserNodeEvent
+} from "../core/types.ts";
 import { createBrowserNodeElectronRendererApi } from "./rendererApi.ts";
 
 const channels = {
@@ -81,4 +84,52 @@ test("renderer API omits optional host capabilities without channels", () => {
   assert.equal(api.findInPage, undefined);
   assert.equal(api.saveScreenshot, undefined);
   assert.equal(api.setDeviceEmulation, undefined);
+});
+
+test("renderer API routes optional Chrome Cookie import capabilities", async () => {
+  const calls: Array<{ channel: string; payload: unknown }> = [];
+  const chromeChannels = {
+    ...channels,
+    cancelChromeCookieImport: "browser:cancel-chrome-cookie-import",
+    discoverChromeCookieProfiles: "browser:discover-chrome-cookie-profiles",
+    importChromeCookies: "browser:import-chrome-cookies"
+  } as const;
+  const api = createBrowserNodeElectronRendererApi({
+    channels: chromeChannels,
+    transport: {
+      async invoke(channel, payload) {
+        calls.push({ channel, payload });
+        return undefined as never;
+      },
+      on() {},
+      removeListener() {}
+    }
+  });
+
+  await api.discoverChromeCookieProfiles?.();
+  await api.importChromeCookies?.({
+    nodeId: "browser:one",
+    operationId: "operation:one",
+    profileId: "profile:one" as BrowserNodeChromeProfileId
+  });
+  await api.cancelChromeCookieImport?.({ operationId: "operation:one" });
+
+  assert.deepEqual(calls, [
+    {
+      channel: chromeChannels.discoverChromeCookieProfiles,
+      payload: undefined
+    },
+    {
+      channel: chromeChannels.importChromeCookies,
+      payload: {
+        nodeId: "browser:one",
+        operationId: "operation:one",
+        profileId: "profile:one"
+      }
+    },
+    {
+      channel: chromeChannels.cancelChromeCookieImport,
+      payload: { operationId: "operation:one" }
+    }
+  ]);
 });

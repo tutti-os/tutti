@@ -75,7 +75,10 @@ const styles = {
   conversationList: "agent-gui-node__conversation-list",
   conversationMeta: "agent-gui-node__conversation-meta",
   conversationMoreButton: "agent-gui-node__conversation-more-button",
+  conversationProviderImage: "agent-gui-node__conversation-provider-image",
   conversationProviderIcon: "agent-gui-node__conversation-provider-icon",
+  conversationProviderMaskIcon:
+    "agent-gui-node__conversation-provider-mask-icon",
   conversationOpenWindowButton:
     "agent-gui-node__conversation-open-window-button",
   conversationPinButton: "agent-gui-node__conversation-pin-button",

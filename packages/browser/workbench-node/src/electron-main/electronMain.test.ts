@@ -10,6 +10,7 @@ import {
 } from "./index.ts";
 import { createBrowserGuestManager } from "./guestManager.ts";
 import type {
+  BrowserGuestCookieDetails,
   BrowserGuestDownloadItem,
   BrowserGuestElectronSession,
   BrowserGuestNativeImage,
@@ -527,6 +528,266 @@ test("opens Browser Node guest devtools for a registered node", async () => {
   assert.deepEqual(contents.openDevToolsOptions, [
     { activate: true, mode: "detach" }
   ]);
+});
+
+test("reloads only ordinary Browser nodes sharing the imported Electron Session", async () => {
+  const sharedSession = new MockBrowserGuestElectronSession();
+  const sharedOne = new MockBrowserGuestWebContents(70, sharedSession);
+  const sharedTwo = new MockBrowserGuestWebContents(71, sharedSession);
+  const isolated = new MockBrowserGuestWebContents(72);
+  const incognito = new MockBrowserGuestWebContents(73, sharedSession);
+  const workspaceApp = new MockBrowserGuestWebContents(74, sharedSession);
+  const contents = new Map([
+    [sharedOne.id, sharedOne],
+    [sharedTwo.id, sharedTwo],
+    [isolated.id, isolated],
+    [incognito.id, incognito],
+    [workspaceApp.id, workspaceApp]
+  ]);
+  const manager = createBrowserGuestManager({
+    emit: () => undefined,
+    openExternal: () => undefined,
+    resolveWebContents: (id) => contents.get(id) ?? null
+  });
+
+  await manager.registerGuest({
+    nodeId: "shared-one",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: sharedOne.id
+  });
+  await manager.registerGuest({
+    nodeId: "incognito",
+    profileId: null,
+    sessionMode: "incognito",
+    webContentsId: incognito.id
+  });
+  await manager.registerGuest({
+    nodeId: "workspace-app",
+    profileId: null,
+    sessionMode: "shared",
+    sessionPartition: "persist:tutti-app:workspace:example",
+    webContentsId: workspaceApp.id
+  });
+  await manager.registerGuest({
+    nodeId: "shared-two",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: sharedTwo.id
+  });
+  await manager.registerGuest({
+    nodeId: "isolated",
+    profileId: "other",
+    sessionMode: "profile",
+    webContentsId: isolated.id
+  });
+
+  manager.reloadCookieImportSession(sharedSession);
+  assert.equal(sharedOne.reloadCalls, 1);
+  assert.equal(sharedTwo.reloadCalls, 1);
+  assert.equal(isolated.reloadCalls, 0);
+  assert.equal(incognito.reloadCalls, 0);
+  assert.equal(workspaceApp.reloadCalls, 0);
+});
+
+test("Cookie imports refresh ordinary nodes across windows and exclude custom Sessions", async () => {
+  const sharedSession = new MockBrowserGuestElectronSession();
+  const otherSession = new MockBrowserGuestElectronSession();
+  const first = new MockBrowserGuestWebContents(80, sharedSession);
+  const second = new MockBrowserGuestWebContents(81, sharedSession);
+  const custom = new MockBrowserGuestWebContents(82, sharedSession);
+  const isolated = new MockBrowserGuestWebContents(83, otherSession);
+  const contents = new Map([
+    [first.id, first],
+    [second.id, second],
+    [custom.id, custom],
+    [isolated.id, isolated]
+  ]);
+  const handlers = new Map<
+    string,
+    (event: unknown, payload: unknown) => unknown
+  >();
+  const firstWindow = fakeBrowserOwnerWindow();
+  const secondWindow = fakeBrowserOwnerWindow();
+  let fileContents = JSON.stringify([
+    { domain: "example.test", name: "file", value: "one" }
+  ]);
+  let chromeCookies: BrowserGuestCookieDetails[] = [
+    {
+      name: "chrome",
+      url: "https://example.test/",
+      value: "two"
+    }
+  ];
+
+  registerBrowserNodeElectronMain({
+    channels: {
+      activate: "browser:activate",
+      close: "browser:close",
+      event: "browser:event",
+      goBack: "browser:goBack",
+      goForward: "browser:goForward",
+      importChromeCookies: "browser:importChromeCookies",
+      importCookies: "browser:importCookies",
+      navigate: "browser:navigate",
+      prepareSession: "browser:prepareSession",
+      registerGuest: "browser:registerGuest",
+      reload: "browser:reload",
+      unregisterGuest: "browser:unregisterGuest"
+    },
+    getOwnerWindow: (event) =>
+      (event as { ownerWindow: typeof firstWindow }).ownerWindow as never,
+    openExternal: () => undefined,
+    prepareChromeCookieImport: async () => ({
+      cookies: chromeCookies,
+      skipped: 0,
+      status: "ready"
+    }),
+    registerHandler(channel, handler) {
+      handlers.set(channel, handler as never);
+    },
+    resolveWebContents: ({ webContentsId }) =>
+      contents.get(webContentsId) ?? null,
+    selectCookieImport: async () => ({
+      contents: fileContents,
+      fileName: "cookies.json"
+    })
+  });
+
+  const firstEvent = { ownerWindow: firstWindow };
+  const secondEvent = { ownerWindow: secondWindow };
+  await handlers.get("browser:registerGuest")?.(firstEvent, {
+    nodeId: "first",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: first.id
+  });
+  await handlers.get("browser:registerGuest")?.(secondEvent, {
+    nodeId: "second",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: second.id
+  });
+  await handlers.get("browser:registerGuest")?.(secondEvent, {
+    nodeId: "custom",
+    profileId: null,
+    sessionMode: "shared",
+    sessionPartition: "persist:tutti-app:workspace:example",
+    webContentsId: custom.id
+  });
+  await handlers.get("browser:registerGuest")?.(secondEvent, {
+    nodeId: "isolated",
+    profileId: "isolated",
+    sessionMode: "profile",
+    webContentsId: isolated.id
+  });
+
+  await handlers.get("browser:importCookies")?.(firstEvent, {
+    nodeId: "first"
+  });
+  assert.deepEqual(
+    [first, second, custom, isolated].map((contents) => contents.reloadCalls),
+    [1, 1, 0, 0]
+  );
+
+  await handlers.get("browser:importChromeCookies")?.(firstEvent, {
+    nodeId: "first",
+    operationId: "operation-cross-window",
+    profileId: "opaque"
+  });
+  assert.deepEqual(
+    [first, second, custom, isolated].map((contents) => contents.reloadCalls),
+    [2, 2, 0, 0]
+  );
+
+  fileContents = "[]";
+  chromeCookies = [];
+  await handlers.get("browser:importCookies")?.(firstEvent, {
+    nodeId: "first"
+  });
+  await handlers.get("browser:importChromeCookies")?.(firstEvent, {
+    nodeId: "first",
+    operationId: "operation-zero",
+    profileId: "opaque"
+  });
+  assert.deepEqual(
+    [first, second, custom, isolated].map((contents) => contents.reloadCalls),
+    [2, 2, 0, 0]
+  );
+});
+
+test("Chrome preparation failure leaves the target Cookie store untouched", async () => {
+  const contents = new MockBrowserGuestWebContents(73);
+  const manager = createBrowserGuestManager({
+    emit: () => undefined,
+    openExternal: () => undefined,
+    prepareChromeCookieImport: async () => ({
+      failureCode: "integrity_failed",
+      failureStage: "integrity",
+      status: "failed"
+    }),
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+  await manager.registerGuest({
+    nodeId: "browser-chrome-import",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: contents.id
+  });
+
+  const result = await manager.importChromeCookies(
+    {
+      nodeId: "browser-chrome-import",
+      operationId: "operation-1",
+      profileId:
+        "opaque" as import("../core/types.ts").BrowserNodeChromeProfileId
+    },
+    new AbortController().signal
+  );
+
+  assert.equal(result.status, "failed");
+  assert.equal(contents.electronSession.cookieWrites.length, 0);
+});
+
+test("canceled Chrome preparation leaves the target Cookie store untouched", async () => {
+  const contents = new MockBrowserGuestWebContents(74);
+  const manager = createBrowserGuestManager({
+    emit: () => undefined,
+    openExternal: () => undefined,
+    prepareChromeCookieImport: async () => ({
+      cookies: [
+        {
+          name: "session",
+          url: "https://example.test/",
+          value: "secret"
+        }
+      ],
+      skipped: 0,
+      status: "ready"
+    }),
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+  await manager.registerGuest({
+    nodeId: "browser-chrome-canceled",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: contents.id
+  });
+  const controller = new AbortController();
+  controller.abort();
+
+  const result = await manager.importChromeCookies(
+    {
+      nodeId: "browser-chrome-canceled",
+      operationId: "operation-canceled",
+      profileId:
+        "opaque" as import("../core/types.ts").BrowserNodeChromeProfileId
+    },
+    controller.signal
+  );
+
+  assert.equal(result.status, "canceled");
+  assert.equal(contents.electronSession.cookieWrites.length, 0);
 });
 
 test("runs Browser Node page actions against the registered guest", async () => {
@@ -1327,6 +1588,14 @@ test("keeps Browser Node guest ownership bound to one node", async () => {
   assert.equal(manager.debugDump({ nodeId: "browser-2" })?.webContentsId, 9);
 });
 
+function fakeBrowserOwnerWindow() {
+  return {
+    isDestroyed: () => false,
+    once: () => undefined,
+    webContents: { send() {} }
+  };
+}
+
 class MockBrowserGuestWebContents
   extends EventEmitter
   implements BrowserGuestWebContents
@@ -1344,8 +1613,8 @@ class MockBrowserGuestWebContents
     options: Record<string, unknown> | undefined;
     text: string;
   }> = [];
-  readonly electronSession = new MockBrowserGuestElectronSession();
-  readonly session: BrowserGuestElectronSession = this.electronSession;
+  readonly electronSession: MockBrowserGuestElectronSession;
+  readonly session: BrowserGuestElectronSession;
   title = "";
   zoomFactor = 1;
   windowOpenHandler:
@@ -1353,9 +1622,14 @@ class MockBrowserGuestWebContents
     | null = null;
   readonly id: number;
 
-  constructor(id: number) {
+  constructor(
+    id: number,
+    electronSession: MockBrowserGuestElectronSession = new MockBrowserGuestElectronSession()
+  ) {
     super();
     this.id = id;
+    this.electronSession = electronSession;
+    this.session = electronSession;
   }
 
   canGoBack(): boolean {
@@ -1449,6 +1723,12 @@ class MockBrowserGuestElectronSession
 {
   clearCacheCalls = 0;
   clearStorageDataCalls = 0;
+  cookieWrites: BrowserGuestCookieDetails[] = [];
+  readonly cookies = {
+    set: async (details: BrowserGuestCookieDetails): Promise<void> => {
+      this.cookieWrites.push(details);
+    }
+  };
 
   async clearCache(): Promise<void> {
     this.clearCacheCalls += 1;

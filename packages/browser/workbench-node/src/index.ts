@@ -4,6 +4,11 @@ export {
   type BrowserNodeFeature,
   type CreateBrowserNodeFeatureInput
 } from "./core/feature.ts";
+export type {
+  BrowserNodeChromeCookieImportFeature,
+  BrowserNodeChromeImportPromptAdapter,
+  BrowserNodeChromeImportState
+} from "./core/chromeCookieImport.ts";
 export {
   getBrowserNodeEventNodeId,
   isBrowserNodeSurfaceEvent,
@@ -27,6 +32,12 @@ export type {
   BrowserNodeClosedEvent,
   BrowserNodeContextMenuPoint,
   BrowserNodeCookieImportResult,
+  BrowserNodeCookieImportFailureStage,
+  BrowserNodeChromeCookieImportInput,
+  BrowserNodeCancelChromeCookieImportInput,
+  BrowserNodeChromeProfile,
+  BrowserNodeChromeProfileDiscoveryResult,
+  BrowserNodeChromeProfileId,
   BrowserNodeDevicePreset,
   BrowserNodeDebugDump,
   BrowserNodeDownloadAction,
