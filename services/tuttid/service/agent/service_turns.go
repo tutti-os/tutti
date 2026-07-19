@@ -38,6 +38,68 @@ type CancelTurnResult struct {
 	Reason   CancelTurnReason
 }
 
+type ListTurnsInput struct {
+	Before *agentactivitybiz.SessionTurnCursor
+	Limit  int
+}
+
+type TurnPage struct {
+	Turns   []agentactivitybiz.SessionTurnSummary
+	HasMore bool
+}
+
+// GetTurn returns canonical Turn truth through Host without starting or
+// resuming a provider runtime.
+func (s *Service) GetTurn(ctx context.Context, workspaceID string, agentSessionID string, turnID string) (agentactivitybiz.Turn, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return agentactivitybiz.Turn{}, false, err
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	turnID = strings.TrimSpace(turnID)
+	if workspaceID == "" || agentSessionID == "" || turnID == "" {
+		return agentactivitybiz.Turn{}, false, ErrInvalidArgument
+	}
+	return s.ApplicationHost().GetTurn(ctx, agenthost.SessionRef{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+	}, turnID)
+}
+
+// ListTurns returns one bounded, newest-first metadata page for an existing
+// session. The adapter owns this CLI/query projection; lifecycle decisions
+// remain in Host.
+func (s *Service) ListTurns(ctx context.Context, workspaceID string, agentSessionID string, input ListTurnsInput) (TurnPage, error) {
+	if err := ctx.Err(); err != nil {
+		return TurnPage{}, err
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if workspaceID == "" || agentSessionID == "" || input.Limit < 1 {
+		return TurnPage{}, ErrInvalidArgument
+	}
+	if s.TurnSummaryReader != nil {
+		page, err := s.TurnSummaryReader.ListSessionTurnSummaries(ctx, agentactivitybiz.ListSessionTurnSummariesInput{
+			WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Before: input.Before, Limit: input.Limit,
+		})
+		if err != nil {
+			return TurnPage{}, err
+		}
+		if len(page.Turns) > 0 {
+			return TurnPage{
+				Turns: append([]agentactivitybiz.SessionTurnSummary(nil), page.Turns...), HasMore: page.HasMore,
+			}, nil
+		}
+	}
+	exists, err := s.sessionExists(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return TurnPage{}, err
+	}
+	if !exists {
+		return TurnPage{}, ErrSessionNotFound
+	}
+	return TurnPage{Turns: []agentactivitybiz.SessionTurnSummary{}}, nil
+}
+
 // CancelTurn stops one specific turn (protocol v2). It is idempotent: a
 // settled or unknown turn is a no-op success (already_settled / not_found),
 // never an error. An active turn goes through the runtime cancel and its

@@ -29,6 +29,16 @@ type sessionSummaryInput struct {
 	Order         string `cli:"order" description:"Message order: asc or desc."`
 }
 
+type getSessionInput struct {
+	SessionID     string `cli:"session-id" validate:"required" description:"Agent session id to inspect."`
+	View          string `cli:"view" enum:"session,turns,conversation,trace" description:"Context view: session, turns, conversation, or trace."`
+	Turns         *int64 `cli:"turns" validate:"min=1,max=20" description:"Number of recent turns for turns or conversation view; defaults to 3."`
+	TurnID        string `cli:"turn-id" description:"Exact turn to inspect in conversation or trace view."`
+	BeforeTurnID  string `cli:"before-turn-id" description:"Return an older turns or conversation page before this turn."`
+	Messages      *int64 `cli:"messages" validate:"min=1,max=100" description:"Number of recent trace messages; defaults to 20."`
+	BeforeVersion int64  `cli:"before-version" validate:"min=0" description:"Return an older trace page before this message version."`
+}
+
 type waitInput struct {
 	SessionID    string `cli:"session-id" validate:"required" description:"Agent session id to await."`
 	AfterVersion *int64 `cli:"after-version" validate:"min=0" description:"Wait for a stop point after this message version."`
@@ -99,9 +109,10 @@ func (p Provider) newSessionSummaryCommand() cliservice.Command {
 	return framework.Register(framework.CommandSpec[sessionSummaryInput]{
 		ID:          appID + ".agent.session-summary",
 		Path:        []string{"agent", "session-summary"},
-		Summary:     "Get agent session summary",
-		Description: "Get compact session context and recent messages for agent-session mentions.",
+		Summary:     "Get agent session summary (deprecated)",
+		Description: "Deprecated compatibility alias. Use the progressive agent get views instead.",
 		Kind:        framework.KindAction,
+		Visibility:  cliservice.CapabilityVisibilityIntegration,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
 		Inputs:      framework.FromStruct[sessionSummaryInput](),

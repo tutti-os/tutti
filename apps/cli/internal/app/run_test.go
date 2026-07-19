@@ -164,10 +164,50 @@ func TestRunExactLegacyAgentCommandRetriesIntegrationDiscovery(t *testing.T) {
 	}
 }
 
+func TestRunLegacySessionSummaryPreservesTopLevelJSONShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			if r.URL.Query().Get("includeIntegration") != "true" {
+				_, _ = w.Write([]byte(`{"commands":[]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.session-summary","path":["agent","session-summary"],"summary":"Deprecated summary","visibility":"integration","inputSchema":{"type":"object","properties":{"session-id":{"type":"string"}},"required":["session-id"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}]}`))
+		case "/v1/cli/commands/agent-context.agent.session-summary/invoke":
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"session":{"agentSessionId":"SESSION-1"},"messages":[],"latestVersion":9,"hasMore":false}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "agent", "session-summary", "--session-id", "SESSION-1"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	var output map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("decode stdout: %v\n%s", err, stdout.String())
+	}
+	if output["session"].(map[string]any)["agentSessionId"] != "SESSION-1" || output["latestVersion"] != float64(9) {
+		t.Fatalf("output = %#v", output)
+	}
+	if _, wrapped := output["value"]; wrapped {
+		t.Fatalf("legacy JSON was wrapped: %#v", output)
+	}
+	if _, warned := output["warnings"]; warned || stderr.Len() != 0 {
+		t.Fatalf("legacy JSON emitted runtime warning: output=%#v stderr=%q", output, stderr.String())
+	}
+}
+
 func TestLegacyAgentCompatibilityInvocationIsExactAllowlist(t *testing.T) {
 	for _, args := range [][]string{
 		{"agent", "providers"},
 		{"agent", "cancel", "--session-id", "SESSION-1"},
+		{"agent", "session-summary", "--session-id", "SESSION-1"},
 		{"codex", "start", "--prompt", "review"},
 		{"claude", "start", "--prompt", "review"},
 	} {

@@ -382,6 +382,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
 	agentSessionService.TurnStore = agentActivityRepo
+	agentSessionService.TurnSummaryReader = agentActivityRepo
 	agentSessionService.RuntimeOperationStore = agentActivityRepo
 	agentSessionService.GoalStateStore = agentActivityRepo
 	agentSessionService.CommitObserver = agentActivityProjection

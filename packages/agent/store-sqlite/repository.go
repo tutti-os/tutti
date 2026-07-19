@@ -55,6 +55,13 @@ type Repository interface {
 	UpdateSessionTitle(context.Context, string, string, string) (Session, bool, error)
 }
 
+// SessionTurnSummaryReader is a narrow optional read seam for consumers that
+// need bounded Turn discovery without broadening the canonical write
+// repository contract.
+type SessionTurnSummaryReader interface {
+	ListSessionTurnSummaries(context.Context, ListSessionTurnSummariesInput) (SessionTurnSummaryPage, error)
+}
+
 // GoalProvenanceLedger is a narrow optional persistence capability. It stays
 // separate from Repository so read-only/custom activity repositories do not
 // need to implement provider-specific Goal attribution.
@@ -359,6 +366,40 @@ type Turn struct {
 	RootProviderTurnCompletedCommandKind   string
 	RootProviderTurnCompletedCommandStatus string
 	RootProviderTurnUpdatedAtUnixMS        int64
+}
+
+// SessionTurnCursor is the stable position immediately before a descending
+// session-Turn page. StartedAtUnixMS alone is not unique, so TurnID is the
+// deterministic tie-breaker.
+type SessionTurnCursor struct {
+	StartedAtUnixMS int64
+	TurnID          string
+}
+
+// ListSessionTurnSummariesInput bounds one metadata-only session-Turn read.
+// Before is exclusive; nil selects the newest page.
+type ListSessionTurnSummariesInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Before         *SessionTurnCursor
+	Limit          int
+}
+
+// SessionTurnSummary contains only the canonical fields needed to discover
+// and render a Turn without loading error, file-change, or provider payloads.
+type SessionTurnSummary struct {
+	TurnID                  string
+	Phase                   string
+	Outcome                 string
+	FinalAssistantMessageID string
+	StartedAtUnixMS         int64
+	SettledAtUnixMS         int64
+	Origin                  string
+}
+
+type SessionTurnSummaryPage struct {
+	Turns   []SessionTurnSummary
+	HasMore bool
 }
 
 const (

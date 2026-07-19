@@ -14,11 +14,12 @@ import (
 )
 
 var _ agentactivitybiz.Repository = (*SQLiteStore)(nil)
+var _ AgentActivityStore = (*SQLiteStore)(nil)
 
 // Agent activity and agent target persistence is delegated to the
 // embeddable packages/agent/store-sqlite module, sharing this store's
-// database handle. The delegation below keeps SQLiteStore satisfying the
-// AgentActivityStore and AgentTargetStore interfaces unchanged.
+// database handle. The delegation below keeps tuttid's persistence seams thin
+// while store-sqlite owns canonical query and migration behavior.
 
 const legacyIDLocalCodex = "local-codex"
 const legacyIDLocalClaudeCode = "local-claude-code"
@@ -244,6 +245,10 @@ func (s *SQLiteStore) ListPendingInteractionsBySession(ctx context.Context, work
 
 func (s *SQLiteStore) ListSessionTurns(ctx context.Context, workspaceID string, agentSessionID string) ([]agentactivitybiz.Turn, error) {
 	return s.agentReadStore().ListSessionTurns(ctx, workspaceID, agentSessionID)
+}
+
+func (s *SQLiteStore) ListSessionTurnSummaries(ctx context.Context, input agentactivitybiz.ListSessionTurnSummariesInput) (agentactivitybiz.SessionTurnSummaryPage, error) {
+	return s.agentReadStore().ListSessionTurnSummaries(ctx, input)
 }
 
 func (s *SQLiteStore) SettleStaleTurns(ctx context.Context) ([]agentactivitybiz.StaleTurnSettlement, error) {

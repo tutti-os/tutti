@@ -41,6 +41,7 @@ type WorkbenchStore interface {
 
 type AgentActivityStore interface {
 	agentactivitybiz.Repository
+	agentactivitybiz.SessionTurnSummaryReader
 	CheckpointRuntimeOperation(context.Context, agentactivitybiz.CheckpointRuntimeOperationInput) (agentactivitybiz.RuntimeOperation, bool, error)
 	CompletePlanDecisionRuntimeOperation(context.Context, agentactivitybiz.CompletePlanDecisionRuntimeOperationInput) (agentactivitybiz.RuntimeOperationCompletion, bool, error)
 	FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error)

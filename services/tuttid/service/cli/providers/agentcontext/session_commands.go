@@ -258,34 +258,27 @@ func (p Provider) runOpen(ctx context.Context, invoke framework.InvokeContext, i
 }
 
 func (p Provider) newGetCommand() cliservice.Command {
-	return framework.Register(framework.CommandSpec[sessionIDInput]{
+	return framework.Register(framework.CommandSpec[getSessionInput]{
 		ID:          appID + ".agent.get",
 		Path:        []string{"agent", "get"},
 		Summary:     "Get an agent session",
-		Description: "Get compact agent session context in the current workspace.",
+		Description: "Get recent turn conversation by default, session metadata only, or a detailed trace for one turn.",
 		Kind:        framework.KindGet,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
-		Inputs:      framework.FromStruct[sessionIDInput](),
+		Inputs:      framework.FromStruct[getSessionInput](),
 		Output: framework.OutputSpec{
 			DefaultMode: cliservice.OutputModeJSON,
 			DefaultView: framework.ViewDetail,
 			JSON:        true,
-			JSONViews: map[framework.OutputView]func(any) map[string]any{
-				framework.ViewDetail: func(result any) map[string]any {
-					return map[string]any{"session": sessionInspectValue(result.(agentservice.Session))}
-				},
-			},
+			JSONViews:   map[framework.OutputView]func(any) map[string]any{framework.ViewDetail: sessionGetJSONValue},
 		},
 		Run: p.runGet,
 	})
 }
 
-func (p Provider) runGet(ctx context.Context, invoke framework.InvokeContext, input sessionIDInput) (any, error) {
-	if err := p.requireSessions(); err != nil {
-		return nil, err
-	}
-	return p.sessions.Get(ctx, invoke.WorkspaceID, input.SessionID)
+func (p Provider) runGet(ctx context.Context, invoke framework.InvokeContext, input getSessionInput) (any, error) {
+	return p.getSessionContext(ctx, invoke.WorkspaceID, input)
 }
 
 func (p Provider) newSendCommand() cliservice.Command {

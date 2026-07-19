@@ -20,6 +20,105 @@ func TestCancelTurnPropagatesPersistedTurnReadFailure(t *testing.T) {
 	}
 }
 
+func TestListTurnsReturnsPersistedHistory(t *testing.T) {
+	t.Parallel()
+	want := []agentactivitybiz.SessionTurnSummary{{TurnID: "turn-1"}, {TurnID: "turn-2"}}
+	service := &Service{TurnSummaryReader: turnSummaryReaderStub{page: agentactivitybiz.SessionTurnSummaryPage{Turns: want}}}
+
+	got, err := service.ListTurns(context.Background(), "workspace-1", "session-1", ListTurnsInput{Limit: 10})
+	if err != nil || len(got.Turns) != 2 || got.Turns[0].TurnID != "turn-1" || got.Turns[1].TurnID != "turn-2" {
+		t.Fatalf("ListTurns() = %#v, error = %v", got, err)
+	}
+}
+
+func TestListTurnsPropagatesPersistedReadFailure(t *testing.T) {
+	t.Parallel()
+	want := errors.New("turn store unavailable")
+	service := &Service{TurnSummaryReader: turnSummaryReaderStub{err: want}}
+
+	_, err := service.ListTurns(context.Background(), "workspace-1", "session-1", ListTurnsInput{Limit: 10})
+	if !errors.Is(err, want) {
+		t.Fatalf("ListTurns() error = %v, want %v", err, want)
+	}
+}
+
+func TestListTurnsForwardsStableCursorAndLimit(t *testing.T) {
+	t.Parallel()
+	inputs := []agentactivitybiz.ListSessionTurnSummariesInput{}
+	service := &Service{TurnSummaryReader: turnSummaryReaderStub{
+		inputs: &inputs,
+		page: agentactivitybiz.SessionTurnSummaryPage{
+			Turns: []agentactivitybiz.SessionTurnSummary{{TurnID: "turn-older"}}, HasMore: true,
+		},
+	}}
+	cursor := &agentactivitybiz.SessionTurnCursor{StartedAtUnixMS: 20, TurnID: "turn-anchor"}
+
+	page, err := service.ListTurns(context.Background(), " workspace-1 ", " session-1 ", ListTurnsInput{Before: cursor, Limit: 7})
+	if err != nil {
+		t.Fatalf("ListTurns(): %v", err)
+	}
+	if len(inputs) != 1 || inputs[0].WorkspaceID != "workspace-1" || inputs[0].AgentSessionID != "session-1" ||
+		inputs[0].Limit != 7 || inputs[0].Before != cursor {
+		t.Fatalf("summary inputs = %#v", inputs)
+	}
+	if len(page.Turns) != 1 || page.Turns[0].TurnID != "turn-older" || !page.HasMore {
+		t.Fatalf("page = %#v", page)
+	}
+}
+
+func TestListTurnsDistinguishesEmptyExistingSessionFromMissingSession(t *testing.T) {
+	t.Parallel()
+	service := &Service{
+		Runtime:           &fakeRuntime{sessions: map[string]ProviderRuntimeSession{}},
+		SessionReader:     fakeSessionReader{sessions: map[string]PersistedSession{"workspace-1:session-1": {ID: "session-1", WorkspaceID: "workspace-1"}}},
+		TurnSummaryReader: turnSummaryReaderStub{page: agentactivitybiz.SessionTurnSummaryPage{Turns: []agentactivitybiz.SessionTurnSummary{}}},
+	}
+
+	page, err := service.ListTurns(context.Background(), "workspace-1", "session-1", ListTurnsInput{Limit: 3})
+	if err != nil || page.Turns == nil || len(page.Turns) != 0 || page.HasMore {
+		t.Fatalf("existing empty session page = %#v, error = %v", page, err)
+	}
+
+	_, err = service.ListTurns(context.Background(), "workspace-1", "missing", ListTurnsInput{Limit: 3})
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("missing session error = %v, want %v", err, ErrSessionNotFound)
+	}
+}
+
+func TestListTurnsRejectsInvalidInputBeforeReadingPersistence(t *testing.T) {
+	t.Parallel()
+	inputs := []agentactivitybiz.ListSessionTurnSummariesInput{}
+	service := &Service{TurnSummaryReader: turnSummaryReaderStub{inputs: &inputs}}
+
+	for _, input := range []struct {
+		workspaceID string
+		sessionID   string
+		limit       int
+	}{
+		{workspaceID: "", sessionID: "session-1", limit: 1},
+		{workspaceID: "workspace-1", sessionID: "", limit: 1},
+		{workspaceID: "workspace-1", sessionID: "session-1", limit: 0},
+	} {
+		if _, err := service.ListTurns(context.Background(), input.workspaceID, input.sessionID, ListTurnsInput{Limit: input.limit}); !errors.Is(err, ErrInvalidArgument) {
+			t.Fatalf("ListTurns(%#v) error = %v, want %v", input, err, ErrInvalidArgument)
+		}
+	}
+	if len(inputs) != 0 {
+		t.Fatalf("persistence inputs = %#v, want none", inputs)
+	}
+}
+
+func TestGetTurnReadsCanonicalTurnThroughHost(t *testing.T) {
+	t.Parallel()
+	want := agentactivitybiz.Turn{WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1"}
+	service := &Service{TurnStore: failingTurnStore{turn: want}}
+
+	got, found, err := service.GetTurn(context.Background(), "workspace-1", "session-1", "turn-1")
+	if err != nil || !found || got.TurnID != want.TurnID {
+		t.Fatalf("GetTurn() = (%#v, %v, %v)", got, found, err)
+	}
+}
+
 func TestProtocolV2ProjectionPropagatesPendingInteractionReadFailure(t *testing.T) {
 	t.Parallel()
 	want := errors.New("interaction store unavailable")
@@ -184,6 +283,19 @@ func (s failingTurnStore) ListLatestTurns(context.Context, string, []string) (ma
 		return map[string]agentactivitybiz.Turn{}, s.latestTurnErr
 	}
 	return map[string]agentactivitybiz.Turn{s.latestTurn.AgentSessionID: s.latestTurn}, s.latestTurnErr
+}
+
+type turnSummaryReaderStub struct {
+	inputs *[]agentactivitybiz.ListSessionTurnSummariesInput
+	page   agentactivitybiz.SessionTurnSummaryPage
+	err    error
+}
+
+func (s turnSummaryReaderStub) ListSessionTurnSummaries(_ context.Context, input agentactivitybiz.ListSessionTurnSummariesInput) (agentactivitybiz.SessionTurnSummaryPage, error) {
+	if s.inputs != nil {
+		*s.inputs = append(*s.inputs, input)
+	}
+	return s.page, s.err
 }
 
 func (s failingTurnStore) ListTurnsBySession(context.Context, string, map[string]string) (map[string]agentactivitybiz.Turn, error) {

@@ -8,6 +8,7 @@ import (
 )
 
 type Repository = agentstore.Repository
+type SessionTurnSummaryReader = agentstore.SessionTurnSummaryReader
 
 type ClearSessionsResult = agentstore.ClearSessionsResult
 type DeleteSessionResult = agentstore.DeleteSessionResult
@@ -81,6 +82,10 @@ type MessageSemantics = agentstore.MessageSemantics
 type MessagePage = agentstore.MessagePage
 
 type Turn = agentstore.Turn
+type SessionTurnCursor = agentstore.SessionTurnCursor
+type ListSessionTurnSummariesInput = agentstore.ListSessionTurnSummariesInput
+type SessionTurnSummary = agentstore.SessionTurnSummary
+type SessionTurnSummaryPage = agentstore.SessionTurnSummaryPage
 
 type TurnTransition = agentstore.TurnTransition
 type RootProviderTurnTransition = agentstore.RootProviderTurnTransition

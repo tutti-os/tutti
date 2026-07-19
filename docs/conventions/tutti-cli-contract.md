@@ -194,14 +194,34 @@ Use `issue task create-batch` for multiple new child tasks. Its `tasks-json`
 input is a JSON array of task objects, and the daemon appends tasks in array
 order with contiguous issue-local `sortIndex` values.
 
-`agent session-summary --json` returns compact message records for agent-session
-mentions. Its session record includes exact `agentTargetId` alongside provider
-runtime metadata so callers can safely validate attach/resume identity. When a
-compact message contains image prompt content, include an
+`agent get --json` progressively discloses agent context. Its default
+`conversation` view returns the three most recent Turns newest-first. Messages
+inside each Turn remain chronological and include only user/assistant body
+content; tool calls and session audits are excluded. Each Turn exposes its
+durable final assistant result separately as `finalMessage`, plus
+`hasMoreMessages` when the bounded body scan did not cover the complete raw
+trace. `--turns <N>` expands the recent window from 1 to 20 Turns, while
+`--turn-id <id>` selects one exact Turn. `--before-turn-id <id>` pages the
+`conversation` or metadata-only `turns` view towards older Turns; the cursor is
+exclusive and callers use the oldest returned Turn id when `hasMoreTurns` is
+true. `--view session` returns session metadata without messages. `--view
+turns` returns the same newest-first Turn metadata without reading message
+records. `--view trace --turn-id <id>` returns one Turn's tool-level message
+records and full payloads, bounded by `--messages <1-100>` and pageable
+backwards with `--before-version`.
+
+Turns are the outer ordering unit: recent Turns come first, while messages
+inside a Turn never reverse. The session record includes exact `agentTargetId`
+alongside provider runtime metadata so callers can safely validate
+attach/resume identity. When a compact conversation message contains image
+prompt content, include an
 `images` array with `attachmentId`, `mimeType`, `name`, and a daemon-local
 `localPath` when the attachment file is available on disk. Keep `payload`
-omitted from this compact shape; expose only fields useful for agent context
-recovery.
+omitted from the conversation shape; expose full payloads only in the explicit
+trace view. The deprecated integration-only `agent session-summary` path
+remains temporarily available for compatibility with its existing pagination
+flags and exact top-level JSON shape. Deprecation is advertised through command
+metadata, not a runtime warning that would wrap or mutate legacy JSON output.
 
 `agent wait --json` is the blocking progress helper for launched or continued
 agent sessions. It should wait for the next meaningful stop point such as turn
@@ -215,10 +235,11 @@ approval or input stop additionally returns the pending `interactions` with
 self-described actions and a JSON input summary of at most 2 KiB. It must not
 reuse a historical settled Turn for an idle timeout: timeout carries a
 `turnId` only while a Turn is active. It must not return execution-message
-pagination or a full transcript; callers that need
-broader context should follow with `agent session-summary`. Keep message window
-controls such as `limit` out of the public wait command shape, and keep timeout
-output free of result or interaction detail.
+pagination or a full transcript; callers that need broader context should
+follow with `agent get`, paging older Turns with `--before-turn-id` or selecting
+one Turn's trace only when necessary. Keep message window controls out of the
+public wait command shape, and keep timeout output free of result or
+interaction detail.
 The wait implementation skips transcript pagination and performs result
 enrichment separately. New settled turns carry a durable final-assistant
 resolution marker and, when present at settlement, the exact message anchor.
@@ -325,7 +346,7 @@ Command path segments and input names use lowercase kebab-case.
 Examples:
 
 - `issue list`
-- `agent session-summary`
+- `agent get`
 - `agent respond`
 - `topic-id`
 - `wait`

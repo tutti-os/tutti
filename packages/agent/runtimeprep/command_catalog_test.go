@@ -387,8 +387,13 @@ func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 		t.Fatalf("guide = %q, want tutti-dev issue task run complete fallback command", guide)
 	}
 	if !strings.Contains(guide, "tutti-dev agent wait --session-id <session-id> --json") ||
-		!strings.Contains(guide, "use `agent session-summary` when you need the full compact session context") {
+		!strings.Contains(guide, "use `agent get` when you need recent conversation context") {
 		t.Fatalf("guide = %q, want tutti-dev await fallback command", guide)
+	}
+	if !strings.Contains(guide, "tutti-dev agent get --session-id <session-id> --json") ||
+		!strings.Contains(guide, "tutti-dev agent get --session-id <session-id> --view turns --json") ||
+		!strings.Contains(guide, "tutti-dev agent get --session-id <session-id> --turn-id <turn-id> --view trace --json") {
+		t.Fatalf("guide = %q, want tutti-dev agent get fallback command", guide)
 	}
 	if !strings.Contains(guide, "tutti-dev agent list --json") ||
 		!strings.Contains(guide, "tutti-dev agent start --agent-id <agent-id> --prompt <prompt> --json") {
