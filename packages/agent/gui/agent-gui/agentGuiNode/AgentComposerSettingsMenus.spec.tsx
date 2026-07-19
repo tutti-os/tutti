@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { TooltipProvider } from "@tutti-os/ui-system";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentPermissionModeDropdown } from "./AgentComposerSettingsMenus";
 import type { AgentGUIComposerSettingsVM } from "./model/agentGuiNodeTypes";
@@ -24,7 +25,7 @@ beforeEach(() => {
 describe("AgentPermissionModeDropdown", () => {
   it("dispatches one settings change for one permission selection", async () => {
     const onSettingsChange = vi.fn();
-    render(
+    renderWithTooltipProvider(
       <AgentPermissionModeDropdown
         composerSettings={composerSettings()}
         provider="claude-code"
@@ -54,7 +55,7 @@ describe("AgentPermissionModeDropdown", () => {
   it("requires confirmation before enabling Codex full access", async () => {
     const onLinkAction = vi.fn();
     const onSettingsChange = vi.fn();
-    render(
+    renderWithTooltipProvider(
       <AgentPermissionModeDropdown
         composerSettings={composerSettingsWithFullAccess()}
         onLinkAction={onLinkAction}
@@ -121,7 +122,7 @@ describe("AgentPermissionModeDropdown", () => {
       );
     }
 
-    render(<Harness />);
+    renderWithTooltipProvider(<Harness />);
     await selectPermissionOption("Full access");
     fireEvent.click(screen.getByRole("button", { name: "Enable full access" }));
 
@@ -135,7 +136,7 @@ describe("AgentPermissionModeDropdown", () => {
 
   it("keeps the current Codex mode when full access is canceled", async () => {
     const onSettingsChange = vi.fn();
-    render(
+    renderWithTooltipProvider(
       <AgentPermissionModeDropdown
         composerSettings={composerSettingsWithFullAccess()}
         provider="codex"
@@ -155,7 +156,7 @@ describe("AgentPermissionModeDropdown", () => {
 
   it("does not gate another provider's full-access mode", async () => {
     const onSettingsChange = vi.fn();
-    render(
+    renderWithTooltipProvider(
       <AgentPermissionModeDropdown
         composerSettings={composerSettingsWithFullAccess()}
         provider="opencode"
@@ -177,7 +178,7 @@ describe("AgentPermissionModeDropdown", () => {
 
   it("explains why permission changes are disabled during a running turn", async () => {
     const onSettingsChange = vi.fn();
-    render(
+    renderWithTooltipProvider(
       <AgentPermissionModeDropdown
         composerSettings={composerSettings()}
         disabled
@@ -208,6 +209,10 @@ describe("AgentPermissionModeDropdown", () => {
     expect(onSettingsChange).not.toHaveBeenCalled();
   });
 });
+
+function renderWithTooltipProvider(ui: ReactNode): ReturnType<typeof render> {
+  return render(<TooltipProvider>{ui}</TooltipProvider>);
+}
 
 async function selectPermissionOption(optionName: string): Promise<void> {
   fireEvent.pointerDown(

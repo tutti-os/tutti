@@ -271,9 +271,13 @@ describe("useAgentGUIComposerSettingsActions", () => {
       provider: "claude-code",
       defaults: { permissionModeId: "acceptEdits" }
     });
-    expect(draftSettingsBySessionIdRef.current).toEqual({});
-    expect(setDraftSettingsBySessionId).not.toHaveBeenCalled();
-    expect(onDataChange).not.toHaveBeenCalled();
+    expect(draftSettingsBySessionIdRef.current).toEqual({
+      "__agent_gui_node_defaults__:target:local:claude-code": {
+        permissionModeId: "acceptEdits"
+      }
+    });
+    expect(setDraftSettingsBySessionId).toHaveBeenCalledTimes(1);
+    expect(onDataChange).toHaveBeenCalledTimes(1);
   });
 
   it("reconciles A to B to A by exact field generation", async () => {
@@ -395,6 +399,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
     expect(reloadComposerOptionsForTarget).toHaveBeenCalledWith({
       settings: {
         model: "opencode/new-model",
+        modelPlanId: null,
         permissionModeId: "ask",
         reasoningEffort: "high",
         speed: "fast"
@@ -405,7 +410,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
       draftSettingsBySessionIdRef.current[
         "__agent_gui_node_defaults__:target:local:opencode"
       ]
-    ).toEqual({ permissionModeId: "ask" });
+    ).toEqual({ modelPlanId: null, permissionModeId: "ask" });
 
     reloadComposerOptionsForTarget.mockClear();
     setDraftSettingsBySessionId.mockClear();
@@ -417,10 +422,14 @@ describe("useAgentGUIComposerSettingsActions", () => {
       await third.promise;
     });
     expect(reloadComposerOptionsForTarget).toHaveBeenCalledWith({
-      settings: { permissionModeId: "ask" },
+      settings: { modelPlanId: null, permissionModeId: "ask" },
       target
     });
-    expect(draftSettingsBySessionIdRef.current).toEqual({});
+    expect(draftSettingsBySessionIdRef.current).toEqual({
+      "__agent_gui_node_defaults__:target:local:opencode": {
+        modelPlanId: null
+      }
+    });
     expect(setDraftSettingsBySessionId).toHaveBeenCalledTimes(1);
   });
 

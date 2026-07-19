@@ -616,11 +616,6 @@ export const enAgentGui = {
   deleteSession: "Delete session",
   pinSession: "Pin session",
   ...enAgentGuiSessionActions,
-  renameSession: "Rename session",
-  renameSessionTitle: "Rename conversation",
-  renameSessionDescription: "Keep it short and easy to recognize.",
-  renameSessionPlaceholder: "Conversation title",
-  renameSessionSave: "Save",
   unpinSession: "Unpin session",
   deleteSessionTitle: "Delete session?",
   deleteSessionBody:

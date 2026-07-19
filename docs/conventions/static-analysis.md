@@ -30,8 +30,16 @@ Repository entrypoints:
 - `pnpm check:agent-gui-provider-catalog-generated`
 - `pnpm check:agent-host-boundary`
 - `pnpm check:agent-provider-strategy-boundaries`
+- `pnpm check:tutti-names`
 
 `pnpm check:full` remains the full local and CI validation command and includes linting and typechecking.
+
+The Tutti naming check rejects legacy product tokens in tracked paths and
+content. Its content allowlist is intentionally narrow and may cover only
+explicit compatibility contracts, such as legacy OAuth identifiers or retired
+environment variables that production code must still recognize or suppress;
+tests that prove those compatibility boundaries belong beside the production
+file in the same allowlist. Do not use the allowlist for active product naming.
 
 The pull-request workflow classifies changed files inline before running
 expensive validation jobs. TypeScript and JavaScript paths select TypeScript
