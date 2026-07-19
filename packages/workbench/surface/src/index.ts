@@ -86,6 +86,7 @@ export type {
 } from "./host/types.ts";
 export {
   WorkbenchSurface,
+  type WorkbenchAutoHideChromeConfig,
   type WorkbenchSurfaceProps,
   type WorkbenchSurfaceWallpaper,
   type WorkbenchSurfaceWallpaperFit,
@@ -127,6 +128,7 @@ export type {
   WorkbenchResolveWindowChromeMode,
   WorkbenchResolveWindowChromeModeContext,
   WorkbenchSurfacePresentation,
+  WorkbenchTopChromeRenderContext,
   WorkbenchFullscreenHeaderMode,
   WorkbenchWindowActionContext,
   WorkbenchWindowChromeMode,

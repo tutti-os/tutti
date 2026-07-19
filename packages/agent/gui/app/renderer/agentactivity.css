@@ -4915,6 +4915,61 @@ aside.workspace-agents-status-panel
   margin-right: 0;
 }
 
+/* The immersive top chrome owns the app tab. Project the rest of Agent's
+   existing header into one compact row immediately after that tab. */
+.workbench-immersive-chrome-header .agent-gui-workbench-header {
+  --agent-gui-workbench-header-muted: color-mix(
+    in srgb,
+    var(--workbench-chrome-foreground, var(--white-stationary)) 72%,
+    transparent
+  );
+  --agent-gui-workbench-header-text: var(
+    --workbench-chrome-foreground,
+    var(--white-stationary)
+  );
+
+  cursor: default;
+}
+
+.workbench-immersive-chrome-header
+  .agent-gui-workbench-header:not(
+    [data-agent-gui-workbench-header-collapsed="true"]
+  ) {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.workbench-immersive-chrome-header
+  .agent-gui-workbench-header:not(
+    [data-agent-gui-workbench-header-collapsed="true"]
+  )
+  .agent-gui-workbench-header__primary {
+  width: auto;
+}
+
+.workbench-immersive-chrome-header .agent-gui-workbench-header__primary,
+.workbench-immersive-chrome-header .agent-gui-workbench-header__detail {
+  background: transparent;
+}
+
+.workbench-immersive-chrome-header .agent-gui-workbench-header__primary {
+  gap: 8px;
+  padding-inline: 0;
+}
+
+.workbench-immersive-chrome-header [data-workbench-window-controls="true"],
+.workbench-immersive-chrome-header .agent-gui-workbench-header__agent-brand {
+  display: none;
+}
+
+.workbench-immersive-chrome-header .agent-gui-workbench-header::after {
+  display: none;
+}
+
+.workbench-immersive-chrome-header .agent-gui-workbench-header__detached-window,
+.workbench-immersive-chrome-header .agent-gui-workbench-header__rail-toggle {
+  margin-left: 0;
+}
+
 .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"] {
   cursor: grab !important;
   -webkit-app-region: drag;

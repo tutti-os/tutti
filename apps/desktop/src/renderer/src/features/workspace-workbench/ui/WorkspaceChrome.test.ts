@@ -43,6 +43,18 @@ test("workspace chrome header releases the drag region while the message center 
   assert.match(chromeSource, /setOpen=\{setMessageCenterOpen\}/);
 });
 
+test("workspace chrome hosts the immersive app header after the native control gutter", () => {
+  assert.match(
+    chromeSource,
+    /data-workspace-immersive-fullscreen-header="true"/
+  );
+  assert.match(chromeSource, /\{immersiveFullscreenHeader\}/);
+  assert.match(
+    chromeSource,
+    /!chromeState\.useCompactTitlebar \|\|\s*Boolean\(immersiveFullscreenHeader\)/
+  );
+});
+
 test("workspace chrome deck submit dispatches plan decisions through the canonical engine", () => {
   assert.match(
     messageCenterSource,

@@ -15,6 +15,7 @@ import { defaultIssueManagerWorkbenchTypeId } from "@tutti-os/workspace-issue-ma
 import {
   isEditableShortcutTarget,
   type WorkbenchContribution,
+  type WorkbenchAutoHideChromeConfig,
   type WorkbenchHostHandle,
   type WorkbenchHostDockEntry,
   type WorkbenchWindowManagementConfig,
@@ -112,6 +113,7 @@ import type {
 } from "@tutti-os/workspace-external-core/contracts";
 import {
   isFeatureEnabled,
+  LAB_AUTO_HIDE_WORKSPACE_CHROME_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkbenchShortcutAction } from "../services/workspaceWorkbenchShortcutService.ts";
@@ -225,6 +227,7 @@ function ReadyWorkspaceWorkbenchWithSession({
 }: ReadyWorkspaceWorkbenchProps & {
   hostSession: WorkspaceWorkbenchHostSessionBinding;
 }) {
+  const { t } = useTranslation();
   const { service: appCenterService } = useWorkspaceAppCenterService();
   const agentsService = useService(IAgentsService);
   const workspaceAgentActivityService = useService(
@@ -295,9 +298,29 @@ function ReadyWorkspaceWorkbenchWithSession({
     agentProviderManageFocusedProvider,
     setAgentProviderManageFocusedProvider
   ] = useState<WorkspaceAgentProvider | null>(null);
+  const autoHideWorkspaceChrome = isFeatureEnabled(
+    runtime.featureFlags,
+    LAB_AUTO_HIDE_WORKSPACE_CHROME_FLAG
+  );
+  const autoHideChromeConfig = useMemo<
+    WorkbenchAutoHideChromeConfig | undefined
+  >(
+    () =>
+      autoHideWorkspaceChrome
+        ? {
+            dockHandleLabel: t("workspace.settings.lab.chromeDockHandleLabel"),
+            topHandleLabel: t("workspace.settings.lab.chromeTopHandleLabel")
+          }
+        : undefined,
+    [autoHideWorkspaceChrome, t]
+  );
   const layoutConstraints = useMemo(
-    () => resolveWorkspaceWorkbenchLayoutConstraints(runtime.dockPlacement),
-    [runtime.dockPlacement]
+    () =>
+      resolveWorkspaceWorkbenchLayoutConstraints(
+        runtime.dockPlacement,
+        autoHideWorkspaceChrome
+      ),
+    [autoHideWorkspaceChrome, runtime.dockPlacement]
   );
   const unregisterAgentGuiLaunchRef = useRef<(() => void) | null>(null);
   const unregisterBrowserLaunchRef = useRef<(() => void) | null>(null);
@@ -800,6 +823,7 @@ function ReadyWorkspaceWorkbenchWithSession({
       >
         <WorkspaceAppCenterIntegration workspaceId={state.workspace.id} />
         <WorkbenchHost
+          autoHideChrome={autoHideChromeConfig}
           captureNodePreviewImage={hostInput.captureNodePreviewImage}
           className="h-full"
           contributions={contributions}
@@ -842,6 +866,9 @@ function ReadyWorkspaceWorkbenchWithSession({
           renderTopChrome={(chromeContext) => (
             <WorkspaceChrome
               headerSlot={headerSlot}
+              immersiveFullscreenHeader={
+                chromeContext.immersiveFullscreenHeader
+              }
               launchNode={chromeContext.launchNode}
               missionControl={runtime.missionControl}
               onSelectWallpaper={runtime.selectWallpaper}

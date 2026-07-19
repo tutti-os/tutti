@@ -17,6 +17,7 @@ import { useWorkbenchHostSurfaceRenderers } from "./useWorkbenchHostSurfaceRende
 const noop = () => {};
 
 export function WorkbenchHost({
+  autoHideChrome,
   captureNodePreviewImage,
   className,
   contributions,
@@ -135,6 +136,7 @@ export function WorkbenchHost({
 
   return (
     <WorkbenchSurface<WorkbenchHostNodeData>
+      autoHideChrome={autoHideChrome}
       className={className}
       captureNodePreviewImage={surfaceRenderers.captureNodePreviewImage}
       controller={hostSession.controller}

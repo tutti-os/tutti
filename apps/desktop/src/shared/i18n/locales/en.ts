@@ -924,6 +924,11 @@ export const en = {
         visibilityLabel: "Show developer panel"
       },
       lab: {
+        autoHideWorkspaceChromeDescription:
+          "Automatically retracts the app bar and Dock. Use the edge handles to bring either one back.",
+        autoHideWorkspaceChromeLabel: "Auto-hide app bar and Dock",
+        chromeDockHandleLabel: "Show Dock",
+        chromeTopHandleLabel: "Show app bar",
         clearShortcutLabel: "Clear {{label}}",
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",
@@ -952,10 +957,10 @@ export const en = {
         title: "Close this window?"
       },
       windowControls: {
-        close: "Close",
-        maximize: "Maximize",
-        minimize: "Minimize",
-        restore: "Restore"
+        close: "Close workbench window",
+        maximize: "Maximize workbench window",
+        minimize: "Minimize workbench window",
+        restore: "Restore workbench window"
       },
       nodes: {
         agent: "Agent",

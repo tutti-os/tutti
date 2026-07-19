@@ -1,3 +1,4 @@
+import type { FocusEventHandler, PointerEventHandler } from "react";
 import { useMemo, type ReactNode } from "react";
 import {
   selectFocusedWorkbenchNode,
@@ -11,6 +12,17 @@ import { useWorkbenchSelector } from "./hooks/useWorkbenchSelector.ts";
 import type { WorkbenchGenieController } from "./useWorkbenchGenieAnimation.tsx";
 
 export interface WorkbenchDockFrameProps<TData = unknown> {
+  autoHide?: {
+    controls: string;
+    expanded: boolean;
+    handleLabel: string;
+    onBlurCapture: FocusEventHandler<HTMLDivElement>;
+    onFocusCapture: FocusEventHandler<HTMLDivElement>;
+    onPointerEnter: PointerEventHandler<HTMLDivElement>;
+    onPointerLeave: PointerEventHandler<HTMLDivElement>;
+    onReveal(): void;
+    regionId: string;
+  };
   dockPlacement?: WorkbenchDockPlacement;
   genie: WorkbenchGenieController<TData>;
   interactive?: boolean;
@@ -18,6 +30,7 @@ export interface WorkbenchDockFrameProps<TData = unknown> {
 }
 
 export function WorkbenchDockFrame<TData>({
+  autoHide,
   dockPlacement = "bottom",
   genie,
   interactive = true,
@@ -58,17 +71,42 @@ export function WorkbenchDockFrame<TData>({
 
   return (
     <>
-      {hasFullscreenNode ? (
+      {hasFullscreenNode && !autoHide ? (
         <div
           className="workbench-dock-frame__immersive-hover-zone"
           data-dock-placement={dockPlacement}
           aria-hidden
         />
       ) : null}
+      {autoHide && !autoHide.expanded ? (
+        <button
+          aria-controls={autoHide.controls}
+          aria-expanded="false"
+          aria-label={autoHide.handleLabel}
+          className="workbench-auto-hide-handle"
+          data-edge={dockPlacement}
+          title={autoHide.handleLabel}
+          type="button"
+          onClick={autoHide.onReveal}
+        >
+          <span className="workbench-auto-hide-handle__label">
+            {autoHide.handleLabel}
+          </span>
+        </button>
+      ) : null}
       <div
+        id={autoHide?.regionId}
         className="workbench-dock-frame"
+        data-auto-hide-state={
+          autoHide ? (autoHide.expanded ? "expanded" : "hidden") : "disabled"
+        }
         data-dock-placement={dockPlacement}
         data-immersive-state={hasFullscreenNode ? "hidden" : "disabled"}
+        inert={autoHide && !autoHide.expanded ? true : undefined}
+        onBlurCapture={autoHide?.onBlurCapture}
+        onFocusCapture={autoHide?.onFocusCapture}
+        onPointerEnter={autoHide?.onPointerEnter}
+        onPointerLeave={autoHide?.onPointerLeave}
       >
         {renderDock
           ? renderDock({

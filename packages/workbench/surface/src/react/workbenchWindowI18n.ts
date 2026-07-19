@@ -20,12 +20,16 @@ export const tuttiI18nModule = createScopedLocaleObjectsI18nModuleManifest({
 
 const workbenchWindowChromeEn = {
   enterFullscreen: "Full Screen",
-  exitFullscreen: "Exit Full Screen"
+  exitFullscreen: "Exit Full Screen",
+  minimizeWindow: "Minimize to Dock",
+  restoreWindow: "Restore Window"
 } as const satisfies I18nDictionary;
 
 const workbenchWindowChromeZhCN = {
   enterFullscreen: "全屏",
-  exitFullscreen: "取消全屏"
+  exitFullscreen: "取消全屏",
+  minimizeWindow: "最小化到 Dock",
+  restoreWindow: "恢复窗口"
 } as const satisfies I18nDictionary;
 
 export type WorkbenchWindowChromeI18nKey = keyof typeof workbenchWindowChromeEn;

@@ -873,6 +873,11 @@ export const zhCN = {
         visibilityLabel: "显示开发者面板"
       },
       lab: {
+        autoHideWorkspaceChromeDescription:
+          "自动收起应用顶栏和 Dock；点击屏幕边缘留下的把手即可分别展开。",
+        autoHideWorkspaceChromeLabel: "自动收起应用顶栏和 Dock",
+        chromeDockHandleLabel: "展开 Dock",
+        chromeTopHandleLabel: "展开应用顶栏",
         clearShortcutLabel: "清除 {{label}}",
         newAgentConversationShortcutLabel: "新建 Agent 对话",
         newSameTypeWindowShortcutLabel: "新建同类型窗口",
@@ -899,10 +904,10 @@ export const zhCN = {
         title: "要关闭这个窗口吗？"
       },
       windowControls: {
-        close: "关闭",
-        maximize: "最大化",
-        minimize: "最小化",
-        restore: "还原"
+        close: "关闭工作台窗口",
+        maximize: "最大化工作台窗口",
+        minimize: "最小化工作台窗口",
+        restore: "还原工作台窗口"
       },
       nodes: {
         agent: "Agent",

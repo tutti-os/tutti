@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import { createI18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { Checkbox } from "@tutti-os/ui-system";
 import {
@@ -31,6 +31,7 @@ export interface WorkbenchWindowFrameProps<TData = unknown> {
   children: ReactNode;
   genie: WorkbenchGenieController;
   edgeSnapEnabled?: boolean;
+  immersiveFullscreenChrome?: boolean;
   hiddenMounted?: boolean;
   interactive?: boolean;
   node: WorkbenchNode<TData>;
@@ -89,6 +90,7 @@ function resolveWorkbenchNodeTypeId(data: unknown): string | undefined {
 export function WorkbenchWindowFrame<TData>({
   children,
   edgeSnapEnabled = false,
+  immersiveFullscreenChrome = false,
   genie,
   hiddenMounted = false,
   interactive = true,
@@ -131,30 +133,34 @@ export function WorkbenchWindowFrame<TData>({
       genie.minimizeNodeToAnchor(nodeID, minimize);
     }
   } as const;
-  const defaultActions = interactive ? (
-    <div
-      className="workbench-window__traffic-light-actions"
-      onDoubleClick={(event) => {
-        event.stopPropagation();
-      }}
-      onPointerDown={(event) => {
-        event.stopPropagation();
-      }}
-    >
-      {renderActions
-        ? renderActions({
-            controller,
-            genie: genieControls,
-            node
-          })
-        : null}
-      <WorkbenchWindowFullscreenToggle
-        controller={controller}
-        i18n={windowChromeI18n ?? defaultWindowChromeI18n}
-        node={node}
-      />
-    </div>
-  ) : null;
+  const isImmersiveFullscreen =
+    immersiveFullscreenChrome && node.displayMode === "fullscreen";
+  const resolvedWindowChromeI18n = windowChromeI18n ?? defaultWindowChromeI18n;
+  const defaultActions =
+    interactive && !isImmersiveFullscreen ? (
+      <div
+        className="workbench-window__traffic-light-actions"
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+        }}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        {renderActions
+          ? renderActions({
+              controller,
+              genie: genieControls,
+              node
+            })
+          : null}
+        <WorkbenchWindowFullscreenToggle
+          controller={controller}
+          i18n={resolvedWindowChromeI18n}
+          node={node}
+        />
+      </div>
+    ) : null;
   const resolvedHeader = resolveWorkbenchWindowHeader({
     controller,
     defaultActions,
@@ -162,7 +168,8 @@ export function WorkbenchWindowFrame<TData>({
     node,
     onDoubleClick: onHeaderDoubleClick,
     onDragStart,
-    renderHeader: interactive ? renderHeader : undefined,
+    renderHeader:
+      interactive && !isImmersiveFullscreen ? renderHeader : undefined,
     windowChromeMode
   });
   const shouldRenderCustomHeader =
@@ -219,6 +226,7 @@ export function WorkbenchWindowFrame<TData>({
       data-focused={isFocused ? "true" : "false"}
       data-display-mode={node.displayMode}
       data-genie-state={genie.isNodeGenieHidden(node.id) ? "hidden" : "visible"}
+      data-immersive-fullscreen={isImmersiveFullscreen ? "true" : "false"}
       data-launch-source={resolveWorkbenchNodeLaunchSource(node.data)}
       data-minimized-mount={hiddenMounted ? "hidden" : "visible"}
       data-presentation-mode={presentationMode ?? "default"}
@@ -228,15 +236,17 @@ export function WorkbenchWindowFrame<TData>({
       data-workbench-window-id={node.id}
       data-window-drag-state={isDragging ? "dragging" : "idle"}
       data-window-resize-state={isResizing ? "resizing" : "idle"}
-      style={{
-        height: node.frame.height,
-        left: node.frame.x,
-        top: node.frame.y,
-        transform: shellTransform,
-        transformOrigin: "top left",
-        width: node.frame.width,
-        zIndex
-      }}
+      style={
+        {
+          height: node.frame.height,
+          left: node.frame.x,
+          top: node.frame.y,
+          transform: shellTransform,
+          transformOrigin: "top left",
+          width: node.frame.width,
+          zIndex
+        } as CSSProperties
+      }
       onPointerDown={
         hiddenMounted ||
         isPresentationHidden ||
@@ -257,33 +267,37 @@ export function WorkbenchWindowFrame<TData>({
           data-window-drag-state={isDragging ? "dragging" : "idle"}
           data-window-resize-state={isResizing ? "resizing" : "idle"}
         >
-          <div
-            className={[
-              "workbench-window__header",
-              shouldRenderCustomHeader
-                ? "workbench-window__header--custom"
-                : null
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            onDoubleClick={
-              shouldRenderCustomHeader || !interactive
-                ? undefined
-                : onHeaderDoubleClick
-            }
-            onPointerDown={
-              shouldRenderCustomHeader || !interactive ? undefined : onDragStart
-            }
-          >
-            {shouldRenderCustomHeader ? (
-              resolvedHeader.customHeader
-            ) : (
-              <>
-                {defaultActions}
-                <div className="workbench-window__title">{node.title}</div>
-              </>
-            )}
-          </div>
+          {isImmersiveFullscreen ? null : (
+            <div
+              className={[
+                "workbench-window__header",
+                shouldRenderCustomHeader
+                  ? "workbench-window__header--custom"
+                  : null
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onDoubleClick={
+                shouldRenderCustomHeader || !interactive
+                  ? undefined
+                  : onHeaderDoubleClick
+              }
+              onPointerDown={
+                shouldRenderCustomHeader || !interactive
+                  ? undefined
+                  : onDragStart
+              }
+            >
+              {shouldRenderCustomHeader ? (
+                resolvedHeader.customHeader
+              ) : (
+                <>
+                  {defaultActions}
+                  <div className="workbench-window__title">{node.title}</div>
+                </>
+              )}
+            </div>
+          )}
           <div className="workbench-window__body">{children}</div>
         </div>
         {node.displayMode === "floating" &&

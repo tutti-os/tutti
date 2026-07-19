@@ -1527,6 +1527,9 @@ describe("agent GUI workbench contribution copy", () => {
       "data-agent-gui-workbench-header-collapsed",
       "true"
     );
+    expect(
+      header?.querySelector(".agent-gui-workbench-header__traffic-lights")
+    ).toHaveAttribute("data-workbench-window-controls", "true");
     expect(primary).not.toHaveTextContent("Agent");
     expect(screen.queryByText("Agent")).toBeNull();
     expect(screen.queryByText("Codex")).toBeNull();
@@ -1902,6 +1905,20 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header__detached-window\s*\+\s*\.agent-gui-workbench-header__rail-toggle\s*{[^}]*margin-left:\s*-4px;/s
+    );
+  });
+
+  it("projects the full Agent header beside the immersive app tab", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.workbench-immersive-chrome-header\s+\.agent-gui-workbench-header:not\([^}]*\)\s*{[^}]*grid-template-columns:\s*max-content minmax\(0, 1fr\);/s
+    );
+    expect(css).toMatch(
+      /\.workbench-immersive-chrome-header\s+\[data-workbench-window-controls="true"\],[\s\S]*?\.agent-gui-workbench-header__agent-brand\s*{[^}]*display:\s*none;/s
+    );
+    expect(css).toMatch(
+      /\.workbench-immersive-chrome-header[\s\S]*?\.agent-gui-workbench-header__primary\s*{[^}]*gap:\s*8px;[^}]*padding-inline:\s*0;/s
     );
   });
 

@@ -4,6 +4,7 @@ import type { WorkbenchNode } from "../core/types.ts";
 import type {
   WorkbenchRenderNodeContext,
   WorkbenchRenderWindowHeader,
+  WorkbenchTopChromeRenderContext,
   WorkbenchResolveWindowSurfaceLayer,
   WorkbenchResolveWindowZIndex,
   WorkbenchResolveWindowChromeMode,
@@ -90,7 +91,7 @@ export function useWorkbenchHostSurfaceRenderers(input: {
   const renderTopChrome = useMemo(() => {
     const renderChrome = input.renderTopChrome;
     return renderChrome
-      ? () => (
+      ? (surfaceContext: WorkbenchTopChromeRenderContext) => (
           <WorkbenchHostSurfaceRenderErrorBoundary
             debugDiagnostics={input.debugDiagnostics}
             details={{
@@ -102,7 +103,11 @@ export function useWorkbenchHostSurfaceRenderers(input: {
             workspaceId={input.workspaceId}
           >
             <WorkbenchHostChromeRenderer
-              context={input.chromeContext}
+              context={{
+                ...input.chromeContext,
+                immersiveFullscreenHeader:
+                  surfaceContext.immersiveFullscreenHeader
+              }}
               renderChrome={renderChrome}
             />
           </WorkbenchHostSurfaceRenderErrorBoundary>

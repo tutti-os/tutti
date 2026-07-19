@@ -10,6 +10,19 @@ const workspaceWorkbenchBottomSafeArea =
   workspaceWorkbenchDockSafeArea + workspaceWorkbenchDockSafetyGap;
 const workspaceWorkbenchLeftDockSafeArea = 80;
 
+const workspaceWorkbenchAutoHideLayoutConstraints: WorkbenchLayoutConstraintsInput =
+  {
+    minWidth: 280,
+    minHeight: 160,
+    surfacePadding: 0,
+    safeArea: {
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0
+    }
+  };
+
 const workspaceWorkbenchBottomDockLayoutConstraints: WorkbenchLayoutConstraintsInput =
   {
     minWidth: 280,
@@ -35,8 +48,12 @@ const workspaceWorkbenchLeftDockLayoutConstraints: WorkbenchLayoutConstraintsInp
   };
 
 export function resolveWorkspaceWorkbenchLayoutConstraints(
-  dockPlacement: WorkbenchDockPlacement
+  dockPlacement: WorkbenchDockPlacement,
+  autoHideChrome = false
 ): WorkbenchLayoutConstraintsInput {
+  if (autoHideChrome) {
+    return workspaceWorkbenchAutoHideLayoutConstraints;
+  }
   return dockPlacement === "left"
     ? workspaceWorkbenchLeftDockLayoutConstraints
     : workspaceWorkbenchBottomDockLayoutConstraints;

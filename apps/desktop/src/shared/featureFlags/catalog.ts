@@ -7,6 +7,8 @@ import {
 export const LAB_ENABLED_FLAG = "lab.enabled";
 export const BROWSER_CHROME_COOKIE_IMPORT_FLAG = "browser.chromeCookieImport";
 export const LAB_WORKBENCH_SHORTCUTS_FLAG = "lab.workbenchShortcuts";
+export const LAB_AUTO_HIDE_WORKSPACE_CHROME_FLAG =
+  "lab.autoHideWorkspaceChrome";
 export const WORKSPACE_STANDALONE_AGENT_MODE_FLAG =
   "workspace.standaloneAgentMode";
 export const AGENT_REFERENCE_PROVENANCE_FILTER_FLAG =
@@ -77,6 +79,13 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     group: "lab",
     labelKey: "workspaceSettings.lab.workbenchShortcuts.label",
     descriptionKey: "workspaceSettings.lab.workbenchShortcuts.description"
+  },
+  {
+    key: LAB_AUTO_HIDE_WORKSPACE_CHROME_FLAG,
+    default: false,
+    group: "lab",
+    labelKey: "workspaceSettings.lab.autoHideWorkspaceChrome.label",
+    descriptionKey: "workspaceSettings.lab.autoHideWorkspaceChrome.description"
   }
 ];
 

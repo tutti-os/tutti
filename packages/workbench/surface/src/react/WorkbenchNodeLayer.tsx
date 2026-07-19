@@ -29,6 +29,7 @@ import { resolveWorkbenchWindowChromeMode } from "./windowHeader.ts";
 export interface WorkbenchNodeLayerProps<TData = unknown> {
   genie: WorkbenchGenieController<TData>;
   edgeSnapEnabled?: boolean;
+  immersiveFullscreenChrome?: boolean;
   interactive?: boolean;
   presentation?: WorkbenchSurfacePresentation | null;
   renderNode: WorkbenchRenderNode<TData>;
@@ -47,6 +48,7 @@ export interface WorkbenchNodeLayerProps<TData = unknown> {
 export function WorkbenchNodeLayer<TData>({
   genie,
   edgeSnapEnabled = false,
+  immersiveFullscreenChrome = false,
   interactive = true,
   presentation,
   renderNode,
@@ -112,6 +114,7 @@ export function WorkbenchNodeLayer<TData>({
       <WorkbenchNodeLayerGroup
         className="workbench-node-layer workbench-node-layer--dialog-popover"
         edgeSnapEnabled={edgeSnapEnabled}
+        immersiveFullscreenChrome={immersiveFullscreenChrome}
         fullscreenHeaderMode={resolveFullscreenHeaderMode}
         genie={genie}
         interactive={interactive}
@@ -131,6 +134,7 @@ export function WorkbenchNodeLayer<TData>({
       <WorkbenchNodeLayerGroup
         className="workbench-node-layer"
         edgeSnapEnabled={edgeSnapEnabled}
+        immersiveFullscreenChrome={immersiveFullscreenChrome}
         fullscreenHeaderMode={resolveFullscreenHeaderMode}
         genie={genie}
         interactive={interactive}
@@ -157,6 +161,7 @@ export function WorkbenchNodeLayer<TData>({
 interface WorkbenchNodeLayerGroupProps<TData = unknown> {
   className: string;
   edgeSnapEnabled: boolean;
+  immersiveFullscreenChrome: boolean;
   fullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
   genie: WorkbenchGenieController<TData>;
   interactive: boolean;
@@ -177,6 +182,7 @@ interface WorkbenchNodeLayerGroupProps<TData = unknown> {
 function WorkbenchNodeLayerGroup<TData>({
   className,
   edgeSnapEnabled,
+  immersiveFullscreenChrome,
   fullscreenHeaderMode,
   genie,
   interactive,
@@ -220,6 +226,7 @@ function WorkbenchNodeLayerGroup<TData>({
       {nodeIDs.map((nodeID) => (
         <MemoizedWorkbenchNodeLayerItem
           key={nodeID}
+          immersiveFullscreenChrome={immersiveFullscreenChrome}
           fullscreenHeaderMode={fullscreenHeaderMode}
           genie={genie}
           edgeSnapEnabled={edgeSnapEnabled}
@@ -242,6 +249,7 @@ interface WorkbenchNodeLayerItemProps<TData = unknown> {
   fullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
   genie: WorkbenchGenieController<TData>;
   edgeSnapEnabled: boolean;
+  immersiveFullscreenChrome: boolean;
   interactive: boolean;
   nodeID: string;
   presentation?: WorkbenchSurfacePresentation | null;
@@ -259,6 +267,7 @@ function WorkbenchNodeLayerItem<TData>({
   fullscreenHeaderMode,
   genie,
   edgeSnapEnabled,
+  immersiveFullscreenChrome,
   interactive,
   nodeID,
   presentation,
@@ -293,6 +302,7 @@ function WorkbenchNodeLayerItem<TData>({
   return (
     <WorkbenchWindowFrame
       edgeSnapEnabled={edgeSnapEnabled}
+      immersiveFullscreenChrome={immersiveFullscreenChrome}
       hiddenMounted={node.isMinimized}
       interactive={interactive}
       presentation={presentation}

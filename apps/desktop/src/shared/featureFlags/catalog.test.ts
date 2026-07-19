@@ -10,6 +10,7 @@ import {
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   isFeatureEnabled,
   labFeatureDefinitions,
+  LAB_AUTO_HIDE_WORKSPACE_CHROME_FLAG,
   LAB_ENABLED_FLAG,
   resolveDesktopWorkspaceUiMode,
   withDesktopWorkspaceUiMode,
@@ -48,6 +49,16 @@ test("isFeatureEnabled returns false for unknown keys", () => {
 
 test("labFeatureDefinitions excludes the master switch", () => {
   assert.ok(labFeatureDefinitions().every((d) => d.group === "lab"));
+  assert.equal(
+    labFeatureDefinitions().some(
+      (definition) => definition.key === LAB_AUTO_HIDE_WORKSPACE_CHROME_FLAG
+    ),
+    true
+  );
+  assert.equal(
+    isFeatureEnabled({}, LAB_AUTO_HIDE_WORKSPACE_CHROME_FLAG),
+    false
+  );
 });
 
 test("workspace UI mode defaults to OS and preserves explicit selections", () => {

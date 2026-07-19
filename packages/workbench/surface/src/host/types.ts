@@ -21,6 +21,7 @@ import type {
   WorkbenchDebugDiagnostics
 } from "../store/types.ts";
 import type {
+  WorkbenchAutoHideChromeConfig,
   WorkbenchSurfaceWallpaper,
   WorkbenchWindowManagementConfig
 } from "../react/WorkbenchSurface.tsx";
@@ -560,6 +561,7 @@ export interface WorkbenchHostChromeRenderContext {
   controller: WorkbenchController<WorkbenchHostNodeData>;
   activateNode: WorkbenchHostHandle["activateNode"];
   focusNode: WorkbenchHostHandle["focusNode"];
+  immersiveFullscreenHeader?: ReactNode;
   launchNode: WorkbenchHostHandle["launchNode"];
 }
 
@@ -606,6 +608,7 @@ export interface WorkbenchContribution {
 }
 
 export interface WorkbenchHostProps {
+  autoHideChrome?: WorkbenchAutoHideChromeConfig;
   captureNodePreviewImage?: (
     node: WorkbenchNode<WorkbenchHostNodeData>
   ) => Promise<string | null> | string | null;
