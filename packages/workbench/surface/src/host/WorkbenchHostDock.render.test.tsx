@@ -168,9 +168,9 @@ describe("WorkbenchHostDock", () => {
             autoHideChrome={{
               dockHandleLabel: "Show Dock",
               fullscreenHostControlsCenterY: 26,
-              fullscreenHostControlsMaskHeight: 44,
-              fullscreenHostControlsMaskWidth: 80,
-              fullscreenRestoreControlInset: 88,
+              fullscreenHostControlsMaskHeight: 42,
+              fullscreenHostControlsMaskWidth: 92,
+              fullscreenRestoreControlInset: 104,
               topHandleLabel: "Show app bar"
             }}
             controller={controller}
@@ -197,19 +197,19 @@ describe("WorkbenchHostDock", () => {
         fullscreenShell?.style.getPropertyValue(
           "--workbench-fullscreen-host-controls-height"
         )
-      ).toBe("44px");
+      ).toBe("42px");
       expect(
         fullscreenShell?.style.getPropertyValue(
           "--workbench-fullscreen-host-controls-width"
         )
-      ).toBe("80px");
+      ).toBe("92px");
       expect(
         container.querySelector('[data-workbench-native-controls-mask="true"]')
       ).not.toBeNull();
       const restoreControl = container.querySelector<HTMLButtonElement>(
         '[data-workbench-fullscreen-restore="true"]'
       );
-      expect(restoreControl?.style.left).toBe("88px");
+      expect(restoreControl?.style.left).toBe("104px");
       expect(restoreControl?.getAttribute("aria-label")).toBe("Restore Window");
 
       await act(async () => {

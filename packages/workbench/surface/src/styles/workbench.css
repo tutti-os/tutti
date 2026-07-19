@@ -2671,21 +2671,31 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
 .workbench-window__native-controls-mask {
   position: absolute;
   z-index: 31;
-  top: 0;
-  left: 0;
-  width: var(--workbench-fullscreen-host-controls-width, 80px);
-  height: var(--workbench-fullscreen-host-controls-height, 44px);
-  border-top-left-radius: var(--workbench-window-radius);
-  background: color-mix(
-    in srgb,
-    var(--background-fronted) 90%,
-    var(--text-primary) 10%
+  top: 5px;
+  left: 4px;
+  width: var(--workbench-fullscreen-host-controls-width, 92px);
+  height: var(--workbench-fullscreen-host-controls-height, 42px);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--background-fronted) 82%, var(--text-primary) 18%),
+    color-mix(in srgb, var(--background-fronted) 90%, var(--text-primary) 10%)
   );
   clip-path: path(
-    "M0 0H80C80 16.72 79.2 23.76 73.6 29.48C67.2 35.64 56 36.96 54.4 44H0Z"
+    "M10 0H92C92 17 91 24 87 29.5C82 34.5 76 36 72 42H10C4.5 42 0 37.5 0 32V10C0 4.5 4.5 0 10 0Z"
   );
-  filter: drop-shadow(7px 8px 14px rgb(0 0 0 / 14%));
+  filter: drop-shadow(
+      0 1px 0 color-mix(in srgb, var(--text-primary) 12%, transparent)
+    )
+    drop-shadow(0 10px 18px rgb(0 0 0 / 30%));
   overflow: hidden;
+  pointer-events: none;
+}
+
+.workbench-window__native-controls-mask::after {
+  position: absolute;
+  inset: 1px;
+  background: linear-gradient(135deg, rgb(255 255 255 / 8%), transparent 48%);
+  content: "";
   pointer-events: none;
 }
 

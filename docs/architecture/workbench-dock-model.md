@@ -84,8 +84,12 @@ controls' vertical center and a compact mask size, allowing the restore control
 to align with the traffic lights without becoming part of their mask. An
 inward, Gaussian-tail curve closes that mask before the restore control, whose
 window-colored button treatment keeps it visually owned by the internal
-window. Custom headers reserve the restore control's width so their existing
-actions continue to its right instead of overlapping it.
+window. The mask is slightly inset from the fullscreen window edge and uses a
+stronger contour shadow, making the native controls read as a floating host
+panel. Its curve begins after the complete traffic-light group rather than
+tight against the green control. Custom headers reserve the restore control's
+width so their existing actions continue to its right instead of overlapping
+it.
 
 ## Core Model
 
