@@ -1,10 +1,14 @@
 package agent
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -39,7 +43,7 @@ func TestScanChatGPTExportArchiveNormalizesRolesTextAndAssetPlaceholders(t *test
 	if session.Provider != chatgptExportProvider {
 		t.Fatalf("provider = %q, want %q", session.Provider, chatgptExportProvider)
 	}
-	if session.ProviderSessionID != "chatgpt-export:conversation-1:branch:n-tool" || !session.NoProject {
+	if session.ProviderSessionID != "chatgpt-export:conversation-1:branch:main" || !session.NoProject {
 		t.Fatalf("session identity = %#v", session)
 	}
 	if session.ResumeSupported == nil || *session.ResumeSupported {
@@ -113,17 +117,22 @@ func TestScanChatGPTExportArchiveFollowsCurrentNodeAndDropsAbandonedBranch(t *te
 }
 
 func TestScanChatGPTExportArchiveIsIdempotentAndBranchScoped(t *testing.T) {
-	build := func(currentNode string) string {
+	buildLinear := func(currentNode string, followUp bool) string {
+		mapping := map[string]any{
+			"root":        chatgptExportNodeFixture("root", "", []string{"n-user"}, nil),
+			"n-user":      chatgptExportNodeFixture("n-user", "root", []string{"n-assistant"}, chatgptExportTextMessageFixture("m-user", "user", 1717200001, "Hello")),
+			"n-assistant": chatgptExportNodeFixture("n-assistant", "n-user", []string{}, chatgptExportTextMessageFixture("m-assistant", "assistant", 1717200002, "Hi there")),
+		}
+		if followUp {
+			mapping["n-assistant"] = chatgptExportNodeFixture("n-assistant", "n-user", []string{"n-follow"}, chatgptExportTextMessageFixture("m-assistant", "assistant", 1717200002, "Hi there"))
+			mapping["n-follow"] = chatgptExportNodeFixture("n-follow", "n-assistant", []string{}, chatgptExportTextMessageFixture("m-follow", "user", 1717200003, "Follow up"))
+		}
 		return writeChatGPTExportArchive(t, []map[string]any{
-			chatgptExportConversationFixture("conversation-1", "Chat", currentNode, map[string]any{
-				"root":        chatgptExportNodeFixture("root", "", []string{"n-user"}, nil),
-				"n-user":      chatgptExportNodeFixture("n-user", "root", []string{"n-assistant"}, chatgptExportTextMessageFixture("m-user", "user", 1717200001, "Hello")),
-				"n-assistant": chatgptExportNodeFixture("n-assistant", "n-user", []string{}, chatgptExportTextMessageFixture("m-assistant", "assistant", 1717200002, "Hi there")),
-			}),
+			chatgptExportConversationFixture("conversation-1", "Chat", currentNode, mapping),
 		})
 	}
 
-	firstPath := build("n-assistant")
+	firstPath := buildLinear("n-assistant", false)
 	first, err := scanChatGPTExportArchive(context.Background(), firstPath, 0)
 	if err != nil {
 		t.Fatalf("first scan error = %v", err)
@@ -137,22 +146,52 @@ func TestScanChatGPTExportArchiveIsIdempotentAndBranchScoped(t *testing.T) {
 	if string(firstJSON) != string(secondJSON) {
 		t.Fatalf("re-import is not idempotent:\n first=%s\nsecond=%s", firstJSON, secondJSON)
 	}
-
-	branchPath := build("n-user")
-	branch, err := scanChatGPTExportArchive(context.Background(), branchPath, 0)
-	if err != nil {
-		t.Fatalf("branch scan error = %v", err)
+	if first.sessions[0].ProviderSessionID != "chatgpt-export:conversation-1:branch:main" {
+		t.Fatalf("linear session id = %q, want branch:main", first.sessions[0].ProviderSessionID)
 	}
-	if first.sessions[0].ProviderSessionID == branch.sessions[0].ProviderSessionID {
-		t.Fatalf("changing current_node must yield a new session id, got %q for both", first.sessions[0].ProviderSessionID)
+
+	extendedPath := buildLinear("n-follow", true)
+	extended, err := scanChatGPTExportArchive(context.Background(), extendedPath, 0)
+	if err != nil {
+		t.Fatalf("extended scan error = %v", err)
+	}
+	if extended.sessions[0].ProviderSessionID != first.sessions[0].ProviderSessionID {
+		t.Fatalf("linear growth changed session id from %q to %q", first.sessions[0].ProviderSessionID, extended.sessions[0].ProviderSessionID)
+	}
+
+	oldAnswerPath := writeChatGPTExportArchive(t, []map[string]any{
+		chatgptExportConversationFixture("conversation-fork", "Fork chat", "n-old", map[string]any{
+			"root":   chatgptExportNodeFixture("root", "", []string{"n-user"}, nil),
+			"n-user": chatgptExportNodeFixture("n-user", "root", []string{"n-old"}, chatgptExportTextMessageFixture("m-user", "user", 1717200001, "Question")),
+			"n-old":  chatgptExportNodeFixture("n-old", "n-user", []string{}, chatgptExportTextMessageFixture("m-old", "assistant", 1717200002, "Old answer")),
+		}),
+	})
+	newAnswerPath := writeChatGPTExportArchive(t, []map[string]any{
+		chatgptExportConversationFixture("conversation-fork", "Fork chat", "n-new", map[string]any{
+			"root":   chatgptExportNodeFixture("root", "", []string{"n-user"}, nil),
+			"n-user": chatgptExportNodeFixture("n-user", "root", []string{"n-old", "n-new"}, chatgptExportTextMessageFixture("m-user", "user", 1717200001, "Question")),
+			"n-old":  chatgptExportNodeFixture("n-old", "n-user", []string{}, chatgptExportTextMessageFixture("m-old", "assistant", 1717200002, "Old answer")),
+			"n-new":  chatgptExportNodeFixture("n-new", "n-user", []string{}, chatgptExportTextMessageFixture("m-new", "assistant", 1717200003, "New answer")),
+		}),
+	})
+	oldScan, err := scanChatGPTExportArchive(context.Background(), oldAnswerPath, 0)
+	if err != nil {
+		t.Fatalf("old fork scan error = %v", err)
+	}
+	newScan, err := scanChatGPTExportArchive(context.Background(), newAnswerPath, 0)
+	if err != nil {
+		t.Fatalf("new fork scan error = %v", err)
+	}
+	if oldScan.sessions[0].ProviderSessionID == newScan.sessions[0].ProviderSessionID {
+		t.Fatalf("changed retry branch reused session id %q", oldScan.sessions[0].ProviderSessionID)
 	}
 }
 
 func TestScanChatGPTExportArchiveRejectsMissingConversationsWithoutLeakingPath(t *testing.T) {
 	archivePath := writeChatGPTExportZipEntries(t, map[string]string{"users.json": "[]"})
 	_, err := scanChatGPTExportArchive(context.Background(), archivePath, 0)
-	if !errors.Is(err, ErrInvalidArgument) {
-		t.Fatalf("error = %v, want ErrInvalidArgument for a missing conversations.json", err)
+	if !errors.Is(err, ErrInvalidArgument) || !strings.Contains(err.Error(), "supported ChatGPT conversations payload") {
+		t.Fatalf("error = %v, want missing payload rejection", err)
 	}
 	if strings.Contains(err.Error(), archivePath) || strings.Contains(err.Error(), filepath.Dir(archivePath)) {
 		t.Fatalf("error message leaked the archive path: %v", err)
@@ -289,6 +328,215 @@ func TestImportChatGPTExportArchivePersistsSessionsWithoutLeakingPath(t *testing
 	}
 }
 
+func TestScanChatGPTExportArchiveReadsBundledOpenAIExport(t *testing.T) {
+	archivePath := writeChatGPTExportBundleArchive(t, map[string][]map[string]any{
+		"conversations-000.json": {
+			chatgptExportConversationFixture("conversation-a", "First shard", "n-user", map[string]any{
+				"root":   chatgptExportNodeFixture("root", "", []string{"n-user"}, nil),
+				"n-user": chatgptExportNodeFixture("n-user", "root", []string{}, chatgptExportTextMessageFixture("m-a", "user", 1717200001, "Shard A")),
+			}),
+		},
+		"conversations-001.json": {
+			chatgptExportConversationFixture("conversation-b", "Second shard", "n-user", map[string]any{
+				"root":   chatgptExportNodeFixture("root", "", []string{"n-user"}, nil),
+				"n-user": chatgptExportNodeFixture("n-user", "root", []string{}, chatgptExportTextMessageFixture("m-b", "user", 1717200002, "Shard B")),
+			}),
+		},
+	})
+
+	data, err := scanChatGPTExportArchive(context.Background(), archivePath, 0)
+	if err != nil {
+		t.Fatalf("scanChatGPTExportArchive error = %v", err)
+	}
+	if data.result.ScannedSessions != 2 || data.result.ScannedMessages != 2 {
+		t.Fatalf("scan result = %#v, want two sessions from bundled shards", data.result)
+	}
+}
+
+func TestImportChatGPTExportArchiveAppendsNewMessagesWithoutDuplicatingSession(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-chatgpt-append", Name: "ChatGPT append"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	archivePath := writeChatGPTExportArchive(t, []map[string]any{
+		chatgptExportConversationFixture("conversation-import", "Imported conversation", "n-assistant", map[string]any{
+			"root":        chatgptExportNodeFixture("root", "", []string{"n-user"}, nil),
+			"n-user":      chatgptExportNodeFixture("n-user", "root", []string{"n-assistant"}, chatgptExportTextMessageFixture("m-user", "user", 1717200001, "Question")),
+			"n-assistant": chatgptExportNodeFixture("n-assistant", "n-user", []string{}, chatgptExportTextMessageFixture("m-assistant", "assistant", 1717200002, "Answer")),
+		}),
+	})
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	scan, err := service.ScanExternalImports(ctx, ExternalImportScanInput{
+		ArchivePath: archivePath,
+		ArchiveKind: ExternalImportArchiveKindChatGPT,
+		Days:        -1,
+	})
+	if err != nil {
+		t.Fatalf("ScanExternalImports error = %v", err)
+	}
+	home, ok := externalImportNoProjectBucketPath()
+	if !ok {
+		t.Fatal("home bucket unavailable")
+	}
+	selection := ExternalImportInput{
+		ArchivePath: archivePath,
+		ArchiveKind: ExternalImportArchiveKindChatGPT,
+		Projects: []ExternalImportProjectSelection{{
+			Path:       home,
+			Providers:  []string{chatgptExportProvider},
+			SessionIDs: []string{scan.Sessions[0].ID},
+		}},
+	}
+	if _, err := service.ImportExternalSessions(ctx, "ws-chatgpt-append", selection); err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	messages, err := service.ListMessages(ctx, "ws-chatgpt-append", scan.Sessions[0].ID, ListMessagesInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListMessages error = %v", err)
+	}
+	existingIDs := map[string]string{}
+	for _, message := range messages.Messages {
+		sourceID, _ := message.Payload["sourceMessageId"].(string)
+		existingIDs[sourceID] = message.MessageID
+	}
+
+	rewriteChatGPTExportArchive(t, archivePath, []map[string]any{
+		chatgptExportConversationFixture("conversation-import", "Imported conversation", "n-follow", map[string]any{
+			"root":        chatgptExportNodeFixture("root", "", []string{"n-user"}, nil),
+			"n-user":      chatgptExportNodeFixture("n-user", "root", []string{"n-assistant"}, chatgptExportTextMessageFixture("m-user", "user", 1717200001, "Question")),
+			"n-assistant": chatgptExportNodeFixture("n-assistant", "n-user", []string{"n-follow"}, chatgptExportTextMessageFixture("m-assistant", "assistant", 1717200002, "Answer")),
+			"n-follow":    chatgptExportNodeFixture("n-follow", "n-assistant", []string{}, chatgptExportTextMessageFixture("m-follow", "user", 1717200003, "Follow up")),
+		}),
+	})
+	updatedScan, err := service.ScanExternalImports(ctx, ExternalImportScanInput{
+		ArchivePath: archivePath,
+		ArchiveKind: ExternalImportArchiveKindChatGPT,
+		Days:        -1,
+	})
+	if err != nil {
+		t.Fatalf("ScanExternalImports updated export error = %v", err)
+	}
+	if updatedScan.Sessions[0].ID != scan.Sessions[0].ID {
+		t.Fatalf("updated export changed session id from %q to %q", scan.Sessions[0].ID, updatedScan.Sessions[0].ID)
+	}
+	selection.Projects[0].SessionIDs = []string{updatedScan.Sessions[0].ID}
+	updated, err := service.ImportExternalSessions(ctx, "ws-chatgpt-append", selection)
+	if err != nil {
+		t.Fatalf("ImportExternalSessions updated export error = %v", err)
+	}
+	if updated.ImportedMessages != 1 {
+		t.Fatalf("updated export result = %#v, want only the appended message", updated)
+	}
+	updatedMessages, err := service.ListMessages(ctx, "ws-chatgpt-append", scan.Sessions[0].ID, ListMessagesInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListMessages after updated export error = %v", err)
+	}
+	if len(updatedMessages.Messages) != 3 {
+		t.Fatalf("updated messages = %#v, want three unique messages", updatedMessages.Messages)
+	}
+	for _, message := range updatedMessages.Messages {
+		sourceID, _ := message.Payload["sourceMessageId"].(string)
+		if oldID := existingIDs[sourceID]; oldID != "" && oldID != message.MessageID {
+			t.Fatalf("message %q id changed from %q to %q after append", sourceID, oldID, message.MessageID)
+		}
+	}
+}
+
+func TestImportChatGPTExportArchiveKeepsChangedRetryBranchesInSeparateSessions(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-chatgpt-branches", Name: "ChatGPT branches"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	archivePath := writeChatGPTExportArchive(t, []map[string]any{
+		chatgptExportConversationFixture("conversation-changing-branch", "Changing branch", "n-old", map[string]any{
+			"root":   chatgptExportNodeFixture("root", "", []string{"n-user"}, nil),
+			"n-user": chatgptExportNodeFixture("n-user", "root", []string{"n-old"}, chatgptExportTextMessageFixture("m-user", "user", 1717200001, "Question")),
+			"n-old":  chatgptExportNodeFixture("n-old", "n-user", []string{}, chatgptExportTextMessageFixture("m-old", "assistant", 1717200002, "Old answer")),
+		}),
+	})
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	firstScan, err := service.ScanExternalImports(ctx, ExternalImportScanInput{
+		ArchivePath: archivePath,
+		ArchiveKind: ExternalImportArchiveKindChatGPT,
+		Days:        -1,
+	})
+	if err != nil || len(firstScan.Sessions) != 1 {
+		t.Fatalf("first scan = %#v, error = %v", firstScan, err)
+	}
+	selectionFor := func(scan ExternalImportScanResult) ExternalImportInput {
+		home, ok := externalImportNoProjectBucketPath()
+		if !ok {
+			t.Fatal("home bucket unavailable")
+		}
+		return ExternalImportInput{
+			ArchivePath: archivePath,
+			ArchiveKind: ExternalImportArchiveKindChatGPT,
+			Projects: []ExternalImportProjectSelection{{
+				Path:       home,
+				Providers:  []string{chatgptExportProvider},
+				SessionIDs: []string{scan.Sessions[0].ID},
+			}},
+		}
+	}
+	firstImport, err := service.ImportExternalSessions(ctx, "ws-chatgpt-branches", selectionFor(firstScan))
+	if err != nil || firstImport.ImportedSessions != 1 || firstImport.ImportedMessages != 2 {
+		t.Fatalf("first import = %#v, error = %v", firstImport, err)
+	}
+	oldSessionID := firstScan.Sessions[0].ID
+
+	rewriteChatGPTExportArchive(t, archivePath, []map[string]any{
+		chatgptExportConversationFixture("conversation-changing-branch", "Changing branch", "n-new", map[string]any{
+			"root":   chatgptExportNodeFixture("root", "", []string{"n-user"}, nil),
+			"n-user": chatgptExportNodeFixture("n-user", "root", []string{"n-old", "n-new"}, chatgptExportTextMessageFixture("m-user", "user", 1717200001, "Question")),
+			"n-old":  chatgptExportNodeFixture("n-old", "n-user", []string{}, chatgptExportTextMessageFixture("m-old", "assistant", 1717200002, "Old answer")),
+			"n-new":  chatgptExportNodeFixture("n-new", "n-user", []string{}, chatgptExportTextMessageFixture("m-new", "assistant", 1717200003, "New answer")),
+		}),
+	})
+	secondScan, err := service.ScanExternalImports(ctx, ExternalImportScanInput{
+		ArchivePath: archivePath,
+		ArchiveKind: ExternalImportArchiveKindChatGPT,
+		Days:        -1,
+	})
+	if err != nil || len(secondScan.Sessions) != 1 {
+		t.Fatalf("second scan = %#v, error = %v", secondScan, err)
+	}
+	newSessionID := secondScan.Sessions[0].ID
+	if newSessionID == oldSessionID {
+		t.Fatalf("changed retry branch reused session id %q", newSessionID)
+	}
+	secondImport, err := service.ImportExternalSessions(ctx, "ws-chatgpt-branches", selectionFor(secondScan))
+	if err != nil || secondImport.ImportedSessions != 1 || secondImport.ImportedMessages != 2 {
+		t.Fatalf("second import = %#v, error = %v", secondImport, err)
+	}
+
+	oldMessages, err := service.ListMessages(ctx, "ws-chatgpt-branches", oldSessionID, ListMessagesInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("list old branch: %v", err)
+	}
+	newMessages, err := service.ListMessages(ctx, "ws-chatgpt-branches", newSessionID, ListMessagesInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("list new branch: %v", err)
+	}
+	if !chatgptSessionMessagesContainText(oldMessages.Messages, "Old answer") || chatgptSessionMessagesContainText(oldMessages.Messages, "New answer") {
+		t.Fatalf("old branch messages = %#v", oldMessages.Messages)
+	}
+	if !chatgptSessionMessagesContainText(newMessages.Messages, "New answer") || chatgptSessionMessagesContainText(newMessages.Messages, "Old answer") {
+		t.Fatalf("new branch messages = %#v", newMessages.Messages)
+	}
+}
+
 func TestChatGPTExportConversationStreamRejectsElementBeforeExceedingByteBudget(t *testing.T) {
 	stream, err := newChatGPTExportConversationStreamWithLimits(
 		context.Background(),
@@ -303,6 +551,60 @@ func TestChatGPTExportConversationStreamRejectsElementBeforeExceedingByteBudget(
 	if !errors.Is(err, ErrInvalidArgument) || !strings.Contains(err.Error(), "conversation 1 exceeds the size limit") {
 		t.Fatalf("error = %v, want per-conversation byte-budget rejection", err)
 	}
+}
+
+func writeChatGPTExportBundleArchive(t *testing.T, shardConversations map[string][]map[string]any) string {
+	t.Helper()
+	innerBuf := new(bytes.Buffer)
+	innerWriter := zip.NewWriter(innerBuf)
+	names := make([]string, 0, len(shardConversations))
+	for name := range shardConversations {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		data, err := json.Marshal(shardConversations[name])
+		if err != nil {
+			t.Fatalf("marshal %s: %v", name, err)
+		}
+		entry, err := innerWriter.Create(name)
+		if err != nil {
+			t.Fatalf("create inner entry %s: %v", name, err)
+		}
+		if _, err := entry.Write(data); err != nil {
+			t.Fatalf("write inner entry %s: %v", name, err)
+		}
+	}
+	if err := innerWriter.Close(); err != nil {
+		t.Fatalf("close inner ZIP: %v", err)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "chatgpt-export-bundle.zip")
+	writeClaudeExportZipEntryFixturesAt(t, archivePath, []claudeExportZipEntryFixture{
+		{
+			Name:    "User Online Activity/Conversations__test-hash-chatgpt-0001.zip",
+			Content: string(innerBuf.Bytes()),
+		},
+		{Name: "report.html", Content: "<html></html>"},
+	})
+	return archivePath
+}
+
+func rewriteChatGPTExportArchive(t *testing.T, archivePath string, conversations []map[string]any) {
+	t.Helper()
+	data, err := json.Marshal(conversations)
+	if err != nil {
+		t.Fatalf("marshal conversations: %v", err)
+	}
+	writeClaudeExportZipEntryFixturesAt(t, archivePath, []claudeExportZipEntryFixture{
+		{Name: "conversations.json", Content: string(data)},
+	})
+}
+
+func chatgptSessionMessagesContainText(messages []SessionMessage, text string) bool {
+	return slices.ContainsFunc(messages, func(message SessionMessage) bool {
+		return message.Payload["text"] == text
+	})
 }
 
 func writeChatGPTExportArchive(t *testing.T, conversations []map[string]any) string {

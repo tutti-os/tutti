@@ -2,12 +2,15 @@ package agent
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -20,12 +23,13 @@ import (
 const chatgptExportProvider = "chatgpt"
 
 const (
-	chatgptExportConversationsEntry       = "conversations.json"
-	maxChatGPTExportArchiveBytes    int64 = 512 << 20
-	maxChatGPTExportEntryBytes            = 512 << 20
-	maxChatGPTExportArchiveEntries        = 10_000
-	maxChatGPTExportConversations         = 100_000
-	maxChatGPTExportMessages              = 100_000
+	chatgptExportConversationsEntry             = "conversations.json"
+	chatgptExportConversationBundlePrefix       = "Conversations__"
+	maxChatGPTExportArchiveBytes          int64 = 512 << 20
+	maxChatGPTExportEntryBytes                  = 512 << 20
+	maxChatGPTExportArchiveEntries              = 10_000
+	maxChatGPTExportConversations               = 100_000
+	maxChatGPTExportMessages                    = 100_000
 )
 
 type chatgptExportConversation struct {
@@ -82,22 +86,25 @@ type chatgptExportLinearNode struct {
 	ParentMessageID string
 }
 
+// chatgptExportArchiveHandle keeps nested bundle bytes alive while inner ZIP
+// entries are streamed.
+type chatgptExportArchiveHandle struct {
+	close     func()
+	entries   []*zip.File
+	keepAlive [][]byte
+}
+
 func scanChatGPTExportArchive(ctx context.Context, archivePath string, cutoffUnixMS int64) (externalScanData, error) {
-	_, entry, closeArchive, err := openChatGPTExportConversations(archivePath)
+	handle, err := openChatGPTExportConversationEntries(archivePath)
 	if err != nil {
 		return externalScanData{}, err
 	}
-	defer closeArchive()
+	defer handle.close()
 
 	home, ok := externalImportNoProjectBucketPath()
 	if !ok {
 		return externalScanData{}, fmt.Errorf("%w: user home directory is unavailable", ErrInvalidArgument)
 	}
-	entryReader, err := entry.Open()
-	if err != nil {
-		return externalScanData{}, invalidChatGPTExportArchive("open conversations.json: %v", err)
-	}
-	defer entryReader.Close()
 
 	data := externalScanData{}
 	// Never surface the local archive path anywhere it can reach a user; the
@@ -109,65 +116,88 @@ func scanChatGPTExportArchive(ctx context.Context, archivePath string, cutoffUni
 	}}
 	projects := map[string]*ExternalImportProject{}
 	conversationIDs := map[string]struct{}{}
-	// Reuse the Claude export streaming reader and per-conversation JSON
-	// complexity guard: both are format-agnostic array/object validators and
-	// enforce the same archive protections the issue requires.
-	conversationStream, err := newChatGPTExportConversationStream(ctx, entryReader)
-	if err != nil {
-		return externalScanData{}, err
-	}
 	totalMessages := 0
-	for index := 0; ; index++ {
+	conversationIndex := 0
+	for _, entry := range handle.entries {
 		if err := ctx.Err(); err != nil {
 			return externalScanData{}, err
 		}
-		raw, more, err := conversationStream.Next()
+		entryReader, err := entry.Open()
 		if err != nil {
-			return externalScanData{}, err
+			return externalScanData{}, invalidChatGPTExportArchive("open conversations payload: %v", err)
 		}
-		if !more {
-			break
-		}
-		if index >= maxChatGPTExportConversations {
-			return externalScanData{}, invalidChatGPTExportArchive("conversation count exceeds %d", maxChatGPTExportConversations)
-		}
-		if err := validateChatGPTExportConversationJSON(ctx, raw, index+1); err != nil {
-			return externalScanData{}, err
-		}
-		var conversation chatgptExportConversation
-		if err := json.Unmarshal(raw, &conversation); err != nil {
-			return externalScanData{}, invalidChatGPTExportArchive("decode conversation %d: %v", index+1, err)
-		}
-		conversationID := chatgptExportConversationID(conversation, raw)
-		if _, exists := conversationIDs[conversationID]; exists {
-			return externalScanData{}, invalidChatGPTExportArchive("duplicate conversation id %q", conversationID)
-		}
-		conversationIDs[conversationID] = struct{}{}
-		if totalMessages+len(conversation.Mapping) > maxChatGPTExportMessages {
-			return externalScanData{}, invalidChatGPTExportArchive("message count exceeds %d", maxChatGPTExportMessages)
-		}
-		totalMessages += len(conversation.Mapping)
-		session, valid, err := parseChatGPTExportConversation(ctx, home, conversationID, conversation)
+		conversationStream, err := newChatGPTExportConversationStream(ctx, entryReader)
 		if err != nil {
+			_ = entryReader.Close()
 			return externalScanData{}, err
 		}
-		if !valid {
-			data.result.SkippedSessions++
-			continue
+		for {
+			if err := ctx.Err(); err != nil {
+				_ = entryReader.Close()
+				return externalScanData{}, err
+			}
+			raw, more, err := conversationStream.Next()
+			if err != nil {
+				_ = entryReader.Close()
+				return externalScanData{}, err
+			}
+			if !more {
+				break
+			}
+			if conversationIndex >= maxChatGPTExportConversations {
+				_ = entryReader.Close()
+				return externalScanData{}, invalidChatGPTExportArchive("conversation count exceeds %d", maxChatGPTExportConversations)
+			}
+			if err := validateChatGPTExportConversationJSON(ctx, raw, conversationIndex+1); err != nil {
+				_ = entryReader.Close()
+				return externalScanData{}, err
+			}
+			var conversation chatgptExportConversation
+			if err := json.Unmarshal(raw, &conversation); err != nil {
+				_ = entryReader.Close()
+				return externalScanData{}, invalidChatGPTExportArchive("decode conversation %d: %v", conversationIndex+1, err)
+			}
+			conversationID := chatgptExportConversationID(conversation, raw)
+			if _, exists := conversationIDs[conversationID]; exists {
+				_ = entryReader.Close()
+				return externalScanData{}, invalidChatGPTExportArchive("duplicate conversation id %q", conversationID)
+			}
+			conversationIDs[conversationID] = struct{}{}
+			if totalMessages+len(conversation.Mapping) > maxChatGPTExportMessages {
+				_ = entryReader.Close()
+				return externalScanData{}, invalidChatGPTExportArchive("message count exceeds %d", maxChatGPTExportMessages)
+			}
+			totalMessages += len(conversation.Mapping)
+			session, valid, err := parseChatGPTExportConversation(ctx, home, conversationID, conversation)
+			if err != nil {
+				_ = entryReader.Close()
+				return externalScanData{}, err
+			}
+			if !valid {
+				data.result.SkippedSessions++
+				conversationIndex++
+				continue
+			}
+			if session.UpdatedAtUnixMS < cutoffUnixMS {
+				conversationIndex++
+				continue
+			}
+			project, ok := projectFromExternalSession(session)
+			if !ok {
+				data.result.SkippedSessions++
+				conversationIndex++
+				continue
+			}
+			data.sessions = append(data.sessions, session)
+			data.result.ScannedSessions++
+			data.result.ScannedMessages += len(session.Messages)
+			data.result.Sessions = append(data.result.Sessions, externalImportSessionSummary(session, project.Path))
+			upsertExternalImportProject(projects, project, session.Provider)
+			conversationIndex++
 		}
-		if session.UpdatedAtUnixMS < cutoffUnixMS {
-			continue
+		if err := entryReader.Close(); err != nil {
+			return externalScanData{}, invalidChatGPTExportArchive("close conversations payload: %v", err)
 		}
-		project, ok := projectFromExternalSession(session)
-		if !ok {
-			data.result.SkippedSessions++
-			continue
-		}
-		data.sessions = append(data.sessions, session)
-		data.result.ScannedSessions++
-		data.result.ScannedMessages += len(session.Messages)
-		data.result.Sessions = append(data.result.Sessions, externalImportSessionSummary(session, project.Path))
-		upsertExternalImportProject(projects, project, session.Provider)
 	}
 
 	for _, project := range projects {
@@ -185,77 +215,213 @@ func scanChatGPTExportArchive(ctx context.Context, archivePath string, cutoffUni
 	return data, nil
 }
 
-func openChatGPTExportConversations(rawPath string) (string, *zip.File, func(), error) {
+func openChatGPTExportConversationEntries(rawPath string) (*chatgptExportArchiveHandle, error) {
 	archivePath := strings.TrimSpace(rawPath)
 	if archivePath == "" || !filepath.IsAbs(archivePath) || !strings.EqualFold(filepath.Ext(archivePath), ".zip") {
-		return "", nil, func() {}, invalidChatGPTExportArchive("archivePath must be an absolute ZIP path")
+		return nil, invalidChatGPTExportArchive("archivePath must be an absolute ZIP path")
 	}
 	resolvedPath, err := filepath.EvalSymlinks(archivePath)
 	if err != nil {
-		return "", nil, func() {}, invalidChatGPTExportArchive("resolve archive path: %v", err)
+		return nil, invalidChatGPTExportArchive("resolve archive path: %v", err)
 	}
-	// Open the archive once and derive every subsequent check (size, directory
-	// preflight, ZIP parsing) from this one descriptor, so a concurrently
-	// replaced file cannot slip a different archive past the validation.
 	archive, err := os.Open(resolvedPath)
 	if err != nil {
-		return "", nil, func() {}, invalidChatGPTExportArchive("open archive: %v", err)
+		return nil, invalidChatGPTExportArchive("open archive: %v", err)
 	}
 	closeArchive := func() { _ = archive.Close() }
 	info, err := archive.Stat()
 	if err != nil {
 		closeArchive()
-		return "", nil, func() {}, invalidChatGPTExportArchive("inspect archive: %v", err)
+		return nil, invalidChatGPTExportArchive("inspect archive: %v", err)
 	}
 	if !info.Mode().IsRegular() {
 		closeArchive()
-		return "", nil, func() {}, invalidChatGPTExportArchive("archive is not a regular file")
+		return nil, invalidChatGPTExportArchive("archive is not a regular file")
 	}
 	if info.Size() <= 0 || info.Size() > maxChatGPTExportArchiveBytes {
 		closeArchive()
-		return "", nil, func() {}, invalidChatGPTExportArchive("archive size exceeds the supported limit")
+		return nil, invalidChatGPTExportArchive("archive size exceeds the supported limit")
 	}
-	// Reuse the Claude export ZIP central-directory preflight: it is a generic,
-	// format-independent guard against multi-disk, ZIP64, and directory-size
-	// smuggling, and enforces the same 10,000-entry / 4 MiB directory limits.
 	if err := validateChatGPTExportZipDirectory(archive, info.Size()); err != nil {
 		closeArchive()
-		return "", nil, func() {}, err
+		return nil, err
 	}
 	reader, err := zip.NewReader(archive, info.Size())
 	if err != nil {
 		closeArchive()
-		return "", nil, func() {}, invalidChatGPTExportArchive("open ZIP: %v", err)
+		return nil, invalidChatGPTExportArchive("open ZIP: %v", err)
 	}
 	if len(reader.File) > maxChatGPTExportArchiveEntries {
 		closeArchive()
-		return "", nil, func() {}, invalidChatGPTExportArchive("archive entry count exceeds %d", maxChatGPTExportArchiveEntries)
+		return nil, invalidChatGPTExportArchive("archive entry count exceeds %d", maxChatGPTExportArchiveEntries)
 	}
+
+	handle := &chatgptExportArchiveHandle{
+		close: closeArchive,
+	}
+	if legacy, err := chatgptExportLegacyConversationEntry(reader.File); err != nil {
+		closeArchive()
+		return nil, err
+	} else if legacy != nil {
+		handle.entries = []*zip.File{legacy}
+		return handle, nil
+	}
+
+	bundleEntry, err := chatgptExportConversationBundleEntry(reader.File)
+	if err != nil {
+		closeArchive()
+		return nil, err
+	}
+	if bundleEntry == nil {
+		closeArchive()
+		return nil, invalidChatGPTExportArchive("archive does not contain a supported ChatGPT conversations payload")
+	}
+	entries, bundleBytes, err := chatgptExportConversationEntriesFromBundle(bundleEntry)
+	if err != nil {
+		closeArchive()
+		return nil, err
+	}
+	handle.entries = entries
+	handle.keepAlive = append(handle.keepAlive, bundleBytes)
+	return handle, nil
+}
+
+func chatgptExportLegacyConversationEntry(files []*zip.File) (*zip.File, error) {
 	var conversations *zip.File
-	for _, file := range reader.File {
+	for _, file := range files {
 		name := filepath.ToSlash(file.Name)
 		if name != chatgptExportConversationsEntry {
 			continue
 		}
 		if conversations != nil {
-			closeArchive()
-			return "", nil, func() {}, invalidChatGPTExportArchive("archive contains duplicate conversations.json entries")
+			return nil, invalidChatGPTExportArchive("archive contains duplicate conversations.json entries")
 		}
-		if file.FileInfo().IsDir() || file.Mode()&os.ModeSymlink != 0 || file.Flags&0x1 != 0 {
-			closeArchive()
-			return "", nil, func() {}, invalidChatGPTExportArchive("conversations.json is not a readable regular ZIP entry")
-		}
-		if file.UncompressedSize64 == 0 || file.UncompressedSize64 > maxChatGPTExportEntryBytes {
-			closeArchive()
-			return "", nil, func() {}, invalidChatGPTExportArchive("conversations.json exceeds the supported size limit")
+		if err := validateChatGPTExportConversationZipEntry(file, "conversations.json"); err != nil {
+			return nil, err
 		}
 		conversations = file
 	}
-	if conversations == nil {
-		closeArchive()
-		return "", nil, func() {}, invalidChatGPTExportArchive("archive does not contain root conversations.json")
+	return conversations, nil
+}
+
+func chatgptExportConversationBundleEntry(files []*zip.File) (*zip.File, error) {
+	var bundle *zip.File
+	for _, file := range files {
+		if !chatgptExportIsConversationBundle(file.Name) {
+			continue
+		}
+		if bundle != nil {
+			return nil, invalidChatGPTExportArchive("archive contains multiple ChatGPT conversation bundles")
+		}
+		if err := validateChatGPTExportConversationZipEntry(file, "conversation bundle"); err != nil {
+			return nil, err
+		}
+		bundle = file
 	}
-	return filepath.Clean(resolvedPath), conversations, closeArchive, nil
+	return bundle, nil
+}
+
+func chatgptExportIsConversationBundle(name string) bool {
+	base := filepath.Base(filepath.ToSlash(name))
+	if !strings.HasPrefix(base, chatgptExportConversationBundlePrefix) {
+		return false
+	}
+	if !strings.HasSuffix(strings.ToLower(base), ".zip") {
+		return false
+	}
+	return strings.Contains(base, "-chatgpt-")
+}
+
+func chatgptExportConversationEntriesFromBundle(bundleEntry *zip.File) ([]*zip.File, []byte, error) {
+	reader, err := bundleEntry.Open()
+	if err != nil {
+		return nil, nil, invalidChatGPTExportArchive("open conversation bundle: %v", err)
+	}
+	defer reader.Close()
+	limited := io.LimitReader(reader, maxChatGPTExportEntryBytes+1)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, nil, invalidChatGPTExportArchive("read conversation bundle: %v", err)
+	}
+	if int64(len(data)) > maxChatGPTExportEntryBytes {
+		return nil, nil, invalidChatGPTExportArchive("conversation bundle exceeds the supported size limit")
+	}
+	if len(data) == 0 {
+		return nil, nil, invalidChatGPTExportArchive("conversation bundle is empty")
+	}
+	innerReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, nil, invalidChatGPTExportArchive("open conversation bundle ZIP: %v", err)
+	}
+	if len(innerReader.File) > maxChatGPTExportArchiveEntries {
+		return nil, nil, invalidChatGPTExportArchive("conversation bundle entry count exceeds %d", maxChatGPTExportArchiveEntries)
+	}
+	entries := make([]*zip.File, 0, len(innerReader.File))
+	for _, file := range innerReader.File {
+		if !chatgptExportIsConversationPayloadEntry(file.Name) {
+			continue
+		}
+		label := filepath.Base(filepath.ToSlash(file.Name))
+		if err := validateChatGPTExportConversationZipEntry(file, label); err != nil {
+			return nil, nil, err
+		}
+		entries = append(entries, file)
+	}
+	if len(entries) == 0 {
+		return nil, nil, invalidChatGPTExportArchive("conversation bundle does not contain conversations payload entries")
+	}
+	sort.SliceStable(entries, func(left, right int) bool {
+		leftOrder := chatgptExportConversationPayloadOrder(entries[left].Name)
+		rightOrder := chatgptExportConversationPayloadOrder(entries[right].Name)
+		if leftOrder != rightOrder {
+			return leftOrder < rightOrder
+		}
+		return filepath.ToSlash(entries[left].Name) < filepath.ToSlash(entries[right].Name)
+	})
+	return entries, data, nil
+}
+
+func chatgptExportIsConversationPayloadEntry(name string) bool {
+	base := filepath.Base(filepath.ToSlash(name))
+	if base == chatgptExportConversationsEntry {
+		return true
+	}
+	if !strings.HasPrefix(base, "conversations-") || !strings.HasSuffix(base, ".json") {
+		return false
+	}
+	suffix := strings.TrimSuffix(strings.TrimPrefix(base, "conversations-"), ".json")
+	if suffix == "" {
+		return false
+	}
+	for _, r := range suffix {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func chatgptExportConversationPayloadOrder(name string) int {
+	base := filepath.Base(filepath.ToSlash(name))
+	if base == chatgptExportConversationsEntry {
+		return -1
+	}
+	suffix := strings.TrimSuffix(strings.TrimPrefix(base, "conversations-"), ".json")
+	order, err := strconv.Atoi(suffix)
+	if err != nil {
+		return 1_000_000
+	}
+	return order
+}
+
+func validateChatGPTExportConversationZipEntry(file *zip.File, label string) error {
+	if file.FileInfo().IsDir() || file.Mode()&os.ModeSymlink != 0 || file.Flags&0x1 != 0 {
+		return invalidChatGPTExportArchive("%s is not a readable regular ZIP entry", label)
+	}
+	if file.UncompressedSize64 == 0 || file.UncompressedSize64 > maxChatGPTExportEntryBytes {
+		return invalidChatGPTExportArchive("%s exceeds the supported size limit", label)
+	}
+	return nil
 }
 
 func parseChatGPTExportConversation(
@@ -283,7 +449,11 @@ func parseChatGPTExportConversation(
 			err,
 		)
 	}
-	branchIdentity := chatgptExportBranchIdentity(leafID)
+	branchNodeIDs := make([]string, len(branch))
+	for index, node := range branch {
+		branchNodeIDs[index] = node.NodeID
+	}
+	branchIdentity := chatgptExportBranchIdentity(conversation.Mapping, branchNodeIDs)
 	session.ProviderSessionID = "chatgpt-export:" + conversationID + ":branch:" + branchIdentity
 
 	conversationCreatedAt := chatgptExportUnixMS(conversation.CreateTime)
@@ -433,11 +603,30 @@ func chatgptExportFallbackLeaf(mapping map[string]chatgptExportNode) string {
 	return best
 }
 
-func chatgptExportBranchIdentity(leafID string) string {
-	if leaf := strings.TrimSpace(leafID); leaf != "" {
-		return leaf
+// chatgptExportBranchIdentity mirrors the Claude export importer: linear
+// conversation growth keeps a stable "main" identity, while regenerated/retry
+// branches get a deterministic fork hash from the chosen child at each fork.
+func chatgptExportBranchIdentity(mapping map[string]chatgptExportNode, branchNodeIDs []string) string {
+	decisions := make([]string, 0, 4)
+	for _, nodeID := range branchNodeIDs {
+		node, ok := mapping[nodeID]
+		if !ok {
+			continue
+		}
+		parentID := strings.TrimSpace(node.Parent)
+		if parentID == "" {
+			continue
+		}
+		parent, ok := mapping[parentID]
+		if !ok || len(parent.Children) <= 1 {
+			continue
+		}
+		decisions = append(decisions, nodeID)
 	}
-	return "main"
+	if len(decisions) == 0 {
+		return "main"
+	}
+	return "fork-" + externalStableHash(strings.Join(decisions, "\x00"))[:24]
 }
 
 func chatgptExportMessageRole(role string) string {
