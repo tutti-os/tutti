@@ -12,9 +12,14 @@ import {
 import type { WorkbenchController } from "../store/types.ts";
 import type {
   WorkbenchLayoutConstraintsInput,
-  WorkbenchNode
+  WorkbenchNode,
+  WorkbenchSize
 } from "../core/types.ts";
 import { WorkbenchDockFrame } from "./WorkbenchDockFrame.tsx";
+import {
+  selectVisibleFullscreenNode,
+  WorkbenchImmersiveChromeHeader
+} from "./WorkbenchImmersiveChromeHeader.tsx";
 import { WorkbenchLockedSlotLayer } from "./WorkbenchLockedSlotLayer.tsx";
 import { WorkbenchNodeLayer } from "./WorkbenchNodeLayer.tsx";
 import {
@@ -22,6 +27,7 @@ import {
   useWorkbenchController
 } from "./WorkbenchProvider.tsx";
 import type { WorkbenchDebugDiagnostics } from "../store/types.ts";
+import { useWorkbenchSelector } from "./hooks/useWorkbenchSelector.ts";
 import { useWorkbenchShortcuts } from "./hooks/useWorkbenchShortcuts.ts";
 import type { WorkbenchWindowManagementShortcutPreset } from "./hooks/workbenchShortcutIntent.ts";
 import { useWorkbenchSurfaceSize } from "./hooks/useWorkbenchSurfaceSize.ts";
@@ -36,6 +42,7 @@ import type {
   WorkbenchSurfacePresentation,
   WorkbenchRenderWindowActions,
   WorkbenchRenderWindowHeader,
+  WorkbenchTopChromeRenderContext,
   WorkbenchResolveFullscreenHeaderMode,
   WorkbenchResolveWindowSurfaceLayer,
   WorkbenchResolveWindowZIndex,
@@ -69,7 +76,7 @@ export interface WorkbenchSurfaceProps<TData = unknown> {
   renderNode: WorkbenchRenderNode<TData>;
   renderNodeGeniePreview?: WorkbenchNodeGeniePreviewRenderer<TData>;
   renderOverlay?: () => ReactNode;
-  renderTopChrome?: () => ReactNode;
+  renderTopChrome?: (context: WorkbenchTopChromeRenderContext) => ReactNode;
   renderWindowActions?: WorkbenchRenderWindowActions<TData>;
   renderWindowHeader?: WorkbenchRenderWindowHeader<TData>;
   shouldKeepMinimizedNodeMounted?: WorkbenchKeepMinimizedNodeMounted<TData>;
@@ -91,7 +98,6 @@ export interface WorkbenchSurfaceProps<TData = unknown> {
 export interface WorkbenchAutoHideChromeConfig {
   collapseDelayMs?: number;
   dockHandleLabel: string;
-  fullscreenTabInset?: number;
   topHandleLabel: string;
 }
 
@@ -223,6 +229,13 @@ function WorkbenchSurfaceInner<TData>({
   windowChromeI18n
 }: Omit<WorkbenchSurfaceProps<TData>, "controller">) {
   const controller = useWorkbenchController<TData>();
+  const immersiveFullscreenNode = useWorkbenchSelector<
+    TData,
+    WorkbenchNode<TData> | null
+  >(selectVisibleFullscreenNode);
+  const surfaceSize = useWorkbenchSelector<TData, WorkbenchSize>(
+    (state) => state.surfaceSize
+  );
   const topChromeRegion = useWorkbenchAutoHideRegion({
     collapseDelayMs: autoHideChrome?.collapseDelayMs,
     enabled: autoHideChrome !== undefined
@@ -280,6 +293,7 @@ function WorkbenchSurfaceInner<TData>({
       data-workbench-auto-hide-chrome={
         autoHideChrome === undefined ? "disabled" : "enabled"
       }
+      data-workbench-top-chrome-state={topChromeRegion.state}
       data-workbench-interactive={interactive ? "true" : "false"}
     >
       {wallpaper ? (
@@ -300,7 +314,21 @@ function WorkbenchSurfaceInner<TData>({
           onPointerEnter={topChromeRegion.onPointerEnter}
           onPointerLeave={topChromeRegion.onPointerLeave}
         >
-          {renderTopChrome()}
+          {renderTopChrome({
+            immersiveFullscreenHeader:
+              autoHideChrome !== undefined &&
+              immersiveFullscreenNode &&
+              interactive &&
+              presentation?.mode !== "mission-control" ? (
+                <WorkbenchImmersiveChromeHeader
+                  genie={genie}
+                  node={immersiveFullscreenNode}
+                  renderWindowHeader={renderWindowHeader}
+                  surfaceSize={surfaceSize}
+                  windowChromeI18n={windowChromeI18n}
+                />
+              ) : null
+          })}
         </div>
       ) : null}
       {renderTopChrome && autoHideChrome !== undefined ? (
@@ -320,10 +348,8 @@ function WorkbenchSurfaceInner<TData>({
         genie={genie}
         interactive={interactive}
         presentation={presentation}
-        fullscreenTabInset={
-          autoHideChrome === undefined
-            ? undefined
-            : (autoHideChrome.fullscreenTabInset ?? 10)
+        immersiveFullscreenChrome={
+          autoHideChrome !== undefined && renderTopChrome !== undefined
         }
         renderNode={renderNode}
         edgeSnapEnabled={windowManagement?.edgeSnapEnabled === true}

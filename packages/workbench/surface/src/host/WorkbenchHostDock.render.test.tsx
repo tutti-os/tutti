@@ -134,7 +134,7 @@ describe("WorkbenchHostDock", () => {
     }
   });
 
-  it("renders fullscreen windows as a restorable tab whose close glyph minimizes", async () => {
+  it("projects the complete fullscreen header into auto-hidden top chrome", async () => {
     vi.useFakeTimers();
     const container = document.createElement("div");
     document.body.append(container);
@@ -168,12 +168,22 @@ describe("WorkbenchHostDock", () => {
           <WorkbenchSurface
             autoHideChrome={{
               dockHandleLabel: "Show Dock",
-              fullscreenTabInset: 88,
               topHandleLabel: "Show app bar"
             }}
             controller={controller}
             minimizeAnimation="off"
             renderNode={() => <div>Node body</div>}
+            renderTopChrome={({ immersiveFullscreenHeader }) => (
+              <div data-testid="top-chrome-content">
+                {immersiveFullscreenHeader}
+              </div>
+            )}
+            renderWindowHeader={() => (
+              <div data-testid="original-window-header">
+                <button type="button">Original header action</button>
+              </div>
+            )}
+            windowChromeMode="custom-header"
           />
         );
       });
@@ -187,11 +197,35 @@ describe("WorkbenchHostDock", () => {
       expect(fullscreenShell?.getAttribute("data-immersive-fullscreen")).toBe(
         "true"
       );
-      const immersiveTab = container.querySelector<HTMLElement>(
-        '[data-workbench-immersive-tab="true"]'
+      const topChrome = container.querySelector<HTMLElement>(
+        ".workbench-surface__top-chrome"
       );
-      expect(immersiveTab?.style.left).toBe("88px");
-      expect(immersiveTab?.textContent).toContain("Fullscreen node");
+      expect(topChrome?.getAttribute("data-auto-hide-state")).toBe("hidden");
+      expect(
+        topChrome?.querySelector(
+          '[data-workbench-immersive-chrome-header="true"]'
+        )
+      ).not.toBeNull();
+      expect(
+        topChrome?.querySelector('[data-testid="original-window-header"]')
+      ).not.toBeNull();
+      expect(
+        fullscreenShell?.querySelector('[data-testid="original-window-header"]')
+      ).toBeNull();
+
+      const topChromeHandle = container.querySelector<HTMLButtonElement>(
+        '.workbench-auto-hide-handle[data-edge="top"]'
+      );
+      await act(async () => {
+        topChromeHandle?.click();
+      });
+      expect(topChrome?.getAttribute("data-auto-hide-state")).toBe("expanded");
+      expect(
+        container
+          .querySelector(".workbench-surface")
+          ?.getAttribute("data-workbench-top-chrome-state")
+      ).toBe("expanded");
+
       const restoreControl = container.querySelector<HTMLButtonElement>(
         '[data-workbench-immersive-tab-restore="true"]'
       );
@@ -203,10 +237,12 @@ describe("WorkbenchHostDock", () => {
 
       expect(controller.getSnapshot().nodes[0]?.displayMode).toBe("floating");
       expect(
-        container.querySelector('[data-workbench-immersive-tab="true"]')
+        topChrome?.querySelector(
+          '[data-workbench-immersive-chrome-header="true"]'
+        )
       ).toBeNull();
       expect(
-        container.querySelector(".workbench-window__traffic-light-actions")
+        fullscreenShell?.querySelector('[data-testid="original-window-header"]')
       ).not.toBeNull();
 
       await act(async () => {
@@ -216,6 +252,11 @@ describe("WorkbenchHostDock", () => {
       const minimizeControl = container.querySelector<HTMLButtonElement>(
         '[data-workbench-immersive-tab-minimize="true"]'
       );
+      expect(
+        topChrome?.querySelector(
+          '[data-workbench-immersive-chrome-header="true"]'
+        )
+      ).not.toBeNull();
       expect(minimizeControl?.getAttribute("aria-label")).toBe(
         "Minimize to Dock"
       );
@@ -228,6 +269,11 @@ describe("WorkbenchHostDock", () => {
       expect(controller.getSnapshot().nodes[0]?.displayMode).toBe("fullscreen");
       expect(controller.getSnapshot().nodes[0]?.isMinimized).toBe(true);
       expect(controller.getSnapshot().nodes).toHaveLength(1);
+      expect(
+        topChrome?.querySelector(
+          '[data-workbench-immersive-chrome-header="true"]'
+        )
+      ).toBeNull();
     } finally {
       await act(async () => {
         root.unmount();

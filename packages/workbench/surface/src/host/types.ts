@@ -561,6 +561,7 @@ export interface WorkbenchHostChromeRenderContext {
   controller: WorkbenchController<WorkbenchHostNodeData>;
   activateNode: WorkbenchHostHandle["activateNode"];
   focusNode: WorkbenchHostHandle["focusNode"];
+  immersiveFullscreenHeader?: ReactNode;
   launchNode: WorkbenchHostHandle["launchNode"];
 }
 

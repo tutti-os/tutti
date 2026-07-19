@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode } from "react";
 import { createI18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import { Checkbox, WindowTrafficLightIcon } from "@tutti-os/ui-system";
+import { Checkbox } from "@tutti-os/ui-system";
 import {
   selectFocusedWorkbenchNode,
   selectWorkbenchNodeZIndex
@@ -31,7 +31,7 @@ export interface WorkbenchWindowFrameProps<TData = unknown> {
   children: ReactNode;
   genie: WorkbenchGenieController;
   edgeSnapEnabled?: boolean;
-  fullscreenTabInset?: number;
+  immersiveFullscreenChrome?: boolean;
   hiddenMounted?: boolean;
   interactive?: boolean;
   node: WorkbenchNode<TData>;
@@ -90,7 +90,7 @@ function resolveWorkbenchNodeTypeId(data: unknown): string | undefined {
 export function WorkbenchWindowFrame<TData>({
   children,
   edgeSnapEnabled = false,
-  fullscreenTabInset,
+  immersiveFullscreenChrome = false,
   genie,
   hiddenMounted = false,
   interactive = true,
@@ -134,7 +134,7 @@ export function WorkbenchWindowFrame<TData>({
     }
   } as const;
   const isImmersiveFullscreen =
-    fullscreenTabInset !== undefined && node.displayMode === "fullscreen";
+    immersiveFullscreenChrome && node.displayMode === "fullscreen";
   const resolvedWindowChromeI18n = windowChromeI18n ?? defaultWindowChromeI18n;
   const defaultActions =
     interactive && !isImmersiveFullscreen ? (
@@ -168,7 +168,8 @@ export function WorkbenchWindowFrame<TData>({
     node,
     onDoubleClick: onHeaderDoubleClick,
     onDragStart,
-    renderHeader: interactive ? renderHeader : undefined,
+    renderHeader:
+      interactive && !isImmersiveFullscreen ? renderHeader : undefined,
     windowChromeMode
   });
   const shouldRenderCustomHeader =
@@ -243,12 +244,7 @@ export function WorkbenchWindowFrame<TData>({
           transform: shellTransform,
           transformOrigin: "top left",
           width: node.frame.width,
-          zIndex,
-          ...(isImmersiveFullscreen
-            ? {
-                "--workbench-immersive-tab-content-inset": `${fullscreenTabInset + 208}px`
-              }
-            : {})
+          zIndex
         } as CSSProperties
       }
       onPointerDown={
@@ -271,80 +267,39 @@ export function WorkbenchWindowFrame<TData>({
           data-window-drag-state={isDragging ? "dragging" : "idle"}
           data-window-resize-state={isResizing ? "resizing" : "idle"}
         >
-          <div
-            className={[
-              "workbench-window__header",
-              shouldRenderCustomHeader
-                ? "workbench-window__header--custom"
-                : null
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            onDoubleClick={
-              shouldRenderCustomHeader || !interactive
-                ? undefined
-                : onHeaderDoubleClick
-            }
-            onPointerDown={
-              shouldRenderCustomHeader || !interactive ? undefined : onDragStart
-            }
-          >
-            {shouldRenderCustomHeader ? (
-              resolvedHeader.customHeader
-            ) : (
-              <>
-                {defaultActions}
-                <div className="workbench-window__title">{node.title}</div>
-              </>
-            )}
-          </div>
+          {isImmersiveFullscreen ? null : (
+            <div
+              className={[
+                "workbench-window__header",
+                shouldRenderCustomHeader
+                  ? "workbench-window__header--custom"
+                  : null
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onDoubleClick={
+                shouldRenderCustomHeader || !interactive
+                  ? undefined
+                  : onHeaderDoubleClick
+              }
+              onPointerDown={
+                shouldRenderCustomHeader || !interactive
+                  ? undefined
+                  : onDragStart
+              }
+            >
+              {shouldRenderCustomHeader ? (
+                resolvedHeader.customHeader
+              ) : (
+                <>
+                  {defaultActions}
+                  <div className="workbench-window__title">{node.title}</div>
+                </>
+              )}
+            </div>
+          )}
           <div className="workbench-window__body">{children}</div>
         </div>
-        {isImmersiveFullscreen &&
-        !hiddenMounted &&
-        presentationMode !== "mission-control" &&
-        interactive ? (
-          <div
-            aria-label={node.title}
-            className="workbench-window__immersive-tab"
-            data-workbench-immersive-tab="true"
-            role="group"
-            style={{ left: fullscreenTabInset }}
-            onDoubleClick={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            <button
-              aria-label={resolvedWindowChromeI18n.t("restoreWindow")}
-              className="workbench-window__immersive-tab-title"
-              data-workbench-immersive-tab-restore="true"
-              title={resolvedWindowChromeI18n.t("restoreWindow")}
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                controller.commands.focusNode(node.id);
-                controller.commands.exitFullscreen(node.id);
-              }}
-            >
-              <span>{node.title}</span>
-            </button>
-            <button
-              aria-label={resolvedWindowChromeI18n.t("minimizeWindow")}
-              className="workbench-window__immersive-tab-minimize"
-              data-workbench-immersive-tab-minimize="true"
-              title={resolvedWindowChromeI18n.t("minimizeWindow")}
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                controller.commands.focusNode(node.id);
-                genieControls.minimizeNodeToAnchor(node.id, () =>
-                  controller.commands.minimizeNode(node.id)
-                );
-              }}
-            >
-              <WindowTrafficLightIcon aria-hidden iconName="close" />
-            </button>
-          </div>
-        ) : null}
         {node.displayMode === "floating" &&
         !hiddenMounted &&
         presentationMode !== "mission-control" &&

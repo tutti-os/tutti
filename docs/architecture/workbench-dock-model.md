@@ -78,13 +78,22 @@ experimental preference and removes the normal top/Dock safe areas while it is
 enabled so maximized workbench windows can use the complete surface. On macOS,
 the desktop host keeps the native application window buttons visible. The
 workbench surface hides only the maximized internal window's own traffic-light
-group and represents that window as an app tab after the native controls. The
-tab title restores the internal window to floating mode. Its trailing close
-glyph deliberately minimizes the window to the Dock instead of closing it, so
-the app state is preserved when the user's intent is to leave fullscreen. The
-tab's accessible label and tooltip describe that minimize behavior explicitly.
-Custom headers reserve the tab's width, hide duplicate app branding, and keep
-their remaining actions to its right.
+group and projects the maximized app's complete header into the workspace top
+chrome. That projected header starts with an app tab after the native-control
+gutter, followed by the app's existing header controls, session identity, and
+actions. The tab title restores the internal window to floating mode. Its
+trailing close glyph deliberately minimizes the window to the Dock instead of
+closing it, so the app state is preserved when the user's intent is to leave
+fullscreen. The tab's accessible label and tooltip describe that minimize
+behavior explicitly.
+
+The projected app header is owned by the top-chrome region rather than the
+fullscreen window, so it retracts and becomes inert together with that region.
+While the top chrome is expanded, the fullscreen body reserves its height;
+when it retracts, the body reclaims the complete surface. App-specific headers
+may adapt their layout inside the projected slot, but must keep their existing
+actions and state ownership rather than rebuilding a second desktop-only
+header.
 
 ## Core Model
 

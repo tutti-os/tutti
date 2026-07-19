@@ -309,11 +309,10 @@ function ReadyWorkspaceWorkbenchWithSession({
       autoHideWorkspaceChrome
         ? {
             dockHandleLabel: t("workspace.settings.lab.chromeDockHandleLabel"),
-            fullscreenTabInset: state.platform === "darwin" ? 88 : 10,
             topHandleLabel: t("workspace.settings.lab.chromeTopHandleLabel")
           }
         : undefined,
-    [autoHideWorkspaceChrome, state.platform, t]
+    [autoHideWorkspaceChrome, t]
   );
   const layoutConstraints = useMemo(
     () =>
@@ -867,6 +866,9 @@ function ReadyWorkspaceWorkbenchWithSession({
           renderTopChrome={(chromeContext) => (
             <WorkspaceChrome
               headerSlot={headerSlot}
+              immersiveFullscreenHeader={
+                chromeContext.immersiveFullscreenHeader
+              }
               launchNode={chromeContext.launchNode}
               missionControl={runtime.missionControl}
               onSelectWallpaper={runtime.selectWallpaper}

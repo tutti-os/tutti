@@ -1908,14 +1908,17 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
-  it("reserves inline space for the immersive fullscreen app tab", () => {
+  it("projects the full Agent header beside the immersive app tab", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.workbench-window-shell\[data-immersive-fullscreen="true"\]\s*\.agent-gui-workbench-header__primary\s*{[^}]*padding-inline-start:\s*var\(\s*--workbench-immersive-tab-content-inset,/s
+      /\.workbench-immersive-chrome-header\s+\.agent-gui-workbench-header:not\([^}]*\)\s*{[^}]*grid-template-columns:\s*max-content minmax\(0, 1fr\);/s
     );
     expect(css).toMatch(
-      /\.workbench-window-shell\[data-immersive-fullscreen="true"\]\s*\.agent-gui-workbench-header__agent-brand\s*{[^}]*display:\s*none;/s
+      /\.workbench-immersive-chrome-header\s+\[data-workbench-window-controls="true"\],[\s\S]*?\.agent-gui-workbench-header__agent-brand\s*{[^}]*display:\s*none;/s
+    );
+    expect(css).toMatch(
+      /\.workbench-immersive-chrome-header[\s\S]*?\.agent-gui-workbench-header__primary\s*{[^}]*gap:\s*8px;[^}]*padding-inline:\s*0;/s
     );
   });
 

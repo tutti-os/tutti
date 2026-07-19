@@ -128,6 +128,7 @@ export type {
   WorkbenchResolveWindowChromeMode,
   WorkbenchResolveWindowChromeModeContext,
   WorkbenchSurfacePresentation,
+  WorkbenchTopChromeRenderContext,
   WorkbenchFullscreenHeaderMode,
   WorkbenchWindowActionContext,
   WorkbenchWindowChromeMode,

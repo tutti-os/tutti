@@ -35,6 +35,7 @@ const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_RESERVED_WIDTH_PX =
 
 export function WorkspaceChrome({
   headerSlot,
+  immersiveFullscreenHeader,
   missionControl,
   onSelectWallpaper,
   onSelectWallpaperDisplayMode,
@@ -47,6 +48,7 @@ export function WorkspaceChrome({
   workspace
 }: {
   headerSlot?: React.ReactNode;
+  immersiveFullscreenHeader?: React.ReactNode;
   missionControl: {
     canOpen: boolean;
     close(): void;
@@ -128,7 +130,9 @@ export function WorkspaceChrome({
         style={headerStyle}
       >
         <div className="flex items-center gap-2 [-webkit-app-region:no-drag]">
-          {isDarwin && !chromeState.useCompactTitlebar ? (
+          {isDarwin &&
+          (!chromeState.useCompactTitlebar ||
+            Boolean(immersiveFullscreenHeader)) ? (
             <div
               aria-hidden="true"
               className="h-full shrink-0 [-webkit-app-region:no-drag]"
@@ -138,7 +142,23 @@ export function WorkspaceChrome({
             />
           ) : null}
         </div>
-        <div aria-hidden="true" className="min-w-0" />
+        <div className="min-w-0">
+          {immersiveFullscreenHeader ? (
+            <div
+              className="flex min-w-0 items-center [-webkit-app-region:no-drag]"
+              data-workspace-immersive-fullscreen-header="true"
+              style={
+                {
+                  "--workbench-chrome-foreground": "var(--white-stationary)",
+                  "--workbench-chrome-active-foreground":
+                    "var(--white-stationary)"
+                } as React.CSSProperties
+              }
+            >
+              {immersiveFullscreenHeader}
+            </div>
+          ) : null}
+        </div>
         <div
           className="flex items-center justify-end gap-2 justify-self-end [-webkit-app-region:no-drag]"
           data-workbench-wallpaper-appearance={wallpaperAppearance}

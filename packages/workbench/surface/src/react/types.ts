@@ -52,6 +52,10 @@ export interface WorkbenchDockContext<TData = unknown> {
   };
 }
 
+export interface WorkbenchTopChromeRenderContext {
+  immersiveFullscreenHeader: ReactNode;
+}
+
 export type WorkbenchDockPlacement = "bottom" | "left";
 
 export type WorkbenchMinimizeAnimation = "scale" | "genie" | "off";
