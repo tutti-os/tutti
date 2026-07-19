@@ -277,15 +277,16 @@ func TestTokenSaverDiscoveredViaStaticList(t *testing.T) {
 }
 
 // ============================================================
-// Verify dedup by name prevents duplicate skills
+// Verify two-tier dedup: Tutti skills dedup by Name, global dedup by Trigger
 // ============================================================
 
 func TestTokenSaverNotDuplicatedWhenAlsoOnDisk(t *testing.T) {
 	// When a session runtime exists, the token-saver skill is also installed
-	// on disk (via CoreSkillsPack → providerSkills). The filesystem root may
-	// discover it with a different trigger format than the static list.
-	// Dedup is by name, so only one entry should appear — the static list
-	// version (inserted first) wins.
+	// on disk (via CoreSkillsPack → providerSkills). Both the static list and
+	// the filesystem root produce a token-saver entry. Since both originate
+	// from Tutti-controlled sources (system and tutti-injected), Phase 2
+	// (Tutti Name dedup) collapses them into one entry — the static list
+	// version (inserted first) wins with sourceKind "system".
 
 	tempDir := t.TempDir()
 	codexHome := filepath.Join(tempDir, "codex-home")
@@ -322,7 +323,9 @@ description: Reduce token consumption by instructing the model to use terse, min
 func TestTokenSaverNotDuplicatedForClaudeCodeWithPluginEnv(t *testing.T) {
 	// Claude Code renders plugin skills with a namespaced trigger
 	// (/tutti-cli:token-saver), while the static list uses a plain trigger
-	// (/token-saver). Dedup by name ensures only one entry appears.
+	// (/token-saver). Both are Tutti-controlled (system and plugin+tutti-cli),
+	// so Phase 2 (Tutti Name dedup) collapses them. Phase 3 (Trigger dedup)
+	// sees only one entry. Result: exactly one token-saver.
 
 	tempDir := t.TempDir()
 	pluginDir := filepath.Join(tempDir, "plugins", "tutti-cli")
@@ -351,5 +354,48 @@ description: Reduce token consumption by instructing the model to use terse, min
 	}
 	if count != 1 {
 		t.Errorf("token-saver appears %d times for claude-code, want exactly 1", count)
+	}
+}
+
+func TestUserSkillNotDroppedWhenNameMatchesTuttiSkill(t *testing.T) {
+	// A non-Tutti plugin skill that happens to share a name with a Tutti
+	// official skill must not be silently dropped. The two are different
+	// skills invoked via different triggers (namespaced vs plain).
+	//
+	// Phase 2 only deduplicates Tutti-controlled skills by Name.
+	// Non-Tutti skills pass through unmodified. Phase 3 deduplicates by
+	// Trigger — different triggers mean both survive.
+
+	tempDir := t.TempDir()
+	pluginDir := filepath.Join(tempDir, "plugins", "other-plugin")
+
+	// Third-party plugin also has a skill named "token-saver"
+	writeSkill(t, filepath.Join(pluginDir, "skills", "token-saver", "SKILL.md"), `---
+name: token-saver
+description: A third-party token saving tool with different behavior.
+---
+`)
+
+	options := discoverComposerSkillOptions("claude-code", tempDir, []string{
+		"TUTTI_CLAUDE_PLUGIN_DIR=" + pluginDir,
+	})
+
+	// Both Tutti's token-saver and the third-party's token-saver should appear.
+	count := 0
+	triggers := map[string]bool{}
+	for _, opt := range options {
+		if opt.Name == "token-saver" {
+			count++
+			triggers[opt.Trigger] = true
+		}
+	}
+	if count != 2 {
+		t.Errorf("token-saver appears %d times, want 2 (Tutti + third-party plugin)", count)
+	}
+	if !triggers["/token-saver"] {
+		t.Error("missing Tutti token-saver with trigger /token-saver")
+	}
+	if !triggers["/other-plugin:token-saver"] {
+		t.Error("missing third-party token-saver with trigger /other-plugin:token-saver")
 	}
 }

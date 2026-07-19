@@ -291,19 +291,51 @@ func discoverProviderSkillRoots(
 	roots []composerSkillRoot,
 	triggerFor skillTriggerFunc,
 ) []ComposerSkillOption {
-	options := make([]ComposerSkillOption, 0)
-	seen := map[string]struct{}{}
+	// Phase 1: Collect all options in priority order.
+	// Static official skills come first so they win ties against
+	// filesystem-discovered skills from Tutti-controlled roots.
+	all := make([]ComposerSkillOption, 0)
+	all = append(all, officialStaticComposerSkillOptions(triggerFor)...)
+	for _, root := range roots {
+		all = append(all, discoverProviderSkillRoot(root, triggerFor)...)
+	}
 
-	// Official static skills are inserted first so they always win the dedup
-	// with the correct official sourceKind when the same skill is also
-	// discoverable from a filesystem root.
+	// Phase 2: Tutti-controlled skills dedup by name among themselves.
+	// The same Tutti skill can be discovered from two paths (static list and
+	// filesystem root), potentially with different trigger formats — e.g.
+	// /token-saver from the static list vs /tutti-cli:token-saver from the
+	// plugin directory in Claude Code. Name-based dedup within Tutti sources
+	// collapses these into a single entry (first-discovery wins, so the
+	// static list with sourceKind "system" takes precedence).
 	//
-	// Dedup is by skill name (not trigger) so that the same skill discovered
-	// from different roots with different trigger formats (e.g. /token-saver
-	// from the static list vs /tutti-cli:token-saver from the plugin directory)
-	// is merged into a single entry.
-	for _, option := range officialStaticComposerSkillOptions(triggerFor) {
-		key := option.Name
+	// Non-Tutti skills are NOT dedup'd by name here — a user or third-party
+	// skill that shares a name with a Tutti official skill is a different
+	// skill and must survive to Phase 3 for trigger-based distinction.
+	tuttiNames := map[string]struct{}{}
+	phase2 := make([]ComposerSkillOption, 0, len(all))
+	for _, opt := range all {
+		if isTuttiControlledSkillOption(opt) {
+			name := strings.TrimSpace(opt.Name)
+			if name == "" {
+				continue
+			}
+			if _, ok := tuttiNames[name]; ok {
+				continue
+			}
+			tuttiNames[name] = struct{}{}
+		}
+		phase2 = append(phase2, opt)
+	}
+
+	// Phase 3: Global dedup by trigger.
+	// Skills from different provenances may share a name but are different
+	// skills. The trigger is the invocation string the user types — two
+	// skills with the same trigger cannot coexist because the provider has
+	// no way to disambiguate them. Same trigger → first-discovery wins.
+	options := make([]ComposerSkillOption, 0, len(phase2))
+	seen := map[string]struct{}{}
+	for _, opt := range phase2 {
+		key := strings.TrimSpace(opt.Trigger)
 		if key == "" {
 			continue
 		}
@@ -311,22 +343,9 @@ func discoverProviderSkillRoots(
 			continue
 		}
 		seen[key] = struct{}{}
-		options = append(options, option)
+		options = append(options, opt)
 	}
 
-	for _, root := range roots {
-		for _, option := range discoverProviderSkillRoot(root, triggerFor) {
-			key := option.Name
-			if key == "" {
-				continue
-			}
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			options = append(options, option)
-		}
-	}
 	sort.SliceStable(options, func(left, right int) bool {
 		if options[left].SourceKind != options[right].SourceKind {
 			return skillSourceRank(options[left].SourceKind) < skillSourceRank(options[right].SourceKind)
@@ -334,6 +353,15 @@ func discoverProviderSkillRoots(
 		return options[left].Name < options[right].Name
 	})
 	return options
+}
+
+// isTuttiControlledSkillOption reports whether opt originates from a
+// Tutti-controlled source (static official list, runtime injection, or
+// Tutti's own Claude Code plugin).
+func isTuttiControlledSkillOption(opt ComposerSkillOption) bool {
+	return opt.SourceKind == composerSkillSourceSystem ||
+		opt.SourceKind == composerSkillSourceTuttiInjected ||
+		(opt.SourceKind == composerSkillSourcePlugin && opt.PluginName == tuttiPluginName)
 }
 
 func discoverProviderSkillRoot(
