@@ -295,6 +295,8 @@ test("a steer that loses the settle race is retried as a plain send", async () =
       imageInput: false,
       interrupt: false,
       modelImageInputRequired: false,
+      modelPlanBinding: false,
+      modelSwitch: false,
       permissionModeChangeDeferred: false,
       permissionModeChangeDuringTurn: false,
       planImplementation: false,

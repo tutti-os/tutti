@@ -146,8 +146,14 @@ func TestServiceCreateSynchronouslyPersistsRailSectionKey(t *testing.T) {
 		t.Fatalf("CreateWithResult returned error: %v", err)
 	}
 	session := created.Session
-	if created.TurnID != "turn-1" {
-		t.Fatalf("CreateWithResult turnId = %q, want turn-1", created.TurnID)
+	if created.TurnID == "" {
+		t.Fatal("CreateWithResult returned an empty turnId")
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("runtime exec calls = %d, want 1", len(runtime.execCalls))
+	}
+	if runtime.execCalls[0].TurnID != created.TurnID {
+		t.Fatalf("runtime exec turnId = %q, CreateWithResult turnId = %q", runtime.execCalls[0].TurnID, created.TurnID)
 	}
 	wantKey := userprojectbiz.SectionKeyFromPath(projectPath)
 	if session.RailSectionKey != wantKey {
