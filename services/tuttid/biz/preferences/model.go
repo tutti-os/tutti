@@ -17,6 +17,7 @@ const (
 	DefaultDesktopAppCatalogChannel              = "production"
 	DefaultDesktopAgentDockLayout                = DesktopAgentDockLayoutUnified
 	DefaultDesktopAgentConversationDetailMode    = DesktopAgentConversationDetailModeCoding
+	DefaultDesktopAgentCLIUpdateCheckEnabled     = true
 	DefaultDesktopDockIconStyle                  = "default"
 	DefaultDesktopDockPlacement                  = "bottom"
 	DefaultDeletedAgentConversationRetentionDays = 30
@@ -51,6 +52,7 @@ func defaultDesktopAgentProvider() string {
 }
 
 type DesktopPreferences struct {
+	AgentCLIUpdateCheckEnabled                  bool
 	AgentComposerDefaultsByProvider             map[string]AgentComposerDefaults
 	AgentComposerDefaultsByAgentTarget          map[string]AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
@@ -117,6 +119,7 @@ type DesktopWorkbenchShortcuts struct {
 
 func DefaultDesktopPreferences() DesktopPreferences {
 	return DesktopPreferences{
+		AgentCLIUpdateCheckEnabled:                  DefaultDesktopAgentCLIUpdateCheckEnabled,
 		AgentComposerDefaultsByProvider:             map[string]AgentComposerDefaults{},
 		AgentComposerDefaultsByAgentTarget:          map[string]AgentComposerDefaults{},
 		AgentGUIConversationRailCollapsedByProvider: map[string]bool{},

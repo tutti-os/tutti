@@ -20,6 +20,7 @@ export interface AgentEnvControllerStatusInput {
   isLoading: boolean;
   loginPending: boolean;
   status: AgentProviderStatus | null;
+  updatePending: boolean;
 }
 
 export interface AgentEnvPanelRequest {
@@ -44,7 +45,8 @@ export class AgentEnvController {
     reportState: "idle",
     requestSequence: 0,
     revealIndex: AGENT_ENV_REVEAL_ALL,
-    status: null
+    status: null,
+    updatePending: false
   };
 
   getSnapshot(): AgentEnvSnapshot {
@@ -79,7 +81,8 @@ export class AgentEnvController {
             loginPending: false,
             reportState: "idle" as const,
             revealIndex: request.focus === "detect" ? 0 : AGENT_ENV_REVEAL_ALL,
-            status: null
+            status: null,
+            updatePending: false
           }
         : {})
     };

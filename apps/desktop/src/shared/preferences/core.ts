@@ -58,6 +58,16 @@ export const defaultDesktopAppCatalogChannel: DesktopAppCatalogChannel =
 
 export const defaultDesktopShowAppDeveloperSources = false;
 
+export const defaultDesktopAgentCliUpdateCheckEnabled = true;
+
+export function normalizeDesktopAgentCliUpdateCheckEnabled(
+  value: unknown
+): boolean {
+  return typeof value === "boolean"
+    ? value
+    : defaultDesktopAgentCliUpdateCheckEnabled;
+}
+
 export type DesktopFeatureFlags = Record<string, boolean>;
 
 export const defaultDesktopFeatureFlags: DesktopFeatureFlags = {};

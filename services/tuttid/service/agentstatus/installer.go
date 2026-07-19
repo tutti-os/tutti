@@ -484,7 +484,6 @@ func installerLockCommand(spec InstallerSpec) string {
 		return strings.Join([]string{
 			string(spec.Kind),
 			strings.TrimSpace(spec.ManagedNPM.PackageName),
-			strings.TrimSpace(spec.ManagedNPM.PackageVersion),
 		}, ":")
 	}
 	return ""

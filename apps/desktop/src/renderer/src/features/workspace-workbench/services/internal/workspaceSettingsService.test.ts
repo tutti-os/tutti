@@ -87,6 +87,35 @@ test("WorkspaceSettingsService persists Tutti Agent visibility before updating U
   assert.equal(refreshes, 1);
 });
 
+test("WorkspaceSettingsService persists a system Agent Target enabled state and refreshes consumers", async () => {
+  const writes: Array<{ agentTargetID: string; enabled: boolean }> = [];
+  let refreshes = 0;
+  const codexTarget: AgentTarget = {
+    ...createTuttiAgentTarget(true),
+    id: "local:codex",
+    iconKey: "codex",
+    launchRef: { provider: "codex", type: "builtin_local" },
+    name: "Codex",
+    provider: "codex"
+  };
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      setSystemAgentTargetEnabled: async (agentTargetID, enabled) => {
+        writes.push({ agentTargetID, enabled });
+        return { ...codexTarget, enabled };
+      }
+    }),
+    onAgentTargetsChanged: async () => {
+      refreshes += 1;
+    }
+  });
+
+  await service.setAgentTargetEnabled(" local:codex ", false);
+
+  assert.deepEqual(writes, [{ agentTargetID: "local:codex", enabled: false }]);
+  assert.equal(refreshes, 1);
+});
+
 test("WorkspaceSettingsService migrates a legacy switch value into the daemon once", async () => {
   const writes: boolean[] = [];
   let markedComplete = false;
@@ -1437,6 +1466,7 @@ function createDeferred<T>(): {
 }
 
 function createDesktopPreferencesService(input: {
+  onSetAgentCliUpdateCheckEnabled?: IDesktopPreferencesService["setAgentCliUpdateCheckEnabled"];
   onSetDefaultAgentProvider?: IDesktopPreferencesService["setDefaultAgentProvider"];
   onSetAgentConversationDetailMode?: IDesktopPreferencesService["setAgentConversationDetailMode"];
   onSetAppCatalogChannel?: IDesktopPreferencesService["setAppCatalogChannel"];
@@ -1459,6 +1489,8 @@ function createDesktopPreferencesService(input: {
   return {
     _serviceBrand: undefined,
     store: input.state,
+    setAgentCliUpdateCheckEnabled:
+      input.onSetAgentCliUpdateCheckEnabled ?? (async (enabled) => enabled),
     rememberAgentComposerDefaultsForAgentTarget: async () => ({
       acknowledgedFields: [],
       supersededFields: []
@@ -1503,6 +1535,7 @@ function createPreferencesState(
   overrides: Partial<DesktopPreferencesReadableStoreState>
 ): DesktopPreferencesReadableStoreState {
   return {
+    agentCliUpdateCheckEnabled: true,
     agentComposerDefaultsByProvider: {},
     agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
@@ -1510,6 +1543,7 @@ function createPreferencesState(
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     changingAppCatalogChannel: null,
+    changingAgentCliUpdateCheckEnabled: null,
     changingAgentConversationDetailMode: null,
     changingBrowserUseConnectionMode: null,
     changingDefaultAgentProvider: null,

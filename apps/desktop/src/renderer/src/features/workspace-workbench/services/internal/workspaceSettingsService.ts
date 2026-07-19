@@ -302,6 +302,26 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
+  async setAgentTargetEnabled(
+    agentTargetID: string,
+    enabled: boolean
+  ): Promise<void> {
+    const normalizedAgentTargetID = agentTargetID.trim();
+    if (!normalizedAgentTargetID) {
+      throw new Error("Agent target ID is required");
+    }
+
+    const target = await this.dependencies.client.setSystemAgentTargetEnabled(
+      normalizedAgentTargetID,
+      enabled
+    );
+    if (target.id === tuttiAgentTargetID) {
+      this.tuttiAgentSwitchInitialized = true;
+      this.applyTuttiAgentTargetEnabled(target.enabled);
+    }
+    await this.refreshAgentTargetConsumers();
+  }
+
   async setTuttiAgentSwitchEnabled(enabled: boolean): Promise<void> {
     return this.enqueueTuttiAgentSwitchOperation(async () => {
       if (
@@ -312,14 +332,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       }
 
       try {
-        const target =
-          await this.dependencies.client.setSystemAgentTargetEnabled(
-            tuttiAgentTargetID,
-            enabled
-          );
-        this.tuttiAgentSwitchInitialized = true;
-        this.applyTuttiAgentTargetEnabled(target.enabled);
-        await this.refreshAgentTargetConsumers();
+        await this.setAgentTargetEnabled(tuttiAgentTargetID, enabled);
       } catch {
         this.notifications.error({
           title: createActiveTranslator().t(
@@ -1423,6 +1436,7 @@ IReporterService(WorkspaceSettingsService, undefined, 3);
 IWorkspaceAppCenterService(WorkspaceSettingsService, undefined, 4);
 
 const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
+  agentCliUpdateCheckEnabled: true,
   agentComposerDefaultsByProvider: {},
   agentComposerDefaultsByAgentTarget: {},
   agentGuiConversationRailCollapsedByProvider: {},
@@ -1430,6 +1444,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   appCatalogChannel: "production",
   browserUseConnectionMode: "isolated",
   changingAgentConversationDetailMode: null,
+  changingAgentCliUpdateCheckEnabled: null,
   changingAppCatalogChannel: null,
   changingBrowserUseConnectionMode: null,
   changingDefaultAgentProvider: null,
@@ -1468,6 +1483,9 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
 const noopDesktopPreferences: DesktopPreferencesService = {
   _serviceBrand: undefined,
   store: noopDesktopPreferencesStore,
+  setAgentCliUpdateCheckEnabled(enabled) {
+    return Promise.resolve(enabled);
+  },
   setAppCatalogChannel(channel) {
     return Promise.resolve(channel);
   },

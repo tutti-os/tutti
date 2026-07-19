@@ -40,6 +40,7 @@ import {
   LoadingIcon,
   OpenLinkLinedIcon,
   RadioIndicator,
+  SectionTabs,
   Select,
   SelectContent,
   SelectItem,
@@ -99,13 +100,15 @@ import {
   type DesktopWorkbenchWindowSnappingShortcutPreset
 } from "../../../../../shared/preferences/index.ts";
 import {
+  EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
-  LAB_PREVIEW_AGENTS_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
+import { IAgentEnvService } from "../../workspace-agent/services/agentEnvService.interface.ts";
+import { IAgentsService } from "../../workspace-agent/services/agentsService.interface.ts";
 import { IAgentProviderStatusService } from "../../workspace-agent/services/agentProviderStatusService.interface.ts";
 import { WorkspaceAgentsSettingsTab } from "./WorkspaceAgentsSettingsTab.tsx";
 import {
@@ -181,7 +184,8 @@ export function WorkspaceSettingsPanel({
 }) {
   const { t } = useTranslation();
   const notifications = useService(INotificationService);
-  const { state: desktopPreferencesState } = useDesktopPreferencesService();
+  const { service: desktopPreferencesService, state: desktopPreferencesState } =
+    useDesktopPreferencesService();
   const { service: settingsService, state: settingsState } =
     useWorkspaceSettingsService();
   const versionTapCountRef = useRef(0);
@@ -191,11 +195,13 @@ export function WorkspaceSettingsPanel({
   const labSectionVisible =
     settingsState.developerPanelVisible &&
     isFeatureEnabled(pendingFeatureFlags, LAB_ENABLED_FLAG);
-  const previewAgentsEnabled = isFeatureEnabled(
+  const earlyAccessIntegrationsEnabled = isFeatureEnabled(
     pendingFeatureFlags,
-    LAB_PREVIEW_AGENTS_FLAG
+    EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG
   );
+  const agentsService = useService(IAgentsService);
   const agentProviderStatusService = useService(IAgentProviderStatusService);
+  const agentEnvService = useService(IAgentEnvService);
 
   useEffect(() => {
     if (settingsState.open) {
@@ -378,48 +384,77 @@ export function WorkspaceSettingsPanel({
                 }
               />
             ) : settingsState.activeSection === "agent" ? (
-              <div className="flex min-h-0 flex-col gap-3">
-                <div
-                  aria-label={t("workspace.settings.nav.agent")}
-                  className="flex items-center gap-1 border-b border-[var(--border-1)]"
-                  role="tablist"
-                >
-                  {[
+              <div className="flex min-h-0 flex-col gap-5 pt-5">
+                <SectionTabs
+                  ariaLabel={t("workspace.settings.nav.agent")}
+                  className="h-8 shrink-0"
+                  tabs={[
                     {
-                      id: "general" as const,
+                      value: "general" as const,
                       label: t("workspace.settings.agent.tabs.general")
                     },
                     {
-                      id: "agents" as const,
+                      value: "agents" as const,
                       label: t("workspace.settings.agent.tabs.agents")
                     }
-                  ].map((tab) => {
-                    const active = settingsState.agentTab === tab.id;
-                    return (
-                      <button
-                        key={tab.id}
-                        aria-selected={active}
-                        className={cn(
-                          "-mb-px border-0 border-b-2 bg-transparent px-2 py-1.5 text-[13px] font-semibold leading-[1.35] outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]",
-                          active
-                            ? "border-[var(--text-primary)] text-[var(--text-primary)]"
-                            : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                        )}
-                        role="tab"
-                        type="button"
-                        onClick={() => settingsService.selectAgentTab(tab.id)}
-                      >
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                  ]}
+                  value={settingsState.agentTab}
+                  onValueChange={(tab) => settingsService.selectAgentTab(tab)}
+                />
                 {settingsState.agentTab === "agents" ? (
                   <WorkspaceAgentsSettingsTab
+                    autoCheckEnabled={
+                      desktopPreferencesState.agentCliUpdateCheckEnabled
+                    }
+                    autoCheckPending={
+                      desktopPreferencesState.changingAgentCliUpdateCheckEnabled !==
+                      null
+                    }
                     agentProviderStatusService={agentProviderStatusService}
+                    agentsService={agentsService}
                     focusProvider={settingsState.agentFocusProvider}
                     focusRequestID={settingsState.agentFocusRequestID}
-                    previewEnabled={previewAgentsEnabled}
+                    earlyAccessEnabled={earlyAccessIntegrationsEnabled}
+                    featureFlags={pendingFeatureFlags}
+                    featureFlagsPending={
+                      desktopPreferencesState.changingFeatureFlags !== null
+                    }
+                    onAgentEnabledChange={(agentTargetID, enabled) =>
+                      settingsService.setAgentTargetEnabled(
+                        agentTargetID,
+                        enabled
+                      )
+                    }
+                    onAutoCheckEnabledChange={(enabled) => {
+                      void desktopPreferencesService
+                        .setAgentCliUpdateCheckEnabled(enabled)
+                        .catch((error) => {
+                          notifications.error({
+                            description:
+                              error instanceof Error && error.message.trim()
+                                ? error.message
+                                : undefined,
+                            title: t(
+                              "workspace.settings.agent.agents.autoCheckUpdatesFailed"
+                            )
+                          });
+                        });
+                    }}
+                    onEarlyAccessEnabledChange={(enabled) => {
+                      void settingsService.changeFeatureFlags({
+                        ...pendingFeatureFlags,
+                        [EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG]: enabled
+                      });
+                    }}
+                    onExtensionEnabledChange={(flag, enabled) => {
+                      return settingsService.changeFeatureFlags({
+                        ...pendingFeatureFlags,
+                        [flag]: enabled
+                      });
+                    }}
+                    onOpenEnvironment={(provider) =>
+                      agentEnvService.open({ focus: "detect", provider })
+                    }
                   />
                 ) : (
                   <WorkspaceAgentSettingsSection
@@ -1591,10 +1626,6 @@ function WorkspaceLabSettingsSection({
     pendingFeatureFlags,
     LAB_WORKBENCH_SHORTCUTS_FLAG
   );
-  const previewAgentsEnabled = isFeatureEnabled(
-    pendingFeatureFlags,
-    LAB_PREVIEW_AGENTS_FLAG
-  );
   const updateFeatureFlag = useCallback(
     (key: string, enabled: boolean) => {
       onFeatureFlagsChange({
@@ -1702,25 +1733,6 @@ function WorkspaceLabSettingsSection({
           />
         </button>
       ) : null}
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.lab.previewAgentsLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.lab.previewAgentsDescription")}
-          </p>
-        </div>
-        <Switch
-          aria-label={t("workspace.settings.lab.previewAgentsLabel")}
-          checked={previewAgentsEnabled}
-          disabled={isUpdatingFlags}
-          onCheckedChange={(enabled) => {
-            updateFeatureFlag(LAB_PREVIEW_AGENTS_FLAG, enabled);
-          }}
-        />
-      </div>
     </SettingsRows>
   );
 }
@@ -3208,7 +3220,7 @@ function WorkspaceAgentSettingsSection({
   }, [focusedAnchor, focusRequestID]);
 
   return (
-    <div className="flex flex-col gap-6 pb-[22px] pt-5">
+    <div className="flex flex-col gap-6 pb-[22px]">
       <div className="flex w-full flex-col gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">

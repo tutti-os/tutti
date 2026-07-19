@@ -24,6 +24,7 @@ export type AgentAnalyticsNode =
   | "install_daemon_action"
   | "install_post_probe"
   | "login_action_requested"
+  | "update_action_requested"
   | "login_auth_poll"
   | "login_ready_detected"
   | "login_terminal_launch"

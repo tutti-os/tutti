@@ -303,6 +303,9 @@ function createFakePreferences(
   let mode = initialMode;
 
   return {
+    getAgentCliUpdateCheckEnabled() {
+      return true;
+    },
     getAgentComposerDefaultsByProvider() {
       return {};
     },

@@ -7,26 +7,23 @@ import {
   useSyncExternalStore
 } from "react";
 import { agentGuiDockIconUrls } from "@tutti-os/agent-gui/dock-icons";
-import {
-  changeAgentGUIProviderManagerVisibility,
-  normalizeAgentGUIProviderRailHiddenTargetIds,
-  useAgentGUIProviderRailPreferences
-} from "@tutti-os/agent-gui/agent-sidebar-preferences";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import { useService } from "@tutti-os/infra/di";
 import { INotificationService } from "@tutti-os/ui-notifications";
-import {
-  Button,
-  MoreHorizontalIcon,
-  StatusDot,
-  Switch
-} from "@tutti-os/ui-system";
+import { ArrowRightIcon, Button, StatusDot, Switch } from "@tutti-os/ui-system";
+import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
+import type { DesktopFeatureFlags } from "@shared/preferences";
+import type { AgentExtensionActivationFlag } from "../../../../../shared/featureFlags/catalog.ts";
 import type {
   AgentProviderStatusSnapshot,
   IAgentProviderStatusService
 } from "../../workspace-agent/services/agentProviderStatusService.interface.ts";
+import type {
+  AgentsSnapshot,
+  IAgentsService
+} from "../../workspace-agent/services/agentsService.interface.ts";
 import {
   desktopAgentProviderManageDialogProviders,
   projectDesktopAgentProviderManageRows,
@@ -37,13 +34,18 @@ import {
   statusLabelKeys
 } from "../../workspace-agent/ui/DesktopAgentProviderManageDialog.tsx";
 import {
-  isWorkspaceAgentGuiPreviewProvider,
+  isWorkspaceAgentGuiEarlyAccessProvider,
   resolveWorkspaceAgentGuiLabel
 } from "../services/workspaceAgentProviderCatalog.ts";
 import {
   filterVisibleAgentProviders,
   resolveAgentDeepLinkOutcome
 } from "./workspaceAgentsSettingsTabModel.ts";
+import {
+  formatAgentProviderUpdateSummary,
+  resolveAgentProviderUpdateRowPresentation
+} from "./workspaceAgentsSettingsUpdateModel.ts";
+import { projectWorkspaceAgentExtensionSettingsRows } from "./workspaceAgentExtensionSettingsModel.ts";
 
 const emptyAgentProviderStatusSnapshot: AgentProviderStatusSnapshot = {
   capturedAt: null,
@@ -54,7 +56,78 @@ const emptyAgentProviderStatusSnapshot: AgentProviderStatusSnapshot = {
   statuses: []
 };
 
+const emptyAgentsSnapshot: AgentsSnapshot = {
+  agents: [],
+  agentTargets: [],
+  capturedAtUnixMs: null,
+  error: null,
+  status: "idle"
+};
+
 const managedAgentProviders = [...desktopAgentProviderManageDialogProviders];
+
+// Shared column template so the header row and every data row line up as one
+// grid. Mirrors the DesktopAgentProviderManageDialog table, adapted for the
+// narrower Settings panel: Environment collapses into the Agent cell on small
+// screens, always keeping the Agent name + enabled toggle usable without
+// horizontal scrolling.
+const agentsTableColumnsClass = cn(
+  "grid gap-3 grid-cols-[minmax(0,1.6fr)_180px_128px]",
+  "max-[560px]:grid-cols-[minmax(0,1fr)_128px]"
+);
+
+function AgentConnectionStatus({
+  className,
+  environmentLabel,
+  label,
+  onOpenEnvironment,
+  status
+}: {
+  className?: string;
+  environmentLabel: string;
+  label: string;
+  onOpenEnvironment?: () => void;
+  status: DesktopAgentProviderManageRow["status"];
+}) {
+  const content = (
+    <>
+      <StatusDot
+        pulse={status === "checking"}
+        size="xs"
+        tone={resolveStatusDotTone(status)}
+      />
+      <span className="truncate font-medium">{label}</span>
+    </>
+  );
+
+  if (!onOpenEnvironment) {
+    return (
+      <span
+        className={cn(
+          "min-w-0 items-center gap-1.5 text-[var(--text-primary)]",
+          className
+        )}
+      >
+        {content}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      aria-label={environmentLabel}
+      className={cn(
+        "min-w-0 items-center gap-1.5 border-0 bg-transparent p-0 text-left text-[var(--text-primary)] outline-none transition-opacity hover:opacity-75 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]",
+        className
+      )}
+      type="button"
+      onClick={onOpenEnvironment}
+    >
+      {content}
+      <ArrowRightIcon aria-hidden="true" className="shrink-0" size={13} />
+    </button>
+  );
+}
 
 function agentTargetId(provider: string): string | null {
   return resolveAgentGUIProviderCatalogIdentity(provider)?.target.id ?? null;
@@ -63,31 +136,56 @@ function agentTargetId(provider: string): string | null {
 /**
  * The "Agents" tab of the agent settings section. Rows are rendered from the
  * authoritative identity catalog + live provider status service (never a copied
- * registry). Sidebar visibility is backed by the shared provider-rail
- * preferences so this tab and the sidebar rail read/write one source.
+ * registry). Enabled state comes from daemon-owned Agent Targets, so the same
+ * switch controls desktop discovery and CLI launch eligibility.
  */
 export function WorkspaceAgentsSettingsTab({
+  autoCheckEnabled,
+  autoCheckPending,
   agentProviderStatusService,
+  agentsService,
+  earlyAccessEnabled,
+  featureFlags,
+  featureFlagsPending,
   focusProvider,
   focusRequestID,
-  previewEnabled
+  onAgentEnabledChange,
+  onAutoCheckEnabledChange,
+  onOpenEnvironment,
+  onEarlyAccessEnabledChange,
+  onExtensionEnabledChange
 }: {
+  autoCheckEnabled: boolean;
+  autoCheckPending: boolean;
   agentProviderStatusService: IAgentProviderStatusService;
+  agentsService: IAgentsService;
+  earlyAccessEnabled: boolean;
+  featureFlags: DesktopFeatureFlags;
+  featureFlagsPending: boolean;
   focusProvider: string | null;
   focusRequestID: number;
-  previewEnabled: boolean;
+  onAgentEnabledChange: (
+    agentTargetID: string,
+    enabled: boolean
+  ) => Promise<void>;
+  onAutoCheckEnabledChange: (enabled: boolean) => void;
+  onOpenEnvironment: (provider: WorkspaceAgentProvider) => void;
+  onEarlyAccessEnabledChange: (enabled: boolean) => void;
+  onExtensionEnabledChange: (
+    flag: AgentExtensionActivationFlag,
+    enabled: boolean
+  ) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const notifications = useService(INotificationService);
-  const { preferences, persistPreferences } =
-    useAgentGUIProviderRailPreferences();
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [highlightedProvider, setHighlightedProvider] = useState<string | null>(
     null
   );
-  // Reserved selection for a future per-agent advanced page; not navigated yet.
-  const [, setSelectedProvider] = useState<string | null>(null);
+  const [pendingAgentTargetIDs, setPendingAgentTargetIDs] = useState<
+    ReadonlySet<string>
+  >(new Set());
 
   const snapshot = useSyncExternalStore(
     (listener) => agentProviderStatusService.subscribe(listener),
@@ -95,11 +193,47 @@ export function WorkspaceAgentsSettingsTab({
     () => emptyAgentProviderStatusSnapshot
   );
 
+  const agentsSnapshot = useSyncExternalStore(
+    (listener) => agentsService.subscribe(listener),
+    () => agentsService.getSnapshot(),
+    () => emptyAgentsSnapshot
+  );
+
   useEffect(() => {
     void agentProviderStatusService
       .ensureLoaded({ providers: managedAgentProviders })
       .catch(() => null);
   }, [agentProviderStatusService]);
+
+  useEffect(() => {
+    void agentsService.load().catch(() => null);
+  }, [agentsService]);
+
+  useEffect(() => {
+    if (!autoCheckEnabled) {
+      return;
+    }
+    void agentProviderStatusService
+      .ensureLoaded({
+        includeUpdates: true,
+        providers: managedAgentProviders
+      })
+      .catch(() => null);
+  }, [agentProviderStatusService, autoCheckEnabled]);
+
+  const checkUpdates = useCallback(async () => {
+    try {
+      await agentProviderStatusService.checkUpdates(managedAgentProviders);
+    } catch (error) {
+      notifications.error({
+        description:
+          error instanceof Error && error.message.trim()
+            ? error.message
+            : undefined,
+        title: t("workspace.settings.agent.agents.checkUpdatesFailed")
+      });
+    }
+  }, [agentProviderStatusService, notifications, t]);
 
   const rowByProvider = useMemo(() => {
     const rows = projectDesktopAgentProviderManageRows({
@@ -113,51 +247,71 @@ export function WorkspaceAgentsSettingsTab({
   }, [snapshot.isLoading, snapshot.pendingActions, snapshot.statuses]);
 
   const visibleProviders = useMemo(
-    () => filterVisibleAgentProviders(managedAgentProviders, previewEnabled),
-    [previewEnabled]
+    () =>
+      filterVisibleAgentProviders(managedAgentProviders, earlyAccessEnabled),
+    [earlyAccessEnabled]
   );
 
-  const allTargetIds = useMemo(
-    () =>
-      managedAgentProviders
-        .map((provider) => agentTargetId(provider))
-        .filter((targetId): targetId is string => targetId !== null),
-    []
+  const checkingUpdates = agentProviderStatusService.isCheckingUpdates();
+  const agentUpdatePending = snapshot.pendingActions.some(
+    (action) => action.actionId === "update"
   );
 
-  const effectiveHiddenTargetIds = useMemo(
+  const agentTargetByID = useMemo(
     () =>
-      normalizeAgentGUIProviderRailHiddenTargetIds(
-        allTargetIds,
-        preferences.hiddenTargetIds
+      new Map(
+        agentsSnapshot.agentTargets.map((target) => [
+          target.agentTargetId,
+          target
+        ])
       ),
-    [allTargetIds, preferences.hiddenTargetIds]
+    [agentsSnapshot.agentTargets]
   );
 
-  const isShownInSidebar = useCallback(
-    (provider: string): boolean => {
-      const targetId = agentTargetId(provider);
-      return targetId !== null && !effectiveHiddenTargetIds.includes(targetId);
-    },
-    [effectiveHiddenTargetIds]
+  const extensionRows = useMemo(
+    () =>
+      projectWorkspaceAgentExtensionSettingsRows({
+        agentTargets: agentsSnapshot.agentTargets,
+        directoryLoading: agentsSnapshot.status === "loading",
+        earlyAccessEnabled,
+        featureFlags
+      }),
+    [
+      agentsSnapshot.agentTargets,
+      agentsSnapshot.status,
+      earlyAccessEnabled,
+      featureFlags
+    ]
   );
 
-  const toggleSidebarVisibility = useCallback(
-    (provider: string, visible: boolean) => {
-      const targetId = agentTargetId(provider);
-      if (!targetId) {
+  const toggleAgentEnabled = useCallback(
+    async (provider: string, enabled: boolean) => {
+      const targetID = agentTargetId(provider);
+      if (!targetID || pendingAgentTargetIDs.has(targetID)) {
         return;
       }
-      persistPreferences(
-        changeAgentGUIProviderManagerVisibility({
-          currentTargetIds: allTargetIds,
-          preferences,
-          targetId,
-          visible
-        })
-      );
+      setPendingAgentTargetIDs((current) => new Set(current).add(targetID));
+      try {
+        await onAgentEnabledChange(targetID, enabled);
+      } catch (error) {
+        notifications.error({
+          description:
+            error instanceof Error && error.message.trim()
+              ? error.message
+              : undefined,
+          title: t("workspace.settings.agent.agents.enableChangeFailed", {
+            agent: resolveWorkspaceAgentGuiLabel(provider)
+          })
+        });
+      } finally {
+        setPendingAgentTargetIDs((current) => {
+          const next = new Set(current);
+          next.delete(targetID);
+          return next;
+        });
+      }
     },
-    [allTargetIds, persistPreferences, preferences]
+    [notifications, onAgentEnabledChange, pendingAgentTargetIDs, t]
   );
 
   const focusRow = useCallback((provider: string) => {
@@ -189,7 +343,7 @@ export function WorkspaceAgentsSettingsTab({
       return;
     }
     const outcome = resolveAgentDeepLinkOutcome({
-      previewEnabled,
+      earlyAccessEnabled,
       provider: focusProvider,
       visibleProviders
     });
@@ -201,11 +355,11 @@ export function WorkspaceAgentsSettingsTab({
       return;
     }
     notifications.info({
-      title: t("workspace.settings.agent.agents.previewHiddenHint", {
+      title: t("workspace.settings.agent.agents.earlyAccessHiddenHint", {
         agent: resolveWorkspaceAgentGuiLabel(outcome.provider)
       })
     });
-    // Intentionally no row focus: the row is hidden until Preview Agents is on.
+    // Intentionally no row focus: the row is hidden until Early Access is on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRequestID]);
 
@@ -219,116 +373,283 @@ export function WorkspaceAgentsSettingsTab({
 
   return (
     <div
-      className="flex flex-col gap-1"
+      className="pb-[22px]"
       data-testid="workspace-settings-agents-list"
+      role="table"
     >
-      {visibleProviders.map((provider) => {
-        const row = rowByProvider.get(provider);
-        const status = row?.status ?? "unknown";
-        const label = resolveWorkspaceAgentGuiLabel(provider);
-        const iconUrl = agentGuiDockIconUrls[provider];
-        const shownInSidebar = isShownInSidebar(provider);
-        const isPreview = isWorkspaceAgentGuiPreviewProvider(provider);
-        return (
-          <div
-            key={provider}
-            ref={(element) => {
-              if (element) {
-                rowRefs.current.set(provider, element);
-              } else {
-                rowRefs.current.delete(provider);
-              }
-            }}
-            className={cn(
-              "flex items-center gap-3 rounded-md px-2 py-2 transition-colors duration-150",
-              highlightedProvider === provider
-                ? "bg-[var(--transparency-block)]"
-                : "bg-transparent"
-            )}
-            data-agent-provider={provider}
-          >
-            {iconUrl ? (
-              <img
-                alt=""
-                aria-hidden="true"
-                className="size-6 shrink-0 rounded"
-                src={iconUrl}
-              />
-            ) : (
-              <span className="size-6 shrink-0 rounded bg-[var(--transparency-block)]" />
-            )}
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <div className="flex items-center gap-2">
-                <strong className="truncate text-[13px] font-semibold text-[var(--text-primary)]">
-                  {label}
-                </strong>
-                {isPreview ? (
-                  <span className="rounded-full border border-[var(--border-1)] px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-[var(--text-secondary)]">
-                    {t("workspace.settings.agent.agents.previewBadge")}
+      <div className="mb-3 flex items-center justify-between gap-4 rounded-lg bg-[var(--transparency-block)] px-3 py-2.5 max-[560px]:items-start">
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-[12px] font-medium text-[var(--text-primary)]">
+            {t("workspace.settings.agent.agents.earlyAccessLabel")}
+          </span>
+          <span className="text-[11px] leading-[1.35] text-[var(--text-tertiary)]">
+            {t("workspace.settings.agent.agents.earlyAccessDescription")}
+          </span>
+        </span>
+        <Switch
+          aria-label={t("workspace.settings.agent.agents.earlyAccessLabel")}
+          checked={earlyAccessEnabled}
+          disabled={featureFlagsPending}
+          size="sm"
+          onCheckedChange={onEarlyAccessEnabledChange}
+        />
+      </div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[var(--transparency-block)] px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Switch
+            aria-label={t("workspace.settings.agent.agents.autoCheckUpdates")}
+            checked={autoCheckEnabled}
+            disabled={autoCheckPending}
+            size="sm"
+            onCheckedChange={onAutoCheckEnabledChange}
+          />
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-[12px] font-medium text-[var(--text-primary)]">
+              {t("workspace.settings.agent.agents.autoCheckUpdates")}
+            </span>
+            <span className="text-[11px] text-[var(--text-tertiary)]">
+              {t("workspace.settings.agent.agents.autoCheckUpdatesHint")}
+            </span>
+          </span>
+        </div>
+        <Button
+          className="h-7 shrink-0 px-2.5 text-[12px]"
+          disabled={checkingUpdates || agentUpdatePending}
+          size="sm"
+          type="button"
+          variant="secondary"
+          onClick={() => {
+            void checkUpdates();
+          }}
+        >
+          {checkingUpdates
+            ? t("workspace.settings.agent.agents.checkingUpdates")
+            : t("workspace.settings.agent.agents.checkUpdates")}
+        </Button>
+      </div>
+      <div
+        className={cn(
+          agentsTableColumnsClass,
+          "items-center border-b border-[var(--border-1)] px-2 pb-2 text-[12px] font-medium text-[var(--text-tertiary)]"
+        )}
+        role="row"
+      >
+        <div role="columnheader">
+          {t("workspace.workbenchDesktop.agentProviders.manageColumnAgent")}
+        </div>
+        <div className="max-[560px]:hidden" role="columnheader">
+          {t("workspace.settings.agent.agents.environmentColumn")}
+        </div>
+        <div className="text-right" role="columnheader">
+          {t("workspace.settings.agent.agents.enabledColumn")}
+        </div>
+      </div>
+      <div role="rowgroup">
+        {visibleProviders.map((provider) => {
+          const row = rowByProvider.get(provider);
+          const status = row?.status ?? "unknown";
+          const label = resolveWorkspaceAgentGuiLabel(provider);
+          const iconUrl = agentGuiDockIconUrls[provider];
+          const targetID = agentTargetId(provider);
+          const agentTarget = targetID ? agentTargetByID.get(targetID) : null;
+          const agentEnabled = agentTarget?.enabled ?? false;
+          const agentEnabledPending = targetID
+            ? pendingAgentTargetIDs.has(targetID)
+            : false;
+          const isEarlyAccess =
+            isWorkspaceAgentGuiEarlyAccessProvider(provider);
+          const environmentLabel = t("workspace.agentEnv.configTitle", {
+            provider: label
+          });
+          const providerStatus = snapshot.statuses.find(
+            (item) => item.provider === provider
+          );
+          const updatePresentation =
+            resolveAgentProviderUpdateRowPresentation(providerStatus);
+          const updateSummary = formatAgentProviderUpdateSummary({
+            checkFailed: updatePresentation.checkFailed,
+            currentVersion: updatePresentation.currentVersion,
+            latestVersion: updatePresentation.latestVersion,
+            t,
+            updateAvailable: updatePresentation.updateAvailable
+          });
+          return (
+            <div
+              key={provider}
+              ref={(element) => {
+                if (element) {
+                  rowRefs.current.set(provider, element);
+                } else {
+                  rowRefs.current.delete(provider);
+                }
+              }}
+              className={cn(
+                agentsTableColumnsClass,
+                "items-center border-b border-[var(--border-1)] px-2 py-2.5 text-[13px] transition-colors duration-150 last:border-b-0",
+                highlightedProvider === provider
+                  ? "bg-[var(--transparency-block)]"
+                  : "bg-transparent"
+              )}
+              data-agent-provider={provider}
+              role="row"
+            >
+              <div className="flex min-w-0 items-center gap-2.5" role="cell">
+                {iconUrl ? (
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    className="size-7 shrink-0 rounded-lg"
+                    src={iconUrl}
+                  />
+                ) : (
+                  <span className="size-7 shrink-0 rounded-lg bg-[var(--transparency-block)]" />
+                )}
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-semibold text-[var(--text-primary)]">
+                      {label}
+                    </span>
+                    {isEarlyAccess ? (
+                      <span className="shrink-0 rounded-full border border-[var(--border-1)] px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-[var(--text-secondary)]">
+                        {t("workspace.settings.agent.agents.earlyAccessBadge")}
+                      </span>
+                    ) : null}
                   </span>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <StatusDot size="xs" tone={resolveStatusDotTone(status)} />
-                <span className="text-[12px] text-[var(--text-secondary)]">
-                  {t(statusLabelKeys[status])}
-                </span>
-                {status !== "checking" && status !== "unknown" ? (
-                  <>
+                  {updateSummary ? (
                     <span
-                      aria-hidden="true"
-                      className="text-[12px] text-[var(--text-tertiary)]"
+                      className="truncate text-[11px] text-[var(--text-tertiary)]"
+                      data-testid={`workspace-settings-agents-update-summary-${provider}`}
                     >
-                      ·
+                      {updateSummary}
                     </span>
-                    <span className="text-[12px] text-[var(--text-secondary)]">
-                      {t(
-                        row?.configDetected
-                          ? "workspace.workbenchDesktop.agentProviders.manageConfigDetected"
-                          : "workspace.workbenchDesktop.agentProviders.manageConfigMissing"
-                      )}
-                    </span>
-                  </>
-                ) : null}
+                  ) : null}
+                  <AgentConnectionStatus
+                    className="hidden w-fit text-[11px] text-[var(--text-secondary)] max-[560px]:flex"
+                    environmentLabel={environmentLabel}
+                    label={t(statusLabelKeys[status])}
+                    status={status}
+                    onOpenEnvironment={() => onOpenEnvironment(provider)}
+                  />
+                </span>
+              </div>
+              <div
+                className="flex min-w-0 items-center gap-1.5 max-[560px]:hidden"
+                role="cell"
+              >
+                <AgentConnectionStatus
+                  className="flex"
+                  environmentLabel={environmentLabel}
+                  label={t(statusLabelKeys[status])}
+                  status={status}
+                  onOpenEnvironment={() => onOpenEnvironment(provider)}
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2" role="cell">
+                <span className="text-[11px] text-[var(--text-secondary)]">
+                  {agentEnabled
+                    ? t("workspace.settings.agent.agents.enabled")
+                    : t("workspace.settings.agent.agents.disabled")}
+                </span>
+                <Switch
+                  aria-label={t("workspace.settings.agent.agents.enableAgent", {
+                    agent: label
+                  })}
+                  checked={agentEnabled}
+                  disabled={
+                    agentsSnapshot.status === "loading" ||
+                    !agentTarget ||
+                    agentEnabledPending
+                  }
+                  size="sm"
+                  onCheckedChange={(next) => {
+                    void toggleAgentEnabled(provider, next);
+                  }}
+                />
               </div>
             </div>
-            <label className="flex shrink-0 items-center gap-2 text-[12px] text-[var(--text-secondary)]">
-              <span className="max-[560px]:sr-only">
-                {t("workspace.settings.agent.agents.showInSidebar")}
-              </span>
-              <Switch
-                aria-label={t(
-                  "workspace.settings.agent.agents.showInSidebarFor",
-                  { agent: label }
-                )}
-                checked={shownInSidebar}
-                size="sm"
-                onCheckedChange={(next) =>
-                  toggleSidebarVisibility(provider, next)
-                }
-              />
-            </label>
-            <Button
-              aria-label={t("workspace.settings.agent.agents.moreFor", {
-                agent: label
-              })}
-              size="icon-sm"
-              title={t("workspace.settings.agent.agents.moreFor", {
-                agent: label
-              })}
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                // Route seam only: reserves the selected agent for a future
-                // per-agent advanced settings page. No navigation yet.
-                setSelectedProvider(provider);
-              }}
+          );
+        })}
+        {extensionRows.map((row) => {
+          const label = t(row.labelKey);
+          const environmentLabel = t("workspace.agentEnv.configTitle", {
+            provider: label
+          });
+          const statusLabel = row.enabled
+            ? row.status === "unknown"
+              ? t("workspace.settings.agent.agents.extensionPreparing")
+              : t(statusLabelKeys[row.status])
+            : t("workspace.settings.agent.agents.extensionEnableToSetUp");
+          return (
+            <div
+              key={row.key}
+              className={cn(
+                agentsTableColumnsClass,
+                "items-center border-b border-[var(--border-1)] px-2 py-2.5 text-[13px] last:border-b-0"
+              )}
+              data-agent-target={row.agentTargetId}
+              role="row"
             >
-              <MoreHorizontalIcon aria-hidden="true" size={16} />
-            </Button>
-          </div>
-        );
-      })}
+              <div className="flex min-w-0 items-center gap-2.5" role="cell">
+                {row.iconUrl ? (
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    className="size-7 shrink-0 rounded-lg"
+                    src={row.iconUrl}
+                  />
+                ) : (
+                  <span className="size-7 shrink-0 rounded-lg bg-[var(--transparency-block)]" />
+                )}
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-semibold text-[var(--text-primary)]">
+                      {label}
+                    </span>
+                    <span className="shrink-0 rounded-full border border-[var(--border-1)] px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-[var(--text-secondary)]">
+                      {t("workspace.settings.agent.agents.earlyAccessBadge")}
+                    </span>
+                  </span>
+                  <AgentConnectionStatus
+                    className="hidden w-fit text-[11px] text-[var(--text-secondary)] max-[560px]:flex"
+                    environmentLabel={environmentLabel}
+                    label={statusLabel}
+                    status={row.status}
+                  />
+                </span>
+              </div>
+              <div
+                className="flex min-w-0 items-center gap-1.5 max-[560px]:hidden"
+                role="cell"
+              >
+                <AgentConnectionStatus
+                  className="flex"
+                  environmentLabel={environmentLabel}
+                  label={statusLabel}
+                  status={row.status}
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2" role="cell">
+                <span className="text-[11px] text-[var(--text-secondary)]">
+                  {row.enabled
+                    ? t("workspace.settings.agent.agents.enabled")
+                    : t("workspace.settings.agent.agents.disabled")}
+                </span>
+                <Switch
+                  aria-label={t("workspace.settings.agent.agents.enableAgent", {
+                    agent: label
+                  })}
+                  checked={row.enabled}
+                  disabled={featureFlagsPending}
+                  size="sm"
+                  onCheckedChange={(enabled) => {
+                    void onExtensionEnabledChange(row.activationFlag, enabled);
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

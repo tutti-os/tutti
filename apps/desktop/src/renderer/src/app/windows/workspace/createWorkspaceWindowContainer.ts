@@ -204,6 +204,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     clipboard: {
       writeText: (text) => navigator.clipboard.writeText(text)
     },
+    desktopPreferencesService,
     eventStreamClient: tuttidEventStreamClient,
     hostFilesApi: desktopApi.host.files,
     tuttidClient,

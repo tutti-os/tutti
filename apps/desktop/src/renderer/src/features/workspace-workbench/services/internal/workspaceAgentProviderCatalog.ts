@@ -2,13 +2,16 @@ export {
   agentGuiWorkbenchComingSoonProviders as workspaceAgentGuiComingSoonProviders,
   agentGuiWorkbenchDefaultDockProviders as workspaceAgentGuiDefaultDockProviders,
   agentGuiWorkbenchDockSuppressedProviders as workspaceAgentGuiDockSuppressedProviders,
+  agentGuiWorkbenchEarlyAccessProviders as workspaceAgentGuiEarlyAccessProviders,
   agentGuiWorkbenchProviderLabels as workspaceAgentGuiLabels,
   agentGuiWorkbenchPreviewProviders as workspaceAgentGuiPreviewProviders,
   agentGuiWorkbenchProviders as workspaceAgentGuiProviders,
   isAgentGuiWorkbenchComingSoonProvider as isWorkspaceAgentGuiComingSoonProvider,
   isAgentGuiWorkbenchDefaultDockProvider as isWorkspaceAgentGuiDefaultDockProvider,
   isAgentGuiWorkbenchDockSuppressedProvider as isWorkspaceAgentGuiDockSuppressedProvider,
+  isAgentGuiWorkbenchEarlyAccessProvider as isWorkspaceAgentGuiEarlyAccessProvider,
   isAgentGuiWorkbenchPreviewProvider as isWorkspaceAgentGuiPreviewProvider,
+  isAgentGuiWorkbenchProviderVisibleWithEarlyAccess as isWorkspaceAgentGuiProviderVisibleWithEarlyAccess,
   isAgentGuiWorkbenchProviderVisibleWithPreview as isWorkspaceAgentGuiProviderVisibleWithPreview,
   resolveAgentGuiWorkbenchProviderLabel as resolveWorkspaceAgentGuiLabel
 } from "@tutti-os/agent-gui/workbench/providerCatalog";

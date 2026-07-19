@@ -23,12 +23,20 @@ export async function runInstalledProviderAction(
   tuttidClient: TuttidClient,
   provider: WorkspaceAgentProvider
 ): Promise<void> {
-  const result = await tuttidClient.runAgentProviderAction(provider, "install");
+  await runDaemonProviderAction(tuttidClient, provider, "install");
+}
+
+export async function runDaemonProviderAction(
+  tuttidClient: TuttidClient,
+  provider: WorkspaceAgentProvider,
+  actionId: "install" | "update"
+): Promise<void> {
+  const result = await tuttidClient.runAgentProviderAction(provider, actionId);
   if (result.status !== "failed") {
     return;
   }
   throw new AgentProviderInstallActionFailedError(
-    resolveAgentProviderActionFailureReason(result),
+    resolveAgentProviderActionFailureReason(result, actionId),
     result.reasonCode?.trim() || null
   );
 }
@@ -51,12 +59,26 @@ export function resolveAgentProviderInstallErrorMessage(
   return message;
 }
 
+export function resolveAgentProviderUpdateErrorMessage(
+  error: unknown
+): string {
+  if (error instanceof AgentProviderInstallActionFailedError) {
+    return summarizeAgentProviderUpdateFailureReason(error.reason);
+  }
+  const message = resolveDesktopErrorMessage(error, getActiveLocale());
+  if (isTechnicalInstallFailureMessage(message)) {
+    return summarizeAgentProviderUpdateFailureReason(message);
+  }
+  return message;
+}
+
 export function shouldTrackPendingAction(actionId: string): boolean {
-  return actionId === "install";
+  return actionId === "install" || actionId === "update";
 }
 
 function resolveAgentProviderActionFailureReason(
-  result: AgentProviderActionRunResponse
+  result: AgentProviderActionRunResponse,
+  actionId: "install" | "update" = "install"
 ): string {
   return (
     result.message?.trim() ||
@@ -65,7 +87,9 @@ function resolveAgentProviderActionFailureReason(
     result.stdout?.trim() ||
     result.probe?.message?.trim() ||
     result.probe?.reasonCode?.trim() ||
-    "Agent provider install action failed."
+    (actionId === "update"
+      ? "Agent provider update action failed."
+      : "Agent provider install action failed.")
   );
 }
 
@@ -111,6 +135,31 @@ function summarizeAgentProviderInstallFailureReason(reason: string): string {
   }
   return translate(
     "workspace.workbenchDesktop.agentProviders.installFailedDescription"
+  );
+}
+
+function summarizeAgentProviderUpdateFailureReason(reason: string): string {
+  const trimmed = reason.trim();
+  if (!trimmed) {
+    return translate(
+      "workspace.workbenchDesktop.agentProviders.updateFailedDescription"
+    );
+  }
+  const normalized = trimmed.toLowerCase();
+  if (
+    normalized.includes("timed out") ||
+    normalized.includes("install_timed_out") ||
+    normalized.includes("update_timed_out")
+  ) {
+    return translate(
+      "workspace.workbenchDesktop.agentProviders.updateFailedTimedOut"
+    );
+  }
+  if (trimmed.length <= 120 && !trimmed.includes("\n")) {
+    return trimmed;
+  }
+  return translate(
+    "workspace.workbenchDesktop.agentProviders.updateFailedDescription"
   );
 }
 

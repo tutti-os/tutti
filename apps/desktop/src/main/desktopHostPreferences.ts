@@ -6,12 +6,14 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import {
   defaultDesktopBrowserUseConnectionMode,
+  defaultDesktopAgentCliUpdateCheckEnabled,
   defaultDesktopAppCatalogChannel,
   defaultDesktopAgentConversationDetailMode,
   desktopAgentComposerDefaultsByProviderEqual,
   desktopAgentGuiConversationRailCollapsedByProviderEqual,
   isDesktopBrowserUseConnectionMode,
   normalizeDesktopAgentConversationDetailMode,
+  normalizeDesktopAgentCliUpdateCheckEnabled,
   normalizeDesktopAgentComposerDefaultsByProvider,
   normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
   isDesktopDefaultAgentProvider,
@@ -66,6 +68,7 @@ const updateChannelInstalledVersionStateID =
   "desktop-update-channel-installed-version-v1";
 
 export interface DesktopHostPreferencesState {
+  getAgentCliUpdateCheckEnabled(): boolean;
   getAgentComposerDefaultsByProvider(): DesktopAgentComposerDefaultsByProvider;
   getAgentGUIConversationRailCollapsedByProvider(): DesktopAgentGuiConversationRailCollapsedByProvider;
   getAgentConversationDetailMode(): DesktopAgentConversationDetailMode;
@@ -86,6 +89,7 @@ export interface DesktopHostPreferencesState {
   getWorkbenchWindowSnapping(): DesktopWorkbenchWindowSnapping;
   subscribe(listener: () => void): () => void;
   sync(input: {
+    agentCliUpdateCheckEnabled?: boolean;
     agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
     agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
     agentConversationDetailMode?: DesktopAgentConversationDetailMode;
@@ -123,6 +127,9 @@ export async function createDesktopHostPreferencesState(
   options: CreateDesktopHostPreferencesOptions
 ): Promise<DesktopHostPreferencesState> {
   const initialPreferences = await resolveInitialDesktopPreferences(options);
+  let agentCliUpdateCheckEnabled = normalizeDesktopAgentCliUpdateCheckEnabled(
+    initialPreferences.agentCliUpdateCheckEnabled
+  );
   let agentComposerDefaultsByProvider =
     normalizeDesktopAgentComposerDefaultsByProvider(
       initialPreferences.agentComposerDefaultsByProvider
@@ -171,6 +178,9 @@ export async function createDesktopHostPreferencesState(
   const listeners = new Set<() => void>();
 
   return {
+    getAgentCliUpdateCheckEnabled() {
+      return agentCliUpdateCheckEnabled;
+    },
     getAgentComposerDefaultsByProvider() {
       return agentComposerDefaultsByProvider;
     },
@@ -232,6 +242,7 @@ export async function createDesktopHostPreferencesState(
       };
     },
     sync(input) {
+      const previousAgentCliUpdateCheckEnabled = agentCliUpdateCheckEnabled;
       const previousAgentComposerDefaultsByProvider =
         agentComposerDefaultsByProvider;
       const previousAgentGUIConversationRailCollapsedByProvider =
@@ -253,6 +264,9 @@ export async function createDesktopHostPreferencesState(
       const previousUpdatePolicy = updatePolicy;
       const previousWorkbenchShortcuts = workbenchShortcuts;
       const previousWorkbenchWindowSnapping = workbenchWindowSnapping;
+      if (typeof input.agentCliUpdateCheckEnabled === "boolean") {
+        agentCliUpdateCheckEnabled = input.agentCliUpdateCheckEnabled;
+      }
       if (input.agentComposerDefaultsByProvider) {
         const nextAgentComposerDefaultsByProvider =
           normalizeDesktopAgentComposerDefaultsByProvider(
@@ -372,6 +386,7 @@ export async function createDesktopHostPreferencesState(
         }
       }
       if (
+        agentCliUpdateCheckEnabled !== previousAgentCliUpdateCheckEnabled ||
         agentComposerDefaultsByProvider !==
           previousAgentComposerDefaultsByProvider ||
         agentGUIConversationRailCollapsedByProvider !==
@@ -440,6 +455,7 @@ async function resolveInitialDesktopPreferences(
     const initializedPreferences = (
       await options.tuttidClient.putDesktopPreferences({
         preferences: {
+          agentCliUpdateCheckEnabled: defaultDesktopAgentCliUpdateCheckEnabled,
           agentComposerDefaultsByProvider: {},
           agentGuiConversationRailCollapsedByProvider: {},
           agentConversationDetailMode:
@@ -477,6 +493,7 @@ async function resolveInitialDesktopPreferences(
       error: error instanceof Error ? error.message : String(error)
     });
     return {
+      agentCliUpdateCheckEnabled: defaultDesktopAgentCliUpdateCheckEnabled,
       agentComposerDefaultsByProvider: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: defaultDesktopAgentConversationDetailMode,

@@ -6,11 +6,17 @@ import type {
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
+import type { IDesktopPreferencesService } from "../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import type { NotificationService } from "@tutti-os/ui-notifications";
+import {
+  EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
+  isFeatureEnabled
+} from "../../../../../shared/featureFlags/catalog.ts";
 import { IAgentEnvService } from "./agentEnvService.interface.ts";
 import { IAgentProviderStatusService } from "./agentProviderStatusService.interface";
 import type { AgentProviderTerminalCommandRunner } from "./agentProviderStatusService.interface";
 import { bindDesktopManagedAgentProviderVisibilityRefresh } from "./internal/desktopAgentProviderVisibilityRefresh.ts";
+import { bindDesktopAgentsEarlyAccessSync } from "./internal/desktopAgentsEarlyAccessSync.ts";
 import { DesktopAgentProviderStatusService } from "./internal/desktopAgentProviderStatusService";
 import { startManagedAgentInstallBootstraps } from "./internal/tuttiAgentInstallBootstrap.ts";
 import { DesktopAgentsService } from "./internal/desktopAgentsService";
@@ -24,6 +30,7 @@ import { AgentEnvService } from "./internal/agentEnvService.ts";
 export interface WorkspaceAgentServiceRegistrationInput {
   accountLogin: { startLogin(): Promise<void> };
   clipboard: { writeText(text: string): Promise<void> };
+  desktopPreferencesService?: Pick<IDesktopPreferencesService, "store">;
   eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi: Pick<
     DesktopHostFilesApi,
@@ -82,11 +89,21 @@ export function registerWorkspaceAgentServices(
       agentProviderStatusService
     );
   startManagedAgentInstallBootstraps(agentProviderStatusService);
+  const preferencesStore = input.desktopPreferencesService?.store;
   const agentsService = new DesktopAgentsService({
+    earlyAccessEnabled: preferencesStore
+      ? isFeatureEnabled(
+          preferencesStore.featureFlags,
+          EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG
+        )
+      : undefined,
     resolveAgentTargetIconUrl: input.resolveAgentTargetIconUrl,
     tuttidClient: input.tuttidClient
   });
   registry.registerInstance(IAgentsService, agentsService);
+  const disposeAgentsEarlyAccessSync = preferencesStore
+    ? bindDesktopAgentsEarlyAccessSync({ agentsService, preferencesStore })
+    : () => {};
   const workspaceAgentActivityService = new WorkspaceAgentActivityService({
     ...input,
     agentProviderStatusService
@@ -109,6 +126,7 @@ export function registerWorkspaceAgentServices(
     agentProviderStatusService,
     workspaceAgentActivityService,
     dispose() {
+      disposeAgentsEarlyAccessSync();
       disposeManagedAgentProviderVisibilityRefresh();
       agentEnvService.dispose();
       agentProviderStatusService.dispose();

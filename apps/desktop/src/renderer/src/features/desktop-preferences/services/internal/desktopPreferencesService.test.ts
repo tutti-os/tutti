@@ -34,6 +34,7 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
       return {
         initialized: true,
         preferences: {
+          agentCliUpdateCheckEnabled: true,
           agentComposerDefaultsByProvider: {},
           agentComposerDefaultsByAgentTarget: {},
           agentGuiConversationRailCollapsedByProvider: {},
@@ -108,6 +109,7 @@ test("DesktopPreferencesService discards persisted legacy provider defaults from
     getDesktopPreferences: async () => ({
       initialized: true,
       preferences: createPreferences({
+        agentCliUpdateCheckEnabled: true,
         agentComposerDefaultsByProvider: { codex: { model: "gpt-5" } }
       })
     })
@@ -118,6 +120,7 @@ test("DesktopPreferencesService discards persisted legacy provider defaults from
   const savedLocale = service.setLocale("zh-CN");
   assert.deepEqual(client.updatedRequests, [
     createPublishedPreferences({
+      agentCliUpdateCheckEnabled: true,
       agentComposerDefaultsByProvider: {},
       locale: "zh-CN"
     })
@@ -138,6 +141,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
   const savedLocale = service.setLocale("zh-CN");
   assert.deepEqual(client.updatedRequests, [
     {
+      agentCliUpdateCheckEnabled: true,
       agentComposerDefaultsByProvider: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
@@ -164,6 +168,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
   assert.deepEqual(appliedLocales, ["zh-CN"]);
 
   client.emitDesktopPreferencesUpdated({
+    agentCliUpdateCheckEnabled: true,
     agentComposerDefaultsByProvider: {},
     agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
@@ -281,6 +286,18 @@ test("DesktopPreferencesService rolls back optimistic theme changes when publish
 
 test("DesktopPreferencesService publishes scalar preference writes", async (t) => {
   const cases = [
+    {
+      name: "agent CLI update check",
+      request: createPublishedPreferences({
+        agentCliUpdateCheckEnabled: false
+      }),
+      event: createPreferences({ agentCliUpdateCheckEnabled: false }),
+      publish: (service: DesktopPreferencesService) =>
+        service.setAgentCliUpdateCheckEnabled(false),
+      read: (service: DesktopPreferencesService) =>
+        service.store.agentCliUpdateCheckEnabled,
+      expected: false
+    },
     {
       name: "sleep prevention mode",
       request: createPublishedPreferences({
@@ -584,6 +601,7 @@ test("DesktopPreferencesService merges conversation rail collapsed state per pro
   await service.rememberAgentGuiConversationRailCollapsed("claude-code", true);
 
   assert.deepEqual(requests.at(-1), {
+    agentCliUpdateCheckEnabled: true,
     agentComposerDefaultsByProvider: {},
     agentGuiConversationRailCollapsedByProvider: {
       codex: true,
@@ -622,6 +640,7 @@ interface FakeDesktopPreferencesClient extends DesktopPreferencesClient {
 
 function createPreferences(overrides: Partial<Preferences> = {}): Preferences {
   return {
+    agentCliUpdateCheckEnabled: true,
     agentComposerDefaultsByProvider: {},
     agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
@@ -651,6 +670,7 @@ function createPublishedPreferences(
   overrides: Partial<PublishedPreferences> = {}
 ): PublishedPreferences {
   return {
+    agentCliUpdateCheckEnabled: true,
     agentComposerDefaultsByProvider: {},
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",

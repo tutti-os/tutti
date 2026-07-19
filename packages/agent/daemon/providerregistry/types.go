@@ -163,6 +163,43 @@ type InstallerDescriptor struct {
 	FailureReasonMarkers map[string][]string
 }
 
+// UpdateCapability declares whether tuttid may safely discover and apply CLI
+// updates for a provider. Unsupported is explicit: callers must not infer an
+// update path from the install command or provider identity.
+type UpdateCapability string
+
+const (
+	UpdateCapabilitySupported   UpdateCapability = "supported"
+	UpdateCapabilityUnsupported UpdateCapability = "unsupported"
+)
+
+type UpdateSource string
+
+const UpdateSourceNPM UpdateSource = "npm"
+
+type UpdateStrategy string
+
+const UpdateStrategyManagedNPM UpdateStrategy = "managed_npm"
+
+const (
+	UpdateUnsupportedReasonOfficialScript  = "official_script_update_unsupported"
+	UpdateUnsupportedReasonUnmanagedSource = "unmanaged_install_source"
+	UpdateUnsupportedReasonProvider        = "provider_update_unsupported"
+)
+
+// UpdateDescriptor is deliberately separate from InstallerDescriptor. Install
+// repairs missing or below-minimum runtimes; update discovers and applies a
+// newer release only after an explicit update action.
+type UpdateDescriptor struct {
+	Capability        UpdateCapability
+	Source            UpdateSource
+	Strategy          UpdateStrategy
+	PackageName       string
+	BinaryName        string
+	IncludeOptional   bool
+	UnsupportedReason string
+}
+
 type StatusDescriptor struct {
 	Kind                            StatusKind
 	AuthOutputParserKind            AuthOutputParserKind
@@ -180,6 +217,7 @@ type StatusDescriptor struct {
 	CredentialEnvVars               []string
 	NPMRegistryPackage              string
 	Install                         InstallerDescriptor
+	Update                          UpdateDescriptor
 	LoginArgs                       []string
 	LoginActionKind                 StatusActionKind
 	AuthWatch                       AuthWatchDescriptor

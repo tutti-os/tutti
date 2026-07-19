@@ -22,6 +22,7 @@ import type {
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 
 export interface DesktopPreferencesStoreState {
+  changingAgentCliUpdateCheckEnabled: boolean | null;
   changingDefaultAgentProvider: DesktopDefaultAgentProvider | null;
   changingAgentConversationDetailMode: DesktopAgentConversationDetailMode | null;
   changingAppCatalogChannel: DesktopAppCatalogChannel | null;
@@ -39,6 +40,7 @@ export interface DesktopPreferencesStoreState {
   changingUpdatePolicy: DesktopUpdatePolicy | null;
   changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  agentCliUpdateCheckEnabled: boolean;
   agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
@@ -62,6 +64,7 @@ export interface DesktopPreferencesStoreState {
 }
 
 export interface DesktopPreferencesReadableStoreState {
+  readonly changingAgentCliUpdateCheckEnabled: boolean | null;
   readonly changingDefaultAgentProvider: DesktopDefaultAgentProvider | null;
   readonly changingAgentConversationDetailMode: DesktopAgentConversationDetailMode | null;
   readonly changingAppCatalogChannel: DesktopAppCatalogChannel | null;
@@ -79,6 +82,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingUpdatePolicy: DesktopUpdatePolicy | null;
   readonly changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   readonly agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  readonly agentCliUpdateCheckEnabled: boolean;
   readonly agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
   readonly agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   readonly agentConversationDetailMode: DesktopAgentConversationDetailMode;

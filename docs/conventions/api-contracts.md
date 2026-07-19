@@ -103,6 +103,22 @@ while reading durable state, but API output and new writes must never emit it.
 Add a new union member before adding a new launch mechanism; do not overload a
 provider string with launch or installation state.
 
+## Agent Provider CLI Update Status
+
+Provider status is local by default. `includeUpdates` is the explicit opt-in for
+cached remote update discovery. `refresh` bypasses only local readiness;
+`refreshUpdates` bypasses only update metadata and has no effect unless
+`includeUpdates` is also true. Keep `includeNetwork` independent from both.
+
+Every provider status carries a provider-neutral `update` object. Nullable
+`updateAvailable` distinguishes unchecked or non-comparable state from a known
+up-to-date result. Remote discovery errors belong in update `reasonCode` and
+must not turn a valid local readiness snapshot into an HTTP failure.
+
+`update` is an explicit action id, not an alias for `install`. The daemon may
+offer it only when both the provider descriptor and the resolved installation
+prove a supported managed source. See [Agent Provider CLI Updates](../architecture/agent-provider-cli-updates.md).
+
 ## Error Contract
 
 Daemon API failures should use the shared protocol-error shape in

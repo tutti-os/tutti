@@ -25,6 +25,13 @@ const defaultProvidersSource = readFileSync(
   ),
   "utf8"
 );
+const agentsTabSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "WorkspaceAgentsSettingsTab.tsx"
+  ),
+  "utf8"
+);
 
 test("workspace settings developer panel exposes analytics debug switch only when available", () => {
   assert.match(developerSource, /useAnalyticsDebugPreferenceService/);
@@ -119,6 +126,26 @@ test("workspace settings agent panel owns browser-use connection mode", () => {
     /function WorkspaceAgentSettingsSection[\s\S]*workspace\.settings\.general\.browserUseConnectionModeLabel[\s\S]*workspace\.settings\.general\.browserUseConnectionModeOptions\.autoConnect[\s\S]*<ComputerUseSetupRow/
   );
   assert.match(source, /changeBrowserUseConnectionMode/);
+});
+
+test("workspace settings Agents tab controls daemon-owned Agent Target enablement", () => {
+  assert.match(source, /const agentsService = useService\(IAgentsService\)/);
+  assert.match(source, /agentsService=\{agentsService\}/);
+  assert.match(
+    source,
+    /settingsService\.setAgentTargetEnabled\(\s*agentTargetID,\s*enabled\s*\)/
+  );
+  assert.match(agentsTabSource, /agentTargetByID/);
+  assert.match(agentsTabSource, /agentTarget\?\.enabled \?\? false/);
+  assert.match(
+    agentsTabSource,
+    /workspace\.settings\.agent\.agents\.enabledColumn/
+  );
+  assert.doesNotMatch(agentsTabSource, /showInSidebar/);
+  assert.doesNotMatch(
+    agentsTabSource,
+    /useAgentGUIProviderRailPreferences|changeAgentGUIProviderManagerVisibility/
+  );
 });
 
 test("workspace settings computer-use tooltip and polling stay wired", () => {
@@ -311,12 +338,69 @@ test("labs keeps the shortcut toggle in the list but moves shortcut config behin
   assert.match(source, /workspace\.settings\.lab\.backLabel/);
 });
 
-test("labs exposes the Preview Agents switch (not Experimental)", () => {
-  assert.match(source, /LAB_PREVIEW_AGENTS_FLAG/);
-  assert.match(source, /workspace\.settings\.lab\.previewAgentsLabel/);
+test("Agents owns the Early Access integrations gate", () => {
+  assert.match(source, /EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG/);
+  assert.match(
+    agentsTabSource,
+    /workspace\.settings\.agent\.agents\.earlyAccessLabel/
+  );
   assert.match(
     source,
-    /checked=\{previewAgentsEnabled\}[\s\S]{0,200}updateFeatureFlag\(LAB_PREVIEW_AGENTS_FLAG, enabled\)/
+    /onEarlyAccessEnabledChange=\{\(enabled\) => \{[\s\S]{0,240}\[EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG\]: enabled/
   );
-  assert.doesNotMatch(source, /Experimental Agents/);
+  assert.doesNotMatch(source, /workspace\.settings\.lab\.previewAgentsLabel/);
+});
+
+test("agents settings routes Environment status to environment detection", () => {
+  assert.match(
+    source,
+    /onOpenEnvironment=\{\(provider\) =>\s*agentEnvService\.open\(\{ focus: "detect", provider \}\)/
+  );
+  assert.match(
+    agentsTabSource,
+    /workspace\.settings\.agent\.agents\.environmentColumn/
+  );
+  assert.match(agentsTabSource, /onOpenEnvironment\(provider\)/);
+  assert.doesNotMatch(agentsTabSource, /manageColumnConfig/);
+  assert.doesNotMatch(
+    agentsTabSource,
+    /manageConfigDetected|manageConfigMissing/
+  );
+});
+
+test("agents settings exposes stable update checks and routes update actions through Environment", () => {
+  assert.match(agentsTabSource, /checkUpdates\(managedAgentProviders\)/);
+  assert.match(
+    agentsTabSource,
+    /workspace\.settings\.agent\.agents\.checkUpdates/
+  );
+  assert.match(agentsTabSource, /isCheckingUpdates\(\)/);
+  assert.match(
+    agentsTabSource,
+    /snapshot\.pendingActions\.some\(\s*\(action\) => action\.actionId === "update"/
+  );
+  assert.match(
+    agentsTabSource,
+    /disabled=\{checkingUpdates \|\| agentUpdatePending\}/
+  );
+  assert.doesNotMatch(agentsTabSource, /runAction\(provider, "update"/);
+  assert.match(
+    agentsTabSource,
+    /resolveAgentProviderUpdateRowPresentation\(providerStatus\)/
+  );
+  assert.match(source, /setAgentCliUpdateCheckEnabled\(enabled\)/);
+  assert.match(
+    agentsTabSource,
+    /workspace\.settings\.agent\.agents\.autoCheckUpdates/
+  );
+  // Mount always loads local readiness. Remote discovery is additionally
+  // requested only while the durable automatic-check preference is enabled.
+  assert.match(
+    agentsTabSource,
+    /ensureLoaded\(\{\s*providers:\s*managedAgentProviders\s*\}\)/
+  );
+  assert.match(
+    agentsTabSource,
+    /if \(!autoCheckEnabled\)[\s\S]*includeUpdates:\s*true/
+  );
 });

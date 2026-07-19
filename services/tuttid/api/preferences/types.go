@@ -15,6 +15,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		NewSameTypeWindow:    optionalStringPointer(value.WorkbenchShortcuts.NewSameTypeWindow),
 	}
 	return tuttigenerated.DesktopPreferences{
+		AgentCliUpdateCheckEnabled:                  value.AgentCLIUpdateCheckEnabled,
 		AgentComposerDefaultsByProvider:             generatedAgentComposerDefaultsByProvider(value.AgentComposerDefaultsByProvider),
 		AgentComposerDefaultsByAgentTarget:          generatedAgentComposerDefaultsByAgentTarget(value.AgentComposerDefaultsByAgentTarget),
 		AgentGuiConversationRailCollapsedByProvider: generatedAgentGUIConversationRailCollapsedByProvider(value.AgentGUIConversationRailCollapsedByProvider),

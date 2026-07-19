@@ -1,24 +1,23 @@
-import { isWorkspaceAgentGuiPreviewProvider } from "../services/workspaceAgentProviderCatalog.ts";
+import { isWorkspaceAgentGuiEarlyAccessProvider } from "../services/workspaceAgentProviderCatalog.ts";
 
 /**
  * Filter the managed agent providers shown in the Agents settings tab by the
- * Preview Agents switch. Stable providers are always shown; preview providers
- * (e.g. Hermes) appear only when preview is enabled. Provider-neutral: the
- * preview predicate is data-driven, not a name check here.
+ * Early Access integrations switch. Stable providers are always shown;
+ * early-access providers appear only when the switch is enabled.
  */
 export function filterVisibleAgentProviders<T extends string>(
   providers: readonly T[],
-  previewEnabled: boolean
+  earlyAccessEnabled: boolean
 ): T[] {
   return providers.filter(
     (provider) =>
-      previewEnabled || !isWorkspaceAgentGuiPreviewProvider(provider)
+      earlyAccessEnabled || !isWorkspaceAgentGuiEarlyAccessProvider(provider)
   );
 }
 
 export type AgentDeepLinkOutcome =
   | { kind: "focus"; provider: string }
-  | { kind: "preview-hidden"; provider: string };
+  | { kind: "early-access-hidden"; provider: string };
 
 /**
  * Decide what a deep link to a provider's Agents-tab row should do. The panel
@@ -26,13 +25,13 @@ export type AgentDeepLinkOutcome =
  * branch is whether the target row is visible:
  *  - visible (panel was closed, or open on General, or open on Agents) -> focus
  *    and highlight the row;
- *  - hidden because it is a preview agent and the Preview Agents switch is off
- *    -> surface an "enable Preview Agents" hint instead of silently failing.
+ *  - hidden because its Tutti integration is Early Access and the gate is off
+ *    -> surface an enable hint instead of silently failing.
  * A null/blank provider yields no outcome.
  */
 export function resolveAgentDeepLinkOutcome(input: {
   provider: string | null | undefined;
-  previewEnabled: boolean;
+  earlyAccessEnabled: boolean;
   visibleProviders: readonly string[];
 }): AgentDeepLinkOutcome | null {
   const provider = (input.provider ?? "").trim();
@@ -42,10 +41,13 @@ export function resolveAgentDeepLinkOutcome(input: {
   if (input.visibleProviders.includes(provider)) {
     return { kind: "focus", provider };
   }
-  if (!input.previewEnabled && isWorkspaceAgentGuiPreviewProvider(provider)) {
-    return { kind: "preview-hidden", provider };
+  if (
+    !input.earlyAccessEnabled &&
+    isWorkspaceAgentGuiEarlyAccessProvider(provider)
+  ) {
+    return { kind: "early-access-hidden", provider };
   }
   // Unknown/non-managed provider: nothing to focus, and it is not a hidden
-  // preview agent, so there is no actionable hint.
+  // early-access integration, so there is no actionable hint.
   return null;
 }

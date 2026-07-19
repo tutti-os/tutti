@@ -28,6 +28,7 @@ export interface AgentEnvSnapshot {
   requestSequence: number;
   revealIndex: number;
   status: AgentProviderStatus | null;
+  updatePending: boolean;
 }
 
 export interface IAgentEnvService {

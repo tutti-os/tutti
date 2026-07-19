@@ -210,9 +210,9 @@ test("desktop agents service preserves Extension primary and mask icons", () => 
     }
   ]);
   assert.deepEqual(
-    mapAgentTargetPresentationsToAgents(presentations).map(
-      selectIconPresentation
-    ),
+    mapAgentTargetPresentationsToAgents(presentations, {
+      earlyAccessEnabled: true
+    }).map(selectIconPresentation),
     [
       {
         agentTargetId: "extension:gemini",
@@ -220,6 +220,46 @@ test("desktop agents service preserves Extension primary and mask icons", () => 
         maskIconUrl: "data:image/svg+xml;base64,mask"
       }
     ]
+  );
+});
+
+test("desktop agents service gates extension agents behind the Early Access toggle", () => {
+  const presentations = mapAgentTargetsToPresentations([
+    {
+      createdAtUnixMs: 1780272000000,
+      enabled: true,
+      heroImageUrl: null,
+      iconKey: "extension:gemini",
+      iconUrl: "data:image/svg+xml;base64,colored",
+      maskIconUrl: "data:image/svg+xml;base64,mask",
+      id: "extension:gemini",
+      launchRef: {
+        extensionInstallationId: "gemini@1.0.3",
+        type: "agent_extension"
+      },
+      name: "Gemini CLI",
+      provider: "acp:gemini",
+      sortOrder: 700,
+      source: "system",
+      updatedAtUnixMs: 1780272000000
+    }
+  ]);
+
+  // Early Access off: an enabled extension stays out of the launchable
+  // directory even though its daemon target is enabled.
+  assert.deepEqual(mapAgentTargetPresentationsToAgents(presentations), []);
+  assert.deepEqual(
+    mapAgentTargetPresentationsToAgents(presentations, {
+      earlyAccessEnabled: false
+    }),
+    []
+  );
+  // Early Access on: the extension becomes launchable.
+  assert.deepEqual(
+    mapAgentTargetPresentationsToAgents(presentations, {
+      earlyAccessEnabled: true
+    }).map((agent) => agent.agentTargetId),
+    ["extension:gemini"]
   );
 });
 

@@ -56,6 +56,9 @@ function createHostServices(): DesktopHostServices {
       }
     },
     preferences: {
+      getAgentCliUpdateCheckEnabled() {
+        return true;
+      },
       getAgentComposerDefaultsByProvider() {
         return {};
       },

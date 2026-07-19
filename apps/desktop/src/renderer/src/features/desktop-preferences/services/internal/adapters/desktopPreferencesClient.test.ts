@@ -322,7 +322,8 @@ function createPreferences(
     updateChannel: "stable",
     updatePolicy: "prompt",
     workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-    ...overrides
+    ...overrides,
+    agentCliUpdateCheckEnabled: overrides.agentCliUpdateCheckEnabled ?? true
   };
 }
 

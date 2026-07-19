@@ -46,9 +46,21 @@ type ActionID string
 
 const (
 	ActionInstall ActionID = "install"
+	ActionUpdate  ActionID = "update"
 	ActionLogin   ActionID = "login"
 	ActionRefresh ActionID = "refresh"
 )
+
+type UpdateCapability string
+
+const (
+	UpdateCapabilitySupported   UpdateCapability = "supported"
+	UpdateCapabilityUnsupported UpdateCapability = "unsupported"
+)
+
+type UpdateSource string
+
+const UpdateSourceNPM UpdateSource = "npm"
 
 type ProbeStatus string
 
@@ -73,9 +85,15 @@ type ListInput struct {
 	// never blocks on the network. Only the agent-env wizard, which renders the
 	// network diagnostic, sets this.
 	IncludeNetwork bool
+	// IncludeUpdates explicitly opts into remote provider CLI update discovery.
+	// It is OFF by default so readiness/status reads remain purely local.
+	IncludeUpdates bool
 	// ForceRefresh bypasses the application readiness cache. Interactive refresh,
 	// install, and login flows use it; ordinary startup and dock reads do not.
 	ForceRefresh bool
+	// RefreshUpdates bypasses only the remote update-metadata cache when
+	// IncludeUpdates is true. It never forces local readiness detection.
+	RefreshUpdates bool
 }
 
 type ProbeInput struct {
@@ -124,11 +142,23 @@ type ProviderStatus struct {
 	CLI          CLIStatus
 	Adapter      AdapterStatus
 	Auth         AuthInfo
+	Update       UpdateStatus
 	Actions      []Action
 	Network      *NetworkStatus
 	Checks       []ProviderCheck
 	LastError    *ProviderLastError
 	ActiveAction *ActiveAction
+}
+
+type UpdateStatus struct {
+	Capability        UpdateCapability
+	Source            UpdateSource
+	CurrentVersion    string
+	LatestVersion     string
+	UpdateAvailable   *bool
+	UnsupportedReason string
+	LastCheckedAt     *time.Time
+	ReasonCode        string
 }
 
 type ProviderCheck struct {
@@ -242,6 +272,11 @@ type Service struct {
 	// readiness probes run once per provider instead of once per caller/window.
 	StatusCache    *ProviderStatusCache
 	StatusCacheTTL time.Duration
+	// UpdateCache is separate from readiness caching because remote release
+	// discovery is opt-in and must never make ordinary local status reads touch
+	// the network.
+	UpdateCache    *ProviderUpdateCache
+	UpdateCacheTTL time.Duration
 }
 
 const authStatusCommandTimeout = 5 * time.Second
@@ -273,7 +308,9 @@ func (s Service) List(ctx context.Context, input ListInput) (snapshot Snapshot, 
 			"event", "tutti.agent_provider.status_list.completed",
 			"durationMs", time.Since(startedAt).Milliseconds(),
 			"includeNetwork", input.IncludeNetwork,
+			"includeUpdates", input.IncludeUpdates,
 			"forceRefresh", input.ForceRefresh,
+			"refreshUpdates", input.RefreshUpdates,
 			"providerCount", len(snapshot.Providers),
 			"requestedProviderCount", len(input.Providers),
 			"requestedProviders", input.Providers,
@@ -299,6 +336,27 @@ func (s Service) List(ctx context.Context, input ListInput) (snapshot Snapshot, 
 		})
 	}
 	_ = group.Wait() // statusForSpec never returns an error
+	for i := range statuses {
+		statuses[i].Update = baseProviderUpdateStatus(specs[i], statuses[i].CLI.Version, statuses[i].CLI.BinaryPath)
+	}
+
+	// Remote update discovery is a separate, explicit opt-in. It never runs for
+	// ordinary readiness/status requests, and each provider records a cached,
+	// non-fatal outcome rather than failing the whole snapshot.
+	if input.IncludeUpdates {
+		var updateGroup errgroup.Group
+		updateGroup.SetLimit(statusDetectionConcurrency)
+		for i, spec := range specs {
+			updateGroup.Go(func() error {
+				statuses[i].Update = s.updateStatusForSpec(ctx, spec, statuses[i].CLI.Version, statuses[i].CLI.BinaryPath, input.RefreshUpdates)
+				if statuses[i].Update.UpdateAvailable != nil && *statuses[i].Update.UpdateAvailable {
+					statuses[i].Actions = appendProviderAction(statuses[i].Actions, daemonAction(ActionUpdate))
+				}
+				return nil
+			})
+		}
+		_ = updateGroup.Wait()
+	}
 
 	// The network connectivity probe is OPT-IN (input.IncludeNetwork). The dock /
 	// startup / polling / provider-availability path leaves it off so detection is
@@ -516,6 +574,7 @@ func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunAction
 	}
 	spec := specs[0]
 	defer s.invalidateProviderStatus(spec.Provider)
+	defer s.UpdateCache.invalidate(spec.Provider)
 	result := RunActionResult{
 		Provider:    spec.Provider,
 		ActionID:    input.ActionID,
@@ -534,6 +593,8 @@ func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunAction
 			StartedAt: startedAt,
 		})
 		return result, err
+	case ActionUpdate:
+		return s.runUpdateAction(ctx, spec, result)
 	default:
 		return RunActionResult{}, ErrInvalidAction
 	}

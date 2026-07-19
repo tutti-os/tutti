@@ -79,6 +79,7 @@ export interface AgentEnvWizardViewModelInput {
   isLoading: boolean;
   activeAction: CodexSetupActiveAction | null;
   installActionPending: boolean;
+  updateActionPending: boolean;
   loginPending: boolean;
   revealIndex: number;
   stageLabels: AgentSetupStageLabels;
@@ -98,6 +99,8 @@ export interface AgentEnvWizardViewModel {
   error: CodexSetupActiveActionError | null;
   manualCommand: string | null;
   installPending: boolean;
+  updateAvailable: boolean;
+  updating: boolean;
   loginPending: boolean;
 }
 
@@ -107,9 +110,12 @@ export function buildAgentEnvWizardViewModel(
   const { status, activeAction, provider } = input;
   const ready = status?.availability.status === "ready";
   const installPending = input.installActionPending;
+  const updatePending = input.updateActionPending;
   const loginPending = input.loginPending;
+  const updating = updatePending || activeAction?.phase === "update";
   const busy =
     installPending ||
+    updating ||
     activeAction?.phase === "install" ||
     activeAction?.phase === "repair" ||
     activeAction?.phase === "verify";
@@ -211,6 +217,7 @@ export function buildAgentEnvWizardViewModel(
     ready: Boolean(ready),
     activePhase: activeAction?.phase ?? null,
     installActionPending: installPending,
+    updateActionPending: updatePending,
     loginPending,
     networkReachable,
     cliVersionDetail: cliDetail,
@@ -255,6 +262,11 @@ export function buildAgentEnvWizardViewModel(
     error: activeAction?.error ?? null,
     manualCommand: MANUAL_INSTALL_COMMANDS[provider] ?? null,
     installPending,
+    updateAvailable:
+      updatePending ||
+      (status?.update?.updateAvailable === true &&
+        status.actions.some((action) => action.id === "update")),
+    updating,
     loginPending
   };
 }

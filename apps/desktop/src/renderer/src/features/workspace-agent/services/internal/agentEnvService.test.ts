@@ -24,6 +24,12 @@ class FakeProviderStatusService implements IAgentProviderStatusService {
     provider: WorkspaceAgentProvider;
   }> = [];
   readonly listeners = new Set<() => void>();
+  readonly ensureLoadedInputs: Parameters<
+    IAgentProviderStatusService["ensureLoaded"]
+  > = [];
+  readonly refreshInputs: Array<
+    Parameters<IAgentProviderStatusService["refresh"]>
+  > = [];
   refreshCalls = 0;
   ensureLoadedCalls = 0;
   reportCalls = 0;
@@ -57,9 +63,15 @@ class FakeProviderStatusService implements IAgentProviderStatusService {
       (item) => item.provider === provider && item.actionId === actionId
     );
   }
+  isCheckingUpdates(): boolean {
+    return false;
+  }
   hydrate(): void {}
-  async ensureLoaded(): Promise<null> {
+  async ensureLoaded(
+    input?: Parameters<IAgentProviderStatusService["ensureLoaded"]>[0]
+  ): Promise<null> {
     this.ensureLoadedCalls += 1;
+    this.ensureLoadedInputs[0] = input;
     return null;
   }
   async runAction(
@@ -69,9 +81,13 @@ class FakeProviderStatusService implements IAgentProviderStatusService {
   ): Promise<void> {
     this.actionCalls.push({ actionId, options, provider });
   }
-  async refresh(): Promise<void> {
+  async refresh(
+    ...input: Parameters<IAgentProviderStatusService["refresh"]>
+  ): Promise<void> {
     this.refreshCalls += 1;
+    this.refreshInputs.push(input);
   }
+  async checkUpdates(): Promise<void> {}
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -231,6 +247,30 @@ test("manual stage actions are marked as user-originated", async () => {
   assert.equal(
     harness.providerStatusService.actionCalls.at(-1)?.options?.origin,
     "user"
+  );
+  harness.service.dispose();
+});
+
+test("environment setup owns update discovery, pending state, and execution", async () => {
+  const harness = createHarness(authRequiredStatus(), null);
+
+  assert.deepEqual(harness.providerStatusService.ensureLoadedInputs[0], {
+    includeNetwork: true,
+    includeUpdates: true,
+    providers: ["claude-code"]
+  });
+
+  harness.providerStatusService.snapshot = {
+    ...harness.providerStatusService.snapshot,
+    pendingActions: [{ actionId: "update", provider: "claude-code" }]
+  };
+  harness.providerStatusService.emit();
+  assert.equal(harness.service.getSnapshot().updatePending, true);
+
+  await harness.service.runStageAction("update" satisfies StageActionId);
+  assert.equal(
+    harness.providerStatusService.actionCalls.at(-1)?.actionId,
+    "update"
   );
   harness.service.dispose();
 });

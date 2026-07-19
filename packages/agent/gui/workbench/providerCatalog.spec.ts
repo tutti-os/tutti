@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  agentGuiWorkbenchPreviewProviders,
+  agentGuiWorkbenchEarlyAccessProviders,
   agentGuiWorkbenchProviderLabels,
-  isAgentGuiWorkbenchPreviewProvider,
-  isAgentGuiWorkbenchProviderVisibleWithPreview,
+  isAgentGuiWorkbenchEarlyAccessProvider,
+  isAgentGuiWorkbenchProviderVisibleWithEarlyAccess,
   resolveAgentGuiWorkbenchProviderLabel
 } from "./providerCatalog.ts";
 
@@ -15,27 +15,32 @@ describe("workbench provider catalog", () => {
     );
   });
 
-  it("marks preview agents (hermes) and not stable ones", () => {
-    expect(agentGuiWorkbenchPreviewProviders).toContain("hermes");
-    expect(isAgentGuiWorkbenchPreviewProvider("hermes")).toBe(true);
-    expect(isAgentGuiWorkbenchPreviewProvider("codex")).toBe(false);
-    expect(isAgentGuiWorkbenchPreviewProvider("claude-code")).toBe(false);
+  it("marks early-access integrations and not stable ones", () => {
+    expect(agentGuiWorkbenchEarlyAccessProviders).toContain("hermes");
+    expect(agentGuiWorkbenchEarlyAccessProviders).toContain("openclaw");
+    expect(isAgentGuiWorkbenchEarlyAccessProvider("hermes")).toBe(true);
+    expect(isAgentGuiWorkbenchEarlyAccessProvider("openclaw")).toBe(true);
+    expect(isAgentGuiWorkbenchEarlyAccessProvider("codex")).toBe(false);
+    expect(isAgentGuiWorkbenchEarlyAccessProvider("claude-code")).toBe(false);
   });
 
-  it("hides preview providers only while the preview switch is off; stable always visible", () => {
-    // preview off
-    expect(isAgentGuiWorkbenchProviderVisibleWithPreview("hermes", false)).toBe(
-      false
-    );
-    expect(isAgentGuiWorkbenchProviderVisibleWithPreview("codex", false)).toBe(
-      true
-    );
-    // preview on
-    expect(isAgentGuiWorkbenchProviderVisibleWithPreview("hermes", true)).toBe(
-      true
-    );
-    expect(isAgentGuiWorkbenchProviderVisibleWithPreview("codex", true)).toBe(
-      true
-    );
+  it("hides early-access providers only while the switch is off; stable ones stay visible", () => {
+    // early access off
+    expect(
+      isAgentGuiWorkbenchProviderVisibleWithEarlyAccess("hermes", false)
+    ).toBe(false);
+    expect(
+      isAgentGuiWorkbenchProviderVisibleWithEarlyAccess("openclaw", false)
+    ).toBe(false);
+    expect(
+      isAgentGuiWorkbenchProviderVisibleWithEarlyAccess("codex", false)
+    ).toBe(true);
+    // early access on
+    expect(
+      isAgentGuiWorkbenchProviderVisibleWithEarlyAccess("hermes", true)
+    ).toBe(true);
+    expect(
+      isAgentGuiWorkbenchProviderVisibleWithEarlyAccess("codex", true)
+    ).toBe(true);
   });
 });

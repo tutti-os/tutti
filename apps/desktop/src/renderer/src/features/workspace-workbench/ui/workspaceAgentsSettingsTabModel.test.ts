@@ -5,8 +5,8 @@ import {
   resolveAgentDeepLinkOutcome
 } from "./workspaceAgentsSettingsTabModel.ts";
 
-test("Agents list hides preview providers only while Preview Agents is off", () => {
-  const providers = ["codex", "claude-code", "hermes"];
+test("Agents list hides early-access integrations only while the gate is off", () => {
+  const providers = ["codex", "claude-code", "hermes", "openclaw"];
   assert.deepEqual(filterVisibleAgentProviders(providers, false), [
     "codex",
     "claude-code"
@@ -16,25 +16,28 @@ test("Agents list hides preview providers only while Preview Agents is off", () 
 
 test("deep link focuses a visible provider row", () => {
   const outcome = resolveAgentDeepLinkOutcome({
-    previewEnabled: true,
+    earlyAccessEnabled: true,
     provider: "hermes",
     visibleProviders: ["codex", "hermes"]
   });
   assert.deepEqual(outcome, { kind: "focus", provider: "hermes" });
 });
 
-test("deep link to a hidden preview agent surfaces a hint, not silence", () => {
+test("deep link to a hidden early-access integration surfaces a hint", () => {
   const outcome = resolveAgentDeepLinkOutcome({
-    previewEnabled: false,
-    provider: "hermes",
+    earlyAccessEnabled: false,
+    provider: "openclaw",
     visibleProviders: ["codex", "claude-code"]
   });
-  assert.deepEqual(outcome, { kind: "preview-hidden", provider: "hermes" });
+  assert.deepEqual(outcome, {
+    kind: "early-access-hidden",
+    provider: "openclaw"
+  });
 });
 
 test("deep link to a stable provider always focuses (panel-open state agnostic)", () => {
   const outcome = resolveAgentDeepLinkOutcome({
-    previewEnabled: false,
+    earlyAccessEnabled: false,
     provider: "codex",
     visibleProviders: ["codex", "claude-code"]
   });
@@ -44,7 +47,7 @@ test("deep link to a stable provider always focuses (panel-open state agnostic)"
 test("deep link with no provider or an unknown provider yields no action", () => {
   assert.equal(
     resolveAgentDeepLinkOutcome({
-      previewEnabled: true,
+      earlyAccessEnabled: true,
       provider: null,
       visibleProviders: ["codex"]
     }),
@@ -52,7 +55,7 @@ test("deep link with no provider or an unknown provider yields no action", () =>
   );
   assert.equal(
     resolveAgentDeepLinkOutcome({
-      previewEnabled: true,
+      earlyAccessEnabled: true,
       provider: "not-a-managed-agent",
       visibleProviders: ["codex"]
     }),

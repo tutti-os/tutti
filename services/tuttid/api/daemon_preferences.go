@@ -408,6 +408,7 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		}
 	}
 	preferences, err := api.PreferencesService.Put(ctx, preferencesservice.PutInput{
+		AgentCLIUpdateCheckEnabled: request.Body.Preferences.AgentCliUpdateCheckEnabled,
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromGenerated(
 			request.Body.Preferences.AgentComposerDefaultsByProvider,
 		),

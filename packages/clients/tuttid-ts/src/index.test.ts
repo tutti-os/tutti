@@ -1482,6 +1482,34 @@ test("shared tuttid client sends route-only provider and session commands", asyn
   });
 });
 
+test("shared tuttid client opts into cached provider update discovery", async () => {
+  const { client, requests } = captureClient(() =>
+    jsonResponse({
+      capturedAt: "2026-06-02T08:00:00.000Z",
+      defaultProvider: "codex",
+      providers: []
+    })
+  );
+
+  await client.getAgentProviderStatuses({
+    providers: ["codex"],
+    includeUpdates: true,
+    refreshUpdates: true
+  });
+
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/agent-providers/status",
+    query: {
+      includeUpdates: "true",
+      providers: "codex",
+      refreshUpdates: "true"
+    }
+  });
+});
+
 test("shared tuttid client submits one scoped workspace agent plan decision", async () => {
   let requestBody: unknown;
   let requestMethod = "";

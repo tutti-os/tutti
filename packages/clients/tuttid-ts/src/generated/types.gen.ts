@@ -332,6 +332,10 @@ export type DeletedAgentConversationPurgeResult = {
 };
 
 export type DesktopPreferences = {
+  /**
+   * Whether tuttid may periodically discover newer managed agent CLI releases on this device. This never authorizes automatic installation.
+   */
+  agentCliUpdateCheckEnabled: boolean;
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
@@ -1240,7 +1244,11 @@ export type AgentProviderActionKind =
   | "terminal_command"
   | "refresh";
 
-export type AgentProviderActionId = "install" | "login" | "refresh";
+export type AgentProviderActionId = "install" | "update" | "login" | "refresh";
+
+export type AgentProviderUpdateCapability = "supported" | "unsupported";
+
+export type AgentProviderUpdateSource = "npm";
 
 export type AgentProviderProbeStatus = "ready" | "failed" | "skipped";
 
@@ -1249,6 +1257,7 @@ export type AgentProviderActionRunStatus = "completed" | "failed";
 export type AgentProviderActiveActionPhase =
   | "detect"
   | "install"
+  | "update"
   | "repair"
   | "verify"
   | "done"
@@ -1355,12 +1364,33 @@ export type AgentProviderAuthInfo = {
   authMethod?: string | null;
 };
 
+export type AgentProviderUpdateStatus = {
+  capability: AgentProviderUpdateCapability;
+  source: AgentProviderUpdateSource | null;
+  currentVersion: string | null;
+  latestVersion: string | null;
+  /**
+   * Null when discovery has not run, failed, or the current/latest versions cannot be compared safely.
+   */
+  updateAvailable: boolean | null;
+  /**
+   * Stable reason why this provider cannot be updated by tuttid.
+   */
+  unsupportedReason: string | null;
+  lastCheckedAt: string | null;
+  /**
+   * Non-fatal discovery or version-comparison result code.
+   */
+  reasonCode: string | null;
+};
+
 export type AgentProviderStatus = {
   provider: WorkspaceAgentProvider;
   availability: AgentProviderAvailability;
   cli: AgentProviderCliStatus;
   adapter: AgentProviderAdapterStatus;
   auth: AgentProviderAuthInfo;
+  update: AgentProviderUpdateStatus;
   actions: Array<AgentProviderAction>;
   network?: AgentProviderNetworkStatus | null;
   activeAction?: AgentProviderActiveAction | null;
@@ -6591,9 +6621,17 @@ export type GetAgentProviderStatusesData = {
      */
     includeNetwork?: boolean;
     /**
-     * Bypass the daemon provider-readiness cache.
+     * Opt into cached remote update discovery for provider CLIs. Off by default so ordinary readiness and status requests stay purely local. Discovery failures are reported on each provider's update status and do not fail the status request.
+     */
+    includeUpdates?: boolean;
+    /**
+     * Bypass only the daemon's local provider-readiness cache. This does not opt into or refresh remote update discovery.
      */
     refresh?: boolean;
+    /**
+     * Bypass only the provider update-metadata cache when includeUpdates is true. This does not bypass local readiness or network-diagnostic caches and does not opt into discovery by itself.
+     */
+    refreshUpdates?: boolean;
   };
   url: "/v1/agent-providers/status";
 };
