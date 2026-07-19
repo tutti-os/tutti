@@ -1957,7 +1957,21 @@ describe("agent GUI workbench contribution copy", () => {
       /\.tsh-zoom-dialog\[data-rmiz-modal\]\s*{[^}]*z-index:\s*var\(--z-dialog\);/s
     );
     expect(css).toMatch(
-      /\.workbench-window:has\(\s*\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\s*\)\s*\.workbench-window__header\s*{[^}]*z-index:\s*calc\(var\(--z-panel\) \+ 1\);/s
+      /\.workbench-window:has\(\s*> \.workbench-window__header\s+\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\s*\)\s*\.workbench-window__header\s*{[^}]*z-index:\s*calc\(var\(--z-panel\) \+ 1\);/s
+    );
+  });
+
+  it("only applies Agent window chrome when the Header occupies the window header slot", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.workbench-window:has\(\s*> \.workbench-window__header \[data-agent-gui-workbench-header="true"\]\s*\)\s*{/s
+    );
+    expect(css).not.toMatch(
+      /\.workbench-window:has\(\s*\[data-agent-gui-workbench-header="true"\]/s
+    );
+    expect(css).not.toMatch(
+      /\.workbench-window:has\(\s*\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]/s
     );
   });
 

@@ -464,7 +464,10 @@ rename-and-copy menu; a copy-only surface does not render rename or an empty
 separator. Hosts that already own a complete canonical message projection may
 reuse the pure transcript serializer exported by the `agent-conversation`
 entrypoint, while clipboard access, toasts, and session loading remain
-host-owned capabilities.
+host-owned capabilities. Window-level Agent chrome applies only when that Header
+is rendered through the Workbench window's own header slot; a complete Header
+nested in another host window's body remains ordinary embedded content and must
+not alter the outer window's layout or drag layer.
 
 Copy as reference copies the session-mention markdown link the @ panel
 produces, so pasting into any composer reconstructs the session chip; it is

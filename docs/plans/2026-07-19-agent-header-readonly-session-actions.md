@@ -11,12 +11,14 @@ Let read-only host surfaces reuse the complete `AgentGuiWorkbenchHeader` while e
 - The shared menu renders only declared actions and emits separators only between visible action groups.
 - The existing `agent-conversation` entrypoint exports the pure transcript serializer so external read-only conversation surfaces can preserve AgentGUI's Markdown format without copying implementation.
 - Hosts retain ownership of canonical session/message loading, clipboard access, toasts, and window actions.
+- Workbench window-chrome selectors recognize the Header only when it occupies that window's header slot, so a complete Header embedded in another window's body cannot reclassify the outer window.
 
 ## Invariants
 
 1. Existing AgentGUI headers keep their current menu when no capability list is supplied.
 2. A read-only host cannot expose rename when it declares only copy actions.
 3. Session identity comes from the host's canonical session projection; menu availability never changes the title.
+4. A nested Header does not alter its containing host window's rows, drag layer, or body offsets.
 
 ## Verification
 
