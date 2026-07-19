@@ -4894,6 +4894,17 @@ aside.workspace-agents-status-panel
   margin-right: 0;
 }
 
+/* In immersive fullscreen, the native application traffic lights remain in
+   place. Reserve their area plus the standalone restore control so the Agent
+   header's rail and new-conversation buttons continue after both controls. */
+.workbench-window-shell[data-immersive-fullscreen="true"]
+  .agent-gui-workbench-header__primary {
+  padding-inline-start: var(
+    --workbench-fullscreen-restore-content-inset,
+    128px
+  );
+}
+
 .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"] {
   cursor: grab !important;
   -webkit-app-region: drag;

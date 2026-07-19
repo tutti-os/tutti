@@ -30,18 +30,6 @@ export interface WorkspaceChromeController {
   update(input: WorkspaceChromeControllerInput): void;
 }
 
-export function shouldHideWorkspaceWindowButtons(input: {
-  autoHideChromeEnabled: boolean;
-  hasFullscreenWorkbenchWindow: boolean;
-  platform: NodeJS.Platform;
-}): boolean {
-  return (
-    input.autoHideChromeEnabled &&
-    input.hasFullscreenWorkbenchWindow &&
-    input.platform === "darwin"
-  );
-}
-
 export function createWorkspaceChromeController(
   input: WorkspaceChromeControllerInput
 ): WorkspaceChromeController {

@@ -105,10 +105,7 @@ import { WorkspaceFallbackState } from "./WorkspaceFallbackState.tsx";
 import type { WorkspaceWorkbenchHostSessionBinding } from "../services/workspaceWorkbenchHostService.interface.ts";
 import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
-import type {
-  DesktopHostWindowApi,
-  DesktopWorkspaceAppExternalHostApi
-} from "@preload/types";
+import type { DesktopWorkspaceAppExternalHostApi } from "@preload/types";
 import type { DesktopWorkspaceAppExternalRendererEvent } from "@shared/contracts/ipc";
 import type {
   TuttiExternalFileOpenInput,
@@ -131,14 +128,12 @@ const temporaryWorkspaceAppDockRetentionActionPrefix =
 interface WorkspaceWorkbenchProps {
   enableWindowCloseGuard: boolean;
   headerSlot?: React.ReactNode;
-  hostWindowApi: Pick<DesktopHostWindowApi, "setWindowButtonVisibility">;
   workspaceAppExternalApi?: DesktopWorkspaceAppExternalHostApi;
   workspaceID: string | null;
 }
 export function WorkspaceWorkbench({
   enableWindowCloseGuard,
   headerSlot,
-  hostWindowApi,
   workspaceAppExternalApi,
   workspaceID
 }: WorkspaceWorkbenchProps) {
@@ -173,7 +168,6 @@ export function WorkspaceWorkbench({
     <ReadyWorkspaceWorkbench
       enableWindowCloseGuard={enableWindowCloseGuard}
       headerSlot={headerSlot}
-      hostWindowApi={hostWindowApi}
       state={{
         platform: state.platform,
         workspace: state.workspace
@@ -186,7 +180,6 @@ export function WorkspaceWorkbench({
 interface ReadyWorkspaceWorkbenchProps {
   enableWindowCloseGuard: boolean;
   headerSlot?: React.ReactNode;
-  hostWindowApi: Pick<DesktopHostWindowApi, "setWindowButtonVisibility">;
   state: {
     platform: NodeJS.Platform;
     workspace: WorkspaceSummary;
@@ -228,7 +221,6 @@ function ReadyWorkspaceWorkbench(props: ReadyWorkspaceWorkbenchProps) {
 function ReadyWorkspaceWorkbenchWithSession({
   enableWindowCloseGuard,
   headerSlot,
-  hostWindowApi,
   hostSession,
   state,
   workspaceAppExternalApi
@@ -875,9 +867,7 @@ function ReadyWorkspaceWorkbenchWithSession({
           onNodeCloseRequest={hostInput.onNodeCloseRequest}
           renderTopChrome={(chromeContext) => (
             <WorkspaceChrome
-              autoHideChromeEnabled={autoHideWorkspaceChrome}
               headerSlot={headerSlot}
-              hostWindowApi={hostWindowApi}
               launchNode={chromeContext.launchNode}
               missionControl={runtime.missionControl}
               onSelectWallpaper={runtime.selectWallpaper}

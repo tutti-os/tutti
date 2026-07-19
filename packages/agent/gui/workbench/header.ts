@@ -197,6 +197,7 @@ export function AgentGuiWorkbenchHeader({
             "div",
             {
               className: "agent-gui-workbench-header__traffic-lights",
+              "data-workbench-window-controls": "true",
               onDoubleClick: (event) => event.stopPropagation(),
               onPointerDown: (event) => event.stopPropagation()
             },

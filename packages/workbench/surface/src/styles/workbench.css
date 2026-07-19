@@ -2657,8 +2657,8 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
   pointer-events: none;
 }
 
-/* Immersive fullscreen windows replace their header traffic lights with one
-   restore control on the host-selected safe side of the application chrome. */
+/* Immersive fullscreen windows replace their own header traffic lights with
+   one restore control after the host application's native window controls. */
 .workbench-window-shell[data-immersive-fullscreen="true"]
   .workbench-window__traffic-light-actions,
 .workbench-window-shell[data-immersive-fullscreen="true"]

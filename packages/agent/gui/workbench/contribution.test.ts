@@ -1527,6 +1527,9 @@ describe("agent GUI workbench contribution copy", () => {
       "data-agent-gui-workbench-header-collapsed",
       "true"
     );
+    expect(
+      header?.querySelector(".agent-gui-workbench-header__traffic-lights")
+    ).toHaveAttribute("data-workbench-window-controls", "true");
     expect(primary).not.toHaveTextContent("Agent");
     expect(screen.queryByText("Agent")).toBeNull();
     expect(screen.queryByText("Codex")).toBeNull();
@@ -1902,6 +1905,14 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header__detached-window\s*\+\s*\.agent-gui-workbench-header__rail-toggle\s*{[^}]*margin-left:\s*-4px;/s
+    );
+  });
+
+  it("reserves inline space for immersive fullscreen restore chrome", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.workbench-window-shell\[data-immersive-fullscreen="true"\]\s*\.agent-gui-workbench-header__primary\s*{[^}]*padding-inline-start:\s*var\(\s*--workbench-fullscreen-restore-content-inset,/s
     );
   });
 

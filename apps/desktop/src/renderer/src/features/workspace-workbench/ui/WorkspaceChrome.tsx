@@ -10,7 +10,6 @@ import type {
   WorkbenchHostNodeData,
   WorkbenchMissionControlMode
 } from "@tutti-os/workbench-surface";
-import type { DesktopHostWindowApi } from "@preload/types";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "@tutti-os/agent-gui/workbench/contribution";
 import { cn } from "@renderer/lib/format";
 import { ExternalAgentSessionImportPrompt } from "./ExternalAgentSessionImportPrompt";
@@ -23,7 +22,6 @@ import {
   WorkspaceSettingsTrigger
 } from "./WorkspaceChromeActions";
 import { useWorkspaceChromeState } from "./useWorkspaceChromeState";
-import { shouldHideWorkspaceWindowButtons } from "../services/workspaceChromeController";
 import type {
   WorkspaceWallpaperDisplayMode,
   WorkspaceWallpaperId
@@ -36,9 +34,7 @@ const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_RESERVED_WIDTH_PX =
   WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX;
 
 export function WorkspaceChrome({
-  autoHideChromeEnabled,
   headerSlot,
-  hostWindowApi,
   missionControl,
   onSelectWallpaper,
   onSelectWallpaperDisplayMode,
@@ -50,9 +46,7 @@ export function WorkspaceChrome({
   workbenchController,
   workspace
 }: {
-  autoHideChromeEnabled: boolean;
   headerSlot?: React.ReactNode;
-  hostWindowApi: Pick<DesktopHostWindowApi, "setWindowButtonVisibility">;
   missionControl: {
     canOpen: boolean;
     close(): void;
@@ -94,27 +88,6 @@ export function WorkspaceChrome({
     useState<WorkspaceAgentProvider[] | undefined>(undefined);
   const [externalImportWizardOpen, setExternalImportWizardOpen] =
     useState(false);
-  const shouldHideNativeWindowButtons = shouldHideWorkspaceWindowButtons({
-    autoHideChromeEnabled,
-    hasFullscreenWorkbenchWindow: chromeState.hasFullscreenWorkbenchWindow,
-    platform
-  });
-  useEffect(() => {
-    if (!isDarwin) {
-      return;
-    }
-    void hostWindowApi
-      .setWindowButtonVisibility(!shouldHideNativeWindowButtons)
-      .catch(() => undefined);
-  }, [hostWindowApi, isDarwin, shouldHideNativeWindowButtons]);
-  useEffect(() => {
-    if (!isDarwin) {
-      return;
-    }
-    return () => {
-      void hostWindowApi.setWindowButtonVisibility(true).catch(() => undefined);
-    };
-  }, [hostWindowApi, isDarwin]);
   const openExternalAgentImport = useCallback(
     (providers?: WorkspaceAgentProvider[]) => {
       setExternalImportWizardProviders(providers);

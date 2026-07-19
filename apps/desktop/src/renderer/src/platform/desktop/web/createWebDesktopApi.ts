@@ -335,9 +335,6 @@ function createWebHostApi(): DesktopHostApi {
       resizeContentWidth() {
         return Promise.reject(electronDebugRequired("resizeContentWidth"));
       },
-      setWindowButtonVisibility() {
-        return Promise.resolve();
-      },
       toggleMaximize() {
         return Promise.reject(electronDebugRequired("toggleMaximize"));
       }

@@ -76,12 +76,11 @@ The consuming host remains responsible for deciding when the mode is enabled
 and for changing its layout constraints. Tutti's desktop host exposes it as an
 experimental preference and removes the normal top/Dock safe areas while it is
 enabled so maximized workbench windows can use the complete surface. On macOS,
-the desktop host hides the native application window buttons while an immersive
-workbench window is maximized and restores them when that state ends. The
-workbench surface also hides the maximized window's own traffic-light group and
-places one restore control at a host-provided titlebar inset, after the native
-traffic-light area. This leaves one unambiguous control for returning the
-workbench window to its normal size.
+the desktop host keeps the native application window buttons visible. The
+workbench surface hides only the maximized internal window's own traffic-light
+group and places one restore control at a host-provided titlebar inset, after
+the native traffic-light area. Custom headers reserve that control's width so
+their existing actions continue to its right instead of overlapping it.
 
 ## Core Model
 
