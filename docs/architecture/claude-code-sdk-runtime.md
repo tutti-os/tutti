@@ -129,6 +129,15 @@ result during resume, the new generation consumes that tail without attaching
 it to the new canonical Turn. Session close remains permanent and closes the
 current generation without creating a resumable successor.
 
+Turn-scoped Tutti host context and the user's prompt share one SDK user message:
+the host context is the leading text block and the user content follows it.
+Never enqueue host context as a separate synthetic `shouldQuery: false` prompt.
+Anthropic-compatible model gateways may emit one terminal `result` per prompt
+queue item; a separate context item can therefore settle the canonical Turn
+before the real user prompt is processed. Keeping one queue item preserves
+provider Turn ownership while the daemon's pre-SDK user activity remains the
+only user-visible transcript message.
+
 ## Protocol and compatibility
 
 The daemon and sidecar exchange newline-delimited JSON over standard input and

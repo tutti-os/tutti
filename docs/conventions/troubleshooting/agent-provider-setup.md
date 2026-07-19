@@ -984,6 +984,44 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   [service_helpers.go](../../../services/tuttid/service/agent/service_helpers.go)
   [composer_live_model_discovery.go](../../../services/tuttid/service/agent/composer_live_model_discovery.go)
 
+### Claude-compatible model returns an empty success only in Tutti mode
+
+- Symptom:
+  A Claude Code session using an Anthropic-compatible managed model works in
+  normal mode, but Tutti mode completes almost immediately with no assistant
+  message. The daemon records `sdk_message_type=result`,
+  `sdk_message_subtype=success`, and `stop_reason=end_turn`; the exported
+  session contains only the user message even though model context usage may
+  arrive a few seconds later.
+- Quick checks:
+  Compare one normal and one Tutti-mode session using the same model plan. If
+  the normal session emits assistant messages while the Tutti session emits a
+  terminal result within milliseconds, inspect the sidecar prompt iterable.
+  One canonical Turn must contribute exactly one SDK user message containing
+  both the leading `<tutti-host-context>` text block and the original user
+  content. Do not classify a Turn that is still `running` as this failure: an
+  exported package may capture the session before a slower compatible model
+  produces its first token. Also check for daemon shutdown lines such as
+  `tuttid received signal`; a partial assistant message marked failed
+  immediately afterward is process teardown, not an empty provider result.
+- Root cause:
+  A separate synthetic `shouldQuery: false` user message was previously queued
+  for Tutti host context before the real prompt. Some Anthropic-compatible
+  gateways terminate each prompt iterable item independently, so the SDK
+  emitted a successful empty result for the synthetic item. The sidecar then
+  settled the active canonical Turn before the real prompt's output arrived.
+- Fix:
+  Prepend the host context as a text block in the same SDK user message as the
+  user content. Keep transcript projection based on the daemon's original user
+  activity so host-owned context remains hidden from the visible prompt.
+- Validation:
+  Cover a query double that returns a terminal result after its first iterable
+  item. Assert the item contains both host-context and user text blocks, no
+  synthetic queue item is present, the Turn completes once, and no host context
+  appears in emitted activity. In a live comparison, the fixed path should stay
+  running until assistant activity arrives and must not emit a millisecond-scale
+  terminal result before that activity.
+
 ### Claude SDK rejects live bypassPermissions mode
 
 - Symptom:

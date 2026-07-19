@@ -320,26 +320,11 @@ export class SessionRuntime {
         ) {
           return;
         }
-        const sdkContent = sdkContentFromPromptBlocks(
-          content,
-          prompt
-        ) as unknown as SDKUserMessage["message"]["content"];
-        generation.expectPromptEcho(turn.promptUuid);
+        const sdkContent = sdkContentFromPromptBlocks(content, prompt);
         if (hostContext.trim()) {
-          generation.promptQueue.push({
-            uuid: crypto.randomUUID(),
-            type: "user",
-            session_id: this.providerSessionId,
-            parent_tool_use_id: null,
-            isSynthetic: true,
-            shouldQuery: false,
-            origin: { kind: "coordinator" },
-            message: {
-              role: "user",
-              content: hostContext.trim()
-            }
-          } as SDKUserMessage);
+          sdkContent.unshift({ type: "text", text: hostContext.trim() });
         }
+        generation.expectPromptEcho(turn.promptUuid);
         generation.promptQueue.push({
           uuid: turn.promptUuid,
           type: "user",
@@ -347,7 +332,8 @@ export class SessionRuntime {
           parent_tool_use_id: null,
           message: {
             role: "user",
-            content: sdkContent
+            content:
+              sdkContent as unknown as SDKUserMessage["message"]["content"]
           }
         } as SDKUserMessage);
         this.consume(generation);

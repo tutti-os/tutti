@@ -20,10 +20,10 @@ import {
 } from "./sessionRuntimeTestQueries.session.ts";
 import { waitForEvent } from "./sessionRuntimeTestQueries.nested.ts";
 
-test("tutti host context is a synthetic coordinator message before unchanged user input", async () => {
+test("tutti host context shares one SDK prompt with unchanged user input", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const messages: Array<{
-    text: string;
+    textBlocks: string[];
     isSynthetic?: boolean;
     shouldQuery?: boolean;
     origin?: unknown;
@@ -50,22 +50,25 @@ test("tutti host context is a synthetic coordinator message before unchanged use
       ({ prompt }) => ({
         async *[Symbol.asyncIterator]() {
           const iterator = prompt[Symbol.asyncIterator]();
-          for (let index = 0; index < 2; index += 1) {
-            const next = await iterator.next();
-            const message = next.value!;
-            messages.push({
-              text: userPromptText(message),
-              isSynthetic: message.isSynthetic,
-              shouldQuery: message.shouldQuery,
-              origin: message.origin
-            });
-            yield {
-              ...message,
-              type: "user",
-              parent_tool_use_id: null,
-              session_id: "provider-session-1"
-            } as never;
-          }
+          const next = await iterator.next();
+          const message = next.value!;
+          const content = message.message.content;
+          messages.push({
+            textBlocks: Array.isArray(content)
+              ? content.flatMap((block) =>
+                  block.type === "text" ? [block.text] : []
+                )
+              : [content],
+            isSynthetic: message.isSynthetic,
+            shouldQuery: message.shouldQuery,
+            origin: message.origin
+          });
+          yield {
+            ...message,
+            type: "user",
+            parent_tool_use_id: null,
+            session_id: "provider-session-1"
+          } as never;
           yield { type: "result", subtype: "success" } as never;
         },
         close() {}
@@ -85,13 +88,10 @@ test("tutti host context is a synthetic coordinator message before unchanged use
 
     assert.deepEqual(messages, [
       {
-        text: "<tutti-host-context>active</tutti-host-context>",
-        isSynthetic: true,
-        shouldQuery: false,
-        origin: { kind: "coordinator" }
-      },
-      {
-        text: "what mode is active?",
+        textBlocks: [
+          "<tutti-host-context>active</tutti-host-context>",
+          "what mode is active?"
+        ],
         isSynthetic: undefined,
         shouldQuery: undefined,
         origin: undefined
@@ -191,17 +191,15 @@ test("goal set scheduling ack followed by immediate clear coalesces before SDK a
       ({ prompt }) => ({
         async *[Symbol.asyncIterator]() {
           const iterator = prompt[Symbol.asyncIterator]();
-          for (let index = 0; index < 2; index += 1) {
-            const next = await iterator.next();
-            const message = next.value!;
-            prompts.push(userPromptText(message));
-            yield {
-              ...message,
-              type: "user",
-              parent_tool_use_id: null,
-              session_id: "provider-session-goal"
-            } as never;
-          }
+          const next = await iterator.next();
+          const message = next.value!;
+          prompts.push(userPromptText(message));
+          yield {
+            ...message,
+            type: "user",
+            parent_tool_use_id: null,
+            session_id: "provider-session-goal"
+          } as never;
           yield { type: "result", subtype: "success" } as never;
         },
         close() {}
@@ -250,8 +248,7 @@ test("goal set scheduling ack followed by immediate clear coalesces before SDK a
     assert.equal(started?.payload?.operationId, "goal-op-clear");
     assert.equal(started?.payload?.revision, 2);
     assert.deepEqual(prompts, [
-      "<tutti-host-context>goal-active</tutti-host-context>",
-      "/goal clear"
+      "<tutti-host-context>goal-active</tutti-host-context>/goal clear"
     ]);
   } finally {
     restoreSink();
