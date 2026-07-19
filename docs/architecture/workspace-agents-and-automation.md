@@ -15,6 +15,13 @@ Applies to:
 The user-facing Agent is a workspace-scoped configuration, not a model role
 and not the provider executable itself:
 
+Desktop creation/configuration surfaces are independently gated by the
+default-off `lab.workspaceAgents` and `lab.automationRules` preferences. The
+Automation Rules gate also removes session override controls from the
+composer. These are renderer availability gates: turning them off preserves
+all stored Agents, rules, sessions, and daemon behavior so the same data is
+available when the gates are re-enabled.
+
 ```text
 Harness AgentTarget
   + primary ModelPlan / default model

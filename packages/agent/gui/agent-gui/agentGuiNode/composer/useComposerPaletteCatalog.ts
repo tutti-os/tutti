@@ -92,7 +92,7 @@ export function useComposerPaletteCatalog({
         planSupported: composerSettings.supportsPlanMode,
         browserSupported: Boolean(composerSettings.supportsBrowser),
         computerSupported: Boolean(composerSettings.supportsComputerUse),
-        tuttiSupported: true
+        tuttiSupported: capabilityMenuState?.tuttiMode?.enabled !== false
       }).filter(
         (command) =>
           goalSupported || command.name.trim().toLowerCase() !== "goal"
@@ -103,6 +103,7 @@ export function useComposerPaletteCatalog({
       composerSettings.supportsPlanMode,
       composerSettings.supportsBrowser,
       composerSettings.supportsComputerUse,
+      capabilityMenuState?.tuttiMode?.enabled,
       hasCompactableContext,
       goalSupported,
       provider,

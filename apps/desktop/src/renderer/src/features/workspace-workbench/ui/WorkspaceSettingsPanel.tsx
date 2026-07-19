@@ -84,8 +84,11 @@ import {
 } from "../../../../../shared/preferences/index.ts";
 import {
   isFeatureEnabled,
+  LAB_AUTOMATION_RULES_FLAG,
   LAB_ENABLED_FLAG,
+  LAB_MODEL_PLANS_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
+  LAB_WORKSPACE_AGENTS_FLAG,
   resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
@@ -120,6 +123,7 @@ import {
 import { WorkspaceAgentsSection } from "./WorkspaceAgentsSection";
 import { WorkspaceAutomationRulesSection } from "./WorkspaceAutomationRulesSection";
 import { WorkspaceModelPlansSection } from "./WorkspaceModelPlansSection";
+import { WorkspaceLabFeatureGateRows } from "./WorkspaceLabFeatureGateRows";
 import {
   workspaceSettingsInputClass,
   workspaceSettingsSelectContentClass,
@@ -173,6 +177,23 @@ export function WorkspaceSettingsPanel({
   const labSectionVisible =
     settingsState.developerPanelVisible &&
     isFeatureEnabled(pendingFeatureFlags, LAB_ENABLED_FLAG);
+  const modelPlansEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    LAB_MODEL_PLANS_FLAG
+  );
+  const workspaceAgentsEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    LAB_WORKSPACE_AGENTS_FLAG
+  );
+  const automationRulesEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    LAB_AUTOMATION_RULES_FLAG
+  );
+  const activeSection =
+    (!labSectionVisible && settingsState.activeSection === "lab") ||
+    (!modelPlansEnabled && settingsState.activeSection === "model")
+      ? "general"
+      : settingsState.activeSection;
 
   useEffect(() => {
     if (settingsState.open) {
@@ -185,6 +206,12 @@ export function WorkspaceSettingsPanel({
       settingsService.selectSection("general");
     }
   }, [labSectionVisible, settingsService, settingsState.activeSection]);
+
+  useEffect(() => {
+    if (!modelPlansEnabled && settingsState.activeSection === "model") {
+      settingsService.selectSection("general");
+    }
+  }, [modelPlansEnabled, settingsService, settingsState.activeSection]);
 
   const handleVersionTap = () => {
     if (settingsState.developerPanelVisible) {
@@ -254,10 +281,14 @@ export function WorkspaceSettingsPanel({
               id: "agent" as const,
               label: t("workspace.settings.nav.agent")
             },
-            {
-              id: "model" as const,
-              label: t("workspace.settings.nav.model")
-            },
+            ...(modelPlansEnabled
+              ? [
+                  {
+                    id: "model" as const,
+                    label: t("workspace.settings.nav.model")
+                  }
+                ]
+              : []),
             {
               id: "appearance" as const,
               label: t("workspace.settings.nav.appearance")
@@ -291,7 +322,7 @@ export function WorkspaceSettingsPanel({
                 ]
               : [])
           ].map((section) => {
-            const selected = settingsState.activeSection === section.id;
+            const selected = activeSection === section.id;
             return (
               <button
                 key={section.id}
@@ -313,7 +344,7 @@ export function WorkspaceSettingsPanel({
 
         <div className="col-start-2 row-start-2 flex min-h-0 flex-col">
           <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto px-[22px] pb-[22px] pt-0">
-            {settingsState.activeSection === "general" ? (
+            {activeSection === "general" ? (
               <WorkspaceGeneralSettingsSection
                 changingFeatureFlags={
                   desktopPreferencesState.changingFeatureFlags
@@ -354,7 +385,7 @@ export function WorkspaceSettingsPanel({
                   desktopPreferencesState.sleepPreventionMode
                 }
               />
-            ) : settingsState.activeSection === "agent" ? (
+            ) : activeSection === "agent" ? (
               <WorkspaceAgentSettingsSection
                 agentConversationDetailMode={
                   desktopPreferencesState.agentConversationDetailMode
@@ -386,8 +417,10 @@ export function WorkspaceSettingsPanel({
                   void settingsService.changeDefaultAgentProvider(provider);
                 }}
                 onOpenExternalAgentImport={onOpenExternalAgentImport}
+                automationRulesEnabled={automationRulesEnabled}
+                workspaceAgentsEnabled={workspaceAgentsEnabled}
               />
-            ) : settingsState.activeSection === "appearance" ? (
+            ) : activeSection === "appearance" ? (
               <WorkspaceAppearanceSettingsSection
                 changingDockPlacement={
                   desktopPreferencesState.changingDockPlacement
@@ -425,9 +458,9 @@ export function WorkspaceSettingsPanel({
                   desktopPreferencesState.workbenchWindowSnapping
                 }
               />
-            ) : settingsState.activeSection === "model" ? (
+            ) : activeSection === "model" ? (
               <WorkspaceModelSettingsSection />
-            ) : settingsState.activeSection === "lab" ? (
+            ) : activeSection === "lab" ? (
               <WorkspaceLabSettingsSection
                 changingFeatureFlags={
                   desktopPreferencesState.changingFeatureFlags
@@ -441,9 +474,9 @@ export function WorkspaceSettingsPanel({
                   void settingsService.changeWorkbenchShortcuts(shortcuts);
                 }}
               />
-            ) : settingsState.activeSection === "account" ? (
+            ) : activeSection === "account" ? (
               <WorkspaceAccountSettingsSection />
-            ) : settingsState.activeSection === "about" ? (
+            ) : activeSection === "about" ? (
               <WorkspaceAboutSettingsSection
                 developerLogs={settingsState.developerLogs}
                 onVersionTap={handleVersionTap}
@@ -486,37 +519,15 @@ function WorkspaceLabSettingsSection({
     pendingFeatureFlags,
     LAB_WORKBENCH_SHORTCUTS_FLAG
   );
-  const updateFeatureFlag = useCallback(
-    (key: string, enabled: boolean) => {
-      onFeatureFlagsChange({
-        ...featureFlags,
-        [key]: enabled
-      });
-    },
-    [featureFlags, onFeatureFlagsChange]
-  );
   const shortcutsDisabled = isUpdatingFlags || !workbenchShortcutsEnabled;
 
   return (
     <SettingsRows>
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.lab.workbenchShortcutsLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.lab.workbenchShortcutsDescription")}
-          </p>
-        </div>
-        <Switch
-          aria-label={t("workspace.settings.lab.workbenchShortcutsLabel")}
-          checked={workbenchShortcutsEnabled}
-          disabled={isUpdatingFlags}
-          onCheckedChange={(enabled) => {
-            updateFeatureFlag(LAB_WORKBENCH_SHORTCUTS_FLAG, enabled);
-          }}
-        />
-      </div>
+      <WorkspaceLabFeatureGateRows
+        changingFeatureFlags={changingFeatureFlags}
+        featureFlags={featureFlags}
+        onFeatureFlagsChange={onFeatureFlagsChange}
+      />
 
       <WorkspaceLabShortcutRow
         disabled={shortcutsDisabled}
@@ -1967,6 +1978,7 @@ function resolveComputerUsePermissionStateLabel(
 
 function WorkspaceAgentSettingsSection({
   agentConversationDetailMode,
+  automationRulesEnabled,
   browserUseConnectionMode,
   changingAgentConversationDetailMode,
   changingDefaultAgentProvider,
@@ -1977,9 +1989,11 @@ function WorkspaceAgentSettingsSection({
   onAgentConversationDetailModeChange,
   onDefaultAgentProviderChange,
   onBrowserUseConnectionModeChange,
-  onOpenExternalAgentImport
+  onOpenExternalAgentImport,
+  workspaceAgentsEnabled
 }: {
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
+  automationRulesEnabled: boolean;
   browserUseConnectionMode: DesktopBrowserUseConnectionMode;
   changingAgentConversationDetailMode: DesktopAgentConversationDetailMode | null;
   changingDefaultAgentProvider: DesktopDefaultAgentProvider | null;
@@ -1995,6 +2009,7 @@ function WorkspaceAgentSettingsSection({
   ) => void;
   onDefaultAgentProviderChange: (provider: DesktopDefaultAgentProvider) => void;
   onOpenExternalAgentImport: () => void;
+  workspaceAgentsEnabled: boolean;
 }) {
   const { t } = useTranslation();
   const browserUseRowRef = useRef<HTMLDivElement | null>(null);
@@ -2227,8 +2242,8 @@ function WorkspaceAgentSettingsSection({
         }
       />
 
-      <WorkspaceAgentsSection />
-      <WorkspaceAutomationRulesSection />
+      {workspaceAgentsEnabled && <WorkspaceAgentsSection />}
+      {automationRulesEnabled && <WorkspaceAutomationRulesSection />}
     </div>
   );
 }

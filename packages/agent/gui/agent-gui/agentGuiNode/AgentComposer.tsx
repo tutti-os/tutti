@@ -175,10 +175,12 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
   const effectiveSubmitDisabled = submitDisabled || tuttiModeUpdating;
+  const automationRulesEnabled =
+    capabilityMenuState?.automationRules?.enabled !== false;
   const automationRules = useComposerAutomationRuleOverride({
     agentSessionId,
     disabled: disabled || effectiveSubmitDisabled,
-    runtime: agentActivityRuntime,
+    runtime: automationRulesEnabled ? agentActivityRuntime : null,
     workspaceId
   });
   const agentCollaboration = useComposerAgentCollaboration({
@@ -205,7 +207,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     }
     onSubmit(content, displayPrompt, {
       ...options,
-      ...(automationRules.override
+      ...(automationRulesEnabled && automationRules.override
         ? { automationRuleOverride: automationRules.override }
         : {}),
       ...(tuttiModeActive

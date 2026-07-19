@@ -400,12 +400,18 @@ export type AgentComposerCapabilitySettingsTarget = Exclude<
 >;
 
 export interface AgentComposerCapabilityMenuState {
+  automationRules?: {
+    enabled?: boolean | null;
+  };
   browserUse?: {
     connectionMode?: "autoConnect" | "isolated" | null;
   };
   computerUse?: {
     authorization?: AgentComposerComputerUseAuthorizationState | null;
     installed?: boolean | null;
+  };
+  tuttiMode?: {
+    enabled?: boolean | null;
   };
 }
 

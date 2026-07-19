@@ -23,6 +23,12 @@ Harness target to create a named Agent option. Editing an Agent may switch its
 plan/model without creating another Agent; Tutti never generates a
 Harness-by-ModelPlan Cartesian product.
 
+Desktop exposes ModelPlan configuration behind the independent
+`lab.modelPlans` preference, which defaults to off. This is a renderer
+availability gate only: disabling it removes the Model settings entry point
+without deleting plans or changing daemon/runtime resolution. Re-enabling it
+restores the same persisted plans.
+
 ## Domain Objects
 
 The primary user-facing composition is workspace-scoped:

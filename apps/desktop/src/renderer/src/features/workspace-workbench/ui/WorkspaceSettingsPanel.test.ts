@@ -25,6 +25,13 @@ const defaultProvidersSource = readFileSync(
   ),
   "utf8"
 );
+const labFeatureGateRowsSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "WorkspaceLabFeatureGateRows.tsx"
+  ),
+  "utf8"
+);
 
 test("workspace settings developer panel exposes analytics debug switch only when available", () => {
   assert.match(developerSource, /useAnalyticsDebugPreferenceService/);
@@ -47,7 +54,7 @@ test("workspace settings gates account behind Tutti Agent Switch", () => {
     developerSource,
     /settingsService\.setTuttiAgentSwitchEnabled\(enabled\)/
   );
-  assert.match(source, /settingsState\.activeSection === "account"/);
+  assert.match(source, /activeSection === "account"/);
   assert.match(source, /<WorkspaceAccountSettingsSection \/>/);
 });
 
@@ -418,10 +425,15 @@ test("workspace settings release channel control lives in developer settings", (
   assert.match(developerSection, /<ReleaseChannelControl/);
 });
 
-test("workspace settings model tab hosts plans; agent tab hosts Agents and automation rules", () => {
+test("workspace settings gates model plans, Agents, and automation independently", () => {
   assert.match(
     source,
     /function WorkspaceModelSettingsSection\(\) \{\s*return \(\s*<SettingsRows>\s*<WorkspaceModelPlansSection \/>\s*<\/SettingsRows>/
+  );
+  assert.match(source, /\.\.\.\(modelPlansEnabled/);
+  assert.match(
+    source,
+    /!modelPlansEnabled && settingsState\.activeSection === "model"/
   );
   const agentSectionStart = source.indexOf(
     "function WorkspaceAgentSettingsSection"
@@ -434,12 +446,27 @@ test("workspace settings model tab hosts plans; agent tab hosts Agents and autom
   const agentSection = source.slice(agentSectionStart, generalSectionStart);
   assert.match(
     agentSection,
-    /<ComputerUseSetupRow[\s\S]*\/>\s*<WorkspaceAgentsSection \/>\s*<WorkspaceAutomationRulesSection \/>/
+    /workspaceAgentsEnabled && <WorkspaceAgentsSection \/>/
+  );
+  assert.match(
+    agentSection,
+    /automationRulesEnabled && <WorkspaceAutomationRulesSection \/>/
   );
   assert.doesNotMatch(agentSection, /<WorkspaceModelPlansSection \/>/);
   assert.doesNotMatch(source, /function WorkspaceAppsSettingsSection/);
   assert.doesNotMatch(source, /WorkspaceAgentModelBindingSection/);
   assert.doesNotMatch(source, /managedModels/);
+});
+
+test("Lab exposes independent default-off gates for experimental Agent features", () => {
+  assert.match(labFeatureGateRowsSource, /LAB_TUTTI_MODE_FLAG/);
+  assert.match(labFeatureGateRowsSource, /LAB_MODEL_PLANS_FLAG/);
+  assert.match(labFeatureGateRowsSource, /LAB_WORKSPACE_AGENTS_FLAG/);
+  assert.match(labFeatureGateRowsSource, /LAB_AUTOMATION_RULES_FLAG/);
+  assert.match(
+    labFeatureGateRowsSource,
+    /\.\.\.pendingFeatureFlags,[\s\S]*\[row\.key\]: enabled/
+  );
 });
 
 test("workspace Agent editor keeps only the simplified fields", () => {

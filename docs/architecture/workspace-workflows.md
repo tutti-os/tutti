@@ -13,6 +13,12 @@ activation, proposal, user decision, or resulting Issue. Tutti CLI
 availability is a separate runtime capability and never derives from the
 activation badge.
 
+Desktop exposes Tutti Mode activation behind the independent
+`lab.tuttiMode` preference, which defaults to off. This renderer gate removes
+the activation command and plan-review runtime projection without mutating an
+existing session or its durable activation state. Re-enabling the gate restores
+the same state; daemon ownership and authorization remain unchanged.
+
 Ownership is split as follows:
 
 - `services/tuttid/biz/tuttimodeactivation` defines the durable activation and
