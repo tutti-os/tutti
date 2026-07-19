@@ -2737,11 +2737,11 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
 }
 
 .workbench-immersive-chrome-header__tab-title:focus-visible,
-.workbench-immersive-chrome-header__tab-minimize:focus-visible {
+.workbench-immersive-chrome-header__tab-restore:focus-visible {
   box-shadow: 0 0 0 2px var(--border-focus) inset;
 }
 
-.workbench-immersive-chrome-header__tab-minimize {
+.workbench-immersive-chrome-header__tab-restore {
   display: inline-flex;
   width: 28px;
   height: 28px;
@@ -2765,13 +2765,13 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
     color 0.16s ease;
 }
 
-.workbench-immersive-chrome-header__tab-minimize:hover,
-.workbench-immersive-chrome-header__tab-minimize:focus-visible {
+.workbench-immersive-chrome-header__tab-restore:hover,
+.workbench-immersive-chrome-header__tab-restore:focus-visible {
   background: color-mix(in srgb, var(--white-stationary) 9%, transparent);
   color: inherit;
 }
 
-.workbench-immersive-chrome-header__tab-minimize > svg {
+.workbench-immersive-chrome-header__tab-restore > svg {
   width: 12px;
   height: 12px;
 }

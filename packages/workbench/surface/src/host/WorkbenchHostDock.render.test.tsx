@@ -227,7 +227,7 @@ describe("WorkbenchHostDock", () => {
       ).toBe("expanded");
 
       const restoreControl = container.querySelector<HTMLButtonElement>(
-        '[data-workbench-immersive-tab-restore="true"]'
+        '[data-workbench-immersive-tab-title-restore="true"]'
       );
       expect(restoreControl?.getAttribute("aria-label")).toBe("Restore Window");
 
@@ -249,36 +249,38 @@ describe("WorkbenchHostDock", () => {
         controller.commands.enterFullscreen("fullscreen-node");
       });
 
-      const minimizeControl = container.querySelector<HTMLButtonElement>(
-        '[data-workbench-immersive-tab-minimize="true"]'
+      const trailingRestoreControl = container.querySelector<HTMLButtonElement>(
+        '[data-workbench-immersive-tab-restore="true"]'
       );
       expect(
         topChrome?.querySelector(
           '[data-workbench-immersive-chrome-header="true"]'
         )
       ).not.toBeNull();
-      expect(minimizeControl?.getAttribute("aria-label")).toBe(
-        "Minimize to Dock"
+      expect(trailingRestoreControl?.getAttribute("aria-label")).toBe(
+        "Restore Window"
       );
       expect(
-        minimizeControl?.querySelector(
-          '[data-workbench-immersive-tab-icon="minimize"]'
+        trailingRestoreControl?.querySelector(
+          '[data-workbench-immersive-tab-icon="unfullscreen"]'
         )
       ).not.toBeNull();
 
       await act(async () => {
-        minimizeControl?.click();
-        vi.runAllTimers();
+        trailingRestoreControl?.click();
       });
 
-      expect(controller.getSnapshot().nodes[0]?.displayMode).toBe("fullscreen");
-      expect(controller.getSnapshot().nodes[0]?.isMinimized).toBe(true);
+      expect(controller.getSnapshot().nodes[0]?.displayMode).toBe("floating");
+      expect(controller.getSnapshot().nodes[0]?.isMinimized).toBe(false);
       expect(controller.getSnapshot().nodes).toHaveLength(1);
       expect(
         topChrome?.querySelector(
           '[data-workbench-immersive-chrome-header="true"]'
         )
       ).toBeNull();
+      expect(
+        fullscreenShell?.querySelector('[data-testid="original-window-header"]')
+      ).not.toBeNull();
     } finally {
       await act(async () => {
         root.unmount();

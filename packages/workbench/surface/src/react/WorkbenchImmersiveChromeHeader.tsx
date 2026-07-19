@@ -61,7 +61,7 @@ export function WorkbenchImmersiveChromeHeader<TData>({
         <button
           aria-label={resolvedI18n.t("restoreWindow")}
           className="workbench-immersive-chrome-header__tab-title"
-          data-workbench-immersive-tab-restore="true"
+          data-workbench-immersive-tab-title-restore="true"
           title={resolvedI18n.t("restoreWindow")}
           type="button"
           onClick={() => {
@@ -72,22 +72,20 @@ export function WorkbenchImmersiveChromeHeader<TData>({
           <span>{node.title}</span>
         </button>
         <button
-          aria-label={resolvedI18n.t("minimizeWindow")}
-          className="workbench-immersive-chrome-header__tab-minimize"
-          data-workbench-immersive-tab-minimize="true"
-          title={resolvedI18n.t("minimizeWindow")}
+          aria-label={resolvedI18n.t("restoreWindow")}
+          className="workbench-immersive-chrome-header__tab-restore"
+          data-workbench-immersive-tab-restore="true"
+          title={resolvedI18n.t("restoreWindow")}
           type="button"
           onClick={() => {
             controller.commands.focusNode(node.id);
-            genieControls.minimizeNodeToAnchor(node.id, () =>
-              controller.commands.minimizeNode(node.id)
-            );
+            controller.commands.exitFullscreen(node.id);
           }}
         >
           <WindowTrafficLightIcon
             aria-hidden
-            data-workbench-immersive-tab-icon="minimize"
-            iconName="minimize"
+            data-workbench-immersive-tab-icon="unfullscreen"
+            iconName="unfullscreen"
           />
         </button>
       </div>
