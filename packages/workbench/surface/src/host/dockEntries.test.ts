@@ -322,6 +322,117 @@ test("dock action entries respect blocked entry state", () => {
   );
 });
 
+test("dock click resolution toggles to minimize when node is already focused", () => {
+  const entry: WorkbenchHostDockEntry = {
+    icon: null,
+    id: "agent:codex",
+    label: "Codex",
+    typeId: "agentGui"
+  };
+
+  const focusedNode = makeNode("agent-1", "agentGui", "agent:codex");
+
+  // Node is focused (matches focusedNodeId) and not minimized → should minimize
+  assert.deepEqual(
+    resolveWorkbenchDockEntryClick({
+      entry,
+      focusedNodeId: focusedNode.id,
+      instanceMode: "single",
+      matchedNodes: [focusedNode]
+    }),
+    { kind: "minimize-node", nodeId: "agentGui:agent-1" }
+  );
+});
+
+test("dock click resolution focuses node when it is minimized", () => {
+  const entry: WorkbenchHostDockEntry = {
+    icon: null,
+    id: "agent:codex",
+    label: "Codex",
+    typeId: "agentGui"
+  };
+
+  const minimizedNode: WorkbenchNode<WorkbenchHostNodeData> = {
+    ...makeNode("agent-1", "agentGui", "agent:codex"),
+    isMinimized: true
+  };
+
+  // Node is minimized → should focus/restore even though focusedNodeId matches
+  assert.deepEqual(
+    resolveWorkbenchDockEntryClick({
+      entry,
+      focusedNodeId: minimizedNode.id,
+      instanceMode: "single",
+      matchedNodes: [minimizedNode]
+    }),
+    { kind: "focus-node", nodeId: "agentGui:agent-1" }
+  );
+});
+
+test("dock click resolution focuses node when another node is focused", () => {
+  const entry: WorkbenchHostDockEntry = {
+    icon: null,
+    id: "agent:codex",
+    label: "Codex",
+    typeId: "agentGui"
+  };
+
+  const node = makeNode("agent-1", "agentGui", "agent:codex");
+
+  // A different node is focused → should focus this one
+  assert.deepEqual(
+    resolveWorkbenchDockEntryClick({
+      entry,
+      focusedNodeId: "agentGui:agent-other",
+      instanceMode: "single",
+      matchedNodes: [node]
+    }),
+    { kind: "focus-node", nodeId: "agentGui:agent-1" }
+  );
+});
+
+test("dock click resolution defaults to focus when focusedNodeId is not provided", () => {
+  const entry: WorkbenchHostDockEntry = {
+    icon: null,
+    id: "agent:codex",
+    label: "Codex",
+    typeId: "agentGui"
+  };
+
+  const node = makeNode("agent-1", "agentGui", "agent:codex");
+
+  // No focusedNodeId provided → backward compatible, always focus
+  assert.deepEqual(
+    resolveWorkbenchDockEntryClick({
+      entry,
+      instanceMode: "single",
+      matchedNodes: [node]
+    }),
+    { kind: "focus-node", nodeId: "agentGui:agent-1" }
+  );
+});
+
+test("dock click resolution does not toggle minimize for null focusedNodeId", () => {
+  const entry: WorkbenchHostDockEntry = {
+    icon: null,
+    id: "agent:codex",
+    label: "Codex",
+    typeId: "agentGui"
+  };
+
+  const node = makeNode("agent-1", "agentGui", "agent:codex");
+
+  assert.deepEqual(
+    resolveWorkbenchDockEntryClick({
+      entry,
+      focusedNodeId: null,
+      instanceMode: "single",
+      matchedNodes: [node]
+    }),
+    { kind: "focus-node", nodeId: "agentGui:agent-1" }
+  );
+});
+
 function makeNode(
   instanceId: string,
   typeId: string,
