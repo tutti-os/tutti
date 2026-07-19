@@ -31,10 +31,7 @@ export interface WorkbenchWindowFrameProps<TData = unknown> {
   children: ReactNode;
   genie: WorkbenchGenieController;
   edgeSnapEnabled?: boolean;
-  fullscreenHostControlsCenterY?: number;
-  fullscreenHostControlsMaskHeight?: number;
-  fullscreenHostControlsMaskWidth?: number;
-  fullscreenRestoreControlInset?: number;
+  fullscreenTabInset?: number;
   hiddenMounted?: boolean;
   interactive?: boolean;
   node: WorkbenchNode<TData>;
@@ -93,10 +90,7 @@ function resolveWorkbenchNodeTypeId(data: unknown): string | undefined {
 export function WorkbenchWindowFrame<TData>({
   children,
   edgeSnapEnabled = false,
-  fullscreenHostControlsCenterY,
-  fullscreenHostControlsMaskHeight,
-  fullscreenHostControlsMaskWidth,
-  fullscreenRestoreControlInset,
+  fullscreenTabInset,
   genie,
   hiddenMounted = false,
   interactive = true,
@@ -140,8 +134,7 @@ export function WorkbenchWindowFrame<TData>({
     }
   } as const;
   const isImmersiveFullscreen =
-    fullscreenRestoreControlInset !== undefined &&
-    node.displayMode === "fullscreen";
+    fullscreenTabInset !== undefined && node.displayMode === "fullscreen";
   const resolvedWindowChromeI18n = windowChromeI18n ?? defaultWindowChromeI18n;
   const defaultActions =
     interactive && !isImmersiveFullscreen ? (
@@ -253,22 +246,7 @@ export function WorkbenchWindowFrame<TData>({
           zIndex,
           ...(isImmersiveFullscreen
             ? {
-                "--workbench-fullscreen-restore-content-inset": `${fullscreenRestoreControlInset + 40}px`,
-                ...(fullscreenHostControlsCenterY === undefined
-                  ? {}
-                  : {
-                      "--workbench-fullscreen-host-controls-center-y": `${fullscreenHostControlsCenterY}px`
-                    }),
-                ...(fullscreenHostControlsMaskHeight === undefined
-                  ? {}
-                  : {
-                      "--workbench-fullscreen-host-controls-height": `${fullscreenHostControlsMaskHeight}px`
-                    }),
-                ...(fullscreenHostControlsMaskWidth === undefined
-                  ? {}
-                  : {
-                      "--workbench-fullscreen-host-controls-width": `${fullscreenHostControlsMaskWidth}px`
-                    })
+                "--workbench-immersive-tab-content-inset": `${fullscreenTabInset + 208}px`
               }
             : {})
         } as CSSProperties
@@ -323,36 +301,49 @@ export function WorkbenchWindowFrame<TData>({
           <div className="workbench-window__body">{children}</div>
         </div>
         {isImmersiveFullscreen &&
-        fullscreenHostControlsMaskHeight !== undefined &&
-        !hiddenMounted &&
-        presentationMode !== "mission-control" ? (
-          <div
-            aria-hidden="true"
-            className="workbench-window__native-controls-mask"
-            data-workbench-native-controls-mask="true"
-          />
-        ) : null}
-        {isImmersiveFullscreen &&
         !hiddenMounted &&
         presentationMode !== "mission-control" &&
         interactive ? (
-          <button
-            aria-label={resolvedWindowChromeI18n.t("restoreWindow")}
-            className="workbench-window__fullscreen-restore"
-            data-workbench-fullscreen-restore="true"
-            style={{ left: fullscreenRestoreControlInset }}
-            title={resolvedWindowChromeI18n.t("restoreWindow")}
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              controller.commands.focusNode(node.id);
-              controller.commands.exitFullscreen(node.id);
-            }}
+          <div
+            aria-label={node.title}
+            className="workbench-window__immersive-tab"
+            data-workbench-immersive-tab="true"
+            role="group"
+            style={{ left: fullscreenTabInset }}
             onDoubleClick={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
           >
-            <WindowTrafficLightIcon aria-hidden iconName="unfullscreen" />
-          </button>
+            <button
+              aria-label={resolvedWindowChromeI18n.t("restoreWindow")}
+              className="workbench-window__immersive-tab-title"
+              data-workbench-immersive-tab-restore="true"
+              title={resolvedWindowChromeI18n.t("restoreWindow")}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                controller.commands.focusNode(node.id);
+                controller.commands.exitFullscreen(node.id);
+              }}
+            >
+              <span>{node.title}</span>
+            </button>
+            <button
+              aria-label={resolvedWindowChromeI18n.t("minimizeWindow")}
+              className="workbench-window__immersive-tab-minimize"
+              data-workbench-immersive-tab-minimize="true"
+              title={resolvedWindowChromeI18n.t("minimizeWindow")}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                controller.commands.focusNode(node.id);
+                genieControls.minimizeNodeToAnchor(node.id, () =>
+                  controller.commands.minimizeNode(node.id)
+                );
+              }}
+            >
+              <WindowTrafficLightIcon aria-hidden iconName="close" />
+            </button>
+          </div>
         ) : null}
         {node.displayMode === "floating" &&
         !hiddenMounted &&

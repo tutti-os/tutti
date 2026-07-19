@@ -78,18 +78,13 @@ experimental preference and removes the normal top/Dock safe areas while it is
 enabled so maximized workbench windows can use the complete surface. On macOS,
 the desktop host keeps the native application window buttons visible. The
 workbench surface hides only the maximized internal window's own traffic-light
-group and places one restore control at a host-provided titlebar inset, after
-the native traffic-light area. The desktop host separately provides the native
-controls' vertical center and a compact mask size, allowing the restore control
-to align with the traffic lights without becoming part of their mask. An
-inward, Gaussian-tail curve closes that mask before the restore control, whose
-window-colored button treatment keeps it visually owned by the internal
-window. The mask is slightly inset from the fullscreen window edge and uses a
-stronger contour shadow, making the native controls read as a floating host
-panel. Its curve begins after the complete traffic-light group rather than
-tight against the green control. Custom headers reserve the restore control's
-width so their existing actions continue to its right instead of overlapping
-it.
+group and represents that window as an app tab after the native controls. The
+tab title restores the internal window to floating mode. Its trailing close
+glyph deliberately minimizes the window to the Dock instead of closing it, so
+the app state is preserved when the user's intent is to leave fullscreen. The
+tab's accessible label and tooltip describe that minimize behavior explicitly.
+Custom headers reserve the tab's width, hide duplicate app branding, and keep
+their remaining actions to its right.
 
 ## Core Model
 

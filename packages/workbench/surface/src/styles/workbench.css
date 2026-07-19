@@ -2657,8 +2657,9 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
   pointer-events: none;
 }
 
-/* Immersive fullscreen windows replace their own header traffic lights with
-   one restore control after the host application's native window controls. */
+/* Immersive fullscreen windows replace their internal traffic lights with an
+   app tab. The tab title restores the window; its trailing close glyph
+   minimizes to the Dock instead of closing the app. */
 .workbench-window-shell[data-immersive-fullscreen="true"]
   .workbench-window__traffic-light-actions,
 .workbench-window-shell[data-immersive-fullscreen="true"]
@@ -2668,82 +2669,100 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
   display: none;
 }
 
-.workbench-window__native-controls-mask {
-  position: absolute;
-  z-index: 31;
-  top: 5px;
-  left: 4px;
-  width: var(--workbench-fullscreen-host-controls-width, 92px);
-  height: var(--workbench-fullscreen-host-controls-height, 42px);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--background-fronted) 82%, var(--text-primary) 18%),
-    color-mix(in srgb, var(--background-fronted) 90%, var(--text-primary) 10%)
-  );
-  clip-path: path(
-    "M10 0H92C92 17 91 24 87 29.5C82 34.5 76 36 72 42H10C4.5 42 0 37.5 0 32V10C0 4.5 4.5 0 10 0Z"
-  );
-  filter: drop-shadow(
-      0 1px 0 color-mix(in srgb, var(--text-primary) 12%, transparent)
-    )
-    drop-shadow(0 10px 18px rgb(0 0 0 / 30%));
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.workbench-window__native-controls-mask::after {
-  position: absolute;
-  inset: 1px;
-  background: linear-gradient(135deg, rgb(255 255 255 / 8%), transparent 48%);
-  content: "";
-  pointer-events: none;
-}
-
-.workbench-window__fullscreen-restore {
+.workbench-window__immersive-tab {
   position: absolute;
   z-index: 32;
-  top: calc(var(--workbench-fullscreen-host-controls-center-y, 19px) - 15px);
+  top: 8px;
+  display: flex;
+  width: 196px;
+  max-width: calc(100% - 104px);
+  height: 36px;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-1) 84%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--background-fronted) 94%, transparent);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 5%) inset,
+    0 8px 20px rgb(0 0 0 / 24%);
+  -webkit-app-region: no-drag;
+}
+
+.workbench-window__immersive-tab-title {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex: 1 1 auto;
+  align-items: center;
+  padding: 0 8px 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.workbench-window__immersive-tab-title > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-window__immersive-tab-title:hover,
+.workbench-window__immersive-tab-title:focus-visible {
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.workbench-window__immersive-tab-title:focus-visible,
+.workbench-window__immersive-tab-minimize:focus-visible {
+  box-shadow: 0 0 0 2px var(--border-focus) inset;
+}
+
+.workbench-window__immersive-tab-minimize {
   display: inline-flex;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
+  margin-right: 4px;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--border-1) 82%, transparent);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--background-panel) 94%, transparent);
-  box-shadow: 0 3px 10px rgb(0 0 0 / 16%);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   outline: none;
   transition:
     background-color 0.16s ease,
-    color 0.16s ease,
-    transform 0.16s ease;
-  -webkit-app-region: no-drag;
+    color 0.16s ease;
 }
 
-.workbench-window__fullscreen-restore:hover,
-.workbench-window__fullscreen-restore:focus-visible {
-  background: var(--background-fronted);
+.workbench-window__immersive-tab-minimize:hover,
+.workbench-window__immersive-tab-minimize:focus-visible {
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
   color: var(--text-primary);
-  transform: scale(1.05);
 }
 
-.workbench-window__fullscreen-restore:focus-visible {
-  box-shadow:
-    0 0 0 2px var(--border-focus),
-    0 4px 16px rgb(0 0 0 / 18%);
-}
-
-.workbench-window__fullscreen-restore > svg {
-  width: 14px;
-  height: 14px;
+.workbench-window__immersive-tab-minimize > svg {
+  width: 12px;
+  height: 12px;
 }
 
 .workbench-window-shell[data-immersive-fullscreen="true"]
   .workbench-window__header {
-  padding-left: var(--workbench-fullscreen-restore-content-inset, 50px);
+  padding-left: var(--workbench-immersive-tab-content-inset, 218px);
+}
+
+.workbench-window-shell[data-immersive-fullscreen="true"]
+  .workbench-window__title {
+  display: none;
 }
 
 .workbench-surface__bottom-chrome {

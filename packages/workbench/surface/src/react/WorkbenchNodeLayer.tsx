@@ -29,10 +29,7 @@ import { resolveWorkbenchWindowChromeMode } from "./windowHeader.ts";
 export interface WorkbenchNodeLayerProps<TData = unknown> {
   genie: WorkbenchGenieController<TData>;
   edgeSnapEnabled?: boolean;
-  fullscreenHostControlsCenterY?: number;
-  fullscreenHostControlsMaskHeight?: number;
-  fullscreenHostControlsMaskWidth?: number;
-  fullscreenRestoreControlInset?: number;
+  fullscreenTabInset?: number;
   interactive?: boolean;
   presentation?: WorkbenchSurfacePresentation | null;
   renderNode: WorkbenchRenderNode<TData>;
@@ -51,10 +48,7 @@ export interface WorkbenchNodeLayerProps<TData = unknown> {
 export function WorkbenchNodeLayer<TData>({
   genie,
   edgeSnapEnabled = false,
-  fullscreenHostControlsCenterY,
-  fullscreenHostControlsMaskHeight,
-  fullscreenHostControlsMaskWidth,
-  fullscreenRestoreControlInset,
+  fullscreenTabInset,
   interactive = true,
   presentation,
   renderNode,
@@ -120,10 +114,7 @@ export function WorkbenchNodeLayer<TData>({
       <WorkbenchNodeLayerGroup
         className="workbench-node-layer workbench-node-layer--dialog-popover"
         edgeSnapEnabled={edgeSnapEnabled}
-        fullscreenHostControlsCenterY={fullscreenHostControlsCenterY}
-        fullscreenHostControlsMaskHeight={fullscreenHostControlsMaskHeight}
-        fullscreenHostControlsMaskWidth={fullscreenHostControlsMaskWidth}
-        fullscreenRestoreControlInset={fullscreenRestoreControlInset}
+        fullscreenTabInset={fullscreenTabInset}
         fullscreenHeaderMode={resolveFullscreenHeaderMode}
         genie={genie}
         interactive={interactive}
@@ -143,10 +134,7 @@ export function WorkbenchNodeLayer<TData>({
       <WorkbenchNodeLayerGroup
         className="workbench-node-layer"
         edgeSnapEnabled={edgeSnapEnabled}
-        fullscreenHostControlsCenterY={fullscreenHostControlsCenterY}
-        fullscreenHostControlsMaskHeight={fullscreenHostControlsMaskHeight}
-        fullscreenHostControlsMaskWidth={fullscreenHostControlsMaskWidth}
-        fullscreenRestoreControlInset={fullscreenRestoreControlInset}
+        fullscreenTabInset={fullscreenTabInset}
         fullscreenHeaderMode={resolveFullscreenHeaderMode}
         genie={genie}
         interactive={interactive}
@@ -173,10 +161,7 @@ export function WorkbenchNodeLayer<TData>({
 interface WorkbenchNodeLayerGroupProps<TData = unknown> {
   className: string;
   edgeSnapEnabled: boolean;
-  fullscreenHostControlsCenterY?: number;
-  fullscreenHostControlsMaskHeight?: number;
-  fullscreenHostControlsMaskWidth?: number;
-  fullscreenRestoreControlInset?: number;
+  fullscreenTabInset?: number;
   fullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
   genie: WorkbenchGenieController<TData>;
   interactive: boolean;
@@ -197,10 +182,7 @@ interface WorkbenchNodeLayerGroupProps<TData = unknown> {
 function WorkbenchNodeLayerGroup<TData>({
   className,
   edgeSnapEnabled,
-  fullscreenHostControlsCenterY,
-  fullscreenHostControlsMaskHeight,
-  fullscreenHostControlsMaskWidth,
-  fullscreenRestoreControlInset,
+  fullscreenTabInset,
   fullscreenHeaderMode,
   genie,
   interactive,
@@ -244,10 +226,7 @@ function WorkbenchNodeLayerGroup<TData>({
       {nodeIDs.map((nodeID) => (
         <MemoizedWorkbenchNodeLayerItem
           key={nodeID}
-          fullscreenHostControlsCenterY={fullscreenHostControlsCenterY}
-          fullscreenHostControlsMaskHeight={fullscreenHostControlsMaskHeight}
-          fullscreenHostControlsMaskWidth={fullscreenHostControlsMaskWidth}
-          fullscreenRestoreControlInset={fullscreenRestoreControlInset}
+          fullscreenTabInset={fullscreenTabInset}
           fullscreenHeaderMode={fullscreenHeaderMode}
           genie={genie}
           edgeSnapEnabled={edgeSnapEnabled}
@@ -270,10 +249,7 @@ interface WorkbenchNodeLayerItemProps<TData = unknown> {
   fullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
   genie: WorkbenchGenieController<TData>;
   edgeSnapEnabled: boolean;
-  fullscreenHostControlsCenterY?: number;
-  fullscreenHostControlsMaskHeight?: number;
-  fullscreenHostControlsMaskWidth?: number;
-  fullscreenRestoreControlInset?: number;
+  fullscreenTabInset?: number;
   interactive: boolean;
   nodeID: string;
   presentation?: WorkbenchSurfacePresentation | null;
@@ -291,10 +267,7 @@ function WorkbenchNodeLayerItem<TData>({
   fullscreenHeaderMode,
   genie,
   edgeSnapEnabled,
-  fullscreenHostControlsCenterY,
-  fullscreenHostControlsMaskHeight,
-  fullscreenHostControlsMaskWidth,
-  fullscreenRestoreControlInset,
+  fullscreenTabInset,
   interactive,
   nodeID,
   presentation,
@@ -329,10 +302,7 @@ function WorkbenchNodeLayerItem<TData>({
   return (
     <WorkbenchWindowFrame
       edgeSnapEnabled={edgeSnapEnabled}
-      fullscreenHostControlsCenterY={fullscreenHostControlsCenterY}
-      fullscreenHostControlsMaskHeight={fullscreenHostControlsMaskHeight}
-      fullscreenHostControlsMaskWidth={fullscreenHostControlsMaskWidth}
-      fullscreenRestoreControlInset={fullscreenRestoreControlInset}
+      fullscreenTabInset={fullscreenTabInset}
       hiddenMounted={node.isMinimized}
       interactive={interactive}
       presentation={presentation}

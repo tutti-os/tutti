@@ -1908,11 +1908,14 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
-  it("reserves inline space for immersive fullscreen restore chrome", () => {
+  it("reserves inline space for the immersive fullscreen app tab", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.workbench-window-shell\[data-immersive-fullscreen="true"\]\s*\.agent-gui-workbench-header__primary\s*{[^}]*padding-inline-start:\s*var\(\s*--workbench-fullscreen-restore-content-inset,/s
+      /\.workbench-window-shell\[data-immersive-fullscreen="true"\]\s*\.agent-gui-workbench-header__primary\s*{[^}]*padding-inline-start:\s*var\(\s*--workbench-immersive-tab-content-inset,/s
+    );
+    expect(css).toMatch(
+      /\.workbench-window-shell\[data-immersive-fullscreen="true"\]\s*\.agent-gui-workbench-header__agent-brand\s*{[^}]*display:\s*none;/s
     );
   });
 

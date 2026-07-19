@@ -134,7 +134,8 @@ describe("WorkbenchHostDock", () => {
     }
   });
 
-  it("replaces fullscreen traffic lights with an inset restore control", async () => {
+  it("renders fullscreen windows as a restorable tab whose close glyph minimizes", async () => {
+    vi.useFakeTimers();
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -167,13 +168,11 @@ describe("WorkbenchHostDock", () => {
           <WorkbenchSurface
             autoHideChrome={{
               dockHandleLabel: "Show Dock",
-              fullscreenHostControlsCenterY: 26,
-              fullscreenHostControlsMaskHeight: 42,
-              fullscreenHostControlsMaskWidth: 92,
-              fullscreenRestoreControlInset: 104,
+              fullscreenTabInset: 88,
               topHandleLabel: "Show app bar"
             }}
             controller={controller}
+            minimizeAnimation="off"
             renderNode={() => <div>Node body</div>}
           />
         );
@@ -188,28 +187,14 @@ describe("WorkbenchHostDock", () => {
       expect(fullscreenShell?.getAttribute("data-immersive-fullscreen")).toBe(
         "true"
       );
-      expect(
-        fullscreenShell?.style.getPropertyValue(
-          "--workbench-fullscreen-host-controls-center-y"
-        )
-      ).toBe("26px");
-      expect(
-        fullscreenShell?.style.getPropertyValue(
-          "--workbench-fullscreen-host-controls-height"
-        )
-      ).toBe("42px");
-      expect(
-        fullscreenShell?.style.getPropertyValue(
-          "--workbench-fullscreen-host-controls-width"
-        )
-      ).toBe("92px");
-      expect(
-        container.querySelector('[data-workbench-native-controls-mask="true"]')
-      ).not.toBeNull();
-      const restoreControl = container.querySelector<HTMLButtonElement>(
-        '[data-workbench-fullscreen-restore="true"]'
+      const immersiveTab = container.querySelector<HTMLElement>(
+        '[data-workbench-immersive-tab="true"]'
       );
-      expect(restoreControl?.style.left).toBe("104px");
+      expect(immersiveTab?.style.left).toBe("88px");
+      expect(immersiveTab?.textContent).toContain("Fullscreen node");
+      const restoreControl = container.querySelector<HTMLButtonElement>(
+        '[data-workbench-immersive-tab-restore="true"]'
+      );
       expect(restoreControl?.getAttribute("aria-label")).toBe("Restore Window");
 
       await act(async () => {
@@ -218,14 +203,31 @@ describe("WorkbenchHostDock", () => {
 
       expect(controller.getSnapshot().nodes[0]?.displayMode).toBe("floating");
       expect(
-        container.querySelector('[data-workbench-fullscreen-restore="true"]')
-      ).toBeNull();
-      expect(
-        container.querySelector('[data-workbench-native-controls-mask="true"]')
+        container.querySelector('[data-workbench-immersive-tab="true"]')
       ).toBeNull();
       expect(
         container.querySelector(".workbench-window__traffic-light-actions")
       ).not.toBeNull();
+
+      await act(async () => {
+        controller.commands.enterFullscreen("fullscreen-node");
+      });
+
+      const minimizeControl = container.querySelector<HTMLButtonElement>(
+        '[data-workbench-immersive-tab-minimize="true"]'
+      );
+      expect(minimizeControl?.getAttribute("aria-label")).toBe(
+        "Minimize to Dock"
+      );
+
+      await act(async () => {
+        minimizeControl?.click();
+        vi.runAllTimers();
+      });
+
+      expect(controller.getSnapshot().nodes[0]?.displayMode).toBe("fullscreen");
+      expect(controller.getSnapshot().nodes[0]?.isMinimized).toBe(true);
+      expect(controller.getSnapshot().nodes).toHaveLength(1);
     } finally {
       await act(async () => {
         root.unmount();
@@ -234,6 +236,7 @@ describe("WorkbenchHostDock", () => {
       (
         globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
       ).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+      vi.useRealTimers();
     }
   });
 });
