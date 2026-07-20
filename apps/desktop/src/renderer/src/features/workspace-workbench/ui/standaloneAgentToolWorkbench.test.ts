@@ -298,7 +298,7 @@ test("standalone Agent toolbar exposes task management in the unified panel", ()
   );
   assert.match(
     standaloneAgentIssueManagerToolPanelSource,
-    /source\.subscribe\?\.\(updateState\)/
+    /source\.subscribeNodeState\?\.\([\s\S]*?updateState/
   );
 });
 
