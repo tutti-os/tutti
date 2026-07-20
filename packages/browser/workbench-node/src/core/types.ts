@@ -139,6 +139,7 @@ export interface BrowserNodePrepareSessionInput {
 }
 
 export interface BrowserNodeRegisterGuestInput {
+  automationTarget?: BrowserNodeAutomationTargetMetadata | null;
   navigationPolicy?: BrowserNodeNavigationPolicy | null;
   nodeId: string;
   profileId: string | null;
@@ -146,6 +147,22 @@ export interface BrowserNodeRegisterGuestInput {
   sessionPartition?: string | null;
   url?: string;
   webContentsId: number;
+}
+
+export type BrowserNodeAutomationSurfaceRole = "agent" | "user";
+
+export interface BrowserNodeAutomationTargetMetadata {
+  agentSessionId?: string | null;
+  focused?: boolean;
+  selected: boolean;
+  surfaceId: string;
+  surfaceRole: BrowserNodeAutomationSurfaceRole;
+  tabId: string | null;
+  workspaceId: string;
+}
+
+export interface BrowserNodeUpdateAutomationTargetInput extends BrowserNodeNodeIdInput {
+  automationTarget: BrowserNodeAutomationTargetMetadata;
 }
 
 export interface BrowserNodeUnregisterGuestInput {
@@ -365,4 +382,7 @@ export interface BrowserNodeHostApi {
   ): Promise<void>;
   stopFindInPage?(payload: BrowserNodeStopFindInPageInput): Promise<void>;
   unregisterGuest(payload: BrowserNodeUnregisterGuestInput): Promise<void>;
+  updateAutomationTarget?(
+    payload: BrowserNodeUpdateAutomationTargetInput
+  ): Promise<void>;
 }

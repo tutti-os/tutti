@@ -221,6 +221,12 @@ test("resolveManagedDaemonProcessEnv seeds the managed runtime cache root", () =
       got.TUTTI_APP_RUNTIME_CACHE_ROOT?.endsWith("/app-runtimes"),
       true
     );
+    assert.equal(
+      got.TUTTI_BROWSER_NODE_LISTENER_INFO?.endsWith(
+        "/run/browser-node-automation.json"
+      ),
+      true
+    );
   } finally {
     restoreEnv(previousEnv);
   }

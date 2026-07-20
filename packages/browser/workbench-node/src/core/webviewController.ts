@@ -2,6 +2,7 @@ import type { BrowserNodeFeature } from "./feature.ts";
 import { browserNodeGuestInteractionHostChannel } from "./guestInteraction.ts";
 import { resolveBrowserSessionPartition } from "./session.ts";
 import type {
+  BrowserNodeAutomationTargetMetadata,
   BrowserNodeLifecycle,
   BrowserNodeNavigationPolicy,
   BrowserNodeSessionMode
@@ -36,6 +37,7 @@ export interface BrowserNodeWebviewController {
 }
 
 interface BrowserNodeWebviewControllerContext {
+  automationTarget?: BrowserNodeAutomationTargetMetadata | null;
   feature: BrowserNodeFeature;
   initialUrl: string;
   lifecycle: BrowserNodeLifecycle;
@@ -77,6 +79,7 @@ const pendingUnregisterTimersByNodeId = new Map<
 >();
 
 export function acquireBrowserNodeWebviewController(input: {
+  automationTarget?: BrowserNodeAutomationTargetMetadata | null;
   feature: BrowserNodeFeature;
   initialUrl: string;
   lifecycle: BrowserNodeLifecycle;
@@ -91,6 +94,7 @@ export function acquireBrowserNodeWebviewController(input: {
   const entry =
     existing ??
     createBrowserNodeWebviewControllerEntry({
+      automationTarget: input.automationTarget,
       feature: input.feature,
       initialUrl: input.initialUrl,
       lifecycle: input.lifecycle,
@@ -103,6 +107,7 @@ export function acquireBrowserNodeWebviewController(input: {
     });
 
   entry.context = {
+    automationTarget: input.automationTarget,
     feature: input.feature,
     initialUrl: input.initialUrl,
     lifecycle: input.lifecycle,
@@ -242,6 +247,14 @@ function reconcileBrowserNodeWebviewControllerState(
     entry.state.webviewSrc !== nextState.webviewSrc;
 
   if (options.allowHostEffects) {
+    if (entry.context.automationTarget) {
+      void entry.context.feature.hostApi
+        .updateAutomationTarget?.({
+          automationTarget: entry.context.automationTarget,
+          nodeId: entry.context.nodeId
+        })
+        .catch(() => undefined);
+    }
     if (entry.context.lifecycle === "cold") {
       scheduleBrowserNodeGuestUnregister(entry);
     } else {
@@ -404,6 +417,7 @@ function attachBrowserNodeWebview(
     entry.registeringGuestId = guestId;
     try {
       await entry.context.feature.hostApi.registerGuest({
+        automationTarget: entry.context.automationTarget,
         navigationPolicy: entry.context.navigationPolicy,
         nodeId: entry.context.nodeId,
         profileId: entry.context.profileId,
@@ -428,6 +442,17 @@ function attachBrowserNodeWebview(
   };
   const handleGuestInteraction: EventListener = () => {
     entry.context.onGuestInteraction?.();
+    if (entry.context.automationTarget) {
+      void entry.context.feature.hostApi
+        .updateAutomationTarget?.({
+          automationTarget: {
+            ...entry.context.automationTarget,
+            focused: true
+          },
+          nodeId: entry.context.nodeId
+        })
+        .catch(() => undefined);
+    }
   };
   const handleGuestInteractionIpcMessage: EventListener = (event) => {
     if (

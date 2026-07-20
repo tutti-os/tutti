@@ -56,6 +56,21 @@ test("workspace window readiness can show without maximizing", async () => {
   assert.equal(target.showCount, 1);
 });
 
+test("workspace window readiness can keep a background Browser host hidden", async () => {
+  const target = createWorkspaceWindowReadyTarget();
+
+  await awaitWorkspaceWindowReady(
+    target.window,
+    () => {
+      target.emit("ready-to-show");
+    },
+    { maximizeOnShow: false, showOnReady: false }
+  );
+
+  assert.equal(target.maximizeCount, 0);
+  assert.equal(target.showCount, 0);
+});
+
 interface WorkspaceWindowReadyTargetFixture {
   closeCount: number;
   emit: (event: string, ...args: unknown[]) => void;

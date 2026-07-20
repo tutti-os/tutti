@@ -7,6 +7,7 @@ import {
 } from "../core/webviewController.ts";
 import type { BrowserNodeFeature } from "../core/feature.ts";
 import type {
+  BrowserNodeAutomationTargetMetadata,
   BrowserNodeLifecycle,
   BrowserNodeNavigationPolicy,
   BrowserNodeSessionMode
@@ -14,6 +15,7 @@ import type {
 import type { BrowserNodeWebviewTag } from "./webviewTag.ts";
 
 export function useBrowserNodeWebview({
+  automationTarget,
   feature,
   initialUrl,
   lifecycle,
@@ -24,6 +26,7 @@ export function useBrowserNodeWebview({
   sessionMode,
   sessionPartition
 }: {
+  automationTarget?: BrowserNodeAutomationTargetMetadata | null;
   feature: BrowserNodeFeature;
   initialUrl: string;
   lifecycle: BrowserNodeLifecycle;
@@ -46,6 +49,7 @@ export function useBrowserNodeWebview({
   const controller = useMemo(
     () =>
       acquireBrowserNodeWebviewController({
+        automationTarget,
         feature,
         initialUrl,
         lifecycle,
@@ -58,6 +62,7 @@ export function useBrowserNodeWebview({
       }),
     [
       feature,
+      automationTarget,
       initialUrl,
       lifecycle,
       navigationPolicy,
@@ -80,6 +85,7 @@ export function useBrowserNodeWebview({
     controller.sync();
   }, [
     controller,
+    automationTarget,
     initialUrl,
     lifecycle,
     navigationPolicy,

@@ -41,7 +41,8 @@ import type {
   BrowserNodeSetZoomFactorInput,
   BrowserNodeShowDevToolsContextMenuInput,
   BrowserNodeStopFindInPageInput,
-  BrowserNodeUnregisterGuestInput
+  BrowserNodeUnregisterGuestInput,
+  BrowserNodeUpdateAutomationTargetInput
 } from "@tutti-os/browser-node";
 import type {
   TuttiExternalAtQueryInput,
@@ -151,6 +152,9 @@ export const desktopIpcChannels = {
   },
   browser: {
     activate: "browser:activate",
+    automationHostReady: "browser:automation-host-ready",
+    automationRequest: "browser:automation-request",
+    automationResponse: "browser:automation-response",
     capturePreview: "browser:capturePreview",
     chooseDownloadDirectory: "browser:chooseDownloadDirectory",
     clearBrowsingData: "browser:clearBrowsingData",
@@ -178,7 +182,8 @@ export const desktopIpcChannels = {
     setZoomFactor: "browser:setZoomFactor",
     showDevToolsContextMenu: "browser:showDevToolsContextMenu",
     stopFindInPage: "browser:stopFindInPage",
-    unregisterGuest: "browser:unregisterGuest"
+    unregisterGuest: "browser:unregisterGuest",
+    updateAutomationTarget: "browser:updateAutomationTarget"
   },
   dockPreviewCache: {
     read: "dock-preview-cache:read",
@@ -867,6 +872,33 @@ export interface DesktopComputerUseRestartDriverResult {
   status: DesktopComputerUseStatus;
 }
 
+export interface DesktopBrowserAutomationRequest {
+  action: "create" | "select" | "close";
+  agentSessionId: string | null;
+  nodeId: string | null;
+  requestId: string;
+  surfaceRole: "agent" | "user";
+  url: string | null;
+  workspaceId: string;
+}
+
+export interface DesktopBrowserAutomationHostReady {
+  surfaceRole: "agent" | "user";
+  workspaceId: string;
+}
+
+export type DesktopBrowserAutomationResponse =
+  | {
+      nodeId: string | null;
+      ok: true;
+      requestId: string;
+    }
+  | {
+      error: string;
+      ok: false;
+      requestId: string;
+    };
+
 export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.computerUse.checkStatus]: undefined;
   [desktopIpcChannels.computerUse.install]: undefined;
@@ -957,6 +989,8 @@ export interface DesktopInvokePayloadByChannel {
     .showDevToolsContextMenu]: BrowserNodeShowDevToolsContextMenuInput;
   [desktopIpcChannels.browser.stopFindInPage]: BrowserNodeStopFindInPageInput;
   [desktopIpcChannels.browser.unregisterGuest]: BrowserNodeUnregisterGuestInput;
+  [desktopIpcChannels.browser
+    .updateAutomationTarget]: BrowserNodeUpdateAutomationTargetInput;
   [desktopIpcChannels.dockPreviewCache.read]: DesktopReadDockPreviewInput;
   [desktopIpcChannels.dockPreviewCache.write]: DesktopWriteDockPreviewInput;
   [desktopIpcChannels.developer.clearLogs]: undefined;
@@ -1130,6 +1164,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.browser.showDevToolsContextMenu]: void;
   [desktopIpcChannels.browser.stopFindInPage]: void;
   [desktopIpcChannels.browser.unregisterGuest]: void;
+  [desktopIpcChannels.browser.updateAutomationTarget]: void;
   [desktopIpcChannels.dockPreviewCache.read]: string | null;
   [desktopIpcChannels.dockPreviewCache.write]: void;
   [desktopIpcChannels.developer.clearLogs]: ClearDeveloperLogsResult;

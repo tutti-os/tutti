@@ -93,3 +93,34 @@ dock label, matches Browser nodes back to the dock entry, and restores popup
 title, URL subtitle, and preview capture from the Browser runtime state.
 Hosts that want the package-owned default dock visual can import it explicitly
 from `@tutti-os/browser-node/assets/workspace-dock-website.png`.
+
+## Browser Home and Agent automation
+
+`BrowserNode` accepts an optional `renderHome` function for empty tabs. The
+function receives the tab node id and a `navigate(url)` callback, allowing a
+host to render live sandbox ports or other product-owned shortcuts without
+forking the Browser surface.
+
+Electron hosts may attach `automationTarget` metadata to User Browser and
+Agent Browser surfaces. The package registry then exposes the current
+workspace's User tabs and only the calling Agent session's Agent tabs, with
+stable page selection and per-tab leases. Website Apps remain excluded unless
+a host explicitly opts them in. `new_page` is created as `about:blank`; the
+package attaches request interception before navigating to the requested URL,
+so the initial document, redirects, and subresources all cross the same guard.
+Agent release is a lifecycle barrier: queued target work drains before guards
+are disabled and retained Agent pages are closed, and later calls fail closed.
+
+`createBrowserNodeAutomationServer` publishes the registry on authenticated
+loopback and writes a private listener-info file for an explicitly configured
+daemon. `createBrowserNodeAutomationNetworkAuthorizer` provides the standard
+public HTTP/HTTPS policy and blocks private, link-local, metadata, multicast,
+and local-network pages from inspect/control calls. Loopback fails closed by
+default; hosts may permit a loopback URL only through the
+`isLoopbackUrlRouted` capability after sandbox-owned preview routing has
+accepted that exact URL. For registered targets, authorization resolves host
+names through the target's Chromium session rather than an unrelated process
+resolver. Hosts should also install the authorizer as the registry's
+`authorizeRequest` callback so the initial navigation, redirects,
+subresources, and script-initiated requests remain guarded for the lifetime of
+an automation lease.

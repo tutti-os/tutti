@@ -73,6 +73,36 @@ describe("agent tool sidebar model", () => {
     ).toBe(620);
   });
 
+  it("ensures a background panel without changing the active tab", () => {
+    let state = createAgentToolSidebarState({
+      activePanel: "files",
+      activeTabId: "files:first",
+      mountedTabs: [{ id: "files:first", panel: "files" }]
+    });
+    state = reduceAgentToolSidebarState(state, {
+      panel: "browser",
+      resourceId: "agent-1",
+      tabId: "browser:agent-1",
+      type: "ensure-panel"
+    });
+
+    expect(state.activePanel).toBe("files");
+    expect(state.activeTabId).toBe("files:first");
+    expect(state.mountedTabs).toContainEqual({
+      id: "browser:agent-1",
+      panel: "browser",
+      resourceId: "agent-1"
+    });
+
+    const repeated = reduceAgentToolSidebarState(state, {
+      panel: "browser",
+      resourceId: "agent-1",
+      tabId: "browser:duplicate",
+      type: "ensure-panel"
+    });
+    expect(repeated).toBe(state);
+  });
+
   it("transfers expansion while remembering both panel widths", () => {
     expect(
       resolveAgentToolPanelExpansionTransfer({

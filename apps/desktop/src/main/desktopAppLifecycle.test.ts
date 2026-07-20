@@ -29,6 +29,7 @@ function createLogger(events: string[]): DesktopLogger {
 
 function createWorkspaceLaunch(): WorkspaceLaunch {
   return {
+    async ensureAgentBrowserHost() {},
     async openStartupWindow() {},
     async replaceWorkspaceWindow() {},
     async showAgentWindow() {},

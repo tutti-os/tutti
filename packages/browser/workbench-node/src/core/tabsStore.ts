@@ -10,7 +10,7 @@ export interface BrowserNodeTabsState {
 }
 
 export interface BrowserNodeTabsStore {
-  addTab(surfaceNodeId: string): BrowserNodeTab;
+  addTab(surfaceNodeId: string, defaultUrl?: string): BrowserNodeTab;
   closeTab(surfaceNodeId: string, tabId: string): BrowserNodeTab | null;
   ensureSurface(
     surfaceNodeId: string,
@@ -36,11 +36,14 @@ export function createBrowserNodeTabsStore(): BrowserNodeTabsStore {
     }
   };
 
-  const createTab = (surfaceNodeId: string): BrowserNodeTab => {
+  const createTab = (
+    surfaceNodeId: string,
+    defaultUrl = defaultUrls.get(surfaceNodeId) ?? "about:blank"
+  ): BrowserNodeTab => {
     const sequence = nextSequences.get(surfaceNodeId) ?? 1;
     nextSequences.set(surfaceNodeId, sequence + 1);
     return {
-      defaultUrl: defaultUrls.get(surfaceNodeId) ?? "about:blank",
+      defaultUrl,
       id: `tab-${sequence}`,
       nodeId: `${surfaceNodeId}:tab:${sequence}`
     };
@@ -66,14 +69,14 @@ export function createBrowserNodeTabsStore(): BrowserNodeTabsStore {
   };
 
   return {
-    addTab(surfaceNodeId) {
+    addTab(surfaceNodeId, defaultUrl) {
       const current = states.get(surfaceNodeId);
       if (!current) {
         throw new Error(
           `Browser tab surface is not initialized: ${surfaceNodeId}`
         );
       }
-      const tab = createTab(surfaceNodeId);
+      const tab = createTab(surfaceNodeId, defaultUrl);
       states.set(surfaceNodeId, {
         activeTabId: tab.id,
         tabs: [...current.tabs, tab]

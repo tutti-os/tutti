@@ -35,6 +35,7 @@ export interface WorkspaceLaunchDesktopAdapterOptions {
 export function createWorkspaceLaunchDesktopAdapters(
   options: WorkspaceLaunchDesktopAdapterOptions
 ): WorkspaceLaunchAdapters {
+  const pendingAgentBrowserHosts = new Map<string, Promise<void>>();
   const durableWorkspaceWindows = createDurableWorkspaceWindowCoordinator({
     activate: activateWorkspaceWindow,
     find: (workspaceID: string) =>
@@ -43,6 +44,22 @@ export function createWorkspaceLaunchDesktopAdapters(
       createAndShowWorkspaceWindow(options, workspaceID)
   });
   return {
+    async ensureAgentBrowserHost(input) {
+      if (findWorkspaceWindow(input.workspaceID, "agent")) return;
+      const existing = pendingAgentBrowserHosts.get(input.workspaceID);
+      if (existing) return existing;
+      const opening = showStandaloneAgentWindow(options, input, {
+        showOnReady: false
+      }).then(() => undefined);
+      pendingAgentBrowserHosts.set(input.workspaceID, opening);
+      try {
+        await opening;
+      } finally {
+        if (pendingAgentBrowserHosts.get(input.workspaceID) === opening) {
+          pendingAgentBrowserHosts.delete(input.workspaceID);
+        }
+      }
+    },
     async showAgentWindow(input) {
       await showStandaloneAgentWindow(options, input);
     },
@@ -106,7 +123,8 @@ function activateWorkspaceWindow(
 
 async function showStandaloneAgentWindow(
   options: WorkspaceLaunchDesktopAdapterOptions,
-  input: WorkspaceLaunchAgentWindowInput
+  input: WorkspaceLaunchAgentWindowInput,
+  readyOptions: { showOnReady?: boolean } = {}
 ): Promise<Electron.BrowserWindow> {
   const agentWindow = createWorkspaceWindow({
     browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
@@ -142,7 +160,7 @@ async function showStandaloneAgentWindow(
         workspaceID: input.workspaceID
       });
     },
-    { maximizeOnShow: false }
+    { maximizeOnShow: false, showOnReady: readyOptions.showOnReady }
   );
   return agentWindow;
 }

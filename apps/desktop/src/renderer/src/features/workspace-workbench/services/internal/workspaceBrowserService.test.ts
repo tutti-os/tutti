@@ -5,6 +5,10 @@ import type {
   BrowserNodeEvent,
   BrowserNodeHostApi
 } from "@tutti-os/browser-node";
+import type {
+  DesktopBrowserAutomationRequest,
+  DesktopBrowserAutomationResponse
+} from "@shared/contracts/ipc";
 import {
   registerWorkspaceBrowserLaunchHandler,
   type WorkspaceBrowserLaunchRequest
@@ -189,6 +193,71 @@ test("workspace app Browser features do not inherit Chrome Cookie import", () =>
   assert.equal(workspaceAppApi.discoverChromeCookieProfiles, undefined);
   assert.equal(workspaceAppApi.importChromeCookies, undefined);
   assert.equal(workspaceAppApi.cancelChromeCookieImport, undefined);
+});
+
+test("workspace browser service owns user automation tab lifecycle", () => {
+  let handleRequest = (_request: DesktopBrowserAutomationRequest): void =>
+    undefined;
+  const responses: DesktopBrowserAutomationResponse[] = [];
+  const browserApi = {
+    ...createBrowserNodeHostApi(),
+    onAutomationRequest(listener: typeof handleRequest) {
+      handleRequest = listener;
+      return () => {
+        handleRequest = () => undefined;
+      };
+    },
+    respondAutomationRequest(response: DesktopBrowserAutomationResponse) {
+      responses.push(response);
+    }
+  };
+  const service = createWorkspaceBrowserService({ browserApi });
+  const feature = createBrowserNodeFeature({ hostApi: browserApi });
+  const surfaceNodeId = "workspace-browser:instance-1";
+  const initial = feature.tabsStore.ensureSurface(
+    surfaceNodeId,
+    "https://example.com/"
+  );
+  service.setUserAutomationSurface({
+    feature,
+    workspaceId: "workspace-1"
+  });
+
+  handleRequest({
+    action: "create",
+    agentSessionId: "agent-1",
+    nodeId: initial.tabs[0]!.nodeId,
+    requestId: "create-1",
+    surfaceRole: "user",
+    url: "https://created.example/",
+    workspaceId: "workspace-1"
+  });
+  const createdNodeId = responses[0]?.ok ? responses[0].nodeId : null;
+  assert.ok(createdNodeId);
+  assert.equal(
+    feature.tabsStore
+      .getSurfaceState(surfaceNodeId)
+      ?.tabs.find((tab) => tab.nodeId === createdNodeId)?.defaultUrl,
+    "https://created.example/"
+  );
+
+  handleRequest({
+    action: "close",
+    agentSessionId: "agent-1",
+    nodeId: createdNodeId,
+    requestId: "close-1",
+    surfaceRole: "user",
+    url: null,
+    workspaceId: "workspace-1"
+  });
+  assert.equal(
+    feature.tabsStore.getSurfaceState(surfaceNodeId)?.tabs.length,
+    1
+  );
+  assert.deepEqual(
+    responses.map((response) => response.ok),
+    [true, true]
+  );
 });
 
 function browserNodeOwnsEvent(event: BrowserNodeEvent): boolean {

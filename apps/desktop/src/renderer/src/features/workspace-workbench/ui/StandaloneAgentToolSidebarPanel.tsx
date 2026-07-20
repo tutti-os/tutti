@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { AgentToolTab } from "@tutti-os/agent-gui/workbench/tool-sidebar";
+import type { AgentToolBrowserController } from "@tutti-os/agent-gui/workbench/tool-sidebar";
 import type {
   WorkbenchContribution,
   WorkbenchHostHandle
@@ -9,6 +10,7 @@ import type { WorkspaceAgentActivityService } from "@renderer/features/workspace
 import type { DesktopBrowserApi } from "@preload/types";
 import type { useTranslation } from "@renderer/i18n";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
+import { resolveStandaloneAgentBrowserSessionId } from "../services/standaloneAgentBrowserSession.ts";
 import { StandaloneAgentBrowserToolPanel } from "./StandaloneAgentBrowserToolPanel.tsx";
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
 
@@ -61,6 +63,7 @@ export interface StandaloneAgentFileOpenRequest {
 
 export function StandaloneAgentToolSidebarPanel({
   active,
+  agentSessionId,
   appI18n,
   activityService,
   browserApi,
@@ -73,6 +76,7 @@ export function StandaloneAgentToolSidebarPanel({
   messageCenterOpen,
   onAppendBrowserElementMention,
   onBrowserElementError,
+  onBrowserControllerReady,
   onCloseMessageCenter,
   onOpenMessageCenterChat,
   tab,
@@ -80,6 +84,7 @@ export function StandaloneAgentToolSidebarPanel({
   workspaceId
 }: {
   active: boolean;
+  agentSessionId: string | null;
   appI18n: I18nRuntime<string>;
   activityService: WorkspaceAgentActivityService;
   browserApi?: DesktopBrowserApi;
@@ -92,6 +97,11 @@ export function StandaloneAgentToolSidebarPanel({
   messageCenterOpen: boolean;
   onAppendBrowserElementMention: (mention: string) => void;
   onBrowserElementError: (message: string) => void;
+  onBrowserControllerReady?: (
+    tabId: string,
+    agentSessionId: string | null,
+    controller: AgentToolBrowserController | null
+  ) => void;
   onCloseMessageCenter: () => void;
   onOpenMessageCenterChat: (input: {
     agentSessionId: string;
@@ -192,7 +202,12 @@ export function StandaloneAgentToolSidebarPanel({
   if (panel === "browser") {
     return browserApi ? (
       <StandaloneAgentBrowserToolPanel
+        agentSessionId={resolveStandaloneAgentBrowserSessionId({
+          currentAgentSessionId: agentSessionId,
+          resourceAgentSessionId: tab.resourceId
+        })}
         appI18n={appI18n}
+        automationManaged={Boolean(tab.resourceId)}
         browserApi={browserApi}
         elementContextCopy={{
           cancel: i18n.t("workspace.agentGui.browserElementContext.cancel"),
@@ -204,6 +219,8 @@ export function StandaloneAgentToolSidebarPanel({
         workspaceId={workspaceId}
         onAppendBrowserElementMention={onAppendBrowserElementMention}
         onBrowserElementError={onBrowserElementError}
+        onControllerReady={onBrowserControllerReady}
+        tabId={tab.id}
       />
     ) : null;
   }

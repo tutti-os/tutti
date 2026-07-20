@@ -400,6 +400,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller())
 	agentSessionService := agentservice.NewService(agentRuntimeController)
+	if browserService != nil {
+		agentSessionService.AgentSessionResourceReleaser = browserService
+	}
 	agentActivityProjection.SetRootTurnObserver(agentRuntimeController)
 	agentSessionService.AnalyticsReporter = analyticsReporter
 	agentModelCapabilities := agentservice.NewModelCapabilitiesService()

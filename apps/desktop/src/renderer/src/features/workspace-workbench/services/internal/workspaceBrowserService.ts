@@ -4,6 +4,8 @@ import type {
   BrowserNodeHostApi,
   BrowserNodeOpenUrlEvent
 } from "@tutti-os/browser-node";
+import { closeBrowserNodeTab } from "@tutti-os/browser-node";
+import type { DesktopBrowserApi } from "@preload/types";
 import { requestWorkspaceBrowserLaunch } from "../workspaceBrowserLaunchCoordinator.ts";
 
 export type WorkspaceBrowserEventMatcher = (event: BrowserNodeEvent) => boolean;
@@ -20,16 +22,29 @@ export interface WorkspaceBrowserService {
     input: WorkspaceBrowserFeatureHostApiInput
   ): BrowserNodeHostApi;
   ensureFeatureConnected(feature: BrowserNodeFeature): void;
+  setUserAutomationSurface(input: {
+    feature: BrowserNodeFeature;
+    workspaceId: string;
+  }): void;
 }
 
 export function createWorkspaceBrowserService(
   input: {
-    browserApi?: BrowserNodeHostApi;
+    browserApi?: BrowserNodeHostApi &
+      Partial<
+        Pick<
+          DesktopBrowserApi,
+          | "announceAutomationHostReady"
+          | "onAutomationRequest"
+          | "respondAutomationRequest"
+        >
+      >;
   } = {}
 ): WorkspaceBrowserService {
   const connectedFeatures = new WeakSet<BrowserNodeFeature>();
   const routes = new Set<WorkspaceBrowserEventRoute>();
   let disconnectBrowserEvents: (() => void) | null = null;
+  let disconnectUserAutomation: (() => void) | null = null;
 
   const ensureBrowserEventsConnected = () => {
     if (disconnectBrowserEvents) {
@@ -116,8 +131,78 @@ export function createWorkspaceBrowserService(
 
       feature.connect();
       connectedFeatures.add(feature);
+    },
+    setUserAutomationSurface({ feature, workspaceId }) {
+      disconnectUserAutomation?.();
+      disconnectUserAutomation =
+        input.browserApi?.onAutomationRequest?.((request) => {
+          if (
+            request.workspaceId !== workspaceId ||
+            request.surfaceRole !== "user"
+          ) {
+            return;
+          }
+          try {
+            const anchorNodeId = request.nodeId?.trim() ?? "";
+            const surfaceNodeId = resolveBrowserSurfaceNodeId(anchorNodeId);
+            const state = surfaceNodeId
+              ? feature.tabsStore.getSurfaceState(surfaceNodeId)
+              : null;
+            if (!surfaceNodeId || !state) {
+              throw new Error("No user Browser surface is available");
+            }
+            if (request.action === "create") {
+              const tab = feature.tabsStore.addTab(
+                surfaceNodeId,
+                request.url?.trim() || "about:blank"
+              );
+              input.browserApi?.respondAutomationRequest?.({
+                nodeId: tab.nodeId,
+                ok: true,
+                requestId: request.requestId
+              });
+              return;
+            }
+            const tab = state.tabs.find(
+              (candidate) => candidate.nodeId === anchorNodeId
+            );
+            if (!tab) {
+              throw new Error(
+                `User Browser page is unavailable: ${anchorNodeId}`
+              );
+            }
+            if (request.action === "select") {
+              feature.tabsStore.selectTab(surfaceNodeId, tab.id);
+            } else {
+              if (state.tabs.length === 1) {
+                throw new Error("The final user Browser page cannot be closed");
+              }
+              closeBrowserNodeTab(feature, surfaceNodeId, tab.id);
+            }
+            input.browserApi?.respondAutomationRequest?.({
+              nodeId: anchorNodeId,
+              ok: true,
+              requestId: request.requestId
+            });
+          } catch (error) {
+            input.browserApi?.respondAutomationRequest?.({
+              error: error instanceof Error ? error.message : String(error),
+              ok: false,
+              requestId: request.requestId
+            });
+          }
+        }) ?? null;
+      input.browserApi?.announceAutomationHostReady?.({
+        surfaceRole: "user",
+        workspaceId
+      });
     }
   };
+}
+
+function resolveBrowserSurfaceNodeId(nodeId: string): string | null {
+  const separatorIndex = nodeId.lastIndexOf(":tab:");
+  return separatorIndex > 0 ? nodeId.slice(0, separatorIndex) : null;
 }
 
 interface WorkspaceBrowserEventRoute {

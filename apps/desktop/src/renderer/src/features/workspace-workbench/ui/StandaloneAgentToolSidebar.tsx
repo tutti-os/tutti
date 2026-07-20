@@ -10,6 +10,7 @@ import { selectWorkspaceAgentConsumerCounts } from "@tutti-os/agent-activity-cor
 import {
   AgentToolPanelIcon,
   AgentToolSidebar,
+  type AgentToolBrowserController,
   type AgentToolPanelDefinition,
   type AgentToolPanelId,
   type AgentToolSidebarCopy,
@@ -40,8 +41,11 @@ import { useExternalStoreValue } from "./useExternalStoreValue.ts";
 
 export type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSidebarPanel.tsx";
 
+const browserControllerReadyTimeoutMs = 8_000;
+
 interface StandaloneAgentToolSidebarProps {
   activityService: WorkspaceAgentActivityService;
+  agentSessionId: string | null;
   appOpenId?: string | null;
   appI18n: I18nRuntime<string>;
   browserApi?: DesktopBrowserApi;
@@ -68,6 +72,7 @@ interface StandaloneAgentToolSidebarProps {
 
 export function StandaloneAgentToolSidebar({
   activityService,
+  agentSessionId,
   appOpenId = null,
   appI18n,
   browserApi,
@@ -98,6 +103,20 @@ export function StandaloneAgentToolSidebar({
   const lastHandledIssueManagerOpenRequestRef = useRef<string | null>(null);
   const issueManagerOpenRequestTabIdRef = useRef<string | null>(null);
   const toolHostGroup = useMemo(createStandaloneAgentToolHostGroup, []);
+  const browserControllersRef = useRef(
+    new Map<string, { controller: AgentToolBrowserController; tabId: string }>()
+  );
+  const browserControllerWaitersRef = useRef(
+    new Map<
+      string,
+      Set<
+        (entry: {
+          controller: AgentToolBrowserController;
+          tabId: string;
+        }) => void
+      >
+    >()
+  );
 
   const sessionEngine = useMemo(
     () => activityService.getSessionEngine(workspaceId),
@@ -110,6 +129,9 @@ export function StandaloneAgentToolSidebar({
     () =>
       selectWorkspaceAgentConsumerCounts(sessionEngine.getSnapshot()).working
   );
+  const automationBrowserCount = mountedTabs.filter(
+    (tab) => tab.panel === "browser" && Boolean(tab.resourceId)
+  ).length;
   const panels = useMemo<readonly AgentToolPanelDefinition[]>(
     () => [
       { id: "files", label: i18n.t("workspace.agentGui.toolSidebar.files") },
@@ -149,10 +171,127 @@ export function StandaloneAgentToolSidebar({
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+  const handleBrowserControllerReady = useCallback(
+    (
+      tabId: string,
+      browserAgentSessionId: string | null,
+      controller: AgentToolBrowserController | null
+    ) => {
+      const sessionId = browserAgentSessionId?.trim() ?? "";
+      if (!sessionId) return;
+      const existing = browserControllersRef.current.get(sessionId);
+      if (!controller) {
+        if (existing?.tabId === tabId) {
+          browserControllersRef.current.delete(sessionId);
+        }
+        return;
+      }
+      const entry = { controller, tabId };
+      browserControllersRef.current.set(sessionId, entry);
+      const waiters = browserControllerWaitersRef.current.get(sessionId);
+      if (!waiters) return;
+      browserControllerWaitersRef.current.delete(sessionId);
+      for (const resolve of waiters) resolve(entry);
+    },
+    []
+  );
+
   useEffect(() => {
     onToolHostReady(toolHostGroup.host);
-    return () => onToolHostReady(null);
-  }, [onToolHostReady, toolHostGroup]);
+    if (!browserApi) return () => onToolHostReady(null);
+    const waitForController = (
+      sessionId: string
+    ): Promise<{
+      controller: AgentToolBrowserController;
+      tabId: string;
+    }> => {
+      const existing = browserControllersRef.current.get(sessionId);
+      if (existing) return Promise.resolve(existing);
+      return new Promise((resolve, reject) => {
+        const waiters =
+          browserControllerWaitersRef.current.get(sessionId) ?? new Set();
+        const handleReady = (entry: {
+          controller: AgentToolBrowserController;
+          tabId: string;
+        }) => {
+          clearTimeout(timeout);
+          resolve(entry);
+        };
+        const timeout = setTimeout(() => {
+          waiters.delete(handleReady);
+          if (waiters.size === 0) {
+            browserControllerWaitersRef.current.delete(sessionId);
+          }
+          reject(new Error("Agent Browser surface did not become ready"));
+        }, browserControllerReadyTimeoutMs);
+        waiters.add(handleReady);
+        browserControllerWaitersRef.current.set(sessionId, waiters);
+      });
+    };
+    const disconnectAutomation = browserApi.onAutomationRequest((request) => {
+      if (
+        request.workspaceId !== workspaceId ||
+        request.surfaceRole !== "agent"
+      ) {
+        return;
+      }
+      void (async () => {
+        try {
+          const sessionId = request.agentSessionId?.trim() ?? "";
+          if (!sessionId) {
+            throw new Error("Agent Browser request requires an agent session");
+          }
+          if (request.action === "create") {
+            sidebarRef.current?.ensurePanel("browser", sessionId);
+          }
+          const entry = await waitForController(sessionId);
+          if (request.action === "create") {
+            const nodeId = entry.controller.createPage(request.url);
+            browserApi.respondAutomationRequest({
+              nodeId,
+              ok: true,
+              requestId: request.requestId
+            });
+            return;
+          }
+          const nodeId = request.nodeId?.trim() ?? "";
+          if (!nodeId) throw new Error("Browser page id is required");
+          if (request.action === "select") {
+            if (!entry.controller.selectPage(nodeId)) {
+              throw new Error(`Agent Browser page is unavailable: ${nodeId}`);
+            }
+          } else {
+            const result = entry.controller.closePage(nodeId);
+            if (result === "not-found") {
+              throw new Error(`Agent Browser page is unavailable: ${nodeId}`);
+            }
+            if (result === "last-page") {
+              sidebarRef.current?.closeTab(entry.tabId);
+            }
+          }
+          browserApi.respondAutomationRequest({
+            nodeId,
+            ok: true,
+            requestId: request.requestId
+          });
+        } catch (error) {
+          browserApi.respondAutomationRequest({
+            error: error instanceof Error ? error.message : String(error),
+            ok: false,
+            requestId: request.requestId
+          });
+        }
+      })();
+    });
+    browserApi.announceAutomationHostReady?.({
+      surfaceRole: "agent",
+      workspaceId
+    });
+    return () => {
+      disconnectAutomation();
+      onToolHostReady(null);
+    };
+  }, [browserApi, onToolHostReady, toolHostGroup, workspaceId]);
 
   useEffect(() => {
     const appId = appOpenId?.trim() || null;
@@ -279,8 +418,16 @@ export function StandaloneAgentToolSidebar({
         copy={copy}
         mainContentMinWidthPx={mainContentMinWidthPx}
         panels={panels}
-        quickActionPanels={["tasks", "apps", "messages"]}
-        reminders={{ messages: messageCenterWorkingCount }}
+        quickActionPanels={[
+          ...(automationBrowserCount > 0 ? (["browser"] as const) : []),
+          "tasks",
+          "apps",
+          "messages"
+        ]}
+        reminders={{
+          browser: automationBrowserCount,
+          messages: messageCenterWorkingCount
+        }}
         renderHeader={renderHeader}
         renderLoading={() => (
           <StandaloneAgentToolLoadingState label={i18n.t("common.loading")} />
@@ -288,6 +435,7 @@ export function StandaloneAgentToolSidebar({
         renderPanel={({ active, closeSidebar, tab }) => (
           <StandaloneAgentToolSidebarPanel
             active={active}
+            agentSessionId={agentSessionId}
             appI18n={appI18n}
             activityService={activityService}
             browserApi={browserApi}
@@ -311,6 +459,7 @@ export function StandaloneAgentToolSidebar({
             workspaceId={workspaceId}
             onAppendBrowserElementMention={onAppendBrowserElementMention}
             onBrowserElementError={onBrowserElementError}
+            onBrowserControllerReady={handleBrowserControllerReady}
             onCloseMessageCenter={closeSidebar}
             onOpenMessageCenterChat={onOpenMessageCenterChat}
           />

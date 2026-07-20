@@ -1,4 +1,9 @@
-export { BrowserNode, type BrowserNodeProps } from "./BrowserNode.tsx";
+export {
+  BrowserNode,
+  type BrowserNodeHomeRenderContext,
+  type BrowserNodeProps
+} from "./BrowserNode.tsx";
+export { isBrowserNodeHomeUrl } from "./browserNodeHome.ts";
 export {
   BrowserNodeChrome,
   BrowserNodeHeader,

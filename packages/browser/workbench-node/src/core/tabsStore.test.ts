@@ -51,3 +51,10 @@ test("browser tabs isolate surfaces and return all tabs on removal", () => {
   assert.equal(store.getActiveNodeId("browser:one"), "browser:one");
   assert.equal(store.getActiveNodeId("browser:two"), "browser:two:tab:1");
 });
+
+test("browser tabs can create an automation page at a requested URL", () => {
+  const store = createBrowserNodeTabsStore();
+  store.ensureSurface("browser:one", "about:blank");
+  const tab = store.addTab("browser:one", "https://example.com/");
+  assert.equal(tab.defaultUrl, "https://example.com/");
+});

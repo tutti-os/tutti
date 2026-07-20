@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -523,6 +524,9 @@ func (s *Service) Delete(ctx context.Context, workspaceID string, agentSessionID
 	result, err := s.ApplicationHost().DeleteSession(ctx, agenthost.SessionRef{
 		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
 	})
+	if err == nil && result.Deleted {
+		s.releaseAgentResources(ctx, agentSessionID)
+	}
 	return result.Deleted, err
 }
 
@@ -546,7 +550,27 @@ func (s *Service) Clear(ctx context.Context, workspaceID string) (ClearSessionsR
 	if !ok {
 		return ClearSessionsResult{}, ErrSessionNotFound
 	}
-	return clearer.ClearSessions(ctx, workspaceID)
+	result, err := clearer.ClearSessions(ctx, workspaceID)
+	if err != nil {
+		return ClearSessionsResult{}, err
+	}
+	for _, agentSessionID := range result.RemovedSessionIDs {
+		s.releaseAgentResources(ctx, agentSessionID)
+	}
+	return result, nil
+}
+
+func (s *Service) releaseAgentResources(ctx context.Context, agentSessionID string) {
+	if s.AgentSessionResourceReleaser == nil {
+		return
+	}
+	if err := s.AgentSessionResourceReleaser.ReleaseAgent(ctx, agentSessionID); err != nil {
+		slog.WarnContext(ctx, "release Agent session resources failed",
+			"agentSessionId", strings.TrimSpace(agentSessionID),
+			"error", err,
+			"event", "agent.session.resource_release_failed",
+		)
+	}
 }
 
 func (s *Service) UpdatePin(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (Session, error) {

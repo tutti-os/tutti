@@ -46,7 +46,10 @@ import type {
   DesktopWorkspaceAppOpenFileResolvedPayload,
   DesktopWorkspaceOpenFeatureRequest,
   DesktopArchiveAgentPromptFileInput,
-  DesktopArchiveAgentPromptFileResult
+  DesktopArchiveAgentPromptFileResult,
+  DesktopBrowserAutomationRequest,
+  DesktopBrowserAutomationHostReady,
+  DesktopBrowserAutomationResponse
 } from "../shared/contracts/ipc";
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
 
@@ -252,7 +255,14 @@ export type DesktopBrowserApi = Pick<
   | "showDevToolsContextMenu"
   | "stopFindInPage"
   | "unregisterGuest"
->;
+  | "updateAutomationTarget"
+> & {
+  announceAutomationHostReady?(input: DesktopBrowserAutomationHostReady): void;
+  onAutomationRequest(
+    listener: (request: DesktopBrowserAutomationRequest) => void
+  ): () => void;
+  respondAutomationRequest(response: DesktopBrowserAutomationResponse): void;
+};
 
 export interface DesktopUpdateApi {
   checkForUpdates(): Promise<AppUpdateState>;

@@ -10,12 +10,15 @@ import { invokeDesktopApi } from "./invoke";
 
 type BrowserInvokeChannel = Exclude<
   (typeof desktopIpcChannels.browser)[keyof typeof desktopIpcChannels.browser],
-  typeof desktopIpcChannels.browser.event
+  | typeof desktopIpcChannels.browser.automationHostReady
+  | typeof desktopIpcChannels.browser.automationRequest
+  | typeof desktopIpcChannels.browser.automationResponse
+  | typeof desktopIpcChannels.browser.event
 > &
   DesktopInvokeChannel;
 
 export function createBrowserDesktopApi(): DesktopBrowserApi {
-  return createBrowserNodeElectronRendererApi({
+  const browserApi = createBrowserNodeElectronRendererApi({
     channels: {
       ...desktopIpcChannels.browser,
       openDevTools: isBrowserDevToolsEnabled()
@@ -36,6 +39,32 @@ export function createBrowserDesktopApi(): DesktopBrowserApi {
         ipcRenderer.removeListener(channel, listener)
     }
   });
+  return {
+    ...browserApi,
+    announceAutomationHostReady(input) {
+      ipcRenderer.send(desktopIpcChannels.browser.automationHostReady, input);
+    },
+    onAutomationRequest(listener) {
+      const handleRequest = (
+        _event: Electron.IpcRendererEvent,
+        request: unknown
+      ) => {
+        listener(request as Parameters<typeof listener>[0]);
+      };
+      ipcRenderer.on(
+        desktopIpcChannels.browser.automationRequest,
+        handleRequest
+      );
+      return () =>
+        ipcRenderer.removeListener(
+          desktopIpcChannels.browser.automationRequest,
+          handleRequest
+        );
+    },
+    respondAutomationRequest(response) {
+      ipcRenderer.send(desktopIpcChannels.browser.automationResponse, response);
+    }
+  };
 }
 
 function isBrowserDevToolsEnabled(): boolean {

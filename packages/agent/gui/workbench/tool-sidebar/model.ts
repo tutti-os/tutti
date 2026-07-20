@@ -86,7 +86,7 @@ export type AgentToolSidebarAction =
       panel: AgentToolPanelId;
       resourceId?: string;
       tabId: string;
-      type: "open-panel" | "add-panel";
+      type: "open-panel" | "add-panel" | "ensure-panel";
     }
   | { tabId: string; type: "activate-tab" | "close-tab" }
   | { type: "close" };
@@ -148,6 +148,14 @@ export function reduceAgentToolSidebarState(
     }
     case "add-panel":
       return addTab(state, action);
+    case "ensure-panel": {
+      const existing = findLastTab(
+        state.mountedTabs,
+        action.panel,
+        action.resourceId
+      );
+      return existing ? state : addTab(state, action, { activate: false });
+    }
     case "open-panel": {
       const existing = findLastTab(
         state.mountedTabs,
@@ -167,16 +175,18 @@ function addTab(
     panel: AgentToolPanelId;
     resourceId?: string;
     tabId: string;
-  }
+  },
+  options: { activate?: boolean } = {}
 ): AgentToolSidebarState {
   const nextTab: AgentToolTab = {
     id: tab.tabId,
     panel: tab.panel,
     ...(tab.resourceId ? { resourceId: tab.resourceId } : {})
   };
+  const activate = options.activate !== false;
   return {
-    activePanel: nextTab.panel,
-    activeTabId: nextTab.id,
+    activePanel: activate ? nextTab.panel : state.activePanel,
+    activeTabId: activate ? nextTab.id : state.activeTabId,
     mountedTabs: state.mountedTabs.some(
       (candidate) => candidate.id === nextTab.id
     )

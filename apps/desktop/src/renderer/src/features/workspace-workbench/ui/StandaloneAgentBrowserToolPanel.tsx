@@ -1,5 +1,8 @@
-import type { ReactNode } from "react";
-import { AgentToolBrowserPanel } from "@tutti-os/agent-gui/workbench/tool-sidebar";
+import { useCallback, useState, type ReactNode } from "react";
+import {
+  AgentToolBrowserPanel,
+  type AgentToolBrowserController
+} from "@tutti-os/agent-gui/workbench/tool-sidebar";
 import { BrowserElementContextAction } from "@tutti-os/agent-gui/workbench/browser-element-context";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { DesktopBrowserApi } from "@preload/types";
@@ -7,16 +10,22 @@ import { getDesktopChromeCookieImportPromptAdapter } from "../services/chromeCoo
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
 
 export function StandaloneAgentBrowserToolPanel({
+  agentSessionId,
   appI18n,
+  automationManaged,
   browserApi,
   elementContextCopy,
   hidden,
   loadingLabel,
   onAppendBrowserElementMention,
   onBrowserElementError,
+  onControllerReady,
+  tabId,
   workspaceId
 }: {
+  agentSessionId: string | null;
   appI18n: I18nRuntime<string>;
+  automationManaged: boolean;
   browserApi: DesktopBrowserApi;
   elementContextCopy: {
     cancel: string;
@@ -27,22 +36,41 @@ export function StandaloneAgentBrowserToolPanel({
   loadingLabel: string;
   onAppendBrowserElementMention: (mention: string) => void;
   onBrowserElementError: (message: string) => void;
+  onControllerReady?: (
+    tabId: string,
+    agentSessionId: string | null,
+    controller: AgentToolBrowserController | null
+  ) => void;
+  tabId: string;
   workspaceId: string;
 }): ReactNode {
+  const [stableAgentSessionId] = useState(agentSessionId);
+  const handleControllerReady = useCallback(
+    (controller: AgentToolBrowserController | null) =>
+      onControllerReady?.(tabId, stableAgentSessionId, controller),
+    [onControllerReady, stableAgentSessionId, tabId]
+  );
   return (
     <div
       className="relative h-full min-h-0 overflow-hidden"
       data-standalone-agent-browser-surface="true"
     >
       <AgentToolBrowserPanel
+        automationTarget={{
+          agentSessionId: stableAgentSessionId,
+          surfaceRole: "agent",
+          workspaceId
+        }}
         browserApi={browserApi}
         chromeCookieImportPrompt={getDesktopChromeCookieImportPromptAdapter()}
+        defaultUrl={automationManaged ? "about:blank" : undefined}
         hidden={hidden}
         i18n={appI18n}
         loadingFallback={
           <StandaloneAgentToolLoadingState label={loadingLabel} />
         }
         nodeIdPrefix="browser:standalone-agent-tool"
+        onControllerReady={handleControllerReady}
         navigationActions={
           <BrowserElementContextAction
             copy={elementContextCopy}

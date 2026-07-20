@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { join } from "node:path";
 import { resolveDesktopDefaultsFromEnv } from "../defaults.ts";
 
 export interface DesktopDaemonEndpoint {
@@ -60,6 +61,13 @@ export function resolveDesktopBusinessEventStreamUrl(
 
 export function resolveDesktopLogsDir(): string {
   return resolveDesktopDefaultsFromEnv().state.logsDir;
+}
+
+export function resolveBrowserNodeAutomationListenerInfoPath(): string {
+  return join(
+    resolveDesktopDefaultsFromEnv().state.runDir,
+    "browser-node-automation.json"
+  );
 }
 
 function toBaseUrl(addr: string): string {

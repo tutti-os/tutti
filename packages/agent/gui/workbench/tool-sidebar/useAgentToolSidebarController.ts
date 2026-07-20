@@ -194,6 +194,30 @@ export function useAgentToolSidebarController({
     ]
   );
 
+  const ensurePanel = useCallback(
+    (panel: AgentToolPanelId, resourceId?: string) => {
+      if (!panelIds.has(panel)) return null;
+      const existing = state.mountedTabs.find(
+        (tab) =>
+          tab.panel === panel && (tab.resourceId ?? undefined) === resourceId
+      );
+      if (existing) return existing.id;
+      const tabId = createToolTabId(panel);
+      const action = {
+        panel,
+        resourceId,
+        tabId,
+        type: "ensure-panel"
+      } as const;
+      const nextState = reduceAgentToolSidebarState(state, action);
+      dispatch(action);
+      onTabsChange?.(nextState.mountedTabs);
+      markContentReady(tabId);
+      return tabId;
+    },
+    [markContentReady, onTabsChange, panelIds, state]
+  );
+
   const closePanelTab = useCallback(
     (tabId: string) => {
       const closingIndex = state.mountedTabs.findIndex(
@@ -341,6 +365,7 @@ export function useAgentToolSidebarController({
     closePanel,
     closePanelTab,
     contentReadyTabIds,
+    ensurePanel,
     handleSidebarTransitionEnd,
     isEmptySidebar,
     isEmptySidebarClosing,

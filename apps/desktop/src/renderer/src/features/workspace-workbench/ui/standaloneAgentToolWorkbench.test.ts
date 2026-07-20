@@ -140,6 +140,25 @@ test("standalone Agent tools load their OS node UI on demand", () => {
   );
 });
 
+test("standalone Agent automation keeps a session-owned background Browser surface", () => {
+  assert.match(
+    standaloneAgentToolSidebarAdapterSource,
+    /onAutomationRequest[\s\S]*?ensurePanel\("browser", sessionId\)/
+  );
+  assert.match(
+    standaloneAgentBrowserToolPanelSource,
+    /useState\(agentSessionId\)/
+  );
+  assert.match(
+    standaloneAgentBrowserToolPanelSource,
+    /defaultUrl=\{automationManaged \? "about:blank" : undefined\}/
+  );
+  assert.match(
+    standaloneAgentToolSidebarAdapterSource,
+    /browser: automationBrowserCount/
+  );
+});
+
 test("standalone Agent opens an empty right sidebar with the core tool picker", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
@@ -163,7 +182,7 @@ test("standalone Agent opens an empty right sidebar with the core tool picker", 
 test("standalone Agent quick actions open the apps and messages panel tabs", () => {
   assert.match(
     standaloneAgentToolSidebarAdapterSource,
-    /quickActionPanels=\{\["tasks", "apps", "messages"\]\}/
+    /quickActionPanels=\{\[[\s\S]*?"tasks"[\s\S]*?"apps"[\s\S]*?"messages"/
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
@@ -265,7 +284,7 @@ test("standalone Agent restores the resize baseline after closing the empty pick
 test("standalone Agent toolbar exposes task management in the unified panel", () => {
   assert.match(
     standaloneAgentToolSidebarAdapterSource,
-    /quickActionPanels=\{\["tasks", "apps", "messages"\]\}/
+    /quickActionPanels=\{\[[\s\S]*?"tasks"[\s\S]*?"apps"[\s\S]*?"messages"/
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
