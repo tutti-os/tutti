@@ -616,3 +616,17 @@ test("Lab exposes independent default-off gates for experimental Agent features"
   );
   assert.match(source, /<WorkspaceLabFeatureGateRows/);
 });
+
+test("model plans settings entries are gated behind the lab.modelPlans flag", () => {
+  assert.match(source, /LAB_MODEL_PLANS_FLAG/);
+  assert.match(
+    source,
+    /modelPlansEnabled = isFeatureEnabled\(\s*pendingFeatureFlags,\s*LAB_MODEL_PLANS_FLAG\s*\)/
+  );
+  assert.match(source, /\.\.\.\(modelPlansEnabled\s*\?\s*\[/);
+  assert.match(source, /activeSection === "apps" && modelPlansEnabled/);
+  assert.match(
+    source,
+    /!modelPlansEnabled && settingsState\.activeSection === "apps"/
+  );
+});

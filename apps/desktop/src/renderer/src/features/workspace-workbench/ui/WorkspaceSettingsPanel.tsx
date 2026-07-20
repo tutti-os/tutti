@@ -89,6 +89,7 @@ import {
   EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
+  LAB_MODEL_PLANS_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
@@ -189,6 +190,10 @@ export function WorkspaceSettingsPanel({
   const agentsService = useService(IAgentsService);
   const agentProviderStatusService = useService(IAgentProviderStatusService);
   const agentEnvService = useService(IAgentEnvService);
+  const modelPlansEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    LAB_MODEL_PLANS_FLAG
+  );
 
   useEffect(() => {
     if (settingsState.open) {
@@ -201,6 +206,12 @@ export function WorkspaceSettingsPanel({
       settingsService.selectSection("general");
     }
   }, [labSectionVisible, settingsService, settingsState.activeSection]);
+
+  useEffect(() => {
+    if (!modelPlansEnabled && settingsState.activeSection === "apps") {
+      settingsService.selectSection("general");
+    }
+  }, [modelPlansEnabled, settingsService, settingsState.activeSection]);
 
   const handleVersionTap = () => {
     if (settingsState.developerPanelVisible) {
@@ -274,10 +285,14 @@ export function WorkspaceSettingsPanel({
               id: "appearance" as const,
               label: t("workspace.settings.nav.appearance")
             },
-            {
-              id: "apps" as const,
-              label: t("workspace.settings.nav.apps")
-            },
+            ...(modelPlansEnabled
+              ? [
+                  {
+                    id: "apps" as const,
+                    label: t("workspace.settings.nav.apps")
+                  }
+                ]
+              : []),
             ...(settingsState.tuttiAgentSwitchEnabled
               ? [
                   {
@@ -515,7 +530,7 @@ export function WorkspaceSettingsPanel({
                   desktopPreferencesState.workbenchWindowSnapping
                 }
               />
-            ) : settingsState.activeSection === "apps" ? (
+            ) : settingsState.activeSection === "apps" && modelPlansEnabled ? (
               <WorkspaceAppsSettingsSection />
             ) : settingsState.activeSection === "lab" ? (
               <WorkspaceLabSettingsSection
