@@ -5,21 +5,9 @@ import {
   buildGoTestLane,
   buildPackageTestCommand,
   isBuiltinGenerateRequired,
-  isToolTestRelevant,
   resolveGoModuleRoot,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
-
-describe("isToolTestRelevant", () => {
-  it("keeps app release package changes covered by tool-owned tests", () => {
-    assert.equal(
-      isToolTestRelevant("packages/workspace/app-release-tools/bin/build.mjs"),
-      true
-    );
-    assert.equal(isToolTestRelevant("tools/scripts/build.test.mjs"), true);
-    assert.equal(isToolTestRelevant("packages/workspace/files/file.go"), false);
-  });
-});
 
 describe("resolveGoModuleRoot", () => {
   it("maps changed files to their Go module root", () => {

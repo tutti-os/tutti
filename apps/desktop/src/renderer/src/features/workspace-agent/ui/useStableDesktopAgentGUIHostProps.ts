@@ -7,6 +7,7 @@ export type DesktopAgentGUIHostProps = {
     | "path"
     | "fileReferenceAdapter"
     | "onRequestGitBranches"
+    | "resolveExternalPromptEntries"
     | "prepareExternalPromptFiles"
     | "promptAssetLimit"
     | "referenceSourceAggregator"
@@ -69,6 +70,7 @@ export function useStableDesktopAgentGUIHostProps({
       path: nextWorkspace.path,
       fileReferenceAdapter: nextWorkspace.fileReferenceAdapter,
       onRequestGitBranches: nextWorkspace.onRequestGitBranches,
+      resolveExternalPromptEntries: nextWorkspace.resolveExternalPromptEntries,
       prepareExternalPromptFiles: nextWorkspace.prepareExternalPromptFiles,
       promptAssetLimit: nextWorkspace.promptAssetLimit,
       referenceSourceAggregator: nextWorkspace.referenceSourceAggregator,

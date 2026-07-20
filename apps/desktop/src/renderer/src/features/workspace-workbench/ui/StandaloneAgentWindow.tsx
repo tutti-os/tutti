@@ -827,6 +827,9 @@ export function StandaloneAgentWindow({
               workspaceFileReferenceAdapter={
                 agentGuiHostInput.workspaceFileReferenceAdapter
               }
+              resolveExternalPromptEntries={
+                agentGuiHostInput.resolveExternalPromptEntries
+              }
               prepareExternalPromptFiles={
                 agentGuiHostInput.prepareExternalPromptFiles
               }

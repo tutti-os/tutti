@@ -58,8 +58,9 @@ selects only the relevant validation lanes, and adds build lanes for changed Go
 or package surfaces that require push-time build confidence. Unrelated
 TypeScript, Go, package, and boundary lanes do not run.
 
-`check:full` remains the stable root command for explicit local full validation
-and CI. It is no longer the default gate for every push.
+`check:full` remains the stable root command for explicit local full validation.
+It is no longer the default gate for every push; PR CI selects affected lanes
+from the same repository check registry used by `check:changed`.
 
 That root command now uses a repository-owned Node orchestration script so the stable entrypoint stays the same while independent checks can run in parallel in bounded phases:
 
@@ -83,13 +84,21 @@ That full validation currently includes:
 - `pnpm check:agent-gui-provider-catalog-generated`
 - `pnpm check:api-generated`
 - `pnpm check:event-protocol-generated`
+- `pnpm check:workbench-go-contract`
+- `pnpm check:codexproto-generated`
+- `pnpm check:tutti-names`
 - `pnpm check:i18n`
 - `pnpm check:electron-runtime-boundaries`
 - `pnpm check:ui-boundaries`
 - `pnpm check:renderer-boundaries`
+- `pnpm check:agent-activity-runtime-boundaries`
+- `pnpm check:agent-host-boundary`
+- `pnpm check:agent-provider-strategy-boundaries`
+- `pnpm check:agent-gui-degradation`
 - `pnpm lint`
 - `pnpm typecheck`
 - `pnpm test:ts`
+- `pnpm test:tools`
 - `pnpm test:go`
 
 The lint and typecheck steps in `check:full` should follow the repository's
@@ -137,7 +146,9 @@ changed-aware runner and hook behavior.
 
 The runner selects checks from the changed file set, runs independent lanes
 concurrently, prints compact summaries, and stores full logs under
-`.tmp/check-runs`.
+`.tmp/check-runs`. Repository policy, tool contracts, generated contracts, and
+architecture boundaries come from `tools/scripts/repository-checks.mjs`; PR CI
+uses the same selectors.
 
 `pnpm check:changed -- --push-ready` is the `pre-push` mode. In addition to the
 normal changed-aware lanes, it schedules Go or package builds when the changed

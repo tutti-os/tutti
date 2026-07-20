@@ -10,6 +10,7 @@ import type { AgentPromptContentBlock } from "../../../shared/contracts/dto/agen
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
+import type { AgentExternalPromptEntryResolver } from "../model/agentExternalPromptEntries";
 import type { AgentExternalPromptFilePreparer } from "../model/agentExternalPromptFiles";
 import type { AgentProjectPathChangeMetadata } from "../AgentComposerSettingsMenus";
 import type { AgentSlashCommandCapability } from "../model/agentSlashCommandProviderPolicy";
@@ -387,6 +388,7 @@ export interface AgentComposerProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
+  resolveExternalPromptEntries?: AgentExternalPromptEntryResolver | null;
   prepareExternalPromptFiles?: AgentExternalPromptFilePreparer | null;
   promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;

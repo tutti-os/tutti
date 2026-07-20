@@ -1,0 +1,91 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { classifyChangedFiles } from "./change-classification.mjs";
+import { selectRepositoryChecks } from "./repository-checks.mjs";
+
+const releasePackageRoots = ["packages/agent/gui", "packages/ui/system"];
+
+test("Go-only changes do not select TypeScript validation", () => {
+  const classification = classifyChangedFiles(
+    ["services/tuttid/service/workspace/apps.go"],
+    { releasePackageRoots }
+  );
+
+  assert.equal(classification.runGo, true);
+  assert.equal(classification.runTs, false);
+  assert.equal(classification.runPack, false);
+  assert.equal(classification.runBoundaries, true);
+});
+
+test("generated source files select generated contracts before outputs change", () => {
+  for (const file of [
+    "config/tutti.defaults.json",
+    "services/tuttid/api/openapi/tuttid.v1.yaml",
+    "packages/events/protocol/definitions/agent/activity.updated.event.json",
+    "packages/workbench/snapshot/src/schema.json"
+  ]) {
+    const classification = classifyChangedFiles([file], {
+      releasePackageRoots
+    });
+    assert.equal(classification.runGenerated, true, file);
+  }
+});
+
+test("workflow and hook changes select repository tool contracts", () => {
+  for (const file of [
+    ".github/workflows/desktop-release.yml",
+    ".github/workflows/publish-tutti-app-release.yml",
+    ".husky/pre-push"
+  ]) {
+    const classification = classifyChangedFiles([file], {
+      releasePackageRoots
+    });
+    assert.equal(classification.runContracts, true, file);
+  }
+});
+
+test("published CSS and assets select package packing and UI boundaries", () => {
+  for (const file of [
+    "packages/agent/gui/app/renderer/agentactivity.css",
+    "packages/ui/system/src/icons/recent-lined.svg"
+  ]) {
+    const classification = classifyChangedFiles([file], {
+      releasePackageRoots
+    });
+    assert.equal(classification.runPack, true, file);
+    assert.equal(classification.runBoundaries, true, file);
+    assert.equal(classification.runTs, false, file);
+  }
+});
+
+test("deleted package manifests still select package packing", () => {
+  const classification = classifyChangedFiles(
+    ["packages/example/removed/package.json"],
+    { releasePackageRoots }
+  );
+
+  assert.equal(classification.runPack, true);
+});
+
+test("repository check registry selects only relevant generated checks", () => {
+  const checks = selectRepositoryChecks(
+    ["packages/events/protocol/schemas/core/event-envelope.schema.json"],
+    { group: "generated" }
+  );
+
+  assert.deepEqual(
+    checks.map((check) => check.key),
+    ["generated:event-protocol"]
+  );
+});
+
+test("provider source changes select catalog and strategy checks", () => {
+  const checks = selectRepositoryChecks([
+    "packages/agent/daemon/providerregistry/providers.go"
+  ]);
+  const keys = checks.map((check) => check.key);
+
+  assert.ok(keys.includes("generated:agent-provider-catalog"));
+  assert.ok(keys.includes("boundary:agent-provider-strategy"));
+});

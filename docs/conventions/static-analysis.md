@@ -32,7 +32,9 @@ Repository entrypoints:
 - `pnpm check:agent-provider-strategy-boundaries`
 - `pnpm check:tutti-names`
 
-`pnpm check:full` remains the full local and CI validation command and includes linting and typechecking.
+`pnpm check:full` remains the full local validation command and includes
+linting, typechecking, repository checks, and blocking tests. PR CI selects the
+equivalent affected surfaces instead of running `check:full` as one job.
 
 The Tutti naming check rejects legacy product tokens in tracked paths and
 content. Its content allowlist is intentionally narrow and may cover only
@@ -41,15 +43,22 @@ environment variables that production code must still recognize or suppress;
 tests that prove those compatibility boundaries belong beside the production
 file in the same allowlist. Do not use the allowlist for active product naming.
 
-The pull-request workflow classifies changed files inline before running
-expensive validation jobs. TypeScript and JavaScript paths select TypeScript
-lint, typecheck, tests, and package packing; Go paths select Go tests and Go
-lint; package manifest and lockfile paths select package packing; CI and
-repository tooling paths conservatively select all affected lanes. Documentation
-only changes therefore skip code validation while still producing workflow check
-results through job-level conditions. Do not use workflow-level `paths-ignore`
-for this gate because missing required checks can leave documentation-only PRs
-waiting on branch protection.
+The pull-request workflow and `check:changed` share changed-file classification
+from `tools/scripts/change-classification.mjs` and repository-check ownership
+from `tools/scripts/repository-checks.mjs`. Repository checks are grouped by
+responsibility: policy, tool contracts, generated contracts, and architecture
+boundaries. TypeScript and Go jobs own language lint/tests only; a check written
+in TypeScript does not make it a TypeScript check. Package sources and assets
+select packing independently of language. Documentation-only changes skip code
+validation while still producing workflow check results through job-level
+conditions. Do not use workflow-level `paths-ignore` for this gate because
+missing required checks can leave documentation-only PRs waiting on branch
+protection.
+
+PR CI keeps the existing `Tooling Consistency` required context as the owner of
+repository policy, contract, generated, and boundary checks. This preserves
+branch-protection compatibility while keeping those checks out of language
+jobs.
 
 Validation runners that spawn nested pnpm commands should read the root
 `packageManager` field and invoke that pinned version through Corepack. Do not
@@ -106,9 +115,9 @@ open, bounded identifier contracts that accept extension providers. It runs as p
 `pnpm generate:agent-gui-provider-catalog`; do not hand-edit the generated
 catalog.
 
-The provider catalog check also runs
-`pnpm check:agent-provider-strategy-boundaries`. Cross-provider daemon,
-service, and desktop production code must dispatch behavior through
+Provider strategy is an independent architecture boundary enforced by
+`pnpm check:agent-provider-strategy-boundaries`. Cross-provider daemon, service,
+and desktop production code must dispatch behavior through
 `providerregistry` strategy, capability, and integration descriptors instead
 of branching on Codex, Claude, Cursor, Hermes, Nexight, OpenClaw, OpenCode, or
 Tutti Agent identity. The checker reads the complete provider ID set from the

@@ -78,7 +78,8 @@ interface Props {
   promptTipRef: RefObject<HTMLSpanElement | null>;
   editorHandleRef: RefObject<AgentRichTextEditorHandle | null>;
   mentionControllerRef: MutableRefObject<AgentMentionSearchController | null>;
-  promptFilesSupported: boolean;
+  externalPromptEntriesSupported: boolean;
+  addExternalPromptEntries: (files: readonly File[]) => void;
   onDismissProjectMenuAutoFocus?: (event: Event) => void;
   paletteDraftPrompt: string;
   showFileMentionPalette: boolean;
@@ -174,7 +175,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     selectFileMention
   } = input.mentionActions;
   const {
-    addDraftFiles,
     clearGoalModeBadge,
     expandDraftLargeTextToPrompt,
     handleDraftChange,
@@ -440,10 +440,14 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                     onPasteImages={handlePastedImages}
                     onPasteLargeText={handlePastedLargeText}
                     onPasteFiles={
-                      input.promptFilesSupported ? addDraftFiles : undefined
+                      input.externalPromptEntriesSupported
+                        ? input.addExternalPromptEntries
+                        : undefined
                     }
                     onDropFiles={
-                      input.promptFilesSupported ? addDraftFiles : undefined
+                      input.externalPromptEntriesSupported
+                        ? input.addExternalPromptEntries
+                        : undefined
                     }
                   />
                   {!isHeroLayout ? composerActionButton : null}

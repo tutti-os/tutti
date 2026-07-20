@@ -55,6 +55,7 @@ import { createDesktopAgentGeneratedFileMentionProvider } from "./internal/creat
 import { createDesktopAgentExternalPromptFilePreparer } from "./internal/prepareDesktopAgentExternalPromptFiles.ts";
 import { createDesktopIssueFromAgentPlan } from "./desktopAgentGUIPlanIssue.ts";
 import { createDesktopTuttiModePlanReviewRuntime } from "./internal/desktopWorkspaceWorkflowRuntime.ts";
+import { createDesktopAgentExternalPromptEntryResolver } from "./internal/resolveDesktopAgentExternalPromptEntries.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
@@ -71,6 +72,9 @@ export interface DesktopAgentGUIWorkbenchHostInput {
   }) => Promise<void>;
   workspaceFileReferenceAdapter: NonNullable<
     AgentGUIProps["workspace"]["fileReferenceAdapter"]
+  >;
+  resolveExternalPromptEntries: NonNullable<
+    AgentGUIProps["workspace"]["resolveExternalPromptEntries"]
   >;
   prepareExternalPromptFiles: NonNullable<
     AgentGUIProps["workspace"]["prepareExternalPromptFiles"]
@@ -276,6 +280,8 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       platformApi,
       workspaceId
     });
+  const resolveExternalPromptEntries =
+    createDesktopAgentExternalPromptEntryResolver({ platformApi });
   return {
     agentActivityRuntime,
     agentHostApi: resolvedAgentHostApi,
@@ -308,6 +314,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
     trackWorkspaceFileReferences: (input) =>
       workspaceFileReferenceTracker.track(input),
     workspaceFileReferenceAdapter,
+    resolveExternalPromptEntries,
     prepareExternalPromptFiles,
     onRequestGitBranches: async ({ agentSessionId, workingDirectory }) => {
       const result = agentSessionId

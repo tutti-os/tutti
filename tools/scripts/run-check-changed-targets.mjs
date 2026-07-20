@@ -44,14 +44,6 @@ export function isBuiltinGenerateRequired(changedFiles) {
   });
 }
 
-export function isToolTestRelevant(file) {
-  const normalized = file.replaceAll("\\", "/");
-  return (
-    normalized.startsWith("tools/scripts/") ||
-    normalized.startsWith("packages/workspace/app-release-tools/")
-  );
-}
-
 export function resolveGoValidationTargets(
   changedFiles,
   { pathExists = existsSync } = {}
