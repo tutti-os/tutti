@@ -113,6 +113,37 @@ test("availability requires installed CLI, authentication, and ready provider", 
   assert.equal(params.unavailableReason, "provider_error");
 });
 
+test("availability rollover uses the activation time supplied by its lifecycle", async () => {
+  const events: ReporterEventInput[] = [];
+  const telemetry = new AgentAvailabilitySnapshotTelemetry({
+    now: () => new Date(2026, 6, 21, 0, 1).getTime(),
+    reporterService: {
+      async trackEvents(input) {
+        events.push(...input);
+      }
+    },
+    storage: createMemoryStorage()
+  });
+  const ready = status({
+    authenticated: true,
+    availability: "ready",
+    cliInstalled: true,
+    provider: "codex"
+  });
+
+  telemetry.reportStatuses([ready], new Date(2026, 6, 20, 23, 59).getTime());
+  telemetry.reportStatuses([ready], new Date(2026, 6, 21, 0, 0).getTime());
+  await flushAsyncWork();
+
+  assert.deepEqual(
+    events.map((event) => [event.clientTS, event.params?.trigger]),
+    [
+      [new Date(2026, 6, 20, 23, 59).getTime(), "env_detected"],
+      [new Date(2026, 6, 21, 0, 0).getTime(), "daily_rollover"]
+    ]
+  );
+});
+
 function status(input: {
   authenticated: boolean;
   availability: AgentProviderStatus["availability"]["status"];

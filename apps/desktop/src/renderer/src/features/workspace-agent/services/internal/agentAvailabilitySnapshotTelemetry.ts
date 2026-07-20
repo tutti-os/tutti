@@ -43,8 +43,11 @@ export class AgentAvailabilitySnapshotTelemetry {
         : dependencies.storage;
   }
 
-  reportStatuses(statuses: readonly AgentProviderStatus[]): void {
-    const now = this.now();
+  reportStatuses(
+    statuses: readonly AgentProviderStatus[],
+    occurredAt: number = this.now()
+  ): void {
+    const now = occurredAt;
     const date = localDateKey(now);
     for (const status of statuses) {
       const params = buildAvailabilitySnapshotParams(status, "env_detected");

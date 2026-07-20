@@ -1,18 +1,21 @@
 import type { ServiceRegistry } from "@tutti-os/infra/di";
 import type {
+  AgentProviderStatus,
   TuttidClient,
-  TuttidEventStreamClient
+  TuttidEventStreamClient,
+  WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 import type { NotificationService } from "@tutti-os/ui-notifications";
+import type { WorkspaceWindowLifecycle } from "../../../lib/workspaceWindowLifecycle.ts";
 import { IAgentEnvService } from "./agentEnvService.interface.ts";
 import { IAgentProviderStatusService } from "./agentProviderStatusService.interface";
 import type { AgentProviderTerminalCommandRunner } from "./agentProviderStatusService.interface";
 import { bindDesktopManagedAgentProviderVisibilityRefresh } from "./internal/desktopAgentProviderVisibilityRefresh.ts";
-import { createDesktopAgentAvailabilitySnapshotPageviewReport } from "./internal/desktopAgentAvailabilitySnapshotPageviewReport.ts";
 import { DesktopAgentProviderStatusService } from "./internal/desktopAgentProviderStatusService";
+import { desktopManagedAgentProviders } from "./internal/desktopManagedAgentProviders.ts";
 import { startManagedAgentInstallBootstraps } from "./internal/tuttiAgentInstallBootstrap.ts";
 import { DesktopAgentsService } from "./internal/desktopAgentsService";
 import { WorkspaceAgentActivityService } from "./internal/workspaceAgentActivityService";
@@ -24,7 +27,6 @@ import { AgentEnvService } from "./internal/agentEnvService.ts";
 
 export interface WorkspaceAgentServiceRegistrationInput {
   accountLogin: { startLogin(): Promise<void> };
-  bindProviderVisibilityRefresh?: boolean;
   clipboard: { writeText(text: string): Promise<void> };
   eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi: Pick<
@@ -39,6 +41,7 @@ export interface WorkspaceAgentServiceRegistrationInput {
     "logRendererDiagnostic" | "logTerminalDiagnostic"
   >;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
+  windowLifecycle: WorkspaceWindowLifecycle;
   workspaceId: string;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
@@ -47,7 +50,9 @@ export interface WorkspaceAgentServiceRegistrationResult {
   agentEnvService: IAgentEnvService;
   agentsService: IAgentsService;
   agentProviderStatusService: IAgentProviderStatusService;
-  reportAgentAvailabilitySnapshot(): Promise<void>;
+  refreshManagedAgentProviderStatuses(): Promise<
+    readonly AgentProviderStatus[] | null
+  >;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   dispose(): void;
 }
@@ -77,16 +82,23 @@ export function registerWorkspaceAgentServices(
   });
   registry.registerInstance(IAgentEnvService, agentEnvService);
   const disposeManagedAgentProviderVisibilityRefresh =
-    input.bindProviderVisibilityRefresh === false
-      ? () => {}
-      : bindDesktopManagedAgentProviderVisibilityRefresh(
-          agentProviderStatusService
-        );
-  const reportAgentAvailabilitySnapshot =
-    createDesktopAgentAvailabilitySnapshotPageviewReport(
+    bindDesktopManagedAgentProviderVisibilityRefresh(
       agentProviderStatusService,
-      { reporterService: input.reporterService }
+      input.windowLifecycle
     );
+  const managedProviderSet = new Set<WorkspaceAgentProvider>(
+    desktopManagedAgentProviders
+  );
+  const refreshManagedAgentProviderStatuses = async () => {
+    const response = await agentProviderStatusService.refreshStatuses([
+      ...desktopManagedAgentProviders
+    ]);
+    return (
+      response?.providers.filter((status) =>
+        managedProviderSet.has(status.provider)
+      ) ?? null
+    );
+  };
   startManagedAgentInstallBootstraps(agentProviderStatusService);
   const agentsService = new DesktopAgentsService({
     tuttidClient: input.tuttidClient
@@ -112,7 +124,7 @@ export function registerWorkspaceAgentServices(
     agentEnvService,
     agentsService,
     agentProviderStatusService,
-    reportAgentAvailabilitySnapshot,
+    refreshManagedAgentProviderStatuses,
     workspaceAgentActivityService,
     dispose() {
       disposeManagedAgentProviderVisibilityRefresh();
