@@ -188,6 +188,33 @@ test("desktop release workflow passes tsh-aligned Feishu card context", async ()
   assert.doesNotMatch(workflow, /RELEASE_ASSET_DIRECTORY:\s+release-assets/);
 });
 
+test("desktop release workflow scopes generated notes to the previous release tag", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const previousTagIndex = workflow.indexOf(
+    "name: Resolve previous GitHub release tag"
+  );
+  const stageIndex = workflow.indexOf("name: Stage GitHub release assets");
+
+  assert.notEqual(
+    previousTagIndex,
+    -1,
+    "the previous release tag should be resolved"
+  );
+  assert.ok(
+    previousTagIndex < stageIndex,
+    "the previous release tag should be resolved first"
+  );
+  assert.match(
+    workflow,
+    /node apps\/desktop\/scripts\/resolve-previous-release-tag\.mjs/
+  );
+  assert.match(workflow, /generate_release_notes:\s+true/);
+  assert.match(
+    workflow,
+    /previous_tag:\s+\${{\s*steps\.previous-release-tag\.outputs\.tag\s*}}/
+  );
+});
+
 test("desktop release workflow defaults Feishu notifications on outside manual dispatch", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 

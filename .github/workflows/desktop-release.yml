@@ -483,6 +483,15 @@ jobs:
       - name: Generate checksums
         run: node apps/desktop/scripts/generate-checksums.mjs release-assets
 
+      - id: previous-release-tag
+        name: Resolve previous GitHub release tag
+        env:
+          RELEASE_CHANNEL: ${{ env.TUTTI_DESKTOP_RELEASE_CHANNEL }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+        run: |
+          previous_tag="$(node apps/desktop/scripts/resolve-previous-release-tag.mjs)"
+          echo "tag=${previous_tag}" >> "$GITHUB_OUTPUT"
+
       - id: stage-release
         name: Stage GitHub release assets
         uses: softprops/action-gh-release@v2
@@ -495,6 +504,7 @@ jobs:
           prerelease: ${{ needs.resolve.outputs.release_prerelease == 'true' }}
           make_latest: ${{ needs.resolve.outputs.release_make_latest == 'true' }}
           generate_release_notes: true
+          previous_tag: ${{ steps.previous-release-tag.outputs.tag }}
           files: |
             release-assets/*
 

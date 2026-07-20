@@ -318,6 +318,17 @@ The summary is used to:
 - enrich the Feishu release card with the Chinese summary when Feishu notification is enabled
 - update `changelog.json` for stable releases
 
+Before staging the Draft Release, generate GitHub's detailed release notes with
+an explicit comparison tag. RC and beta notes compare against the newest tag in
+the same version/channel series, falling back to the newest stable tag; stable
+notes compare against the newest stable tag. Do not rely on GitHub's implicit
+previous-release selection because RC and beta GitHub Releases remain drafts
+and therefore are not valid published-release comparison anchors.
+
+Managed summary and direct-download sections must be preserved when release
+notes approach GitHub's 125,000-character body limit. Trim only the generated
+detail entries and leave a visible truncation notice.
+
 Do not commit real model API keys. Configure `AGNES_API_KEY` as a GitHub secret.
 
 ## Required Secrets

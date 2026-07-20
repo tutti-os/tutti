@@ -77,6 +77,39 @@
   [.github/workflows/desktop-release.yml](../../../.github/workflows/desktop-release.yml)
   [desktop-release-config.test.mjs](../../../tools/scripts/desktop-release-config.test.mjs)
 
+### Desktop release notes exceed GitHub's body limit
+
+- Symptom:
+  All architecture builds and asset uploads succeed, but `Stage Release Draft`
+  fails in `Update release notes with summary` with HTTP 422 and
+  `body is too long (maximum is 125000 characters)`. Promotion and notification
+  jobs are then skipped.
+- Quick checks:
+  Inspect the failed step rather than rebuilding the installers. Run
+  `gh release view <tag> --json body --jq '.body | length'` and check whether
+  the generated `What's Changed` section contains repository-wide history.
+- Root cause:
+  GitHub's implicit release-note comparison selects published releases. Tutti
+  intentionally keeps RC and beta GitHub Releases as drafts, so the implicit
+  base can remain far behind and every prerelease accumulates the same old pull
+  requests until the Release body reaches GitHub's limit.
+- Fix:
+  Resolve the previous same-channel tag explicitly and pass it as
+  `softprops/action-gh-release`'s `previous_tag`. Keep the shared Release body
+  limiter as a fallback: it preserves managed summary and direct-download
+  sections and trims only generated detail entries. Re-running an old Actions
+  run still uses its original workflow revision; merge the workflow fix before
+  starting a new release, or repair the existing draft notes before manually
+  promoting that draft.
+- Validation:
+  Generate notes with the failing tag and its resolved previous tag and confirm
+  the body is bounded to that comparison range. Run
+  `node --test tools/scripts/desktop-release-summary.test.mjs tools/scripts/desktop-release-download-links.test.mjs tools/scripts/desktop-release-config.test.mjs`.
+- References:
+  [.github/workflows/desktop-release.yml](../../../.github/workflows/desktop-release.yml)
+  [resolve-previous-release-tag.mjs](../../../apps/desktop/scripts/resolve-previous-release-tag.mjs)
+  [githubReleaseBody.mjs](../../../apps/desktop/scripts/lib/githubReleaseBody.mjs)
+
 ### Desktop dev GUI exits before opening
 
 - Symptom:
