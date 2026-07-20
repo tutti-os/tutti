@@ -271,7 +271,18 @@ test("standalone Agent hides panel toggles until its content mounts", () => {
   );
   assert.match(
     standaloneWindowSource,
-    /<StandaloneAgentWindowContentReady onReady=\{handleContentReady\}>[\s\S]*?<DesktopAgentGUISurface/
+    /<StandaloneAgentWindowContentReady[\s\S]*?onReady=\{handleContentReady\}[\s\S]*?<DesktopAgentGUISurface/
+  );
+});
+
+test("standalone Agent keeps its startup shell until the Agent directory resolves", () => {
+  assert.match(
+    standaloneWindowSource,
+    /agents\.length === 0 &&[\s\S]*?agentDirectorySnapshot\.status === "idle"[\s\S]*?agentDirectorySnapshot\.status === "loading"/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /<StandaloneAgentWindowContentReady[\s\S]*?isPending=\{isAgentDirectoryLoading\}[\s\S]*?pendingFallback=\{<StandaloneAgentStartupShell scope="body" \/>\}/
   );
 });
 
