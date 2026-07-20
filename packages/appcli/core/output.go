@@ -9,11 +9,15 @@ import (
 
 func DecodeCommandOutput(content []byte) (CommandOutput, error) {
 	var raw struct {
-		Kind    OutputMode       `json:"kind"`
-		Columns []TableColumn    `json:"columns"`
-		Rows    []map[string]any `json:"rows"`
-		Value   map[string]any   `json:"value"`
-		Text    string           `json:"text"`
+		Kind         OutputMode       `json:"kind"`
+		Columns      []TableColumn    `json:"columns"`
+		Rows         []map[string]any `json:"rows"`
+		Value        map[string]any   `json:"value"`
+		Text         string           `json:"text"`
+		Continuation *struct {
+			State        CommandContinuationState `json:"state"`
+			RetryAfterMs int                      `json:"retryAfterMs"`
+		} `json:"continuation"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(content))
 	decoder.UseNumber()
@@ -23,13 +27,19 @@ func DecodeCommandOutput(content []byte) (CommandOutput, error) {
 	if raw.Kind == "" {
 		return CommandOutput{}, errors.New("cli command output kind is required")
 	}
-	return CommandOutput{
+	output := CommandOutput{
 		Kind:    raw.Kind,
 		Columns: raw.Columns,
 		Rows:    raw.Rows,
 		Value:   raw.Value,
 		Text:    raw.Text,
-	}, nil
+	}
+	if raw.Continuation != nil {
+		output.Continuation = &CommandContinuation{
+			State: raw.Continuation.State, RetryAfterMs: raw.Continuation.RetryAfterMs,
+		}
+	}
+	return output, nil
 }
 
 func ValidateCommandOutput(contract CapabilityOutput, output CommandOutput) (CommandOutput, error) {
@@ -51,6 +61,30 @@ func ValidateCommandOutput(contract CapabilityOutput, output CommandOutput) (Com
 		return CommandOutput{}, invokeError(ErrHandlerBadResponse, "app_cli_handler_bad_response", fmt.Errorf("unsupported output kind %q", output.Kind))
 	}
 	return output, nil
+}
+
+func ValidateCommandContinuation(execution *CommandExecution, output CommandOutput) error {
+	continuation := output.Continuation
+	if continuation == nil {
+		return nil
+	}
+	if execution == nil || execution.Mode != CommandExecutionModeWait {
+		return invokeError(ErrHandlerBadResponse, "app_cli_handler_bad_response", errors.New("continuation is only allowed for wait commands"))
+	}
+	if output.Kind != OutputModeJSON {
+		return invokeError(ErrHandlerBadResponse, "app_cli_handler_bad_response", errors.New("wait continuation requires json output"))
+	}
+	if continuation.State != CommandContinuationStatePending {
+		return invokeError(ErrHandlerBadResponse, "app_cli_handler_bad_response", fmt.Errorf("unsupported continuation state %q", continuation.State))
+	}
+	if continuation.RetryAfterMs < MinContinuationRetryAfterMs || continuation.RetryAfterMs > MaxContinuationRetryAfterMs {
+		return invokeError(
+			ErrHandlerBadResponse,
+			"app_cli_handler_bad_response",
+			fmt.Errorf("continuation retryAfterMs must be between %d and %d", MinContinuationRetryAfterMs, MaxContinuationRetryAfterMs),
+		)
+	}
+	return nil
 }
 
 func normalizeOutputColumns(contract []TableColumn, actual []TableColumn) ([]TableColumn, error) {

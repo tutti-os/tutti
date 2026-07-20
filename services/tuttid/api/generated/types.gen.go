@@ -838,6 +838,36 @@ func (e CliCapabilityVisibility) Valid() bool {
 	}
 }
 
+// Defines values for CliCommandContinuationState.
+const (
+	CliCommandContinuationStatePending CliCommandContinuationState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the CliCommandContinuationState enum.
+func (e CliCommandContinuationState) Valid() bool {
+	switch e {
+	case CliCommandContinuationStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CliCommandExecutionMode.
+const (
+	Wait CliCommandExecutionMode = "wait"
+)
+
+// Valid indicates whether the value is a known member of the CliCommandExecutionMode enum.
+func (e CliCommandExecutionMode) Valid() bool {
+	switch e {
+	case Wait:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CliOutputMode.
 const (
 	Json     CliOutputMode = "json"
@@ -3078,31 +3108,31 @@ func (e WorkspaceWorkflowPlanRevisionSchemaVersion) Valid() bool {
 
 // Defines values for WorkspaceWorkflowStatus.
 const (
-	WorkspaceWorkflowStatusAccepted      WorkspaceWorkflowStatus = "accepted"
-	WorkspaceWorkflowStatusCanceled      WorkspaceWorkflowStatus = "canceled"
-	WorkspaceWorkflowStatusCompleted     WorkspaceWorkflowStatus = "completed"
-	WorkspaceWorkflowStatusFailed        WorkspaceWorkflowStatus = "failed"
-	WorkspaceWorkflowStatusInProgress    WorkspaceWorkflowStatus = "in_progress"
-	WorkspaceWorkflowStatusPendingReview WorkspaceWorkflowStatus = "pending_review"
-	WorkspaceWorkflowStatusRejected      WorkspaceWorkflowStatus = "rejected"
+	Accepted      WorkspaceWorkflowStatus = "accepted"
+	Canceled      WorkspaceWorkflowStatus = "canceled"
+	Completed     WorkspaceWorkflowStatus = "completed"
+	Failed        WorkspaceWorkflowStatus = "failed"
+	InProgress    WorkspaceWorkflowStatus = "in_progress"
+	PendingReview WorkspaceWorkflowStatus = "pending_review"
+	Rejected      WorkspaceWorkflowStatus = "rejected"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowStatus enum.
 func (e WorkspaceWorkflowStatus) Valid() bool {
 	switch e {
-	case WorkspaceWorkflowStatusAccepted:
+	case Accepted:
 		return true
-	case WorkspaceWorkflowStatusCanceled:
+	case Canceled:
 		return true
-	case WorkspaceWorkflowStatusCompleted:
+	case Completed:
 		return true
-	case WorkspaceWorkflowStatusFailed:
+	case Failed:
 		return true
-	case WorkspaceWorkflowStatusInProgress:
+	case InProgress:
 		return true
-	case WorkspaceWorkflowStatusPendingReview:
+	case PendingReview:
 		return true
-	case WorkspaceWorkflowStatusRejected:
+	case Rejected:
 		return true
 	default:
 		return false
@@ -3990,7 +4020,11 @@ type CliCapabilitiesResponse struct {
 // CliCapability Stable command metadata exposed by the local CLI capability protocol.
 type CliCapability struct {
 	// Description Optional longer human-readable command description.
-	Description *string `json:"description,omitempty"`
+	Description *string              `json:"description,omitempty"`
+	Execution   *CliCommandExecution `json:"execution,omitempty"`
+
+	// HandlerTimeoutMs Per-invocation App handler timeout used by clients to budget the daemon request.
+	HandlerTimeoutMs *int `json:"handlerTimeoutMs,omitempty"`
 
 	// Id Stable command identifier used by invoke routes.
 	Id string `json:"id"`
@@ -4042,14 +4076,33 @@ type CliCapabilitySourceKind string
 // CliCapabilityVisibility defines model for CliCapabilityVisibility.
 type CliCapabilityVisibility string
 
+// CliCommandContinuation Internal continuation signal consumed by the CLI for wait commands and not rendered as a terminal result.
+type CliCommandContinuation struct {
+	// RetryAfterMs Delay before the CLI invokes the same command again.
+	RetryAfterMs int                         `json:"retryAfterMs"`
+	State        CliCommandContinuationState `json:"state"`
+}
+
+// CliCommandContinuationState defines model for CliCommandContinuationState.
+type CliCommandContinuationState string
+
+// CliCommandExecution Optional client-side execution behavior declared by a command. Wait commands remain active while handlers return a pending continuation.
+type CliCommandExecution struct {
+	Mode CliCommandExecutionMode `json:"mode"`
+}
+
+// CliCommandExecutionMode defines model for CliCommandExecutionMode.
+type CliCommandExecutionMode string
+
 // CliCommandOutput defines model for CliCommandOutput.
 type CliCommandOutput struct {
-	Columns  *[]CliTableColumn         `json:"columns,omitempty"`
-	Kind     CliOutputMode             `json:"kind"`
-	Rows     *[]map[string]interface{} `json:"rows,omitempty"`
-	Text     *string                   `json:"text,omitempty"`
-	Value    *map[string]interface{}   `json:"value,omitempty"`
-	Warnings *[]CliCommandWarning      `json:"warnings,omitempty"`
+	Columns      *[]CliTableColumn         `json:"columns,omitempty"`
+	Continuation *CliCommandContinuation   `json:"continuation,omitempty"`
+	Kind         CliOutputMode             `json:"kind"`
+	Rows         *[]map[string]interface{} `json:"rows,omitempty"`
+	Text         *string                   `json:"text,omitempty"`
+	Value        *map[string]interface{}   `json:"value,omitempty"`
+	Warnings     *[]CliCommandWarning      `json:"warnings,omitempty"`
 }
 
 // CliCommandWarning defines model for CliCommandWarning.

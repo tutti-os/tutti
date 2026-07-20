@@ -47,6 +47,7 @@ export const zhCNAgentGui = {
   },
   targetSetupChecking: "正在检测本地和 Tutti 托管运行时…",
   targetSetupInstall: "安装运行时",
+  targetSetupReinstall: "重新安装运行时",
   targetSetupStarting: "正在启动安装…",
   targetSetupAuthMethod: "登录方式",
   targetSetupAuthenticate: "继续登录",

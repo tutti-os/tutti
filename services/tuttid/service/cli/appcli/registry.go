@@ -219,6 +219,9 @@ func (r *Registry) Invoke(ctx context.Context, request cliservice.InvokeRequest)
 	if err != nil {
 		return cliservice.CommandOutput{}, serviceInvokeError(err)
 	}
+	if err := appclicore.ValidateCommandContinuation(command.Capability.Execution, output); err != nil {
+		return cliservice.CommandOutput{}, serviceInvokeError(err)
+	}
 	result := serviceCommandOutput(output)
 	result.Warnings = serviceInputWarnings(warnings)
 	return result, nil
@@ -388,15 +391,24 @@ func serviceCapabilities(capabilities []appclicore.Capability) []cliservice.Capa
 
 func serviceCapability(capability appclicore.Capability) cliservice.Capability {
 	return cliservice.Capability{
-		ID:          capability.ID,
-		Path:        append([]string(nil), capability.Path...),
-		Summary:     capability.Summary,
-		Description: capability.Description,
-		Visibility:  serviceCapabilityVisibility(capability.Visibility),
-		InputSchema: appclicore.CloneSchema(capability.InputSchema),
-		Output:      serviceCapabilityOutput(capability.Output),
-		Source:      serviceCapabilitySource(capability.Source),
+		ID:               capability.ID,
+		Path:             append([]string(nil), capability.Path...),
+		Summary:          capability.Summary,
+		Description:      capability.Description,
+		Visibility:       serviceCapabilityVisibility(capability.Visibility),
+		InputSchema:      appclicore.CloneSchema(capability.InputSchema),
+		Output:           serviceCapabilityOutput(capability.Output),
+		Execution:        serviceCommandExecution(capability.Execution),
+		HandlerTimeoutMs: capability.HandlerTimeoutMs,
+		Source:           serviceCapabilitySource(capability.Source),
 	}
+}
+
+func serviceCommandExecution(execution *appclicore.CommandExecution) *cliservice.CommandExecution {
+	if execution == nil {
+		return nil
+	}
+	return &cliservice.CommandExecution{Mode: cliservice.CommandExecutionMode(execution.Mode)}
 }
 
 func serviceCapabilityVisibility(visibility appclicore.CommandVisibility) cliservice.CapabilityVisibility {
@@ -437,13 +449,19 @@ func serviceTableOutput(output *appclicore.TableOutput) *cliservice.TableOutput 
 }
 
 func serviceCommandOutput(output appclicore.CommandOutput) cliservice.CommandOutput {
-	return cliservice.CommandOutput{
+	result := cliservice.CommandOutput{
 		Kind:    serviceOutputMode(output.Kind),
 		Columns: serviceTableColumns(output.Columns),
 		Rows:    output.Rows,
 		Value:   output.Value,
 		Text:    output.Text,
 	}
+	if output.Continuation != nil {
+		result.Continuation = &cliservice.CommandContinuation{
+			State: cliservice.CommandContinuationState(output.Continuation.State), RetryAfterMs: output.Continuation.RetryAfterMs,
+		}
+	}
+	return result
 }
 
 func serviceInputWarnings(warnings []appclicore.InputWarning) []cliservice.CommandWarning {

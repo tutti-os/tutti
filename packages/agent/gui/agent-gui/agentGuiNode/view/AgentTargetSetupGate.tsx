@@ -73,6 +73,11 @@ export function AgentTargetSetupGate({
   };
   const actionRunning = isSetupActionRunning(snapshot?.action?.status);
   const actionFailed = isSetupActionFailed(snapshot?.action?.status);
+  const installRetryAvailable =
+    snapshot?.status === "failed" &&
+    snapshot.action?.kind === "install" &&
+    actionFailed &&
+    Boolean(snapshot.plan);
   const phase = actionRunning ? (snapshot?.action?.phase ?? null) : null;
   const statusLabel = phase
     ? targetSetupPhaseLabel(t, phase)
@@ -193,7 +198,9 @@ export function AgentTargetSetupGate({
                     : undefined
                 }
                 action={
-                  snapshot?.status === "not_installed" && snapshot.plan ? (
+                  (snapshot?.status === "not_installed" ||
+                    installRetryAvailable) &&
+                  snapshot.plan ? (
                     <Button
                       type="button"
                       size="sm"
@@ -202,7 +209,11 @@ export function AgentTargetSetupGate({
                     >
                       {installPending
                         ? t("agentHost.agentGui.targetSetupStarting")
-                        : t("agentHost.agentGui.targetSetupInstall")}
+                        : t(
+                            installRetryAvailable
+                              ? "agentHost.agentGui.targetSetupReinstall"
+                              : "agentHost.agentGui.targetSetupInstall"
+                          )}
                     </Button>
                   ) : undefined
                 }

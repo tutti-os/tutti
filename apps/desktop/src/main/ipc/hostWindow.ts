@@ -14,6 +14,7 @@ import {
   resolveStandaloneAgentWindowContentWidth,
   shouldAnimateStandaloneAgentWindowResize
 } from "../windows/standaloneAgentWindowBounds";
+import { toggleHostWindowMaximize } from "../windows/hostWindowMaximize";
 
 const maxCapturePreviewDimensionPx = 512;
 const capturePreviewTimeoutMs = 2_000;
@@ -212,10 +213,10 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
         return;
       }
 
-      // The standalone agent window's green control is a real (native)
-      // fullscreen toggle. Native maximize/zoom is disabled for this window
-      // (maximizable: false), so fullscreen is the only fill state to track.
-      ownerWindow.setFullScreen(!ownerWindow.isFullScreen());
+      toggleHostWindowMaximize(
+        ownerWindow,
+        getWorkspaceWindowKind(ownerWindow)
+      );
     }
   );
 }

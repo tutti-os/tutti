@@ -137,15 +137,25 @@ func generatedCliCapability(capability cliservice.Capability) tuttigenerated.Cli
 		inputSchema = &schema
 	}
 	return tuttigenerated.CliCapability{
-		Id:          capability.ID,
-		Path:        capability.Path,
-		Summary:     capability.Summary,
-		Description: description,
-		Visibility:  generatedCliCapabilityVisibility(capability.Visibility),
-		InputSchema: inputSchema,
-		Output:      generatedCliCapabilityOutput(capability.Output),
-		Source:      generatedCliCapabilitySource(capability.Source),
+		Id:               capability.ID,
+		Path:             capability.Path,
+		Summary:          capability.Summary,
+		Description:      description,
+		Visibility:       generatedCliCapabilityVisibility(capability.Visibility),
+		InputSchema:      inputSchema,
+		Output:           generatedCliCapabilityOutput(capability.Output),
+		Execution:        generatedCliCommandExecution(capability.Execution),
+		HandlerTimeoutMs: intPointerIfPositive(capability.HandlerTimeoutMs),
+		Source:           generatedCliCapabilitySource(capability.Source),
 	}
+}
+
+func generatedCliCommandExecution(execution *cliservice.CommandExecution) *tuttigenerated.CliCommandExecution {
+	if execution == nil {
+		return nil
+	}
+	mode := tuttigenerated.CliCommandExecutionMode(execution.Mode)
+	return &tuttigenerated.CliCommandExecution{Mode: mode}
 }
 
 func generatedCliCapabilityVisibility(visibility cliservice.CapabilityVisibility) *tuttigenerated.CliCapabilityVisibility {
@@ -223,10 +233,23 @@ func generatedCliCommandOutput(output cliservice.CommandOutput) *tuttigenerated.
 		}
 		result.Warnings = &warnings
 	}
+	if output.Continuation != nil {
+		state := tuttigenerated.CliCommandContinuationState(output.Continuation.State)
+		result.Continuation = &tuttigenerated.CliCommandContinuation{
+			State: state, RetryAfterMs: output.Continuation.RetryAfterMs,
+		}
+	}
 	if output.Text != "" {
 		result.Text = stringPointer(output.Text)
 	}
 	return result
+}
+
+func intPointerIfPositive(value int) *int {
+	if value <= 0 {
+		return nil
+	}
+	return &value
 }
 
 func generatedCliTableColumns(columns []cliservice.TableColumn) []tuttigenerated.CliTableColumn {

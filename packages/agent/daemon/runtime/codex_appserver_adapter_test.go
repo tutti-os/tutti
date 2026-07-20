@@ -1201,17 +1201,36 @@ func TestCodexAppServerAdapterStartAppliesSettingsAndPermissionMode(t *testing.T
 	}
 }
 
-func TestCodexAppServerAdapterDangerFullAccessSandboxPreservesApplicationApprovals(t *testing.T) {
+func TestCodexAppServerAdapterCommandNetworkAccessPreservesPermissionModes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		mode              string
+		threadSandbox     string
+		turnSandbox       string
 		approvalPolicy    string
 		approvalsReviewer string
 	}{
-		{mode: "read-only", approvalPolicy: "on-request", approvalsReviewer: "user"},
-		{mode: "auto", approvalPolicy: "on-request", approvalsReviewer: "auto_review"},
-		{mode: "full-access", approvalPolicy: "never"},
+		{
+			mode:              "read-only",
+			threadSandbox:     "read-only",
+			turnSandbox:       "readOnly",
+			approvalPolicy:    "on-request",
+			approvalsReviewer: "user",
+		},
+		{
+			mode:              "auto",
+			threadSandbox:     "workspace-write",
+			turnSandbox:       "workspaceWrite",
+			approvalPolicy:    "on-request",
+			approvalsReviewer: "auto_review",
+		},
+		{
+			mode:           "full-access",
+			threadSandbox:  "danger-full-access",
+			turnSandbox:    "dangerFullAccess",
+			approvalPolicy: "never",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.mode, func(t *testing.T) {
@@ -1221,9 +1240,7 @@ func TestCodexAppServerAdapterDangerFullAccessSandboxPreservesApplicationApprova
 			adapter := NewCodexAppServerAdapterWithHostMetadataAndOptions(
 				transport,
 				LegacyHostMetadata(),
-				CodexAppServerAdapterOptions{
-					SandboxPolicy: CodexAppServerSandboxPolicyDangerFullAccess,
-				},
+				CodexAppServerAdapterOptions{CommandNetworkAccess: true},
 			)
 			session := testAppServerSession()
 			session.PermissionModeID = test.mode
@@ -1233,85 +1250,54 @@ func TestCodexAppServerAdapterDangerFullAccessSandboxPreservesApplicationApprova
 				t.Fatalf("Start: %v", err)
 			}
 			threadStart := appServerRequestParams(t, transport.conn, appServerMethodThreadStart)
-			assertCodexAppServerApprovalAndSandboxParams(
-				t,
-				"thread/start",
-				threadStart,
-				"sandbox",
-				"danger-full-access",
-				test.approvalPolicy,
-				test.approvalsReviewer,
-			)
+			if got := asString(threadStart["sandbox"]); got != test.threadSandbox {
+				t.Fatalf("thread/start sandbox = %q, want %q", got, test.threadSandbox)
+			}
+			if got := asString(threadStart["approvalPolicy"]); got != test.approvalPolicy {
+				t.Fatalf("thread/start approvalPolicy = %q, want %q", got, test.approvalPolicy)
+			}
+			if got := asString(threadStart["approvalsReviewer"]); got != test.approvalsReviewer {
+				t.Fatalf("thread/start approvalsReviewer = %q, want %q", got, test.approvalsReviewer)
+			}
 
 			if _, err := adapter.Exec(context.Background(), session, textPrompt("go"), "", "turn-local-1", nil, nil); err != nil {
 				t.Fatalf("Exec: %v", err)
 			}
 			turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
-			sandboxPolicy, _ := turnStart["sandboxPolicy"].(map[string]any)
-			turnStart["sandboxPolicyType"] = asString(sandboxPolicy["type"])
-			assertCodexAppServerApprovalAndSandboxParams(
-				t,
-				"turn/start",
-				turnStart,
-				"sandboxPolicyType",
-				"dangerFullAccess",
-				test.approvalPolicy,
-				test.approvalsReviewer,
-			)
+			policy, _ := turnStart["sandboxPolicy"].(map[string]any)
+			if got := asString(policy["type"]); got != test.turnSandbox {
+				t.Fatalf("turn/start sandboxPolicy = %#v, want type %q", policy, test.turnSandbox)
+			}
+			if test.mode == "full-access" {
+				if _, ok := policy["networkAccess"]; ok {
+					t.Fatalf("turn/start sandboxPolicy = %#v, want implicit full-access networking", policy)
+				}
+			} else if enabled, _ := policy["networkAccess"].(bool); !enabled {
+				t.Fatalf("turn/start sandboxPolicy = %#v, want networkAccess=true", policy)
+			}
 		})
 	}
 }
 
-func TestCodexAppServerAdapterDangerFullAccessSandboxAppliesOnResume(t *testing.T) {
+func TestCodexAppServerAdapterDefaultCommandNetworkAccessRemainsDisabled(t *testing.T) {
 	t.Parallel()
 
 	transport := newScriptedAppServerTransport()
-	adapter := NewCodexAppServerAdapterWithHostMetadataAndOptions(
-		transport,
-		LegacyHostMetadata(),
-		CodexAppServerAdapterOptions{
-			SandboxPolicy: CodexAppServerSandboxPolicyDangerFullAccess,
-		},
-	)
+	adapter := NewCodexAppServerAdapter(transport)
 	session := testAppServerSession()
-	session.ProviderSessionID = "codex-thread-1"
 	session.PermissionModeID = "read-only"
 	session.Settings = &SessionSettings{PermissionModeID: "read-only"}
 
-	if err := adapter.Resume(context.Background(), session); err != nil {
-		t.Fatalf("Resume: %v", err)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
 	}
-	threadResume := appServerRequestParams(t, transport.conn, appServerMethodThreadResume)
-	assertCodexAppServerApprovalAndSandboxParams(
-		t,
-		"thread/resume",
-		threadResume,
-		"sandbox",
-		"danger-full-access",
-		"on-request",
-		"user",
-	)
-}
-
-func assertCodexAppServerApprovalAndSandboxParams(
-	t *testing.T,
-	requestName string,
-	params map[string]any,
-	sandboxKey string,
-	expectedSandbox string,
-	expectedApprovalPolicy string,
-	expectedApprovalsReviewer string,
-) {
-	t.Helper()
-
-	if got := asString(params[sandboxKey]); got != expectedSandbox {
-		t.Fatalf("%s %s = %q, want %q", requestName, sandboxKey, got, expectedSandbox)
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("go"), "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
 	}
-	if got := asString(params["approvalPolicy"]); got != expectedApprovalPolicy {
-		t.Fatalf("%s approvalPolicy = %q, want %q", requestName, got, expectedApprovalPolicy)
-	}
-	if got := asString(params["approvalsReviewer"]); got != expectedApprovalsReviewer {
-		t.Fatalf("%s approvalsReviewer = %q, want %q", requestName, got, expectedApprovalsReviewer)
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	policy, _ := turnStart["sandboxPolicy"].(map[string]any)
+	if _, ok := policy["networkAccess"]; ok {
+		t.Fatalf("turn/start sandboxPolicy = %#v, want legacy network default", policy)
 	}
 }
 
@@ -6569,7 +6555,17 @@ func TestCodexAppServerAdapterApplyPermissionModeUpdatesState(t *testing.T) {
 func TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTurn(t *testing.T) {
 	t.Parallel()
 
-	adapter, transport, session := startedAppServerAdapter(t)
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapterWithHostMetadataAndOptions(
+		transport,
+		LegacyHostMetadata(),
+		CodexAppServerAdapterOptions{CommandNetworkAccess: true},
+	)
+	session := testAppServerSession()
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "codex-thread-1"
 	session.PermissionModeID = "read-only"
 	transport.conn.holdTurn = true
 
@@ -6587,6 +6583,13 @@ func TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTu
 	firstTurnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
 	if asString(firstTurnStart["approvalPolicy"]) != "on-request" {
 		t.Fatalf("first turn/start approvalPolicy = %#v, want on-request", firstTurnStart["approvalPolicy"])
+	}
+	firstPolicy, _ := firstTurnStart["sandboxPolicy"].(map[string]any)
+	if asString(firstPolicy["type"]) != "readOnly" {
+		t.Fatalf("first turn/start sandboxPolicy = %#v, want readOnly", firstPolicy)
+	}
+	if enabled, _ := firstPolicy["networkAccess"].(bool); !enabled {
+		t.Fatalf("first turn/start sandboxPolicy = %#v, want networkAccess=true", firstPolicy)
 	}
 
 	session.PermissionModeID = "full-access"
@@ -6616,6 +6619,13 @@ func TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTu
 	}
 	if asString(turnStarts[1]["approvalPolicy"]) != "never" {
 		t.Fatalf("second turn/start approvalPolicy = %#v, want never", turnStarts[1]["approvalPolicy"])
+	}
+	secondPolicy, _ := turnStarts[1]["sandboxPolicy"].(map[string]any)
+	if asString(secondPolicy["type"]) != "dangerFullAccess" {
+		t.Fatalf("second turn/start sandboxPolicy = %#v, want dangerFullAccess", secondPolicy)
+	}
+	if _, ok := secondPolicy["networkAccess"]; ok {
+		t.Fatalf("second turn/start sandboxPolicy = %#v, want implicit full-access networking", secondPolicy)
 	}
 }
 

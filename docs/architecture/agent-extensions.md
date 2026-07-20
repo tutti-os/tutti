@@ -269,7 +269,9 @@ by setup close; they are not discarded as background goroutine errors.
 AgentGUI recognizes target-runtime setup metadata on the exact Target. Its
 shared panel owns explicit confirmation and plan presentation,
 progress polling, runtime-advertised auth method selection, login progress, and
-retry. Background action polling preserves the established detection result
+retry. A failed or interrupted install keeps its durable error visible while
+the retained plan can start a new action with a new client action ID; refreshing
+the old action is not an installation retry. Background action polling preserves the established detection result
 instead of restarting the detection presentation on every snapshot request.
 Failed explicit authentication keeps the provider's ACP error on the durable
 action and presents it beside the localized failure summary while leaving the

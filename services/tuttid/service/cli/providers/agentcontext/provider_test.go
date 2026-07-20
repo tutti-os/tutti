@@ -845,6 +845,45 @@ func TestWaitCommandUsesDefaultTimeout(t *testing.T) {
 	}
 }
 
+func TestWaitCommandDeclaresContinuationOnlyForInternalObservationTimeout(t *testing.T) {
+	provider := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{
+		waitResult: agentservice.WaitResult{
+			Session:  agentservice.Session{ID: "SESSION-1", Provider: "codex", Visible: true},
+			Reason:   agentservice.WaitReasonTimeout,
+			TimedOut: true,
+		},
+	})
+	command := provider.newWaitCommand()
+	if command.Capability.Execution == nil || command.Capability.Execution.Mode != cliservice.CommandExecutionModeWait {
+		t.Fatalf("execution = %#v", command.Capability.Execution)
+	}
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"session-id": "SESSION-1"}, OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler() error = %v", err)
+	}
+	if output.Continuation == nil || output.Continuation.State != "pending" || output.Continuation.RetryAfterMs != 250 {
+		t.Fatalf("output = %#v", output)
+	}
+
+	provider = newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{
+		waitResult: agentservice.WaitResult{
+			Session: agentservice.Session{ID: "SESSION-1", Provider: "codex", Visible: true},
+			Reason:  agentservice.WaitReasonCompleted,
+		},
+	})
+	output, err = provider.newWaitCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"session-id": "SESSION-1"}, OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("completed Handler() error = %v", err)
+	}
+	if output.Continuation != nil {
+		t.Fatalf("completed output continuation = %#v", output.Continuation)
+	}
+}
+
 func TestWaitCommandReturnsFinalMessageAndDetailedInteractions(t *testing.T) {
 	t.Run("completed", func(t *testing.T) {
 		sessions := &fakeAgentSessions{waitResult: agentservice.WaitResult{

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
+import type { AgentTarget, WorkspaceAgent } from "@tutti-os/client-tuttid-ts";
 import {
   DesktopAgentsService,
   mapAgentTargetsToPresentations,
@@ -123,30 +123,27 @@ test("desktop agents service hydrates a detached-window bootstrap snapshot befor
 });
 
 test("desktop agents service maps enabled daemon targets into the AgentGUI agents directory", () => {
-  const presentations = mapAgentTargetsToPresentations(
-    [
-      createAgentTarget({
-        enabled: false,
-        id: "local:claude-code",
-        name: "Claude Code",
-        provider: "claude-code",
-        sortOrder: 20
-      }),
-      createAgentTarget({
-        id: "local:codex",
-        heroImageUrl: "data:image/jpeg;base64,hero",
-        maskIconUrl: "data:image/svg+xml;base64,mask",
-        iconKey: "codex-descriptor",
-        name: "Codex",
-        provider: "codex",
-        sortOrder: 10
-      })
-    ],
-    {
-      resolveAgentTargetIconUrl: ({ iconKey, provider }) =>
-        `tutti-asset://agent/${iconKey ?? provider}.png`
-    }
-  );
+  const presentations = mapAgentTargetsToPresentations([
+    createAgentTarget({
+      enabled: false,
+      id: "local:claude-code",
+      iconUrl: "tutti-asset://agent/claudecode.png",
+      maskIconUrl: "tutti-asset://agent/claudecode-mask.svg",
+      name: "Claude Code",
+      provider: "claude-code",
+      sortOrder: 20
+    }),
+    createAgentTarget({
+      id: "local:codex",
+      heroImageUrl: "data:image/jpeg;base64,hero",
+      maskIconUrl: "data:image/svg+xml;base64,mask",
+      iconKey: "codex-descriptor",
+      iconUrl: "tutti-asset://agent/codex.png",
+      name: "Codex",
+      provider: "codex",
+      sortOrder: 10
+    })
+  ]);
 
   assert.deepEqual(
     presentations.map((target) => ({
@@ -160,7 +157,7 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
     [
       {
         agentTargetId: "local:codex",
-        iconUrl: "tutti-asset://agent/codex-descriptor.png",
+        iconUrl: "tutti-asset://agent/codex.png",
         maskIconUrl: "data:image/svg+xml;base64,mask",
         heroImageUrl: "data:image/jpeg;base64,hero",
         launchRefType: "builtin_local",
@@ -168,8 +165,8 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
       },
       {
         agentTargetId: "local:claude-code",
-        iconUrl: "tutti-asset://agent/claude-code.png",
-        maskIconUrl: null,
+        iconUrl: "tutti-asset://agent/claudecode.png",
+        maskIconUrl: "tutti-asset://agent/claudecode-mask.svg",
         heroImageUrl: null,
         launchRefType: "builtin_local",
         provider: "claude-code"
@@ -181,13 +178,41 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
     {
       agentTargetId: "local:codex",
       availability: { status: "ready" },
-      iconUrl: "tutti-asset://agent/codex-descriptor.png",
+      iconUrl: "tutti-asset://agent/codex.png",
       maskIconUrl: "data:image/svg+xml;base64,mask",
       heroImageUrl: "data:image/jpeg;base64,hero",
       name: "Codex",
       provider: "codex"
     }
   ]);
+});
+
+test("desktop agents service reuses daemon target icons for workspace Agents", async () => {
+  const target = createAgentTarget({
+    id: "local:codex",
+    iconUrl: "tutti-asset://agent/codex.png",
+    name: "Codex",
+    provider: "codex",
+    sortOrder: 10
+  });
+  const service = new DesktopAgentsService({
+    tuttidClient: {
+      async listAgentTargets() {
+        return { targets: [target] };
+      },
+      async listWorkspaceAgents() {
+        return { agents: [createWorkspaceAgent()] };
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  const snapshot = await service.load();
+  const workspaceAgent = snapshot.agents.find(
+    (agent) => agent.agentTargetId === "workspace-agent-1"
+  );
+
+  assert.equal(workspaceAgent?.iconUrl, "tutti-asset://agent/codex.png");
 });
 
 test("desktop agents service preserves Extension primary and mask icons", () => {
@@ -249,6 +274,7 @@ function createAgentTarget(input: {
   enabled?: boolean;
   id: string;
   iconKey?: string | null;
+  iconUrl?: string | null;
   heroImageUrl?: string | null;
   maskIconUrl?: string | null;
   name: string;
@@ -259,6 +285,7 @@ function createAgentTarget(input: {
     createdAtUnixMs: 1780272000000,
     enabled: input.enabled ?? true,
     iconKey: input.iconKey ?? null,
+    iconUrl: input.iconUrl ?? `tutti-asset://agent/${input.provider}.png`,
     heroImageUrl: input.heroImageUrl ?? null,
     maskIconUrl: input.maskIconUrl ?? null,
     id: input.id,
@@ -271,6 +298,34 @@ function createAgentTarget(input: {
     sortOrder: input.sortOrder,
     source: "system",
     updatedAtUnixMs: 1780272000000
+  };
+}
+
+function createWorkspaceAgent(): WorkspaceAgent {
+  return {
+    agentTargetId: "workspace-agent-1",
+    callConditions: [],
+    capabilitiesExplicit: false,
+    createdAt: "2026-07-20T00:00:00Z",
+    description: "Workspace Codex agent",
+    harness: {
+      agentTargetId: "local:codex",
+      available: true,
+      enabled: true,
+      iconKey: "codex",
+      name: "Codex",
+      provider: "codex"
+    },
+    id: "workspace-agent-1",
+    instructions: "",
+    modelFallbacks: [],
+    name: "Workspace Codex",
+    revision: 1,
+    skills: [],
+    source: "user",
+    tools: [],
+    updatedAt: "2026-07-20T00:00:00Z",
+    workspaceId: "workspace-1"
   };
 }
 

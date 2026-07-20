@@ -36,6 +36,8 @@ Agent session summary JSON is compact and includes session context plus recent m
 
 When you need to wait for a launched or continued session to reach its next stop point, use `agent wait --session-id <session-id> --json`. `agent wait` blocks until the session's next stop point and does not fetch execution messages. Repeatedly calling `agent session-summary` on a running session to check progress is an anti-pattern — it pulls message content an orchestrator should not be consuming between stop points. Use `agent session-summary --session-id <session-id> --json` only when you need the full compact context helper.
 
+Wait commands are single-call blocking operations. Invoke them once and let the CLI handle internal observation continuations; do not wrap them in a retry loop. Omit `--timeout-ms` to wait until a stop point. When an explicit total timeout expires, `timedOut: true` with `executionContinues: true` means only the local wait ended; the underlying session or run was not canceled.
+
 ## Call Protocol
 
 Use this protocol for every Tutti CLI command:

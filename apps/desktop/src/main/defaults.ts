@@ -51,6 +51,11 @@ export function resolveDesktopUserDataPath(options: {
   appDataDir: string;
   appName: string;
 }): string | null {
+  const override = process.env.TUTTI_DESKTOP_USER_DATA_DIR?.trim();
+  if (override) {
+    return override;
+  }
+
   if (resolveTuttiEnv() !== "development") {
     return null;
   }

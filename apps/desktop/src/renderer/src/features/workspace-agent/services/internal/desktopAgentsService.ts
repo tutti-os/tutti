@@ -13,10 +13,6 @@ import type {
 export interface DesktopAgentsServiceDependencies {
   clearTimeout?: (timer: ReturnType<typeof setTimeout>) => void;
   now?: () => number;
-  resolveAgentTargetIconUrl?: (identity: {
-    iconKey: string | null;
-    provider: string;
-  }) => string;
   isAgentTargetProviderGated?: (provider: string) => boolean;
   retryDelayMs?: number;
   setTimeout?: (
@@ -142,10 +138,13 @@ export class DesktopAgentsService implements IAgentsService {
         return this.snapshot;
       }
       const daemonAgentTargets = mapAgentTargetsToPresentations(
-        targetResponse.targets,
-        {
-          resolveAgentTargetIconUrl: this.dependencies.resolveAgentTargetIconUrl
-        }
+        targetResponse.targets
+      );
+      const daemonAgentTargetIconUrls = new Map(
+        daemonAgentTargets.map((target) => [
+          target.agentTargetId,
+          target.iconUrl
+        ])
       );
       const agentTargets = daemonAgentTargets.map((target) =>
         this.dependencies.isAgentTargetProviderGated?.(target.provider) === true
@@ -170,7 +169,8 @@ export class DesktopAgentsService implements IAgentsService {
         {
           isAgentTargetProviderGated:
             this.dependencies.isAgentTargetProviderGated,
-          resolveAgentTargetIconUrl: this.dependencies.resolveAgentTargetIconUrl
+          resolveAgentTargetIconUrl: ({ agentTargetId }) =>
+            daemonAgentTargetIconUrls.get(agentTargetId) ?? ""
         }
       );
       const agents = dedupeAgentsByAgentTargetId([
@@ -253,24 +253,10 @@ function dedupeAgentsByAgentTargetId(
 }
 
 export function mapAgentTargetsToPresentations(
-  targets: readonly AgentTarget[],
-  options: {
-    resolveAgentTargetIconUrl?: (identity: {
-      iconKey: string | null;
-      provider: string;
-    }) => string;
-  } = {}
+  targets: readonly AgentTarget[]
 ): readonly AgentTargetPresentation[] {
   return [...targets].sort(compareAgentTargetsForDisplay).map((target) => {
-    const isExtension = target.launchRef.type === "agent_extension";
-    const iconUrl =
-      target.iconUrl?.trim() ||
-      (isExtension
-        ? ""
-        : (options.resolveAgentTargetIconUrl?.({
-            iconKey: target.iconKey?.trim() || null,
-            provider: target.provider
-          }) ?? ""));
+    const iconUrl = target.iconUrl?.trim() ?? "";
     return {
       agentTargetId: target.id,
       createdAtUnixMs: target.createdAtUnixMs,
@@ -324,6 +310,7 @@ export function mapWorkspaceAgentsToAgents(
   options: {
     isAgentTargetProviderGated?: (provider: string) => boolean;
     resolveAgentTargetIconUrl?: (identity: {
+      agentTargetId: string;
       iconKey: string | null;
       provider: string;
     }) => string;
@@ -347,6 +334,7 @@ export function mapWorkspaceAgentsToAgents(
         description: agent.description || null,
         iconUrl:
           options.resolveAgentTargetIconUrl?.({
+            agentTargetId: agent.harness.agentTargetId,
             iconKey: agent.harness.iconKey?.trim() || null,
             provider
           }) ?? "",

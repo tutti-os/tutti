@@ -11,6 +11,8 @@ export const agentGUIBuildEntries = {
   "plan-issue": "shared/agentConversation/planImplementationPresentation.ts",
   "agent-env/index": "shared/agentEnv/index.ts",
   "agent-env/ui": "shared/agentEnv/ui.ts",
+  "workspace-settings-panel":
+    "shared/workspaceSettingsPanel/workspaceSettingsPanelStore.ts",
   "context-mention-palette/index": "context-mention-palette/index.ts",
   "context-mention-provider":
     "agent-gui/agentGuiNode/agentContextMentionProvider.ts",
@@ -52,6 +54,7 @@ export const agentGUIDtsEntryGroups = [
     "custom-mention",
     "agent-env/index",
     "agent-env/ui",
+    "workspace-settings-panel",
     "provider-identity",
     "provider-icons",
     "i18n/index",

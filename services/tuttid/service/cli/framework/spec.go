@@ -45,6 +45,7 @@ type CommandSpec[T any] struct {
 	Workspaces  cliservice.WorkspaceCatalog
 	Inputs      InputSpec
 	Output      OutputSpec
+	Execution   *cliservice.CommandExecution
 	Source      cliservice.CapabilitySource
 	Run         func(context.Context, InvokeContext, T) (any, error)
 }
@@ -84,6 +85,7 @@ type OutputSpec struct {
 	Markdown      func(any) string
 	ListCompact   bool
 	Warnings      func(any) []cliservice.CommandWarning
+	Continuation  func(any) *cliservice.CommandContinuation
 }
 
 type TableOutputSpec struct {

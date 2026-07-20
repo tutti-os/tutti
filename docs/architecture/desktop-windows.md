@@ -159,6 +159,9 @@ state still fails validation.
 Agent-only windows also share host-window preload capabilities; their
 AgentGUI header close, minimize, and maximize controls call typed host window
 IPC instead of relying on native traffic lights.
+The shared maximize capability preserves each native shell's semantics:
+Agent-only windows toggle fullscreen because native zoom is disabled, while OS
+workspace windows toggle BrowserWindow maximize and unmaximize.
 The Agent-only shell places Browser and other desktop-owned auxiliary tools in
 a right sidebar, while Terminal opens in a bottom tray below the conversation.
 When the sidebar is closed, its Apps and Message Center quick actions expose

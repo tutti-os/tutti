@@ -38,13 +38,18 @@ type ManifestDocumentation struct {
 }
 
 type ManifestCommand struct {
-	Path        []string               `json:"path"`
-	Summary     string                 `json:"summary"`
-	Description string                 `json:"description,omitempty"`
-	Visibility  CommandVisibility      `json:"visibility,omitempty"`
-	InputSchema map[string]any         `json:"inputSchema,omitempty"`
-	Output      ManifestCommandOutput  `json:"output"`
-	Handler     ManifestCommandHandler `json:"handler"`
+	Path        []string                  `json:"path"`
+	Summary     string                    `json:"summary"`
+	Description string                    `json:"description,omitempty"`
+	Visibility  CommandVisibility         `json:"visibility,omitempty"`
+	Execution   *ManifestCommandExecution `json:"execution,omitempty"`
+	InputSchema map[string]any            `json:"inputSchema,omitempty"`
+	Output      ManifestCommandOutput     `json:"output"`
+	Handler     ManifestCommandHandler    `json:"handler"`
+}
+
+type ManifestCommandExecution struct {
+	Mode CommandExecutionMode `json:"mode"`
 }
 
 type ManifestCommandOutput struct {
@@ -134,6 +139,9 @@ func ValidateManifest(manifest Manifest) error {
 		if err := validateVisibility(command.Visibility, location+".visibility"); err != nil {
 			return err
 		}
+		if err := validateExecution(command.Execution, command.InputSchema, command.Output, location+".execution"); err != nil {
+			return err
+		}
 		if err := validateInputSchema(command.InputSchema, location+".inputSchema"); err != nil {
 			return err
 		}
@@ -143,6 +151,23 @@ func ValidateManifest(manifest Manifest) error {
 		if err := validateHandler(command.Handler, location+".handler"); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateExecution(execution *ManifestCommandExecution, inputSchema map[string]any, output ManifestCommandOutput, location string) error {
+	if execution == nil {
+		return nil
+	}
+	if execution.Mode != CommandExecutionModeWait {
+		return fmt.Errorf("cli manifest %s.mode must be wait", location)
+	}
+	if output.DefaultMode != OutputModeJSON || !output.JSON {
+		return fmt.Errorf("cli manifest %s mode wait requires json default output", location)
+	}
+	properties, _ := inputSchema["properties"].(map[string]any)
+	if _, declared := properties["timeout-ms"]; declared {
+		return fmt.Errorf("cli manifest %s mode wait reserves --timeout-ms for the total CLI wait timeout", location)
 	}
 	return nil
 }

@@ -5995,6 +5995,19 @@ components:
           allOf:
             - $ref: "#/components/schemas/CliTableOutput"
           nullable: true
+    CliCommandExecutionMode:
+      type: string
+      enum:
+        - wait
+    CliCommandExecution:
+      type: object
+      description: Optional client-side execution behavior declared by a command. Wait commands remain active while handlers return a pending continuation.
+      additionalProperties: false
+      required:
+        - mode
+      properties:
+        mode:
+          $ref: "#/components/schemas/CliCommandExecutionMode"
     CliCapabilitySourceKind:
       type: string
       enum:
@@ -6079,6 +6092,16 @@ components:
           nullable: true
         output:
           $ref: "#/components/schemas/CliCapabilityOutput"
+        execution:
+          allOf:
+            - $ref: "#/components/schemas/CliCommandExecution"
+          nullable: true
+        handlerTimeoutMs:
+          type: integer
+          description: Per-invocation App handler timeout used by clients to budget the daemon request.
+          minimum: 1000
+          maximum: 600000
+          nullable: true
         source:
           $ref: "#/components/schemas/CliCapabilitySource"
     CliCapabilitiesResponse:
@@ -6160,6 +6183,29 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CliCommandWarning"
+        continuation:
+          allOf:
+            - $ref: "#/components/schemas/CliCommandContinuation"
+          nullable: true
+    CliCommandContinuationState:
+      type: string
+      enum:
+        - pending
+    CliCommandContinuation:
+      type: object
+      description: Internal continuation signal consumed by the CLI for wait commands and not rendered as a terminal result.
+      additionalProperties: false
+      required:
+        - state
+        - retryAfterMs
+      properties:
+        state:
+          $ref: "#/components/schemas/CliCommandContinuationState"
+        retryAfterMs:
+          type: integer
+          description: Delay before the CLI invokes the same command again.
+          minimum: 250
+          maximum: 60000
     CliCommandWarning:
       type: object
       additionalProperties: false

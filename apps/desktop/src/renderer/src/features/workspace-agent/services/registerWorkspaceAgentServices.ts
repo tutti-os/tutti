@@ -40,10 +40,6 @@ export interface WorkspaceAgentServiceRegistrationInput {
     // per-call; older hosts/tests may omit the resolver and those optional
     // commands then fail at call time instead of registration time.
     Partial<Pick<DesktopRuntimeApi, "getBackendConfig">>;
-  resolveAgentTargetIconUrl?: (identity: {
-    iconKey: string | null;
-    provider: string;
-  }) => string;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
   workspaceId: string;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
@@ -87,7 +83,6 @@ export function registerWorkspaceAgentServices(
     );
   startManagedAgentInstallBootstraps(agentProviderStatusService);
   const agentsService = new DesktopAgentsService({
-    resolveAgentTargetIconUrl: input.resolveAgentTargetIconUrl,
     tuttidClient: input.tuttidClient,
     workspaceId: input.workspaceId
   });

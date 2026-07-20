@@ -570,6 +570,7 @@ function collectRuntimeOverrides(): Record<string, string> {
     "TUTTI_DESKTOP_LOG_PATH",
     "TUTTI_DESKTOP_LOG_OUTPUT",
     "TUTTI_DESKTOP_LOG_LEVEL",
+    "TUTTI_DESKTOP_USER_DATA_DIR",
     "TUTTI_SESSION_ID"
   ] as const;
 
