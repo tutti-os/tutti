@@ -18,11 +18,13 @@ import {
   readWorkspaceAppIdFromNodeId,
   reportWorkspaceAppOpenedFromDockEntry,
   resolveWorkspaceAppCenterLaunchRequest,
+  workspaceAppCenterNodeID,
   workspaceAppDockEntryId,
   workspaceAppInlineBrowserNodeId,
   workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "./workspaceAppCenterLaunchRequest.ts";
+import { createWorkspaceAppWebviewExternalStateSource } from "./workspaceAppCenterContribution.tsx";
 
 test("workspace app node ids resolve app ids from dock, inline, and webview node formats", () => {
   assert.equal(
@@ -40,6 +42,49 @@ test("workspace app node ids resolve app ids from dock, inline, and webview node
     "group-chat"
   );
   assert.equal(readWorkspaceAppIdFromNodeId("browser:browser-1"), null);
+});
+
+test("workspace app external state source preserves unchanged snapshot references", () => {
+  const app = createApp({
+    appId: "ready",
+    launchUrl: "http://127.0.0.1:3000"
+  });
+  const source = createWorkspaceAppWebviewExternalStateSource({
+    appCenterService: createAppCenterService([app], {
+      getViewState: () => ({
+        activeAppTab: "recommended",
+        openAppId: null,
+        openAppIds: []
+      })
+    }),
+    runtimeStore: {
+      getSnapshot: () => ({}),
+      subscribe: () => () => {}
+    }
+  });
+  const webviewRequest = {
+    instanceId: workspaceAppWebviewInstanceId("ready"),
+    instanceKey: workspaceAppWebviewInstanceId("ready"),
+    nodeId: `${workspaceAppWebviewTypeID}:${workspaceAppWebviewInstanceId("ready")}`,
+    typeId: workspaceAppWebviewTypeID,
+    workspaceId: "workspace-1"
+  };
+  const appCenterRequest = {
+    instanceId: workspaceAppCenterNodeID,
+    instanceKey: workspaceAppCenterNodeID,
+    nodeId: workspaceAppCenterNodeID,
+    typeId: workspaceAppCenterNodeID,
+    workspaceId: "workspace-1"
+  };
+
+  assert.equal(
+    source.getNodeState(webviewRequest),
+    source.getNodeState(webviewRequest)
+  );
+  assert.equal(
+    source.getNodeState(appCenterRequest),
+    source.getNodeState(appCenterRequest)
+  );
 });
 
 test("workspace app contribution reports app open from dock launch requests", async () => {

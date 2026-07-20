@@ -729,7 +729,7 @@ type WorkspaceAppCenterExternalNodeState =
   | WorkspaceAppWebviewExternalState
   | null;
 
-function createWorkspaceAppWebviewExternalStateSource(input: {
+export function createWorkspaceAppWebviewExternalStateSource(input: {
   appCenterService: IWorkspaceAppCenterService;
   runtimeStore: {
     getSnapshot(): Record<string, BrowserNodeRuntimeState | undefined>;
@@ -739,18 +739,43 @@ function createWorkspaceAppWebviewExternalStateSource(input: {
   WorkspaceAppCenterExternalNodeState,
   null
 > {
+  const appCenterViewStateByWorkspaceId = new Map<
+    string,
+    WorkspaceAppCenterViewState
+  >();
+  const appWebviewStateByNodeId = new Map<
+    string,
+    WorkspaceAppWebviewExternalState
+  >();
+
   return {
     getNodeState(request) {
       if (request.typeId === workspaceAppCenterNodeID) {
-        return input.appCenterService.getViewState(request.workspaceId);
+        return reuseWorkspaceAppCenterViewState(
+          appCenterViewStateByWorkspaceId,
+          request.workspaceId,
+          input.appCenterService.getViewState(request.workspaceId)
+        );
       }
-      return readWorkspaceAppExternalState(input, request);
+      return reuseWorkspaceAppWebviewExternalState(
+        appWebviewStateByNodeId,
+        request.nodeId,
+        readWorkspaceAppExternalState(input, request)
+      );
     },
     getSnapshotNodeState(request) {
       if (request.typeId === workspaceAppCenterNodeID) {
-        return input.appCenterService.getViewState(request.workspaceId);
+        return reuseWorkspaceAppCenterViewState(
+          appCenterViewStateByWorkspaceId,
+          request.workspaceId,
+          input.appCenterService.getViewState(request.workspaceId)
+        );
       }
-      return readWorkspaceAppExternalState(input, request);
+      return reuseWorkspaceAppWebviewExternalState(
+        appWebviewStateByNodeId,
+        request.nodeId,
+        readWorkspaceAppExternalState(input, request)
+      );
     },
     getWorkspaceState() {
       return null;
@@ -770,6 +795,43 @@ function createWorkspaceAppWebviewExternalStateSource(input: {
       };
     }
   };
+}
+
+function reuseWorkspaceAppCenterViewState(
+  stateByWorkspaceId: Map<string, WorkspaceAppCenterViewState>,
+  workspaceId: string,
+  next: WorkspaceAppCenterViewState
+): WorkspaceAppCenterViewState {
+  const previous = stateByWorkspaceId.get(workspaceId);
+  if (
+    previous?.activeAppTab === next.activeAppTab &&
+    previous.openAppId === next.openAppId &&
+    previous.openAppIds?.length === next.openAppIds?.length &&
+    previous.openAppIds?.every(
+      (appId, index) => appId === next.openAppIds?.[index]
+    )
+  ) {
+    return previous;
+  }
+  stateByWorkspaceId.set(workspaceId, next);
+  return next;
+}
+
+function reuseWorkspaceAppWebviewExternalState(
+  stateByNodeId: Map<string, WorkspaceAppWebviewExternalState>,
+  nodeId: string,
+  next: WorkspaceAppWebviewExternalState | null
+): WorkspaceAppWebviewExternalState | null {
+  const previous = stateByNodeId.get(nodeId) ?? null;
+  if (!next) {
+    stateByNodeId.delete(nodeId);
+    return null;
+  }
+  if (previous?.title === next.title && previous.url === next.url) {
+    return previous;
+  }
+  stateByNodeId.set(nodeId, next);
+  return next;
 }
 
 function readWorkspaceAppExternalState(
