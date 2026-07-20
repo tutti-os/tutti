@@ -11,6 +11,7 @@ Current documents:
 - [Desktop Release](./desktop-release.md)
 - [Desktop Visual Language](./desktop-visual-language.md)
 - [Deprecated Workspace App Agent APIs](./deprecated-workspace-app-agent-apis.md)
+- [Feature Flags](./feature-flags.md)
 - [Local Git Hooks](./local-git-hooks.md)
 - [Local State Storage](./local-state-storage.md)
 - [Logging](./logging.md)

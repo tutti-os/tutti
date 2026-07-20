@@ -166,7 +166,9 @@ func ProjectSessionState(
 		if session.CWD == "" {
 			session.CWD = existing.CWD
 		}
-		if session.Title == "" {
+		if sessionTitleEstablished(existing.RuntimeContext) {
+			session.Title = existing.Title
+		} else if session.Title == "" {
 			session.Title = existing.Title
 		}
 		if session.Status == "" {
@@ -194,12 +196,25 @@ func ProjectSessionState(
 		if existing.EndedAtUnixMS > session.EndedAtUnixMS {
 			session.EndedAtUnixMS = existing.EndedAtUnixMS
 		}
+		session.UpdatedAtUnixMS = nextSessionUpdateUnixMS(nowUnixMS, existing.UpdatedAtUnixMS)
 	}
 	return SessionProjection{
 		Accepted:        session.WorkspaceID != "" && session.AgentSessionID != "",
 		LastEventUnixMS: session.LastEventUnixMS,
 		Session:         session,
 	}
+}
+
+func sessionTitleEstablished(runtimeContext map[string]any) bool {
+	established, _ := runtimeContext["tuttiInitialTitleEstablished"].(bool)
+	return established
+}
+
+func nextSessionUpdateUnixMS(nowUnixMS int64, currentUnixMS int64) int64 {
+	if nowUnixMS > currentUnixMS {
+		return nowUnixMS
+	}
+	return currentUnixMS + 1
 }
 
 type MessageSnapshot struct {

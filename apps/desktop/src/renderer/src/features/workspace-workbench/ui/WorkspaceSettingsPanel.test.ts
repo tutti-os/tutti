@@ -32,6 +32,13 @@ const agentsTabSource = readFileSync(
   ),
   "utf8"
 );
+const labFeatureGateRowsSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "WorkspaceLabFeatureGateRows.tsx"
+  ),
+  "utf8"
+);
 
 test("workspace settings developer panel exposes analytics debug switch only when available", () => {
   assert.match(developerSource, /useAnalyticsDebugPreferenceService/);
@@ -333,8 +340,8 @@ test("workspace managed provider model rows keep stable keys while editing", () 
 });
 
 test("labs keeps the shortcut toggle in the list but moves shortcut config behind a secondary page", () => {
-  // Toggle stays in the Labs list.
-  assert.match(source, /LAB_WORKBENCH_SHORTCUTS_FLAG/);
+  // Toggle stays in the Labs list owned by the shared feature-gate rows.
+  assert.match(labFeatureGateRowsSource, /LAB_WORKBENCH_SHORTCUTS_FLAG/);
   // Secondary-page view state (single-level, no nav stack).
   assert.match(
     source,
@@ -360,12 +367,14 @@ test("labs keeps the shortcut toggle in the list but moves shortcut config behin
 });
 
 test("Lab owns the Preview Agents (Early Access) gate", () => {
-  assert.match(source, /EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG/);
-  // The toggle lives in the Lab section, wired to the Early Access flag.
-  assert.match(source, /workspace\.settings\.lab\.previewAgentsLabel/);
+  // The toggle lives in the shared Lab rows, wired to the Early Access flag.
   assert.match(
-    source,
-    /updateFeatureFlag\(\s*EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG/
+    labFeatureGateRowsSource,
+    /EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG/
+  );
+  assert.match(
+    labFeatureGateRowsSource,
+    /workspace\.settings\.lab\.previewAgentsLabel/
   );
   // The Agents tab no longer renders its own Early Access switch, and the
   // bespoke handler is gone from the panel.
@@ -428,4 +437,16 @@ test("agents settings exposes stable update checks and routes update actions thr
     agentsTabSource,
     /if \(!autoCheckEnabled\)[\s\S]*includeUpdates:\s*true/
   );
+});
+
+test("Lab exposes independent default-off gates for experimental Agent features", () => {
+  assert.match(labFeatureGateRowsSource, /LAB_TUTTI_MODE_FLAG/);
+  assert.match(labFeatureGateRowsSource, /LAB_MODEL_PLANS_FLAG/);
+  assert.match(labFeatureGateRowsSource, /LAB_WORKSPACE_AGENTS_FLAG/);
+  assert.match(labFeatureGateRowsSource, /LAB_AUTOMATION_RULES_FLAG/);
+  assert.match(
+    labFeatureGateRowsSource,
+    /\.\.\.pendingFeatureFlags,[\s\S]*\[row\.key\]: enabled/
+  );
+  assert.match(source, /<WorkspaceLabFeatureGateRows/);
 });
