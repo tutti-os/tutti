@@ -34,6 +34,7 @@ export interface BrowserNodeAutomationTargetSummary extends BrowserNodeAutomatio
 export interface BrowserNodeAutomationAuthorizationInput {
   agentSessionId: string | null;
   args: Record<string, unknown>;
+  resolveHost?: (hostname: string) => Promise<readonly string[]>;
   target: BrowserNodeAutomationTargetSummary | null;
   tool: BrowserNodeAutomationTool;
   workspaceId: string;

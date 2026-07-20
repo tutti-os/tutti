@@ -10,6 +10,7 @@ import type { WorkspaceAgentActivityService } from "@renderer/features/workspace
 import type { DesktopBrowserApi } from "@preload/types";
 import type { useTranslation } from "@renderer/i18n";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
+import { resolveStandaloneAgentBrowserSessionId } from "../services/standaloneAgentBrowserSession.ts";
 import { StandaloneAgentBrowserToolPanel } from "./StandaloneAgentBrowserToolPanel.tsx";
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
 
@@ -201,7 +202,10 @@ export function StandaloneAgentToolSidebarPanel({
   if (panel === "browser") {
     return browserApi ? (
       <StandaloneAgentBrowserToolPanel
-        agentSessionId={agentSessionId}
+        agentSessionId={resolveStandaloneAgentBrowserSessionId({
+          currentAgentSessionId: agentSessionId,
+          resourceAgentSessionId: tab.resourceId
+        })}
         appI18n={appI18n}
         automationManaged={Boolean(tab.resourceId)}
         browserApi={browserApi}

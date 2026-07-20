@@ -152,6 +152,7 @@ export const desktopIpcChannels = {
   },
   browser: {
     activate: "browser:activate",
+    automationHostReady: "browser:automation-host-ready",
     automationRequest: "browser:automation-request",
     automationResponse: "browser:automation-response",
     capturePreview: "browser:capturePreview",
@@ -866,6 +867,11 @@ export interface DesktopBrowserAutomationRequest {
   requestId: string;
   surfaceRole: "agent" | "user";
   url: string | null;
+  workspaceId: string;
+}
+
+export interface DesktopBrowserAutomationHostReady {
+  surfaceRole: "agent" | "user";
   workspaceId: string;
 }
 

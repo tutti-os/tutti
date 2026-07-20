@@ -31,6 +31,7 @@ function createAdapters(
   overrides: Partial<WorkspaceLaunchAdapters> = {}
 ): WorkspaceLaunchAdapters {
   return {
+    async ensureAgentBrowserHost() {},
     async showAgentWindow() {},
     async showWorkspaceWindow() {},
     warnStartupWindowResolutionFailure() {},

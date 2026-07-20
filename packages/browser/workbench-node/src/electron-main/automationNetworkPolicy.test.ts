@@ -26,9 +26,9 @@ function authorizationInput(
   };
 }
 
-test("automation network policy permits public pages and sandbox loopback", async () => {
+test("automation network policy permits public pages and only routed loopback", async () => {
   const authorize = createBrowserNodeAutomationNetworkAuthorizer({
-    allowLoopback: true,
+    isLoopbackUrlRouted: async (url) => url === "http://127.0.0.1:3000/",
     resolveHost: async () => ["93.184.216.34"]
   });
   assert.deepEqual(await authorize(authorizationInput("https://example.com")), {
@@ -38,6 +38,25 @@ test("automation network policy permits public pages and sandbox loopback", asyn
     await authorize(authorizationInput("http://127.0.0.1:3000")),
     { allowed: true }
   );
+  assert.equal(
+    (await authorize(authorizationInput("http://127.0.0.1:4000"))).allowed,
+    false
+  );
+});
+
+test("automation request policy uses the target Chromium session resolver", async () => {
+  let nodeResolverCalled = false;
+  const authorize = createBrowserNodeAutomationNetworkAuthorizer({
+    resolveHost: async () => {
+      nodeResolverCalled = true;
+      return ["10.0.0.2"];
+    }
+  });
+  const input = authorizationInput("https://example.com");
+  input.resolveHost = async () => ["93.184.216.34"];
+
+  assert.deepEqual(await authorize(input), { allowed: true });
+  assert.equal(nodeResolverCalled, false);
 });
 
 test("automation network policy blocks private current pages and navigation", async () => {

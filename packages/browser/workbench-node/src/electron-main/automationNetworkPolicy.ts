@@ -6,7 +6,7 @@ import type {
 } from "./automationTypes.ts";
 
 export interface BrowserNodeAutomationNetworkPolicyOptions {
-  allowLoopback?: boolean;
+  isLoopbackUrlRouted?: (url: string) => boolean | Promise<boolean>;
   resolveHost?: (hostname: string) => Promise<readonly string[]>;
 }
 
@@ -15,8 +15,6 @@ export function createBrowserNodeAutomationNetworkAuthorizer(
 ): (
   input: BrowserNodeAutomationAuthorizationInput
 ) => Promise<BrowserNodeAutomationAuthorizationResult> {
-  const allowLoopback = options.allowLoopback === true;
-  const resolveHost = options.resolveHost ?? resolveHostnameAddresses;
   return async (input) => {
     const candidate = resolveAuthorizationUrl(input);
     if (candidate === "about:blank") {
@@ -37,8 +35,9 @@ export function createBrowserNodeAutomationNetworkAuthorizer(
     }
 
     const hostname = normalizeHostname(url.hostname);
-    if (hostname === "localhost") {
-      return allowLoopback
+    if (isLoopbackHostname(hostname)) {
+      const routed = await options.isLoopbackUrlRouted?.(url.toString());
+      return routed === true
         ? { allowed: true }
         : blocked("private_network_blocked", "Loopback pages are not allowed");
     }
@@ -51,6 +50,8 @@ export function createBrowserNodeAutomationNetworkAuthorizer(
 
     let addresses: readonly string[];
     try {
+      const resolveHost =
+        input.resolveHost ?? options.resolveHost ?? resolveHostnameAddresses;
       addresses = isIP(hostname) ? [hostname] : await resolveHost(hostname);
     } catch {
       return blocked(
@@ -60,7 +61,7 @@ export function createBrowserNodeAutomationNetworkAuthorizer(
     }
     if (
       addresses.length === 0 ||
-      addresses.some((address) => !isAllowedAddress(address, allowLoopback))
+      addresses.some((address) => !isAllowedAddress(address))
     ) {
       return blocked(
         "private_network_blocked",
@@ -91,26 +92,31 @@ function normalizeHostname(hostname: string): string {
   return hostname.replace(/^\[|\]$/gu, "").toLowerCase();
 }
 
-function isAllowedAddress(address: string, allowLoopback: boolean): boolean {
-  const normalized = normalizeHostname(address);
-  if (normalized.includes(":")) {
-    return isAllowedIPv6(normalized, allowLoopback);
-  }
-  return isAllowedIPv4(normalized, allowLoopback);
+function isLoopbackHostname(hostname: string): boolean {
+  if (hostname === "localhost" || hostname === "::1") return true;
+  if (!hostname.includes(".")) return false;
+  const octets = hostname.split(".").map(Number);
+  return octets.length === 4 && octets[0] === 127;
 }
 
-function isAllowedIPv4(address: string, allowLoopback: boolean): boolean {
+function isAllowedAddress(address: string): boolean {
+  const normalized = normalizeHostname(address);
+  if (normalized.includes(":")) {
+    return isAllowedIPv6(normalized);
+  }
+  return isAllowedIPv4(normalized);
+}
+
+function isAllowedIPv4(address: string): boolean {
   const octets = address.split(".").map(Number);
   if (octets.length !== 4 || octets.some((value) => !Number.isInteger(value))) {
     return false;
   }
   const a = octets[0]!;
   const b = octets[1]!;
-  if (a === 127) {
-    return allowLoopback;
-  }
   return !(
     a === 0 ||
+    a === 127 ||
     a === 10 ||
     (a === 100 && b >= 64 && b <= 127) ||
     (a === 169 && b === 254) ||
@@ -121,15 +127,12 @@ function isAllowedIPv4(address: string, allowLoopback: boolean): boolean {
   );
 }
 
-function isAllowedIPv6(address: string, allowLoopback: boolean): boolean {
-  if (address === "::1") {
-    return allowLoopback;
-  }
-  if (address === "::" || address.startsWith("ff")) {
+function isAllowedIPv6(address: string): boolean {
+  if (address === "::" || address === "::1" || address.startsWith("ff")) {
     return false;
   }
   if (address.startsWith("::ffff:")) {
-    return isAllowedIPv4(address.slice("::ffff:".length), allowLoopback);
+    return isAllowedIPv4(address.slice("::ffff:".length));
   }
   const first = Number.parseInt(address.split(":", 1)[0] || "0", 16);
   return !((first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80);

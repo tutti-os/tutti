@@ -1,5 +1,6 @@
 import {
   app,
+  BrowserWindow,
   dialog,
   ipcMain,
   nativeTheme,
@@ -8,6 +9,7 @@ import {
   shell,
   webContents
 } from "electron";
+import { randomUUID } from "node:crypto";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,9 +47,14 @@ import {
 } from "../../shared/featureFlags/catalog.ts";
 import { resolveBrowserNodeAutomationListenerInfoPath } from "../transport/paths.ts";
 import { createDesktopBrowserAutomationCoordinator } from "./browserAutomationCoordinator.ts";
+import {
+  getWorkspaceWindowKind,
+  getWorkspaceWindowWorkspaceID
+} from "../windows/workspaceWindow.ts";
 
 type BrowserInvokeChannel = Exclude<
   (typeof desktopIpcChannels.browser)[keyof typeof desktopIpcChannels.browser],
+  | typeof desktopIpcChannels.browser.automationHostReady
   | typeof desktopIpcChannels.browser.automationRequest
   | typeof desktopIpcChannels.browser.automationResponse
   | typeof desktopIpcChannels.browser.event
@@ -66,14 +73,32 @@ function getPreferredColorScheme(
 }
 
 export async function registerBrowserIpc(
-  preferences: DesktopHostPreferencesState
+  preferences: DesktopHostPreferencesState,
+  options: {
+    ensureAgentBrowserHost(input: {
+      agentSessionId: string;
+      workspaceId: string;
+    }): Promise<void>;
+  }
 ): Promise<{ dispose(): void }> {
   const logger = getDesktopLogger();
-  const automationCoordinator = createDesktopBrowserAutomationCoordinator();
+  const automationCoordinator = createDesktopBrowserAutomationCoordinator({
+    ...options,
+    runtime: {
+      ipc: ipcMain,
+      randomId: randomUUID,
+      resolveHostContext(sender) {
+        const ownerWindow = BrowserWindow.fromWebContents(sender);
+        if (!ownerWindow) return null;
+        const kind = getWorkspaceWindowKind(ownerWindow);
+        const workspaceId = getWorkspaceWindowWorkspaceID(ownerWindow);
+        return kind && workspaceId ? { kind, workspaceId } : null;
+      },
+      resolveWebContents: (id) => webContents.fromId(id) ?? null
+    }
+  });
   const automationNetworkAuthorizer =
-    createBrowserNodeAutomationNetworkAuthorizer({
-      allowLoopback: false
-    });
+    createBrowserNodeAutomationNetworkAuthorizer();
   const automationRegistry = createBrowserNodeAutomationRegistry({
     authorize: automationNetworkAuthorizer,
     authorizeRequest: automationNetworkAuthorizer,

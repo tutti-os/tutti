@@ -283,6 +283,10 @@ export function StandaloneAgentToolSidebar({
         }
       })();
     });
+    browserApi.announceAutomationHostReady?.({
+      surfaceRole: "agent",
+      workspaceId
+    });
     return () => {
       disconnectAutomation();
       onToolHostReady(null);

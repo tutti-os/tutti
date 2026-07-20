@@ -37,6 +37,7 @@ export function createBrowserNodeAutomationRegistry(
   const targets = new Map<string, RegisteredTarget>();
   const leases = new Map<string, AutomationLease>();
   const selectedTargetByOwner = new Map<string, string>();
+  const releasedAgents = new Set<string>();
   const now = options.now ?? Date.now;
   const leaseTtlMs = Math.max(1, options.leaseTtlMs ?? defaultLeaseTtlMs);
   let focusSequence = 0;
@@ -63,10 +64,13 @@ export function createBrowserNodeAutomationRegistry(
       workspaceId: input.workspaceId
     });
     const ownerKey = resolveOwnerKey(input);
-    const stablePageId = selectedTargetByOwner.get(ownerKey);
+    const stableTargetKey = selectedTargetByOwner.get(ownerKey);
     const selected = pageId
       ? visible.find((target) => target.nodeId === pageId)
-      : (visible.find((target) => target.nodeId === stablePageId) ??
+      : (visible.find(
+          (target) =>
+            targetKey(input.workspaceId, target.nodeId) === stableTargetKey
+        ) ??
         visible.find((target) => target.focused && target.selected) ??
         visible.find((target) => target.selected) ??
         visible[0]);
@@ -75,7 +79,10 @@ export function createBrowserNodeAutomationRegistry(
         targetKey(input.workspaceId, selected.nodeId)
       );
       if (registered) {
-        selectedTargetByOwner.set(ownerKey, registered.nodeId);
+        selectedTargetByOwner.set(
+          ownerKey,
+          targetKey(input.workspaceId, registered.nodeId)
+        );
         return registered;
       }
     }
@@ -101,7 +108,10 @@ export function createBrowserNodeAutomationRegistry(
     ) {
       throw new Error("No in-app Browser page is available");
     }
-    selectedTargetByOwner.set(ownerKey, requested.nodeId);
+    selectedTargetByOwner.set(
+      ownerKey,
+      targetKey(input.workspaceId, requested.nodeId)
+    );
     return requested;
   };
 
@@ -110,9 +120,11 @@ export function createBrowserNodeAutomationRegistry(
     args: Record<string, unknown>,
     target: RegisteredTarget
   ): Promise<void> => {
+    const resolveHost = resolveTargetHost(target);
     const result = await options.authorize?.({
       agentSessionId: normalizeOptional(input.agentSessionId),
       args,
+      ...(resolveHost ? { resolveHost } : {}),
       target: toSummary(target),
       tool: input.tool,
       workspaceId: input.workspaceId
@@ -139,9 +151,11 @@ export function createBrowserNodeAutomationRegistry(
     }
     if (current) clearTimeout(current.timeout);
     const timeout = setTimeout(() => {
-      if (leases.get(key) !== lease) return;
-      leases.delete(key);
-      void targets.get(key)?.driver.disableRequestGuard();
+      void enqueueTarget(target, async () => {
+        if (leases.get(key) !== lease) return;
+        leases.delete(key);
+        await target.driver.disableRequestGuard();
+      });
     }, leaseTtlMs);
     (
       timeout as ReturnType<typeof setTimeout> & { unref?: () => void }
@@ -158,6 +172,8 @@ export function createBrowserNodeAutomationRegistry(
   return {
     async call(input) {
       const workspaceId = normalizeRequired(input.workspaceId, "workspaceId");
+      const agentSessionId = normalizeOptional(input.agentSessionId);
+      assertAgentActive(releasedAgents, agentSessionId);
       const args = input.args ?? {};
       if (input.tool === "list_pages") {
         return {
@@ -168,6 +184,9 @@ export function createBrowserNodeAutomationRegistry(
       }
 
       if (input.tool === "new_page") {
+        if (!options.requestTarget || !options.closeTarget) {
+          throw new Error("Creating in-app Browser pages is unavailable");
+        }
         const ownerKey = resolveOwnerKey(input);
         const visibleTargets = list({
           agentSessionId: input.agentSessionId,
@@ -176,7 +195,7 @@ export function createBrowserNodeAutomationRegistry(
         const requestedPageId =
           readString(args.pageId) ||
           readString(args.page_id) ||
-          selectedTargetByOwner.get(ownerKey) ||
+          selectedNodeId(selectedTargetByOwner.get(ownerKey), workspaceId) ||
           visibleTargets.find((target) => target.focused && target.selected)
             ?.nodeId ||
           visibleTargets.find((target) => target.selected)?.nodeId ||
@@ -193,31 +212,71 @@ export function createBrowserNodeAutomationRegistry(
         if (authorization && !authorization.allowed) {
           throw new Error(`${authorization.code}: ${authorization.message}`);
         }
-        const nodeId = await options.requestTarget?.({
-          agentSessionId: normalizeOptional(input.agentSessionId),
+        const nodeId = await options.requestTarget({
+          agentSessionId,
           requestedPageId,
-          url: rawUrl,
+          url: "about:blank",
           workspaceId
         });
         if (!nodeId) {
           throw new Error("In-app Browser did not create a page");
         }
-        selectedTargetByOwner.set(ownerKey, nodeId);
-        const text = `${createdPageResultPrefix} ${nodeId}`;
-        return { text };
+        const key = targetKey(workspaceId, nodeId);
+        const target = targets.get(key);
+        if (!target || !isTargetVisible(target, workspaceId, agentSessionId)) {
+          if (target) await closeCreatedTarget(options, target);
+          throw new Error("In-app Browser created an unavailable page");
+        }
+        return enqueueTarget(target, async () => {
+          if (agentSessionId && releasedAgents.has(agentSessionId)) {
+            await closeCreatedTarget(options, target);
+            assertAgentActive(releasedAgents, agentSessionId);
+          }
+          const acquired = acquireLease(input, target);
+          try {
+            if (rawUrl !== "about:blank") {
+              if (!options.authorizeRequest) {
+                throw new Error("Browser request authorization is unavailable");
+              }
+              const resolveHost = resolveTargetHost(target);
+              await target.driver.enableRequestGuard(async (url) =>
+                options.authorizeRequest!({
+                  agentSessionId,
+                  args: { url },
+                  ...(resolveHost ? { resolveHost } : {}),
+                  target: toSummary(target),
+                  tool: "navigate_page",
+                  workspaceId
+                })
+              );
+              await loadTargetUrl(target, rawUrl);
+            }
+          } catch (error) {
+            await releaseTargetLease(leases, acquired, target);
+            await closeCreatedTarget(options, target);
+            throw error;
+          }
+          selectedTargetByOwner.set(ownerKey, key);
+          return {
+            text: formatPageResult(createdPageResultPrefix, nodeId)
+          };
+        });
       }
 
       const normalizedInput = { ...input, workspaceId };
       const target = await resolveTarget(normalizedInput, args);
       return enqueueTarget(target, async () => {
+        assertAgentActive(releasedAgents, agentSessionId);
         await authorize(normalizedInput, args, target);
         const acquired = acquireLease(normalizedInput, target);
         try {
           if (options.authorizeRequest) {
+            const resolveHost = resolveTargetHost(target);
             await target.driver.enableRequestGuard(async (url) =>
               options.authorizeRequest!({
                 agentSessionId: normalizeOptional(input.agentSessionId),
                 args: { url },
+                ...(resolveHost ? { resolveHost } : {}),
                 target: toSummary(target),
                 tool: "navigate_page",
                 workspaceId
@@ -240,7 +299,10 @@ export function createBrowserNodeAutomationRegistry(
               throw new Error("Closing in-app Browser pages is unavailable");
             }
             await options.closeTarget(toSummary(target));
-            clearSelectedTarget(selectedTargetByOwner, target.nodeId);
+            clearSelectedTarget(
+              selectedTargetByOwner,
+              targetKey(workspaceId, target.nodeId)
+            );
             return {
               text: formatPageResult(closedPageResultPrefix, target.nodeId)
             };
@@ -256,7 +318,7 @@ export function createBrowserNodeAutomationRegistry(
           case "select_page":
             selectedTargetByOwner.set(
               resolveOwnerKey(normalizedInput),
-              target.nodeId
+              targetKey(workspaceId, target.nodeId)
             );
             await options.selectTarget?.(toSummary(target));
             return {
@@ -304,29 +366,37 @@ export function createBrowserNodeAutomationRegistry(
     },
     async releaseAgent(agentSessionId) {
       const owner = normalizeRequired(agentSessionId, "agentSessionId");
-      for (const [nodeId, lease] of leases) {
-        if (lease.owner === owner) {
-          clearTimeout(lease.timeout);
-          leases.delete(nodeId);
-          void targets.get(nodeId)?.driver.disableRequestGuard();
-        }
-      }
+      releasedAgents.add(owner);
       for (const ownerKey of selectedTargetByOwner.keys()) {
         if (ownerKey.endsWith(`:${owner}`)) {
           selectedTargetByOwner.delete(ownerKey);
         }
       }
-      if (options.closeTarget) {
-        const agentTargets = Array.from(targets.values()).filter(
-          (target) =>
+      const ownedTargets = Array.from(targets.values()).filter((target) => {
+        const key = targetKey(target.metadata.workspaceId, target.nodeId);
+        return (
+          leases.get(key)?.owner === owner ||
+          (target.metadata.surfaceRole === "agent" &&
+            normalizeOptional(target.metadata.agentSessionId) === owner)
+        );
+      });
+      for (const target of ownedTargets) {
+        await enqueueTarget(target, async () => {
+          const key = targetKey(target.metadata.workspaceId, target.nodeId);
+          const lease = leases.get(key);
+          if (lease?.owner === owner) {
+            clearTimeout(lease.timeout);
+            leases.delete(key);
+            await target.driver.disableRequestGuard();
+          }
+          if (
+            options.closeTarget &&
             target.metadata.surfaceRole === "agent" &&
             normalizeOptional(target.metadata.agentSessionId) === owner
-        );
-        for (const target of agentTargets) {
-          await enqueueTarget(target, () =>
-            options.closeTarget!(toSummary(target))
-          );
-        }
+          ) {
+            await options.closeTarget(toSummary(target));
+          }
+        });
       }
     },
     unregister(nodeId, contents) {
@@ -342,7 +412,7 @@ export function createBrowserNodeAutomationRegistry(
         const lease = leases.get(key);
         if (lease) clearTimeout(lease.timeout);
         leases.delete(key);
-        clearSelectedTarget(selectedTargetByOwner, existing.nodeId);
+        clearSelectedTarget(selectedTargetByOwner, key);
       }
     },
     update(nodeId, metadata) {
@@ -379,6 +449,68 @@ function targetKey(workspaceId: string, nodeId: string): string {
   return `${normalizeRequired(workspaceId, "workspaceId")}\u0000${normalizeRequired(nodeId, "nodeId")}`;
 }
 
+function selectedNodeId(
+  selectedKey: string | undefined,
+  workspaceId: string
+): string {
+  const prefix = `${normalizeRequired(workspaceId, "workspaceId")}\u0000`;
+  return selectedKey?.startsWith(prefix)
+    ? selectedKey.slice(prefix.length)
+    : "";
+}
+
+function assertAgentActive(
+  releasedAgents: Set<string>,
+  agentSessionId: string | null
+): void {
+  if (agentSessionId && releasedAgents.has(agentSessionId)) {
+    throw new Error(
+      "agent_session_released: Browser automation session is closed"
+    );
+  }
+}
+
+function resolveTargetHost(
+  target: RegisteredTarget
+): ((hostname: string) => Promise<readonly string[]>) | null {
+  const browserSession = target.contents.session;
+  const resolveHost = browserSession?.resolveHost;
+  if (!browserSession || !resolveHost) return null;
+  return async (hostname) => {
+    const result = await resolveHost.call(browserSession, hostname, {
+      cacheUsage: "allowed"
+    });
+    return result.endpoints.map((endpoint) => endpoint.address);
+  };
+}
+
+async function loadTargetUrl(
+  target: RegisteredTarget,
+  rawUrl: string
+): Promise<void> {
+  const resolved = resolveBrowserNavigationUrl(rawUrl);
+  if (!resolved.url) throw new Error("Invalid browser URL");
+  await target.contents.loadURL(resolved.url);
+}
+
+async function closeCreatedTarget(
+  options: BrowserNodeAutomationRegistryOptions,
+  target: RegisteredTarget
+): Promise<void> {
+  await options.closeTarget?.(toSummary(target));
+}
+
+async function releaseTargetLease(
+  leases: Map<string, AutomationLease>,
+  acquired: { key: string; lease: AutomationLease },
+  target: RegisteredTarget
+): Promise<void> {
+  if (leases.get(acquired.key) !== acquired.lease) return;
+  clearTimeout(acquired.lease.timeout);
+  leases.delete(acquired.key);
+  await target.driver.disableRequestGuard();
+}
+
 function resolveOwnerKey(input: BrowserNodeAutomationCallInput): string {
   return `${normalizeRequired(input.workspaceId, "workspaceId")}:${normalizeOptional(input.agentSessionId) ?? "manual"}`;
 }
@@ -389,10 +521,10 @@ function formatPageResult(prefix: string, nodeId: string): string {
 
 function clearSelectedTarget(
   selections: Map<string, string>,
-  nodeId: string
+  selectedKey: string
 ): void {
-  for (const [owner, selectedNodeId] of selections) {
-    if (selectedNodeId === nodeId) {
+  for (const [owner, ownerSelectedKey] of selections) {
+    if (ownerSelectedKey === selectedKey) {
       selections.delete(owner);
     }
   }
@@ -402,11 +534,7 @@ async function navigateTarget(
   target: RegisteredTarget,
   rawUrl: string
 ): Promise<BrowserNodeAutomationToolResult> {
-  const resolved = resolveBrowserNavigationUrl(rawUrl);
-  if (!resolved.url) {
-    throw new Error("Invalid browser URL");
-  }
-  await target.contents.loadURL(resolved.url);
+  await loadTargetUrl(target, rawUrl);
   return target.driver.snapshot();
 }
 

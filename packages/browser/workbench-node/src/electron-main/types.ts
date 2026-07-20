@@ -177,6 +177,10 @@ export interface BrowserGuestElectronSession {
   cookies?: BrowserGuestCookieStore;
   off(event: "will-download", listener: BrowserGuestWillDownloadListener): this;
   on(event: "will-download", listener: BrowserGuestWillDownloadListener): this;
+  resolveHost?(
+    hostname: string,
+    options?: { cacheUsage?: "allowed" | "disallowed" | "staleAllowed" }
+  ): Promise<{ endpoints: readonly { address: string }[] }>;
   setDownloadPath?(path: string): void;
 }
 

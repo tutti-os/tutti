@@ -47,6 +47,7 @@ import type {
   DesktopArchiveAgentPromptFileInput,
   DesktopArchiveAgentPromptFileResult,
   DesktopBrowserAutomationRequest,
+  DesktopBrowserAutomationHostReady,
   DesktopBrowserAutomationResponse
 } from "../shared/contracts/ipc";
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
@@ -253,6 +254,7 @@ export type DesktopBrowserApi = Pick<
   | "unregisterGuest"
   | "updateAutomationTarget"
 > & {
+  announceAutomationHostReady?(input: DesktopBrowserAutomationHostReady): void;
   onAutomationRequest(
     listener: (request: DesktopBrowserAutomationRequest) => void
   ): () => void;

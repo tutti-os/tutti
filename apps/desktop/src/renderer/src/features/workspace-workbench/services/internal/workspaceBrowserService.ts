@@ -34,7 +34,9 @@ export function createWorkspaceBrowserService(
       Partial<
         Pick<
           DesktopBrowserApi,
-          "onAutomationRequest" | "respondAutomationRequest"
+          | "announceAutomationHostReady"
+          | "onAutomationRequest"
+          | "respondAutomationRequest"
         >
       >;
   } = {}
@@ -190,6 +192,10 @@ export function createWorkspaceBrowserService(
             });
           }
         }) ?? null;
+      input.browserApi?.announceAutomationHostReady?.({
+        surfaceRole: "user",
+        workspaceId
+      });
     }
   };
 }

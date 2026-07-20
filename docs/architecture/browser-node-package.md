@@ -186,7 +186,10 @@ The registry exposes User Browser tabs in the current workspace plus Agent
 Browser tabs owned by the calling Agent session. The most recently focused
 selected tab is the initial target; an explicit page selection remains stable
 for later calls. A tab has one time-limited Agent automation lease, while user
-input remains available through Electron throughout the lease.
+input remains available through Electron throughout the lease. Releasing an
+Agent is a barrier: already-queued target work completes before its request
+guard is disabled, retained Agent pages are then closed, and later calls for
+that Agent session are rejected.
 
 Desktop hosts publish the registry over a versioned HTTP endpoint bound to
 `127.0.0.1` with a random bearer token stored in a mode-`0600` listener-info
@@ -195,23 +198,30 @@ it must fail if the BrowserNode host is unavailable and must not fall back to a
 separate Chrome process. A daemon without the configuration remains the
 explicit headless mode and may own managed Chrome.
 
-The Desktop renderer owns page lifecycle. Main sends internal
-create/select/close requests only to the registered workspace or Agent window,
-and accepts a response only from that same renderer. Agent requests ensure a
-session-keyed Browser tool surface without opening the sidebar or taking focus;
-the header exposes that retained surface, and switching the active conversation
-does not rebind it to another session. Deleting an Agent session releases its
-leases and closes its retained Agent Browser surface through the same path.
+The Desktop renderer owns page lifecycle. A renderer announces readiness only
+for its main-verified workspace and surface role. Main records the exact
+renderer that created each page, sends later select/close requests to that
+owner, and accepts a response only from the renderer that received the request.
+If no Agent renderer exists, Desktop starts one hidden without taking focus and
+waits for its readiness before creating the page. Agent Browser tabs are keyed
+by their resource Agent session; switching the window's active conversation
+does not rebind retained tabs to another session. Deleting an Agent session
+releases its leases and closes its retained Agent Browser surface through the
+same path.
 
-Network authorization runs before leasing or creating a tab. While leased,
-CDP request interception applies the same policy to main-frame redirects,
-subresources, and script-initiated requests. The standard policy permits public
-HTTP/HTTPS destinations while rejecting private, link-local, metadata,
-multicast, and local-network targets. Loopback is denied by default; a
-virtualized host may enable it only after its product-owned preview resolver
-maps the URL to the caller's sandbox instead of host localhost. `list_pages`
-remains metadata-only so an Agent can report a restricted page's title and URL
-without reading its contents.
+Network authorization runs before leasing or creating a tab. `new_page`
+creates only `about:blank`, attaches CDP request interception, and then loads
+the requested URL. The same policy therefore covers the initial document,
+main-frame redirects, subresources, and script-initiated requests. For an
+attached target, hostname checks use that target's Chromium Session resolver,
+keeping policy resolution in the browser network context that will make the
+request. The standard policy permits public HTTP/HTTPS destinations while
+rejecting private, link-local, metadata, multicast, and local-network targets.
+Loopback is denied by default; a virtualized host may permit an exact URL only
+through the trusted `isLoopbackUrlRouted` capability after its product-owned
+preview router maps the URL to the caller's sandbox instead of host localhost.
+`list_pages` remains metadata-only so an Agent can report a restricted page's
+title and URL without reading its contents.
 
 `BrowserNode` also accepts a `renderHome` slot. The package shows it only for
 an empty/`about:blank` tab and supplies a package-owned navigation callback.

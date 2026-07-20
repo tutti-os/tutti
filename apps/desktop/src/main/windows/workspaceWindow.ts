@@ -300,6 +300,12 @@ export function getWorkspaceWindowKind(
   return workspaceWindows.getKind(workspaceWindow);
 }
 
+export function getWorkspaceWindowWorkspaceID(
+  workspaceWindow: BrowserWindow
+): string | null {
+  return workspaceWindows.getWorkspaceID(workspaceWindow);
+}
+
 export function findWorkspaceWindow(
   workspaceID: string,
   kind: "agent" | "workspace"

@@ -45,6 +45,7 @@ export interface IpcRegistrationDependencies {
   updateService: AppUpdateService;
   workspaceLaunch: Pick<
     WorkspaceLaunch,
+    | "ensureAgentBrowserHost"
     | "openStartupWindow"
     | "replaceWorkspaceWindow"
     | "showAgentWindow"
@@ -60,7 +61,13 @@ export async function registerIpcHandlers(
     sessionID: getDesktopLogSessionID(),
     stateRootDir: resolveDesktopDefaultsFromEnv().state.rootDir
   });
-  const browserAutomation = await registerBrowserIpc(deps.preferences);
+  const browserAutomation = await registerBrowserIpc(deps.preferences, {
+    ensureAgentBrowserHost: ({ agentSessionId, workspaceId }) =>
+      deps.workspaceLaunch.ensureAgentBrowserHost({
+        agentSessionID: agentSessionId,
+        workspaceID: workspaceId
+      })
+  });
   registerComputerUseIpc();
   registerDockPreviewCacheIpc();
   registerDeveloperIpc(deps.preferences, deps.tuttidClient);

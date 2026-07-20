@@ -10,6 +10,7 @@ import { invokeDesktopApi } from "./invoke";
 
 type BrowserInvokeChannel = Exclude<
   (typeof desktopIpcChannels.browser)[keyof typeof desktopIpcChannels.browser],
+  | typeof desktopIpcChannels.browser.automationHostReady
   | typeof desktopIpcChannels.browser.automationRequest
   | typeof desktopIpcChannels.browser.automationResponse
   | typeof desktopIpcChannels.browser.event
@@ -40,6 +41,9 @@ export function createBrowserDesktopApi(): DesktopBrowserApi {
   });
   return {
     ...browserApi,
+    announceAutomationHostReady(input) {
+      ipcRenderer.send(desktopIpcChannels.browser.automationHostReady, input);
+    },
     onAutomationRequest(listener) {
       const handleRequest = (
         _event: Electron.IpcRendererEvent,
