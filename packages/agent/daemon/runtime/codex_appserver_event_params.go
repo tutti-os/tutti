@@ -16,18 +16,6 @@ func appServerThreadReasoningSummaryConfig(model string) string {
 }
 
 func appServerThreadStartParams(session Session, cwd string) map[string]any {
-	return appServerThreadStartParamsWithSandboxPolicy(
-		session,
-		cwd,
-		CodexAppServerSandboxPolicyPermissionMode,
-	)
-}
-
-func appServerThreadStartParamsWithSandboxPolicy(
-	session Session,
-	cwd string,
-	sandboxPolicy CodexAppServerSandboxPolicy,
-) map[string]any {
 	settings := session.SettingsValue()
 	params := map[string]any{
 		"cwd": firstNonEmpty(cwd, "/"),
@@ -51,7 +39,7 @@ func appServerThreadStartParamsWithSandboxPolicy(
 	if approvalPolicy := codexAppServerApprovalPolicy(session.PermissionModeID); approvalPolicy != "" {
 		params["approvalPolicy"] = approvalPolicy
 	}
-	if sandbox := codexAppServerSandboxMode(session.PermissionModeID, sandboxPolicy); sandbox != "" {
+	if sandbox := codexAppServerSandboxMode(session.PermissionModeID); sandbox != "" {
 		params["sandbox"] = sandbox
 	}
 	if approvalsReviewer := codexAppServerApprovalsReviewer(session.PermissionModeID); approvalsReviewer != "" {
@@ -67,26 +55,7 @@ func appServerTurnStartParams(
 	planModeMask map[string]any,
 	defaultModeMask map[string]any,
 	defaultModel string,
-) map[string]any {
-	return appServerTurnStartParamsWithSandboxPolicy(
-		session,
-		threadID,
-		content,
-		planModeMask,
-		defaultModeMask,
-		defaultModel,
-		CodexAppServerSandboxPolicyPermissionMode,
-	)
-}
-
-func appServerTurnStartParamsWithSandboxPolicy(
-	session Session,
-	threadID string,
-	content []PromptContentBlock,
-	planModeMask map[string]any,
-	defaultModeMask map[string]any,
-	defaultModel string,
-	sandboxPolicy CodexAppServerSandboxPolicy,
+	commandNetworkAccess bool,
 ) map[string]any {
 	settings := session.SettingsValue()
 	params := map[string]any{
@@ -108,8 +77,8 @@ func appServerTurnStartParamsWithSandboxPolicy(
 	if approvalPolicy := codexAppServerApprovalPolicy(session.PermissionModeID); approvalPolicy != "" {
 		params["approvalPolicy"] = approvalPolicy
 	}
-	if policy := codexAppServerTurnSandboxPolicy(session.PermissionModeID, sandboxPolicy); policy != nil {
-		params["sandboxPolicy"] = policy
+	if sandboxPolicy := codexAppServerSandboxPolicy(session.PermissionModeID, commandNetworkAccess); sandboxPolicy != nil {
+		params["sandboxPolicy"] = sandboxPolicy
 	}
 	if approvalsReviewer := codexAppServerApprovalsReviewer(session.PermissionModeID); approvalsReviewer != "" {
 		params["approvalsReviewer"] = approvalsReviewer
@@ -339,15 +308,8 @@ func codexAppServerApprovalPolicy(modeID string) string {
 	}
 }
 
-func codexAppServerSandboxMode(modeID string, policy CodexAppServerSandboxPolicy) string {
-	modeID = codexACPModeID(modeID)
-	if modeID == "" {
-		return ""
-	}
-	if policy == CodexAppServerSandboxPolicyDangerFullAccess {
-		return "danger-full-access"
-	}
-	switch modeID {
+func codexAppServerSandboxMode(modeID string) string {
+	switch codexACPModeID(modeID) {
 	case "read-only":
 		return "read-only"
 	case "auto":
@@ -359,24 +321,22 @@ func codexAppServerSandboxMode(modeID string, policy CodexAppServerSandboxPolicy
 	}
 }
 
-func codexAppServerTurnSandboxPolicy(modeID string, policy CodexAppServerSandboxPolicy) map[string]any {
-	modeID = codexACPModeID(modeID)
-	if modeID == "" {
-		return nil
-	}
-	if policy == CodexAppServerSandboxPolicyDangerFullAccess {
-		return map[string]any{"type": "dangerFullAccess"}
-	}
-	switch modeID {
+func codexAppServerSandboxPolicy(modeID string, commandNetworkAccess bool) map[string]any {
+	var policy map[string]any
+	switch codexACPModeID(modeID) {
 	case "read-only":
-		return map[string]any{"type": "readOnly"}
+		policy = map[string]any{"type": "readOnly"}
 	case "auto":
-		return map[string]any{"type": "workspaceWrite"}
+		policy = map[string]any{"type": "workspaceWrite"}
 	case "full-access":
 		return map[string]any{"type": "dangerFullAccess"}
 	default:
 		return nil
 	}
+	if commandNetworkAccess {
+		policy["networkAccess"] = true
+	}
+	return policy
 }
 
 func codexAppServerApprovalsReviewer(modeID string) string {
