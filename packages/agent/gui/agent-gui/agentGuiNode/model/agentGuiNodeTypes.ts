@@ -87,6 +87,12 @@ export interface AgentGUIComposerSettingOption {
   label: string;
   description?: string;
   supportsImageInput?: boolean;
+  /** Bound plan identity for options aggregated from model access plans. */
+  modelPlanId?: string | null;
+  /** Display name of the plan (or provider) the option originates from. */
+  sourceName?: string;
+  /** When the option takes effect after selection. */
+  effect?: "new_session" | "next_call";
 }
 
 export interface AgentGUIProviderSkillOption {
