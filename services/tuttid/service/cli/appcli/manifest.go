@@ -14,6 +14,7 @@ const (
 type Manifest = appclicore.Manifest
 type ManifestDocumentation = appclicore.ManifestDocumentation
 type ManifestCommand = appclicore.ManifestCommand
+type ManifestCommandExecution = appclicore.ManifestCommandExecution
 type ManifestCommandOutput = appclicore.ManifestCommandOutput
 type ManifestTableOutput = appclicore.ManifestTableOutput
 type ManifestCommandHandler = appclicore.ManifestCommandHandler

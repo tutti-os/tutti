@@ -139,6 +139,11 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 		printDynamicCommandHelp(stdout, commandName, command)
 		return 0
 	}
+	waitOptions, commandArgs, err := parseWaitOptions(command, commandArgs)
+	if err != nil {
+		prefix := strings.TrimSpace(commandName + " " + strings.Join(command.Path, " "))
+		return writeCLIError(stdout, stderr, opts.json, prefix, reasonInvalidInput, err, 2)
+	}
 	input, err := parseCommandInput(command, commandArgs)
 	if err != nil {
 		prefix := strings.TrimSpace(commandName + " " + strings.Join(command.Path, " "))
@@ -148,11 +153,11 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 	if opts.json {
 		outputMode = "json"
 	}
-	response, err := client.Invoke(ctx, command.ID, daemon.InvokeRequest{
+	response, err := invokeDynamicCommand(ctx, client, command, daemon.InvokeRequest{
 		Input:      input,
 		OutputMode: outputMode,
 		Context:    invokeContext,
-	})
+	}, waitOptions)
 	if err != nil {
 		prefix := strings.TrimSpace(commandName + " " + strings.Join(command.Path, " "))
 		return writeCLIError(stdout, stderr, opts.json, prefix, reasonDaemonRequestFailed, err, daemonErrorExitCode(err))
@@ -395,7 +400,7 @@ func printCommandPrefixHelp(stdout io.Writer, commandName string, prefix []strin
 }
 
 func printDynamicCommandHelp(stdout io.Writer, commandName string, command daemon.Capability) {
-	flags := commandFlags(command.InputSchema)
+	flags := waitCommandFlags(command, commandFlags(command.InputSchema))
 	fmt.Fprintf(stdout, "Usage: %s %s [--json]", commandName, strings.Join(command.Path, " "))
 	for _, flag := range flags {
 		if flag.Required {
