@@ -45,7 +45,6 @@ import {
   formatAgentProviderUpdateSummary,
   resolveAgentProviderUpdateRowPresentation
 } from "./workspaceAgentsSettingsUpdateModel.ts";
-import { defaultAgentUnifiedIconUrl } from "../services/workspaceDockIconStyle.ts";
 import { projectWorkspaceAgentExtensionSettingsRows } from "./workspaceAgentExtensionSettingsModel.ts";
 
 const emptyAgentProviderStatusSnapshot: AgentProviderStatusSnapshot = {
@@ -578,12 +577,16 @@ export function WorkspaceAgentsSettingsTab({
               role="row"
             >
               <div className="flex min-w-0 items-center gap-2.5" role="cell">
-                <img
-                  alt=""
-                  aria-hidden="true"
-                  className="size-7 shrink-0 rounded-lg"
-                  src={row.iconUrl || defaultAgentUnifiedIconUrl}
-                />
+                {row.iconUrl ? (
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    className="size-7 shrink-0 rounded-lg"
+                    src={row.iconUrl}
+                  />
+                ) : (
+                  <span className="size-7 shrink-0 rounded-lg bg-[var(--transparency-block)]" />
+                )}
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="truncate font-semibold text-[var(--text-primary)]">
