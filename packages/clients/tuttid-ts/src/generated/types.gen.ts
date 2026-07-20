@@ -124,6 +124,15 @@ export type CliCapabilityOutput = {
   table?: CliTableOutput | null;
 };
 
+export type CliCommandExecutionMode = "wait";
+
+/**
+ * Optional client-side execution behavior declared by a command. Wait commands remain active while handlers return a pending continuation.
+ */
+export type CliCommandExecution = {
+  mode: CliCommandExecutionMode;
+};
+
 export type CliCapabilitySourceKind = "builtin" | "app";
 
 export type CliCapabilitySource = {
@@ -182,6 +191,11 @@ export type CliCapability = {
     [key: string]: unknown;
   } | null;
   output: CliCapabilityOutput;
+  execution?: CliCommandExecution | null;
+  /**
+   * Per-invocation App handler timeout used by clients to budget the daemon request.
+   */
+  handlerTimeoutMs?: number | null;
   source: CliCapabilitySource;
 };
 
@@ -228,6 +242,20 @@ export type CliCommandOutput = {
   } | null;
   text?: string | null;
   warnings?: Array<CliCommandWarning>;
+  continuation?: CliCommandContinuation | null;
+};
+
+export type CliCommandContinuationState = "pending";
+
+/**
+ * Internal continuation signal consumed by the CLI for wait commands and not rendered as a terminal result.
+ */
+export type CliCommandContinuation = {
+  state: CliCommandContinuationState;
+  /**
+   * Delay before the CLI invokes the same command again.
+   */
+  retryAfterMs: number;
 };
 
 export type CliCommandWarning = {

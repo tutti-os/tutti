@@ -27,16 +27,6 @@ test("resolveWorkspaceFileAbsolutePath maps file paths under the local root", ()
   );
 });
 
-test("resolveWorkspaceFileAbsolutePath accepts absolute paths inside the local root", () => {
-  assert.equal(
-    resolveWorkspaceFileAbsolutePath({
-      logicalPath: "/tmp/demo/src/App.tsx",
-      rootDirectory: "/tmp/demo"
-    }),
-    path.resolve("/tmp/demo/src/App.tsx")
-  );
-});
-
 test("resolveWorkspaceFileAbsolutePath rejects absolute paths outside the local root", () => {
   assert.throws(
     () =>

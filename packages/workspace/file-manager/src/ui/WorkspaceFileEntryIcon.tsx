@@ -13,24 +13,16 @@ import {
 } from "../services/workspaceFileManagerModel.ts";
 import type { WorkspaceFileEntry } from "../services/workspaceFileManagerTypes.ts";
 import {
+  workspaceArchiveFallbackIconUrl,
+  workspaceFolderFallbackIconUrl,
+  workspaceImageFallbackIconUrl
+} from "../workspaceFileFallbackAssets.ts";
+import {
   resolveWorkspaceFileEntryIconCacheKey,
   isWorkspaceApplicationBundle,
   shouldUseWorkspaceFileArchiveIcon,
   shouldUseWorkspaceFileExtensionDocumentIcon
 } from "./workspaceFileEntryIconPolicy.ts";
-
-const workspaceArchiveFallbackIconUrl = new URL(
-  "../assets/workspace-archive-fallback.png",
-  import.meta.url
-).toString();
-const workspaceFolderFallbackIconUrl = new URL(
-  "../assets/workspace-folder-fallback.png",
-  import.meta.url
-).toString();
-const workspaceImageFallbackIconUrl = new URL(
-  "../assets/workspace-image-fallback.png",
-  import.meta.url
-).toString();
 
 export function WorkspaceFileEntryIcon({
   entry,

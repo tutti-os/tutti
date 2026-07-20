@@ -278,6 +278,14 @@ func TestRegisterBindsResolvesWorkspaceRunsAndFormats(t *testing.T) {
 	}
 }
 
+func TestValidateSpecRejectsWaitExecutionWithoutContinuationFormatter(t *testing.T) {
+	spec := validSpec()
+	spec.Execution = &cliservice.CommandExecution{Mode: cliservice.CommandExecutionModeWait}
+	if err := ValidateSpec(spec); err == nil || !strings.Contains(err.Error(), "continuation formatter") {
+		t.Fatalf("ValidateSpec() error = %v", err)
+	}
+}
+
 func validSpec() CommandSpec[sampleInput] {
 	return CommandSpec[sampleInput]{
 		ID:          "tutti.issue.list",

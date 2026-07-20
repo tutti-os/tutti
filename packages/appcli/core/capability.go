@@ -21,6 +21,8 @@ func BuildCommands(manifest Manifest, options CommandBuildOptions) []Command {
 					JSON:        command.Output.JSON,
 					Table:       tableOutput(command.Output.Table),
 				},
+				Execution:        commandExecution(command.Execution),
+				HandlerTimeoutMs: NormalizedTimeoutMs(command.Handler.TimeoutMs),
 				Source: CapabilitySource{
 					Kind:              CapabilitySourceApp,
 					AppID:             strings.TrimSpace(options.AppID),
@@ -37,6 +39,13 @@ func BuildCommands(manifest Manifest, options CommandBuildOptions) []Command {
 		})
 	}
 	return commands
+}
+
+func commandExecution(execution *ManifestCommandExecution) *CommandExecution {
+	if execution == nil {
+		return nil
+	}
+	return &CommandExecution{Mode: execution.Mode}
 }
 
 func CommandID(appID string, scope string, path []string) string {

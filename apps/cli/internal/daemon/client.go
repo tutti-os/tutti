@@ -21,9 +21,9 @@ type Client struct {
 }
 
 const (
-	// 覆盖最长的命令预算(如 vibe-design session-start 声明 timeoutMs=300000),
-	// 留出网络/排队余量,避免长命令在客户端侧误报 "daemon request timed out"。
-	// TODO: 改为按命令的 timeoutMs 透传后,此全局值可回落。
+	// Built-in commands use this broad fallback budget. App commands publish
+	// their handler timeout through capability metadata and override it per
+	// invocation, including the transport margin owned by the terminal CLI.
 	defaultClientTimeout    = 360 * time.Second
 	healthPath              = "/v1/health"
 	cliCapabilitiesPath     = "/v1/cli/capabilities"
@@ -40,14 +40,20 @@ type CapabilityList struct {
 }
 
 type Capability struct {
-	ID          string           `json:"id"`
-	Path        []string         `json:"path"`
-	Summary     string           `json:"summary"`
-	Description string           `json:"description,omitempty"`
-	Visibility  string           `json:"visibility,omitempty"`
-	InputSchema map[string]any   `json:"inputSchema,omitempty"`
-	Output      CapabilityOutput `json:"output"`
-	Source      CapabilitySource `json:"source"`
+	ID               string            `json:"id"`
+	Path             []string          `json:"path"`
+	Summary          string            `json:"summary"`
+	Description      string            `json:"description,omitempty"`
+	Visibility       string            `json:"visibility,omitempty"`
+	InputSchema      map[string]any    `json:"inputSchema,omitempty"`
+	Output           CapabilityOutput  `json:"output"`
+	Execution        *CommandExecution `json:"execution,omitempty"`
+	HandlerTimeoutMs int               `json:"handlerTimeoutMs,omitempty"`
+	Source           CapabilitySource  `json:"source"`
+}
+
+type CommandExecution struct {
+	Mode string `json:"mode"`
 }
 
 type CapabilityListOptions struct {
@@ -98,12 +104,18 @@ type InvokeResponse struct {
 }
 
 type CommandOutput struct {
-	Kind     string           `json:"kind"`
-	Columns  []TableColumn    `json:"columns,omitempty"`
-	Rows     []map[string]any `json:"rows,omitempty"`
-	Value    map[string]any   `json:"value,omitempty"`
-	Text     string           `json:"text,omitempty"`
-	Warnings []CommandWarning `json:"warnings,omitempty"`
+	Kind         string               `json:"kind"`
+	Columns      []TableColumn        `json:"columns,omitempty"`
+	Rows         []map[string]any     `json:"rows,omitempty"`
+	Value        map[string]any       `json:"value,omitempty"`
+	Text         string               `json:"text,omitempty"`
+	Warnings     []CommandWarning     `json:"warnings,omitempty"`
+	Continuation *CommandContinuation `json:"continuation,omitempty"`
+}
+
+type CommandContinuation struct {
+	State        string `json:"state"`
+	RetryAfterMs int    `json:"retryAfterMs"`
 }
 
 type CommandWarning struct {
@@ -166,15 +178,29 @@ func (client *Client) ListCapabilitiesForWorkspaceWithOptions(ctx context.Contex
 }
 
 func (client *Client) Invoke(ctx context.Context, commandID string, request InvokeRequest) (InvokeResponse, error) {
+	return client.InvokeWithTimeout(ctx, commandID, request, defaultClientTimeout)
+}
+
+func (client *Client) InvokeWithTimeout(ctx context.Context, commandID string, request InvokeRequest, timeout time.Duration) (InvokeResponse, error) {
 	var result InvokeResponse
 	path := strings.Replace(cliCommandInvokePattern, "{commandID}", urlPathEscape(commandID), 1)
-	if err := client.DoJSON(ctx, http.MethodPost, path, request, &result); err != nil {
+	httpClient := client.httpClient
+	if timeout > 0 {
+		cloned := *client.httpClient
+		cloned.Timeout = timeout
+		httpClient = &cloned
+	}
+	if err := client.doJSON(ctx, httpClient, http.MethodPost, path, request, &result); err != nil {
 		return InvokeResponse{}, err
 	}
 	return result, nil
 }
 
 func (client *Client) DoJSON(ctx context.Context, method string, path string, body any, result any) error {
+	return client.doJSON(ctx, client.httpClient, method, path, body, result)
+}
+
+func (client *Client) doJSON(ctx context.Context, httpClient *http.Client, method string, path string, body any, result any) error {
 	var requestBody io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -195,7 +221,7 @@ func (client *Client) DoJSON(ctx context.Context, method string, path string, bo
 		request.Header.Set("Content-Type", "application/json")
 	}
 
-	response, err := client.httpClient.Do(request)
+	response, err := httpClient.Do(request)
 	if err != nil {
 		return daemonRequestError(err)
 	}

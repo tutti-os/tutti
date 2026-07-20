@@ -310,6 +310,70 @@ func TestRegistryInvokeRejectsUndeclaredOutput(t *testing.T) {
 	}
 }
 
+func TestRegistryInvokePreservesValidatedWaitContinuation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+      "kind":"json",
+      "value":{"run":{"status":"running"}},
+      "continuation":{"state":"pending","retryAfterMs":500}
+    }`))
+	}))
+	defer server.Close()
+
+	registry := NewRegistry(fakeWorkspaceCatalog{workspaceID: "ws-1"}, fakeRuntime{baseURL: server.URL})
+	appPackage := writeTestPackage(t, "automation-app", "automation", `[
+    {
+      "path": ["runs", "wait"],
+      "summary": "Wait for a run",
+      "execution": {"mode":"wait"},
+      "inputSchema": {"type":"object","properties":{"run-id":{"type":"string"}},"required":["run-id"]},
+      "output": {"defaultMode":"json","json":true},
+      "handler": {"kind":"http","method":"POST","path":"/tutti/cli/runs/wait","timeoutMs":45000}
+    }
+  ]`)
+	state := registry.Activate(context.Background(), Activation{WorkspaceID: "ws-1", AppPackage: appPackage, BaseURL: server.URL})
+	if state.Status != workspacebiz.AppCLIStatusActive {
+		t.Fatalf("activation state = %#v", state)
+	}
+
+	capabilities := registry.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "ws-1"})
+	if len(capabilities) != 1 || capabilities[0].Execution == nil ||
+		capabilities[0].Execution.Mode != cliservice.CommandExecutionModeWait || capabilities[0].HandlerTimeoutMs != 45000 {
+		t.Fatalf("capabilities = %#v", capabilities)
+	}
+	output, err := registry.Invoke(context.Background(), cliservice.InvokeRequest{
+		CommandID: "app.automation-app.automation.runs.wait",
+		Input:     map[string]any{"run-id": "RUN-1"},
+		Context:   cliservice.InvokeContext{WorkspaceID: "ws-1"},
+	})
+	if err != nil {
+		t.Fatalf("Invoke() error = %v", err)
+	}
+	if output.Continuation == nil || output.Continuation.State != "pending" || output.Continuation.RetryAfterMs != 500 {
+		t.Fatalf("output = %#v", output)
+	}
+}
+
+func TestRegistryInvokeRejectsContinuationFromNonWaitCommand(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"kind":"json","value":{"status":"running"},"continuation":{"state":"pending","retryAfterMs":500}}`))
+	}))
+	defer server.Close()
+
+	registry := NewRegistry(fakeWorkspaceCatalog{workspaceID: "ws-1"}, fakeRuntime{baseURL: server.URL})
+	appPackage := writeTestPackage(t, "automation-app", "automation", testJSONCommand())
+	registry.Activate(context.Background(), Activation{WorkspaceID: "ws-1", AppPackage: appPackage, BaseURL: server.URL})
+	_, err := registry.Invoke(context.Background(), cliservice.InvokeRequest{
+		CommandID: "app.automation-app.automation.run",
+		Context:   cliservice.InvokeContext{WorkspaceID: "ws-1"},
+	})
+	if !errors.Is(err, cliservice.ErrWorkspaceOperation) || cliservice.InvokeErrorReason(err) != "app_cli_handler_bad_response" {
+		t.Fatalf("Invoke() error = %v", err)
+	}
+}
+
 func TestValidateManifestRejectsReservedHandlerPath(t *testing.T) {
 	err := appclicore.ValidateManifest(Manifest{
 		SchemaVersion: ManifestSchemaVersion,

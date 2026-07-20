@@ -132,6 +132,25 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			},
 		},
 		{
+			ID:            "app.dynamic-workflows.workflow.runs.wait",
+			Path:          []string{"workflow", "runs", "wait"},
+			Summary:       "Wait for a workflow run",
+			Description:   "Wait until the run reaches a stop point.",
+			ExecutionMode: "wait",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"run-id": map[string]any{"type": "string"},
+				},
+				"required": []any{"run-id"},
+			},
+			Source: CommandSource{
+				Kind:    CommandSourceApp,
+				AppID:   "dynamic-workflows",
+				AppName: "Dynamic Workflows",
+			},
+		},
+		{
 			ID:          "agent-context.agent.tutti-cli-skill-bundle",
 			Path:        []string{"agent", "tutti-cli-skill-bundle"},
 			Summary:     "Get Tutti CLI skill bundle",
@@ -195,6 +214,10 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 	if !strings.Contains(guide, "tutti onboarding read") ||
 		!strings.Contains(guide, "Provided by workspace app 新手指引. App id: tutti-onboarding.") {
 		t.Fatalf("guide missing app command metadata: %q", guide)
+	}
+	if !strings.Contains(guide, "tutti workflow runs wait --run-id <run-id>") ||
+		!strings.Contains(guide, "--timeout-ms <number> (optional) - Maximum total wait") {
+		t.Fatalf("guide missing wait timeout semantics: %q", guide)
 	}
 	if strings.Contains(guide, "skill-bundle") {
 		t.Fatalf("guide included host integration command: %q", guide)
