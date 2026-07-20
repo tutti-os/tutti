@@ -1,117 +1,48 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type {
+  WorkspaceWindowLifecycle,
+  WorkspaceWindowLifecycleEvent,
+  WorkspaceWindowLifecycleSnapshot
+} from "../../../../lib/workspaceWindowLifecycle.ts";
 import { desktopManagedAgentProviders } from "./desktopManagedAgentProviders.ts";
 import { bindDesktopManagedAgentProviderVisibilityRefresh } from "./desktopAgentProviderVisibilityRefresh.ts";
 
-test("bindDesktopManagedAgentProviderVisibilityRefresh refreshes managed providers on focus", () => {
+test("managed provider refresh follows visible window activations", () => {
   const refreshCalls: unknown[] = [];
-  let visibilityState: DocumentVisibilityState = "visible";
-  const listeners = new Map<string, Set<() => void>>();
-
-  const documentStub = {
-    get visibilityState() {
-      return visibilityState;
-    },
-    addEventListener(type: string, listener: () => void) {
-      const bucket = listeners.get(type) ?? new Set();
-      bucket.add(listener);
-      listeners.set(type, bucket);
-    },
-    removeEventListener(type: string, listener: () => void) {
-      listeners.get(type)?.delete(listener);
-    }
-  };
-  const windowStub = {
-    addEventListener(type: string, listener: () => void) {
-      const bucket = listeners.get(type) ?? new Set();
-      bucket.add(listener);
-      listeners.set(type, bucket);
-    },
-    removeEventListener(type: string, listener: () => void) {
-      listeners.get(type)?.delete(listener);
-    }
-  };
-
+  const lifecycle = createLifecycleHarness();
   const dispose = bindDesktopManagedAgentProviderVisibilityRefresh(
     {
       async refresh(providers) {
         refreshCalls.push(providers);
       }
     },
-    {
-      document: documentStub as Pick<
-        Document,
-        "addEventListener" | "removeEventListener" | "visibilityState"
-      >,
-      minIntervalMs: 0,
-      window: windowStub as Pick<
-        Window,
-        "addEventListener" | "removeEventListener"
-      >
-    }
+    lifecycle,
+    { minIntervalMs: 0 }
   );
 
-  for (const listener of listeners.get("focus") ?? []) {
-    listener();
-  }
-
-  assert.deepEqual(refreshCalls, [[...desktopManagedAgentProviders]]);
+  lifecycle.emit({ kind: "opened", occurredAt: 1_000 });
+  lifecycle.emit({ kind: "focused", occurredAt: 2_000 });
+  lifecycle.setSnapshot({ focused: false, visibility: "hidden" });
+  lifecycle.emit({ kind: "focused", occurredAt: 3_000 });
+  lifecycle.setSnapshot({ focused: false, visibility: "visible" });
+  lifecycle.emit({
+    kind: "visibility_changed",
+    occurredAt: 4_000,
+    visibility: "visible"
+  });
   dispose();
-  assert.equal(listeners.get("focus")?.size, 0);
-  assert.equal(listeners.get("visibilitychange")?.size, 0);
+  lifecycle.emit({ kind: "focused", occurredAt: 5_000 });
+
+  assert.deepEqual(refreshCalls, [
+    [...desktopManagedAgentProviders],
+    [...desktopManagedAgentProviders]
+  ]);
 });
 
-test("bindDesktopManagedAgentProviderVisibilityRefresh skips hidden documents", () => {
+test("managed provider refresh preserves a fresh application snapshot", () => {
   const refreshCalls: unknown[] = [];
-  const listeners = new Map<string, Set<() => void>>();
-
-  bindDesktopManagedAgentProviderVisibilityRefresh(
-    {
-      async refresh(providers) {
-        refreshCalls.push(providers);
-      }
-    },
-    {
-      document: {
-        visibilityState: "hidden",
-        addEventListener(type: string, listener: () => void) {
-          const bucket = listeners.get(type) ?? new Set();
-          bucket.add(listener);
-          listeners.set(type, bucket);
-        },
-        removeEventListener(type: string, listener: () => void) {
-          listeners.get(type)?.delete(listener);
-        }
-      } as Pick<
-        Document,
-        "addEventListener" | "removeEventListener" | "visibilityState"
-      >,
-      minIntervalMs: 0,
-      window: {
-        addEventListener(type: string, listener: () => void) {
-          const bucket = listeners.get(type) ?? new Set();
-          bucket.add(listener);
-          listeners.set(type, bucket);
-        },
-        removeEventListener(type: string, listener: () => void) {
-          listeners.get(type)?.delete(listener);
-        }
-      } as Pick<Window, "addEventListener" | "removeEventListener">
-    }
-  );
-
-  for (const listener of listeners.get("focus") ?? []) {
-    listener();
-  }
-
-  assert.deepEqual(refreshCalls, []);
-});
-
-test("bindDesktopManagedAgentProviderVisibilityRefresh keeps a fresh application snapshot", () => {
-  const refreshCalls: unknown[] = [];
-  const listeners = new Map<string, Set<() => void>>();
-  const now = Date.parse("2026-07-16T06:00:00Z");
-
+  const lifecycle = createLifecycleHarness();
   bindDesktopManagedAgentProviderVisibilityRefresh(
     {
       getSnapshot() {
@@ -128,39 +59,40 @@ test("bindDesktopManagedAgentProviderVisibilityRefresh keeps a fresh application
         refreshCalls.push(providers);
       }
     },
-    {
-      document: {
-        visibilityState: "visible",
-        addEventListener(type: string, listener: () => void) {
-          const bucket = listeners.get(type) ?? new Set();
-          bucket.add(listener);
-          listeners.set(type, bucket);
-        },
-        removeEventListener(type: string, listener: () => void) {
-          listeners.get(type)?.delete(listener);
-        }
-      } as Pick<
-        Document,
-        "addEventListener" | "removeEventListener" | "visibilityState"
-      >,
-      minIntervalMs: 0,
-      now: () => now,
-      window: {
-        addEventListener(type: string, listener: () => void) {
-          const bucket = listeners.get(type) ?? new Set();
-          bucket.add(listener);
-          listeners.set(type, bucket);
-        },
-        removeEventListener(type: string, listener: () => void) {
-          listeners.get(type)?.delete(listener);
-        }
-      } as Pick<Window, "addEventListener" | "removeEventListener">
-    }
+    lifecycle,
+    { minIntervalMs: 0 }
   );
 
-  for (const listener of listeners.get("focus") ?? []) {
-    listener();
-  }
+  lifecycle.emit({
+    kind: "focused",
+    occurredAt: Date.parse("2026-07-16T06:00:00Z")
+  });
 
   assert.deepEqual(refreshCalls, []);
 });
+
+function createLifecycleHarness(): WorkspaceWindowLifecycle & {
+  emit(event: WorkspaceWindowLifecycleEvent): void;
+  setSnapshot(snapshot: WorkspaceWindowLifecycleSnapshot): void;
+} {
+  const listeners = new Set<(event: WorkspaceWindowLifecycleEvent) => void>();
+  let snapshot: WorkspaceWindowLifecycleSnapshot = {
+    focused: true,
+    visibility: "visible"
+  };
+  return {
+    emit(event) {
+      for (const listener of [...listeners]) {
+        listener(event);
+      }
+    },
+    getSnapshot: () => snapshot,
+    setSnapshot(nextSnapshot) {
+      snapshot = nextSnapshot;
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    }
+  };
+}

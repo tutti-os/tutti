@@ -5,14 +5,15 @@ import {
 } from "@renderer/features/analytics-debug";
 import {
   registerReporterServices,
-  shouldReportPredefinePageview,
-  startPredefinePageviewAnalytics
+  shouldReportPredefinePageview
 } from "@renderer/features/analytics";
+import { startPredefinePageviewAnalytics } from "@renderer/features/analytics/predefinePageviewAnalytics.ts";
 import { registerAppUpdateServices } from "@renderer/features/app-update/services/registerAppUpdateServices";
 import { registerDesktopPreferencesServices } from "@renderer/features/desktop-preferences/services/registerDesktopPreferencesServices.ts";
 import { registerRichTextAtServices } from "@renderer/features/rich-text-at/services/registerRichTextAtServices";
 import { createDesktopAgentSessionStatusViewResolver } from "@renderer/features/rich-text-at/providers/desktopAgentSessionStatusView.ts";
 import { registerWorkspaceAgentServices } from "@renderer/features/workspace-agent/services/registerWorkspaceAgentServices";
+import { startDesktopAgentAvailabilitySnapshotAnalytics } from "@renderer/features/workspace-agent/desktopAgentAvailabilitySnapshotAnalytics.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import { registerWorkspaceAppCenterServices } from "@renderer/features/workspace-app-center/services/registerWorkspaceAppCenterServices";
@@ -44,6 +45,7 @@ import {
   createHostBackgroundNotificationPresenter
 } from "@renderer/lib/compositeNotificationService";
 import { installRendererDiagnostics } from "@renderer/lib/rendererDiagnostics";
+import { createWorkspaceWindowLifecycle } from "@renderer/lib/workspaceWindowLifecycle.ts";
 import { resolveDesktopEnvironment } from "@renderer/platform/desktop/resolveDesktopEnvironment";
 import { createDesktopTuttidEventStreamClient } from "@renderer/platform/tuttid/createDesktopTuttidEventStreamClient";
 import { createDesktopTuttidClient } from "@renderer/platform/tuttid/createDesktopTuttidClient";
@@ -124,11 +126,10 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     tuttidClient,
     mode: routeView === "agent" ? "agent" : "os"
   });
-  const predefinePageviewAnalytics = shouldReportPredefinePageview(
+  const reportPredefinePageview = shouldReportPredefinePageview(
     window.location.search
-  )
-    ? startPredefinePageviewAnalytics({ reporterService })
-    : null;
+  );
+  const windowLifecycle = createWorkspaceWindowLifecycle();
   installRendererDiagnostics(
     desktopApi.runtime,
     "workspace-renderer",
@@ -211,9 +212,25 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     terminalCommandRunner: createAgentProviderTerminalCommandRunner(
       desktopApi.runtime
     ),
+    windowLifecycle,
     workspaceId: activeWorkspaceID,
     workspaceUserProjectService
   });
+  const predefinePageviewAnalytics = reportPredefinePageview
+    ? startPredefinePageviewAnalytics({
+        lifecycle: windowLifecycle,
+        reporterService
+      })
+    : null;
+  const agentAvailabilitySnapshotAnalytics = reportPredefinePageview
+    ? startDesktopAgentAvailabilitySnapshotAnalytics({
+        dependencies: { reporterService },
+        lifecycle: windowLifecycle,
+        refreshStatuses:
+          workspaceAgentServices.refreshManagedAgentProviderStatuses
+      })
+    : null;
+  windowLifecycle.start();
   const agentOutcomeNotificationController =
     createWorkspaceAgentOutcomeNotificationController({
       foreground: createWorkspaceAgentOutcomeForegroundNotificationPresenter(),
@@ -300,8 +317,10 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     });
     disposeAgentOutcomeNotificationController?.();
     disposeAgentOutcomeNotificationController = null;
-    workspaceAgentServices.dispose();
+    agentAvailabilitySnapshotAnalytics?.dispose();
     predefinePageviewAnalytics?.dispose();
+    workspaceAgentServices.dispose();
+    windowLifecycle.dispose();
     daemonConnectionAnalytics.release();
     container.dispose();
     tuttidEventStreamClient.dispose();
