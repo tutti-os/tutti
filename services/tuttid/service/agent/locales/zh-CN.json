@@ -66,6 +66,24 @@
         "label": "固定模式"
       }
     },
+    "kimi-code": {
+      "read-only": {
+        "description": "Kimi Code 只规划和读取项目，不执行工具或修改。",
+        "label": "只读"
+      },
+      "ask": {
+        "description": "Kimi Code 在修改、命令及其他需授权操作前会先询问你。",
+        "label": "询问"
+      },
+      "auto": {
+        "description": "Kimi Code 自动批准安全操作，风险操作仍会询问你。",
+        "label": "自动"
+      },
+      "full-access": {
+        "description": "Kimi Code 自动批准所有操作，不再询问。",
+        "label": "完全访问"
+      }
+    },
     "nexight": {
       "auto": {
         "description": "仅在检测到可能不安全的操作时询问你",

@@ -19,7 +19,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     nexight: false,
     opencode: false,
     openclaw: false,
-    hermes: false
+    hermes: false,
+    "kimi-code": false
   },
   customModelByProvider: {
     "claude-code": "",
@@ -29,7 +30,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     nexight: "",
     opencode: "",
     openclaw: "",
-    hermes: ""
+    hermes: "",
+    "kimi-code": ""
   },
   customModelOptionsByProvider: {
     "claude-code": [],
@@ -39,7 +41,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     nexight: [],
     opencode: [],
     openclaw: [],
-    hermes: []
+    hermes: [],
+    "kimi-code": []
   },
   quickCommands: [],
   quickPhrases: [],

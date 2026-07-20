@@ -23,6 +23,11 @@ const tuttiAssetRoutes = {
     sourceRelativePath:
       "src/renderer/src/assets/workspace-canvas/dock/default/hermes.png"
   },
+  "agent/kimi-code.png": {
+    builtFilePrefixes: ["kimi-rounded-", "kimi-code-"],
+    sourceRelativePath:
+      "src/renderer/src/assets/workspace-canvas/dock/default/kimi-code.png"
+  },
   "agent/openclaw.png": {
     builtFilePrefixes: ["openclaw-rounded-", "openclaw-"],
     sourceRelativePath:

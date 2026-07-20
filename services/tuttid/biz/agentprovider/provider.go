@@ -9,6 +9,7 @@ const (
 	Codex      = providerregistry.CodexProviderID
 	Cursor     = providerregistry.CursorProviderID
 	Hermes     = providerregistry.HermesProviderID
+	KimiCode   = providerregistry.KimiCodeProviderID
 	Nexight    = providerregistry.NexightProviderID
 	OpenClaw   = providerregistry.OpenClawProviderID
 	OpenCode   = providerregistry.OpenCodeProviderID

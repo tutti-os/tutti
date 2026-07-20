@@ -16,6 +16,7 @@ var migratedDescriptors = []ProviderDescriptor{
 	nexightDescriptor(),
 	hermesDescriptor(),
 	openClawDescriptor(),
+	kimiCodeDescriptor(),
 }
 
 var providerDescriptorIndex = buildProviderDescriptorIndex(migratedDescriptors)
@@ -261,7 +262,7 @@ func Validate(descriptor ProviderDescriptor) error {
 		return fmt.Errorf("provider %q status kind %q is unsupported", providerID, descriptor.Status.Kind)
 	}
 	switch descriptor.Status.AuthOutputParserKind {
-	case AuthOutputParserKindCodex, AuthOutputParserKindClaude, AuthOutputParserKindOpenCode, AuthOutputParserKindCursor:
+	case AuthOutputParserKindCodex, AuthOutputParserKindClaude, AuthOutputParserKindOpenCode, AuthOutputParserKindCursor, AuthOutputParserKindKimiCode:
 	case "":
 		if descriptor.Status.SupportStatus != "unsupported" && len(descriptor.Status.AuthStatusCommand) > 0 {
 			return fmt.Errorf("provider %q auth output parser kind is required", providerID)

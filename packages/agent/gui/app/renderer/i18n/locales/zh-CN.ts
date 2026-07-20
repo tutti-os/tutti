@@ -1030,6 +1030,7 @@ export const zhCN = {
       agentClaudeCode: "Claude Code",
       agentTutti: "Tutti",
       agentHermes: "Hermes",
+      agentKimiCode: "Kimi Code",
       agentOpenClaw: "OpenClaw",
       statusNotStarted: "待执行",
       statusRunning: "执行中",

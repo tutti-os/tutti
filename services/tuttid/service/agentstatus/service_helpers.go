@@ -512,6 +512,8 @@ func parseAuthStatusCommandOutput(provider string, output []byte) (AuthInfo, boo
 			return parseClaudeAuthStatusOutput(output)
 		case providerregistry.AuthOutputParserKindCursor:
 			return parseCursorAuthStatusOutput(output)
+		case providerregistry.AuthOutputParserKindKimiCode:
+			return parseKimiCodeAuthStatusOutput(output)
 		}
 	}
 	return AuthInfo{}, false

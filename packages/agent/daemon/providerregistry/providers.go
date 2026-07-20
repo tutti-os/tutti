@@ -15,6 +15,8 @@ const (
 	HermesTargetID       = "local:hermes"
 	OpenClawProviderID   = canonical.OpenClawProviderID
 	OpenClawTargetID     = "local:openclaw"
+	KimiCodeProviderID   = canonical.KimiCodeProviderID
+	KimiCodeTargetID     = "local:kimi-code"
 )
 
 const temporarilyUnsupportedReason = "provider_temporarily_unsupported"
@@ -121,6 +123,66 @@ func openClawDescriptor() ProviderDescriptor {
 	descriptor.Desktop.StatusProbePriority = 7
 	descriptor.Desktop.UnavailableDockOrderOffset = 200
 	return descriptor
+}
+
+func kimiCodeDescriptor() ProviderDescriptor {
+	return ProviderDescriptor{
+		Identity: canonicalProviderIdentity(KimiCodeProviderID),
+		Runtime: RuntimeDescriptor{
+			Kind: RuntimeKindStandardACP, Name: "kimi-code-acp", Command: []string{"kimi", "acp"},
+			AuthRequiredMessage: "Kimi Code ACP requires authentication; run `kimi login` on the host, then retry this session.",
+			StandardACP: StandardACPRuntimeDescriptor{
+				AdapterStrategy: StandardACPAdapterStrategyGeneric,
+				PermissionModes: []RuntimePermissionModeDescriptor{
+					{InputID: "read-only", RuntimeID: "plan"},
+					{InputID: "ask", RuntimeID: "default"},
+					{InputID: "auto", RuntimeID: "auto"},
+					{InputID: "full-access", RuntimeID: "yolo"},
+					{InputID: "plan", RuntimeID: "plan"},
+				},
+				DefaultPermissionModeRuntimeID: "default",
+				PlanModeRuntimeID:              "plan",
+				ProjectCurrentMode:             true,
+				StartupDiagnostics:             true,
+				DeriveImageInputFromPrompt:     true,
+				DeriveCapabilitiesFromCommands: []string{CapabilityCompact},
+			},
+		},
+		Status: StatusDescriptor{
+			Kind: StatusKindGenericCLI, AuthOutputParserKind: AuthOutputParserKindKimiCode, AuthMarkerParserKind: AuthMarkerParserKindFileExists, AuthCommandRunnerKind: AuthCommandRunnerKindGeneric, StaticSpecResolverKind: StaticSpecResolverKindGeneric,
+			BinaryNames: []string{"kimi"}, AuthStatusCommand: []string{"provider", "list"}, AuthMarkerPaths: []string{"~/.kimi-code/credentials/kimi-code.json"}, LoginArgs: []string{"login"},
+			Install: InstallerDescriptor{Kind: InstallerKindOfficialScript, DisplayCommand: "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash", ScriptURL: "https://code.kimi.com/kimi-code/install.sh", ScriptShell: "bash"},
+			AuthWatch: AuthWatchDescriptor{
+				Sources: []AuthWatchSourceDescriptor{
+					{DefaultRoot: "~/.kimi-code", Paths: []string{"credentials/kimi-code.json", "config.toml"}},
+				},
+				ContentFingerprint: AuthWatchContentFingerprintFullFile,
+			},
+		},
+		ComposerProfile: ComposerProfileDescriptor{
+			ModelSelection: true,
+			LiveModelDiscovery: LiveModelDiscoveryDescriptor{
+				Kind:          LiveModelDiscoveryKindRuntimeSession,
+				HiddenProbe:   true,
+				AccountScoped: true,
+			},
+			Capabilities:            []string{CapabilityImageInput, CapabilityPlanMode, CapabilityInterrupt},
+			PermissionConfigurable:  true,
+			DefaultPermissionModeID: "ask",
+			PermissionModes:         []PermissionModeDescriptor{{ID: "read-only", Semantic: "locked-down"}, {ID: "ask", Semantic: "ask-before-write"}, {ID: "auto", Semantic: "auto"}, {ID: "full-access", Semantic: "full-access"}},
+			ConfigOptionIDs:         ComposerConfigOptionIDs{Model: "model", Permission: "mode"},
+			SlashCommandPolicy: SlashCommandPolicyDescriptor{
+				FallbackCommands: []string{"compact"},
+				CommandEffects: []SlashCommandEffectDescriptor{
+					{Command: "compact", Effect: SlashCommandEffectSubmitImmediate},
+				},
+			},
+		},
+		Target:  TargetDescriptor{ID: KimiCodeTargetID, LaunchRefType: TargetLaunchRefTypeLocalCLI, Enabled: true, SortOrder: 90},
+		Events:  EventsDescriptor{Enabled: true, Aliases: []string{"kimi", "kimi-cli", "kimi_code"}, TurnLifecycleProjection: TurnLifecycleProjectionExplicit},
+		Sidecar: SidecarDescriptor{ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC},
+		Desktop: DesktopIntegrationDescriptor{Managed: true, ManagedOrder: 8, StatusProbePriority: 8, DefaultProviderEligible: true, DefaultProviderPriority: 5},
+	}
 }
 
 func unsupportedACPDescriptor(providerID string, targetID string, runtime RuntimeDescriptor, status StatusDescriptor, composer ComposerProfileDescriptor, sortOrder int) ProviderDescriptor {

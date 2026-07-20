@@ -93,6 +93,7 @@ func TestMigratedProviderSetIsComplete(t *testing.T) {
 		CodexProviderID:      true,
 		CursorProviderID:     true,
 		HermesProviderID:     true,
+		KimiCodeProviderID:   true,
 		NexightProviderID:    true,
 		OpenClawProviderID:   true,
 		OpenCodeProviderID:   true,
@@ -140,6 +141,7 @@ func TestMigratedProviderSidecarPoliciesAreDescriptorOwned(t *testing.T) {
 		NexightProviderID:    {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".nexight/skills"},
 		HermesProviderID:     {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".agent_context/skills"},
 		OpenClawProviderID:   {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".openclaw/skills"},
+		KimiCodeProviderID:   {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC},
 	}
 	for _, descriptor := range Migrated() {
 		if descriptor.Sidecar != want[descriptor.Identity.ID] {
@@ -162,6 +164,7 @@ func TestMigratedProviderDesktopIntegrationIsDescriptorOwned(t *testing.T) {
 		NexightProviderID:    {},
 		HermesProviderID:     {Managed: true, ManagedOrder: 6, StatusProbePriority: 6},
 		OpenClawProviderID:   {Managed: true, ManagedOrder: 7, StatusProbePriority: 7, UnavailableDockOrderOffset: 200},
+		KimiCodeProviderID:   {Managed: true, ManagedOrder: 8, StatusProbePriority: 8, DefaultProviderEligible: true, DefaultProviderPriority: 5},
 	}
 	for _, descriptor := range Migrated() {
 		if descriptor.Desktop != want[descriptor.Identity.ID] {

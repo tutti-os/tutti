@@ -5,6 +5,7 @@ export const tuttiAgentAssetUrls = {
   codex: `${tuttiAssetProtocolScheme}://agent/codex.png`,
   cursor: `${tuttiAssetProtocolScheme}://agent/cursor.png`,
   hermes: `${tuttiAssetProtocolScheme}://agent/hermes.png`,
+  kimiCode: `${tuttiAssetProtocolScheme}://agent/kimi-code.png`,
   openclaw: `${tuttiAssetProtocolScheme}://agent/openclaw.png`,
   opencode: `${tuttiAssetProtocolScheme}://agent/opencode.png`,
   tuttiAgent: `${tuttiAssetProtocolScheme}://agent/tutti.png`
@@ -15,6 +16,7 @@ export const tuttiAgentAssetUrlsByIconKey: Readonly<Record<string, string>> = {
   codex: tuttiAgentAssetUrls.codex,
   cursor: tuttiAgentAssetUrls.cursor,
   hermes: tuttiAgentAssetUrls.hermes,
+  "kimi-code": tuttiAgentAssetUrls.kimiCode,
   openclaw: tuttiAgentAssetUrls.openclaw,
   opencode: tuttiAgentAssetUrls.opencode,
   tutti: tuttiAgentAssetUrls.tuttiAgent
