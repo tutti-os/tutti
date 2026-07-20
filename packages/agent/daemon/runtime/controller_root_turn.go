@@ -11,6 +11,7 @@ type RootTurnSettlement struct {
 	AgentSessionID string
 	TurnID         string
 	Outcome        string
+	ErrorMessage   string
 }
 
 // ReconcileRootTurnSettlement applies daemon-owned durable root completion to
@@ -58,9 +59,19 @@ func (c *Controller) ReconcileRootTurnSettlement(settlement RootTurnSettlement) 
 	case "canceled", "interrupted":
 		eventType = EventTurnCanceled
 	}
-	event := newTurnActivityEvent(session, eventType, turnID, session.Status, "", "", map[string]any{
+	metadata := map[string]any{
 		"daemonRootTurnSettlement": true,
-	})
+	}
+	if eventType == EventTurnFailed {
+		// Carry the durable failure reason on the live event so the
+		// visible-error projection can classify and render it; an empty
+		// detail degrades to a generic card with no recoverable signal.
+		if message := strings.TrimSpace(settlement.ErrorMessage); message != "" {
+			metadata["error"] = message
+			metadata["errorMessage"] = message
+		}
+	}
+	event := newTurnActivityEvent(session, eventType, turnID, session.Status, "", "", metadata)
 	if event.Type != "" {
 		if event.Payload.TurnOutcome == "" {
 			event.Payload.TurnOutcome = outcome

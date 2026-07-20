@@ -20,6 +20,7 @@ func (a agentRuntimeAdapter) ObserveRootTurnSettled(_ context.Context, workspace
 		AgentSessionID: agentSessionID,
 		TurnID:         turn.TurnID,
 		Outcome:        turn.Outcome,
+		ErrorMessage:   turn.ErrorMessage,
 	})
 }
 
