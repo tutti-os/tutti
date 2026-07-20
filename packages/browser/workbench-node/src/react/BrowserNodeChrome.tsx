@@ -2,7 +2,6 @@ import {
   AddIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
-  Badge,
   Button,
   CloseIcon,
   Input,
@@ -329,14 +328,6 @@ export function BrowserNodeHeader({
         }
         runtime={runtime}
       />
-      {runtime.lifecycle === "cold" ? (
-        <Badge
-          className="nodrag h-[26px] min-w-7 shrink-0 rounded-md text-[10px] font-semibold lowercase tracking-[0.08em]"
-          aria-label={feature.i18n.t("coldStatus")}
-        >
-          {feature.i18n.t("coldStatus")}
-        </Badge>
-      ) : null}
     </div>
   );
 }

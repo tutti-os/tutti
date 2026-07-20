@@ -2,12 +2,13 @@
 
 [Back to troubleshooting index](./README.md)
 
-### Tabbed standalone Browser remains in `Sleeping` state
+### Tabbed standalone Browser remains blank with a cold lifecycle
 
 - Symptom:
   A standalone Browser shows its default URL and tab title, but the guest area
-  stays blank and the navigation bar keeps showing `Sleeping` after multi-tab
-  support is enabled. The same Browser may work in an OS-mode Workbench window.
+  stays blank after multi-tab support is enabled. Renderer diagnostics keep the
+  active tab in the internal `cold` lifecycle even though activation was
+  requested. The same Browser may work in an OS-mode Workbench window.
 - Quick checks:
   Compare the surface node ID with the node ID in Browser runtime events. A
   tabbed surface owns a parent such as `browser:surface` while its controller
