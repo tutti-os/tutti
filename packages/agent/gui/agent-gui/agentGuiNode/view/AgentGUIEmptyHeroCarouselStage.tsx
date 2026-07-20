@@ -9,6 +9,7 @@ interface AgentGUIEmptyHeroCarouselStageProps {
   children: ReactNode;
   items: readonly AgentGUIAgentAvatarPresentation[];
   onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
+  previewMode: boolean;
   providerSelectLabel: string;
 }
 
@@ -65,7 +66,12 @@ export class AgentGUIEmptyHeroCarouselStage extends Component<AgentGUIEmptyHeroC
   // while measuring the slot preserves alignment across host padding and
   // ready/gated subtree changes. The CSS fallback covers the pre-measure paint.
   private startAlignment(): void {
-    if (this.props.items.length <= 1 || !this.stage || !this.layer) {
+    if (
+      this.props.previewMode ||
+      this.props.items.length <= 1 ||
+      !this.stage ||
+      !this.layer
+    ) {
       this.stopAlignment();
       return;
     }

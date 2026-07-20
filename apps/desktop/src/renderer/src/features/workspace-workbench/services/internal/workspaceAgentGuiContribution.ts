@@ -1,4 +1,4 @@
-import { createElement, type CSSProperties, type ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
 import type {
   AgentGUIProvider,
   AgentGUIAllAgentsPresentation,
@@ -23,6 +23,7 @@ import type {
   WorkbenchContribution,
   WorkbenchDockPreviewCache
 } from "@tutti-os/workbench-surface";
+import { WorkbenchDockComponentPreviewFrame } from "@tutti-os/workbench-surface";
 import type {
   DesktopComputerUseApi,
   DesktopHostFilesApi,
@@ -236,21 +237,29 @@ export function createWorkspaceAgentGuiContribution(input: {
     ),
     renderBody: (context, helpers) =>
       renderAgentGuiWorkbenchBody(context, helpers),
-    renderPreview: (context, helpers) =>
-      createElement(
-        DesktopAgentGUIWorkbenchDockPreviewFrame,
-        { height: context.node.frame.height, width: context.node.frame.width },
-        renderAgentGuiWorkbenchBody(context, helpers, { previewMode: true })
-      ),
+    renderPreview: (context, helpers) => {
+      const body = renderAgentGuiWorkbenchBody(context, helpers, {
+        previewMode: true
+      });
+      return context.previewViewport
+        ? createElement(
+            WorkbenchDockComponentPreviewFrame,
+            {
+              sourceSize: context.node.frame,
+              viewport: context.previewViewport
+            },
+            body
+          )
+        : body;
+    },
     renderMinimizedPreview: (context, helpers) => {
       const previewViewport =
         context.previewViewport ?? minimizedDockPreviewViewport;
       return createElement(
-        DesktopAgentGUIWorkbenchDockPreviewFrame,
+        WorkbenchDockComponentPreviewFrame,
         {
-          height: context.node.frame.height,
-          viewport: previewViewport,
-          width: context.node.frame.width
+          sourceSize: context.node.frame,
+          viewport: previewViewport
         },
         renderAgentGuiWorkbenchBody(context, helpers, { previewMode: true })
       );
@@ -363,61 +372,7 @@ function resolveWorkspaceAgentGuiDockPopupIdentity(
   });
 }
 
-const dockPopupPreviewViewport = {
-  height: 95,
-  width: 157
-};
-
 const minimizedDockPreviewViewport = {
   height: 34.2,
   width: 46.8
 };
-
-function DesktopAgentGUIWorkbenchDockPreviewFrame({
-  children,
-  height,
-  viewport = dockPopupPreviewViewport,
-  width
-}: {
-  children?: ReactNode;
-  height: number;
-  viewport?: { height: number; width: number };
-  width: number;
-}): ReactNode {
-  const safeWidth = Math.max(1, width);
-  const safeHeight = Math.max(1, height);
-  const scale = Math.min(
-    viewport.width / safeWidth,
-    viewport.height / safeHeight
-  );
-  const bodyStyle = {
-    height: `${safeHeight}px`,
-    left: "50%",
-    position: "absolute",
-    top: "50%",
-    transform: `translate(-50%, -50%) scale(${scale})`,
-    transformOrigin: "center",
-    width: `${safeWidth}px`
-  } satisfies CSSProperties;
-
-  return createElement(
-    "span",
-    {
-      "aria-hidden": "true",
-      className:
-        "relative block h-full w-full overflow-hidden rounded-md bg-transparent",
-      style: {
-        height: `${viewport.height}px`,
-        width: `${viewport.width}px`
-      } satisfies CSSProperties
-    },
-    createElement(
-      "span",
-      {
-        className: "pointer-events-none block overflow-hidden",
-        style: bodyStyle
-      },
-      children
-    )
-  );
-}

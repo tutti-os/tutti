@@ -61,6 +61,15 @@ Entries may also provide host-owned popup metadata through
 `resolvePopupItem(...)` and `capturePopupItemPreview(...)`, plus custom badge
 content when the default count or status shapes are not enough.
 
+Component-based dock previews should render their host-owned body through
+`WorkbenchDockComponentPreviewFrame`. The frame owns source-to-viewport
+scaling, clipping, centering, and the non-interactive preview boundary. Preview
+children are decorative and never participate in pointer hit testing; the Dock
+button remains the only interaction owner even if frozen preview markup is
+replaced between pointer events. Popup preview providers receive the canonical
+target size through `item.previewViewport`; use that value instead of duplicating
+Dock card dimensions in a consuming host.
+
 Presentation-only changes to merged Dock entries belong in
 `dockEntryPresentationOverrides`. `WorkbenchHost` applies these overrides by
 entry id after contributions and explicit entries are merged, preserving Dock

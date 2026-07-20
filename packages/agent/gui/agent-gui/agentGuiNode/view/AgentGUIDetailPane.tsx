@@ -681,6 +681,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               }
               inlineNoticeChrome={inlineNoticeChrome}
               isRespondingApproval={viewModel.interaction.isRespondingApproval}
+              previewMode={previewMode}
               onSubmitApprovalOption={submitApprovalOption}
               onRetryActivation={retryActivation}
               onAuthLogin={authLogin}
