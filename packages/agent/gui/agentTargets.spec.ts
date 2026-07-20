@@ -124,12 +124,6 @@ describe("agent gui provider targets", () => {
         provider: "nexight"
       },
       {
-        agentTargetId: "local:hermes",
-        disabled: true,
-        label: "Hermes Agent",
-        provider: "hermes"
-      },
-      {
         agentTargetId: "local:openclaw",
         disabled: true,
         label: "OpenClaw",
@@ -299,7 +293,7 @@ describe("agent gui provider targets", () => {
       { disabled: true, provider: "tutti-agent" },
       { disabled: false, provider: "opencode" },
       { disabled: true, provider: "nexight" },
-      { disabled: true, provider: "hermes" },
+      { disabled: false, provider: "hermes" },
       { disabled: true, provider: "openclaw" }
     ]);
   });
