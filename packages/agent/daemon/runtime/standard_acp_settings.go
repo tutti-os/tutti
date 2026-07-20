@@ -14,7 +14,7 @@ import (
 
 func (a *standardACPAdapter) applyACPMode(ctx context.Context, client *acpClient, session Session, modeID string) error {
 	if modeID == "" {
-		a.logHermesStartupDiagnostics("session_mode.skipped", map[string]any{
+		a.logStandardACPStartupDiagnostics("session_mode.skipped", map[string]any{
 			"room_id":             session.RoomID,
 			"agent_session_id":    session.AgentSessionID,
 			"provider_session_id": session.ProviderSessionID,
@@ -41,7 +41,7 @@ func (a *standardACPAdapter) applyACPMode(ctx context.Context, client *acpClient
 		"mode_id", modeID,
 		"timeout_ms", acpPermissionModeTimeout.Milliseconds(),
 	)
-	a.logHermesStartupDiagnostics("session_mode.start", map[string]any{
+	a.logStandardACPStartupDiagnostics("session_mode.start", map[string]any{
 		"room_id":             session.RoomID,
 		"agent_session_id":    session.AgentSessionID,
 		"provider_session_id": session.ProviderSessionID,
@@ -54,7 +54,7 @@ func (a *standardACPAdapter) applyACPMode(ctx context.Context, client *acpClient
 		return err
 	})
 	if err != nil {
-		a.logHermesStartupDiagnostics("session_mode.unconfirmed", map[string]any{
+		a.logStandardACPStartupDiagnostics("session_mode.unconfirmed", map[string]any{
 			"room_id":             session.RoomID,
 			"agent_session_id":    session.AgentSessionID,
 			"provider_session_id": session.ProviderSessionID,
@@ -86,7 +86,7 @@ func (a *standardACPAdapter) applyACPMode(ctx context.Context, client *acpClient
 		"mode_id", modeID,
 		"elapsed_ms", time.Since(setModeStartedAt).Milliseconds(),
 	)
-	a.logHermesStartupDiagnostics("session_mode.succeeded", map[string]any{
+	a.logStandardACPStartupDiagnostics("session_mode.succeeded", map[string]any{
 		"room_id":             session.RoomID,
 		"agent_session_id":    session.AgentSessionID,
 		"provider_session_id": session.ProviderSessionID,
@@ -107,7 +107,7 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 	supported := acpConfigOptionIDs(startResult)
 	modelsAPI := acpModelsResultPresent(startResult)
 	if len(supported) == 0 && !modelsAPI {
-		a.logHermesStartupDiagnostics("config_options.skipped", map[string]any{
+		a.logStandardACPStartupDiagnostics("config_options.skipped", map[string]any{
 			"room_id":             session.RoomID,
 			"agent_session_id":    session.AgentSessionID,
 			"provider_session_id": session.ProviderSessionID,
@@ -115,7 +115,7 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 		})
 		return nil
 	}
-	a.logHermesStartupDiagnostics("config_options.start", map[string]any{
+	a.logStandardACPStartupDiagnostics("config_options.start", map[string]any{
 		"room_id":              session.RoomID,
 		"agent_session_id":     session.AgentSessionID,
 		"provider_session_id":  session.ProviderSessionID,
@@ -145,7 +145,7 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 	if reasoning := strings.TrimSpace(settings.ReasoningEffort); reasoning != "" {
 		reasoningConfigID := a.effectiveReasoningConfigOptionID(supported)
 		if reasoningConfigID == "" {
-			a.logHermesStartupDiagnostics("config_options.reasoning.skipped", map[string]any{
+			a.logStandardACPStartupDiagnostics("config_options.reasoning.skipped", map[string]any{
 				"room_id":              session.RoomID,
 				"agent_session_id":     session.AgentSessionID,
 				"provider_session_id":  session.ProviderSessionID,
@@ -163,7 +163,7 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 		}
 		a.updateSessionConfigOption(session.AgentSessionID, "fast", speed)
 	}
-	a.logHermesStartupDiagnostics("config_options.succeeded", map[string]any{
+	a.logStandardACPStartupDiagnostics("config_options.succeeded", map[string]any{
 		"room_id":             session.RoomID,
 		"agent_session_id":    session.AgentSessionID,
 		"provider_session_id": session.ProviderSessionID,
@@ -225,7 +225,7 @@ func (a *standardACPAdapter) setSessionConfigOption(
 	value string,
 ) error {
 	startedAt := time.Now()
-	a.logHermesStartupDiagnostics("config_option.start", map[string]any{
+	a.logStandardACPStartupDiagnostics("config_option.start", map[string]any{
 		"room_id":             session.RoomID,
 		"agent_session_id":    session.AgentSessionID,
 		"provider_session_id": session.ProviderSessionID,
@@ -242,7 +242,7 @@ func (a *standardACPAdapter) setSessionConfigOption(
 		return err
 	})
 	if err != nil {
-		a.logHermesStartupDiagnostics("config_option.failed", map[string]any{
+		a.logStandardACPStartupDiagnostics("config_option.failed", map[string]any{
 			"room_id":             session.RoomID,
 			"agent_session_id":    session.AgentSessionID,
 			"provider_session_id": session.ProviderSessionID,
@@ -253,7 +253,7 @@ func (a *standardACPAdapter) setSessionConfigOption(
 		return err
 	}
 	a.updateSessionConfigOptionsResult(session.AgentSessionID, result)
-	a.logHermesStartupDiagnostics("config_option.succeeded", map[string]any{
+	a.logStandardACPStartupDiagnostics("config_option.succeeded", map[string]any{
 		"room_id":              session.RoomID,
 		"agent_session_id":     session.AgentSessionID,
 		"provider_session_id":  session.ProviderSessionID,

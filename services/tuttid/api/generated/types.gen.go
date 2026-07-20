@@ -3394,7 +3394,6 @@ type DesktopAgentComposerDefaultsByProvider struct {
 	ClaudeCode *DesktopAgentComposerDefaults `json:"claude-code,omitempty"`
 	Codex      *DesktopAgentComposerDefaults `json:"codex,omitempty"`
 	Cursor     *DesktopAgentComposerDefaults `json:"cursor,omitempty"`
-	Hermes     *DesktopAgentComposerDefaults `json:"hermes,omitempty"`
 	Nexight    *DesktopAgentComposerDefaults `json:"nexight,omitempty"`
 	Openclaw   *DesktopAgentComposerDefaults `json:"openclaw,omitempty"`
 	Opencode   *DesktopAgentComposerDefaults `json:"opencode,omitempty"`
@@ -3412,7 +3411,6 @@ type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	ClaudeCode *bool `json:"claude-code,omitempty"`
 	Codex      *bool `json:"codex,omitempty"`
 	Cursor     *bool `json:"cursor,omitempty"`
-	Hermes     *bool `json:"hermes,omitempty"`
 	Nexight    *bool `json:"nexight,omitempty"`
 	Openclaw   *bool `json:"openclaw,omitempty"`
 	Opencode   *bool `json:"opencode,omitempty"`

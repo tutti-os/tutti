@@ -7,7 +7,6 @@ export const agentGuiWorkbenchProviders = [
   "cursor",
   "tutti-agent",
   "opencode",
-  "hermes",
   "openclaw"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
@@ -18,7 +17,6 @@ export const agentGuiWorkbenchDefaultDockProviders = [
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
 export const agentGuiWorkbenchDockSuppressedProviders = [
-  "hermes",
   "opencode"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
@@ -31,7 +29,6 @@ export const agentGuiWorkbenchComingSoonProviders =
 // describes Tutti's integration maturity, not the upstream Agent's maturity.
 // Call sites consume the predicate rather than branching on provider names.
 export const agentGuiWorkbenchEarlyAccessProviders = [
-  "hermes",
   "openclaw"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 

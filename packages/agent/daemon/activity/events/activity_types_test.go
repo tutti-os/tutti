@@ -53,12 +53,9 @@ func TestNormalizeProviderRejectsTuttiAsNexightAlias(t *testing.T) {
 	}
 }
 
-func TestNormalizeProviderHermes(t *testing.T) {
+func TestNormalizeProviderAcceptsLegacyHermesIdentityAsOpenProvider(t *testing.T) {
 	tests := map[string]Provider{
-		"hermes":       ProviderHermes,
-		"Hermes":       ProviderHermes,
-		"hermes-agent": ProviderHermes,
-		"hermes_agent": ProviderHermes,
+		"hermes": Provider("hermes"),
 	}
 	for input, want := range tests {
 		got, ok := NormalizeProvider(input)

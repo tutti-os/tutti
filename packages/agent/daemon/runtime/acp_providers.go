@@ -7,7 +7,6 @@ package agentruntime
 // engine in standard_acp_adapter.go. One provider lives in one file:
 //
 //	acp_provider_cursor.go    cursor-agent acp
-//	acp_provider_hermes.go    hermes acp
 //	acp_provider_nexight.go   nexight-acp (codex-acp derived)
 //	acp_provider_openclaw.go  openclaw acp -v
 //

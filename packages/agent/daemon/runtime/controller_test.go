@@ -200,7 +200,7 @@ func TestControllerStartFailureDoesNotCreateCanonicalSessionOrTurnlessMessage(t 
 	started, err := controller.Start(context.Background(), StartInput{
 		RoomID:         "room-1",
 		AgentSessionID: "agent-session-1",
-		Provider:       ProviderHermes,
+		Provider:       hermesExtensionTestProvider,
 		CWD:            "/workspace",
 		Title:          "Hermes",
 	})
@@ -844,7 +844,7 @@ func TestControllerReleaseIdleLiveSessionsSkipsFreshActiveUnsupportedAndNotLive(
 	t.Parallel()
 
 	adapter := newReleasableAdapter()
-	unsupported := &recordingStartAdapter{provider: ProviderHermes}
+	unsupported := &recordingStartAdapter{provider: hermesExtensionTestProvider}
 	controller := NewController([]Adapter{adapter, unsupported}, nil)
 	fresh := startReleasableSession(t, controller, "fresh-session")
 	active := startReleasableSession(t, controller, "active-session")
@@ -852,7 +852,7 @@ func TestControllerReleaseIdleLiveSessionsSkipsFreshActiveUnsupportedAndNotLive(
 	unsupportedStarted, err := controller.Start(context.Background(), StartInput{
 		RoomID:         "room-1",
 		AgentSessionID: "unsupported-session",
-		Provider:       ProviderHermes,
+		Provider:       hermesExtensionTestProvider,
 	})
 	if err != nil {
 		t.Fatalf("Start unsupported: %v", err)
@@ -1001,7 +1001,7 @@ func TestControllerCloseAllLiveSessionsClosesEveryLiveSession(t *testing.T) {
 	t.Parallel()
 
 	adapter := newReleasableAdapter()
-	unsupported := &recordingStartAdapter{provider: ProviderHermes}
+	unsupported := &recordingStartAdapter{provider: hermesExtensionTestProvider}
 	controller := NewController([]Adapter{adapter, unsupported}, nil)
 	fresh := startReleasableSession(t, controller, "fresh-session")
 	notLive := startReleasableSession(t, controller, "not-live-session")
@@ -1009,7 +1009,7 @@ func TestControllerCloseAllLiveSessionsClosesEveryLiveSession(t *testing.T) {
 	unsupportedStarted, err := controller.Start(context.Background(), StartInput{
 		RoomID:         "room-1",
 		AgentSessionID: "unsupported-session",
-		Provider:       ProviderHermes,
+		Provider:       hermesExtensionTestProvider,
 	})
 	if err != nil {
 		t.Fatalf("Start unsupported: %v", err)
@@ -2587,7 +2587,7 @@ func (a *recordingStartAdapter) Cancel(context.Context, Session, string) ([]acti
 
 type failingStartAdapter struct{}
 
-func (failingStartAdapter) Provider() string { return ProviderHermes }
+func (failingStartAdapter) Provider() string { return hermesExtensionTestProvider }
 
 func (failingStartAdapter) Start(context.Context, Session) ([]activityshared.Event, error) {
 	return nil, errors.New("\x1b[33macp process exited with code 1: Config invalid\x1b[39m")

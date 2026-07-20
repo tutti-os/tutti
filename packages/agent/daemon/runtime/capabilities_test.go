@@ -65,23 +65,4 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 		t.Fatalf("cursor capabilities = %v, must use cancel-then-send instead of native guidance", cursor)
 	}
 
-	// 其他 ACP provider：保守派生——interrupt 恆有；imageInput 跟隨 promptImage；
-	// compact 僅在 availableCommands 出現 compact 時亮起；無 skills/planMode。
-	hermes := standardACPCapabilities(ProviderHermes, false, acpLiveStateSnapshot{})
-	if containsString(hermes, CapabilityImageInput) ||
-		containsString(hermes, CapabilityCompact) ||
-		containsString(hermes, CapabilitySkills) ||
-		containsString(hermes, CapabilityPlanMode) {
-		t.Fatalf("hermes capabilities too permissive: %v", hermes)
-	}
-	if !containsString(hermes, CapabilityInterrupt) {
-		t.Fatalf("hermes capabilities missing interrupt: %v", hermes)
-	}
-
-	withCompact := standardACPCapabilities(ProviderHermes, true, acpLiveStateSnapshot{
-		availableCommands: []AgentSessionCommand{{Name: "compact"}},
-	})
-	if !containsString(withCompact, CapabilityCompact) || !containsString(withCompact, CapabilityImageInput) {
-		t.Fatalf("derived capabilities = %v, want compact+imageInput", withCompact)
-	}
 }

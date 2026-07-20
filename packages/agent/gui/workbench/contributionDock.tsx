@@ -53,8 +53,7 @@ export const agentGuiWorkbenchProviderRailWidthPx = 52;
 const agentGuiWorkbenchUnifiedDockTileProviders = [
   "codex",
   "claude-code",
-  "tutti-agent",
-  "hermes"
+  "tutti-agent"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 export const agentGuiWorkbenchDefaultCopy: AgentGuiWorkbenchContributionCopy = {
   collapseConversationRail: "Hide sidebar",

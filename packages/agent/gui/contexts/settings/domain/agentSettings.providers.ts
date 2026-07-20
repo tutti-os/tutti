@@ -5,8 +5,7 @@ export const AGENT_PROVIDERS = [
   "tutti-agent",
   "nexight",
   "opencode",
-  "openclaw",
-  "hermes"
+  "openclaw"
 ] as const;
 export const EXPERIMENTAL_AGENT_PROVIDERS = [] as const;
 

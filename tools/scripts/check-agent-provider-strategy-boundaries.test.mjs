@@ -10,7 +10,6 @@ const providerIds = [
   "claude-code",
   "codex",
   "cursor",
-  "hermes",
   "nexight",
   "openclaw",
   "opencode",
@@ -49,8 +48,7 @@ test("detects legacy provider identity constant forms", () => {
   const source = [
     "return agentprovider.ClaudeCode",
     "return agentproviderbiz.Nexight",
-    "return ProviderOpenClaw",
-    "return HermesProviderID"
+    "return ProviderOpenClaw"
   ].join("\n");
   assert.equal(
     findProviderIdentityViolations(
@@ -58,7 +56,7 @@ test("detects legacy provider identity constant forms", () => {
       source,
       providerIds
     ).length,
-    4
+    3
   );
 });
 

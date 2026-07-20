@@ -127,24 +127,6 @@ export const preferencesDesktopPreferencesSchema = {
             }
           }
         },
-        hermes: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            model: {
-              type: "string"
-            },
-            permissionModeId: {
-              type: "string"
-            },
-            reasoningEffort: {
-              type: "string"
-            },
-            speed: {
-              type: "string"
-            }
-          }
-        },
         openclaw: {
           type: "object",
           additionalProperties: false,
@@ -221,9 +203,6 @@ export const preferencesDesktopPreferencesSchema = {
           type: "boolean"
         },
         nexight: {
-          type: "boolean"
-        },
-        hermes: {
           type: "boolean"
         },
         openclaw: {
@@ -1554,24 +1533,6 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 }
               }
             },
-            hermes: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                model: {
-                  type: "string"
-                },
-                permissionModeId: {
-                  type: "string"
-                },
-                reasoningEffort: {
-                  type: "string"
-                },
-                speed: {
-                  type: "string"
-                }
-              }
-            },
             openclaw: {
               type: "object",
               additionalProperties: false,
@@ -1648,9 +1609,6 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
               type: "boolean"
             },
             nexight: {
-              type: "boolean"
-            },
-            hermes: {
               type: "boolean"
             },
             openclaw: {
@@ -1923,24 +1881,6 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 }
               }
             },
-            hermes: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                model: {
-                  type: "string"
-                },
-                permissionModeId: {
-                  type: "string"
-                },
-                reasoningEffort: {
-                  type: "string"
-                },
-                speed: {
-                  type: "string"
-                }
-              }
-            },
             openclaw: {
               type: "object",
               additionalProperties: false,
@@ -2017,9 +1957,6 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               type: "boolean"
             },
             nexight: {
-              type: "boolean"
-            },
-            hermes: {
               type: "boolean"
             },
             openclaw: {

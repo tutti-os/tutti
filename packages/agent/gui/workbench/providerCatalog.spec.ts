@@ -16,9 +16,7 @@ describe("workbench provider catalog", () => {
   });
 
   it("marks early-access integrations and not stable ones", () => {
-    expect(agentGuiWorkbenchEarlyAccessProviders).toContain("hermes");
     expect(agentGuiWorkbenchEarlyAccessProviders).toContain("openclaw");
-    expect(isAgentGuiWorkbenchEarlyAccessProvider("hermes")).toBe(true);
     expect(isAgentGuiWorkbenchEarlyAccessProvider("openclaw")).toBe(true);
     expect(isAgentGuiWorkbenchEarlyAccessProvider("codex")).toBe(false);
     expect(isAgentGuiWorkbenchEarlyAccessProvider("claude-code")).toBe(false);
@@ -27,9 +25,6 @@ describe("workbench provider catalog", () => {
   it("hides early-access providers only while the switch is off; stable ones stay visible", () => {
     // early access off
     expect(
-      isAgentGuiWorkbenchProviderVisibleWithEarlyAccess("hermes", false)
-    ).toBe(false);
-    expect(
       isAgentGuiWorkbenchProviderVisibleWithEarlyAccess("openclaw", false)
     ).toBe(false);
     expect(
@@ -37,7 +32,7 @@ describe("workbench provider catalog", () => {
     ).toBe(true);
     // early access on
     expect(
-      isAgentGuiWorkbenchProviderVisibleWithEarlyAccess("hermes", true)
+      isAgentGuiWorkbenchProviderVisibleWithEarlyAccess("openclaw", true)
     ).toBe(true);
     expect(
       isAgentGuiWorkbenchProviderVisibleWithEarlyAccess("codex", true)

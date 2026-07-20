@@ -71,7 +71,6 @@ const (
 	AuthOutputParserKindClaude   AuthOutputParserKind = "claude"
 	AuthOutputParserKindOpenCode AuthOutputParserKind = "opencode"
 	AuthOutputParserKindCursor   AuthOutputParserKind = "cursor"
-	AuthOutputParserKindHermes   AuthOutputParserKind = "hermes"
 )
 
 type AuthMarkerParserKind string

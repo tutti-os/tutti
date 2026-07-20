@@ -2424,8 +2424,8 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 
 	var response tuttigenerated.ListAgentTargetsResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if len(response.Targets) != 8 {
-		t.Fatalf("targets len = %d, want descriptor catalog size 8", len(response.Targets))
+	if len(response.Targets) != 7 {
+		t.Fatalf("targets len = %d, want descriptor catalog size 7", len(response.Targets))
 	}
 	wantIDs := []string{
 		agenttargetbiz.IDLocalCodex,
@@ -2434,7 +2434,6 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 		agenttargetbiz.IDLocalTuttiAgent,
 		agenttargetbiz.IDLocalOpenCode,
 		providerregistry.NexightTargetID,
-		providerregistry.HermesTargetID,
 		providerregistry.OpenClawTargetID,
 	}
 	for index, target := range response.Targets {

@@ -46,7 +46,6 @@ export const knownProviderIds = [
   "claude-code",
   "codex",
   "cursor",
-  "hermes",
   "nexight",
   "openclaw",
   "opencode",

@@ -210,7 +210,6 @@ export const desktopAgentProviders = [
   "tutti-agent",
   "cursor",
   "nexight",
-  "hermes",
   "openclaw",
   "opencode"
 ] as const;

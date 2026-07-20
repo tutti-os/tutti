@@ -205,11 +205,11 @@ func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t 
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
-	adapter := NewHermesAdapter(transport)
+	adapter := newHermesExtensionTestAdapter(transport)
 	cleanupCalls := 0
 	adapter.SetProviderLaunchPreparer(func(_ context.Context, input ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
-		if input.Provider != ProviderHermes {
-			t.Fatalf("Provider = %q, want %q", input.Provider, ProviderHermes)
+		if input.Provider != hermesExtensionTestProvider {
+			t.Fatalf("Provider = %q, want %q", input.Provider, hermesExtensionTestProvider)
 		}
 		if input.DirectStart {
 			t.Fatal("DirectStart = true, want false for Hermes")
@@ -224,7 +224,7 @@ func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t 
 			},
 		}, nil
 	})
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.Env = []string{"SESSION_ENV=1"}
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
@@ -265,8 +265,8 @@ func TestStandardACPAdapterConcurrentStartsLeaveSingleLiveProcess(t *testing.T) 
 		agentTitle: "Hermes Agent",
 		sessionID:  "hermes-session-1",
 	}
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 
 	var wg sync.WaitGroup
 	errs := make([]error, 2)
@@ -299,8 +299,8 @@ func TestHermesAdapterStartAppliesModelAndReasoningConfigOptions(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.Settings = &SessionSettings{
 		Model:           "hermes-pro",
 		ReasoningEffort: "high",
@@ -1280,8 +1280,8 @@ func TestHermesAdapterStartCreatesStandardACPSession(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.PermissionModeID = "full-access"
 
 	events, err := adapter.Start(context.Background(), session)
@@ -1313,8 +1313,8 @@ func TestHermesAdapterStartCoercesReadOnlyModeToDontAsk(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-default")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.PermissionModeID = "read-only"
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
@@ -1329,8 +1329,8 @@ func TestHermesAdapterStartCoercesAutoModeToDontAsk(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-auto")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.PermissionModeID = "auto"
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
@@ -1338,38 +1338,6 @@ func TestHermesAdapterStartCoercesAutoModeToDontAsk(t *testing.T) {
 	}
 	if transport.conn.lastModeID() != "dont_ask" {
 		t.Fatalf("mode id = %q, want dont_ask", transport.conn.lastModeID())
-	}
-}
-
-// TestHermesProductionFactoryInstallsAutoApproveHook guards the regression
-// where the auto-approve policy lived only in NewHermesAdapter while the
-// default controller builds adapters through the generic-strategy factory
-// (newAdapterFromProviderDescriptor). Without the descriptor-driven policy the
-// hook is never installed in production and sensitive-path writes hang on an
-// unanswered session/request_permission.
-func TestHermesProductionFactoryInstallsAutoApproveHook(t *testing.T) {
-	t.Parallel()
-
-	descriptor, ok := providerregistry.Find(ProviderHermes)
-	if !ok {
-		t.Fatal("hermes provider descriptor is missing")
-	}
-	transport := newStandardACPTransport("Hermes Agent", "hermes-factory")
-	adapter := newAdapterFromProviderDescriptor(descriptor, transport, LegacyHostMetadata(), nil)
-	std, ok := adapter.(*standardACPAdapter)
-	if !ok {
-		t.Fatalf("adapter type = %T, want *standardACPAdapter", adapter)
-	}
-	if std.config.automaticPermissionDecision == nil {
-		t.Fatal("production factory did not install the auto-approve hook")
-	}
-	if got := std.config.automaticPermissionDecision("yolo"); got != "approved" {
-		t.Fatalf("yolo decision = %q, want approved", got)
-	}
-	for _, tier := range []string{"read-only", "full-access", "auto", ""} {
-		if got := std.config.automaticPermissionDecision(tier); got != "" {
-			t.Fatalf("tier %q decision = %q, want prompt (empty)", tier, got)
-		}
 	}
 }
 
@@ -1496,10 +1464,10 @@ func TestStandardACPProvidersResumeClassifyMissingProviderSession(t *testing.T) 
 	}{
 		{
 			name:     "hermes",
-			provider: ProviderHermes,
-			build:    NewHermesAdapter,
+			provider: hermesExtensionTestProvider,
+			build:    newHermesExtensionTestAdapter,
 			session: func() Session {
-				session := standardTestSession(ProviderHermes)
+				session := standardTestSession(hermesExtensionTestProvider)
 				session.ProviderSessionID = "persisted-hermes-session-id"
 				return session
 			},
@@ -1540,8 +1508,8 @@ func TestStandardACPProvidersResumeClassifyUnsupportedRestoreAsResumeSessionNotL
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-resume")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.ProviderSessionID = "persisted-hermes-session-id"
 
 	err := adapter.Resume(context.Background(), session)
@@ -1558,8 +1526,8 @@ func TestStandardACPProvidersResumeRequireProviderSessionID(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-resume")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.ProviderSessionID = ""
 
 	err := adapter.Resume(context.Background(), session)
@@ -1674,8 +1642,8 @@ func TestStandardACPAdapterRejectsImagePromptWithoutCapability(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -1699,7 +1667,7 @@ func TestStandardACPAdapterRejectsImagePromptWithoutCapability(t *testing.T) {
 func TestStandardACPToolCallEventInfersCompletedStatusFromRawOutput(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	completed, ok := standardACPToolCallEventWithID(session, "event-complete-inferred", "turn-1", "tool_call_update", readSessionTestdataJSON(t, "standard_acp_tool_call_update_completed_without_status.json"))
 	if !ok {
 		t.Fatal("standardACPToolCallEventWithID(inferred complete) returned !ok")
@@ -1726,7 +1694,7 @@ func TestStandardACPToolAliasOverridesProviderToolIDDeclaratively(t *testing.T) 
 func TestStandardACPToolCallEventInfersFailedStatusFromRawOutput(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	failed, ok := standardACPToolCallEventWithID(session, "event-failed-inferred", "turn-1", "tool_call_update", readSessionTestdataJSON(t, "standard_acp_tool_call_update_failed_without_status.json"))
 	if !ok {
 		t.Fatal("standardACPToolCallEventWithID(inferred failed) returned !ok")
@@ -1826,8 +1794,8 @@ func TestStandardACPAdapterSessionStateExposesPendingAskUserPrompt(t *testing.T)
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-interactive-1")
 	transport.conn.promptKind = "ask-user"
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -1918,8 +1886,8 @@ func TestStandardACPAdapterSessionStateExposesPendingExitPlanPrompt(t *testing.T
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-plan-1")
 	transport.conn.promptKind = "exit-plan"
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -1973,13 +1941,13 @@ func TestStandardACPToolCallLifecycleReusesStableEventID(t *testing.T) {
 	}{
 		{
 			name:     "hermes default config",
-			provider: ProviderHermes,
-			config:   standardACPConfig{provider: ProviderHermes},
+			provider: hermesExtensionTestProvider,
+			config:   standardACPConfig{provider: hermesExtensionTestProvider},
 		},
 		{
 			name:     "hermes",
-			provider: ProviderHermes,
-			config:   standardACPConfig{provider: ProviderHermes},
+			provider: hermesExtensionTestProvider,
+			config:   standardACPConfig{provider: hermesExtensionTestProvider},
 		},
 		{
 			name:     "openclaw",
@@ -2042,14 +2010,14 @@ func TestStandardACPToolCallLifecycleReusesStableEventID(t *testing.T) {
 func TestStandardACPNormalizerSegmentsAssistantAndThinkingAroundToolCalls(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.ProviderSessionID = "hermes-session-segment-1"
 	normalizer := newACPTurnNormalizer()
 
 	var events []activityshared.Event
 	events = append(events, normalizer.AppendThinkingChunk(session, "turn-1", "Thinking before tool. ")...)
 	events = append(events, normalizer.AppendAssistantChunk(session, "turn-1", "Before tool. ")...)
-	events = append(events, standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
+	events = append(events, standardACPUpdateEvents(standardACPConfig{provider: hermesExtensionTestProvider}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "tool_call",
 			"toolCallId": "tool-segment-1",
@@ -2105,9 +2073,9 @@ func TestStandardACPNormalizerSegmentsAssistantAndThinkingAroundToolCalls(t *tes
 func TestStandardACPUpdateDoesNotProjectInternalMentionRoutingTitle(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.ProviderSessionID = "hermes-session-1"
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
+	events := standardACPUpdateEvents(standardACPConfig{provider: hermesExtensionTestProvider}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "session_info_update",
 			"title": "`+tuttiMentionRoutingReminder+`"
@@ -2123,10 +2091,10 @@ func TestStandardACPUpdateDoesNotProjectInternalMentionRoutingTitle(t *testing.T
 func TestStandardACPSystemNoticeChunkProjectsAssistantNotice(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.ProviderSessionID = "hermes-session-1"
 
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
+	events := standardACPUpdateEvents(standardACPConfig{provider: hermesExtensionTestProvider}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "agent_message_chunk",
 			"content": {
@@ -2238,8 +2206,8 @@ func TestStandardACPSpawnCommandUnchangedForOtherProviders(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.Settings = &SessionSettings{Model: "gpt-5.3-codex-spark", ReasoningEffort: "high"}
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -2351,10 +2319,10 @@ func TestNexightACPSystemNoticeMessageFromStderr(t *testing.T) {
 func TestStandardACPTransportFallbackTextStaysProviderScoped(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderHermes)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.ProviderSessionID = "hermes-session-1"
 
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
+	events := standardACPUpdateEvents(standardACPConfig{provider: hermesExtensionTestProvider}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "agent_message_chunk",
 			"content": {
@@ -2528,8 +2496,8 @@ func TestStandardACPAdapterExecAddsInternalMentionRoutingPromptForGemini(t *test
 	t.Parallel()
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-mention-routing")
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	session.PermissionModeID = "full-access"
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -2658,8 +2626,8 @@ func TestHermesAdapterStartPreservesCommandsAdvertisedDuringNewSession(t *testin
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-commands")
 	transport.conn.commandUpdateOnNewSession = true
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -2920,8 +2888,8 @@ func TestStandardACPAdapterCloseSendsProtocolSessionCloseBeforeTransportClose(t 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-close")
 	transport.conn.supportsCloseSession = true
 	transport.conn.closeSessionExits = true
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -2945,8 +2913,8 @@ func TestStandardACPAdapterCloseFallsBackWhenProtocolSessionCloseFails(t *testin
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-close-failure")
 	transport.conn.supportsCloseSession = true
 	transport.conn.closeSessionError = &acpError{Code: -32601, Message: "session close unavailable"}
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)

@@ -906,7 +906,7 @@ func TestReporterProjectsStandardACPToolLifecycleToStableMessageUpdates(t *testi
 	t.Parallel()
 
 	session := reportTestSession()
-	session.Provider = ProviderHermes
+	session.Provider = hermesExtensionTestProvider
 	updates := reportActivityInput(session, []activityshared.Event{
 		newTurnActivityEventWithID(session, "stable-tool-item", EventCallStarted, "turn-std", messageStreamStateStreaming, "", "Bash", map[string]any{
 			"callId":   "tool-std-1",

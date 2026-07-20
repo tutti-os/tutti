@@ -5261,8 +5261,6 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         nexight:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
-        hermes:
-          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         openclaw:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         opencode:
@@ -5284,8 +5282,6 @@ components:
         cursor:
           type: boolean
         nexight:
-          type: boolean
-        hermes:
           type: boolean
         openclaw:
           type: boolean

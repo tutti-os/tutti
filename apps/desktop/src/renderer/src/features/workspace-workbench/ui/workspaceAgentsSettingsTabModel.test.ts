@@ -6,7 +6,7 @@ import {
 } from "./workspaceAgentsSettingsTabModel.ts";
 
 test("Agents list hides early-access integrations only while the gate is off", () => {
-  const providers = ["codex", "claude-code", "hermes", "openclaw"];
+  const providers = ["codex", "claude-code", "openclaw"];
   assert.deepEqual(filterVisibleAgentProviders(providers, false, false), [
     "codex",
     "claude-code"
@@ -18,10 +18,10 @@ test("Agents list hides early-access integrations only while the gate is off", (
 });
 
 test("Agents list only shows Tutti Agent while Tutti Agent Switch is on", () => {
-  const providers = ["codex", "tutti-agent", "hermes"];
+  const providers = ["codex", "tutti-agent", "opencode"];
   assert.deepEqual(filterVisibleAgentProviders(providers, true, false), [
     "codex",
-    "hermes"
+    "opencode"
   ]);
   assert.deepEqual(
     filterVisibleAgentProviders(providers, true, true),
@@ -32,10 +32,10 @@ test("Agents list only shows Tutti Agent while Tutti Agent Switch is on", () => 
 test("deep link focuses a visible provider row", () => {
   const outcome = resolveAgentDeepLinkOutcome({
     earlyAccessEnabled: true,
-    provider: "hermes",
-    visibleProviders: ["codex", "hermes"]
+    provider: "openclaw",
+    visibleProviders: ["codex", "openclaw"]
   });
-  assert.deepEqual(outcome, { kind: "focus", provider: "hermes" });
+  assert.deepEqual(outcome, { kind: "focus", provider: "openclaw" });
 });
 
 test("deep link to a hidden early-access integration surfaces a hint", () => {

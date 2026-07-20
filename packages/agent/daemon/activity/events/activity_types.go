@@ -16,7 +16,6 @@ const (
 	ProviderClaudeCode Provider = providerregistry.ClaudeCodeProviderID
 	ProviderOpenClaw   Provider = "openclaw"
 	ProviderOpenCode   Provider = providerregistry.OpenCodeProviderID
-	ProviderHermes     Provider = "hermes"
 )
 
 type EventType string

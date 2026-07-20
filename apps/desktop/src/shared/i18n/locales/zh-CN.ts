@@ -994,7 +994,6 @@ export const zhCN = {
         manageProviderClaudeCode: "Claude Code",
         manageProviderCodex: "Codex",
         manageProviderCursor: "Cursor",
-        manageProviderHermes: "Hermes",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
         manageProviderOpenCode: "Open Code",

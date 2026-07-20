@@ -435,7 +435,6 @@ export type DesktopAgentComposerDefaultsByProvider = {
   "tutti-agent"?: DesktopAgentComposerDefaults;
   cursor?: DesktopAgentComposerDefaults;
   nexight?: DesktopAgentComposerDefaults;
-  hermes?: DesktopAgentComposerDefaults;
   openclaw?: DesktopAgentComposerDefaults;
   opencode?: DesktopAgentComposerDefaults;
 };
@@ -450,7 +449,6 @@ export type DesktopAgentGuiConversationRailCollapsedByProvider = {
   "tutti-agent"?: boolean;
   cursor?: boolean;
   nexight?: boolean;
-  hermes?: boolean;
   openclaw?: boolean;
   opencode?: boolean;
 };
