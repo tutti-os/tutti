@@ -89,6 +89,13 @@ func (s *computerSession) adaptScreenshot(ctx context.Context, args map[string]a
 func (s *computerSession) adaptWindowTargetedTool(ctx context.Context, tool string, args map[string]any) (ToolResult, error) {
 	out := cloneToolArgs(args)
 	delete(out, "scope")
+	if tool == "scroll" {
+		if amount, ok := numericArg(out, "amount"); ok {
+			out["amount"] = int(amount)
+		} else {
+			out["amount"] = 3
+		}
+	}
 	target, err := s.resolveWindowTarget(ctx, args)
 	if err != nil {
 		return ToolResult{}, err
@@ -136,17 +143,8 @@ func (s *computerSession) adaptPIDRequiredTool(ctx context.Context, tool string,
 		switch key {
 		case "x", "y", "scope", "pid", "window_id":
 			continue
-		case "amount":
-			if amount, ok := numericArg(args, "amount"); ok {
-				out["amount"] = int(amount)
-			}
 		default:
 			out[key] = value
-		}
-	}
-	if tool == "scroll" {
-		if _, ok := out["amount"]; !ok {
-			out["amount"] = 3
 		}
 	}
 	return s.callTool(ctx, tool, out)

@@ -169,6 +169,17 @@ func TestStableWindowActionsNeverUseDesktopScope(t *testing.T) {
 				"x": float64(120), "y": float64(240), "direction": "down", "amount": float64(4),
 			}},
 		},
+		{
+			name: "scroll defaults omitted amount",
+			tool: "scroll",
+			args: map[string]any{
+				"pid": 42, "window_id": 99, "x": 120, "y": 240, "direction": "down",
+			},
+			want: recordedNativeToolCall{name: "scroll", args: map[string]any{
+				"pid": float64(42), "window_id": float64(99),
+				"x": float64(120), "y": float64(240), "direction": "down", "amount": float64(3),
+			}},
+		},
 	}
 
 	for _, tt := range tests {
