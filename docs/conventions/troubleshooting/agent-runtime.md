@@ -39,6 +39,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [OpenCode effort changes fail with `effort not found`](./agent-provider-setup.md#opencode-effort-changes-fail-with-effort-not-found)
 - [OpenCode model picker has fewer models than the terminal](./agent-provider-setup.md#opencode-model-picker-has-fewer-models-than-the-terminal)
 - [Provider setup notice flashes after switching to an already-connected agent](./agent-provider-setup.md#provider-setup-notice-flashes-after-switching-to-an-already-connected-agent)
+- [Extension runtime installation stays failed after restart](./agent-provider-setup.md#extension-runtime-installation-stays-failed-after-restart)
 
 ## [Agent Sessions And Lifecycle](./agent-session-lifecycle.md)
 
