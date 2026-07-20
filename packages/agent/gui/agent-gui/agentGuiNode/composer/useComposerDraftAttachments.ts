@@ -54,6 +54,7 @@ import {
 } from "./composerDraftUtils";
 import { reportAgentComposerDiagnostic } from "./agentComposerDiagnostics";
 import type { AgentGUIComposerContentType } from "../engagement/agentGUIEngagement.types";
+import { normalizeAgentPromptAssetRestoreMetadata } from "../model/agentPromptAssetRestoreMetadata";
 
 export interface WorkspaceReferencePickResult {
   files: readonly WorkspaceFileReference[];
@@ -342,6 +343,9 @@ export function useComposerDraftAttachments({
                         ...(uploadedImage.path
                           ? { path: uploadedImage.path }
                           : {}),
+                        ...normalizeAgentPromptAssetRestoreMetadata(
+                          uploadedImage
+                        ),
                         previewUrl: image.previewUrl,
                         uploading: false
                       }

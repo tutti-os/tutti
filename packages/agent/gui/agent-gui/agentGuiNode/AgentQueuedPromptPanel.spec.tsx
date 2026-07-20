@@ -395,7 +395,13 @@ describe("AgentQueuedPromptPanel", () => {
                 type: "image",
                 mimeType: "image/png",
                 path: "/agent-prompt-assets/staged.png",
-                name: "staged.png"
+                name: "staged.png",
+                uri: "workspace/user/local-assets/sha.png",
+                hostPath: "/Users/me/staged.png",
+                assetId: "asset-1",
+                kind: "image",
+                uploadStatus: "uploaded",
+                storagePolicy: "cloud-backed"
               }
             ],
             createdAtUnixMs: 1
@@ -417,7 +423,13 @@ describe("AgentQueuedPromptPanel", () => {
         agentSessionId: "session-1",
         mimeType: "image/png",
         name: "staged.png",
-        path: "/agent-prompt-assets/staged.png"
+        path: "/agent-prompt-assets/staged.png",
+        uri: "workspace/user/local-assets/sha.png",
+        hostPath: "/Users/me/staged.png",
+        assetId: "asset-1",
+        kind: "image",
+        uploadStatus: "uploaded",
+        storagePolicy: "cloud-backed"
       });
       expect(
         container.querySelector(".agent-gui-node__composer-queued-prompt-image")

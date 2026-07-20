@@ -99,7 +99,13 @@ function useAgentMessageImageSources(images: readonly AgentMessageImageVM[]): {
             agentSessionId: image.agentSessionId,
             mimeType: image.mimeType,
             name: image.name,
-            path: image.path
+            path: image.path,
+            uri: image.uri,
+            hostPath: image.hostPath,
+            assetId: image.assetId,
+            kind: image.kind,
+            uploadStatus: image.uploadStatus,
+            storagePolicy: image.storagePolicy
           });
       if (!readImage) continue;
       setLoadingIds((current) => new Set(current).add(image.id));

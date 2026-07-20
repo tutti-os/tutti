@@ -89,6 +89,29 @@ describe("agentComposerDraft", () => {
     ).toEqual([]);
   });
 
+  it("preserves prompt image restore metadata through composer draft round trips", () => {
+    const content = [
+      {
+        type: "image" as const,
+        mimeType: "image/png" as const,
+        path: "/agent-prompt-assets/staged.png",
+        name: "staged.png",
+        uri: "workspace/user/local-assets/sha.png",
+        hostPath: "/Users/me/staged.png",
+        assetId: "asset-1",
+        kind: "image",
+        uploadStatus: "uploaded",
+        storagePolicy: "cloud-backed"
+      }
+    ];
+
+    const draft = agentPromptContentToComposerDraft(content, "restored");
+
+    expect(agentComposerDraftToPromptContent({ draft, skills: [] })).toEqual(
+      content
+    );
+  });
+
   it("materializes prepared URL file locators as Markdown links", () => {
     const content = [
       {

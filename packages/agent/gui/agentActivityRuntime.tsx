@@ -240,6 +240,7 @@ export interface AgentActivityRuntimeReadPromptAssetInput {
   name?: string | null;
   path?: string | null;
   sha256?: string | null;
+  storagePolicy?: string | null;
   uploadStatus?: string | null;
   uri?: string | null;
   workspaceId: string;
