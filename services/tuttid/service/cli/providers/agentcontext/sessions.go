@@ -136,11 +136,19 @@ func (p Provider) newWaitCommand() cliservice.Command {
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
 		Inputs:      framework.FromStruct[waitInput](),
+		Execution:   &cliservice.CommandExecution{Mode: cliservice.CommandExecutionModeWait},
 		Output: framework.OutputSpec{
 			DefaultMode: cliservice.OutputModeJSON,
 			DefaultView: framework.ViewSummary,
 			JSON:        true,
 			JSONViews:   map[framework.OutputView]func(any) map[string]any{framework.ViewSummary: waitJSONValue},
+			Continuation: func(result any) *cliservice.CommandContinuation {
+				waited := result.(waitCommandResult)
+				if !waited.Result.TimedOut {
+					return nil
+				}
+				return &cliservice.CommandContinuation{State: cliservice.CommandContinuationStatePending, RetryAfterMs: 250}
+			},
 		},
 		Run: p.runWait,
 	})

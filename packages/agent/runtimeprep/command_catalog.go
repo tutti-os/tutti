@@ -21,12 +21,13 @@ type CommandSource struct {
 }
 
 type CommandCapability struct {
-	ID          string
-	Path        []string
-	Summary     string
-	Description string
-	InputSchema map[string]any
-	Source      CommandSource
+	ID            string
+	Path          []string
+	Summary       string
+	Description   string
+	InputSchema   map[string]any
+	ExecutionMode string
+	Source        CommandSource
 }
 
 type CommandContext struct {
@@ -105,7 +106,7 @@ func runtimeCommandFromCapability(cliName string, capability CommandCapability) 
 	if legacyAgentCompatibilityCommand(id, capability.Path) {
 		return runtimeCommand{}, false
 	}
-	capability.InputSchema = agentFacingInputSchema(id, capability.InputSchema)
+	capability.InputSchema = executionFacingInputSchema(capability.ExecutionMode, agentFacingInputSchema(id, capability.InputSchema))
 	if capability.Source.Kind != CommandSourceApp &&
 		id != "workspace-apps.app.open" &&
 		!strings.HasPrefix(id, "issue-manager.") &&
@@ -168,6 +169,30 @@ func runtimeCommandFromCapability(cliName string, capability CommandCapability) 
 		InputDetails: inputDetailsForCommand(id, capability.InputSchema),
 		Rank:         commandRank(id),
 	}, true
+}
+
+func executionFacingInputSchema(mode string, schema map[string]any) map[string]any {
+	if strings.TrimSpace(mode) != "wait" {
+		return schema
+	}
+	projected := make(map[string]any, len(schema)+2)
+	for key, value := range schema {
+		projected[key] = value
+	}
+	projected["type"] = "object"
+	properties := mapSchemaValue(schema["properties"])
+	projectedProperties := make(map[string]any, len(properties)+1)
+	for key, value := range properties {
+		projectedProperties[key] = value
+	}
+	if _, exists := projectedProperties["timeout-ms"]; !exists {
+		projectedProperties["timeout-ms"] = map[string]any{
+			"type":        "integer",
+			"description": "Maximum total wait in milliseconds; omit to wait until the command reaches a stop point.",
+		}
+	}
+	projected["properties"] = projectedProperties
+	return projected
 }
 
 func legacyAgentCompatibilityCommand(id string, path []string) bool {

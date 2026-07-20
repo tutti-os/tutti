@@ -54,6 +54,7 @@
 - Before starting or messaging another agent, follow `$tutti-handoff`.
 - After `agent start`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
 - After `agent send`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
+- Call wait once; omit `--timeout-ms` to block to a stop point. A timeout ends only the local wait and never cancels execution.
 - `agent wait` does not fetch execution messages; use `{{CLI_COMMAND}} agent get --session-id <session-id> --json` only for recent conversation recovery — never as a progress poll on a running session. Use `--view turns` for metadata-only Turn discovery and `--turn-id <turn-id> --view trace` only when tool-call detail is needed. Ask for the task prompt, not a provider or model.
 
 ### Image Context

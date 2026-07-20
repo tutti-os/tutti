@@ -22,6 +22,11 @@ safely verify and reuse its immutable upload. When the manifest declares
 locale files so App Center can localize uninstalled remote apps without
 downloading the package.
 
+App CLI manifests may declare `execution.mode: "wait"` for commands that block
+until a run or session reaches a stop point. Wait commands use JSON output and
+must leave `--timeout-ms` to the Tutti CLI as the optional total wait deadline;
+App input schemas must not redefine it.
+
 The versions command maintains one mutable `tutti.app.versions.v1` index per
 app. Every catalog-eligible release has an explicit minimum Tutti version and
 an `active` or `withdrawn` status. Reusing an immutable app version with changed

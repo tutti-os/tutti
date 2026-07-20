@@ -11,6 +11,14 @@ const (
 
 type CommandVisibility string
 
+type CommandExecutionMode string
+
+const CommandExecutionModeWait CommandExecutionMode = "wait"
+
+type CommandExecution struct {
+	Mode CommandExecutionMode
+}
+
 type TableColumn struct {
 	Key   string
 	Label string
@@ -44,22 +52,39 @@ type CapabilitySource struct {
 }
 
 type Capability struct {
-	ID          string
-	Path        []string
-	Summary     string
-	Description string
-	Visibility  CommandVisibility
-	InputSchema map[string]any
-	Output      CapabilityOutput
-	Source      CapabilitySource
+	ID               string
+	Path             []string
+	Summary          string
+	Description      string
+	Visibility       CommandVisibility
+	InputSchema      map[string]any
+	Output           CapabilityOutput
+	Execution        *CommandExecution
+	HandlerTimeoutMs int
+	Source           CapabilitySource
+}
+
+type CommandContinuationState string
+
+const CommandContinuationStatePending CommandContinuationState = "pending"
+
+const (
+	MinContinuationRetryAfterMs = 250
+	MaxContinuationRetryAfterMs = 60000
+)
+
+type CommandContinuation struct {
+	State        CommandContinuationState
+	RetryAfterMs int
 }
 
 type CommandOutput struct {
-	Kind    OutputMode
-	Columns []TableColumn
-	Rows    []map[string]any
-	Value   map[string]any
-	Text    string
+	Kind         OutputMode
+	Columns      []TableColumn
+	Rows         []map[string]any
+	Value        map[string]any
+	Text         string
+	Continuation *CommandContinuation
 }
 
 type InputWarning struct {
