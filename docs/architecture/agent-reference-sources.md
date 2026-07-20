@@ -58,6 +58,14 @@ shared `ReferenceListBackend` / `createReferenceListSource` protocol. Local
 files wrap `WorkspaceFileReferenceAdapter` directly. Open, reveal, open-with,
 and preview operations remain source-owned and are delegated back to the host.
 
+OS clipboard and drop entries may enter the same ordinary file/folder mention
+model without going through a picker. AgentGUI asks the synchronous host
+`resolveExternalPromptEntries` port whether each browser `File` is a live
+`WorkspaceFileReference` or needs snapshot preparation. Live references keep
+their host path and kind, do not become prompt assets, and preserve their
+position relative to prepared entries. Hosts that cannot expose a live local
+reference omit that capability or classify the entry for preparation.
+
 ### Composer Mention Directory Navigation
 
 The compact AgentGUI `@` palette uses `AgentContextMentionProvider` instead of

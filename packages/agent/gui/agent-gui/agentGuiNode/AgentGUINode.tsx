@@ -76,6 +76,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     fileReferenceAdapter: workspaceFileReferenceAdapter = null,
     onRequestGitBranches = null,
     selectProjectDirectory,
+    resolveExternalPromptEntries = null,
     prepareExternalPromptFiles = null,
     promptAssetLimit = null,
     referenceSourceAggregator = null,
@@ -676,6 +677,7 @@ export const AgentGUINode = memo(function AgentGUINode({
                   ? handleWorkspaceFileReferencesAdded
                   : undefined
               }
+              resolveExternalPromptEntries={resolveExternalPromptEntries}
               prepareExternalPromptFiles={prepareExternalPromptFiles}
               promptAssetLimit={promptAssetLimit}
               onConversationRailWidthChanged={

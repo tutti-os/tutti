@@ -23,8 +23,8 @@ test("external prompt preparation isolates per-file upload failures", async () =
     } as unknown as AgentActivityRuntime,
     platformApi: {
       resolveDroppedEntries: () => [
-        { kind: "file", path: "/tmp/good.txt" },
-        { kind: "file", path: "/tmp/bad.txt" }
+        { kind: "file", path: "" },
+        { kind: "file", path: "" }
       ]
     },
     workspaceId: "workspace-1"
@@ -49,6 +49,27 @@ test("external prompt preparation isolates per-file upload failures", async () =
     { sourceIndex: 1, status: "error", errorCode: "preparation_failed" }
   ]);
   assert.deepEqual(uploadNames, ["good.txt", "bad.txt"]);
+});
+
+test("external prompt preparation rejects path-backed files", async () => {
+  let uploadCalled = false;
+  const prepare = createDesktopAgentExternalPromptFilePreparer({
+    agentActivityRuntime: {
+      async uploadPromptContent() {
+        uploadCalled = true;
+        return { content: [] };
+      }
+    } as unknown as AgentActivityRuntime,
+    platformApi: {
+      resolveDroppedEntries: () => [{ kind: "file", path: "/tmp/local.txt" }]
+    },
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(await prepare([new File(["local"], "local.txt")]), [
+    { sourceIndex: 0, status: "error", errorCode: "preparation_failed" }
+  ]);
+  assert.equal(uploadCalled, false);
 });
 
 test("external prompt preparation rejects oversized files before reading", async () => {
