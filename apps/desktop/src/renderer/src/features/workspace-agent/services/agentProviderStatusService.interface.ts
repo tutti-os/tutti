@@ -18,11 +18,6 @@ export interface AgentProviderStatusActionOptions {
   origin?: AgentProviderActionOrigin;
 }
 
-export interface AgentProviderStatusRefreshOptions {
-  availabilitySnapshotTrigger?: "resume";
-  includeNetwork?: boolean;
-}
-
 // A closable handle to the terminal a command opened, so the caller can dismiss
 // it once the command's purpose is fulfilled (e.g. close the login terminal after
 // authentication succeeds).
@@ -82,7 +77,7 @@ export interface IAgentProviderStatusService {
   ): Promise<void>;
   refresh(
     providers?: WorkspaceAgentProvider[],
-    options?: AgentProviderStatusRefreshOptions
+    options?: { includeNetwork?: boolean }
   ): Promise<void>;
   subscribe(listener: () => void): () => void;
   /** Whether the user agreed to send fuller diagnostics via "report problem". */

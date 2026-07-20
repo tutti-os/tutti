@@ -43,10 +43,7 @@ export class AgentAvailabilitySnapshotTelemetry {
         : dependencies.storage;
   }
 
-  reportStatuses(
-    statuses: readonly AgentProviderStatus[],
-    triggerHint?: Extract<AgentAvailabilitySnapshotTrigger, "resume">
-  ): void {
+  reportStatuses(statuses: readonly AgentProviderStatus[]): void {
     const now = this.now();
     const date = localDateKey(now);
     for (const status of statuses) {
@@ -56,8 +53,7 @@ export class AgentAvailabilitySnapshotTelemetry {
       const trigger = snapshotTrigger({
         currentDate: date,
         currentSignature: signature,
-        previous,
-        triggerHint
+        previous
       });
       if (!trigger) {
         continue;
@@ -165,13 +161,12 @@ function snapshotTrigger(input: {
   currentDate: string;
   currentSignature: string;
   previous: AgentAvailabilitySnapshotState | null;
-  triggerHint?: Extract<AgentAvailabilitySnapshotTrigger, "resume">;
 }): AgentAvailabilitySnapshotTrigger | null {
   if (!input.previous) {
     return "env_detected";
   }
   if (input.previous.date !== input.currentDate) {
-    return input.triggerHint ?? "daily_rollover";
+    return "daily_rollover";
   }
   if (input.previous.signature !== input.currentSignature) {
     return "config_change";

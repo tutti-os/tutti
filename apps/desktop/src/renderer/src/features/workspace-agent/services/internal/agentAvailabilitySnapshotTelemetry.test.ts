@@ -8,7 +8,7 @@ import {
   type AgentAvailabilitySnapshotStorage
 } from "./agentAvailabilitySnapshotTelemetry.ts";
 
-test("availability snapshots cover initial, change, rollover, and resume triggers", async () => {
+test("availability snapshots cover initial, change, and rollover triggers", async () => {
   let now = new Date(2026, 6, 20, 12).getTime();
   const events: ReporterEventInput[] = [];
   const storage = createMemoryStorage();
@@ -84,7 +84,7 @@ test("availability snapshots cover initial, change, rollover, and resume trigger
       provider: "codex"
     })
   ]);
-  telemetry.reportStatuses([claudeReady], "resume");
+  telemetry.reportStatuses([claudeReady]);
   await flushAsyncWork();
 
   assert.deepEqual(
@@ -93,7 +93,7 @@ test("availability snapshots cover initial, change, rollover, and resume trigger
       .map((event) => [event.params?.provider, event.params?.trigger]),
     [
       ["codex", "daily_rollover"],
-      ["claude_code", "resume"]
+      ["claude_code", "daily_rollover"]
     ]
   );
 });

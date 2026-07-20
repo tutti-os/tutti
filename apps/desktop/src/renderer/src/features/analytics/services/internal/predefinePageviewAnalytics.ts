@@ -12,10 +12,13 @@ export interface PredefinePageviewAnalyticsRuntime {
   scheduleFocusReport?(listener: () => void): () => void;
 }
 
+export type PredefinePageviewScheduledReport = () => Promise<void> | void;
+
 export function startPredefinePageviewAnalytics(input: {
   reporterNow?: () => number;
   reporterService: Pick<IReporterService, "trackEvents">;
   runtime?: PredefinePageviewAnalyticsRuntime;
+  scheduledReports?: readonly PredefinePageviewScheduledReport[];
 }): PredefinePageviewAnalyticsController {
   const runtime = input.runtime ?? createDocumentPredefinePageviewRuntime();
   const now = input.reporterNow ?? Date.now;
@@ -30,6 +33,15 @@ export function startPredefinePageviewAnalytics(input: {
       now,
       reporterService: input.reporterService
     }).report();
+    for (const scheduledReport of input.scheduledReports ?? []) {
+      void Promise.resolve()
+        .then(() => {
+          if (!disposed) {
+            return scheduledReport();
+          }
+        })
+        .catch(() => {});
+    }
   };
 
   const reportAppOpen = () => {

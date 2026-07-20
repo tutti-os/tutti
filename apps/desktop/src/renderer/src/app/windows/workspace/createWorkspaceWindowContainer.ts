@@ -126,11 +126,9 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     tuttidClient,
     mode: routeView === "agent" ? "agent" : "os"
   });
-  const predefinePageviewAnalytics = shouldReportPredefinePageview(
+  const reportPredefinePageview = shouldReportPredefinePageview(
     window.location.search
-  )
-    ? startPredefinePageviewAnalytics({ reporterService })
-    : null;
+  );
   installRendererDiagnostics(
     desktopApi.runtime,
     "workspace-renderer",
@@ -201,6 +199,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
   });
   const workspaceAgentServices = registerWorkspaceAgentServices(registry, {
     accountLogin: accountService,
+    bindProviderVisibilityRefresh: !reportPredefinePageview,
     clipboard: {
       writeText: (text) => navigator.clipboard.writeText(text)
     },
@@ -217,6 +216,14 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     workspaceId: activeWorkspaceID,
     workspaceUserProjectService
   });
+  const predefinePageviewAnalytics = reportPredefinePageview
+    ? startPredefinePageviewAnalytics({
+        reporterService,
+        scheduledReports: [
+          workspaceAgentServices.reportAgentAvailabilitySnapshot
+        ]
+      })
+    : null;
   const agentOutcomeNotificationController =
     createWorkspaceAgentOutcomeNotificationController({
       foreground: createWorkspaceAgentOutcomeForegroundNotificationPresenter(),

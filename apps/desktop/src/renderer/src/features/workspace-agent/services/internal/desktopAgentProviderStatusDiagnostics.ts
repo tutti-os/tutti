@@ -12,10 +12,6 @@ import { AgentEnvIssueReportedReporter } from "../../../analytics/reporters/agen
 import { AgentAnalyticsErrorCode } from "../../../analytics/reporters/agent-error-fields.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import {
-  AgentAvailabilitySnapshotTelemetry,
-  type AgentAvailabilitySnapshotStorage
-} from "./agentAvailabilitySnapshotTelemetry.ts";
-import {
   buildEnvDetectedParams,
   buildEnvIssueParams,
   envDetectedSignature
@@ -34,14 +30,12 @@ export interface DiagnosticsConsentStore {
 }
 
 export interface AgentProviderStatusRequestInput {
-  availabilitySnapshotTrigger?: "resume";
-  providers?: WorkspaceAgentProvider[];
+  providers?: readonly WorkspaceAgentProvider[];
   includeNetwork?: boolean;
   refresh?: boolean;
 }
 
 interface DesktopAgentProviderStatusDiagnosticsDependencies {
-  availabilitySnapshotStorage?: AgentAvailabilitySnapshotStorage | null;
   consentStore?: DiagnosticsConsentStore;
   now?: () => number;
   reporterNow?: () => number;
@@ -50,7 +44,6 @@ interface DesktopAgentProviderStatusDiagnosticsDependencies {
 }
 
 export class DesktopAgentProviderStatusDiagnostics {
-  private readonly availabilitySnapshotTelemetry: AgentAvailabilitySnapshotTelemetry;
   private readonly consentStore: DiagnosticsConsentStore;
   private readonly dependencies: DesktopAgentProviderStatusDiagnosticsDependencies;
   private readonly lastEnvSignatures = new Map<
@@ -61,13 +54,6 @@ export class DesktopAgentProviderStatusDiagnostics {
   constructor(dependencies: DesktopAgentProviderStatusDiagnosticsDependencies) {
     this.dependencies = dependencies;
     this.consentStore = dependencies.consentStore ?? createSharedConsentStore();
-    this.availabilitySnapshotTelemetry = new AgentAvailabilitySnapshotTelemetry(
-      {
-        now: dependencies.reporterNow,
-        reporterService: dependencies.reporterService,
-        storage: dependencies.availabilitySnapshotStorage
-      }
-    );
   }
 
   logStatusRequestCacheHit(
@@ -144,20 +130,6 @@ export class DesktopAgentProviderStatusDiagnostics {
       this.lastEnvSignatures.set(status.provider, signature);
       void this.reportEnvDetected(status);
     }
-  }
-
-  reportAvailabilitySnapshots(
-    statuses: readonly AgentProviderStatus[],
-    refreshedStatuses: readonly AgentProviderStatus[],
-    triggerHint?: "resume"
-  ): void {
-    const refreshedProviders = new Set(
-      refreshedStatuses.map((status) => status.provider)
-    );
-    this.availabilitySnapshotTelemetry.reportStatuses(
-      statuses.filter((status) => refreshedProviders.has(status.provider)),
-      triggerHint
-    );
   }
 
   getDiagnosticsConsent(): boolean {

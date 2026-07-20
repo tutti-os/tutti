@@ -9,7 +9,6 @@ import type { IReporterService } from "../../../analytics/services/reporterServi
 import type {
   AgentProviderStatusActionContext,
   AgentProviderStatusActionOptions,
-  AgentProviderStatusRefreshOptions,
   AgentProviderStatusSnapshot,
   AgentProviderTerminalCommandRunner,
   IAgentProviderStatusService
@@ -41,16 +40,13 @@ import {
 import { reconcileProviderStatuses } from "./desktopAgentProviderStatusCatalog.ts";
 import {
   DesktopAgentProviderStatusDiagnostics,
-  type AgentProviderStatusRequestInput,
   type DiagnosticsConsentStore
 } from "./desktopAgentProviderStatusDiagnostics.ts";
-import type { AgentAvailabilitySnapshotStorage } from "./agentAvailabilitySnapshotTelemetry.ts";
 
 export type { DiagnosticsConsentStore } from "./desktopAgentProviderStatusDiagnostics.ts";
 
 export interface DesktopAgentProviderStatusServiceDependencies {
   accountLogin?: { startLogin(): Promise<void> };
-  availabilitySnapshotStorage?: AgentAvailabilitySnapshotStorage | null;
   loginStatusPollDurationMs?: number;
   loginStatusPollIntervalMs?: number;
   loginStatusPollScheduler?: AgentProviderStatusPollScheduler;
@@ -118,7 +114,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     this.dependencies = dependencies;
     this.notifications = notifications;
     this.diagnostics = new DesktopAgentProviderStatusDiagnostics({
-      availabilitySnapshotStorage: dependencies.availabilitySnapshotStorage,
       consentStore: dependencies.diagnosticsConsentStore,
       now: dependencies.diagnosticNow,
       reporterNow: dependencies.reporterNow,
@@ -209,7 +204,11 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   }
 
   private async requestStatuses(
-    input: AgentProviderStatusRequestInput = {}
+    input: {
+      providers?: WorkspaceAgentProvider[];
+      includeNetwork?: boolean;
+      refresh?: boolean;
+    } = {}
   ): Promise<AgentProviderStatusListResponse | null> {
     const requestKey = providerStatusRequestKey(input);
     const inflightRequest = this.inflightRequests.get(requestKey);
@@ -231,10 +230,8 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       request: input,
       requestId
     });
-    const statusRequest = { ...input };
-    delete statusRequest.availabilitySnapshotTrigger;
     const request = withAgentProviderRequestTimeout(
-      this.dependencies.tuttidClient.getAgentProviderStatuses(statusRequest),
+      this.dependencies.tuttidClient.getAgentProviderStatuses(input),
       this.dependencies.requestTimeoutMs ?? defaultRequestTimeoutMs
     )
       .then(async (response) => {
@@ -284,11 +281,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
             reconciledStatuses
           );
           this.diagnostics.reportEnvDetectedChanges(reconciledStatuses);
-          this.diagnostics.reportAvailabilitySnapshots(
-            reconciledStatuses,
-            currentResponseStatuses,
-            input.availabilitySnapshotTrigger
-          );
           void this.loginLifecycle.reportCompletedLoginResults(
             response.providers
           );
@@ -545,10 +537,9 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
 
   async refresh(
     providers?: WorkspaceAgentProvider[],
-    options?: AgentProviderStatusRefreshOptions
+    options?: { includeNetwork?: boolean }
   ): Promise<void> {
     const input = {
-      availabilitySnapshotTrigger: options?.availabilitySnapshotTrigger,
       providers,
       includeNetwork: options?.includeNetwork,
       refresh: true

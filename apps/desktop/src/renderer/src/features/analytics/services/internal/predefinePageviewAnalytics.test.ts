@@ -73,6 +73,42 @@ test("predefine pageview analytics reports every explicit focus", () => {
   );
 });
 
+test("predefine pageview analytics schedules related reports after app open and focus", async () => {
+  const sequence: string[] = [];
+  const runtime = createRuntimeHarness();
+
+  startPredefinePageviewAnalytics({
+    reporterService: {
+      async trackEvents() {
+        sequence.push("pageview");
+      }
+    },
+    runtime,
+    scheduledReports: [
+      async () => {
+        sequence.push("scheduled");
+      }
+    ]
+  });
+
+  assert.deepEqual(sequence, ["pageview"]);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(sequence, ["pageview", "scheduled"]);
+
+  runtime.emitFocus();
+  runtime.flushFocusReports();
+  assert.deepEqual(sequence, ["pageview", "scheduled", "pageview"]);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(sequence, [
+    "pageview",
+    "scheduled",
+    "pageview",
+    "scheduled"
+  ]);
+});
+
 test("predefine pageview analytics reports focus after time changes", () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const runtime = createRuntimeHarness();
