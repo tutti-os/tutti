@@ -66,7 +66,8 @@ import { preloadDesktopAgentGuiMentionBrowse } from "../services/preloadDesktopA
 import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "../services/desktopAgentGuiIdentity.ts";
 import {
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
-  isFeatureEnabled
+  isFeatureEnabled,
+  LAB_TUTTI_MODE_FLAG
 } from "../../../../../shared/featureFlags/catalog.ts";
 
 function DesktopAgentGUISurfaceImpl({
@@ -520,9 +521,19 @@ function DesktopAgentGUISurfaceImpl({
       computerUse: {
         authorization: resolveComputerUseAuthorizationState(computerUseStatus),
         installed: computerUseStatus?.installed ?? null
+      },
+      tuttiMode: {
+        enabled: isFeatureEnabled(
+          desktopPreferencesState.featureFlags,
+          LAB_TUTTI_MODE_FLAG
+        )
       }
     }),
-    [computerUseStatus, desktopPreferencesState.browserUseConnectionMode]
+    [
+      computerUseStatus,
+      desktopPreferencesState.browserUseConnectionMode,
+      desktopPreferencesState.featureFlags
+    ]
   );
   const handleAgentEnvPanelOpen = useCallback<
     NonNullable<AgentGUIProps["hostActions"]["onAgentEnvPanelOpen"]>
@@ -651,7 +662,11 @@ function DesktopAgentGUISurfaceImpl({
         renderAgentsEmpty={renderAgentsEmpty}
         agentActivityRuntime={agentActivityRuntime}
         agentHostApi={agentHostApiWithToast}
-        tuttiModePlanReviewRuntime={tuttiModePlanReviewRuntime}
+        tuttiModePlanReviewRuntime={
+          capabilityMenuState?.tuttiMode?.enabled === false
+            ? null
+            : tuttiModePlanReviewRuntime
+        }
         i18n={i18n}
         locale={locale}
         identity={agentGUIHostProps.identity}

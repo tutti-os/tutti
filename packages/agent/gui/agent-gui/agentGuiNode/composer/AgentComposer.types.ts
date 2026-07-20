@@ -379,6 +379,9 @@ export interface AgentComposerCapabilityMenuState {
     authorization?: AgentComposerComputerUseAuthorizationState | null;
     installed?: boolean | null;
   };
+  tuttiMode?: {
+    enabled?: boolean | null;
+  };
 }
 
 export type AgentComposerComputerUseAuthorizationState =
