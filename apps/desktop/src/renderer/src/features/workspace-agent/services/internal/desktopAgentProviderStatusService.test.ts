@@ -18,7 +18,11 @@ function legacyAgentEvents(
   events: readonly ReporterEventInput[]
 ): ReporterEventInput[] {
   return events
-    .filter((event) => event.name !== "agent.node_result")
+    .filter(
+      (event) =>
+        event.name !== "agent.node_result" &&
+        event.name !== "agent.availability_snapshot"
+    )
     .map(stripAgentAnalyticsErrorFields);
 }
 
@@ -448,6 +452,144 @@ test("requestStatuses fires agent.env_detected once per detection outcome", asyn
   assert.equal(events.length, 1);
   assert.equal(events[0]?.params?.provider, "codex");
   assert.equal(events[0]?.params?.availability_status, "ready");
+});
+
+test("requestStatuses reports daily provider availability snapshots", async () => {
+  let now = new Date(2026, 6, 20, 12).getTime();
+  const events: ReporterEventInput[] = [];
+  const values = new Map<string, string>();
+  const service = new DesktopAgentProviderStatusService({
+    availabilitySnapshotStorage: {
+      getItem(key) {
+        return values.get(key) ?? null;
+      },
+      setItem(key, value) {
+        values.set(key, value);
+      }
+    },
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            authStatus: "required",
+            availability: "auth_required"
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            authStatus: "authenticated",
+            availability: "ready"
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            authStatus: "authenticated",
+            availability: "ready"
+          })
+        ])
+      ]
+    }),
+    reporterNow: () => now,
+    reporterService: {
+      async trackEvents(nextEvents) {
+        events.push(
+          ...nextEvents.filter(
+            (event) => event.name === "agent.availability_snapshot"
+          )
+        );
+      }
+    },
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  await service.refresh();
+  now = new Date(2026, 6, 21, 9).getTime();
+  await service.refresh();
+  await flushAsyncWork();
+
+  assert.deepEqual(
+    events.map((event) => ({
+      available: event.params?.is_available,
+      reason: event.params?.unavailable_reason,
+      trigger: event.params?.trigger
+    })),
+    [
+      {
+        available: false,
+        reason: "not_authenticated",
+        trigger: "env_detected"
+      },
+      { available: true, reason: "none", trigger: "config_change" },
+      { available: true, reason: "none", trigger: "daily_rollover" }
+    ]
+  );
+});
+
+test("provider-scoped refresh snapshots only freshly detected providers", async () => {
+  let now = new Date(2026, 6, 20, 12).getTime();
+  const events: ReporterEventInput[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    availabilitySnapshotStorage: null,
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            authStatus: "authenticated",
+            availability: "ready",
+            provider: "codex"
+          }),
+          createProviderStatus({
+            actions: [],
+            authStatus: "authenticated",
+            availability: "ready",
+            provider: "claude-code"
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            authStatus: "authenticated",
+            availability: "ready",
+            provider: "codex"
+          })
+        ])
+      ]
+    }),
+    reporterNow: () => now,
+    reporterService: {
+      async trackEvents(nextEvents) {
+        events.push(
+          ...nextEvents.filter(
+            (event) => event.name === "agent.availability_snapshot"
+          )
+        );
+      }
+    },
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  now = new Date(2026, 6, 21, 9).getTime();
+  await service.refresh(["codex"]);
+  await flushAsyncWork();
+
+  assert.deepEqual(
+    events.map((event) => [event.params?.provider, event.params?.trigger]),
+    [
+      ["codex", "env_detected"],
+      ["claude_code", "env_detected"],
+      ["codex", "daily_rollover"]
+    ]
+  );
 });
 
 test("automatic login requests reuse one terminal and one status poll", async () => {
@@ -2161,6 +2303,7 @@ function createNotificationRecorder(): {
 function createProviderStatus(input: {
   actions: AgentProviderStatus["actions"];
   adapterInstalled?: boolean;
+  authStatus?: AgentProviderStatus["auth"]["status"];
   availability: AgentProviderStatus["availability"]["status"];
   cliInstalled?: boolean;
   network?: AgentProviderStatus["network"];
@@ -2181,7 +2324,9 @@ function createProviderStatus(input: {
           input.availability !== "unsupported")
     },
     auth: {
-      status: input.availability === "auth_required" ? "required" : "unknown"
+      status:
+        input.authStatus ??
+        (input.availability === "auth_required" ? "required" : "unknown")
     },
     availability: {
       reasonCode: input.reasonCode,
