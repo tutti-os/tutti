@@ -24,6 +24,7 @@ interface SnapshotElement {
 export class BrowserNodeAutomationDriver {
   private attachedByDriver = false;
   private readonly contents: BrowserGuestWebContents;
+  private disposed = false;
   private readonly elements = new Map<string, SnapshotElement>();
   private nextSnapshotSequence = 1;
   private requestAuthorizer:
@@ -80,16 +81,20 @@ export class BrowserNodeAutomationDriver {
   }
 
   dispose(): void {
-    const debuggerClient = this.contents.debugger;
-    if (this.attachedByDriver && debuggerClient?.isAttached()) {
-      debuggerClient.detach();
-    }
+    if (this.disposed) return;
+    this.disposed = true;
+    const shouldDetach = this.attachedByDriver;
     this.attachedByDriver = false;
     this.requestAuthorizer = null;
     this.requestGuardEnabled = false;
     this.elements.clear();
+    if (this.contents.isDestroyed()) return;
+    const debuggerClient = this.contents.debugger;
     this.contents.off("did-start-navigation", this.onNavigation);
     debuggerClient?.off?.("message", this.onDebuggerMessage);
+    if (shouldDetach && debuggerClient?.isAttached()) {
+      debuggerClient.detach();
+    }
   }
 
   async enableRequestGuard(
@@ -123,6 +128,7 @@ export class BrowserNodeAutomationDriver {
     this.requestAuthorizer = null;
     if (!this.requestGuardEnabled) return;
     this.requestGuardEnabled = false;
+    if (this.disposed || this.contents.isDestroyed()) return;
     const debuggerClient = this.contents.debugger;
     debuggerClient?.off?.("message", this.onDebuggerMessage);
     if (debuggerClient?.isAttached()) {
@@ -255,7 +261,7 @@ export class BrowserNodeAutomationDriver {
   }
 
   private requireDebugger(): BrowserGuestDebugger {
-    if (this.contents.isDestroyed()) {
+    if (this.disposed || this.contents.isDestroyed()) {
       throw new Error("Browser page is closed");
     }
     const debuggerClient = this.contents.debugger;
@@ -272,6 +278,7 @@ export class BrowserNodeAutomationDriver {
   private async handlePausedRequest(
     params: Record<string, unknown>
   ): Promise<void> {
+    if (this.disposed || this.contents.isDestroyed()) return;
     const debuggerClient = this.contents.debugger;
     const requestId = readString(params.requestId);
     const url = readString(asRecord(params.request)?.url);

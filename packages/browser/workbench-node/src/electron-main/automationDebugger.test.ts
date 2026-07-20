@@ -80,3 +80,54 @@ test("automation request guard intercepts redirects and subresources", async () 
   );
   driver.dispose();
 });
+
+test("automation driver disposal does not access a destroyed WebContents debugger", async () => {
+  let destroyed = false;
+  let messageListener:
+    | ((event: unknown, method: string, params: unknown) => void)
+    | null = null;
+  const debuggerClient: BrowserGuestDebugger = {
+    attach() {},
+    detach() {},
+    isAttached: () => true,
+    off(_event, listener) {
+      if (messageListener === listener) messageListener = null;
+      return this;
+    },
+    on(_event, listener) {
+      messageListener = listener;
+      return this;
+    },
+    async sendCommand() {
+      return {};
+    }
+  };
+  const contents = {
+    get debugger() {
+      if (destroyed) throw new TypeError("Object has been destroyed");
+      return debuggerClient;
+    },
+    isDestroyed: () => destroyed,
+    off() {
+      return this;
+    },
+    on() {
+      return this;
+    }
+  } as unknown as BrowserGuestWebContents;
+  const driver = new BrowserNodeAutomationDriver(contents);
+  await driver.enableRequestGuard(async () => ({ allowed: true }));
+  const emitMessage = messageListener as
+    | ((event: unknown, method: string, params: unknown) => void)
+    | null;
+
+  destroyed = true;
+  emitMessage?.(null, "Fetch.requestPaused", {
+    request: { url: "https://public.example/late.js" },
+    requestId: "late"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await assert.doesNotReject(driver.disableRequestGuard());
+  assert.doesNotThrow(() => driver.dispose());
+  assert.doesNotThrow(() => driver.dispose());
+});
