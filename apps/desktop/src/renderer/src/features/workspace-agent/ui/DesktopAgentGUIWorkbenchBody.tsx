@@ -98,6 +98,7 @@ function DesktopAgentGUISurfaceImpl({
   onEngagementEvent,
   trackWorkspaceFileReferences,
   workspaceFileReferenceAdapter,
+  resolveExternalPromptEntries,
   prepareExternalPromptFiles,
   onRequestGitBranches,
   referenceSourceAggregator,
@@ -626,6 +627,9 @@ function DesktopAgentGUISurfaceImpl({
       path: "",
       fileReferenceAdapter: previewMode ? null : workspaceFileReferenceAdapter,
       onRequestGitBranches: previewMode ? null : onRequestGitBranches,
+      resolveExternalPromptEntries: previewMode
+        ? null
+        : resolveExternalPromptEntries,
       prepareExternalPromptFiles: previewMode
         ? null
         : prepareExternalPromptFiles,

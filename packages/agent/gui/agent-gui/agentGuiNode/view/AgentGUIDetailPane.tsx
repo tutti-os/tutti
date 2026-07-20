@@ -94,6 +94,7 @@ export interface AgentGUIDetailPaneProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
+  resolveExternalPromptEntries?: AgentComposerProps["resolveExternalPromptEntries"];
   prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
   promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
@@ -172,6 +173,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
+  resolveExternalPromptEntries = null,
   prepareExternalPromptFiles = null,
   promptAssetLimit = null,
   selectProjectDirectory,
@@ -479,6 +481,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onLinkAction: stableLinkAction,
       onHandoffConversation: stableHandoffConversation,
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
+      resolveExternalPromptEntries,
       prepareExternalPromptFiles,
       promptAssetLimit,
       selectProjectDirectory: stableSelectProjectDirectory,
@@ -516,6 +519,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       editQueuedPrompt,
       onCapabilitySettingsRequest,
       removeQueuedPrompt,
+      resolveExternalPromptEntries,
       prepareExternalPromptFiles,
       promptAssetLimit,
       sendQueuedPromptNext,

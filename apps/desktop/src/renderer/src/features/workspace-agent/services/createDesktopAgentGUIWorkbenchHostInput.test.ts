@@ -133,7 +133,7 @@ test("desktop agent GUI workbench host input reuses workspace runtime services",
   );
 });
 
-test("desktop agent GUI prepares path-backed and in-memory external files", async () => {
+test("desktop agent GUI references paths and prepares in-memory external files", async () => {
   const droppedFileA = new File(["a"], "report.pdf", {
     type: "application/pdf"
   });
@@ -161,11 +161,19 @@ test("desktop agent GUI prepares path-backed and in-memory external files", asyn
     platformApi: createPlatformApi({
       resolveDroppedEntries(files) {
         resolvedFiles.push([...files]);
-        return [
-          { kind: "file", path: "/Users/local/Downloads/report.pdf" },
-          { kind: "file", path: "" },
-          { kind: "folder", path: "/Users/local/Downloads/assets" }
-        ];
+        return files.map((file) =>
+          file === droppedFileA
+            ? {
+                kind: "file" as const,
+                path: "/Users/local/Downloads/report.pdf"
+              }
+            : file === droppedFolder
+              ? {
+                  kind: "folder" as const,
+                  path: "/Users/local/Downloads/assets"
+                }
+              : { kind: "file" as const, path: "" }
+        );
       }
     }),
     richTextAtService: createRichTextAtService({ providers: [] }),
@@ -175,7 +183,7 @@ test("desktop agent GUI prepares path-backed and in-memory external files", asyn
   });
 
   assert.deepEqual(
-    await hostInput.prepareExternalPromptFiles([
+    hostInput.resolveExternalPromptEntries([
       droppedFileA,
       droppedFileB,
       droppedFolder
@@ -183,43 +191,45 @@ test("desktop agent GUI prepares path-backed and in-memory external files", asyn
     [
       {
         sourceIndex: 0,
-        status: "prepared",
-        file: {
-          mimeType: "application/pdf",
-          name: "report.pdf",
-          path: "/prompt-assets/report.pdf",
-          sizeBytes: 1,
-          uploadStatus: "uploaded"
+        disposition: "reference",
+        reference: {
+          displayName: "report.pdf",
+          hostPath: "/Users/local/Downloads/report.pdf",
+          kind: "file",
+          path: "/Users/local/Downloads/report.pdf"
         }
       },
-      {
-        sourceIndex: 1,
-        status: "prepared",
-        file: {
-          mimeType: "text/plain",
-          name: "notes.txt",
-          path: "/prompt-assets/notes.txt",
-          sizeBytes: 1,
-          uploadStatus: "uploaded"
-        }
-      },
+      { sourceIndex: 1, disposition: "prepare" },
       {
         sourceIndex: 2,
-        status: "error",
-        errorCode: "folder_unsupported"
+        disposition: "reference",
+        reference: {
+          displayName: "assets",
+          hostPath: "/Users/local/Downloads/assets",
+          kind: "folder",
+          path: "/Users/local/Downloads/assets"
+        }
       }
     ]
   );
+  assert.deepEqual(await hostInput.prepareExternalPromptFiles([droppedFileB]), [
+    {
+      sourceIndex: 0,
+      status: "prepared",
+      file: {
+        mimeType: "text/plain",
+        name: "notes.txt",
+        path: "/prompt-assets/notes.txt",
+        sizeBytes: 1,
+        uploadStatus: "uploaded"
+      }
+    }
+  ]);
   assert.deepEqual(resolvedFiles, [
-    [droppedFileA, droppedFileB, droppedFolder]
+    [droppedFileA, droppedFileB, droppedFolder],
+    [droppedFileB]
   ]);
   assert.deepEqual(archiveRequests, [
-    {
-      displayName: "report.pdf",
-      hostPath: "/Users/local/Downloads/report.pdf",
-      mimeType: "application/pdf",
-      workspaceID: workspaceId
-    },
     {
       dataBase64: "Yg==",
       displayName: "notes.txt",

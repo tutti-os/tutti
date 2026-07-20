@@ -89,6 +89,9 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   workspaceFileReferenceAdapter: NonNullable<
     AgentGUIProps["workspace"]["fileReferenceAdapter"]
   >;
+  resolveExternalPromptEntries: NonNullable<
+    AgentGUIProps["workspace"]["resolveExternalPromptEntries"]
+  >;
   prepareExternalPromptFiles: NonNullable<
     AgentGUIProps["workspace"]["prepareExternalPromptFiles"]
   >;
@@ -183,6 +186,8 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
       next.trackWorkspaceFileReferences &&
     previous.workspaceFileReferenceAdapter ===
       next.workspaceFileReferenceAdapter &&
+    previous.resolveExternalPromptEntries ===
+      next.resolveExternalPromptEntries &&
     previous.prepareExternalPromptFiles === next.prepareExternalPromptFiles &&
     previous.onRequestGitBranches === next.onRequestGitBranches &&
     previous.referenceSourceAggregator === next.referenceSourceAggregator &&
