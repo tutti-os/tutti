@@ -7,6 +7,7 @@ import { getDesktopChromeCookieImportPromptAdapter } from "../services/chromeCoo
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
 
 export function StandaloneAgentBrowserToolPanel({
+  agentSessionId,
   appI18n,
   browserApi,
   elementContextCopy,
@@ -16,6 +17,7 @@ export function StandaloneAgentBrowserToolPanel({
   onBrowserElementError,
   workspaceId
 }: {
+  agentSessionId: string | null;
   appI18n: I18nRuntime<string>;
   browserApi: DesktopBrowserApi;
   elementContextCopy: {
@@ -35,6 +37,11 @@ export function StandaloneAgentBrowserToolPanel({
       data-standalone-agent-browser-surface="true"
     >
       <AgentToolBrowserPanel
+        automationTarget={{
+          agentSessionId,
+          surfaceRole: "agent",
+          workspaceId
+        }}
         browserApi={browserApi}
         chromeCookieImportPrompt={getDesktopChromeCookieImportPromptAdapter()}
         hidden={hidden}

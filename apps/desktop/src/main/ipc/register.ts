@@ -52,13 +52,15 @@ export interface IpcRegistrationDependencies {
   >;
 }
 
-export function registerIpcHandlers(deps: IpcRegistrationDependencies): void {
+export async function registerIpcHandlers(
+  deps: IpcRegistrationDependencies
+): Promise<readonly { dispose(): void }[]> {
   registerWorkspaceAppContextIpc(deps.daemonEndpoint, deps.preferences, {
     logger: deps.logger,
     sessionID: getDesktopLogSessionID(),
     stateRootDir: resolveDesktopDefaultsFromEnv().state.rootDir
   });
-  registerBrowserIpc(deps.preferences);
+  const browserAutomation = await registerBrowserIpc(deps.preferences);
   registerComputerUseIpc();
   registerDockPreviewCacheIpc();
   registerDeveloperIpc(deps.preferences, deps.tuttidClient);
@@ -71,4 +73,5 @@ export function registerIpcHandlers(deps: IpcRegistrationDependencies): void {
     workspaceFileIconCache: deps.workspaceFileIconCache,
     workspaceLaunch: deps.workspaceLaunch
   });
+  return [browserAutomation];
 }

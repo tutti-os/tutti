@@ -61,6 +61,7 @@ export interface StandaloneAgentFileOpenRequest {
 
 export function StandaloneAgentToolSidebarPanel({
   active,
+  agentSessionId,
   appI18n,
   activityService,
   browserApi,
@@ -80,6 +81,7 @@ export function StandaloneAgentToolSidebarPanel({
   workspaceId
 }: {
   active: boolean;
+  agentSessionId: string | null;
   appI18n: I18nRuntime<string>;
   activityService: WorkspaceAgentActivityService;
   browserApi?: DesktopBrowserApi;
@@ -192,6 +194,7 @@ export function StandaloneAgentToolSidebarPanel({
   if (panel === "browser") {
     return browserApi ? (
       <StandaloneAgentBrowserToolPanel
+        agentSessionId={agentSessionId}
         appI18n={appI18n}
         browserApi={browserApi}
         elementContextCopy={{

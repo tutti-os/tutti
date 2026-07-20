@@ -249,6 +249,7 @@ export type DesktopBrowserApi = Pick<
   | "showDevToolsContextMenu"
   | "stopFindInPage"
   | "unregisterGuest"
+  | "updateAutomationTarget"
 >;
 
 export interface DesktopUpdateApi {

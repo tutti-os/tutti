@@ -14,7 +14,12 @@ import { fileURLToPath } from "node:url";
 import { resolveBrowserSessionPartition } from "@tutti-os/browser-node";
 import { createMacosChromeCookieImportAdapter } from "@tutti-os/browser-node/chrome-cookie-import/macos";
 import { registerBrowserNodeElectronMain } from "@tutti-os/browser-node/electron-main";
-import type { BrowserNodeElectronLogger } from "@tutti-os/browser-node/electron-main";
+import {
+  createBrowserNodeAutomationRegistry,
+  createBrowserNodeAutomationNetworkAuthorizer,
+  createBrowserNodeAutomationServer,
+  type BrowserNodeElectronLogger
+} from "@tutti-os/browser-node/electron-main";
 import {
   desktopIpcChannels,
   type DesktopInvokeChannel
@@ -38,6 +43,7 @@ import {
   BROWSER_CHROME_COOKIE_IMPORT_FLAG,
   isFeatureEnabled
 } from "../../shared/featureFlags/catalog.ts";
+import { resolveBrowserNodeAutomationListenerInfoPath } from "../transport/paths.ts";
 
 type BrowserInvokeChannel = Exclude<
   (typeof desktopIpcChannels.browser)[keyof typeof desktopIpcChannels.browser],
@@ -58,8 +64,13 @@ function getPreferredColorScheme(
 
 export function registerBrowserIpc(
   preferences: DesktopHostPreferencesState
-): void {
+): Promise<{ dispose(): void }> {
   const logger = getDesktopLogger();
+  const automationRegistry = createBrowserNodeAutomationRegistry({
+    authorize: createBrowserNodeAutomationNetworkAuthorizer({
+      allowLoopback: true
+    })
+  });
   const preparedDownloadSessions = new WeakSet<Electron.Session>();
   const chromeCookieImport = createMacosChromeCookieImportAdapter({
     isEnabled: () =>
@@ -72,6 +83,7 @@ export function registerBrowserIpc(
 
   registerBrowserNodeElectronMain({
     ...chromeCookieImport,
+    automationRegistry,
     channels: {
       ...desktopIpcChannels.browser,
       openDevTools: isBrowserDevToolsEnabled()
@@ -248,6 +260,12 @@ export function registerBrowserIpc(
       payload: normalizeBrowserGuestDiagnosticPayload(payload),
       webContentsId: event.sender.id
     });
+  });
+
+  return createBrowserNodeAutomationServer({
+    listenerInfoPath: resolveBrowserNodeAutomationListenerInfoPath(),
+    logger,
+    registry: automationRegistry
   });
 }
 

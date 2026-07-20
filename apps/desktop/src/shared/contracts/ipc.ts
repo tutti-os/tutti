@@ -41,7 +41,8 @@ import type {
   BrowserNodeSetZoomFactorInput,
   BrowserNodeShowDevToolsContextMenuInput,
   BrowserNodeStopFindInPageInput,
-  BrowserNodeUnregisterGuestInput
+  BrowserNodeUnregisterGuestInput,
+  BrowserNodeUpdateAutomationTargetInput
 } from "@tutti-os/browser-node";
 import type {
   TuttiExternalAtQueryInput,
@@ -178,7 +179,8 @@ export const desktopIpcChannels = {
     setZoomFactor: "browser:setZoomFactor",
     showDevToolsContextMenu: "browser:showDevToolsContextMenu",
     stopFindInPage: "browser:stopFindInPage",
-    unregisterGuest: "browser:unregisterGuest"
+    unregisterGuest: "browser:unregisterGuest",
+    updateAutomationTarget: "browser:updateAutomationTarget"
   },
   dockPreviewCache: {
     read: "dock-preview-cache:read",
@@ -945,6 +947,8 @@ export interface DesktopInvokePayloadByChannel {
     .showDevToolsContextMenu]: BrowserNodeShowDevToolsContextMenuInput;
   [desktopIpcChannels.browser.stopFindInPage]: BrowserNodeStopFindInPageInput;
   [desktopIpcChannels.browser.unregisterGuest]: BrowserNodeUnregisterGuestInput;
+  [desktopIpcChannels.browser
+    .updateAutomationTarget]: BrowserNodeUpdateAutomationTargetInput;
   [desktopIpcChannels.dockPreviewCache.read]: DesktopReadDockPreviewInput;
   [desktopIpcChannels.dockPreviewCache.write]: DesktopWriteDockPreviewInput;
   [desktopIpcChannels.developer.clearLogs]: undefined;
@@ -1118,6 +1122,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.browser.showDevToolsContextMenu]: void;
   [desktopIpcChannels.browser.stopFindInPage]: void;
   [desktopIpcChannels.browser.unregisterGuest]: void;
+  [desktopIpcChannels.browser.updateAutomationTarget]: void;
   [desktopIpcChannels.dockPreviewCache.read]: string | null;
   [desktopIpcChannels.dockPreviewCache.write]: void;
   [desktopIpcChannels.developer.clearLogs]: ClearDeveloperLogsResult;

@@ -93,3 +93,22 @@ dock label, matches Browser nodes back to the dock entry, and restores popup
 title, URL subtitle, and preview capture from the Browser runtime state.
 Hosts that want the package-owned default dock visual can import it explicitly
 from `@tutti-os/browser-node/assets/workspace-dock-website.png`.
+
+## Browser Home and Agent automation
+
+`BrowserNode` accepts an optional `renderHome` function for empty tabs. The
+function receives the tab node id and a `navigate(url)` callback, allowing a
+host to render live sandbox ports or other product-owned shortcuts without
+forking the Browser surface.
+
+Electron hosts may attach `automationTarget` metadata to User Browser and
+Agent Browser surfaces. The package registry then exposes the current
+workspace's User tabs and only the calling Agent session's Agent tabs, with
+stable page selection and per-tab leases. Website Apps remain excluded unless
+a host explicitly opts them in.
+
+`createBrowserNodeAutomationServer` publishes the registry on authenticated
+loopback and writes a private listener-info file for an explicitly configured
+daemon. `createBrowserNodeAutomationNetworkAuthorizer` provides the standard
+public HTTP/HTTPS plus loopback policy and blocks private, link-local, metadata,
+multicast, and local-network pages from inspect/control calls.

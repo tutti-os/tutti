@@ -16,6 +16,7 @@ import {
 import type { JSX, ReactNode } from "react";
 import type { BrowserNodeFeature } from "../core/feature.ts";
 import type {
+  BrowserNodeAutomationTargetMetadata,
   BrowserNodeNavigationPolicy,
   BrowserNodeRuntimeError,
   BrowserNodeSessionMode
@@ -40,6 +41,7 @@ import {
   isBrowserNodeHostOverlayOpen,
   subscribeBrowserNodeHostOverlay
 } from "./browserNodeHostOverlayStore.ts";
+import { isBrowserNodeHomeUrl } from "./browserNodeHome.ts";
 
 // Electron needs the serialized string attribute for dynamically created webviews.
 const browserNodeAllowPopupsAttribute = "true" as unknown as boolean;
@@ -73,9 +75,14 @@ function useHostWindowMinimizing(): boolean {
 }
 
 export interface BrowserNodeProps {
+  automationTarget?: Omit<
+    BrowserNodeAutomationTargetMetadata,
+    "selected" | "surfaceId" | "tabId"
+  > | null;
   defaultUrl: string;
   feature: BrowserNodeFeature;
   hidden?: boolean;
+  renderHome?: (context: BrowserNodeHomeRenderContext) => ReactNode;
   navigationPolicy?: BrowserNodeNavigationPolicy | null;
   navigationActions?: ReactNode;
   nodeId: string;
@@ -89,10 +96,17 @@ export interface BrowserNodeProps {
   tabs?: boolean;
 }
 
+export interface BrowserNodeHomeRenderContext {
+  navigate(url: string): Promise<void>;
+  nodeId: string;
+}
+
 export function BrowserNode({
+  automationTarget = null,
   defaultUrl,
   feature,
   hidden = false,
+  renderHome,
   navigationPolicy = null,
   navigationActions,
   nodeId,
@@ -108,9 +122,11 @@ export function BrowserNode({
   if (tabs) {
     return (
       <TabbedBrowserNode
+        automationTarget={automationTarget}
         defaultUrl={defaultUrl}
         feature={feature}
         hidden={hidden}
+        renderHome={renderHome}
         navigationPolicy={navigationPolicy}
         navigationActions={navigationActions}
         nodeId={nodeId}
@@ -127,9 +143,20 @@ export function BrowserNode({
 
   return (
     <BrowserNodeContent
+      automationTarget={
+        automationTarget
+          ? {
+              ...automationTarget,
+              selected: true,
+              surfaceId: nodeId,
+              tabId: null
+            }
+          : null
+      }
       defaultUrl={defaultUrl}
       feature={feature}
       hidden={hidden}
+      renderHome={renderHome}
       navigationPolicy={navigationPolicy}
       navigationActions={navigationActions}
       nodeId={nodeId}
@@ -145,9 +172,11 @@ export function BrowserNode({
 }
 
 function TabbedBrowserNode({
+  automationTarget,
   defaultUrl,
   feature,
   hidden,
+  renderHome,
   navigationPolicy,
   navigationActions,
   nodeId,
@@ -213,9 +242,20 @@ function TabbedBrowserNode({
                 key={tab.id}
               >
                 <BrowserNodeContent
+                  automationTarget={
+                    automationTarget
+                      ? {
+                          ...automationTarget,
+                          selected: active,
+                          surfaceId: nodeId,
+                          tabId: tab.id
+                        }
+                      : null
+                  }
                   defaultUrl={tab.defaultUrl}
                   feature={feature}
                   hidden={hidden || !active}
+                  renderHome={renderHome}
                   navigationPolicy={navigationPolicy}
                   nodeId={tab.nodeId}
                   onFocusRequest={onFocusRequest}
@@ -239,9 +279,11 @@ function TabbedBrowserNode({
 }
 
 function BrowserNodeContent({
+  automationTarget = null,
   defaultUrl,
   feature,
   hidden = false,
+  renderHome,
   navigationPolicy = null,
   navigationActions,
   nodeId,
@@ -253,7 +295,8 @@ function BrowserNodeContent({
   sessionPartition = null,
   showHeader = false,
   syncDefaultUrl = false
-}: Omit<BrowserNodeProps, "tabs"> & {
+}: Omit<BrowserNodeProps, "automationTarget" | "tabs"> & {
+  automationTarget?: BrowserNodeAutomationTargetMetadata | null;
   onWebviewChange?: (webview: BrowserNodeWebviewTag | null) => void;
 }): JSX.Element {
   const { state } = useBrowserNodeController({
@@ -279,6 +322,11 @@ function BrowserNodeContent({
     ? formatBrowserNodeErrorStatus(feature, runtime.error)
     : null;
   const isShowingLoadError = errorMessage !== null;
+  const isShowingHome =
+    renderHome !== undefined &&
+    !isShowingLoadError &&
+    !runtime.isLoading &&
+    isBrowserNodeHomeUrl(runtime.url ?? state.displayUrl);
   const openExternalUrl = resolveBrowserNodeOpenExternalUrl(feature, state);
   const {
     devToolsContextMenu,
@@ -290,6 +338,7 @@ function BrowserNodeContent({
     webviewPartition,
     webviewSrc
   } = useBrowserNodeWebview({
+    automationTarget,
     feature,
     initialUrl: state.displayUrl,
     lifecycle: runtime.lifecycle,
@@ -362,6 +411,7 @@ function BrowserNodeContent({
               className={cn(
                 "absolute inset-0 h-full w-full border-0 bg-[var(--background-panel)]",
                 isShowingLoadError ? "hidden pointer-events-none" : "visible",
+                isShowingHome && "invisible pointer-events-none",
                 shouldHideBrowserNodeWebview({
                   hidden,
                   isHostMinimizing,
@@ -373,6 +423,24 @@ function BrowserNodeContent({
               partition={webviewPartition}
               src={webviewSrc}
             />
+          ) : null}
+          {isShowingHome ? (
+            <div className="absolute inset-0 z-10 overflow-auto bg-[var(--background-panel)]">
+              {renderHome({
+                navigate: async (url) => {
+                  const resolved = feature.resolveAddressInput(url);
+                  if (!resolved.url) {
+                    return;
+                  }
+                  await feature.hostApi.navigate({
+                    navigationPolicy,
+                    nodeId,
+                    url: resolved.url
+                  });
+                },
+                nodeId
+              })}
+            </div>
           ) : null}
           {errorMessage ? (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--background-panel)] px-8 py-10 text-center">

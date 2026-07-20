@@ -136,6 +136,12 @@ export function createBrowserNodeElectronRendererApi(input: {
         }
       : {}),
     unregisterGuest: (payload) =>
-      invoke<void>(channels.unregisterGuest, payload)
+      invoke<void>(channels.unregisterGuest, payload),
+    ...(channels.updateAutomationTarget
+      ? {
+          updateAutomationTarget: (payload) =>
+            invoke<void>(channels.updateAutomationTarget!, payload)
+        }
+      : {})
   };
 }

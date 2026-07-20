@@ -81,6 +81,10 @@ export function createWorkspaceBrowserContribution(input: {
     }),
     feature,
     node: {
+      automationTarget: {
+        surfaceRole: "user",
+        workspaceId: input.workspaceId
+      },
       renderTrafficLights: input.renderTrafficLights
     },
     typeId: workspaceBrowserNodeID

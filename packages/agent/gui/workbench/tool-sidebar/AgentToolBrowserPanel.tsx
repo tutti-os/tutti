@@ -3,6 +3,7 @@ import {
   createBrowserNodeFeature,
   isBrowserNodeSurfaceEvent,
   type BrowserNodeChromeImportPromptAdapter,
+  type BrowserNodeAutomationTargetMetadata,
   type BrowserNodeFeature,
   type BrowserNodeHostApi,
   type BrowserNodeSessionMode
@@ -18,6 +19,10 @@ const LazyBrowserNode = lazy(() =>
 export const agentToolBrowserDefaultUrl = "https://www.google.com/";
 
 export interface AgentToolBrowserPanelProps {
+  automationTarget?: Omit<
+    BrowserNodeAutomationTargetMetadata,
+    "focused" | "selected" | "surfaceId" | "tabId"
+  > | null;
   browserApi: BrowserNodeHostApi;
   chromeCookieImportPrompt?: BrowserNodeChromeImportPromptAdapter;
   defaultUrl?: string;
@@ -32,6 +37,7 @@ export interface AgentToolBrowserPanelProps {
 }
 
 export function AgentToolBrowserPanel({
+  automationTarget = null,
   browserApi,
   chromeCookieImportPrompt,
   defaultUrl = agentToolBrowserDefaultUrl,
@@ -64,6 +70,9 @@ export function AgentToolBrowserPanel({
     >
       <Suspense fallback={loadingFallback}>
         <LazyBrowserNode
+          automationTarget={
+            automationTarget ? { ...automationTarget, focused: !hidden } : null
+          }
           defaultUrl={defaultUrl}
           feature={feature}
           hidden={hidden}

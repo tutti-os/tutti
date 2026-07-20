@@ -1,4 +1,5 @@
 import type {
+  BrowserNodeAutomationTargetMetadata,
   BrowserNodeLifecycle,
   BrowserNodeNavigationPolicy,
   BrowserNodeSessionMode
@@ -49,6 +50,7 @@ import {
 
 interface BrowserGuestSession {
   appliedColorScheme: BrowserPreferredColorScheme | null;
+  automationTarget: BrowserNodeAutomationTargetMetadata | null;
   contents: BrowserGuestWebContents | null;
   desiredUrl: string;
   findQuery: string;
@@ -98,6 +100,7 @@ async function applyPreferredColorSchemeToGuest(
 }
 
 export function createBrowserGuestManager({
+  automationRegistry,
   chooseDownloadDirectory,
   emit,
   getPreferredColorScheme,
@@ -127,6 +130,7 @@ export function createBrowserGuestManager({
   const getSession = (
     nodeId: string,
     input?: {
+      automationTarget?: BrowserNodeAutomationTargetMetadata | null;
       navigationPolicy?: BrowserNodeNavigationPolicy | null;
       profileId?: string | null;
       sessionMode?: BrowserNodeSessionMode;
@@ -136,6 +140,9 @@ export function createBrowserGuestManager({
   ): BrowserGuestSession => {
     const existing = sessions.get(nodeId);
     if (existing) {
+      if (input?.automationTarget !== undefined) {
+        existing.automationTarget = input.automationTarget;
+      }
       if (input?.profileId !== undefined) {
         existing.profileId = input.profileId;
       }
@@ -156,6 +163,7 @@ export function createBrowserGuestManager({
 
     const session: BrowserGuestSession = {
       appliedColorScheme: null,
+      automationTarget: input?.automationTarget ?? null,
       contents: null,
       desiredUrl: input?.url ?? "about:blank",
       findQuery: "",
@@ -204,6 +212,7 @@ export function createBrowserGuestManager({
       }
     }
     session.listeners = [];
+    automationRegistry?.unregister(session.nodeId, contents);
     session.contents = null;
     session.appliedColorScheme = null;
     session.webContentsId = null;
@@ -693,6 +702,7 @@ export function createBrowserGuestManager({
       }
 
       const session = getSession(input.nodeId, {
+        automationTarget: input.automationTarget,
         navigationPolicy: input.navigationPolicy,
         profileId: input.profileId,
         sessionMode: input.sessionMode,
@@ -703,6 +713,15 @@ export function createBrowserGuestManager({
         session.webContentsId === input.webContentsId &&
         session.contents === contents
       ) {
+        if (session.automationTarget) {
+          automationRegistry?.register(
+            session.nodeId,
+            contents,
+            session.automationTarget
+          );
+        } else {
+          automationRegistry?.unregister(session.nodeId, contents);
+        }
         publishState(session);
         return;
       }
@@ -716,6 +735,13 @@ export function createBrowserGuestManager({
         downloadController.attach(contents.session);
       }
       session.lifecycle = "active";
+      if (session.automationTarget) {
+        automationRegistry?.register(
+          session.nodeId,
+          contents,
+          session.automationTarget
+        );
+      }
       contents.setWindowOpenHandler?.(({ url }) => {
         if (isGoogleGisOAuthPopupUrl(url)) {
           logger?.info?.("Browser Node allowing Google GIS OAuth popup", {
@@ -791,7 +817,23 @@ export function createBrowserGuestManager({
       detachGuest(session);
       return Promise.resolve();
     },
+    updateAutomationTarget(nodeId, metadata) {
+      const session = sessions.get(nodeId);
+      if (!session) {
+        return;
+      }
+      session.automationTarget = metadata;
+      if (metadata && session.contents && !session.contents.isDestroyed()) {
+        automationRegistry?.register(nodeId, session.contents, metadata);
+      } else {
+        automationRegistry?.unregister(nodeId, session.contents);
+      }
+    },
     dispose() {
+      for (const session of sessions.values()) {
+        detachGuest(session);
+      }
+      sessions.clear();
       unsubscribePreferredColorScheme?.();
       downloadController.dispose();
     }

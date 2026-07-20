@@ -9,6 +9,7 @@ import (
 
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 )
 
 const appID = "browser"
@@ -17,7 +18,7 @@ var errBrowserUnavailable = errors.New("browser service is unavailable")
 
 // BrowserService is the subset of the daemon browser service the CLI needs.
 type BrowserService interface {
-	CallTool(ctx context.Context, workspaceID, cwd, tool string, args map[string]any) (browsersvc.ToolResult, error)
+	CallToolForAgent(ctx context.Context, workspaceID, cwd, agentSessionID, tool string, args map[string]any) (browsersvc.ToolResult, error)
 }
 
 type Provider struct {
@@ -40,6 +41,9 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newFillCommand(),
 		p.newEvalCommand(),
 		p.newListPagesCommand(),
+		p.newPageCommand(),
+		p.newSelectPageCommand(),
+		p.newClosePageCommand(),
 	}
 }
 
@@ -47,11 +51,18 @@ func (p Provider) Commands() []cliservice.Command {
 // browser service surfaces
 // tool errors (e.g. "Chrome not installed", "browser MCP failed to start") as
 // Go errors, which the CLI renders to the agent.
-func (p Provider) call(ctx context.Context, workspaceID string, tool string, args map[string]any) (string, error) {
+func (p Provider) call(ctx context.Context, invoke framework.InvokeContext, tool string, args map[string]any) (string, error) {
 	if p.browser == nil {
 		return "", errBrowserUnavailable
 	}
-	result, err := p.browser.CallTool(ctx, workspaceID, "", tool, args)
+	result, err := p.browser.CallToolForAgent(
+		ctx,
+		invoke.WorkspaceID,
+		"",
+		invoke.Request.Context.AgentSessionID,
+		tool,
+		args,
+	)
 	if err != nil {
 		return "", err
 	}

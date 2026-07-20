@@ -29,6 +29,8 @@ export {
 } from "./core/tabsLifecycle.ts";
 export type {
   BrowserNodeActivationInput,
+  BrowserNodeAutomationSurfaceRole,
+  BrowserNodeAutomationTargetMetadata,
   BrowserNodeClosedEvent,
   BrowserNodeContextMenuPoint,
   BrowserNodeCookieImportResult,
@@ -74,7 +76,8 @@ export type {
   BrowserNodeShowDevToolsContextMenuInput,
   BrowserNodeStateEvent,
   BrowserNodeStopFindInPageInput,
-  BrowserNodeUnregisterGuestInput
+  BrowserNodeUnregisterGuestInput,
+  BrowserNodeUpdateAutomationTargetInput
 } from "./core/types.ts";
 export type {
   BrowserAddressInputResolution,

@@ -42,6 +42,7 @@ export type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSideba
 
 interface StandaloneAgentToolSidebarProps {
   activityService: WorkspaceAgentActivityService;
+  agentSessionId: string | null;
   appOpenId?: string | null;
   appI18n: I18nRuntime<string>;
   browserApi?: DesktopBrowserApi;
@@ -68,6 +69,7 @@ interface StandaloneAgentToolSidebarProps {
 
 export function StandaloneAgentToolSidebar({
   activityService,
+  agentSessionId,
   appOpenId = null,
   appI18n,
   browserApi,
@@ -288,6 +290,7 @@ export function StandaloneAgentToolSidebar({
         renderPanel={({ active, closeSidebar, tab }) => (
           <StandaloneAgentToolSidebarPanel
             active={active}
+            agentSessionId={agentSessionId}
             appI18n={appI18n}
             activityService={activityService}
             browserApi={browserApi}

@@ -141,6 +141,14 @@ The Browser Node package owns:
 - the reusable macOS Chrome Stable Profile, SQLite snapshot, Keychain, and
   Cookie decryption adapter
 - default package i18n resources for generic browser behavior
+- an optional host-rendered Browser Home slot for empty tabs; the host owns
+  service discovery and product-specific shortcuts while the package owns
+  navigation back into the guest
+- Electron BrowserNode automation target registration, CDP-backed snapshot,
+  interaction, evaluation, navigation, and screenshot mechanics
+- per-Agent stable page selection and per-tab automation leases
+- an authenticated loopback automation endpoint that a daemon can select
+  explicitly instead of launching a second browser backend
 
 The host owns:
 
@@ -159,6 +167,42 @@ The host owns:
 - product authorization and host allowlist policy
 - daemon or server clients
 - any business mutation triggered by a guest page
+- which BrowserNode surfaces are visible to automation, how Agent Browser tabs
+  are created/selected/closed, and when an Agent lease is released
+- automation network authorization; listing may expose a restricted page's
+  title and URL, but inspect/control calls must fail closed
+
+## Browser automation projection
+
+BrowserNode is the desktop browser authority. A host opts individual tabs into
+automation by attaching metadata with the workspace, surface role (`user` or
+`agent`), optional Agent session, selected state, and focus state. Website App
+guests do not attach this metadata and therefore never enter the automation
+registry.
+
+The registry exposes User Browser tabs in the current workspace plus Agent
+Browser tabs owned by the calling Agent session. The most recently focused
+selected tab is the initial target; an explicit page selection remains stable
+for later calls. A tab has one time-limited Agent automation lease, while user
+input remains available through Electron throughout the lease.
+
+Desktop hosts publish the registry over a versioned HTTP endpoint bound to
+`127.0.0.1` with a random bearer token stored in a mode-`0600` listener-info
+file. The managed daemon receives that file path explicitly. When configured,
+it must fail if the BrowserNode host is unavailable and must not fall back to a
+separate Chrome process. A daemon without the configuration remains the
+explicit headless mode and may own managed Chrome.
+
+Network authorization runs before leasing or operating a tab. The standard
+desktop policy allows public HTTP/HTTPS destinations and loopback sandbox
+previews, while rejecting private, link-local, metadata, multicast, and local
+network targets. `list_pages` remains metadata-only so an Agent can report the
+title and URL of a restricted page without reading its contents.
+
+`BrowserNode` also accepts a `renderHome` slot. The package shows it only for
+an empty/`about:blank` tab and supplies a package-owned navigation callback.
+Hosts can use the slot for live sandbox service-port shortcuts without moving
+runtime discovery or product UI into this package.
 
 Browser data actions are scoped through the registered guest's Electron
 session. Clearing data therefore affects the active Browser Node partition:

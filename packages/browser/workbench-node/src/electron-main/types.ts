@@ -1,5 +1,6 @@
 import type {
   BrowserNodeActivationInput,
+  BrowserNodeAutomationTargetMetadata,
   BrowserNodeChromeCookieImportInput,
   BrowserNodeChromeProfileId,
   BrowserNodeCookieImportResult,
@@ -22,6 +23,7 @@ import type {
   BrowserNodeStopFindInPageInput,
   BrowserNodeUnregisterGuestInput
 } from "../core/types.ts";
+import type { BrowserNodeAutomationTargetRegistry } from "./automationTypes.ts";
 
 export interface BrowserGuestManager {
   activate(input: BrowserNodeActivationInput): Promise<void>;
@@ -66,6 +68,10 @@ export interface BrowserGuestManager {
   setZoomFactor(input: BrowserNodeSetZoomFactorInput): Promise<void>;
   stopFindInPage(input: BrowserNodeStopFindInPageInput): Promise<void>;
   unregisterGuest(input: BrowserNodeUnregisterGuestInput): Promise<void>;
+  updateAutomationTarget(
+    nodeId: string,
+    metadata: BrowserNodeAutomationTargetMetadata
+  ): void;
 }
 
 export type BrowserNodeShowDevToolsContextMenuPayload =
@@ -74,6 +80,7 @@ export type BrowserNodeShowDevToolsContextMenuPayload =
 export type BrowserPreferredColorScheme = "dark" | "light";
 
 export interface BrowserGuestManagerInput {
+  automationRegistry?: BrowserNodeAutomationTargetRegistry;
   emit: (event: BrowserNodeEvent) => void;
   getPreferredColorScheme?: () => BrowserPreferredColorScheme;
   chooseDownloadDirectory?: () => Promise<string | null>;
