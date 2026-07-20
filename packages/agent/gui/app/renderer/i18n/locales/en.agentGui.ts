@@ -50,6 +50,7 @@ export const enAgentGui = {
   },
   targetSetupChecking: "Checking local and Tutti-managed runtimes…",
   targetSetupInstall: "Install runtime",
+  targetSetupReinstall: "Reinstall runtime",
   targetSetupStarting: "Starting installation…",
   targetSetupAuthMethod: "Sign-in method",
   targetSetupAuthenticate: "Continue to sign in",
