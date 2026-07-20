@@ -79,6 +79,7 @@ export interface WorkspaceWorkbenchShellRuntime {
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: WorkbenchDockPlacement;
   defaultAgentProvider: WorkspaceAgentProvider;
+  dockRetentionByEntryId: Readonly<Record<string, boolean>>;
   featureFlags: DesktopFeatureFlags;
   minimizeAnimation: DesktopMinimizeAnimation;
   hostInput: ReturnType<
@@ -104,6 +105,7 @@ export interface WorkspaceWorkbenchShellRuntime {
   onWorkbenchHostHandleReady: (host: WorkbenchHostHandle | null) => void;
   onWorkbenchCloseGuardHostReady: (host: WorkbenchHostHandle | null) => void;
   requestWindowClose: () => Promise<"approved" | "blocked">;
+  setDockEntryRetained: (entryId: string, retained: boolean) => Promise<void>;
   selectWallpaper: (wallpaperId: WorkspaceWallpaperId) => void;
   selectWallpaperDisplayMode: (
     displayMode: WorkspaceWallpaperDisplayMode
@@ -154,6 +156,11 @@ export function useWorkspaceWorkbenchShellRuntime({
     (listener) => workbenchHostService.subscribeWallpaperChanges(listener),
     () => workbenchHostService.getWallpaperRevision(),
     () => workbenchHostService.getWallpaperRevision()
+  );
+  const dockRetentionRevision = useSyncExternalStore(
+    workbenchHostService.dockRetention.subscribe,
+    workbenchHostService.dockRetention.getRevision,
+    workbenchHostService.dockRetention.getRevision
   );
   const workbenchDesktopI18n = useMemo(
     () => createWorkspaceWorkbenchDesktopI18nRuntime(appI18n),
@@ -420,6 +427,22 @@ export function useWorkspaceWorkbenchShellRuntime({
     },
     [hostSession, shellRuntimeController]
   );
+  const setDockEntryRetained = useCallback(
+    (entryId: string, retained: boolean) =>
+      workbenchHostService.dockRetention.setRetained(
+        state.workspace.id,
+        entryId,
+        retained
+      ),
+    [state.workspace.id, workbenchHostService]
+  );
+  const dockRetentionByEntryId = useMemo(
+    () =>
+      workbenchHostService.dockRetention.readRetainedByEntryId(
+        state.workspace.id
+      ),
+    [dockRetentionRevision, state.workspace.id, workbenchHostService]
+  );
 
   return {
     appI18n,
@@ -430,6 +453,7 @@ export function useWorkspaceWorkbenchShellRuntime({
     },
     dockIconStyle: desktopPreferencesState.dockIconStyle,
     dockPlacement: desktopPreferencesState.dockPlacement,
+    dockRetentionByEntryId,
     defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
     featureFlags: desktopPreferencesState.featureFlags,
     hostInput: shellRuntimeSnapshot.hostInput,
@@ -448,6 +472,7 @@ export function useWorkspaceWorkbenchShellRuntime({
     onWorkbenchHostHandleReady: handleWorkbenchHostReady,
     onWorkbenchCloseGuardHostReady: handleWorkbenchCloseGuardHostReady,
     requestWindowClose: () => shellRuntimeController.requestWindowClose(),
+    setDockEntryRetained,
     selectWallpaper: shellRuntimeController.wallpaperSelection.selectWallpaper,
     selectWallpaperDisplayMode:
       shellRuntimeController.wallpaperSelection.selectDisplayMode,

@@ -61,6 +61,13 @@ Entries may also provide host-owned popup metadata through
 `resolvePopupItem(...)` and `capturePopupItemPreview(...)`, plus custom badge
 content when the default count or status shapes are not enough.
 
+Presentation-only changes to merged Dock entries belong in
+`dockEntryPresentationOverrides`. `WorkbenchHost` applies these overrides by
+entry id after contributions and explicit entries are merged, preserving Dock
+order without changing contribution nodes or rebuilding the host session. Use
+this seam for host-owned visibility and retention presentation; keep product
+preference persistence in the consuming host.
+
 Dock, shortcut, and command opens flow through `launchNode(...)` and the
 optional `onLaunchRequest(...)` callback. The host may create a business
 instance asynchronously, then return the shell identity, title, default frame,
