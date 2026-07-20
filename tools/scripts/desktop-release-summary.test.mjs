@@ -18,6 +18,34 @@ import {
   SECTION_START,
   buildUpdatedReleaseBody
 } from "../../apps/desktop/scripts/upsert-release-summary.mjs";
+import { validateReleaseSummary } from "../../apps/desktop/scripts/validate-release-summary.mjs";
+
+function validReleaseSummary(overrides = {}) {
+  return {
+    schemaVersion: "tutti.desktop.release.summary.v1",
+    tag: "v1.2.4-rc.1",
+    version: "1.2.4-rc.1",
+    channel: "rc",
+    prerelease: true,
+    targetCommit: "0123456789abcdef",
+    compare: { from: "v1.2.4-rc.0", range: "v1.2.4-rc.0..HEAD", to: "HEAD" },
+    generatedAt: "2026-07-21T00:00:00.000Z",
+    summarySource: "fallback",
+    zh: {
+      headline: "本次版本优化发布流程。",
+      sections: [{ title: "发布与更新", items: ["验证候选版本。"] }],
+      qaFocus: ["验证更新。"]
+    },
+    en: {
+      headline: "This release improves the release flow.",
+      sections: [
+        { title: "Release and Updates", items: ["Validate the candidate."] }
+      ],
+      qaFocus: ["Verify updates."]
+    },
+    ...overrides
+  };
+}
 
 test("desktop release summary classifies commit messages for human sections", () => {
   assert.equal(
@@ -156,4 +184,27 @@ test("desktop release summary trims only generated notes at GitHub's body limit"
   assert.match(nextBody, /generated note 0:/);
   assert.doesNotMatch(nextBody, /generated note 1999:/);
   assert.ok(nextBody.includes(RELEASE_NOTES_TRUNCATION_NOTICE));
+});
+
+test("desktop release summary validator accepts a complete staged summary", () => {
+  const summary = validReleaseSummary();
+  assert.equal(
+    validateReleaseSummary(summary, {
+      tag: summary.tag,
+      channel: summary.channel,
+      targetCommit: summary.targetCommit
+    }),
+    summary
+  );
+});
+
+test("desktop release summary validator rejects inconsistent or incomplete summaries", () => {
+  assert.throws(
+    () => validateReleaseSummary(validReleaseSummary({ prerelease: false })),
+    /prerelease flag/
+  );
+  assert.throws(
+    () => validateReleaseSummary(validReleaseSummary({ en: { headline: "" } })),
+    /en.headline/
+  );
 });
