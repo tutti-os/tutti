@@ -375,7 +375,13 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         // An update action only exists after explicit remote discovery. Keep
         // this retry on the update-only path so a stale UI click never turns
         // into an unrelated forced readiness probe.
-        await this.checkUpdates([provider]);
+        try {
+          await this.checkUpdates([provider]);
+        } catch {
+          // requestStatuses already records the discovery failure. Continue
+          // to the missing-action notification so a stale click never leaks
+          // an unhandled rejection when the device is offline.
+        }
       } else {
         await this.refresh([provider]);
       }

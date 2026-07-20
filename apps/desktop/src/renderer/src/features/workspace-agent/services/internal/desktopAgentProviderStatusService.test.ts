@@ -430,6 +430,42 @@ test("runAction update failures notify through i18n", async () => {
   assert.equal(notifications.items[0]?.title, "Update failed");
 });
 
+test("runAction reports a stale update action when rediscovery fails", async () => {
+  const notifications = createNotificationRecorder();
+  let requestCount = 0;
+  const service = new DesktopAgentProviderStatusService(
+    {
+      tuttidClient: {
+        async getAgentProviderStatuses() {
+          requestCount += 1;
+          if (requestCount === 1) {
+            return createStatusResponse([
+              createProviderStatus({ actions: [], availability: "ready" })
+            ]);
+          }
+          throw new Error("offline");
+        }
+      } as Partial<TuttidClient> as TuttidClient,
+      terminalCommandRunner: {
+        async runTerminalCommand() {}
+      }
+    },
+    notifications.service
+  );
+
+  await service.refresh(["codex"]);
+  await service.runAction("codex", "update", { origin: "user" });
+
+  assert.equal(requestCount, 2);
+  assert.deepEqual(notifications.items, [
+    {
+      description: undefined,
+      tone: "error",
+      title: "Update failed"
+    }
+  ]);
+});
+
 test("a local-only refresh keeps the network the wizard fetched", async () => {
   const network = {
     registry: { reachable: true, endpoint: "https://registry.npmjs.org" },
