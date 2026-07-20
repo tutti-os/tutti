@@ -37,10 +37,26 @@ func ValidateSpec[T any](spec CommandSpec[T]) error {
 	if spec.Output.DefaultMode == "" {
 		return fmt.Errorf("%w: default output mode is required", cliservice.ErrInvalidCommand)
 	}
+	if err := validateExecution(spec.Execution, spec.Output); err != nil {
+		return err
+	}
 	if err := validateInputs(spec.Inputs); err != nil {
 		return err
 	}
 	return validateOutput(spec.Kind, spec.Output)
+}
+
+func validateExecution(execution *cliservice.CommandExecution, output OutputSpec) error {
+	if execution == nil {
+		return nil
+	}
+	if execution.Mode != cliservice.CommandExecutionModeWait {
+		return fmt.Errorf("%w: invalid execution mode %q", cliservice.ErrInvalidCommand, execution.Mode)
+	}
+	if output.DefaultMode != cliservice.OutputModeJSON || output.Continuation == nil {
+		return fmt.Errorf("%w: wait execution requires json default output and a continuation formatter", cliservice.ErrInvalidCommand)
+	}
+	return nil
 }
 
 func validateInputs(input InputSpec) error {

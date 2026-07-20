@@ -78,6 +78,33 @@ func TestListCliCapabilitiesCanIncludeIntegrationCapabilities(t *testing.T) {
 	}
 }
 
+func TestGeneratedCliWaitContractPreservesExecutionAndContinuation(t *testing.T) {
+	capability := generatedCliCapability(cliservice.Capability{
+		ID:               "app.workflow.runs.wait",
+		Path:             []string{"workflow", "runs", "wait"},
+		Summary:          "Wait for a run",
+		Output:           cliservice.CapabilityOutput{DefaultMode: cliservice.OutputModeJSON, JSON: true},
+		Execution:        &cliservice.CommandExecution{Mode: cliservice.CommandExecutionModeWait},
+		HandlerTimeoutMs: 45000,
+		Source:           cliservice.CapabilitySource{Kind: cliservice.CapabilitySourceApp},
+	})
+	if capability.Execution == nil || capability.Execution.Mode != tuttigenerated.Wait ||
+		capability.HandlerTimeoutMs == nil || *capability.HandlerTimeoutMs != 45000 {
+		t.Fatalf("capability = %#v", capability)
+	}
+	output := generatedCliCommandOutput(cliservice.CommandOutput{
+		Kind:  cliservice.OutputModeJSON,
+		Value: map[string]any{"status": "running"},
+		Continuation: &cliservice.CommandContinuation{
+			State: cliservice.CommandContinuationStatePending, RetryAfterMs: 500,
+		},
+	})
+	if output.Continuation == nil || output.Continuation.State != tuttigenerated.CliCommandContinuationStatePending ||
+		output.Continuation.RetryAfterMs != 500 {
+		t.Fatalf("output = %#v", output)
+	}
+}
+
 type testFilteringCLIProvider struct{}
 
 func (testFilteringCLIProvider) AppID() string {

@@ -25,11 +25,12 @@ func (a runtimePrepCommandCatalog) Capabilities(ctx context.Context, input runti
 	out := make([]runtimeprep.CommandCapability, 0, len(capabilities))
 	for _, capability := range capabilities {
 		out = append(out, runtimeprep.CommandCapability{
-			ID:          capability.ID,
-			Path:        append([]string(nil), capability.Path...),
-			Summary:     capability.Summary,
-			Description: capability.Description,
-			InputSchema: capability.InputSchema,
+			ID:            capability.ID,
+			Path:          append([]string(nil), capability.Path...),
+			Summary:       capability.Summary,
+			Description:   capability.Description,
+			InputSchema:   capability.InputSchema,
+			ExecutionMode: commandExecutionMode(capability.Execution),
 			Source: runtimeprep.CommandSource{
 				Kind:    runtimeprep.CommandSourceKind(capability.Source.Kind),
 				AppID:   capability.Source.AppID,
@@ -38,4 +39,11 @@ func (a runtimePrepCommandCatalog) Capabilities(ctx context.Context, input runti
 		})
 	}
 	return out
+}
+
+func commandExecutionMode(execution *cliservice.CommandExecution) string {
+	if execution == nil {
+		return ""
+	}
+	return string(execution.Mode)
 }

@@ -21,6 +21,33 @@ func TestNewClientUsesStartupFriendlyTimeout(t *testing.T) {
 	}
 }
 
+func TestInvokeWithTimeoutOverridesDefaultClientBudget(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(40 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+	}))
+	defer server.Close()
+
+	client := &Client{
+		baseURL: server.URL,
+		token:   "token-1",
+		httpClient: &http.Client{
+			Timeout: 10 * time.Millisecond,
+		},
+	}
+	response, err := client.InvokeWithTimeout(context.Background(), "wait.command", InvokeRequest{}, 100*time.Millisecond)
+	if err != nil {
+		t.Fatalf("InvokeWithTimeout() error = %v", err)
+	}
+	if response.Output == nil || response.Output.Value["ok"] != true {
+		t.Fatalf("response = %#v", response)
+	}
+	if client.httpClient.Timeout != 10*time.Millisecond {
+		t.Fatalf("shared client timeout mutated to %s", client.httpClient.Timeout)
+	}
+}
+
 func TestDoJSONReportsTimeoutSeparatelyFromUnreachable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(50 * time.Millisecond)

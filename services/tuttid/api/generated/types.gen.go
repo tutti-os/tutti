@@ -769,6 +769,36 @@ func (e CliCapabilityVisibility) Valid() bool {
 	}
 }
 
+// Defines values for CliCommandContinuationState.
+const (
+	CliCommandContinuationStatePending CliCommandContinuationState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the CliCommandContinuationState enum.
+func (e CliCommandContinuationState) Valid() bool {
+	switch e {
+	case CliCommandContinuationStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CliCommandExecutionMode.
+const (
+	Wait CliCommandExecutionMode = "wait"
+)
+
+// Valid indicates whether the value is a known member of the CliCommandExecutionMode enum.
+func (e CliCommandExecutionMode) Valid() bool {
+	switch e {
+	case Wait:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CliOutputMode.
 const (
 	Json     CliOutputMode = "json"
@@ -1680,22 +1710,22 @@ func (e WorkspaceAgentTurnCancelResultReason) Valid() bool {
 
 // Defines values for WorkspaceAgentTurnOutcome.
 const (
-	WorkspaceAgentTurnOutcomeCanceled    WorkspaceAgentTurnOutcome = "canceled"
-	WorkspaceAgentTurnOutcomeCompleted   WorkspaceAgentTurnOutcome = "completed"
-	WorkspaceAgentTurnOutcomeFailed      WorkspaceAgentTurnOutcome = "failed"
-	WorkspaceAgentTurnOutcomeInterrupted WorkspaceAgentTurnOutcome = "interrupted"
+	Canceled    WorkspaceAgentTurnOutcome = "canceled"
+	Completed   WorkspaceAgentTurnOutcome = "completed"
+	Failed      WorkspaceAgentTurnOutcome = "failed"
+	Interrupted WorkspaceAgentTurnOutcome = "interrupted"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentTurnOutcome enum.
 func (e WorkspaceAgentTurnOutcome) Valid() bool {
 	switch e {
-	case WorkspaceAgentTurnOutcomeCanceled:
+	case Canceled:
 		return true
-	case WorkspaceAgentTurnOutcomeCompleted:
+	case Completed:
 		return true
-	case WorkspaceAgentTurnOutcomeFailed:
+	case Failed:
 		return true
-	case WorkspaceAgentTurnOutcomeInterrupted:
+	case Interrupted:
 		return true
 	default:
 		return false
@@ -2944,7 +2974,11 @@ type CliCapabilitiesResponse struct {
 // CliCapability Stable command metadata exposed by the local CLI capability protocol.
 type CliCapability struct {
 	// Description Optional longer human-readable command description.
-	Description *string `json:"description,omitempty"`
+	Description *string              `json:"description,omitempty"`
+	Execution   *CliCommandExecution `json:"execution,omitempty"`
+
+	// HandlerTimeoutMs Per-invocation App handler timeout used by clients to budget the daemon request.
+	HandlerTimeoutMs *int `json:"handlerTimeoutMs,omitempty"`
 
 	// Id Stable command identifier used by invoke routes.
 	Id string `json:"id"`
@@ -2996,14 +3030,33 @@ type CliCapabilitySourceKind string
 // CliCapabilityVisibility defines model for CliCapabilityVisibility.
 type CliCapabilityVisibility string
 
+// CliCommandContinuation Internal continuation signal consumed by the CLI for wait commands and not rendered as a terminal result.
+type CliCommandContinuation struct {
+	// RetryAfterMs Delay before the CLI invokes the same command again.
+	RetryAfterMs int                         `json:"retryAfterMs"`
+	State        CliCommandContinuationState `json:"state"`
+}
+
+// CliCommandContinuationState defines model for CliCommandContinuationState.
+type CliCommandContinuationState string
+
+// CliCommandExecution Optional client-side execution behavior declared by a command. Wait commands remain active while handlers return a pending continuation.
+type CliCommandExecution struct {
+	Mode CliCommandExecutionMode `json:"mode"`
+}
+
+// CliCommandExecutionMode defines model for CliCommandExecutionMode.
+type CliCommandExecutionMode string
+
 // CliCommandOutput defines model for CliCommandOutput.
 type CliCommandOutput struct {
-	Columns  *[]CliTableColumn         `json:"columns,omitempty"`
-	Kind     CliOutputMode             `json:"kind"`
-	Rows     *[]map[string]interface{} `json:"rows,omitempty"`
-	Text     *string                   `json:"text,omitempty"`
-	Value    *map[string]interface{}   `json:"value,omitempty"`
-	Warnings *[]CliCommandWarning      `json:"warnings,omitempty"`
+	Columns      *[]CliTableColumn         `json:"columns,omitempty"`
+	Continuation *CliCommandContinuation   `json:"continuation,omitempty"`
+	Kind         CliOutputMode             `json:"kind"`
+	Rows         *[]map[string]interface{} `json:"rows,omitempty"`
+	Text         *string                   `json:"text,omitempty"`
+	Value        *map[string]interface{}   `json:"value,omitempty"`
+	Warnings     *[]CliCommandWarning      `json:"warnings,omitempty"`
 }
 
 // CliCommandWarning defines model for CliCommandWarning.
