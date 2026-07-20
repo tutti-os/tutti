@@ -76,6 +76,52 @@ without a second registry.
 Changed-aware validation must recognize every current `go.work` module so a Go
 file change selects the matching package lint and test lanes.
 
+## Local Performance Reports
+
+`pnpm perf:agent-gui` captures and analyzes an AgentGUI interaction scenario
+without requiring a manually started Desktop or manually exported trace. It
+makes a transactionally consistent SQLite backup of
+`~/.tutti-dev/tuttid.db`, clears recoverable operation queues and active AgentGUI
+session selection only in that copy, then starts an isolated daemon and
+Electron `userData` directory. The source database is never opened for writes.
+
+Reports and traces are written under
+`.tmp/perf/agent-gui/<scenario>/<timestamp>/`. Metric values are
+report-only and do not fail the command; startup, scenario, capture, or analysis
+failures return a non-zero exit code. This command is local diagnostics, not a
+CI performance gate or a stable benchmark fixture.
+
+The report separates semantic scenario assertions from performance metrics. It
+shows start-to-selection, selection-to-stable, and settling phases; restricts
+task, layout, paint, and event totals to the selected `CrRendererMain`; and
+labels the performance verdict `ungraded` when no comparable baseline or
+threshold exists. React component rows link to an unambiguous repository
+declaration when static symbol matching succeeds. Those links identify source
+ownership, not a runtime call stack or proof of causation.
+
+The capture runner ships `provider-switch`, `session-switch`,
+`provider-session-cycle`, `workbench-window-lifecycle`, and
+`desktop-window-state`. List them with `--list-scenarios`; select one with
+`--scenario <id>`. Scenario modules own preparation, completion conditions,
+semantic assertions, milestones, and metadata; runtime startup, trace capture,
+renderer analysis, and report rendering stay scenario-neutral.
+
+`workbench-window-lifecycle` measures the internal AgentGUI Workbench node's
+minimize, restore, maximize, unmaximize, close, and reopen mechanics.
+`desktop-window-state` measures the owning Electron window's minimize, restore,
+maximize, and unmaximize states through typed host-window APIs and is currently
+macOS-only because only that host emits typed minimize-state events. Native
+close/reopen is not part of that renderer-marked scenario because closing the
+owning native window destroys the renderer that owns the trace boundary
+markers. Every declared milestone is required in the captured trace; a missing
+marker fails capture instead of silently producing an incomplete phase table.
+
+Daemon migrations remain forward-only. If the personal dev database was last
+opened by a newer checkout with incompatible Agent target migrations, the
+command fails before Desktop startup and lists them; use a compatible checkout
+or pass a compatible snapshot with `--source-db`. The runner never attempts to
+downgrade or rewrite the source database.
+
 ## Agent Daemon Blocking Gate
 
 `packages/agent/daemon` is part of the blocking Go workspace test set. A failure
