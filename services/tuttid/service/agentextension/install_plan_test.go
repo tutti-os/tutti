@@ -2,10 +2,15 @@ package agentextension
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -31,10 +36,10 @@ func (s workspaceLookupStub) Get(_ context.Context, id string) (workspacebiz.Sum
 
 func TestInstallPlanServiceBuildsDeterministicTargetScopedPlan(t *testing.T) {
 	stateDir := t.TempDir()
-	runtimeInstallDir := filepath.Join(t.TempDir(), ".local", "share", "tutti", "agent-runtimes")
+	runtimeInstallDir := filepath.Join(testResolvedTempDir(t), ".local", "share", "tutti", "agent-runtimes")
 	store := &targetStoreStub{targets: map[string]agenttargetbiz.Target{}}
 	manager := &Manager{Installations: agentextensiondata.NewFileInstallationStore(stateDir), RuntimeInstallDir: runtimeInstallDir, Store: store}
-	installation, err := manager.install(
+	installation, err := installTestPackage(t, manager,
 		Release{AgentKey: "gemini", Version: "1.0.0"},
 		testPackageZIP(t),
 	)
@@ -94,17 +99,35 @@ func TestInstallPlanServiceBuildsDeterministicTargetScopedPlan(t *testing.T) {
 	}
 }
 
+func TestValidateManagedRuntimeRootRejectsSymlinkedAncestor(t *testing.T) {
+	base := testResolvedTempDir(t)
+	foreign := testResolvedTempDir(t)
+	symlink := filepath.Join(base, "redirected")
+	if err := os.Symlink(foreign, symlink); err != nil {
+		t.Fatal(err)
+	}
+	runtimeInstallDir := filepath.Join(symlink, "agent-runtimes")
+	installRoot := managedRuntimeRoot(runtimeInstallDir, "grok", "runtime-current")
+	err := validateManagedRuntimeRoot(installRoot, runtimeInstallDir, "grok", "runtime-current")
+	if !errors.Is(err, ErrInvalidInstallPlanRequest) || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("symlinked managed root error = %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(foreign, "agent-runtimes")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("managed root validation followed symlink: %v", err)
+	}
+}
+
 func TestInstallPlanServiceReusesRuntimeIdentityAcrossExtensionVersions(t *testing.T) {
 	stateDir := t.TempDir()
-	runtimeInstallDir := filepath.Join(t.TempDir(), ".local", "share", "tutti", "agent-runtimes")
+	runtimeInstallDir := filepath.Join(testResolvedTempDir(t), ".local", "share", "tutti", "agent-runtimes")
 	manager := &Manager{Installations: agentextensiondata.NewFileInstallationStore(stateDir), RuntimeInstallDir: runtimeInstallDir}
-	first, err := manager.install(Release{AgentKey: "gemini", Version: "1.0.0"}, testPackageZIP(t))
+	first, err := installTestPackage(t, manager, Release{AgentKey: "gemini", Version: "1.0.0"}, testPackageZIP(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	nextManifest := testManifest()
 	nextManifest.Version = "1.0.1"
-	second, err := manager.install(Release{AgentKey: "gemini", Version: "1.0.1"}, testPackageZIPFor(
+	second, err := installTestPackage(t, manager, Release{AgentKey: "gemini", Version: "1.0.1"}, testPackageZIPFor(
 		t,
 		nextManifest,
 		`{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["gemini"],"version":{"args":["--version"],"constraint":">=0.50.0 <1.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`,
@@ -131,10 +154,52 @@ func TestInstallPlanServiceReusesRuntimeIdentityAcrossExtensionVersions(t *testi
 	}
 }
 
+func TestManagedRuntimeIdentityPreservesExistingV2PackageIdentity(t *testing.T) {
+	manifest := testManifest()
+	installation := Installation{AgentKey: manifest.AgentKey, Manifest: manifest}
+	profile := DiscoveryProfile{}
+	if err := json.Unmarshal([]byte(`{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["gemini"],"version":{"args":["--version"],"constraint":">=0.50.0 <1.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`), &profile); err != nil {
+		t.Fatal(err)
+	}
+	platform := runtime.GOOS + "-" + runtime.GOARCH
+	got, err := managedRuntimeIdentity(installation, profile, "@google/gemini-cli", "0.50.0", platform)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyValue := struct {
+		SchemaVersion  string           `json:"schemaVersion"`
+		AgentKey       string           `json:"agentKey"`
+		RuntimeKind    string           `json:"runtimeKind"`
+		Platform       string           `json:"platform"`
+		Runner         string           `json:"runner"`
+		PackageName    string           `json:"packageName"`
+		PackageVersion string           `json:"packageVersion"`
+		InstallArgs    []string         `json:"installArgs"`
+		Launch         runtimeLaunchKey `json:"launch"`
+		Discovery      DiscoveryProfile `json:"discovery"`
+	}{
+		SchemaVersion: "tutti.agent.managed-runtime-identity.v1", AgentKey: manifest.AgentKey,
+		RuntimeKind: manifest.Runtime.Kind, Platform: platform, Runner: manifest.Runtime.Install.Runner,
+		PackageName: "@google/gemini-cli", PackageVersion: "0.50.0",
+		InstallArgs: append([]string(nil), manifest.Runtime.Install.Args...),
+		Launch:      runtimeLaunchKey{Executable: manifest.Runtime.Launch.Executable, Args: append([]string(nil), manifest.Runtime.Launch.Args...)},
+		Discovery:   profile,
+	}
+	encoded, err := json.Marshal(legacyValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(encoded)
+	want := "runtime-" + hex.EncodeToString(digest[:])[:16]
+	if got != want {
+		t.Fatalf("existing v2 runtime identity = %q, want legacy %q", got, want)
+	}
+}
+
 func TestInstallPlanServiceUsesValidatedPackageManifest(t *testing.T) {
 	store := &targetStoreStub{targets: map[string]agenttargetbiz.Target{}}
-	manager := &Manager{Installations: agentextensiondata.NewFileInstallationStore(t.TempDir()), RuntimeInstallDir: t.TempDir(), Store: store}
-	installation, err := manager.install(Release{AgentKey: "gemini", Version: "1.0.0"}, testPackageZIP(t))
+	manager := &Manager{Installations: agentextensiondata.NewFileInstallationStore(t.TempDir()), RuntimeInstallDir: testResolvedTempDir(t), Store: store}
+	installation, err := installTestPackage(t, manager, Release{AgentKey: "gemini", Version: "1.0.0"}, testPackageZIP(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,11 +210,8 @@ func TestInstallPlanServiceUsesValidatedPackageManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	loaded, err := manager.loadInstallationByID(installation.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := loaded.Manifest.Runtime.Install.Args[3]; got != "@google/gemini-cli@0.50.0" {
-		t.Fatalf("loaded runtime package = %q, want signed package manifest value", got)
+	if err == nil || !strings.Contains(err.Error(), "manifest does not match signed package authority") {
+		t.Fatalf("mutable installation manifest error = %v, loaded = %#v", err, loaded)
 	}
 }
 
@@ -178,5 +240,54 @@ func TestValidateRuntimeContractRequiresExactUVPackage(t *testing.T) {
 	manifest.Runtime.Install.Args[2] = "gemini-cli"
 	if err := validateRuntimeContract(manifest); err == nil {
 		t.Fatal("validateRuntimeContract(unversioned uv package) error = nil")
+	}
+}
+
+func TestValidateRuntimeContractAcceptsPinnedSignedBinaryArtifacts(t *testing.T) {
+	manifest := testManifest()
+	manifest.Runtime.Install.Runner = "binary"
+	manifest.Runtime.Install.Args = nil
+	manifest.Runtime.Install.Artifacts = []RuntimeBinaryArtifact{{
+		Kind: "executable", Platform: "darwin-arm64", Version: "0.2.103",
+		URL:       "https://x.ai/cli/grok-0.2.103-macos-aarch64",
+		SHA256:    "1be9de92f31566f2d38992125f902220b022f4f1e3fb7330532a0513d1d6f0f2",
+		SizeBytes: 121600480,
+	}}
+	manifest.Runtime.Install.Artifacts[0].Provenance.Kind = "official-release"
+	manifest.Runtime.Install.Artifacts[0].Provenance.URL = "https://x.ai/cli/install.sh"
+	manifest.Runtime.Launch.Executable = "${installRoot}/grok"
+	publish := false
+	manifest.Runtime.Launch.PublishUserCommand = &publish
+	if err := validateRuntimeContract(manifest); err != nil {
+		t.Fatalf("validateRuntimeContract(binary) error = %v", err)
+	}
+
+	invalid := manifest
+	invalid.Runtime.Install.Artifacts = append([]RuntimeBinaryArtifact(nil), manifest.Runtime.Install.Artifacts...)
+	invalid.Runtime.Install.Artifacts[0].URL = "http://example.com/grok"
+	if err := validateRuntimeContract(invalid); err == nil || !strings.Contains(err.Error(), "HTTPS") {
+		t.Fatalf("insecure artifact URL error = %v", err)
+	}
+	invalid = manifest
+	invalid.Runtime.Install.Artifacts = append(invalid.Runtime.Install.Artifacts, invalid.Runtime.Install.Artifacts[0])
+	if err := validateRuntimeContract(invalid); err == nil || !strings.Contains(err.Error(), "duplicated") {
+		t.Fatalf("duplicate artifact platform error = %v", err)
+	}
+}
+
+func TestBuildInstallPlanFailsClosedOnUnsupportedBinaryPlatform(t *testing.T) {
+	manifest := testManifest()
+	manifest.Runtime.Install.Runner = "binary"
+	manifest.Runtime.Install.Args = nil
+	manifest.Runtime.Install.Artifacts = []RuntimeBinaryArtifact{{
+		Kind: "executable", Platform: "unsupported-platform", Version: "0.2.103",
+		URL: "https://example.com/grok-0.2.103", SHA256: strings.Repeat("a", 64), SizeBytes: 10,
+	}}
+	manifest.Runtime.Install.Artifacts[0].Provenance.Kind = "official-release"
+	manifest.Runtime.Install.Artifacts[0].Provenance.URL = "https://example.com/releases/0.2.103"
+	manifest.Runtime.Launch.Executable = "${installRoot}/grok"
+	installation := Installation{AgentKey: "grok", Manifest: manifest, PackageDir: t.TempDir()}
+	if _, err := buildInstallPlan("extension:grok", t.TempDir(), installation); !errors.Is(err, ErrUnsupportedInstallTarget) {
+		t.Fatalf("unsupported binary platform error = %v", err)
 	}
 }

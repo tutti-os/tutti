@@ -135,6 +135,8 @@ type ExtensionComposerProfile struct {
 	Capabilities                     []string
 	ModelConfigOptionID              string
 	PermissionConfigOptionID         string
+	DefaultPermissionModeID          string
+	PermissionModeIDsAreSemantic     bool
 	PermissionModes                  []ExtensionComposerPermissionMode
 	ReasoningConfigOptionID          string
 	Skills                           *ExtensionComposerSkillProfile

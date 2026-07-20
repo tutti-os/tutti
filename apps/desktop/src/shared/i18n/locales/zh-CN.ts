@@ -844,6 +844,9 @@ export const zhCN = {
         qwenAgentDescription:
           "在 Tutti 中显示 Qwen Code，Agent Extension 预览期间默认关闭",
         qwenAgentLabel: "启用 Qwen Code Agent",
+        grokAgentDescription:
+          "加载已签名的 Grok Build Agent Extension，并在 AgentGUI 中显示",
+        grokAgentLabel: "启用 Grok Build Agent",
         logsSizeLabel: "日志大小",
         logsSummary: "{{count}} 个文件，共 {{size}}",
         logsTitle: "日志",

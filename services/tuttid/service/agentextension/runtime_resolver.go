@@ -16,17 +16,22 @@ type RuntimeResolver struct {
 }
 
 type RuntimeBinding struct {
-	Installation             Installation
-	Command                  []string
-	Version                  string
-	Source                   string
-	ToolAliases              map[string]string
-	ModelConfigOptionID      string
-	PermissionConfigOptionID string
-	ReasoningConfigOptionID  string
-	PermissionModes          map[string]string
-	PlanModeRuntimeID        string
-	Capabilities             []string
+	Installation                 Installation
+	Command                      []string
+	Version                      string
+	Source                       string
+	ToolAliases                  map[string]string
+	ModelConfigOptionID          string
+	PermissionConfigOptionID     string
+	ReasoningConfigOptionID      string
+	PermissionModes              map[string]string
+	PlanModeRuntimeID            string
+	PlanModeDisabledRuntimeID    string
+	PlanModeUsesLaunchPermission bool
+	LaunchPermission             *agentruntime.StandardACPLaunchPermissionSetting
+	SetModelReasoningEffortMeta  bool
+	Capabilities                 []string
+	ExecutableIdentity           *agentruntime.ExecutableIdentity
 }
 
 func (r RuntimeResolver) ResolveAdapter(ctx context.Context, input agentruntime.AdapterResolveInput) (agentruntime.Adapter, error) {
@@ -57,20 +62,25 @@ func newRuntimeAdapter(binding RuntimeBinding, agentTargetID string, transport a
 
 func runtimeAdapterConfig(binding RuntimeBinding, agentTargetID string) agentruntime.StandardACPAdapterConfig {
 	return agentruntime.StandardACPAdapterConfig{
-		Provider:                 binding.Installation.Provider,
-		Name:                     binding.Installation.AgentKey + "-acp",
-		DisplayName:              binding.Installation.DisplayName,
-		Command:                  binding.Command,
-		AuthMessage:              binding.Installation.AuthMessage,
-		ToolAliases:              binding.ToolAliases,
-		ModelConfigOptionID:      binding.ModelConfigOptionID,
-		PermissionConfigOptionID: binding.PermissionConfigOptionID,
-		ReasoningConfigOptionID:  binding.ReasoningConfigOptionID,
-		RestrictConfigOptions:    true,
-		PermissionModes:          binding.PermissionModes,
-		PlanModeRuntimeID:        binding.PlanModeRuntimeID,
-		Capabilities:             binding.Capabilities,
-		AgentTargetID:            strings.TrimSpace(agentTargetID),
-		InstallationID:           binding.Installation.ID,
+		Provider:                     binding.Installation.Provider,
+		Name:                         binding.Installation.AgentKey + "-acp",
+		DisplayName:                  binding.Installation.DisplayName,
+		Command:                      binding.Command,
+		AuthMessage:                  binding.Installation.AuthMessage,
+		ToolAliases:                  binding.ToolAliases,
+		ModelConfigOptionID:          binding.ModelConfigOptionID,
+		PermissionConfigOptionID:     binding.PermissionConfigOptionID,
+		ReasoningConfigOptionID:      binding.ReasoningConfigOptionID,
+		RestrictConfigOptions:        true,
+		PermissionModes:              binding.PermissionModes,
+		PlanModeRuntimeID:            binding.PlanModeRuntimeID,
+		PlanModeDisabledRuntimeID:    binding.PlanModeDisabledRuntimeID,
+		PlanModeUsesLaunchPermission: binding.PlanModeUsesLaunchPermission,
+		LaunchPermission:             binding.LaunchPermission,
+		SetModelReasoningEffortMeta:  binding.SetModelReasoningEffortMeta,
+		Capabilities:                 binding.Capabilities,
+		AgentTargetID:                strings.TrimSpace(agentTargetID),
+		InstallationID:               binding.Installation.ID,
+		ExecutableIdentity:           binding.ExecutableIdentity,
 	}
 }

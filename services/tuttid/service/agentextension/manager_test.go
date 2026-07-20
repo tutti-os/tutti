@@ -12,12 +12,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
@@ -112,6 +114,10 @@ func TestManagerReconcileInstallsVerifiedPackageAndFallsBackOffline(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !validPackageContentSHA256(installation.PackageContentSHA256) || installation.ReleaseArtifactSHA256 != digest ||
+		installation.ReleaseArtifactSizeBytes != int64(len(artifact)) {
+		t.Fatalf("verified installation content identity = %#v", installation)
+	}
 	var discovery DiscoveryProfile
 	if err := readJSON(
 		filepath.Join(installation.PackageDir, installation.Manifest.Profiles.Discovery),
@@ -135,6 +141,58 @@ func TestManagerReconcileInstallsVerifiedPackageAndFallsBackOffline(t *testing.T
 	server.Close()
 	if errs := manager.Reconcile(context.Background()); len(errs) != 0 {
 		t.Fatalf("offline Reconcile() errors = %v", errs)
+	}
+}
+
+func TestManagerReconcileMigratesLegacyRemoteV2InstallationAndFallsBackOffline(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "offline", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	installationStore := agentextensiondata.NewFileInstallationStore(t.TempDir())
+	legacy := writeLegacyRemoteInstallationFixture(t, installationStore)
+	legacyRecord, err := os.ReadFile(filepath.Join(legacy.PackageDir, installationRecordName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(legacyRecord, []byte("packageContentSha256")) ||
+		bytes.Contains(legacyRecord, []byte("releaseArtifactSha256")) ||
+		bytes.Contains(legacyRecord, []byte("releaseArtifactSizeBytes")) {
+		t.Fatalf("legacy fixture unexpectedly contains new authority fields: %s", legacyRecord)
+	}
+
+	targets := &targetStoreStub{targets: map[string]agenttargetbiz.Target{}}
+	manager := &Manager{
+		Installations: installationStore, Store: targets, Client: server.Client(),
+		Sources: []tuttitypes.AgentExtensionSource{{
+			Key: "gemini", ReleaseIndexURL: server.URL + "/versions.json", Enabled: true,
+		}},
+	}
+	if errs := manager.Reconcile(context.Background()); len(errs) != 0 {
+		t.Fatalf("legacy offline Reconcile() errors = %v", errs)
+	}
+	if target := targets.targets["extension:gemini"]; target.Provider != "acp:gemini" {
+		t.Fatalf("legacy offline target = %#v", target)
+	}
+	migrated, err := installationStore.ReadActive("gemini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validPackageContentSHA256(migrated.PackageContentSHA256) || migrated.ReleaseArtifactSHA256 != "" || migrated.ReleaseArtifactSizeBytes != 0 {
+		t.Fatalf("migrated legacy installation identity = %#v", migrated)
+	}
+	loaded, err := manager.loadInstallationByID(legacy.ID)
+	if err != nil || loaded.PackageContentSHA256 != migrated.PackageContentSHA256 {
+		t.Fatalf("load migrated legacy installation = %#v, error = %v", loaded, err)
+	}
+
+	localePath := filepath.Join(legacy.PackageDir, filepath.FromSlash(legacy.Manifest.LocalizationInfo.DefaultFile))
+	if err := os.WriteFile(localePath, []byte(`{"agent.name":"Tampered"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.loadActive("gemini"); err == nil || !strings.Contains(err.Error(), "migrated snapshot") {
+		t.Fatalf("tampered migrated legacy package error = %v", err)
 	}
 }
 
@@ -182,6 +240,141 @@ func TestManagerReconcileSnapshotsDevelopmentLocalPackage(t *testing.T) {
 	}
 	if second.Version == first.Version || second.DisplayName != "Local Gemini" {
 		t.Fatalf("changed local package did not activate a new snapshot: first=%#v second=%#v", first, second)
+	}
+}
+
+func TestManagerLoadRejectsPackageBytesChangedAfterVerifiedInstall(t *testing.T) {
+	manager := &Manager{Installations: agentextensiondata.NewFileInstallationStore(t.TempDir())}
+	installation, err := installTestPackage(t, manager, Release{AgentKey: "gemini", Version: "1.0.0"}, testPackageZIP(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	discoveryPath := filepath.Join(installation.PackageDir, installation.Manifest.Profiles.Discovery)
+	if err := os.WriteFile(discoveryPath, []byte(`{"schemaVersion":"tutti.agent.discovery.v1","candidates":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	installation.Manifest.Description = "attacker-controlled manifest"
+	if err := writeJSONAtomic(filepath.Join(installation.PackageDir, "tutti.agent.json"), installation.Manifest); err != nil {
+		t.Fatal(err)
+	}
+	installation.PackageContentSHA256, err = packageContentSHA256(installation.PackageDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Installations.PutActive(installation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.loadInstallationByID(installation.ID); err == nil || !strings.Contains(err.Error(), "signed artifact content") {
+		t.Fatalf("tampered package load error = %v", err)
+	}
+}
+
+func TestManagerLoadRejectsChangedSignedReleaseIdentityRecord(t *testing.T) {
+	manager := &Manager{Installations: agentextensiondata.NewFileInstallationStore(t.TempDir())}
+	installation, err := installTestPackage(t, manager, Release{AgentKey: "gemini", Version: "1.0.0"}, testPackageZIP(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	installation.ReleaseArtifactSHA256 = ""
+	if err := writeJSONAtomic(filepath.Join(installation.PackageDir, installationRecordName), installation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.loadInstallationByID(installation.ID); err == nil || !strings.Contains(err.Error(), "record does not match signed release authority") {
+		t.Fatalf("changed signed release identity error = %v", err)
+	}
+}
+
+func TestManagerLoadDoesNotDowngradeStrippedSignedAuthorityToLegacy(t *testing.T) {
+	manager := &Manager{Installations: agentextensiondata.NewFileInstallationStore(t.TempDir())}
+	installation, err := installTestPackage(t, manager, Release{AgentKey: "gemini", Version: "1.0.0"}, testPackageZIP(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	installation.PackageContentSHA256 = ""
+	installation.ReleaseArtifactSHA256 = ""
+	installation.ReleaseArtifactSizeBytes = 0
+	if err := writeJSONAtomic(filepath.Join(installation.PackageDir, installationRecordName), installation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.loadInstallationByID(installation.ID); err == nil || !strings.Contains(err.Error(), "partial signed authority") {
+		t.Fatalf("stripped signed authority downgrade error = %v", err)
+	}
+}
+
+func TestManagerLoadReverifiesPersistedSignedAuthority(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*testing.T, Installation)
+		want   string
+	}{
+		{
+			name: "release signature",
+			mutate: func(t *testing.T, installation Installation) {
+				var release Release
+				path := filepath.Join(installation.PackageDir, signedReleaseRecordName)
+				if err := readJSON(path, &release); err != nil {
+					t.Fatal(err)
+				}
+				release.Manifest.Description = "mutable authority"
+				if err := writeJSONAtomic(path, release); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: "signature is invalid",
+		},
+		{
+			name: "release artifact",
+			mutate: func(t *testing.T, installation Installation) {
+				path := filepath.Join(installation.PackageDir, signedReleaseArtifactName)
+				if err := os.Chmod(path, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("changed signed artifact"), 0o400); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: "artifact is missing or unsafe",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			manager := &Manager{Installations: agentextensiondata.NewFileInstallationStore(t.TempDir())}
+			installation, err := installTestPackage(t, manager, Release{AgentKey: "gemini", Version: "1.0.0"}, testPackageZIP(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(t, installation)
+			if _, err := manager.loadInstallationByID(installation.ID); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("mutated signed authority error = %v", err)
+			}
+		})
+	}
+}
+
+func TestManagerInstallAtomicallyReplacesDifferentExistingVersionBytes(t *testing.T) {
+	manager := &Manager{Installations: agentextensiondata.NewFileInstallationStore(t.TempDir())}
+	first, err := installTestPackage(t, manager, Release{AgentKey: "gemini", Version: "1.0.0"}, testPackageZIP(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstDigest := first.PackageContentSHA256
+	changedManifest := testManifest()
+	changedManifest.Description = "replacement signed package"
+	second, err := installTestPackage(t, manager,
+		Release{AgentKey: "gemini", Version: "1.0.0"},
+		testPackageZIPFor(t, changedManifest, `{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["gemini"],"version":{"args":["--version"],"constraint":">=0.50.0 <1.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.PackageContentSHA256 == firstDigest || second.Manifest.Description != changedManifest.Description {
+		t.Fatalf("existing version was not replaced: first=%q second=%#v", firstDigest, second)
+	}
+	loaded, err := manager.loadInstallationByID(second.ID)
+	if err != nil || loaded.PackageContentSHA256 != second.PackageContentSHA256 {
+		t.Fatalf("load replaced package = %#v, error = %v", loaded, err)
+	}
+	if _, err := os.Lstat(second.PackageDir + ".previous"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("extension package backup remains: %v", err)
 	}
 }
 
@@ -378,6 +571,38 @@ func TestValidateComposerProfileRejectsInvalidSignedCommandDeclarations(t *testi
 			name: "unsupported effect",
 			raw:  `{"schemaVersion":"tutti.agent.composer.v1","slashCommands":{"commands":[{"name":"status","effect":"runArbitraryCode"}]}}`,
 		},
+		{
+			name: "unknown launch placeholder",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","launchSettings":{"permission":{"placeholder":"${unknown}"}},"permissionModes":[{"runtimeId":"ask","semantic":"ask-before-write"},{"runtimeId":"auto","semantic":"auto"},{"runtimeId":"all","semantic":"full-access"}]}`,
+		},
+		{
+			name: "unknown launch semantic",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","launchSettings":{"permission":{"placeholder":"${permissionMode}"}},"permissionModes":[{"runtimeId":"ask","semantic":"ask-before-write"},{"runtimeId":"auto","semantic":"auto"},{"runtimeId":"all","semantic":"full-access"},{"runtimeId":"maybe","semantic":"maybe"}]}`,
+		},
+		{
+			name: "duplicate launch runtime value",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","launchSettings":{"permission":{"placeholder":"${permissionMode}"}},"permissionModes":[{"runtimeId":"ask","semantic":"ask-before-write"},{"runtimeId":"ask","semantic":"auto"},{"runtimeId":"all","semantic":"full-access"}]}`,
+		},
+		{
+			name: "shell launch runtime value",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","launchSettings":{"permission":{"placeholder":"${permissionMode}"}},"permissionModes":[{"runtimeId":"ask","semantic":"ask-before-write"},{"runtimeId":"auto;run","semantic":"auto"},{"runtimeId":"all","semantic":"full-access"}]}`,
+		},
+		{
+			name: "non ask launch default",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","launchSettings":{"permission":{"placeholder":"${permissionMode}","defaultSemantic":"auto"}},"permissionModes":[{"runtimeId":"ask","semantic":"ask-before-write"},{"runtimeId":"auto","semantic":"auto"},{"runtimeId":"all","semantic":"full-access"}]}`,
+		},
+		{
+			name: "ambiguous plan workflow",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","workflowModes":{"plan":{"enabledRuntimeId":"plan","disabledRuntimeId":"plan"}}}`,
+		},
+		{
+			name: "launch restart plan without launch permission",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","workflowModes":{"plan":{"enabledRuntimeId":"plan","disabledRuntimeId":"default","updateStrategy":"restart-with-launch-permission"}}}`,
+		},
+		{
+			name: "unknown plan update strategy",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","workflowModes":{"plan":{"enabledRuntimeId":"plan","disabledRuntimeId":"default","updateStrategy":"replace-everything"}}}`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -387,6 +612,123 @@ func TestValidateComposerProfileRejectsInvalidSignedCommandDeclarations(t *testi
 			}
 			if err := validateComposerProfile(profile); err == nil {
 				t.Fatal("validateComposerProfile() error = nil, want signed profile rejection")
+			}
+		})
+	}
+}
+
+func TestValidateComposerProfileAcceptsClosedSpawnPermissionAndWorkflowDeclarations(t *testing.T) {
+	var profile ComposerProfile
+	if err := json.Unmarshal([]byte(`{
+		"schemaVersion":"tutti.agent.composer.v1",
+		"launchSettings":{"permission":{"placeholder":"${permissionMode}"}},
+		"permissionModes":[
+			{"runtimeId":"default","semantic":"ask-before-write"},
+			{"runtimeId":"auto","semantic":"auto"},
+			{"runtimeId":"bypassPermissions","semantic":"full-access"}
+		],
+		"workflowModes":{"plan":{"enabledRuntimeId":"plan","disabledRuntimeId":"default","updateStrategy":"restart-with-launch-permission"}},
+		"setModel":{"reasoningEffortMeta":true}
+	}`), &profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateComposerProfile(profile); err != nil {
+		t.Fatalf("validateComposerProfile: %v", err)
+	}
+	setting := profile.LaunchPermissionSetting()
+	if setting == nil || setting.Values["ask-before-write"] != "default" || setting.Values["full-access"] != "bypassPermissions" {
+		t.Fatalf("launch permission setting = %#v", setting)
+	}
+	if enabled, disabled := profile.PlanRuntimeIDs(); enabled != "plan" || disabled != "default" {
+		t.Fatalf("plan workflow = %q/%q, want plan/default", enabled, disabled)
+	}
+	if strategy := profile.PlanUpdateStrategy(); strategy != "restart-with-launch-permission" {
+		t.Fatalf("plan workflow update strategy = %q", strategy)
+	}
+	if !profile.SetModelReasoningEffortMeta() {
+		t.Fatal("setModel.reasoningEffortMeta = false, want true")
+	}
+}
+
+func TestValidateDiscoveryLaunchPlaceholdersFailsClosed(t *testing.T) {
+	var composer ComposerProfile
+	if err := json.Unmarshal([]byte(`{
+		"schemaVersion":"tutti.agent.composer.v1",
+		"launchSettings":{"permission":{"placeholder":"${permissionMode}"}},
+		"permissionModes":[
+			{"runtimeId":"default","semantic":"ask-before-write"},
+			{"runtimeId":"auto","semantic":"auto"},
+			{"runtimeId":"bypassPermissions","semantic":"full-access"}
+		]
+	}`), &composer); err != nil {
+		t.Fatal(err)
+	}
+	profile := func(args ...string) DiscoveryProfile {
+		value := DiscoveryProfile{}
+		value.Candidates = append(value.Candidates, struct {
+			BinaryNames []string `json:"binaryNames"`
+			Version     struct {
+				Args       []string `json:"args"`
+				Constraint string   `json:"constraint"`
+			} `json:"version"`
+			LaunchArgs []string `json:"launchArgs"`
+			Probe      struct {
+				Kind      string `json:"kind"`
+				TimeoutMS int    `json:"timeoutMs"`
+			} `json:"probe,omitempty"`
+		}{LaunchArgs: args})
+		return value
+	}
+	if err := validateDiscoveryLaunchPlaceholders(profile("--no-auto-update", "--permission-mode", "${permissionMode}", "agent", "stdio"), composer); err != nil {
+		t.Fatalf("valid launch placeholders: %v", err)
+	}
+	for name, candidate := range map[string]DiscoveryProfile{
+		"missing":          profile("agent", "stdio"),
+		"unknown":          profile("agent", "${unknown}", "stdio"),
+		"combined":         profile("agent", "mode=${permissionMode}", "stdio"),
+		"duplicate":        profile("agent", "${permissionMode}", "${permissionMode}", "stdio"),
+		"malformed dollar": profile("agent", "$permissionMode", "stdio"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateDiscoveryLaunchPlaceholders(candidate, composer); err == nil {
+				t.Fatal("validateDiscoveryLaunchPlaceholders error = nil, want rejection")
+			}
+		})
+	}
+}
+
+func TestValidateManifestLaunchPermissionPlaceholderFailsClosed(t *testing.T) {
+	var composer ComposerProfile
+	if err := json.Unmarshal([]byte(`{
+		"schemaVersion":"tutti.agent.composer.v1",
+		"launchSettings":{"permission":{"placeholder":"${permissionMode}"}},
+		"permissionModes":[
+			{"runtimeId":"default","semantic":"ask-before-write"},
+			{"runtimeId":"auto","semantic":"auto"},
+			{"runtimeId":"bypassPermissions","semantic":"full-access"}
+		]
+	}`), &composer); err != nil {
+		t.Fatal(err)
+	}
+	manifest := testManifest()
+	manifest.Runtime.Launch.Args = []string{"--no-auto-update", "--permission-mode", "${permissionMode}", "agent", "stdio"}
+	if err := validateRuntimeContract(manifest); err != nil {
+		t.Fatalf("validateRuntimeContract: %v", err)
+	}
+	if err := validateManifestLaunchPlaceholders(manifest, composer); err != nil {
+		t.Fatalf("validateManifestLaunchPlaceholders: %v", err)
+	}
+	for name, args := range map[string][]string{
+		"missing":   {"agent", "stdio"},
+		"combined":  {"agent", "mode=${permissionMode}", "stdio"},
+		"duplicate": {"agent", "${permissionMode}", "${permissionMode}", "stdio"},
+		"unknown":   {"agent", "${unknown}", "stdio"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := manifest
+			candidate.Runtime.Launch.Args = args
+			if err := validateManifestLaunchPlaceholders(candidate, composer); err == nil {
+				t.Fatal("validateManifestLaunchPlaceholders error = nil, want rejection")
 			}
 		})
 	}
@@ -566,6 +908,92 @@ func testManifest() Manifest {
 	value.LocalizationInfo.DefaultLocale = "en"
 	value.LocalizationInfo.DefaultFile = "locales/en.json"
 	return value
+}
+
+func writeLegacyRemoteInstallationFixture(
+	t *testing.T,
+	store *agentextensiondata.FileInstallationStore,
+) Installation {
+	t.Helper()
+	packageDir, err := store.PackageDir("gemini", "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(packageDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := extractPackage(testPackageZIP(t), packageDir); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := validateInstalledPackage(packageDir, "gemini", "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	installation := Installation{
+		SchemaVersion: "tutti.agent.installation.v1", ID: "gemini@1.0.0",
+		AgentKey: "gemini", Version: "1.0.0", Provider: "acp:gemini",
+		PackageDir: packageDir, Manifest: manifest, InstalledAt: time.Unix(1_700_000_000, 0).UTC(),
+		DisplayName: manifest.Name, AuthMessage: "Authentication required",
+	}
+	encoded, err := json.Marshal(installation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacyRecord map[string]any
+	if err := json.Unmarshal(encoded, &legacyRecord); err != nil {
+		t.Fatal(err)
+	}
+	delete(legacyRecord, "packageContentSha256")
+	delete(legacyRecord, "releaseArtifactSha256")
+	delete(legacyRecord, "releaseArtifactSizeBytes")
+	encoded, err = json.MarshalIndent(legacyRecord, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded = append(encoded, '\n')
+	if err := writeBytesAtomic(filepath.Join(packageDir, installationRecordName), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agentDir, err := store.AgentDir("gemini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeBytesAtomic(filepath.Join(agentDir, "active.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return installation
+}
+
+func installTestPackage(t *testing.T, manager *Manager, release Release, artifact []byte) (Installation, error) {
+	t.Helper()
+	verificationRoot := t.TempDir()
+	if err := extractPackage(artifact, verificationRoot); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := validateInstalledPackage(verificationRoot, release.AgentKey, release.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyDigest := sha256.Sum256(publicKey)
+	keyID := "test-release-" + hex.EncodeToString(keyDigest[:6])
+	release.SchemaVersion = releaseSchema
+	release.Manifest = manifest
+	release.ArtifactURL = "https://example.test/" + release.AgentKey + "-" + release.Version + ".zip"
+	release.ArtifactSHA256 = sha256Bytes(artifact)
+	release.ArtifactSizeBytes = int64(len(artifact))
+	release.PublishedAt = "2026-07-19T00:00:00Z"
+	release.GitSHA = "test"
+	release.Signature = ReleaseSignature{Algorithm: "ed25519", KeyID: keyID}
+	release.Signature.Value = signTestRelease(t, release, privateKey)
+	source := tuttitypes.AgentExtensionSource{
+		Key: release.AgentKey, SigningKeyID: keyID, SigningPublicKey: publicKeyPEM(t, publicKey),
+	}
+	manager.Sources = append(manager.Sources, source)
+	return manager.installVerifiedRelease(release, artifact, source)
 }
 
 func signTestRelease(t *testing.T, release Release, key ed25519.PrivateKey) string {

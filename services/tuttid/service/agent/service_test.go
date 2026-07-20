@@ -4116,6 +4116,7 @@ func TestServiceUpdateSettingsPreservesCodexModelCatalogReasoningEffort(t *testi
 		},
 	}
 	service := newIsolatedAgentService(runtime)
+	seedPersistedLiveSettingsSession(service, runtime.sessions["ws-1:session-1"])
 	reasoningEffort := "minimal"
 
 	session, err := service.UpdateSettings(context.Background(), "ws-1", "session-1", ComposerSettingsPatch{
@@ -4144,6 +4145,7 @@ func TestServiceUpdateSettingsPreservesAdvertisedReasoningEffort(t *testing.T) {
 				},
 			}
 			service := NewService(runtime)
+			seedPersistedLiveSettingsSession(service, runtime.sessions["ws-1:session-1"])
 			service.ModelCatalog = fakeModelCatalog{
 				result: AgentModelCatalogResult{
 					Provider: "codex",
@@ -4185,6 +4187,7 @@ func TestServiceUpdateSettingsDefersModelChangeReasoningClampToLiveRuntime(t *te
 		},
 	}
 	service := NewService(runtime)
+	seedPersistedLiveSettingsSession(service, runtime.sessions["ws-1:session-1"])
 	service.ModelCatalog = fakeModelCatalog{
 		result: AgentModelCatalogResult{
 			Provider: "codex",
@@ -4239,6 +4242,7 @@ func TestServiceUpdateSettingsNormalizesClaudeMinimalReasoningEffort(t *testing.
 		},
 	}
 	service := newIsolatedAgentService(runtime)
+	seedPersistedLiveSettingsSession(service, runtime.sessions["ws-1:session-1"])
 	reasoningEffort := "minimal"
 
 	session, err := service.UpdateSettings(context.Background(), "ws-1", "session-1", ComposerSettingsPatch{
@@ -7159,6 +7163,21 @@ func newTestService(runtime RuntimeController) *Service {
 	service := newIsolatedAgentService(runtime)
 	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
 	return service
+}
+
+func seedPersistedLiveSettingsSession(service *Service, session ProviderRuntimeSession) {
+	settings := ComposerSettings{}
+	if session.Settings != nil {
+		settings = *session.Settings
+	}
+	service.SessionReader = &fakeSessionReader{sessions: map[string]PersistedSession{
+		session.WorkspaceID + ":" + session.ID: {
+			ID: session.ID, WorkspaceID: session.WorkspaceID, Provider: session.Provider,
+			ProviderSessionID: session.ProviderSessionID, Cwd: session.Cwd,
+			RailSectionKey: "conversations", Settings: settings,
+			CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2, LastEventUnixMS: 2,
+		},
+	}}
 }
 
 func defaultTestAgentTargets() map[string]agenttargetbiz.Target {

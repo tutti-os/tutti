@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveGolangciLintBinary } from "./golangci-lint-tool.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
@@ -27,9 +28,10 @@ const args = [
   "./...",
   ...process.argv.slice(2)
 ];
+const golangciLintBinary = resolveGolangciLintBinary({ cwd: workspaceRoot });
 
 for (const moduleRoot of goModuleRoots) {
-  const result = spawnSync("golangci-lint", args, {
+  const result = spawnSync(golangciLintBinary, args, {
     cwd: moduleRoot,
     encoding: "utf8",
     stdio: "inherit"

@@ -5614,6 +5614,7 @@ components:
             - npm
             - pnpm
             - uv
+            - binary
         packageName:
           type: string
           minLength: 1

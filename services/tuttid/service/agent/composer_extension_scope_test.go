@@ -143,6 +143,60 @@ func TestExtensionCapabilitiesRemainUnknownWithoutLiveRuntimeFacts(t *testing.T)
 	}
 }
 
+func TestExtensionSpawnPermissionUsesSemanticComposerIDs(t *testing.T) {
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.ExtensionComposerProfiles = extensionComposerProfileResolverStub{
+		profile: ExtensionComposerProfile{
+			DefaultPermissionModeID:      "ask-before-write",
+			PermissionModeIDsAreSemantic: true,
+			PermissionModes: []ExtensionComposerPermissionMode{
+				{RuntimeID: "ask", Semantic: PermissionModeSemanticAskBeforeWrite},
+				{RuntimeID: "auto", Semantic: PermissionModeSemanticAuto},
+				{RuntimeID: "always-approve", Semantic: PermissionModeSemanticFullAccess},
+			},
+		},
+	}
+	config, err := service.extensionComposerPermissionConfig(context.Background(), map[string]any{
+		"extensionInstallationId": "spawn@1.0.0",
+	}, "")
+	if err != nil {
+		t.Fatalf("extensionComposerPermissionConfig: %v", err)
+	}
+	if config.DefaultValue != "ask-before-write" || len(config.Modes) != 3 {
+		t.Fatalf("permission config = %#v", config)
+	}
+	if got := []string{config.Modes[0].ID, config.Modes[1].ID, config.Modes[2].ID}; !slices.Equal(got, []string{"ask-before-write", "auto", "full-access"}) {
+		t.Fatalf("permission mode ids = %#v, want semantic ids", got)
+	}
+}
+
+func TestExtensionAuthoritativeSlashPolicyFiltersRuntimePrivateCommands(t *testing.T) {
+	profile := ExtensionComposerProfile{
+		SlashCommandCatalogAuthoritative: true,
+		SlashCommands: []ExtensionComposerSlashCommand{
+			{Name: "compact"},
+			{Name: "status"},
+			{Name: "plan"},
+		},
+	}
+	policy := composerSlashCommandPolicyFromExtensionProfile(profile)
+	filtered := filterComposerCommandsBySlashPolicy([]map[string]any{
+		{"name": "compact"},
+		{"name": "status"},
+		{"name": "plan"},
+		{"name": "rewind"},
+		{"name": "share"},
+		{"name": "plugins"},
+	}, policy)
+	got := make([]string, 0, len(filtered))
+	for _, command := range filtered {
+		got = append(got, stringFromAny(command["name"]))
+	}
+	if !slices.Equal(got, []string{"compact", "status", "plan"}) {
+		t.Fatalf("filtered commands = %#v", got)
+	}
+}
+
 func TestExtensionCreatePreservesSignedSemanticAndLiveReasoningSelections(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.startHook = func(input RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {

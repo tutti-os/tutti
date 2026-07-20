@@ -7,6 +7,7 @@ import {
   AGENT_EXTENSION_CODEBUDDY_FLAG,
   AGENT_EXTENSION_COPILOT_FLAG,
   AGENT_EXTENSION_GEMINI_FLAG,
+  AGENT_EXTENSION_GROK_FLAG,
   AGENT_EXTENSION_KILO_FLAG,
   AGENT_EXTENSION_QWEN_FLAG,
   type AgentExtensionActivationFlag,
@@ -33,6 +34,10 @@ const settingByFlag = {
   [AGENT_EXTENSION_QWEN_FLAG]: {
     descriptionKey: "workspace.settings.developer.qwenAgentDescription",
     labelKey: "workspace.settings.developer.qwenAgentLabel"
+  },
+  [AGENT_EXTENSION_GROK_FLAG]: {
+    descriptionKey: "workspace.settings.developer.grokAgentDescription",
+    labelKey: "workspace.settings.developer.grokAgentLabel"
   }
 } satisfies Record<
   AgentExtensionActivationFlag,

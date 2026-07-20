@@ -286,5 +286,12 @@ func cloneComposerConfigOptionValues(options []ComposerConfigOptionValue) []Comp
 	if len(options) == 0 {
 		return nil
 	}
-	return append([]ComposerConfigOptionValue(nil), options...)
+	result := append([]ComposerConfigOptionValue(nil), options...)
+	for index := range result {
+		result[index].ReasoningEfforts = append(
+			[]AgentModelReasoningEffortOption(nil),
+			options[index].ReasoningEfforts...,
+		)
+	}
+	return result
 }

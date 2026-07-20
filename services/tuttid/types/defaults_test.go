@@ -1,6 +1,10 @@
 package types
 
 import (
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
 	"path/filepath"
 	"testing"
 )
@@ -67,7 +71,8 @@ func TestResolveAgentExtensionSourcesIgnoresRemovedEnabledOverride(t *testing.T)
 	copilot := agentExtensionSourceByKey(t, sources, "copilot")
 	kilo := agentExtensionSourceByKey(t, sources, "kilo")
 	qwen := agentExtensionSourceByKey(t, sources, "qwen")
-	for _, source := range []AgentExtensionSource{gemini, codebuddy, copilot, kilo, qwen} {
+	grok := agentExtensionSourceByKey(t, sources, "grok")
+	for _, source := range []AgentExtensionSource{gemini, codebuddy, copilot, kilo, qwen, grok} {
 		if source.Enabled {
 			t.Fatalf("agent extension source must stay disabled without override: %#v", source)
 		}
@@ -91,6 +96,25 @@ func TestResolveAgentExtensionSourcesAppliesLocalPackageOnlyInDevelopment(t *tes
 	production := agentExtensionSourceByKey(t, ResolveAgentExtensionSources(), "codebuddy")
 	if production.Enabled || production.LocalPackageDir != "" {
 		t.Fatalf("production local package override must be ignored: %#v", production)
+	}
+}
+
+func TestGrokAgentExtensionSourcePinsApprovedSigningIdentity(t *testing.T) {
+	source := agentExtensionSourceByKey(t, ResolveAgentExtensionSources(), "grok")
+	if source.Enabled || source.SigningKeyID != "tutti-grok-release-v1" ||
+		source.ReleaseIndexURL != "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/grok/versions.json" {
+		t.Fatalf("grok source activation/key identity = %#v", source)
+	}
+	block, rest := pem.Decode([]byte(source.SigningPublicKey))
+	if block == nil || len(rest) != 0 {
+		t.Fatal("grok signing public key is not one canonical PEM block")
+	}
+	if _, err := x509.ParsePKIXPublicKey(block.Bytes); err != nil {
+		t.Fatalf("parse grok signing public key: %v", err)
+	}
+	digest := sha256.Sum256(block.Bytes)
+	if got := hex.EncodeToString(digest[:]); got != "408e1275a69d250897a5889505124ec32e91cfa209d01aa582b370f5d3b255d3" {
+		t.Fatalf("grok signing public key SPKI digest = %s", got)
 	}
 }
 

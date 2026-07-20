@@ -91,6 +91,7 @@ export function resolveGoValidationTargets(
 }
 
 export function buildGoLintLane({
+  golangciLintBinary = "golangci-lint",
   moduleRoot,
   targets,
   workspaceRoot,
@@ -104,7 +105,7 @@ export function buildGoLintLane({
     command: [
       "bash",
       "-lc",
-      `cd ${shellQuote(moduleRoot)} && golangci-lint run --allow-parallel-runners --config ${shellQuote(golangciConfigPath)} ${targetList}`
+      `cd ${shellQuote(moduleRoot)} && ${shellQuote(golangciLintBinary)} run --allow-parallel-runners --config ${shellQuote(golangciConfigPath)} ${targetList}`
     ]
   };
 }

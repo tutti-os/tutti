@@ -610,6 +610,14 @@ func (d *legacyHostConformanceDriver) GetSession(ctx context.Context, ref agenth
 	return legacyHostSessionObservationWithLive(session, live), err
 }
 
+func (d *legacyHostConformanceDriver) GetCanonicalSession(_ context.Context, ref agenthost.SessionRef) (hostconformance.SessionObservation, error) {
+	persisted, found := d.sessions.GetSession(ref.WorkspaceID, ref.AgentSessionID)
+	if !found {
+		return hostconformance.SessionObservation{}, agenthost.ErrSessionNotFound
+	}
+	return legacyHostSessionObservation(sessionFromPersisted(persisted, true)), nil
+}
+
 func (d *legacyHostConformanceDriver) UpdateSettings(ctx context.Context, input agenthost.UpdateSettingsInput) (hostconformance.SessionObservation, error) {
 	if d.directHost {
 		result, err := d.service.ApplicationHost().UpdateSettings(ctx, input)

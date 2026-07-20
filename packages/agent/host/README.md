@@ -52,8 +52,9 @@ cancellation and deadline failures unclassified because their delivery result
 is unknown and must remain recoverable.
 `UpdateSettings` serializes with runtime resume:
 historical sessions persist settings only, while live sessions update the
-runtime. Provider-specific model, reasoning, and speed normalization stays
-behind `SettingsPolicy`. `UpdatePin` mutates canonical metadata only.
+runtime first and persist the resulting settings only after the runtime
+accepts the change. Provider-specific model, reasoning, and speed normalization
+stays behind `SettingsPolicy`. `UpdatePin` mutates canonical metadata only.
 `DeleteSession` closes a live runtime before writing the canonical tombstone;
 authorization, shared bindings, transport DTOs, and local view cleanup remain
 adapter responsibilities.

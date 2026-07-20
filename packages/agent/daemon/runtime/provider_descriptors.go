@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -124,21 +125,26 @@ func newStandardACPAdapterFromProviderDescriptor(
 }
 
 type StandardACPAdapterConfig struct {
-	Provider                 string
-	Name                     string
-	DisplayName              string
-	Command                  []string
-	AuthMessage              string
-	ToolAliases              map[string]string
-	ModelConfigOptionID      string
-	PermissionConfigOptionID string
-	ReasoningConfigOptionID  string
-	RestrictConfigOptions    bool
-	PermissionModes          map[string]string
-	PlanModeRuntimeID        string
-	Capabilities             []string
-	AgentTargetID            string
-	InstallationID           string
+	Provider                     string
+	Name                         string
+	DisplayName                  string
+	Command                      []string
+	AuthMessage                  string
+	ToolAliases                  map[string]string
+	ModelConfigOptionID          string
+	PermissionConfigOptionID     string
+	ReasoningConfigOptionID      string
+	RestrictConfigOptions        bool
+	PermissionModes              map[string]string
+	PlanModeRuntimeID            string
+	PlanModeDisabledRuntimeID    string
+	PlanModeUsesLaunchPermission bool
+	LaunchPermission             *StandardACPLaunchPermissionSetting
+	SetModelReasoningEffortMeta  bool
+	Capabilities                 []string
+	AgentTargetID                string
+	InstallationID               string
+	ExecutableIdentity           *ExecutableIdentity
 }
 
 // NewStandardACPAdapter creates the generic, data-driven ACP adapter used by
@@ -149,28 +155,49 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 	if provider == "" || len(config.Command) == 0 || strings.TrimSpace(config.Command[0]) == "" {
 		return nil, fmt.Errorf("standard ACP provider and command are required")
 	}
+	launchPermission, err := validateStandardACPLaunchPermissionSetting(config.Command, config.LaunchPermission)
+	if err != nil {
+		return nil, err
+	}
+	if config.PlanModeUsesLaunchPermission {
+		planRuntimeID := strings.TrimSpace(config.PlanModeRuntimeID)
+		if launchPermission == nil || !standardACPLaunchSettingValuePattern.MatchString(planRuntimeID) {
+			return nil, errors.New("standard ACP launch-permission Plan mode declaration is invalid")
+		}
+		for _, permissionRuntimeID := range launchPermission.Values {
+			if planRuntimeID == permissionRuntimeID {
+				return nil, errors.New("standard ACP launch-permission Plan mode must use a distinct runtime value")
+			}
+		}
+	}
 	host = normalizeHostMetadata(host)
 	permissionModes := cloneStandardACPToolAliases(config.PermissionModes)
 	return &standardACPAdapter{
 		config: standardACPConfig{
-			provider:                 provider,
-			adapterName:              strings.TrimSpace(config.Name),
-			command:                  append([]string(nil), config.Command...),
-			defaultTitle:             strings.TrimSpace(config.DisplayName),
-			defaultTitleAliases:      []string{strings.TrimSpace(config.DisplayName), provider},
-			authRequiredMessage:      strings.TrimSpace(config.AuthMessage),
-			toolAliases:              cloneStandardACPToolAliases(config.ToolAliases),
-			modelConfigOptionID:      strings.TrimSpace(config.ModelConfigOptionID),
-			permissionConfigOptionID: strings.TrimSpace(config.PermissionConfigOptionID),
-			reasoningConfigOptionID:  strings.TrimSpace(config.ReasoningConfigOptionID),
-			restrictConfigOptions:    config.RestrictConfigOptions,
-			capabilities:             append([]string(nil), config.Capabilities...),
-			agentTargetID:            strings.TrimSpace(config.AgentTargetID),
-			installationID:           strings.TrimSpace(config.InstallationID),
-			permissionModeID:         func(input string) string { return permissionModes[strings.ToLower(strings.TrimSpace(input))] },
-			planModeRuntimeID:        strings.TrimSpace(config.PlanModeRuntimeID),
-			initializeParams:         func() map[string]any { return defaultACPInitializeParams(host) },
-			env:                      func(session Session) []string { return standardACPEnv(session, host) },
+			provider:                     provider,
+			adapterName:                  strings.TrimSpace(config.Name),
+			command:                      append([]string(nil), config.Command...),
+			defaultTitle:                 strings.TrimSpace(config.DisplayName),
+			defaultTitleAliases:          []string{strings.TrimSpace(config.DisplayName), provider},
+			authRequiredMessage:          strings.TrimSpace(config.AuthMessage),
+			toolAliases:                  cloneStandardACPToolAliases(config.ToolAliases),
+			modelConfigOptionID:          strings.TrimSpace(config.ModelConfigOptionID),
+			permissionConfigOptionID:     strings.TrimSpace(config.PermissionConfigOptionID),
+			reasoningConfigOptionID:      strings.TrimSpace(config.ReasoningConfigOptionID),
+			restrictConfigOptions:        config.RestrictConfigOptions,
+			capabilities:                 append([]string(nil), config.Capabilities...),
+			agentTargetID:                strings.TrimSpace(config.AgentTargetID),
+			installationID:               strings.TrimSpace(config.InstallationID),
+			executableIdentity:           cloneExecutableIdentity(config.ExecutableIdentity),
+			permissionModeID:             func(input string) string { return permissionModes[strings.ToLower(strings.TrimSpace(input))] },
+			planModeRuntimeID:            strings.TrimSpace(config.PlanModeRuntimeID),
+			planModeDisabledRuntimeID:    strings.TrimSpace(config.PlanModeDisabledRuntimeID),
+			planModeUsesLaunchPermission: config.PlanModeUsesLaunchPermission,
+			failOnSetModeError:           strings.TrimSpace(config.PlanModeRuntimeID) != "" && !config.PlanModeUsesLaunchPermission,
+			launchPermission:             launchPermission,
+			setModelReasoningEffortMeta:  config.SetModelReasoningEffortMeta,
+			initializeParams:             func() map[string]any { return defaultACPInitializeParams(host) },
+			env:                          func(session Session) []string { return standardACPEnv(session, host) },
 		},
 		transport: transport, host: host, sessions: make(map[string]*standardACPSession),
 	}, nil

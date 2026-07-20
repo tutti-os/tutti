@@ -10,13 +10,22 @@ import (
 var ErrLiveSessionBusy = errors.New("agent live session is busy")
 
 type ProcessSpec struct {
-	Provider       string
-	AgentSessionID string
-	RoomID         string
-	CWD            string
-	Command        []string
-	Env            []string
-	DirectStart    bool
+	Provider           string
+	AgentSessionID     string
+	RoomID             string
+	CWD                string
+	Command            []string
+	Env                []string
+	DirectStart        bool
+	ExecutableIdentity *ExecutableIdentity
+}
+
+// ExecutableIdentity binds a process launch to bytes verified by an owning
+// managed-runtime boundary. When present, local transport executes the opened,
+// verified descriptor rather than resolving the pathname again.
+type ExecutableIdentity struct {
+	SHA256    string
+	SizeBytes int64
 }
 
 type ProcessFrame struct {

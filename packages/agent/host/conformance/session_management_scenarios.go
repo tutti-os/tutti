@@ -118,6 +118,15 @@ func runHistoricalAndLiveSettings(ctx context.Context, driver Driver) error {
 		driver.Metrics().UpdateSettingsCalls != 1 {
 		return fmt.Errorf("live settings=%#v metrics=%#v", result, driver.Metrics())
 	}
+	canonical, err := driver.GetCanonicalSession(ctx, agenthost.SessionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-settings-live",
+	})
+	if err != nil {
+		return fmt.Errorf("get canonical live settings: %w", err)
+	}
+	if canonical.Live || !canonical.Settings.PlanMode || canonical.Settings.Model != "model-a" {
+		return fmt.Errorf("canonical live settings=%#v", canonical)
+	}
 	return nil
 }
 

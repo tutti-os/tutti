@@ -85,3 +85,17 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 		t.Fatalf("derived capabilities = %v, want compact+imageInput", withCompact)
 	}
 }
+
+func TestOpenStandardACPCapabilitiesAcceptSignedPlanWorkflowEvidence(t *testing.T) {
+	t.Parallel()
+	capabilities := standardACPCapabilitiesWithDeclared(
+		"acp:example",
+		false,
+		acpLiveStateSnapshot{},
+		[]string{CapabilityPlanMode},
+		true,
+	)
+	if !containsString(capabilities, CapabilityPlanMode) {
+		t.Fatalf("capabilities = %#v, want signed Plan workflow capability", capabilities)
+	}
+}

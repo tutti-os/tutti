@@ -533,7 +533,7 @@ export type AgentTargetInstallPlan = {
   extensionVersion: string;
   runtimeKind: string;
   platform: string;
-  runner: "npm" | "pnpm" | "uv";
+  runner: "npm" | "pnpm" | "uv" | "binary";
   packageName: string;
   packageVersion: string;
   installRoot: string;

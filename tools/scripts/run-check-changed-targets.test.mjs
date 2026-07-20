@@ -288,6 +288,7 @@ describe("builtin onboarding ensure", () => {
 describe("buildGoLintLane", () => {
   it("does not run generate:builtin-apps", () => {
     const lane = buildGoLintLane({
+      golangciLintBinary: "/tmp/go/bin/golangci-lint",
       moduleRoot: "services/tuttid",
       targets: new Set(["./service/workspace/..."]),
       workspaceRoot: "/repo",
@@ -295,7 +296,7 @@ describe("buildGoLintLane", () => {
     });
 
     assert.doesNotMatch(lane.command[2], /generate:builtin-apps/);
-    assert.match(lane.command[2], /golangci-lint run/);
+    assert.match(lane.command[2], /\/tmp\/go\/bin\/golangci-lint run/);
     assert.match(lane.command[2], /--allow-parallel-runners/);
   });
 });

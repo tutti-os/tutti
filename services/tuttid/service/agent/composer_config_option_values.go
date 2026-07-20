@@ -40,6 +40,33 @@ func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOpt
 		if option.SupportsImageInput != nil {
 			entry["supportsImageInput"] = *option.SupportsImageInput
 		}
+		if option.SupportsReasoningEffort != nil {
+			entry["supportsReasoningEffort"] = *option.SupportsReasoningEffort
+		}
+		if reasoningEffort := strings.TrimSpace(option.ReasoningEffort); reasoningEffort != "" {
+			entry["reasoningEffort"] = reasoningEffort
+		}
+		if option.ReasoningEffortsAdvertised {
+			efforts := make([]map[string]any, 0, len(option.ReasoningEfforts))
+			for _, effort := range option.ReasoningEfforts {
+				value := strings.TrimSpace(effort.Value)
+				if value == "" {
+					continue
+				}
+				item := map[string]any{"value": value}
+				if label := strings.TrimSpace(effort.Label); label != "" {
+					item["label"] = label
+				}
+				if description := strings.TrimSpace(effort.Description); description != "" {
+					item["description"] = description
+				}
+				if effort.Default {
+					item["default"] = true
+				}
+				efforts = append(efforts, item)
+			}
+			entry["reasoningEfforts"] = efforts
+		}
 		result = append(result, entry)
 	}
 	return result

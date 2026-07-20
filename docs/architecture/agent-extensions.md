@@ -19,8 +19,11 @@ Release ZIPs are data-only. Installation rejects path traversal, symlinks,
 executable regular files, unsupported file types, excessive entry counts, and
 excessive compressed or expanded sizes. Directory entries may carry the normal
 execute/search bits required to traverse them. The package may describe an exact
-standard npm, pnpm, or uv runtime installation, but it never carries executable
-code itself.
+standard npm, pnpm, or uv runtime installation, or pin raw official executable
+artifacts, but it never carries executable code itself. Binary artifact
+metadata remains inside the v2 manifest covered by the extension release's
+Ed25519 signature and signed package digest; there is no manifest v3 or
+reinterpretation of existing package-manager manifests.
 
 Each concrete Agent repository owns its reproducible archive, release signing,
 versions generation, verification, and S3/CloudFront workflow. Tutti consumes
@@ -87,6 +90,59 @@ scope. When no project is selected, it uses the daemon-owned discovery directory
 under `<state>/agent/discovery/<provider>`, because standard ACP session creation
 requires a concrete working directory.
 
+### Spawn Settings And ACP Workflow Modes
+
+Composer profile v1 has an optional, closed `launchSettings.permission`
+declaration for agents whose permission tier is fixed when the process starts.
+It accepts only the `${permissionMode}` placeholder as one complete discovery
+`launchArgs` element, requires exactly one occurrence, and requires exactly one
+unique runtime value for each Tutti semantic: `ask-before-write`, `auto`, and
+`full-access`. The default semantic is fixed to `ask-before-write`. Empty
+values, unknown or combined placeholders, unknown semantics, duplicate or
+ambiguous values, and shell syntax fail installation validation. Expansion is
+an argv-element replacement; it never invokes a shell or weakens the existing
+runtime command validation.
+
+Spawn-time permission is not an ACP workflow mode. The selected permission is
+captured by conversation creation and changing it requires a new session. The
+adapter does not send `session/set_mode` for that permission. An extension may
+separately declare `workflowModes.plan.enabledRuntimeId` and
+`disabledRuntimeId`; the shared Plan switch and `/plan` then send those two
+validated values through standard `session/set_mode`. An agent whose Plan mode
+exists only as a launch-time permission may additionally declare
+`updateStrategy: "restart-with-launch-permission"`. For that strategy the
+adapter replaces only the ACP process, loads the same provider session, uses the
+enabled runtime ID while Plan is active, and restores the conversation's fixed
+permission runtime value when Plan is disabled. A failed restart leaves the
+previous live process and canonical settings unchanged. Profiles without these
+optional declarations retain their existing ACP session-mode/config-option
+behavior.
+
+Composer profile v1 may also opt in to
+`setModel.reasoningEffortMeta`. For that profile, the standard ACP
+`SessionModelState.models.availableModels` entries are the only model and
+reasoning catalog. Tutti preserves `supportsReasoningEffort`,
+`reasoningEffort`, `reasoningEfforts` (including runtime labels and
+descriptions), and `supportsImageInput`, whether supplied as supported model
+fields or in model `_meta`. The daemon projects those facts through typed
+composer options and `reasoningOptionsByModel`; AgentGUI therefore changes the
+reasoning selector when the selected model changes. Unsupported models carry
+an authoritative empty profile. A model or reasoning update uses standard
+`session/set_model`; the validated current effort is added as
+`_meta.reasoningEffort` only for a model that advertises reasoning support.
+The established standard ACP config-option reasoning path remains unchanged
+for profiles that do not opt in.
+
+Slash-command narrowing remains declarative. A future extension can mark its
+signed command catalog authoritative and allow only shared commands such as
+`compact`, `status`, and `plan`; runtime-private commands are then removed
+before composer projection. Image blocks, tool calls, permission requests,
+cancel, resume/load, skills roots, and the client-provided standard ACP MCP
+array continue through the generic adapter. The current Tutti session-create
+contract supplies an empty MCP array and does not manage an agent's private MCP
+configuration; adding a non-empty product-level MCP input is a separate Host
+contract change.
+
 Extension composer controls stay runtime-owned after the model list is
 discovered. `tuttid` selects the newest context only within the exact workspace,
 normalized project, Agent Target, fixed installation, and request-settings
@@ -119,7 +175,14 @@ policy before returning composer options, so extension commands can reuse the
 shared AgentGUI slash-command behavior without a provider-name branch. Signed
 capability profiles may declare canonical GUI capabilities such as `compact`
 and `planMode`. A declaration becomes effective only when current ACP runtime
-facts and host support also establish it. Duplicates are removed, and unknown
+facts and host support also establish it. The closed, signed
+`workflowModes.plan` enabled/disabled ID pair is itself sufficient runtime
+contract evidence for `planMode`, including agents that implement
+`session/set_mode` without advertising a mode catalog from `session/new`.
+For the launch-restart strategy, the same evidence is combined with the closed
+spawn-permission declaration; the Plan runtime value must be distinct from all
+three permission values.
+Duplicates are removed, and unknown
 extension-local capability keys remain package metadata rather than entering
 the Agent Activity capability contract.
 
@@ -171,9 +234,28 @@ reused across workspaces while setup actions remain tied to the exact Target
 installation that the user confirmed. Every install action recomputes the plan
 and compares its digest before creating files or processes.
 
-The validated manifest inside the installed extension package is authoritative
-for runtime commands. The copied manifest in `installation.json` is metadata,
-not an alternate command source.
+The signed release is authoritative for runtime commands. Tutti persists both
+the complete signed release record and the exact signed ZIP beside the extracted
+package. Every remote-package load reverifies the Ed25519 signature against the
+configured source key, checks the ZIP's signed SHA-256 and size, derives a
+canonical content identity directly from those signed ZIP bytes, and compares
+that identity and complete manifest with the active package. The copied manifest
+and digest in `installation.json` are metadata and cannot redefine authority. A
+same-version package directory whose content or authority differs is rejected
+during load and atomically replaced only after a newly downloaded signed
+artifact has been verified. Local development snapshots remain explicitly
+content-addressed and are not interpreted as signed releases.
+
+Remote manifest-v2 npm, pnpm, and uv installations created before persisted
+signed-package authority remain readable offline through a closed legacy path.
+That path requires an installation-v1 record with no release digest/size, no
+persisted signed-release files, no binary artifacts, and no user-command
+publication override. Tutti validates the complete package and manifest twice
+around a canonical content fingerprint, then atomically records that fingerprint
+in the legacy installation record. Later loads require the exact migrated
+snapshot. Partial signed-authority state never falls back to legacy validation,
+and legacy packages are redownloaded into signed authority when their source is
+reachable rather than being reinterpreted as a signed installation.
 
 Setup probes a compatible executable from the daemon PATH first. A compatible
 local runtime wins even when a managed runtime exists. Otherwise, the installer
@@ -182,24 +264,71 @@ user-local installation; it does not invoke a shell or mutate any project
 package manifest, lockfile, `node_modules`, or global package state.
 Environment inheritance is allowlisted. Runner CWD and package-manager
 cache/config live in a Tutti-managed scratch directory under that same
-user-local runtime root.
+user-local runtime root. Tutti rejects symlinks in every existing ancestor of
+the configured managed root. Staging, scratch, replacement, rollback, and final
+activation use no-follow directory handles and relative directory operations;
+the held handles are compared with their path identities before each boundary
+on Unix. Activation metadata is written atomically relative to the held staging
+descriptor, so replacing the staging pathname or placing a link at the metadata
+name cannot redirect a write. Windows retains the established package-manager
+staging and activation path for npm, pnpm, and uv runtimes; raw binary runtimes
+remain fail-closed there until an equivalent no-follow activation implementation
+is available.
 
-After installation, `tuttid` resolves a regular executable inside staging,
+For package-manager runtimes, `tuttid` resolves a regular executable inside
+staging. A v2 manifest may instead set `runtime.install.runner` to `binary` and
+provide a bounded `artifacts` catalog. Every entry is a raw `executable` pinned
+by exact `<GOOS>-<GOARCH>` platform, semantic version, HTTPS URL, lowercase
+SHA-256, byte size, and an `official-release` HTTPS provenance URL. Unsupported
+platforms have no fallback and fail before download. The selected artifact is
+streamed directly into the private staging root with exclusive creation and a
+hard byte limit; Tutti verifies response transport, size, digest, executable
+mode, and native Mach-O/ELF/PE platform identity. It never invokes an upstream
+installer, shell, archive extractor, or PATH/rc mutation for this runtime kind.
+
+For both install kinds, Tutti fingerprints the ordinary in-root executable,
 runs the discovery profile's version check, then performs ACP `initialize` and
-`session/new`. Authentication failures produce `auth_required`; protocol or
-runtime failures fail the action. Successful and auth-required runtimes receive
-an `activation.json` record and are renamed atomically into the fixed install
-root. Symlinked package-manager bin shims are resolved to an ordinary in-root
-file before activation and launch.
+`session/new`. A binary runtime must report the exact artifact version, not
+merely satisfy the local-discovery compatibility range. Binary version probes
+start from the same verified descriptor on Linux or daemon-private immutable
+snapshot on macOS as the final ACP process; the replaceable managed pathname is
+never executed after an earlier fingerprint check. Fingerprints are rechecked
+after ACP process boundaries and again after the atomic staging rename.
+Authentication failures produce `auth_required`; protocol or runtime failures
+fail the action. Successful and auth-required runtimes receive an
+`activation.json` record. Symlinked package-manager bin shims are resolved to an
+ordinary in-root file before activation and launch.
 
-Successful activation also publishes the manifest launch executable's basename
-at `~/.local/bin/<agent-command>`. The user entry is a Tutti-owned symlink to
+Binary replacement uses `<runtimeIdentity>.previous` as its only durable
+intermediate state. Before activation removes any existing backup, and before
+resolution trusts an active root, Tutti resolves an interrupted replacement.
+If the active root matches the current installation identity and exact signed
+artifact, it remains authoritative and the backup may be removed. If the active
+root is absent or invalid, the backup is promoted only after its activation
+identity, executable path, SHA-256, size, executable mode, and native platform
+all match the current signed artifact; the held directory is checked again
+after the rename. An invalid backup is never adopted and, when no verified
+active root exists, is preserved for diagnosis. Thus interruption after either
+replacement rename converges on the verified old or verified new runtime
+without silently discarding the active runtime.
+
+By default, successful activation also publishes the manifest launch
+executable's basename at `~/.local/bin/<agent-command>`. The user entry is a
+Tutti-owned symlink to
 `~/.local/share/tutti/agent-runtimes/<agentKey>/bin/<agent-command>`; that
 stable per-Agent link points to the executable in the fixed runtime root and is
 atomically repointed on upgrade. A pre-existing regular file or foreign symlink
 at either entry is never overwritten. Feature disablement and daemon shutdown
 do not remove a published command, so it remains usable outside Tutti while the
 managed runtime files remain installed.
+
+The optional v2 `runtime.launch.publishUserCommand` field may be `false` for a
+runtime that should be private to AgentGUI. Absence preserves publication for
+every existing manifest. An opted-out runtime launches the verified fixed
+executable inside `installRoot` and neither creates nor verifies the two
+publication links. A pre-existing regular file or foreign symlink at the user
+command path is therefore ignored and cannot prevent managed activation; Tutti
+still never overwrites, removes, or repoints that entry.
 
 Discovery skips this two-link managed entry when probing PATH, then resolves it
 through the managed activation record. It therefore remains `source=managed`
@@ -209,15 +338,41 @@ foreign, broken, or unexpectedly repointed entry produces
 `runtime_integrity_failed` and an explicit reinstall plan. Existing
 extension-version roots may be adopted into the runtime-identity root only when
 their Tutti activation record, package identity, executable fingerprint, and
-current discovery version check all match; otherwise they are ignored and the
-user receives an explicit reinstall plan.
+current discovery version check all match. Binary runtimes additionally require
+the executable SHA-256 and byte size to match the artifact in the current signed
+manifest before adoption; otherwise the candidate is ignored and the user
+receives an explicit reinstall plan. Candidate enumeration, activation-record
+reads and replacement, rename, rollback, and recursive cleanup operate relative
+to held no-follow directory descriptors on Unix. Binary executable identity is
+re-established inside the descriptor/snapshot version launcher before any
+candidate can execute, and is checked again around activation-record update and
+adoption rename.
+
+Normal resolution also opens the active runtime-identity root relative to the
+held workspace descriptor on every attempt, even when no recovery backup is
+present. Activation metadata and executable bytes are read relative to that
+no-follow root handle and the handle's path identity is checked around the
+version probe. A file or symlink occupying the active-root name is rejected as
+an integrity failure; resolution never follows it or adopts its target.
 
 The managed-runtime activation record persists the resolved executable's
 runtime identity, package identity, SHA-256, and byte size. Every
 managed-runtime resolution recomputes both fingerprint fields before the
-version or ACP probe. A replacement, even one reporting the same compatible
-version, is rejected with `runtime_integrity_failed` and returns the exact
-reinstall plan.
+version or ACP probe, and recomputes them again after the version probe. Binary
+runtimes also compare the bytes with the current signed artifact SHA-256 and
+size and revalidate the native platform on every resolution. A replacement, an
+artifact from superseded signed metadata, or even a replacement reporting the
+same compatible version is rejected with `runtime_integrity_failed` and returns
+the exact reinstall plan.
+
+For a managed binary, that expected SHA-256 and size are also carried through
+the generic Standard ACP adapter into the final process specification. Linux
+starts the verified open descriptor directly. macOS copies that descriptor to
+a freshly created daemon-private snapshot, verifies it, marks both the file and
+directory immutable and non-writable, starts it, and removes the snapshot
+immediately after process start. The later
+process boundary therefore never resolves the replaceable managed-runtime
+pathname after trusting an earlier fingerprint.
 
 An auth-required snapshot includes normalized methods from the fresh ACP
 initialize response. Authentication submission accepts only the advertised
@@ -305,3 +460,51 @@ discovery is not setup state and does not infer
 installation or authentication readiness. Extensions use either a compatible
 local runtime or an explicitly confirmed Target-managed runtime; `tuttid`
 never installs into a user project.
+
+## Declarative Grok Compatibility
+
+The generated source registry contains a default-off `grok` entry using key ID
+`tutti-grok-release-v1` and the approved Ed25519 public key. Enabling remains a
+generic `agent.extension.grok` feature-flag decision; no Grok provider or
+renderer branch exists.
+
+The separate Grok extension is expected to declare official CLI `0.2.103` for
+`darwin-arm64` as a binary artifact with URL
+`https://x.ai/cli/grok-0.2.103-macos-aarch64`, size `121600480`, SHA-256
+`1be9de92f31566f2d38992125f902220b022f4f1e3fb7330532a0513d1d6f0f2`, and
+official provenance `https://x.ai/cli/install.sh`. Its launch executable is
+`${installRoot}/grok`, `publishUserCommand` is `false`, and managed launch args
+are exactly `--no-auto-update --permission-mode ${permissionMode} agent stdio`.
+They remain extension-owned declarative data. Only Apple Silicon is initially
+listed; the generic catalog can add independently pinned platform entries in a
+later signed extension release.
+
+For Grok CLI 0.2.103, the spawn-time permission values are `default` for
+ask-before-write, `auto` for automatic operation, and `bypassPermissions` for
+full access. These are CLI permission values, not ACP workflow mode IDs; Plan
+continues to use the independent `plan` / `default` `session/set_mode` pair.
+
+## Opt-in Real Grok ACP Smoke
+
+The generic adapter has an explicit local smoke for an already installed and
+authenticated official Grok CLI:
+
+```sh
+TUTTI_REAL_GROK_ACP_SMOKE=1 \
+TUTTI_GROK_BIN=/absolute/path/to/grok \
+go test ./packages/agent/daemon/runtime -run TestRealGrokACPInitializeSmoke -count=1
+```
+
+It is skipped by default, reads no user authentication state in CI, creates no
+ACP session, and sends no prompt. When explicitly enabled it verifies the
+executable/version, performs standard ACP `initialize`, checks that the
+initialize model state has an available and current model, then closes the
+process. The fake ACP tests separately verify the exact declared spawn argv and
+all permission tiers; keeping those checks separate lets the smoke remain
+non-billable even when a CLI release makes `session/new` contact the service.
+
+This support does not add a Grok provider, icon, executable wrapper, credential
+persistence, private authentication protocol, headless/TSH integration,
+automatic CLI updates, or private `x.ai/*` operations. End-to-end AgentGUI
+visibility still requires separately reviewed and signed external extension
+bytes; the default-off source alone does not make a release available.
