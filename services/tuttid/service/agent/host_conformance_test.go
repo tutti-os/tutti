@@ -11,6 +11,7 @@ import (
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	hostconformance "github.com/tutti-os/tutti/packages/agent/host/conformance"
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
@@ -116,6 +117,18 @@ func TestHostCommitObserverConformance(t *testing.T) {
 	}
 }
 
+func TestHostEventSubscriptionConformance(t *testing.T) {
+	for _, scenario := range hostconformance.EventSubscriptionScenarios() {
+		scenario := scenario
+		t.Run(scenario.Name, func(t *testing.T) {
+			driver := &legacyHostConformanceDriver{t: t, directHost: true}
+			if err := hostconformance.RunEventSubscription(context.Background(), driver, scenario); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestHostCancelAcceptanceDoesNotImplyCanonicalSettlement(t *testing.T) {
 	driver := &legacyHostConformanceDriver{t: t, directHost: true}
 	fixture := hostconformance.Fixture{
@@ -201,6 +214,8 @@ type legacyHostConformanceDriver struct {
 	goalStore      *conformanceGoalStateStore
 	goalInbox      *conformanceGoalInboxStore
 	commitObserver *conformanceCommitObserver
+	eventStore     conformanceEventStore
+	eventFaults    *conformanceFaultyEventStore
 	recoverySteps  *[]string
 	createdTurns   map[string]string
 	directHost     bool
@@ -229,7 +244,11 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.service.SessionPurgeStore = d.sessions
 	d.service.SessionInitializer = legacyHostConformanceSessionInitializer{sessions: d.sessions}
 	canonicalStore := openAgentServiceSQLiteStore(d.t)
+	d.eventFaults = &conformanceFaultyEventStore{conformanceEventStore: canonicalStore}
+	d.eventStore = d.eventFaults
 	d.service.SubmitClaimStore = canonicalStore
+	d.service.EventSubscriptionStore = d.eventFaults
+	d.service.EventDeliveryOwner = "host-event-conformance-worker"
 	d.service.RuntimeOperationStore = d.operationPort
 	d.service.StaleTurnSettler = conformanceStaleTurnSettler{steps: &steps}
 	d.service.RuntimeOperationOwner = "host-conformance-worker"
@@ -332,6 +351,19 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 			Metadata:        agentactivitybiz.SessionMetadata{Visible: true, Capabilities: []string{}},
 			CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2, LastEventUnixMS: 2,
 		}
+		if _, err := canonicalStore.ReportSessionState(context.Background(), agentactivitybiz.SessionStateReport{
+			WorkspaceID: additional.WorkspaceID, AgentSessionID: additional.AgentSessionID,
+			Provider: additional.Provider, ProviderSessionID: additional.ProviderSessionID, OccurredAtUnixMS: 1,
+		}); err != nil {
+			return err
+		}
+		if additional.Live {
+			d.runtime.sessions[additionalKey] = ProviderRuntimeSession{
+				ID: additional.AgentSessionID, WorkspaceID: additional.WorkspaceID, Provider: additional.Provider,
+				ProviderSessionID: additional.ProviderSessionID, Cwd: additional.Cwd, Status: "ready",
+				Visible: true, CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2,
+			}
+		}
 		if parentID := strings.TrimSpace(additional.ParentAgentSessionID); parentID != "" {
 			d.sessions.parentByKey[additionalKey] = additional.WorkspaceID + ":" + parentID
 		}
@@ -405,6 +437,105 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		}
 	}
 	return nil
+}
+
+type conformanceEventStore interface {
+	agenthost.EventSubscriptionStore
+	ReportActivityState(context.Context, agentactivitybiz.ActivityStateReport) (agentactivitybiz.ActivityStateReportResult, error)
+}
+
+type conformanceFaultyEventStore struct {
+	conformanceEventStore
+	failNextCompletion bool
+}
+
+func (s *conformanceFaultyEventStore) CompleteEventDelivery(ctx context.Context, deliveryID, owner string, now int64) (storesqlite.EventDelivery, bool, error) {
+	if s.failNextCompletion {
+		s.failNextCompletion = false
+		return storesqlite.EventDelivery{}, false, errors.New("injected event delivery completion failure")
+	}
+	return s.conformanceEventStore.CompleteEventDelivery(ctx, deliveryID, owner, now)
+}
+
+func (d *legacyHostConformanceDriver) CreateEventSubscription(ctx context.Context, input agenthost.CreateEventSubscriptionInput) error {
+	_, err := d.service.ApplicationHost().CreateEventSubscription(ctx, input)
+	return err
+}
+
+func (d *legacyHostConformanceDriver) EmitTerminalTurn(ctx context.Context, workspaceID, sourceSessionID, turnID, outcome string) error {
+	base := int64(1_001)
+	for index, transition := range []agentactivitybiz.TurnTransition{
+		{
+			WorkspaceID: workspaceID, AgentSessionID: sourceSessionID, TurnID: turnID,
+			Phase: agentactivitybiz.TurnPhaseRunning, Origin: agentactivitybiz.TurnOriginUserPrompt,
+		},
+		{
+			WorkspaceID: workspaceID, AgentSessionID: sourceSessionID, TurnID: turnID,
+			Phase: agentactivitybiz.TurnPhaseSettled, Outcome: outcome,
+		},
+	} {
+		occurredAt := base + int64(index)
+		transition.OccurredAtUnixMS = occurredAt
+		if _, err := d.eventStore.ReportActivityState(ctx, agentactivitybiz.ActivityStateReport{
+			Session: agentactivitybiz.SessionStateReport{
+				WorkspaceID: workspaceID, AgentSessionID: sourceSessionID,
+				Provider: "codex", OccurredAtUnixMS: occurredAt,
+			},
+			Turn: &transition,
+		}); err != nil {
+			return err
+		}
+	}
+	d.service.RuntimeOperationClock = func() time.Time { return time.UnixMilli(base + 2) }
+	return nil
+}
+
+func (d *legacyHostConformanceDriver) StepEventDelivery(ctx context.Context) (bool, error) {
+	before := len(d.runtime.execCalls)
+	processed, err := d.service.ApplicationHost().StepEventDeliveryWorker(ctx)
+	if err != nil && len(d.runtime.execCalls) > before {
+		input := d.runtime.execCalls[len(d.runtime.execCalls)-1]
+		d.recordSubmittedTurn(input.WorkspaceID, input.AgentSessionID, "turn-1")
+	}
+	return processed, err
+}
+
+func (d *legacyHostConformanceDriver) FailNextEventDeliveryCompletion() {
+	d.eventFaults.failNextCompletion = true
+}
+
+func (d *legacyHostConformanceDriver) RecoverEventDeliveries(ctx context.Context) error {
+	return d.service.ApplicationHost().RecoverEventDeliveries(ctx)
+}
+
+func (d *legacyHostConformanceDriver) ObserveEventSubscription(ctx context.Context, workspaceID, subscriptionID string) (hostconformance.EventSubscriptionObservation, error) {
+	subscription, found, err := d.eventStore.GetEventSubscription(ctx, workspaceID, subscriptionID)
+	if err != nil {
+		return hostconformance.EventSubscriptionObservation{}, err
+	}
+	if !found {
+		return hostconformance.EventSubscriptionObservation{}, fmt.Errorf("event subscription %q not found", subscriptionID)
+	}
+	delivery, deliveryFound, err := d.eventStore.GetEventDeliveryBySubscription(ctx, workspaceID, subscriptionID)
+	if err != nil {
+		return hostconformance.EventSubscriptionObservation{}, err
+	}
+	observation := hostconformance.EventSubscriptionObservation{
+		SubscriptionStatus: subscription.Status,
+		RuntimeExecCalls:   len(d.runtime.execCalls),
+	}
+	if deliveryFound {
+		observation.DeliveryStatus = delivery.Status
+	}
+	if len(d.runtime.execCalls) > 0 {
+		lastExec := d.runtime.execCalls[len(d.runtime.execCalls)-1]
+		clientSubmitID, _ := lastExec.Metadata["clientSubmitId"].(string)
+		observation.LastClientSubmitID = clientSubmitID
+		observation.LastGuidance = lastExec.Guidance
+		observation.LastInitialTitle = lastExec.InitialTitle
+		observation.LastSubmissionKind, _ = lastExec.Metadata["tuttiSubmissionKind"].(string)
+	}
+	return observation, nil
 }
 
 func (d *legacyHostConformanceDriver) Create(

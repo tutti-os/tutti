@@ -11,4 +11,6 @@ var (
 	ErrRuntimeOperationInProgress = errors.New("agent runtime operation is already in progress")
 	ErrRuntimeOperationFailed     = errors.New("agent runtime operation failed")
 	ErrGoalConsumerUnavailable    = errors.New("agent goal reconcile consumer is unavailable")
+	ErrEventSubscriptionNotFound  = errors.New("agent event subscription not found")
+	ErrEventTypeUnsupported       = errors.New("agent event type is unsupported")
 )

@@ -269,6 +269,20 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 		return SendInputResult{}, err
 	}
 	metadata := submissionMetadata(input.Metadata, input.ClientSubmitID)
+	submissionKind := input.SubmissionKind
+	if submissionKind == "" {
+		submissionKind = SubmissionKindUserPrompt
+	}
+	if submissionKind != SubmissionKindUserPrompt && submissionKind != SubmissionKindEventContinuation {
+		return SendInputResult{}, ErrInvalidArgument
+	}
+	if submissionKind != SubmissionKindUserPrompt {
+		metadata = cloneMap(metadata)
+		if metadata == nil {
+			metadata = make(map[string]any, 1)
+		}
+		metadata["tuttiSubmissionKind"] = string(submissionKind)
+	}
 	if typedGoal, ok := ParseTypedGoalControl(normalized, input.Guidance); ok {
 		goalResult, goalErr := h.goalControl(ctx, GoalControlInput{
 			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
@@ -325,7 +339,7 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 	}
 	h.observeStep(ctx, "message_send", "prompt_prepared", ref.AgentSessionID, session.Provider, startedAt, nil)
 	displayPrompt, initialTitle := strings.TrimSpace(input.DisplayPrompt), ""
-	if !input.Guidance && !session.InitialTitleEstablished {
+	if !input.Guidance && submissionKind == SubmissionKindUserPrompt && !session.InitialTitleEstablished {
 		initialTitle = DeriveInitialTitle(session.Title, firstNonEmpty(displayPrompt, promptText, preparedDisplay))
 	}
 	startedAt = h.now()

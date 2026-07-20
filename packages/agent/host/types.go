@@ -267,7 +267,15 @@ type SendInput struct {
 	// overrides any legacy clientSubmitId value carried in Metadata.
 	ClientSubmitID string
 	Guidance       bool
+	SubmissionKind SubmissionKind
 }
+
+type SubmissionKind string
+
+const (
+	SubmissionKindUserPrompt        SubmissionKind = "user_prompt"
+	SubmissionKindEventContinuation SubmissionKind = "event_continuation"
+)
 
 type SubmitInteractiveInput struct {
 	TurnID   string

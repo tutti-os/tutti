@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -122,6 +123,22 @@ func (f *fakeAgentSessions) CancelTurn(_ context.Context, workspaceID string, se
 		}
 	}
 	return f.cancelResult, f.cancelErr
+}
+
+func (*fakeAgentSessions) CreateEventSubscription(_ context.Context, input agenthost.CreateEventSubscriptionInput) (agentservice.EventSubscription, error) {
+	return agentservice.EventSubscription{
+		SubscriptionID: input.SubscriptionID, WorkspaceID: input.WorkspaceID,
+		SubscriberAgentSessionID: input.SubscriberAgentSessionID, EventType: input.EventType, EventVersion: 1,
+		SourceKind: "agent_turn", SourceID: input.SourceAgentSessionID, SourceSubjectID: input.SourceTurnID,
+	}, nil
+}
+
+func (*fakeAgentSessions) ListEventSubscriptions(context.Context, string, string) ([]agentservice.EventSubscription, error) {
+	return nil, nil
+}
+
+func (*fakeAgentSessions) CancelEventSubscription(context.Context, string, string, string) (agentservice.EventSubscription, error) {
+	return agentservice.EventSubscription{}, nil
 }
 
 func (f *fakeAgentSessions) CreateWithResult(_ context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.CreateSessionResult, error) {

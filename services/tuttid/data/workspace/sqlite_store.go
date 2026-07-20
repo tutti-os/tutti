@@ -46,7 +46,7 @@ func OpenSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	store := &SQLiteStore{dbPath: dbPath, writeDB: db}
-	store.agentWriter = newAgentStore(db)
+	store.agentWriter = newAgentStore(db, agentstore.EventSubscriptionParticipant{})
 
 	if _, err := db.Exec("PRAGMA journal_mode = WAL"); err != nil {
 		_ = store.Close()
@@ -114,7 +114,7 @@ func (s *SQLiteStore) openReadPool(ctx context.Context) error {
 	}
 
 	s.readDB = db
-	s.agentReader = newAgentStore(db)
+	s.agentReader = newAgentStore(db, nil)
 	return nil
 }
 

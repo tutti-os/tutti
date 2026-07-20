@@ -94,6 +94,22 @@ type RuntimeOperationEventPublisher interface {
 	PublishRuntimeOperationEvent(context.Context, storesqlite.RuntimeOperationEvent) error
 }
 
+// EventSubscriptionStore owns durable one-shot subscriptions and their
+// at-least-once delivery leases. Matching terminal turns is performed by the
+// canonical store transaction participant before Host claims deliveries.
+type EventSubscriptionStore interface {
+	CreateEventSubscription(context.Context, storesqlite.CreateEventSubscriptionInput) (storesqlite.EventSubscription, bool, error)
+	GetEventSubscription(context.Context, string, string) (storesqlite.EventSubscription, bool, error)
+	ListEventSubscriptions(context.Context, string, string) ([]storesqlite.EventSubscription, error)
+	CancelEventSubscription(context.Context, string, string, string, int64) (storesqlite.EventSubscription, bool, error)
+	GetEventDeliveryBySubscription(context.Context, string, string) (storesqlite.EventDelivery, bool, error)
+	ListClaimableEventDeliveries(context.Context, int64, int) ([]storesqlite.EventDelivery, error)
+	ClaimEventDelivery(context.Context, storesqlite.ClaimEventDeliveryInput) (storesqlite.EventDelivery, bool, error)
+	CompleteEventDelivery(context.Context, string, string, int64) (storesqlite.EventDelivery, bool, error)
+	ReleaseEventDelivery(context.Context, storesqlite.ReleaseEventDeliveryInput) (storesqlite.EventDelivery, bool, error)
+	RequeueLeasedEventDeliveriesOnStartup(context.Context, int64) (int64, error)
+}
+
 // StaleTurnSettler runs after durable runtime operations, goal operations, and
 // goal reconcile inbox work have been recovered and before the adapter-specific
 // worktree-isolation sweep.

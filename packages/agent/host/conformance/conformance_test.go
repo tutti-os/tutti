@@ -2,6 +2,7 @@ package conformance
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -39,6 +40,23 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 				t.Fatalf("scenario count=%d, want %d", len(seen), catalog.wantCount)
 			}
 		})
+	}
+}
+
+func TestEventSubscriptionScenarioCatalogHasUniqueNames(t *testing.T) {
+	t.Parallel()
+	seen := map[string]struct{}{}
+	for _, scenario := range EventSubscriptionScenarios() {
+		if strings.TrimSpace(scenario.Name) == "" {
+			t.Fatal("event subscription conformance scenario has an empty name")
+		}
+		if _, exists := seen[scenario.Name]; exists {
+			t.Fatalf("duplicate event subscription conformance scenario %q", scenario.Name)
+		}
+		seen[scenario.Name] = struct{}{}
+	}
+	if len(seen) != 1 {
+		t.Fatalf("event subscription scenario count=%d, want 1", len(seen))
 	}
 }
 

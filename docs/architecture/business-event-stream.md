@@ -353,3 +353,10 @@ The business event stream contract is separate from daemon HTTP OpenAPI.
 
 This separation keeps HTTP routes and bidirectional event contracts explicit
 instead of forcing one toolchain to model both transport families.
+
+It is also separate from [Agent Event Subscriptions](./agent-event-subscriptions.md).
+The business event stream wakes connected observers and carries typed UI or
+app projections; it is not a durable orchestration queue. Agent subscriptions
+match canonical facts and persist delivery before a Host worker creates a
+continuation turn. A future event-stream topic may expose that state, but a
+WebSocket publish or reconnect can never be the delivery authority.

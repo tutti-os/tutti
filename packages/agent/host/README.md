@@ -17,6 +17,8 @@ The module owns:
   startup recovery order, and adapter-specific worktree GC scheduling;
 - the direct and typed goal-control saga, revision actor, durable operation and
   reconcile-inbox workers, provider evidence repair, and goal recovery policy;
+- the enumerable one-shot Agent event catalog, atomic terminal-turn matching,
+  leased delivery worker, and idempotent continuation-turn submission;
 - typed conformance scenarios under `conformance`.
 
 `CreateSession` has two explicit modes: an empty session, or one command with
@@ -34,7 +36,9 @@ durable runtime operations, then goal operations and the goal reconcile inbox,
 then settles unrecoverable stale turns, and finally invokes the adapter's
 worktree-isolation sweep. Configuring a goal store
 without its runtime or inbox consumer fails recovery with
-`ErrGoalConsumerUnavailable` instead of silently accumulating work.
+`ErrGoalConsumerUnavailable` instead of silently accumulating work. Durable
+event deliveries recover after the goal inbox and before stale-turn settlement;
+the periodic worker then handles deliveries produced by stale-turn settlement.
 
 `GetSession` reads canonical session truth plus an optional live runtime
 observation without starting a provider. `GetTurn` and
@@ -84,7 +88,7 @@ skill bundles intentionally remain outside the Host contract.
 agent service adapter, invokes `Host.Recover` before serving traffic, and starts
 the Host-owned runtime and goal workers. Adapters can use the supervised
 `Host.Run` entrypoint to start the runtime-operation, goal-operation, goal
-reconcile-inbox, and periodic worktree-GC workers as one lifecycle; an
+reconcile-inbox, event-delivery, and periodic worktree-GC workers as one lifecycle; an
 infrastructure-level worker exit cancels its siblings, while retryable item
 failures remain worker-local. Host owns when GC runs, while the adapter port
 retains all Git, filesystem, and eligibility decisions. The
@@ -121,7 +125,10 @@ adapters share one behavior baseline without importing one another.
 Coordinator, goal, and commit-observer scenario groups extend the same driver
 with recovery ordering through the worktree sweep, recovery failure
 propagation, post-commit failure semantics, and exact-tombstone permanent
-removal semantics.
+removal semantics. `EventSubscriptionScenarios` uses a separate additive driver
+contract to verify atomic matching and exactly-one logical continuation without
+forcing existing downstream lifecycle drivers to adopt the new surface in
+lockstep.
 
 The conformance package keeps its shared fixture and driver contract in
 `conformance.go`, explicit scenario membership in `scenarios.go`, and scenario
