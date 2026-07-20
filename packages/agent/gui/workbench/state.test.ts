@@ -178,9 +178,17 @@ describe("agent gui workbench state", () => {
     });
     let notified = 0;
     const unsubscribe =
-      source.externalStateSource.subscribe?.(() => {
-        notified += 1;
-      }) ?? (() => undefined);
+      source.externalStateSource.subscribeNodeState?.(
+        {
+          instanceId: "agent-gui:hermes",
+          nodeId: "node-1",
+          typeId: "agent-gui",
+          workspaceId: "workspace-1"
+        },
+        () => {
+          notified += 1;
+        }
+      ) ?? (() => undefined);
 
     source.writeNodeState({
       instanceId: "agent-gui:hermes",
@@ -260,9 +268,17 @@ describe("agent gui workbench state", () => {
     });
     let notified = 0;
     const unsubscribe =
-      source.externalStateSource.subscribe?.(() => {
-        notified += 1;
-      }) ?? (() => undefined);
+      source.externalStateSource.subscribeNodeState?.(
+        {
+          instanceId: "agent-gui",
+          nodeId: "node-1",
+          typeId: "agent-gui",
+          workspaceId: "workspace-1"
+        },
+        () => {
+          notified += 1;
+        }
+      ) ?? (() => undefined);
 
     source.writeNodeState({
       instanceId: "agent-gui",
@@ -311,6 +327,25 @@ describe("agent gui workbench state", () => {
     ).toMatchObject({
       lastActiveAgentSessionId: "session-2"
     });
+  });
+
+  it("preserves node state identity for an equal write", () => {
+    const source = createAgentGuiWorkbenchNodeStateSource({
+      workspaceId: "workspace-1"
+    });
+    const request = {
+      instanceId: "agent-gui:hermes",
+      nodeId: "node-1",
+      typeId: "agent-gui" as const,
+      workspaceId: "workspace-1"
+    };
+    const state = { lastActiveAgentSessionId: "session-1" };
+
+    source.writeNodeState({ ...request, state });
+    const first = source.externalStateSource.getNodeState(request);
+    source.writeNodeState({ ...request, state: { ...state } });
+
+    expect(source.externalStateSource.getNodeState(request)).toBe(first);
   });
 
   it("locates a node launch instanceId by the session it is showing", () => {

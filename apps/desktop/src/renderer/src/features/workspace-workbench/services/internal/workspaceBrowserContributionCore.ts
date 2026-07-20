@@ -24,12 +24,15 @@ export function createWorkspaceBrowserNodeExternalStateSource(input: {
   WorkspaceBrowserNodeExternalState | null,
   null
 > {
+  const stateByNodeId = new Map<string, WorkspaceBrowserNodeExternalState>();
   return {
     getNodeState(request) {
       if (!isBrowserNodeExternalStateRequest(request)) {
         return null;
       }
-      return readWorkspaceBrowserRuntimeNodeState(
+      return reuseWorkspaceBrowserRuntimeNodeState(
+        stateByNodeId,
+        request.nodeId,
         input.runtimeStore.getSnapshot(),
         input.tabsStore.getActiveNodeId(request.nodeId)
       );
@@ -38,7 +41,9 @@ export function createWorkspaceBrowserNodeExternalStateSource(input: {
       if (!isBrowserNodeExternalStateRequest(request)) {
         return null;
       }
-      return readWorkspaceBrowserRuntimeNodeState(
+      return reuseWorkspaceBrowserRuntimeNodeState(
+        stateByNodeId,
+        request.nodeId,
         input.runtimeStore.getSnapshot(),
         input.tabsStore.getActiveNodeId(request.nodeId)
       );
@@ -46,7 +51,10 @@ export function createWorkspaceBrowserNodeExternalStateSource(input: {
     getWorkspaceState() {
       return null;
     },
-    subscribe(listener) {
+    subscribeNodeState(request, listener) {
+      if (!isBrowserNodeExternalStateRequest(request)) {
+        return () => {};
+      }
       const unsubscribeRuntime = input.runtimeStore.subscribe(listener);
       const unsubscribeTabs = input.tabsStore.subscribe(listener);
       return () => {
@@ -55,6 +63,28 @@ export function createWorkspaceBrowserNodeExternalStateSource(input: {
       };
     }
   };
+}
+
+function reuseWorkspaceBrowserRuntimeNodeState(
+  stateByNodeId: Map<string, WorkspaceBrowserNodeExternalState>,
+  nodeId: string,
+  runtimeSnapshot: Record<string, BrowserNodeRuntimeState | undefined>,
+  activeNodeId: string
+): WorkspaceBrowserNodeExternalState | null {
+  const next = readWorkspaceBrowserRuntimeNodeState(
+    runtimeSnapshot,
+    activeNodeId
+  );
+  const previous = stateByNodeId.get(nodeId) ?? null;
+  if (!next) {
+    stateByNodeId.delete(nodeId);
+    return null;
+  }
+  if (previous?.title === next.title && previous.url === next.url) {
+    return previous;
+  }
+  stateByNodeId.set(nodeId, next);
+  return next;
 }
 
 function isBrowserNodeExternalStateRequest(

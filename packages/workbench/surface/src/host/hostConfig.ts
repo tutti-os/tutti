@@ -155,9 +155,19 @@ function combineContributionExternalStateSources(
       }
       return null;
     },
-    subscribe(listener) {
+    subscribeNodeState(input, listener) {
       const disposers = sources
-        .map((source) => source.subscribe?.(listener))
+        .map((source) => source.subscribeNodeState?.(input, listener))
+        .filter((dispose): dispose is () => void => Boolean(dispose));
+      return () => {
+        for (const dispose of disposers) {
+          dispose();
+        }
+      };
+    },
+    subscribeWorkspaceState(input, listener) {
+      const disposers = sources
+        .map((source) => source.subscribeWorkspaceState?.(input, listener))
         .filter((dispose): dispose is () => void => Boolean(dispose));
       return () => {
         for (const dispose of disposers) {

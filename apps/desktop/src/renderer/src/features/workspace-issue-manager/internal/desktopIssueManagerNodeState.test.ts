@@ -124,9 +124,17 @@ test("desktop issue-manager node state source drops non-whitelisted updates", (t
     workspaceId: "workspace-1"
   });
   let notifyCount = 0;
-  const unsubscribe = source.externalStateSource.subscribe?.(() => {
-    notifyCount += 1;
-  });
+  const unsubscribe = source.externalStateSource.subscribeNodeState?.(
+    {
+      instanceId: "issue-manager",
+      nodeId: "issue-manager",
+      typeId: "issue-manager",
+      workspaceId: "workspace-1"
+    },
+    () => {
+      notifyCount += 1;
+    }
+  );
   assert.ok(unsubscribe);
   t.after(unsubscribe);
 
@@ -203,6 +211,33 @@ test("desktop issue-manager node state source drops non-whitelisted updates", (t
   });
 
   assert.equal(notifyCount, 2);
+});
+
+test("desktop issue-manager node state source preserves identity for equal live state", (t) => {
+  const restore = installFailingLocalStorage();
+  t.after(restore);
+  const source = createDesktopIssueManagerNodeStateSource({
+    workspaceId: "workspace-1"
+  });
+  const request = {
+    instanceId: "node-1",
+    nodeId: "node-1",
+    typeId: "issue-manager",
+    workspaceId: "workspace-1"
+  };
+  const state = {
+    issueSearchQuery: "render",
+    issueStatusFilter: "all" as const,
+    selectedAgentTargetId: "local:codex",
+    selectedIssueId: "issue-1",
+    selectedTaskId: null
+  };
+
+  source.writeNodeState({ ...request, state });
+  const first = source.externalStateSource.getNodeState(request);
+  source.writeNodeState({ ...request, state: { ...state } });
+
+  assert.equal(source.externalStateSource.getNodeState(request), first);
 });
 
 function installFailingLocalStorage(): () => void {

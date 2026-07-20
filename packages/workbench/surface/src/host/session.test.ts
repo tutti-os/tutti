@@ -249,6 +249,59 @@ test("snapshot node state persists through the workbench host snapshot", async (
   restoredSession.dispose();
 });
 
+test("external state persistence subscriptions ignore frame-only node updates", async () => {
+  let subscribeCount = 0;
+  let unsubscribeCount = 0;
+  const session = createWorkbenchHostSession({
+    externalStateSource: {
+      getNodeState() {
+        return null;
+      },
+      getSnapshotNodeState() {
+        return null;
+      },
+      getWorkspaceState() {
+        return null;
+      },
+      subscribeNodeState() {
+        subscribeCount += 1;
+        return () => {
+          unsubscribeCount += 1;
+        };
+      }
+    },
+    nodes: [filesNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState({
+          nodeStack: [],
+          nodes: []
+        });
+      },
+      save(_workspaceId, snapshot) {
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  assert.equal(subscribeCount, 1);
+  session.controller.commands.resizeNode("workspace-files", {
+    height: 500,
+    width: 650,
+    x: 100,
+    y: 80
+  });
+
+  assert.equal(subscribeCount, 1);
+  assert.equal(unsubscribeCount, 0);
+  session.controller.commands.closeNode("workspace-files");
+
+  assert.equal(unsubscribeCount, 1);
+  session.dispose();
+});
+
 test("setNodeTitle updates an existing workbench node title", async () => {
   const session = createWorkbenchHostSession({
     nodes: [filesNodeDefinition],

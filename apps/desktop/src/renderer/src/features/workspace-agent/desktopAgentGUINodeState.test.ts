@@ -228,9 +228,17 @@ test("desktop agent gui node state source consumes instance launch state after n
   });
   let notified = 0;
   const unsubscribe =
-    source.externalStateSource.subscribe?.(() => {
-      notified += 1;
-    }) ?? (() => undefined);
+    source.externalStateSource.subscribeNodeState?.(
+      {
+        instanceId: "agent-gui",
+        nodeId: "agent-gui",
+        typeId: "agent-gui",
+        workspaceId: "workspace-1"
+      },
+      () => {
+        notified += 1;
+      }
+    ) ?? (() => undefined);
   t.after(unsubscribe);
 
   source.writeNodeState({

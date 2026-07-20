@@ -102,7 +102,15 @@ test("createWorkspaceBrowserNodeExternalStateSource exposes runtime state for wo
       null
     );
 
-    const dispose = source.subscribe?.(() => {});
+    const dispose = source.subscribeNodeState?.(
+      {
+        instanceId: "node-2",
+        nodeId: "browser:node-2",
+        typeId: workspaceBrowserNodeID,
+        workspaceId: "workspace-1"
+      },
+      () => {}
+    );
     runtimeSnapshot["browser:node-2:tab:1"] = createBrowserRuntimeState({
       title: "Tutti",
       url: "https://tutti.example"
