@@ -35,7 +35,7 @@ const defaultCursorIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/cursor.png",
   import.meta.url
 ).href;
-const defaultAgentUnifiedIconUrl = new URL(
+export const defaultAgentUnifiedIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/agent-unified.png",
   import.meta.url
 ).href;
