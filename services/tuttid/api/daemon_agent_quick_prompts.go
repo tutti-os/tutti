@@ -14,6 +14,7 @@ type AgentQuickPromptService interface {
 	Create(context.Context, agentquickpromptbiz.CreateInput) (agentquickpromptbiz.Prompt, error)
 	Update(context.Context, agentquickpromptbiz.UpdateInput) (agentquickpromptbiz.Prompt, error)
 	Delete(context.Context, agentquickpromptbiz.DeleteInput) error
+	Move(context.Context, agentquickpromptbiz.MoveInput) ([]agentquickpromptbiz.Prompt, error)
 }
 
 func (api DaemonAPI) ListAgentQuickPrompts(ctx context.Context, _ tuttigenerated.ListAgentQuickPromptsRequestObject) (tuttigenerated.ListAgentQuickPromptsResponseObject, error) {
@@ -94,6 +95,33 @@ func (api DaemonAPI) DeleteAgentQuickPrompt(ctx context.Context, request tuttige
 		}
 	}
 	return tuttigenerated.DeleteAgentQuickPrompt204Response{}, nil
+}
+
+func (api DaemonAPI) MoveAgentQuickPrompt(ctx context.Context, request tuttigenerated.MoveAgentQuickPromptRequestObject) (tuttigenerated.MoveAgentQuickPromptResponseObject, error) {
+	if api.AgentQuickPromptService == nil {
+		return tuttigenerated.MoveAgentQuickPrompt503JSONResponse{ServiceUnavailableErrorJSONResponse: agentQuickPromptServiceUnavailableError()}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.MoveAgentQuickPrompt400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body")))}, nil
+	}
+	prompts, err := api.AgentQuickPromptService.Move(ctx, agentquickpromptbiz.MoveInput{
+		PromptID: request.Body.PromptId, BeforePromptID: request.Body.BeforePromptId, ExpectedVersion: request.Body.ExpectedVersion,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, agentquickpromptbiz.ErrInvalidArgument):
+			return tuttigenerated.MoveAgentQuickPrompt400JSONResponse{InvalidRequestErrorJSONResponse: quickPromptInvalidRequestError()}, nil
+		case errors.Is(err, agentquickpromptbiz.ErrNotFound):
+			return tuttigenerated.MoveAgentQuickPrompt404JSONResponse{AgentQuickPromptNotFoundErrorJSONResponse: quickPromptNotFoundError()}, nil
+		case errors.Is(err, agentquickpromptbiz.ErrVersionConflict):
+			return tuttigenerated.MoveAgentQuickPrompt409JSONResponse{AgentQuickPromptConflictErrorJSONResponse: quickPromptConflictError(apierrors.ReasonAgentQuickPromptVersionConflict)}, nil
+		case errors.Is(err, agentquickpromptbiz.ErrOrderConflict):
+			return tuttigenerated.MoveAgentQuickPrompt409JSONResponse{AgentQuickPromptConflictErrorJSONResponse: quickPromptConflictError(apierrors.ReasonAgentQuickPromptOrderConflict)}, nil
+		default:
+			return tuttigenerated.MoveAgentQuickPrompt502JSONResponse{AgentQuickPromptOperationErrorJSONResponse: quickPromptOperationError()}, nil
+		}
+	}
+	return tuttigenerated.MoveAgentQuickPrompt200JSONResponse{Prompts: generatedAgentQuickPrompts(prompts)}, nil
 }
 
 func generatedAgentQuickPrompts(prompts []agentquickpromptbiz.Prompt) []tuttigenerated.AgentQuickPrompt {

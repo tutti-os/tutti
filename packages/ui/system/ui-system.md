@@ -34,6 +34,21 @@ It does not own:
 - app-specific workflows
 - daemon, Electron, router, or host adapter calls
 
+## Sortable foundation
+
+`Sortable`, `SortableContent`, `SortableItem`, `SortableItemHandle`, and
+`SortableOverlay` are stable `base` primitives installed from the Dice UI
+shadcn registry and narrowly adapted to Tutti's input, accessibility, and
+reduced-motion contracts. The primitive owns sensors, drag state, layout
+strategies, handles, overlays, and caller-provided announcements. Consumers own
+business ordering, persistence, optimistic updates, localized copy, and error
+recovery.
+
+The adopted Dice UI revision and the Radix/Lucide source-derived helpers are
+recorded in the package `NOTICE`. Update that provenance whenever registry
+source is refreshed. Storyboard coverage is the visual inventory for enabled,
+disabled, keyboard-focus, and overlay states.
+
 ## Current Package Role
 
 `@tutti-os/ui-system` is the single source of truth for:

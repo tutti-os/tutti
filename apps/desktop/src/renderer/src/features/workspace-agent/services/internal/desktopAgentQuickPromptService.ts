@@ -49,6 +49,7 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
       enabled: this.readEnabled(),
       error: null,
       pendingMutationIds: [],
+      orderMutationPending: false,
       prompts: [],
       revision: 0,
       status: "idle"
@@ -144,6 +145,69 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
     });
   }
 
+  async move(input: {
+    promptId: string;
+    beforePromptId: string | null;
+    expectedVersion: number;
+  }): Promise<readonly AgentHostQuickPrompt[]> {
+    this.assertEnabled();
+    if (this.snapshot.orderMutationPending) {
+      throw new Error("quick_prompts.move_pending");
+    }
+    const originalPrompts = this.snapshot.prompts;
+    const optimisticPrompts = movePromptBefore(
+      originalPrompts,
+      input.promptId,
+      input.beforePromptId
+    );
+    this.incrementPendingMutation(input.promptId);
+    this.publish({
+      error: null,
+      orderMutationPending: true,
+      pendingMutationIds: [...this.pendingMutationCounts.keys()],
+      prompts: optimisticPrompts
+    });
+    try {
+      const response =
+        await this.input.tuttidClient.moveAgentQuickPrompt(input);
+      const prompts = response.prompts.map(toHostQuickPrompt);
+      this.markDataChangedDuringLoad();
+      const movedPrompt = prompts.find(
+        (prompt) => prompt.id === input.promptId
+      );
+      if (movedPrompt) {
+        this.rememberLocallyAppliedEvent(
+          movedPrompt.id,
+          "update",
+          movedPrompt.version
+        );
+      }
+      if (!this.disposed && this.readEnabled()) {
+        this.publish({ error: null, prompts, status: "ready" });
+      }
+      return prompts;
+    } catch (error) {
+      if (!this.disposed && this.readEnabled()) {
+        if (promptSnapshotsEqual(this.snapshot.prompts, optimisticPrompts)) {
+          this.publish({
+            error: "quick_prompts.move_failed",
+            prompts: originalPrompts
+          });
+        } else {
+          this.publish({ error: "quick_prompts.move_failed" });
+        }
+        void this.ensureLoaded({ force: true }).catch(() => {});
+      }
+      throw error;
+    } finally {
+      this.decrementPendingMutation(input.promptId);
+      this.publish({
+        orderMutationPending: false,
+        pendingMutationIds: [...this.pendingMutationCounts.keys()]
+      });
+    }
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -167,9 +231,7 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
           if (this.refreshRequestedDuringLoad) continue;
           return;
         }
-        const prompts = stableSortPrompts(
-          response.prompts.map(toHostQuickPrompt)
-        );
+        const prompts = response.prompts.map(toHostQuickPrompt);
         this.publish({ error: null, prompts, status: "ready" });
         return;
       } catch (error) {
@@ -207,16 +269,18 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
       } else {
         const prompt = result as AgentHostQuickPrompt;
         this.rememberLocallyAppliedEvent(prompt.id, kind, prompt.version);
-        this.publish({
-          error: null,
-          prompts: stableSortPrompts([
-            prompt,
-            ...this.snapshot.prompts.filter(
-              (candidate) => candidate.id !== prompt.id
-            )
-          ]),
-          status: "ready"
-        });
+        const prompts =
+          kind === "create"
+            ? [
+                prompt,
+                ...this.snapshot.prompts.filter(
+                  (candidate) => candidate.id !== prompt.id
+                )
+              ]
+            : this.snapshot.prompts.map((candidate) =>
+                candidate.id === prompt.id ? prompt : candidate
+              );
+        this.publish({ error: null, prompts, status: "ready" });
       }
       return result;
     } catch (error) {
@@ -291,6 +355,7 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
         enabled: false,
         error: null,
         pendingMutationIds: [],
+        orderMutationPending: false,
         status: "idle"
       });
       return;
@@ -373,13 +438,34 @@ function toHostQuickPrompt(prompt: {
   };
 }
 
-function stableSortPrompts(
-  prompts: readonly AgentHostQuickPrompt[]
+function movePromptBefore(
+  prompts: readonly AgentHostQuickPrompt[],
+  promptId: string,
+  beforePromptId: string | null
 ): readonly AgentHostQuickPrompt[] {
-  return [...prompts].sort(
-    (left, right) =>
-      right.updatedAtUnixMs - left.updatedAtUnixMs ||
-      left.id.localeCompare(right.id)
+  const fromIndex = prompts.findIndex((prompt) => prompt.id === promptId);
+  if (fromIndex < 0 || beforePromptId === promptId) return prompts;
+  const next = prompts.filter((prompt) => prompt.id !== promptId);
+  const insertIndex =
+    beforePromptId === null
+      ? next.length
+      : next.findIndex((prompt) => prompt.id === beforePromptId);
+  if (insertIndex < 0) return prompts;
+  next.splice(insertIndex, 0, prompts[fromIndex]!);
+  return next;
+}
+
+function promptSnapshotsEqual(
+  left: readonly AgentHostQuickPrompt[],
+  right: readonly AgentHostQuickPrompt[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (prompt, index) =>
+        prompt.id === right[index]?.id &&
+        prompt.version === right[index]?.version
+    )
   );
 }
 

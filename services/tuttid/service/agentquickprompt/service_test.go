@@ -11,10 +11,13 @@ import (
 )
 
 type stubStore struct {
-	count     int
-	created   agentquickpromptbiz.Prompt
-	updateErr error
-	deleteErr error
+	count       int
+	created     agentquickpromptbiz.Prompt
+	updateErr   error
+	deleteErr   error
+	movePrompts []agentquickpromptbiz.Prompt
+	moveChanged bool
+	moveErr     error
 }
 
 func (*stubStore) ListAgentQuickPrompts(context.Context) ([]agentquickpromptbiz.Prompt, error) {
@@ -33,6 +36,9 @@ func (s *stubStore) UpdateAgentQuickPrompt(_ context.Context, prompt agentquickp
 	return prompt, nil
 }
 func (s *stubStore) DeleteAgentQuickPrompt(context.Context, string, int64) error { return s.deleteErr }
+func (s *stubStore) MoveAgentQuickPrompt(context.Context, string, *string, int64, int64) ([]agentquickpromptbiz.Prompt, bool, error) {
+	return s.movePrompts, s.moveChanged, s.moveErr
+}
 
 type recordingPublisher struct {
 	events []agentquickpromptbiz.UpdatedEvent
@@ -113,5 +119,37 @@ func TestServicePublisherFailureDoesNotRollBackCommittedCreate(t *testing.T) {
 	}
 	if store.created.ID != "prompt-1" {
 		t.Fatalf("created ID = %q", store.created.ID)
+	}
+}
+
+func TestServiceMoveValidatesAndPublishesOnlyChangedOrder(t *testing.T) {
+	prompt := agentquickpromptbiz.Prompt{ID: "prompt-1", Version: 3, UpdatedAtUnixMS: 100}
+	store := &stubStore{movePrompts: []agentquickpromptbiz.Prompt{prompt}, moveChanged: true}
+	publisher := &recordingPublisher{}
+	service := Service{Store: store, Publisher: publisher, Now: func() time.Time { return time.UnixMilli(100) }}
+	prompts, err := service.Move(context.Background(), agentquickpromptbiz.MoveInput{
+		PromptID: " prompt-1 ", ExpectedVersion: 2,
+	})
+	if err != nil || len(prompts) != 1 {
+		t.Fatalf("Move() prompts = %#v, error = %v", prompts, err)
+	}
+	if len(publisher.events) != 1 || publisher.events[0].PromptID != "prompt-1" || publisher.events[0].Version != 3 {
+		t.Fatalf("move events = %#v", publisher.events)
+	}
+	store.moveChanged = false
+	if _, err := service.Move(context.Background(), agentquickpromptbiz.MoveInput{PromptID: "prompt-1", ExpectedVersion: 3}); err != nil {
+		t.Fatalf("no-op Move() error = %v", err)
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("no-op published event = %#v", publisher.events)
+	}
+	publisher.err = errors.New("publisher unavailable")
+	store.moveChanged = true
+	if _, err := service.Move(context.Background(), agentquickpromptbiz.MoveInput{PromptID: "prompt-1", ExpectedVersion: 3}); err != nil {
+		t.Fatalf("committed Move() returned publisher failure = %v", err)
+	}
+	empty := "  "
+	if _, err := service.Move(context.Background(), agentquickpromptbiz.MoveInput{PromptID: "prompt-1", BeforePromptID: &empty, ExpectedVersion: 3}); !errors.Is(err, agentquickpromptbiz.ErrInvalidArgument) {
+		t.Fatalf("blank anchor error = %v, want invalid argument", err)
 	}
 }

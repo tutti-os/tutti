@@ -16,6 +16,14 @@ type stubAgentQuickPromptService struct {
 	createFn func(context.Context, agentquickpromptbiz.CreateInput) (agentquickpromptbiz.Prompt, error)
 	updateFn func(context.Context, agentquickpromptbiz.UpdateInput) (agentquickpromptbiz.Prompt, error)
 	deleteFn func(context.Context, agentquickpromptbiz.DeleteInput) error
+	moveFn   func(context.Context, agentquickpromptbiz.MoveInput) ([]agentquickpromptbiz.Prompt, error)
+}
+
+func (s stubAgentQuickPromptService) Move(ctx context.Context, input agentquickpromptbiz.MoveInput) ([]agentquickpromptbiz.Prompt, error) {
+	if s.moveFn != nil {
+		return s.moveFn(ctx, input)
+	}
+	return s.listFn(ctx)
 }
 
 func (s stubAgentQuickPromptService) List(ctx context.Context) ([]agentquickpromptbiz.Prompt, error) {
@@ -56,6 +64,13 @@ func TestDaemonAPIRoutesAgentQuickPromptCRUD(t *testing.T) {
 			}
 			return nil
 		},
+		moveFn: func(_ context.Context, input agentquickpromptbiz.MoveInput) ([]agentquickpromptbiz.Prompt, error) {
+			if input.PromptID != prompt.ID || input.ExpectedVersion != 2 || input.BeforePromptID != nil {
+				t.Fatalf("move input = %#v", input)
+			}
+			prompt.Version = 3
+			return []agentquickpromptbiz.Prompt{prompt}, nil
+		},
 	}
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{AgentQuickPromptService: service}))
@@ -80,9 +95,56 @@ func TestDaemonAPIRoutesAgentQuickPromptCRUD(t *testing.T) {
 		t.Fatalf("update status = %d; body: %s", update.Code, update.Body.String())
 	}
 
+	move := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/agent-quick-prompts/move", map[string]any{"promptId": prompt.ID, "beforePromptId": nil, "expectedVersion": 2})
+	if move.Code != http.StatusOK {
+		t.Fatalf("move status = %d; body: %s", move.Code, move.Body.String())
+	}
+
 	deleteResponse := performGeneratedRouteRequest(t, mux, http.MethodDelete, "/v1/agent-quick-prompts/prompt-1", map[string]any{"expectedVersion": 2})
 	if deleteResponse.Code != http.StatusNoContent {
 		t.Fatalf("delete status = %d; body: %s", deleteResponse.Code, deleteResponse.Body.String())
+	}
+}
+
+func TestDaemonAPIRoutesAgentQuickPromptMoveRejectsOmittedAnchor(t *testing.T) {
+	called := false
+	service := stubAgentQuickPromptService{
+		moveFn: func(context.Context, agentquickpromptbiz.MoveInput) ([]agentquickpromptbiz.Prompt, error) {
+			called = true
+			return nil, nil
+		},
+	}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{AgentQuickPromptService: service}))
+	response := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/agent-quick-prompts/move", map[string]any{"promptId": "prompt-1", "expectedVersion": 1})
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("move status = %d; body: %s", response.Code, response.Body.String())
+	}
+	if called {
+		t.Fatal("Move called for request missing beforePromptId")
+	}
+}
+
+func TestDaemonAPIRoutesAgentQuickPromptMoveMapsAnchorAndOrderConflict(t *testing.T) {
+	anchor := "prompt-2"
+	service := stubAgentQuickPromptService{
+		moveFn: func(_ context.Context, input agentquickpromptbiz.MoveInput) ([]agentquickpromptbiz.Prompt, error) {
+			if input.BeforePromptID == nil || *input.BeforePromptID != anchor {
+				t.Fatalf("move input = %#v", input)
+			}
+			return nil, agentquickpromptbiz.ErrOrderConflict
+		},
+	}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{AgentQuickPromptService: service}))
+	response := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/agent-quick-prompts/move", map[string]any{
+		"promptId": "prompt-1", "beforePromptId": anchor, "expectedVersion": 1,
+	})
+	if response.Code != http.StatusConflict {
+		t.Fatalf("move status = %d; body: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"reason":"agent_quick_prompt_order_conflict"`) {
+		t.Fatalf("move conflict body = %s", response.Body.String())
 	}
 }
 

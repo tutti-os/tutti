@@ -10,6 +10,11 @@ import type { AgentQuickPromptLibraryController } from "./useAgentQuickPromptLib
 const labels = new Proxy(
   {
     deleteDescription: (title: string) => `Delete ${title}`,
+    dragCancel: (title: string) => `Canceled ${title}`,
+    dragDrop: (title: string) => `Dropped ${title}`,
+    dragHandle: (title: string) => `Reorder ${title}`,
+    dragMove: (title: string) => `Moving ${title}`,
+    dragStart: (title: string) => `Picked up ${title}`,
     title: "Quick prompts",
     trigger: "Prompts",
     triggerTooltip: "Choose a quick prompt",
@@ -71,6 +76,7 @@ function controller(
   };
   return {
     capabilityAvailable: true,
+    canReorder: false,
     close: vi.fn(),
     closeDialog: vi.fn(),
     deletePrompt: vi.fn(),
@@ -79,6 +85,8 @@ function controller(
     isEditorOpen: false,
     isPopoverOpen: true,
     isSaving: false,
+    isInteractionLocked: false,
+    isReordering: false,
     initialDraft: null,
     labels,
     mode: "popover",
@@ -88,8 +96,11 @@ function controller(
     openPopover: vi.fn(),
     promptToDelete: null,
     retry: vi.fn(),
+    reorderError: null,
+    reorderPrompts: vi.fn(async () => true),
     saveDraft: vi.fn(async () => true),
     searchQuery: "",
+    showReorderHandles: false,
     selectPrompt: vi.fn(),
     selectedPrompt: null,
     setPopoverOpen: vi.fn(),
@@ -145,6 +156,35 @@ describe("AgentQuickPromptPopover", () => {
     expect(subject.openEdit).toHaveBeenCalledOnce();
     fireEvent.pointerDown(remove, { button: 0 });
     expect(subject.deletePrompt).toHaveBeenCalledOnce();
+  });
+
+  it("disables every mutating entry point while a shared mutation is pending", () => {
+    render(
+      <TooltipProvider>
+        <AgentQuickPromptPopover
+          controller={controller({
+            canReorder: false,
+            isInteractionLocked: true,
+            showReorderHandles: true
+          })}
+          disabled={false}
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByRole("button", { name: "New prompt" })).toBeDisabled();
+    expect(screen.getByPlaceholderText("Search quick prompts")).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Review/u })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Reorder Review" })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", {
+        name: "Create from a recommended template"
+      })
+    ).toBeDisabled();
   });
 
   it("selects a prompt on primary pointer down before the Popover closes", () => {
@@ -420,6 +460,20 @@ describe("quick-prompt UI composition", () => {
     ),
     "utf8"
   );
+  const listSource = readFileSync(
+    join(
+      process.cwd(),
+      "agent-gui/agentGuiNode/composer/quickPrompts/AgentQuickPromptList.tsx"
+    ),
+    "utf8"
+  );
+  const rowSource = readFileSync(
+    join(
+      process.cwd(),
+      "agent-gui/agentGuiNode/composer/quickPrompts/AgentQuickPromptRow.tsx"
+    ),
+    "utf8"
+  );
 
   it("composes only public UI System interaction primitives", () => {
     expect(source).toContain('from "@tutti-os/ui-system"');
@@ -431,8 +485,13 @@ describe("quick-prompt UI composition", () => {
     );
     expect(source).toContain("<ConfirmationDialog");
     expect(source).toContain("<RecommendedTemplateList");
-    expect(source).toContain("aria-label={labels.edit}");
-    expect(source).toContain("aria-label={labels.delete}");
+    expect(rowSource).toContain("aria-label={labels.edit}");
+    expect(rowSource).toContain("aria-label={labels.delete}");
+    expect(rowSource).toContain("group/quick-prompt-row");
+    expect(rowSource).not.toContain("group-focus-within");
+    expect(listSource).toContain("<Sortable");
+    expect(listSource).toContain("<SortableItem");
+    expect(rowSource).toContain("<SortableItemHandle");
     expect(source).not.toContain("<DropdownMenu");
     expect(source).toContain("onCloseAutoFocus");
     expect(editorSource).toContain("<Dialog");
@@ -441,6 +500,7 @@ describe("quick-prompt UI composition", () => {
     expect(editorSource).toContain("onKeyDownCapture");
     expect(source).not.toMatch(/<button\b/u);
     expect(editorSource).not.toMatch(/<button\b/u);
+    expect(rowSource).not.toMatch(/<button\b/u);
     expect(source).not.toContain("radix-ui");
     expect(editorSource).not.toContain("radix-ui");
   });

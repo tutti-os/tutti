@@ -46,6 +46,7 @@ import {
   listWorkspaceAppMentionCandidates,
   listUserProjects,
   moveUserProject,
+  moveAgentQuickPrompt,
   pinUserProject,
   listWorkspaceIssues,
   listWorkspaceIssueTopics,
@@ -145,6 +146,12 @@ export function createTuttidClient(
         path: { promptId: promptID }
       });
       unwrapAccepted(response, "Delete Agent quick prompt request failed.");
+    },
+    async moveAgentQuickPrompt(request) {
+      return unwrapData(
+        await moveAgentQuickPrompt({ client, body: request }),
+        "Move Agent quick prompt request failed."
+      );
     },
     async listAgentTargets() {
       return unwrapData(

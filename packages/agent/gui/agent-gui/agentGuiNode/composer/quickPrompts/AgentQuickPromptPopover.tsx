@@ -18,13 +18,11 @@ import {
   AddIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
-  DeleteIcon,
-  EditIcon,
-  FileTextIcon,
+  MessageSquareTextIcon,
   SearchIcon
 } from "@tutti-os/ui-system/icons";
-import type { AgentHostQuickPrompt } from "../../../../host/agentHostApi";
 import { AgentQuickPromptEditorDialog } from "./AgentQuickPromptEditorDialog";
+import { AgentQuickPromptList } from "./AgentQuickPromptList";
 import type { AgentQuickPromptTemplate } from "./agentQuickPromptLabels";
 import type { AgentQuickPromptLibraryController } from "./useAgentQuickPromptLibrary";
 
@@ -101,7 +99,7 @@ export function AgentQuickPromptPopover({
                     type="button"
                     variant="chrome"
                   >
-                    <FileTextIcon data-icon="inline-start" />
+                    <MessageSquareTextIcon data-icon="inline-start" />
                     <span className="hidden min-[900px]:inline">
                       {labels.trigger}
                     </span>
@@ -156,6 +154,7 @@ export function AgentQuickPromptPopover({
               </Button>
             ) : (
               <Button
+                disabled={controller.isInteractionLocked}
                 size="sm"
                 type="button"
                 variant="ghost"
@@ -187,6 +186,7 @@ export function AgentQuickPromptPopover({
                 ref={searchRef}
                 aria-label={labels.searchPlaceholder}
                 className="pl-8"
+                disabled={controller.isInteractionLocked}
                 placeholder={labels.searchPlaceholder}
                 value={controller.searchQuery}
                 onChange={(event) =>
@@ -219,6 +219,26 @@ export function AgentQuickPromptPopover({
               </Button>
             </div>
           ) : null}
+          {!isTemplateView && controller.reorderError ? (
+            <div
+              className="flex shrink-0 items-center justify-between gap-2 px-3 pb-2 text-[12px] text-[var(--state-danger)]"
+              role="alert"
+            >
+              <span>
+                {controller.reorderError === "conflict"
+                  ? labels.reorderConflict
+                  : labels.reorderError}
+              </span>
+              <Button
+                size="xs"
+                type="button"
+                variant="ghost"
+                onClick={controller.retry}
+              >
+                {labels.retry}
+              </Button>
+            </div>
+          ) : null}
           <ScrollArea
             className="min-h-0 flex-1"
             viewportClassName="px-2 pb-2"
@@ -226,6 +246,7 @@ export function AgentQuickPromptPopover({
           >
             {isTemplateView ? (
               <RecommendedTemplateList
+                disabled={controller.isInteractionLocked}
                 firstTemplateRef={firstTemplateRef}
                 labels={labels}
                 onSelect={requestTemplate}
@@ -244,6 +265,7 @@ export function AgentQuickPromptPopover({
                 label={labels.loadError}
                 action={
                   <Button
+                    disabled={controller.isInteractionLocked}
                     size="sm"
                     type="button"
                     variant="ghost"
@@ -256,6 +278,7 @@ export function AgentQuickPromptPopover({
             ) : snapshot.prompts.length === 0 &&
               !controller.searchQuery.trim() ? (
               <RecommendedTemplateList
+                disabled={controller.isInteractionLocked}
                 firstTemplateRef={firstTemplateRef}
                 labels={labels}
                 onSelect={requestTemplate}
@@ -267,39 +290,27 @@ export function AgentQuickPromptPopover({
               <PromptState label={labels.noResults} />
             ) : (
               <div className="flex flex-col gap-0.5">
-                {controller.filteredPrompts.map((prompt, index) => (
-                  <PromptRow
-                    key={prompt.id}
-                    prompt={prompt}
-                    labels={labels}
-                    pending={snapshot.pendingMutationIds.includes(prompt.id)}
-                    selectionRef={(node) => {
-                      if (node) rowRefs.current.set(prompt.id, node);
-                      else rowRefs.current.delete(prompt.id);
-                    }}
-                    onDelete={() => {
-                      preserveExternalFocusRef.current = true;
-                      controller.deletePrompt(prompt);
-                    }}
-                    onEdit={() => {
-                      preserveExternalFocusRef.current = true;
-                      controller.openEdit(prompt);
-                    }}
-                    onFocusNext={(offset) =>
-                      focusRow(
-                        (index + offset + controller.filteredPrompts.length) %
-                          controller.filteredPrompts.length
-                      )
-                    }
-                    onSelect={() => {
-                      preserveExternalFocusRef.current = true;
-                      controller.selectPrompt(prompt);
-                    }}
-                  />
-                ))}
+                <AgentQuickPromptList
+                  controller={controller}
+                  rowRefs={rowRefs}
+                  onFocusRow={focusRow}
+                  onDelete={(prompt) => {
+                    preserveExternalFocusRef.current = true;
+                    controller.deletePrompt(prompt);
+                  }}
+                  onEdit={(prompt) => {
+                    preserveExternalFocusRef.current = true;
+                    controller.openEdit(prompt);
+                  }}
+                  onSelect={(prompt) => {
+                    preserveExternalFocusRef.current = true;
+                    controller.selectPrompt(prompt);
+                  }}
+                />
                 <TemplateEntry
                   label={labels.createFromTemplate}
                   action={templateEntryAction}
+                  disabled={controller.isInteractionLocked}
                 />
               </div>
             )}
@@ -360,11 +371,13 @@ export function AgentQuickPromptPopover({
 }
 
 function RecommendedTemplateList({
+  disabled,
   firstTemplateRef,
   labels,
   onSelect,
   selectionRequestedOnPointerDownRef
 }: {
+  disabled: boolean;
   firstTemplateRef: React.RefObject<HTMLButtonElement | null>;
   labels: AgentQuickPromptLibraryController["labels"];
   onSelect: (template: AgentQuickPromptTemplate) => void;
@@ -385,6 +398,7 @@ function RecommendedTemplateList({
           key={template.id}
           ref={index === 0 ? firstTemplateRef : undefined}
           className="h-auto w-full justify-between px-2 py-2 text-left whitespace-normal"
+          disabled={disabled}
           type="button"
           variant="ghost"
           onPointerDown={(event) => {
@@ -420,15 +434,18 @@ function RecommendedTemplateList({
 
 function TemplateEntry({
   action,
+  disabled,
   label
 }: {
   action: PrimaryPointerAction;
+  disabled: boolean;
   label: string;
 }): React.JSX.Element {
   return (
     <Button
       {...action}
       className="mt-1 h-auto w-full justify-between px-2 py-2 text-left whitespace-normal"
+      disabled={disabled}
       type="button"
       variant="ghost"
     >
@@ -477,123 +494,6 @@ function PromptState({
       {icon}
       <span>{label}</span>
       {action}
-    </div>
-  );
-}
-
-function PromptRow({
-  labels,
-  onDelete,
-  onEdit,
-  onFocusNext,
-  onSelect,
-  pending,
-  prompt,
-  selectionRef
-}: {
-  labels: AgentQuickPromptLibraryController["labels"];
-  onDelete: () => void;
-  onEdit: () => void;
-  onFocusNext: (offset: number) => void;
-  onSelect: () => void;
-  pending: boolean;
-  prompt: AgentHostQuickPrompt;
-  selectionRef: (node: HTMLButtonElement | null) => void;
-}): React.JSX.Element {
-  const selectionRequestedOnPointerDownRef = useRef(false);
-  const editRequestedOnPointerDownRef = useRef(false);
-  const deleteRequestedOnPointerDownRef = useRef(false);
-
-  return (
-    <div className="group flex min-w-0 items-start gap-1 rounded-md hover:bg-[var(--transparency-hover)]">
-      <Button
-        ref={selectionRef}
-        className="h-auto min-w-0 flex-1 justify-start px-2 py-2 text-left whitespace-normal hover:bg-transparent"
-        disabled={pending}
-        type="button"
-        variant="ghost"
-        onPointerDown={(event) => {
-          if (event.button !== 0) return;
-          selectionRequestedOnPointerDownRef.current = true;
-          onSelect();
-        }}
-        onClick={() => {
-          if (selectionRequestedOnPointerDownRef.current) {
-            selectionRequestedOnPointerDownRef.current = false;
-            return;
-          }
-          onSelect();
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            onFocusNext(event.key === "ArrowDown" ? 1 : -1);
-          }
-        }}
-      >
-        <span className="flex min-w-0 flex-col items-start gap-0.5">
-          <span className="w-full truncate font-medium text-[var(--text-primary)]">
-            {prompt.title}
-          </span>
-          <span className="line-clamp-2 w-full text-[12px] leading-[1.35] text-[var(--text-secondary)]">
-            {prompt.content}
-          </span>
-        </span>
-      </Button>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            aria-label={labels.edit}
-            className="mt-1.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
-            size="icon-sm"
-            disabled={pending}
-            type="button"
-            variant="ghost"
-            onPointerDown={(event) => {
-              if (event.button !== 0) return;
-              editRequestedOnPointerDownRef.current = true;
-              onEdit();
-            }}
-            onClick={() => {
-              if (editRequestedOnPointerDownRef.current) {
-                editRequestedOnPointerDownRef.current = false;
-                return;
-              }
-              onEdit();
-            }}
-          >
-            <EditIcon />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">{labels.edit}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            aria-label={labels.delete}
-            className="mt-1.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
-            disabled={pending}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-            onPointerDown={(event) => {
-              if (event.button !== 0) return;
-              deleteRequestedOnPointerDownRef.current = true;
-              onDelete();
-            }}
-            onClick={() => {
-              if (deleteRequestedOnPointerDownRef.current) {
-                deleteRequestedOnPointerDownRef.current = false;
-                return;
-              }
-              onDelete();
-            }}
-          >
-            <DeleteIcon />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">{labels.delete}</TooltipContent>
-      </Tooltip>
     </div>
   );
 }

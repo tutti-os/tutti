@@ -84,6 +84,7 @@ import type {
   CopyWorkspaceFileEntryRequest,
   MoveWorkspaceFileEntryRequest,
   MoveUserProjectRequest,
+  MoveAgentQuickPromptRequest,
   PinUserProjectRequest,
   RenameWorkspaceFileEntryRequest,
   PrepareWorkspaceAppUploadRequest,
@@ -172,6 +173,9 @@ export interface TuttidClient {
     promptID: string,
     request: DeleteAgentQuickPromptRequest
   ): Promise<void>;
+  moveAgentQuickPrompt(
+    request: MoveAgentQuickPromptRequest
+  ): Promise<AgentQuickPromptListResponse>;
   listAgentTargets(): Promise<ListAgentTargetsResponse>;
   setSystemAgentTargetEnabled(
     agentTargetID: string,

@@ -112,6 +112,8 @@ test("shared tuttid client performs Agent quick prompt CRUD", async () => {
   const { client, requests } = captureClient((request) => {
     if (request.method === "GET") return jsonResponse({ prompts: [prompt] });
     if (request.method === "DELETE") return new Response(null, { status: 204 });
+    if (request.path.endsWith("/move"))
+      return jsonResponse({ prompts: [prompt] });
     return jsonResponse(
       { prompt: { ...prompt, version: request.method === "PUT" ? 2 : 1 } },
       request.method === "POST" ? 201 : 200
@@ -137,6 +139,14 @@ test("shared tuttid client performs Agent quick prompt CRUD", async () => {
     2
   );
   await client.deleteAgentQuickPrompt(prompt.id, { expectedVersion: 2 });
+  assert.deepEqual(
+    await client.moveAgentQuickPrompt({
+      promptId: prompt.id,
+      beforePromptId: null,
+      expectedVersion: 2
+    }),
+    { prompts: [prompt] }
+  );
 
   assert.deepEqual(
     requests.map(({ method, path, body }) => ({ method, path, body })),
@@ -160,6 +170,15 @@ test("shared tuttid client performs Agent quick prompt CRUD", async () => {
         method: "DELETE",
         path: "/v1/agent-quick-prompts/prompt-1",
         body: { expectedVersion: 2 }
+      },
+      {
+        method: "POST",
+        path: "/v1/agent-quick-prompts/move",
+        body: {
+          promptId: prompt.id,
+          beforePromptId: null,
+          expectedVersion: 2
+        }
       }
     ]
   );

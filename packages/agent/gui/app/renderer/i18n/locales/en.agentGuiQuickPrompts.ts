@@ -12,6 +12,14 @@ export const enAgentGuiQuickPrompts = {
   deleteDescription: 'Delete "{{title}}"? This cannot be undone.',
   deleteTitle: "Delete quick prompt?",
   deleting: "Deleting…",
+  dragCancel:
+    'Sorting canceled. "{{title}}" returned to position {{position}} of {{total}}.',
+  dragDrop: '"{{title}}" was placed at position {{position}} of {{total}}.',
+  dragHandle: 'Reorder "{{title}}"',
+  dragInstructions:
+    "Press Space or Enter to pick up, use arrow keys to move, then press Space or Enter to drop. Press Escape to cancel.",
+  dragMove: '"{{title}}" is moving to position {{position}} of {{total}}.',
+  dragStart: 'Picked up "{{title}}", position {{position}} of {{total}}.',
   edit: "Edit",
   editTitle: "Edit quick prompt",
   empty: "No quick prompts yet",
@@ -21,6 +29,9 @@ export const enAgentGuiQuickPrompts = {
   mutationError: "The prompt could not be saved. Try again.",
   noResults: "No matching quick prompts",
   required: "Title and prompt text are required",
+  reorderConflict:
+    "The prompt order changed in another window. Refresh and drag again.",
+  reorderError: "The prompt order could not be saved. Try dragging again.",
   retry: "Try again",
   recommendedTemplates: {
     understandContext: {

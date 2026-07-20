@@ -13,6 +13,7 @@ var (
 	ErrNotFound        = errors.New("agent quick prompt not found")
 	ErrVersionConflict = errors.New("agent quick prompt version conflict")
 	ErrLimitExceeded   = errors.New("agent quick prompt limit exceeded")
+	ErrOrderConflict   = errors.New("agent quick prompt order conflict")
 )
 
 type Prompt struct {
@@ -38,6 +39,12 @@ type UpdateInput struct {
 
 type DeleteInput struct {
 	ID              string
+	ExpectedVersion int64
+}
+
+type MoveInput struct {
+	PromptID        string
+	BeforePromptID  *string
 	ExpectedVersion int64
 }
 

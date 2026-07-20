@@ -11,6 +11,14 @@ export const zhCNAgentGuiQuickPrompts = {
   deleteDescription: "确定删除「{{title}}」吗？删除后无法恢复",
   deleteTitle: "删除快捷提示词？",
   deleting: "正在删除…",
+  dragCancel:
+    "已取消排序，「{{title}}」返回第 {{position}} 项，共 {{total}} 项",
+  dragDrop: "已将「{{title}}」放到第 {{position}} 项，共 {{total}} 项",
+  dragHandle: "调整「{{title}}」的顺序",
+  dragInstructions:
+    "按空格键或回车键开始拖拽，使用方向键移动，再按空格键或回车键放下，按 Esc 键取消",
+  dragMove: "正在把「{{title}}」移动到第 {{position}} 项，共 {{total}} 项",
+  dragStart: "已选中「{{title}}」，当前第 {{position}} 项，共 {{total}} 项",
   edit: "编辑",
   editTitle: "编辑快捷提示词",
   empty: "暂无快捷提示词",
@@ -20,6 +28,8 @@ export const zhCNAgentGuiQuickPrompts = {
   mutationError: "提示词保存失败，请重试",
   noResults: "没有匹配的快捷提示词",
   required: "标题和提示词内容不能为空",
+  reorderConflict: "提示词顺序已在其他窗口发生变化，请刷新后重新拖拽",
+  reorderError: "提示词顺序保存失败，请重新拖拽",
   retry: "重试",
   recommendedTemplates: {
     understandContext: {

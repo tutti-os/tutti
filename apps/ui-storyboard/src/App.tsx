@@ -46,6 +46,11 @@ import {
   SelectValue,
   ShortcutBadge,
   Spinner,
+  Sortable,
+  SortableContent,
+  SortableItem,
+  SortableItemHandle,
+  SortableOverlay,
   StatusDot,
   Switch,
   Textarea,
@@ -339,6 +344,11 @@ const sections = [
     layer: "base",
     summary: "加载、提交与长任务等待指示器"
   },
+  ...componentSection(
+    "sortable",
+    "Sortable",
+    "鼠标、触摸与键盘可访问的受控排序组件"
+  ),
   ...componentSection(
     "status-dot",
     "Status Dot",
@@ -2216,6 +2226,171 @@ function UnderlineTabsStoryboard() {
   );
 }
 
+function SortableStoryboard() {
+  const [items, setItems] = useState([
+    { id: "context", label: "Understand the context" },
+    { id: "plan", label: "Create an action plan" },
+    { id: "review", label: "Review and improve" }
+  ]);
+  const [horizontalItems, setHorizontalItems] = useState([
+    "One",
+    "Two",
+    "Three"
+  ]);
+  const [mixedItems, setMixedItems] = useState(["A", "B", "C", "D"]);
+  const compactAccessibility = {
+    announcements: {
+      onDragStart: () => "Started sorting",
+      onDragOver: () => "Changed position",
+      onDragEnd: () => "Finished sorting",
+      onDragCancel: () => "Canceled sorting"
+    },
+    screenReaderInstructions: {
+      draggable: "Use Space and arrow keys to reorder"
+    }
+  };
+
+  if (!hasStoryboard("Sortable")) return null;
+
+  return (
+    <DocsSection
+      id="sortable"
+      title="Sortable"
+      description="Dice UI-derived controlled sorting with handle-only mouse, touch, and keyboard activation"
+      componentId={metadataFor("Sortable")?.id}
+    >
+      <div className="grid gap-1 lg:grid-cols-2">
+        <ExampleCard
+          title="Interactive with overlay"
+          description="Drag a grip, or focus it and press Space or Enter before using arrow keys; overlay animation follows reduced-motion settings"
+        >
+          <Sortable
+            accessibility={{
+              announcements: {
+                onDragStart: ({ active }) => `Picked up ${String(active.id)}`,
+                onDragMove: ({ active }) => `Moving ${String(active.id)}`,
+                onDragOver: ({ active }) => `Moving ${String(active.id)}`,
+                onDragEnd: ({ active }) => `Dropped ${String(active.id)}`,
+                onDragCancel: ({ active }) =>
+                  `Canceled sorting ${String(active.id)}`
+              },
+              screenReaderInstructions: {
+                draggable:
+                  "Press Space or Enter to pick up, use arrow keys to move, and press Space or Enter to drop"
+              }
+            }}
+            getItemValue={(item) => item.id}
+            value={items}
+            onValueChange={setItems}
+          >
+            <SortableContent className="flex max-w-md flex-col gap-1">
+              {items.map((item) => (
+                <SortableItem
+                  key={item.id}
+                  className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-1)] bg-[var(--background-fronted)] px-2 py-2 text-[13px] text-[var(--text-primary)]"
+                  value={item.id}
+                >
+                  <SortableItemHandle asChild>
+                    <BareIconButton aria-label={`Reorder ${item.label}`}>
+                      <SystemIcons.GripVerticalIcon />
+                    </BareIconButton>
+                  </SortableItemHandle>
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                </SortableItem>
+              ))}
+            </SortableContent>
+            <SortableOverlay>
+              {({ value }) => (
+                <div className="rounded-[var(--radius-md)] border border-[var(--border-1)] bg-[var(--background-fronted)] px-3 py-2 text-[13px] shadow-soft">
+                  {items.find((item) => item.id === value)?.label ??
+                    String(value)}
+                </div>
+              )}
+            </SortableOverlay>
+          </Sortable>
+        </ExampleCard>
+        <ExampleCard
+          title="Disabled state"
+          description="Parent disabled state remains authoritative for the handle and item"
+        >
+          <Sortable
+            accessibility={compactAccessibility}
+            value={["disabled-item"]}
+          >
+            <SortableContent className="flex max-w-md flex-col gap-1">
+              <SortableItem
+                disabled
+                className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-1)] bg-[var(--background-fronted)] px-2 py-2 text-[13px] text-[var(--text-primary)]"
+                value="disabled-item"
+              >
+                <SortableItemHandle asChild>
+                  <BareIconButton aria-label="Reorder disabled item">
+                    <SystemIcons.GripVerticalIcon />
+                  </BareIconButton>
+                </SortableItemHandle>
+                <span>Disabled item</span>
+              </SortableItem>
+            </SortableContent>
+          </Sortable>
+        </ExampleCard>
+        <ExampleCard
+          title="Horizontal and mixed strategies"
+          description="Stable orientation variants use the same controlled-value and handle contracts"
+        >
+          <div className="grid gap-4">
+            <Sortable
+              accessibility={compactAccessibility}
+              orientation="horizontal"
+              value={horizontalItems}
+              onValueChange={setHorizontalItems}
+            >
+              <SortableContent className="flex gap-1">
+                {horizontalItems.map((item) => (
+                  <SortableItem
+                    key={item}
+                    className="flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-1)] bg-[var(--background-fronted)] px-2 py-2 text-[13px]"
+                    value={item}
+                  >
+                    <SortableItemHandle asChild>
+                      <BareIconButton aria-label={`Reorder ${item}`}>
+                        <SystemIcons.GripVerticalIcon />
+                      </BareIconButton>
+                    </SortableItemHandle>
+                    {item}
+                  </SortableItem>
+                ))}
+              </SortableContent>
+            </Sortable>
+            <Sortable
+              accessibility={compactAccessibility}
+              orientation="mixed"
+              value={mixedItems}
+              onValueChange={setMixedItems}
+            >
+              <SortableContent className="grid grid-cols-2 gap-1">
+                {mixedItems.map((item) => (
+                  <SortableItem
+                    key={item}
+                    className="flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-1)] bg-[var(--background-fronted)] px-2 py-2 text-[13px]"
+                    value={item}
+                  >
+                    <SortableItemHandle asChild>
+                      <BareIconButton aria-label={`Reorder ${item}`}>
+                        <SystemIcons.GripVerticalIcon />
+                      </BareIconButton>
+                    </SortableItemHandle>
+                    Grid {item}
+                  </SortableItem>
+                ))}
+              </SortableContent>
+            </Sortable>
+          </div>
+        </ExampleCard>
+      </div>
+    </DocsSection>
+  );
+}
+
 function StatusDotStoryboard() {
   if (!hasStoryboard("StatusDot")) {
     return null;
@@ -3687,6 +3862,7 @@ export function App() {
           <SelectStoryboard />
           <ShortcutBadgeStoryboard />
           <SpinnerStoryboard />
+          <SortableStoryboard />
           <StatusDotStoryboard />
           <SwitchStoryboard />
           <TextareaStoryboard />

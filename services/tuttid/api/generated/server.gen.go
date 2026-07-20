@@ -58,6 +58,9 @@ type ServerInterface interface {
 	// Create a device-local Agent quick prompt
 	// (POST /v1/agent-quick-prompts)
 	CreateAgentQuickPrompt(w http.ResponseWriter, r *http.Request)
+	// Move a device-local Agent quick prompt before an anchor or to the end
+	// (POST /v1/agent-quick-prompts/move)
+	MoveAgentQuickPrompt(w http.ResponseWriter, r *http.Request)
 	// Delete a device-local Agent quick prompt
 	// (DELETE /v1/agent-quick-prompts/{promptId})
 	DeleteAgentQuickPrompt(w http.ResponseWriter, r *http.Request, promptId string)
@@ -861,6 +864,26 @@ func (siw *ServerInterfaceWrapper) CreateAgentQuickPrompt(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateAgentQuickPrompt(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveAgentQuickPrompt operation middleware
+func (siw *ServerInterfaceWrapper) MoveAgentQuickPrompt(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveAgentQuickPrompt(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7102,6 +7125,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/probe", wrapper.ProbeAgentProvider)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-quick-prompts", wrapper.ListAgentQuickPrompts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-quick-prompts", wrapper.CreateAgentQuickPrompt)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-quick-prompts/move", wrapper.MoveAgentQuickPrompt)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/agent-quick-prompts/{promptId}", wrapper.DeleteAgentQuickPrompt)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/agent-quick-prompts/{promptId}", wrapper.UpdateAgentQuickPrompt)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-targets", wrapper.ListAgentTargets)
@@ -8377,6 +8401,138 @@ type CreateAgentQuickPrompt503JSONResponse struct {
 }
 
 func (response CreateAgentQuickPrompt503JSONResponse) VisitCreateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveAgentQuickPromptRequestObject struct {
+	Body *MoveAgentQuickPromptJSONRequestBody
+}
+
+type MoveAgentQuickPromptResponseObject interface {
+	VisitMoveAgentQuickPromptResponse(w http.ResponseWriter) error
+}
+
+type MoveAgentQuickPrompt200JSONResponse AgentQuickPromptListResponse
+
+func (response MoveAgentQuickPrompt200JSONResponse) VisitMoveAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveAgentQuickPrompt400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response MoveAgentQuickPrompt400JSONResponse) VisitMoveAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveAgentQuickPrompt401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response MoveAgentQuickPrompt401JSONResponse) VisitMoveAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveAgentQuickPrompt404JSONResponse struct {
+	AgentQuickPromptNotFoundErrorJSONResponse
+}
+
+func (response MoveAgentQuickPrompt404JSONResponse) VisitMoveAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveAgentQuickPrompt405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response MoveAgentQuickPrompt405JSONResponse) VisitMoveAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveAgentQuickPrompt409JSONResponse struct {
+	AgentQuickPromptConflictErrorJSONResponse
+}
+
+func (response MoveAgentQuickPrompt409JSONResponse) VisitMoveAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveAgentQuickPrompt502JSONResponse struct {
+	AgentQuickPromptOperationErrorJSONResponse
+}
+
+func (response MoveAgentQuickPrompt502JSONResponse) VisitMoveAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveAgentQuickPrompt503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response MoveAgentQuickPrompt503JSONResponse) VisitMoveAgentQuickPromptResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -24945,6 +25101,9 @@ type StrictServerInterface interface {
 	// Create a device-local Agent quick prompt
 	// (POST /v1/agent-quick-prompts)
 	CreateAgentQuickPrompt(ctx context.Context, request CreateAgentQuickPromptRequestObject) (CreateAgentQuickPromptResponseObject, error)
+	// Move a device-local Agent quick prompt before an anchor or to the end
+	// (POST /v1/agent-quick-prompts/move)
+	MoveAgentQuickPrompt(ctx context.Context, request MoveAgentQuickPromptRequestObject) (MoveAgentQuickPromptResponseObject, error)
 	// Delete a device-local Agent quick prompt
 	// (DELETE /v1/agent-quick-prompts/{promptId})
 	DeleteAgentQuickPrompt(ctx context.Context, request DeleteAgentQuickPromptRequestObject) (DeleteAgentQuickPromptResponseObject, error)
@@ -25754,6 +25913,39 @@ func (sh *strictHandler) CreateAgentQuickPrompt(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateAgentQuickPromptResponseObject); ok {
 		if err := validResponse.VisitCreateAgentQuickPromptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MoveAgentQuickPrompt operation middleware
+func (sh *strictHandler) MoveAgentQuickPrompt(w http.ResponseWriter, r *http.Request) {
+	var request MoveAgentQuickPromptRequestObject
+
+	var body MoveAgentQuickPromptJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MoveAgentQuickPrompt(ctx, request.(MoveAgentQuickPromptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MoveAgentQuickPrompt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MoveAgentQuickPromptResponseObject); ok {
+		if err := validResponse.VisitMoveAgentQuickPromptResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

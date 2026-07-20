@@ -33,6 +33,9 @@ function createTransportClient(
     async listAgentQuickPrompts() {
       throw new Error("not used");
     },
+    async moveAgentQuickPrompt() {
+      throw new Error("not used");
+    },
     async listAgentTargets() {
       throw new Error("not used");
     },

@@ -72,6 +72,7 @@ export interface AgentHostQuickPromptSnapshot {
   error: string | null;
   revision: number;
   pendingMutationIds: readonly string[];
+  orderMutationPending?: boolean;
 }
 
 export interface AgentHostQuickPromptsApi {
@@ -94,6 +95,11 @@ export interface AgentHostQuickPromptsApi {
     id: string;
     expectedVersion: number;
   }) => AgentHostAsyncResult<void>;
+  move?: (input: {
+    promptId: string;
+    beforePromptId: string | null;
+    expectedVersion: number;
+  }) => AgentHostAsyncResult<readonly AgentHostQuickPrompt[]>;
 }
 
 export type AgentHostPersistenceApi = AgentHostRecord & {

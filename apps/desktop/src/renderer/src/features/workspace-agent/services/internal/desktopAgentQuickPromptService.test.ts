@@ -84,6 +84,99 @@ test("quick prompts CRUD publishes immutable committed snapshots", async () => {
   harness.service.dispose();
 });
 
+test("quick prompt move publishes optimistic order then authoritative order", async () => {
+  const secondPrompt = {
+    ...firstPrompt,
+    id: "prompt-2",
+    title: "Second",
+    updatedAtUnixMs: 5
+  };
+  const moveResponse = deferred<{ prompts: AgentHostQuickPrompt[] }>();
+  const harness = createHarness({
+    enabled: true,
+    list: async () => ({ prompts: [firstPrompt, secondPrompt] }),
+    move: () => moveResponse.promise
+  });
+  await harness.service.ensureLoaded();
+  assert.deepEqual(
+    harness.service.getSnapshot().prompts.map((prompt) => prompt.id),
+    [firstPrompt.id, secondPrompt.id]
+  );
+
+  const moving = harness.service.move({
+    promptId: firstPrompt.id,
+    beforePromptId: null,
+    expectedVersion: firstPrompt.version
+  });
+  assert.equal(harness.service.getSnapshot().orderMutationPending, true);
+  assert.deepEqual(
+    harness.service.getSnapshot().prompts.map((prompt) => prompt.id),
+    [secondPrompt.id, firstPrompt.id]
+  );
+  moveResponse.resolve({
+    prompts: [secondPrompt, { ...firstPrompt, version: 2, updatedAtUnixMs: 50 }]
+  });
+  await moving;
+  assert.equal(harness.calls.move, 1);
+  assert.equal(harness.service.getSnapshot().orderMutationPending, false);
+  assert.equal(harness.service.getSnapshot().prompts[1]?.version, 2);
+  harness.service.dispose();
+});
+
+test("failed quick prompt move rolls back and requests authoritative refresh", async () => {
+  const secondPrompt = { ...firstPrompt, id: "prompt-2", title: "Second" };
+  const harness = createHarness({
+    enabled: true,
+    list: async () => ({ prompts: [firstPrompt, secondPrompt] }),
+    move: async () => {
+      throw new Error("move failed");
+    }
+  });
+  await harness.service.ensureLoaded();
+  await assert.rejects(
+    harness.service.move({
+      promptId: firstPrompt.id,
+      beforePromptId: null,
+      expectedVersion: firstPrompt.version
+    }),
+    /move failed/
+  );
+  assert.equal(harness.service.getSnapshot().orderMutationPending, false);
+  assert.deepEqual(
+    harness.service.getSnapshot().prompts.map((prompt) => prompt.id),
+    [firstPrompt.id, secondPrompt.id]
+  );
+  await waitFor(() => harness.calls.list === 2);
+  harness.service.dispose();
+});
+
+test("disabling quick prompts during a failed move stays fail closed", async () => {
+  const secondPrompt = { ...firstPrompt, id: "prompt-2", title: "Second" };
+  const moveResponse = deferred<{ prompts: AgentHostQuickPrompt[] }>();
+  const harness = createHarness({
+    enabled: true,
+    list: async () => ({ prompts: [firstPrompt, secondPrompt] }),
+    move: () => moveResponse.promise
+  });
+  await harness.service.ensureLoaded();
+
+  const moving = harness.service.move({
+    promptId: firstPrompt.id,
+    beforePromptId: null,
+    expectedVersion: firstPrompt.version
+  });
+  harness.disable();
+  await waitFor(() => !harness.service.getSnapshot().enabled);
+  moveResponse.reject(new Error("move failed"));
+
+  await assert.rejects(moving, /move failed/);
+  assert.equal(harness.service.getSnapshot().enabled, false);
+  assert.equal(harness.service.getSnapshot().error, null);
+  assert.equal(harness.service.getSnapshot().orderMutationPending, false);
+  assert.equal(harness.calls.list, 1);
+  harness.service.dispose();
+});
+
 test("quick prompt global events coalesce refresh and skip an applied mutation", async () => {
   const harness = createHarness({ enabled: true });
   await harness.service.ensureLoaded();
@@ -266,9 +359,10 @@ function createHarness(
   input: {
     enabled?: boolean;
     list?: (call: number) => Promise<{ prompts: AgentHostQuickPrompt[] }>;
+    move?: () => Promise<{ prompts: AgentHostQuickPrompt[] }>;
   } = {}
 ) {
-  const calls = { create: 0, list: 0, remove: 0, update: 0 };
+  const calls = { create: 0, list: 0, move: 0, remove: 0, update: 0 };
   const preferencesStore = proxy({
     changingFeatureFlags: null as Record<string, boolean> | null,
     featureFlags: input.enabled
@@ -333,6 +427,11 @@ function createHarness(
     },
     async deleteAgentQuickPrompt() {
       calls.remove++;
+    },
+    async moveAgentQuickPrompt() {
+      calls.move++;
+      if (input.move) return input.move();
+      return { prompts: [firstPrompt] };
     }
   } as unknown as TuttidClient;
   const desktopPreferencesService = {
@@ -369,13 +468,16 @@ function createHarness(
 
 function deferred<T>(): {
   promise: Promise<T>;
+  reject: (error: Error) => void;
   resolve: (value: T) => void;
 } {
+  let reject!: (error: Error) => void;
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((next) => {
+  const promise = new Promise<T>((next, fail) => {
     resolve = next;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

@@ -22,6 +22,7 @@ export * from "./section-tabs";
 export * from "./shortcut-badge";
 export * from "./sonner";
 export * from "./spinner";
+export * from "./sortable";
 export * from "./status-dot";
 export * from "./switch";
 export * from "./textarea";

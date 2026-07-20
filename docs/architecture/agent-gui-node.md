@@ -27,6 +27,15 @@ Implementation progress belongs in Git history or an active spec. Debugging proc
 
 Do not solve cross-layer coordination by copying state. Consumers read projections/selectors and write semantic commands.
 
+Device-global quick prompts are not Session or Turn state. AgentGUI consumes
+the optional `AgentHostApi.quickPrompts` capability, preserves the host's
+canonical list order, and delegates create/update/delete/move effects to the
+host adapter. Reordering is presentation plus intent only: AgentGUI emits a
+moved prompt, nullable `beforePromptId` anchor, and moved version; Desktop may
+show an optimistic projection, while `tuttid` remains the durable order owner.
+Hosts that omit the capability must hide the entire entry rather than expose a
+partial or disabled library.
+
 Use the closed-surface test when assigning ownership: if state must survive or continue progressing after every Agent GUI surface closes, it belongs to Host/store or the workspace engine. State that should disappear with the surface belongs to UI.
 
 ### 1.2 Semantics before screens
