@@ -1,13 +1,5 @@
 import { createWriteStream } from "node:fs";
-import {
-  lstat,
-  mkdir,
-  readdir,
-  readFile,
-  rm,
-  stat,
-  truncate
-} from "node:fs/promises";
+import { lstat, mkdir, readdir, rm, stat, truncate } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import type {
@@ -21,9 +13,13 @@ import type {
 import type { DesktopResolvedDefaults } from "./defaults";
 import {
   buildProviderAgentSessionRecordFiles,
-  type DeveloperLogsAgentSessionRecord,
-  type ExportedAgentSessionFile
+  type DeveloperLogsAgentSessionRecord
 } from "./developerLogsAgentSessions.ts";
+import {
+  prepareDeveloperLogFilesForExport,
+  type DeveloperLogFileArtifact
+} from "./developerLogsRecentWindow.ts";
+import { buildDeveloperLogsRuntimeContext } from "./developerLogsRuntimeContext.ts";
 import yazl from "yazl";
 
 export interface DeveloperLogsDependencies {
@@ -59,16 +55,7 @@ const managedDesktopLogPrefixes = ["tutti-desktop"];
 const managedDaemonLogPrefixes = ["tuttid"];
 
 type DeveloperDiagnosticsArtifact =
-  | {
-      kind: "file";
-      category: "managed-log" | "workspace-app-log" | "app-factory-log";
-      path: string;
-      archivePath: string;
-      modifiedAtUnixMs: number;
-      sizeBytes: number;
-      clearable: true;
-      clearMode: "truncate" | "remove";
-    }
+  | DeveloperLogFileArtifact
   | {
       kind: "generated";
       category: "agent-session";
@@ -243,7 +230,7 @@ export class DeveloperLogsService {
       zipFile.addBuffer(artifact.content, artifact.archivePath);
     }
 
-    const runtimeContext = buildRuntimeContext({
+    const runtimeContext = buildDeveloperLogsRuntimeContext({
       defaults: this.deps.defaults,
       desktopVersion: this.deps.desktopVersion,
       agentSessionFiles: agentSessionArtifacts.map((artifact) => ({
@@ -341,7 +328,7 @@ export class DeveloperLogsService {
       zipFile.outputStream.on("error", rejectCompleted);
     });
     zipFile.outputStream.pipe(output);
-    const runtimeContext = buildRuntimeContext({
+    const runtimeContext = buildDeveloperLogsRuntimeContext({
       defaults: this.deps.defaults,
       desktopVersion: this.deps.desktopVersion,
       agentSessionFiles: [],
@@ -390,133 +377,6 @@ interface ManagedLogFile {
 
 interface DiscoveredLogFile extends ManagedLogFile {
   archivePath: string;
-}
-
-type DeveloperDiagnosticsFileArtifact = Extract<
-  DeveloperDiagnosticsArtifact,
-  { kind: "file" }
->;
-
-type PreparedDeveloperDiagnosticsFile = DeveloperDiagnosticsFileArtifact & {
-  content: Buffer;
-};
-
-interface DeveloperLogsTimeWindow {
-  endTimeUnixMs: number;
-  startTimeUnixMs: number;
-}
-
-async function prepareDeveloperLogFilesForExport(
-  artifacts: DeveloperDiagnosticsFileArtifact[],
-  timeWindow: DeveloperLogsTimeWindow | null
-): Promise<PreparedDeveloperDiagnosticsFile[]> {
-  const prepared = await Promise.all(
-    artifacts.map(async (artifact) => {
-      const originalContent = await readFile(artifact.path);
-      const content = timeWindow
-        ? filterDeveloperLogContentByTime({
-            content: originalContent,
-            modifiedAtUnixMs: artifact.modifiedAtUnixMs,
-            timeWindow
-          })
-        : originalContent;
-
-      if (content === null || (timeWindow && content.byteLength === 0)) {
-        return null;
-      }
-
-      return {
-        ...artifact,
-        content,
-        sizeBytes: content.byteLength
-      } satisfies PreparedDeveloperDiagnosticsFile;
-    })
-  );
-
-  return prepared.filter(
-    (artifact): artifact is PreparedDeveloperDiagnosticsFile =>
-      artifact !== null
-  );
-}
-
-function filterDeveloperLogContentByTime(input: {
-  content: Buffer;
-  modifiedAtUnixMs: number;
-  timeWindow: DeveloperLogsTimeWindow;
-}): Buffer | null {
-  const segments = input.content
-    .toString("utf8")
-    .match(/[^\r\n]*(?:\r\n|\n|\r|$)/g)
-    ?.filter((segment) => segment.length > 0);
-  if (!segments || segments.length === 0) {
-    return null;
-  }
-
-  let foundTimestamp = false;
-  let includeContinuation = false;
-  const selectedSegments: string[] = [];
-
-  for (const segment of segments) {
-    const timestamp = parseDeveloperLogTimestamp(segment);
-    if (timestamp !== null) {
-      foundTimestamp = true;
-      includeContinuation =
-        timestamp >= input.timeWindow.startTimeUnixMs &&
-        timestamp <= input.timeWindow.endTimeUnixMs;
-    }
-
-    if (includeContinuation) {
-      selectedSegments.push(segment);
-    }
-  }
-
-  if (foundTimestamp) {
-    return Buffer.from(selectedSegments.join(""), "utf8");
-  }
-
-  const fileWasUpdatedInWindow =
-    input.modifiedAtUnixMs >= input.timeWindow.startTimeUnixMs &&
-    input.modifiedAtUnixMs <= input.timeWindow.endTimeUnixMs;
-  return fileWasUpdatedInWindow ? input.content : null;
-}
-
-function parseDeveloperLogTimestamp(line: string): number | null {
-  const structuredTime = line.match(/(?:^|\s)time=(?:"([^"]+)"|(\S+))/);
-  const structuredValue = structuredTime?.[1] ?? structuredTime?.[2];
-  if (structuredValue) {
-    const parsed = Date.parse(structuredValue);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  const trimmed = line.trim();
-  if (trimmed.startsWith("{")) {
-    try {
-      const record = JSON.parse(trimmed) as Record<string, unknown>;
-      const value = record.time ?? record.timestamp;
-      if (typeof value === "number" && Number.isFinite(value)) {
-        return value < 10_000_000_000 ? value * 1_000 : value;
-      }
-      if (typeof value === "string") {
-        const parsed = Date.parse(value);
-        if (Number.isFinite(parsed)) {
-          return parsed;
-        }
-      }
-    } catch {
-      // Fall through to the generic ISO timestamp probe.
-    }
-  }
-
-  const isoTimestamp = line.match(
-    /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})/
-  )?.[0];
-  if (!isoTimestamp) {
-    return null;
-  }
-  const parsed = Date.parse(isoTimestamp);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 async function discoverDeveloperDiagnosticsArtifacts(
@@ -630,122 +490,6 @@ function createDefaultDeveloperLogsExportFileName(
   )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   const rangeSegment = scope === "recent-10-minutes" ? "-last-10-minutes" : "";
   return `tutti-logs${rangeSegment}-${stamp}.zip`;
-}
-
-interface BuildRuntimeContextInput {
-  defaults: Pick<DesktopResolvedDefaults, "state">;
-  desktopVersion: string;
-  agentSessionFiles: ExportedAgentSessionFile[];
-  logFiles: DiscoveredLogFile[];
-  persistedLocale: string | null;
-  preferredSystemLanguages: readonly string[] | null;
-  systemLocale: string | null;
-  transportSnapshot: unknown;
-}
-
-function buildRuntimeContext(input: BuildRuntimeContextInput): {
-  defaults: Pick<DesktopResolvedDefaults, "state">;
-  locale: {
-    preferredSystemLanguages: readonly string[];
-    persisted: string | null;
-    system: string | null;
-  };
-  logFiles: Array<{
-    archivePath: string;
-    name: string;
-    path: string;
-    sizeBytes: number;
-  }>;
-  agentSessionFiles: Array<{
-    agentSessionID: string;
-    archivePath: string;
-    name: string;
-    path: string;
-    provider: string;
-    sizeBytes: number;
-    workspaceID: string;
-  }>;
-  overrides: Record<string, string>;
-  runtime: {
-    desktopVersion: string;
-    electron: string | undefined;
-    tuttiEnv: string | undefined;
-    node: string | undefined;
-    platform: NodeJS.Platform;
-    release: string;
-    sessionId: string | undefined;
-  };
-  transport: unknown;
-} {
-  return {
-    defaults: input.defaults,
-    locale: {
-      preferredSystemLanguages: input.preferredSystemLanguages ?? [],
-      persisted: input.persistedLocale,
-      system: input.systemLocale
-    },
-    logFiles: input.logFiles.map((file) => ({
-      archivePath: file.archivePath,
-      name: basename(file.path),
-      path: file.path,
-      sizeBytes: file.sizeBytes
-    })),
-    agentSessionFiles: input.agentSessionFiles.map((file) => ({
-      agentSessionID: file.agentSessionID,
-      archivePath: file.archivePath,
-      name: basename(file.archivePath),
-      path: file.path,
-      provider: file.provider,
-      sizeBytes: file.sizeBytes,
-      workspaceID: file.workspaceID
-    })),
-    overrides: collectRuntimeOverrides(),
-    runtime: {
-      desktopVersion: input.desktopVersion,
-      electron: process.versions.electron,
-      tuttiEnv: process.env.TUTTI_ENV,
-      node: process.versions.node,
-      platform: process.platform,
-      release: process.release.name,
-      sessionId: process.env.TUTTI_SESSION_ID
-    },
-    transport: input.transportSnapshot
-  };
-}
-
-function collectRuntimeOverrides(): Record<string, string> {
-  const supported = [
-    "TUTTI_ENV",
-    "TUTTI_STATE_DIR",
-    "TUTTI_LOG_DIR",
-    "TUTTI_LOG_MAX_SIZE_MB",
-    "TUTTI_LOG_MAX_BACKUPS",
-    "TUTTI_LOG_MAX_AGE_DAYS",
-    "TUTTI_LOG_MAX_TOTAL_MB",
-    "TUTTID_TRANSPORT",
-    "TUTTID_ADDR",
-    "TUTTID_SOCKET_PATH",
-    "TUTTID_PIPE_PATH",
-    "TUTTID_RUN_DIR",
-    "TUTTID_DB_PATH",
-    "TUTTID_PID_PATH",
-    "TUTTID_LOG_PATH",
-    "TUTTID_LOG_OUTPUT",
-    "TUTTID_LOG_LEVEL",
-    "TUTTID_FORWARD_STDIO",
-    "TUTTI_DESKTOP_LOG_PATH",
-    "TUTTI_DESKTOP_LOG_OUTPUT",
-    "TUTTI_DESKTOP_LOG_LEVEL",
-    "TUTTI_DESKTOP_USER_DATA_DIR",
-    "TUTTI_SESSION_ID"
-  ] as const;
-
-  const entries = supported.flatMap((key) => {
-    const value = process.env[key];
-    return value ? [[key, value] as const] : [];
-  });
-
-  return Object.fromEntries(entries);
 }
 
 async function summarizeLogFile(
