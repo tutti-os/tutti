@@ -78,6 +78,7 @@ export {
   type AgentGuiWorkbenchHeaderCopy,
   type AgentGuiWorkbenchHeaderProps
 } from "./header.ts";
+export type { AgentGuiWorkbenchSessionMenuAdditionalAction } from "./AgentGuiWorkbenchSessionMenu.tsx";
 export {
   resolveAgentGuiWorkbenchHeaderTitle,
   resolveAgentGuiWorkbenchSessionTitle

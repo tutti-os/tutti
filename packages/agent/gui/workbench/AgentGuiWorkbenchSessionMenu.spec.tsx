@@ -74,6 +74,39 @@ describe("AgentGuiWorkbenchSessionMenu", () => {
     expect(screen.queryByRole("separator")).toBeNull();
   });
 
+  it("renders host-defined actions before the built-in session actions", async () => {
+    const onOpenSession = vi.fn();
+    render(
+      <AgentGuiWorkbenchSessionMenu
+        actions={["copy-markdown", "copy-reference"]}
+        additionalActions={[
+          {
+            id: "open-session",
+            label: "Open session",
+            onSelect: onOpenSession
+          }
+        ]}
+        copy={copy}
+        onAction={vi.fn()}
+      />
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: copy.moreSessionActions }),
+      { button: 0, ctrlKey: false }
+    );
+
+    const menuItems = await screen.findAllByRole("menuitem");
+    expect(menuItems[0]).toHaveTextContent("Open session");
+    expect(screen.getByRole("separator")).toBeTruthy();
+
+    const openSession = screen.getByRole("menuitem", { name: "Open session" });
+    fireEvent.pointerDown(openSession, { button: 0 });
+    fireEvent.pointerUp(openSession, { button: 0 });
+    fireEvent.click(openSession);
+    await waitFor(() => expect(onOpenSession).toHaveBeenCalledOnce());
+  });
+
   it("lets the complete header constrain its session menu actions", async () => {
     render(
       <AgentGuiWorkbenchHeader
