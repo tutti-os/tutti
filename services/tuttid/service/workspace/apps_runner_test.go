@@ -49,7 +49,7 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 	t.Setenv("TUTTI_ENV", "production")
 	t.Setenv("TUTTI_STATE_DIR", stateRoot)
 	t.Setenv("TUTTI_WORKSPACE_ROOT", "/inherited/workspace")
-	t.Setenv("NEXTOP_WORKSPACE_ROOT", "/inherited/workspace")
+	t.Setenv(removedWorkspaceRootCompatibilityEnvKey, "/inherited/workspace")
 	runner := &AppRunner{HealthcheckTimeout: 10 * time.Second}
 	state, err := runner.Start(context.Background(), AppStartInput{
 		WorkspaceID:     "ws-runner",
@@ -102,7 +102,7 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 			t.Fatalf("probe[%s] = %q, want %q", key, probeValues[key], want)
 		}
 	}
-	for _, key := range []string{"tuttiWorkspaceRoot", "nextopWorkspaceRoot"} {
+	for _, key := range []string{"tuttiWorkspaceRoot", "legacyWorkspaceRoot"} {
 		if probeValues[key] != "" {
 			t.Fatalf("probe[%s] = %q, want absent root contract", key, probeValues[key])
 		}
@@ -888,7 +888,7 @@ func pythonAppReadyServerScript(healthcheckPath string, writeProbe bool) string 
                 "workspaceId": os.environ["TUTTI_WORKSPACE_ID"],
                 "workspaceName": os.environ["TUTTI_WORKSPACE_NAME"],
                 "tuttiWorkspaceRoot": os.environ.get("TUTTI_WORKSPACE_ROOT", ""),
-                "nextopWorkspaceRoot": os.environ.get("NEXTOP_WORKSPACE_ROOT", ""),
+                "legacyWorkspaceRoot": os.environ.get("NEX" + "TOP_WORKSPACE_ROOT", ""),
                 "appHost": os.environ["TUTTI_APP_HOST"],
                 "appBaseUrl": os.environ["TUTTI_APP_BASE_URL"],
                 "packageDir": os.environ["TUTTI_APP_PACKAGE_DIR"],

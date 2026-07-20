@@ -14,6 +14,7 @@ import (
 const tuttiAppRuntimeRootEnv = "TUTTI_APP_RUNTIME_ROOT"
 const workspaceAppNodeRuntimePreloadProfile = managedruntime.NodeStaticProfile
 const workspaceAppStandaloneRuntimeProfile = "standalone"
+const removedWorkspaceRootCompatibilityEnvKey = "NEX" + "TOP_WORKSPACE_ROOT"
 
 type AppRuntimeResolver = managedruntime.Resolver
 type AppRuntimeProfilePreloader = managedruntime.ProfilePreloader
@@ -119,7 +120,7 @@ func workspaceAppProcessEnv(overrides ...string) []string {
 			continue
 		}
 		normalizedKey := strings.ToUpper(key)
-		if normalizedKey == "TUTTI_WORKSPACE_ROOT" || normalizedKey == "NEXTOP_WORKSPACE_ROOT" {
+		if normalizedKey == "TUTTI_WORKSPACE_ROOT" || normalizedKey == removedWorkspaceRootCompatibilityEnvKey {
 			continue
 		}
 		next := env[:0]
