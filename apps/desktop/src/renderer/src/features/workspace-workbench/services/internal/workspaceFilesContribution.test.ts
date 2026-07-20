@@ -126,6 +126,37 @@ test("workspace files contribution exposes file manager state through runtime an
   dispose?.();
 });
 
+test("workspace files external state preserves unchanged snapshot references", () => {
+  const snapshotState: WorkspaceFileManagerPersistedState = {
+    currentDirectoryPath: "/workspace/docs",
+    navigationBackStack: ["/workspace"],
+    navigationForwardStack: [],
+    selectedLocationId: null,
+    schemaVersion: 3
+  };
+  const contribution = createWorkspaceFilesContribution({
+    filesLabel: "Files",
+    icon: null,
+    renderFilesNodeBody: () => null,
+    renderTrafficLights,
+    workspaceFileManagerService: createFileManagerServiceStub(snapshotState, {
+      cloneSnapshots: true
+    }),
+    workspaceId: "workspace-1"
+  });
+  const request = {
+    instanceId: workspaceFilesNodeID,
+    nodeId: workspaceFilesNodeID,
+    typeId: workspaceFilesNodeID,
+    workspaceId: "workspace-1"
+  };
+
+  assert.equal(
+    contribution.externalStateSource?.getNodeState(request),
+    contribution.externalStateSource?.getNodeState(request)
+  );
+});
+
 test("workspace files contribution passes restored state to the node body renderer", () => {
   const restoredState: WorkspaceFileManagerPersistedState = {
     currentDirectoryPath: "/workspace/docs",
@@ -228,7 +259,8 @@ function createLaunchRequestContext(): Pick<
 }
 
 function createFileManagerServiceStub(
-  snapshotState: WorkspaceFileManagerPersistedState | null
+  snapshotState: WorkspaceFileManagerPersistedState | null,
+  options: { cloneSnapshots?: boolean } = {}
 ): IWorkspaceFileManagerService & { emit(): void } {
   const listeners = new Set<() => void>();
   return {
@@ -249,7 +281,14 @@ function createFileManagerServiceStub(
       throw new Error("getReferenceSourceAggregator should not be called");
     },
     getSnapshotState() {
-      return snapshotState;
+      if (!snapshotState || !options.cloneSnapshots) {
+        return snapshotState;
+      }
+      return {
+        ...snapshotState,
+        navigationBackStack: [...snapshotState.navigationBackStack],
+        navigationForwardStack: [...snapshotState.navigationForwardStack]
+      };
     },
     async openCanvasFilePreview() {
       return false;
