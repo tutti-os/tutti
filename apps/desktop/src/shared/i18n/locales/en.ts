@@ -924,14 +924,25 @@ export const en = {
         visibilityLabel: "Show developer panel"
       },
       lab: {
+        automationRulesDescription:
+          "Shows Automation Rule configuration and session overrides.",
+        automationRulesLabel: "Automation Rules",
         clearShortcutLabel: "Clear {{label}}",
+        modelPlansDescription: "Shows Model settings for configuring plans.",
+        modelPlansLabel: "Model plans",
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",
         preferencesSaveFailed: "We couldn't update Lab preferences.",
         shortcutUnbound: "Unbound",
+        tuttiModeDescription:
+          "Enables Tutti Mode planning and orchestration controls in Agent conversations.",
+        tuttiModeLabel: "Tutti Mode",
         workbenchShortcutsDescription:
           "Enables configurable workbench shortcut actions.",
-        workbenchShortcutsLabel: "Workbench shortcuts"
+        workbenchShortcutsLabel: "Workbench shortcuts",
+        workspaceAgentsDescription:
+          "Shows Custom Agent creation and configuration.",
+        workspaceAgentsLabel: "Custom Agents"
       },
       title: "Settings",
       trigger: "Settings"

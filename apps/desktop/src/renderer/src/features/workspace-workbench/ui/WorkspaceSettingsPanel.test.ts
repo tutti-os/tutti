@@ -25,6 +25,13 @@ const defaultProvidersSource = readFileSync(
   ),
   "utf8"
 );
+const labFeatureGateRowsSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "WorkspaceLabFeatureGateRows.tsx"
+  ),
+  "utf8"
+);
 
 test("workspace settings developer panel exposes analytics debug switch only when available", () => {
   assert.match(developerSource, /useAnalyticsDebugPreferenceService/);
@@ -282,4 +289,16 @@ test("workspace managed provider model rows keep stable keys while editing", () 
     source,
     /key=\{`\$\{model\.provider\}:\$\{model\.id\}:\$\{index\}`\}/
   );
+});
+
+test("Lab exposes independent default-off gates for experimental Agent features", () => {
+  assert.match(labFeatureGateRowsSource, /LAB_TUTTI_MODE_FLAG/);
+  assert.match(labFeatureGateRowsSource, /LAB_MODEL_PLANS_FLAG/);
+  assert.match(labFeatureGateRowsSource, /LAB_WORKSPACE_AGENTS_FLAG/);
+  assert.match(labFeatureGateRowsSource, /LAB_AUTOMATION_RULES_FLAG/);
+  assert.match(
+    labFeatureGateRowsSource,
+    /\.\.\.pendingFeatureFlags,[\s\S]*\[row\.key\]: enabled/
+  );
+  assert.match(source, /<WorkspaceLabFeatureGateRows/);
 });

@@ -873,13 +873,21 @@ export const zhCN = {
         visibilityLabel: "显示开发者面板"
       },
       lab: {
+        automationRulesDescription: "显示自动化规则配置与会话覆盖选项",
+        automationRulesLabel: "自动化规则",
         clearShortcutLabel: "清除 {{label}}",
+        modelPlansDescription: "显示用于配置模型方案的模型设置",
+        modelPlansLabel: "模型方案",
         newAgentConversationShortcutLabel: "新建 Agent 对话",
         newSameTypeWindowShortcutLabel: "新建同类型窗口",
         preferencesSaveFailed: "暂时无法更新实验室设置",
         shortcutUnbound: "未绑定",
+        tuttiModeDescription: "启用 Agent 对话中的 Tutti 模式规划与编排控制",
+        tuttiModeLabel: "Tutti 模式",
         workbenchShortcutsDescription: "启用可配置的工作台快捷键操作",
-        workbenchShortcutsLabel: "工作台快捷键"
+        workbenchShortcutsLabel: "工作台快捷键",
+        workspaceAgentsDescription: "显示自定义 Agent 的创建与配置",
+        workspaceAgentsLabel: "自定义 Agent"
       },
       title: "设置",
       trigger: "设置"
