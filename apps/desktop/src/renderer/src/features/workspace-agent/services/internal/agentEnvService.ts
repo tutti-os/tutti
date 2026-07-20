@@ -206,11 +206,12 @@ export class AgentEnvService implements IAgentEnvService {
         const detection = request.focus
           ? this.dependencies.providerStatusService.refresh(
               [snapshot.provider],
-              { includeNetwork: true }
+              { includeNetwork: true, includeUpdates: true }
             )
           : this.dependencies.providerStatusService.ensureLoaded({
               providers: [snapshot.provider],
-              includeNetwork: true
+              includeNetwork: true,
+              includeUpdates: true
             });
         void detection.catch((error) =>
           logDetachedActionError("detect", snapshot.provider, error)
@@ -235,7 +236,8 @@ export class AgentEnvService implements IAgentEnvService {
       installPending: service.isActionPending(current.provider, "install"),
       isLoading: statusSnapshot.isLoading,
       loginPending: service.isActionPending(current.provider, "login"),
-      status
+      status,
+      updatePending: service.isActionPending(current.provider, "update")
     });
     this.emit();
     this.orchestrate();
@@ -258,6 +260,7 @@ export class AgentEnvService implements IAgentEnvService {
         isLoading: snapshot.isLoading,
         activeAction: readCodexSetupActiveAction(snapshot.status),
         installActionPending: snapshot.installPending,
+        updateActionPending: snapshot.updatePending,
         loginPending: snapshot.loginPending,
         revealIndex: AGENT_ENV_REVEAL_ALL,
         stageLabels: ORCHESTRATION_LABELS

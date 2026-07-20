@@ -55,6 +55,7 @@ function input(
     isLoading: false,
     activeAction: null,
     installActionPending: false,
+    updateActionPending: false,
     loginPending: false,
     revealIndex: Number.MAX_SAFE_INTEGER,
     stageLabels: LABELS,
@@ -68,6 +69,35 @@ describe("buildAgentEnvWizardViewModel", () => {
     expect(vm.ready).toBe(true);
     expect(vm.displayStages.every((s) => s.status === "ok")).toBe(true);
     expect(vm.blockingStageId).toBeNull();
+  });
+
+  it("projects a discovered update and keeps the CLI stage busy while it runs", () => {
+    const updateStatus = status({
+      actions: [{ id: "update", kind: "daemon_action" }],
+      update: {
+        capability: "supported",
+        source: "npm",
+        currentVersion: "1.2.3",
+        latestVersion: "1.3.0",
+        updateAvailable: true,
+        unsupportedReason: null,
+        lastCheckedAt: "2026-07-19T00:00:00Z",
+        reasonCode: null
+      }
+    });
+    const available = buildAgentEnvWizardViewModel(
+      input({ status: updateStatus })
+    );
+    expect(available.updateAvailable).toBe(true);
+
+    const pending = buildAgentEnvWizardViewModel(
+      input({ status: updateStatus, updateActionPending: true })
+    );
+    expect(pending.busy).toBe(true);
+    expect(pending.updating).toBe(true);
+    expect(
+      pending.displayStages.find((stage) => stage.id === "install")?.status
+    ).toBe("running");
   });
 
   it("shows the version-floor token when the CLI is below the supported floor", () => {

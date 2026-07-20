@@ -17,12 +17,15 @@ export function reconcileProviderStatuses(input: {
     const previous = previousByProvider.get(status.provider);
     nextByProvider.set(
       status.provider,
-      preserveNetwork(
+      preserveUpdateDiscovery(
         previous,
-        stabilizeProviderStatus(
+        preserveNetwork(
           previous,
-          status,
-          input.transientDowngradeCounts
+          stabilizeProviderStatus(
+            previous,
+            status,
+            input.transientDowngradeCounts
+          )
         )
       )
     );
@@ -52,6 +55,36 @@ function preserveNetwork(
     return next;
   }
   return { ...next, network: previous.network };
+}
+
+// Local-only status reads attach a base update block without discovery
+// (lastCheckedAt stays null). Keep the last explicit includeUpdates result so a
+// dock/poll refresh cannot wipe "update available" or the update action.
+function preserveUpdateDiscovery(
+  previous: AgentProviderStatus | undefined,
+  next: AgentProviderStatus
+): AgentProviderStatus {
+  if (next.update?.lastCheckedAt || !previous?.update?.lastCheckedAt) {
+    return next;
+  }
+  const preservedUpdate = previous.update;
+  const actions = [...next.actions];
+  if (
+    preservedUpdate.updateAvailable === true &&
+    !actions.some((action) => action.id === "update")
+  ) {
+    const previousUpdateAction = previous.actions.find(
+      (action) => action.id === "update"
+    );
+    if (previousUpdateAction) {
+      actions.push(previousUpdateAction);
+    }
+  }
+  return {
+    ...next,
+    actions,
+    update: preservedUpdate
+  };
 }
 
 function stabilizeProviderStatus(

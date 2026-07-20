@@ -244,6 +244,9 @@ function createPreferencesKey(
     preferences.workbenchWindowSnapping
   );
   return [
+    preferences.agentCliUpdateCheckEnabled
+      ? "agent-cli-updates:on"
+      : "agent-cli-updates:off",
     // agentComposerDefaultsByProvider is deliberately excluded: the daemon
     // freezes that legacy field (client input is ignored), so including it
     // would make authoritative responses never match pending updates.
@@ -281,6 +284,7 @@ function preferencesEqual(
   right: PutDesktopPreferencesRequest["preferences"]
 ): boolean {
   return (
+    left.agentCliUpdateCheckEnabled === right.agentCliUpdateCheckEnabled &&
     // agentComposerDefaultsByProvider is deliberately excluded (frozen
     // server-side; see createPreferencesKey).
     stableAgentGuiConversationRailCollapsedByProviderKey(

@@ -49,6 +49,10 @@ func openCodeDescriptor() ProviderDescriptor {
 				ScriptURL:      "https://opencode.ai/install",
 				ScriptShell:    "bash",
 			},
+			Update: UpdateDescriptor{
+				Capability:        UpdateCapabilityUnsupported,
+				UnsupportedReason: UpdateUnsupportedReasonOfficialScript,
+			},
 			LoginArgs: []string{"auth", "login"},
 			AuthWatch: AuthWatchDescriptor{
 				Sources: []AuthWatchSourceDescriptor{

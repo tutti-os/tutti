@@ -48,6 +48,10 @@ func claudeCodeDescriptor() ProviderDescriptor {
 					"install_unavailable_in_region": {"app-unavailable-in-region", "app unavailable in region", "claude isn't available here", "claude isn&#x27;t available here", "claude isn&apos;t available here"},
 				},
 			},
+			Update: UpdateDescriptor{
+				Capability:        UpdateCapabilityUnsupported,
+				UnsupportedReason: UpdateUnsupportedReasonOfficialScript,
+			},
 			LoginArgs: []string{"auth", "login"},
 			AuthWatch: AuthWatchDescriptor{
 				Sources: []AuthWatchSourceDescriptor{

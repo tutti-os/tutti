@@ -17,6 +17,8 @@ export type WorkspaceSettingsGeneralFocusAnchor =
   | "browser-use"
   | "computer-use";
 
+export type WorkspaceSettingsAgentTab = "general" | "agents";
+
 export type WorkspaceManagedModelProviderID = "agnes" | "openai" | "anthropic";
 
 export interface WorkspaceManagedModel {
@@ -107,6 +109,9 @@ export interface WorkspaceSettingsDeveloperLogsSnapshotState {
 
 export interface WorkspaceSettingsStoreState {
   activeSection: WorkspaceSettingsSectionID;
+  agentTab: WorkspaceSettingsAgentTab;
+  agentFocusProvider: string | null;
+  agentFocusRequestID: number;
   developerPanelVisible: boolean;
   developerLogs: WorkspaceSettingsDeveloperLogsMutableState;
   generalFocusAnchor: WorkspaceSettingsGeneralFocusAnchor | null;
@@ -120,6 +125,9 @@ export interface WorkspaceSettingsStoreState {
 
 export interface WorkspaceSettingsReadableStoreState {
   readonly activeSection: WorkspaceSettingsSectionID;
+  readonly agentTab: WorkspaceSettingsAgentTab;
+  readonly agentFocusProvider: string | null;
+  readonly agentFocusRequestID: number;
   readonly developerPanelVisible: boolean;
   readonly developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   readonly generalFocusAnchor: WorkspaceSettingsGeneralFocusAnchor | null;

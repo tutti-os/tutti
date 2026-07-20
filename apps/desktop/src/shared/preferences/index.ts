@@ -1,5 +1,6 @@
 export {
   defaultDesktopAgentProvider,
+  defaultDesktopAgentCliUpdateCheckEnabled,
   defaultDesktopAgentConversationDetailMode,
   defaultDeletedAgentConversationRetentionDays,
   defaultDesktopAppCatalogChannel,
@@ -58,6 +59,7 @@ export {
   mergeDesktopAgentComposerDefaultsByProvider,
   mergeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopAgentComposerDefaults,
+  normalizeDesktopAgentCliUpdateCheckEnabled,
   normalizeDesktopAgentComposerDefaultsByAgentTarget,
   normalizeDesktopAgentComposerDefaultsByProvider,
   normalizeDesktopAgentConversationDetailMode,

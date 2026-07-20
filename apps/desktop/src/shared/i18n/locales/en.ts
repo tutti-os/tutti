@@ -214,6 +214,7 @@ export const en = {
       detecting: "Checking your {{provider}} setup…",
       ready: "{{provider}} is ready to run.",
       busyInstalling: "Setting up {{provider}}…",
+      busyUpdating: "Updating {{provider}}…",
       busyVerifying: "Verifying {{provider}}…",
       actionDetect: "Re-check",
       redetectDisabledInstalling: "Can't re-check while setting up",
@@ -221,6 +222,8 @@ export const en = {
       actionInstall: "Set up",
       actionRepair: "Repair install",
       actionUpgrade: "Upgrade",
+      actionUpdate: "Update",
+      actionUpdating: "Updating…",
       actionRelogin: "Sign in again",
       actionLogin: "Sign in",
       actionRetry: "Retry",
@@ -470,6 +473,48 @@ export const en = {
     },
     settings: {
       close: "Close settings",
+      agent: {
+        agents: {
+          autoCheckUpdates: "Automatically check for updates",
+          autoCheckUpdatesFailed:
+            "Couldn't save the automatic update check setting.",
+          autoCheckUpdatesHint:
+            "Checks periodically. Updates are installed only when you choose Update.",
+          checkUpdates: "Check for updates",
+          checkUpdatesFailed: "Couldn't check for agent CLI updates.",
+          checkingUpdates: "Checking for updates…",
+          currentVersionSummary: "{{current}}",
+          disabled: "Disabled",
+          earlyAccessBadge: "Early Access",
+          earlyAccessDescription:
+            "Show agent integrations that Tutti is still testing and validating.",
+          earlyAccessHiddenHint:
+            "Turn on Early access integrations in Lab to manage {{agent}}.",
+          earlyAccessLabel: "Early access integrations",
+          empty: "No agents to show.",
+          enableAgent: "Enable {{agent}}",
+          enableChangeFailed: "Couldn't change whether {{agent}} is enabled.",
+          enabled: "Enabled",
+          enabledColumn: "Enabled",
+          environmentColumn: "Environment",
+          extensionCodeBuddy: "CodeBuddy Code",
+          extensionEnableToSetUp: "Enable to set up",
+          extensionGemini: "Gemini CLI",
+          extensionGitHubCopilot: "GitHub Copilot CLI",
+          extensionKilo: "Kilo Code",
+          extensionPreparing: "Preparing integration…",
+          extensionQwen: "Qwen Code",
+          updateAvailableLatest: "Update available · {{latest}}",
+          updateAvailableSummary: "{{current}} → {{latest}}",
+          updateCheckFailed: "Update check unavailable",
+          updateCheckFailedSummary: "{{current}} · Check unavailable",
+          updateUpToDateSummary: "{{current}} · Up to date"
+        },
+        tabs: {
+          agents: "Agents",
+          general: "General Settings"
+        }
+      },
       appearance: {
         dockPlacementDescription:
           "Controls where the workspace dock is anchored",
@@ -865,18 +910,6 @@ export const en = {
         fileDefaultOpenersDescription:
           "Choose what opens first when a workspace file is activated by extension.",
         fileDefaultOpenersLabel: "Default file openers",
-        codebuddyAgentDescription:
-          "Show CodeBuddy Code across Tutti. Disabled by default while Agent Extensions are in preview.",
-        codebuddyAgentLabel: "Enable CodeBuddy Code Agent",
-        copilotAgentDescription:
-          "Show GitHub Copilot CLI across Tutti. Disabled by default while Agent Extensions are in preview.",
-        copilotAgentLabel: "Enable GitHub Copilot CLI Agent",
-        geminiAgentDescription:
-          "Show Gemini CLI across Tutti. Disabled by default while Agent Extensions are in preview.",
-        geminiAgentLabel: "Enable Gemini CLI Agent",
-        kiloAgentDescription:
-          "Show Kilo Code across Tutti. Disabled by default while Agent Extensions are in preview.",
-        kiloAgentLabel: "Enable Kilo Code Agent",
         labVisibilityDescription:
           "Shows experimental controls in a separate Settings tab.",
         labVisibilityLabel: "Show Lab tab",
@@ -888,9 +921,6 @@ export const en = {
         logsExported: "Exported {{count}} log files to {{path}}.",
         logsExportFailed: "We couldn't export local logs right now.",
         logsLoadFailed: "We couldn't load local log details right now.",
-        qwenAgentDescription:
-          "Show Qwen Code across Tutti. Disabled by default while Agent Extensions are in preview.",
-        qwenAgentLabel: "Enable Qwen Code Agent",
         logsSizeLabel: "Log size",
         logsSummary: "{{count}} files, {{size}} total",
         logsTitle: "Logs",
@@ -924,14 +954,19 @@ export const en = {
         visibilityLabel: "Show developer panel"
       },
       lab: {
+        backLabel: "Back",
         clearShortcutLabel: "Clear {{label}}",
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",
         preferencesSaveFailed: "We couldn't update Lab preferences.",
+        previewAgentsDescription:
+          "Show agent integrations that Tutti is still testing and validating.",
+        previewAgentsLabel: "Early access integrations",
         shortcutUnbound: "Unbound",
         workbenchShortcutsDescription:
           "Enables configurable workbench shortcut actions.",
-        workbenchShortcutsLabel: "Workbench shortcuts"
+        workbenchShortcutsLabel: "Workbench shortcuts",
+        workbenchShortcutsManageLabel: "Configure keyboard shortcuts"
       },
       title: "Settings",
       trigger: "Settings"
@@ -1001,6 +1036,10 @@ export const en = {
         installing: "Connecting",
         login: "Sign in",
         loginFailed: "Sign-in failed",
+        updateFailed: "Update failed",
+        updateFailedDescription:
+          "Unable to update the local agent right now. Try again in a moment.",
+        updateFailedTimedOut: "Update timed out. Try again in a moment.",
         loginRequired: "Sign in to the local CLI to use this agent",
         manageActionConnect: "Connect",
         manageActionLogin: "Sign in",

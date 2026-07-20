@@ -60,7 +60,7 @@ func TestServicePublishRejectsInvalidPayload(t *testing.T) {
 
 	err := service.PublishFromClient(context.Background(), ClientEvent{
 		Topic:   TopicPreferencesDesktopUpdateRequested,
-		Payload: []byte(`{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","agentDockLayout":"legacySplit","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"fr","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`),
+		Payload: []byte(`{"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","agentDockLayout":"legacySplit","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"fr","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`),
 	})
 	if err == nil {
 		t.Fatal("PublishFromClient() error = nil, want invalid payload")
@@ -85,12 +85,12 @@ func TestServicePublishRejectsInvalidAgentDockLayout(t *testing.T) {
 	}{
 		{
 			name:    "missing",
-			payload: `{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`,
+			payload: `{"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`,
 			want:    "preferences.agentDockLayout is required",
 		},
 		{
 			name:    "unsupported",
-			payload: `{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","agentDockLayout":"stacked","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`,
+			payload: `{"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","agentDockLayout":"stacked","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`,
 			want:    "preferences.agentDockLayout is unsupported",
 		},
 	}
@@ -367,7 +367,7 @@ func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 
 	if err := service.PublishFromClient(context.Background(), ClientEvent{
 		Topic:   TopicPreferencesDesktopUpdateRequested,
-		Payload: []byte(`{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{"codex":true},"agentConversationDetailMode":"coding","agentDockLayout":"unified","appCatalogChannel":"staging","defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"rc","updatePolicy":"auto"}}`),
+		Payload: []byte(`{"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{"codex":true},"agentConversationDetailMode":"coding","agentDockLayout":"unified","appCatalogChannel":"staging","defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"rc","updatePolicy":"auto"}}`),
 	}); err != nil {
 		t.Fatalf("PublishFromClient() error = %v", err)
 	}
@@ -449,7 +449,7 @@ func TestPreferencesIntentHandlerPassesWindowSnappingWhenProvided(t *testing.T) 
 
 	if err := service.PublishFromClient(context.Background(), ClientEvent{
 		Topic:   TopicPreferencesDesktopUpdateRequested,
-		Payload: []byte(`{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{"codex":true},"agentConversationDetailMode":"coding","agentDockLayout":"unified","appCatalogChannel":"staging","defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"rc","updatePolicy":"auto","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}`),
+		Payload: []byte(`{"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{"codex":true},"agentConversationDetailMode":"coding","agentDockLayout":"unified","appCatalogChannel":"staging","defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"rc","updatePolicy":"auto","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}`),
 	}); err != nil {
 		t.Fatalf("PublishFromClient() error = %v", err)
 	}
@@ -544,7 +544,7 @@ func TestServiceFiltersScopedSubscriptions(t *testing.T) {
 	if err := service.PublishFromServerScoped(
 		context.Background(),
 		TopicPreferencesDesktopUpdated,
-		[]byte(`{"initialized":true,"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","agentDockLayout":"legacySplit","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`),
+		[]byte(`{"initialized":true,"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","agentDockLayout":"legacySplit","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`),
 		EventScope{WorkspaceID: "workspace-1"},
 	); err != nil {
 		t.Fatalf("PublishFromServerScoped() error = %v", err)

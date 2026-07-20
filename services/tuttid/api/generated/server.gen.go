@@ -689,6 +689,19 @@ func (siw *ServerInterfaceWrapper) GetAgentProviderStatuses(w http.ResponseWrite
 		return
 	}
 
+	// ------------- Optional query parameter "includeUpdates" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeUpdates", r.URL.Query(), &params.IncludeUpdates, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeUpdates"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeUpdates", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "refresh" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "refresh", r.URL.Query(), &params.Refresh, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
@@ -698,6 +711,19 @@ func (siw *ServerInterfaceWrapper) GetAgentProviderStatuses(w http.ResponseWrite
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "refresh"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "refresh", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "refreshUpdates" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "refreshUpdates", r.URL.Query(), &params.RefreshUpdates, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "refreshUpdates"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "refreshUpdates", Err: err})
 		}
 		return
 	}

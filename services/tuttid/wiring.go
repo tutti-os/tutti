@@ -51,15 +51,16 @@ import (
 )
 
 type tuttiWiring struct {
-	api                 tuttiapi.DaemonAPI
-	appCenterService    *workspaceservice.AppCenterService
-	workspaceStore      *workspacedata.SQLiteStore
-	analyticsReporter   reporterservice.Reporter
-	browserService      *browsersvc.Service
-	computerService     *computersvc.Service
-	agentTargetSetup    *agentextensionservice.SetupService
-	agentRuntime        *agentdaemon.Runtime
-	providerAuthWatcher *agentservice.ProviderAuthWatcher
+	api                     tuttiapi.DaemonAPI
+	appCenterService        *workspaceservice.AppCenterService
+	workspaceStore          *workspacedata.SQLiteStore
+	analyticsReporter       reporterservice.Reporter
+	browserService          *browsersvc.Service
+	computerService         *computersvc.Service
+	agentTargetSetup        *agentextensionservice.SetupService
+	agentRuntime            *agentdaemon.Runtime
+	providerAuthWatcher     *agentservice.ProviderAuthWatcher
+	agentCLIUpdateScheduler *agentstatusservice.ProviderUpdateScheduler
 }
 
 type analyticsDebugEventPublisher struct {
@@ -133,6 +134,7 @@ func buildTuttiServer() (*http.Server, net.Listener, *tuttiWiring, error) {
 		_ = wiring.Close()
 		return nil, nil, nil, fmt.Errorf("write tuttid listener info: %w", err)
 	}
+	wiring.startAgentCLIUpdateScheduler()
 
 	return tuttiserver.NewHTTPServer(listenerSpec, wiring.routes()), listener, wiring, nil
 }
@@ -171,6 +173,23 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	w.agentTargetSetup = agentTargetSetup
 	w.agentRuntime = agentRuntime
 	w.providerAuthWatcher = providerAuthWatcher
+	preferencesService, preferencesOK := api.PreferencesService.(*preferencesservice.Service)
+	agentStatusService, agentStatusOK := api.AgentStatusService.(*agentstatusservice.Service)
+	if !preferencesOK || !agentStatusOK {
+		return errors.New("agent CLI update scheduler wiring is invalid")
+	}
+	w.agentCLIUpdateScheduler = agentstatusservice.NewProviderUpdateScheduler(
+		agentstatusservice.ProviderUpdateSchedulerConfig{Discoverer: agentStatusService},
+	)
+	previousAfterPut := preferencesService.AfterPut
+	preferencesService.AfterPut = func(ctx context.Context, previous, current preferencesbiz.DesktopPreferences) {
+		if previousAfterPut != nil {
+			previousAfterPut(ctx, previous, current)
+		}
+		if previous.AgentCLIUpdateCheckEnabled != current.AgentCLIUpdateCheckEnabled {
+			w.agentCLIUpdateScheduler.SetEnabled(current.AgentCLIUpdateCheckEnabled)
+		}
+	}
 
 	analyticsConfig := tuttitypes.ResolveAnalyticsConfig()
 	debugPublisher := resolveAnalyticsDebugPublisher(analyticsConfig, api.EventStreamService)
@@ -187,6 +206,22 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	w.api = api
 	w.appCenterService = appCenterService
 	return nil
+}
+
+func (w *tuttiWiring) startAgentCLIUpdateScheduler() {
+	if w == nil || w.agentCLIUpdateScheduler == nil || w.api.PreferencesService == nil {
+		return
+	}
+	preferences, err := w.api.PreferencesService.Get(context.Background())
+	if err != nil {
+		slog.Warn("failed to read agent CLI update check preference",
+			"event", "tutti.agent_provider.update_scheduler.preference_read_failed",
+			"error", err,
+		)
+		w.agentCLIUpdateScheduler.Start(false)
+		return
+	}
+	w.agentCLIUpdateScheduler.Start(preferences.AgentCLIUpdateCheckEnabled)
 }
 
 func resolveAnalyticsDebugPublisher(analyticsConfig tuttitypes.AnalyticsConfig, service analyticsDebugEventStream) reporterservice.DebugPublisher {
@@ -309,6 +344,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		ClaudeCodeRuntimeDir: filepath.Join(agentRuntimeDir, "claude-code"),
 		RunOutcomes:          runOutcomes,
 		StatusCache:          agentstatusservice.NewProviderStatusCache(),
+		UpdateCache:          agentstatusservice.NewProviderUpdateCache(),
 	}
 	accountService := accountservice.NewService("")
 	agentProcessTransport := agentdaemon.NewLocalProcessTransport()
@@ -642,6 +678,9 @@ func (w *tuttiWiring) Close() error {
 	}
 
 	var closeErr error
+	if w.agentCLIUpdateScheduler != nil {
+		w.agentCLIUpdateScheduler.Close()
+	}
 	if w.appCenterService != nil && w.appCenterService.Runner != nil {
 		w.appCenterService.Runner.StopAll(context.Background())
 	}

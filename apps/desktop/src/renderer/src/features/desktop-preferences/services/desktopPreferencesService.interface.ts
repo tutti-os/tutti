@@ -34,6 +34,7 @@ export interface IDesktopPreferencesService {
   readonly _serviceBrand: undefined;
   readonly store: DesktopPreferencesReadableStoreState;
 
+  setAgentCliUpdateCheckEnabled(enabled: boolean): Promise<boolean>;
   setDefaultAgentProvider(
     provider: DesktopDefaultAgentProvider
   ): Promise<DesktopDefaultAgentProvider>;

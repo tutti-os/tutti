@@ -7,6 +7,7 @@ import { createDesktopPreferencesStore } from "./desktopPreferencesStore.ts";
 import { AgentComposerDefaultsPatchCoordinator } from "./agentComposerDefaultsPatchCoordinator.ts";
 import {
   desktopAgentGuiConversationRailCollapsedByProviderEqual,
+  defaultDesktopAgentCliUpdateCheckEnabled,
   defaultDesktopAgentProvider,
   defaultDesktopAgentConversationDetailMode,
   defaultDesktopAppCatalogChannel,
@@ -26,6 +27,7 @@ import {
   desktopFeatureFlagsEqual,
   mergeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopAgentComposerDefaultsByAgentTarget,
+  normalizeDesktopAgentCliUpdateCheckEnabled,
   normalizeDesktopAgentConversationDetailMode,
   normalizeDeletedAgentConversationRetentionDays,
   normalizeDesktopFeatureFlags,
@@ -85,6 +87,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
           this.dependencies.client.patchAgentComposerDefaultsForTarget(input)
       });
     this.store = createDesktopPreferencesStore({
+      agentCliUpdateCheckEnabled: defaultDesktopAgentCliUpdateCheckEnabled,
       agentComposerDefaultsByProvider: {},
       agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
@@ -124,6 +127,34 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     this.agentComposerDefaultsPatchCoordinator.dispose();
     this.unsubscribePreferencesUpdates();
     this.dependencies.client.dispose();
+  }
+
+  async setAgentCliUpdateCheckEnabled(enabled: boolean): Promise<boolean> {
+    if (this.store.changingAgentCliUpdateCheckEnabled === enabled) {
+      return enabled;
+    }
+
+    const previousEnabled = this.store.agentCliUpdateCheckEnabled;
+    this.store.changingAgentCliUpdateCheckEnabled = enabled;
+    this.store.agentCliUpdateCheckEnabled = enabled;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({
+            agentCliUpdateCheckEnabled: enabled
+          })
+        });
+      return normalizeDesktopAgentCliUpdateCheckEnabled(
+        authoritativePreferences.agentCliUpdateCheckEnabled
+      );
+    } catch (error) {
+      this.store.agentCliUpdateCheckEnabled = previousEnabled;
+      throw error;
+    } finally {
+      if (this.store.changingAgentCliUpdateCheckEnabled === enabled) {
+        this.store.changingAgentCliUpdateCheckEnabled = null;
+      }
+    }
   }
 
   async setDefaultAgentProvider(
@@ -757,6 +788,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
   }
 
   private applyPreferences(preferences: {
+    agentCliUpdateCheckEnabled?: boolean;
     agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
     agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
     agentConversationDetailMode?: DesktopAgentConversationDetailMode;
@@ -778,6 +810,10 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     workbenchShortcuts?: DesktopWorkbenchShortcuts;
     workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
   }): void {
+    this.store.agentCliUpdateCheckEnabled =
+      normalizeDesktopAgentCliUpdateCheckEnabled(
+        preferences.agentCliUpdateCheckEnabled
+      );
     this.store.agentComposerDefaultsByAgentTarget =
       normalizeDesktopAgentComposerDefaultsByAgentTarget(
         preferences.agentComposerDefaultsByAgentTarget
@@ -841,6 +877,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
 
   private currentPreferences(
     overrides: Partial<{
+      agentCliUpdateCheckEnabled: boolean;
       agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
       agentConversationDetailMode: DesktopAgentConversationDetailMode;
       appCatalogChannel: DesktopAppCatalogChannel;
@@ -862,6 +899,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
     }> = {}
   ): {
+    agentCliUpdateCheckEnabled: boolean;
     agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
     agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
     agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
@@ -891,6 +929,9 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       overrides.workbenchWindowSnapping ?? this.store.workbenchWindowSnapping
     );
     return {
+      agentCliUpdateCheckEnabled:
+        overrides.agentCliUpdateCheckEnabled ??
+        this.store.agentCliUpdateCheckEnabled,
       // Keep the required wire-contract field, but stop round-tripping the
       // frozen legacy provider-keyed defaults through renderer state.
       agentComposerDefaultsByProvider: {},

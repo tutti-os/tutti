@@ -2328,6 +2328,7 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 			putFn: func(_ context.Context, input preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
 				captured = input
 				return preferencesbiz.DesktopPreferences{
+					AgentCLIUpdateCheckEnabled:                    input.AgentCLIUpdateCheckEnabled,
 					AgentGUIConversationRailCollapsedByProvider: input.AgentGUIConversationRailCollapsedByProvider,
 					AgentConversationDetailMode:                 input.AgentConversationDetailMode,
 					AgentDockLayout:                             input.AgentDockLayout,
@@ -2348,6 +2349,7 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 
 	recorder := performGeneratedRouteRequest(t, mux, http.MethodPut, "/v1/preferences/desktop", map[string]any{
 		"preferences": map[string]any{
+			"agentCliUpdateCheckEnabled": false,
 			"agentComposerDefaultsByProvider": map[string]any{},
 			"agentGuiConversationRailCollapsedByProvider": map[string]any{
 				"claude-code": false,
@@ -2370,6 +2372,9 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
+	if captured.AgentCLIUpdateCheckEnabled {
+		t.Fatal("captured agent CLI update check = true, want false")
+	}
 	if !captured.AgentGUIConversationRailCollapsedByProvider["codex"] {
 		t.Fatalf("captured rail preference = %#v, want codex true", captured.AgentGUIConversationRailCollapsedByProvider)
 	}
@@ -2387,6 +2392,9 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 	}
 	var response tuttigenerated.DesktopPreferencesStateResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Preferences.AgentCliUpdateCheckEnabled {
+		t.Fatal("response agent CLI update check = true, want false")
+	}
 	if response.Preferences.AgentGuiConversationRailCollapsedByProvider.Codex == nil ||
 		!*response.Preferences.AgentGuiConversationRailCollapsedByProvider.Codex {
 		t.Fatalf("response rail codex = %#v, want true", response.Preferences.AgentGuiConversationRailCollapsedByProvider.Codex)

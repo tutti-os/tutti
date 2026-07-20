@@ -123,6 +123,287 @@ test("refresh sends includeNetwork only when the caller opts in", async () => {
   assert.deepEqual(forceRefreshRequests, [true, true]);
 });
 
+test("checkUpdates opts into includeUpdates without forcing readiness refresh", async () => {
+  const requests: Array<{
+    includeUpdates?: boolean;
+    refresh?: boolean;
+    refreshUpdates?: boolean;
+  }> = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      onStatusRequest: (
+        _providers,
+        _includeNetwork,
+        refresh,
+        includeUpdates,
+        refreshUpdates
+      ) => {
+        requests.push({ includeUpdates, refresh, refreshUpdates });
+      },
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "update", kind: "daemon_action" }],
+            availability: "ready",
+            update: {
+              capability: "supported",
+              currentVersion: "1.0.0",
+              lastCheckedAt: "2026-07-19T00:00:00.000Z",
+              latestVersion: "1.1.0",
+              reasonCode: null,
+              source: "npm",
+              unsupportedReason: null,
+              updateAvailable: true
+            }
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh(["codex"]);
+  await service.checkUpdates(["codex"]);
+
+  assert.deepEqual(requests, [
+    {
+      includeUpdates: undefined,
+      refresh: true,
+      refreshUpdates: undefined
+    },
+    {
+      includeUpdates: true,
+      refresh: undefined,
+      refreshUpdates: true
+    }
+  ]);
+  assert.equal(service.getStatus("codex")?.update.updateAvailable, true);
+});
+
+test("checkUpdates exposes one stable operation state for the whole request", async () => {
+  const response = createDeferred<AgentProviderStatusListResponse>();
+  const checkingSnapshots: boolean[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: {
+      getAgentProviderStatuses: () => response.promise
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+  service.subscribe(() => {
+    checkingSnapshots.push(service.isCheckingUpdates());
+  });
+
+  const request = service.checkUpdates(["codex"]);
+  assert.equal(service.isCheckingUpdates(), true);
+  response.resolve(
+    createStatusResponse([
+      createProviderStatus({ actions: [], availability: "ready" })
+    ])
+  );
+  await request;
+
+  assert.equal(service.isCheckingUpdates(), false);
+  assert.equal(checkingSnapshots[0], true);
+  assert.equal(checkingSnapshots.at(-1), false);
+  assert.equal(
+    checkingSnapshots.slice(0, -1).every((checking) => checking),
+    true
+  );
+});
+
+test("local-only refresh preserves prior includeUpdates discovery", async () => {
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "update", kind: "daemon_action" }],
+            availability: "ready",
+            update: {
+              capability: "supported",
+              currentVersion: "1.0.0",
+              lastCheckedAt: "2026-07-19T00:00:00.000Z",
+              latestVersion: "1.1.0",
+              reasonCode: null,
+              source: "npm",
+              unsupportedReason: null,
+              updateAvailable: true
+            }
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            update: {
+              capability: "supported",
+              currentVersion: "1.0.0",
+              lastCheckedAt: null,
+              latestVersion: null,
+              reasonCode: null,
+              source: "npm",
+              unsupportedReason: null,
+              updateAvailable: null
+            }
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.checkUpdates(["codex"]);
+  assert.equal(service.getStatus("codex")?.update.updateAvailable, true);
+  assert.equal(
+    service
+      .getStatus("codex")
+      ?.actions.some((action) => action.id === "update"),
+    true
+  );
+
+  await service.refresh(["codex"]);
+  assert.equal(service.getStatus("codex")?.update.updateAvailable, true);
+  assert.equal(
+    service
+      .getStatus("codex")
+      ?.actions.some((action) => action.id === "update"),
+    true
+  );
+});
+
+test("runAction update tracks pending progress and refreshes with includeUpdates", async () => {
+  const requests: Array<{
+    includeUpdates?: boolean;
+    refresh?: boolean;
+  }> = [];
+  const actionRuns: Array<string> = [];
+  const pendingSnapshots: boolean[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      actionRuns: [createActionRunResponse("codex", "update", "completed")],
+      onRunActionRequest: (_provider, actionID) => {
+        actionRuns.push(actionID);
+      },
+      onStatusRequest: (
+        _providers,
+        _includeNetwork,
+        refresh,
+        includeUpdates
+      ) => {
+        requests.push({ includeUpdates, refresh });
+      },
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "update", kind: "daemon_action" }],
+            availability: "ready",
+            update: {
+              capability: "supported",
+              currentVersion: "1.0.0",
+              lastCheckedAt: "2026-07-19T00:00:00.000Z",
+              latestVersion: "1.1.0",
+              reasonCode: null,
+              source: "npm",
+              unsupportedReason: null,
+              updateAvailable: true
+            }
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            update: {
+              capability: "supported",
+              currentVersion: "1.1.0",
+              lastCheckedAt: "2026-07-19T00:01:00.000Z",
+              latestVersion: "1.1.0",
+              reasonCode: null,
+              source: "npm",
+              unsupportedReason: null,
+              updateAvailable: false
+            }
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  service.subscribe(() => {
+    pendingSnapshots.push(service.isActionPending("codex", "update"));
+  });
+
+  await service.checkUpdates(["codex"]);
+  pendingSnapshots.length = 0;
+  await service.runAction("codex", "update", { origin: "user" });
+
+  assert.deepEqual(actionRuns, ["update"]);
+  assert.equal(pendingSnapshots.includes(true), true);
+  assert.equal(
+    pendingSnapshots.slice(0, -1).every((pending) => pending),
+    true
+  );
+  assert.equal(pendingSnapshots.at(-1), false);
+  assert.equal(service.isActionPending("codex", "update"), false);
+  assert.equal(
+    requests.some(
+      (request) => request.includeUpdates === true && request.refresh === true
+    ),
+    true
+  );
+  assert.equal(service.getStatus("codex")?.update.currentVersion, "1.1.0");
+});
+
+test("runAction update failures notify through i18n", async () => {
+  const notifications = createNotificationRecorder();
+  const service = new DesktopAgentProviderStatusService(
+    {
+      tuttidClient: createTuttidClient({
+        actionRuns: [createActionRunResponse("codex", "update", "failed")],
+        snapshots: [
+          createStatusResponse([
+            createProviderStatus({
+              actions: [{ id: "update", kind: "daemon_action" }],
+              availability: "ready",
+              update: {
+                capability: "supported",
+                currentVersion: "1.0.0",
+                lastCheckedAt: "2026-07-19T00:00:00.000Z",
+                latestVersion: "1.1.0",
+                reasonCode: null,
+                source: "npm",
+                unsupportedReason: null,
+                updateAvailable: true
+              }
+            })
+          ])
+        ]
+      }),
+      terminalCommandRunner: {
+        async runTerminalCommand() {}
+      }
+    },
+    notifications.service
+  );
+
+  await service.checkUpdates(["codex"]);
+  await assert.rejects(() =>
+    service.runAction("codex", "update", { origin: "user" })
+  );
+
+  assert.equal(notifications.items[0]?.tone, "error");
+  assert.equal(notifications.items[0]?.title, "Update failed");
+});
+
 test("a local-only refresh keeps the network the wizard fetched", async () => {
   const network = {
     registry: { reachable: true, endpoint: "https://registry.npmjs.org" },
@@ -2024,7 +2305,9 @@ function createTuttidClient(input: {
   onStatusRequest?: (
     providers: readonly WorkspaceAgentProvider[] | undefined,
     includeNetwork?: boolean,
-    refresh?: boolean
+    refresh?: boolean,
+    includeUpdates?: boolean,
+    refreshUpdates?: boolean
   ) => void;
   probes?: AgentProviderProbeResponse[];
   snapshots: AgentProviderStatusListResponse[];
@@ -2037,7 +2320,9 @@ function createTuttidClient(input: {
       input.onStatusRequest?.(
         request?.providers,
         request?.includeNetwork,
-        request?.refresh
+        request?.refresh,
+        request?.includeUpdates,
+        request?.refreshUpdates
       );
       const snapshot = input.snapshots[index] ?? input.snapshots.at(-1);
       index += 1;
@@ -2166,6 +2451,7 @@ function createProviderStatus(input: {
   network?: AgentProviderStatus["network"];
   provider?: WorkspaceAgentProvider;
   reasonCode?: string;
+  update?: AgentProviderStatus["update"];
 }): AgentProviderStatus {
   const cliInstalled =
     input.cliInstalled ??
@@ -2191,7 +2477,17 @@ function createProviderStatus(input: {
       installed: cliInstalled
     },
     network: input.network,
-    provider: input.provider ?? "codex"
+    provider: input.provider ?? "codex",
+    update: input.update ?? {
+      capability: "unsupported",
+      currentVersion: null,
+      lastCheckedAt: null,
+      latestVersion: null,
+      reasonCode: null,
+      source: null,
+      unsupportedReason: "update_strategy_unsupported",
+      updateAvailable: null
+    }
   };
 }
 

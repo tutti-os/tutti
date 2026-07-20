@@ -80,6 +80,8 @@ export interface DeriveAgentSetupStagesInput {
    * would show no spinner.
    */
   installActionPending: boolean;
+  /** Whether a provider CLI update is in flight. */
+  updateActionPending: boolean;
   loginPending: boolean;
   /**
    * Active connectivity probe verdict: true (reachable), false (offline), or
@@ -117,6 +119,7 @@ export function deriveAgentSetupStages(
   const installing =
     input.installActionPending ||
     (input.activePhase ? INSTALLING_PHASES.has(input.activePhase) : false);
+  const updating = input.updateActionPending || input.activePhase === "update";
 
   const detectStatus: CodexSetupStepStatus = input.detected ? "ok" : "running";
 
@@ -140,13 +143,15 @@ export function deriveAgentSetupStages(
     (input.cliInstalled &&
       !input.versionTooOld &&
       !input.platformPackageIncomplete);
-  const installStatus: CodexSetupStepStatus = cliOk
-    ? "ok"
-    : installing
-      ? "running"
-      : input.versionTooOld
-        ? "error"
-        : "pending";
+  const installStatus: CodexSetupStepStatus = updating
+    ? "running"
+    : cliOk
+      ? "ok"
+      : installing
+        ? "running"
+        : input.versionTooOld
+          ? "error"
+          : "pending";
   const installProblem: StageProblem | undefined =
     input.platformPackageIncomplete && !cliOk
       ? "install-platform-incomplete"
@@ -259,7 +264,7 @@ export function shouldAdvanceReveal(
   return cursor.status === "ok" || cursor.status === "skipped";
 }
 
-export type StageActionId = "install" | "login" | "redetect";
+export type StageActionId = "install" | "login" | "redetect" | "update";
 
 /**
  * The problem token a blocked stage represents. The UI maps this to "未xxx"

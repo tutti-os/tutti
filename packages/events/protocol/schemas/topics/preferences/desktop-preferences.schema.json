@@ -5,6 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
+    "agentCliUpdateCheckEnabled",
     "agentComposerDefaultsByProvider",
     "agentGuiConversationRailCollapsedByProvider",
     "agentConversationDetailMode",
@@ -26,6 +27,10 @@
     "updatePolicy"
   ],
   "properties": {
+    "agentCliUpdateCheckEnabled": {
+      "type": "boolean",
+      "default": true
+    },
     "agentComposerDefaultsByProvider": {
       "type": "object",
       "additionalProperties": false,

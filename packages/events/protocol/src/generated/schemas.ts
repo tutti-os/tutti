@@ -7,6 +7,7 @@ export const preferencesDesktopPreferencesSchema = {
   type: "object",
   additionalProperties: false,
   required: [
+    "agentCliUpdateCheckEnabled",
     "agentComposerDefaultsByProvider",
     "agentGuiConversationRailCollapsedByProvider",
     "agentConversationDetailMode",
@@ -28,6 +29,10 @@ export const preferencesDesktopPreferencesSchema = {
     "updatePolicy"
   ],
   properties: {
+    agentCliUpdateCheckEnabled: {
+      type: "boolean",
+      default: true
+    },
     agentComposerDefaultsByProvider: {
       type: "object",
       additionalProperties: false,
@@ -1429,6 +1434,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
       type: "object",
       additionalProperties: false,
       required: [
+        "agentCliUpdateCheckEnabled",
         "agentComposerDefaultsByProvider",
         "agentGuiConversationRailCollapsedByProvider",
         "agentConversationDetailMode",
@@ -1450,6 +1456,10 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "updatePolicy"
       ],
       properties: {
+        agentCliUpdateCheckEnabled: {
+          type: "boolean",
+          default: true
+        },
         agentComposerDefaultsByProvider: {
           type: "object",
           additionalProperties: false,
@@ -1793,6 +1803,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
       type: "object",
       additionalProperties: false,
       required: [
+        "agentCliUpdateCheckEnabled",
         "agentComposerDefaultsByProvider",
         "agentGuiConversationRailCollapsedByProvider",
         "agentConversationDetailMode",
@@ -1814,6 +1825,10 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "updatePolicy"
       ],
       properties: {
+        agentCliUpdateCheckEnabled: {
+          type: "boolean",
+          default: true
+        },
         agentComposerDefaultsByProvider: {
           type: "object",
           additionalProperties: false,

@@ -154,6 +154,16 @@ function createStatus(input: {
     cli: {
       installed: input.availability !== "not_installed"
     },
-    provider: input.provider
+    provider: input.provider,
+    update: {
+      capability: "unsupported",
+      currentVersion: null,
+      lastCheckedAt: null,
+      latestVersion: null,
+      reasonCode: null,
+      source: null,
+      unsupportedReason: "update_strategy_unsupported",
+      updateAvailable: null
+    }
   };
 }

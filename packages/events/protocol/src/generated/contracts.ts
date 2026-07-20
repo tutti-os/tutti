@@ -44,6 +44,7 @@ export type BusinessEventEnvelopeV1<
 };
 
 export interface PreferencesDesktopPreferencesV1 {
+  agentCliUpdateCheckEnabled: boolean;
   agentComposerDefaultsByProvider: {
     "claude-code"?: {
       model?: string;

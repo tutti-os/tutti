@@ -1686,6 +1686,41 @@ func TestAgentListKeepsMultipleAgentsForOneProvider(t *testing.T) {
 	}
 }
 
+func TestDisabledAgentIsExcludedFromListAndCannotStart(t *testing.T) {
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	for index := range targets {
+		if targets[index].ID == agenttargetbiz.IDLocalCodex {
+			targets[index].Enabled = false
+		}
+	}
+	sessions := &fakeAgentSessions{}
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions, nil, fakeAgentTargetList{targets: targets},
+	)
+
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{OutputMode: cliservice.OutputModeJSON})
+	if err != nil {
+		t.Fatalf("agent list: %v", err)
+	}
+	for _, value := range output.Value["agents"].([]any) {
+		agent := value.(map[string]any)
+		if agent["id"] == agenttargetbiz.IDLocalCodex {
+			t.Fatalf("disabled agent unexpectedly listed: %#v", agent)
+		}
+	}
+
+	_, err = provider.newStartCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"agent-id": agenttargetbiz.IDLocalCodex, "prompt": "do work"},
+	})
+	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), "enabled agent") {
+		t.Fatalf("agent start error = %v, want disabled target rejection", err)
+	}
+	if sessions.createCallCount != 0 {
+		t.Fatalf("createCallCount = %d, want 0", sessions.createCallCount)
+	}
+}
+
 func TestAgentListPreservesPreferredProviderAsExactDefaultAgent(t *testing.T) {
 	provider := NewProviderWithAgentTargets(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},

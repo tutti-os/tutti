@@ -60,6 +60,7 @@ import type {
   WorkspaceSettingsSectionID,
   WorkspaceSettingsWorkspaceInput
 } from "../workspaceSettingsService.interface";
+import type { WorkspaceSettingsAgentTab } from "../workspaceSettingsTypes";
 import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspaceSettingsClient.ts";
 import { formatWorkspaceSettingsBytes } from "../workspaceSettingsFormat.ts";
 import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
@@ -167,6 +168,18 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.store.generalFocusAnchor = options.anchor;
       this.store.generalFocusRequestID += 1;
     }
+    // Deep-link into the Agents tab of the agent section, optionally focusing a
+    // provider row. A hidden preview provider is still routed here (the Agents
+    // tab surfaces an "enable Preview Agents" hint) rather than silently failing.
+    if (options?.pane === "agents") {
+      this.store.activeSection = "agent";
+      this.store.agentTab = "agents";
+      this.store.agentFocusProvider =
+        typeof options.provider === "string" && options.provider.trim() !== ""
+          ? options.provider
+          : null;
+      this.store.agentFocusRequestID += 1;
+    }
     if (managedModelsRequested && isManagedModelProviderID(options.provider)) {
       this.store.managedModels.focusedProvider = options.provider;
       this.store.managedModels.focusRequestID += 1;
@@ -240,6 +253,9 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     if (workspace.id !== this.store.workspaceID) {
       this.store.workspaceID = workspace.id;
       this.store.activeSection = "general";
+      this.store.agentTab = "general";
+      this.store.agentFocusProvider = null;
+      this.store.agentFocusRequestID = 0;
       this.store.generalFocusAnchor = null;
       this.store.generalFocusRequestID = 0;
       this.store.managedModels.providers = [];
@@ -263,6 +279,13 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
+  selectAgentTab(tab: WorkspaceSettingsAgentTab): void {
+    if (this.store.agentTab === tab) {
+      return;
+    }
+    this.store.agentTab = tab;
+  }
+
   setDeveloperPanelVisible(visible: boolean): void {
     if (this.store.developerPanelVisible === visible) {
       return;
@@ -279,6 +302,26 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
+  async setAgentTargetEnabled(
+    agentTargetID: string,
+    enabled: boolean
+  ): Promise<void> {
+    const normalizedAgentTargetID = agentTargetID.trim();
+    if (!normalizedAgentTargetID) {
+      throw new Error("Agent target ID is required");
+    }
+
+    const target = await this.dependencies.client.setSystemAgentTargetEnabled(
+      normalizedAgentTargetID,
+      enabled
+    );
+    if (target.id === tuttiAgentTargetID) {
+      this.tuttiAgentSwitchInitialized = true;
+      this.applyTuttiAgentTargetEnabled(target.enabled);
+    }
+    await this.refreshAgentTargetConsumers();
+  }
+
   async setTuttiAgentSwitchEnabled(enabled: boolean): Promise<void> {
     return this.enqueueTuttiAgentSwitchOperation(async () => {
       if (
@@ -289,14 +332,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       }
 
       try {
-        const target =
-          await this.dependencies.client.setSystemAgentTargetEnabled(
-            tuttiAgentTargetID,
-            enabled
-          );
-        this.tuttiAgentSwitchInitialized = true;
-        this.applyTuttiAgentTargetEnabled(target.enabled);
-        await this.refreshAgentTargetConsumers();
+        await this.setAgentTargetEnabled(tuttiAgentTargetID, enabled);
       } catch {
         this.notifications.error({
           title: createActiveTranslator().t(
@@ -1400,6 +1436,7 @@ IReporterService(WorkspaceSettingsService, undefined, 3);
 IWorkspaceAppCenterService(WorkspaceSettingsService, undefined, 4);
 
 const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
+  agentCliUpdateCheckEnabled: true,
   agentComposerDefaultsByProvider: {},
   agentComposerDefaultsByAgentTarget: {},
   agentGuiConversationRailCollapsedByProvider: {},
@@ -1407,6 +1444,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   appCatalogChannel: "production",
   browserUseConnectionMode: "isolated",
   changingAgentConversationDetailMode: null,
+  changingAgentCliUpdateCheckEnabled: null,
   changingAppCatalogChannel: null,
   changingBrowserUseConnectionMode: null,
   changingDefaultAgentProvider: null,
@@ -1445,6 +1483,9 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
 const noopDesktopPreferences: DesktopPreferencesService = {
   _serviceBrand: undefined,
   store: noopDesktopPreferencesStore,
+  setAgentCliUpdateCheckEnabled(enabled) {
+    return Promise.resolve(enabled);
+  },
   setAppCatalogChannel(channel) {
     return Promise.resolve(channel);
   },

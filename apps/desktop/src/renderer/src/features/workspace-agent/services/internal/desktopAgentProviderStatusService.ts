@@ -28,7 +28,8 @@ import {
 } from "./desktopAgentProviderLoginLifecycle.ts";
 import {
   resolveAgentProviderInstallErrorMessage,
-  runInstalledProviderAction,
+  resolveAgentProviderUpdateErrorMessage,
+  runDaemonProviderAction,
   shouldTrackPendingAction
 } from "./desktopAgentProviderInstall.ts";
 import {
@@ -105,6 +106,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   private revision = 0;
   private snapshot: AgentProviderStatusSnapshot = emptySnapshot;
   private readonly transientDowngradeCounts = new Map<string, number>();
+  private updateCheckRequestCount = 0;
   private disposed = false;
 
   constructor(
@@ -176,13 +178,21 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     );
   }
 
+  isCheckingUpdates(): boolean {
+    return this.updateCheckRequestCount > 0;
+  }
+
   async ensureLoaded(
     input: {
       providers?: WorkspaceAgentProvider[];
       includeNetwork?: boolean;
+      includeUpdates?: boolean;
     } = {}
   ): Promise<AgentProviderStatusListResponse | null> {
-    if (this.hasLoadedProviderSnapshot(input.providers)) {
+    if (
+      this.hasLoadedProviderSnapshot(input.providers) &&
+      !input.includeUpdates
+    ) {
       this.diagnostics.logStatusRequestCacheHit(
         input,
         this.snapshot.statuses.length
@@ -207,7 +217,9 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     input: {
       providers?: WorkspaceAgentProvider[];
       includeNetwork?: boolean;
+      includeUpdates?: boolean;
       refresh?: boolean;
+      refreshUpdates?: boolean;
     } = {}
   ): Promise<AgentProviderStatusListResponse | null> {
     const requestKey = providerStatusRequestKey(input);
@@ -215,6 +227,11 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     if (inflightRequest) {
       this.diagnostics.logStatusRequestReused(input);
       return inflightRequest;
+    }
+
+    const checksUpdates = input.includeUpdates === true;
+    if (checksUpdates) {
+      this.updateCheckRequestCount += 1;
     }
 
     this.setSnapshot({
@@ -271,7 +288,9 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
           });
           this.diagnostics.logActiveActionSnapshotDiagnostics(
             reconciledStatuses,
-            (provider) => this.isActionPending(provider, "install")
+            (provider) =>
+              this.isActionPending(provider, "install") ||
+              this.isActionPending(provider, "update")
           );
           // Report provider_ready before reportCompletedLoginResults so the
           // pendingLoginResults set is still populated when we classify how a
@@ -332,11 +351,18 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         return null;
       })
       .finally(() => {
+        if (checksUpdates) {
+          this.updateCheckRequestCount = Math.max(
+            0,
+            this.updateCheckRequestCount - 1
+          );
+        }
         if (this.inflightRequests.get(requestKey) === request) {
           this.inflightRequests.delete(requestKey);
         }
-        if (this.inflightRequests.size === 0 && this.snapshot.isLoading) {
-          this.setSnapshot({ ...this.snapshot, isLoading: false });
+        const isLoading = this.inflightRequests.size > 0;
+        if (checksUpdates || this.snapshot.isLoading !== isLoading) {
+          this.setSnapshot({ ...this.snapshot, isLoading });
         }
       });
 
@@ -356,7 +382,14 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
 
     let action = this.findAction(provider, actionId);
     if (!action) {
-      await this.refresh([provider]);
+      if (actionId === "update") {
+        // An update action only exists after explicit remote discovery. Keep
+        // this retry on the update-only path so a stale UI click never turns
+        // into an unrelated forced readiness probe.
+        await this.checkUpdates([provider]);
+      } else {
+        await this.refresh([provider]);
+      }
       action = this.findAction(provider, actionId);
       if (!action) {
         this.notifyMissingAction(actionId);
@@ -413,15 +446,21 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       if (isLoginAction) {
         await this.loginLifecycle.reportLoginInitiated(provider);
       }
-      if (action.id === "install") {
-        await runInstalledProviderAction(
+      if (action.id === "install" || action.id === "update") {
+        await runDaemonProviderAction(
           this.dependencies.tuttidClient,
-          provider
+          provider,
+          action.id
         );
-        await this.refresh([provider]);
+        await this.refresh([provider], {
+          includeUpdates: action.id === "update" ? true : undefined
+        });
         await this.diagnostics.reportNodeResult({
           flow: "provider_setup",
-          node: "install_action_requested",
+          node:
+            action.id === "update"
+              ? "update_action_requested"
+              : "install_action_requested",
           provider,
           success: true
         });
@@ -498,6 +537,22 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
           success: false
         });
       }
+      if (action.id === "update") {
+        this.notifications.error({
+          description: resolveAgentProviderUpdateErrorMessage(error),
+          title: translate(
+            "workspace.workbenchDesktop.agentProviders.updateFailed"
+          )
+        });
+        await this.diagnostics.reportNodeResult({
+          error,
+          fallbackErrorCode: AgentAnalyticsErrorCode.InstallFailed,
+          flow: "provider_setup",
+          node: "update_action_requested",
+          provider,
+          success: false
+        });
+      }
       if (action.id === "login") {
         if (loginAttempt?.kind === "start") {
           this.loginLifecycle.failLoginLaunch(
@@ -537,23 +592,44 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
 
   async refresh(
     providers?: WorkspaceAgentProvider[],
-    options?: { includeNetwork?: boolean }
+    options?: {
+      includeNetwork?: boolean;
+      includeUpdates?: boolean;
+      refreshUpdates?: boolean;
+    }
   ): Promise<void> {
     const input = {
       providers,
       includeNetwork: options?.includeNetwork,
-      refresh: true
+      includeUpdates: options?.includeUpdates,
+      refresh: true,
+      refreshUpdates: options?.refreshUpdates
     };
     const inflightRequest = this.inflightRequests.get(
       providerStatusRequestKey({
         providers,
-        includeNetwork: options?.includeNetwork
+        includeNetwork: options?.includeNetwork,
+        includeUpdates: options?.includeUpdates,
+        refreshUpdates: options?.refreshUpdates
       })
     );
     if (inflightRequest) {
       await inflightRequest;
     }
     await this.requestStatuses(input);
+  }
+
+  async checkUpdates(providers?: WorkspaceAgentProvider[]): Promise<void> {
+    const response = await this.requestStatuses({
+      providers,
+      includeUpdates: true,
+      refreshUpdates: true
+    });
+    if (!response) {
+      throw new Error(
+        this.snapshot.error ?? "Agent CLI update check request failed."
+      );
+    }
   }
 
   subscribe(listener: () => void): () => void {
@@ -608,12 +684,21 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   }
 
   private notifyMissingAction(actionId: string): void {
-    if (actionId !== "login") {
+    if (actionId === "login") {
+      this.notifications.error({
+        title: translate(
+          "workspace.workbenchDesktop.agentProviders.loginFailed"
+        )
+      });
       return;
     }
-    this.notifications.error({
-      title: translate("workspace.workbenchDesktop.agentProviders.loginFailed")
-    });
+    if (actionId === "update") {
+      this.notifications.error({
+        title: translate(
+          "workspace.workbenchDesktop.agentProviders.updateFailed"
+        )
+      });
+    }
   }
 
   private markLatestStatusRequest(
@@ -707,7 +792,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     provider: WorkspaceAgentProvider,
     actionId: string
   ): void {
-    if (actionId !== "install") {
+    if (actionId !== "install" && actionId !== "update") {
       return;
     }
     this.schedulePendingActionStatusPoll(provider, actionId);
@@ -739,7 +824,9 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     if (!this.isActionPending(provider, actionId)) {
       return;
     }
-    await this.refresh([provider]);
+    await this.refresh([provider], {
+      includeUpdates: actionId === "update" ? true : undefined
+    });
     this.schedulePendingActionStatusPoll(provider, actionId);
   }
 

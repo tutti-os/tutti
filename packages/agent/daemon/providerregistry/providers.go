@@ -35,6 +35,7 @@ func cursorDescriptor() ProviderDescriptor {
 		Status: StatusDescriptor{
 			Kind: StatusKindGenericCLI, AuthOutputParserKind: AuthOutputParserKindCursor, AuthMarkerParserKind: AuthMarkerParserKindFileExists, AuthCommandRunnerKind: AuthCommandRunnerKindCursor, StaticSpecResolverKind: StaticSpecResolverKindCursor, BinaryNames: []string{"cursor-agent", "agent"}, AuthStatusCommand: []string{"status"}, AuthMarkerPaths: []string{"~/.cursor/cli-config.json"}, LoginArgs: []string{"login"},
 			Install: InstallerDescriptor{Kind: InstallerKindOfficialScript, DisplayCommand: "curl https://cursor.com/install -fsS | bash", ScriptURL: "https://cursor.com/install", ScriptShell: "bash"},
+			Update:  UpdateDescriptor{Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
 		},
 		ComposerProfile: ComposerProfileDescriptor{
 			// Cursor exposes its account-scoped model catalog from ACP session/new,
@@ -67,6 +68,7 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 		Status: StatusDescriptor{
 			Kind: StatusKindGenericCLI, AuthOutputParserKind: AuthOutputParserKindCodex, AuthMarkerParserKind: AuthMarkerParserKindTuttiToken, AuthCommandRunnerKind: AuthCommandRunnerKindGeneric, StaticSpecResolverKind: StaticSpecResolverKindGeneric, BinaryNames: []string{"tutti-agent"}, AdapterBinaryNames: []string{"tutti-agent"}, AuthStatusCommand: []string{"login", "status"}, AuthMarkerPaths: []string{"~/.tutti-agent/auth.json"}, LoginArgs: []string{"login"}, LoginActionKind: StatusActionKindDaemon,
 			Install: InstallerDescriptor{Kind: InstallerKindManagedNPM, DisplayCommand: "npm install -g @tutti-os/tutti-agent --include=optional", PackageName: "@tutti-os/tutti-agent", BinaryName: "tutti-agent", IncludeOptional: true},
+			Update:  UpdateDescriptor{Capability: UpdateCapabilitySupported, Source: UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM, PackageName: "@tutti-os/tutti-agent", BinaryName: "tutti-agent", IncludeOptional: true},
 		},
 		ComposerProfile: ComposerProfileDescriptor{
 			ModelSelection: true, ModelCatalog: ModelCatalogKindTuttiCLI, ReasoningEffort: true, ReasoningEffortOptions: ReasoningEffortOptionsModelCatalog, DefaultReasoningEffort: "high", Speed: true,
@@ -121,6 +123,7 @@ func hermesDescriptor() ProviderDescriptor {
 			Kind: StatusKindGenericCLI, AuthOutputParserKind: AuthOutputParserKindHermes, AuthMarkerParserKind: AuthMarkerParserKindFileExists, AuthCommandRunnerKind: AuthCommandRunnerKindGeneric, StaticSpecResolverKind: StaticSpecResolverKindGeneric,
 			BinaryNames: []string{"hermes"}, AuthStatusCommand: []string{"status"}, AuthMarkerPaths: []string{"~/.hermes/auth.json", "~/.config/hermes/auth.json"}, LoginArgs: []string{"login"},
 			Install: InstallerDescriptor{Kind: InstallerKindOfficialScript, DisplayCommand: "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash", ScriptURL: "https://hermes-agent.nousresearch.com/install.sh", ScriptShell: "bash"},
+			Update:  UpdateDescriptor{Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
 		},
 		ComposerProfile: ComposerProfileDescriptor{
 			Capabilities: []string{CapabilityInterrupt}, DefaultPermissionModeID: "yolo", PermissionModes: []PermissionModeDescriptor{{ID: "yolo", Semantic: "unconfigurable"}},
@@ -139,6 +142,7 @@ func openClawDescriptor() ProviderDescriptor {
 	}, StatusDescriptor{
 		Kind: StatusKindGenericCLI, BinaryNames: []string{"openclaw"}, AuthMarkerPaths: []string{"~/.openclaw/auth.json", "~/.config/openclaw/auth.json"}, LoginArgs: []string{"login"},
 		Install: InstallerDescriptor{Kind: InstallerKindShellCommand, DisplayCommand: "npm install -g openclaw", ShellCommand: "npm install -g openclaw"},
+		Update:  UpdateDescriptor{Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonUnmanagedSource},
 	}, ComposerProfileDescriptor{Capabilities: []string{CapabilityInterrupt}}, 80)
 	descriptor.Events.Aliases = []string{"open-claw", "open_claw"}
 	descriptor.Sidecar.SkillRoot = ".openclaw/skills"
@@ -155,6 +159,9 @@ func unsupportedACPDescriptor(providerID string, targetID string, runtime Runtim
 	status.AuthMarkerParserKind = AuthMarkerParserKindFileExists
 	status.AuthCommandRunnerKind = AuthCommandRunnerKindGeneric
 	status.StaticSpecResolverKind = StaticSpecResolverKindGeneric
+	if status.Update.Capability == "" {
+		status.Update = UpdateDescriptor{Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonProvider}
+	}
 	return ProviderDescriptor{
 		Identity: canonicalProviderIdentity(providerID), Runtime: runtime, Status: status, ComposerProfile: composer,
 		Target:  TargetDescriptor{ID: targetID, LaunchRefType: TargetLaunchRefTypeLocalCLI, Enabled: false, SortOrder: sortOrder},

@@ -25,6 +25,62 @@ func TestMigratedProviderIdentityAndPlanStrategyMatchCanonicalContract(t *testin
 	}
 }
 
+func TestMigratedProviderUpdateSupportMatrixIsDescriptorDriven(t *testing.T) {
+	want := map[string]UpdateDescriptor{
+		CodexProviderID:      {Capability: UpdateCapabilitySupported, Source: UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM, PackageName: "@openai/codex", BinaryName: "codex", IncludeOptional: true},
+		TuttiAgentProviderID: {Capability: UpdateCapabilitySupported, Source: UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM, PackageName: "@tutti-os/tutti-agent", BinaryName: "tutti-agent", IncludeOptional: true},
+		ClaudeCodeProviderID: {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
+		CursorProviderID:     {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
+		OpenCodeProviderID:   {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
+		HermesProviderID:     {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
+		OpenClawProviderID:   {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonUnmanagedSource},
+		NexightProviderID:    {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonProvider},
+	}
+	for provider, expected := range want {
+		descriptor, ok := Find(provider)
+		if !ok {
+			t.Fatalf("Find(%q) = false", provider)
+		}
+		if descriptor.Status.Update != expected {
+			t.Fatalf("provider %q update = %#v, want %#v", provider, descriptor.Status.Update, expected)
+		}
+	}
+}
+
+func TestValidateRejectsUnsafeProviderUpdateDeclarations(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*UpdateDescriptor)
+	}{
+		{name: "missing capability", mutate: func(update *UpdateDescriptor) { update.Capability = "" }},
+		{name: "unsupported source", mutate: func(update *UpdateDescriptor) { update.Source = "official_script" }},
+		{name: "missing package", mutate: func(update *UpdateDescriptor) { update.PackageName = "" }},
+		{name: "unsupported with execution", mutate: func(update *UpdateDescriptor) {
+			*update = UpdateDescriptor{Capability: UpdateCapabilityUnsupported, Source: UpdateSourceNPM, UnsupportedReason: UpdateUnsupportedReasonProvider}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			descriptor := codexDescriptor()
+			test.mutate(&descriptor.Status.Update)
+			if err := Validate(descriptor); err == nil {
+				t.Fatal("Validate() error = nil")
+			}
+		})
+	}
+	t.Run("official script cannot claim managed update", func(t *testing.T) {
+		descriptor := claudeCodeDescriptor()
+		descriptor.Status.Update = UpdateDescriptor{
+			Capability: UpdateCapabilitySupported,
+			Source:     UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM,
+			PackageName: "@anthropic-ai/claude-code", BinaryName: "claude",
+		}
+		if err := Validate(descriptor); err == nil {
+			t.Fatal("Validate() error = nil")
+		}
+	})
+}
+
 func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	if err := ValidateMigrated(); err != nil {
 		t.Fatalf("ValidateMigrated() error = %v", err)

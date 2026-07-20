@@ -290,7 +290,9 @@ The command must not collapse several agents that share one provider or make
 callers guess a default from list order. Callers select an exact id and start it with
 `agent start --agent-id <agent-id> ...`; provider-specific command
 families such as `codex start` and `claude start` are not part of the
-agent-facing CLI contract.
+agent-facing CLI contract. A disabled Agent Target is absent from `agent list`,
+and an explicit `agent start` for its id must fail before session creation; CLI
+callers cannot bypass the daemon-owned enablement state.
 
 During the agent-id migration window, old app integrations may continue to
 invoke `agent providers`, provider-based composer/skill inputs, and the exact

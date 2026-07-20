@@ -52,6 +52,7 @@ export interface IAgentProviderStatusService {
   getRevision(): number;
   getSnapshot(): AgentProviderStatusSnapshot;
   isActionPending(provider: WorkspaceAgentProvider, actionId: string): boolean;
+  isCheckingUpdates(): boolean;
   getStatus(provider: WorkspaceAgentProvider): AgentProviderStatus | null;
   /**
    * Seeds the snapshot from another window's already-captured status (e.g. a
@@ -69,6 +70,11 @@ export interface IAgentProviderStatusService {
      * which renders the network diagnostic, sets this.
      */
     includeNetwork?: boolean;
+    /**
+     * Opt into cached remote CLI update discovery. Off by default so ordinary
+     * readiness loads stay local.
+     */
+    includeUpdates?: boolean;
   }): Promise<AgentProviderStatusListResponse | null>;
   runAction(
     provider: WorkspaceAgentProvider,
@@ -77,8 +83,20 @@ export interface IAgentProviderStatusService {
   ): Promise<void>;
   refresh(
     providers?: WorkspaceAgentProvider[],
-    options?: { includeNetwork?: boolean }
+    options?: {
+      includeNetwork?: boolean;
+      includeUpdates?: boolean;
+      /**
+       * Bypass only the update-metadata cache when includeUpdates is true.
+       */
+      refreshUpdates?: boolean;
+    }
   ): Promise<void>;
+  /**
+   * Explicit manual update-check path. Always opts into includeUpdates and
+   * refreshes cached update metadata; never forces local readiness detection.
+   */
+  checkUpdates(providers?: WorkspaceAgentProvider[]): Promise<void>;
   subscribe(listener: () => void): () => void;
   /** Whether the user agreed to send fuller diagnostics via "report problem". */
   getDiagnosticsConsent(): boolean;

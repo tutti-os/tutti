@@ -140,6 +140,8 @@ function createService(
     getStatus: () => status,
     hydrate: () => {},
     isActionPending: () => false,
+    isCheckingUpdates: () => false,
+    checkUpdates: async () => {},
     refresh: async () => {
       hooks.refresh?.();
     },
@@ -193,7 +195,17 @@ function createStatus(
         availability === "not_installed" ? undefined : "/bin/tutti-agent",
       installed: availability !== "not_installed"
     },
-    provider: "tutti-agent" satisfies WorkspaceAgentProvider
+    provider: "tutti-agent" satisfies WorkspaceAgentProvider,
+    update: {
+      capability: "unsupported",
+      currentVersion: null,
+      lastCheckedAt: null,
+      latestVersion: null,
+      reasonCode: null,
+      source: null,
+      unsupportedReason: "update_strategy_unsupported",
+      updateAvailable: null
+    }
   };
 }
 

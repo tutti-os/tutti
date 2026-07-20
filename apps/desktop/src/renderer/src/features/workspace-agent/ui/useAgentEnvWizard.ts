@@ -59,6 +59,7 @@ export function useAgentEnvWizard(): {
         isLoading: snapshot.isLoading,
         activeAction: readCodexSetupActiveAction(snapshot.status),
         installActionPending: snapshot.installPending,
+        updateActionPending: snapshot.updatePending,
         loginPending: snapshot.loginPending,
         revealIndex: snapshot.revealIndex,
         stageLabels

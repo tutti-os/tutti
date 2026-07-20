@@ -33,6 +33,11 @@ func TestCodexStatusSpecComesFromProviderDescriptor(t *testing.T) {
 	if spec.Install.CodexCLI.PackageName != "@openai/codex" || spec.Install.CodexCLI.BinaryName != "codex" || !spec.Install.CodexCLI.IncludeOptional {
 		t.Fatalf("codex installer registration = %#v", spec.Install.CodexCLI)
 	}
+	if spec.Update.Capability != UpdateCapabilitySupported || spec.Update.Source != UpdateSourceNPM ||
+		spec.Update.Strategy != ProviderUpdateStrategyManagedNPM || spec.Update.PackageName != "@openai/codex" ||
+		spec.Update.BinaryName != "codex" || !spec.Update.IncludeOptional {
+		t.Fatalf("codex update registration = %#v", spec.Update)
+	}
 }
 
 func TestClaudeCodeStatusSpecComesFromProviderDescriptor(t *testing.T) {
@@ -62,6 +67,9 @@ func TestProviderStatusAdapterConsumesDescriptorInstallerData(t *testing.T) {
 	descriptor.Status.Install.PackageName = "@poison/codex"
 	descriptor.Status.Install.BinaryName = "poison-codex"
 	descriptor.Status.Install.IncludeOptional = false
+	descriptor.Status.Update.PackageName = "@poison/codex"
+	descriptor.Status.Update.BinaryName = "poison-codex"
+	descriptor.Status.Update.IncludeOptional = false
 
 	spec, err := providerSpecFromDescriptor(descriptor)
 	if err != nil {
@@ -73,6 +81,9 @@ func TestProviderStatusAdapterConsumesDescriptorInstallerData(t *testing.T) {
 	if spec.Install.CodexCLI == nil || spec.Install.CodexCLI.PackageName != "@poison/codex" ||
 		spec.Install.CodexCLI.BinaryName != "poison-codex" || spec.Install.CodexCLI.IncludeOptional {
 		t.Fatalf("installer descriptor values = %#v", spec.Install.CodexCLI)
+	}
+	if spec.Update.PackageName != "@poison/codex" || spec.Update.BinaryName != "poison-codex" || spec.Update.IncludeOptional {
+		t.Fatalf("update descriptor values = %#v", spec.Update)
 	}
 }
 

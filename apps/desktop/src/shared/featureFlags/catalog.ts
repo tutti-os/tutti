@@ -7,6 +7,9 @@ import {
 export const LAB_ENABLED_FLAG = "lab.enabled";
 export const BROWSER_CHROME_COOKIE_IMPORT_FLAG = "browser.chromeCookieImport";
 export const LAB_WORKBENCH_SHORTCUTS_FLAG = "lab.workbenchShortcuts";
+// Keep the durable key for existing profiles while naming the product concept
+// after Tutti's integration maturity rather than the upstream Agent maturity.
+export const EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG = "lab.previewAgents";
 export const WORKSPACE_STANDALONE_AGENT_MODE_FLAG =
   "workspace.standaloneAgentMode";
 export const AGENT_REFERENCE_PROVENANCE_FILTER_FLAG =
@@ -26,10 +29,43 @@ export const AGENT_EXTENSION_ACTIVATION_FLAGS = [
 export type AgentExtensionActivationFlag =
   (typeof AGENT_EXTENSION_ACTIVATION_FLAGS)[number];
 
+export const EARLY_ACCESS_AGENT_EXTENSION_INTEGRATIONS = [
+  {
+    activationFlag: AGENT_EXTENSION_GEMINI_FLAG,
+    key: "gemini",
+    labelKey: "workspace.settings.agent.agents.extensionGemini",
+    targetId: "extension:gemini"
+  },
+  {
+    activationFlag: AGENT_EXTENSION_CODEBUDDY_FLAG,
+    key: "codebuddy",
+    labelKey: "workspace.settings.agent.agents.extensionCodeBuddy",
+    targetId: "extension:codebuddy"
+  },
+  {
+    activationFlag: AGENT_EXTENSION_COPILOT_FLAG,
+    key: "copilot",
+    labelKey: "workspace.settings.agent.agents.extensionGitHubCopilot",
+    targetId: "extension:copilot"
+  },
+  {
+    activationFlag: AGENT_EXTENSION_KILO_FLAG,
+    key: "kilo",
+    labelKey: "workspace.settings.agent.agents.extensionKilo",
+    targetId: "extension:kilo"
+  },
+  {
+    activationFlag: AGENT_EXTENSION_QWEN_FLAG,
+    key: "qwen",
+    labelKey: "workspace.settings.agent.agents.extensionQwen",
+    targetId: "extension:qwen"
+  }
+] as const;
+
 export interface FeatureFlagDefinition {
   key: string;
   default: boolean;
-  group: "developer" | "lab-master" | "lab";
+  group: "agent" | "developer" | "lab-master" | "lab";
   labelKey?: string;
   descriptionKey?: string;
 }
@@ -43,27 +79,27 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
   {
     key: AGENT_EXTENSION_GEMINI_FLAG,
     default: false,
-    group: "developer"
+    group: "agent"
   },
   {
     key: AGENT_EXTENSION_CODEBUDDY_FLAG,
     default: false,
-    group: "developer"
+    group: "agent"
   },
   {
     key: AGENT_EXTENSION_COPILOT_FLAG,
     default: false,
-    group: "developer"
+    group: "agent"
   },
   {
     key: AGENT_EXTENSION_KILO_FLAG,
     default: false,
-    group: "developer"
+    group: "agent"
   },
   {
     key: AGENT_EXTENSION_QWEN_FLAG,
     default: false,
-    group: "developer"
+    group: "agent"
   },
   {
     key: AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
@@ -77,6 +113,11 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     group: "lab",
     labelKey: "workspaceSettings.lab.workbenchShortcuts.label",
     descriptionKey: "workspaceSettings.lab.workbenchShortcuts.description"
+  },
+  {
+    key: EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
+    default: false,
+    group: "lab"
   }
 ];
 

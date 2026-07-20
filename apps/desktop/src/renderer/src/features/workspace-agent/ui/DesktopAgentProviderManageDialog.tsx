@@ -67,7 +67,7 @@ const providerLabelKeys = {
     "workspace.workbenchDesktop.agentProviders.manageProviderTuttiAgent"
 } as const satisfies Record<WorkspaceAgentProvider, DesktopI18nKey>;
 
-const statusLabelKeys = {
+export const statusLabelKeys = {
   auth_required:
     "workspace.workbenchDesktop.agentProviders.manageStatusAuthRequired",
   available: "workspace.workbenchDesktop.agentProviders.manageStatusAvailable",
@@ -439,7 +439,7 @@ function resolveActionTooltipKey(
   return "workspace.workbenchDesktop.agentProviders.manageActionUnavailableTooltip";
 }
 
-function resolveStatusDotTone(
+export function resolveStatusDotTone(
   status: DesktopAgentProviderManageRowStatus
 ): "amber" | "blue" | "green" | "neutral" {
   switch (status) {

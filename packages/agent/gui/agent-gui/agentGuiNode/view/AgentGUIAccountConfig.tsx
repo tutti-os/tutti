@@ -13,6 +13,7 @@ import {
   X
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@tutti-os/ui-system";
+import { openWorkspaceSettingsPanel } from "../../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
 import { AccountMembershipBadge } from "../AccountMembershipBadge";
 import { AgentProbeUsageFreshness } from "../AgentProbeUsageFreshness";
 import { AgentUsageMeter } from "../AgentUsageMeter";
@@ -333,7 +334,6 @@ interface AgentGUIConfigMenuProps {
   providerAuthAccountLabel?: string | null;
   onAgentConfigMenuOpen?: () => void;
   onAgentUsageRefresh?: () => void;
-  onOpenAgentManager: () => void;
   onOpenAgentEnvSetup: () => void;
   onOpenAgentSettings: () => void;
 }
@@ -352,7 +352,6 @@ export function AgentGUIConfigMenu({
   providerAuthAccountLabel,
   onAgentConfigMenuOpen,
   onAgentUsageRefresh,
-  onOpenAgentManager,
   onOpenAgentEnvSetup,
   onOpenAgentSettings
 }: AgentGUIConfigMenuProps): React.JSX.Element {
@@ -495,7 +494,15 @@ export function AgentGUIConfigMenu({
               disabled={previewMode}
               onClick={() => {
                 setOpen(false);
-                onOpenAgentManager();
+                // Single management surface: the old sidebar-display dialog is
+                // superseded by the Agents settings tab (single source of truth
+                // for sidebar visibility + provider status). Carry the current
+                // provider so its row scrolls into view and highlights.
+                openWorkspaceSettingsPanel({
+                  section: "agent",
+                  pane: "agents",
+                  provider: provider ?? undefined
+                });
               }}
             >
               <ListTree aria-hidden="true" size={16} strokeWidth={1.8} />

@@ -125,7 +125,7 @@ func TestTuttidBlackBoxEventStreamWebSocketReadyAndValidation(t *testing.T) {
 			"topic":"preferences.desktop.update.requested",
 			"version":1,
 			"payload":{
-				"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"defaultAgentProvider":"codex","dockIconStyle":"default","locale":"en-US",
+				"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"defaultAgentProvider":"codex","dockIconStyle":"default","locale":"en-US",
 					"themeSource":"system",
 					"unexpected":"value"
 				}
@@ -142,7 +142,7 @@ func TestTuttidBlackBoxEventStreamWebSocketReadyAndValidation(t *testing.T) {
 			"topic":"preferences.desktop.update.requested",
 			"version":1,
 			"payload":{
-				"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"defaultAgentProvider":"codex","dockIconStyle":"default","locale":"en-US",
+				"preferences":{"agentCliUpdateCheckEnabled":true,"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"defaultAgentProvider":"codex","dockIconStyle":"default","locale":"en-US",
 					"themeSource":"system"
 				}
 			},

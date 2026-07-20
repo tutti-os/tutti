@@ -29,6 +29,7 @@ import type {
 import type { DesktopThemeSource } from "@shared/theme";
 import type {
   WorkspaceSettingsReadableStoreState,
+  WorkspaceSettingsAgentTab,
   WorkspaceSettingsGeneralFocusAnchor,
   WorkspaceSettingsSectionID,
   WorkspaceManagedModelProviderDraft,
@@ -75,7 +76,9 @@ export interface IWorkspaceSettingsService {
     options?: WorkspaceSettingsOpenOptions
   ): void;
   selectSection(sectionID: WorkspaceSettingsSectionID): void;
+  selectAgentTab(tab: WorkspaceSettingsAgentTab): void;
   setDeveloperPanelVisible(visible: boolean): void;
+  setAgentTargetEnabled(agentTargetID: string, enabled: boolean): Promise<void>;
   setTuttiAgentSwitchEnabled(enabled: boolean): Promise<void>;
   beginManagedModelProviderDraft(
     provider: WorkspaceManagedModelProviderID
