@@ -15,8 +15,10 @@ import { defaultIssueManagerWorkbenchTypeId } from "@tutti-os/workspace-issue-ma
 import {
   isEditableShortcutTarget,
   type WorkbenchContribution,
-  type WorkbenchHostHandle,
   type WorkbenchHostDockEntry,
+  type WorkbenchHostDockEntryPresentationOverride,
+  type WorkbenchHostDockEntryPresentationOverrides,
+  type WorkbenchHostHandle,
   type WorkbenchWindowManagementConfig,
   WorkbenchHost
 } from "@tutti-os/workbench-surface";
@@ -120,8 +122,7 @@ import {
   openWorkspaceWorkbenchSameTypeWindowShortcut
 } from "../services/workspaceWorkbenchShortcutActions.ts";
 
-const temporaryWorkspaceAppDockRetentionActionPrefix =
-  "temporary-workspace-app-dock-retention:";
+const workspaceDockRetentionActionPrefix = "workspace-dock-retention:";
 
 interface WorkspaceWorkbenchProps {
   enableWindowCloseGuard: boolean;
@@ -284,8 +285,6 @@ function ReadyWorkspaceWorkbenchWithSession({
   const hostInput = runtime.hostInput;
   const [workbenchHost, setWorkbenchHost] =
     useState<WorkbenchHostHandle | null>(null);
-  const [temporaryDockRetentionByEntryId, setTemporaryDockRetentionByEntryId] =
-    useState<Record<string, boolean>>({});
   const [launchpadOpen, setLaunchpadOpen] = useState(false);
   const [launchpadOpenTrigger, setLaunchpadOpenTrigger] =
     useState<WorkspaceLaunchpadOpenTrigger>("dock");
@@ -337,31 +336,21 @@ function ReadyWorkspaceWorkbenchWithSession({
         setLaunchpadOpen(true);
         return;
       }
-      if (
-        request.actionId.startsWith(
-          temporaryWorkspaceAppDockRetentionActionPrefix
-        )
-      ) {
-        const entry = findTemporaryDockRetentionEntry({
+      if (request.actionId.startsWith(workspaceDockRetentionActionPrefix)) {
+        const entry = findWorkspaceDockRetentionEntry({
           contributions: hostInput.contributions,
           dockEntries: hostInput.dockEntries,
           entryId: request.entryId
         });
-        setTemporaryDockRetentionByEntryId((current) => {
-          const retained =
-            current[request.entryId] ??
-            (entry
-              ? resolveTemporaryDockRetentionDefault({
-                  appCenterService,
-                  entry
-                })
-              : false);
-          return {
-            ...current,
-            [request.entryId]: !retained
-          };
-        });
-        return;
+        const retained =
+          runtime.dockRetentionByEntryId[request.entryId] ??
+          (entry
+            ? resolveWorkspaceDockRetentionDefault({
+                appCenterService,
+                entry
+              })
+            : false);
+        return runtime.setDockEntryRetained(request.entryId, !retained);
       }
       return hostInput.onDockEntryAction?.(request);
     },
@@ -369,30 +358,25 @@ function ReadyWorkspaceWorkbenchWithSession({
       appCenterService,
       hostInput.contributions,
       hostInput.dockEntries,
-      hostInput.onDockEntryAction
+      hostInput.onDockEntryAction,
+      runtime.dockRetentionByEntryId,
+      runtime.setDockEntryRetained
     ]
   );
-  const contributions = useMemo(
+  const dockEntryPresentationOverrides = useMemo(
     () =>
-      hostInput.contributions?.map((contribution) =>
-        resolveTemporaryDockRetentionContribution({
-          appCenterService,
-          contribution,
-          retainedByEntryId: temporaryDockRetentionByEntryId
-        })
-      ),
-    [appCenterService, hostInput.contributions, temporaryDockRetentionByEntryId]
-  );
-  const dockEntries = useMemo(
-    () =>
-      hostInput.dockEntries?.map((entry) =>
-        resolveTemporaryDockRetentionEntry({
-          appCenterService,
-          entry,
-          retainedByEntryId: temporaryDockRetentionByEntryId
-        })
-      ),
-    [appCenterService, hostInput.dockEntries, temporaryDockRetentionByEntryId]
+      resolveWorkspaceDockEntryPresentationOverrides({
+        appCenterService,
+        contributions: hostInput.contributions,
+        dockEntries: hostInput.dockEntries,
+        retainedByEntryId: runtime.dockRetentionByEntryId
+      }),
+    [
+      appCenterService,
+      hostInput.contributions,
+      hostInput.dockEntries,
+      runtime.dockRetentionByEntryId
+    ]
   );
   const onDockEntryClick = useCallback(
     (request: Parameters<NonNullable<typeof hostInput.onDockEntryClick>>[0]) =>
@@ -802,11 +786,12 @@ function ReadyWorkspaceWorkbenchWithSession({
         <WorkbenchHost
           captureNodePreviewImage={hostInput.captureNodePreviewImage}
           className="h-full"
-          contributions={contributions}
+          contributions={hostInput.contributions}
           debugDiagnostics={hostInput.debugDiagnostics}
           dockPreviewCache={hostInput.dockPreviewCache}
           dockPlacement={runtime.dockPlacement}
-          dockEntries={dockEntries}
+          dockEntries={hostInput.dockEntries}
+          dockEntryPresentationOverrides={dockEntryPresentationOverrides}
           dockStateSource={hostInput.dockStateSource}
           externalStateSource={hostInput.externalStateSource}
           i18n={runtime.appI18n}
@@ -896,7 +881,41 @@ function ReadyWorkspaceWorkbenchWithSession({
   );
 }
 
-function resolveTemporaryDockRetentionEntry({
+function resolveWorkspaceDockEntryPresentationOverrides({
+  appCenterService,
+  contributions,
+  dockEntries,
+  retainedByEntryId
+}: {
+  appCenterService: IWorkspaceAppCenterService;
+  contributions: readonly WorkbenchContribution[] | undefined;
+  dockEntries: readonly WorkbenchHostDockEntry[] | undefined;
+  retainedByEntryId: Readonly<Record<string, boolean>>;
+}): WorkbenchHostDockEntryPresentationOverrides {
+  const overrides = new Map<
+    string,
+    WorkbenchHostDockEntryPresentationOverride
+  >();
+  const entries = [
+    ...(contributions?.flatMap(
+      (contribution) => contribution.dockEntries ?? []
+    ) ?? []),
+    ...(dockEntries ?? [])
+  ];
+  for (const entry of entries) {
+    const presentationOverride = resolveWorkspaceDockRetentionPresentation({
+      appCenterService,
+      entry,
+      retainedByEntryId
+    });
+    if (presentationOverride) {
+      overrides.set(entry.id, presentationOverride);
+    }
+  }
+  return Object.fromEntries(overrides);
+}
+
+function resolveWorkspaceDockRetentionPresentation({
   appCenterService,
   entry,
   retainedByEntryId
@@ -904,51 +923,26 @@ function resolveTemporaryDockRetentionEntry({
   appCenterService: IWorkspaceAppCenterService;
   entry: WorkbenchHostDockEntry;
   retainedByEntryId: Readonly<Record<string, boolean>>;
-}): WorkbenchHostDockEntry {
+}): WorkbenchHostDockEntryPresentationOverride | null {
   if (
     entry.id === workspaceLaunchpadDockEntryId ||
     entry.id === workspaceFilesNodeID
   ) {
-    return entry;
+    return null;
   }
   const retained =
     retainedByEntryId[entry.id] ??
-    resolveTemporaryDockRetentionDefault({ appCenterService, entry });
+    resolveWorkspaceDockRetentionDefault({ appCenterService, entry });
   return {
-    ...entry,
     dockRetention: {
-      actionId: `${temporaryWorkspaceAppDockRetentionActionPrefix}${encodeURIComponent(entry.id)}`,
+      actionId: `${workspaceDockRetentionActionPrefix}${encodeURIComponent(entry.id)}`,
       retained
     },
     visibility: retained ? "always" : "when-open"
   };
 }
 
-function resolveTemporaryDockRetentionContribution({
-  appCenterService,
-  contribution,
-  retainedByEntryId
-}: {
-  appCenterService: IWorkspaceAppCenterService;
-  contribution: WorkbenchContribution;
-  retainedByEntryId: Readonly<Record<string, boolean>>;
-}): WorkbenchContribution {
-  if (!contribution.dockEntries?.length) {
-    return contribution;
-  }
-  return {
-    ...contribution,
-    dockEntries: contribution.dockEntries.map((entry) =>
-      resolveTemporaryDockRetentionEntry({
-        appCenterService,
-        entry,
-        retainedByEntryId
-      })
-    )
-  };
-}
-
-function resolveTemporaryDockRetentionDefault({
+function resolveWorkspaceDockRetentionDefault({
   appCenterService,
   entry
 }: {
@@ -960,7 +954,7 @@ function resolveTemporaryDockRetentionDefault({
   return app?.installed ?? (entry.visibility ?? "always") === "always";
 }
 
-function findTemporaryDockRetentionEntry({
+function findWorkspaceDockRetentionEntry({
   contributions,
   dockEntries,
   entryId

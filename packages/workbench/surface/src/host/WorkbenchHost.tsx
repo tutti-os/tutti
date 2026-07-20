@@ -23,6 +23,7 @@ export function WorkbenchHost({
   debugDiagnostics,
   dockPreviewCache,
   dockPlacement,
+  dockEntryPresentationOverrides,
   dockEntries,
   dockStateSource,
   externalStateSource,
@@ -68,9 +69,10 @@ export function WorkbenchHost({
     () =>
       resolveWorkbenchHostDockEntries({
         contributions,
+        dockEntryPresentationOverrides,
         dockEntries
       }),
-    [contributions, dockEntries]
+    [contributions, dockEntries, dockEntryPresentationOverrides]
   );
   const missionControlMode = missionControl?.mode ?? null;
   const missionControlNodeIds = missionControl?.nodeIds;

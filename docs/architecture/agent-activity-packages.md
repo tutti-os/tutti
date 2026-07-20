@@ -196,6 +196,21 @@ It owns:
 - Message Center snapshot model and UI while it shares AgentGUI activity and
   interaction ownership
 
+Room-scoped attention consumers that need every actionable target use the
+Agent GUI package's `selectWorkspaceAgentAttentionItems` projection. Unlike the
+conversation-shaped Message Center model, this projection returns one entry per
+canonical `(workspaceId, agentSessionId, turnId, requestId)` target, including
+multiple pending interactions in one root conversation. The display item keeps
+the root conversation identity for navigation, while the target keeps the exact
+child interaction identity for commands. Hosts may enrich or filter these
+entries for local owner/device authority, but must not rebuild prompts from
+transcript rows or collapse them by root session id.
+
+`WorkspaceAgentMessageCenterCard` keeps compact prompts and digest summaries by
+default. Dense room boards may opt into its full prompt variant and suppress the
+redundant digest only while a canonical prompt is present; both variants submit
+through the same exact target and shared prompt surface.
+
 It may depend on `@tutti-os/agent-activity-core`.
 
 Agent GUI must read and write agent session/activity data through
