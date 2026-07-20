@@ -1,7 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import {
   createAgentSessionEngine,
-  normalizeAgentActivitySession
+  normalizeAgentActivitySession,
+  selectEngineSessionSettingsUpdate
 } from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import { useAgentGUISessionEngineState } from "./useAgentGUISessionEngineState";
@@ -64,6 +65,121 @@ describe("useAgentGUISessionEngineState", () => {
       rendered.result.current.activeCanonicalComposerSettings.permissionModeId
     ).toBe("ask");
     expect(rendered.result.current.activeEngineError).toBeNull();
+  });
+
+  it("keeps the latest queued settings visible while the session runtime reconnects", () => {
+    const sessionEngine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: vi.fn(() => new Promise(() => undefined)) },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const session = (settings: { model: string; planMode: boolean }) =>
+      normalizeAgentActivitySession({
+        activeTurnId: null,
+        agentSessionId: "session-1",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        settings,
+        workspaceId: "workspace-1"
+      });
+    sessionEngine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [session({ model: "model-canonical", planMode: false })]
+    });
+    const rendered = renderHook(() =>
+      useAgentGUISessionEngineState({
+        activeConversationId: "session-1",
+        sessionEngine
+      })
+    );
+
+    act(() => {
+      sessionEngine.dispatch({
+        agentSessionId: "session-1",
+        commandId: "settings-1",
+        settings: { model: "model-first" },
+        type: "session/settingsUpdateRequested",
+        workspaceId: "workspace-1"
+      });
+      sessionEngine.dispatch({
+        agentSessionId: "session-1",
+        commandId: "settings-2",
+        settings: { model: "model-latest", planMode: true },
+        type: "session/settingsUpdateRequested",
+        workspaceId: "workspace-1"
+      });
+      sessionEngine.dispatch({
+        type: "session/runtimeAvailabilityChanged",
+        agentSessionId: "session-1",
+        availability: {
+          state: "blocked",
+          reason: "transport_reconnecting"
+        }
+      });
+      sessionEngine.dispatch({
+        commandId: "settings-1",
+        commandType: "session/updateSettings",
+        correlationId: "session-1",
+        outcome: "succeeded",
+        type: "engine/commandResult",
+        value: {
+          agentSessionId: "session-1",
+          session: session({ model: "model-first", planMode: false })
+        }
+      });
+    });
+
+    expect(
+      selectEngineSessionSettingsUpdate(
+        sessionEngine.getSnapshot(),
+        "session-1"
+      )?.status
+    ).toBe("waitingForRuntime");
+    expect(
+      rendered.result.current.activeCanonicalComposerSettings
+    ).toMatchObject({ model: "model-latest", planMode: true });
+
+    act(() => {
+      sessionEngine.dispatch({
+        type: "session/runtimeAvailabilityChanged",
+        agentSessionId: "session-1",
+        availability: { state: "available" }
+      });
+    });
+    expect(
+      selectEngineSessionSettingsUpdate(
+        sessionEngine.getSnapshot(),
+        "session-1"
+      )?.status
+    ).toBe("inFlight");
+    expect(
+      rendered.result.current.activeCanonicalComposerSettings
+    ).toMatchObject({ model: "model-latest", planMode: true });
+
+    act(() => {
+      sessionEngine.dispatch({
+        commandId: "settings-2",
+        commandType: "session/updateSettings",
+        correlationId: "session-1",
+        outcome: "succeeded",
+        type: "engine/commandResult",
+        value: {
+          agentSessionId: "session-1",
+          session: session({ model: "model-latest", planMode: true })
+        }
+      });
+    });
+    expect(
+      selectEngineSessionSettingsUpdate(
+        sessionEngine.getSnapshot(),
+        "session-1"
+      )?.status
+    ).toBe("idle");
+    expect(
+      rendered.result.current.activeCanonicalComposerSettings
+    ).toMatchObject({ model: "model-latest", planMode: true });
   });
 
   it("observes runtime availability for the selected session only", () => {

@@ -24,7 +24,8 @@ import {
   selectSessionHasUnconfirmedSubmit,
   selectSessionIsSubmitting,
   type AgentSessionEngine,
-  type EngineQueuedPrompt
+  type EngineQueuedPrompt,
+  type SessionSettingsUpdateStatus
 } from "@tutti-os/agent-activity-core";
 import { useMemo } from "react";
 import type {
@@ -236,7 +237,7 @@ function mergeOptimisticSessionSettings(
 ): AgentSessionComposerSettings {
   if (
     !update ||
-    (update.status !== "inFlight" && update.status !== "unknown")
+    !SESSION_SETTINGS_STATUS_SHOWS_OPTIMISTIC_VALUE[update.status]
   ) {
     return canonical;
   }
@@ -272,3 +273,11 @@ function mergeOptimisticSessionSettings(
       : {})
   };
 }
+
+const SESSION_SETTINGS_STATUS_SHOWS_OPTIMISTIC_VALUE = {
+  failed: false,
+  idle: false,
+  inFlight: true,
+  unknown: true,
+  waitingForRuntime: true
+} satisfies Record<SessionSettingsUpdateStatus, boolean>;
