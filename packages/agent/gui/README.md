@@ -49,15 +49,20 @@ contract; it is not a pasted-text or external-file capability signal.
 
 ## External File Preparation
 
-OS clipboard and drop files use the required workspace
-`prepareExternalPromptFiles` host port. AgentGUI owns classification, pending
-mentions, and draft reconciliation. The host owns native-path lookup, size
-enforcement, persistence, and remote transport.
+OS clipboard and drop entries first use the optional synchronous workspace
+`resolveExternalPromptEntries` host port. The host classifies every input as a
+live `WorkspaceFileReference` or a snapshot that needs preparation. AgentGUI
+inserts references directly as ordinary file/folder mentions, preserves mixed
+input order, and sends only `prepare` entries to `prepareExternalPromptFiles`.
+Without the resolver, every input uses preparation.
 
-The preparer returns one result per input `sourceIndex`. Prepared files require
-a provider-readable `path` or `url`; failures require a typed `errorCode`.
-Hosts must isolate per-file failures and reject oversized inputs before reading
-or persisting their bytes.
+Both ports return one result per input `sourceIndex`. The resolver is
+synchronous so paste/drop insertion position remains stable. Prepared files
+require a provider-readable `path` or `url`; failures require a typed
+`errorCode`. Hosts must isolate per-file failures and reject oversized inputs
+before reading or persisting their bytes. A host that resolves path-backed
+entries as references must also reject any such entry that unexpectedly reaches
+preparation, preventing a resolver failure from creating a duplicate snapshot.
 
 Slash commands come from the runtime session command snapshot. AgentGUI keeps
 legacy provider-default slash entries unless the host passes

@@ -612,6 +612,7 @@ export interface AgentGUINodeViewProps {
   onWorkspaceFileReferencesAdded?: (
     references: readonly WorkspaceFileReference[]
   ) => void | Promise<void>;
+  resolveExternalPromptEntries?: AgentComposerProps["resolveExternalPromptEntries"];
   prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
   promptAssetLimit?: number | null;
   onConversationRailWidthChanged: (widthPx: number) => void;

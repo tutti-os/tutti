@@ -37,6 +37,10 @@ export type {
   AgentExternalPromptFilePreparer,
   AgentPreparedExternalPromptFile
 } from "./agent-gui/agentGuiNode/model/agentExternalPromptFiles";
+export type {
+  AgentExternalPromptEntryResolution,
+  AgentExternalPromptEntryResolver
+} from "./agent-gui/agentGuiNode/model/agentExternalPromptEntries";
 export type { AgentGUIAccountMenuState } from "./agent-gui/agentGuiNode/accountMenuState";
 export type {
   AgentGUIComposerContentType,

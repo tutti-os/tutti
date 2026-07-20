@@ -64,6 +64,7 @@ export interface AgentGUINodeWorkspace {
   fileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
+  resolveExternalPromptEntries?: AgentComposerProps["resolveExternalPromptEntries"];
   prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
   promptAssetLimit?: number | null;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
@@ -320,6 +321,7 @@ export function areAgentGUINodePropsEqual(
     pw.fileReferenceAdapter === nw.fileReferenceAdapter &&
     pw.onRequestGitBranches === nw.onRequestGitBranches &&
     pw.selectProjectDirectory === nw.selectProjectDirectory &&
+    pw.resolveExternalPromptEntries === nw.resolveExternalPromptEntries &&
     pw.prepareExternalPromptFiles === nw.prepareExternalPromptFiles &&
     pw.promptAssetLimit === nw.promptAssetLimit &&
     pw.referenceSourceAggregator === nw.referenceSourceAggregator &&

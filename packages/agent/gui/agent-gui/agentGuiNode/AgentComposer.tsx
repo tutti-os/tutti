@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AgentComposerDraft,
   AgentComposerDraftFile,
@@ -41,6 +41,10 @@ import {
   agentComposerDraftPrompt
 } from "./model/agentComposerDraft";
 import type { AgentGUIComposerContentType } from "./engagement/agentGUIEngagement.types";
+import {
+  groupAgentExternalPromptEntryInsertions,
+  resolveAgentExternalPromptEntries
+} from "./model/agentExternalPromptEntries";
 
 export { formatSlashStatusTokenCount };
 
@@ -129,6 +133,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onSlashStatusOpen,
     onLinkAction,
     onRequestWorkspaceReferences = null,
+    resolveExternalPromptEntries = null,
     prepareExternalPromptFiles = null,
     promptAssetLimit = null,
     onRequestGitBranches = null,
@@ -147,6 +152,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
   const promptFilesSupported = Boolean(
     canUploadAttachment && prepareExternalPromptFiles
+  );
+  const externalPromptEntriesSupported = Boolean(
+    resolveExternalPromptEntries || promptFilesSupported
   );
   const pastedTextStagingSupported = Boolean(
     canUploadAttachment && agentActivityRuntime?.stagePastedText
@@ -455,6 +463,26 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onLinkAction
   });
   const { addDraftFiles, addDraftImages } = attachments;
+  const addExternalPromptEntries = useCallback(
+    (files: readonly File[]): void => {
+      const entries = resolveAgentExternalPromptEntries(
+        files,
+        resolveExternalPromptEntries
+      );
+      for (const insertion of groupAgentExternalPromptEntryInsertions(
+        entries
+      )) {
+        if (insertion.disposition === "prepare") {
+          addDraftFiles(insertion.files);
+        } else {
+          editorHandleRef.current?.insertWorkspaceReferences([
+            insertion.reference
+          ]);
+        }
+      }
+    },
+    [addDraftFiles, editorHandleRef, resolveExternalPromptEntries]
+  );
 
   const providerState = useComposerProviderTargets({
     layoutMode,
@@ -491,10 +519,10 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     lastComposerFocusRequestRef,
     isActive,
     composerFocusRequestSequence,
-    promptFilesSupported,
+    promptFilesSupported: externalPromptEntriesSupported,
     promptImagesSupported: canUploadAttachment && promptImagesSupported,
     addDraftImages,
-    addDraftFiles,
+    addDraftFiles: addExternalPromptEntries,
     onPromptImagesUnsupported
   });
   const { fileDropOverlayActive, fileDropOverlayHost } = focusAndDrop;
@@ -575,7 +603,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       promptTipRef={promptTipRef}
       editorHandleRef={editorHandleRef}
       mentionControllerRef={mentionControllerRef}
-      promptFilesSupported={promptFilesSupported}
+      externalPromptEntriesSupported={externalPromptEntriesSupported}
+      addExternalPromptEntries={addExternalPromptEntries}
       onDismissProjectMenuAutoFocus={restoreComposerCaretAfterProjectMenu}
       paletteDraftPrompt={paletteDraftPrompt}
       showFileMentionPalette={showFileMentionPalette}

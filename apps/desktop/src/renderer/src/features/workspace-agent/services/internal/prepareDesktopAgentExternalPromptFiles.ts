@@ -61,6 +61,16 @@ export function createDesktopAgentExternalPromptFilePreparer(input: {
               )
             };
           }
+          const hostPath = entry?.path.trim() ?? "";
+          if (hostPath) {
+            return {
+              status: "error",
+              result: failedExternalPromptFile(
+                sourceIndex,
+                "preparation_failed"
+              )
+            };
+          }
           if (file.size > DESKTOP_AGENT_PROMPT_FILE_MAX_BYTES) {
             return {
               status: "error",
@@ -68,7 +78,6 @@ export function createDesktopAgentExternalPromptFilePreparer(input: {
             };
           }
           try {
-            const hostPath = entry?.path.trim() ?? "";
             return {
               status: "ready",
               sourceIndex,
@@ -76,13 +85,9 @@ export function createDesktopAgentExternalPromptFilePreparer(input: {
                 type: "file",
                 name: file.name || "file",
                 ...(file.type ? { mimeType: file.type } : {}),
-                ...(hostPath
-                  ? { hostPath }
-                  : {
-                      data: uint8ArrayToBase64(
-                        new Uint8Array(await file.arrayBuffer())
-                      )
-                    }),
+                data: uint8ArrayToBase64(
+                  new Uint8Array(await file.arrayBuffer())
+                ),
                 ...(Number.isFinite(file.size) ? { sizeBytes: file.size } : {}),
                 kind: "file"
               }

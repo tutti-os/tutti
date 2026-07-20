@@ -115,6 +115,7 @@ export function AgentGUINodeView({
   detailMinWidthPx,
   uiLanguage,
   onWorkspaceFileReferencesAdded,
+  resolveExternalPromptEntries = null,
   prepareExternalPromptFiles = null,
   promptAssetLimit = null,
   onConversationRailWidthChanged,
@@ -727,6 +728,7 @@ export function AgentGUINodeView({
               onCapabilitySettingsRequest={onCapabilitySettingsRequest}
               onAgentProviderLogin={onAgentProviderLogin}
               onRequestWorkspaceReferences={requestWorkspaceReferences}
+              resolveExternalPromptEntries={resolveExternalPromptEntries}
               prepareExternalPromptFiles={prepareExternalPromptFiles}
               promptAssetLimit={promptAssetLimit}
               selectProjectDirectory={selectProjectDirectory}
