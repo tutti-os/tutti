@@ -2,6 +2,7 @@ export {
   createIssueManagerDate,
   formatIssueManagerDate,
   formatIssueManagerTimestamp,
+  isIssueManagerTuttiModePlanIssue,
   parentDirectoryPath,
   resolveIssueManagerPriorityLabel,
   resolveIssueManagerStatusLabel,

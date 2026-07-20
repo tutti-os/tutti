@@ -1,12 +1,19 @@
 import { formatTuttiShortDateTime } from "@tutti-os/ui-system/date-format";
 import type {
   IssueManagerFileReference,
+  IssueManagerIssueSummary,
   IssueManagerPriority,
   IssueManagerStatus
 } from "../../contracts/index.ts";
 import type { IssueManagerI18nRuntime } from "../../i18n/issueManagerI18n.ts";
 
 export type IssueManagerEditorMode = "read" | "create" | "edit";
+
+export function isIssueManagerTuttiModePlanIssue(
+  issue: Pick<IssueManagerIssueSummary, "planningSource"> | null | undefined
+): boolean {
+  return issue?.planningSource === "tutti_mode_plan";
+}
 
 export type IssueManagerReferenceTarget =
   | {
