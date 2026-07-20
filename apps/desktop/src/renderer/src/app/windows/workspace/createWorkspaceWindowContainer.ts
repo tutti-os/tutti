@@ -210,7 +210,6 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     notifications: notificationService,
     reporterService,
     runtimeApi: desktopApi.runtime,
-    resolveAgentTargetIconUrl: resolveWorkspaceAgentTargetIconUrl,
     terminalCommandRunner: createAgentProviderTerminalCommandRunner(
       desktopApi.runtime
     ),
@@ -426,17 +425,4 @@ function resolveWorkspaceRichTextAgentIconUrl(provider: string | undefined) {
     resolveProviderIconAsset(identity?.iconKey, "rounded") ??
     managedAgentRoundedIconUrl(provider)
   );
-}
-
-function resolveWorkspaceAgentTargetIconUrl(identity: {
-  iconKey: string | null;
-  provider: string;
-}): string {
-  if (identity.iconKey) {
-    return (
-      resolveProviderIconAsset(identity.iconKey, "rounded") ??
-      managedAgentRoundedIconUrl(undefined)
-    );
-  }
-  return resolveWorkspaceRichTextAgentIconUrl(identity.provider);
 }

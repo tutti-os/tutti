@@ -44,6 +44,9 @@ func TestDefaultSystemTargetsUseMigratedProviderDescriptors(t *testing.T) {
 		if target.Name != descriptor.Identity.DisplayName || target.IconKey != descriptor.Identity.IconKey {
 			t.Fatalf("target presentation = %#v", target)
 		}
+		if target.IconURL == "" || target.MaskIconURL == "" {
+			t.Fatalf("target icon presentation = %#v", target)
+		}
 		if target.SortOrder != descriptor.Target.SortOrder || target.CreatedAtUnixMS != 123 {
 			t.Fatalf("target ordering/timestamp = %#v", target)
 		}

@@ -35,6 +35,8 @@ func testSeedTargets(now int64) []Target {
 			LaunchRefJSON:   `{"type":"local_cli","provider":"codex"}`,
 			Name:            "Codex",
 			IconKey:         "codex",
+			IconURL:         "tutti-asset://agent/codex.png",
+			MaskIconURL:     "tutti-asset://agent/codex-mask.svg",
 			Enabled:         true,
 			Source:          "system",
 			SortOrder:       10,
@@ -47,6 +49,8 @@ func testSeedTargets(now int64) []Target {
 			LaunchRefJSON:   `{"type":"local_cli","provider":"claude-code"}`,
 			Name:            "Claude Code",
 			IconKey:         "claude-code",
+			IconURL:         "tutti-asset://agent/claudecode.png",
+			MaskIconURL:     "tutti-asset://agent/claudecode-mask.svg",
 			Enabled:         true,
 			Source:          "system",
 			SortOrder:       20,
@@ -149,7 +153,9 @@ func TestStoreMigrateRefreshesOnlySystemSeedTargets(t *testing.T) {
 	if _, err := store.db.ExecContext(ctx, `
 UPDATE agent_targets
 SET provider = 'stale-provider', launch_ref_json = '{}', name = 'Stale Codex',
-    icon_key = 'stale', enabled = 0, sort_order = 999, created_at_ms = 7, updated_at_ms = 8
+    icon_key = 'stale', icon_url = 'stale.png', mask_icon_url = 'stale-mask.svg',
+    hero_image_url = 'stale-hero.jpg', enabled = 0, sort_order = 999,
+    created_at_ms = 7, updated_at_ms = 8
 WHERE id = ?;
 `, testTargetIDCodex); err != nil {
 		t.Fatalf("seed stale system target: %v", err)
@@ -170,13 +176,17 @@ WHERE id = ?;
 
 	var codex Target
 	if err := store.db.QueryRowContext(ctx, `
-SELECT id, provider, launch_ref_json, name, icon_key, enabled, source, sort_order, created_at_ms, updated_at_ms
+SELECT id, provider, launch_ref_json, name, icon_key, icon_url, mask_icon_url, hero_image_url,
+       enabled, source, sort_order, created_at_ms, updated_at_ms
 FROM agent_targets WHERE id = ?
-`, testTargetIDCodex).Scan(&codex.ID, &codex.Provider, &codex.LaunchRefJSON, &codex.Name, &codex.IconKey, &codex.Enabled, &codex.Source, &codex.SortOrder, &codex.CreatedAtUnixMS, &codex.UpdatedAtUnixMS); err != nil {
+`, testTargetIDCodex).Scan(&codex.ID, &codex.Provider, &codex.LaunchRefJSON, &codex.Name, &codex.IconKey, &codex.IconURL, &codex.MaskIconURL, &codex.HeroImageURL, &codex.Enabled, &codex.Source, &codex.SortOrder, &codex.CreatedAtUnixMS, &codex.UpdatedAtUnixMS); err != nil {
 		t.Fatalf("query refreshed codex target: %v", err)
 	}
 	if codex.Provider != "codex" || codex.LaunchRefJSON != `{"type":"local_cli","provider":"codex"}` ||
-		codex.Name != "Codex" || codex.IconKey != "codex" || !codex.Enabled || codex.SortOrder != 10 {
+		codex.Name != "Codex" || codex.IconKey != "codex" ||
+		codex.IconURL != "tutti-asset://agent/codex.png" ||
+		codex.MaskIconURL != "tutti-asset://agent/codex-mask.svg" ||
+		codex.HeroImageURL != "" || !codex.Enabled || codex.SortOrder != 10 {
 		t.Fatalf("refreshed system target = %#v", codex)
 	}
 	if codex.CreatedAtUnixMS != 7 || codex.Source != systemTargetSource || codex.UpdatedAtUnixMS == 8 {
