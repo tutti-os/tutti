@@ -4,7 +4,7 @@ This document defines the repository-managed test discovery and gate policy.
 
 ## Commands
 
-- `pnpm test:ts`: all TypeScript/JavaScript workspace package tests plus repository tool tests
+- `pnpm test:ts`: all TypeScript/JavaScript workspace package tests
 - `pnpm test:tools`: repository tool tests only
 - `pnpm test:go`: generate builtin app assets, then run the blocking Go workspace test set
 - `pnpm test:go:prepared`: run the blocking Go workspace test set when builtin app assets are already prepared
@@ -61,7 +61,13 @@ add a real package test.
 
 Repository tool tests are discovered from `tools/scripts/*.test.mjs`. Tool
 tests that exercise package release helpers remain tool-owned instead of being
-duplicated through a package-level test script.
+duplicated through a package-level test script. They are repository contract
+tests, not TypeScript package tests, and run through `test:tools` only.
+
+Repository policy, tool contracts, generated contracts, and architecture
+boundaries are selected from `tools/scripts/repository-checks.mjs`. Both PR CI
+and `check:changed` consume this registry; do not attach a repository-wide
+check to a TypeScript or Go lane based on its implementation language.
 
 Go tests are discovered from the modules declared in `go.work`. The blocking
 lane includes every module, so additions to `go.work` join the root test gate

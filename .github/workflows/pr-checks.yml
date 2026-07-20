@@ -14,9 +14,11 @@ jobs:
     name: PR Change Classification
     runs-on: ubuntu-latest
     outputs:
+      run_boundaries: ${{ steps.changed-files.outputs.run_boundaries }}
+      run_contracts: ${{ steps.changed-files.outputs.run_contracts }}
+      run_generated: ${{ steps.changed-files.outputs.run_generated }}
       run_go: ${{ steps.changed-files.outputs.run_go }}
       run_pack: ${{ steps.changed-files.outputs.run_pack }}
-      run_tooling: ${{ steps.changed-files.outputs.run_tooling }}
       run_ts: ${{ steps.changed-files.outputs.run_ts }}
 
     steps:
@@ -29,105 +31,91 @@ jobs:
         id: changed-files
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          run_go=false
-          run_pack=false
-          run_tooling=false
-          run_ts=false
-
-          while IFS= read -r path; do
-            [[ -z "${path}" ]] && continue
-
-            case "${path}" in
-              *.go|go.mod|go.sum|go.work|go.work.sum|*/go.mod|*/go.sum|services/tuttid/.golangci*)
-                run_go=true
-                run_tooling=true
-                ;;
-            esac
-
-            case "${path}" in
-              *.cjs|*.cts|*.js|*.jsx|*.mjs|*.mts|*.ts|*.tsx|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|tsconfig*.json|*/tsconfig*.json|packages/configs/**)
-                run_ts=true
-                run_pack=true
-                ;;
-            esac
-
-            case "${path}" in
-              package.json|pnpm-lock.yaml|pnpm-workspace.yaml|packages/*/package.json|packages/*/*/package.json)
-                run_pack=true
-                ;;
-            esac
-
-            case "${path}" in
-              .github/workflows/pr-checks.yml|tools/scripts/**|services/tuttid/.golangci-lint-version)
-                run_go=true
-                run_pack=true
-                run_tooling=true
-                run_ts=true
-                ;;
-            esac
-          done < <(git diff --name-only "${BASE_SHA}...HEAD")
-
-          {
-            echo "run_go=${run_go}"
-            echo "run_pack=${run_pack}"
-            echo "run_tooling=${run_tooling}"
-            echo "run_ts=${run_ts}"
-          } >> "${GITHUB_OUTPUT}"
-
-          printf 'change classification: run_go=%s run_pack=%s run_tooling=%s run_ts=%s\n' \
-            "${run_go}" "${run_pack}" "${run_tooling}" "${run_ts}"
+        run: >-
+          node ./tools/scripts/change-classification.mjs
+          --base "${BASE_SHA}"
+          --github-output "${GITHUB_OUTPUT}"
 
   tooling-consistency:
     name: Tooling Consistency
     needs: changes
-    if: needs.changes.outputs.run_tooling == 'true'
+    if: always()
     runs-on: ubuntu-latest
 
     steps:
+      - name: Require change classification
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+        run: test "${CHANGES_RESULT}" = "success"
+
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
 
+      - name: Check changed-file whitespace
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git diff --check "${BASE_SHA}...HEAD"
+
+      - name: Check repository naming policy
+        run: node ./tools/scripts/check-tutti-names.mjs
+
+      - name: Set up pnpm
+        if: >-
+          needs.changes.outputs.run_contracts == 'true' ||
+          needs.changes.outputs.run_generated == 'true' ||
+          needs.changes.outputs.run_boundaries == 'true'
+        uses: pnpm/action-setup@v4
+
       - name: Set up Go
+        if: >-
+          needs.changes.outputs.run_generated == 'true' ||
+          needs.changes.outputs.run_boundaries == 'true'
         uses: actions/setup-go@v5
         with:
           go-version: "1.24.5"
           cache-dependency-path: |
             go.work
             go.work.sum
-            packages/agent/activity-replication/go.mod
-            packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
-            packages/agent/host/go.mod
-            packages/agent/host/go.sum
-            packages/agent/runtimeprep/go.mod
-            packages/agent/store-sqlite/go.mod
-            packages/agent/store-sqlite/canonical/go.mod
-            packages/auth/bridge-go/go.mod
-            packages/appcli/core/go.mod
-            packages/events/stream-go/go.mod
-            packages/workbench/service/go.mod
-            packages/workspace/files/go.mod
-            packages/workspace/issues/go.mod
-            apps/cli/go.mod
-            services/tuttid/go.mod
             services/tuttid/go.sum
 
-      - name: Install pinned golangci-lint
-        run: |
-          version=$(tr -d '\n' < services/tuttid/.golangci-lint-version)
-          install_dir="${HOME}/.local/bin"
-          mkdir -p "${install_dir}"
-          curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "${install_dir}" "${version}"
-          echo "${install_dir}" >> "${GITHUB_PATH}"
+      - name: Install workspace dependencies
+        if: >-
+          needs.changes.outputs.run_contracts == 'true' ||
+          needs.changes.outputs.run_generated == 'true' ||
+          needs.changes.outputs.run_boundaries == 'true'
+        run: pnpm install --frozen-lockfile
 
-      - name: Check golangci-lint version pin
-        run: node ./tools/scripts/setup-dev.mjs --only=golangci-lint
+      - name: Run repository contract tests
+        if: needs.changes.outputs.run_contracts == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          node ./tools/scripts/run-repository-checks.mjs
+          --group contracts --base "${BASE_SHA}"
+
+      - name: Run generated contract checks
+        if: needs.changes.outputs.run_generated == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          node ./tools/scripts/run-repository-checks.mjs
+          --group generated --base "${BASE_SHA}"
+
+      - name: Run repository boundary checks
+        if: needs.changes.outputs.run_boundaries == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          node ./tools/scripts/run-repository-checks.mjs
+          --group boundaries --base "${BASE_SHA}"
 
   fix-scope:
     name: Fix Scope Soft Gate
@@ -173,27 +161,6 @@ jobs:
 
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Check generated defaults
-        run: pnpm check:defaults-generated
-
-      - name: Check generated API artifacts
-        run: pnpm check:api-generated
-
-      - name: Check generated event protocol artifacts
-        run: pnpm check:event-protocol-generated
-
-      - name: Check UI boundaries
-        run: pnpm check:ui-boundaries
-
-      - name: Check renderer feature boundaries
-        run: pnpm check:renderer-boundaries
-
-      - name: Check agent GUI degradation baseline
-        run: pnpm check:agent-gui-degradation
-
-      - name: Check i18n
-        run: pnpm check:i18n
 
       - name: Run TypeScript lint
         env:
@@ -329,9 +296,6 @@ jobs:
       - name: Generate builtin apps
         run: pnpm generate:builtin-apps
 
-      - name: Check Codex app-server protocol generation
-        run: pnpm check:codexproto-generated
-
       - name: Run Go workspace tests
         run: pnpm test:go:prepared
 
@@ -376,9 +340,6 @@ jobs:
 
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Check agent host boundary
-        run: pnpm check:agent-host-boundary
 
       - name: Generate builtin apps
         run: pnpm generate:builtin-apps

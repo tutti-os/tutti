@@ -2,6 +2,34 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Go-only PR skips a repository contract that later fails
+
+- Symptom:
+  A Go-only PR is green, but a later TypeScript PR fails an unrelated
+  repository-wide check or tool test against the Go change.
+- Quick checks:
+  Inspect whether the failing command scans repository-wide files, generated
+  artifacts, workflows, hooks, or architecture boundaries. Then check whether
+  CI attached it to `run_ts` only because the checker is implemented in
+  JavaScript or TypeScript.
+- Root cause:
+  Check ownership was classified by implementation language instead of checked
+  responsibility. Generated-source paths and non-code package assets could also
+  be absent from inline workflow path predicates.
+- Fix:
+  Register repository policy, tool contract, generated contract, or boundary
+  checks in `repository-checks.mjs`. Keep TypeScript and Go jobs limited to
+  language-owned lint and tests. Reuse `change-classification.mjs` in local and
+  PR validation.
+- Validation:
+  Add selector fixtures for every source-of-truth path and a narrow workflow
+  contract test that verifies repository groups stay outside language jobs.
+  Confirm a Go-only fixture does not select TypeScript validation.
+- References:
+  [repository-checks.mjs](../../../tools/scripts/repository-checks.mjs)
+  [change-classification.mjs](../../../tools/scripts/change-classification.mjs)
+  [testing.md](../testing.md)
+
 ### Temporary Git fixture turns a linked worktree bare
 
 - Symptom:

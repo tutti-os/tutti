@@ -13,9 +13,10 @@ import {
   buildGoTestLane,
   buildPackageTestCommand,
   isBuiltinGenerateRequired,
-  isToolTestRelevant,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
+import { classifyChangedFiles } from "./change-classification.mjs";
+import { selectRepositoryChecks } from "./repository-checks.mjs";
 import { formatFailureExcerpt } from "./run-validation-lanes.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -90,6 +91,7 @@ export async function main() {
 
 function buildChangedLanes() {
   const changedFiles = listChangedFiles(baseRef);
+  const classification = classifyChangedFiles(changedFiles);
   const lanesByKey = new Map();
   const addLane = (lane) => {
     if (!lanesByKey.has(lane.key)) {
@@ -111,7 +113,9 @@ function buildChangedLanes() {
     ]
   });
 
-  const lintFiles = selectExistingLintFiles(changedFiles);
+  const lintFiles = classification.runTs
+    ? selectExistingLintFiles(changedFiles)
+    : [];
   if (lintFiles.length > 0) {
     addLane({
       key: "lint:changed",
@@ -126,65 +130,17 @@ function buildChangedLanes() {
     });
   }
 
-  if (changedFiles.some(isElectronRuntimeBoundaryRelevant)) {
+  for (const check of selectRepositoryChecks(changedFiles)) {
     addLane({
-      key: "boundary:electron",
-      label: "boundary:electron",
-      command: [...pnpmCommand, "run", "check:electron-runtime-boundaries"]
+      key: check.key,
+      label: check.label,
+      command: [...pnpmCommand, "run", check.script]
     });
   }
 
-  if (changedFiles.some(isUiBoundaryRelevant)) {
-    addLane({
-      key: "boundary:ui",
-      label: "boundary:ui",
-      command: [...pnpmCommand, "run", "check:ui-boundaries"]
-    });
-  }
-
-  if (changedFiles.some(isRendererBoundaryRelevant)) {
-    addLane({
-      key: "boundary:renderer",
-      label: "boundary:renderer",
-      command: [...pnpmCommand, "run", "check:renderer-boundaries"]
-    });
-  }
-
-  if (changedFiles.some(isAgentActivityRuntimeBoundaryRelevant)) {
-    addLane({
-      key: "boundary:agent-activity-runtime",
-      label: "boundary:agent-activity-runtime",
-      command: [
-        ...pnpmCommand,
-        "run",
-        "check:agent-activity-runtime-boundaries"
-      ]
-    });
-  }
-
-  if (changedFiles.some(isAgentHostBoundaryRelevant)) {
-    addLane({
-      key: "boundary:agent-host",
-      label: "boundary:agent-host",
-      command: [...pnpmCommand, "run", "check:agent-host-boundary"]
-    });
-  }
-
-  if (
-    changedFiles.some(
-      (file) =>
-        file.startsWith("packages/agent/") ||
-        file.startsWith("tools/degradation-baseline/")
-    )
-  ) {
-    addLane({
-      key: "degradation:agent-gui",
-      label: "degradation:agent-gui",
-      command: [...pnpmCommand, "run", "check:agent-gui-degradation"]
-    });
-  }
-
-  const goValidationTargets = resolveGoValidationTargets(changedFiles);
+  const goValidationTargets = classification.runGo
+    ? resolveGoValidationTargets(changedFiles)
+    : null;
   const forceBuiltinGenerate = isBuiltinGenerateRequired(changedFiles);
   if (goValidationTargets) {
     for (const [moduleRoot, targets] of goValidationTargets.lintByModule) {
@@ -218,7 +174,8 @@ function buildChangedLanes() {
     }
   }
 
-  const rootGlobalChange = changedFiles.some(isGlobalTypecheckRelevant);
+  const rootGlobalChange =
+    classification.runTs && changedFiles.some(isGlobalTypecheckRelevant);
   if (rootGlobalChange) {
     addLane({
       key: "typecheck:all",
@@ -267,6 +224,7 @@ function buildChangedLanes() {
 
     if (
       pushReady &&
+      !classification.runPack &&
       packageInfo.scripts.build &&
       packageFiles.some(isBuildRelevant)
     ) {
@@ -278,11 +236,11 @@ function buildChangedLanes() {
     }
   }
 
-  if (changedFiles.some(isToolTestRelevant)) {
+  if (pushReady && classification.runPack) {
     addLane({
-      key: "test:tools",
-      label: "test:tools",
-      command: [...pnpmCommand, "run", "test:tools"]
+      key: "pack:npm",
+      label: "npm package pack",
+      command: [...pnpmCommand, "run", "release:pack:check"]
     });
   }
 
@@ -548,57 +506,6 @@ function isGlobalTypecheckRelevant(file) {
     "pnpm-workspace.yaml",
     "tsconfig.json"
   ].includes(file);
-}
-
-function isElectronRuntimeBoundaryRelevant(file) {
-  return (
-    file === "apps/desktop/electron.vite.config.ts" ||
-    file.startsWith("apps/desktop/src/main/") ||
-    file.startsWith("apps/desktop/src/preload/") ||
-    file.startsWith("apps/desktop/src/shared/") ||
-    file.startsWith("packages/")
-  );
-}
-
-function isUiBoundaryRelevant(file) {
-  return (
-    (file.startsWith("apps/") ||
-      file.startsWith("packages/") ||
-      file.startsWith("tools/")) &&
-    /\.(?:css|json|js|jsx|mjs|ts|tsx)$/u.test(file)
-  );
-}
-
-export function isAgentActivityRuntimeBoundaryRelevant(file) {
-  return (
-    file.startsWith("packages/agent/gui/") ||
-    file.startsWith("packages/agent/activity-core/") ||
-    file.startsWith(
-      "apps/desktop/src/renderer/src/features/workspace-agent/"
-    ) ||
-    file.startsWith(
-      "apps/desktop/src/renderer/src/features/workspace-workbench/"
-    ) ||
-    file === "tools/scripts/check-agent-activity-runtime-boundaries.mjs" ||
-    file === "tools/scripts/check-agent-activity-runtime-boundaries.test.mjs" ||
-    file.startsWith("tools/fixtures/agent-activity-runtime-boundaries/")
-  );
-}
-
-export function isAgentHostBoundaryRelevant(file) {
-  return (
-    file.startsWith("services/tuttid/service/agent/") ||
-    file === "tools/scripts/check-agent-host-boundary.mjs" ||
-    file === "tools/scripts/check-agent-host-boundary.test.mjs"
-  );
-}
-
-export function isRendererBoundaryRelevant(file) {
-  return (
-    file.startsWith("apps/desktop/src/renderer/src/") ||
-    file === "tools/scripts/check-renderer-feature-boundaries.mjs" ||
-    file === "tools/scripts/check-renderer-feature-boundaries.test.mjs"
-  );
 }
 
 function fileExistsWithinWorkspace(file) {

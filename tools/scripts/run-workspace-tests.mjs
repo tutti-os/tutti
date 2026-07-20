@@ -78,11 +78,14 @@ export function buildWorkspaceTestPlan({
   trackedFiles
 }) {
   const testFilePattern = /(?:^|\/)[^/]+\.(?:spec|test)\.[cm]?[jt]sx?$/u;
-  const toolTests = trackedFiles
-    .filter(
-      (file) => file.startsWith("tools/scripts/") && file.endsWith(".test.mjs")
-    )
-    .sort();
+  const toolTests = toolsOnly
+    ? trackedFiles
+        .filter(
+          (file) =>
+            file.startsWith("tools/scripts/") && file.endsWith(".test.mjs")
+        )
+        .sort()
+    : [];
   const packages = [];
   const errors = [];
 
@@ -107,7 +110,7 @@ export function buildWorkspaceTestPlan({
     }
   }
 
-  if (toolTests.length === 0) {
+  if (toolsOnly && toolTests.length === 0) {
     errors.push("tools/scripts contains no *.test.mjs files");
   }
 

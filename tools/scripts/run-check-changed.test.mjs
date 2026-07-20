@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  isAgentActivityRuntimeBoundaryRelevant,
-  isRendererBoundaryRelevant,
   printSummary,
   runLanes,
   selectExistingLintFiles
 } from "./run-check-changed.mjs";
+import {
+  isAgentActivityRuntimeBoundaryRelevant,
+  isRendererBoundaryRelevant
+} from "./repository-checks.mjs";
 
 test("renderer boundary lane covers renderer and checker changes", () => {
   for (const file of [
