@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
-	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
@@ -549,10 +548,6 @@ func mapAgentRuntimeError(err error) error {
 	}
 	if errors.Is(err, agentruntime.ErrPromptImageUnsupported) {
 		return agentservice.ErrPromptImageUnsupported
-	}
-	var appErr *agentruntime.AppError
-	if errors.As(err, &appErr) && appErr != nil {
-		return agenthost.NewProviderError(appErr.Code, appErr.Message, appErr.DebugMessage, appErr)
 	}
 	return err
 }

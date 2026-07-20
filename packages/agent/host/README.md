@@ -42,14 +42,6 @@ observation without starting a provider. `GetTurn` and
 adapter's concrete store. `CreateSessionInput.ClientSubmitID` and
 `SendInput.ClientSubmitID` are the typed idempotency identities and override
 the legacy metadata value when both are present.
-Runtime adapters preserve explicit downstream failures as `ProviderError` so
-Host consumers can distinguish provider-owned rejection from preparation,
-canonical-store, timeout, and other local failures with `errors.As`. The
-provider code and diagnostic text remain local observations rather than a
-stable cross-service taxonomy; coordination layers persist only their own
-coarse product reason when needed. `NewProviderError` deliberately leaves
-cancellation and deadline failures unclassified because their delivery result
-is unknown and must remain recoverable.
 `UpdateSettings` serializes with runtime resume:
 historical sessions persist settings only, while live sessions update the
 runtime. Provider-specific model, reasoning, and speed normalization stays
