@@ -7,6 +7,9 @@ import {
 } from "@tutti-os/ui-system";
 import type { ReactElement } from "react";
 import { useEffect, useRef } from "react";
+import workspaceArchiveFallbackIconUrl from "../assets/workspace-archive-fallback.png";
+import workspaceFolderFallbackIconUrl from "../assets/workspace-folder-fallback.png";
+import workspaceImageFallbackIconUrl from "../assets/workspace-image-fallback.png";
 import {
   resolveWorkspaceFileExtension,
   resolveWorkspaceFileVisualKind
@@ -18,19 +21,6 @@ import {
   shouldUseWorkspaceFileArchiveIcon,
   shouldUseWorkspaceFileExtensionDocumentIcon
 } from "./workspaceFileEntryIconPolicy.ts";
-
-const workspaceArchiveFallbackIconUrl = new URL(
-  "../assets/workspace-archive-fallback.png",
-  import.meta.url
-).toString();
-const workspaceFolderFallbackIconUrl = new URL(
-  "../assets/workspace-folder-fallback.png",
-  import.meta.url
-).toString();
-const workspaceImageFallbackIconUrl = new URL(
-  "../assets/workspace-image-fallback.png",
-  import.meta.url
-).toString();
 
 export function WorkspaceFileEntryIcon({
   entry,

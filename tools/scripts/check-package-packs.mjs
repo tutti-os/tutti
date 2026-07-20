@@ -7,7 +7,10 @@ import {
   getNpmReleasePackages,
   workspaceRoot
 } from "./npm-release-packages.mjs";
-import { missingPackedRelativeImports } from "./package-pack-relative-imports.mjs";
+import {
+  missingPackedModuleRelativeAssets,
+  missingPackedRelativeImports
+} from "./package-pack-relative-imports.mjs";
 import {
   packedFilesWithRawSvgDataUrls,
   packedFilesWithRelativeSvgUrls
@@ -98,6 +101,18 @@ async function checkPackage(packageConfig, destination) {
     );
     for (const file of relativeSvgUrlFiles) {
       violations.push(`consumer-unresolvable relative SVG URL in ${file}`);
+    }
+  }
+
+  if (packageConfig.name === "@tutti-os/workspace-file-manager") {
+    const unpackedDirectory = join(destination, `${tarball}.unpacked`);
+    await mkdir(unpackedDirectory, { recursive: true });
+    execFileSync("tar", ["-xzf", tarballPath, "-C", unpackedDirectory]);
+    const missingAssets = await missingPackedModuleRelativeAssets(
+      join(unpackedDirectory, "package")
+    );
+    for (const missingAsset of missingAssets) {
+      violations.push(`missing module-relative asset ${missingAsset}`);
     }
   }
 
