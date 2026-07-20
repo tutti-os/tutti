@@ -186,7 +186,10 @@ function createWorkspaceFilesExternalStateSource(input: {
     getWorkspaceState() {
       return null;
     },
-    subscribe(listener) {
+    subscribeNodeState(request, listener) {
+      if (!isWorkspaceFilesExternalStateRequest(request)) {
+        return () => {};
+      }
       return input.workspaceFileManagerService.subscribe(
         input.workspaceId,
         listener

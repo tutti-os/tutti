@@ -178,9 +178,17 @@ describe("agent gui workbench state", () => {
     });
     let notified = 0;
     const unsubscribe =
-      source.externalStateSource.subscribe?.(() => {
-        notified += 1;
-      }) ?? (() => undefined);
+      source.externalStateSource.subscribeNodeState?.(
+        {
+          instanceId: "agent-gui:hermes",
+          nodeId: "node-1",
+          typeId: "agent-gui",
+          workspaceId: "workspace-1"
+        },
+        () => {
+          notified += 1;
+        }
+      ) ?? (() => undefined);
 
     source.writeNodeState({
       instanceId: "agent-gui:hermes",
@@ -260,9 +268,17 @@ describe("agent gui workbench state", () => {
     });
     let notified = 0;
     const unsubscribe =
-      source.externalStateSource.subscribe?.(() => {
-        notified += 1;
-      }) ?? (() => undefined);
+      source.externalStateSource.subscribeNodeState?.(
+        {
+          instanceId: "agent-gui",
+          nodeId: "node-1",
+          typeId: "agent-gui",
+          workspaceId: "workspace-1"
+        },
+        () => {
+          notified += 1;
+        }
+      ) ?? (() => undefined);
 
     source.writeNodeState({
       instanceId: "agent-gui",

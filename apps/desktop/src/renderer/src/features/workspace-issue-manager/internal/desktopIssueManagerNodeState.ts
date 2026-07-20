@@ -41,6 +41,7 @@ export function createDesktopIssueManagerNodeStateSource(input: {
     DesktopIssueManagerLiveNodeState
   >();
   const listeners = new Set<() => void>();
+  const workspaceState = { workspaceId: input.workspaceId };
 
   const notify = () => {
     for (const listener of listeners) {
@@ -55,7 +56,7 @@ export function createDesktopIssueManagerNodeStateSource(input: {
           return null;
         }
         const state = nodeStateByInstanceId.get(request.instanceId);
-        return state ? { ...state } : null;
+        return state ?? null;
       },
       getSnapshotNodeState(request) {
         if (request.typeId !== "issue-manager") {
@@ -65,11 +66,12 @@ export function createDesktopIssueManagerNodeStateSource(input: {
         return state ? restorableIssueManagerNodeState(state) : null;
       },
       getWorkspaceState() {
-        return {
-          workspaceId: input.workspaceId
-        };
+        return workspaceState;
       },
-      subscribe(listener) {
+      subscribeNodeState(request, listener) {
+        if (request.typeId !== "issue-manager") {
+          return () => {};
+        }
         listeners.add(listener);
         return () => {
           listeners.delete(listener);

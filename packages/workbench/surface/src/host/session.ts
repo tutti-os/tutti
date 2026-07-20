@@ -25,7 +25,10 @@ import {
   updateProjectedNodeFromInput,
   writeClosedDockWindowFrameEntries
 } from "./sessionState.ts";
-import { readWorkbenchHostExternalState } from "./externalState.ts";
+import {
+  createWorkbenchHostExternalStateLookupInput,
+  readWorkbenchHostExternalState
+} from "./externalState.ts";
 import { sanitizeWorkbenchHostSnapshot } from "./snapshotSanitizer.ts";
 import type { WorkbenchHostNodeData } from "./types.ts";
 import type {
@@ -1073,19 +1076,35 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
 
     this.unsubscribe = this.controller.subscribe(() => {
       this.schedulePersistedSnapshotWrite();
+      this.refreshExternalStatePersistenceSubscription();
     });
-    if (this.externalStateUnsubscribe === null) {
-      const source = this.input.externalStateSource;
-      const canReadSnapshotNodeState =
-        typeof source?.getSnapshotNodeState === "function";
-      if (!canReadSnapshotNodeState) {
-        return;
-      }
-      this.externalStateUnsubscribe =
-        source?.subscribe?.(() => {
-          this.schedulePersistedSnapshotWrite();
-        }) ?? null;
+    this.refreshExternalStatePersistenceSubscription();
+  }
+
+  private refreshExternalStatePersistenceSubscription(): void {
+    this.externalStateUnsubscribe?.();
+    this.externalStateUnsubscribe = null;
+    const source = this.input.externalStateSource;
+    if (
+      typeof source?.getSnapshotNodeState !== "function" ||
+      !source.subscribeNodeState
+    ) {
+      return;
     }
+    const disposers = this.controller.getSnapshot().nodes.map((node) =>
+      source.subscribeNodeState?.(
+        createWorkbenchHostExternalStateLookupInput({
+          node,
+          workspaceId: this.input.workspaceId
+        }),
+        () => this.schedulePersistedSnapshotWrite()
+      )
+    );
+    this.externalStateUnsubscribe = () => {
+      for (const dispose of disposers) {
+        dispose?.();
+      }
+    };
   }
 
   private disposeNodeLeases(): void {

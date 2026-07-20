@@ -755,7 +755,13 @@ function createWorkspaceAppWebviewExternalStateSource(input: {
     getWorkspaceState() {
       return null;
     },
-    subscribe(listener) {
+    subscribeNodeState(request, listener) {
+      if (
+        request.typeId !== workspaceAppCenterNodeID &&
+        request.typeId !== workspaceAppWebviewTypeID
+      ) {
+        return () => {};
+      }
       const unsubscribeRuntime = input.runtimeStore.subscribe(listener);
       const unsubscribeAppCenter = input.appCenterService.subscribe(listener);
       return () => {

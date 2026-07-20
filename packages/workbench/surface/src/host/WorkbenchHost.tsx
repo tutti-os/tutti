@@ -82,7 +82,6 @@ export function WorkbenchHost({
     missionControlMode !== null || onMissionControlAdapterReady !== undefined;
   const {
     chromeContext,
-    externalStateRevision,
     hostI18n,
     hostSession,
     isHydrating,
@@ -113,7 +112,6 @@ export function WorkbenchHost({
     dockStateSource,
     dockEntries: hostDockEntries,
     externalStateSource: hostRuntimeConfig.externalStateSource,
-    externalStateRevision,
     hostI18n,
     hostSession,
     nodeDefinitionByType,

@@ -84,7 +84,22 @@ export interface WorkbenchHostExternalStateSource<
   getNodeState(input: WorkbenchHostExternalStateLookupInput): TNodeState;
   getSnapshotNodeState?(input: WorkbenchHostExternalStateLookupInput): unknown;
   getWorkspaceState(input: { workspaceId: string }): TWorkspaceState;
-  subscribe?(listener: () => void): () => void;
+  /**
+   * Subscribe to one node's live state. `getNodeState` must return the same
+   * reference until this node's observable state changes.
+   */
+  subscribeNodeState?(
+    input: WorkbenchHostExternalStateLookupInput,
+    listener: () => void
+  ): () => void;
+  /**
+   * Subscribe to workspace state consumed by a node renderer. `getWorkspaceState`
+   * must return the same reference until this workspace state changes.
+   */
+  subscribeWorkspaceState?(
+    input: { workspaceId: string },
+    listener: () => void
+  ): () => void;
 }
 
 export type WorkbenchHostNodeCloseDecision = "close" | "keep-open";

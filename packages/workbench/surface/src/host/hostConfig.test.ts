@@ -138,7 +138,7 @@ test("resolveWorkbenchHostConfig combines contribution external state in order",
           getWorkspaceState() {
             return undefined;
           },
-          subscribe() {
+          subscribeNodeState() {
             subscribeCount += 1;
             return () => {
               disposeCount += 1;
@@ -158,7 +158,7 @@ test("resolveWorkbenchHostConfig combines contribution external state in order",
           getWorkspaceState() {
             return { workspaceId: "workspace-1" };
           },
-          subscribe() {
+          subscribeNodeState() {
             subscribeCount += 1;
             return () => {
               disposeCount += 1;
@@ -195,7 +195,15 @@ test("resolveWorkbenchHostConfig combines contribution external state in order",
     { title: "Persisted Browser" }
   );
 
-  const dispose = resolved.externalStateSource?.subscribe?.(() => {});
+  const dispose = resolved.externalStateSource?.subscribeNodeState?.(
+    {
+      instanceId: "browser-1",
+      nodeId: "browser:browser-1",
+      typeId: "browser",
+      workspaceId: "workspace-1"
+    },
+    () => {}
+  );
   assert.equal(subscribeCount, 2);
   dispose?.();
   assert.equal(disposeCount, 2);

@@ -110,9 +110,17 @@ test("workspace files contribution exposes file manager state through runtime an
   );
 
   let notified = false;
-  const dispose = contribution.externalStateSource?.subscribe?.(() => {
-    notified = true;
-  });
+  const dispose = contribution.externalStateSource?.subscribeNodeState?.(
+    {
+      instanceId: workspaceFilesNodeID,
+      nodeId: workspaceFilesNodeID,
+      typeId: workspaceFilesNodeID,
+      workspaceId: "workspace-1"
+    },
+    () => {
+      notified = true;
+    }
+  );
   service.emit();
   assert.equal(notified, true);
   dispose?.();

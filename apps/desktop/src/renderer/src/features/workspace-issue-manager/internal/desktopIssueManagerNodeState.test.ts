@@ -124,9 +124,17 @@ test("desktop issue-manager node state source drops non-whitelisted updates", (t
     workspaceId: "workspace-1"
   });
   let notifyCount = 0;
-  const unsubscribe = source.externalStateSource.subscribe?.(() => {
-    notifyCount += 1;
-  });
+  const unsubscribe = source.externalStateSource.subscribeNodeState?.(
+    {
+      instanceId: "issue-manager",
+      nodeId: "issue-manager",
+      typeId: "issue-manager",
+      workspaceId: "workspace-1"
+    },
+    () => {
+      notifyCount += 1;
+    }
+  );
   assert.ok(unsubscribe);
   t.after(unsubscribe);
 
