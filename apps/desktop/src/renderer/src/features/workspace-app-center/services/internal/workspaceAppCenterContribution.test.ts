@@ -24,7 +24,7 @@ import {
   workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "./workspaceAppCenterLaunchRequest.ts";
-import { createWorkspaceAppWebviewExternalStateSource } from "./workspaceAppCenterContribution.tsx";
+import { createWorkspaceAppWebviewExternalStateSource } from "./workspaceAppCenterExternalState.ts";
 
 test("workspace app node ids resolve app ids from dock, inline, and webview node formats", () => {
   assert.equal(
