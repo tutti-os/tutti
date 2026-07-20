@@ -6,6 +6,8 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     "bridge/index": "src/bridge/index.ts",
+    "chrome-cookie-import/macos/index":
+      "src/chrome-cookie-import/macos/index.ts",
     "electron-main/index": "src/electron-main/index.ts",
     "electron-preload/index": "src/electron-preload/index.ts",
     "electron-renderer/index": "src/electron-renderer/index.ts",
@@ -15,5 +17,6 @@ export default defineConfig({
   },
   external: ["electron", "react", "react-dom"],
   format: ["esm"],
+  removeNodeProtocol: false,
   sourcemap: true
 });
