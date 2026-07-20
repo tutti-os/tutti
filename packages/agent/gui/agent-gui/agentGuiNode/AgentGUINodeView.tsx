@@ -47,9 +47,11 @@ import { useAgentGUIWorkspaceReferencePicker } from "./view/useAgentGUIWorkspace
 import type { AgentGUINodeViewProps } from "./view/AgentGUINodeView.types";
 import { useAgentGUINodeEngagement } from "./engagement/useAgentGUINodeEngagement";
 import { isAgentGUIProviderReady } from "./model/agentGuiProviderReadiness";
+
 export type {
   AgentGUINodeViewProps,
   AgentGUIAgentsEmptyRenderer,
+  AgentGUIConversationRailLayout,
   AgentGUIProviderUnavailableStateContext,
   AgentGUIProviderUnavailableStateRenderer,
   AgentGUISidebarFooterContext,
@@ -119,6 +121,7 @@ export function AgentGUINodeView({
   prepareExternalPromptFiles = null,
   promptAssetLimit = null,
   onConversationRailWidthChanged,
+  onConversationRailLayoutChange,
   labels,
   conversationRailLabels,
   workspaceUserProjectI18n,
@@ -157,6 +160,9 @@ export function AgentGUINodeView({
   const [isRailResizing, setIsRailResizing] = useState(false);
   const [railResizeWidthPx, setRailResizeWidthPx] = useState<number | null>(
     null
+  );
+  const reportConversationRailLayoutChange = useOptionalStableEventCallback(
+    onConversationRailLayoutChange
   );
   const [
     localComposerFocusRequestSequence,
@@ -273,6 +279,7 @@ export function AgentGUINodeView({
       ),
     [conversationRailMaxWidthPx, conversationRailMinWidthPx]
   );
+  const providerRailWidthPx = conversationRailCollapsed ? 0 : 52;
 
   const handleConversationRailResizePointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>): void => {
@@ -316,10 +323,21 @@ export function AgentGUINodeView({
           "--agent-gui-conversation-rail-width",
           `${nextWidthPx}px`
         );
+        reportConversationRailLayoutChange?.({
+          providerRailWidthPx,
+          conversationRailWidthPx: nextWidthPx,
+          leftPanelWidthPx: providerRailWidthPx + nextWidthPx,
+          resizing: true
+        });
         event.currentTarget.setAttribute("aria-valuenow", String(nextWidthPx));
       }
     },
-    [clampConversationRailWidth, previewMode]
+    [
+      clampConversationRailWidth,
+      previewMode,
+      providerRailWidthPx,
+      reportConversationRailLayoutChange
+    ]
   );
 
   const endConversationRailResize = useCallback(
@@ -398,13 +416,12 @@ export function AgentGUINodeView({
   const effectiveConversationRailWidthPx = conversationRailCollapsed
     ? 0
     : visualConversationRailWidthPx;
-  const renderProviderRail = !conversationRailCollapsed;
 
   const layoutStyle = {
     "--agent-gui-conversation-rail-width": `${effectiveConversationRailWidthPx}px`,
     "--agent-gui-conversation-rail-content-width": `${visualConversationRailWidthPx}px`,
     "--agent-gui-detail-min-width": `${detailMinWidthPx}px`,
-    "--agent-gui-provider-rail-width": renderProviderRail ? "52px" : "0px",
+    "--agent-gui-provider-rail-width": `${providerRailWidthPx}px`,
     gridTemplateColumns:
       "var(--agent-gui-provider-rail-width) var(--agent-gui-conversation-rail-width) minmax(var(--agent-gui-detail-min-width), 1fr)"
   } as CSSProperties;

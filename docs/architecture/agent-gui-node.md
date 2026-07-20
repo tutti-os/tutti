@@ -385,6 +385,12 @@ Workspace picker results and internal workspace-reference drags remain live refe
 | `renderSlots`      | narrow product-neutral presentation slots |
 
 Do not restore flat compatibility props or hide workflow inside a render slot.
+Host chrome that aligns to AgentGUI's internal layout must consume explicit
+package signals such as `hostActions.onConversationRailLayoutChange`; it must
+not observe package DOM, CSS variables, or class names with
+`MutationObserver`. Composer affordances belong in AgentGUI itself or a
+narrow `renderSlots` contract, not in host-owned portals inserted into package
+DOM.
 
 ### 6.3 `AgentActivityRuntime` and `AgentHostApi`
 

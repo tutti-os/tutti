@@ -163,7 +163,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     onMinimize,
     onToggleMaximize,
     onShowMessage,
-    onEngagementEvent
+    onEngagementEvent,
+    onConversationRailLayoutChange
   } = hostActions;
   const {
     providerRailEmpty: renderProviderRailEmpty,
@@ -684,6 +685,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               onConversationRailWidthChanged={
                 handleConversationRailWidthChanged
               }
+              onConversationRailLayoutChange={onConversationRailLayoutChange}
               labels={labels}
               conversationRailLabels={conversationRailLabels}
               workspaceUserProjectI18n={workspaceUserProjectI18n}
