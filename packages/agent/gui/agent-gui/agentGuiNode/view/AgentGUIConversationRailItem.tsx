@@ -8,6 +8,7 @@ import { CanvasNodeTrashLinedIcon } from "../../shared/canvasNodeChromeIcons";
 import { PinFilledIcon } from "../../../app/renderer/components/icons/PinFilledIcon";
 import { PinLinedIcon } from "../../../app/renderer/components/icons/PinLinedIcon";
 import { useAgentHostApi } from "../../../agentActivityHost";
+import { createAgentGUIUserProjectSelectionApi } from "../agentGuiUserProjectSelectionApi";
 import { resolveAgentGuiSessionProviderFlatIconUrl } from "../../../agentGuiSessionProviderIconUrls";
 import {
   resolveAgentTargetPresentation,
@@ -369,18 +370,11 @@ export function AgentGUIProjectRailHeader({
   const agentHostApi = useAgentHostApi();
   const userProjectApi = useMemo(
     () =>
-      agentHostApi.userProjects
-        ? {
-            ...agentHostApi.userProjects,
-            selectDirectory:
-              selectProjectDirectory ?? agentHostApi.workspace.selectDirectory
-          }
-        : null,
-    [
-      agentHostApi.userProjects,
-      agentHostApi.workspace.selectDirectory,
-      selectProjectDirectory
-    ]
+      createAgentGUIUserProjectSelectionApi({
+        selectProjectDirectory,
+        userProjects: agentHostApi.userProjects
+      }),
+    [agentHostApi.userProjects, selectProjectDirectory]
   );
 
   return (

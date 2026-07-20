@@ -68,18 +68,20 @@ reference omit that capability or classify the entry for preparation.
 
 ### Project Directory Selection
 
-AgentGUI reuses `ReferenceSourcePicker` for project-directory selection instead
-of owning a second directory dialog. The host injects a dedicated
-`projectDirectorySourceAggregator`; opening either project entry point switches
-the shared picker to the `directory` purpose and routes the resolved folder path
-back through the existing project-selection callback.
+AgentGUI lets each host explicitly own project-directory selection. TSH injects
+a dedicated `projectDirectorySourceAggregator` and reuses
+`ReferenceSourcePicker` instead of owning a second directory dialog. Opening
+“Use existing project” switches that shared picker to the `directory` purpose
+and routes the resolved folder path back through the existing project-selection
+callback. Tutti Desktop explicitly injects its native directory selector at the
+same host boundary.
 
-`WorkspaceUserProjectSelect` does not own project-directory creation UI. Both
-“Use existing project” and “Add project” invoke the same `selectDirectory`
-capability; “Add project” relies on the selected directory source's
-`createDirectory()` action when the user needs a new subdirectory. The menu
-actions retain distinct selection metadata, but they do not select different
-picker implementations.
+`WorkspaceUserProjectSelect` keeps project creation and existing-directory
+selection distinct. “Add project” uses the user-project `create()` capability
+and its compact name input. “Use existing project” alone invokes the host's
+explicit project-directory selector. In TSH, directory creation inside the
+shared picker is an optional action for organizing the browsed workspace; it
+does not replace the project-name creation flow.
 
 The directory purpose is a constrained use of the same source architecture:
 
@@ -95,9 +97,14 @@ The directory purpose is a constrained use of the same source architecture:
 - picker/controller code routes creation by `sourceId` and may update selection
   and loaded child state, but never constructs paths from opaque node ids.
 
-Hosts that do not inject `projectDirectorySourceAggregator` retain their
-existing project-selection capability. This keeps filesystem authority and
-product-specific project-root policy outside AgentGUI.
+Project-directory selection is an explicit host policy. AgentGUI never falls
+back to the generic host `workspace.selectDirectory` capability. TSH injects
+`projectDirectorySourceAggregator`, so “Use existing project” is routed through
+the shared reference picker. Tutti Desktop explicitly injects its native
+directory selector through `workspace.selectProjectDirectory`. A host that
+injects neither capability does not expose the action. This keeps each host's
+interaction owner visible at composition time instead of coupling project
+selection to an unrelated generic workspace API.
 
 Hosts that construct the AgentGUI i18n runtime must merge the workspace file
 manager resources as well as the AgentGUI and project-selector resources. The
@@ -201,6 +208,8 @@ cache expires; they do not claim exhaustive history.
 ## Invariants
 
 - Route every operation by `sourceId`; reject unknown sources.
+- Route project-directory selection only through the host's explicitly injected
+  selector; never infer it from the generic workspace API.
 - Never derive hierarchy by splitting an opaque `nodeId`.
 - Never implement directory creation by joining or decoding `nodeId` in shared
   picker code; the owning source validates and creates the directory.

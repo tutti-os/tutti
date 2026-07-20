@@ -627,6 +627,9 @@ function DesktopAgentGUISurfaceImpl({
       path: "",
       fileReferenceAdapter: previewMode ? null : workspaceFileReferenceAdapter,
       onRequestGitBranches: previewMode ? null : onRequestGitBranches,
+      selectProjectDirectory: previewMode
+        ? undefined
+        : agentHostApi.workspace.selectDirectory,
       resolveExternalPromptEntries: previewMode
         ? null
         : resolveExternalPromptEntries,
