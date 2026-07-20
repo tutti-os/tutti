@@ -11,7 +11,6 @@ import {
   normalizeTuttidError,
   workspaceProtocolErrorCodes,
   type ApiErrorResponse,
-  type AgentExtensionCatalogResponse,
   type AgentProviderComposerOptionsResponse,
   type AppReferenceListResponse,
   type CliCapabilitiesResponse,
@@ -168,29 +167,6 @@ test("shared tuttid client unwraps workspace list responses", async () => {
     totalCount: 1,
     workspaces: [{ id: "ws-1", name: "One", lastOpenedAt: null }]
   } satisfies ListWorkspacesResponse);
-});
-
-test("shared tuttid client lists the daemon-owned Agent Extension catalog", async () => {
-  const response = {
-    extensions: [
-      {
-        iconUrl: "data:image/svg+xml;base64,gemini",
-        key: "gemini",
-        name: "Gemini CLI",
-        targetId: "extension:gemini"
-      }
-    ]
-  } satisfies AgentExtensionCatalogResponse;
-  const { client, requests } = captureClient(jsonResponse(response));
-
-  assert.deepEqual(await client.listAgentExtensionCatalog(), response);
-  assertRequest(requests[0]!, {
-    authorization: null,
-    body: null,
-    method: "GET",
-    path: "/v1/agent-extensions/catalog",
-    query: {}
-  });
 });
 
 test("shared tuttid client preserves target, turn, goal, and auth route contracts", async (t) => {

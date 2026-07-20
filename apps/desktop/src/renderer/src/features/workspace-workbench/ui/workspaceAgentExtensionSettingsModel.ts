@@ -1,6 +1,5 @@
 import type { DesktopI18nKey } from "@shared/i18n";
 import type { DesktopFeatureFlags } from "@shared/preferences";
-import type { AgentExtensionCatalogEntry } from "@tutti-os/client-tuttid-ts";
 import type { AgentTargetPresentation } from "../../workspace-agent/services/agentsService.interface.ts";
 import type { DesktopAgentProviderManageRowStatus } from "../../workspace-agent/ui/desktopAgentProviderManageDialogModel.ts";
 import {
@@ -20,7 +19,6 @@ export interface WorkspaceAgentExtensionSettingsRow {
 }
 
 export function projectWorkspaceAgentExtensionSettingsRows(input: {
-  agentExtensions: readonly AgentExtensionCatalogEntry[];
   agentTargets: readonly AgentTargetPresentation[];
   directoryLoading: boolean;
   earlyAccessEnabled: boolean;
@@ -33,9 +31,6 @@ export function projectWorkspaceAgentExtensionSettingsRows(input: {
   const targetById = new Map(
     input.agentTargets.map((target) => [target.agentTargetId, target])
   );
-  const extensionByTargetId = new Map(
-    input.agentExtensions.map((extension) => [extension.targetId, extension])
-  );
 
   return EARLY_ACCESS_AGENT_EXTENSION_INTEGRATIONS.map((integration) => {
     const enabled = isFeatureEnabled(
@@ -43,12 +38,11 @@ export function projectWorkspaceAgentExtensionSettingsRows(input: {
       integration.activationFlag
     );
     const target = targetById.get(integration.targetId) ?? null;
-    const extension = extensionByTargetId.get(integration.targetId) ?? null;
     return {
       activationFlag: integration.activationFlag,
       agentTargetId: integration.targetId,
       enabled,
-      iconUrl: target?.iconUrl.trim() || extension?.iconUrl.trim() || "",
+      iconUrl: target?.iconUrl ?? "",
       key: integration.key,
       labelKey: integration.labelKey,
       status: resolveExtensionEnvironmentStatus({

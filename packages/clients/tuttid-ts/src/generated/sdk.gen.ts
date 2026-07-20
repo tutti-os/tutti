@@ -223,9 +223,6 @@ import type {
   LaunchWorkspaceAppData,
   LaunchWorkspaceAppErrors,
   LaunchWorkspaceAppResponses,
-  ListAgentExtensionCatalogData,
-  ListAgentExtensionCatalogErrors,
-  ListAgentExtensionCatalogResponses,
   ListAgentTargetsData,
   ListAgentTargetsErrors,
   ListAgentTargetsResponses,
@@ -892,24 +889,6 @@ export const listAgentTargets = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/agent-targets",
-    ...options
-  });
-
-/**
- * List configured Agent Extension presentation metadata
- *
- * Returns offline catalog metadata for configured extension sources without activating them or fetching their release indexes. Active Agent Targets remain authoritative for runtime identity.
- */
-export const listAgentExtensionCatalog = <ThrowOnError extends boolean = false>(
-  options?: Options<ListAgentExtensionCatalogData, ThrowOnError>
-) =>
-  (options?.client ?? client).get<
-    ListAgentExtensionCatalogResponses,
-    ListAgentExtensionCatalogErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/agent-extensions/catalog",
     ...options
   });
 

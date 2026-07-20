@@ -69,16 +69,6 @@ mentions; optional package `maskIcon` is the mask-safe glyph for conversation
 rows. All assets originate in the verified package and remain pinned to the
 active installation version.
 
-Configured sources also carry a minimal offline presentation catalog in the
-generated daemon defaults: the extension name and a colored icon copied from a
-verified release package. `GET /v1/agent-extensions/catalog` exposes this
-metadata without fetching a release index, activating a source, or registering
-an Agent Target. The desktop settings directory keeps that catalog alongside
-the active targets so disabled Early Access integrations can still render their
-identity. When a target exists, its package-derived `iconUrl` remains
-authoritative; the catalog icon is used only before activation has produced a
-target. Renderer code must not add an extension-specific asset fallback.
-
 At launch the runtime controller asks `AgentRuntimeResolver` for unknown
 providers. The resolver verifies the fixed installation reference, evaluates
 the declarative discovery profile, prefers a compatible runtime already on the

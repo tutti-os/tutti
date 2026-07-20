@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type {
-  AgentExtensionCatalogEntry,
-  AgentTarget
-} from "@tutti-os/client-tuttid-ts";
+import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
 import {
   DesktopAgentsService,
   mapAgentTargetsToPresentations,
@@ -15,9 +12,6 @@ test("desktop agents service publishes explicit idle, loading, and ready lifecyc
   const service = new DesktopAgentsService({
     now: () => 1780272000123,
     tuttidClient: {
-      async listAgentExtensionCatalog() {
-        return { extensions: [geminiCatalogEntry()] };
-      },
       listAgentTargets: () => request.promise
     }
   });
@@ -46,7 +40,6 @@ test("desktop agents service publishes explicit idle, loading, and ready lifecyc
   assert.equal(snapshot.status, "ready");
   assert.equal(snapshot.error, null);
   assert.equal(snapshot.capturedAtUnixMs, 1780272000123);
-  assert.deepEqual(snapshot.agentExtensions, [geminiCatalogEntry()]);
   assert.deepEqual(snapshots, ["loading", "ready"]);
 });
 
@@ -66,9 +59,6 @@ test("desktop agents service publishes failures, retains cached data, and owns r
       return 1 as unknown as ReturnType<typeof setTimeout>;
     },
     tuttidClient: {
-      async listAgentExtensionCatalog() {
-        return { extensions: [] };
-      },
       async listAgentTargets() {
         if (shouldFail) {
           throw new Error("directory unavailable");
@@ -97,9 +87,6 @@ test("desktop agents service publishes failures, retains cached data, and owns r
 test("desktop agents service hydrates a detached-window bootstrap snapshot before refresh", () => {
   const service = new DesktopAgentsService({
     tuttidClient: {
-      async listAgentExtensionCatalog() {
-        return { extensions: [] };
-      },
       async listAgentTargets() {
         return { targets: [] };
       }
@@ -115,7 +102,6 @@ test("desktop agents service hydrates a detached-window bootstrap snapshot befor
 
   service.hydrate({
     agents: mapAgentTargetPresentationsToAgents(agentTargets),
-    agentExtensions: [],
     agentTargets,
     capturedAtUnixMs: 1780272000000,
     error: null,
@@ -283,15 +269,6 @@ function selectIconPresentation(input: {
     agentTargetId: input.agentTargetId,
     iconUrl: input.iconUrl,
     maskIconUrl: input.maskIconUrl ?? null
-  };
-}
-
-function geminiCatalogEntry(): AgentExtensionCatalogEntry {
-  return {
-    iconUrl: "data:image/svg+xml;base64,catalog-gemini",
-    key: "gemini",
-    name: "Gemini CLI",
-    targetId: "extension:gemini"
   };
 }
 

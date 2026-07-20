@@ -74,7 +74,6 @@ import type {
   IssueManagerTaskListResponse,
   IssueManagerTopic,
   IssueManagerTopicListResponse,
-  AgentExtensionCatalogResponse,
   ListAgentTargetsResponse,
   AgentTarget,
   ListWorkspacesResponse,
@@ -156,7 +155,6 @@ export type TuttidTrackEvent = TrackEvent;
 export type TuttidTrackEventsRequest = TrackEventsRequest;
 
 export interface TuttidClient {
-  listAgentExtensionCatalog(): Promise<AgentExtensionCatalogResponse>;
   listAgentTargets(): Promise<ListAgentTargetsResponse>;
   setSystemAgentTargetEnabled(
     agentTargetID: string,

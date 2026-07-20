@@ -135,14 +135,6 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.PurgeDeletedAgentConversations(w, r)
 	})
 
-	mux.HandleFunc("/v1/agent-extensions/catalog", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.ListAgentExtensionCatalog(w, r)
-	})
-
 	registerAgentTargetRoutes(mux, wrapper)
 
 	registerUserProjectRoutes(mux, wrapper)

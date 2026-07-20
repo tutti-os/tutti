@@ -24,9 +24,6 @@ function createTransportClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {
   const client: TuttidClient = {
-    async listAgentExtensionCatalog() {
-      throw new Error("not used");
-    },
     async listAgentTargets() {
       throw new Error("not used");
     },

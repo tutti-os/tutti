@@ -29,26 +29,25 @@ type EventStreamService interface {
 }
 
 type DaemonAPI struct {
-	UserProjectService           UserProjectService
-	AgentTargetService           AgentTargetService
-	AgentExtensionCatalogService AgentExtensionCatalogService
-	AgentTargetSetupService      AgentTargetSetupService
-	PreferencesService           preferencesapi.Service
-	AgentMaintenanceService      AgentMaintenanceService
-	ManagedCredentialsService    *managedcredentialsservice.Service
-	AccountService               AccountService
-	EventStreamService           EventStreamService
-	WorkspaceService             workspaceapi.CatalogService
-	WorkbenchService             workspaceapi.WorkbenchService
-	AppCenterService             workspaceapi.AppCenterService
-	AppFactoryService            AppFactoryService
-	FileService                  workspaceapi.FileService
-	AgentSessionService          AgentSessionService
-	AgentStatusService           AgentProviderStatusService
-	TerminalService              workspaceapi.TerminalService
-	IssueService                 workspaceapi.IssueManagerService
-	CLIRegistry                  *cliservice.Registry
-	AnalyticsReporter            reporterservice.Reporter
+	UserProjectService        UserProjectService
+	AgentTargetService        AgentTargetService
+	AgentTargetSetupService   AgentTargetSetupService
+	PreferencesService        preferencesapi.Service
+	AgentMaintenanceService   AgentMaintenanceService
+	ManagedCredentialsService *managedcredentialsservice.Service
+	AccountService            AccountService
+	EventStreamService        EventStreamService
+	WorkspaceService          workspaceapi.CatalogService
+	WorkbenchService          workspaceapi.WorkbenchService
+	AppCenterService          workspaceapi.AppCenterService
+	AppFactoryService         AppFactoryService
+	FileService               workspaceapi.FileService
+	AgentSessionService       AgentSessionService
+	AgentStatusService        AgentProviderStatusService
+	TerminalService           workspaceapi.TerminalService
+	IssueService              workspaceapi.IssueManagerService
+	CLIRegistry               *cliservice.Registry
+	AnalyticsReporter         reporterservice.Reporter
 }
 
 type AgentMaintenanceService interface {

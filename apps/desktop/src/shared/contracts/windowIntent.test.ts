@@ -196,7 +196,6 @@ function createAgentDirectorySnapshot(
 ) {
   return {
     agents,
-    agentExtensions: [],
     agentTargets: [],
     capturedAtUnixMs: 1780272000000,
     error: null,

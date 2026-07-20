@@ -58,7 +58,6 @@ const emptyAgentProviderStatusSnapshot: AgentProviderStatusSnapshot = {
 
 const emptyAgentsSnapshot: AgentsSnapshot = {
   agents: [],
-  agentExtensions: [],
   agentTargets: [],
   capturedAtUnixMs: null,
   error: null,
@@ -276,14 +275,12 @@ export function WorkspaceAgentsSettingsTab({
   const extensionRows = useMemo(
     () =>
       projectWorkspaceAgentExtensionSettingsRows({
-        agentExtensions: agentsSnapshot.agentExtensions,
         agentTargets: agentsSnapshot.agentTargets,
         directoryLoading: agentsSnapshot.status === "loading",
         earlyAccessEnabled,
         featureFlags
       }),
     [
-      agentsSnapshot.agentExtensions,
       agentsSnapshot.agentTargets,
       agentsSnapshot.status,
       earlyAccessEnabled,

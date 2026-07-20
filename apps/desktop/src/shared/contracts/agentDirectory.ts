@@ -1,6 +1,5 @@
 import type { AgentGUIAgent } from "@tutti-os/agent-gui";
 import type {
-  AgentExtensionCatalogEntry,
   AgentTarget,
   AgentTargetProvider,
   AgentTargetSource
@@ -31,7 +30,6 @@ export interface DesktopAgentTargetPresentation {
 
 export interface DesktopAgentDirectorySnapshot {
   agents: readonly AgentGUIAgent[];
-  agentExtensions: readonly AgentExtensionCatalogEntry[];
   agentTargets: readonly DesktopAgentTargetPresentation[];
   capturedAtUnixMs: number | null;
   error: string | null;

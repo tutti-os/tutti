@@ -19,15 +19,11 @@ export interface DesktopAgentsServiceDependencies {
     callback: () => void,
     delayMs: number
   ) => ReturnType<typeof setTimeout>;
-  tuttidClient: Pick<
-    TuttidClient,
-    "listAgentExtensionCatalog" | "listAgentTargets"
-  >;
+  tuttidClient: Pick<TuttidClient, "listAgentTargets">;
 }
 
 const EMPTY_AGENTS_SNAPSHOT: AgentsSnapshot = Object.freeze({
   agents: Object.freeze([]),
-  agentExtensions: Object.freeze([]),
   agentTargets: Object.freeze([]),
   capturedAtUnixMs: null,
   error: null,
@@ -148,10 +144,7 @@ export class DesktopAgentsService implements IAgentsService {
       status: "loading"
     });
     try {
-      const [catalogResponse, response] = await Promise.all([
-        this.dependencies.tuttidClient.listAgentExtensionCatalog(),
-        this.dependencies.tuttidClient.listAgentTargets()
-      ]);
+      const response = await this.dependencies.tuttidClient.listAgentTargets();
       if (signal?.aborted || requestSequence !== this.requestSequence) {
         if (requestSequence === this.requestSequence) {
           this.setSnapshot(previousSnapshot);
@@ -167,7 +160,6 @@ export class DesktopAgentsService implements IAgentsService {
       });
       const nextSnapshot: AgentsSnapshot = {
         agents,
-        agentExtensions: catalogResponse.extensions,
         agentTargets,
         capturedAtUnixMs: this.dependencies.now?.() ?? Date.now(),
         error: null,

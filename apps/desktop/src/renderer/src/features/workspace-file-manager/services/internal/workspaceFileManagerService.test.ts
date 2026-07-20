@@ -901,7 +901,6 @@ function createDependenciesStub(): {
       copyFilesToClipboard: fail
     },
     tuttidClient: {
-      listAgentExtensionCatalog: fail,
       listAgentTargets: fail,
       setSystemAgentTargetEnabled: fail,
       getAgentTargetSetup: fail,

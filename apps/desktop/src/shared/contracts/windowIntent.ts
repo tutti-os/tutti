@@ -5,7 +5,6 @@ import type {
   DesktopThemeSource
 } from "../theme/index.ts";
 import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
-import type { AgentExtensionCatalogEntry } from "@tutti-os/client-tuttid-ts";
 import type { DesktopAgentProviderStatusSnapshot } from "./ipc.ts";
 import type {
   DesktopAgentDirectorySnapshot,
@@ -226,7 +225,6 @@ function normalizeAgentDirectorySnapshot(
   const snapshot = value as Partial<DesktopAgentDirectorySnapshot>;
   if (
     !Array.isArray(snapshot.agents) ||
-    !Array.isArray(snapshot.agentExtensions) ||
     !Array.isArray(snapshot.agentTargets)
   ) {
     return undefined;
@@ -238,31 +236,11 @@ function normalizeAgentDirectorySnapshot(
   }
   return {
     agents: normalizeAgentWindowAgents(snapshot.agents) ?? [],
-    agentExtensions: snapshot.agentExtensions.flatMap(
-      normalizeAgentExtensionCatalogEntry
-    ),
     agentTargets: snapshot.agentTargets.flatMap(normalizeAgentTarget),
     capturedAtUnixMs,
     error: readTrimmedString(snapshot.error),
     status
   };
-}
-
-function normalizeAgentExtensionCatalogEntry(
-  value: unknown
-): AgentExtensionCatalogEntry[] {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return [];
-  }
-  const extension = value as Partial<AgentExtensionCatalogEntry>;
-  const key = readTrimmedString(extension.key);
-  const targetId = readTrimmedString(extension.targetId);
-  const name = readTrimmedString(extension.name);
-  const iconUrl = readTrimmedString(extension.iconUrl);
-  if (!key || !targetId || !name || !iconUrl) {
-    return [];
-  }
-  return [{ iconUrl, key, name, targetId }];
 }
 
 function normalizeAgentDirectoryStatus(
