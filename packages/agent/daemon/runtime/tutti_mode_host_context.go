@@ -147,6 +147,7 @@ func renderTuttiModeWorkflowGuide(cliName string) string {
 		"    agentTargetId: local:codex\n"+
 		"    model: gpt-5.4-codex\n"+
 		"    permissionModeId: full-access\n"+
+		"    autoAccept: true\n"+
 		"    parallelizable: true\n"+
 		"  - id: task-2\n"+
 		"    title: Link the FAQ from the introduction\n"+
@@ -155,6 +156,7 @@ func renderTuttiModeWorkflowGuide(cliName string) string {
 		"    agentTargetId: local:claude-code\n"+
 		"    model: claude-opus-4-8\n"+
 		"    permissionModeId: bypassPermissions\n"+
+		"    autoAccept: true\n"+
 		"---\n"+
 		"Plan narrative in prose: goal, approach, scope boundaries, and risks.\n"+
 		"END plan.md\n"+
