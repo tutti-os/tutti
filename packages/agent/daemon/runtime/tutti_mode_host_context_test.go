@@ -198,6 +198,7 @@ func TestAppServerTurnStartKeepsTuttiContextOutOfUserInput(t *testing.T) {
 		},
 		"gpt-test",
 		hostContext,
+		false,
 	)
 	input := payloadArray(params["input"])
 	if len(input) != 1 || asString(payloadObject(input[0])["text"]) != "what mode is active?" {
@@ -228,6 +229,7 @@ func TestAppServerTurnStartUsesProviderOnlyTuttiFallbackWithoutCollaborationMask
 		nil,
 		"gpt-test",
 		hostContext,
+		false,
 	)
 	input := payloadArray(params["input"])
 	if len(input) != 2 || asString(payloadObject(input[0])["text"]) != "what mode is active?" {

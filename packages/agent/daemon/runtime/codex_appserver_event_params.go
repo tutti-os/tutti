@@ -55,8 +55,8 @@ func appServerTurnStartParams(
 	planModeMask map[string]any,
 	defaultModeMask map[string]any,
 	defaultModel string,
-	commandNetworkAccess bool,
 	tuttiModeHostContext string,
+	commandNetworkAccess bool,
 ) map[string]any {
 	settings := session.SettingsValue()
 	userInput := appServerUserInput(content)

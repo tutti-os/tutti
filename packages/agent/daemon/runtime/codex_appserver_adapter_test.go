@@ -1798,6 +1798,7 @@ func TestCodexAppServerTurnStartKeepsLargePromptInInputOnly(t *testing.T) {
 		nil,
 		nil,
 		"",
+		"",
 		false,
 	)
 	if _, ok := params["responsesapiClientMetadata"]; ok {
