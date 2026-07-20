@@ -105,6 +105,7 @@ import {
   type CachedWorkspaceWorkbenchHostInput,
   type WorkspaceWorkbenchHostInputResolverDependencies
 } from "./workspaceWorkbenchHostInputResolver.ts";
+import { createWorkspaceDockRetentionController } from "./workspaceDockRetentionController.ts";
 
 export interface WorkspaceWorkbenchHostServiceDependencies extends WorkspaceWorkbenchHostInputResolverDependencies {
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
@@ -140,6 +141,7 @@ export interface WorkspaceWorkbenchHostExternalDependencies {
 
 export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostService {
   readonly _serviceBrand = undefined;
+  readonly dockRetention;
   private readonly dependencies: WorkspaceWorkbenchHostServiceDependencies;
   private hostSessionBindingSequence = 0;
   private readonly hostSessionConfiguration: WorkbenchHostSessionConfiguration<
@@ -184,6 +186,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     workspaceUserProjectService: IWorkspaceUserProjectService
   ) {
     const repository = externalDependencies.snapshotRepository;
+    this.dockRetention = createWorkspaceDockRetentionController(repository);
     this.dependencies = {
       agentProviderStatusService,
       agentsService,
@@ -635,6 +638,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
   }
 
   dispose(): void {
+    this.dockRetention.dispose();
     this.wallpaperListeners.clear();
     this.clearCustomWallpaperUrls();
   }

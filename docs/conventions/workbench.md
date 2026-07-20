@@ -77,6 +77,15 @@ Rules:
   render data before persistence
 - adapter-specific durable state should remain behind generic contract fields
   unless the adapter detail is part of the shared snapshot contract
+- desktop-owned workspace Dock retention is product metadata in the workspace
+  Workbench snapshot. Preserve explicit `false` values as user choices and
+  merge them through the repository's product-owner path so ordinary host
+  saves cannot overwrite them
+- treat retention as a Dock presentation override. Product hosts must pass it
+  through `dockEntryPresentationOverrides`; they must not rewrite contribution
+  Dock entries or let presentation state flow into contribution nodes/runtime
+  configuration. WorkbenchHost applies overrides in place after Dock entries
+  are merged so presentation changes preserve entry order and host sessions
 
 Breaking migration rule:
 

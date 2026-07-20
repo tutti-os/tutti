@@ -102,7 +102,7 @@ test("workspace workbench host prioritizes the first ready agent provider during
 test("workspace workbench host releases owned wallpaper URLs on disposal", () => {
   assert.match(
     workspaceWorkbenchHostServiceSource,
-    /dispose\(\): void \{\s+this\.wallpaperListeners\.clear\(\);\s+this\.clearCustomWallpaperUrls\(\);\s+\}/
+    /dispose\(\): void \{\s+this\.dockRetention\.dispose\(\);\s+this\.wallpaperListeners\.clear\(\);\s+this\.clearCustomWallpaperUrls\(\);\s+\}/
   );
 });
 

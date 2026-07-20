@@ -29,7 +29,8 @@ export function stabilizeWorkspaceAgentMessageCenterModel(
   const items = next.items.map((nextItem, index) => {
     const previousItem = previousItemsById.get(nextItem.id);
     const stableItem =
-      previousItem && messageCenterItemsEqual(previousItem, nextItem)
+      previousItem &&
+      workspaceAgentMessageCenterItemEqual(previousItem, nextItem)
         ? previousItem
         : nextItem;
     if (stableItem !== previous.items[index]) {
@@ -57,7 +58,7 @@ export function stabilizeWorkspaceAgentMessageCenterModel(
   };
 }
 
-function messageCenterItemsEqual(
+export function workspaceAgentMessageCenterItemEqual(
   left: WorkspaceAgentMessageCenterItem,
   right: WorkspaceAgentMessageCenterItem
 ): boolean {

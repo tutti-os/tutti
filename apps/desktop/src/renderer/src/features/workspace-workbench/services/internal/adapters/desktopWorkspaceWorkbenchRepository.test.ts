@@ -13,6 +13,10 @@ import {
   hasWorkspaceOnboardingAutoOpened,
   writeWorkspaceOnboardingAutoOpenedToSnapshot
 } from "../../workspaceOnboarding.ts";
+import {
+  readWorkspaceDockRetentionByEntryId,
+  writeWorkspaceDockRetentionToSnapshot
+} from "../../workspaceDockRetention.ts";
 import { createDesktopWorkspaceWorkbenchRepository } from "./desktopWorkspaceWorkbenchRepository.ts";
 
 test("desktop workspace workbench repository caches loaded snapshots", async () => {
@@ -72,6 +76,95 @@ test("desktop workspace workbench repository preserves onboarding metadata on ho
   await repository.save("workspace-1", createSnapshot());
 
   assert.equal(hasWorkspaceOnboardingAutoOpened(savedSnapshot), true);
+});
+
+test("desktop workspace workbench repository preserves dock retention on host saves", async () => {
+  let savedSnapshot: WorkbenchSnapshot | null = null;
+  const repository = createDesktopWorkspaceWorkbenchRepository(
+    createTuttidClient({
+      initialSnapshot: writeWorkspaceDockRetentionToSnapshot(createSnapshot(), {
+        "workspace-app:calendar": false
+      }),
+      onSave(_workspaceID, snapshot) {
+        savedSnapshot = snapshot;
+      }
+    })
+  );
+
+  await repository.load("workspace-1");
+  await repository.save("workspace-1", createSnapshot());
+
+  assert.equal(
+    readWorkspaceDockRetentionByEntryId(savedSnapshot)[
+      "workspace-app:calendar"
+    ],
+    false
+  );
+});
+
+test("desktop workspace workbench repository reloads persisted dock removal", async () => {
+  let persistedSnapshot = createSnapshot();
+  const client = createTuttidClient({
+    initialSnapshot: persistedSnapshot,
+    onSave(_workspaceID, snapshot) {
+      persistedSnapshot = snapshot;
+    }
+  });
+  const firstRepository = createDesktopWorkspaceWorkbenchRepository(client);
+
+  await firstRepository.load("workspace-1");
+  await firstRepository.saveProductMetadata(
+    "workspace-1",
+    writeWorkspaceDockRetentionToSnapshot(
+      firstRepository.readCached("workspace-1") ?? createSnapshot(),
+      { "workspace-app:calendar": false }
+    ),
+    "dock"
+  );
+
+  const reopenedRepository = createDesktopWorkspaceWorkbenchRepository({
+    ...client,
+    async getWorkspaceWorkbench() {
+      return persistedSnapshot;
+    }
+  });
+  const reopenedSnapshot = await reopenedRepository.load("workspace-1");
+
+  assert.equal(
+    readWorkspaceDockRetentionByEntryId(reopenedSnapshot)[
+      "workspace-app:calendar"
+    ],
+    false
+  );
+});
+
+test("dock metadata writes preserve other product-owned metadata", async () => {
+  const initialSnapshot = writeWorkspaceWallpaperIdToSnapshot(
+    writeWorkspaceOnboardingAutoOpenedToSnapshot(
+      createSnapshot(),
+      "2026-07-18T00:00:00.000Z"
+    ),
+    "sky"
+  );
+  const repository = createDesktopWorkspaceWorkbenchRepository(
+    createTuttidClient({ initialSnapshot })
+  );
+
+  await repository.load("workspace-1");
+  const savedSnapshot = await repository.saveProductMetadata(
+    "workspace-1",
+    writeWorkspaceDockRetentionToSnapshot(initialSnapshot, {
+      browser: false
+    }),
+    "dock"
+  );
+
+  assert.equal(readWorkspaceWallpaperIdFromSnapshot(savedSnapshot), "sky");
+  assert.equal(hasWorkspaceOnboardingAutoOpened(savedSnapshot), true);
+  assert.equal(
+    readWorkspaceDockRetentionByEntryId(savedSnapshot).browser,
+    false
+  );
 });
 
 test("desktop workspace workbench repository keeps daemon calls workspace-scoped and preserves product metadata", async () => {
