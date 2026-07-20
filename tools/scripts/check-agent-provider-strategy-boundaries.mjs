@@ -26,7 +26,6 @@ const exemptFiles = new Set([
   "packages/agent/daemon/runtime/claude_sdk_live_state.go",
   "packages/agent/daemon/runtime/acp_provider_cursor.go",
   "packages/agent/daemon/runtime/acp_provider_hermes.go",
-  "packages/agent/daemon/runtime/acp_provider_kimi.go",
   "packages/agent/daemon/runtime/acp_provider_nexight.go",
   "packages/agent/daemon/runtime/acp_provider_openclaw.go",
   "services/tuttid/biz/agentprovider/provider.go",

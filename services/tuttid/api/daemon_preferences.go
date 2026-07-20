@@ -480,7 +480,6 @@ func agentGUIConversationRailCollapsedByProviderFromGenerated(
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "tutti-agent", value.TuttiAgent)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "cursor", value.Cursor)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "hermes", value.Hermes)
-	setAgentGUIConversationRailCollapsedFromGenerated(result, "kimi-code", value.KimiCode)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "openclaw", value.Openclaw)
 	return result
 }
@@ -505,7 +504,6 @@ func agentComposerDefaultsByProviderFromGenerated(
 	setAgentComposerDefaultsFromGenerated(result, "tutti-agent", value.TuttiAgent)
 	setAgentComposerDefaultsFromGenerated(result, "cursor", value.Cursor)
 	setAgentComposerDefaultsFromGenerated(result, "hermes", value.Hermes)
-	setAgentComposerDefaultsFromGenerated(result, "kimi-code", value.KimiCode)
 	setAgentComposerDefaultsFromGenerated(result, "openclaw", value.Openclaw)
 	return result
 }

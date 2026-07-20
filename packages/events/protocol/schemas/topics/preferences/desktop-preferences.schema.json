@@ -42,8 +42,7 @@
         "nexight": { "$ref": "#/$defs/agentComposerDefaults" },
         "hermes": { "$ref": "#/$defs/agentComposerDefaults" },
         "openclaw": { "$ref": "#/$defs/agentComposerDefaults" },
-        "opencode": { "$ref": "#/$defs/agentComposerDefaults" },
-        "kimi-code": { "$ref": "#/$defs/agentComposerDefaults" }
+        "opencode": { "$ref": "#/$defs/agentComposerDefaults" }
       }
     },
     "agentComposerDefaultsByAgentTarget": {
@@ -61,8 +60,7 @@
         "nexight": { "type": "boolean" },
         "hermes": { "type": "boolean" },
         "openclaw": { "type": "boolean" },
-        "opencode": { "type": "boolean" },
-        "kimi-code": { "type": "boolean" }
+        "opencode": { "type": "boolean" }
       }
     },
     "agentConversationDetailMode": {
@@ -83,7 +81,7 @@
     },
     "defaultAgentProvider": {
       "type": "string",
-      "enum": ["claude-code", "codex", "cursor", "kimi-code", "opencode"]
+      "enum": ["claude-code", "codex", "cursor", "opencode"]
     },
     "dockIconStyle": {
       "type": "string",

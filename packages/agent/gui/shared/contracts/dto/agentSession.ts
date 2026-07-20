@@ -6,8 +6,7 @@ export type AgentHostAgentSessionProvider =
   | "nexight"
   | "hermes"
   | "opencode"
-  | "openclaw"
-  | "kimi-code";
+  | "openclaw";
 export type AgentHostAgentSessionPermissionModeSemantic =
   | "ask-before-write"
   | "accept-edits"

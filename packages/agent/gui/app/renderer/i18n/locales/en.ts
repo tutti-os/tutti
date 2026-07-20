@@ -1101,7 +1101,6 @@ export const en = {
       agentClaudeCode: "Claude Code",
       agentTutti: "Tutti",
       agentHermes: "Hermes",
-      agentKimiCode: "Kimi Code",
       agentOpenClaw: "OpenClaw",
       statusNotStarted: "To run",
       statusRunning: "Running",

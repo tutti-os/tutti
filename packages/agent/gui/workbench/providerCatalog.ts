@@ -8,8 +8,7 @@ export const agentGuiWorkbenchProviders = [
   "tutti-agent",
   "opencode",
   "hermes",
-  "openclaw",
-  "kimi-code"
+  "openclaw"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
 export const agentGuiWorkbenchDefaultDockProviders = [
@@ -20,8 +19,7 @@ export const agentGuiWorkbenchDefaultDockProviders = [
 
 export const agentGuiWorkbenchDockSuppressedProviders = [
   "hermes",
-  "opencode",
-  "kimi-code"
+  "opencode"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
 export const agentGuiWorkbenchComingSoonProviders =

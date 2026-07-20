@@ -260,7 +260,7 @@ func Validate(descriptor ProviderDescriptor) error {
 		return fmt.Errorf("provider %q status kind %q is unsupported", providerID, descriptor.Status.Kind)
 	}
 	switch descriptor.Status.AuthOutputParserKind {
-	case AuthOutputParserKindCodex, AuthOutputParserKindClaude, AuthOutputParserKindOpenCode, AuthOutputParserKindCursor, AuthOutputParserKindHermes, AuthOutputParserKindKimiCode:
+	case AuthOutputParserKindCodex, AuthOutputParserKindClaude, AuthOutputParserKindOpenCode, AuthOutputParserKindCursor, AuthOutputParserKindHermes:
 	case "":
 		if descriptor.Status.SupportStatus != "unsupported" && len(descriptor.Status.AuthStatusCommand) > 0 {
 			return fmt.Errorf("provider %q auth output parser kind is required", providerID)

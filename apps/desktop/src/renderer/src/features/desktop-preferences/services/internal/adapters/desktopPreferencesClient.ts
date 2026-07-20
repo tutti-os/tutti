@@ -341,8 +341,7 @@ const desktopAgentProviderKeys = [
   "cursor",
   "nexight",
   "hermes",
-  "openclaw",
-  "kimi-code"
+  "openclaw"
 ] as const;
 
 function stableAgentGuiConversationRailCollapsedByProviderKey(

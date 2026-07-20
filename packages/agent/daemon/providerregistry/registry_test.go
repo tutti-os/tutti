@@ -164,7 +164,7 @@ func TestMigratedProviderSetIsComplete(t *testing.T) {
 }
 
 func TestExternalizedProvidersAreNotBuiltInTargets(t *testing.T) {
-	for _, provider := range []string{HermesProviderID, KimiCodeProviderID} {
+	for _, provider := range []string{"hermes", "kimi-code"} {
 		if _, ok := Find(provider); ok {
 			t.Fatalf("Find(%q) = true, want signed Agent Extension ownership", provider)
 		}

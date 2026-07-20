@@ -54,9 +54,5 @@ export const AGENT_PROVIDER_CAPABILITIES: Record<
   hermes: {
     runtimeObservation: "jsonl",
     experimental: false
-  },
-  "kimi-code": {
-    runtimeObservation: "jsonl",
-    experimental: false
   }
 };

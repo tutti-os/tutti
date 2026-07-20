@@ -17,7 +17,6 @@ const (
 	ProviderHermes     = providerregistry.HermesProviderID
 	ProviderOpenClaw   = providerregistry.OpenClawProviderID
 	ProviderOpenCode   = providerregistry.OpenCodeProviderID
-	ProviderKimiCode   = providerregistry.KimiCodeProviderID
 
 	SessionStatusReady     = "ready"
 	SessionStatusWorking   = "working"

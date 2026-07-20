@@ -19,8 +19,7 @@ export type AgentHostManagedToolchainAgent = {
     | "openclaw"
     | "opencode"
     | "nexight"
-    | "hermes"
-    | "kimi-code";
+    | "hermes";
   aliases?: string[];
 };
 
@@ -97,15 +96,6 @@ export const AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS: readonly AgentHostManagedToolc
       runtimeManaged: true,
       helperProvider: "opencode",
       aliases: migratedProviderAliases("opencode")
-    },
-    {
-      id: "kimi-code",
-      label: migratedProviderDisplayName("kimi-code"),
-      toolIds: ["kimi-code-cli"],
-      agentIds: ["kimi-code"],
-      runtimeManaged: true,
-      helperProvider: "kimi-code",
-      aliases: migratedProviderAliases("kimi-code")
     }
   ] as const;
 

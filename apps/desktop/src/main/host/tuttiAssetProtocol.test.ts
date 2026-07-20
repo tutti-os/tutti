@@ -112,7 +112,6 @@ test("tutti asset protocol resolves packaged codex mask asset", () => {
 for (const [agent, builtFileName] of [
   ["cursor", "cursor-colorful-abc123.png"],
   ["hermes", "hermes-rounded-abc123.png"],
-  ["kimi-code", "kimi-rounded-abc123.png"],
   ["openclaw", "openclaw-rounded-abc123.png"],
   ["opencode", "opencode-rounded-abc123.png"]
 ] as const) {

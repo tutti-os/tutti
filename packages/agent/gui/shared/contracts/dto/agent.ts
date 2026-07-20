@@ -6,8 +6,7 @@ export type AgentProviderId =
   | "nexight"
   | "opencode"
   | "openclaw"
-  | "hermes"
-  | "kimi-code";
+  | "hermes";
 
 export type AgentModelCatalogSource =
   | "codex-cli"

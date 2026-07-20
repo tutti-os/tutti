@@ -43,10 +43,6 @@ const defaultHermesIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/hermes.png",
   import.meta.url
 ).href;
-const defaultKimiCodeIconUrl = new URL(
-  "../../../assets/workspace-canvas/dock/default/kimi-code.png",
-  import.meta.url
-).href;
 const defaultIssueIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/issue.png",
   import.meta.url
@@ -85,7 +81,6 @@ export function resolveWorkspaceDockIconSet(_input: {
     codex: defaultCodexIconUrl,
     cursor: defaultCursorIconUrl,
     hermes: defaultHermesIconUrl,
-    "kimi-code": defaultKimiCodeIconUrl,
     nexight: defaultTuttiIconUrl,
     openclaw: defaultOpenclawIconUrl,
     opencode: defaultOpenCodeIconUrl,

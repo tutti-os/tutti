@@ -216,32 +216,5 @@ export const generatedProviderIdentityCatalog = [
       defaultProviderEligible: false,
       defaultProviderPriority: 0
     }
-  },
-  {
-    providerId: "kimi-code",
-    displayName: "Kimi Code",
-    iconKey: "kimi-code",
-    localeKey: "agentHost.agentGui.conversationFilterKimiCode",
-    aliases: ["kimi", "kimi-cli", "kimi code"],
-    target: {
-      id: "local:kimi-code",
-      launchRefType: "local_cli",
-      enabled: true,
-      sortOrder: 90
-    },
-    desktop: {
-      managed: true,
-      managedOrder: 8,
-      statusProbePriority: 8,
-      usageProbeKind: "",
-      visibilityGate: "",
-      runtimeProbeFallback: "",
-      installBootstrap: false,
-      refreshOnAccountChange: false,
-      unavailableDockOrderOffset: 0,
-      developerLogs: false,
-      defaultProviderEligible: true,
-      defaultProviderPriority: 5
-    }
   }
 ] as const;

@@ -9,12 +9,10 @@ import {
   cursorColorfulUrl,
   cursorRoundedUrl,
   hermesRoundedUrl,
-  kimiRoundedUrl,
   manageAgentClaudeCodeUrl,
   manageAgentCodexUrl,
   manageAgentCursorUrl,
   manageAgentHermesUrl,
-  manageAgentKimiCodeUrl,
   manageAgentOpenCodeUrl,
   manageAgentOpenclawUrl,
   manageAgentTuttiUrl,
@@ -23,7 +21,6 @@ import {
   providerRailClaudeCodeColorfulUrl,
   providerRailCodexColorfulUrl,
   providerRailHermesColorfulUrl,
-  providerRailKimiCodeColorfulUrl,
   providerRailOpenCodeColorfulUrl,
   providerRailTuttiUrl,
   tuttiAgentRoundedUrl,
@@ -75,14 +72,6 @@ export const PROVIDER_ICON_ASSETS_BY_ICON_KEY: Readonly<
     sessionColorful: hermesRoundedUrl,
     sessionFlat: hermesRoundedUrl,
     dock: hermesRoundedUrl
-  },
-  "kimi-code": {
-    manage: manageAgentKimiCodeUrl,
-    providerRail: providerRailKimiCodeColorfulUrl,
-    rounded: kimiRoundedUrl,
-    sessionColorful: kimiRoundedUrl,
-    sessionFlat: kimiRoundedUrl,
-    dock: kimiRoundedUrl
   },
   openclaw: {
     manage: manageAgentOpenclawUrl,
