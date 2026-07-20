@@ -18,9 +18,11 @@ import {
 import { classifyChangedFiles } from "./change-classification.mjs";
 import { selectRepositoryChecks } from "./repository-checks.mjs";
 import { formatFailureExcerpt } from "./run-validation-lanes.mjs";
+import { resolveGolangciLintBinary } from "./golangci-lint-tool.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
+const golangciLintBinary = resolveGolangciLintBinary({ cwd: workspaceRoot });
 const pnpmCommand = resolvePnpmCommand();
 const pnpmShellCommand = formatCommand(pnpmCommand);
 const maxParallel = Number.parseInt(readOption("--max-parallel") ?? "4", 10);
@@ -146,6 +148,7 @@ function buildChangedLanes() {
     for (const [moduleRoot, targets] of goValidationTargets.lintByModule) {
       addLane(
         buildGoLintLane({
+          golangciLintBinary,
           moduleRoot,
           targets,
           shellQuote,

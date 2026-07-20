@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 
 	"golang.org/x/mod/semver"
 
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	agentextensionbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentextension"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -204,26 +206,26 @@ func (m *Manager) resolveRuntime(ctx context.Context, installationID, cwd string
 
 func (m *Manager) discoveryRuntimeEnv(candidate DiscoveryCandidate) ([]string, error) {
 	baseEnv := m.RuntimeResolver.Env(nil)
+	if len(candidate.SearchPaths) == 0 {
+		return baseEnv, nil
+	}
+	homeDir := m.RuntimeResolver.HomeDir
+	var home string
+	var err error
+	if homeDir != nil {
+		home, err = homeDir()
+	} else {
+		home, err = os.UserHomeDir()
+	}
+	if err != nil || strings.TrimSpace(home) == "" {
+		return nil, errors.New("resolve extension discovery user directory")
+	}
 	searchDirs := make([]string, 0, len(candidate.SearchPaths))
 	for _, searchPath := range candidate.SearchPaths {
 		if searchPath.Scope != "user" {
 			return nil, errors.New("unsupported extension discovery search path scope")
 		}
-		homeDir := m.RuntimeResolver.HomeDir
-		var home string
-		var err error
-		if homeDir != nil {
-			home, err = homeDir()
-		} else {
-			home, err = os.UserHomeDir()
-		}
-		if err != nil || strings.TrimSpace(home) == "" {
-			return nil, errors.New("resolve extension discovery user directory")
-		}
 		searchDirs = append(searchDirs, filepath.Join(home, filepath.FromSlash(searchPath.Path)))
-	}
-	if len(searchDirs) == 0 {
-		return baseEnv, nil
 	}
 	searchDirs = append(searchDirs, filepath.SplitList(environmentValue(baseEnv, "PATH"))...)
 	return m.RuntimeResolver.Env([]string{"PATH=" + strings.Join(searchDirs, string(os.PathListSeparator))}), nil
@@ -268,12 +270,38 @@ func (m *Manager) runtimeBinding(installation Installation, command []string, ve
 		return RuntimeBinding{}, err
 	}
 	modelConfigOptionID, permissionConfigOptionID, reasoningConfigOptionID := composerProfile.ACPConfigOptionIDs()
+	planModeDisabledRuntimeID := ""
+	if enabled, disabled := composerProfile.PlanRuntimeIDs(); enabled != "" {
+		planModeRuntimeID = enabled
+		planModeDisabledRuntimeID = disabled
+	}
+	var launchPermission *agentruntime.StandardACPLaunchPermissionSetting
+	if setting := composerProfile.LaunchPermissionSetting(); setting != nil {
+		launchPermission = &agentruntime.StandardACPLaunchPermissionSetting{
+			Placeholder:     setting.Placeholder,
+			DefaultSemantic: setting.DefaultSemantic,
+			Values:          setting.Values,
+		}
+	}
+	var executableIdentity *agentruntime.ExecutableIdentity
+	if source == "managed" && installation.Manifest.Runtime.Install.Runner == "binary" {
+		artifact, err := runtimeBinaryArtifactForPlatform(installation.Manifest, runtimePlatform())
+		if err != nil {
+			return RuntimeBinding{}, err
+		}
+		executableIdentity = &agentruntime.ExecutableIdentity{SHA256: artifact.SHA256, SizeBytes: artifact.SizeBytes}
+	}
 	return RuntimeBinding{
 		Installation: installation, Command: command, Version: version, Source: source,
 		ToolAliases: aliases, ModelConfigOptionID: modelConfigOptionID,
 		PermissionConfigOptionID: permissionConfigOptionID, ReasoningConfigOptionID: reasoningConfigOptionID,
 		PermissionModes: permissionModes, AutomaticPermissionDecisions: composerProfile.AutomaticPermissionDecisions(),
-		PlanModeRuntimeID: planModeRuntimeID, Capabilities: capabilities,
+		PlanModeRuntimeID:            planModeRuntimeID,
+		PlanModeDisabledRuntimeID:    planModeDisabledRuntimeID,
+		PlanModeUsesLaunchPermission: composerProfile.PlanUpdateStrategy() == "restart-with-launch-permission",
+		LaunchPermission:             launchPermission,
+		SetModelReasoningEffortMeta:  composerProfile.SetModelReasoningEffortMeta(), Capabilities: capabilities,
+		ExecutableIdentity: executableIdentity,
 	}, nil
 }
 
@@ -307,7 +335,9 @@ func (m *Manager) reconcileSource(ctx context.Context, source tuttitypes.AgentEx
 	if err := verifyRelease(record.Release, source); err != nil {
 		return Installation{}, err
 	}
-	if installed, err := m.loadActive(source.Key); err == nil && installed.Version == record.Version {
+	if installed, err := m.loadActive(source.Key); err == nil && installed.Version == record.Version &&
+		installed.ReleaseArtifactSHA256 == strings.ToLower(record.Release.ArtifactSHA256) &&
+		installed.ReleaseArtifactSizeBytes == record.Release.ArtifactSizeBytes {
 		return installed, nil
 	}
 	artifact, err := m.getBytes(ctx, record.Release.ArtifactURL, maxArtifact)
@@ -321,13 +351,26 @@ func (m *Manager) reconcileSource(ctx context.Context, source tuttitypes.AgentEx
 	if hex.EncodeToString(digest[:]) != strings.ToLower(record.Release.ArtifactSHA256) {
 		return Installation{}, errors.New("artifact SHA-256 does not match signed release")
 	}
-	return m.install(record.Release, artifact)
+	return m.installVerifiedRelease(record.Release, artifact, source)
 }
 
-func (m *Manager) install(release Release, artifact []byte) (Installation, error) {
+func (m *Manager) installVerifiedRelease(release Release, artifact []byte, source tuttitypes.AgentExtensionSource) (Installation, error) {
 	if m.Installations == nil {
 		return Installation{}, errors.New("agent extension installation store is not configured")
 	}
+	if err := verifyRelease(release, source); err != nil {
+		return Installation{}, err
+	}
+	artifactDigest := sha256.Sum256(artifact)
+	actualArtifactSHA256 := hex.EncodeToString(artifactDigest[:])
+	if release.ArtifactSHA256 != "" && strings.ToLower(release.ArtifactSHA256) != actualArtifactSHA256 {
+		return Installation{}, errors.New("extension artifact does not match release SHA-256")
+	}
+	if release.ArtifactSizeBytes != 0 && release.ArtifactSizeBytes != int64(len(artifact)) {
+		return Installation{}, errors.New("extension artifact does not match release size")
+	}
+	release.ArtifactSHA256 = actualArtifactSHA256
+	release.ArtifactSizeBytes = int64(len(artifact))
 	finalDir, err := m.Installations.PackageDir(release.AgentKey, release.Version)
 	if err != nil {
 		return Installation{}, err
@@ -348,22 +391,37 @@ func (m *Manager) install(release Release, artifact []byte) (Installation, error
 	if err != nil {
 		return Installation{}, err
 	}
-	if _, err := os.Stat(finalDir); errors.Is(err, os.ErrNotExist) {
-		if err := os.Rename(staging, finalDir); err != nil {
-			return Installation{}, err
-		}
-	} else if err != nil {
+	if !reflect.DeepEqual(manifest, release.Manifest) {
+		return Installation{}, errors.New("signed release manifest does not match artifact package")
+	}
+	if err := persistSignedPackageAuthority(staging, release, artifact); err != nil {
 		return Installation{}, err
 	}
+	contentDigest, err := packageContentSHA256(staging)
+	if err != nil {
+		return Installation{}, err
+	}
+	signedContentDigest, err := packageArchiveContentSHA256(artifact)
+	if err != nil || signedContentDigest != contentDigest {
+		return Installation{}, errors.New("extracted extension package does not match signed artifact content")
+	}
+	if err := activateExtensionPackage(staging, finalDir, contentDigest); err != nil {
+		return Installation{}, err
+	}
+	authorityManifest, authorityDigest, authorityRelease, err := m.verifySignedPackageAuthority(finalDir, release.AgentKey, release.Version)
+	if err != nil || authorityDigest != contentDigest || !reflect.DeepEqual(authorityManifest, manifest) ||
+		authorityRelease.ArtifactSHA256 != release.ArtifactSHA256 {
+		if err != nil {
+			return Installation{}, err
+		}
+		return Installation{}, errors.New("activated extension package does not match signed release authority")
+	}
 	installation := Installation{
-		SchemaVersion: "tutti.agent.installation.v1",
-		ID:            release.AgentKey + "@" + release.Version,
-		AgentKey:      release.AgentKey,
-		Version:       release.Version,
-		Provider:      "acp:" + release.AgentKey,
-		PackageDir:    finalDir,
-		Manifest:      manifest,
-		InstalledAt:   time.Now().UTC(),
+		SchemaVersion: "tutti.agent.installation.v1", ID: release.AgentKey + "@" + release.Version,
+		AgentKey: release.AgentKey, Version: release.Version, Provider: "acp:" + release.AgentKey,
+		PackageDir: finalDir, PackageContentSHA256: contentDigest,
+		ReleaseArtifactSHA256: strings.ToLower(release.ArtifactSHA256), ReleaseArtifactSizeBytes: release.ArtifactSizeBytes,
+		Manifest: manifest, InstalledAt: time.Now().UTC(),
 	}
 	locales := map[string]string{}
 	if err := readJSON(filepath.Join(finalDir, filepath.FromSlash(manifest.LocalizationInfo.DefaultFile)), &locales); err != nil {
@@ -427,7 +485,17 @@ func (m *Manager) loadActive(key string) (Installation, error) {
 	if value.AgentKey != key || value.ID != key+"@"+value.Version {
 		return Installation{}, errors.New("active installation identity is invalid")
 	}
-	return m.validateInstallation(value)
+	legacy := legacyRemoteInstallationRecord(value)
+	validated, err := m.validateInstallation(value)
+	if err != nil {
+		return Installation{}, err
+	}
+	if legacy && value.PackageContentSHA256 == "" {
+		if err := m.Installations.PutActive(validated); err != nil {
+			return Installation{}, fmt.Errorf("migrate legacy extension installation identity: %w", err)
+		}
+	}
+	return validated, nil
 }
 
 func (m *Manager) loadInstallationByID(id string) (Installation, error) {
@@ -459,20 +527,128 @@ func (m *Manager) validateInstallation(value Installation) (Installation, error)
 	if filepath.Clean(value.PackageDir) != expectedDir {
 		return Installation{}, errors.New("extension installation package path is invalid")
 	}
-	manifest, err := validateInstalledPackage(expectedDir, value.AgentKey, value.Version)
-	if err != nil {
-		return Installation{}, err
+	var manifest Manifest
+	if strings.Contains(value.Version, localPackageVersionMarker) {
+		if !validPackageContentSHA256(value.PackageContentSHA256) {
+			return Installation{}, errors.New("local extension installation content identity is missing or invalid")
+		}
+		contentDigest, err := packageContentSHA256(expectedDir)
+		if err != nil {
+			return Installation{}, fmt.Errorf("fingerprint local extension package: %w", err)
+		}
+		if contentDigest != value.PackageContentSHA256 {
+			return Installation{}, errors.New("local extension installation content does not match snapshot")
+		}
+		manifest, err = validateInstalledPackage(expectedDir, value.AgentKey, value.Version)
+		if err != nil {
+			return Installation{}, err
+		}
+	} else if legacyRemoteInstallationRecord(value) {
+		var contentDigest string
+		manifest, contentDigest, err = validateLegacyRemoteInstallation(expectedDir, value)
+		if err != nil {
+			return Installation{}, err
+		}
+		if value.PackageContentSHA256 != "" && value.PackageContentSHA256 != contentDigest {
+			return Installation{}, errors.New("legacy extension installation content does not match migrated snapshot")
+		}
+		value.PackageContentSHA256 = contentDigest
+	} else {
+		var release Release
+		var authorityDigest string
+		manifest, authorityDigest, release, err = m.verifySignedPackageAuthority(expectedDir, value.AgentKey, value.Version)
+		if err != nil {
+			return Installation{}, err
+		}
+		if value.PackageContentSHA256 != authorityDigest || value.ReleaseArtifactSHA256 != strings.ToLower(release.ArtifactSHA256) ||
+			value.ReleaseArtifactSizeBytes != release.ArtifactSizeBytes {
+			return Installation{}, errors.New("extension installation record does not match signed release authority")
+		}
 	}
-	if manifest.Name != value.Manifest.Name || manifest.Icon.Src != value.Manifest.Icon.Src || manifest.MaskIcon.Src != value.Manifest.MaskIcon.Src || manifest.HeroImage.Src != value.Manifest.HeroImage.Src || manifest.Runtime.Kind != value.Manifest.Runtime.Kind {
-		return Installation{}, errors.New("extension installation manifest does not match package")
+	if !reflect.DeepEqual(manifest, value.Manifest) {
+		return Installation{}, errors.New("extension installation manifest does not match signed package authority")
 	}
 	value.PackageDir = expectedDir
-	value.Manifest = manifest
 	return value, nil
 }
 
-func runtimeVersion(ctx context.Context, executable string, args []string, constraint string) (string, error) {
-	return runtimeVersionWithEnv(ctx, executable, args, constraint, nil)
+func legacyRemoteInstallationRecord(value Installation) bool {
+	return !strings.Contains(value.Version, localPackageVersionMarker) &&
+		value.ReleaseArtifactSHA256 == "" && value.ReleaseArtifactSizeBytes == 0
+}
+
+func validateLegacyRemoteInstallation(root string, value Installation) (Manifest, string, error) {
+	if value.SchemaVersion != "tutti.agent.installation.v1" ||
+		(value.Manifest.Runtime.Install.Runner != "npm" && value.Manifest.Runtime.Install.Runner != "pnpm" && value.Manifest.Runtime.Install.Runner != "uv") ||
+		len(value.Manifest.Runtime.Install.Artifacts) != 0 || value.Manifest.Runtime.Launch.PublishUserCommand != nil {
+		return Manifest{}, "", errors.New("legacy extension installation contract is invalid")
+	}
+	for _, name := range []string{signedReleaseRecordName, signedReleaseArtifactName} {
+		if _, err := os.Lstat(filepath.Join(root, name)); err == nil {
+			return Manifest{}, "", errors.New("legacy extension installation contains partial signed authority")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return Manifest{}, "", err
+		}
+	}
+	before, err := packageContentSHA256(root)
+	if err != nil {
+		return Manifest{}, "", fmt.Errorf("fingerprint legacy extension package before validation: %w", err)
+	}
+	manifest, err := validateInstalledPackage(root, value.AgentKey, value.Version)
+	if err != nil {
+		return Manifest{}, "", err
+	}
+	if !reflect.DeepEqual(manifest, value.Manifest) {
+		return Manifest{}, "", errors.New("legacy extension installation manifest does not match package")
+	}
+	after, err := packageContentSHA256(root)
+	if err != nil {
+		return Manifest{}, "", fmt.Errorf("fingerprint legacy extension package after validation: %w", err)
+	}
+	if before != after {
+		return Manifest{}, "", errors.New("legacy extension installation changed during validation")
+	}
+	return manifest, after, nil
+}
+
+func activateExtensionPackage(staging, finalDir, expectedDigest string) error {
+	if _, err := packageContentSHA256(finalDir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if info, statErr := os.Lstat(finalDir); statErr != nil || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("existing extension package root is unsafe")
+		}
+	}
+	backup := finalDir + ".previous"
+	if err := os.RemoveAll(backup); err != nil {
+		return err
+	}
+	hadPrevious := false
+	if _, err := os.Lstat(finalDir); err == nil {
+		if err := os.Rename(finalDir, backup); err != nil {
+			return err
+		}
+		hadPrevious = true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.Rename(staging, finalDir); err != nil {
+		if hadPrevious {
+			_ = os.Rename(backup, finalDir)
+		}
+		return err
+	}
+	installedDigest, err := packageContentSHA256(finalDir)
+	if err != nil || installedDigest != expectedDigest {
+		_ = os.RemoveAll(finalDir)
+		if hadPrevious {
+			_ = os.Rename(backup, finalDir)
+		}
+		if err != nil {
+			return err
+		}
+		return errors.New("activated extension package content identity changed")
+	}
+	_ = os.RemoveAll(backup)
+	return nil
 }
 
 func runtimeVersionWithEnv(ctx context.Context, executable string, args []string, constraint string, env []string) (string, error) {
@@ -482,10 +658,37 @@ func runtimeVersionWithEnv(ctx context.Context, executable string, args []string
 	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	command := exec.CommandContext(probeCtx, executable, args...)
-	if len(env) > 0 {
-		command.Env = env
-	}
+	command.Env = env
 	output, err := command.CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	version := regexp.MustCompile(`\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?`).FindString(string(output))
+	if !validSemver(version) || !matchesConstraint(version, constraint) {
+		return "", errors.New("runtime version is incompatible")
+	}
+	return version, nil
+}
+
+func runtimeVersionWithIdentity(
+	ctx context.Context,
+	executable string,
+	args []string,
+	constraint string,
+	identity *agentruntime.ExecutableIdentity,
+) (string, error) {
+	if len(args) == 0 {
+		return "", nil
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var output []byte
+	var err error
+	if identity != nil {
+		output, err = agentruntime.RunVerifiedExecutable(probeCtx, executable, args, identity)
+	} else {
+		output, err = exec.CommandContext(probeCtx, executable, args...).CombinedOutput()
+	}
 	if err != nil {
 		return "", err
 	}

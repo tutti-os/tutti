@@ -25,15 +25,24 @@ func (s *Service) extensionComposerPermissionConfig(
 		if runtimeID == "" {
 			continue
 		}
+		semantic := normalizeExtensionPermissionModeSemantic(declaration.Semantic)
+		modeID := runtimeID
+		if profile.PermissionModeIDsAreSemantic {
+			modeID = string(semantic)
+		}
 		modes = append(modes, PermissionModeOption{
-			ID:       runtimeID,
-			Label:    runtimeID,
-			Semantic: normalizeExtensionPermissionModeSemantic(declaration.Semantic),
+			ID:       modeID,
+			Label:    modeID,
+			Semantic: semantic,
 		})
+	}
+	selected = strings.TrimSpace(selected)
+	if selected == "" {
+		selected = strings.TrimSpace(profile.DefaultPermissionModeID)
 	}
 	return PermissionConfig{
 		Configurable: len(modes) > 0,
-		DefaultValue: strings.TrimSpace(selected),
+		DefaultValue: selected,
 		Modes:        modes,
 	}, nil
 }

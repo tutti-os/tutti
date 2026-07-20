@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -87,7 +88,7 @@ func newStandardACPAdapterFromProviderDescriptor(
 	settingsEnvironment := descriptor.Runtime.StandardACP.SettingsEnvironment
 	standardACP := descriptor.Runtime.StandardACP
 	defaultRuntimeModeID := strings.TrimSpace(descriptor.Runtime.StandardACP.DefaultPermissionModeRuntimeID)
-	adapter := &standardACPAdapter{
+	return &standardACPAdapter{
 		config: standardACPConfig{
 			provider:            descriptor.Identity.ID,
 			adapterName:         descriptor.Runtime.Name,
@@ -121,36 +122,6 @@ func newStandardACPAdapterFromProviderDescriptor(
 		host:      host,
 		sessions:  make(map[string]*standardACPSession),
 	}
-	if decision := autoApprovePermissionDecisionFromInputIDs(standardACP.AutoApprovePermissionModeInputIDs); decision != nil {
-		adapter.config.automaticPermissionDecision = decision
-	}
-	return adapter
-}
-
-// autoApprovePermissionDecisionFromInputIDs builds the descriptor-driven
-// automaticPermissionDecision hook: incoming permission requests are resolved
-// as approved without prompting while the session's permission tier is one of
-// the listed input ids. Returns nil when no tier auto-approves, leaving the
-// default prompting behavior in place.
-func autoApprovePermissionDecisionFromInputIDs(inputIDs []string) func(string) string {
-	if len(inputIDs) == 0 {
-		return nil
-	}
-	autoApprove := make(map[string]struct{}, len(inputIDs))
-	for _, id := range inputIDs {
-		if trimmed := strings.TrimSpace(id); trimmed != "" {
-			autoApprove[trimmed] = struct{}{}
-		}
-	}
-	if len(autoApprove) == 0 {
-		return nil
-	}
-	return func(permissionModeID string) string {
-		if _, ok := autoApprove[strings.TrimSpace(permissionModeID)]; ok {
-			return "approved"
-		}
-		return ""
-	}
 }
 
 type StandardACPAdapterConfig struct {
@@ -167,9 +138,14 @@ type StandardACPAdapterConfig struct {
 	PermissionModes              map[string]string
 	AutomaticPermissionDecisions map[string]string
 	PlanModeRuntimeID            string
+	PlanModeDisabledRuntimeID    string
+	PlanModeUsesLaunchPermission bool
+	LaunchPermission             *StandardACPLaunchPermissionSetting
+	SetModelReasoningEffortMeta  bool
 	Capabilities                 []string
 	AgentTargetID                string
 	InstallationID               string
+	ExecutableIdentity           *ExecutableIdentity
 }
 
 // NewStandardACPAdapter creates the generic, data-driven ACP adapter used by
@@ -180,28 +156,49 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 	if provider == "" || len(config.Command) == 0 || strings.TrimSpace(config.Command[0]) == "" {
 		return nil, fmt.Errorf("standard ACP provider and command are required")
 	}
+	launchPermission, err := validateStandardACPLaunchPermissionSetting(config.Command, config.LaunchPermission)
+	if err != nil {
+		return nil, err
+	}
+	if config.PlanModeUsesLaunchPermission {
+		planRuntimeID := strings.TrimSpace(config.PlanModeRuntimeID)
+		if launchPermission == nil || !standardACPLaunchSettingValuePattern.MatchString(planRuntimeID) {
+			return nil, errors.New("standard ACP launch-permission Plan mode declaration is invalid")
+		}
+		for _, permissionRuntimeID := range launchPermission.Values {
+			if planRuntimeID == permissionRuntimeID {
+				return nil, errors.New("standard ACP launch-permission Plan mode must use a distinct runtime value")
+			}
+		}
+	}
 	host = normalizeHostMetadata(host)
 	permissionModes := cloneStandardACPToolAliases(config.PermissionModes)
 	adapter := &standardACPAdapter{
 		config: standardACPConfig{
-			provider:                 provider,
-			adapterName:              strings.TrimSpace(config.Name),
-			command:                  append([]string(nil), config.Command...),
-			defaultTitle:             strings.TrimSpace(config.DisplayName),
-			defaultTitleAliases:      []string{strings.TrimSpace(config.DisplayName), provider},
-			authRequiredMessage:      strings.TrimSpace(config.AuthMessage),
-			toolAliases:              cloneStandardACPToolAliases(config.ToolAliases),
-			modelConfigOptionID:      strings.TrimSpace(config.ModelConfigOptionID),
-			permissionConfigOptionID: strings.TrimSpace(config.PermissionConfigOptionID),
-			reasoningConfigOptionID:  strings.TrimSpace(config.ReasoningConfigOptionID),
-			restrictConfigOptions:    config.RestrictConfigOptions,
-			capabilities:             append([]string(nil), config.Capabilities...),
-			agentTargetID:            strings.TrimSpace(config.AgentTargetID),
-			installationID:           strings.TrimSpace(config.InstallationID),
-			permissionModeID:         func(input string) string { return permissionModes[strings.ToLower(strings.TrimSpace(input))] },
-			planModeRuntimeID:        strings.TrimSpace(config.PlanModeRuntimeID),
-			initializeParams:         func() map[string]any { return defaultACPInitializeParams(host) },
-			env:                      func(session Session) []string { return standardACPEnv(session, host) },
+			provider:                     provider,
+			adapterName:                  strings.TrimSpace(config.Name),
+			command:                      append([]string(nil), config.Command...),
+			defaultTitle:                 strings.TrimSpace(config.DisplayName),
+			defaultTitleAliases:          []string{strings.TrimSpace(config.DisplayName), provider},
+			authRequiredMessage:          strings.TrimSpace(config.AuthMessage),
+			toolAliases:                  cloneStandardACPToolAliases(config.ToolAliases),
+			modelConfigOptionID:          strings.TrimSpace(config.ModelConfigOptionID),
+			permissionConfigOptionID:     strings.TrimSpace(config.PermissionConfigOptionID),
+			reasoningConfigOptionID:      strings.TrimSpace(config.ReasoningConfigOptionID),
+			restrictConfigOptions:        config.RestrictConfigOptions,
+			capabilities:                 append([]string(nil), config.Capabilities...),
+			agentTargetID:                strings.TrimSpace(config.AgentTargetID),
+			installationID:               strings.TrimSpace(config.InstallationID),
+			executableIdentity:           cloneExecutableIdentity(config.ExecutableIdentity),
+			permissionModeID:             func(input string) string { return permissionModes[strings.ToLower(strings.TrimSpace(input))] },
+			planModeRuntimeID:            strings.TrimSpace(config.PlanModeRuntimeID),
+			planModeDisabledRuntimeID:    strings.TrimSpace(config.PlanModeDisabledRuntimeID),
+			planModeUsesLaunchPermission: config.PlanModeUsesLaunchPermission,
+			failOnSetModeError:           strings.TrimSpace(config.PlanModeRuntimeID) != "" && !config.PlanModeUsesLaunchPermission,
+			launchPermission:             launchPermission,
+			setModelReasoningEffortMeta:  config.SetModelReasoningEffortMeta,
+			initializeParams:             func() map[string]any { return defaultACPInitializeParams(host) },
+			env:                          func(session Session) []string { return standardACPEnv(session, host) },
 		},
 		transport: transport, host: host, sessions: make(map[string]*standardACPSession),
 	}

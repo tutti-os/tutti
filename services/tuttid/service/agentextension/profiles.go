@@ -26,6 +26,22 @@ type ComposerProfile struct {
 		Semantic          string `json:"semantic"`
 		AutomaticDecision string `json:"automaticDecision,omitempty"`
 	} `json:"permissionModes"`
+	LaunchSettings *struct {
+		Permission *struct {
+			Placeholder     string `json:"placeholder"`
+			DefaultSemantic string `json:"defaultSemantic"`
+		} `json:"permission,omitempty"`
+	} `json:"launchSettings,omitempty"`
+	WorkflowModes *struct {
+		Plan *struct {
+			EnabledRuntimeID  string `json:"enabledRuntimeId"`
+			DisabledRuntimeID string `json:"disabledRuntimeId"`
+			UpdateStrategy    string `json:"updateStrategy,omitempty"`
+		} `json:"plan,omitempty"`
+	} `json:"workflowModes,omitempty"`
+	SetModel *struct {
+		ReasoningEffortMeta bool `json:"reasoningEffortMeta"`
+	} `json:"setModel,omitempty"`
 	SlashCommands *struct {
 		CommandCatalogAuthoritative bool `json:"commandCatalogAuthoritative"`
 		Commands                    []struct {
@@ -41,6 +57,64 @@ type ComposerProfile struct {
 			Path  string `json:"path"`
 		} `json:"roots"`
 	} `json:"skills,omitempty"`
+}
+
+const composerPermissionLaunchPlaceholder = "${permissionMode}"
+
+type ComposerLaunchPermissionSetting struct {
+	Placeholder     string
+	DefaultSemantic string
+	Values          map[string]string
+}
+
+func (profile ComposerProfile) LaunchPermissionSetting() *ComposerLaunchPermissionSetting {
+	if profile.LaunchSettings == nil || profile.LaunchSettings.Permission == nil {
+		return nil
+	}
+	values := make(map[string]string, len(profile.PermissionModes))
+	for _, mode := range profile.PermissionModes {
+		values[strings.TrimSpace(mode.Semantic)] = strings.TrimSpace(mode.RuntimeID)
+	}
+	return &ComposerLaunchPermissionSetting{
+		Placeholder:     strings.TrimSpace(profile.LaunchSettings.Permission.Placeholder),
+		DefaultSemantic: strings.TrimSpace(profile.LaunchSettings.Permission.DefaultSemantic),
+		Values:          values,
+	}
+}
+
+func (profile ComposerProfile) PlanRuntimeIDs() (enabled string, disabled string) {
+	if profile.WorkflowModes == nil || profile.WorkflowModes.Plan == nil {
+		return "", ""
+	}
+	return strings.TrimSpace(profile.WorkflowModes.Plan.EnabledRuntimeID),
+		strings.TrimSpace(profile.WorkflowModes.Plan.DisabledRuntimeID)
+}
+
+func (profile ComposerProfile) PlanUpdateStrategy() string {
+	if profile.WorkflowModes == nil || profile.WorkflowModes.Plan == nil {
+		return ""
+	}
+	return strings.TrimSpace(profile.WorkflowModes.Plan.UpdateStrategy)
+}
+
+func (profile ComposerProfile) SetModelReasoningEffortMeta() bool {
+	return profile.SetModel != nil && profile.SetModel.ReasoningEffortMeta
+}
+
+func (profile ComposerProfile) AutomaticPermissionDecisions() map[string]string {
+	decisions := map[string]string{}
+	for _, mode := range profile.PermissionModes {
+		decision := strings.TrimSpace(mode.AutomaticDecision)
+		if decision == "" {
+			continue
+		}
+		for _, id := range []string{mode.RuntimeID, mode.Semantic} {
+			if normalized := strings.ToLower(strings.TrimSpace(id)); normalized != "" {
+				decisions[normalized] = decision
+			}
+		}
+	}
+	return decisions
 }
 
 type ComposerConfigOptionReference struct {
@@ -252,6 +326,12 @@ func validateComposerProfile(profile ComposerProfile) error {
 		}
 		return errors.New("composer automatic permission decision is unsafe")
 	}
+	if err := validateComposerLaunchSettings(profile); err != nil {
+		return err
+	}
+	if err := validateComposerWorkflowModes(profile); err != nil {
+		return err
+	}
 	if profile.Skills == nil {
 		return nil
 	}
@@ -276,24 +356,83 @@ func validateComposerProfile(profile ComposerProfile) error {
 	return nil
 }
 
-func (profile ComposerProfile) AutomaticPermissionDecisions() map[string]string {
-	decisions := map[string]string{}
+func validateComposerLaunchSettings(profile ComposerProfile) error {
+	setting := profile.LaunchPermissionSetting()
+	if setting == nil {
+		return nil
+	}
+	if setting.Placeholder != composerPermissionLaunchPlaceholder {
+		return errors.New("composer launch permission placeholder is unsupported")
+	}
+	if setting.DefaultSemantic == "" {
+		setting.DefaultSemantic = "ask-before-write"
+	}
+	if setting.DefaultSemantic != "ask-before-write" {
+		return errors.New("composer launch permission default semantic is unsupported")
+	}
+	wanted := map[string]struct{}{
+		"ask-before-write": {},
+		"auto":             {},
+		"full-access":      {},
+	}
+	seenSemantic := map[string]struct{}{}
+	seenRuntime := map[string]struct{}{}
 	for _, mode := range profile.PermissionModes {
-		decision := strings.TrimSpace(mode.AutomaticDecision)
-		if decision == "" {
-			continue
+		semantic := strings.TrimSpace(mode.Semantic)
+		runtimeID := strings.TrimSpace(mode.RuntimeID)
+		if _, ok := wanted[semantic]; !ok {
+			return errors.New("composer launch permission semantic is unsupported")
 		}
-		for _, id := range []string{mode.RuntimeID, mode.Semantic} {
-			if normalized := strings.ToLower(strings.TrimSpace(id)); normalized != "" {
-				decisions[normalized] = decision
+		if _, exists := seenSemantic[semantic]; exists {
+			return errors.New("composer launch permission semantic must be unique")
+		}
+		if !composerLaunchSettingValue.MatchString(runtimeID) {
+			return errors.New("composer launch permission runtime value is unsupported")
+		}
+		if _, exists := seenRuntime[runtimeID]; exists {
+			return errors.New("composer launch permission runtime value must be unique")
+		}
+		seenSemantic[semantic] = struct{}{}
+		seenRuntime[runtimeID] = struct{}{}
+		delete(wanted, semantic)
+	}
+	if len(wanted) != 0 {
+		return errors.New("composer launch permission requires ask-before-write, auto, and full-access mappings")
+	}
+	return nil
+}
+
+func validateComposerWorkflowModes(profile ComposerProfile) error {
+	enabled, disabled := profile.PlanRuntimeIDs()
+	if enabled == "" && disabled == "" {
+		if profile.PlanUpdateStrategy() != "" {
+			return errors.New("composer plan workflow update strategy requires runtime ids")
+		}
+		return nil
+	}
+	if !composerLaunchSettingValue.MatchString(enabled) || !composerLaunchSettingValue.MatchString(disabled) || enabled == disabled {
+		return errors.New("composer plan workflow runtime ids are invalid")
+	}
+	strategy := profile.PlanUpdateStrategy()
+	if strategy != "" && strategy != "session-mode" && strategy != "restart-with-launch-permission" {
+		return errors.New("composer plan workflow update strategy is invalid")
+	}
+	if strategy == "restart-with-launch-permission" && profile.LaunchPermissionSetting() == nil {
+		return errors.New("composer plan workflow launch restart requires launch permission settings")
+	}
+	if strategy == "restart-with-launch-permission" {
+		for _, permissionMode := range profile.PermissionModes {
+			if enabled == strings.TrimSpace(permissionMode.RuntimeID) {
+				return errors.New("composer launch-restart Plan mode must use a distinct runtime value")
 			}
 		}
 	}
-	return decisions
+	return nil
 }
 
 var composerSlashCommandName = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,63}$`)
 var composerConfigOptionID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+var composerLaunchSettingValue = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 
 func validateInstalledProfiles(root string, manifest Manifest) error {
 	for file, schema := range map[string]string{
@@ -319,6 +458,21 @@ func validateInstalledProfiles(root string, manifest Manifest) error {
 		return err
 	}
 	if err := validateDiscoveryProfile(discovery); err != nil {
+		return err
+	}
+	var composer ComposerProfile
+	if manifest.Profiles.Composer != "" {
+		if err := readJSON(filepath.Join(root, filepath.FromSlash(manifest.Profiles.Composer)), &composer); err != nil {
+			return err
+		}
+		if err := validateComposerProfile(composer); err != nil {
+			return err
+		}
+	}
+	if err := validateDiscoveryLaunchPlaceholders(discovery, composer); err != nil {
+		return err
+	}
+	if err := validateManifestLaunchPlaceholders(manifest, composer); err != nil {
 		return err
 	}
 	installation := Installation{PackageDir: root, Manifest: manifest}

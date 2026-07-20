@@ -500,6 +500,7 @@ export const en = {
           extensionCodeBuddy: "CodeBuddy Code",
           extensionEnableToSetUp: "Enable to set up",
           extensionGemini: "Gemini CLI",
+          extensionGrok: "Grok Build",
           extensionHermes: "Hermes Agent",
           extensionGitHubCopilot: "GitHub Copilot CLI",
           extensionKilo: "Kilo Code",
@@ -923,6 +924,12 @@ export const en = {
         logsExported: "Exported {{count}} log files to {{path}}.",
         logsExportFailed: "We couldn't export local logs right now.",
         logsLoadFailed: "We couldn't load local log details right now.",
+        qwenAgentDescription:
+          "Show Qwen Code across Tutti. Disabled by default while Agent Extensions are in preview.",
+        qwenAgentLabel: "Enable Qwen Code Agent",
+        grokAgentDescription:
+          "Load the signed Grok Build Agent Extension and expose it in AgentGUI.",
+        grokAgentLabel: "Enable Grok Build Agent",
         logsSizeLabel: "Log size",
         logsSummary: "{{count}} files, {{size}} total",
         logsTitle: "Logs",

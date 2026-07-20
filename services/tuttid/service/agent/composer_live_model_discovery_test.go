@@ -473,6 +473,67 @@ func TestMergeLiveModelsIntoComposerOptionsKeepsSupportsImageInput(t *testing.T)
 	}
 }
 
+func TestMergeLiveModelsIntoComposerOptionsBuildsPerModelReasoningSelectors(t *testing.T) {
+	supported := true
+	unsupported := false
+	imageSupported := true
+	merged := mergeLiveModelsIntoComposerOptions(ComposerOptions{
+		Provider:          "acp:dynamic-models",
+		EffectiveSettings: ComposerSettings{Model: "reasoning-model", ReasoningEffort: "stale"},
+		RuntimeContext:    map[string]any{},
+	}, []ComposerConfigOptionValue{
+		{
+			ID:                      "reasoning-model",
+			Label:                   "Reasoning Model",
+			Value:                   "reasoning-model",
+			SupportsImageInput:      &imageSupported,
+			SupportsReasoningEffort: &supported,
+			ReasoningEffort:         "deep",
+			ReasoningEfforts: []AgentModelReasoningEffortOption{
+				{Value: "brief", Label: "Brief", Description: "Fast"},
+				{Value: "deep", Label: "Deep", Description: "Thorough"},
+			},
+			ReasoningEffortsAdvertised: true,
+		},
+		{
+			ID:                         "plain-model",
+			Label:                      "Plain Model",
+			Value:                      "plain-model",
+			SupportsReasoningEffort:    &unsupported,
+			ReasoningEffortsAdvertised: true,
+		},
+	})
+
+	profile, ok := merged.ReasoningOptionsByModel["reasoning-model"]
+	if !ok || profile.DefaultValue != "deep" || len(profile.Options) != 2 {
+		t.Fatalf("reasoning profile = %#v, want dynamic brief/deep with deep default", profile)
+	}
+	if profile.Options[0].Label != "Brief" || profile.Options[0].Description != "Fast" {
+		t.Fatalf("reasoning options = %#v, want runtime labels and descriptions", profile.Options)
+	}
+	plain, ok := merged.ReasoningOptionsByModel["plain-model"]
+	if !ok || plain.DefaultValue != "" || len(plain.Options) != 0 {
+		t.Fatalf("plain profile = %#v, want explicit unsupported empty profile", plain)
+	}
+	if !merged.ReasoningConfig.Configurable || merged.ReasoningConfig.CurrentValue != "deep" || merged.EffectiveSettings.ReasoningEffort != "deep" {
+		t.Fatalf("selected reasoning = config %#v settings %#v", merged.ReasoningConfig, merged.EffectiveSettings)
+	}
+	configOptions, ok := merged.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 {
+		t.Fatalf("runtime configOptions = %#v", merged.RuntimeContext["configOptions"])
+	}
+	modelOptions, ok := configOptions[0]["options"].([]map[string]any)
+	if !ok || len(modelOptions) != 2 {
+		t.Fatalf("runtime model options = %#v", configOptions[0]["options"])
+	}
+	if modelOptions[0]["reasoningEffort"] != "deep" || modelOptions[0]["supportsReasoningEffort"] != true || modelOptions[0]["supportsImageInput"] != true {
+		t.Fatalf("runtime reasoning model metadata = %#v", modelOptions[0])
+	}
+	if efforts, ok := modelOptions[0]["reasoningEfforts"].([]map[string]any); !ok || len(efforts) != 2 || efforts[0]["value"] != "brief" {
+		t.Fatalf("runtime reasoning efforts = %#v", modelOptions[0]["reasoningEfforts"])
+	}
+}
+
 func TestMergeLiveModelsIntoComposerOptionsDoesNotAppendUnsupportedSelectedModel(t *testing.T) {
 	merged := mergeLiveModelsIntoComposerOptions(ComposerOptions{
 		Provider: "claude-code",

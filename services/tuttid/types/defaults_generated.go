@@ -83,6 +83,13 @@ var generatedDefaults = generatedDefaultsSpec{
 				SigningPublicKey: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAnO+V8MpPIY90uDINyaJjtENg/vPQpURo0AltBZLqvgw=\n-----END PUBLIC KEY-----\n",
 				Enabled:          false,
 			},
+			{
+				Key:              "grok",
+				ReleaseIndexURL:  "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/grok/versions.json",
+				SigningKeyID:     "tutti-grok-release-v1",
+				SigningPublicKey: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA2ZaE97XclDVCG9MLnQ5z1ZTd8FJPeLqj6KDsY69Iyu8=\n-----END PUBLIC KEY-----\n",
+				Enabled:          false,
+			},
 		},
 	},
 }

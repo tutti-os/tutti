@@ -35,8 +35,9 @@ func (h *Host) GetSession(ctx context.Context, ref SessionRef) (GetSessionResult
 }
 
 // UpdateSettings preserves the established split: historical sessions update
-// canonical settings only, while live sessions route the patch to the runtime.
-// The same per-session lock used by resume protects both paths.
+// canonical settings directly, while live sessions apply the patch to the
+// runtime first and then persist the resulting settings. The same per-session
+// lock used by resume protects both paths.
 func (h *Host) UpdateSettings(ctx context.Context, input UpdateSettingsInput) (UpdateSettingsResult, error) {
 	ref := normalizedSessionRef(SessionRef{WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID})
 	if h == nil || h.store == nil || h.sessionManagement == nil || h.runtime == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" {
@@ -66,6 +67,26 @@ func (h *Host) UpdateSettings(ctx context.Context, input UpdateSettingsInput) (U
 		if err != nil {
 			return UpdateSettingsResult{}, err
 		}
+		settings := applyComposerSettingsPatch(composerSettingsFromMap(result.Canonical.Settings), patch)
+		if result.Session.Settings != nil {
+			settings = *result.Session.Settings
+		}
+		if h.settingsPolicy != nil {
+			settings = h.settingsPolicy.NormalizePersistedSettings(ctx, result.Canonical, settings, patch)
+		}
+		canonical, updated, err := h.sessionManagement.UpdateSessionSettings(
+			ctx,
+			ref.WorkspaceID,
+			ref.AgentSessionID,
+			settings,
+		)
+		if err != nil {
+			return UpdateSettingsResult{}, err
+		}
+		if !updated {
+			return UpdateSettingsResult{}, ErrSessionNotFound
+		}
+		result.Canonical = canonical
 		return UpdateSettingsResult(result), nil
 	}
 

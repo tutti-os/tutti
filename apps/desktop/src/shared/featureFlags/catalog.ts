@@ -26,6 +26,7 @@ export const AGENT_EXTENSION_KILO_FLAG = "agent.extension.kilo";
 export const AGENT_EXTENSION_QWEN_FLAG = "agent.extension.qwen";
 export const AGENT_EXTENSION_HERMES_FLAG = "agent.extension.hermes";
 export const AGENT_EXTENSION_KIMI_CODE_FLAG = "agent.extension.kimi-code";
+export const AGENT_EXTENSION_GROK_FLAG = "agent.extension.grok";
 export const AGENT_EXTENSION_ACTIVATION_FLAGS = [
   AGENT_EXTENSION_GEMINI_FLAG,
   AGENT_EXTENSION_CODEBUDDY_FLAG,
@@ -33,7 +34,8 @@ export const AGENT_EXTENSION_ACTIVATION_FLAGS = [
   AGENT_EXTENSION_KILO_FLAG,
   AGENT_EXTENSION_QWEN_FLAG,
   AGENT_EXTENSION_HERMES_FLAG,
-  AGENT_EXTENSION_KIMI_CODE_FLAG
+  AGENT_EXTENSION_KIMI_CODE_FLAG,
+  AGENT_EXTENSION_GROK_FLAG
 ] as const;
 export type AgentExtensionActivationFlag =
   (typeof AGENT_EXTENSION_ACTIVATION_FLAGS)[number];
@@ -80,6 +82,12 @@ export const EARLY_ACCESS_AGENT_EXTENSION_INTEGRATIONS = [
     key: "kimi-code",
     labelKey: "workspace.settings.agent.agents.extensionKimiCode",
     targetId: "extension:kimi-code"
+  },
+  {
+    activationFlag: AGENT_EXTENSION_GROK_FLAG,
+    key: "grok",
+    labelKey: "workspace.settings.agent.agents.extensionGrok",
+    targetId: "extension:grok"
   }
 ] as const;
 
@@ -129,6 +137,11 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
   },
   {
     key: AGENT_EXTENSION_KIMI_CODE_FLAG,
+    default: false,
+    group: "agent"
+  },
+  {
+    key: AGENT_EXTENSION_GROK_FLAG,
     default: false,
     group: "agent"
   },

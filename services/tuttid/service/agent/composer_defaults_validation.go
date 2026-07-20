@@ -68,7 +68,8 @@ func (s *Service) ValidateAgentComposerDefaultsPatch(
 				return fmt.Errorf("%w: permission mode is not supported by agent target", ErrInvalidArgument)
 			}
 		case preferencesbiz.AgentComposerDefaultsFieldReasoningEffort:
-			if err := validateComposerDefaultOption(field, selected, options.ReasoningConfig.Configurable, options.ReasoningConfig.Options); err != nil {
+			reasoningConfig := composerReasoningConfigForSelectedModel(options)
+			if err := validateComposerDefaultOption(field, selected, reasoningConfig.Configurable, reasoningConfig.Options); err != nil {
 				return err
 			}
 		case preferencesbiz.AgentComposerDefaultsFieldSpeed:
@@ -140,10 +141,11 @@ func (s *Service) validateExtensionComposerSettingsForCreate(
 			!permissionModeConfigHasModeID(options.PermissionConfig, settings.PermissionModeID)) {
 		return fmt.Errorf("%w: permission mode is not supported by agent target", ErrInvalidArgument)
 	}
+	reasoningConfig := composerReasoningConfigForSelectedModel(options)
 	if err := validateExtensionComposerOption(
 		preferencesbiz.AgentComposerDefaultsFieldReasoningEffort,
 		settings.ReasoningEffort,
-		options.ReasoningConfig,
+		reasoningConfig,
 	); err != nil {
 		return err
 	}
@@ -152,6 +154,19 @@ func (s *Service) validateExtensionComposerSettingsForCreate(
 		settings.Speed,
 		options.SpeedConfig,
 	)
+}
+
+func composerReasoningConfigForSelectedModel(options ComposerOptions) ComposerConfigOption {
+	model := strings.TrimSpace(options.EffectiveSettings.Model)
+	if profile, advertised := options.ReasoningOptionsByModel[model]; advertised {
+		return ComposerConfigOption{
+			Configurable: len(profile.Options) > 0,
+			CurrentValue: strings.TrimSpace(options.EffectiveSettings.ReasoningEffort),
+			DefaultValue: strings.TrimSpace(profile.DefaultValue),
+			Options:      cloneComposerConfigOptionValues(profile.Options),
+		}
+	}
+	return options.ReasoningConfig
 }
 
 func validateExtensionComposerOption(

@@ -132,6 +132,7 @@ type Driver interface {
 	SubmitPlanDecision(context.Context, agenthost.SessionRef, string, string, agenthost.SubmitPlanDecisionInput) (OperationObservation, error)
 	UpdateTitle(context.Context, agenthost.UpdateTitleInput) (SessionObservation, error)
 	GetSession(context.Context, agenthost.SessionRef) (SessionObservation, error)
+	GetCanonicalSession(context.Context, agenthost.SessionRef) (SessionObservation, error)
 	UpdateSettings(context.Context, agenthost.UpdateSettingsInput) (SessionObservation, error)
 	UpdatePin(context.Context, agenthost.UpdatePinInput) (SessionObservation, error)
 	DeleteSession(context.Context, agenthost.SessionRef) (agenthost.DeleteSessionResult, error)

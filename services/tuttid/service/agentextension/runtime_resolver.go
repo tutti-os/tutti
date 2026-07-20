@@ -27,7 +27,12 @@ type RuntimeBinding struct {
 	PermissionModes              map[string]string
 	AutomaticPermissionDecisions map[string]string
 	PlanModeRuntimeID            string
+	PlanModeDisabledRuntimeID    string
+	PlanModeUsesLaunchPermission bool
+	LaunchPermission             *agentruntime.StandardACPLaunchPermissionSetting
+	SetModelReasoningEffortMeta  bool
 	Capabilities                 []string
+	ExecutableIdentity           *agentruntime.ExecutableIdentity
 }
 
 func (r RuntimeResolver) ResolveAdapter(ctx context.Context, input agentruntime.AdapterResolveInput) (agentruntime.Adapter, error) {
@@ -71,8 +76,13 @@ func runtimeAdapterConfig(binding RuntimeBinding, agentTargetID string) agentrun
 		PermissionModes:              binding.PermissionModes,
 		AutomaticPermissionDecisions: binding.AutomaticPermissionDecisions,
 		PlanModeRuntimeID:            binding.PlanModeRuntimeID,
+		PlanModeDisabledRuntimeID:    binding.PlanModeDisabledRuntimeID,
+		PlanModeUsesLaunchPermission: binding.PlanModeUsesLaunchPermission,
+		LaunchPermission:             binding.LaunchPermission,
+		SetModelReasoningEffortMeta:  binding.SetModelReasoningEffortMeta,
 		Capabilities:                 binding.Capabilities,
 		AgentTargetID:                strings.TrimSpace(agentTargetID),
 		InstallationID:               binding.Installation.ID,
+		ExecutableIdentity:           binding.ExecutableIdentity,
 	}
 }

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 )
 
 var (
@@ -71,49 +73,102 @@ func (s *SetupService) executeInstall(
 	if err != nil {
 		return err
 	}
-	parent := filepath.Dir(plan.InstallRoot)
-	if err := os.MkdirAll(parent, 0o700); err != nil {
-		return fmt.Errorf("%w: create runtime parent: %w", ErrRuntimeInstallFailed, err)
+	if plan.Runner != installation.Manifest.Runtime.Install.Runner ||
+		plan.PublishUserCommand != publishesUserCommand(installation.Manifest) {
+		return fmt.Errorf("%w: runtime install contract changed", ErrRuntimeInstallFailed)
 	}
-	staging, err := os.MkdirTemp(parent, ".runtime-install-")
+	workspace, err := openManagedRuntimeWorkspaceForInstall(
+		s.Plans.Manager.RuntimeInstallDir,
+		installation.AgentKey,
+		plan.Runner != "binary",
+	)
+	if err != nil {
+		return fmt.Errorf("%w: open managed runtime workspace: %w", ErrRuntimeInstallFailed, err)
+	}
+	defer workspace.Close()
+	stagingDir, err := workspace.createTemp(".runtime-install-")
 	if err != nil {
 		return fmt.Errorf("%w: create staging directory: %w", ErrRuntimeInstallFailed, err)
 	}
-	defer os.RemoveAll(staging)
-	scratch, err := os.MkdirTemp(parent, ".runtime-install-work-")
+	defer stagingDir.Close()
+	stagingName := stagingDir.name
+	defer func() { _ = workspace.remove(stagingName) }()
+	staging := stagingDir.path
+	scratchDir, err := workspace.createTemp(".runtime-install-work-")
 	if err != nil {
 		return fmt.Errorf("%w: create installer work directory: %w", ErrRuntimeInstallFailed, err)
 	}
-	defer os.RemoveAll(scratch)
+	defer scratchDir.Close()
+	scratchName := scratchDir.name
+	defer func() { _ = workspace.remove(scratchName) }()
+	scratch := scratchDir.path
 
-	command := replaceInstallRoot(plan.InstallCommand, plan.InstallRoot, staging)
-	if len(command) == 0 || command[0] != plan.Runner {
-		return fmt.Errorf("%w: runner identity changed", ErrRuntimeInstallFailed)
-	}
 	if err := update(SetupPhaseInstalling); err != nil {
 		return err
 	}
 	installCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
-	runner := s.Runner
-	if runner == nil {
-		runner = localInstallCommandRunner{}
+	if err := stagingDir.verify(); err != nil {
+		return fmt.Errorf("%w: %w", ErrRuntimeInstallFailed, err)
 	}
-	installEnvironment := cleanInstallEnvironment(scratch)
-	if plan.Runner == "uv" {
-		installEnvironment = append(installEnvironment,
-			"UV_TOOL_DIR="+filepath.Join(staging, "tool"),
-			"UV_TOOL_BIN_DIR="+filepath.Join(staging, "bin"),
-		)
+	if err := scratchDir.verify(); err != nil {
+		return fmt.Errorf("%w: %w", ErrRuntimeInstallFailed, err)
 	}
-	if err := runner.Run(installCtx, command, scratch, installEnvironment); err != nil {
+	stagedExecutable, err := stagedRuntimeExecutable(plan, staging)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRuntimeInstallFailed, err)
+	}
+	var verifiedFingerprint runtimeExecutableFingerprint
+	if plan.Runner == "binary" {
+		artifact, err := verifiedPlanBinaryArtifact(installation, plan)
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrRuntimeInstallFailed, err)
+		}
+		relativeExecutable, err := filepath.Rel(staging, stagedExecutable)
+		if err != nil {
+			return fmt.Errorf("%w: derive staged binary path: %w", ErrRuntimeInstallFailed, err)
+		}
+		destination, err := stagingDir.createFile(relativeExecutable, 0o600)
+		if err != nil {
+			return fmt.Errorf("%w: create staged binary without following links: %w", ErrRuntimeInstallFailed, err)
+		}
+		verifiedFingerprint, err = downloadRuntimeBinaryToFile(installCtx, s.Plans.Manager.Client, artifact, destination)
+		closeErr := destination.Close()
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrRuntimeInstallFailed, err)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("%w: close staged binary: %w", ErrRuntimeInstallFailed, closeErr)
+		}
+		if err := validateNativeExecutablePlatform(stagedExecutable, plan.Platform); err != nil {
+			return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
+		}
+	} else {
+		command := replaceInstallRoot(plan.InstallCommand, plan.InstallRoot, staging)
+		if len(command) == 0 || command[0] != plan.Runner {
+			return fmt.Errorf("%w: runner identity changed", ErrRuntimeInstallFailed)
+		}
+		runner := s.Runner
+		if runner == nil {
+			runner = localInstallCommandRunner{}
+		}
+		if err := runner.Run(installCtx, command, scratch, cleanInstallEnvironment(scratch)); err != nil {
+			return fmt.Errorf("%w: %w", ErrRuntimeInstallFailed, err)
+		}
+	}
+	if err := stagingDir.verify(); err != nil {
+		return fmt.Errorf("%w: %w", ErrRuntimeInstallFailed, err)
+	}
+	if err := scratchDir.verify(); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeInstallFailed, err)
 	}
 
 	if err := update(SetupPhaseVerifying); err != nil {
 		return err
 	}
-	stagedExecutable := strings.Replace(plan.Executable, plan.InstallRoot, staging, 1)
+	if err := stagingDir.verify(); err != nil {
+		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
+	}
 	realExecutable, err := filepath.EvalSymlinks(stagedExecutable)
 	if err != nil {
 		return fmt.Errorf("%w: resolve installed executable: %w", ErrRuntimeVerifyFailed, err)
@@ -126,15 +181,34 @@ func (s *SetupService) executeInstall(
 		return fmt.Errorf("%w: installed executable escapes staging root", ErrRuntimeVerifyFailed)
 	}
 	info, err := os.Lstat(realExecutable)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode()&0o111 == 0 {
 		return fmt.Errorf("%w: installed executable is not an ordinary file", ErrRuntimeVerifyFailed)
+	}
+	if verifiedFingerprint.SHA256 == "" {
+		verifiedFingerprint, err = fingerprintRuntimeExecutable(realExecutable)
+		if err != nil {
+			return fmt.Errorf("%w: fingerprint installed executable: %w", ErrRuntimeVerifyFailed, err)
+		}
+	}
+	if err := verifyRuntimeExecutableUnchanged(realExecutable, verifiedFingerprint); err != nil {
+		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
 	}
 	var profile DiscoveryProfile
 	if err := readJSON(filepath.Join(installation.PackageDir, installation.Manifest.Profiles.Discovery), &profile); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
 	}
-	version, err := compatibleInstalledVersion(ctx, realExecutable, profile)
+	var versionIdentity *agentruntime.ExecutableIdentity
+	if plan.Runner == "binary" {
+		versionIdentity = executableIdentity(verifiedFingerprint)
+	}
+	version, err := compatibleInstalledVersion(ctx, realExecutable, profile, versionIdentity)
 	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
+	}
+	if plan.Runner == "binary" && version != plan.PackageVersion {
+		return fmt.Errorf("%w: installed binary version %s does not match signed artifact version %s", ErrRuntimeVerifyFailed, version, plan.PackageVersion)
+	}
+	if err := verifyRuntimeExecutableUnchanged(realExecutable, verifiedFingerprint); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
 	}
 
@@ -151,9 +225,15 @@ func (s *SetupService) executeInstall(
 	if _, err := ProbeRuntime(ctx, binding, plan.AgentTargetID, discoveryRoot, s.Transport, s.Host); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeProbeFailed, err)
 	}
+	if err := verifyRuntimeExecutableUnchanged(realExecutable, verifiedFingerprint); err != nil {
+		return fmt.Errorf("%w: %w", ErrRuntimeProbeFailed, err)
+	}
 
 	if err := update(SetupPhaseActivating); err != nil {
 		return err
+	}
+	if err := stagingDir.verify(); err != nil {
+		return fmt.Errorf("%w: %w", ErrRuntimeActivateFailed, err)
 	}
 	relativeExecutable, err := filepath.Rel(realStaging, realExecutable)
 	if err != nil || relativeExecutable == "." || strings.HasPrefix(relativeExecutable, ".."+string(filepath.Separator)) {
@@ -164,33 +244,70 @@ func (s *SetupService) executeInstall(
 		RuntimeIdentity: plan.RuntimeIdentity, PackageName: plan.PackageName, PackageVersion: plan.PackageVersion,
 		ExecutableRelativePath: filepath.ToSlash(relativeExecutable), InstalledAt: time.Now().UTC(),
 	}
-	activation.ExecutableFingerprint, err = fingerprintRuntimeExecutable(realExecutable)
-	if err != nil {
-		return fmt.Errorf("%w: fingerprint installed executable: %w", ErrRuntimeActivateFailed, err)
-	}
-	if err := writeJSONAtomic(filepath.Join(staging, "activation.json"), activation); err != nil {
+	activation.ExecutableFingerprint = verifiedFingerprint
+	if err := stagingDir.writeJSONAtomic("activation.json", activation); err != nil {
 		return fmt.Errorf("%w: write activation: %w", ErrRuntimeActivateFailed, err)
 	}
-	entry, err := s.Plans.Manager.managedRuntimeEntry(installation, plan.InstallRoot, plan.Executable, activation.ExecutableRelativePath)
-	if err != nil {
-		return fmt.Errorf("%w: derive user executable entry: %w", ErrRuntimeActivateFailed, err)
+	var entry *managedRuntimeEntry
+	if plan.PublishUserCommand {
+		value, err := s.Plans.Manager.managedRuntimeEntry(installation, plan.InstallRoot, plan.Executable, activation.ExecutableRelativePath)
+		if err != nil {
+			return fmt.Errorf("%w: derive user executable entry: %w", ErrRuntimeActivateFailed, err)
+		}
+		entry = &value
 	}
-	if err := activateManagedRuntime(installation, staging, plan, s.Plans.Manager.RuntimeInstallDir, entry); err != nil {
+	if err := activateManagedRuntime(installation, workspace, stagingDir, plan, s.Plans.Manager.RuntimeInstallDir, entry, activation); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeActivateFailed, err)
 	}
 	return nil
 }
 
-func compatibleInstalledVersion(ctx context.Context, executable string, profile DiscoveryProfile) (string, error) {
+func stagedRuntimeExecutable(plan InstallPlan, staging string) (string, error) {
+	relative, err := filepath.Rel(filepath.Clean(plan.InstallRoot), filepath.Clean(plan.Executable))
+	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", errors.New("runtime executable escapes install root")
+	}
+	result := filepath.Join(staging, relative)
+	if !pathWithin(result, staging) {
+		return "", errors.New("staged runtime executable escapes staging root")
+	}
+	return result, nil
+}
+
+func verifiedPlanBinaryArtifact(installation Installation, plan InstallPlan) (RuntimeBinaryArtifact, error) {
+	if plan.Artifact == nil || plan.Platform != runtimePlatform() {
+		return RuntimeBinaryArtifact{}, errors.New("binary artifact plan is unavailable for this platform")
+	}
+	artifact, err := runtimeBinaryArtifactForPlatform(installation.Manifest, plan.Platform)
+	if err != nil {
+		return RuntimeBinaryArtifact{}, err
+	}
+	if artifact != *plan.Artifact || plan.PackageVersion != artifact.Version ||
+		len(plan.InstallCommand) != 2 || plan.InstallCommand[0] != "download" || plan.InstallCommand[1] != artifact.URL {
+		return RuntimeBinaryArtifact{}, errors.New("binary artifact plan changed")
+	}
+	return artifact, nil
+}
+
+func compatibleInstalledVersion(
+	ctx context.Context,
+	executable string,
+	profile DiscoveryProfile,
+	identity *agentruntime.ExecutableIdentity,
+) (string, error) {
 	var lastErr error
 	for _, candidate := range profile.Candidates {
-		version, err := runtimeVersion(ctx, executable, candidate.Version.Args, candidate.Version.Constraint)
+		version, err := runtimeVersionWithIdentity(ctx, executable, candidate.Version.Args, candidate.Version.Constraint, identity)
 		if err == nil {
 			return version, nil
 		}
 		lastErr = err
 	}
 	return "", fmt.Errorf("installed runtime version is incompatible: %w", lastErr)
+}
+
+func executableIdentity(fingerprint runtimeExecutableFingerprint) *agentruntime.ExecutableIdentity {
+	return &agentruntime.ExecutableIdentity{SHA256: fingerprint.SHA256, SizeBytes: fingerprint.Size}
 }
 
 func replaceInstallRoot(values []string, from, to string) []string {
@@ -220,39 +337,136 @@ func cleanInstallEnvironment(scratch string) []string {
 	)
 }
 
-func activateManagedRuntime(installation Installation, staging string, plan InstallPlan, runtimeInstallDir string, entry managedRuntimeEntry) error {
+func activateManagedRuntime(
+	installation Installation,
+	workspace *managedRuntimeWorkspace,
+	staging *managedRuntimeDirectory,
+	plan InstallPlan,
+	runtimeInstallDir string,
+	entry *managedRuntimeEntry,
+	activation managedRuntimeActivation,
+) error {
+	return activateManagedRuntimeWithCrashInjection(
+		installation, workspace, staging, plan, runtimeInstallDir, entry, activation, nil,
+	)
+}
+
+type managedRuntimeRenameBoundary string
+
+const (
+	managedRuntimeAfterBackupRename    managedRuntimeRenameBoundary = "after-backup-rename"
+	managedRuntimeAfterPromotionRename managedRuntimeRenameBoundary = "after-promotion-rename"
+)
+
+func activateManagedRuntimeWithCrashInjection(
+	installation Installation,
+	workspace *managedRuntimeWorkspace,
+	staging *managedRuntimeDirectory,
+	plan InstallPlan,
+	runtimeInstallDir string,
+	entry *managedRuntimeEntry,
+	activation managedRuntimeActivation,
+	injectCrash func(managedRuntimeRenameBoundary) error,
+) error {
 	finalRoot := plan.InstallRoot
 	if err := validateManagedRuntimeRoot(finalRoot, runtimeInstallDir, installation.AgentKey, plan.RuntimeIdentity); err != nil {
 		return err
 	}
-	if err := validateManagedRuntimeEntry(entry); err != nil {
+	if entry != nil {
+		if err := validateManagedRuntimeEntry(*entry); err != nil {
+			return err
+		}
+	}
+	if workspace == nil || staging == nil || staging.workspace != workspace {
+		return errors.New("managed runtime activation workspace is invalid")
+	}
+	if err := staging.verify(); err != nil {
 		return err
 	}
-	backup := finalRoot + ".previous"
-	_ = os.RemoveAll(backup)
+	if filepath.Dir(finalRoot) != workspace.agentPath || filepath.Base(finalRoot) != plan.RuntimeIdentity {
+		return errors.New("managed runtime activation root does not match workspace handle")
+	}
+	backupName := plan.RuntimeIdentity + ".previous"
+	var recoveryExpectation *managedRuntimeRecoveryExpectation
+	if plan.Runner == "binary" {
+		artifact, err := verifiedPlanBinaryArtifact(installation, plan)
+		if err != nil {
+			return err
+		}
+		recoveryExpectation, err = binaryRuntimeRecoveryExpectation(
+			installation,
+			plan.RuntimeIdentity,
+			plan.PackageName,
+			plan.PackageVersion,
+			activation.ExecutableRelativePath,
+			&artifact,
+		)
+		if err != nil {
+			return err
+		}
+		if err := recoverInterruptedBinaryActivation(workspace, recoveryExpectation); err != nil {
+			return err
+		}
+	} else {
+		_ = workspace.remove(backupName)
+	}
 	hadPrevious := false
 	if _, err := os.Lstat(finalRoot); err == nil {
-		if err := os.Rename(finalRoot, backup); err != nil {
+		previous, openErr := workspace.openDirectory(finalRoot)
+		if openErr != nil {
+			return fmt.Errorf("existing managed runtime root is unsafe: %w", openErr)
+		}
+		previous.Close()
+		if err := workspace.rename(plan.RuntimeIdentity, backupName); err != nil {
 			return err
 		}
 		hadPrevious = true
+		if injectCrash != nil {
+			if err := injectCrash(managedRuntimeAfterBackupRename); err != nil {
+				return err
+			}
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if err := os.Rename(staging, finalRoot); err != nil {
+	if err := workspace.rename(staging.name, plan.RuntimeIdentity); err != nil {
 		if hadPrevious {
-			_ = os.Rename(backup, finalRoot)
+			_ = workspace.rename(backupName, plan.RuntimeIdentity)
 		}
 		return err
 	}
-	if err := publishManagedRuntimeEntry(entry); err != nil {
-		_ = os.RemoveAll(finalRoot)
+	staging.path = finalRoot
+	staging.name = plan.RuntimeIdentity
+	if injectCrash != nil {
+		if err := injectCrash(managedRuntimeAfterPromotionRename); err != nil {
+			return err
+		}
+	}
+	if err := staging.verify(); err != nil {
+		_ = workspace.remove(plan.RuntimeIdentity)
 		if hadPrevious {
-			_ = os.Rename(backup, finalRoot)
+			_ = workspace.rename(backupName, plan.RuntimeIdentity)
 		}
 		return err
 	}
-	_ = os.RemoveAll(backup)
+	finalExecutable := filepath.Join(finalRoot, filepath.FromSlash(activation.ExecutableRelativePath))
+	if err := verifyRuntimeExecutableUnchanged(finalExecutable, activation.ExecutableFingerprint); err != nil {
+		_ = workspace.remove(plan.RuntimeIdentity)
+		if hadPrevious {
+			_ = workspace.rename(backupName, plan.RuntimeIdentity)
+		}
+		return err
+	}
+	if entry != nil {
+		if err := publishManagedRuntimeEntry(*entry); err != nil {
+			_ = workspace.remove(plan.RuntimeIdentity)
+			if hadPrevious {
+				_ = workspace.rename(backupName, plan.RuntimeIdentity)
+			}
+			return err
+		}
+	}
+	_ = workspace.remove(backupName)
 	return nil
 }
 

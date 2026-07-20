@@ -121,6 +121,9 @@ func composerAdvertisedReasoningOptionValues(
 			locale,
 			advertisedOption.Description,
 		)
+		if advertisedLabel := strings.TrimSpace(advertisedOption.Label); advertisedLabel != "" {
+			label = advertisedLabel
+		}
 		options = append(options, ComposerConfigOptionValue{
 			Description: description,
 			ID:          value,

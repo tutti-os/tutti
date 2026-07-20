@@ -481,6 +481,7 @@ export const zhCN = {
           extensionCodeBuddy: "CodeBuddy Code",
           extensionEnableToSetUp: "启用后进行设置",
           extensionGemini: "Gemini CLI",
+          extensionGrok: "Grok Build",
           extensionHermes: "Hermes Agent",
           extensionGitHubCopilot: "GitHub Copilot CLI",
           extensionKilo: "Kilo Code",
@@ -873,6 +874,12 @@ export const zhCN = {
         logsExported: "已导出 {{count}} 个日志文件到 {{path}}",
         logsExportFailed: "暂时无法导出本地日志",
         logsLoadFailed: "暂时无法加载本地日志信息",
+        qwenAgentDescription:
+          "在 Tutti 中显示 Qwen Code，Agent Extension 预览期间默认关闭",
+        qwenAgentLabel: "启用 Qwen Code Agent",
+        grokAgentDescription:
+          "加载已签名的 Grok Build Agent Extension，并在 AgentGUI 中显示",
+        grokAgentLabel: "启用 Grok Build Agent",
         logsSizeLabel: "日志大小",
         logsSummary: "{{count}} 个文件，共 {{size}}",
         logsTitle: "日志",

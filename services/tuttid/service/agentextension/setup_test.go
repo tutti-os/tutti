@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -94,6 +98,22 @@ func TestAgentTargetSetupInstallsGenericExtensionRuntime(t *testing.T) {
 	}
 }
 
+func TestManagedBinaryVersionFixture(_ *testing.T) {
+	if os.Getenv("TUTTI_TEST_MANAGED_BINARY_VERSION") != "1" {
+		return
+	}
+	fmt.Println("0.2.103")
+	if os.Getenv("TUTTI_TEST_MANAGED_BINARY_REPLACE") == "1" {
+		path, err := os.Executable()
+		if err != nil {
+			panic(err)
+		}
+		if err := os.WriteFile(path, []byte("replaced during version probe"), 0o700); err != nil {
+			panic(err)
+		}
+	}
+}
+
 func TestAgentTargetSetupReusesManagedRuntimeAcrossExtensionVersions(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	runner := &fixtureInstallRunner{binary: "generic-agent", packageName: "@example/generic-agent", version: "1.2.3"}
@@ -135,7 +155,7 @@ func TestAgentTargetSetupReusesManagedRuntimeAcrossExtensionVersions(t *testing.
 	manifest.Runtime.Install.Args = []string{"install", "--prefix", "${installRoot}", "@example/generic-agent@1.2.3"}
 	manifest.Runtime.Launch.Executable = "${installRoot}/node_modules/.bin/generic-agent"
 	discovery := `{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["generic-agent"],"version":{"args":["--version"],"constraint":">=1.2.3 <2.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`
-	next, err := service.Plans.Manager.install(Release{AgentKey: "generic", Version: "1.0.1"}, testPackageZIPFor(t, manifest, discovery))
+	next, err := installTestPackage(t, service.Plans.Manager, Release{AgentKey: "generic", Version: "1.0.1"}, testPackageZIPFor(t, manifest, discovery))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,6 +233,129 @@ func TestAgentTargetSetupDoesNotOverwriteUserExecutable(t *testing.T) {
 	}
 	if _, err := os.Stat(initial.Plan.InstallRoot); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("failed activation left managed runtime behind: %v", err)
+	}
+}
+
+func TestAgentTargetSetupInstallsPinnedBinaryWithoutPublishingUserCommand(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	binary := managedBinaryFixtureBytes(t)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/grok-0.2.103-test" {
+			http.NotFound(w, request)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write(binary)
+	}))
+	defer server.Close()
+
+	service, targetID := setupBinaryFixture(t, server, binary, false, &probeTransport{})
+	userEntry := filepath.Join(service.Plans.Manager.RuntimeBinDir, "grok")
+	foreignTarget := filepath.Join(t.TempDir(), "foreign-grok")
+	if err := os.WriteFile(foreignTarget, []byte("user-owned\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(userEntry), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(foreignTarget, userEntry); err != nil {
+		t.Fatal(err)
+	}
+
+	initial, err := service.GetSetup(context.Background(), InstallPlanInput{WorkspaceID: "workspace-1", AgentTargetID: targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initial.Plan == nil || initial.Plan.Runner != "binary" || initial.Plan.PackageVersion != "0.2.103" || initial.Plan.PublishUserCommand {
+		t.Fatalf("binary install plan = %#v", initial.Plan)
+	}
+	if _, err := service.Install(context.Background(), InstallInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+		PlanDigest: initial.Plan.PlanDigest, ClientActionID: "binary-install",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ready := waitForSetupStatus(t, service, targetID, SetupReady)
+	if ready.RuntimeSource != "managed" || ready.RuntimeVersion != "0.2.103" {
+		t.Fatalf("binary runtime setup = %#v", ready)
+	}
+	linkTarget, err := os.Readlink(userEntry)
+	if err != nil || linkTarget != foreignTarget {
+		t.Fatalf("foreign user entry changed: target=%q error=%v", linkTarget, err)
+	}
+	if _, err := os.Lstat(filepath.Join(service.Plans.Manager.RuntimeInstallDir, "grok", "bin", "grok")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("opt-out runtime published a stable command: %v", err)
+	}
+	binding, err := service.Plans.Manager.ResolveRuntimeForCWD(context.Background(), initial.Plan.ExtensionInstallationID, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(binding.Command) == 0 || binding.Command[0] != filepath.Join(initial.Plan.InstallRoot, "grok") {
+		t.Fatalf("managed binary launch command = %#v", binding.Command)
+	}
+	if binding.ExecutableIdentity == nil || binding.ExecutableIdentity.SHA256 != initial.Plan.Artifact.SHA256 ||
+		binding.ExecutableIdentity.SizeBytes != initial.Plan.Artifact.SizeBytes {
+		t.Fatalf("managed binary executable identity = %#v", binding.ExecutableIdentity)
+	}
+}
+
+func TestAgentTargetSetupRejectsBinaryWithMismatchedSignedDigest(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	binary := managedBinaryFixtureBytes(t)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(binary)
+	}))
+	defer server.Close()
+	declared := append([]byte(nil), binary...)
+	declared[0] ^= 0xff
+	service, targetID := setupBinaryFixture(t, server, declared, false, &probeTransport{})
+	initial, err := service.GetSetup(context.Background(), InstallPlanInput{WorkspaceID: "workspace-1", AgentTargetID: targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Install(context.Background(), InstallInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+		PlanDigest: initial.Plan.PlanDigest, ClientActionID: "binary-bad-digest",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	failed := waitForSetupStatus(t, service, targetID, SetupFailed)
+	if failed.Action == nil || failed.Action.ErrorCode != "install_failed" ||
+		!strings.Contains(failed.Action.ErrorMessage, "SHA-256") {
+		t.Fatalf("binary digest failure = %#v", failed)
+	}
+	if _, err := os.Stat(initial.Plan.InstallRoot); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed binary install activated a runtime: %v", err)
+	}
+}
+
+func TestAgentTargetSetupRunsBinaryVersionProbeFromVerifiedSnapshot(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("TUTTI_TEST_MANAGED_BINARY_REPLACE", "1")
+	binary := managedBinaryFixtureBytes(t)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(binary)
+	}))
+	defer server.Close()
+	service, targetID := setupBinaryFixture(t, server, binary, false, &probeTransport{})
+	initial, err := service.GetSetup(context.Background(), InstallPlanInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Install(context.Background(), InstallInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+		PlanDigest: initial.Plan.PlanDigest, ClientActionID: "binary-version-snapshot",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	failed := waitForSetupStatus(t, service, targetID, SetupFailed)
+	if failed.Action == nil || failed.Action.ErrorCode != "version_check_failed" {
+		t.Fatalf("binary version snapshot failure = %#v", failed)
+	}
+	if _, err := os.Stat(initial.Plan.InstallRoot); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed verified version probe activated a runtime: %v", err)
 	}
 }
 
@@ -462,7 +605,7 @@ func setupFixture(
 	manifest.Runtime.Launch.Executable = "${installRoot}/node_modules/.bin/" + binary
 	discovery := `{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["` + binary + `"],"version":{"args":["--version"],"constraint":"` + constraint + `"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`
 	stateDir := t.TempDir()
-	runtimeInstallDir := filepath.Join(t.TempDir(), ".local", "share", "tutti", "agent-runtimes")
+	runtimeInstallDir := filepath.Join(testResolvedTempDir(t), ".local", "share", "tutti", "agent-runtimes")
 	runtimeBinDir := filepath.Join(t.TempDir(), ".local", "bin")
 	store := &targetStoreStub{targets: map[string]agenttargetbiz.Target{}}
 	manager := &Manager{
@@ -470,7 +613,7 @@ func setupFixture(
 		Installations: agentextensiondata.NewFileInstallationStore(stateDir),
 		Discovery:     agentextensiondata.NewFileSetupDiscoveryDirectory(stateDir),
 	}
-	installation, err := manager.install(Release{AgentKey: key, Version: "1.0.0"}, testPackageZIPFor(t, manifest, discovery))
+	installation, err := installTestPackage(t, manager, Release{AgentKey: key, Version: "1.0.0"}, testPackageZIPFor(t, manifest, discovery))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,6 +639,86 @@ func setupFixture(
 	service.Runner = runner
 	t.Cleanup(func() { _ = service.Close() })
 	return service, targetID
+}
+
+func setupBinaryFixture(
+	t *testing.T,
+	server *httptest.Server,
+	binary []byte,
+	publishUserCommand bool,
+	transport agentruntime.ProcessTransport,
+) (*SetupService, string) {
+	t.Helper()
+	t.Setenv("TUTTI_TEST_MANAGED_BINARY_VERSION", "1")
+	manifest := testManifest()
+	manifest.AgentKey = "grok"
+	manifest.Name = "Grok"
+	manifest.Runtime.Install.Runner = "binary"
+	manifest.Runtime.Install.Args = nil
+	manifest.Runtime.Install.Artifacts = []RuntimeBinaryArtifact{{
+		Kind: "executable", Platform: runtime.GOOS + "-" + runtime.GOARCH, Version: "0.2.103",
+		URL: server.URL + "/grok-0.2.103-test", SHA256: sha256Bytes(binary), SizeBytes: int64(len(binary)),
+	}}
+	manifest.Runtime.Install.Artifacts[0].Provenance.Kind = "official-release"
+	manifest.Runtime.Install.Artifacts[0].Provenance.URL = server.URL + "/release/0.2.103"
+	manifest.Runtime.Launch.Executable = "${installRoot}/grok"
+	manifest.Runtime.Launch.PublishUserCommand = &publishUserCommand
+	manifest.Runtime.Launch.Args = []string{"--no-auto-update", "--permission-mode", "default", "agent", "stdio"}
+	discovery := `{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["grok"],"version":{"args":["-test.run=TestManagedBinaryVersionFixture"],"constraint":">=0.2.89 <0.3.0"},"launchArgs":["--no-auto-update","--permission-mode","default","agent","stdio"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`
+	stateDir := t.TempDir()
+	store := &targetStoreStub{targets: map[string]agenttargetbiz.Target{}}
+	manager := &Manager{
+		RuntimeInstallDir: filepath.Join(testResolvedTempDir(t), ".local", "share", "tutti", "agent-runtimes"),
+		RuntimeBinDir:     filepath.Join(t.TempDir(), ".local", "bin"), Store: store, Client: server.Client(),
+		Installations: agentextensiondata.NewFileInstallationStore(stateDir),
+		Discovery:     agentextensiondata.NewFileSetupDiscoveryDirectory(stateDir),
+	}
+	installation, err := installTestPackage(t, manager, Release{AgentKey: "grok", Version: "1.0.0"}, testPackageZIPFor(t, manifest, discovery))
+	if err != nil {
+		t.Fatal(err)
+	}
+	launchRef, err := agenttargetbiz.CanonicalLaunchRefJSON(installation.Provider, agenttargetbiz.LaunchRef{
+		Type: agenttargetbiz.LaunchRefTypeAgentExtension, ExtensionInstallationID: installation.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetID := "extension:grok"
+	store.targets[targetID] = agenttargetbiz.Target{
+		ID: targetID, Provider: installation.Provider, LaunchRefJSON: launchRef,
+		Name: "Grok", Enabled: true, Source: agenttargetbiz.SourceSystem,
+	}
+	service := NewSetupService(context.Background())
+	service.Plans = InstallPlanService{
+		Manager: manager, Workspaces: workspaceLookupStub{workspace: workspacebiz.Summary{ID: "workspace-1"}}, Targets: store,
+	}
+	service.Transport = transport
+	service.Actions = agentextensiondata.NewFileSetupActionStore(stateDir)
+	service.Discovery = agentextensiondata.NewFileSetupDiscoveryDirectory(stateDir)
+	t.Cleanup(func() { _ = service.Close() })
+	return service, targetID
+}
+
+func managedBinaryFixtureBytes(t *testing.T) []byte {
+	t.Helper()
+	path, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
+func testResolvedTempDir(t *testing.T) string {
+	t.Helper()
+	path, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func waitForSetupStatus(t *testing.T, service *SetupService, targetID string, status SetupStatus) SetupSnapshot {

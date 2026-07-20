@@ -2,13 +2,96 @@ package agentruntime
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestVerifiedProcessExecutableFixture(_ *testing.T) {
+	if os.Getenv("TUTTI_TEST_VERIFIED_PROCESS_EXECUTABLE") == "1" {
+		fmt.Print("verified-original")
+	}
+}
+
+func TestPrepareProcessExecutableExecutesVerifiedDescriptorAfterPathReplacement(t *testing.T) {
+	path, identity := copyCurrentExecutableWithIdentity(t)
+	prepared, err := prepareProcessExecutable(path, identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = prepared.Close() }()
+	if err := os.Rename(path, path+".original"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("replacement"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(prepared.path, "-test.run=TestVerifiedProcessExecutableFixture")
+	if prepared.file != nil {
+		cmd.ExtraFiles = []*os.File{prepared.file}
+	}
+	cmd.Env = append(os.Environ(), "TUTTI_TEST_VERIFIED_PROCESS_EXECUTABLE=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), "verified-original") {
+		t.Fatalf("descriptor execution output = %q, error = %v", output, err)
+	}
+}
+
+func TestRunVerifiedExecutableUsesVerifiedIdentity(t *testing.T) {
+	path, identity := copyCurrentExecutableWithIdentity(t)
+	t.Setenv("TUTTI_TEST_VERIFIED_PROCESS_EXECUTABLE", "1")
+	output, err := RunVerifiedExecutable(
+		context.Background(), path, []string{"-test.run=TestVerifiedProcessExecutableFixture"}, identity,
+	)
+	if err != nil || !strings.Contains(string(output), "verified-original") {
+		t.Fatalf("verified execution output = %q, error = %v", output, err)
+	}
+	if err := os.WriteFile(path, []byte("changed executable"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RunVerifiedExecutable(context.Background(), path, nil, identity); err == nil ||
+		!strings.Contains(err.Error(), "expected identity") {
+		t.Fatalf("changed verified execution error = %v", err)
+	}
+}
+
+func TestLocalProcessTransportRejectsChangedExpectedExecutable(t *testing.T) {
+	path, identity := copyCurrentExecutableWithIdentity(t)
+	if err := os.WriteFile(path, []byte("changed executable"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := NewLocalProcessTransport().Start(context.Background(), ProcessSpec{
+		Command: []string{path}, ExecutableIdentity: identity,
+	})
+	if err == nil || !strings.Contains(err.Error(), "expected identity") {
+		t.Fatalf("changed executable start error = %v", err)
+	}
+}
+
+func copyCurrentExecutableWithIdentity(t *testing.T) (string, *ExecutableIdentity) {
+	t.Helper()
+	source, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "verified-runtime")
+	if err := os.WriteFile(path, data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(data)
+	return path, &ExecutableIdentity{SHA256: hex.EncodeToString(digest[:]), SizeBytes: int64(len(data))}
+}
 
 func TestLocalProcessTransportOutlivesStartContext(t *testing.T) {
 	catPath, err := exec.LookPath("cat")

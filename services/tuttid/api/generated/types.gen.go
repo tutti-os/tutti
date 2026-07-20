@@ -501,14 +501,17 @@ func (e AgentTargetExtensionLaunchRefType) Valid() bool {
 
 // Defines values for AgentTargetInstallPlanRunner.
 const (
-	AgentTargetInstallPlanRunnerNpm  AgentTargetInstallPlanRunner = "npm"
-	AgentTargetInstallPlanRunnerPnpm AgentTargetInstallPlanRunner = "pnpm"
-	AgentTargetInstallPlanRunnerUv   AgentTargetInstallPlanRunner = "uv"
+	AgentTargetInstallPlanRunnerBinary AgentTargetInstallPlanRunner = "binary"
+	AgentTargetInstallPlanRunnerNpm    AgentTargetInstallPlanRunner = "npm"
+	AgentTargetInstallPlanRunnerPnpm   AgentTargetInstallPlanRunner = "pnpm"
+	AgentTargetInstallPlanRunnerUv     AgentTargetInstallPlanRunner = "uv"
 )
 
 // Valid indicates whether the value is a known member of the AgentTargetInstallPlanRunner enum.
 func (e AgentTargetInstallPlanRunner) Valid() bool {
 	switch e {
+	case AgentTargetInstallPlanRunnerBinary:
+		return true
 	case AgentTargetInstallPlanRunnerNpm:
 		return true
 	case AgentTargetInstallPlanRunnerPnpm:

@@ -43,11 +43,15 @@ type ComposerConfigOption struct {
 }
 
 type ComposerConfigOptionValue struct {
-	Description        string
-	ID                 string
-	Label              string
-	Value              string
-	SupportsImageInput *bool
+	Description                string
+	ID                         string
+	Label                      string
+	Value                      string
+	SupportsImageInput         *bool
+	SupportsReasoningEffort    *bool
+	ReasoningEffort            string
+	ReasoningEfforts           []AgentModelReasoningEffortOption
+	ReasoningEffortsAdvertised bool
 }
 
 type ComposerSettings = agenthost.ComposerSettings
@@ -205,6 +209,9 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		)
 		if err != nil {
 			return ComposerOptions{}, err
+		}
+		if effectiveSettings.PermissionModeID == "" {
+			effectiveSettings.PermissionModeID = permissionConfig.DefaultValue
 		}
 	}
 	modelOptions := s.enrichModelCapabilityOptions(ctx, provider, composerSelectedModelOptions(effectiveSettings.Model))

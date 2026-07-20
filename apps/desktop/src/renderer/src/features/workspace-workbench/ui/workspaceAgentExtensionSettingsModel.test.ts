@@ -23,7 +23,7 @@ test("extension activation and Agent Target availability project independently",
     featureFlags: { "agent.extension.gemini": true }
   });
 
-  assert.equal(rows.length, 7);
+  assert.equal(rows.length, 8);
   assert.deepEqual(rows[0], {
     activationFlag: "agent.extension.gemini",
     agentTargetId: "extension:gemini",

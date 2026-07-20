@@ -437,94 +437,6 @@ func staticClaudeComposerModelOptions(selectedModel string) []ComposerConfigOpti
 	})
 }
 
-func extractModelOptionsFromRuntimeContext(runtimeContext map[string]any, optionIDs ...string) []ComposerConfigOptionValue {
-	if len(runtimeContext) == 0 {
-		return nil
-	}
-	configOptions, ok := runtimeContext["configOptions"].([]any)
-	if !ok {
-		if typed, typedOK := runtimeContext["configOptions"].([]map[string]any); typedOK {
-			configOptions = make([]any, 0, len(typed))
-			for _, item := range typed {
-				configOptions = append(configOptions, item)
-			}
-		}
-	}
-	if len(configOptions) == 0 {
-		return nil
-	}
-	modelOptionID := "model"
-	if len(optionIDs) > 0 && strings.TrimSpace(optionIDs[0]) != "" {
-		modelOptionID = strings.TrimSpace(optionIDs[0])
-	}
-	for _, optionRaw := range configOptions {
-		optionMap, ok := optionRaw.(map[string]any)
-		if !ok || !runtimeConfigOptionMatchesID(optionMap, modelOptionID) {
-			continue
-		}
-		return composerConfigOptionValuesFromAny(optionMap["options"])
-	}
-	return nil
-}
-
-func composerConfigOptionValuesFromAny(input any) []ComposerConfigOptionValue {
-	rawOptions, ok := input.([]any)
-	if !ok {
-		if typed, typedOK := input.([]map[string]string); typedOK {
-			rawOptions = make([]any, 0, len(typed))
-			for _, item := range typed {
-				rawOptions = append(rawOptions, item)
-			}
-		}
-	}
-	if len(rawOptions) == 0 {
-		return nil
-	}
-	options := make([]ComposerConfigOptionValue, 0, len(rawOptions))
-	for _, raw := range rawOptions {
-		optionMap, ok := raw.(map[string]any)
-		if !ok {
-			if typed, typedOK := raw.(map[string]string); typedOK {
-				optionMap = map[string]any{
-					"id":    typed["id"],
-					"name":  typed["name"],
-					"label": typed["label"],
-					"value": typed["value"],
-				}
-			} else {
-				continue
-			}
-		}
-		value := strings.TrimSpace(stringFromAny(optionMap["value"]))
-		if value == "" {
-			continue
-		}
-		label := strings.TrimSpace(stringFromAny(optionMap["label"]))
-		if label == "" {
-			label = strings.TrimSpace(stringFromAny(optionMap["name"]))
-		}
-		if label == "" {
-			label = value
-		}
-		id := strings.TrimSpace(stringFromAny(optionMap["id"]))
-		if id == "" {
-			id = value
-		}
-		var supportsImageInput *bool
-		if value, ok := boolFromAny(optionMap["supportsImageInput"]); ok {
-			supportsImageInput = &value
-		}
-		options = append(options, ComposerConfigOptionValue{
-			ID:                 id,
-			Label:              label,
-			Value:              value,
-			Description:        strings.TrimSpace(stringFromAny(optionMap["description"])),
-			SupportsImageInput: supportsImageInput,
-		})
-	}
-	return options
-}
-
 func (s *Service) mergeLiveComposerModelsForComposerOptions(
 	ctx context.Context,
 	input ComposerOptionsInput,
@@ -674,6 +586,7 @@ func mergeComposerModelsIntoComposerOptions(options ComposerOptions, liveModels 
 		Options:      cloneComposerConfigOptionValues(normalized),
 	}
 	options.RuntimeContext = mergeLiveModelsIntoRuntimeContext(options.RuntimeContext, selected, normalized, modelSource)
+	options = applyLiveModelReasoningOptions(options, selected, normalized)
 	return options
 }
 
@@ -724,11 +637,15 @@ func normalizeLiveComposerModelOptions(options []ComposerConfigOptionValue) []Co
 			id = value
 		}
 		normalized = append(normalized, ComposerConfigOptionValue{
-			ID:                 id,
-			Label:              label,
-			Value:              value,
-			Description:        strings.TrimSpace(option.Description),
-			SupportsImageInput: option.SupportsImageInput,
+			ID:                         id,
+			Label:                      label,
+			Value:                      value,
+			Description:                strings.TrimSpace(option.Description),
+			SupportsImageInput:         option.SupportsImageInput,
+			SupportsReasoningEffort:    option.SupportsReasoningEffort,
+			ReasoningEffort:            strings.TrimSpace(option.ReasoningEffort),
+			ReasoningEfforts:           append([]AgentModelReasoningEffortOption(nil), option.ReasoningEfforts...),
+			ReasoningEffortsAdvertised: option.ReasoningEffortsAdvertised,
 		})
 	}
 	return normalized

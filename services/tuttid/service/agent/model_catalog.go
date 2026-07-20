@@ -31,7 +31,9 @@ type AgentModelOption struct {
 }
 
 type AgentModelReasoningEffortOption struct {
+	Default     bool
 	Description string
+	Label       string
 	Value       string
 }
 
