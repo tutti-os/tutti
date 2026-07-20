@@ -77,8 +77,14 @@ active installation version.
 
 At launch the runtime controller asks `AgentRuntimeResolver` for unknown
 providers. The resolver verifies the fixed installation reference, evaluates
-the declarative discovery profile, prefers a compatible runtime already on the
-user's PATH, and creates the generic standard ACP adapter. It never loads
+the declarative discovery profile, prefers a compatible local runtime, and
+creates the generic standard ACP adapter. A candidate may add signed
+`searchPaths` entries with `scope: "user"`; each path must be a bounded relative
+path below the current user's home directory. These entries are prepended to
+the shared runtime-command search environment, which still owns PATH,
+Homebrew, pnpm, Volta, asdf, mise, fnm, nvm, and common user-bin handling. The
+extension therefore describes an official vendor install location without
+adding provider-specific filesystem code to `tuttid`. The resolver never loads
 JavaScript, React, Go plugins, or native modules from the extension.
 
 The generic adapter applies declarative tool aliases before canonical activity
@@ -188,11 +194,15 @@ The validated manifest inside the installed extension package is authoritative
 for runtime commands. The copied manifest in `installation.json` is metadata,
 not an alternate command source.
 
-Setup probes a compatible executable from the daemon PATH first. A compatible
-local runtime wins even when a managed runtime exists. Otherwise, the installer
-runs manifest-owned argv directly in a private staging root beside the fixed
-user-local installation; it does not invoke a shell or mutate any project
-package manifest, lockfile, `node_modules`, or global package state.
+Setup probes a compatible executable from the candidate's signed user-relative
+search paths and the shared daemon runtime PATH first. A compatible local
+runtime wins even when a managed runtime exists. The desktop daemon does not
+source interactive shell startup files such as `.zshrc`; vendor install
+locations outside its process PATH must be declared by the extension rather
+than copied into core. Otherwise, the installer runs manifest-owned argv
+directly in a private staging root beside the fixed user-local installation; it
+does not invoke a shell or mutate any project package manifest, lockfile,
+`node_modules`, or global package state.
 Environment inheritance is allowlisted. Runner CWD and package-manager
 cache/config live in a Tutti-managed scratch directory under that same
 user-local runtime root.

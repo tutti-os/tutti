@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/mod/semver"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	agentextensionbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentextension"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
@@ -35,26 +36,35 @@ type Manager struct {
 	Discovery         SetupDiscoveryDirectory
 	Preferences       workspacedata.PreferencesStore
 	Client            *http.Client
+	RuntimeResolver   runtimecmd.Resolver
 	reconcileMu       sync.Mutex
 }
 
 type Installation = agentextensionbiz.Installation
 type Manifest = agentextensionbiz.Manifest
 
+type DiscoverySearchPath struct {
+	Scope string `json:"scope"`
+	Path  string `json:"path"`
+}
+
+type DiscoveryCandidate struct {
+	BinaryNames []string              `json:"binaryNames"`
+	SearchPaths []DiscoverySearchPath `json:"searchPaths,omitempty"`
+	Version     struct {
+		Args       []string `json:"args"`
+		Constraint string   `json:"constraint"`
+	} `json:"version"`
+	LaunchArgs []string `json:"launchArgs"`
+	Probe      struct {
+		Kind      string `json:"kind"`
+		TimeoutMS int    `json:"timeoutMs"`
+	} `json:"probe,omitempty"`
+}
+
 type DiscoveryProfile struct {
-	SchemaVersion string `json:"schemaVersion"`
-	Candidates    []struct {
-		BinaryNames []string `json:"binaryNames"`
-		Version     struct {
-			Args       []string `json:"args"`
-			Constraint string   `json:"constraint"`
-		} `json:"version"`
-		LaunchArgs []string `json:"launchArgs"`
-		Probe      struct {
-			Kind      string `json:"kind"`
-			TimeoutMS int    `json:"timeoutMs"`
-		} `json:"probe,omitempty"`
-	} `json:"candidates"`
+	SchemaVersion string               `json:"schemaVersion"`
+	Candidates    []DiscoveryCandidate `json:"candidates"`
 }
 
 func (m *Manager) Reconcile(ctx context.Context) []error {
@@ -165,15 +175,19 @@ func (m *Manager) resolveRuntime(ctx context.Context, installationID, cwd string
 		return RuntimeBinding{}, errors.New("unsupported discovery profile schema")
 	}
 	for _, candidate := range profile.Candidates {
+		env, err := m.discoveryRuntimeEnv(candidate)
+		if err != nil {
+			return RuntimeBinding{}, err
+		}
 		for _, name := range candidate.BinaryNames {
-			path, err := exec.LookPath(name)
-			if err != nil {
+			path := m.RuntimeResolver.ResolveBinary([]string{name}, pathOverrideFromEnv(env))
+			if path == "" {
 				continue
 			}
 			if m.isManagedRuntimeExecutable(path) {
 				continue
 			}
-			version, err := runtimeVersion(ctx, path, candidate.Version.Args, candidate.Version.Constraint)
+			version, err := runtimeVersionWithEnv(ctx, path, candidate.Version.Args, candidate.Version.Constraint, env)
 			if err != nil {
 				continue
 			}
@@ -186,6 +200,47 @@ func (m *Manager) resolveRuntime(ctx context.Context, installationID, cwd string
 		return RuntimeBinding{}, err
 	}
 	return RuntimeBinding{}, fmt.Errorf("compatible local runtime for %s is not installed", installation.AgentKey)
+}
+
+func (m *Manager) discoveryRuntimeEnv(candidate DiscoveryCandidate) ([]string, error) {
+	baseEnv := m.RuntimeResolver.Env(nil)
+	searchDirs := make([]string, 0, len(candidate.SearchPaths))
+	for _, searchPath := range candidate.SearchPaths {
+		if searchPath.Scope != "user" {
+			return nil, errors.New("unsupported extension discovery search path scope")
+		}
+		homeDir := m.RuntimeResolver.HomeDir
+		var home string
+		var err error
+		if homeDir != nil {
+			home, err = homeDir()
+		} else {
+			home, err = os.UserHomeDir()
+		}
+		if err != nil || strings.TrimSpace(home) == "" {
+			return nil, errors.New("resolve extension discovery user directory")
+		}
+		searchDirs = append(searchDirs, filepath.Join(home, filepath.FromSlash(searchPath.Path)))
+	}
+	if len(searchDirs) == 0 {
+		return baseEnv, nil
+	}
+	searchDirs = append(searchDirs, filepath.SplitList(environmentValue(baseEnv, "PATH"))...)
+	return m.RuntimeResolver.Env([]string{"PATH=" + strings.Join(searchDirs, string(os.PathListSeparator))}), nil
+}
+
+func pathOverrideFromEnv(env []string) []string {
+	return []string{"PATH=" + environmentValue(env, "PATH")}
+}
+
+func environmentValue(env []string, key string) string {
+	for index := len(env) - 1; index >= 0; index-- {
+		candidateKey, value, ok := strings.Cut(env[index], "=")
+		if ok && strings.EqualFold(candidateKey, key) {
+			return value
+		}
+	}
+	return ""
 }
 
 func (m *Manager) ensureDiscoveryRoot(ctx context.Context) (string, error) {
@@ -417,12 +472,20 @@ func (m *Manager) validateInstallation(value Installation) (Installation, error)
 }
 
 func runtimeVersion(ctx context.Context, executable string, args []string, constraint string) (string, error) {
+	return runtimeVersionWithEnv(ctx, executable, args, constraint, nil)
+}
+
+func runtimeVersionWithEnv(ctx context.Context, executable string, args []string, constraint string, env []string) (string, error) {
 	if len(args) == 0 {
 		return "", nil
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(probeCtx, executable, args...).CombinedOutput()
+	command := exec.CommandContext(probeCtx, executable, args...)
+	if len(env) > 0 {
+		command.Env = env
+	}
+	output, err := command.CombinedOutput()
 	if err != nil {
 		return "", err
 	}

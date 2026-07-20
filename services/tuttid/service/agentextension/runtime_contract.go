@@ -7,6 +7,7 @@ import (
 )
 
 var runtimeBinaryNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+var runtimeSearchPathPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$`)
 var runtimeConstraintPartPattern = regexp.MustCompile(`^(?:>=|>|<=|<)[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 
 func validateDiscoveryProfile(profile DiscoveryProfile) error {
@@ -20,6 +21,19 @@ func validateDiscoveryProfile(profile DiscoveryProfile) error {
 		for _, name := range candidate.BinaryNames {
 			if !runtimeBinaryNamePattern.MatchString(name) {
 				return errors.New("extension discovery binary name is invalid")
+			}
+		}
+		if len(candidate.SearchPaths) > 16 {
+			return errors.New("extension discovery has too many search paths")
+		}
+		for _, searchPath := range candidate.SearchPaths {
+			if searchPath.Scope != "user" || len(searchPath.Path) > 256 || !runtimeSearchPathPattern.MatchString(searchPath.Path) {
+				return errors.New("extension discovery search path is invalid")
+			}
+			for _, component := range strings.Split(searchPath.Path, "/") {
+				if component == "." || component == ".." {
+					return errors.New("extension discovery search path is invalid")
+				}
 			}
 		}
 		for _, argument := range append(append([]string(nil), candidate.Version.Args...), candidate.LaunchArgs...) {

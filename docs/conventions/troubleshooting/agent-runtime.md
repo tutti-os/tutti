@@ -8,6 +8,7 @@ Open only the area that matches the symptom:
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+- [An extension Agent is installed in the terminal but Tutti cannot detect it](./agent-provider-setup.md#an-extension-agent-is-installed-in-the-terminal-but-tutti-cannot-detect-it)
 - [Codex `/status` shows a 5h limit for a weekly-only account window](./agent-provider-setup.md#codex-status-shows-a-5h-limit-for-a-weekly-only-account-window)
 - [Agent provider picker shows only Claude Code and Codex](./agent-provider-setup.md#agent-provider-picker-shows-only-claude-code-and-codex)
 - [Claude composer model list stays stale after credential switch](./agent-provider-setup.md#claude-composer-model-list-stays-stale-after-credential-switch)
