@@ -12,6 +12,7 @@ import {
   formatFailureExcerpt,
   formatSlowestLanes
 } from "./run-validation-lanes.mjs";
+import { repositoryCheckDefinitions } from "./repository-checks.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
@@ -27,36 +28,10 @@ const phases = [
   },
   {
     title: "Preflight checks",
-    tasks: [
-      { label: "defaults", script: "check:defaults-generated" },
-      {
-        label: "agent-gui-provider-catalog",
-        script: "check:agent-gui-provider-catalog-generated"
-      },
-      { label: "api", script: "check:api-generated" },
-      { label: "event-protocol", script: "check:event-protocol-generated" },
-      { label: "codexproto", script: "check:codexproto-generated" },
-      { label: "tutti-names", script: "check:tutti-names" },
-      { label: "i18n", script: "check:i18n" },
-      {
-        label: "electron-runtime-boundaries",
-        script: "check:electron-runtime-boundaries"
-      },
-      { label: "ui-boundaries", script: "check:ui-boundaries" },
-      { label: "renderer-boundaries", script: "check:renderer-boundaries" },
-      {
-        label: "agent-activity-runtime-boundaries",
-        script: "check:agent-activity-runtime-boundaries"
-      },
-      {
-        label: "agent-host-boundary",
-        script: "check:agent-host-boundary"
-      },
-      {
-        label: "agent-gui-degradation",
-        script: "check:agent-gui-degradation"
-      }
-    ]
+    tasks: repositoryCheckDefinitions.map(({ key, script }) => ({
+      label: key,
+      script
+    }))
   },
   {
     title: "Validation checks",

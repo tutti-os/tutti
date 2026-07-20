@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildWorkspaceTestPlan } from "./run-workspace-tests.mjs";
 
-test("workspace test plan discovers package and tool tests", () => {
+test("workspace test plan discovers package tests without repository tools", () => {
   const plan = buildWorkspaceTestPlan({
     packageJsonEntries: [
       {
@@ -29,7 +29,7 @@ test("workspace test plan discovers package and tool tests", () => {
       testFileCount: 1
     }
   ]);
-  assert.deepEqual(plan.toolTests, ["tools/scripts/example.test.mjs"]);
+  assert.deepEqual(plan.toolTests, []);
 });
 
 test("workspace test plan rejects stale zero-test scripts", () => {
@@ -65,4 +65,5 @@ test("tools-only plans skip package completeness checks", () => {
 
   assert.deepEqual(plan.errors, []);
   assert.deepEqual(plan.packages, []);
+  assert.deepEqual(plan.toolTests, ["tools/scripts/example.test.mjs"]);
 });
