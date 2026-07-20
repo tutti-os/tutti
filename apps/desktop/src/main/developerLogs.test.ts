@@ -195,7 +195,10 @@ test("developer logs service exports only log content from the last ten minutes"
       "time=2026-07-20T12:00:00.001Z level=info msg=future"
     ].join("\n") + "\n"
   );
-  await writeFile(runtimeLogPath, "recent unstructured app output\n");
+  await writeFile(
+    runtimeLogPath,
+    "recent app output referencing 2020-01-01T00:00:00Z snapshot\n"
+  );
   await writeFile(oldRotatedLogPath, "old unstructured daemon output\n");
   await utimes(
     runtimeLogPath,
@@ -265,7 +268,7 @@ test("developer logs service exports only log content from the last ten minutes"
         `app-logs/app.alpha/${workspaceAppScopeSegment("workspace-1", "app.alpha")}/runtime.log`
       )
       ?.toString("utf8"),
-    "recent unstructured app output\n"
+    "recent app output referencing 2020-01-01T00:00:00Z snapshot\n"
   );
   assert.equal(entries.has("logs/tuttid.2026-07-20.log"), false);
   assert.equal(

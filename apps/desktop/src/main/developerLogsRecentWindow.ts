@@ -28,13 +28,11 @@ export async function prepareDeveloperLogFilesForExport(
     artifacts.map(
       async (artifact): Promise<PreparedDeveloperLogFile | null> => {
         const originalContent = await readFile(artifact.path);
-        const content = timeWindow
-          ? filterDeveloperLogContentByTime({
-              content: originalContent,
-              modifiedAtUnixMs: artifact.modifiedAtUnixMs,
-              timeWindow
-            })
-          : originalContent;
+        const content = selectDeveloperLogContent({
+          artifact,
+          originalContent,
+          timeWindow
+        });
 
         if (content === null || (timeWindow && content.byteLength === 0)) {
           return null;
@@ -52,6 +50,30 @@ export async function prepareDeveloperLogFilesForExport(
   return prepared.filter(
     (artifact): artifact is PreparedDeveloperLogFile => artifact !== null
   );
+}
+
+function selectDeveloperLogContent(input: {
+  artifact: DeveloperLogFileArtifact;
+  originalContent: Buffer;
+  timeWindow: DeveloperLogsTimeWindow | null;
+}): Buffer | null {
+  if (!input.timeWindow) {
+    return input.originalContent;
+  }
+  if (input.artifact.category !== "managed-log") {
+    return isInDeveloperLogsTimeWindow(
+      input.artifact.modifiedAtUnixMs,
+      input.timeWindow
+    )
+      ? input.originalContent
+      : null;
+  }
+
+  return filterDeveloperLogContentByTime({
+    content: input.originalContent,
+    modifiedAtUnixMs: input.artifact.modifiedAtUnixMs,
+    timeWindow: input.timeWindow
+  });
 }
 
 function filterDeveloperLogContentByTime(input: {
@@ -75,9 +97,10 @@ function filterDeveloperLogContentByTime(input: {
     const timestamp = parseDeveloperLogTimestamp(segment);
     if (timestamp !== null) {
       foundTimestamp = true;
-      includeContinuation =
-        timestamp >= input.timeWindow.startTimeUnixMs &&
-        timestamp <= input.timeWindow.endTimeUnixMs;
+      includeContinuation = isInDeveloperLogsTimeWindow(
+        timestamp,
+        input.timeWindow
+      );
     }
 
     if (includeContinuation) {
@@ -89,10 +112,21 @@ function filterDeveloperLogContentByTime(input: {
     return Buffer.from(selectedSegments.join(""), "utf8");
   }
 
-  const fileWasUpdatedInWindow =
-    input.modifiedAtUnixMs >= input.timeWindow.startTimeUnixMs &&
-    input.modifiedAtUnixMs <= input.timeWindow.endTimeUnixMs;
+  const fileWasUpdatedInWindow = isInDeveloperLogsTimeWindow(
+    input.modifiedAtUnixMs,
+    input.timeWindow
+  );
   return fileWasUpdatedInWindow ? input.content : null;
+}
+
+function isInDeveloperLogsTimeWindow(
+  timestampUnixMs: number,
+  timeWindow: DeveloperLogsTimeWindow
+): boolean {
+  return (
+    timestampUnixMs >= timeWindow.startTimeUnixMs &&
+    timestampUnixMs <= timeWindow.endTimeUnixMs
+  );
 }
 
 function parseDeveloperLogTimestamp(line: string): number | null {
