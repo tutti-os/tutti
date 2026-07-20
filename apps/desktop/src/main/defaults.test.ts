@@ -137,6 +137,7 @@ test("resolveDesktopUserDataPath isolates development Electron storage", () => {
 
   try {
     process.env.TUTTI_ENV = "development";
+    delete process.env.TUTTI_DESKTOP_USER_DATA_DIR;
 
     assert.equal(
       resolveDesktopUserDataPath({
@@ -150,11 +151,32 @@ test("resolveDesktopUserDataPath isolates development Electron storage", () => {
   }
 });
 
+test("resolveDesktopUserDataPath honors an explicit diagnostic override", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.TUTTI_ENV = "development";
+    process.env.TUTTI_DESKTOP_USER_DATA_DIR =
+      " /tmp/tutti-desktop-performance-profile ";
+
+    assert.equal(
+      resolveDesktopUserDataPath({
+        appDataDir: "/tmp/app-data",
+        appName: "Tutti"
+      }),
+      "/tmp/tutti-desktop-performance-profile"
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
 test("resolveDesktopUserDataPath keeps production on Electron defaults", () => {
   const previousEnv = { ...process.env };
 
   try {
     process.env.TUTTI_ENV = "production";
+    delete process.env.TUTTI_DESKTOP_USER_DATA_DIR;
 
     assert.equal(
       resolveDesktopUserDataPath({
