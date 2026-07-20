@@ -905,6 +905,11 @@ export const en = {
         referenceProvenanceFilterDescription:
           "Enable Agent source filtering in Agent conversation reference pickers.",
         referenceProvenanceFilterLabel: "Agent source filter",
+        quickPromptLibraryDescription:
+          "Show a personal quick-prompt library in the Agent composer.",
+        quickPromptLibraryLabel: "Quick-prompt library",
+        quickPromptLibrarySaveFailed:
+          "We couldn't update quick-prompt library availability.",
         releaseChannelOptions: {
           rc: "Preview",
           stable: "Stable"

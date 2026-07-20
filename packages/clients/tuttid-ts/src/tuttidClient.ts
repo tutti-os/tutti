@@ -12,10 +12,12 @@ import {
   createWorkspaceIssueTaskRun,
   createWorkspaceIssueTopic,
   createWorkspace,
+  createAgentQuickPrompt,
   createWorkspaceFile,
   createWorkspaceFileDirectory,
   createWorkspaceTerminal,
   deleteUserProject,
+  deleteAgentQuickPrompt,
   deleteWorkspaceIssue,
   deleteWorkspaceIssueTask,
   deleteWorkspaceIssueTopic,
@@ -30,6 +32,7 @@ import {
   getAgentTargetSetup,
   getStartupWorkspace,
   listAgentTargets,
+  listAgentQuickPrompts,
   getWorkspaceFileTreeSnapshot,
   getWorkspace,
   getWorkspaceIssueDetail,
@@ -77,6 +80,7 @@ import {
   updateWorkspaceIssue,
   updateWorkspaceIssueTask,
   updateWorkspaceIssueTopic,
+  updateAgentQuickPrompt,
   updateWorkspace,
   uploadWorkspaceFiles,
   useUserProject,
@@ -112,6 +116,36 @@ export function createTuttidClient(
   });
 
   return {
+    async listAgentQuickPrompts() {
+      return unwrapData(
+        await listAgentQuickPrompts({ client }),
+        "Agent quick prompts request failed."
+      );
+    },
+    async createAgentQuickPrompt(request) {
+      return unwrapData(
+        await createAgentQuickPrompt({ client, body: request }),
+        "Create Agent quick prompt request failed."
+      ).prompt;
+    },
+    async updateAgentQuickPrompt(promptID, request) {
+      return unwrapData(
+        await updateAgentQuickPrompt({
+          client,
+          body: request,
+          path: { promptId: promptID }
+        }),
+        "Update Agent quick prompt request failed."
+      ).prompt;
+    },
+    async deleteAgentQuickPrompt(promptID, request) {
+      const response = await deleteAgentQuickPrompt({
+        client,
+        body: request,
+        path: { promptId: promptID }
+      });
+      unwrapAccepted(response, "Delete Agent quick prompt request failed.");
+    },
     async listAgentTargets() {
       return unwrapData(
         await listAgentTargets({ client }),

@@ -7,6 +7,7 @@ import { createWorkspaceAgentGuiContribution } from "../workspaceAgentGuiContrib
 type AgentGuiWorkbenchContributionContext = Pick<
   DesktopWorkbenchContributionContext,
   | "agentProviderStatusService"
+  | "agentQuickPromptService"
   | "agentsService"
   | "appCenterService"
   | "appI18n"
@@ -36,6 +37,7 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
     order: -10,
     create(context) {
       return createWorkspaceAgentGuiContribution({
+        agentQuickPromptService: context.agentQuickPromptService,
         agentProviderStatusService: context.agentProviderStatusService,
         appCenterService: context.appCenterService,
         appI18n: context.appI18n,

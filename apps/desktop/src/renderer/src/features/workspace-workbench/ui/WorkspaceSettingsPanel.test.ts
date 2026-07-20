@@ -37,6 +37,22 @@ test("workspace settings developer panel exposes analytics debug switch only whe
   );
 });
 
+test("workspace developer settings exposes the default-off quick prompt flag", () => {
+  assert.match(developerSource, /AGENT_QUICK_PROMPT_LIBRARY_FLAG/);
+  assert.match(
+    developerSource,
+    /isFeatureEnabled\(\s*pendingFeatureFlags,\s*AGENT_QUICK_PROMPT_LIBRARY_FLAG\s*\)/
+  );
+  assert.match(
+    developerSource,
+    /settingsService\.changeFeatureFlags\(\{\s*\.\.\.pendingFeatureFlags,\s*\[AGENT_QUICK_PROMPT_LIBRARY_FLAG\]: enabled/
+  );
+  assert.match(
+    developerSource,
+    /checked=\{quickPromptLibraryEnabled\}[\s\S]{0,180}disabled=\{featureFlagsUpdating\}/
+  );
+});
+
 test("workspace settings gates account behind Tutti Agent Switch", () => {
   assert.match(source, /settingsState\.tuttiAgentSwitchEnabled/);
   assert.match(

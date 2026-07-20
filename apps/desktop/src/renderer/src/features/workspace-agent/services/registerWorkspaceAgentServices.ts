@@ -8,6 +8,7 @@ import type {
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
+import type { IDesktopPreferencesService } from "../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import type { WorkspaceWindowLifecycle } from "../../../lib/workspaceWindowLifecycle.ts";
 import { IAgentEnvService } from "./agentEnvService.interface.ts";
@@ -24,10 +25,16 @@ import { IAgentsService } from "./agentsService.interface";
 import { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import { IWorkspaceAgentPromptSessionService } from "./workspaceAgentPromptSessionService.interface";
 import { AgentEnvService } from "./internal/agentEnvService.ts";
+import { DesktopAgentQuickPromptService } from "./internal/desktopAgentQuickPromptService.ts";
+import {
+  IAgentQuickPromptService,
+  type IAgentQuickPromptService as AgentQuickPromptService
+} from "./agentQuickPromptService.interface.ts";
 
 export interface WorkspaceAgentServiceRegistrationInput {
   accountLogin: { startLogin(): Promise<void> };
   clipboard: { writeText(text: string): Promise<void> };
+  desktopPreferencesService: IDesktopPreferencesService;
   eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi: Pick<
     DesktopHostFilesApi,
@@ -53,6 +60,7 @@ export interface WorkspaceAgentServiceRegistrationResult {
   refreshManagedAgentProviderStatuses(): Promise<
     readonly AgentProviderStatus[] | null
   >;
+  agentQuickPromptService: AgentQuickPromptService;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   dispose(): void;
 }
@@ -104,6 +112,12 @@ export function registerWorkspaceAgentServices(
     tuttidClient: input.tuttidClient
   });
   registry.registerInstance(IAgentsService, agentsService);
+  const agentQuickPromptService = new DesktopAgentQuickPromptService({
+    desktopPreferencesService: input.desktopPreferencesService,
+    eventStreamClient: input.eventStreamClient,
+    tuttidClient: input.tuttidClient
+  });
+  registry.registerInstance(IAgentQuickPromptService, agentQuickPromptService);
   const workspaceAgentActivityService = new WorkspaceAgentActivityService({
     ...input,
     agentProviderStatusService
@@ -125,11 +139,13 @@ export function registerWorkspaceAgentServices(
     agentsService,
     agentProviderStatusService,
     refreshManagedAgentProviderStatuses,
+    agentQuickPromptService,
     workspaceAgentActivityService,
     dispose() {
       disposeManagedAgentProviderVisibilityRefresh();
       agentEnvService.dispose();
       agentProviderStatusService.dispose();
+      agentQuickPromptService.dispose();
     }
   };
 }

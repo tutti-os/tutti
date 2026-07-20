@@ -27,8 +27,10 @@ import { IWorkbenchHostCoordinator } from "./workbenchHostCoordinator.interface.
 import { IWorkspaceWorkbenchHostService } from "./workspaceWorkbenchHostService.interface";
 import type { DesktopWorkspaceWorkbenchRepository } from "./internal/adapters/desktopWorkspaceWorkbenchRepository.ts";
 import { IWorkspaceSettingsService } from "./workspaceSettingsService.interface";
+import type { IAgentQuickPromptService } from "../../workspace-agent/services/agentQuickPromptService.interface.ts";
 
 export interface WorkspaceWorkbenchServiceRegistrationInput {
+  agentQuickPromptService?: IAgentQuickPromptService;
   browserApi?: DesktopBrowserApi;
   computerUseApi: DesktopComputerUseApi;
   developerApi: DesktopDeveloperApi;
@@ -85,6 +87,7 @@ export function registerWorkspaceWorkbenchServices(
     IWorkspaceWorkbenchHostService,
     new SyncDescriptor(WorkspaceWorkbenchHostService, [
       {
+        agentQuickPromptService: input.agentQuickPromptService,
         browserApi: input.browserApi,
         computerUseApi: input.computerUseApi,
         dockPreviewCacheApi: input.dockPreviewCacheApi,

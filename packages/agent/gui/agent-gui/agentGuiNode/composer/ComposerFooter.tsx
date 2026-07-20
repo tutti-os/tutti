@@ -50,6 +50,7 @@ interface Props {
   isHeroLayout: boolean;
   isGoalModeActive: boolean;
   composerActionButton: ReactNode;
+  quickPromptControl?: ReactNode;
   showHandoffSelect: boolean;
   handoffDisabled: boolean;
   effectiveHandoffLabel: string;
@@ -88,6 +89,7 @@ export function ComposerFooter({
   isHeroLayout,
   isGoalModeActive,
   composerActionButton,
+  quickPromptControl,
   showHandoffSelect,
   handoffDisabled,
   effectiveHandoffLabel,
@@ -302,6 +304,7 @@ export function ComposerFooter({
               </SelectContent>
             </Select>
           ) : null}
+          {quickPromptControl}
           {composerSettings.supportsPlanMode &&
           composerSettings.draftSettings.planMode ? (
             <button

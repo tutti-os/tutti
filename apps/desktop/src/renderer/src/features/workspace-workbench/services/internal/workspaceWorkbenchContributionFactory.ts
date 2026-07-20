@@ -24,6 +24,7 @@ import type {
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type {
   AgentProviderStatusService,
+  AgentQuickPromptService,
   IAgentsService,
   IWorkspaceAgentActivityService,
   WorkspaceAgentPromptSessionService
@@ -44,6 +45,7 @@ import type { WorkspaceBrowserService } from "./workspaceBrowserService.ts";
 import type { WorkbenchCapabilityFactoryDescriptor } from "@tutti-os/workbench-host";
 
 export interface DesktopWorkbenchContributionContext {
+  agentQuickPromptService?: AgentQuickPromptService;
   appI18n: I18nRuntime<string>;
   appLocale: DesktopLocale;
   appCenterService: IWorkspaceAppCenterService;

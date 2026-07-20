@@ -486,6 +486,7 @@ export function useAgentGUIDetailModel(input: Input) {
       projectMissingDescription: labels.projectMissingDescription,
       promptTipsPrefix: labels.promptTipsPrefix,
       reviewPicker: labels.reviewPicker,
+      quickPrompts: labels.quickPrompts,
       ...interactivePromptLabels
     }),
     [
@@ -527,6 +528,7 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.projectMissingDescription,
       labels.promptTipsPrefix,
       labels.reviewPicker,
+      labels.quickPrompts,
       labels.queuedLabel,
       labels.queuePausedByUserLabel,
       labels.queuedPromptMoreActions,

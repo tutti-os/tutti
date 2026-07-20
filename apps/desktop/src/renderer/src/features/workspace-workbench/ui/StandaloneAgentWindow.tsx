@@ -35,6 +35,7 @@ import type {
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { createDesktopAgentGUIWorkbenchHostInput } from "@renderer/features/workspace-agent/services/createDesktopAgentGUIWorkbenchHostInput.ts";
 import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
+import { IAgentQuickPromptService } from "@renderer/features/workspace-agent/services/agentQuickPromptService.interface.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import { IAgentEnvService } from "@renderer/features/workspace-agent/services/agentEnvService.interface.ts";
@@ -161,6 +162,7 @@ export function StandaloneAgentWindow({
 }: StandaloneAgentWindowProps): ReactNode {
   const { i18n } = useTranslation();
   const agentsService = useService(IAgentsService);
+  const agentQuickPromptService = useService(IAgentQuickPromptService);
   const agentEnvService = useService(IAgentEnvService);
   const workspaceAppSurfaceHost = useService(IWorkspaceAppSurfaceHost);
   const workspaceFilePreviewSurfaceHost = useService(
@@ -464,6 +466,7 @@ export function StandaloneAgentWindow({
   const agentGuiHostInput = useMemo(
     () =>
       createDesktopAgentGUIWorkbenchHostInput({
+        agentQuickPromptService,
         hostFilesApi: desktopApi.host.files,
         tuttidClient,
         platformApi: desktopApi.platform,
@@ -477,6 +480,7 @@ export function StandaloneAgentWindow({
         workspaceId
       }),
     [
+      agentQuickPromptService,
       desktopApi.host.files,
       desktopApi.platform,
       desktopApi.runtime,

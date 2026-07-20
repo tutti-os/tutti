@@ -9,6 +9,7 @@ export type BusinessEventScopeName = "global" | "desktop" | "workspace";
 export type BusinessEventTopic =
   | "agent.activity.updated"
   | "agent.model.catalog.invalidated"
+  | "agent.quickprompt.updated"
   | "analytics.debug.reported"
   | "preferences.agent.composer.defaults.changed"
   | "preferences.agent.composer.defaults.patch.requested"
@@ -362,6 +363,13 @@ export interface AgentModelCatalogInvalidatedPayloadV1 {
   occurredAtUnixMs: number;
 }
 
+export interface AgentQuickpromptUpdatedPayloadV1 {
+  promptId: string;
+  changeKind: "created" | "updated" | "deleted";
+  version: number;
+  occurredAtUnixMs: number;
+}
+
 export interface AnalyticsDebugReportedPayloadV1 {
   events: readonly {
     name: string;
@@ -446,6 +454,12 @@ export type AgentModelCatalogInvalidatedEventV1 = BusinessEventEnvelopeV1<
   1
 >;
 
+export type AgentQuickpromptUpdatedEventV1 = BusinessEventEnvelopeV1<
+  "agent.quickprompt.updated",
+  AgentQuickpromptUpdatedPayloadV1,
+  1
+>;
+
 export type AnalyticsDebugReportedEventV1 = BusinessEventEnvelopeV1<
   "analytics.debug.reported",
   AnalyticsDebugReportedPayloadV1,
@@ -516,6 +530,7 @@ export type ClientToServerEventTopic =
 export type ServerToClientEventTopic =
   | "agent.activity.updated"
   | "agent.model.catalog.invalidated"
+  | "agent.quickprompt.updated"
   | "analytics.debug.reported"
   | "preferences.agent.composer.defaults.changed"
   | "preferences.desktop.updated"
@@ -532,6 +547,7 @@ export type ClientToServerEventV1 =
 export type ServerToClientEventV1 =
   | AgentActivityUpdatedEventV1
   | AgentModelCatalogInvalidatedEventV1
+  | AgentQuickpromptUpdatedEventV1
   | AnalyticsDebugReportedEventV1
   | PreferencesAgentComposerDefaultsChangedEventV1
   | PreferencesDesktopUpdatedEventV1

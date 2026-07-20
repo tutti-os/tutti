@@ -52,6 +52,18 @@ type ServerInterface interface {
 	// Probe whether tuttid can start a local agent provider runtime command
 	// (POST /v1/agent-providers/{provider}/probe)
 	ProbeAgentProvider(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider)
+	// List device-local Agent quick prompts
+	// (GET /v1/agent-quick-prompts)
+	ListAgentQuickPrompts(w http.ResponseWriter, r *http.Request)
+	// Create a device-local Agent quick prompt
+	// (POST /v1/agent-quick-prompts)
+	CreateAgentQuickPrompt(w http.ResponseWriter, r *http.Request)
+	// Delete a device-local Agent quick prompt
+	// (DELETE /v1/agent-quick-prompts/{promptId})
+	DeleteAgentQuickPrompt(w http.ResponseWriter, r *http.Request, promptId string)
+	// Update a device-local Agent quick prompt
+	// (PUT /v1/agent-quick-prompts/{promptId})
+	UpdateAgentQuickPrompt(w http.ResponseWriter, r *http.Request, promptId string)
 	// List daemon-owned Agent Targets
 	// (GET /v1/agent-targets)
 	ListAgentTargets(w http.ResponseWriter, r *http.Request)
@@ -809,6 +821,110 @@ func (siw *ServerInterfaceWrapper) ProbeAgentProvider(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ProbeAgentProvider(w, r, provider)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAgentQuickPrompts operation middleware
+func (siw *ServerInterfaceWrapper) ListAgentQuickPrompts(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgentQuickPrompts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAgentQuickPrompt operation middleware
+func (siw *ServerInterfaceWrapper) CreateAgentQuickPrompt(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAgentQuickPrompt(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAgentQuickPrompt operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAgentQuickPrompt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "promptId" -------------
+	var promptId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "promptId", r.PathValue("promptId"), &promptId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "promptId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAgentQuickPrompt(w, r, promptId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAgentQuickPrompt operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAgentQuickPrompt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "promptId" -------------
+	var promptId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "promptId", r.PathValue("promptId"), &promptId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "promptId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAgentQuickPrompt(w, r, promptId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6984,6 +7100,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/actions/{actionID}/run", wrapper.RunAgentProviderAction)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/composer-options", wrapper.GetAgentProviderComposerOptions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/probe", wrapper.ProbeAgentProvider)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-quick-prompts", wrapper.ListAgentQuickPrompts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-quick-prompts", wrapper.CreateAgentQuickPrompt)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/agent-quick-prompts/{promptId}", wrapper.DeleteAgentQuickPrompt)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/agent-quick-prompts/{promptId}", wrapper.UpdateAgentQuickPrompt)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-targets", wrapper.ListAgentTargets)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/agent-targets/{agentTargetID}/enabled", wrapper.SetSystemAgentTargetEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/cli/capabilities", wrapper.ListCliCapabilities)
@@ -7129,6 +7249,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	return m
 }
+
+type AgentQuickPromptConflictErrorJSONResponse ApiErrorResponse
+
+type AgentQuickPromptNotFoundErrorJSONResponse ApiErrorResponse
+
+type AgentQuickPromptOperationErrorJSONResponse ApiErrorResponse
 
 type InvalidRequestErrorJSONResponse ApiErrorResponse
 
@@ -8052,6 +8178,465 @@ type ProbeAgentProvider503JSONResponse struct {
 }
 
 func (response ProbeAgentProvider503JSONResponse) VisitProbeAgentProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentQuickPromptsRequestObject struct {
+}
+
+type ListAgentQuickPromptsResponseObject interface {
+	VisitListAgentQuickPromptsResponse(w http.ResponseWriter) error
+}
+
+type ListAgentQuickPrompts200JSONResponse AgentQuickPromptListResponse
+
+func (response ListAgentQuickPrompts200JSONResponse) VisitListAgentQuickPromptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentQuickPrompts401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ListAgentQuickPrompts401JSONResponse) VisitListAgentQuickPromptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentQuickPrompts405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListAgentQuickPrompts405JSONResponse) VisitListAgentQuickPromptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentQuickPrompts502JSONResponse struct {
+	AgentQuickPromptOperationErrorJSONResponse
+}
+
+func (response ListAgentQuickPrompts502JSONResponse) VisitListAgentQuickPromptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentQuickPrompts503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListAgentQuickPrompts503JSONResponse) VisitListAgentQuickPromptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentQuickPromptRequestObject struct {
+	Body *CreateAgentQuickPromptJSONRequestBody
+}
+
+type CreateAgentQuickPromptResponseObject interface {
+	VisitCreateAgentQuickPromptResponse(w http.ResponseWriter) error
+}
+
+type CreateAgentQuickPrompt201JSONResponse AgentQuickPromptResponse
+
+func (response CreateAgentQuickPrompt201JSONResponse) VisitCreateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentQuickPrompt400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response CreateAgentQuickPrompt400JSONResponse) VisitCreateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentQuickPrompt401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response CreateAgentQuickPrompt401JSONResponse) VisitCreateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentQuickPrompt405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response CreateAgentQuickPrompt405JSONResponse) VisitCreateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentQuickPrompt409JSONResponse struct {
+	AgentQuickPromptConflictErrorJSONResponse
+}
+
+func (response CreateAgentQuickPrompt409JSONResponse) VisitCreateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentQuickPrompt502JSONResponse struct {
+	AgentQuickPromptOperationErrorJSONResponse
+}
+
+func (response CreateAgentQuickPrompt502JSONResponse) VisitCreateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAgentQuickPrompt503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response CreateAgentQuickPrompt503JSONResponse) VisitCreateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAgentQuickPromptRequestObject struct {
+	PromptId string `json:"promptId"`
+	Body     *DeleteAgentQuickPromptJSONRequestBody
+}
+
+type DeleteAgentQuickPromptResponseObject interface {
+	VisitDeleteAgentQuickPromptResponse(w http.ResponseWriter) error
+}
+
+type DeleteAgentQuickPrompt204Response struct {
+}
+
+func (response DeleteAgentQuickPrompt204Response) VisitDeleteAgentQuickPromptResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAgentQuickPrompt400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response DeleteAgentQuickPrompt400JSONResponse) VisitDeleteAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAgentQuickPrompt401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response DeleteAgentQuickPrompt401JSONResponse) VisitDeleteAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAgentQuickPrompt404JSONResponse struct {
+	AgentQuickPromptNotFoundErrorJSONResponse
+}
+
+func (response DeleteAgentQuickPrompt404JSONResponse) VisitDeleteAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAgentQuickPrompt405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response DeleteAgentQuickPrompt405JSONResponse) VisitDeleteAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAgentQuickPrompt409JSONResponse struct {
+	AgentQuickPromptConflictErrorJSONResponse
+}
+
+func (response DeleteAgentQuickPrompt409JSONResponse) VisitDeleteAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAgentQuickPrompt502JSONResponse struct {
+	AgentQuickPromptOperationErrorJSONResponse
+}
+
+func (response DeleteAgentQuickPrompt502JSONResponse) VisitDeleteAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAgentQuickPrompt503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response DeleteAgentQuickPrompt503JSONResponse) VisitDeleteAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentQuickPromptRequestObject struct {
+	PromptId string `json:"promptId"`
+	Body     *UpdateAgentQuickPromptJSONRequestBody
+}
+
+type UpdateAgentQuickPromptResponseObject interface {
+	VisitUpdateAgentQuickPromptResponse(w http.ResponseWriter) error
+}
+
+type UpdateAgentQuickPrompt200JSONResponse AgentQuickPromptResponse
+
+func (response UpdateAgentQuickPrompt200JSONResponse) VisitUpdateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentQuickPrompt400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response UpdateAgentQuickPrompt400JSONResponse) VisitUpdateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentQuickPrompt401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response UpdateAgentQuickPrompt401JSONResponse) VisitUpdateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentQuickPrompt404JSONResponse struct {
+	AgentQuickPromptNotFoundErrorJSONResponse
+}
+
+func (response UpdateAgentQuickPrompt404JSONResponse) VisitUpdateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentQuickPrompt405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response UpdateAgentQuickPrompt405JSONResponse) VisitUpdateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentQuickPrompt409JSONResponse struct {
+	AgentQuickPromptConflictErrorJSONResponse
+}
+
+func (response UpdateAgentQuickPrompt409JSONResponse) VisitUpdateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentQuickPrompt502JSONResponse struct {
+	AgentQuickPromptOperationErrorJSONResponse
+}
+
+func (response UpdateAgentQuickPrompt502JSONResponse) VisitUpdateAgentQuickPromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAgentQuickPrompt503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response UpdateAgentQuickPrompt503JSONResponse) VisitUpdateAgentQuickPromptResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -24354,6 +24939,18 @@ type StrictServerInterface interface {
 	// Probe whether tuttid can start a local agent provider runtime command
 	// (POST /v1/agent-providers/{provider}/probe)
 	ProbeAgentProvider(ctx context.Context, request ProbeAgentProviderRequestObject) (ProbeAgentProviderResponseObject, error)
+	// List device-local Agent quick prompts
+	// (GET /v1/agent-quick-prompts)
+	ListAgentQuickPrompts(ctx context.Context, request ListAgentQuickPromptsRequestObject) (ListAgentQuickPromptsResponseObject, error)
+	// Create a device-local Agent quick prompt
+	// (POST /v1/agent-quick-prompts)
+	CreateAgentQuickPrompt(ctx context.Context, request CreateAgentQuickPromptRequestObject) (CreateAgentQuickPromptResponseObject, error)
+	// Delete a device-local Agent quick prompt
+	// (DELETE /v1/agent-quick-prompts/{promptId})
+	DeleteAgentQuickPrompt(ctx context.Context, request DeleteAgentQuickPromptRequestObject) (DeleteAgentQuickPromptResponseObject, error)
+	// Update a device-local Agent quick prompt
+	// (PUT /v1/agent-quick-prompts/{promptId})
+	UpdateAgentQuickPrompt(ctx context.Context, request UpdateAgentQuickPromptRequestObject) (UpdateAgentQuickPromptResponseObject, error)
 	// List daemon-owned Agent Targets
 	// (GET /v1/agent-targets)
 	ListAgentTargets(ctx context.Context, request ListAgentTargetsRequestObject) (ListAgentTargetsResponseObject, error)
@@ -25100,6 +25697,133 @@ func (sh *strictHandler) ProbeAgentProvider(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ProbeAgentProviderResponseObject); ok {
 		if err := validResponse.VisitProbeAgentProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAgentQuickPrompts operation middleware
+func (sh *strictHandler) ListAgentQuickPrompts(w http.ResponseWriter, r *http.Request) {
+	var request ListAgentQuickPromptsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAgentQuickPrompts(ctx, request.(ListAgentQuickPromptsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAgentQuickPrompts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAgentQuickPromptsResponseObject); ok {
+		if err := validResponse.VisitListAgentQuickPromptsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAgentQuickPrompt operation middleware
+func (sh *strictHandler) CreateAgentQuickPrompt(w http.ResponseWriter, r *http.Request) {
+	var request CreateAgentQuickPromptRequestObject
+
+	var body CreateAgentQuickPromptJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAgentQuickPrompt(ctx, request.(CreateAgentQuickPromptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAgentQuickPrompt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAgentQuickPromptResponseObject); ok {
+		if err := validResponse.VisitCreateAgentQuickPromptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAgentQuickPrompt operation middleware
+func (sh *strictHandler) DeleteAgentQuickPrompt(w http.ResponseWriter, r *http.Request, promptId string) {
+	var request DeleteAgentQuickPromptRequestObject
+
+	request.PromptId = promptId
+
+	var body DeleteAgentQuickPromptJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAgentQuickPrompt(ctx, request.(DeleteAgentQuickPromptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAgentQuickPrompt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAgentQuickPromptResponseObject); ok {
+		if err := validResponse.VisitDeleteAgentQuickPromptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAgentQuickPrompt operation middleware
+func (sh *strictHandler) UpdateAgentQuickPrompt(w http.ResponseWriter, r *http.Request, promptId string) {
+	var request UpdateAgentQuickPromptRequestObject
+
+	request.PromptId = promptId
+
+	var body UpdateAgentQuickPromptJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAgentQuickPrompt(ctx, request.(UpdateAgentQuickPromptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAgentQuickPrompt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAgentQuickPromptResponseObject); ok {
+		if err := validResponse.VisitUpdateAgentQuickPromptResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

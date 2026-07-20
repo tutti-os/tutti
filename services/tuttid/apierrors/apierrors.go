@@ -24,6 +24,9 @@ const (
 	StatusWorkspaceOperationFailed   = 502
 	StatusPreferencesOperationFailed = 502
 	StatusServiceUnavailable         = 503
+	StatusAgentQuickPromptNotFound   = 404
+	StatusAgentQuickPromptConflict   = 409
+	StatusAgentQuickPromptFailed     = 502
 )
 
 const (
@@ -31,6 +34,11 @@ const (
 	ReasonEntryAlreadyExists                             = "entry_already_exists"
 	ReasonAgentSubmitDeliveryUnknown                     = "agent_submit_delivery_unknown"
 	ReasonEventStreamServiceUnavailable                  = "event_stream_service_unavailable"
+	ReasonAgentQuickPromptNotFound                       = "agent_quick_prompt_not_found"
+	ReasonAgentQuickPromptVersionConflict                = "agent_quick_prompt_version_conflict"
+	ReasonAgentQuickPromptLimitExceeded                  = "agent_quick_prompt_limit_exceeded"
+	ReasonAgentQuickPromptOperationFailed                = "agent_quick_prompt_operation_failed"
+	ReasonAgentQuickPromptServiceUnavailable             = "agent_quick_prompt_service_unavailable"
 	ReasonInvalidEntryKind                               = "invalid_entry_kind"
 	ReasonInvalidPath                                    = "invalid_path"
 	ReasonNotAGitRepo                                    = "not_a_git_repo"
@@ -235,6 +243,22 @@ func PreferencesServiceUnavailable(options ...Option) *ProtocolError {
 
 func EventStreamServiceUnavailable(options ...Option) *ProtocolError {
 	return ServiceUnavailable(ReasonEventStreamServiceUnavailable, options...)
+}
+
+func AgentQuickPromptServiceUnavailable(options ...Option) *ProtocolError {
+	return ServiceUnavailable(ReasonAgentQuickPromptServiceUnavailable, options...)
+}
+
+func AgentQuickPromptNotFound(options ...Option) *ProtocolError {
+	return New(StatusAgentQuickPromptNotFound, tuttigenerated.AgentQuickPromptNotFound, ReasonAgentQuickPromptNotFound, options...)
+}
+
+func AgentQuickPromptConflict(reason string, options ...Option) *ProtocolError {
+	return New(StatusAgentQuickPromptConflict, tuttigenerated.AgentQuickPromptConflict, reason, options...)
+}
+
+func AgentQuickPromptOperationFailed(options ...Option) *ProtocolError {
+	return New(StatusAgentQuickPromptFailed, tuttigenerated.AgentQuickPromptOperationFailed, ReasonAgentQuickPromptOperationFailed, options...)
 }
 
 func WorkspaceNotFound(reason string, options ...Option) *ProtocolError {

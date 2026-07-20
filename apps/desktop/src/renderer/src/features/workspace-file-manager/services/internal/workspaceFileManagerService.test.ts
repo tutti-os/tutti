@@ -901,8 +901,12 @@ function createDependenciesStub(): {
       copyFilesToClipboard: fail
     },
     tuttidClient: {
+      createAgentQuickPrompt: fail,
+      deleteAgentQuickPrompt: fail,
+      listAgentQuickPrompts: fail,
       listAgentTargets: fail,
       setSystemAgentTargetEnabled: fail,
+      updateAgentQuickPrompt: fail,
       getAgentTargetSetup: fail,
       installAgentTargetRuntime: fail,
       authenticateAgentTargetRuntime: fail,

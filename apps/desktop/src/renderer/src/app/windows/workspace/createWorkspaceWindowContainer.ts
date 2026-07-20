@@ -203,6 +203,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     clipboard: {
       writeText: (text) => navigator.clipboard.writeText(text)
     },
+    desktopPreferencesService,
     eventStreamClient: tuttidEventStreamClient,
     hostFilesApi: desktopApi.host.files,
     tuttidClient,
@@ -274,6 +275,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     }
   });
   registerWorkspaceWorkbenchServices(registry, {
+    agentQuickPromptService: workspaceAgentServices.agentQuickPromptService,
     browserApi: desktopApi.browser,
     computerUseApi: desktopApi.computerUse,
     developerApi: desktopApi.developer,

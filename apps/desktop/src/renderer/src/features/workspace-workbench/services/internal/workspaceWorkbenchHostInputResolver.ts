@@ -41,6 +41,7 @@ import type { IDesktopRichTextAtService } from "../../../rich-text-at/services/r
 import type { IWorkspaceFileManagerService } from "../../../workspace-file-manager/services/workspaceFileManagerService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../../workspace-user-project/services/workspaceUserProjectService.interface.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "../../../workspace-agent/services/agentProviderStatusService.interface.ts";
+import type { IAgentQuickPromptService as AgentQuickPromptService } from "../../../workspace-agent/services/agentQuickPromptService.interface.ts";
 import type { IAgentsService as AgentsService } from "../../../workspace-agent/services/agentsService.interface.ts";
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "../../../workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import type { IWorkspaceAgentPromptSessionService as WorkspaceAgentPromptSessionService } from "../../../workspace-agent/services/workspaceAgentPromptSessionService.interface.ts";
@@ -69,6 +70,7 @@ const workspaceDockNativePreviewMaxHeightPx = 170;
 const workspaceDockNativePreviewTimeoutMs = 2_500;
 
 export interface WorkspaceWorkbenchHostInputResolverDependencies {
+  agentQuickPromptService?: AgentQuickPromptService;
   agentProviderStatusService: AgentProviderStatusService;
   agentsService: AgentsService;
   appCenterService: IWorkspaceAppCenterService;
@@ -151,6 +153,7 @@ export class WorkspaceWorkbenchHostInputResolver {
     });
     const contributionRegistry = resolveWorkbenchCapabilityRegistry(
       createTuttiWorkbenchProductProfile({
+        agentQuickPromptService: this.dependencies.agentQuickPromptService,
         appI18n: input.appI18n,
         appLocale: input.appLocale,
         appCenterService: this.dependencies.appCenterService,

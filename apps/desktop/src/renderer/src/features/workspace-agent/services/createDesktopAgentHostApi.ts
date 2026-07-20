@@ -5,6 +5,7 @@ import type {
 import type {
   AgentHostAgentTargetSetupSnapshot,
   AgentHostInputApi,
+  AgentHostQuickPromptsApi,
   AgentHostAgentTargetSetupWatch,
   AgentHostUserProject,
   AgentHostApplyWorkspaceGitPatchInput,
@@ -30,6 +31,7 @@ import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface.ts";
 
 interface CreateDesktopAgentHostApiInput {
+  agentQuickPromptService?: AgentHostQuickPromptsApi;
   hostFilesApi: DesktopHostFilesApi;
   tuttidClient: TuttidClient;
   platformApi: Pick<DesktopPlatformApi, "homeDirectory" | "os">;
@@ -86,6 +88,7 @@ export function projectDesktopAgentTargetSetupSnapshot(
   };
 }
 export function createDesktopAgentHostApi({
+  agentQuickPromptService,
   hostFilesApi,
   tuttidClient,
   platformApi,
@@ -142,6 +145,9 @@ export function createDesktopAgentHostApi({
       )
     );
   const api = {
+    ...(agentQuickPromptService
+      ? { quickPrompts: agentQuickPromptService }
+      : {}),
     meta: {
       allowWhatsNewInTests: false,
       appVersion: null,

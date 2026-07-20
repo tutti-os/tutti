@@ -12,6 +12,8 @@ export const businessEventTopicAgentActivityUpdated =
   "agent.activity.updated" as const;
 export const businessEventTopicAgentModelCatalogInvalidated =
   "agent.model.catalog.invalidated" as const;
+export const businessEventTopicAgentQuickpromptUpdated =
+  "agent.quickprompt.updated" as const;
 export const businessEventTopicAnalyticsDebugReported =
   "analytics.debug.reported" as const;
 export const businessEventTopicPreferencesAgentComposerDefaultsChanged =
@@ -41,7 +43,7 @@ export interface BusinessEventDefinition {
   scope: BusinessEventScopeName;
 }
 
-export const businessEventCatalogRevision = "sha256:39e753d5c669864b" as const;
+export const businessEventCatalogRevision = "sha256:83185aed5c6abee1" as const;
 
 export const businessEventDefinitions = [
   {
@@ -56,6 +58,13 @@ export const businessEventDefinitions = [
     version: 1,
     direction: "server->client",
     owner: "agent",
+    scope: "global"
+  },
+  {
+    topic: "agent.quickprompt.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
     scope: "global"
   },
   {
@@ -143,6 +152,13 @@ export const businessEventDefinitionByTopic = {
     version: 1,
     direction: "server->client",
     owner: "agent",
+    scope: "global"
+  },
+  "agent.quickprompt.updated": {
+    topic: "agent.quickprompt.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
     scope: "global"
   },
   "analytics.debug.reported": {

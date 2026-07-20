@@ -136,6 +136,7 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 	})
 
 	registerAgentTargetRoutes(mux, wrapper)
+	registerAgentQuickPromptRoutes(mux, wrapper)
 
 	registerUserProjectRoutes(mux, wrapper)
 

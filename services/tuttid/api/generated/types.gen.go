@@ -627,23 +627,32 @@ func (e AgentTargetSource) Valid() bool {
 
 // Defines values for ApiErrorDetailsCode.
 const (
-	InvalidRequest                 ApiErrorDetailsCode = "invalid_request"
-	MethodNotAllowed               ApiErrorDetailsCode = "method_not_allowed"
-	PreferencesOperationFailed     ApiErrorDetailsCode = "preferences_operation_failed"
-	ServiceUnavailable             ApiErrorDetailsCode = "service_unavailable"
-	Unauthorized                   ApiErrorDetailsCode = "unauthorized"
-	WorkspaceAppNotFound           ApiErrorDetailsCode = "workspace_app_not_found"
-	WorkspaceFileNotFound          ApiErrorDetailsCode = "workspace_file_not_found"
-	WorkspaceIssueResourceExists   ApiErrorDetailsCode = "workspace_issue_resource_exists"
-	WorkspaceIssueResourceNotFound ApiErrorDetailsCode = "workspace_issue_resource_not_found"
-	WorkspaceNotFound              ApiErrorDetailsCode = "workspace_not_found"
-	WorkspaceOperationFailed       ApiErrorDetailsCode = "workspace_operation_failed"
-	WorkspaceTerminalNotFound      ApiErrorDetailsCode = "workspace_terminal_not_found"
+	AgentQuickPromptConflict        ApiErrorDetailsCode = "agent_quick_prompt_conflict"
+	AgentQuickPromptNotFound        ApiErrorDetailsCode = "agent_quick_prompt_not_found"
+	AgentQuickPromptOperationFailed ApiErrorDetailsCode = "agent_quick_prompt_operation_failed"
+	InvalidRequest                  ApiErrorDetailsCode = "invalid_request"
+	MethodNotAllowed                ApiErrorDetailsCode = "method_not_allowed"
+	PreferencesOperationFailed      ApiErrorDetailsCode = "preferences_operation_failed"
+	ServiceUnavailable              ApiErrorDetailsCode = "service_unavailable"
+	Unauthorized                    ApiErrorDetailsCode = "unauthorized"
+	WorkspaceAppNotFound            ApiErrorDetailsCode = "workspace_app_not_found"
+	WorkspaceFileNotFound           ApiErrorDetailsCode = "workspace_file_not_found"
+	WorkspaceIssueResourceExists    ApiErrorDetailsCode = "workspace_issue_resource_exists"
+	WorkspaceIssueResourceNotFound  ApiErrorDetailsCode = "workspace_issue_resource_not_found"
+	WorkspaceNotFound               ApiErrorDetailsCode = "workspace_not_found"
+	WorkspaceOperationFailed        ApiErrorDetailsCode = "workspace_operation_failed"
+	WorkspaceTerminalNotFound       ApiErrorDetailsCode = "workspace_terminal_not_found"
 )
 
 // Valid indicates whether the value is a known member of the ApiErrorDetailsCode enum.
 func (e ApiErrorDetailsCode) Valid() bool {
 	switch e {
+	case AgentQuickPromptConflict:
+		return true
+	case AgentQuickPromptNotFound:
+		return true
+	case AgentQuickPromptOperationFailed:
+		return true
 	case InvalidRequest:
 		return true
 	case MethodNotAllowed:
@@ -2666,6 +2675,26 @@ type AgentProviderTerminalCommand struct {
 	Input string  `json:"input"`
 }
 
+// AgentQuickPrompt defines model for AgentQuickPrompt.
+type AgentQuickPrompt struct {
+	Content         string `json:"content"`
+	CreatedAtUnixMs int64  `json:"createdAtUnixMs"`
+	Id              string `json:"id"`
+	Title           string `json:"title"`
+	UpdatedAtUnixMs int64  `json:"updatedAtUnixMs"`
+	Version         int64  `json:"version"`
+}
+
+// AgentQuickPromptListResponse defines model for AgentQuickPromptListResponse.
+type AgentQuickPromptListResponse struct {
+	Prompts []AgentQuickPrompt `json:"prompts"`
+}
+
+// AgentQuickPromptResponse defines model for AgentQuickPromptResponse.
+type AgentQuickPromptResponse struct {
+	Prompt AgentQuickPrompt `json:"prompt"`
+}
+
 // AgentSessionComposerSettings defines model for AgentSessionComposerSettings.
 type AgentSessionComposerSettings struct {
 	BrowserUse       *bool   `json:"browserUse,omitempty"`
@@ -3135,6 +3164,12 @@ type CopyWorkspaceFileEntryRequest struct {
 	Path string `json:"path"`
 }
 
+// CreateAgentQuickPromptRequest defines model for CreateAgentQuickPromptRequest.
+type CreateAgentQuickPromptRequest struct {
+	Content string `json:"content"`
+	Title   string `json:"title"`
+}
+
 // CreateIssueManagerIssueRequest defines model for CreateIssueManagerIssueRequest.
 type CreateIssueManagerIssueRequest struct {
 	Content *string `json:"content,omitempty"`
@@ -3236,6 +3271,11 @@ type CreateWorkspaceTerminalRequest struct {
 	InitialInput *string `json:"initialInput,omitempty"`
 	ProfileId    *string `json:"profileId,omitempty"`
 	Rows         *int    `json:"rows,omitempty"`
+}
+
+// DeleteAgentQuickPromptRequest defines model for DeleteAgentQuickPromptRequest.
+type DeleteAgentQuickPromptRequest struct {
+	ExpectedVersion int64 `json:"expectedVersion"`
 }
 
 // DeleteIssueManagerContextRefResponse defines model for DeleteIssueManagerContextRefResponse.
@@ -4072,6 +4112,13 @@ type TrackEvent struct {
 // TrackEventsRequest defines model for TrackEventsRequest.
 type TrackEventsRequest struct {
 	Events []TrackEvent `json:"events"`
+}
+
+// UpdateAgentQuickPromptRequest defines model for UpdateAgentQuickPromptRequest.
+type UpdateAgentQuickPromptRequest struct {
+	Content         string `json:"content"`
+	ExpectedVersion int64  `json:"expectedVersion"`
+	Title           string `json:"title"`
 }
 
 // UpdateIssueManagerIssueRequest defines model for UpdateIssueManagerIssueRequest.
@@ -5205,6 +5252,15 @@ type WorkspaceFileSearchWithin = string
 // WorkspaceID defines model for WorkspaceID.
 type WorkspaceID = string
 
+// AgentQuickPromptConflictError defines model for AgentQuickPromptConflictError.
+type AgentQuickPromptConflictError = ApiErrorResponse
+
+// AgentQuickPromptNotFoundError defines model for AgentQuickPromptNotFoundError.
+type AgentQuickPromptNotFoundError = ApiErrorResponse
+
+// AgentQuickPromptOperationError defines model for AgentQuickPromptOperationError.
+type AgentQuickPromptOperationError = ApiErrorResponse
+
 // InvalidRequestError defines model for InvalidRequestError.
 type InvalidRequestError = ApiErrorResponse
 
@@ -5440,6 +5496,15 @@ type DismissAccountRegistrationCreditsRewardJSONRequestBody = DismissAccountRegi
 
 // GetAgentProviderComposerOptionsJSONRequestBody defines body for GetAgentProviderComposerOptions for application/json ContentType.
 type GetAgentProviderComposerOptionsJSONRequestBody = GetAgentProviderComposerOptionsRequest
+
+// CreateAgentQuickPromptJSONRequestBody defines body for CreateAgentQuickPrompt for application/json ContentType.
+type CreateAgentQuickPromptJSONRequestBody = CreateAgentQuickPromptRequest
+
+// DeleteAgentQuickPromptJSONRequestBody defines body for DeleteAgentQuickPrompt for application/json ContentType.
+type DeleteAgentQuickPromptJSONRequestBody = DeleteAgentQuickPromptRequest
+
+// UpdateAgentQuickPromptJSONRequestBody defines body for UpdateAgentQuickPrompt for application/json ContentType.
+type UpdateAgentQuickPromptJSONRequestBody = UpdateAgentQuickPromptRequest
 
 // SetSystemAgentTargetEnabledJSONRequestBody defines body for SetSystemAgentTargetEnabled for application/json ContentType.
 type SetSystemAgentTargetEnabledJSONRequestBody = SetSystemAgentTargetEnabledRequest

@@ -310,7 +310,10 @@ export type ApiErrorDetails = {
     | "workspace_app_not_found"
     | "workspace_issue_resource_not_found"
     | "workspace_operation_failed"
-    | "preferences_operation_failed";
+    | "preferences_operation_failed"
+    | "agent_quick_prompt_not_found"
+    | "agent_quick_prompt_conflict"
+    | "agent_quick_prompt_operation_failed";
   reason?: string;
   params?: {
     [key: string]: unknown;
@@ -2118,6 +2121,38 @@ export type WorkspaceGitPatchResponse = {
   execOutput?: WorkspaceGitPatchExecOutput;
 };
 
+export type AgentQuickPrompt = {
+  id: string;
+  title: string;
+  content: string;
+  version: number;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+export type AgentQuickPromptListResponse = {
+  prompts: Array<AgentQuickPrompt>;
+};
+
+export type AgentQuickPromptResponse = {
+  prompt: AgentQuickPrompt;
+};
+
+export type CreateAgentQuickPromptRequest = {
+  title: string;
+  content: string;
+};
+
+export type UpdateAgentQuickPromptRequest = {
+  title: string;
+  content: string;
+  expectedVersion: number;
+};
+
+export type DeleteAgentQuickPromptRequest = {
+  expectedVersion: number;
+};
+
 export type UserProject = {
   id: string;
   path: string;
@@ -3408,6 +3443,198 @@ export type PurgeDeletedAgentConversationsResponses = {
 
 export type PurgeDeletedAgentConversationsResponse =
   PurgeDeletedAgentConversationsResponses[keyof PurgeDeletedAgentConversationsResponses];
+
+export type ListAgentQuickPromptsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-quick-prompts";
+};
+
+export type ListAgentQuickPromptsErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent quick prompt persistence operation failed
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAgentQuickPromptsError =
+  ListAgentQuickPromptsErrors[keyof ListAgentQuickPromptsErrors];
+
+export type ListAgentQuickPromptsResponses = {
+  /**
+   * Agent quick prompt list
+   */
+  200: AgentQuickPromptListResponse;
+};
+
+export type ListAgentQuickPromptsResponse =
+  ListAgentQuickPromptsResponses[keyof ListAgentQuickPromptsResponses];
+
+export type CreateAgentQuickPromptData = {
+  body: CreateAgentQuickPromptRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-quick-prompts";
+};
+
+export type CreateAgentQuickPromptErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent quick prompt limit or expected version conflicts with current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Agent quick prompt persistence operation failed
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CreateAgentQuickPromptError =
+  CreateAgentQuickPromptErrors[keyof CreateAgentQuickPromptErrors];
+
+export type CreateAgentQuickPromptResponses = {
+  /**
+   * Agent quick prompt created
+   */
+  201: AgentQuickPromptResponse;
+};
+
+export type CreateAgentQuickPromptResponse =
+  CreateAgentQuickPromptResponses[keyof CreateAgentQuickPromptResponses];
+
+export type DeleteAgentQuickPromptData = {
+  body: DeleteAgentQuickPromptRequest;
+  path: {
+    promptId: string;
+  };
+  query?: never;
+  url: "/v1/agent-quick-prompts/{promptId}";
+};
+
+export type DeleteAgentQuickPromptErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent quick prompt was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent quick prompt limit or expected version conflicts with current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Agent quick prompt persistence operation failed
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteAgentQuickPromptError =
+  DeleteAgentQuickPromptErrors[keyof DeleteAgentQuickPromptErrors];
+
+export type DeleteAgentQuickPromptResponses = {
+  /**
+   * Agent quick prompt deleted
+   */
+  204: void;
+};
+
+export type DeleteAgentQuickPromptResponse =
+  DeleteAgentQuickPromptResponses[keyof DeleteAgentQuickPromptResponses];
+
+export type UpdateAgentQuickPromptData = {
+  body: UpdateAgentQuickPromptRequest;
+  path: {
+    promptId: string;
+  };
+  query?: never;
+  url: "/v1/agent-quick-prompts/{promptId}";
+};
+
+export type UpdateAgentQuickPromptErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent quick prompt was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent quick prompt limit or expected version conflicts with current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Agent quick prompt persistence operation failed
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateAgentQuickPromptError =
+  UpdateAgentQuickPromptErrors[keyof UpdateAgentQuickPromptErrors];
+
+export type UpdateAgentQuickPromptResponses = {
+  /**
+   * Agent quick prompt updated
+   */
+  200: AgentQuickPromptResponse;
+};
+
+export type UpdateAgentQuickPromptResponse =
+  UpdateAgentQuickPromptResponses[keyof UpdateAgentQuickPromptResponses];
 
 export type DeleteUserProjectData = {
   body: DeleteUserProjectRequest;

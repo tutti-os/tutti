@@ -56,6 +56,46 @@ export type AgentHostEnvironmentApi = AgentHostRecord & {
   getBaseUrl?: () => AgentHostAsyncResult<string>;
 };
 
+export interface AgentHostQuickPrompt {
+  id: string;
+  title: string;
+  content: string;
+  version: number;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+}
+
+export interface AgentHostQuickPromptSnapshot {
+  enabled: boolean;
+  status: "idle" | "loading" | "ready" | "error";
+  prompts: readonly AgentHostQuickPrompt[];
+  error: string | null;
+  revision: number;
+  pendingMutationIds: readonly string[];
+}
+
+export interface AgentHostQuickPromptsApi {
+  ensureLoaded: (input?: { force?: boolean }) => AgentHostAsyncResult<void>;
+  getSnapshot: () => AgentHostQuickPromptSnapshot;
+  subscribe: (
+    listener: (snapshot: AgentHostQuickPromptSnapshot) => void
+  ) => AgentHostUnsubscribe;
+  create: (input: {
+    title: string;
+    content: string;
+  }) => AgentHostAsyncResult<AgentHostQuickPrompt>;
+  update: (input: {
+    id: string;
+    title: string;
+    content: string;
+    expectedVersion: number;
+  }) => AgentHostAsyncResult<AgentHostQuickPrompt>;
+  remove: (input: {
+    id: string;
+    expectedVersion: number;
+  }) => AgentHostAsyncResult<void>;
+}
+
 export type AgentHostPersistenceApi = AgentHostRecord & {
   readWorkspaceAgentReadState: (
     input: ReadWorkspaceAgentReadStateInput
@@ -160,6 +200,7 @@ export interface AgentHostInputApi {
   meta?: AgentHostMetaApi;
   onHostEvent?: (listener: (event: any) => void) => AgentHostUnsubscribe;
   persistence?: AgentHostPersistenceApi;
+  quickPrompts?: AgentHostQuickPromptsApi;
   runtime?: AgentHostEnvironmentApi;
   toast?: AgentHostToastApi;
   userProjects?: AgentHostUserProjectsApi;
@@ -353,6 +394,7 @@ export interface AgentHostRuntimeApi {
   meta?: AgentHostMetaApi;
   onHostEvent?: (listener: (event: any) => void) => AgentHostUnsubscribe;
   persistence?: AgentHostPersistenceApi;
+  quickPrompts?: AgentHostQuickPromptsApi;
   runtime?: AgentHostEnvironmentApi;
   toast?: AgentHostToastApi;
   userProjects?: AgentHostUserProjectsApi;
@@ -372,6 +414,7 @@ export function toAgentHostRuntimeApi(
     meta: hostApi.meta,
     onHostEvent: hostApi.onHostEvent,
     persistence: hostApi.persistence,
+    quickPrompts: hostApi.quickPrompts,
     runtime: hostApi.runtime,
     toast: hostApi.toast,
     userProjects: hostApi.userProjects,

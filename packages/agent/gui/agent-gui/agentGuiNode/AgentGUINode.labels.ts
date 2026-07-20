@@ -11,6 +11,7 @@ import {
   type AgentGUIConversationRailLabels
 } from "./view/agentGUIConversationRailLabels";
 import { agentGUIProviderManagerLabels } from "./view/agentGUIProviderManagerLabels";
+import { agentQuickPromptLabels } from "./composer/quickPrompts/agentQuickPromptLabels";
 
 export { buildAgentHomeSuggestions };
 
@@ -594,6 +595,7 @@ export function useAgentGUIViewLabels(input: {
         submit: t("agentHost.agentGui.reviewPicker.submit"),
         cancel: t("agentHost.agentGui.reviewPicker.cancel")
       },
+      quickPrompts: agentQuickPromptLabels(t),
       promptTips: [
         {
           id: "set-workspace",

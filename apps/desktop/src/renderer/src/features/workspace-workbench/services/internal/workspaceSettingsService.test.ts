@@ -9,6 +9,7 @@ import type { ReporterEventInput } from "../../../analytics/services/reporterSer
 import {
   AGENT_EXTENSION_ACTIVATION_FLAGS,
   AGENT_EXTENSION_GEMINI_FLAG,
+  AGENT_QUICK_PROMPT_LIBRARY_FLAG,
   LAB_ENABLED_FLAG
 } from "../../../../../../shared/featureFlags/catalog.ts";
 import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspaceSettingsClient.ts";
@@ -989,6 +990,31 @@ test("WorkspaceSettingsService does not refresh Agent Targets after changing an 
       next: { [LAB_ENABLED_FLAG]: true }
     }),
     ["save"]
+  );
+});
+
+test("WorkspaceSettingsService reports a quick prompt specific save failure", async () => {
+  const notifications = createNotificationRecorder();
+  const service = new WorkspaceSettingsService(
+    { client: createWorkspaceSettingsClient({}) },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async () => {
+        throw new Error("preferences unavailable");
+      },
+      state: createPreferencesState({ featureFlags: {} })
+    }),
+    notifications.service
+  );
+
+  await service.changeFeatureFlags({
+    [AGENT_QUICK_PROMPT_LIBRARY_FLAG]: true
+  });
+
+  assert.equal(notifications.items.length, 1);
+  assert.ok(
+    notifications.items[0] ===
+      "We couldn't update quick-prompt library availability." ||
+      notifications.items[0] === "暂时无法更新快捷提示词库可用状态"
   );
 });
 

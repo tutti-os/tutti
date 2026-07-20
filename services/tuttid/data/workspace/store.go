@@ -6,6 +6,7 @@ import (
 
 	agentstore "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentquickpromptbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentquickprompt"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	managedcredentialsbiz "github.com/tutti-os/tutti/services/tuttid/biz/managedcredentials"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
@@ -70,6 +71,14 @@ type AgentTargetStore interface {
 	GetAgentTarget(context.Context, string) (agenttargetbiz.Target, error)
 	ListAgentTargets(context.Context) ([]agenttargetbiz.Target, error)
 	PutAgentTarget(context.Context, agenttargetbiz.Target) (agenttargetbiz.Target, error)
+}
+
+type AgentQuickPromptStore interface {
+	ListAgentQuickPrompts(context.Context) ([]agentquickpromptbiz.Prompt, error)
+	CountAgentQuickPrompts(context.Context) (int, error)
+	CreateAgentQuickPrompt(context.Context, agentquickpromptbiz.Prompt) error
+	UpdateAgentQuickPrompt(context.Context, agentquickpromptbiz.Prompt, int64) (agentquickpromptbiz.Prompt, error)
+	DeleteAgentQuickPrompt(context.Context, string, int64) error
 }
 
 type PreferencesStore interface {

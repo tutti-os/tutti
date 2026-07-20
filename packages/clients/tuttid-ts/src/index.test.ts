@@ -100,6 +100,71 @@ test("shared tuttid client purges deleted Agent conversations", async () => {
   });
 });
 
+test("shared tuttid client performs Agent quick prompt CRUD", async () => {
+  const prompt = {
+    id: "prompt-1",
+    title: "Review",
+    content: "Review this change",
+    version: 1,
+    createdAtUnixMs: 10,
+    updatedAtUnixMs: 10
+  };
+  const { client, requests } = captureClient((request) => {
+    if (request.method === "GET") return jsonResponse({ prompts: [prompt] });
+    if (request.method === "DELETE") return new Response(null, { status: 204 });
+    return jsonResponse(
+      { prompt: { ...prompt, version: request.method === "PUT" ? 2 : 1 } },
+      request.method === "POST" ? 201 : 200
+    );
+  });
+
+  assert.deepEqual(await client.listAgentQuickPrompts(), { prompts: [prompt] });
+  assert.deepEqual(
+    await client.createAgentQuickPrompt({
+      title: prompt.title,
+      content: prompt.content
+    }),
+    prompt
+  );
+  assert.equal(
+    (
+      await client.updateAgentQuickPrompt(prompt.id, {
+        title: prompt.title,
+        content: prompt.content,
+        expectedVersion: 1
+      })
+    ).version,
+    2
+  );
+  await client.deleteAgentQuickPrompt(prompt.id, { expectedVersion: 2 });
+
+  assert.deepEqual(
+    requests.map(({ method, path, body }) => ({ method, path, body })),
+    [
+      { method: "GET", path: "/v1/agent-quick-prompts", body: null },
+      {
+        method: "POST",
+        path: "/v1/agent-quick-prompts",
+        body: { title: prompt.title, content: prompt.content }
+      },
+      {
+        method: "PUT",
+        path: "/v1/agent-quick-prompts/prompt-1",
+        body: {
+          title: prompt.title,
+          content: prompt.content,
+          expectedVersion: 1
+        }
+      },
+      {
+        method: "DELETE",
+        path: "/v1/agent-quick-prompts/prompt-1",
+        body: { expectedVersion: 2 }
+      }
+    ]
+  );
+});
+
 test("generated tuttid client returns parsed health response", async () => {
   const client = createClient({
     baseUrl: "http://localhost:4545/",
@@ -1660,6 +1725,26 @@ test("normalizeTuttidError recognizes issue manager protocol codes", () => {
   assert.equal(normalized.code, "workspace_issue_resource_exists");
   assert.equal(normalized.reason, "workspace_issue_topic_not_empty");
   assert.equal(normalized.statusCode, 409);
+});
+
+test("normalizeTuttidError recognizes Agent quick prompt conflicts", () => {
+  const normalized = normalizeTuttidError(
+    {
+      error: {
+        code: "agent_quick_prompt_conflict",
+        reason: "agent_quick_prompt_version_conflict",
+        developerMessage: "quick prompt version is stale",
+        params: { promptId: "prompt-1" }
+      }
+    },
+    409
+  );
+
+  assert.ok(normalized instanceof TuttidProtocolError);
+  assert.equal(normalized.code, "agent_quick_prompt_conflict");
+  assert.equal(normalized.reason, "agent_quick_prompt_version_conflict");
+  assert.equal(normalized.statusCode, 409);
+  assert.deepEqual(normalized.params, { promptId: "prompt-1" });
 });
 
 test("workspaceProtocolErrorCodes exports issue manager protocol codes", () => {
