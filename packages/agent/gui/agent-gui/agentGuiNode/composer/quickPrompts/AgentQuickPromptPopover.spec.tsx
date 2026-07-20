@@ -19,6 +19,8 @@ const labels = new Proxy(
     trigger: "Prompts",
     triggerTooltip: "Choose a quick prompt",
     searchPlaceholder: "Search quick prompts",
+    startSorting: "Sort",
+    finishSorting: "Done",
     add: "New prompt",
     createFromTemplate: "Create from a recommended template",
     moreActions: "More prompt actions",
@@ -158,6 +160,176 @@ describe("AgentQuickPromptPopover", () => {
     expect(subject.deletePrompt).toHaveBeenCalledOnce();
   });
 
+  it("shows reorder handles only in explicit sorting mode", () => {
+    const first = controller().filteredPrompts[0]!;
+    const second = {
+      ...first,
+      id: "prompt-2",
+      title: "Plan",
+      content: "Plan the current change"
+    };
+    const subject = controller({
+      canReorder: true,
+      filteredPrompts: [first, second],
+      showReorderHandles: true,
+      snapshot: {
+        enabled: true,
+        status: "ready",
+        prompts: [first, second],
+        error: null,
+        revision: 1,
+        pendingMutationIds: []
+      }
+    });
+    const rendered = render(
+      <TooltipProvider>
+        <AgentQuickPromptPopover controller={subject} disabled={false} />
+      </TooltipProvider>
+    );
+
+    expect(screen.queryByRole("button", { name: "Reorder Review" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sort" }));
+
+    expect(
+      screen.getByRole("button", { name: "Reorder Review" })
+    ).toBeEnabled();
+    expect(screen.getByPlaceholderText("Search quick prompts")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: "Create from a recommended template"
+      })
+    ).toBeNull();
+
+    rendered.rerender(
+      <TooltipProvider>
+        <AgentQuickPromptPopover
+          controller={controller({
+            canReorder: false,
+            filteredPrompts: [first, second],
+            isInteractionLocked: true,
+            showReorderHandles: true,
+            snapshot: {
+              enabled: true,
+              status: "ready",
+              prompts: [first, second],
+              error: null,
+              revision: 2,
+              orderMutationPending: true,
+              pendingMutationIds: [first.id]
+            }
+          })}
+          disabled={false}
+        />
+      </TooltipProvider>
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Reorder Review" })
+    ).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /^Review/u })).toBeNull();
+    expect(screen.getByText("Review")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
+  });
+
+  it("uses standard click semantics to enter and finish sorting", () => {
+    const first = controller().filteredPrompts[0]!;
+    const second = { ...first, id: "prompt-2", title: "Plan" };
+    render(
+      <TooltipProvider>
+        <AgentQuickPromptPopover
+          controller={controller({
+            canReorder: true,
+            filteredPrompts: [first, second],
+            showReorderHandles: true,
+            snapshot: {
+              enabled: true,
+              status: "ready",
+              prompts: [first, second],
+              error: null,
+              revision: 1,
+              pendingMutationIds: []
+            }
+          })}
+          disabled={false}
+        />
+      </TooltipProvider>
+    );
+
+    const sort = screen.getByRole("button", { name: "Sort" });
+    fireEvent.pointerDown(sort, { button: 0 });
+    expect(screen.getByRole("button", { name: "Sort" })).toBeInTheDocument();
+    fireEvent.click(sort);
+    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+
+    const done = screen.getByRole("button", { name: "Done" });
+    fireEvent.pointerDown(done, { button: 0 });
+    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+    fireEvent.click(done);
+    expect(screen.getByRole("button", { name: "Sort" })).toBeInTheDocument();
+  });
+
+  it("resets sorting mode when the controlled Popover closes externally", () => {
+    const first = controller().filteredPrompts[0]!;
+    const second = { ...first, id: "prompt-2", title: "Plan" };
+    const openController = controller({
+      canReorder: true,
+      filteredPrompts: [first, second],
+      showReorderHandles: true,
+      snapshot: {
+        enabled: true,
+        status: "ready",
+        prompts: [first, second],
+        error: null,
+        revision: 1,
+        pendingMutationIds: []
+      }
+    });
+    const rendered = render(
+      <TooltipProvider>
+        <AgentQuickPromptPopover controller={openController} disabled={false} />
+      </TooltipProvider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Sort" }));
+    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+
+    rendered.rerender(
+      <TooltipProvider>
+        <AgentQuickPromptPopover
+          controller={{ ...openController, isPopoverOpen: false }}
+          disabled={false}
+        />
+      </TooltipProvider>
+    );
+    rendered.rerender(
+      <TooltipProvider>
+        <AgentQuickPromptPopover controller={openController} disabled={false} />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByRole("button", { name: "Sort" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reorder Review" })).toBeNull();
+  });
+
+  it("does not allow sorting a filtered list", () => {
+    render(
+      <TooltipProvider>
+        <AgentQuickPromptPopover
+          controller={controller({
+            searchQuery: "review",
+            showReorderHandles: false
+          })}
+          disabled={false}
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByRole("button", { name: "Sort" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Reorder Review" })).toBeNull();
+  });
+
   it("disables every mutating entry point while a shared mutation is pending", () => {
     render(
       <TooltipProvider>
@@ -177,9 +349,8 @@ describe("AgentQuickPromptPopover", () => {
     expect(screen.getByRole("button", { name: /^Review/u })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "Reorder Review" })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sort" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Reorder Review" })).toBeNull();
     expect(
       screen.getByRole("button", {
         name: "Create from a recommended template"
@@ -489,8 +660,17 @@ describe("quick-prompt UI composition", () => {
     expect(rowSource).toContain("aria-label={labels.delete}");
     expect(rowSource).toContain("group/quick-prompt-row");
     expect(rowSource).not.toContain("group-focus-within");
+    expect(rowSource).toContain(
+      'className="cursor-grab text-[var(--text-tertiary)]'
+    );
+    expect(rowSource).toContain(
+      "disabled:cursor-not-allowed disabled:text-[var(--text-disabled)] disabled:opacity-100"
+    );
+    expect(rowSource).toContain('reorderDisabled ? "cursor-not-allowed" : ""');
+    expect(rowSource).not.toContain("className={revealClass}");
     expect(listSource).toContain("<Sortable");
     expect(listSource).toContain("<SortableItem");
+    expect(listSource).not.toContain("disabled={!isSorting");
     expect(rowSource).toContain("<SortableItemHandle");
     expect(source).not.toContain("<DropdownMenu");
     expect(source).toContain("onCloseAutoFocus");

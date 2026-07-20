@@ -33,6 +33,7 @@ export interface AgentQuickPromptLabels {
   edit: string;
   editTitle: string;
   empty: string;
+  finishSorting: string;
   loadError: string;
   loading: string;
   moreActions: string;
@@ -45,6 +46,7 @@ export interface AgentQuickPromptLabels {
   save: string;
   saving: string;
   searchPlaceholder: string;
+  startSorting: string;
   recommendedTemplates: readonly AgentQuickPromptTemplate[];
   recommendedTemplatesDescription: string;
   recommendedTemplatesTitle: string;
@@ -105,6 +107,7 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
     edit: t("agentHost.agentGui.quickPrompts.edit"),
     editTitle: t("agentHost.agentGui.quickPrompts.editTitle"),
     empty: t("agentHost.agentGui.quickPrompts.empty"),
+    finishSorting: t("agentHost.agentGui.quickPrompts.finishSorting"),
     loadError: t("agentHost.agentGui.quickPrompts.loadError"),
     loading: t("agentHost.agentGui.quickPrompts.loading"),
     moreActions: t("agentHost.agentGui.quickPrompts.moreActions"),
@@ -117,6 +120,7 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
     save: t("agentHost.agentGui.quickPrompts.save"),
     saving: t("agentHost.agentGui.quickPrompts.saving"),
     searchPlaceholder: t("agentHost.agentGui.quickPrompts.searchPlaceholder"),
+    startSorting: t("agentHost.agentGui.quickPrompts.startSorting"),
     recommendedTemplates: [
       {
         id: "understand-context",

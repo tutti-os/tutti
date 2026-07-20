@@ -6,6 +6,7 @@ import type { AgentQuickPromptLibraryController } from "./useAgentQuickPromptLib
 
 export function AgentQuickPromptList({
   controller,
+  isSorting,
   onDelete,
   onEdit,
   onFocusRow,
@@ -13,6 +14,7 @@ export function AgentQuickPromptList({
   rowRefs
 }: {
   controller: AgentQuickPromptLibraryController;
+  isSorting: boolean;
   onDelete: (prompt: AgentHostQuickPrompt) => void;
   onEdit: (prompt: AgentHostQuickPrompt) => void;
   onFocusRow: (index: number) => void;
@@ -112,27 +114,25 @@ export function AgentQuickPromptList({
     >
       <SortableContent className="flex flex-col gap-0.5">
         {filteredPrompts.map((prompt, index) => (
-          <SortableItem
-            key={prompt.id}
-            disabled={!controller.canReorder}
-            value={prompt.id}
-          >
+          <SortableItem key={prompt.id} value={prompt.id}>
             <AgentQuickPromptRow
               handleRef={(node) => {
                 if (node) handleRefs.current.set(prompt.id, node);
                 else handleRefs.current.delete(prompt.id);
               }}
               labels={labels}
+              isSorting={isSorting}
               pending={
                 controller.isInteractionLocked ||
                 snapshot.pendingMutationIds.includes(prompt.id)
               }
               prompt={prompt}
+              reorderDisabled={!controller.canReorder}
               selectionRef={(node) => {
                 if (node) rowRefs.current.set(prompt.id, node);
                 else rowRefs.current.delete(prompt.id);
               }}
-              showReorderHandle={controller.showReorderHandles}
+              showReorderHandle={isSorting && controller.showReorderHandles}
               onDelete={() => onDelete(prompt)}
               onEdit={() => onEdit(prompt)}
               onFocusNext={(offset) =>

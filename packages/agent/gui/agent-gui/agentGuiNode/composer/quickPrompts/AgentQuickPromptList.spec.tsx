@@ -100,6 +100,7 @@ describe("AgentQuickPromptList", () => {
       <TooltipProvider>
         <AgentQuickPromptList
           controller={controller}
+          isSorting
           rowRefs={{ current: new Map() }}
           onDelete={vi.fn()}
           onEdit={vi.fn()}

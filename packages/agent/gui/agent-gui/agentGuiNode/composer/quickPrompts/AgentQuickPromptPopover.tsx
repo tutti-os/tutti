@@ -18,6 +18,8 @@ import {
   AddIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
+  CheckIcon,
+  GripVerticalIcon,
   MessageSquareTextIcon,
   SearchIcon
 } from "@tutti-os/ui-system/icons";
@@ -40,6 +42,24 @@ export function AgentQuickPromptPopover({
   const createRequestedOnPointerDownRef = useRef(false);
   const templateRequestedOnPointerDownRef = useRef(false);
   const [view, setView] = useState<"prompts" | "templates">("prompts");
+  const [sortingState, setSortingState] = useState({
+    isPopoverOpen: controller.isPopoverOpen,
+    isSorting: false
+  });
+  let isSorting = sortingState.isSorting;
+  if (sortingState.isPopoverOpen !== controller.isPopoverOpen) {
+    isSorting = false;
+    setSortingState({
+      isPopoverOpen: controller.isPopoverOpen,
+      isSorting: false
+    });
+  }
+  const setIsSorting = (next: boolean): void => {
+    setSortingState({
+      isPopoverOpen: controller.isPopoverOpen,
+      isSorting: next
+    });
+  };
   const titleId = useId();
   const { labels, snapshot } = controller;
   const templateEntryAction = usePrimaryPointerAction(() =>
@@ -83,7 +103,10 @@ export function AgentQuickPromptPopover({
         modal={false}
         open={controller.isPopoverOpen}
         onOpenChange={(open) => {
-          if (!open) setView("prompts");
+          if (!open) {
+            setView("prompts");
+            setIsSorting(false);
+          }
           controller.setPopoverOpen(open);
         }}
       >
@@ -153,27 +176,57 @@ export function AgentQuickPromptPopover({
                 {labels.returnToPrompts}
               </Button>
             ) : (
-              <Button
-                disabled={controller.isInteractionLocked}
-                size="sm"
-                type="button"
-                variant="ghost"
-                onPointerDown={(event) => {
-                  if (event.button !== 0) return;
-                  createRequestedOnPointerDownRef.current = true;
-                  requestCreate();
-                }}
-                onClick={() => {
-                  if (createRequestedOnPointerDownRef.current) {
-                    createRequestedOnPointerDownRef.current = false;
-                    return;
-                  }
-                  requestCreate();
-                }}
-              >
-                <AddIcon data-icon="inline-start" />
-                {labels.add}
-              </Button>
+              <div className="flex items-center gap-1">
+                {isSorting ? (
+                  <Button
+                    disabled={controller.isInteractionLocked}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setIsSorting(false)}
+                  >
+                    <CheckIcon data-icon="inline-start" />
+                    {labels.finishSorting}
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      disabled={
+                        controller.isInteractionLocked ||
+                        !controller.showReorderHandles
+                      }
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setIsSorting(true)}
+                    >
+                      <GripVerticalIcon data-icon="inline-start" />
+                      {labels.startSorting}
+                    </Button>
+                    <Button
+                      disabled={controller.isInteractionLocked}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                      onPointerDown={(event) => {
+                        if (event.button !== 0) return;
+                        createRequestedOnPointerDownRef.current = true;
+                        requestCreate();
+                      }}
+                      onClick={() => {
+                        if (createRequestedOnPointerDownRef.current) {
+                          createRequestedOnPointerDownRef.current = false;
+                          return;
+                        }
+                        requestCreate();
+                      }}
+                    >
+                      <AddIcon data-icon="inline-start" />
+                      {labels.add}
+                    </Button>
+                  </>
+                )}
+              </div>
             )}
           </div>
           {!isTemplateView ? (
@@ -186,7 +239,7 @@ export function AgentQuickPromptPopover({
                 ref={searchRef}
                 aria-label={labels.searchPlaceholder}
                 className="pl-8"
-                disabled={controller.isInteractionLocked}
+                disabled={controller.isInteractionLocked || isSorting}
                 placeholder={labels.searchPlaceholder}
                 value={controller.searchQuery}
                 onChange={(event) =>
@@ -292,6 +345,7 @@ export function AgentQuickPromptPopover({
               <div className="flex flex-col gap-0.5">
                 <AgentQuickPromptList
                   controller={controller}
+                  isSorting={isSorting}
                   rowRefs={rowRefs}
                   onFocusRow={focusRow}
                   onDelete={(prompt) => {
@@ -303,15 +357,18 @@ export function AgentQuickPromptPopover({
                     controller.openEdit(prompt);
                   }}
                   onSelect={(prompt) => {
+                    if (isSorting) return;
                     preserveExternalFocusRef.current = true;
                     controller.selectPrompt(prompt);
                   }}
                 />
-                <TemplateEntry
-                  label={labels.createFromTemplate}
-                  action={templateEntryAction}
-                  disabled={controller.isInteractionLocked}
-                />
+                {!isSorting ? (
+                  <TemplateEntry
+                    label={labels.createFromTemplate}
+                    action={templateEntryAction}
+                    disabled={controller.isInteractionLocked}
+                  />
+                ) : null}
               </div>
             )}
           </ScrollArea>
