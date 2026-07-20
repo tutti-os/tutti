@@ -87,6 +87,7 @@ import {
   useStandaloneAgentWindowHeaderIdentity
 } from "./StandaloneAgentWindowHeader.tsx";
 import { StandaloneAgentWindowContentReady } from "./StandaloneAgentWindowContentReady.tsx";
+import { StandaloneAgentStartupShell } from "./StandaloneAgentStartupShell.tsx";
 import { showWorkspaceFileMissingToast } from "../services/workspaceFilesLaunchFeedback.ts";
 import { Toast } from "@renderer/lib/toast";
 import { useStandaloneAgentWindowLayout } from "./useStandaloneAgentWindowLayout.ts";
@@ -312,6 +313,10 @@ export function StandaloneAgentWindow({
     getAgentDirectorySnapshot
   );
   const agents = agentDirectorySnapshot.agents;
+  const isAgentDirectoryLoading =
+    agents.length === 0 &&
+    (agentDirectorySnapshot.status === "idle" ||
+      agentDirectorySnapshot.status === "loading");
   const defaultAgentTargetId = useMemo(() => {
     const requestedTargetId = launchAgentTargetId?.trim() || null;
     if (
@@ -764,7 +769,11 @@ export function StandaloneAgentWindow({
           resizeWindowContentWidth={resizeStandaloneAgentWindowContentWidth}
           workspaceId={workspaceId}
         >
-          <StandaloneAgentWindowContentReady onReady={handleContentReady}>
+          <StandaloneAgentWindowContentReady
+            isPending={isAgentDirectoryLoading}
+            pendingFallback={<StandaloneAgentStartupShell scope="body" />}
+            onReady={handleContentReady}
+          >
             <DesktopAgentGUISurface
               agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
               agentHostApi={agentGuiHostInput.agentHostApi}
