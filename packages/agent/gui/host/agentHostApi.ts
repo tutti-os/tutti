@@ -170,7 +170,7 @@ export type AgentHostWorkspaceAgentProbesApi = AgentHostRecord & {
 export interface AgentHostAgentTargetInstallPlan {
   packageName: string;
   packageVersion: string;
-  runner: "npm" | "pnpm" | "uv";
+  runner: "npm" | "pnpm" | "uv" | "binary";
   planDigest: string;
   installRoot: string;
 }

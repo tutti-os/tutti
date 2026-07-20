@@ -69,6 +69,13 @@
         "signingKeyId": "tutti-qwen-release-v1",
         "signingPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEANqN38E9u53Ohnyzy8IC9lPXOmOCrZwxTb7Do2hM22t0=\n-----END PUBLIC KEY-----\n",
         "enabled": false
+      },
+      {
+        "key": "grok",
+        "releaseIndexUrl": "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/grok/versions.json",
+        "signingKeyId": "tutti-grok-release-v1",
+        "signingPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA2ZaE97XclDVCG9MLnQ5z1ZTd8FJPeLqj6KDsY69Iyu8=\n-----END PUBLIC KEY-----\n",
+        "enabled": false
       }
     ]
   }

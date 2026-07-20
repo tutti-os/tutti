@@ -56,6 +56,7 @@ func newScriptedAppServerTransport() *scriptedAppServerTransport {
 func newScriptedAppServerConnection() *scriptedAppServerConnection {
 	return &scriptedAppServerConnection{
 		recv:                     make(chan ProcessFrame, 128),
+		closed:                   make(chan struct{}),
 		goalCompletionAfterTurns: 1,
 	}
 }
@@ -68,9 +69,10 @@ func (t *scriptedAppServerTransport) Start(_ context.Context, spec ProcessSpec) 
 }
 
 type scriptedAppServerConnection struct {
-	mu   sync.Mutex
-	sent [][]byte
-	recv chan ProcessFrame
+	mu     sync.Mutex
+	sent   [][]byte
+	recv   chan ProcessFrame
+	closed chan struct{}
 
 	modelList                       []any
 	requiresAuth                    bool
@@ -115,11 +117,29 @@ type scriptedAppServerConnection struct {
 }
 
 func (c *scriptedAppServerConnection) sendJSON(value map[string]any) {
+	c.sendJSONWithWaitSignal(value, nil)
+}
+
+func (c *scriptedAppServerConnection) sendJSONWithWaitSignal(value map[string]any, waitEntered chan<- struct{}) {
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return
 	}
-	c.recv <- ProcessFrame{Stdout: append(raw, '\n')}
+	select {
+	case <-c.closed:
+		return
+	default:
+	}
+	for {
+		select {
+		case <-c.closed:
+			return
+		case c.recv <- ProcessFrame{Stdout: append(raw, '\n')}:
+			return
+		case waitEntered <- struct{}{}:
+			waitEntered = nil
+		}
+	}
 }
 
 func (c *scriptedAppServerConnection) notify(method string, params map[string]any) {
@@ -127,19 +147,79 @@ func (c *scriptedAppServerConnection) notify(method string, params map[string]an
 }
 
 func (c *scriptedAppServerConnection) Recv() (ProcessFrame, error) {
-	frame, ok := <-c.recv
-	if !ok {
+	return c.recvWithWaitSignal(nil)
+}
+
+func (c *scriptedAppServerConnection) recvWithWaitSignal(waitEntered chan<- struct{}) (ProcessFrame, error) {
+	select {
+	case <-c.closed:
 		return ProcessFrame{}, io.EOF
+	default:
 	}
-	return frame, nil
+	for {
+		select {
+		case <-c.closed:
+			return ProcessFrame{}, io.EOF
+		case frame := <-c.recv:
+			return frame, nil
+		case waitEntered <- struct{}{}:
+			waitEntered = nil
+		}
+	}
 }
 
 func (c *scriptedAppServerConnection) Close() error {
 	c.mu.Lock()
 	c.closeCount++
 	c.mu.Unlock()
-	c.closeOnce.Do(func() { close(c.recv) })
+	c.closeOnce.Do(func() { close(c.closed) })
 	return nil
+}
+
+func TestScriptedAppServerConnectionCloseUnblocksSendAndReceive(t *testing.T) {
+	t.Run("send", func(t *testing.T) {
+		connection := newScriptedAppServerConnection()
+		for index := 0; index < cap(connection.recv); index++ {
+			connection.sendJSON(map[string]any{"index": index})
+		}
+		waitEntered := make(chan struct{})
+		sendReturned := make(chan struct{})
+		go func() {
+			connection.sendJSONWithWaitSignal(map[string]any{"afterBuffer": true}, waitEntered)
+			close(sendReturned)
+		}()
+		<-waitEntered
+		if err := connection.Close(); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-sendReturned:
+		case <-time.After(time.Second):
+			t.Fatal("connection close did not unblock a pending scripted send")
+		}
+	})
+
+	t.Run("receive", func(t *testing.T) {
+		connection := newScriptedAppServerConnection()
+		waitEntered := make(chan struct{})
+		receiveReturned := make(chan error, 1)
+		go func() {
+			_, err := connection.recvWithWaitSignal(waitEntered)
+			receiveReturned <- err
+		}()
+		<-waitEntered
+		if err := connection.Close(); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case err := <-receiveReturned:
+			if !errors.Is(err, io.EOF) {
+				t.Fatalf("receive after close error = %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("connection close did not unblock a pending scripted receive")
+		}
+	})
 }
 
 // completePendingTurn finishes the in-flight turn the way the real

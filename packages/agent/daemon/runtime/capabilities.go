@@ -36,13 +36,19 @@ const (
 // standardACPCapabilities derives the canonical capability list for ACP
 // family providers from the live session state.
 func standardACPCapabilities(provider string, promptImage bool, state acpLiveStateSnapshot) []string {
-	return standardACPCapabilitiesWithDeclared(provider, promptImage, state, nil)
+	return standardACPCapabilitiesWithDeclared(provider, promptImage, state, nil, false)
 }
 
-func standardACPCapabilitiesWithDeclared(provider string, promptImage bool, state acpLiveStateSnapshot, declared []string) []string {
+func standardACPCapabilitiesWithDeclared(
+	provider string,
+	promptImage bool,
+	state acpLiveStateSnapshot,
+	declared []string,
+	declaredPlanWorkflow bool,
+) []string {
 	descriptor, ok := providerregistry.Find(provider)
 	if !ok {
-		return effectiveOpenStandardACPCapabilities(promptImage, state, declared)
+		return effectiveOpenStandardACPCapabilities(promptImage, state, declared, declaredPlanWorkflow)
 	}
 	profile := descriptor.ComposerProfile
 	capabilities := make([]string, 0, len(profile.Capabilities)+2)
@@ -70,7 +76,12 @@ func standardACPCapabilitiesWithDeclared(provider string, promptImage bool, stat
 	return dedupeCapabilities(capabilities)
 }
 
-func effectiveOpenStandardACPCapabilities(promptImage bool, state acpLiveStateSnapshot, declared []string) []string {
+func effectiveOpenStandardACPCapabilities(
+	promptImage bool,
+	state acpLiveStateSnapshot,
+	declared []string,
+	declaredPlanWorkflow bool,
+) []string {
 	if len(declared) == 0 {
 		return nil
 	}
@@ -79,6 +90,7 @@ func effectiveOpenStandardACPCapabilities(promptImage bool, state acpLiveStateSn
 		CapabilityInterrupt:  true,
 		CapabilityTokenUsage: state.usage.contextKnown,
 		CapabilityRateLimits: len(state.usage.quotas) > 0,
+		CapabilityPlanMode:   declaredPlanWorkflow,
 	}
 	for _, command := range state.availableCommands {
 		switch normalizeCapabilityEvidenceID(command.Name) {

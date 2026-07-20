@@ -379,6 +379,31 @@ func TestStandardACPAdapterStartAppliesThoughtLevelConfigOption(t *testing.T) {
 	}
 }
 
+func TestStandardACPAdapterCarriesExecutableIdentityToProcessStart(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "example-session-1")
+	identity := &ExecutableIdentity{SHA256: strings.Repeat("a", 64), SizeBytes: 42}
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider: "acp:example", Name: "example-acp", DisplayName: "Example Agent",
+		Command: []string{"example", "--acp"}, ExecutableIdentity: identity,
+	}, transport, LegacyHostMetadata())
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity.SHA256 = strings.Repeat("b", 64)
+	if _, err := adapterRaw.Start(context.Background(), standardTestSession("acp:example")); err != nil {
+		t.Fatal(err)
+	}
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	if len(transport.specs) != 1 || transport.specs[0].ExecutableIdentity == nil ||
+		transport.specs[0].ExecutableIdentity.SHA256 != strings.Repeat("a", 64) ||
+		transport.specs[0].ExecutableIdentity.SizeBytes != 42 {
+		t.Fatalf("process executable identity = %#v", transport.specs)
+	}
+}
+
 func TestStandardACPAdapterApplySessionSettingsUsesAdvertisedThoughtLevel(t *testing.T) {
 	t.Parallel()
 
@@ -2205,10 +2230,10 @@ func TestStandardACPLaunchPermissionBuildsExactArgvAndDoesNotSetWorkflowMode(t *
 		semantic string
 		want     string
 	}{
-		{name: "default", want: "ask"},
-		{name: "ask", semantic: "ask-before-write", want: "ask"},
+		{name: "default", want: "default"},
+		{name: "ask", semantic: "ask-before-write", want: "default"},
 		{name: "auto", semantic: "auto", want: "auto"},
-		{name: "full access", semantic: "full-access", want: "always-approve"},
+		{name: "full access", semantic: "full-access", want: "bypassPermissions"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2218,11 +2243,11 @@ func TestStandardACPLaunchPermissionBuildsExactArgvAndDoesNotSetWorkflowMode(t *
 				Provider:        "acp:spawn",
 				Name:            "spawn-acp",
 				DisplayName:     "Spawn ACP",
-				Command:         []string{"grok", "--no-auto-update", "agent", "--permission-mode", "${permissionMode}", "stdio"},
-				PermissionModes: map[string]string{"ask-before-write": "ask", "auto": "auto", "full-access": "always-approve"},
+				Command:         []string{"grok", "--no-auto-update", "--permission-mode", "${permissionMode}", "agent", "stdio"},
+				PermissionModes: map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
 				LaunchPermission: &StandardACPLaunchPermissionSetting{
 					Placeholder: "${permissionMode}",
-					Values:      map[string]string{"ask-before-write": "ask", "auto": "auto", "full-access": "always-approve"},
+					Values:      map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
 				},
 			}, transport, LegacyHostMetadata())
 			if err != nil {
@@ -2237,7 +2262,7 @@ func TestStandardACPLaunchPermissionBuildsExactArgvAndDoesNotSetWorkflowMode(t *
 			transport.mu.Lock()
 			specs := append([]ProcessSpec(nil), transport.specs...)
 			transport.mu.Unlock()
-			want := []string{"grok", "--no-auto-update", "agent", "--permission-mode", tt.want, "stdio"}
+			want := []string{"grok", "--no-auto-update", "--permission-mode", tt.want, "agent", "stdio"}
 			if len(specs) != 1 || !reflect.DeepEqual(specs[0].Command, want) {
 				t.Fatalf("spawn command = %#v, want %#v", specs, want)
 			}
@@ -2263,13 +2288,13 @@ func TestStandardACPLaunchPermissionKeepsPlanAsIndependentWorkflowMode(t *testin
 		Provider:                  "acp:spawn-plan",
 		Name:                      "spawn-plan-acp",
 		DisplayName:               "Spawn Plan ACP",
-		Command:                   []string{"grok", "--no-auto-update", "agent", "--permission-mode", "${permissionMode}", "stdio"},
-		PermissionModes:           map[string]string{"ask-before-write": "ask", "auto": "auto", "full-access": "always-approve"},
+		Command:                   []string{"grok", "--no-auto-update", "--permission-mode", "${permissionMode}", "agent", "stdio"},
+		PermissionModes:           map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
 		PlanModeRuntimeID:         "plan",
 		PlanModeDisabledRuntimeID: "default",
 		LaunchPermission: &StandardACPLaunchPermissionSetting{
 			Placeholder: "${permissionMode}",
-			Values:      map[string]string{"ask-before-write": "ask", "auto": "auto", "full-access": "always-approve"},
+			Values:      map[string]string{"ask-before-write": "default", "auto": "auto", "full-access": "bypassPermissions"},
 		},
 	}, transport, LegacyHostMetadata())
 	if err != nil {

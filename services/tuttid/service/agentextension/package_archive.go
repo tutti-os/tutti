@@ -41,6 +41,9 @@ func extractPackage(data []byte, destination string) error {
 			}
 			continue
 		}
+		if internalPackageRecord(name) {
+			return errors.New("agent extension archive contains reserved authority record")
+		}
 		if file.Mode()&0o111 != 0 {
 			return errors.New("agent extension archive contains executable")
 		}

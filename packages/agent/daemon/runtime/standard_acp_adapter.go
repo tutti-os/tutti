@@ -76,6 +76,7 @@ type standardACPConfig struct {
 	capabilities                   []string
 	agentTargetID                  string
 	installationID                 string
+	executableIdentity             *ExecutableIdentity
 }
 
 type standardACPMessageDiagnostics struct {

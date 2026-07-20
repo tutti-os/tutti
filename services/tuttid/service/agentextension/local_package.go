@@ -71,30 +71,29 @@ func (m *Manager) installLocalPackage(key, sourceDir string) (Installation, erro
 	if installed, err := m.loadActive(key); err == nil && installed.Version == localVersion {
 		return installed, nil
 	}
+	contentDigest, err := packageContentSHA256(staging)
+	if err != nil {
+		return Installation{}, fmt.Errorf("fingerprint local extension package: %w", err)
+	}
 
 	finalDir, err := m.Installations.PackageDir(key, localVersion)
 	if err != nil {
 		return Installation{}, err
 	}
-	if _, err := os.Stat(finalDir); errors.Is(err, os.ErrNotExist) {
-		if err := os.Rename(staging, finalDir); err != nil {
-			return Installation{}, err
-		}
-	} else if err != nil {
-		return Installation{}, err
-	} else if _, err := validateInstalledPackage(finalDir, key, localVersion); err != nil {
-		return Installation{}, fmt.Errorf("validate existing local extension snapshot: %w", err)
+	if err := activateExtensionPackage(staging, finalDir, contentDigest); err != nil {
+		return Installation{}, fmt.Errorf("activate local extension snapshot: %w", err)
 	}
 
 	installation := Installation{
-		SchemaVersion: "tutti.agent.installation.v1",
-		ID:            key + "@" + localVersion,
-		AgentKey:      key,
-		Version:       localVersion,
-		Provider:      "acp:" + key,
-		PackageDir:    finalDir,
-		Manifest:      manifest,
-		InstalledAt:   time.Now().UTC(),
+		SchemaVersion:        "tutti.agent.installation.v1",
+		ID:                   key + "@" + localVersion,
+		AgentKey:             key,
+		Version:              localVersion,
+		Provider:             "acp:" + key,
+		PackageDir:           finalDir,
+		PackageContentSHA256: contentDigest,
+		Manifest:             manifest,
+		InstalledAt:          time.Now().UTC(),
 	}
 	locales := map[string]string{}
 	if err := readJSON(filepath.Join(finalDir, filepath.FromSlash(manifest.LocalizationInfo.DefaultFile)), &locales); err != nil {
@@ -135,6 +134,9 @@ func copyLocalPackage(sourceDir, destination string) (string, error) {
 		}
 		if entry.IsDir() {
 			return nil
+		}
+		if internalPackageRecord(relative) {
+			return errors.New("local extension package contains reserved authority record")
 		}
 		info, err := entry.Info()
 		if err != nil {

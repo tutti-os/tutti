@@ -3,16 +3,32 @@ package agentextension
 import "time"
 
 type Installation struct {
-	SchemaVersion string    `json:"schemaVersion"`
-	ID            string    `json:"id"`
-	AgentKey      string    `json:"agentKey"`
-	Version       string    `json:"version"`
-	Provider      string    `json:"provider"`
-	PackageDir    string    `json:"packageDir"`
-	Manifest      Manifest  `json:"manifest"`
-	InstalledAt   time.Time `json:"installedAt"`
-	DisplayName   string    `json:"displayName"`
-	AuthMessage   string    `json:"authMessage"`
+	SchemaVersion            string    `json:"schemaVersion"`
+	ID                       string    `json:"id"`
+	AgentKey                 string    `json:"agentKey"`
+	Version                  string    `json:"version"`
+	Provider                 string    `json:"provider"`
+	PackageDir               string    `json:"packageDir"`
+	PackageContentSHA256     string    `json:"packageContentSha256"`
+	ReleaseArtifactSHA256    string    `json:"releaseArtifactSha256,omitempty"`
+	ReleaseArtifactSizeBytes int64     `json:"releaseArtifactSizeBytes,omitempty"`
+	Manifest                 Manifest  `json:"manifest"`
+	InstalledAt              time.Time `json:"installedAt"`
+	DisplayName              string    `json:"displayName"`
+	AuthMessage              string    `json:"authMessage"`
+}
+
+type RuntimeBinaryArtifact struct {
+	Kind       string `json:"kind"`
+	Platform   string `json:"platform"`
+	Version    string `json:"version"`
+	URL        string `json:"url"`
+	SHA256     string `json:"sha256"`
+	SizeBytes  int64  `json:"sizeBytes"`
+	Provenance struct {
+		Kind string `json:"kind"`
+		URL  string `json:"url"`
+	} `json:"provenance"`
 }
 
 type Manifest struct {
@@ -44,12 +60,14 @@ type Manifest struct {
 	Runtime struct {
 		Kind    string `json:"kind"`
 		Install struct {
-			Runner string   `json:"runner"`
-			Args   []string `json:"args"`
+			Runner    string                  `json:"runner"`
+			Args      []string                `json:"args,omitempty"`
+			Artifacts []RuntimeBinaryArtifact `json:"artifacts,omitempty"`
 		} `json:"install"`
 		Launch struct {
-			Executable string   `json:"executable"`
-			Args       []string `json:"args"`
+			Executable         string   `json:"executable"`
+			Args               []string `json:"args"`
+			PublishUserCommand *bool    `json:"publishUserCommand,omitempty"`
 		} `json:"launch"`
 	} `json:"runtime"`
 	Profiles struct {

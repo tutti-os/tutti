@@ -349,13 +349,14 @@ func (a *standardACPAdapter) startInitializedClient(
 		return nil, nil, err
 	}
 	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
-		Provider:       a.config.provider,
-		AgentSessionID: session.AgentSessionID,
-		RoomID:         session.RoomID,
-		CWD:            session.CWD,
-		Command:        command,
-		Env:            env,
-		DirectStart:    false,
+		Provider:           a.config.provider,
+		AgentSessionID:     session.AgentSessionID,
+		RoomID:             session.RoomID,
+		CWD:                session.CWD,
+		Command:            command,
+		Env:                env,
+		DirectStart:        false,
+		ExecutableIdentity: cloneExecutableIdentity(a.config.executableIdentity),
 	})
 	if err != nil {
 		a.logHermesStartupDiagnostics("process_prepare.failed", map[string]any{

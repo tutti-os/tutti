@@ -363,9 +363,14 @@ Codex app-server protocol changes should also run
 `pnpm check:codexproto-generated` when schema, generator, or generated protocol
 files are touched.
 
-Local runs expect a `golangci-lint` binary on `PATH`. The repository pins the CI version through `services/tuttid/.golangci-lint-version`.
+Local runs resolve `golangci-lint` from `$(go env GOPATH)/bin` first and fall
+back to `PATH`. This matches the repository install command without requiring a
+shell-specific `PATH` edit. The repository pins the CI version through
+`services/tuttid/.golangci-lint-version`.
 
-If you plan to run `pnpm lint:go` or `pnpm check:full` locally, install `golangci-lint` first and keep it available on `PATH`.
+If you plan to run `pnpm lint:go` or `pnpm check:full` locally, install
+`golangci-lint` first. A compatible binary already available on `PATH` remains
+supported as a fallback.
 
 Use `pnpm check:golangci-version` when you only want to verify that the installed binary matches the repository pin without running the broader setup checks.
 
@@ -375,7 +380,10 @@ Recommended local install command, using the pinned repository version:
 pnpm install:golangci-lint
 ```
 
-This follows the current official binary-install guidance from golangci-lint and keeps local runs aligned with the version pinned for CI.
+This installs the pinned binary into `$(go env GOPATH)/bin`; repository-managed
+setup, version, changed-aware, and full lint commands resolve that location
+automatically. It follows the current official binary-install guidance from
+golangci-lint and keeps local runs aligned with the version pinned for CI.
 
 The current baseline enables a small, high-value set of linters:
 

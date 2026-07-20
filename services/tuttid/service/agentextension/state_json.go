@@ -23,6 +23,10 @@ func writeJSONAtomic(path string, value any) error {
 		return err
 	}
 	data = append(data, '\n')
+	return writeBytesAtomic(path, data, 0o600)
+}
+
+func writeBytesAtomic(path string, data []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -32,7 +36,7 @@ func writeJSONAtomic(path string, value any) error {
 	}
 	name := temp.Name()
 	defer os.Remove(name)
-	if err := temp.Chmod(0o600); err != nil {
+	if err := temp.Chmod(mode); err != nil {
 		temp.Close()
 		return err
 	}

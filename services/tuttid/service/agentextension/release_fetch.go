@@ -84,6 +84,7 @@ func (m *Manager) getBytes(ctx context.Context, rawURL string, limit int64) ([]b
 	if client == nil {
 		client = httpx.NewClient(30 * time.Second)
 	}
+	client = httpsOnlyRedirectClient(client, errors.New("agent extension download redirected away from HTTPS"))
 	response, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -103,6 +104,30 @@ func (m *Manager) getBytes(ctx context.Context, rawURL string, limit int64) ([]b
 		return nil, errors.New("agent extension download exceeds size limit")
 	}
 	return data, nil
+}
+
+func httpsOnlyRedirectClient(client *http.Client, downgradeError error) *http.Client {
+	clone := *client
+	previous := client.CheckRedirect
+	clone.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		if request == nil || request.URL == nil || !strings.EqualFold(request.URL.Scheme, "https") {
+			return downgradeError
+		}
+		if previous != nil {
+			if err := previous(request, via); err != nil {
+				return err
+			}
+			if request.URL == nil || !strings.EqualFold(request.URL.Scheme, "https") {
+				return downgradeError
+			}
+			return nil
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &clone
 }
 
 func selectVersion(document Versions, key string, appVersion string) (VersionRecord, error) {

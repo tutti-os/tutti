@@ -3,13 +3,20 @@ package agentextension
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
+
+	agentextensionbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentextension"
 )
 
 var runtimeBinaryNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 var runtimeConstraintPartPattern = regexp.MustCompile(`^(?:>=|>|<=|<)[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 var runtimeArgumentPlaceholderPattern = regexp.MustCompile(`\$\{[^}]+\}`)
+var runtimeArtifactPlatformPattern = regexp.MustCompile(`^[a-z0-9]+-[a-z0-9_]+$`)
+var runtimeArtifactSHA256Pattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+
+const maxRuntimeBinaryArtifactBytes = int64(1 << 30)
 
 func validateDiscoveryProfile(profile DiscoveryProfile) error {
 	if profile.SchemaVersion != "tutti.agent.discovery.v1" || len(profile.Candidates) == 0 {
@@ -95,7 +102,8 @@ func validatePermissionLaunchPlaceholders(
 }
 
 func validateRuntimeContract(manifest Manifest) error {
-	if manifest.Runtime.Install.Runner != "npm" && manifest.Runtime.Install.Runner != "pnpm" && manifest.Runtime.Install.Runner != "uv" {
+	runner := manifest.Runtime.Install.Runner
+	if runner != "npm" && runner != "pnpm" && runner != "uv" && runner != "binary" {
 		return errors.New("extension runtime install runner is unsupported")
 	}
 	for _, argument := range append(append([]string(nil), manifest.Runtime.Install.Args...), manifest.Runtime.Launch.Executable) {
@@ -132,10 +140,22 @@ func validateRuntimeContract(manifest Manifest) error {
 			return errors.New("extension runtime install cannot depend on a project root")
 		}
 	}
-	if !strings.Contains(strings.Join(manifest.Runtime.Install.Args, "\x00"), "${installRoot}") || !strings.HasPrefix(manifest.Runtime.Launch.Executable, "${installRoot}/") {
+	if !strings.HasPrefix(manifest.Runtime.Launch.Executable, "${installRoot}/") {
+		return errors.New("extension runtime launch must stay under installRoot")
+	}
+	if runner != "binary" && !strings.Contains(strings.Join(manifest.Runtime.Install.Args, "\x00"), "${installRoot}") {
 		return errors.New("extension runtime install and launch must stay under installRoot")
 	}
-	if manifest.Runtime.Install.Runner == "npm" || manifest.Runtime.Install.Runner == "pnpm" {
+	if runner == "binary" {
+		if len(manifest.Runtime.Install.Args) != 0 {
+			return errors.New("extension binary runtime cannot declare installer arguments")
+		}
+		return validateRuntimeBinaryArtifacts(manifest.Runtime.Install.Artifacts)
+	}
+	if len(manifest.Runtime.Install.Artifacts) != 0 {
+		return errors.New("extension package-manager runtime cannot declare binary artifacts")
+	}
+	if runner == "npm" || runner == "pnpm" {
 		packagePattern := regexp.MustCompile(`^@[a-z0-9._-]+/[a-z0-9._-]+@[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 		count := 0
 		for _, argument := range manifest.Runtime.Install.Args {
@@ -150,7 +170,7 @@ func validateRuntimeContract(manifest Manifest) error {
 			return errors.New("extension runtime install must name exactly one scoped package")
 		}
 	}
-	if manifest.Runtime.Install.Runner == "uv" {
+	if runner == "uv" {
 		packagePattern := regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*==[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 		count := 0
 		for _, argument := range manifest.Runtime.Install.Args {
@@ -161,6 +181,46 @@ func validateRuntimeContract(manifest Manifest) error {
 		if count != 1 {
 			return errors.New("extension runtime install must name exactly one package at an exact version")
 		}
+	}
+	return nil
+}
+
+func validateRuntimeBinaryArtifacts(artifacts []agentextensionbiz.RuntimeBinaryArtifact) error {
+	if len(artifacts) == 0 || len(artifacts) > 16 {
+		return errors.New("extension binary runtime requires a bounded artifact catalog")
+	}
+	platforms := make(map[string]struct{}, len(artifacts))
+	for _, artifact := range artifacts {
+		if artifact.Kind != "executable" || !runtimeArtifactPlatformPattern.MatchString(artifact.Platform) {
+			return errors.New("extension binary artifact identity is invalid")
+		}
+		if _, exists := platforms[artifact.Platform]; exists {
+			return errors.New("extension binary artifact platform is duplicated")
+		}
+		platforms[artifact.Platform] = struct{}{}
+		if !validSemver(artifact.Version) || !runtimeArtifactSHA256Pattern.MatchString(artifact.SHA256) {
+			return errors.New("extension binary artifact version or SHA-256 is invalid")
+		}
+		if artifact.SizeBytes <= 0 || artifact.SizeBytes > maxRuntimeBinaryArtifactBytes {
+			return errors.New("extension binary artifact size is invalid")
+		}
+		if err := validateRuntimeArtifactHTTPSURL(artifact.URL); err != nil {
+			return fmt.Errorf("extension binary artifact URL: %w", err)
+		}
+		if artifact.Provenance.Kind != "official-release" {
+			return errors.New("extension binary artifact provenance is invalid")
+		}
+		if err := validateRuntimeArtifactHTTPSURL(artifact.Provenance.URL); err != nil {
+			return fmt.Errorf("extension binary artifact provenance URL: %w", err)
+		}
+	}
+	return nil
+}
+
+func validateRuntimeArtifactHTTPSURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+		return errors.New("must be an HTTPS URL without credentials or fragment")
 	}
 	return nil
 }

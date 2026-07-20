@@ -142,6 +142,7 @@ type StandardACPAdapterConfig struct {
 	Capabilities                []string
 	AgentTargetID               string
 	InstallationID              string
+	ExecutableIdentity          *ExecutableIdentity
 }
 
 // NewStandardACPAdapter creates the generic, data-driven ACP adapter used by
@@ -174,6 +175,7 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 			capabilities:                append([]string(nil), config.Capabilities...),
 			agentTargetID:               strings.TrimSpace(config.AgentTargetID),
 			installationID:              strings.TrimSpace(config.InstallationID),
+			executableIdentity:          cloneExecutableIdentity(config.ExecutableIdentity),
 			permissionModeID:            func(input string) string { return permissionModes[strings.ToLower(strings.TrimSpace(input))] },
 			planModeRuntimeID:           strings.TrimSpace(config.PlanModeRuntimeID),
 			planModeDisabledRuntimeID:   strings.TrimSpace(config.PlanModeDisabledRuntimeID),

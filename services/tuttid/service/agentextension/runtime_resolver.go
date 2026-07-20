@@ -30,6 +30,7 @@ type RuntimeBinding struct {
 	LaunchPermission            *agentruntime.StandardACPLaunchPermissionSetting
 	SetModelReasoningEffortMeta bool
 	Capabilities                []string
+	ExecutableIdentity          *agentruntime.ExecutableIdentity
 }
 
 func (r RuntimeResolver) ResolveAdapter(ctx context.Context, input agentruntime.AdapterResolveInput) (agentruntime.Adapter, error) {
@@ -78,5 +79,6 @@ func runtimeAdapterConfig(binding RuntimeBinding, agentTargetID string) agentrun
 		Capabilities:                binding.Capabilities,
 		AgentTargetID:               strings.TrimSpace(agentTargetID),
 		InstallationID:              binding.Installation.ID,
+		ExecutableIdentity:          binding.ExecutableIdentity,
 	}
 }

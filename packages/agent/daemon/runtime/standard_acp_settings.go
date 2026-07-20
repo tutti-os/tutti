@@ -688,7 +688,13 @@ func (a *standardACPAdapter) SessionState(session Session) SessionStateSnapshot 
 	if len(state.goal) > 0 {
 		snapshot.RuntimeContext["goal"] = state.goal
 	}
-	capabilities := standardACPCapabilitiesWithDeclared(a.config.provider, promptImage, state, a.config.capabilities)
+	capabilities := standardACPCapabilitiesWithDeclared(
+		a.config.provider,
+		promptImage,
+		state,
+		a.config.capabilities,
+		a.config.planModeRuntimeID != "" && a.config.planModeDisabledRuntimeID != "",
+	)
 	capabilities = appendBrowserUseCapability(capabilities, session.Env)
 	capabilities = appendComputerUseCapability(capabilities, session.Env)
 	if _, builtInProvider := providerregistry.Find(a.config.provider); !builtInProvider {

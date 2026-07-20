@@ -876,6 +876,9 @@ export const en = {
         qwenAgentDescription:
           "Show Qwen Code across Tutti. Disabled by default while Agent Extensions are in preview.",
         qwenAgentLabel: "Enable Qwen Code Agent",
+        grokAgentDescription:
+          "Load the signed Grok Build Agent Extension and expose it in AgentGUI.",
+        grokAgentLabel: "Enable Grok Build Agent",
         logsSizeLabel: "Log size",
         logsSummary: "{{count}} files, {{size}} total",
         logsTitle: "Logs",

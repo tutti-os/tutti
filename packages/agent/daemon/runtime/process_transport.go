@@ -18,6 +18,26 @@ import (
 
 type localProcessTransport struct{}
 
+// RunVerifiedExecutable starts a short-lived managed-runtime command from the
+// same verified descriptor or immutable snapshot used by the ACP transport.
+// Keeping preparation and process start in this package prevents callers from
+// reintroducing a pathname gap between identity verification and execution.
+func RunVerifiedExecutable(ctx context.Context, path string, args []string, identity *ExecutableIdentity) ([]byte, error) {
+	if identity == nil {
+		return nil, errors.New("verified process executable identity is required")
+	}
+	preparedExecutable, err := prepareProcessExecutable(path, identity)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = preparedExecutable.Close() }()
+	cmd := exec.CommandContext(ctx, preparedExecutable.path, args...)
+	if preparedExecutable.file != nil {
+		cmd.ExtraFiles = []*os.File{preparedExecutable.file}
+	}
+	return cmd.CombinedOutput()
+}
+
 type localProcessConnection struct {
 	cancel  context.CancelFunc
 	cmd     *exec.Cmd
@@ -50,7 +70,16 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 	env := resolver.Env(spec.Env)
 	resolvedCommand := resolver.Resolve(spec.Command[0], env)
 	logProcessStartEnvDiagnostics(spec, env, resolvedCommand)
-	cmd := exec.CommandContext(processCtx, resolvedCommand, spec.Command[1:]...)
+	preparedExecutable, err := prepareProcessExecutable(resolvedCommand, spec.ExecutableIdentity)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	defer func() { _ = preparedExecutable.Close() }()
+	cmd := exec.CommandContext(processCtx, preparedExecutable.path, spec.Command[1:]...)
+	if preparedExecutable.file != nil {
+		cmd.ExtraFiles = []*os.File{preparedExecutable.file}
+	}
 	cmd.Env = env
 	if cwd := strings.TrimSpace(spec.CWD); cwd != "" {
 		cmd.Dir = cwd
