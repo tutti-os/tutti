@@ -157,6 +157,10 @@
         "types": "./dist/agent-env/ui.d.ts",
         "import": "./dist/agent-env/ui.js"
       },
+      "./workspace-settings-panel": {
+        "types": "./dist/workspace-settings-panel.d.ts",
+        "import": "./dist/workspace-settings-panel.js"
+      },
       "./context-mention-palette": {
         "types": "./dist/context-mention-palette/index.d.ts",
         "import": "./dist/context-mention-palette/index.js"

@@ -247,6 +247,7 @@ The stable package entrypoints are:
 @tutti-os/agent-gui/workbench
 @tutti-os/agent-gui/workbench/browser-element-context
 @tutti-os/agent-gui/workbench/tool-sidebar
+@tutti-os/agent-gui/workspace-settings-panel
 @tutti-os/browser-node
 @tutti-os/browser-node/assets/workspace-dock-website.png
 @tutti-os/browser-node/bridge
