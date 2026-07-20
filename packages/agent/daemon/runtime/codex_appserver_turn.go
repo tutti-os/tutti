@@ -356,7 +356,15 @@ func (a *CodexAppServerAdapter) execBlocking(
 	a.markTurnSettleEmits(appTurn)
 
 	trace := newCodexAppServerTurnTrace(session, turnID, execMetadataFromContext(ctx))
-	turnParams := appServerTurnStartParamsWithSandboxPolicy(session, appSession.threadID, providerContent, appSession.planModeMask, appSession.defaultModeMask, execState.defaultModel, a.config.sandboxPolicy)
+	turnParams := appServerTurnStartParams(
+		session,
+		appSession.threadID,
+		providerContent,
+		appSession.planModeMask,
+		appSession.defaultModeMask,
+		execState.defaultModel,
+		a.config.commandNetworkAccess,
+	)
 	trace.Log("turn.start.params", codexAppServerTraceTurnStartParams(session, turnParams, providerContent))
 	turnStartedAt := time.Now()
 	result, err := appSession.client.TurnStart(ctx, turnParams,

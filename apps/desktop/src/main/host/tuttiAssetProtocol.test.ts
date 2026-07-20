@@ -84,6 +84,31 @@ test("tutti asset protocol resolves packaged codex rounded asset", () => {
   }
 });
 
+test("tutti asset protocol resolves packaged codex mask asset", () => {
+  const appPath = mkdtempSync(join(tmpdir(), "tutti-asset-codex-mask-"));
+  const builtAssetPath = join(
+    appPath,
+    "out",
+    "renderer",
+    "assets",
+    "codex-flat-filled-abc123.svg"
+  );
+  mkdirSync(dirname(builtAssetPath), { recursive: true });
+  writeFileSync(builtAssetPath, "");
+
+  try {
+    assert.equal(
+      resolveTuttiAssetProtocolFilePath(
+        "tutti-asset://agent/codex-mask.svg",
+        appPath
+      ),
+      builtAssetPath
+    );
+  } finally {
+    rmSync(appPath, { force: true, recursive: true });
+  }
+});
+
 for (const [agent, builtFileName] of [
   ["cursor", "cursor-colorful-abc123.png"],
   ["hermes", "hermes-rounded-abc123.png"],

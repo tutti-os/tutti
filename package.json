@@ -52,6 +52,7 @@
     "dev:web": "node ./tools/scripts/dev-web.mjs",
     "dev:ui-storyboard": "pnpm --filter @tutti-os/ui-storyboard dev",
     "preview:desktop": "pnpm --filter @tutti-os/desktop preview",
+    "perf:agent-gui": "node ./tools/scripts/run-agent-gui-performance.mjs",
     "push:checked": "node ./tools/scripts/push-checked.mjs",
     "generate:api": "node ./tools/scripts/generate-openapi.mjs",
     "generate:agent-gui-provider-catalog": "node ./tools/scripts/generate-agent-gui-provider-catalog.mjs",

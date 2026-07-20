@@ -1267,7 +1267,7 @@ function createAgentTarget(input: {
     createdAtUnixMs: 1780272000000,
     enabled: input.enabled ?? true,
     iconKey: "",
-    iconUrl: input.iconUrl ?? null,
+    iconUrl: input.iconUrl ?? resolveTestAgentIconUrl(input.provider),
     id: input.id,
     launchRef: input.launchRef ?? {
       provider: input.provider,
@@ -1284,10 +1284,7 @@ function createAgentTarget(input: {
 function createAgentsService(
   targets: readonly AgentTarget[]
 ): Pick<IAgentsService, "load"> {
-  const agentTargets = mapAgentTargetsToPresentations(targets, {
-    resolveAgentTargetIconUrl: ({ provider }) =>
-      resolveTestAgentIconUrl(provider)
-  });
+  const agentTargets = mapAgentTargetsToPresentations(targets);
   const snapshot: AgentsSnapshot = {
     agentTargets,
     capturedAtUnixMs: 1780272000000,

@@ -32,8 +32,6 @@ import {
   userAvatarPlaceholderUrl,
   workspaceAgentActivityStatusLabel
 } from "@tutti-os/agent-gui/agent-message-center";
-import { resolveProviderIconAsset } from "@tutti-os/agent-gui/provider-icons";
-import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import { normalizeAgentActivityDisplayStatus } from "@tutti-os/agent-activity-core";
 import { translate } from "../../../i18n";
 import { getActiveLocale } from "../../../i18n/runtime";
@@ -211,7 +209,6 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     notifications: notificationService,
     reporterService,
     runtimeApi: desktopApi.runtime,
-    resolveAgentTargetIconUrl: resolveWorkspaceAgentTargetIconUrl,
     terminalCommandRunner: createAgentProviderTerminalCommandRunner(
       desktopApi.runtime
     ),
@@ -422,22 +419,5 @@ function logWorkspaceWindowRuntimeDiagnostic(
 }
 
 function resolveWorkspaceRichTextAgentIconUrl(provider: string | undefined) {
-  const identity = resolveAgentGUIProviderCatalogIdentity(provider);
-  return (
-    resolveProviderIconAsset(identity?.iconKey, "rounded") ??
-    managedAgentRoundedIconUrl(provider)
-  );
-}
-
-function resolveWorkspaceAgentTargetIconUrl(identity: {
-  iconKey: string | null;
-  provider: string;
-}): string {
-  if (identity.iconKey) {
-    return (
-      resolveProviderIconAsset(identity.iconKey, "rounded") ??
-      managedAgentRoundedIconUrl(undefined)
-    );
-  }
-  return resolveWorkspaceRichTextAgentIconUrl(identity.provider);
+  return managedAgentRoundedIconUrl(provider);
 }

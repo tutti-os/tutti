@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
@@ -29,6 +31,45 @@ func TestMapAgentRuntimeErrorPreservesInteractiveRecoveryCodes(t *testing.T) {
 		if err := mapAgentRuntimeError(test.runtimeErr); !errors.Is(err, test.serviceErr) {
 			t.Fatalf("mapAgentRuntimeError(%v) = %v, want %v", test.runtimeErr, err, test.serviceErr)
 		}
+	}
+}
+
+func TestMapAgentRuntimeErrorPreservesStructuredProviderFailure(t *testing.T) {
+	cause := errors.New("provider process rejected startup")
+	runtimeErr := &agentruntime.AppError{
+		Code:         "provider_auth_required",
+		Message:      "Agent provider needs authentication",
+		DebugMessage: "provider exited with status 1",
+		Cause:        cause,
+	}
+
+	mapped := mapAgentRuntimeError(fmt.Errorf("runtime start: %w", runtimeErr))
+	var providerErr *agenthost.ProviderError
+	if !errors.As(mapped, &providerErr) {
+		t.Fatalf("mapped error = %v, want ProviderError", mapped)
+	}
+	if providerErr.Code != runtimeErr.Code || providerErr.Message != runtimeErr.Message || providerErr.DebugMessage != runtimeErr.DebugMessage {
+		t.Fatalf("ProviderError = %#v, want diagnostics from %#v", providerErr, runtimeErr)
+	}
+	if !errors.Is(mapped, cause) || !errors.Is(mapped, runtimeErr) {
+		t.Fatalf("mapped error did not preserve runtime error chain: %v", mapped)
+	}
+}
+
+func TestMapAgentRuntimeErrorDoesNotClassifyProviderTimeoutAsDefinitive(t *testing.T) {
+	runtimeErr := &agentruntime.AppError{
+		Code:    "request_failed",
+		Message: "Agent provider request failed",
+		Cause:   fmt.Errorf("provider response: %w", context.DeadlineExceeded),
+	}
+
+	mapped := mapAgentRuntimeError(runtimeErr)
+	var providerErr *agenthost.ProviderError
+	if errors.As(mapped, &providerErr) {
+		t.Fatalf("mapped error = %#v, want recoverable timeout", providerErr)
+	}
+	if !errors.Is(mapped, context.DeadlineExceeded) {
+		t.Fatalf("mapped error = %v, want deadline in error chain", mapped)
 	}
 }
 
