@@ -149,6 +149,7 @@ export function WorkspaceAgentsSettingsTab({
   featureFlagsPending,
   focusProvider,
   focusRequestID,
+  tuttiAgentSwitchEnabled,
   onAgentEnabledChange,
   onAutoCheckEnabledChange,
   onOpenEnvironment,
@@ -163,6 +164,7 @@ export function WorkspaceAgentsSettingsTab({
   featureFlagsPending: boolean;
   focusProvider: string | null;
   focusRequestID: number;
+  tuttiAgentSwitchEnabled: boolean;
   onAgentEnabledChange: (
     agentTargetID: string,
     enabled: boolean
@@ -246,8 +248,12 @@ export function WorkspaceAgentsSettingsTab({
 
   const visibleProviders = useMemo(
     () =>
-      filterVisibleAgentProviders(managedAgentProviders, earlyAccessEnabled),
-    [earlyAccessEnabled]
+      filterVisibleAgentProviders(
+        managedAgentProviders,
+        earlyAccessEnabled,
+        tuttiAgentSwitchEnabled
+      ),
+    [earlyAccessEnabled, tuttiAgentSwitchEnabled]
   );
 
   const checkingUpdates = agentProviderStatusService.isCheckingUpdates();

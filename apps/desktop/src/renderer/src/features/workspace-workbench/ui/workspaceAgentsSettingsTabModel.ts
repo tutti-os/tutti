@@ -1,17 +1,23 @@
+import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import { isWorkspaceAgentGuiEarlyAccessProvider } from "../services/workspaceAgentProviderCatalog.ts";
 
 /**
  * Filter the managed agent providers shown in the Agents settings tab by the
- * Early Access integrations switch. Stable providers are always shown;
- * early-access providers appear only when the switch is enabled.
+ * Early Access integrations and Tutti Agent switches. Stable providers are
+ * always shown; early-access providers and Tutti Agent require their
+ * respective switches.
  */
 export function filterVisibleAgentProviders<T extends string>(
   providers: readonly T[],
-  earlyAccessEnabled: boolean
+  earlyAccessEnabled: boolean,
+  tuttiAgentSwitchEnabled: boolean
 ): T[] {
   return providers.filter(
     (provider) =>
-      earlyAccessEnabled || !isWorkspaceAgentGuiEarlyAccessProvider(provider)
+      (resolveAgentGUIProviderCatalogIdentity(provider)?.desktop
+        .visibilityGate !== "tutti_agent" ||
+        tuttiAgentSwitchEnabled) &&
+      (earlyAccessEnabled || !isWorkspaceAgentGuiEarlyAccessProvider(provider))
   );
 }
 

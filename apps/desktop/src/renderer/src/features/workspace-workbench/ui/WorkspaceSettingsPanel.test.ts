@@ -136,6 +136,11 @@ test("workspace settings Agents tab controls daemon-owned Agent Target enablemen
     /settingsService\.setAgentTargetEnabled\(\s*agentTargetID,\s*enabled\s*\)/
   );
   assert.match(agentsTabSource, /agentTargetByID/);
+  assert.match(
+    source,
+    /tuttiAgentSwitchEnabled=\{\s*settingsState\.tuttiAgentSwitchEnabled\s*\}/
+  );
+  assert.match(agentsTabSource, /tuttiAgentSwitchEnabled/);
   assert.match(agentsTabSource, /agentTarget\?\.enabled \?\? false/);
   assert.match(
     agentsTabSource,
@@ -355,7 +360,7 @@ test("Lab owns the Preview Agents (Early Access) gate", () => {
   assert.doesNotMatch(source, /onEarlyAccessEnabledChange/);
 });
 
-test("agents settings routes Environment status to environment detection", () => {
+test("agents settings routes readiness status to environment detection", () => {
   assert.match(
     source,
     /onOpenEnvironment=\{\(provider\) =>\s*agentEnvService\.open\(\{ focus: "detect", provider \}\)/

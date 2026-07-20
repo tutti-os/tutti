@@ -489,14 +489,14 @@ export const en = {
           earlyAccessDescription:
             "Show agent integrations that Tutti is still testing and validating.",
           earlyAccessHiddenHint:
-            "Turn on Early access integrations in Lab to manage {{agent}}.",
-          earlyAccessLabel: "Early access integrations",
+            "Turn on Early access agent integrations in Lab to manage {{agent}}.",
+          earlyAccessLabel: "Early access agent integrations",
           empty: "No agents to show.",
           enableAgent: "Enable {{agent}}",
           enableChangeFailed: "Couldn't change whether {{agent}} is enabled.",
           enabled: "Enabled",
           enabledColumn: "Enabled",
-          environmentColumn: "Environment",
+          environmentColumn: "Readiness",
           extensionCodeBuddy: "CodeBuddy Code",
           extensionEnableToSetUp: "Enable to set up",
           extensionGemini: "Gemini CLI",
@@ -961,7 +961,7 @@ export const en = {
         preferencesSaveFailed: "We couldn't update Lab preferences.",
         previewAgentsDescription:
           "Show agent integrations that Tutti is still testing and validating.",
-        previewAgentsLabel: "Early access integrations",
+        previewAgentsLabel: "Early access agent integrations",
         shortcutUnbound: "Unbound",
         workbenchShortcutsDescription:
           "Enables configurable workbench shortcut actions.",
