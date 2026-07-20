@@ -52,6 +52,9 @@ import type {
   CopyWorkspaceFileEntryData,
   CopyWorkspaceFileEntryErrors,
   CopyWorkspaceFileEntryResponses,
+  CreateAgentQuickPromptData,
+  CreateAgentQuickPromptErrors,
+  CreateAgentQuickPromptResponses,
   CreateWorkspaceAgentSessionData,
   CreateWorkspaceAgentSessionErrors,
   CreateWorkspaceAgentSessionResponses,
@@ -88,6 +91,9 @@ import type {
   CreateWorkspaceTerminalData,
   CreateWorkspaceTerminalErrors,
   CreateWorkspaceTerminalResponses,
+  DeleteAgentQuickPromptData,
+  DeleteAgentQuickPromptErrors,
+  DeleteAgentQuickPromptResponses,
   DeleteUserProjectData,
   DeleteUserProjectErrors,
   DeleteUserProjectResponses,
@@ -223,6 +229,9 @@ import type {
   LaunchWorkspaceAppData,
   LaunchWorkspaceAppErrors,
   LaunchWorkspaceAppResponses,
+  ListAgentQuickPromptsData,
+  ListAgentQuickPromptsErrors,
+  ListAgentQuickPromptsResponses,
   ListAgentTargetsData,
   ListAgentTargetsErrors,
   ListAgentTargetsResponses,
@@ -430,6 +439,9 @@ import type {
   UninstallWorkspaceAppData,
   UninstallWorkspaceAppErrors,
   UninstallWorkspaceAppResponses,
+  UpdateAgentQuickPromptData,
+  UpdateAgentQuickPromptErrors,
+  UpdateAgentQuickPromptResponses,
   UpdateWorkspaceAgentSessionPinData,
   UpdateWorkspaceAgentSessionPinErrors,
   UpdateWorkspaceAgentSessionPinResponses,
@@ -740,6 +752,82 @@ export const purgeDeletedAgentConversations = <
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/agent-maintenance/deleted-conversations/purge",
     ...options
+  });
+
+/**
+ * List device-local Agent quick prompts
+ */
+export const listAgentQuickPrompts = <ThrowOnError extends boolean = false>(
+  options?: Options<ListAgentQuickPromptsData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    ListAgentQuickPromptsResponses,
+    ListAgentQuickPromptsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-quick-prompts",
+    ...options
+  });
+
+/**
+ * Create a device-local Agent quick prompt
+ */
+export const createAgentQuickPrompt = <ThrowOnError extends boolean = false>(
+  options: Options<CreateAgentQuickPromptData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateAgentQuickPromptResponses,
+    CreateAgentQuickPromptErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-quick-prompts",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Delete a device-local Agent quick prompt
+ */
+export const deleteAgentQuickPrompt = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteAgentQuickPromptData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteAgentQuickPromptResponses,
+    DeleteAgentQuickPromptErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-quick-prompts/{promptId}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Update a device-local Agent quick prompt
+ */
+export const updateAgentQuickPrompt = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateAgentQuickPromptData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    UpdateAgentQuickPromptResponses,
+    UpdateAgentQuickPromptErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-quick-prompts/{promptId}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**

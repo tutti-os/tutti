@@ -1,0 +1,31 @@
+{
+  "$schema": "../../schemas/core/event-definition.schema.json",
+  "topic": "agent.quickprompt.updated",
+  "version": 1,
+  "direction": "server->client",
+  "owner": "core",
+  "scope": "global",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["promptId", "changeKind", "version", "occurredAtUnixMs"],
+    "properties": {
+      "promptId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "changeKind": {
+        "type": "string",
+        "enum": ["created", "updated", "deleted"]
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "occurredAtUnixMs": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  }
+}

@@ -35,6 +35,7 @@ import {
   IAgentProviderStatusService,
   type IAgentProviderStatusService as AgentProviderStatusService
 } from "../../../workspace-agent/services/agentProviderStatusService.interface.ts";
+import type { IAgentQuickPromptService as AgentQuickPromptService } from "../../../workspace-agent/services/agentQuickPromptService.interface.ts";
 import {
   IWorkspaceAgentActivityService,
   type IWorkspaceAgentActivityService as WorkspaceAgentActivityService
@@ -116,6 +117,7 @@ export interface WorkspaceWorkbenchHostServiceDependencies extends WorkspaceWork
 }
 
 export interface WorkspaceWorkbenchHostExternalDependencies {
+  agentQuickPromptService?: AgentQuickPromptService;
   browserApi?: DesktopBrowserApi;
   computerUseApi: DesktopComputerUseApi;
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
@@ -187,6 +189,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     const repository = externalDependencies.snapshotRepository;
     this.dockRetention = createWorkspaceDockRetentionController(repository);
     this.dependencies = {
+      agentQuickPromptService: externalDependencies.agentQuickPromptService,
       agentProviderStatusService,
       agentsService,
       appCenterService,

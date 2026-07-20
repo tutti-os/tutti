@@ -219,6 +219,14 @@ capabilities such as files, clipboard, runtime metadata, account/project
 lookup, diagnostics, setup, and OS/Workbench helpers. Its input type still
 accepts a legacy `agentSessions` shape, but `toAgentHostRuntimeApi` strips that
 shape; production AgentGUI must not use it as an activity source.
+Device-global quick prompts are also an optional host capability rather than
+activity data. The desktop adapter combines the developer-gated preference,
+the generated `tuttid` client, and global invalidation events behind
+`AgentHostApi.quickPrompts`. AgentGUI may subscribe to that capability to render
+the composer picker and management dialogs, but quick-prompt entities must not
+be copied into `AgentActivityRuntime`, a workspace engine, a Session, or a Turn.
+The daemon remains authoritative for durable prompt records and optimistic
+version conflicts; event payloads are content-free refresh hints.
 Conversation rail sections are also an `AgentActivityRuntime` contract:
 AgentGUI calls `listSessionSections` for the first page of every returned rail
 section and `listSessionSectionPage` for Show more by `sectionKey` and cursor.

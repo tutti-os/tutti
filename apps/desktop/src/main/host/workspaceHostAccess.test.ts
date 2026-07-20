@@ -24,10 +24,22 @@ function createTransportClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {
   const client: TuttidClient = {
+    async createAgentQuickPrompt() {
+      throw new Error("not used");
+    },
+    async deleteAgentQuickPrompt() {
+      throw new Error("not used");
+    },
+    async listAgentQuickPrompts() {
+      throw new Error("not used");
+    },
     async listAgentTargets() {
       throw new Error("not used");
     },
     async setSystemAgentTargetEnabled() {
+      throw new Error("not used");
+    },
+    async updateAgentQuickPrompt() {
       throw new Error("not used");
     },
     async getAgentTargetSetup() {

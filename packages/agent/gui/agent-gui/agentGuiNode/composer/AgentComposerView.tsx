@@ -52,6 +52,8 @@ import type { useComposerPresentation } from "./useComposerPresentation";
 import type { useComposerProviderTargets } from "./useComposerProviderTargets";
 import type { useComposerSlashActions } from "./useComposerSlashActions";
 import type { useMentionPaletteFrame } from "./useMentionPaletteFrame";
+import { AgentQuickPromptPopover } from "./quickPrompts/AgentQuickPromptPopover";
+import type { useAgentQuickPromptLibrary } from "./quickPrompts/useAgentQuickPromptLibrary";
 import {
   agentComposerDraftHasContent,
   agentComposerDraftImages,
@@ -84,6 +86,7 @@ interface Props {
   showSlashPalette: boolean;
   activeHighlight: number;
   mentionSearchState: Parameters<typeof AgentFileMentionPalette>[0]["state"];
+  quickPromptLibrary: ReturnType<typeof useAgentQuickPromptLibrary>;
   mentionHighlightedKey: string | null;
   shouldCenterMentionHighlight: boolean;
   isSlashStatusPanelOpen: boolean;
@@ -581,6 +584,12 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             isHeroLayout={isHeroLayout}
             isGoalModeActive={input.isGoalModeActive}
             composerActionButton={composerActionButton}
+            quickPromptControl={
+              <AgentQuickPromptPopover
+                controller={input.quickPromptLibrary}
+                disabled={composerControlsHardDisabled || inputDisabled}
+              />
+            }
             showHandoffSelect={showHandoffSelect}
             handoffDisabled={handoffDisabled}
             effectiveHandoffLabel={effectiveHandoffLabel}

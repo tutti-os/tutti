@@ -30,6 +30,7 @@ type EventStreamService interface {
 
 type DaemonAPI struct {
 	UserProjectService        UserProjectService
+	AgentQuickPromptService   AgentQuickPromptService
 	AgentTargetService        AgentTargetService
 	AgentTargetSetupService   AgentTargetSetupService
 	PreferencesService        preferencesapi.Service

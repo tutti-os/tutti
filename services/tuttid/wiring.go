@@ -25,6 +25,7 @@ import (
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	agentmaintenanceservice "github.com/tutti-os/tutti/services/tuttid/service/agentmaintenance"
+	agentquickpromptservice "github.com/tutti-os/tutti/services/tuttid/service/agentquickprompt"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
@@ -269,6 +270,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentTargetStore, _ := store.(workspacedata.AgentTargetStore)
 	managedCredentialsStore, _ := store.(workspacedata.ManagedCredentialsStore)
 	agentActivityRepo, _ := store.(workspacedata.AgentActivityStore)
+	agentQuickPromptStore, _ := store.(workspacedata.AgentQuickPromptStore)
 	userProjectStore, _ := store.(workspacedata.UserProjectStore)
 	appStore, _ := store.(workspacedata.AppStore)
 	appFactoryStore, _ := store.(workspacedata.AppFactoryStore)
@@ -391,6 +393,10 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	userProjectService := userprojectservice.Service{
 		Store:     userProjectStore,
 		Publisher: eventstreamservice.UserProjectPublisher{Service: events},
+	}
+	agentQuickPromptService := agentquickpromptservice.Service{
+		Store:     agentQuickPromptStore,
+		Publisher: eventstreamservice.AgentQuickPromptPublisher{Service: events},
 	}
 	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller())
 	agentSessionService := agentservice.NewService(agentRuntimeController)
@@ -645,6 +651,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	return tuttiapi.DaemonAPI{
 		AccountService:            accountService,
 		UserProjectService:        userProjectService,
+		AgentQuickPromptService:   agentQuickPromptService,
 		AgentTargetService:        agentTargets,
 		AgentTargetSetupService:   agentTargetSetup,
 		PreferencesService:        preferences,

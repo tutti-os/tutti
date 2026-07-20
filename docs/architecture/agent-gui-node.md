@@ -380,6 +380,18 @@ Do not restore flat compatibility props or hide workflow inside a render slot.
 
 `AgentHostApi` supplies host capabilities only: files, clipboard, project/account lookup, Agent Target setup/probes, diagnostics, and OS/Workbench helpers. It must not become a Session, Turn, timeline, or write source again.
 
+The optional quick-prompt library follows that host-capability boundary. Tutti
+Desktop projects the device-global `tuttid` quick-prompt CRUD service through
+`AgentHostApi.quickPrompts`; AgentGUI owns only the picker/editor presentation
+and inserts a selected prompt into the current TipTap selection without
+submitting it. The library snapshot, developer feature gate, and cross-window
+invalidation are not Session or Turn state and must not enter
+`AgentActivityRuntime` or the workspace engine. Hosts that omit the capability,
+and hosts whose capability reports the developer gate disabled, render no
+quick-prompt composer entry. AgentGUI may also present a small, localized set
+of recommended templates; those only prefill the existing editor and remain
+client-local until the user explicitly saves them through the CRUD capability.
+
 ### 6.4 Multiple surfaces
 
 AgentGUI, Message Center, dock/header, workspace window, and standalone Agent window consume the same workspace engine.

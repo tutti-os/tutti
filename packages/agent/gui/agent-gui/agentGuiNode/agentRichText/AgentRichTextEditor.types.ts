@@ -42,6 +42,7 @@ export interface AgentRichTextEditorHandle {
   focusAtStart: () => void;
   focusAtEnd: () => void;
   getPromptTextBeforeSelection: () => string;
+  insertPlainTextAtSelection: (text: string) => string | null;
   openMentionPalette: () => void;
   insertWorkspaceReferences: (items: readonly WorkspaceFileReference[]) => void;
   insertMentionItems: (items: readonly AgentContextMentionItem[]) => void;

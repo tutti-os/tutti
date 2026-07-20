@@ -381,6 +381,7 @@ export interface AgentGUIViewLabels {
   promptTipsPrefix: string;
   promptTips: readonly AgentComposerPromptTip[];
   reviewPicker: AgentComposerProps["labels"]["reviewPicker"];
+  quickPrompts: AgentComposerProps["labels"]["quickPrompts"];
 }
 
 export type ChromeLabels = {

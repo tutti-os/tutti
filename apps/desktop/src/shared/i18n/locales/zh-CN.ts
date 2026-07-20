@@ -886,6 +886,10 @@ export const zhCN = {
         referenceProvenanceFilterDescription:
           "在 Agent 对话的引用选择器中启用智能体来源筛选",
         referenceProvenanceFilterLabel: "智能体来源筛选",
+        quickPromptLibraryDescription:
+          "在 Agent 输入框中显示个人快捷提示词库入口",
+        quickPromptLibraryLabel: "快捷提示词库",
+        quickPromptLibrarySaveFailed: "暂时无法更新快捷提示词库可用状态",
         releaseChannelOptions: {
           rc: "预览版",
           stable: "稳定版"

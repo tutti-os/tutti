@@ -24,6 +24,7 @@ tags:
   - name: app-center
   - name: app-factory
   - name: user-project
+  - name: agent-quick-prompt
 paths:
   /v1/health:
     get:
@@ -367,6 +368,125 @@ paths:
           $ref: "#/components/responses/MethodNotAllowedError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-quick-prompts:
+    get:
+      operationId: listAgentQuickPrompts
+      tags:
+        - agent-quick-prompt
+      summary: List device-local Agent quick prompts
+      responses:
+        "200":
+          description: Agent quick prompt list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentQuickPromptListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/AgentQuickPromptOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: createAgentQuickPrompt
+      tags:
+        - agent-quick-prompt
+      summary: Create a device-local Agent quick prompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentQuickPromptRequest"
+      responses:
+        "201":
+          description: Agent quick prompt created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentQuickPromptResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/AgentQuickPromptConflictError"
+        "502":
+          $ref: "#/components/responses/AgentQuickPromptOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-quick-prompts/{promptId}:
+    parameters:
+      - name: promptId
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    put:
+      operationId: updateAgentQuickPrompt
+      tags:
+        - agent-quick-prompt
+      summary: Update a device-local Agent quick prompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentQuickPromptRequest"
+      responses:
+        "200":
+          description: Agent quick prompt updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentQuickPromptResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/AgentQuickPromptNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/AgentQuickPromptConflictError"
+        "502":
+          $ref: "#/components/responses/AgentQuickPromptOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    delete:
+      operationId: deleteAgentQuickPrompt
+      tags:
+        - agent-quick-prompt
+      summary: Delete a device-local Agent quick prompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteAgentQuickPromptRequest"
+      responses:
+        "204":
+          description: Agent quick prompt deleted
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/AgentQuickPromptNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/AgentQuickPromptConflictError"
+        "502":
+          $ref: "#/components/responses/AgentQuickPromptOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
   /v1/user-projects:
@@ -4334,6 +4454,24 @@ components:
                   code: preferences_operation_failed
                   reason: preferences_operation_failed
                   developerMessage: desktop preferences operation failed
+    AgentQuickPromptNotFoundError:
+      description: Agent quick prompt was not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    AgentQuickPromptConflictError:
+      description: Agent quick prompt limit or expected version conflicts with current state
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    AgentQuickPromptOperationError:
+      description: Agent quick prompt persistence operation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
   schemas:
     HealthStatusResponse:
       type: object
@@ -4993,6 +5131,9 @@ components:
             - workspace_issue_resource_not_found
             - workspace_operation_failed
             - preferences_operation_failed
+            - agent_quick_prompt_not_found
+            - agent_quick_prompt_conflict
+            - agent_quick_prompt_operation_failed
         reason:
           type: string
         params:
@@ -9351,6 +9492,101 @@ components:
           $ref: "#/components/schemas/WorkspaceGitPatchErrorCode"
         execOutput:
           $ref: "#/components/schemas/WorkspaceGitPatchExecOutput"
+    AgentQuickPrompt:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - content
+        - version
+        - createdAtUnixMs
+        - updatedAtUnixMs
+      properties:
+        id:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+          maxLength: 80
+        content:
+          type: string
+          minLength: 1
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    AgentQuickPromptListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - prompts
+      properties:
+        prompts:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/AgentQuickPrompt"
+    AgentQuickPromptResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - prompt
+      properties:
+        prompt:
+          $ref: "#/components/schemas/AgentQuickPrompt"
+    CreateAgentQuickPromptRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+        - content
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 80
+        content:
+          type: string
+          minLength: 1
+    UpdateAgentQuickPromptRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+        - content
+        - expectedVersion
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 80
+        content:
+          type: string
+          minLength: 1
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 1
+    DeleteAgentQuickPromptRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expectedVersion
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 1
     UserProject:
       type: object
       additionalProperties: false

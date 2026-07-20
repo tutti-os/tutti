@@ -25,6 +25,7 @@ import type {
   ReferenceProvenanceFilterController,
   ReferenceProvenanceFilterSnapshot
 } from "@tutti-os/workspace-file-reference/react";
+import type { AgentQuickPromptLabels } from "./quickPrompts/agentQuickPromptLabels";
 
 export interface AgentComposerReferenceProvenanceFilter {
   snapshot: ReferenceProvenanceFilterSnapshot;
@@ -259,6 +260,7 @@ export interface AgentComposerProps {
       submit: string;
       cancel: string;
     };
+    quickPrompts: AgentQuickPromptLabels;
   };
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   onDraftContentChange: (

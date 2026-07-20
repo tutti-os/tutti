@@ -13,6 +13,8 @@ import type {
   AppReferenceSearchRequest,
   AppReferenceSearchResponse,
   AgentProviderStatusListResponse,
+  AgentQuickPrompt,
+  AgentQuickPromptListResponse,
   AgentTargetSetupSnapshot,
   AuthenticateAgentTargetRuntimeRequest,
   InstallAgentTargetRuntimeRequest,
@@ -33,6 +35,7 @@ import type {
   CreateIssueManagerTaskRequest,
   CreateIssueManagerTasksRequest,
   CreateIssueManagerTopicRequest,
+  CreateAgentQuickPromptRequest,
   CreateWorkspaceAgentSessionRequest,
   CreateWorkspaceAppFactoryJobRequest,
   CreateWorkspaceTerminalRequest,
@@ -47,6 +50,7 @@ import type {
   DeleteWorkspaceResponse,
   DeleteWorkspaceAppResponse,
   DeleteUserProjectRequest,
+  DeleteAgentQuickPromptRequest,
   DesktopPreferencesStateResponse,
   DeletedAgentConversationPurgeResult,
   ExportWorkspaceAppRequest,
@@ -99,6 +103,7 @@ import type {
   UpdateWorkspaceAgentSessionPinRequest,
   UpdateWorkspaceAgentSessionTitleRequest,
   UpdateWorkspaceAgentSessionVisibilityRequest,
+  UpdateAgentQuickPromptRequest,
   WorkspaceGitPatchRequest,
   WorkspaceGitPatchResponse,
   UpdateIssueManagerIssueRequest,
@@ -155,6 +160,18 @@ export type TuttidTrackEvent = TrackEvent;
 export type TuttidTrackEventsRequest = TrackEventsRequest;
 
 export interface TuttidClient {
+  listAgentQuickPrompts(): Promise<AgentQuickPromptListResponse>;
+  createAgentQuickPrompt(
+    request: CreateAgentQuickPromptRequest
+  ): Promise<AgentQuickPrompt>;
+  updateAgentQuickPrompt(
+    promptID: string,
+    request: UpdateAgentQuickPromptRequest
+  ): Promise<AgentQuickPrompt>;
+  deleteAgentQuickPrompt(
+    promptID: string,
+    request: DeleteAgentQuickPromptRequest
+  ): Promise<void>;
   listAgentTargets(): Promise<ListAgentTargetsResponse>;
   setSystemAgentTargetEnabled(
     agentTargetID: string,

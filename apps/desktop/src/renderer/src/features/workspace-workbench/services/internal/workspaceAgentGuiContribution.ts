@@ -41,6 +41,7 @@ import type { IReporterService } from "@renderer/features/analytics";
 import { createDesktopAgentGUIWorkbenchHostInput } from "@renderer/features/workspace-agent/services/createDesktopAgentGUIWorkbenchHostInput.ts";
 import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
+import type { IAgentQuickPromptService as AgentQuickPromptService } from "@renderer/features/workspace-agent/services/agentQuickPromptService.interface.ts";
 import type { DesktopAgentGUIWorkbenchBodyProps } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchModel.ts";
 import { DesktopAgentGUIWorkbenchBody } from "@renderer/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
@@ -56,6 +57,7 @@ import { useExternalStoreValue } from "../../ui/useExternalStoreValue.ts";
 import { workspaceAgentGuiNodeFrame } from "./workspaceWorkbenchComposition.ts";
 
 export function createWorkspaceAgentGuiContribution(input: {
+  agentQuickPromptService?: AgentQuickPromptService;
   agentProviderStatusService: AgentProviderStatusService;
   appCenterService: IWorkspaceAppCenterService;
   appI18n: I18nRuntime<string>;
@@ -96,6 +98,7 @@ export function createWorkspaceAgentGuiContribution(input: {
     ? input.defaultAgentProvider
     : null;
   const agentGUIWorkbenchHostInput = createDesktopAgentGUIWorkbenchHostInput({
+    agentQuickPromptService: input.agentQuickPromptService,
     hostFilesApi: input.hostFilesApi,
     tuttidClient: input.tuttidClient,
     platformApi: input.platformApi,

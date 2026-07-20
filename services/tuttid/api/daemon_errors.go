@@ -37,6 +37,18 @@ func preferencesOperationError(err *apierrors.ProtocolError) tuttigenerated.Pref
 	return tuttigenerated.PreferencesOperationErrorJSONResponse(protocolErrorResponse(err))
 }
 
+func agentQuickPromptNotFoundError(err *apierrors.ProtocolError) tuttigenerated.AgentQuickPromptNotFoundErrorJSONResponse {
+	return tuttigenerated.AgentQuickPromptNotFoundErrorJSONResponse(protocolErrorResponse(err))
+}
+
+func agentQuickPromptConflictError(err *apierrors.ProtocolError) tuttigenerated.AgentQuickPromptConflictErrorJSONResponse {
+	return tuttigenerated.AgentQuickPromptConflictErrorJSONResponse(protocolErrorResponse(err))
+}
+
+func agentQuickPromptOperationError(err *apierrors.ProtocolError) tuttigenerated.AgentQuickPromptOperationErrorJSONResponse {
+	return tuttigenerated.AgentQuickPromptOperationErrorJSONResponse(protocolErrorResponse(err))
+}
+
 func protocolErrorResponse(err *apierrors.ProtocolError) tuttigenerated.ApiErrorResponse {
 	if err == nil {
 		err = apierrors.WorkspaceOperationFailed()

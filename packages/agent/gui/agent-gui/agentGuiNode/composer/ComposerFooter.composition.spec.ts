@@ -10,6 +10,10 @@ const handoffMenuSource = readFileSync(
   join(process.cwd(), "agent-gui/agentGuiNode/composer/AgentHandoffMenu.tsx"),
   "utf8"
 );
+const composerSource = readFileSync(
+  join(process.cwd(), "agent-gui/agentGuiNode/AgentComposer.tsx"),
+  "utf8"
+);
 
 describe("ComposerFooter trigger composition", () => {
   it("keeps tooltip and select triggers on separate elements", () => {
@@ -33,6 +37,24 @@ describe("ComposerFooter trigger composition", () => {
     expect(handoffMenuSource).not.toContain("title={labels.tooltip}");
     expect(handoffMenuSource).toContain(
       '<TooltipContent side="top">{labels.tooltip}</TooltipContent>'
+    );
+  });
+
+  it("keeps the quick-prompt slot after handoff/provider and before status badges", () => {
+    const slotIndex = source.indexOf("{quickPromptControl}");
+    const providerIndex = source.indexOf("selectedProviderSwitchTarget");
+    const planIndex = source.indexOf("composerSettings.supportsPlanMode");
+
+    expect(slotIndex).toBeGreaterThan(providerIndex);
+    expect(slotIndex).toBeLessThan(planIndex);
+  });
+
+  it("closes every competing composer disclosure before quick prompts open", () => {
+    expect(composerSource).toMatch(
+      /closeQuickPromptCompetingDisclosure[\s\S]*closeFileMentionPalette\(\)[\s\S]*closeSlashFloatingMenu\(\)/u
+    );
+    expect(composerSource).toContain(
+      "onBeforeOpen: closeQuickPromptCompetingDisclosure"
     );
   });
 });

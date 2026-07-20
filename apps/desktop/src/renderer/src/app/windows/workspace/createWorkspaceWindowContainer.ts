@@ -275,6 +275,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     }
   });
   registerWorkspaceWorkbenchServices(registry, {
+    agentQuickPromptService: workspaceAgentServices.agentQuickPromptService,
     browserApi: desktopApi.browser,
     computerUseApi: desktopApi.computerUse,
     developerApi: desktopApi.developer,

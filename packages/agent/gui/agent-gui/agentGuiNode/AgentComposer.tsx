@@ -31,6 +31,7 @@ import {
   EMPTY_PROVIDER_SKILLS
 } from "./composer/AgentComposerChrome";
 import { useAgentMentionSearchController } from "./composer/useAgentMentionSearchController";
+import { useAgentQuickPromptLibrary } from "./composer/quickPrompts/useAgentQuickPromptLibrary";
 import type { AgentComposerProps } from "./composer/AgentComposer.types";
 import {
   agentComposerDraftAttachmentProjection,
@@ -503,6 +504,19 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     defaultHandoffMenuLabel: labels.handoffConversationMenu
   });
   const { inputDisabled, isHeroLayout } = providerState;
+  const closeQuickPromptCompetingDisclosure = useCallback((): void => {
+    mentionActions.closeFileMentionPalette();
+    slashActions.closeSlashFloatingMenu();
+  }, [mentionActions, slashActions]);
+  const insertQuickPrompt = useCallback((content: string): void => {
+    editorHandleRef.current?.insertPlainTextAtSelection(content);
+  }, []);
+  const quickPromptLibrary = useAgentQuickPromptLibrary({
+    disabled: composerControlsHardDisabled || inputDisabled,
+    labels: labels.quickPrompts,
+    onBeforeOpen: closeQuickPromptCompetingDisclosure,
+    onInsertPrompt: insertQuickPrompt
+  });
   const restoreComposerCaretAfterProjectMenu = (event: Event): void => {
     event.preventDefault();
     if (inputDisabled) {
@@ -611,6 +625,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       showSlashPalette={showSlashPalette}
       activeHighlight={activeHighlight}
       mentionSearchState={mentionSearchState}
+      quickPromptLibrary={quickPromptLibrary}
       mentionHighlightedKey={mentionHighlightedKey}
       shouldCenterMentionHighlight={shouldCenterMentionHighlight}
       isSlashStatusPanelOpen={isSlashStatusPanelOpen}

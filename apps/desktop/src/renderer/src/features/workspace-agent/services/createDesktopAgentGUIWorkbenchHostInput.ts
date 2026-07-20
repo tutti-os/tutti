@@ -44,6 +44,7 @@ import {
 import { createAgentWorkspaceFileReferenceTracker } from "./internal/agentWorkspaceFileReferenceAnalytics.ts";
 import { getDesktopAgentActivityRuntimeServices } from "./internal/desktopAgentActivityRuntimeServices.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
+import type { IAgentQuickPromptService } from "./agentQuickPromptService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 import { translate } from "../../../i18n/appRuntime.ts";
 import { createDesktopAgentGeneratedFileMentionProvider } from "./internal/createDesktopAgentGeneratedFileMentionProvider.ts";
@@ -87,6 +88,7 @@ export interface DesktopAgentGUIWorkbenchHostInput {
 }
 
 export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
+  agentQuickPromptService?: IAgentQuickPromptService;
   agentHostApi?: AgentHostInputApi | null;
   hostFilesApi: DesktopHostFilesApi;
   tuttidClient: TuttidClient;
@@ -109,6 +111,7 @@ export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
 }
 
 export function createDesktopAgentGUIWorkbenchHostInput({
+  agentQuickPromptService,
   agentHostApi,
   hostFilesApi,
   tuttidClient,
@@ -126,6 +129,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   const resolvedAgentHostApi =
     agentHostApi ??
     createDesktopAgentHostApi({
+      agentQuickPromptService,
       hostFilesApi,
       tuttidClient,
       platformApi,

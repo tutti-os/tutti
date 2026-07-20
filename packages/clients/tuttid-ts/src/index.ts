@@ -16,6 +16,8 @@ export {
 export type {
   AgentActivityUpdatedPayloadV1,
   AgentActivityUpdatedEventV1,
+  AgentQuickpromptUpdatedPayloadV1,
+  AgentQuickpromptUpdatedEventV1,
   WorkspaceWorkbenchNodeLaunchRequestedEventV1,
   WorkspaceIssueUpdatedEventV1
 } from "@tutti-os/event-protocol";

@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:5fca5850de404c41"
+	BusinessEventCatalogRevision = "sha256:b4b2007289c5233f"
 )
 
 type Topic string
@@ -14,6 +14,7 @@ type Topic string
 const (
 	TopicAgentActivityUpdated                           Topic = "agent.activity.updated"
 	TopicAgentModelCatalogInvalidated                   Topic = "agent.model.catalog.invalidated"
+	TopicAgentQuickpromptUpdated                        Topic = "agent.quickprompt.updated"
 	TopicAnalyticsDebugReported                         Topic = "analytics.debug.reported"
 	TopicPreferencesAgentComposerDefaultsChanged        Topic = "preferences.agent.composer.defaults.changed"
 	TopicPreferencesAgentComposerDefaultsPatchRequested Topic = "preferences.agent.composer.defaults.patch.requested"
@@ -244,6 +245,13 @@ type AgentModelCatalogInvalidatedPayload struct {
 	OccurredAtUnixMs int      `json:"occurredAtUnixMs"`
 }
 
+type AgentQuickpromptUpdatedPayload struct {
+	PromptId         string `json:"promptId"`
+	ChangeKind       string `json:"changeKind"`
+	Version          int    `json:"version"`
+	OccurredAtUnixMs int    `json:"occurredAtUnixMs"`
+}
+
 type AnalyticsDebugReportedPayload struct {
 	Events []struct {
 		Name     string         `json:"name"`
@@ -322,6 +330,15 @@ type AgentModelCatalogInvalidatedEvent struct {
 	EmittedAt string                              `json:"emittedAt"`
 	Scope     *EventScope                         `json:"scope,omitempty"`
 	Payload   AgentModelCatalogInvalidatedPayload `json:"payload"`
+}
+
+type AgentQuickpromptUpdatedEvent struct {
+	ID        string                         `json:"id"`
+	Topic     Topic                          `json:"topic"`
+	Version   int                            `json:"version"`
+	EmittedAt string                         `json:"emittedAt"`
+	Scope     *EventScope                    `json:"scope,omitempty"`
+	Payload   AgentQuickpromptUpdatedPayload `json:"payload"`
 }
 
 type AnalyticsDebugReportedEvent struct {
@@ -488,6 +505,13 @@ var BusinessEventDefinitions = []EventDefinition{
 		Scope:     ScopeNameGlobal,
 	},
 	{
+		Topic:     TopicAgentQuickpromptUpdated,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "core",
+		Scope:     ScopeNameGlobal,
+	},
+	{
 		Topic:     TopicAnalyticsDebugReported,
 		Version:   1,
 		Direction: DirectionServerToClient,
@@ -562,16 +586,17 @@ var BusinessEventDefinitions = []EventDefinition{
 var businessEventDefinitionByTopic = map[Topic]EventDefinition{
 	TopicAgentActivityUpdated:                           BusinessEventDefinitions[0],
 	TopicAgentModelCatalogInvalidated:                   BusinessEventDefinitions[1],
-	TopicAnalyticsDebugReported:                         BusinessEventDefinitions[2],
-	TopicPreferencesAgentComposerDefaultsChanged:        BusinessEventDefinitions[3],
-	TopicPreferencesAgentComposerDefaultsPatchRequested: BusinessEventDefinitions[4],
-	TopicPreferencesDesktopUpdateRequested:              BusinessEventDefinitions[5],
-	TopicPreferencesDesktopUpdated:                      BusinessEventDefinitions[6],
-	TopicUserProjectUpdated:                             BusinessEventDefinitions[7],
-	TopicWorkspaceAppUpdated:                            BusinessEventDefinitions[8],
-	TopicWorkspaceAppfactoryJobUpdated:                  BusinessEventDefinitions[9],
-	TopicWorkspaceIssueUpdated:                          BusinessEventDefinitions[10],
-	TopicWorkspaceWorkbenchNodeLaunchRequested:          BusinessEventDefinitions[11],
+	TopicAgentQuickpromptUpdated:                        BusinessEventDefinitions[2],
+	TopicAnalyticsDebugReported:                         BusinessEventDefinitions[3],
+	TopicPreferencesAgentComposerDefaultsChanged:        BusinessEventDefinitions[4],
+	TopicPreferencesAgentComposerDefaultsPatchRequested: BusinessEventDefinitions[5],
+	TopicPreferencesDesktopUpdateRequested:              BusinessEventDefinitions[6],
+	TopicPreferencesDesktopUpdated:                      BusinessEventDefinitions[7],
+	TopicUserProjectUpdated:                             BusinessEventDefinitions[8],
+	TopicWorkspaceAppUpdated:                            BusinessEventDefinitions[9],
+	TopicWorkspaceAppfactoryJobUpdated:                  BusinessEventDefinitions[10],
+	TopicWorkspaceIssueUpdated:                          BusinessEventDefinitions[11],
+	TopicWorkspaceWorkbenchNodeLaunchRequested:          BusinessEventDefinitions[12],
 }
 
 var ClientToServerTopics = []Topic{
@@ -582,6 +607,7 @@ var ClientToServerTopics = []Topic{
 var ServerToClientTopics = []Topic{
 	TopicAgentActivityUpdated,
 	TopicAgentModelCatalogInvalidated,
+	TopicAgentQuickpromptUpdated,
 	TopicAnalyticsDebugReported,
 	TopicPreferencesAgentComposerDefaultsChanged,
 	TopicPreferencesDesktopUpdated,
@@ -619,6 +645,8 @@ func IsServerToClientTopic(topic Topic) bool {
 		return true
 	case TopicAgentModelCatalogInvalidated:
 		return true
+	case TopicAgentQuickpromptUpdated:
+		return true
 	case TopicAnalyticsDebugReported:
 		return true
 	case TopicPreferencesAgentComposerDefaultsChanged:
@@ -646,6 +674,8 @@ func PayloadPrototypeForTopic(topic Topic) (any, bool) {
 		return &AgentActivityUpdatedPayload{}, true
 	case TopicAgentModelCatalogInvalidated:
 		return &AgentModelCatalogInvalidatedPayload{}, true
+	case TopicAgentQuickpromptUpdated:
+		return &AgentQuickpromptUpdatedPayload{}, true
 	case TopicAnalyticsDebugReported:
 		return &AnalyticsDebugReportedPayload{}, true
 	case TopicPreferencesAgentComposerDefaultsChanged:
@@ -677,6 +707,8 @@ func EventPrototypeForTopic(topic Topic) (any, bool) {
 		return &AgentActivityUpdatedEvent{}, true
 	case TopicAgentModelCatalogInvalidated:
 		return &AgentModelCatalogInvalidatedEvent{}, true
+	case TopicAgentQuickpromptUpdated:
+		return &AgentQuickpromptUpdatedEvent{}, true
 	case TopicAnalyticsDebugReported:
 		return &AnalyticsDebugReportedEvent{}, true
 	case TopicPreferencesAgentComposerDefaultsChanged:

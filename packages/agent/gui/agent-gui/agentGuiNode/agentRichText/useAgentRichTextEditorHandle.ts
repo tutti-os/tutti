@@ -61,6 +61,33 @@ export function useAgentRichTextEditorHandle(input: {
           "\n"
         );
       },
+      insertPlainTextAtSelection(text) {
+        const currentEditor = input.editorRef.current;
+        if (
+          !currentEditor ||
+          currentEditor.isDestroyed ||
+          !currentEditor.isEditable ||
+          text.length === 0
+        ) {
+          return null;
+        }
+        const { from, to } = currentEditor.state.selection;
+        if (!currentEditor.isFocused) input.onBeforeProgrammaticFocus?.();
+        currentEditor
+          .chain()
+          .focus()
+          .setMeta(AGENT_RICH_TEXT_SKIP_USER_CONTENT_EVENT_META, true)
+          .insertContentAt(
+            { from, to },
+            plainTextToAgentRichTextInlineContent(text, {
+              capabilities: input.availableCapabilitiesRef.current,
+              skills: input.availableSkillsRef.current
+            })
+          )
+          .scrollIntoView()
+          .run();
+        return editorToPromptText(currentEditor);
+      },
       openMentionPalette() {
         const currentEditor = input.editorRef.current;
         if (

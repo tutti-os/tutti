@@ -30,11 +30,16 @@ import { IAgentsService } from "./agentsService.interface";
 import { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import { IWorkspaceAgentPromptSessionService } from "./workspaceAgentPromptSessionService.interface";
 import { AgentEnvService } from "./internal/agentEnvService.ts";
+import { DesktopAgentQuickPromptService } from "./internal/desktopAgentQuickPromptService.ts";
+import {
+  IAgentQuickPromptService,
+  type IAgentQuickPromptService as AgentQuickPromptService
+} from "./agentQuickPromptService.interface.ts";
 
 export interface WorkspaceAgentServiceRegistrationInput {
   accountLogin: { startLogin(): Promise<void> };
   clipboard: { writeText(text: string): Promise<void> };
-  desktopPreferencesService?: Pick<IDesktopPreferencesService, "store">;
+  desktopPreferencesService: IDesktopPreferencesService;
   eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi: Pick<
     DesktopHostFilesApi,
@@ -60,6 +65,7 @@ export interface WorkspaceAgentServiceRegistrationResult {
   refreshManagedAgentProviderStatuses(): Promise<
     readonly AgentProviderStatus[] | null
   >;
+  agentQuickPromptService: AgentQuickPromptService;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   dispose(): void;
 }
@@ -107,20 +113,25 @@ export function registerWorkspaceAgentServices(
     );
   };
   startManagedAgentInstallBootstraps(agentProviderStatusService);
-  const preferencesStore = input.desktopPreferencesService?.store;
+  const preferencesStore = input.desktopPreferencesService.store;
   const agentsService = new DesktopAgentsService({
-    earlyAccessEnabled: preferencesStore
-      ? isFeatureEnabled(
-          preferencesStore.featureFlags,
-          EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG
-        )
-      : undefined,
+    earlyAccessEnabled: isFeatureEnabled(
+      preferencesStore.featureFlags,
+      EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG
+    ),
     tuttidClient: input.tuttidClient
   });
   registry.registerInstance(IAgentsService, agentsService);
-  const disposeAgentsEarlyAccessSync = preferencesStore
-    ? bindDesktopAgentsEarlyAccessSync({ agentsService, preferencesStore })
-    : () => {};
+  const disposeAgentsEarlyAccessSync = bindDesktopAgentsEarlyAccessSync({
+    agentsService,
+    preferencesStore
+  });
+  const agentQuickPromptService = new DesktopAgentQuickPromptService({
+    desktopPreferencesService: input.desktopPreferencesService,
+    eventStreamClient: input.eventStreamClient,
+    tuttidClient: input.tuttidClient
+  });
+  registry.registerInstance(IAgentQuickPromptService, agentQuickPromptService);
   const workspaceAgentActivityService = new WorkspaceAgentActivityService({
     ...input,
     agentProviderStatusService
@@ -142,12 +153,14 @@ export function registerWorkspaceAgentServices(
     agentsService,
     agentProviderStatusService,
     refreshManagedAgentProviderStatuses,
+    agentQuickPromptService,
     workspaceAgentActivityService,
     dispose() {
       disposeAgentsEarlyAccessSync();
       disposeManagedAgentProviderVisibilityRefresh();
       agentEnvService.dispose();
       agentProviderStatusService.dispose();
+      agentQuickPromptService.dispose();
     }
   };
 }

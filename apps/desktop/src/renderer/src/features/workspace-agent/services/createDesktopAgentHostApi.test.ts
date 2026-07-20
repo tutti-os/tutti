@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AgentHostInputApi } from "@tutti-os/agent-gui";
+import type {
+  AgentHostInputApi,
+  AgentHostQuickPromptsApi
+} from "@tutti-os/agent-gui";
 import type {
   AgentTargetSetupSnapshot,
   TuttidClient
@@ -23,6 +26,13 @@ import { WorkspaceAgentActivityService } from "./internal/workspaceAgentActivity
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 
 const workspaceId = "workspace-1";
+
+test("desktop agent host api projects the optional quick prompts capability", () => {
+  const quickPrompts = {} as AgentHostQuickPromptsApi;
+  const api = createAgentHostApi({ agentQuickPromptService: quickPrompts });
+
+  assert.equal(api.quickPrompts, quickPrompts);
+});
 
 type DesktopAgentHostApiUnderTest = AgentHostInputApi & {
   persistence: NonNullable<AgentHostInputApi["persistence"]>;
