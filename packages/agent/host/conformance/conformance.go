@@ -43,15 +43,17 @@ type InteractionSeed struct {
 }
 
 type Fixture struct {
-	Session            *SessionSeed
-	AdditionalSessions []SessionSeed
-	Turn               *TurnSeed
-	Interaction        *InteractionSeed
-	PreparedSubmitID   string
-	RecoverInteractive bool
-	DisableGoalInbox   bool
-	FailCommitObserver bool
-	WorktreeGCSweepErr error
+	Session                *SessionSeed
+	AdditionalSessions     []SessionSeed
+	Turn                   *TurnSeed
+	AdditionalTurns        []TurnSeed
+	Interaction            *InteractionSeed
+	AdditionalInteractions []InteractionSeed
+	PreparedSubmitID       string
+	RecoverInteractive     bool
+	DisableGoalInbox       bool
+	FailCommitObserver     bool
+	WorktreeGCSweepErr     error
 }
 
 type SessionObservation struct {
@@ -95,6 +97,9 @@ type OperationObservation struct {
 
 type InteractiveObservation struct {
 	Session     SessionObservation
+	OperationID string
+	TurnID      string
+	RequestID   string
 	Disposition agenthost.RuntimeInteractiveDisposition
 }
 
@@ -128,7 +133,8 @@ type Driver interface {
 	EnsureSession(context.Context, agenthost.SessionRef) (SessionObservation, error)
 	SendInput(context.Context, agenthost.SessionRef, agenthost.SendInput) (SendObservation, error)
 	CancelTurn(context.Context, agenthost.CancelTurnInput) (CancelObservation, error)
-	SubmitInteractive(context.Context, agenthost.SessionRef, string, agenthost.SubmitInteractiveInput) (InteractiveObservation, error)
+	SubmitInteractive(context.Context, agenthost.InteractionRef, agenthost.SubmitInteractiveInput) (InteractiveObservation, error)
+	GetInteractionStatus(context.Context, agenthost.InteractionRef) (string, bool, error)
 	SubmitPlanDecision(context.Context, agenthost.SessionRef, string, string, agenthost.SubmitPlanDecisionInput) (OperationObservation, error)
 	UpdateTitle(context.Context, agenthost.UpdateTitleInput) (SessionObservation, error)
 	GetSession(context.Context, agenthost.SessionRef) (SessionObservation, error)

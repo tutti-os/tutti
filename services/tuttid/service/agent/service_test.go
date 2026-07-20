@@ -6652,10 +6652,8 @@ func TestServiceDoesNotReconcileStalePersistedTurnWhenRuntimeSessionIsWorking(t 
 
 	if _, err := service.SubmitInteractive(
 		context.Background(),
-		"ws-1",
-		"session-1",
-		"permission-1",
-		SubmitInteractiveInput{OptionID: stringRef("approve")},
+		agenthost.InteractionRef{WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1", RequestID: "permission-1"},
+		agenthost.SubmitInteractiveInput{OptionID: stringRef("approve")},
 	); err != nil {
 		t.Fatalf("SubmitInteractive returned error: %v", err)
 	}

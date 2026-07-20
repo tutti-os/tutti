@@ -37,19 +37,16 @@ func runtimeOperationPayloadText(payload map[string]any, key string) string {
 
 func (h *Host) prepareInteractiveRuntimeOperation(
 	ctx context.Context,
-	ref SessionRef,
-	requestID string,
+	ref InteractionRef,
 	input SubmitInteractiveInput,
 	rootAgentSessionID string,
 ) (storesqlite.RuntimeOperation, RuntimeInteractiveDisposition, bool, error) {
 	if h.operations == nil || h.store == nil {
 		return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, errors.New("agent runtime operation store is unavailable")
 	}
-	expectedTurnID := strings.TrimSpace(input.TurnID)
-	operationSubjectID := requestID
-	if expectedTurnID != "" {
-		operationSubjectID = expectedTurnID + "\x00" + requestID
-	}
+	expectedTurnID := strings.TrimSpace(ref.TurnID)
+	requestID := strings.TrimSpace(ref.RequestID)
+	operationSubjectID := expectedTurnID + "\x00" + requestID
 	operationID := runtimeOperationID(ref.WorkspaceID, ref.AgentSessionID, storesqlite.RuntimeOperationKindInteractiveResponse, operationSubjectID)
 	payload := map[string]any{
 		"rootAgentSessionId": strings.TrimSpace(rootAgentSessionID),
@@ -61,8 +58,8 @@ func (h *Host) prepareInteractiveRuntimeOperation(
 	} else if found {
 		if existing.WorkspaceID != ref.WorkspaceID || existing.AgentSessionID != ref.AgentSessionID ||
 			existing.Kind != storesqlite.RuntimeOperationKindInteractiveResponse || existing.RequestID != requestID ||
-			(expectedTurnID != "" && existing.TurnID != expectedTurnID) {
-			return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, storesqlite.ErrRuntimeOperationConflict
+			existing.TurnID != expectedTurnID {
+			return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, interactiveIdentityMismatch(ref, operationID)
 		}
 		switch existing.Status {
 		case storesqlite.RuntimeOperationStatusCompleted:
@@ -78,29 +75,18 @@ func (h *Host) prepareInteractiveRuntimeOperation(
 			return existing, RuntimeInteractiveDispositionUnknown, true, nil
 		}
 	}
-	interactions, err := h.store.ListSessionInteractions(ctx, storesqlite.ListSessionInteractionsInput{
-		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
-	})
-	if err != nil {
-		return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, err
-	}
-	var target storesqlite.Interaction
-	for _, interaction := range interactions {
-		if strings.TrimSpace(interaction.RequestID) == requestID && (expectedTurnID == "" || strings.TrimSpace(interaction.TurnID) == expectedTurnID) {
-			target = interaction
-			break
-		}
-	}
-	turnID := strings.TrimSpace(target.TurnID)
-	if turnID == "" {
-		return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, fmt.Errorf("%w: interaction %q was not found", ErrInvalidArgument, requestID)
-	}
 	operation, interaction, transition, err := h.operations.PrepareInteractiveRuntimeOperation(ctx, storesqlite.RuntimeOperationPrepare{
 		OperationID: operationID, WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
-		Kind: storesqlite.RuntimeOperationKindInteractiveResponse, TurnID: turnID, RequestID: requestID,
+		Kind: storesqlite.RuntimeOperationKindInteractiveResponse, TurnID: expectedTurnID, RequestID: requestID,
 		Payload: payload, OccurredAtMS: h.now().UnixMilli(),
 	})
 	if err != nil {
+		if errors.Is(err, storesqlite.ErrRuntimeOperationIdentityMismatch) {
+			return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, interactiveIdentityMismatch(ref, operationID)
+		}
+		if errors.Is(err, storesqlite.ErrRuntimeOperationSubjectState) {
+			return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, ErrInteractionNotFound
+		}
 		return storesqlite.RuntimeOperation{}, RuntimeInteractiveDispositionUnknown, false, err
 	}
 	disposition := RuntimeInteractiveDispositionSuperseded
@@ -108,6 +94,17 @@ func (h *Host) prepareInteractiveRuntimeOperation(
 		disposition = RuntimeInteractiveDispositionAnswered
 	}
 	return operation, disposition, transition == storesqlite.InteractionTransitionApplied && disposition == RuntimeInteractiveDispositionAnswered, nil
+}
+
+func interactiveIdentityMismatch(ref InteractionRef, operationID string) error {
+	slog.Error(runtimeOperationLogPrefix+" interactive identity mismatch",
+		"workspace_id", ref.WorkspaceID,
+		"agent_session_id", ref.AgentSessionID,
+		"turn_id", ref.TurnID,
+		"request_id", ref.RequestID,
+		"operation_id", operationID,
+	)
+	return ErrRuntimeOperationIdentityMismatch
 }
 
 func interactiveClaimOutput(input SubmitInteractiveInput) map[string]any {

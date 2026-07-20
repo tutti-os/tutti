@@ -974,7 +974,7 @@ func TestRespondCommandPassesResponseAndReturnsDisposition(t *testing.T) {
 	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newRespondCommand()
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
-			"session-id": "SESSION-1", "request-id": "request-1", "action": "approve",
+			"session-id": "SESSION-1", "turn-id": "turn-1", "request-id": "request-1", "action": "approve",
 			"option": "allow-once", "payload": `{"answer":"yes"}`,
 		},
 		OutputMode: cliservice.OutputModeJSON,
@@ -983,7 +983,7 @@ func TestRespondCommandPassesResponseAndReturnsDisposition(t *testing.T) {
 		t.Fatalf("Handler: %v", err)
 	}
 	if sessions.respondInput.WorkspaceID != "workspace-1" || sessions.respondInput.AgentSessionID != "SESSION-1" ||
-		sessions.respondInput.RequestID != "request-1" || optionalTestString(sessions.respondInput.Action) != "approve" ||
+		sessions.respondInput.TurnID != "turn-1" || sessions.respondInput.RequestID != "request-1" || optionalTestString(sessions.respondInput.Action) != "approve" ||
 		optionalTestString(sessions.respondInput.OptionID) != "allow-once" || sessions.respondInput.Payload["answer"] != "yes" {
 		t.Fatalf("respond input = %#v", sessions.respondInput)
 	}
@@ -996,7 +996,7 @@ func TestRespondCommandPassesSemanticWithoutProviderMapping(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newRespondCommand()
 	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input:      map[string]any{"session-id": "SESSION-1", "request-id": "request-1", "semantic": "approve"},
+		Input:      map[string]any{"session-id": "SESSION-1", "turn-id": "turn-1", "request-id": "request-1", "semantic": "approve"},
 		OutputMode: cliservice.OutputModeJSON,
 	}); err != nil {
 		t.Fatalf("Handler: %v", err)
@@ -1012,13 +1012,13 @@ func TestRespondCommandReturnsStructuredInputErrors(t *testing.T) {
 		input    map[string]any
 		sessions *fakeAgentSessions
 	}{
-		{name: "missing response", input: map[string]any{"session-id": "SESSION-1", "request-id": "request-1"}, sessions: &fakeAgentSessions{}},
-		{name: "invalid payload", input: map[string]any{"session-id": "SESSION-1", "request-id": "request-1", "payload": `[]`}, sessions: &fakeAgentSessions{}},
-		{name: "action and semantic", input: map[string]any{"session-id": "SESSION-1", "request-id": "request-1", "action": "approve", "semantic": "approve"}, sessions: &fakeAgentSessions{}},
-		{name: "unknown request", input: map[string]any{"session-id": "SESSION-1", "request-id": "missing", "action": "approve"}, sessions: &fakeAgentSessions{respondErr: agentservice.ErrInteractionRequestNotFound}},
-		{name: "non pending", input: map[string]any{"session-id": "SESSION-1", "request-id": "answered", "action": "approve"}, sessions: &fakeAgentSessions{respondErr: agentservice.ErrInteractionRequestNotPending}},
-		{name: "semantic missing", input: map[string]any{"session-id": "SESSION-1", "request-id": "request-1", "semantic": "approve"}, sessions: &fakeAgentSessions{respondErr: agentservice.ErrInteractionSemanticNotFound}},
-		{name: "semantic ambiguous", input: map[string]any{"session-id": "SESSION-1", "request-id": "request-1", "semantic": "approve"}, sessions: &fakeAgentSessions{respondErr: agentservice.ErrInteractionSemanticAmbiguous}},
+		{name: "missing turn", input: map[string]any{"session-id": "SESSION-1", "request-id": "request-1", "action": "approve"}, sessions: &fakeAgentSessions{}},
+		{name: "missing response", input: map[string]any{"session-id": "SESSION-1", "turn-id": "turn-1", "request-id": "request-1"}, sessions: &fakeAgentSessions{}},
+		{name: "invalid payload", input: map[string]any{"session-id": "SESSION-1", "turn-id": "turn-1", "request-id": "request-1", "payload": `[]`}, sessions: &fakeAgentSessions{}},
+		{name: "action and semantic", input: map[string]any{"session-id": "SESSION-1", "turn-id": "turn-1", "request-id": "request-1", "action": "approve", "semantic": "approve"}, sessions: &fakeAgentSessions{}},
+		{name: "unknown request", input: map[string]any{"session-id": "SESSION-1", "turn-id": "turn-1", "request-id": "missing", "action": "approve"}, sessions: &fakeAgentSessions{respondErr: agentservice.ErrInteractionRequestNotFound}},
+		{name: "semantic missing", input: map[string]any{"session-id": "SESSION-1", "turn-id": "turn-1", "request-id": "request-1", "semantic": "approve"}, sessions: &fakeAgentSessions{respondErr: agentservice.ErrInteractionSemanticNotFound}},
+		{name: "semantic ambiguous", input: map[string]any{"session-id": "SESSION-1", "turn-id": "turn-1", "request-id": "request-1", "semantic": "approve"}, sessions: &fakeAgentSessions{respondErr: agentservice.ErrInteractionSemanticAmbiguous}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, test.sessions).newRespondCommand()

@@ -336,6 +336,19 @@ func (s failingTurnStore) GetSession(context.Context, string, string) (agentacti
 	return s.session, true, nil
 }
 
-func (s failingTurnStore) ListSessionInteractions(context.Context, agentactivitybiz.ListSessionInteractionsInput) ([]agentactivitybiz.Interaction, error) {
-	return s.interactions, s.listInteractionsErr
+func (s failingTurnStore) ListSessionInteractions(_ context.Context, input agentactivitybiz.ListSessionInteractionsInput) ([]agentactivitybiz.Interaction, error) {
+	if s.listInteractionsErr != nil {
+		return nil, s.listInteractionsErr
+	}
+	result := make([]agentactivitybiz.Interaction, 0, len(s.interactions))
+	for _, interaction := range s.interactions {
+		if input.TurnID != "" && interaction.TurnID != input.TurnID {
+			continue
+		}
+		if input.RequestID != "" && interaction.RequestID != input.RequestID {
+			continue
+		}
+		result = append(result, interaction)
+	}
+	return result, nil
 }

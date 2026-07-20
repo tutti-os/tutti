@@ -19,7 +19,6 @@ func TestRuntimeOperationPrepareIsSubjectIdempotentAndCrashRecoverable(t *testin
 	if err != nil || !created || first.Status != RuntimeOperationStatusPrepared {
 		t.Fatalf("prepare = %#v created=%v err=%v", first, created, err)
 	}
-	input.OperationID = "operation-retry"
 	duplicate, created, err := store.PrepareRuntimeOperation(context.Background(), input)
 	if err != nil || created || duplicate.OperationID != "operation-1" {
 		t.Fatalf("duplicate = %#v created=%v err=%v", duplicate, created, err)
@@ -48,7 +47,7 @@ func TestPrepareInteractiveRuntimeOperationClaimsInteractionAtomically(t *testin
 			defer group.Done()
 			<-start
 			_, interaction, transition, err := store.PrepareInteractiveRuntimeOperation(context.Background(), RuntimeOperationPrepare{
-				OperationID: fmt.Sprintf("operation-%d", index), WorkspaceID: "ws-1", AgentSessionID: "session-claim",
+				OperationID: "operation-claim", WorkspaceID: "ws-1", AgentSessionID: "session-claim",
 				Kind: RuntimeOperationKindInteractiveResponse, TurnID: "turn-claim", RequestID: "request-claim",
 				Payload: map[string]any{"action": "", "optionId": option, "payload": (map[string]any)(nil)}, OccurredAtMS: int64(10 + index),
 			})

@@ -217,7 +217,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		turns:        map[string]agentactivitybiz.Turn{},
 		interactions: map[string][]agentactivitybiz.Interaction{},
 	}
-	d.operations = &runtimeOperationMemoryStore{}
+	d.operations = &runtimeOperationMemoryStore{interactionStore: d.turns}
 	d.createdTurns = make(map[string]string)
 	steps := make([]string, 0)
 	d.recoverySteps = &steps
@@ -382,6 +382,13 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		}
 		d.service.TurnStore = d.turns
 	}
+	for _, turn := range fixture.AdditionalTurns {
+		d.turns.turns[seed.AgentSessionID+":"+turn.TurnID] = agentactivitybiz.Turn{
+			WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID,
+			TurnID: turn.TurnID, Phase: turn.Phase, Outcome: turn.Outcome,
+		}
+		d.service.TurnStore = d.turns
+	}
 	if fixture.Interaction != nil {
 		interaction := *fixture.Interaction
 		d.turns.interactions[seed.AgentSessionID] = []agentactivitybiz.Interaction{{
@@ -389,6 +396,14 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 			TurnID: interaction.TurnID, RequestID: interaction.RequestID,
 			Kind: interaction.Kind, Status: interaction.Status,
 		}}
+		d.service.TurnStore = d.turns
+	}
+	for _, interaction := range fixture.AdditionalInteractions {
+		d.turns.interactions[seed.AgentSessionID] = append(d.turns.interactions[seed.AgentSessionID], agentactivitybiz.Interaction{
+			WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID,
+			TurnID: interaction.TurnID, RequestID: interaction.RequestID,
+			Kind: interaction.Kind, Status: interaction.Status,
+		})
 		d.service.TurnStore = d.turns
 	}
 	if fixture.RecoverInteractive {
@@ -548,17 +563,28 @@ func (d *legacyHostConformanceDriver) CancelTurn(ctx context.Context, input agen
 
 func (d *legacyHostConformanceDriver) SubmitInteractive(
 	ctx context.Context,
-	ref agenthost.SessionRef,
-	requestID string,
+	ref agenthost.InteractionRef,
 	input agenthost.SubmitInteractiveInput,
 ) (hostconformance.InteractiveObservation, error) {
-	result, err := d.service.ApplicationHost().SubmitInteractive(ctx, ref, requestID, input)
+	result, err := d.service.ApplicationHost().SubmitInteractive(ctx, ref, input)
 	if err != nil {
-		return hostconformance.InteractiveObservation{Disposition: result.Disposition}, err
+		return hostconformance.InteractiveObservation{
+			OperationID: result.Operation.OperationID, TurnID: result.Operation.TurnID,
+			RequestID: result.Operation.RequestID, Disposition: result.Disposition,
+		}, err
 	}
 	return hostconformance.InteractiveObservation{
-		Disposition: result.Disposition,
+		OperationID: result.Operation.OperationID, TurnID: result.Operation.TurnID,
+		RequestID: result.Operation.RequestID, Disposition: result.Disposition,
 	}, nil
+}
+
+func (d *legacyHostConformanceDriver) GetInteractionStatus(
+	_ context.Context,
+	ref agenthost.InteractionRef,
+) (string, bool, error) {
+	interaction, found := d.turns.interaction(ref.AgentSessionID, ref.TurnID, ref.RequestID)
+	return interaction.Status, found && interaction.WorkspaceID == ref.WorkspaceID, nil
 }
 
 func (d *legacyHostConformanceDriver) SubmitPlanDecision(
@@ -902,7 +928,38 @@ func (s *legacyHostConformanceTurnStore) ListSessionTurns(_ context.Context, _ s
 }
 
 func (s *legacyHostConformanceTurnStore) ListSessionInteractions(_ context.Context, input agentactivitybiz.ListSessionInteractionsInput) ([]agentactivitybiz.Interaction, error) {
-	return append([]agentactivitybiz.Interaction(nil), s.interactions[input.AgentSessionID]...), nil
+	result := make([]agentactivitybiz.Interaction, 0, len(s.interactions[input.AgentSessionID]))
+	for _, interaction := range s.interactions[input.AgentSessionID] {
+		if input.TurnID != "" && interaction.TurnID != input.TurnID {
+			continue
+		}
+		if input.RequestID != "" && interaction.RequestID != input.RequestID {
+			continue
+		}
+		result = append(result, interaction)
+	}
+	return result, nil
+}
+
+func (s *legacyHostConformanceTurnStore) interaction(sessionID, turnID, requestID string) (agentactivitybiz.Interaction, bool) {
+	for _, interaction := range s.interactions[sessionID] {
+		if interaction.TurnID == turnID && interaction.RequestID == requestID {
+			return interaction, true
+		}
+	}
+	return agentactivitybiz.Interaction{}, false
+}
+
+func (s *legacyHostConformanceTurnStore) storeInteraction(updated agentactivitybiz.Interaction) {
+	interactions := s.interactions[updated.AgentSessionID]
+	for index, interaction := range interactions {
+		if interaction.TurnID == updated.TurnID && interaction.RequestID == updated.RequestID {
+			interactions[index] = updated
+			s.interactions[updated.AgentSessionID] = interactions
+			return
+		}
+	}
+	s.interactions[updated.AgentSessionID] = append(interactions, updated)
 }
 
 func (s *legacyHostConformanceTurnStore) ListLatestTurns(_ context.Context, _ string, sessionIDs []string) (map[string]agentactivitybiz.Turn, error) {

@@ -83,6 +83,12 @@ in-progress errors to the responder. The Interaction's pre-delivery `answered`
 state is a durable claim marker, not the runtime's terminal result; completed
 operation and responder dispositions follow an authoritative runtime
 `superseded` result instead of being overwritten by that marker.
+Interactive identity is always the typed `InteractionRef` tuple
+`(workspaceId, agentSessionId, turnId, requestId)`. Provider request ids remain
+unchanged and are only unique within their owning Turn. The response payload
+contains no identity fields. Durable operation idempotency uses the same tuple;
+an operation id that disagrees with its structured identity is an invariant
+failure and must fail closed rather than guessing or rewriting stored data.
 
 Adapters retain authorization and identity, transport, runtime process or VM
 selection, desktop APIs, attachment ingress, and cloud inbox/outbox behavior.

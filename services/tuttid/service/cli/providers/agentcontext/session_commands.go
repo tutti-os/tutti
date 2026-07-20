@@ -60,6 +60,7 @@ type sendInput struct {
 
 type respondInput struct {
 	SessionID string `cli:"session-id" validate:"required" description:"Agent session id containing the pending interaction."`
+	TurnID    string `cli:"turn-id" validate:"required" description:"Exact turn id containing the pending interaction."`
 	RequestID string `cli:"request-id" validate:"required" description:"Pending interaction request id."`
 	Action    string `cli:"action" description:"Provider action id to submit."`
 	Option    string `cli:"option" description:"Provider option id to submit."`
@@ -372,7 +373,7 @@ func (p Provider) runRespond(ctx context.Context, invoke framework.InvokeContext
 		return nil, fmt.Errorf("%w: provide action, option, payload, or semantic", cliservice.ErrInvalidInput)
 	}
 	result, err := p.sessions.Respond(ctx, agentservice.RespondInput{
-		WorkspaceID: invoke.WorkspaceID, AgentSessionID: input.SessionID, RequestID: input.RequestID,
+		WorkspaceID: invoke.WorkspaceID, AgentSessionID: input.SessionID, TurnID: input.TurnID, RequestID: input.RequestID,
 		Action: optionalStringPointer(input.Action), OptionID: optionalStringPointer(input.Option),
 		Payload: payload, Semantic: input.Semantic,
 	})
@@ -388,8 +389,6 @@ func (p Provider) runRespond(ctx context.Context, invoke framework.InvokeContext
 func isRespondInputError(err error) bool {
 	return errors.Is(err, agentservice.ErrInvalidArgument) ||
 		errors.Is(err, agentservice.ErrInteractionRequestNotFound) ||
-		errors.Is(err, agentservice.ErrInteractionRequestNotPending) ||
-		errors.Is(err, agentservice.ErrInteractionRequestAmbiguous) ||
 		errors.Is(err, agentservice.ErrInteractionSemanticNotFound) ||
 		errors.Is(err, agentservice.ErrInteractionSemanticAmbiguous)
 }

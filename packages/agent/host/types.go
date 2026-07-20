@@ -9,6 +9,16 @@ type SessionRef struct {
 	AgentSessionID string
 }
 
+// InteractionRef identifies one canonical interaction. Provider request IDs
+// are transport-local correlation values and are only unique within the Turn
+// that owns them.
+type InteractionRef struct {
+	WorkspaceID    string
+	AgentSessionID string
+	TurnID         string
+	RequestID      string
+}
+
 type ComposerSettings struct {
 	Model            string
 	PermissionModeID string
@@ -270,7 +280,6 @@ type SendInput struct {
 }
 
 type SubmitInteractiveInput struct {
-	TurnID   string
 	Action   *string
 	OptionID *string
 	Payload  map[string]any

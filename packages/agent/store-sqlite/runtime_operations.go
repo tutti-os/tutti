@@ -37,14 +37,11 @@ func (s *Store) PrepareRuntimeOperation(ctx context.Context, input RuntimeOperat
 	if now <= 0 {
 		return RuntimeOperation{}, false, errors.New("runtime operation occurred time is required")
 	}
-	subjectID := input.TurnID
 	requestID := any(nil)
 	switch input.Kind {
 	case RuntimeOperationKindInteractiveResponse:
-		subjectID = input.RequestID
 		requestID = input.RequestID
 	case RuntimeOperationKindPlanDecision:
-		subjectID = input.TurnID
 		requestID = input.RequestID
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -57,12 +54,15 @@ func (s *Store) PrepareRuntimeOperation(ctx context.Context, input RuntimeOperat
 			_ = tx.Rollback()
 		}
 	}()
-	existing, found, err := getRuntimeOperationBySubjectTx(ctx, tx, input.WorkspaceID, input.AgentSessionID, input.Kind, subjectID)
+	existing, found, err := getRuntimeOperationByIdentityTx(ctx, tx, input)
 	if err != nil {
 		return RuntimeOperation{}, false, err
 	}
 	if found {
-		if existing.TurnID != input.TurnID || existing.RequestID != input.RequestID || !jsonMapsEqual(existing.Payload, input.Payload) {
+		if existing.OperationID != input.OperationID {
+			return RuntimeOperation{}, false, ErrRuntimeOperationIdentityMismatch
+		}
+		if !jsonMapsEqual(existing.Payload, input.Payload) {
 			return RuntimeOperation{}, false, ErrRuntimeOperationConflict
 		}
 		if _, err := s.commitTransaction(ctx, tx, input.WorkspaceID, nil); err != nil {
@@ -74,7 +74,9 @@ func (s *Store) PrepareRuntimeOperation(ctx context.Context, input RuntimeOperat
 	if byID, idFound, err := getRuntimeOperationTx(ctx, tx, input.WorkspaceID, input.OperationID); err != nil {
 		return RuntimeOperation{}, false, err
 	} else if idFound {
-		_ = byID
+		if !runtimeOperationIdentityMatches(byID, input) {
+			return RuntimeOperation{}, false, ErrRuntimeOperationIdentityMismatch
+		}
 		return RuntimeOperation{}, false, ErrRuntimeOperationConflict
 	}
 	if err := validateRuntimeOperationSubjectTx(ctx, tx, input); err != nil {
@@ -82,11 +84,11 @@ func (s *Store) PrepareRuntimeOperation(ctx context.Context, input RuntimeOperat
 	}
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_runtime_operations (
-  operation_id, workspace_id, agent_session_id, kind, status, subject_id, turn_id,
-  request_id, payload_json, next_attempt_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	operation_id, workspace_id, agent_session_id, kind, status, turn_id,
+	request_id, payload_json, next_attempt_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, input.OperationID, input.WorkspaceID, input.AgentSessionID, input.Kind,
-		RuntimeOperationStatusPrepared, subjectID, input.TurnID, requestID, payloadJSON, now, now, now)
+		RuntimeOperationStatusPrepared, input.TurnID, requestID, payloadJSON, now, now, now)
 	if err != nil {
 		return RuntimeOperation{}, false, fmt.Errorf("insert runtime operation: %w", err)
 	}
@@ -151,11 +153,12 @@ func (s *Store) PrepareInteractiveRuntimeOperation(
 	if !found {
 		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, ErrRuntimeOperationSubjectState
 	}
-	existingOperation, operationFound, err := getRuntimeOperationBySubjectTx(
-		ctx, tx, input.WorkspaceID, input.AgentSessionID, input.Kind, input.RequestID,
-	)
+	existingOperation, operationFound, err := getRuntimeOperationByIdentityTx(ctx, tx, input)
 	if err != nil {
 		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, err
+	}
+	if operationFound && existingOperation.OperationID != input.OperationID {
+		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, ErrRuntimeOperationIdentityMismatch
 	}
 	claimPayload := input.Payload
 	if operationFound {
@@ -207,16 +210,18 @@ func (s *Store) PrepareInteractiveRuntimeOperation(
 	if byID, idFound, err := getRuntimeOperationTx(ctx, tx, input.WorkspaceID, input.OperationID); err != nil {
 		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, err
 	} else if idFound {
-		_ = byID
+		if !runtimeOperationIdentityMatches(byID, input) {
+			return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, ErrRuntimeOperationIdentityMismatch
+		}
 		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, ErrRuntimeOperationConflict
 	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_runtime_operations (
-  operation_id, workspace_id, agent_session_id, kind, status, subject_id, turn_id,
-  request_id, payload_json, next_attempt_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	operation_id, workspace_id, agent_session_id, kind, status, turn_id,
+	request_id, payload_json, next_attempt_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, input.OperationID, input.WorkspaceID, input.AgentSessionID, input.Kind,
-		RuntimeOperationStatusPrepared, input.RequestID, input.TurnID, input.RequestID,
+		RuntimeOperationStatusPrepared, input.TurnID, input.RequestID,
 		payloadJSON, now, now, now); err != nil {
 		return RuntimeOperation{}, Interaction{}, InteractionTransitionConflict, fmt.Errorf("insert interactive runtime operation: %w", err)
 	}
@@ -777,8 +782,22 @@ func getRuntimeOperationTx(ctx context.Context, tx *sql.Tx, workspaceID string, 
 	return getRuntimeOperation(ctx, tx, workspaceID, operationID)
 }
 
-func getRuntimeOperationBySubjectTx(ctx context.Context, tx *sql.Tx, workspaceID string, sessionID string, kind string, subjectID string) (RuntimeOperation, bool, error) {
-	return scanRuntimeOperationRow(tx.QueryRowContext(ctx, runtimeOperationSelectSQL+` WHERE workspace_id = ? AND agent_session_id = ? AND kind = ? AND subject_id = ?`, workspaceID, sessionID, kind, subjectID))
+func getRuntimeOperationByIdentityTx(ctx context.Context, tx *sql.Tx, input RuntimeOperationPrepare) (RuntimeOperation, bool, error) {
+	query := runtimeOperationSelectSQL + ` WHERE workspace_id = ? AND agent_session_id = ? AND kind = ? AND turn_id = ? AND request_id = ?`
+	args := []any{input.WorkspaceID, input.AgentSessionID, input.Kind, input.TurnID, input.RequestID}
+	if input.Kind == RuntimeOperationKindCancelTurn {
+		query = runtimeOperationSelectSQL + ` WHERE workspace_id = ? AND agent_session_id = ? AND kind = ? AND turn_id = ? AND request_id IS NULL`
+		args = []any{input.WorkspaceID, input.AgentSessionID, input.Kind, input.TurnID}
+	}
+	return scanRuntimeOperationRow(tx.QueryRowContext(ctx, query, args...))
+}
+
+func runtimeOperationIdentityMatches(operation RuntimeOperation, input RuntimeOperationPrepare) bool {
+	return operation.WorkspaceID == input.WorkspaceID &&
+		operation.AgentSessionID == input.AgentSessionID &&
+		operation.Kind == input.Kind &&
+		operation.TurnID == input.TurnID &&
+		operation.RequestID == input.RequestID
 }
 
 func scanRuntimeOperationRow(row *sql.Row) (RuntimeOperation, bool, error) {

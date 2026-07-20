@@ -521,7 +521,6 @@ type SendInputResult struct {
 
 type PromptContentBlock = agenthost.PromptContentBlock
 type PromptAttachment = agenthost.PromptAttachment
-type SubmitInteractiveInput = agenthost.SubmitInteractiveInput
 type SubmitPlanDecisionInput = agenthost.SubmitPlanDecisionInput
 
 type InteractionAction struct {
@@ -533,6 +532,7 @@ type InteractionAction struct {
 type RespondInput struct {
 	WorkspaceID    string
 	AgentSessionID string
+	TurnID         string
 	RequestID      string
 	Action         *string
 	OptionID       *string

@@ -20,8 +20,11 @@ func runInteractiveResponse(ctx context.Context, driver Driver) error {
 	}
 	optionID := "approve"
 	result, err := driver.SubmitInteractive(ctx,
-		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-interactive"},
-		"request-1", agenthost.SubmitInteractiveInput{TurnID: "turn-interactive", OptionID: &optionID},
+		agenthost.InteractionRef{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-interactive",
+			TurnID: "turn-interactive", RequestID: "request-1",
+		},
+		agenthost.SubmitInteractiveInput{OptionID: &optionID},
 	)
 	if err != nil {
 		return fmt.Errorf("submit interactive: %w", err)
@@ -32,6 +35,63 @@ func runInteractiveResponse(ctx context.Context, driver Driver) error {
 	metrics := driver.Metrics()
 	if metrics.InteractiveCalls != 1 || metrics.LastInteractiveTurnID != "turn-interactive" || metrics.LastInteractiveRequestID != "request-1" {
 		return fmt.Errorf("interactive metrics=%#v", metrics)
+	}
+	return nil
+}
+
+func runInteractiveResponseReusedRequestID(ctx context.Context, driver Driver) error {
+	fixture := liveSessionFixture("session-interactive-reused", "turn-current")
+	fixture.Turn = &TurnSeed{TurnID: "turn-current", Phase: canonical.TurnPhaseWaiting}
+	fixture.AdditionalTurns = []TurnSeed{{
+		TurnID: "turn-previous", Phase: canonical.TurnPhaseWaiting,
+	}}
+	fixture.Interaction = &InteractionSeed{
+		RequestID: "provider-request", TurnID: "turn-current",
+		Kind: canonical.InteractionKindApproval, Status: canonical.InteractionStatusPending,
+	}
+	fixture.AdditionalInteractions = []InteractionSeed{{
+		RequestID: "provider-request", TurnID: "turn-previous",
+		Kind: canonical.InteractionKindApproval, Status: canonical.InteractionStatusPending,
+	}}
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	previousRef := agenthost.InteractionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-interactive-reused",
+		TurnID: "turn-previous", RequestID: "provider-request",
+	}
+	currentRef := previousRef
+	currentRef.TurnID = "turn-current"
+	previousOption := "deny"
+	previous, err := driver.SubmitInteractive(ctx, previousRef, agenthost.SubmitInteractiveInput{OptionID: &previousOption})
+	if err != nil {
+		return fmt.Errorf("submit previous reused provider request id: %w", err)
+	}
+	if previous.Disposition != agenthost.RuntimeInteractiveDispositionAnswered || previous.TurnID != previousRef.TurnID || previous.RequestID != previousRef.RequestID {
+		return fmt.Errorf("previous reused provider request result=%#v, want exact answered operation", previous)
+	}
+	if status, found, statusErr := driver.GetInteractionStatus(ctx, currentRef); statusErr != nil || !found || status != canonical.InteractionStatusPending {
+		return fmt.Errorf("current interaction before response status=%q found=%v error=%v, want pending", status, found, statusErr)
+	}
+	currentOption := "approve"
+	current, err := driver.SubmitInteractive(ctx, currentRef, agenthost.SubmitInteractiveInput{OptionID: &currentOption})
+	if err != nil {
+		return fmt.Errorf("submit current reused provider request id: %w", err)
+	}
+	if current.Disposition != agenthost.RuntimeInteractiveDispositionAnswered || current.TurnID != currentRef.TurnID || current.RequestID != currentRef.RequestID {
+		return fmt.Errorf("current reused provider request result=%#v, want exact answered operation", current)
+	}
+	if previous.OperationID == "" || current.OperationID == "" || previous.OperationID == current.OperationID {
+		return fmt.Errorf("reused provider request operation ids previous=%q current=%q, want distinct", previous.OperationID, current.OperationID)
+	}
+	for _, ref := range []agenthost.InteractionRef{previousRef, currentRef} {
+		if status, found, statusErr := driver.GetInteractionStatus(ctx, ref); statusErr != nil || !found || status != canonical.InteractionStatusAnswered {
+			return fmt.Errorf("interaction %q status=%q found=%v error=%v, want answered", ref.TurnID, status, found, statusErr)
+		}
+	}
+	metrics := driver.Metrics()
+	if metrics.InteractiveCalls != 2 || metrics.LastInteractiveTurnID != "turn-current" || metrics.LastInteractiveRequestID != "provider-request" {
+		return fmt.Errorf("reused provider request metrics=%#v", metrics)
 	}
 	return nil
 }
@@ -65,8 +125,11 @@ func runInteractiveResponseRace(ctx context.Context, driver Driver) error {
 				defer group.Done()
 				<-start
 				result, err := driver.SubmitInteractive(ctx,
-					agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-interactive-race"},
-					"request-race", agenthost.SubmitInteractiveInput{TurnID: "turn-interactive-race", OptionID: &option},
+					agenthost.InteractionRef{
+						WorkspaceID: "workspace-1", AgentSessionID: "session-interactive-race",
+						TurnID: "turn-interactive-race", RequestID: "request-race",
+					},
+					agenthost.SubmitInteractiveInput{OptionID: &option},
 				)
 				if err != nil {
 					errorsByCall <- err

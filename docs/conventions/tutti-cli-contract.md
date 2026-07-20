@@ -335,11 +335,13 @@ blocks for the new stop point instead of immediately replaying the previous
 session stop state.
 
 `agent respond --json` answers one pending interaction selected by
-`--session-id` and `--request-id`. `--action`, `--option`, and object-valued
+`--session-id`, `--turn-id`, and `--request-id`. Provider request ids are
+transport-local and may repeat across Turns, so callers must pass the exact
+Turn returned by `agent wait`. `--action`, `--option`, and object-valued
 `--payload` map directly to the Host interactive input. `--semantic` is a thin
 shortcut that resolves exactly one matching `actions[].semantic` from the
 stored interaction; the CLI must not keep a provider-to-semantic mapping.
-Unknown requests and missing or ambiguous semantics are invalid input errors.
+Unknown exact interaction tuples and missing or ambiguous semantics are invalid input errors.
 The first responder atomically claims the pending interaction. Later responses
 with the same action/option/payload return `answered`; different responses
 return `superseded`. The result exposes the request and turn ids plus that Host

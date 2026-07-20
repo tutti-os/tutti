@@ -27,9 +27,7 @@ var (
 	ErrRuntimeSessionDisconnected       = agenthost.ErrRuntimeSessionDisconnected
 	ErrInteractiveRequestNotLive        = errors.New("interactive request is no longer live")
 	ErrInteractiveAlreadyAnswered       = errors.New("interactive request has already been answered")
-	ErrInteractionRequestNotFound       = errors.New("agent interaction request was not found")
-	ErrInteractionRequestNotPending     = errors.New("agent interaction request is not pending")
-	ErrInteractionRequestAmbiguous      = errors.New("agent interaction request is ambiguous")
+	ErrInteractionRequestNotFound       = agenthost.ErrInteractionNotFound
 	ErrInteractionSemanticNotFound      = errors.New("agent interaction semantic was not found")
 	ErrInteractionSemanticAmbiguous     = errors.New("agent interaction semantic is ambiguous")
 	ErrSkillBundleUnavailable           = errors.New("agent skill bundle renderer is unavailable")
@@ -610,17 +608,13 @@ func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentS
 	})
 }
 
-func (s *Service) SubmitInteractive(ctx context.Context, workspaceID string, agentSessionID string, requestID string, input SubmitInteractiveInput) (Session, error) {
-	_, err := s.ApplicationHost().SubmitInteractive(
-		ctx,
-		agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID},
-		requestID,
-		input,
-	)
+func (s *Service) SubmitInteractive(ctx context.Context, ref agenthost.InteractionRef, input agenthost.SubmitInteractiveInput) (Session, error) {
+	input.Payload = clonePayload(input.Payload)
+	_, err := s.ApplicationHost().SubmitInteractive(ctx, ref, input)
 	if err != nil {
 		return Session{}, normalizeRuntimeError(err)
 	}
-	return s.Get(ctx, workspaceID, agentSessionID)
+	return s.Get(ctx, ref.WorkspaceID, ref.AgentSessionID)
 }
 
 func (s *Service) Subscribe(ctx context.Context, input StreamInput) (EventStream, error) {

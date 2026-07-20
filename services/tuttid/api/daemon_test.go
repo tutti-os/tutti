@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -115,6 +116,7 @@ type stubAgentSessionService struct {
 	updateTitleFn                   func(context.Context, string, string, string) (agentservice.Session, error)
 	updateVisibleFn                 func(context.Context, string, string, bool) (agentservice.Session, error)
 	updateSettingsFn                func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
+	submitInteractiveFn             func(context.Context, agenthost.InteractionRef, agenthost.SubmitInteractiveInput) (agentservice.Session, error)
 	planDecisionFn                  func(context.Context, string, string, string, string, agentservice.SubmitPlanDecisionInput) (agentactivitybiz.RuntimeOperation, error)
 }
 
@@ -447,8 +449,11 @@ func (s stubAgentSessionService) UpdateSettings(ctx context.Context, workspaceID
 	return s.updateSettingsFn(ctx, workspaceID, agentSessionID, settings)
 }
 
-func (stubAgentSessionService) SubmitInteractive(context.Context, string, string, string, agentservice.SubmitInteractiveInput) (agentservice.Session, error) {
-	return agentservice.Session{}, nil
+func (s stubAgentSessionService) SubmitInteractive(ctx context.Context, ref agenthost.InteractionRef, input agenthost.SubmitInteractiveInput) (agentservice.Session, error) {
+	if s.submitInteractiveFn == nil {
+		return agentservice.Session{}, nil
+	}
+	return s.submitInteractiveFn(ctx, ref, input)
 }
 
 func (s rejectingWorkbenchStore) GetWorkbenchSnapshot(context.Context, string) (workspacebiz.WorkbenchSnapshot, error) {

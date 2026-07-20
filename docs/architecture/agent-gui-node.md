@@ -440,7 +440,10 @@ canonical Interaction(pending)
   -> answered or superseded projection
 ```
 
-Every surface shares request identity and submitting state.
+Every surface shares the exact interaction identity
+`(workspaceId, agentSessionId, turnId, requestId)` and submitting state.
+Provider request ids remain unchanged and may repeat across Turns; no adapter
+may recover a missing Turn by scanning for a session-wide request-id match.
 
 A synthesized plan decision uses a durable `plan_decision` operation. A provider-native plan Interaction continues through `interactive_response`. Similar UI does not justify merging their write paths.
 
