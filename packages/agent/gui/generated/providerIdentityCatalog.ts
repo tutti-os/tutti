@@ -172,7 +172,7 @@ export const generatedProviderIdentityCatalog = [
     target: {
       id: "local:hermes",
       launchRefType: "local_cli",
-      enabled: false,
+      enabled: true,
       sortOrder: 70
     },
     desktop: {
