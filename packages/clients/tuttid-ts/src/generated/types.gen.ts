@@ -425,6 +425,7 @@ export type DesktopDefaultAgentProvider =
   | "claude-code"
   | "codex"
   | "cursor"
+  | "kimi-code"
   | "opencode";
 
 export type DesktopAgentDockLayout = "legacySplit" | "unified";
@@ -438,6 +439,7 @@ export type DesktopAgentComposerDefaultsByProvider = {
   hermes?: DesktopAgentComposerDefaults;
   openclaw?: DesktopAgentComposerDefaults;
   opencode?: DesktopAgentComposerDefaults;
+  "kimi-code"?: DesktopAgentComposerDefaults;
 };
 
 export type DesktopAgentComposerDefaultsByAgentTarget = {
@@ -453,6 +455,7 @@ export type DesktopAgentGuiConversationRailCollapsedByProvider = {
   hermes?: boolean;
   openclaw?: boolean;
   opencode?: boolean;
+  "kimi-code"?: boolean;
 };
 
 export type DesktopFileDefaultOpener =

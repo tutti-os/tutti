@@ -315,7 +315,8 @@ export interface RoomIssueNodeData {
     | "nexight"
     | "openclaw"
     | "opencode"
-    | "hermes";
+    | "hermes"
+    | "kimi-code";
   taskEditing: boolean;
   issueEditing: boolean;
   taskDraft: RoomTaskDraft;

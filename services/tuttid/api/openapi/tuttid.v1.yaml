@@ -5236,11 +5236,13 @@ components:
         - claude-code
         - codex
         - cursor
+        - kimi-code
         - opencode
       x-enum-varnames:
         - DesktopDefaultAgentProviderClaudeCode
         - DesktopDefaultAgentProviderCodex
         - DesktopDefaultAgentProviderCursor
+        - DesktopDefaultAgentProviderKimiCode
         - DesktopDefaultAgentProviderOpencode
     DesktopAgentDockLayout:
       type: string
@@ -5267,6 +5269,8 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         opencode:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
+        kimi-code:
+          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
     DesktopAgentComposerDefaultsByAgentTarget:
       type: object
       additionalProperties:
@@ -5290,6 +5294,8 @@ components:
         openclaw:
           type: boolean
         opencode:
+          type: boolean
+        kimi-code:
           type: boolean
     DesktopFileDefaultOpener:
       type: string

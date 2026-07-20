@@ -1056,6 +1056,7 @@ export const en = {
         manageProviderCodex: "Codex",
         manageProviderCursor: "Cursor",
         manageProviderHermes: "Hermes",
+        manageProviderKimiCode: "Kimi Code",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
         manageProviderOpenCode: "Open Code",

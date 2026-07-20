@@ -957,6 +957,7 @@ const (
 	DesktopDefaultAgentProviderClaudeCode DesktopDefaultAgentProvider = "claude-code"
 	DesktopDefaultAgentProviderCodex      DesktopDefaultAgentProvider = "codex"
 	DesktopDefaultAgentProviderCursor     DesktopDefaultAgentProvider = "cursor"
+	DesktopDefaultAgentProviderKimiCode   DesktopDefaultAgentProvider = "kimi-code"
 	DesktopDefaultAgentProviderOpencode   DesktopDefaultAgentProvider = "opencode"
 )
 
@@ -968,6 +969,8 @@ func (e DesktopDefaultAgentProvider) Valid() bool {
 	case DesktopDefaultAgentProviderCodex:
 		return true
 	case DesktopDefaultAgentProviderCursor:
+		return true
+	case DesktopDefaultAgentProviderKimiCode:
 		return true
 	case DesktopDefaultAgentProviderOpencode:
 		return true
@@ -3395,6 +3398,7 @@ type DesktopAgentComposerDefaultsByProvider struct {
 	Codex      *DesktopAgentComposerDefaults `json:"codex,omitempty"`
 	Cursor     *DesktopAgentComposerDefaults `json:"cursor,omitempty"`
 	Hermes     *DesktopAgentComposerDefaults `json:"hermes,omitempty"`
+	KimiCode   *DesktopAgentComposerDefaults `json:"kimi-code,omitempty"`
 	Nexight    *DesktopAgentComposerDefaults `json:"nexight,omitempty"`
 	Openclaw   *DesktopAgentComposerDefaults `json:"openclaw,omitempty"`
 	Opencode   *DesktopAgentComposerDefaults `json:"opencode,omitempty"`
@@ -3413,6 +3417,7 @@ type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	Codex      *bool `json:"codex,omitempty"`
 	Cursor     *bool `json:"cursor,omitempty"`
 	Hermes     *bool `json:"hermes,omitempty"`
+	KimiCode   *bool `json:"kimi-code,omitempty"`
 	Nexight    *bool `json:"nexight,omitempty"`
 	Openclaw   *bool `json:"openclaw,omitempty"`
 	Opencode   *bool `json:"opencode,omitempty"`

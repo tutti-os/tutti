@@ -3,6 +3,7 @@ import codexRoundedAssetUrl from "./app/renderer/assets/icons/agents/codex-round
 import cursorColorfulAssetUrl from "./app/renderer/assets/icons/agents/cursor-colorful.png";
 import cursorRoundedAssetUrl from "./app/renderer/assets/icons/agents/cursor-rounded.png";
 import hermesRoundedAssetUrl from "./app/renderer/assets/icons/agents/hermes-rounded.png";
+import kimiRoundedAssetUrl from "./app/renderer/assets/icons/agents/kimi-rounded.png";
 import agentColorfulAssetUrl from "./app/renderer/assets/icons/agents/agent-colorful.png";
 import manageAgentTuttiAssetUrl from "./app/renderer/assets/icons/agents/manage-agent-tutti.png";
 import opencodeRoundedAssetUrl from "./app/renderer/assets/icons/agents/opencode-rounded.png";
@@ -10,6 +11,7 @@ import openclawRoundedAssetUrl from "./app/renderer/assets/icons/agents/openclaw
 import providerRailClaudeCodeColorfulAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-claude-code-colorful.png";
 import providerRailCodexColorfulAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-codex-colorful.png";
 import providerRailHermesColorfulAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-hermes-colorful.png";
+import providerRailKimiCodeColorfulAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-kimi-code-colorful.png";
 import providerRailOpenCodeColorfulAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-opencode-colorful.png";
 import providerRailTuttiAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-tutti.png";
 
@@ -17,6 +19,7 @@ export const manageAgentClaudeCodeUrl = claudeRoundedAssetUrl;
 export const manageAgentCodexUrl = codexRoundedAssetUrl;
 export const manageAgentCursorUrl = cursorRoundedAssetUrl;
 export const manageAgentHermesUrl = hermesRoundedAssetUrl;
+export const manageAgentKimiCodeUrl = kimiRoundedAssetUrl;
 export const manageAgentTuttiUrl = manageAgentTuttiAssetUrl;
 export const manageAgentTuttiAgentUrl = manageAgentTuttiAssetUrl;
 export const manageAgentOpenCodeUrl = opencodeRoundedAssetUrl;
@@ -27,6 +30,7 @@ export const codexRoundedUrl = codexRoundedAssetUrl;
 export const cursorColorfulUrl = cursorColorfulAssetUrl;
 export const cursorRoundedUrl = cursorRoundedAssetUrl;
 export const hermesRoundedUrl = hermesRoundedAssetUrl;
+export const kimiRoundedUrl = kimiRoundedAssetUrl;
 export const tuttiDocRoundedUrl = manageAgentTuttiAssetUrl;
 export const tuttiAgentRoundedUrl = manageAgentTuttiAssetUrl;
 export const opencodeRoundedUrl = opencodeRoundedAssetUrl;
@@ -35,6 +39,8 @@ export const providerRailClaudeCodeColorfulUrl =
   providerRailClaudeCodeColorfulAssetUrl;
 export const providerRailCodexColorfulUrl = providerRailCodexColorfulAssetUrl;
 export const providerRailHermesColorfulUrl = providerRailHermesColorfulAssetUrl;
+export const providerRailKimiCodeColorfulUrl =
+  providerRailKimiCodeColorfulAssetUrl;
 export const providerRailOpenCodeColorfulUrl =
   providerRailOpenCodeColorfulAssetUrl;
 export const providerRailTuttiUrl = providerRailTuttiAssetUrl;

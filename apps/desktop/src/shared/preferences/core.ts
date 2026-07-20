@@ -212,7 +212,8 @@ export const desktopAgentProviders = [
   "nexight",
   "hermes",
   "openclaw",
-  "opencode"
+  "opencode",
+  "kimi-code"
 ] as const;
 
 export type DesktopAgentProvider = (typeof desktopAgentProviders)[number];
@@ -221,6 +222,7 @@ export const desktopDefaultAgentProviders = [
   "claude-code",
   "codex",
   "cursor",
+  "kimi-code",
   "opencode"
 ] as const;
 

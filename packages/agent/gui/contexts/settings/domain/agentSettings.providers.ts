@@ -6,7 +6,8 @@ export const AGENT_PROVIDERS = [
   "nexight",
   "opencode",
   "openclaw",
-  "hermes"
+  "hermes",
+  "kimi-code"
 ] as const;
 export const EXPERIMENTAL_AGENT_PROVIDERS = [] as const;
 

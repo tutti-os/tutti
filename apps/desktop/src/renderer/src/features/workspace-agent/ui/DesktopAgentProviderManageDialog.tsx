@@ -60,6 +60,8 @@ const providerLabelKeys = {
   codex: "workspace.workbenchDesktop.agentProviders.manageProviderCodex",
   cursor: "workspace.workbenchDesktop.agentProviders.manageProviderCursor",
   hermes: "workspace.workbenchDesktop.agentProviders.manageProviderHermes",
+  "kimi-code":
+    "workspace.workbenchDesktop.agentProviders.manageProviderKimiCode",
   nexight: "workspace.workbenchDesktop.agentProviders.manageProviderTutti",
   openclaw: "workspace.workbenchDesktop.agentProviders.manageProviderOpenClaw",
   opencode: "workspace.workbenchDesktop.agentProviders.manageProviderOpenCode",

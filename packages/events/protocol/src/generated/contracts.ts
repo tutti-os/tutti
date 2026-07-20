@@ -94,6 +94,12 @@ export interface PreferencesDesktopPreferencesV1 {
       reasoningEffort?: string;
       speed?: string;
     };
+    "kimi-code"?: {
+      model?: string;
+      permissionModeId?: string;
+      reasoningEffort?: string;
+      speed?: string;
+    };
   };
   agentComposerDefaultsByAgentTarget?: Record<
     string,
@@ -113,12 +119,18 @@ export interface PreferencesDesktopPreferencesV1 {
     hermes?: boolean;
     openclaw?: boolean;
     opencode?: boolean;
+    "kimi-code"?: boolean;
   };
   agentConversationDetailMode: "coding" | "general";
   agentDockLayout: "legacySplit" | "unified";
   appCatalogChannel: "production" | "staging";
   browserUseConnectionMode?: "isolated" | "autoConnect";
-  defaultAgentProvider: "claude-code" | "codex" | "cursor" | "opencode";
+  defaultAgentProvider:
+    | "claude-code"
+    | "codex"
+    | "cursor"
+    | "kimi-code"
+    | "opencode";
   dockIconStyle: "default" | "flat";
   dockPlacement: "bottom" | "left";
   deletedAgentConversationRetentionDays: 15 | 30;

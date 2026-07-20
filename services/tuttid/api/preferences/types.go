@@ -60,6 +60,7 @@ func generatedAgentGUIConversationRailCollapsedByProvider(value map[string]bool)
 		TuttiAgent: optionalBoolPointerFromMap(value, "tutti-agent"),
 		Cursor:     optionalBoolPointerFromMap(value, "cursor"),
 		Hermes:     optionalBoolPointerFromMap(value, "hermes"),
+		KimiCode:   optionalBoolPointerFromMap(value, "kimi-code"),
 		Openclaw:   optionalBoolPointerFromMap(value, "openclaw"),
 		Opencode:   optionalBoolPointerFromMap(value, "opencode"),
 	}
@@ -87,6 +88,7 @@ func generatedAgentComposerDefaultsByProvider(value map[string]preferencesbiz.Ag
 		TuttiAgent: generatedAgentComposerDefaultsPointer(value["tutti-agent"]),
 		Cursor:     generatedAgentComposerDefaultsPointer(value["cursor"]),
 		Hermes:     generatedAgentComposerDefaultsPointer(value["hermes"]),
+		KimiCode:   generatedAgentComposerDefaultsPointer(value["kimi-code"]),
 		Openclaw:   generatedAgentComposerDefaultsPointer(value["openclaw"]),
 		Opencode:   generatedAgentComposerDefaultsPointer(value["opencode"]),
 	}

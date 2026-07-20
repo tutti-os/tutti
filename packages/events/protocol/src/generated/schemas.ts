@@ -180,6 +180,24 @@ export const preferencesDesktopPreferencesSchema = {
               type: "string"
             }
           }
+        },
+        "kimi-code": {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            model: {
+              type: "string"
+            },
+            permissionModeId: {
+              type: "string"
+            },
+            reasoningEffort: {
+              type: "string"
+            },
+            speed: {
+              type: "string"
+            }
+          }
         }
       }
     },
@@ -231,6 +249,9 @@ export const preferencesDesktopPreferencesSchema = {
         },
         opencode: {
           type: "boolean"
+        },
+        "kimi-code": {
+          type: "boolean"
         }
       }
     },
@@ -252,7 +273,7 @@ export const preferencesDesktopPreferencesSchema = {
     },
     defaultAgentProvider: {
       type: "string",
-      enum: ["claude-code", "codex", "cursor", "opencode"]
+      enum: ["claude-code", "codex", "cursor", "kimi-code", "opencode"]
     },
     dockIconStyle: {
       type: "string",
@@ -1607,6 +1628,24 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                   type: "string"
                 }
               }
+            },
+            "kimi-code": {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
             }
           }
         },
@@ -1658,6 +1697,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             },
             opencode: {
               type: "boolean"
+            },
+            "kimi-code": {
+              type: "boolean"
             }
           }
         },
@@ -1679,7 +1721,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         },
         defaultAgentProvider: {
           type: "string",
-          enum: ["claude-code", "codex", "cursor", "opencode"]
+          enum: ["claude-code", "codex", "cursor", "kimi-code", "opencode"]
         },
         dockIconStyle: {
           type: "string",
@@ -1976,6 +2018,24 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                   type: "string"
                 }
               }
+            },
+            "kimi-code": {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
             }
           }
         },
@@ -2027,6 +2087,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             },
             opencode: {
               type: "boolean"
+            },
+            "kimi-code": {
+              type: "boolean"
             }
           }
         },
@@ -2048,7 +2111,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         },
         defaultAgentProvider: {
           type: "string",
-          enum: ["claude-code", "codex", "cursor", "opencode"]
+          enum: ["claude-code", "codex", "cursor", "kimi-code", "opencode"]
         },
         dockIconStyle: {
           type: "string",

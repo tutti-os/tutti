@@ -2328,7 +2328,7 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 			putFn: func(_ context.Context, input preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
 				captured = input
 				return preferencesbiz.DesktopPreferences{
-					AgentCLIUpdateCheckEnabled:                    input.AgentCLIUpdateCheckEnabled,
+					AgentCLIUpdateCheckEnabled:                  input.AgentCLIUpdateCheckEnabled,
 					AgentGUIConversationRailCollapsedByProvider: input.AgentGUIConversationRailCollapsedByProvider,
 					AgentConversationDetailMode:                 input.AgentConversationDetailMode,
 					AgentDockLayout:                             input.AgentDockLayout,
@@ -2349,7 +2349,7 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 
 	recorder := performGeneratedRouteRequest(t, mux, http.MethodPut, "/v1/preferences/desktop", map[string]any{
 		"preferences": map[string]any{
-			"agentCliUpdateCheckEnabled": false,
+			"agentCliUpdateCheckEnabled":      false,
 			"agentComposerDefaultsByProvider": map[string]any{},
 			"agentGuiConversationRailCollapsedByProvider": map[string]any{
 				"claude-code": false,
@@ -2424,8 +2424,8 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 
 	var response tuttigenerated.ListAgentTargetsResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if len(response.Targets) != 8 {
-		t.Fatalf("targets len = %d, want descriptor catalog size 8", len(response.Targets))
+	if len(response.Targets) != 9 {
+		t.Fatalf("targets len = %d, want descriptor catalog size 9", len(response.Targets))
 	}
 	wantIDs := []string{
 		agenttargetbiz.IDLocalCodex,
@@ -2436,6 +2436,7 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 		providerregistry.NexightTargetID,
 		providerregistry.HermesTargetID,
 		providerregistry.OpenClawTargetID,
+		providerregistry.KimiCodeTargetID,
 	}
 	for index, target := range response.Targets {
 		launchRef, err := target.LaunchRef.AsAgentTargetBuiltinLocalLaunchRef()
