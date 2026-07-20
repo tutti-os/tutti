@@ -93,6 +93,10 @@ export {
   type WorkbenchSurfaceWallpaperFit,
   type WorkbenchWindowManagementConfig
 } from "./react/WorkbenchSurface.tsx";
+export {
+  WorkbenchDockComponentPreviewFrame,
+  type WorkbenchDockComponentPreviewFrameProps
+} from "./react/WorkbenchDockComponentPreviewFrame.tsx";
 export { useWorkbenchSelector } from "./react/hooks/useWorkbenchSelector.ts";
 export { getWorkbenchLayoutFrame } from "./core/geometry.ts";
 export { selectFocusedWorkbenchNode } from "./core/selectors.ts";

@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AddLinedIcon,
   Button,
+  ChevronDownIcon,
   DeleteIcon,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Input,
   Select,
   SelectContent,
@@ -15,6 +20,7 @@ import { useAnalyticsDebugPreferenceService } from "@renderer/features/analytics
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
+import type { DesktopDeveloperLogsExportScope } from "@shared/contracts/ipc";
 import type { DesktopI18nKey } from "@shared/i18n";
 import {
   desktopAppCatalogChannels,
@@ -109,8 +115,8 @@ export function WorkspaceDeveloperSettingsSection() {
   const onDeveloperPanelVisibleChange = (visible: boolean) => {
     settingsService.setDeveloperPanelVisible(visible);
   };
-  const onExportLogs = () => {
-    void settingsService.exportDeveloperLogs();
+  const onExportLogs = (scope: DesktopDeveloperLogsExportScope) => {
+    void settingsService.exportDeveloperLogs(scope);
   };
   const onFileDefaultOpenersChange = (
     openersByExtension: DesktopFileDefaultOpenersByExtension
@@ -551,16 +557,30 @@ export function WorkspaceDeveloperSettingsSection() {
 
       <SettingsRow label={t("workspace.settings.developer.actionsLabel")}>
         <div className="flex flex-wrap justify-end gap-2 max-[560px]:justify-start">
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={onExportLogs}
-            disabled={developerLogs.exporting}
-          >
-            {developerLogs.exporting
-              ? t("workspace.settings.developer.exportingLogs")
-              : t("workspace.settings.developer.exportLogs")}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="secondary"
+                type="button"
+                disabled={developerLogs.exporting}
+              >
+                {developerLogs.exporting
+                  ? t("workspace.settings.developer.exportingLogs")
+                  : t("workspace.settings.developer.exportLogs")}
+                <ChevronDownIcon className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onSelect={() => onExportLogs("all")}>
+                {t("workspace.settings.developer.exportAllLogs")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => onExportLogs("recent-10-minutes")}
+              >
+                {t("workspace.settings.developer.exportRecentTenMinutesLogs")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             variant="secondary"
             type="button"

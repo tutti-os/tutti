@@ -6,7 +6,8 @@ import type {
 import {
   desktopIpcChannels,
   type AppUpdateState,
-  type ClearDeveloperLogsResult
+  type ClearDeveloperLogsResult,
+  type ExportDeveloperLogsInput
 } from "../shared/contracts/ipc.ts";
 import { createTranslator, type DesktopLocale } from "../shared/i18n/index.ts";
 import { requestDesktopAppQuitFromCommandShortcut } from "./desktopAppLifecycle.ts";
@@ -19,7 +20,7 @@ export interface ApplicationMenuOptions {
     | ClearDeveloperLogsResult
     | Promise<ClearDeveloperLogsResult>;
   closeFromCommandShortcut?: (ownerWindow?: BaseWindow | null) => void;
-  exportDeveloperLogs?: () => unknown;
+  exportDeveloperLogs?: (input: ExportDeveloperLogsInput) => unknown;
   getLocale?: () => DesktopLocale;
   logger?: DesktopLogger;
   openPerfMonitorDevTools?: (ownerWindow?: BaseWindow | null) => unknown;
@@ -37,15 +38,16 @@ function formatErrorDetail(error: unknown): string {
 }
 
 async function runExportDeveloperLogsFromMenu(
-  options: ApplicationMenuOptions
+  options: ApplicationMenuOptions,
+  input: ExportDeveloperLogsInput
 ): Promise<void> {
   if (!options.exportDeveloperLogs) {
     return;
   }
 
   try {
-    await options.exportDeveloperLogs();
-    options.logger?.info("menu export logs completed");
+    await options.exportDeveloperLogs(input);
+    options.logger?.info("menu export logs completed", { scope: input.scope });
   } catch (error) {
     const detail = formatErrorDetail(error);
     const translator = createTranslator(options.getLocale?.() ?? "en");
@@ -291,15 +293,38 @@ export function createApplicationMenuTemplate({
           : []),
         {
           label: translator.t("desktop.menu.exportServiceLogs"),
-          click: () => {
-            void runExportDeveloperLogsFromMenu({
-              allowDeveloperTools,
-              exportDeveloperLogs,
-              getLocale,
-              logger,
-              platform
-            });
-          }
+          submenu: [
+            {
+              label: translator.t("desktop.menu.exportAllLogs"),
+              click: () => {
+                void runExportDeveloperLogsFromMenu(
+                  {
+                    allowDeveloperTools,
+                    exportDeveloperLogs,
+                    getLocale,
+                    logger,
+                    platform
+                  },
+                  { scope: "all" }
+                );
+              }
+            },
+            {
+              label: translator.t("desktop.menu.exportRecentTenMinutesLogs"),
+              click: () => {
+                void runExportDeveloperLogsFromMenu(
+                  {
+                    allowDeveloperTools,
+                    exportDeveloperLogs,
+                    getLocale,
+                    logger,
+                    platform
+                  },
+                  { scope: "recent-10-minutes" }
+                );
+              }
+            }
+          ]
         },
         {
           label: translator.t("desktop.menu.clearServiceLogs"),

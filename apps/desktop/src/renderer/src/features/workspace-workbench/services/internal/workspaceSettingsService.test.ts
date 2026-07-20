@@ -1223,6 +1223,26 @@ test("WorkspaceSettingsService tracks theme changes without developer log clear 
   ]);
 });
 
+test("WorkspaceSettingsService forwards the selected developer log export scope", async () => {
+  const scopes: string[] = [];
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      exportLogs: async (scope) => {
+        scopes.push(scope);
+        return {
+          canceled: true,
+          fileCount: 0,
+          filePath: null
+        };
+      }
+    })
+  });
+
+  await service.exportDeveloperLogs("recent-10-minutes");
+
+  assert.deepEqual(scopes, ["recent-10-minutes"]);
+});
+
 test("WorkspaceSettingsService clears workspace conversation history", async () => {
   const calls: string[] = [];
   const service = new WorkspaceSettingsService(

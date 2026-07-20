@@ -1,4 +1,7 @@
-import type { ExportDeveloperLogsResult } from "../shared/contracts/ipc.ts";
+import type {
+  ExportDeveloperLogsInput,
+  ExportDeveloperLogsResult
+} from "../shared/contracts/ipc.ts";
 import {
   createTranslator,
   type DesktopLocale,
@@ -29,6 +32,7 @@ export interface DeveloperLogsExportDialogActions {
 type DeveloperLogsExporter = Pick<DeveloperLogsService, "exportLogs">;
 
 export interface DeveloperLogsExportNotifyDependencies {
+  exportInput: ExportDeveloperLogsInput;
   locale?: DesktopLocale;
   service: DeveloperLogsExporter;
   showMessageBox?: (
@@ -141,7 +145,9 @@ export function handleDeveloperLogsExportSuccessDialogResponse(
 export async function exportDeveloperLogsToDefaultDownloadsPathAndNotify(
   deps: DeveloperLogsExportNotifyDependencies
 ): Promise<ExportDeveloperLogsResult> {
-  const result = await deps.service.exportLogs();
+  const result = await deps.service.exportLogs({
+    scope: deps.exportInput.scope
+  });
 
   if (result.canceled || !result.filePath) {
     return result;

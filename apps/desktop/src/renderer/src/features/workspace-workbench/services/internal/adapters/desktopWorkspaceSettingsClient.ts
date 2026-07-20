@@ -18,6 +18,7 @@ import type {
   DesktopComputerUseStatus,
   DesktopDeveloperLogKind,
   DesktopDeveloperLogsState,
+  DesktopDeveloperLogsExportScope,
   ExportDeveloperLogsResult
 } from "@shared/contracts/ipc";
 import type {
@@ -91,7 +92,9 @@ export interface DesktopWorkspaceSettingsClient {
     workspaceID: string,
     providerID: WorkspaceManagedModelProviderID
   ): Promise<void>;
-  exportLogs(): Promise<ExportDeveloperLogsResult>;
+  exportLogs(
+    scope: DesktopDeveloperLogsExportScope
+  ): Promise<ExportDeveloperLogsResult>;
   getLogsState(): Promise<DesktopDeveloperLogsState>;
   listManagedModelProviders(
     workspaceID: string
@@ -174,8 +177,8 @@ export function createDesktopWorkspaceSettingsClient(input: {
     clearLogs() {
       return input.developerApi.clearLogs();
     },
-    exportLogs() {
-      return input.developerApi.exportLogs();
+    exportLogs(scope) {
+      return input.developerApi.exportLogs({ scope });
     },
     getLogsState() {
       return input.developerApi.getLogsState();

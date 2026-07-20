@@ -1,5 +1,6 @@
 import { createDecorator } from "@tutti-os/infra/di";
 import type {
+  DesktopDeveloperLogsExportScope,
   DesktopComputerUseActionResult,
   DesktopComputerUsePermissionGrantStatus,
   DesktopComputerUsePermissionPane,
@@ -123,7 +124,7 @@ export interface IWorkspaceSettingsService {
   clearConversationHistory(): Promise<void>;
   purgeDeletedConversations(): Promise<void>;
   clearDeveloperLogs(): Promise<void>;
-  exportDeveloperLogs(): Promise<void>;
+  exportDeveloperLogs(scope: DesktopDeveloperLogsExportScope): Promise<void>;
   openLogDirectory(): Promise<void>;
   openLogFile(kind: DesktopDeveloperLogKind): Promise<void>;
   refreshDeveloperLogs(): Promise<void>;

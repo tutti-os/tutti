@@ -716,6 +716,18 @@ export interface ClearDeveloperLogsResult {
   clearedSizeBytes: number;
 }
 
+export const desktopDeveloperLogsExportScopes = [
+  "all",
+  "recent-10-minutes"
+] as const;
+
+export type DesktopDeveloperLogsExportScope =
+  (typeof desktopDeveloperLogsExportScopes)[number];
+
+export interface ExportDeveloperLogsInput {
+  scope: DesktopDeveloperLogsExportScope;
+}
+
 export interface ExportDeveloperLogsResult {
   canceled: boolean;
   fileCount: number;
@@ -948,7 +960,7 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.dockPreviewCache.read]: DesktopReadDockPreviewInput;
   [desktopIpcChannels.dockPreviewCache.write]: DesktopWriteDockPreviewInput;
   [desktopIpcChannels.developer.clearLogs]: undefined;
-  [desktopIpcChannels.developer.exportLogs]: undefined;
+  [desktopIpcChannels.developer.exportLogs]: ExportDeveloperLogsInput;
   [desktopIpcChannels.developer.getLogsState]: undefined;
   [desktopIpcChannels.developer.openLogDirectory]: undefined;
   [desktopIpcChannels.developer.openLogFile]: DesktopDeveloperLogKind;

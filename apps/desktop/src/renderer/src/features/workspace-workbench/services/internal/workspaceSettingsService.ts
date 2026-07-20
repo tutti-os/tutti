@@ -1,7 +1,8 @@
 import type {
   DesktopComputerUsePermissionPane,
   DesktopComputerUseRestartDriverInput,
-  DesktopDeveloperLogKind
+  DesktopDeveloperLogKind,
+  DesktopDeveloperLogsExportScope
 } from "@shared/contracts/ipc";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
@@ -886,7 +887,9 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
-  async exportDeveloperLogs(): Promise<void> {
+  async exportDeveloperLogs(
+    scope: DesktopDeveloperLogsExportScope
+  ): Promise<void> {
     if (this.store.developerLogs.exporting) {
       return;
     }
@@ -894,7 +897,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.store.developerLogs.exporting = true;
 
     try {
-      const result = await this.dependencies.client.exportLogs();
+      const result = await this.dependencies.client.exportLogs(scope);
       if (!result.canceled) {
         this.notifications.success({
           title: createActiveTranslator().t(

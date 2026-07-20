@@ -2,7 +2,8 @@ import { ipcMain, shell } from "electron";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import {
   desktopIpcChannels,
-  type DesktopDeveloperLogKind
+  type DesktopDeveloperLogKind,
+  type ExportDeveloperLogsInput
 } from "../../shared/contracts/ipc";
 import { type DeveloperLogsService } from "../developerLogs";
 import {
@@ -33,10 +34,16 @@ export function registerDeveloperIpc(
   ipcMain.handle(desktopIpcChannels.developer.clearLogs, () =>
     toDesktopIpcResult(() => service.clearLogs())
   );
-  ipcMain.handle(desktopIpcChannels.developer.exportLogs, () =>
-    toDesktopIpcResult(() =>
-      exportDesktopDeveloperLogsAndNotify(preferences, tuttidClient)
-    )
+  ipcMain.handle(
+    desktopIpcChannels.developer.exportLogs,
+    (_event, input?: ExportDeveloperLogsInput) =>
+      toDesktopIpcResult(() =>
+        exportDesktopDeveloperLogsAndNotify(
+          preferences,
+          tuttidClient,
+          input?.scope === "recent-10-minutes" ? input : { scope: "all" }
+        )
+      )
   );
   ipcMain.handle(desktopIpcChannels.developer.openLogDirectory, () =>
     toDesktopIpcResult(async () => {

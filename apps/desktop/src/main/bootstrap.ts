@@ -212,10 +212,11 @@ export async function bootstrapDesktopApp(): Promise<void> {
         desktopAppServices.preferences,
         desktopAppServices.tuttidClient
       ).clearLogs(),
-    exportDeveloperLogs: () =>
+    exportDeveloperLogs: (input) =>
       exportDesktopDeveloperLogsAndNotify(
         desktopAppServices.preferences,
-        desktopAppServices.tuttidClient
+        desktopAppServices.tuttidClient,
+        input
       ),
     getLocale: () => desktopAppServices.preferences.getLocale(),
     logger,

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
+import { inflateRawSync } from "node:zlib";
 import { createDeveloperLogsService } from "./developerLogs.ts";
 import type { DeveloperLogsAgentSessionRecord } from "./developerLogsAgentSessions.ts";
 import { workspaceAppScopeSegment } from "./host/workspaceAppFolderPaths.ts";
@@ -165,6 +166,119 @@ test("developer logs service exports managed logs into a zip archive", async () 
   assert.equal(zipText.includes("runtime-context.json"), true);
   assert.equal(zipText.includes("export-summary.json"), true);
   assert.equal(zipText.includes("manifest.json"), false);
+});
+
+test("developer logs service exports only log content from the last ten minutes", async () => {
+  const root = join(tmpdir(), `tutti-developer-recent-export-${Date.now()}`);
+  const logsDir = join(root, "logs");
+  const downloadsDir = join(root, "downloads");
+  const runtimeLogPath = join(
+    root,
+    "apps",
+    "installations",
+    "app.alpha",
+    workspaceAppScopeSegment("workspace-1", "app.alpha"),
+    "logs",
+    "runtime.log"
+  );
+  const oldRotatedLogPath = join(logsDir, "tuttid.2026-07-20.log");
+  await mkdir(dirname(runtimeLogPath), { recursive: true });
+  await mkdir(logsDir, { recursive: true });
+  await mkdir(downloadsDir, { recursive: true });
+
+  await writeFile(
+    join(logsDir, "tuttid.log"),
+    [
+      "time=2026-07-20T11:49:59.999Z level=info msg=old",
+      "time=2026-07-20T11:50:00.000Z level=info msg=boundary",
+      "time=2026-07-20T11:58:00.000Z level=error msg=recent",
+      "time=2026-07-20T12:00:00.001Z level=info msg=future"
+    ].join("\n") + "\n"
+  );
+  await writeFile(runtimeLogPath, "recent unstructured app output\n");
+  await writeFile(oldRotatedLogPath, "old unstructured daemon output\n");
+  await utimes(
+    runtimeLogPath,
+    new Date("2026-07-20T11:58:00.000Z"),
+    new Date("2026-07-20T11:58:00.000Z")
+  );
+  await utimes(
+    oldRotatedLogPath,
+    new Date("2026-07-20T11:40:00.000Z"),
+    new Date("2026-07-20T11:40:00.000Z")
+  );
+
+  const service = createDeveloperLogsService({
+    agentSessionsProvider: async () => [
+      {
+        agentSessionID: "old-agent-session",
+        hasMoreMessages: false,
+        latestMessageVersion: 1,
+        messages: [],
+        provider: "codex",
+        providerSessionID: "old-provider-session",
+        session: {
+          id: "old-agent-session",
+          provider: "codex",
+          providerSessionId: "old-provider-session",
+          createdAt: "2026-07-20T11:00:00.000Z",
+          updatedAt: "2026-07-20T11:40:00.000Z"
+        },
+        updatedAtUnixMS: Date.parse("2026-07-20T11:40:00.000Z"),
+        workspaceID: "workspace-1"
+      }
+    ],
+    defaults: {
+      state: {
+        desktopLogPath: join(logsDir, "tutti-desktop.log"),
+        logsDir,
+        tuttidDBPath: "",
+        tuttidListenerInfoPath: "",
+        tuttidLogPath: join(logsDir, "tuttid.log"),
+        tuttidPIDPath: "",
+        rootDir: root,
+        runDir: ""
+      }
+    },
+    desktopVersion: "1.2.3",
+    getDownloadsPath: () => downloadsDir,
+    now: () => new Date("2026-07-20T12:00:00.000Z")
+  });
+
+  const result = await service.exportLogs({ scope: "recent-10-minutes" });
+
+  assert.equal(result.fileCount, 2);
+  assert.ok(result.filePath);
+  assert.match(result.filePath, /tutti-logs-last-10-minutes-/);
+  const entries = readZipEntries(await readFile(result.filePath));
+  const daemonLog = entries.get("logs/tuttid.log")?.toString("utf8");
+  assert.equal(
+    daemonLog,
+    [
+      "time=2026-07-20T11:50:00.000Z level=info msg=boundary",
+      "time=2026-07-20T11:58:00.000Z level=error msg=recent"
+    ].join("\n") + "\n"
+  );
+  assert.equal(
+    entries
+      .get(
+        `app-logs/app.alpha/${workspaceAppScopeSegment("workspace-1", "app.alpha")}/runtime.log`
+      )
+      ?.toString("utf8"),
+    "recent unstructured app output\n"
+  );
+  assert.equal(entries.has("logs/tuttid.2026-07-20.log"), false);
+  assert.equal(
+    entries.has(
+      "agent-sessions/codex/workspace-1/old-agent-session/session.json"
+    ),
+    false
+  );
+  const exportSummary = JSON.parse(
+    entries.get("export-summary.json")?.toString("utf8") ?? "{}"
+  ) as Record<string, unknown>;
+  assert.equal(exportSummary.scope, "recent-10-minutes");
+  assert.equal(exportSummary.windowStart, "2026-07-20T11:50:00.000Z");
 });
 
 test("developer logs service exports provider session records from tuttid snapshots", async () => {
@@ -576,6 +690,62 @@ test("developer logs service exports app center snapshot", async () => {
   const zipText = (await readFile(result.filePath)).toString("utf8");
   assert.equal(zipText.includes("app-center-snapshot.json"), true);
 });
+
+function readZipEntries(archive: Buffer): Map<string, Buffer> {
+  const endOfCentralDirectorySignature = 0x06054b50;
+  const centralDirectoryEntrySignature = 0x02014b50;
+  const localFileHeaderSignature = 0x04034b50;
+  let endOfCentralDirectoryOffset = -1;
+  for (let offset = archive.length - 22; offset >= 0; offset -= 1) {
+    if (archive.readUInt32LE(offset) === endOfCentralDirectorySignature) {
+      endOfCentralDirectoryOffset = offset;
+      break;
+    }
+  }
+  assert.notEqual(endOfCentralDirectoryOffset, -1);
+
+  const entries = new Map<string, Buffer>();
+  const entryCount = archive.readUInt16LE(endOfCentralDirectoryOffset + 10);
+  let centralOffset = archive.readUInt32LE(endOfCentralDirectoryOffset + 16);
+
+  for (let index = 0; index < entryCount; index += 1) {
+    assert.equal(
+      archive.readUInt32LE(centralOffset),
+      centralDirectoryEntrySignature
+    );
+    const compressionMethod = archive.readUInt16LE(centralOffset + 10);
+    const compressedSize = archive.readUInt32LE(centralOffset + 20);
+    const fileNameLength = archive.readUInt16LE(centralOffset + 28);
+    const extraFieldLength = archive.readUInt16LE(centralOffset + 30);
+    const commentLength = archive.readUInt16LE(centralOffset + 32);
+    const localHeaderOffset = archive.readUInt32LE(centralOffset + 42);
+    const fileName = archive
+      .subarray(centralOffset + 46, centralOffset + 46 + fileNameLength)
+      .toString("utf8");
+
+    assert.equal(
+      archive.readUInt32LE(localHeaderOffset),
+      localFileHeaderSignature
+    );
+    const localFileNameLength = archive.readUInt16LE(localHeaderOffset + 26);
+    const localExtraFieldLength = archive.readUInt16LE(localHeaderOffset + 28);
+    const contentOffset =
+      localHeaderOffset + 30 + localFileNameLength + localExtraFieldLength;
+    const compressedContent = archive.subarray(
+      contentOffset,
+      contentOffset + compressedSize
+    );
+    const content =
+      compressionMethod === 0
+        ? compressedContent
+        : inflateRawSync(compressedContent);
+    entries.set(fileName, content);
+
+    centralOffset += 46 + fileNameLength + extraFieldLength + commentLength;
+  }
+
+  return entries;
+}
 
 test("developer logs service treats .LOG files as managed logs", async () => {
   const root = join(tmpdir(), `tutti-developer-uppercase-${Date.now()}`);

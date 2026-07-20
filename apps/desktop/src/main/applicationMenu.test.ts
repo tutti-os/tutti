@@ -4,10 +4,10 @@ import type { MessageBoxOptions } from "electron";
 import { createApplicationMenuTemplate } from "./applicationMenu.ts";
 
 test("application menu exposes developer log export from Help", async () => {
-  let exported = false;
+  const exportedScopes: string[] = [];
   const menu = createApplicationMenuTemplate({
-    exportDeveloperLogs() {
-      exported = true;
+    exportDeveloperLogs(input) {
+      exportedScopes.push(input.scope);
     },
     platform: "darwin"
   });
@@ -16,17 +16,33 @@ test("application menu exposes developer log export from Help", async () => {
   assert.ok(helpMenu);
   assert.ok(Array.isArray(helpMenu.submenu));
   const exportItem = helpMenu.submenu.find(
-    (item) => item.label === "Export Service Logs..."
+    (item) => item.label === "Export Service Logs"
   );
   assert.ok(exportItem);
+  assert.ok(Array.isArray(exportItem.submenu));
+  const allLogsItem = exportItem.submenu.find(
+    (item) => item.label === "All Logs"
+  );
+  const recentLogsItem = exportItem.submenu.find(
+    (item) => item.label === "Last 10 Minutes"
+  );
+  assert.ok(allLogsItem);
+  assert.ok(recentLogsItem);
 
-  exportItem.click?.(
-    {} as Parameters<NonNullable<typeof exportItem.click>>[0],
-    undefined as Parameters<NonNullable<typeof exportItem.click>>[1],
-    undefined as unknown as Parameters<NonNullable<typeof exportItem.click>>[2]
+  allLogsItem.click?.(
+    {} as Parameters<NonNullable<typeof allLogsItem.click>>[0],
+    undefined as Parameters<NonNullable<typeof allLogsItem.click>>[1],
+    undefined as unknown as Parameters<NonNullable<typeof allLogsItem.click>>[2]
+  );
+  recentLogsItem.click?.(
+    {} as Parameters<NonNullable<typeof recentLogsItem.click>>[0],
+    undefined as Parameters<NonNullable<typeof recentLogsItem.click>>[1],
+    undefined as unknown as Parameters<
+      NonNullable<typeof recentLogsItem.click>
+    >[2]
   );
 
-  assert.equal(exported, true);
+  assert.deepEqual(exportedScopes, ["all", "recent-10-minutes"]);
 });
 
 test("application menu exposes developer log clearing from Help", async () => {

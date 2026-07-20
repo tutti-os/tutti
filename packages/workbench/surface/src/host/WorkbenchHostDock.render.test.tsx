@@ -1,11 +1,15 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
-import type { WorkbenchState } from "../core/types.ts";
+import { describe, expect, it, vi } from "vitest";
+import type { WorkbenchNode, WorkbenchState } from "../core/types.ts";
 import type { WorkbenchDockContext } from "../react/types.ts";
 import type { WorkbenchController } from "../store/types.ts";
 import { WorkbenchHostDock } from "./WorkbenchHostDock.tsx";
-import type { WorkbenchHostHandle, WorkbenchHostNodeData } from "./types.ts";
+import type {
+  WorkbenchHostDockPopupPreviewProvider,
+  WorkbenchHostHandle,
+  WorkbenchHostNodeData
+} from "./types.ts";
 import { createWorkbenchHostI18nRuntime } from "./workbenchHostI18n.ts";
 
 describe("WorkbenchHostDock", () => {
@@ -53,9 +57,96 @@ describe("WorkbenchHostDock", () => {
       ).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
     }
   });
+
+  it("provides the dock popup preview viewport to component preview providers", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        disconnect() {}
+        observe() {}
+        unobserve() {}
+      }
+    );
+    const node = createNode();
+    const props = createDockProps([node]);
+    const providePopupItemPreview =
+      vi.fn<WorkbenchHostDockPopupPreviewProvider>(() => ({
+        element: null,
+        kind: "component"
+      }));
+    const dockEntry = {
+      icon: null,
+      id: "agent-gui",
+      instanceMode: "multi" as const,
+      label: "Agent",
+      providePopupItemPreview,
+      typeId: "agent-gui",
+      visibility: "always" as const
+    };
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const previousActEnvironment = (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT;
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+
+    try {
+      await act(async () => {
+        root.render(<WorkbenchHostDock {...props} dockEntries={[dockEntry]} />);
+      });
+      const button = container.querySelector<HTMLButtonElement>(
+        'button[aria-haspopup="dialog"]'
+      );
+      expect(button).not.toBeNull();
+
+      await act(async () => {
+        button?.click();
+      });
+
+      expect(providePopupItemPreview).toHaveBeenCalledOnce();
+      expect(
+        providePopupItemPreview.mock.calls[0]?.[0].previewViewport
+      ).toEqual({
+        height: 95,
+        width: 157
+      });
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (
+        globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
-function createDockProps() {
+function createNode(): WorkbenchNode<WorkbenchHostNodeData> {
+  return {
+    data: {
+      dockEntryId: "agent-gui",
+      instanceId: "agent-gui-1",
+      instanceKey: null,
+      typeId: "agent-gui"
+    },
+    displayMode: "floating",
+    frame: { height: 560, width: 1040, x: 20, y: 20 },
+    id: "agent-gui:agent-gui-1",
+    isMinimized: false,
+    kind: "agent-gui",
+    restoreFrame: null,
+    title: "Agent"
+  };
+}
+
+function createDockProps(
+  nodes: readonly WorkbenchNode<WorkbenchHostNodeData>[] = []
+) {
   const state: WorkbenchState<WorkbenchHostNodeData> = {
     activeDragNodeId: null,
     activeResizeNodeId: null,
@@ -67,7 +158,7 @@ function createDockProps() {
       surfacePadding: 0
     },
     lockedLayout: null,
-    nodes: [],
+    nodes: [...nodes],
     nodeStack: [],
     surfaceSize: { height: 800, width: 1200 }
   };
@@ -89,7 +180,7 @@ function createDockProps() {
       shouldAnimateMinimizedDockEnter: () => false
     },
     minimizedNodes: [],
-    nodes: []
+    nodes: [...nodes]
   };
   const host: WorkbenchHostHandle = {
     activateNode() {},

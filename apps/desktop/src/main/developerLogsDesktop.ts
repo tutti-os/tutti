@@ -1,7 +1,10 @@
 import { app } from "electron";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
-import type { ExportDeveloperLogsResult } from "../shared/contracts/ipc.ts";
+import type {
+  ExportDeveloperLogsInput,
+  ExportDeveloperLogsResult
+} from "../shared/contracts/ipc.ts";
 import {
   createDeveloperLogsService,
   type DeveloperLogsAppCenterSnapshot
@@ -55,15 +58,18 @@ export async function exportDesktopDeveloperLogsAndNotify(
     | "listWorkspaceAppFactoryJobs"
     | "listWorkspaceApps"
     | "listWorkspaces"
-  >
+  >,
+  exportInput: ExportDeveloperLogsInput = { scope: "all" }
 ): Promise<ExportDeveloperLogsResult> {
   const defaults = resolveDesktopDefaultsFromEnv();
   getDesktopLogger().info("developer logs export requested", {
-    logsDir: defaults.state.logsDir
+    logsDir: defaults.state.logsDir,
+    scope: exportInput.scope
   });
   await flushDesktopLogger();
 
   return exportDeveloperLogsToDefaultDownloadsPathAndNotify({
+    exportInput,
     locale: preferences.getLocale(),
     service: createDesktopDeveloperLogsService(preferences, tuttidClient)
   });

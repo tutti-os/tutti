@@ -23,6 +23,7 @@ import type {
   ClearDeveloperLogsResult,
   DesktopDeveloperLogKind,
   DesktopDeveloperLogsState,
+  ExportDeveloperLogsInput,
   DesktopReadDockPreviewInput,
   DesktopSetCustomWallpaperInput,
   DesktopWriteDockPreviewInput,
@@ -62,7 +63,9 @@ export interface DesktopRuntimeApi {
 
 export interface DesktopDeveloperApi {
   clearLogs(): Promise<ClearDeveloperLogsResult>;
-  exportLogs(): Promise<ExportDeveloperLogsResult>;
+  exportLogs(
+    input: ExportDeveloperLogsInput
+  ): Promise<ExportDeveloperLogsResult>;
   getLogsState(): Promise<DesktopDeveloperLogsState>;
   openLogDirectory(): Promise<void>;
   openLogFile(kind: DesktopDeveloperLogKind): Promise<void>;
