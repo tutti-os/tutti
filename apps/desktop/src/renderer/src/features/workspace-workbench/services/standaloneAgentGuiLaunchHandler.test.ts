@@ -65,6 +65,7 @@ test("standalone Agent draft launches open a new window with the complete bootst
     createContext({
       agentDirectorySnapshot: {
         agents: [],
+        agentExtensions: [],
         agentTargets: [],
         capturedAtUnixMs: 1,
         error: null,
@@ -100,6 +101,7 @@ test("standalone Agent draft launches open a new window with the complete bootst
       },
       agentDirectorySnapshot: {
         agents: [],
+        agentExtensions: [],
         agentTargets: [],
         capturedAtUnixMs: 1,
         error: null,

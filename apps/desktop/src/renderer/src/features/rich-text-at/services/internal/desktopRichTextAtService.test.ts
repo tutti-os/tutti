@@ -1286,6 +1286,7 @@ function createAgentsService(
 ): Pick<IAgentsService, "load"> {
   const agentTargets = mapAgentTargetsToPresentations(targets);
   const snapshot: AgentsSnapshot = {
+    agentExtensions: [],
     agentTargets,
     capturedAtUnixMs: 1780272000000,
     agents: mapAgentTargetPresentationsToAgents(agentTargets),

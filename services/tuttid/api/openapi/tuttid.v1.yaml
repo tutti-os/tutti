@@ -568,6 +568,28 @@ paths:
           $ref: "#/components/responses/PreferencesOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-extensions/catalog:
+    get:
+      operationId: listAgentExtensionCatalog
+      tags:
+        - agent-extension
+      summary: List configured Agent Extension presentation metadata
+      description: Returns offline catalog metadata for configured extension sources without activating them or fetching their release indexes. Active Agent Targets remain authoritative for runtime identity.
+      responses:
+        "200":
+          description: Agent Extension catalog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentExtensionCatalogResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/PreferencesOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/agent-targets/{agentTargetID}/enabled:
     patch:
       operationId: setSystemAgentTargetEnabled
@@ -5401,6 +5423,37 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentTarget"
+    AgentExtensionCatalogEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+        - targetId
+        - name
+        - iconUrl
+      properties:
+        key:
+          type: string
+          minLength: 1
+        targetId:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        iconUrl:
+          type: string
+          minLength: 1
+    AgentExtensionCatalogResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - extensions
+      properties:
+        extensions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentExtensionCatalogEntry"
     SetSystemAgentTargetEnabledRequest:
       type: object
       additionalProperties: false

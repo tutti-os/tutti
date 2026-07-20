@@ -37,6 +37,9 @@ type ServerInterface interface {
 	// Get current desktop account user
 	// (GET /v1/account/user_info)
 	GetAccountUserInfo(w http.ResponseWriter, r *http.Request)
+	// List configured Agent Extension presentation metadata
+	// (GET /v1/agent-extensions/catalog)
+	ListAgentExtensionCatalog(w http.ResponseWriter, r *http.Request)
 	// Permanently purge all soft-deleted Agent conversations
 	// (POST /v1/agent-maintenance/deleted-conversations/purge)
 	PurgeDeletedAgentConversations(w http.ResponseWriter, r *http.Request)
@@ -619,6 +622,26 @@ func (siw *ServerInterfaceWrapper) GetAccountUserInfo(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAccountUserInfo(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAgentExtensionCatalog operation middleware
+func (siw *ServerInterfaceWrapper) ListAgentExtensionCatalog(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgentExtensionCatalog(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7005,6 +7028,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/product_summary", wrapper.GetAccountProductSummary)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/account/registration_credits_reward/dismiss", wrapper.DismissAccountRegistrationCreditsReward)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/user_info", wrapper.GetAccountUserInfo)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-extensions/catalog", wrapper.ListAgentExtensionCatalog)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-maintenance/deleted-conversations/purge", wrapper.PurgeDeletedAgentConversations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-providers/status", wrapper.GetAgentProviderStatuses)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/actions/{actionID}/run", wrapper.RunAgentProviderAction)
@@ -7593,6 +7617,89 @@ type GetAccountUserInfo503JSONResponse struct {
 }
 
 func (response GetAccountUserInfo503JSONResponse) VisitGetAccountUserInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentExtensionCatalogRequestObject struct {
+}
+
+type ListAgentExtensionCatalogResponseObject interface {
+	VisitListAgentExtensionCatalogResponse(w http.ResponseWriter) error
+}
+
+type ListAgentExtensionCatalog200JSONResponse AgentExtensionCatalogResponse
+
+func (response ListAgentExtensionCatalog200JSONResponse) VisitListAgentExtensionCatalogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentExtensionCatalog401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ListAgentExtensionCatalog401JSONResponse) VisitListAgentExtensionCatalogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentExtensionCatalog405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListAgentExtensionCatalog405JSONResponse) VisitListAgentExtensionCatalogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentExtensionCatalog502JSONResponse struct {
+	PreferencesOperationErrorJSONResponse
+}
+
+func (response ListAgentExtensionCatalog502JSONResponse) VisitListAgentExtensionCatalogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentExtensionCatalog503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListAgentExtensionCatalog503JSONResponse) VisitListAgentExtensionCatalogResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -24365,6 +24472,9 @@ type StrictServerInterface interface {
 	// Get current desktop account user
 	// (GET /v1/account/user_info)
 	GetAccountUserInfo(ctx context.Context, request GetAccountUserInfoRequestObject) (GetAccountUserInfoResponseObject, error)
+	// List configured Agent Extension presentation metadata
+	// (GET /v1/agent-extensions/catalog)
+	ListAgentExtensionCatalog(ctx context.Context, request ListAgentExtensionCatalogRequestObject) (ListAgentExtensionCatalogResponseObject, error)
 	// Permanently purge all soft-deleted Agent conversations
 	// (POST /v1/agent-maintenance/deleted-conversations/purge)
 	PurgeDeletedAgentConversations(ctx context.Context, request PurgeDeletedAgentConversationsRequestObject) (PurgeDeletedAgentConversationsResponseObject, error)
@@ -24985,6 +25095,30 @@ func (sh *strictHandler) GetAccountUserInfo(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAccountUserInfoResponseObject); ok {
 		if err := validResponse.VisitGetAccountUserInfoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAgentExtensionCatalog operation middleware
+func (sh *strictHandler) ListAgentExtensionCatalog(w http.ResponseWriter, r *http.Request) {
+	var request ListAgentExtensionCatalogRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAgentExtensionCatalog(ctx, request.(ListAgentExtensionCatalogRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAgentExtensionCatalog")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAgentExtensionCatalogResponseObject); ok {
+		if err := validResponse.VisitListAgentExtensionCatalogResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

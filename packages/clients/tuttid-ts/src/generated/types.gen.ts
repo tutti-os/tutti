@@ -495,6 +495,17 @@ export type ListAgentTargetsResponse = {
   targets: Array<AgentTarget>;
 };
 
+export type AgentExtensionCatalogEntry = {
+  key: string;
+  targetId: string;
+  name: string;
+  iconUrl: string;
+};
+
+export type AgentExtensionCatalogResponse = {
+  extensions: Array<AgentExtensionCatalogEntry>;
+};
+
 export type SetSystemAgentTargetEnabledRequest = {
   enabled: boolean;
 };
@@ -3739,6 +3750,45 @@ export type ListAgentTargetsResponses = {
 
 export type ListAgentTargetsResponse2 =
   ListAgentTargetsResponses[keyof ListAgentTargetsResponses];
+
+export type ListAgentExtensionCatalogData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-extensions/catalog";
+};
+
+export type ListAgentExtensionCatalogErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Desktop preferences operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAgentExtensionCatalogError =
+  ListAgentExtensionCatalogErrors[keyof ListAgentExtensionCatalogErrors];
+
+export type ListAgentExtensionCatalogResponses = {
+  /**
+   * Agent Extension catalog
+   */
+  200: AgentExtensionCatalogResponse;
+};
+
+export type ListAgentExtensionCatalogResponse =
+  ListAgentExtensionCatalogResponses[keyof ListAgentExtensionCatalogResponses];
 
 export type SetSystemAgentTargetEnabledData = {
   body: SetSystemAgentTargetEnabledRequest;

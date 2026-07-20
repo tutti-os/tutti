@@ -643,15 +643,16 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	providerAuthWatcher.Start()
 
 	return tuttiapi.DaemonAPI{
-		AccountService:            accountService,
-		UserProjectService:        userProjectService,
-		AgentTargetService:        agentTargets,
-		AgentTargetSetupService:   agentTargetSetup,
-		PreferencesService:        preferences,
-		AgentMaintenanceService:   agentMaintenance,
-		ManagedCredentialsService: managedCredentials,
-		EventStreamService:        events,
-		WorkspaceService:          workspaceService,
+		AccountService:               accountService,
+		UserProjectService:           userProjectService,
+		AgentTargetService:           agentTargets,
+		AgentExtensionCatalogService: agentExtensionManager,
+		AgentTargetSetupService:      agentTargetSetup,
+		PreferencesService:           preferences,
+		AgentMaintenanceService:      agentMaintenance,
+		ManagedCredentialsService:    managedCredentials,
+		EventStreamService:           events,
+		WorkspaceService:             workspaceService,
 		WorkbenchService: workspaceservice.WorkbenchService{
 			Store: workspaceStore,
 			SnapshotReconciler: workspaceservice.TerminalWorkbenchSnapshotReconciler{

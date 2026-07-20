@@ -29,6 +29,7 @@ import {
   getHealth,
   getAgentTargetSetup,
   getStartupWorkspace,
+  listAgentExtensionCatalog,
   listAgentTargets,
   getWorkspaceFileTreeSnapshot,
   getWorkspace,
@@ -112,6 +113,12 @@ export function createTuttidClient(
   });
 
   return {
+    async listAgentExtensionCatalog() {
+      return unwrapData(
+        await listAgentExtensionCatalog({ client }),
+        "Agent extension catalog request failed."
+      );
+    },
     async listAgentTargets() {
       return unwrapData(
         await listAgentTargets({ client }),

@@ -2382,6 +2382,19 @@ type AgentActivityMessageSemantics struct {
 	UserVisibleAssistantResponse *bool   `json:"userVisibleAssistantResponse,omitempty"`
 }
 
+// AgentExtensionCatalogEntry defines model for AgentExtensionCatalogEntry.
+type AgentExtensionCatalogEntry struct {
+	IconUrl  string `json:"iconUrl"`
+	Key      string `json:"key"`
+	Name     string `json:"name"`
+	TargetId string `json:"targetId"`
+}
+
+// AgentExtensionCatalogResponse defines model for AgentExtensionCatalogResponse.
+type AgentExtensionCatalogResponse struct {
+	Extensions []AgentExtensionCatalogEntry `json:"extensions"`
+}
+
 // AgentPromptContentBlock defines model for AgentPromptContentBlock.
 type AgentPromptContentBlock struct {
 	AttachmentId *string `json:"attachmentId,omitempty"`

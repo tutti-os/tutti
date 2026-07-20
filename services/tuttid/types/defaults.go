@@ -54,6 +54,8 @@ type generatedAgentExtensionDefaults struct {
 
 type generatedAgentExtensionSourceDefaults struct {
 	Key              string
+	CatalogName      string
+	CatalogIconURL   string
 	ReleaseIndexURL  string
 	SigningKeyID     string
 	SigningPublicKey string
@@ -62,6 +64,8 @@ type generatedAgentExtensionSourceDefaults struct {
 
 type AgentExtensionSource struct {
 	Key              string
+	CatalogName      string
+	CatalogIconURL   string
 	ReleaseIndexURL  string
 	SigningKeyID     string
 	SigningPublicKey string
@@ -175,6 +179,8 @@ func ResolveAgentExtensionSources() []AgentExtensionSource {
 		}
 		result = append(result, AgentExtensionSource{
 			Key:              source.Key,
+			CatalogName:      source.CatalogName,
+			CatalogIconURL:   source.CatalogIconURL,
 			ReleaseIndexURL:  source.ReleaseIndexURL,
 			SigningKeyID:     source.SigningKeyID,
 			SigningPublicKey: source.SigningPublicKey,

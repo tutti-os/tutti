@@ -6,6 +6,7 @@ import { projectWorkspaceAgentExtensionSettingsRows } from "./workspaceAgentExte
 test("extension rows are gated by Early Access integrations", () => {
   assert.deepEqual(
     projectWorkspaceAgentExtensionSettingsRows({
+      agentExtensions: [],
       agentTargets: [],
       directoryLoading: false,
       earlyAccessEnabled: false,
@@ -17,6 +18,7 @@ test("extension rows are gated by Early Access integrations", () => {
 
 test("extension activation and Agent Target availability project independently", () => {
   const rows = projectWorkspaceAgentExtensionSettingsRows({
+    agentExtensions: [catalogEntry("data:image/svg+xml;base64,catalog")],
     agentTargets: [extensionTarget("extension:gemini", "auth_required")],
     directoryLoading: false,
     earlyAccessEnabled: true,
@@ -36,6 +38,28 @@ test("extension activation and Agent Target availability project independently",
   assert.equal(rows[1]?.enabled, false);
   assert.equal(rows[1]?.status, "unknown");
 });
+
+test("extension rows use the daemon catalog icon before an Agent Target exists", () => {
+  const rows = projectWorkspaceAgentExtensionSettingsRows({
+    agentExtensions: [catalogEntry("data:image/svg+xml;base64,catalog")],
+    agentTargets: [],
+    directoryLoading: false,
+    earlyAccessEnabled: true,
+    featureFlags: {}
+  });
+
+  assert.equal(rows[0]?.iconUrl, "data:image/svg+xml;base64,catalog");
+  assert.equal(rows[0]?.status, "unknown");
+});
+
+function catalogEntry(iconUrl: string) {
+  return {
+    iconUrl,
+    key: "gemini",
+    name: "Gemini CLI",
+    targetId: "extension:gemini"
+  } as const;
+}
 
 function extensionTarget(
   agentTargetId: string,

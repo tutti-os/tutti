@@ -2,6 +2,7 @@ package types
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -70,6 +71,9 @@ func TestResolveAgentExtensionSourcesIgnoresRemovedEnabledOverride(t *testing.T)
 	for _, source := range []AgentExtensionSource{gemini, codebuddy, copilot, kilo, qwen} {
 		if source.Enabled {
 			t.Fatalf("agent extension source must stay disabled without override: %#v", source)
+		}
+		if source.CatalogName == "" || !strings.HasPrefix(source.CatalogIconURL, "data:image/svg+xml;base64,") {
+			t.Fatalf("agent extension catalog presentation is incomplete: %#v", source)
 		}
 		if source.SigningKeyID == "" || source.SigningPublicKey == "" {
 			t.Fatalf("agent extension trust configuration is incomplete: %#v", source)
