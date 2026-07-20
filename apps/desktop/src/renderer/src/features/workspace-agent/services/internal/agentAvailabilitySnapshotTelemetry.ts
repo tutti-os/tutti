@@ -58,12 +58,8 @@ export class AgentAvailabilitySnapshotTelemetry {
         currentSignature: signature,
         previous
       });
-      if (!trigger) {
-        continue;
-      }
-
-      // Persist synchronously before the best-effort send so concurrent status
-      // refreshes and additional renderer windows do not duplicate a snapshot.
+      // State classifies the next snapshot; it does not suppress a pageview
+      // opportunity when the provider state is unchanged.
       this.writeState(status.provider, { date, signature });
       void this.report({ ...params, trigger }, now);
     }
@@ -164,7 +160,7 @@ function snapshotTrigger(input: {
   currentDate: string;
   currentSignature: string;
   previous: AgentAvailabilitySnapshotState | null;
-}): AgentAvailabilitySnapshotTrigger | null {
+}): AgentAvailabilitySnapshotTrigger {
   if (!input.previous) {
     return "env_detected";
   }
@@ -174,7 +170,7 @@ function snapshotTrigger(input: {
   if (input.previous.signature !== input.currentSignature) {
     return "config_change";
   }
-  return null;
+  return "env_detected";
 }
 
 function snapshotSignature(params: AgentAvailabilitySnapshotParams): string {

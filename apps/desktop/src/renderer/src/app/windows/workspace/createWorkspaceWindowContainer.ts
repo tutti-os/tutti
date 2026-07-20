@@ -5,15 +5,15 @@ import {
 } from "@renderer/features/analytics-debug";
 import {
   registerReporterServices,
-  shouldReportPredefinePageview,
-  startPredefinePageviewAnalytics
+  shouldReportPredefinePageview
 } from "@renderer/features/analytics";
+import { startPredefinePageviewAnalytics } from "@renderer/features/analytics/predefinePageviewAnalytics.ts";
 import { registerAppUpdateServices } from "@renderer/features/app-update/services/registerAppUpdateServices";
 import { registerDesktopPreferencesServices } from "@renderer/features/desktop-preferences/services/registerDesktopPreferencesServices.ts";
 import { registerRichTextAtServices } from "@renderer/features/rich-text-at/services/registerRichTextAtServices";
 import { createDesktopAgentSessionStatusViewResolver } from "@renderer/features/rich-text-at/providers/desktopAgentSessionStatusView.ts";
 import { registerWorkspaceAgentServices } from "@renderer/features/workspace-agent/services/registerWorkspaceAgentServices";
-import { startDesktopAgentAvailabilitySnapshotAnalytics } from "@renderer/features/workspace-agent";
+import { startDesktopAgentAvailabilitySnapshotAnalytics } from "@renderer/features/workspace-agent/desktopAgentAvailabilitySnapshotAnalytics.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import { registerWorkspaceAppCenterServices } from "@renderer/features/workspace-app-center/services/registerWorkspaceAppCenterServices";

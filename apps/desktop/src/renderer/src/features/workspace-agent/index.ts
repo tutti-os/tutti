@@ -1,5 +1,5 @@
 export { registerWorkspaceAgentServices } from "./services/registerWorkspaceAgentServices";
-export { startDesktopAgentAvailabilitySnapshotAnalytics } from "./services/internal/desktopAgentAvailabilitySnapshotAnalytics.ts";
+export { startDesktopAgentAvailabilitySnapshotAnalytics } from "./desktopAgentAvailabilitySnapshotAnalytics.ts";
 export { IAgentsService } from "./services/agentsService.interface";
 export { IAgentEnvService } from "./services/agentEnvService.interface";
 export { IAgentProviderStatusService } from "./services/agentProviderStatusService.interface";

@@ -47,6 +47,8 @@ test("availability snapshots cover initial, change, and rollover triggers", asyn
     ]),
     [
       ["codex", "env_detected", false, "cli_not_installed"],
+      ["claude_code", "env_detected", true, "none"],
+      ["codex", "env_detected", false, "cli_not_installed"],
       ["claude_code", "env_detected", true, "none"]
     ]
   );
@@ -62,7 +64,8 @@ test("availability snapshots cover initial, change, and rollover triggers", asyn
   await flushAsyncWork();
   assert.equal(events.at(-1)?.params?.trigger, "config_change");
 
-  // A new instance shares persisted per-provider/day dedupe state.
+  // A new instance shares persisted state for trigger classification without
+  // suppressing its own pageview opportunity.
   new AgentAvailabilitySnapshotTelemetry({
     now: () => now,
     reporterService: {
@@ -73,7 +76,7 @@ test("availability snapshots cover initial, change, and rollover triggers", asyn
     storage
   }).reportStatuses([claudeReady]);
   await flushAsyncWork();
-  assert.equal(events.length, 3);
+  assert.equal(events.length, 6);
 
   now = new Date(2026, 6, 21, 9).getTime();
   telemetry.reportStatuses([

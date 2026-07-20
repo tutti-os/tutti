@@ -70,6 +70,31 @@ test("availability analytics coalesces activations while a refresh is running", 
   );
 });
 
+test("availability analytics reports unchanged status for every pageview opportunity", async () => {
+  const events: ReporterEventInput[] = [];
+  const lifecycle = createLifecycleHarness();
+  startDesktopAgentAvailabilitySnapshotAnalytics({
+    dependencies: createDependencies(events),
+    lifecycle,
+    async refreshStatuses() {
+      return [createReadyStatus("codex")];
+    }
+  });
+
+  lifecycle.emit({ kind: "opened", occurredAt: 1_000 });
+  await flushAsyncWork();
+  lifecycle.emit({ kind: "focused", occurredAt: 2_000 });
+  await flushAsyncWork();
+
+  assert.deepEqual(
+    events.map((event) => [event.clientTS, event.params?.trigger]),
+    [
+      [1_000, "env_detected"],
+      [2_000, "env_detected"]
+    ]
+  );
+});
+
 test("availability analytics does not report after disposal", async () => {
   const events: ReporterEventInput[] = [];
   const lifecycle = createLifecycleHarness();
