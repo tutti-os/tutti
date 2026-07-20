@@ -215,6 +215,32 @@ test("checkUpdates exposes one stable operation state for the whole request", as
   );
 });
 
+test("incidental update discovery does not expose manual check state", async () => {
+  const response = createDeferred<AgentProviderStatusListResponse>();
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: {
+      getAgentProviderStatuses: () => response.promise
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  const request = service.refresh(["codex"], {
+    includeNetwork: true,
+    includeUpdates: true
+  });
+  assert.equal(service.isCheckingUpdates(), false);
+  response.resolve(
+    createStatusResponse([
+      createProviderStatus({ actions: [], availability: "ready" })
+    ])
+  );
+  await request;
+
+  assert.equal(service.isCheckingUpdates(), false);
+});
+
 test("local-only refresh preserves prior includeUpdates discovery", async () => {
   const service = new DesktopAgentProviderStatusService({
     tuttidClient: createTuttidClient({

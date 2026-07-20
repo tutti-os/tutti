@@ -229,11 +229,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       return inflightRequest;
     }
 
-    const checksUpdates = input.includeUpdates === true;
-    if (checksUpdates) {
-      this.updateCheckRequestCount += 1;
-    }
-
     this.setSnapshot({
       ...this.snapshot,
       error: null,
@@ -351,17 +346,11 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         return null;
       })
       .finally(() => {
-        if (checksUpdates) {
-          this.updateCheckRequestCount = Math.max(
-            0,
-            this.updateCheckRequestCount - 1
-          );
-        }
         if (this.inflightRequests.get(requestKey) === request) {
           this.inflightRequests.delete(requestKey);
         }
         const isLoading = this.inflightRequests.size > 0;
-        if (checksUpdates || this.snapshot.isLoading !== isLoading) {
+        if (this.snapshot.isLoading !== isLoading) {
           this.setSnapshot({ ...this.snapshot, isLoading });
         }
       });
@@ -620,15 +609,25 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   }
 
   async checkUpdates(providers?: WorkspaceAgentProvider[]): Promise<void> {
-    const response = await this.requestStatuses({
-      providers,
-      includeUpdates: true,
-      refreshUpdates: true
-    });
-    if (!response) {
-      throw new Error(
-        this.snapshot.error ?? "Agent CLI update check request failed."
+    this.updateCheckRequestCount += 1;
+    this.setSnapshot({ ...this.snapshot });
+    try {
+      const response = await this.requestStatuses({
+        providers,
+        includeUpdates: true,
+        refreshUpdates: true
+      });
+      if (!response) {
+        throw new Error(
+          this.snapshot.error ?? "Agent CLI update check request failed."
+        );
+      }
+    } finally {
+      this.updateCheckRequestCount = Math.max(
+        0,
+        this.updateCheckRequestCount - 1
       );
+      this.setSnapshot({ ...this.snapshot });
     }
   }
 
