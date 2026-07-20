@@ -253,6 +253,7 @@ The stable package entrypoints are:
 @tutti-os/browser-node
 @tutti-os/browser-node/assets/workspace-dock-website.png
 @tutti-os/browser-node/bridge
+@tutti-os/browser-node/chrome-cookie-import/macos
 @tutti-os/browser-node/electron-main
 @tutti-os/browser-node/electron-preload
 @tutti-os/browser-node/electron-renderer

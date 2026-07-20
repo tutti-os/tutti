@@ -12,10 +12,9 @@ import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBrowserSessionPartition } from "@tutti-os/browser-node";
+import { createMacosChromeCookieImportAdapter } from "@tutti-os/browser-node/chrome-cookie-import/macos";
 import { registerBrowserNodeElectronMain } from "@tutti-os/browser-node/electron-main";
 import type { BrowserNodeElectronLogger } from "@tutti-os/browser-node/electron-main";
-import type { BrowserNodeChromeCookiePreparationResult } from "@tutti-os/browser-node/electron-main";
-import type { BrowserNodeCookieImportFailureStage } from "@tutti-os/browser-node";
 import {
   desktopIpcChannels,
   type DesktopInvokeChannel
@@ -35,13 +34,6 @@ import {
 import { resolveOwnerWindowFromEvent } from "./ownerWindow.ts";
 import { openFileWithDefaultBrowser } from "../host/openWithApplications.ts";
 import { createTranslator } from "../../shared/i18n/index.ts";
-import {
-  ChromeCookieImportError,
-  discoverChromeCookieProfiles,
-  prepareChromeCookies,
-  type ChromeCookieImportErrorCode
-} from "../browser/chromeCookieImport.ts";
-import { createChromeCookieProfileDiscovery } from "../browser/chromeCookieImportDiscovery.ts";
 import {
   BROWSER_CHROME_COOKIE_IMPORT_FLAG,
   isFeatureEnabled
@@ -69,24 +61,17 @@ export function registerBrowserIpc(
 ): void {
   const logger = getDesktopLogger();
   const preparedDownloadSessions = new WeakSet<Electron.Session>();
-  const chromeCookieImportEnabled = (): boolean =>
-    process.platform === "darwin" &&
-    isFeatureEnabled(
-      preferences.getFeatureFlags(),
-      BROWSER_CHROME_COOKIE_IMPORT_FLAG
-    );
-
-  const discoverChromeProfilesOnce = createChromeCookieProfileDiscovery({
-    discoverProfiles: discoverChromeCookieProfiles,
+  const chromeCookieImport = createMacosChromeCookieImportAdapter({
     isEnabled: () =>
       isFeatureEnabled(
         preferences.getFeatureFlags(),
         BROWSER_CHROME_COOKIE_IMPORT_FLAG
       ),
-    platform: process.platform
+    logger
   });
 
   registerBrowserNodeElectronMain({
+    ...chromeCookieImport,
     channels: {
       ...desktopIpcChannels.browser,
       openDevTools: isBrowserDevToolsEnabled()
@@ -106,7 +91,6 @@ export function registerBrowserIpc(
       return resolveOwnerWindowFromEvent(event as Electron.IpcMainInvokeEvent);
     },
     getPreferredColorScheme: () => getPreferredColorScheme(preferences),
-    discoverChromeCookieProfiles: discoverChromeProfilesOnce,
     logger,
     notifyCookieImportResult({ ownerWindow, result, source }) {
       if (
@@ -147,41 +131,6 @@ export function registerBrowserIpc(
       if (!preparedDownloadSessions.has(browserSession)) {
         browserSession.setDownloadPath(app.getPath("downloads"));
         preparedDownloadSessions.add(browserSession);
-      }
-    },
-    async prepareChromeCookieImport(profileId, signal) {
-      if (!chromeCookieImportEnabled()) {
-        return failedChromeCookiePreparation(
-          "profile",
-          process.platform === "darwin" ? "disabled" : "unsupported-platform"
-        );
-      }
-      try {
-        const prepared = await prepareChromeCookies(profileId, {}, signal);
-        if (signal.aborted) {
-          return { status: "canceled" };
-        }
-        return {
-          cookies: prepared.cookies,
-          skipped: prepared.skipped,
-          status: "ready"
-        };
-      } catch (error) {
-        if (signal.aborted) {
-          return { status: "canceled" };
-        }
-        const code =
-          error instanceof ChromeCookieImportError
-            ? error.code
-            : "database_failed";
-        logger.warn?.("Chrome Cookie import preparation failed", {
-          code,
-          stage: chromeCookieFailureStage(code)
-        });
-        return failedChromeCookiePreparation(
-          chromeCookieFailureStage(code),
-          code
-        );
       }
     },
     registerHandler(channel, handler) {
@@ -300,38 +249,6 @@ export function registerBrowserIpc(
       webContentsId: event.sender.id
     });
   });
-}
-
-function failedChromeCookiePreparation(
-  failureStage: BrowserNodeCookieImportFailureStage,
-  failureCode: string
-): BrowserNodeChromeCookiePreparationResult {
-  return { failureCode, failureStage, status: "failed" };
-}
-
-function chromeCookieFailureStage(
-  code: ChromeCookieImportErrorCode
-): BrowserNodeCookieImportFailureStage {
-  switch (code) {
-    case "unsupported_platform":
-    case "chrome_unavailable":
-    case "profile_not_found":
-    case "profile_invalid":
-      return "profile";
-    case "snapshot_failed":
-      return "snapshot";
-    case "keychain_denied":
-    case "keychain_timeout":
-    case "keychain_failed":
-      return "keychain";
-    case "schema_unsupported":
-    case "database_failed":
-      return "database";
-    case "cipher_incompatible":
-      return "decrypt";
-    case "integrity_failed":
-      return "integrity";
-  }
 }
 
 function isBrowserDevToolsEnabled(): boolean {

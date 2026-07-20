@@ -11,6 +11,7 @@
       "default": "./src/assets/workspace-dock-website.png"
     },
     "./bridge": "./src/bridge/index.ts",
+    "./chrome-cookie-import/macos": "./src/chrome-cookie-import/macos/index.ts",
     "./electron-main": "./src/electron-main/index.ts",
     "./electron-preload": "./src/electron-preload/index.ts",
     "./electron-renderer": "./src/electron-renderer/index.ts",
@@ -28,9 +29,10 @@
     "directory": "packages/browser/workbench-node"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/assets dist/assets",
-    "test": "node --test --experimental-strip-types ./src/**/*.test.ts",
-    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/assets dist/assets && pnpm verify:built-entries",
+    "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs",
+    "verify:built-entries": "node -e \"import('./dist/chrome-cookie-import/macos/index.js')\""
   },
   "dependencies": {
     "@tutti-os/ui-i18n-runtime": "workspace:*",
@@ -77,6 +79,10 @@
       "./bridge": {
         "types": "./dist/bridge/index.d.ts",
         "import": "./dist/bridge/index.js"
+      },
+      "./chrome-cookie-import/macos": {
+        "types": "./dist/chrome-cookie-import/macos/index.d.ts",
+        "import": "./dist/chrome-cookie-import/macos/index.js"
       },
       "./electron-main": {
         "types": "./dist/electron-main/index.d.ts",
