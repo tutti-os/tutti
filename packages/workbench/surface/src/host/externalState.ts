@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import type { WorkbenchNode } from "../core/types.ts";
 import type {
   WorkbenchHostExternalStateLookupInput,
@@ -12,6 +12,35 @@ export interface WorkbenchHostExternalState {
 }
 
 const noopSubscribe = () => () => {};
+
+function useCachedExternalSnapshot<T>(input: {
+  getSnapshot: () => T;
+  subscribe: (listener: () => void) => () => void;
+}): T {
+  const cacheRef = useRef<{ hasValue: boolean; value: T | null }>({
+    hasValue: false,
+    value: null
+  });
+  const getSnapshot = useCallback(() => {
+    if (!cacheRef.current.hasValue) {
+      cacheRef.current = {
+        hasValue: true,
+        value: input.getSnapshot()
+      };
+    }
+    return cacheRef.current.value as T;
+  }, [input.getSnapshot]);
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      input.subscribe(() => {
+        cacheRef.current.hasValue = false;
+        listener();
+      }),
+    [input.subscribe]
+  );
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
 
 export function createWorkbenchHostExternalStateLookupInput(input: {
   node: WorkbenchNode<WorkbenchHostNodeData>;
@@ -78,16 +107,14 @@ export function useWorkbenchHostExternalState(input: {
   );
 
   return {
-    externalNodeState: useSyncExternalStore(
-      subscribeNodeState,
-      getNodeState,
-      getNodeState
-    ),
-    externalWorkspaceState: useSyncExternalStore(
-      subscribeWorkspaceState,
-      getWorkspaceState,
-      getWorkspaceState
-    )
+    externalNodeState: useCachedExternalSnapshot({
+      getSnapshot: getNodeState,
+      subscribe: subscribeNodeState
+    }),
+    externalWorkspaceState: useCachedExternalSnapshot({
+      getSnapshot: getWorkspaceState,
+      subscribe: subscribeWorkspaceState
+    })
   };
 }
 

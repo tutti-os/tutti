@@ -120,7 +120,8 @@ describe("WorkbenchHost", () => {
           <WorkbenchHost
             externalStateSource={{
               getNodeState(input) {
-                return nodeStateByTypeId.get(input.typeId) ?? null;
+                const state = nodeStateByTypeId.get(input.typeId);
+                return state ? { ...state } : null;
               },
               getWorkspaceState() {
                 return null;
