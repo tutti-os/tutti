@@ -81,7 +81,10 @@ func (s *Store) applyAgentTargetsV4(ctx context.Context) error {
 func (s *Store) applyAgentTargetsV5(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationAgentTargetsV5)
 	if err != nil || applied {
-		return err
+		if err != nil {
+			return err
+		}
+		return s.seedSystemAgentTargets(ctx, unixMs(time.Now().UTC()))
 	}
 	if _, err := s.db.ExecContext(ctx, `
 ALTER TABLE agent_targets RENAME COLUMN sidebar_icon_url TO mask_icon_url;
@@ -90,7 +93,10 @@ DELETE FROM agent_targets WHERE launch_ref_json LIKE '%"type":"agent_extension"%
 `); err != nil {
 		return fmt.Errorf("replace agent target sidebar icon with mask icon: %w", err)
 	}
-	return s.recordMigration(ctx, schemaMigrationAgentTargetsV5)
+	if err := s.recordMigration(ctx, schemaMigrationAgentTargetsV5); err != nil {
+		return err
+	}
+	return s.seedSystemAgentTargets(ctx, unixMs(time.Now().UTC()))
 }
 
 func (s *Store) seedSystemAgentTargets(ctx context.Context, now int64) error {
@@ -107,8 +113,105 @@ func (s *Store) seedSystemAgentTargets(ctx context.Context, now int64) error {
 	if s.opts.SeedSystemTargets == nil {
 		return nil
 	}
+	hasIconURL, err := s.hasColumn(ctx, "agent_targets", "icon_url")
+	if err != nil {
+		return err
+	}
+	hasMaskIconURL, err := s.hasColumn(ctx, "agent_targets", "mask_icon_url")
+	if err != nil {
+		return err
+	}
+	hasHeroImageURL, err := s.hasColumn(ctx, "agent_targets", "hero_image_url")
+	if err != nil {
+		return err
+	}
+	hasIconColumns := hasIconURL && hasMaskIconURL && hasHeroImageURL
 	for _, target := range s.opts.SeedSystemTargets(now) {
+		if !hasIconColumns {
+			if err := s.seedSystemAgentTargetWithoutIconColumns(ctx, target, now); err != nil {
+				return err
+			}
+			continue
+		}
 		if _, err := s.db.ExecContext(ctx, `
+INSERT OR IGNORE INTO agent_targets (
+  id,
+  provider,
+  launch_ref_json,
+  name,
+  icon_key,
+  icon_url,
+  mask_icon_url,
+  hero_image_url,
+  enabled,
+  source,
+  sort_order,
+  created_at_ms,
+  updated_at_ms
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, target.ID, target.Provider, target.LaunchRefJSON, target.Name, target.IconKey, target.IconURL, target.MaskIconURL, target.HeroImageURL, target.Enabled, target.Source, target.SortOrder, target.CreatedAtUnixMS, target.UpdatedAtUnixMS); err != nil {
+			return fmt.Errorf("seed system agent target %q: %w", target.ID, err)
+		}
+		if target.Source != systemTargetSource {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, `
+UPDATE agent_targets
+SET provider = ?,
+    launch_ref_json = ?,
+    name = ?,
+    icon_key = ?,
+    icon_url = ?,
+    mask_icon_url = ?,
+    hero_image_url = ?,
+    enabled = ?,
+    sort_order = ?,
+    updated_at_ms = ?
+WHERE id = ?
+  AND source = ?
+  AND (
+    provider != ? OR
+    launch_ref_json != ? OR
+    name != ? OR
+    COALESCE(icon_key, '') != ? OR
+    COALESCE(icon_url, '') != ? OR
+    COALESCE(mask_icon_url, '') != ? OR
+    COALESCE(hero_image_url, '') != ? OR
+    enabled != ? OR
+    sort_order != ?
+  )
+`,
+			target.Provider,
+			target.LaunchRefJSON,
+			target.Name,
+			target.IconKey,
+			target.IconURL,
+			target.MaskIconURL,
+			target.HeroImageURL,
+			target.Enabled,
+			target.SortOrder,
+			now,
+			target.ID,
+			systemTargetSource,
+			target.Provider,
+			target.LaunchRefJSON,
+			target.Name,
+			target.IconKey,
+			target.IconURL,
+			target.MaskIconURL,
+			target.HeroImageURL,
+			target.Enabled,
+			target.SortOrder,
+		); err != nil {
+			return fmt.Errorf("refresh system agent target %q: %w", target.ID, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) seedSystemAgentTargetWithoutIconColumns(ctx context.Context, target Target, now int64) error {
+	if _, err := s.db.ExecContext(ctx, `
 INSERT OR IGNORE INTO agent_targets (
   id,
   provider,
@@ -123,12 +226,12 @@ INSERT OR IGNORE INTO agent_targets (
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, target.ID, target.Provider, target.LaunchRefJSON, target.Name, target.IconKey, target.Enabled, target.Source, target.SortOrder, target.CreatedAtUnixMS, target.UpdatedAtUnixMS); err != nil {
-			return fmt.Errorf("seed system agent target %q: %w", target.ID, err)
-		}
-		if target.Source != systemTargetSource {
-			continue
-		}
-		if _, err := s.db.ExecContext(ctx, `
+		return fmt.Errorf("seed system agent target %q: %w", target.ID, err)
+	}
+	if target.Source != systemTargetSource {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `
 UPDATE agent_targets
 SET provider = ?,
     launch_ref_json = ?,
@@ -148,24 +251,23 @@ WHERE id = ?
     sort_order != ?
   )
 `,
-			target.Provider,
-			target.LaunchRefJSON,
-			target.Name,
-			target.IconKey,
-			target.Enabled,
-			target.SortOrder,
-			now,
-			target.ID,
-			systemTargetSource,
-			target.Provider,
-			target.LaunchRefJSON,
-			target.Name,
-			target.IconKey,
-			target.Enabled,
-			target.SortOrder,
-		); err != nil {
-			return fmt.Errorf("refresh system agent target %q: %w", target.ID, err)
-		}
+		target.Provider,
+		target.LaunchRefJSON,
+		target.Name,
+		target.IconKey,
+		target.Enabled,
+		target.SortOrder,
+		now,
+		target.ID,
+		systemTargetSource,
+		target.Provider,
+		target.LaunchRefJSON,
+		target.Name,
+		target.IconKey,
+		target.Enabled,
+		target.SortOrder,
+	); err != nil {
+		return fmt.Errorf("refresh system agent target %q: %w", target.ID, err)
 	}
 	return nil
 }

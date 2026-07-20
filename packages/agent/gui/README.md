@@ -220,8 +220,9 @@ targets from presentation metadata.
 
 Agent names, primary icons, optional conversation-mask icons, and optional
 home-carousel artwork come from `agents[].name`, `agents[].iconUrl`,
-`agents[].maskIconUrl`, and `agents[].heroImageUrl`. All identity surfaces use
-`iconUrl`; conversation rows use `maskIconUrl` where present.
+`agents[].maskIconUrl`, and `agents[].heroImageUrl`. Hosts must pass fully
+resolved presentation URLs from their authoritative directory. All identity
+surfaces use `iconUrl`; conversation rows use `maskIconUrl` where present.
 `owner.avatarUrl` is rendered separately as an ownership badge. Invalid entries
 and duplicate `agentTargetId` values are discarded by
 `normalizeAgentGUIAgents`, with the first occurrence preserving host order.
@@ -234,12 +235,10 @@ directly. With multiple agents, it shows `All` plus the host-ordered agent rail
 and empty-home carousel. Hosts may customize the aggregate icon with
 `allAgentsPresentation.iconUrl`.
 
-Hosts adapting daemon-owned agent targets must resolve the target's descriptor
-`iconKey` instead of assuming it equals the provider ID. The narrow
-`@tutti-os/agent-gui/provider-icons` subpath exports
-`resolveProviderIconAsset(iconKey, variant)` for that adapter seam. Unknown
-keys return `null`; hosts should render a neutral icon rather than silently
-substituting another provider's icon.
+Daemon-owned system targets seed and refresh their `iconUrl` and `maskIconUrl`
+from the target descriptor `iconKey`. AgentGUI consumers must not synthesize
+built-in target icons from provider IDs or `iconKey`; stale or missing directory
+presentation should be fixed in the source directory.
 
 Hosts that need provider identity presentation may call
 `resolveAgentGUIProviderIdentity(value)` from the narrow

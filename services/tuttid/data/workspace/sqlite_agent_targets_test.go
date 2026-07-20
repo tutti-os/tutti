@@ -44,6 +44,16 @@ func TestSQLiteStoreSeedsSystemAgentTargets(t *testing.T) {
 		if target.Source != agenttargetbiz.SourceSystem {
 			t.Fatalf("target %q source = %q, want system", target.ID, target.Source)
 		}
+		if target.IconURL == "" {
+			t.Fatalf("target %q icon url missing", target.ID)
+		}
+		if target.IconKey == "hermes" || target.IconKey == "openclaw" {
+			if target.MaskIconURL != "" {
+				t.Fatalf("target %q mask icon url = %q, want empty image fallback", target.ID, target.MaskIconURL)
+			}
+		} else if target.MaskIconURL == "" {
+			t.Fatalf("target %q mask icon url missing", target.ID)
+		}
 		if _, err := agenttargetbiz.CanonicalLaunchRefJSONString(target.Provider, target.LaunchRefJSON); err != nil {
 			t.Fatalf("target %q launch ref invalid: %v", target.ID, err)
 		}

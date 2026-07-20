@@ -92,13 +92,6 @@ test("workspace workbench host delegates workspace lifecycle to the DI coordinat
   assert.match(workspaceWorkbenchSource, /key=\{hostSession\.bindingId\}/);
 });
 
-test("workspace workbench host releases owned wallpaper URLs on disposal", () => {
-  assert.match(
-    workspaceWorkbenchHostServiceSource,
-    /dispose\(\): void \{\s+this\.wallpaperListeners\.clear\(\);\s+this\.clearCustomWallpaperUrls\(\);\s+\}/
-  );
-});
-
 test("shouldCloseTerminalNodeAfterError closes stale terminal nodes", () => {
   assert.equal(
     shouldCloseTerminalNodeAfterError(

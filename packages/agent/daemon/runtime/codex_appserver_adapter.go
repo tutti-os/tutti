@@ -87,33 +87,23 @@ const (
 // Codex-compatible forks (Tutti Agent) without sharing brand, command, or
 // auth assumptions.
 type appServerAdapterConfig struct {
-	provider            string
-	runtimeName         string
-	displayName         string
-	command             []string
-	clientInfoName      string
-	authRequiredMessage string
-	sandboxPolicy       CodexAppServerSandboxPolicy
+	provider             string
+	runtimeName          string
+	displayName          string
+	command              []string
+	clientInfoName       string
+	authRequiredMessage  string
+	commandNetworkAccess bool
 }
 
-// CodexAppServerSandboxPolicy controls only the Codex process sandbox sent to
-// app-server. Application approval policy and reviewer routing continue to
-// come from the session permission mode.
-type CodexAppServerSandboxPolicy string
-
-const (
-	// CodexAppServerSandboxPolicyPermissionMode preserves the default Codex
-	// behavior: each application permission mode selects its matching sandbox.
-	// This is the zero value so existing hosts keep their current behavior.
-	CodexAppServerSandboxPolicyPermissionMode CodexAppServerSandboxPolicy = ""
-	// CodexAppServerSandboxPolicyDangerFullAccess disables the Codex process
-	// sandbox while leaving application approval and reviewer routing intact.
-	// Hosts should use this only when an outer execution sandbox is authoritative.
-	CodexAppServerSandboxPolicyDangerFullAccess CodexAppServerSandboxPolicy = "danger-full-access"
-)
-
+// CodexAppServerAdapterOptions controls host-owned app-server execution policy
+// without changing the provider-native permission-mode mapping.
 type CodexAppServerAdapterOptions struct {
-	SandboxPolicy CodexAppServerSandboxPolicy
+	// CommandNetworkAccess enables network access for commands and subprocesses
+	// in the read-only and workspace-write sandboxes. Filesystem access,
+	// approval policy, and approval reviewer remain owned by the selected
+	// permission mode. Network proxy configuration remains a separate concern.
+	CommandNetworkAccess bool
 }
 
 // defaultCodexAppServerCancelGraceWindow is how long Cancel waits for codex to
@@ -353,7 +343,7 @@ func NewCodexAppServerAdapterWithHostMetadataAndOptions(
 	options CodexAppServerAdapterOptions,
 ) *CodexAppServerAdapter {
 	adapter := NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(transport, host, nil)
-	adapter.config.sandboxPolicy = validatedCodexAppServerSandboxPolicy(options.SandboxPolicy)
+	adapter.config.commandNetworkAccess = options.CommandNetworkAccess
 	return adapter
 }
 
@@ -412,15 +402,6 @@ func newAppServerAdapter(
 		sessions:          make(map[string]*codexAppServerSession),
 		lifecycleLocks:    make(map[string]*codexAppServerSessionLock),
 		cancelGraceWindow: defaultCodexAppServerCancelGraceWindow,
-	}
-}
-
-func validatedCodexAppServerSandboxPolicy(policy CodexAppServerSandboxPolicy) CodexAppServerSandboxPolicy {
-	switch policy {
-	case CodexAppServerSandboxPolicyPermissionMode, CodexAppServerSandboxPolicyDangerFullAccess:
-		return policy
-	default:
-		panic(fmt.Sprintf("unsupported Codex app-server sandbox policy %q", policy))
 	}
 }
 

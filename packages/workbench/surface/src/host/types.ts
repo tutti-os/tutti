@@ -295,6 +295,14 @@ export interface WorkbenchHostDockEntry {
   visibility?: WorkbenchHostDockEntryVisibility;
 }
 
+export type WorkbenchHostDockEntryPresentationOverride = Readonly<
+  Partial<Pick<WorkbenchHostDockEntry, "dockRetention" | "visibility">>
+>;
+
+export type WorkbenchHostDockEntryPresentationOverrides = Readonly<
+  Record<string, WorkbenchHostDockEntryPresentationOverride>
+>;
+
 export type WorkbenchHostDockEntryDynamicState = Partial<
   Pick<
     WorkbenchHostDockEntry,
@@ -615,6 +623,7 @@ export interface WorkbenchHostProps {
   dockPreviewCache?: WorkbenchDockPreviewCache;
   dockPlacement?: WorkbenchDockPlacement;
   dockEntries?: readonly WorkbenchHostDockEntry[];
+  dockEntryPresentationOverrides?: WorkbenchHostDockEntryPresentationOverrides;
   dockStateSource?: WorkbenchHostDockEntryStateSource;
   externalStateSource?: WorkbenchHostExternalStateSource;
   i18n?: I18nRuntime<string>;

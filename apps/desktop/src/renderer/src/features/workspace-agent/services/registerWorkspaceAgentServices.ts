@@ -38,10 +38,6 @@ export interface WorkspaceAgentServiceRegistrationInput {
     DesktopRuntimeApi,
     "logRendererDiagnostic" | "logTerminalDiagnostic"
   >;
-  resolveAgentTargetIconUrl?: (identity: {
-    iconKey: string | null;
-    provider: string;
-  }) => string;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
   workspaceId: string;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
@@ -93,7 +89,6 @@ export function registerWorkspaceAgentServices(
     );
   startManagedAgentInstallBootstraps(agentProviderStatusService);
   const agentsService = new DesktopAgentsService({
-    resolveAgentTargetIconUrl: input.resolveAgentTargetIconUrl,
     tuttidClient: input.tuttidClient
   });
   registry.registerInstance(IAgentsService, agentsService);

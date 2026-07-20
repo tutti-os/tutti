@@ -128,6 +128,28 @@ describe("AgentTargetSetupGate", () => {
     expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 
+  it("reinstalls from a persisted failed install action", async () => {
+    const install = vi.fn<AgentHostAgentTargetSetupWatch["install"]>();
+    const setup = createWatch(failedInstall("extension:codebuddy"), {
+      install
+    });
+    installHost(new Map([["extension:codebuddy", setup.watch]]));
+
+    render(<Harness openDialog target={codebuddyTarget} />);
+
+    expect(await screen.findByText("Runtime setup failed")).toBeTruthy();
+    expect(screen.getByText("fixture install failed")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reinstall runtime" }));
+
+    await waitFor(() => expect(install).toHaveBeenCalledTimes(1));
+    expect(install.mock.calls[0]?.[0]).toMatchObject({
+      planDigest: "a".repeat(64)
+    });
+    expect(install.mock.calls[0]?.[0].clientActionId).not.toBe(
+      "failed-client-action"
+    );
+  });
+
   it("authenticates with the selected method and renders action errors", async () => {
     const authenticate =
       vi.fn<AgentHostAgentTargetSetupWatch["authenticate"]>();
@@ -416,6 +438,27 @@ function authRequired(agentTargetId: string): AgentHostAgentTargetSetupState {
       reason: null,
       plan: null,
       action: null
+    },
+    loading: false,
+    failed: false
+  };
+}
+
+function failedInstall(agentTargetId: string): AgentHostAgentTargetSetupState {
+  return {
+    snapshot: {
+      ...notInstalled(agentTargetId).snapshot!,
+      status: "failed",
+      reason: "install_failed",
+      action: {
+        actionId: "failed-install-action",
+        clientActionId: "failed-client-action",
+        kind: "install",
+        status: "failed",
+        phase: "complete",
+        errorCode: "install_failed",
+        errorMessage: "fixture install failed"
+      }
     },
     loading: false,
     failed: false

@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 const defaultPort = 9223;
-const defaultCategories = [
+export const defaultTraceCategories = [
   "devtools.timeline",
   "disabled-by-default-devtools.timeline",
   "disabled-by-default-devtools.timeline.frame",
@@ -41,7 +41,7 @@ export async function main(argv) {
   const outputPath = resolve(
     expandHome(options.output ?? defaultOutputPath(new Date()))
   );
-  const categories = options.categories ?? defaultCategories;
+  const categories = options.categories ?? defaultTraceCategories;
   if (durationMs == null && !process.stdin.isTTY) {
     throw new Error("stdin is not interactive; pass --duration <seconds>");
   }
@@ -87,7 +87,7 @@ export async function main(argv) {
   }
 }
 
-async function resolveBrowserWebSocketUrl(port) {
+export async function resolveBrowserWebSocketUrl(port) {
   const baseUrl = `http://127.0.0.1:${port}`;
   const version = await fetchJson(`${baseUrl}/json/version`).catch((error) => {
     throw new Error(
@@ -114,6 +114,21 @@ async function resolveBrowserWebSocketUrl(port) {
   throw new Error(`no browser or page websocket found at ${baseUrl}`);
 }
 
+export async function resolvePageWebSocketUrl(port) {
+  const targets = await fetchJson(`http://127.0.0.1:${port}/json/list`);
+  const pageTarget = Array.isArray(targets)
+    ? targets.find(
+        (target) =>
+          target?.type === "page" &&
+          typeof target.webSocketDebuggerUrl === "string"
+      )
+    : null;
+  if (!pageTarget) {
+    throw new Error(`no page websocket found at http://127.0.0.1:${port}`);
+  }
+  return pageTarget.webSocketDebuggerUrl;
+}
+
 async function fetchJson(url) {
   const response = await fetch(url);
   if (!response.ok) {
@@ -122,7 +137,7 @@ async function fetchJson(url) {
   return await response.json();
 }
 
-async function writeStreamToFile(client, stream, outputPath) {
+export async function writeStreamToFile(client, stream, outputPath) {
   const file = createWriteStream(outputPath, { flags: "w" });
   let bytes = 0;
 
@@ -160,7 +175,7 @@ async function writeStreamToFile(client, stream, outputPath) {
   return bytes;
 }
 
-class CdpClient {
+export class CdpClient {
   static async connect(url) {
     const socket = new WebSocket(url);
     const client = new CdpClient(socket);

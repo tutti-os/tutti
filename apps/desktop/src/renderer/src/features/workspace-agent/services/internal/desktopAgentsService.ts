@@ -9,10 +9,6 @@ import type {
 export interface DesktopAgentsServiceDependencies {
   clearTimeout?: (timer: ReturnType<typeof setTimeout>) => void;
   now?: () => number;
-  resolveAgentTargetIconUrl?: (identity: {
-    iconKey: string | null;
-    provider: string;
-  }) => string;
   retryDelayMs?: number;
   setTimeout?: (
     callback: () => void,
@@ -131,10 +127,7 @@ export class DesktopAgentsService implements IAgentsService {
         return this.snapshot;
       }
       const daemonAgentTargets = mapAgentTargetsToPresentations(
-        response.targets,
-        {
-          resolveAgentTargetIconUrl: this.dependencies.resolveAgentTargetIconUrl
-        }
+        response.targets
       );
       const agentTargets = daemonAgentTargets;
       const agents = mapAgentTargetPresentationsToAgents(daemonAgentTargets);
@@ -201,24 +194,10 @@ export class DesktopAgentsService implements IAgentsService {
 }
 
 export function mapAgentTargetsToPresentations(
-  targets: readonly AgentTarget[],
-  options: {
-    resolveAgentTargetIconUrl?: (identity: {
-      iconKey: string | null;
-      provider: string;
-    }) => string;
-  } = {}
+  targets: readonly AgentTarget[]
 ): readonly AgentTargetPresentation[] {
   return [...targets].sort(compareAgentTargetsForDisplay).map((target) => {
-    const isExtension = target.launchRef.type === "agent_extension";
-    const iconUrl =
-      target.iconUrl?.trim() ||
-      (isExtension
-        ? ""
-        : (options.resolveAgentTargetIconUrl?.({
-            iconKey: target.iconKey?.trim() || null,
-            provider: target.provider
-          }) ?? ""));
+    const iconUrl = target.iconUrl?.trim() ?? "";
     return {
       agentTargetId: target.id,
       createdAtUnixMs: target.createdAtUnixMs,

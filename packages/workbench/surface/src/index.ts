@@ -44,6 +44,8 @@ export type {
   WorkbenchHostDockEntryBadge,
   WorkbenchHostDockEntryDynamicState,
   WorkbenchHostDockEntryLaunchBehavior,
+  WorkbenchHostDockEntryPresentationOverride,
+  WorkbenchHostDockEntryPresentationOverrides,
   WorkbenchHostDockEntryStateSource,
   WorkbenchHostDockPopupItemDescriptor,
   WorkbenchHostDockPopupItemInput,

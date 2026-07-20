@@ -1378,6 +1378,35 @@ invalid_grant`. Search `tuttid.log` for
   [AgentTargetSetupGate.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentTargetSetupGate.tsx)
   [agentTargetSetupNotificationController.ts](../../../packages/agent/gui/shared/agentEnv/agentTargetSetupNotificationController.ts)
 
+### Extension runtime installation stays failed after restart
+
+- Symptom:
+  An Agent Extension runtime install fails once. Reopening Tutti restores the
+  same failure, and checking again never offers or starts another installation.
+- Quick checks:
+  Inspect the setup snapshot. If it contains a failed or interrupted install
+  action plus a non-null install plan, the daemon has enough information to
+  retry. Confirm the visible action starts `setup/install` with a new
+  `clientActionId`; a setup GET only refreshes the persisted failure.
+- Root cause:
+  Failed setup actions are durable by design. The setup panel rendered its
+  install button only for `not_installed`, while mapping failed/interrupted
+  install actions to `failed`. Its generic check-again action only fetched the
+  same durable snapshot, so restart could not change the state.
+- Fix:
+  Keep the failed action and provider error visible. When a failed or
+  interrupted install snapshot retains a plan, offer an explicit reinstall
+  action that submits the plan digest with a fresh client action ID. Do not
+  erase the previous failure or treat a GET refresh as a retry.
+- Validation:
+  Mount the setup panel from an initial persisted failed-install snapshot,
+  verify the error remains visible, and assert reinstall submits the retained
+  plan with a client action ID different from the failed action.
+- References:
+  [setup.go](../../../services/tuttid/service/agentextension/setup.go)
+  [AgentTargetSetupGate.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentTargetSetupGate.tsx)
+  [agentTargetSetupController.tsx](../../../packages/agent/gui/shared/agentEnv/agentTargetSetupController.tsx)
+
 ### Vertex setup reports ready but the first prompt cannot load credentials
 
 - Symptom:
