@@ -28,6 +28,7 @@ import type {
   AgentGuiWorkbenchSessionAction,
   AgentGuiWorkbenchSessionMenuCopy
 } from "./sessionActions.ts";
+import type { AgentGuiWorkbenchSessionMenuAdditionalAction } from "./AgentGuiWorkbenchSessionMenu.tsx";
 
 const LazyAgentRichTextReadonly = lazy(() =>
   import("../shared/AgentRichTextReadonly.tsx").then((module) => ({
@@ -74,6 +75,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   providerRailWidthPx?: number | null;
   primaryAccessory?: ReactNode;
   secondaryAccessory?: ReactNode;
+  sessionMenuAdditionalActions?: readonly AgentGuiWorkbenchSessionMenuAdditionalAction[];
   sessionMenuActions?: readonly AgentGuiWorkbenchSessionAction[];
   conversationTitle?: string | null;
   conversationTitleDisplayPrompt?: string | null;
@@ -107,6 +109,7 @@ export function AgentGuiWorkbenchHeader({
   providerRailWidthPx,
   primaryAccessory,
   secondaryAccessory,
+  sessionMenuAdditionalActions,
   sessionMenuActions,
   conversationTitle,
   conversationTitleDisplayPrompt,
@@ -145,6 +148,7 @@ export function AgentGuiWorkbenchHeader({
     onSessionAction && copy.sessionMenu && sessionTitle && !hasBodyRenderError
       ? createElement(AgentGuiWorkbenchSessionMenu, {
           actions: sessionMenuActions,
+          additionalActions: sessionMenuAdditionalActions,
           copy: copy.sessionMenu,
           onAction: onSessionAction
         })
