@@ -44,7 +44,10 @@ import {
   resolveWorkbenchHostDockScrollState,
   type WorkbenchHostDockScrollState
 } from "./dockScrollState.ts";
-import { readWorkbenchHostExternalState } from "./externalState.ts";
+import {
+  createWorkbenchHostExternalStateLookupInput,
+  readWorkbenchHostExternalState
+} from "./externalState.ts";
 import {
   resolveWorkbenchMinimizedDockSlots,
   type WorkbenchMinimizedDockNode,
@@ -1097,13 +1100,29 @@ export function WorkbenchHostDock({
 
   useEffect(() => {
     const shouldSubscribe = activePopup !== null || hasMinimizedPreviewCapture;
-    if (!shouldSubscribe || !externalStateSource?.subscribe) {
+    if (!shouldSubscribe || !externalStateSource?.subscribeNodeState) {
       return undefined;
     }
-    return externalStateSource.subscribe(() => {
-      setExternalStateRevision((revision) => revision + 1);
-    });
-  }, [activePopup, externalStateSource, hasMinimizedPreviewCapture]);
+    const nodes = activePopup ? context.nodes : context.minimizedNodes;
+    const disposers = nodes.map((node) =>
+      externalStateSource.subscribeNodeState?.(
+        createWorkbenchHostExternalStateLookupInput({ node, workspaceId }),
+        () => setExternalStateRevision((revision) => revision + 1)
+      )
+    );
+    return () => {
+      for (const dispose of disposers) {
+        dispose?.();
+      }
+    };
+  }, [
+    activePopup,
+    context.minimizedNodes,
+    context.nodes,
+    externalStateSource,
+    hasMinimizedPreviewCapture,
+    workspaceId
+  ]);
 
   useEffect(() => {
     const nextAttentionIds = new Set<string>();

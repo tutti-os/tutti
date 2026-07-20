@@ -166,33 +166,84 @@ function createWorkspaceFilesExternalStateSource(input: {
   WorkspaceFileManagerPersistedState | null,
   null
 > {
+  const stateByWorkspaceId = new Map<
+    string,
+    WorkspaceFileManagerPersistedState
+  >();
+
   return {
     getNodeState(request) {
       if (!isWorkspaceFilesExternalStateRequest(request)) {
         return null;
       }
-      return input.workspaceFileManagerService.getSnapshotState(
-        input.workspaceId
+      return reuseWorkspaceFilesExternalState(
+        stateByWorkspaceId,
+        input.workspaceId,
+        input.workspaceFileManagerService.getSnapshotState(input.workspaceId)
       );
     },
     getSnapshotNodeState(request) {
       if (!isWorkspaceFilesExternalStateRequest(request)) {
         return null;
       }
-      return input.workspaceFileManagerService.getSnapshotState(
-        input.workspaceId
+      return reuseWorkspaceFilesExternalState(
+        stateByWorkspaceId,
+        input.workspaceId,
+        input.workspaceFileManagerService.getSnapshotState(input.workspaceId)
       );
     },
     getWorkspaceState() {
       return null;
     },
-    subscribe(listener) {
+    subscribeNodeState(request, listener) {
+      if (!isWorkspaceFilesExternalStateRequest(request)) {
+        return () => {};
+      }
       return input.workspaceFileManagerService.subscribe(
         input.workspaceId,
         listener
       );
     }
   };
+}
+
+function reuseWorkspaceFilesExternalState(
+  stateByWorkspaceId: Map<string, WorkspaceFileManagerPersistedState>,
+  workspaceId: string,
+  next: WorkspaceFileManagerPersistedState | null
+): WorkspaceFileManagerPersistedState | null {
+  const previous = stateByWorkspaceId.get(workspaceId) ?? null;
+  if (!next) {
+    stateByWorkspaceId.delete(workspaceId);
+    return null;
+  }
+  if (
+    previous?.currentDirectoryPath === next.currentDirectoryPath &&
+    previous.selectedLocationId === next.selectedLocationId &&
+    previous.schemaVersion === next.schemaVersion &&
+    sameWorkspaceFilesPathStack(
+      previous.navigationBackStack,
+      next.navigationBackStack
+    ) &&
+    sameWorkspaceFilesPathStack(
+      previous.navigationForwardStack,
+      next.navigationForwardStack
+    )
+  ) {
+    return previous;
+  }
+  stateByWorkspaceId.set(workspaceId, next);
+  return next;
+}
+
+function sameWorkspaceFilesPathStack(
+  left: readonly string[],
+  right: readonly string[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((path, index) => path === right[index])
+  );
 }
 
 function isWorkspaceFilesExternalStateRequest(

@@ -372,10 +372,44 @@ func TestRenderProviderSkillBundleGatesOptionalSkills(t *testing.T) {
 		t.Fatalf("browser skill content = %q", browserSkill.Content)
 	}
 	computerSkill := skillBundleRecord(withOptional.Skills, "computer-use")
-	if !strings.Contains(computerSkill.Content, "tutti-dev computer screenshot") ||
-		strings.Contains(computerSkill.Content, "{{CLI_COMMAND}}") ||
-		strings.Contains(computerSkill.Content, "tutti computer") {
-		t.Fatalf("computer skill content = %q", computerSkill.Content)
+	for _, want := range []string{
+		"tutti-dev computer screenshot --json",
+		"tutti-dev computer click --pid <pid> --window-id <window-id>",
+		"tutti-dev computer scroll --pid <pid> --window-id <window-id>",
+		"tutti-dev computer tool list --json",
+		"tutti-dev computer tool describe --name <tool> --json",
+		"--name get_config",
+		"--name set_config",
+		"--name get_desktop_state",
+		"--name click",
+		`{"capture_scope":"desktop"}`,
+		`"scope":"desktop"`,
+		"persists globally",
+		"Desktop scrolling is not supported",
+		"computer move-cursor --x <screen-point-x> --y <screen-point-y>",
+		"`move-cursor` is scope-less",
+		"element_token",
+		"never driver-verified",
+		`"delivery_mode":"foreground"`,
+		"not evidence of where a click landed",
+	} {
+		if !strings.Contains(computerSkill.Content, want) {
+			t.Fatalf("computer skill missing %q: %q", want, computerSkill.Content)
+		}
+	}
+	for _, forbidden := range []string{
+		"computer screenshot --scope",
+		"computer click --scope",
+		"computer scroll --scope",
+		"cua-driver config set capture_scope desktop",
+		"operator must",
+		"`set_config` is not authorized",
+		"{{CLI_COMMAND}}",
+		"tutti computer",
+	} {
+		if strings.Contains(computerSkill.Content, forbidden) {
+			t.Fatalf("computer skill retains synthetic scope or unresolved command %q: %q", forbidden, computerSkill.Content)
+		}
 	}
 }
 

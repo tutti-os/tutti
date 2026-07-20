@@ -137,6 +137,20 @@ They must not own:
 - app-specific daemon client creation
 - product-specific enablement or routing policy
 
+### External State Subscription
+
+External state is node-scoped. `WorkbenchHostExternalStateSource` exposes
+`subscribeNodeState(input, listener)` and, when a node renderer consumes shared
+workspace state, `subscribeWorkspaceState(input, listener)`. The host binds
+those subscriptions at node-renderer leaves; it does not maintain a host-wide
+external-state revision.
+
+Source snapshots returned by `getNodeState(...)` and `getWorkspaceState(...)`
+must preserve reference identity until their observable slice changes. A
+contribution must not aggregate unrelated capability, room, or shell state into
+one workspace snapshot. If a capability has no live state, it omits the
+corresponding subscription method.
+
 ### Consuming hosts such as `apps/desktop`
 
 The consuming host should continue to own:

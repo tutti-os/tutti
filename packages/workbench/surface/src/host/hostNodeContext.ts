@@ -3,7 +3,10 @@ import type {
   WorkbenchRenderNodeContext,
   WorkbenchRenderWindowHeader
 } from "../react/types.ts";
-import { readWorkbenchHostExternalState } from "./externalState.ts";
+import {
+  readWorkbenchHostExternalState,
+  type WorkbenchHostExternalState
+} from "./externalState.ts";
 import { createWorkbenchHostNodeHeaderWindowActions } from "./windowActions.ts";
 import type {
   WorkbenchHostExternalStateSource,
@@ -19,6 +22,7 @@ export function createWorkbenchHostNodeBodyContext<
   TExternalWorkspaceState
 >({
   context,
+  externalState,
   externalStateSource,
   host,
   workspaceId
@@ -28,21 +32,25 @@ export function createWorkbenchHostNodeBodyContext<
     TExternalNodeState,
     TExternalWorkspaceState
   >;
+  externalState?: WorkbenchHostExternalState;
   externalStateSource?: WorkbenchHostExternalStateSource;
   host: WorkbenchHostHandle;
   workspaceId: string;
 }): WorkbenchHostNodeBodyContext<TExternalNodeState, TExternalWorkspaceState> {
-  const externalState = readWorkbenchHostExternalState({
-    externalStateSource,
-    node: context.node,
-    workspaceId
-  });
+  const resolvedExternalState =
+    externalState ??
+    readWorkbenchHostExternalState({
+      externalStateSource,
+      node: context.node,
+      workspaceId
+    });
   return {
     activation: context.node.data.activation ?? null,
     displayMode: context.node.displayMode,
-    externalNodeState: externalState.externalNodeState as TExternalNodeState,
+    externalNodeState:
+      resolvedExternalState.externalNodeState as TExternalNodeState,
     externalWorkspaceState:
-      externalState.externalWorkspaceState as TExternalWorkspaceState,
+      resolvedExternalState.externalWorkspaceState as TExternalWorkspaceState,
     focus() {
       host.focusNode(context.node.id);
     },
@@ -69,6 +77,7 @@ export function createWorkbenchHostNodeHeaderContext<
   TExternalWorkspaceState
 >({
   context,
+  externalState,
   externalStateSource,
   host,
   workspaceId
@@ -78,6 +87,7 @@ export function createWorkbenchHostNodeHeaderContext<
     TExternalNodeState,
     TExternalWorkspaceState
   >;
+  externalState?: WorkbenchHostExternalState;
   externalStateSource?: WorkbenchHostExternalStateSource;
   host: WorkbenchHostHandle;
   workspaceId: string;
@@ -85,20 +95,23 @@ export function createWorkbenchHostNodeHeaderContext<
   TExternalNodeState,
   TExternalWorkspaceState
 > {
-  const externalState = readWorkbenchHostExternalState({
-    externalStateSource,
-    node: context.node,
-    workspaceId
-  });
+  const resolvedExternalState =
+    externalState ??
+    readWorkbenchHostExternalState({
+      externalStateSource,
+      node: context.node,
+      workspaceId
+    });
 
   return {
     activation: context.node.data.activation ?? null,
     defaultActions: context.defaultActions,
     displayMode: context.node.displayMode,
     dragHandleProps: context.dragHandleProps,
-    externalNodeState: externalState.externalNodeState as TExternalNodeState,
+    externalNodeState:
+      resolvedExternalState.externalNodeState as TExternalNodeState,
     externalWorkspaceState:
-      externalState.externalWorkspaceState as TExternalWorkspaceState,
+      resolvedExternalState.externalWorkspaceState as TExternalWorkspaceState,
     instanceId: context.node.data.instanceId,
     instanceKey: context.node.data.instanceKey ?? null,
     isFocused:

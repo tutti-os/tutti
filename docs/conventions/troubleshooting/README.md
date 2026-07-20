@@ -97,3 +97,9 @@ CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 - [New release CDN namespace returns an S3 403](./toolchain-browser-terminal.md#new-release-cdn-namespace-returns-an-s3-403)
 - [Browser Node focus pings miss iframe-hosted editors](./toolchain-browser-terminal.md#browser-node-focus-pings-miss-iframe-hosted-editors)
 - [Temporary Git fixture turns a linked worktree bare](./toolchain-browser-terminal.md#temporary-git-fixture-turns-a-linked-worktree-bare)
+
+## [Computer Use](./computer-use.md)
+
+cua-driver discovery, targeting, capture, input delivery, and result verification.
+
+- [A computer click reports success but the UI does not change](./computer-use.md#a-computer-click-reports-success-but-the-ui-does-not-change)

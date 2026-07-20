@@ -22,7 +22,10 @@ import {
   createWorkbenchHostNodeHeaderContext
 } from "./hostNodeContext.ts";
 import { WorkbenchHostWindowActions } from "./WorkbenchHostWindowActions.tsx";
-import { readWorkbenchHostExternalState } from "./externalState.ts";
+import {
+  readWorkbenchHostExternalState,
+  useWorkbenchHostExternalState
+} from "./externalState.ts";
 import {
   isWorkbenchMinimizedDockEligibleNode,
   resolveWorkbenchMinimizedDockAnchorKeyForNode,
@@ -49,7 +52,6 @@ export function useWorkbenchHostSurfaceRenderers(input: {
   dockEntries: readonly WorkbenchHostDockEntry[];
   dockStateSource?: WorkbenchHostProps["dockStateSource"];
   externalStateSource?: WorkbenchHostExternalStateSource;
-  externalStateRevision: number;
   hostI18n: WorkbenchHostI18nRuntime;
   hostSession: WorkbenchHostRuntimeHandle;
   nodeDefinitionByType: Map<string, WorkbenchHostNodeDefinition>;
@@ -213,38 +215,20 @@ export function useWorkbenchHostSurfaceRenderers(input: {
         return null;
       }
 
-      const bodyContext = createWorkbenchHostNodeBodyContext({
-        context,
-        definition,
-        externalStateSource: input.externalStateSource,
-        host: input.hostSession,
-        workspaceId: input.workspaceId
-      });
-
       return (
-        <WorkbenchHostNodeRenderErrorBoundary
+        <WorkbenchHostNodeRenderer
           debugDiagnostics={input.debugDiagnostics}
-          node={context.node}
-          onErrorChange={(hasError) =>
-            definition.onBodyRenderErrorChange?.({
-              hasError,
-              node: context.node
-            })
-          }
-          resetKey={`${context.node.id}:${context.node.data.typeId}:${input.externalStateRevision}`}
+          context={context}
+          definition={definition}
+          externalStateSource={input.externalStateSource}
+          host={input.hostSession}
           workspaceId={input.workspaceId}
-        >
-          <WorkbenchHostNodeBodyRenderer
-            context={bodyContext}
-            definition={definition}
-          />
-        </WorkbenchHostNodeRenderErrorBoundary>
+        />
       );
     },
     [
       input.debugDiagnostics,
       input.externalStateSource,
-      input.externalStateRevision,
       input.hostSession,
       input.nodeDefinitionByType,
       input.workspaceId
@@ -274,19 +258,18 @@ export function useWorkbenchHostSurfaceRenderers(input: {
         return null;
       }
 
-      return definition.renderHeader(
-        createWorkbenchHostNodeHeaderContext({
-          context,
-          definition,
-          externalStateSource: input.externalStateSource,
-          host: input.hostSession,
-          workspaceId: input.workspaceId
-        })
+      return (
+        <WorkbenchHostNodeHeaderRenderer
+          context={context}
+          definition={definition}
+          externalStateSource={input.externalStateSource}
+          host={input.hostSession}
+          workspaceId={input.workspaceId}
+        />
       );
     },
     [
       input.externalStateSource,
-      input.externalStateRevision,
       input.hostSession,
       input.nodeDefinitionByType,
       input.workspaceId
@@ -465,8 +448,89 @@ interface WorkbenchHostNodeRenderErrorBoundaryProps {
   debugDiagnostics?: WorkbenchHostProps["debugDiagnostics"];
   node: WorkbenchNode<WorkbenchHostNodeData>;
   onErrorChange?: (hasError: boolean) => void;
-  resetKey: string;
+  resetKey: unknown;
   workspaceId: string;
+}
+
+function WorkbenchHostNodeRenderer(input: {
+  context: WorkbenchRenderNodeContext<WorkbenchHostNodeData>;
+  debugDiagnostics?: WorkbenchHostProps["debugDiagnostics"];
+  definition: WorkbenchHostNodeDefinition;
+  externalStateSource?: WorkbenchHostExternalStateSource;
+  host: WorkbenchHostRuntimeHandle;
+  workspaceId: string;
+}): ReactNode {
+  const externalState = useWorkbenchHostExternalState({
+    externalStateSource: input.externalStateSource,
+    node: input.context.node,
+    workspaceId: input.workspaceId
+  });
+  const bodyContext = createWorkbenchHostNodeBodyContext({
+    context: input.context,
+    definition: input.definition,
+    externalState,
+    externalStateSource: input.externalStateSource,
+    host: input.host,
+    workspaceId: input.workspaceId
+  });
+  const resetKey = useMemo(
+    () => [
+      input.context.node.id,
+      input.context.node.data.typeId,
+      externalState.externalNodeState,
+      externalState.externalWorkspaceState
+    ],
+    [
+      externalState.externalNodeState,
+      externalState.externalWorkspaceState,
+      input.context.node.data.typeId,
+      input.context.node.id
+    ]
+  );
+
+  return (
+    <WorkbenchHostNodeRenderErrorBoundary
+      debugDiagnostics={input.debugDiagnostics}
+      node={input.context.node}
+      onErrorChange={(hasError) =>
+        input.definition.onBodyRenderErrorChange?.({
+          hasError,
+          node: input.context.node
+        })
+      }
+      resetKey={resetKey}
+      workspaceId={input.workspaceId}
+    >
+      <WorkbenchHostNodeBodyRenderer
+        context={bodyContext}
+        definition={input.definition}
+      />
+    </WorkbenchHostNodeRenderErrorBoundary>
+  );
+}
+
+function WorkbenchHostNodeHeaderRenderer(input: {
+  context: Parameters<WorkbenchRenderWindowHeader<WorkbenchHostNodeData>>[0];
+  definition: WorkbenchHostNodeDefinition;
+  externalStateSource?: WorkbenchHostExternalStateSource;
+  host: WorkbenchHostRuntimeHandle;
+  workspaceId: string;
+}): ReactNode {
+  const externalState = useWorkbenchHostExternalState({
+    externalStateSource: input.externalStateSource,
+    node: input.context.node,
+    workspaceId: input.workspaceId
+  });
+  return input.definition.renderHeader?.(
+    createWorkbenchHostNodeHeaderContext({
+      context: input.context,
+      definition: input.definition,
+      externalState,
+      externalStateSource: input.externalStateSource,
+      host: input.host,
+      workspaceId: input.workspaceId
+    })
+  );
 }
 
 interface WorkbenchHostSurfaceRenderErrorBoundaryProps {
@@ -557,7 +621,10 @@ class WorkbenchHostNodeRenderErrorBoundary extends Component<
   override componentDidUpdate(
     previousProps: WorkbenchHostNodeRenderErrorBoundaryProps
   ): void {
-    if (this.state.hasError && previousProps.resetKey !== this.props.resetKey) {
+    if (
+      this.state.hasError &&
+      !Object.is(previousProps.resetKey, this.props.resetKey)
+    ) {
       this.setState({ hasError: false });
       this.props.onErrorChange?.(false);
     }

@@ -225,6 +225,7 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
   // by the session it is currently showing, even when its key is node-scoped.
   const instanceIdByKey = new Map<string, string>();
   const listeners = new Set<() => void>();
+  const workspaceState = { workspaceId: input.workspaceId };
 
   const lookupState = (request: AgentGuiWorkbenchStateLookupRequest) => {
     const nodeState = request.nodeId
@@ -233,7 +234,7 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
     const state =
       nodeState ??
       nodeStateByKey.get(agentGuiWorkbenchInstanceStateKey(request));
-    return state ? { ...state } : null;
+    return state ?? null;
   };
 
   const notify = () => {
@@ -257,11 +258,12 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
         return lookupState(request);
       },
       getWorkspaceState() {
-        return {
-          workspaceId: input.workspaceId
-        };
+        return workspaceState;
       },
-      subscribe(listener) {
+      subscribeNodeState(request, listener) {
+        if (request.typeId !== typeId) {
+          return () => {};
+        }
         listeners.add(listener);
         return () => {
           listeners.delete(listener);
@@ -302,7 +304,6 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
       const next = {
         ...normalizeAgentGuiWorkbenchState(request.state)
       };
-      nodeStateByKey.set(key, next);
       if (
         !clearedInstanceSeed &&
         previous &&
@@ -310,6 +311,7 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
       ) {
         return;
       }
+      nodeStateByKey.set(key, next);
       notify();
     }
   };
