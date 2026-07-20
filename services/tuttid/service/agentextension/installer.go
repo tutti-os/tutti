@@ -99,7 +99,14 @@ func (s *SetupService) executeInstall(
 	if runner == nil {
 		runner = localInstallCommandRunner{}
 	}
-	if err := runner.Run(installCtx, command, scratch, cleanInstallEnvironment(scratch)); err != nil {
+	installEnvironment := cleanInstallEnvironment(scratch)
+	if plan.Runner == "uv" {
+		installEnvironment = append(installEnvironment,
+			"UV_TOOL_DIR="+filepath.Join(staging, "tool"),
+			"UV_TOOL_BIN_DIR="+filepath.Join(staging, "bin"),
+		)
+	}
+	if err := runner.Run(installCtx, command, scratch, installEnvironment); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeInstallFailed, err)
 	}
 

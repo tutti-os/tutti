@@ -32,7 +32,6 @@ func TestMigratedProviderUpdateSupportMatrixIsDescriptorDriven(t *testing.T) {
 		ClaudeCodeProviderID: {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
 		CursorProviderID:     {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
 		OpenCodeProviderID:   {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
-		HermesProviderID:     {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
 		OpenClawProviderID:   {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonUnmanagedSource},
 		NexightProviderID:    {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonProvider},
 	}
@@ -148,8 +147,6 @@ func TestMigratedProviderSetIsComplete(t *testing.T) {
 		ClaudeCodeProviderID: true,
 		CodexProviderID:      true,
 		CursorProviderID:     true,
-		HermesProviderID:     true,
-		KimiCodeProviderID:   true,
 		NexightProviderID:    true,
 		OpenClawProviderID:   true,
 		OpenCodeProviderID:   true,
@@ -163,6 +160,17 @@ func TestMigratedProviderSetIsComplete(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("providers missing from migrated registry: %#v", want)
+	}
+}
+
+func TestExternalizedProvidersAreNotBuiltInTargets(t *testing.T) {
+	for _, provider := range []string{HermesProviderID, KimiCodeProviderID} {
+		if _, ok := Find(provider); ok {
+			t.Fatalf("Find(%q) = true, want signed Agent Extension ownership", provider)
+		}
+		if normalized, ok := NormalizeOpenProviderID("acp:" + provider); !ok || normalized != "acp:"+provider {
+			t.Fatalf("NormalizeOpenProviderID(acp:%s) = %q, %v", provider, normalized, ok)
+		}
 	}
 }
 
@@ -195,9 +203,7 @@ func TestMigratedProviderSidecarPoliciesAreDescriptorOwned(t *testing.T) {
 		TuttiAgentProviderID: {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC},
 		OpenCodeProviderID:   {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC},
 		NexightProviderID:    {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".nexight/skills"},
-		HermesProviderID:     {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".agent_context/skills"},
 		OpenClawProviderID:   {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".openclaw/skills"},
-		KimiCodeProviderID:   {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC},
 	}
 	for _, descriptor := range Migrated() {
 		if descriptor.Sidecar != want[descriptor.Identity.ID] {
@@ -218,9 +224,7 @@ func TestMigratedProviderDesktopIntegrationIsDescriptorOwned(t *testing.T) {
 		TuttiAgentProviderID: {Managed: true, ManagedOrder: 4, StatusProbePriority: 4, VisibilityGate: DesktopVisibilityGateTuttiAgent, InstallBootstrap: true, RefreshOnAccountChange: true},
 		OpenCodeProviderID:   {Managed: true, ManagedOrder: 5, StatusProbePriority: 5, DefaultProviderEligible: true, DefaultProviderPriority: 4},
 		NexightProviderID:    {},
-		HermesProviderID:     {Managed: true, ManagedOrder: 6, StatusProbePriority: 6},
 		OpenClawProviderID:   {Managed: true, ManagedOrder: 7, StatusProbePriority: 7, UnavailableDockOrderOffset: 200},
-		KimiCodeProviderID:   {Managed: true, ManagedOrder: 8, StatusProbePriority: 8, DefaultProviderEligible: true, DefaultProviderPriority: 5},
 	}
 	for _, descriptor := range Migrated() {
 		if descriptor.Desktop != want[descriptor.Identity.ID] {

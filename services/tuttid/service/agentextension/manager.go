@@ -217,7 +217,8 @@ func (m *Manager) runtimeBinding(installation Installation, command []string, ve
 		Installation: installation, Command: command, Version: version, Source: source,
 		ToolAliases: aliases, ModelConfigOptionID: modelConfigOptionID,
 		PermissionConfigOptionID: permissionConfigOptionID, ReasoningConfigOptionID: reasoningConfigOptionID,
-		PermissionModes: permissionModes, PlanModeRuntimeID: planModeRuntimeID, Capabilities: capabilities,
+		PermissionModes: permissionModes, AutomaticPermissionDecisions: composerProfile.AutomaticPermissionDecisions(),
+		PlanModeRuntimeID: planModeRuntimeID, Capabilities: capabilities,
 	}, nil
 }
 

@@ -392,6 +392,27 @@ func TestValidateComposerProfileRejectsInvalidSignedCommandDeclarations(t *testi
 	}
 }
 
+func TestComposerAutomaticPermissionDecisionsAreRestrictedBySemantic(t *testing.T) {
+	var profile ComposerProfile
+	if err := json.Unmarshal([]byte(`{
+		"schemaVersion":"tutti.agent.composer.v1",
+		"permissionModes":[{"runtimeId":"dont_ask","semantic":"full-access","automaticDecision":"approved"}]
+	}`), &profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateComposerProfile(profile); err != nil {
+		t.Fatalf("validateComposerProfile() error = %v", err)
+	}
+	decisions := profile.AutomaticPermissionDecisions()
+	if decisions["full-access"] != "approved" || decisions["dont_ask"] != "approved" {
+		t.Fatalf("automatic decisions = %#v", decisions)
+	}
+	profile.PermissionModes[0].Semantic = "ask-before-write"
+	if err := validateComposerProfile(profile); err == nil {
+		t.Fatal("validateComposerProfile() accepted auto-approval outside full-access")
+	}
+}
+
 func TestLoadExtensionComposerSlashCommandsAndCapabilities(t *testing.T) {
 	packageDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(packageDir, "profiles"), 0o755); err != nil {

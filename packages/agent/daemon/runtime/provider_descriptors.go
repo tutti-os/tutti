@@ -154,21 +154,22 @@ func autoApprovePermissionDecisionFromInputIDs(inputIDs []string) func(string) s
 }
 
 type StandardACPAdapterConfig struct {
-	Provider                 string
-	Name                     string
-	DisplayName              string
-	Command                  []string
-	AuthMessage              string
-	ToolAliases              map[string]string
-	ModelConfigOptionID      string
-	PermissionConfigOptionID string
-	ReasoningConfigOptionID  string
-	RestrictConfigOptions    bool
-	PermissionModes          map[string]string
-	PlanModeRuntimeID        string
-	Capabilities             []string
-	AgentTargetID            string
-	InstallationID           string
+	Provider                     string
+	Name                         string
+	DisplayName                  string
+	Command                      []string
+	AuthMessage                  string
+	ToolAliases                  map[string]string
+	ModelConfigOptionID          string
+	PermissionConfigOptionID     string
+	ReasoningConfigOptionID      string
+	RestrictConfigOptions        bool
+	PermissionModes              map[string]string
+	AutomaticPermissionDecisions map[string]string
+	PlanModeRuntimeID            string
+	Capabilities                 []string
+	AgentTargetID                string
+	InstallationID               string
 }
 
 // NewStandardACPAdapter creates the generic, data-driven ACP adapter used by
@@ -181,7 +182,7 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 	}
 	host = normalizeHostMetadata(host)
 	permissionModes := cloneStandardACPToolAliases(config.PermissionModes)
-	return &standardACPAdapter{
+	adapter := &standardACPAdapter{
 		config: standardACPConfig{
 			provider:                 provider,
 			adapterName:              strings.TrimSpace(config.Name),
@@ -203,7 +204,28 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 			env:                      func(session Session) []string { return standardACPEnv(session, host) },
 		},
 		transport: transport, host: host, sessions: make(map[string]*standardACPSession),
-	}, nil
+	}
+	if decisions := automaticPermissionDecisionFromMap(config.AutomaticPermissionDecisions); decisions != nil {
+		adapter.config.automaticPermissionDecision = decisions
+	}
+	return adapter, nil
+}
+
+func automaticPermissionDecisionFromMap(input map[string]string) func(string) string {
+	decisions := make(map[string]string, len(input))
+	for id, decision := range input {
+		normalizedID := strings.ToLower(strings.TrimSpace(id))
+		normalizedDecision := strings.TrimSpace(decision)
+		if normalizedID != "" && (normalizedDecision == "approved" || normalizedDecision == "denied") {
+			decisions[normalizedID] = normalizedDecision
+		}
+	}
+	if len(decisions) == 0 {
+		return nil
+	}
+	return func(permissionModeID string) string {
+		return decisions[strings.ToLower(strings.TrimSpace(permissionModeID))]
+	}
 }
 
 func cloneStandardACPToolAliases(input map[string]string) map[string]string {

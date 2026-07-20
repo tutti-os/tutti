@@ -28,6 +28,12 @@ signed immutable releases but does not build or upload third-party Agent
 artifacts. The provider-independent setup and release procedure lives in the
 `tutti-os/tutti-agent-extension-skill` repository.
 
+Hermes Agent and Kimi Code follow this ownership boundary in the independent
+`tutti-os/agent-extension-hermes` and
+`tutti-os/agent-extension-kimi-code` repositories. Core retains no registered
+`local:hermes` or `local:kimi-code` Target; their authorized runtime identities
+are `acp:hermes` and `acp:kimi-code` from fixed signed extension Targets.
+
 Local development has one explicit exception modeled after the App Center
 catalog override. In `development` only,
 `TUTTI_AGENT_EXTENSION_<KEY>_PACKAGE_DIR` may select an unpacked package for a
@@ -86,6 +92,13 @@ prompt-free composer discovery session runs in the normalized selected project
 scope. When no project is selected, it uses the daemon-owned discovery directory
 under `<state>/agent/discovery/<provider>`, because standard ACP session creation
 requires a concrete working directory.
+
+A signed permission-mode entry may additionally declare
+`automaticDecision: approved` only for the `full-access` semantic, or
+`automaticDecision: denied` only for `read-only`/`locked-down`. The daemon
+rejects every other combination and ignores unknown decision tokens. This lets
+an ACP runtime such as Hermes preserve the selected autonomous tier without a
+provider-specific adapter hook.
 
 Extension composer controls stay runtime-owned after the model list is
 discovered. `tuttid` selects the newest context only within the exact workspace,
@@ -183,6 +196,12 @@ package manifest, lockfile, `node_modules`, or global package state.
 Environment inheritance is allowlisted. Runner CWD and package-manager
 cache/config live in a Tutti-managed scratch directory under that same
 user-local runtime root.
+
+For `uv`, the only accepted managed recipe is an exact `uv tool install`
+requirement, including an optional exact extras set such as
+`hermes-agent[acp]==0.18.2`. The daemon supplies private `UV_TOOL_DIR` and
+`UV_TOOL_BIN_DIR` values under the staging root; the manifest cannot redirect
+the installation or publish a global executable.
 
 After installation, `tuttid` resolves a regular executable inside staging,
 runs the discovery profile's version check, then performs ACP `initialize` and

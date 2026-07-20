@@ -64,7 +64,7 @@ func validateRuntimeContract(manifest Manifest) error {
 			return errors.New("extension runtime install cannot depend on a project root")
 		}
 	}
-	if !strings.Contains(strings.Join(manifest.Runtime.Install.Args, "\x00"), "${installRoot}") || !strings.HasPrefix(manifest.Runtime.Launch.Executable, "${installRoot}/") {
+	if (manifest.Runtime.Install.Runner != "uv" && !strings.Contains(strings.Join(manifest.Runtime.Install.Args, "\x00"), "${installRoot}")) || !strings.HasPrefix(manifest.Runtime.Launch.Executable, "${installRoot}/") {
 		return errors.New("extension runtime install and launch must stay under installRoot")
 	}
 	if manifest.Runtime.Install.Runner == "npm" || manifest.Runtime.Install.Runner == "pnpm" {
@@ -83,7 +83,7 @@ func validateRuntimeContract(manifest Manifest) error {
 		}
 	}
 	if manifest.Runtime.Install.Runner == "uv" {
-		packagePattern := regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*==[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
+		packagePattern := regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*(?:\[[a-z0-9._-]+(?:,[a-z0-9._-]+)*\])?==[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
 		count := 0
 		for _, argument := range manifest.Runtime.Install.Args {
 			if packagePattern.MatchString(argument) {
@@ -92,6 +92,9 @@ func validateRuntimeContract(manifest Manifest) error {
 		}
 		if count != 1 {
 			return errors.New("extension runtime install must name exactly one package at an exact version")
+		}
+		if len(manifest.Runtime.Install.Args) != 3 || manifest.Runtime.Install.Args[0] != "tool" || manifest.Runtime.Install.Args[1] != "install" || !packagePattern.MatchString(manifest.Runtime.Install.Args[2]) {
+			return errors.New("extension uv runtime install must use the constrained tool install form")
 		}
 	}
 	return nil

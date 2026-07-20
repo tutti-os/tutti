@@ -1373,6 +1373,33 @@ func TestHermesProductionFactoryInstallsAutoApproveHook(t *testing.T) {
 	}
 }
 
+func TestExtensionAdapterInstallsSignedAutomaticPermissionDecisions(t *testing.T) {
+	t.Parallel()
+
+	adapterRaw, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider: "acp:hermes", Name: "hermes-acp", DisplayName: "Hermes Agent",
+		Command: []string{"hermes", "acp"},
+		AutomaticPermissionDecisions: map[string]string{
+			"full-access": "approved",
+			"read-only":   "denied",
+			"unsafe":      "execute-arbitrary-code",
+		},
+	}, newStandardACPTransport("Hermes Agent", "extension-hermes"), LegacyHostMetadata())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := adapterRaw.(*standardACPAdapter)
+	if got := adapter.config.automaticPermissionDecision("FULL-ACCESS"); got != "approved" {
+		t.Fatalf("full-access decision = %q, want approved", got)
+	}
+	if got := adapter.config.automaticPermissionDecision("read-only"); got != "denied" {
+		t.Fatalf("read-only decision = %q, want denied", got)
+	}
+	if got := adapter.config.automaticPermissionDecision("unsafe"); got != "" {
+		t.Fatalf("unsafe decision = %q, want prompt", got)
+	}
+}
+
 func TestOpenClawAdapterStartCreatesStandardACPSession(t *testing.T) {
 	t.Parallel()
 

@@ -22,8 +22,9 @@ type ComposerProfile struct {
 		Reasoning  ComposerConfigOptionReference `json:"reasoning"`
 	} `json:"configOptions,omitempty"`
 	PermissionModes []struct {
-		RuntimeID string `json:"runtimeId"`
-		Semantic  string `json:"semantic"`
+		RuntimeID         string `json:"runtimeId"`
+		Semantic          string `json:"semantic"`
+		AutomaticDecision string `json:"automaticDecision,omitempty"`
 	} `json:"permissionModes"`
 	SlashCommands *struct {
 		CommandCatalogAuthoritative bool `json:"commandCatalogAuthoritative"`
@@ -237,6 +238,20 @@ func validateComposerProfile(profile ComposerProfile) error {
 			}
 		}
 	}
+	for _, mode := range profile.PermissionModes {
+		decision := strings.TrimSpace(mode.AutomaticDecision)
+		if decision == "" {
+			continue
+		}
+		semantic := strings.TrimSpace(mode.Semantic)
+		if decision == "approved" && semantic == "full-access" {
+			continue
+		}
+		if decision == "denied" && (semantic == "read-only" || semantic == "locked-down") {
+			continue
+		}
+		return errors.New("composer automatic permission decision is unsafe")
+	}
 	if profile.Skills == nil {
 		return nil
 	}
@@ -259,6 +274,22 @@ func validateComposerProfile(profile ComposerProfile) error {
 		}
 	}
 	return nil
+}
+
+func (profile ComposerProfile) AutomaticPermissionDecisions() map[string]string {
+	decisions := map[string]string{}
+	for _, mode := range profile.PermissionModes {
+		decision := strings.TrimSpace(mode.AutomaticDecision)
+		if decision == "" {
+			continue
+		}
+		for _, id := range []string{mode.RuntimeID, mode.Semantic} {
+			if normalized := strings.ToLower(strings.TrimSpace(id)); normalized != "" {
+				decisions[normalized] = decision
+			}
+		}
+	}
+	return decisions
 }
 
 var composerSlashCommandName = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,63}$`)

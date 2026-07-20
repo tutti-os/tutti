@@ -69,6 +69,20 @@ var generatedDefaults = generatedDefaultsSpec{
 				SigningPublicKey: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEANqN38E9u53Ohnyzy8IC9lPXOmOCrZwxTb7Do2hM22t0=\n-----END PUBLIC KEY-----\n",
 				Enabled:          false,
 			},
+			{
+				Key:              "hermes",
+				ReleaseIndexURL:  "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/versions.json",
+				SigningKeyID:     "tutti-hermes-release-v1",
+				SigningPublicKey: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAIeel8ddNiN3b4qOq0KucF3BRxfi3zourM0BVyGuP8eY=\n-----END PUBLIC KEY-----\n",
+				Enabled:          false,
+			},
+			{
+				Key:              "kimi-code",
+				ReleaseIndexURL:  "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/versions.json",
+				SigningKeyID:     "tutti-kimi-code-release-v1",
+				SigningPublicKey: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAnO+V8MpPIY90uDINyaJjtENg/vPQpURo0AltBZLqvgw=\n-----END PUBLIC KEY-----\n",
+				Enabled:          false,
+			},
 		},
 	},
 }

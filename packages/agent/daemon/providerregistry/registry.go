@@ -14,9 +14,7 @@ var migratedDescriptors = []ProviderDescriptor{
 	tuttiAgentDescriptor(),
 	openCodeDescriptor(),
 	nexightDescriptor(),
-	hermesDescriptor(),
 	openClawDescriptor(),
-	kimiCodeDescriptor(),
 }
 
 var providerDescriptorIndex = buildProviderDescriptorIndex(migratedDescriptors)
