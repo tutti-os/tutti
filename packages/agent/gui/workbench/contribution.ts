@@ -599,6 +599,7 @@ export {
   agentGuiWorkbenchNewWindowCascadeOffset,
   agentGuiWorkbenchProviderRailWidthPx,
   buildAgentGuiDockEntries,
+  createAgentGuiWorkbenchPreviewContent,
   resolveAgentGuiUnifiedDockLaunchPayload,
   resolveAgentGuiWorkbenchContributionCopy,
   resolveAgentGuiWorkbenchDefaultLaunchFrame

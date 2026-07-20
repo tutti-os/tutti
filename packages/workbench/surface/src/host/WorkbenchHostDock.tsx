@@ -60,6 +60,7 @@ import {
 } from "./minimizedDockRestoreIntent.ts";
 import {
   WorkbenchHostDockPopup,
+  workbenchHostDockPopupPreviewViewport,
   type WorkbenchHostDockPopupAnchorRect,
   type WorkbenchHostDockPopupState
 } from "./WorkbenchHostDockPopup.tsx";
@@ -2252,7 +2253,8 @@ export function WorkbenchHostDock({
                 host,
                 isFocused: context.focusedNodeId === node.id,
                 isMinimized: minimizedNodeIDs.has(node.id),
-                node
+                node,
+                previewViewport: workbenchHostDockPopupPreviewViewport
               };
               const descriptor =
                 popupEntry.entry.resolvePopupItem?.(item) ?? {};

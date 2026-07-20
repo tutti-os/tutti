@@ -53,6 +53,12 @@ import type {
 } from "../react/dockPreviewCache.ts";
 
 const dockPopupCardWidthPx = 165;
+const dockPopupCardHeightPx = 103;
+const dockPopupPreviewInsetPx = 4;
+export const workbenchHostDockPopupPreviewViewport = Object.freeze({
+  height: dockPopupCardHeightPx - dockPopupPreviewInsetPx * 2,
+  width: dockPopupCardWidthPx - dockPopupPreviewInsetPx * 2
+});
 const dockPopupGridGapPx = 8;
 const dockPopupPanelPaddingInlinePx = 12;
 const dockPopupPanelBorderInlinePx = 2;
