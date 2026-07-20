@@ -1201,6 +1201,120 @@ func TestCodexAppServerAdapterStartAppliesSettingsAndPermissionMode(t *testing.T
 	}
 }
 
+func TestCodexAppServerAdapterDangerFullAccessSandboxPreservesApplicationApprovals(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		mode              string
+		approvalPolicy    string
+		approvalsReviewer string
+	}{
+		{mode: "read-only", approvalPolicy: "on-request", approvalsReviewer: "user"},
+		{mode: "auto", approvalPolicy: "on-request", approvalsReviewer: "auto_review"},
+		{mode: "full-access", approvalPolicy: "never"},
+	}
+	for _, test := range tests {
+		t.Run(test.mode, func(t *testing.T) {
+			t.Parallel()
+
+			transport := newScriptedAppServerTransport()
+			adapter := NewCodexAppServerAdapterWithHostMetadataAndOptions(
+				transport,
+				LegacyHostMetadata(),
+				CodexAppServerAdapterOptions{
+					SandboxPolicy: CodexAppServerSandboxPolicyDangerFullAccess,
+				},
+			)
+			session := testAppServerSession()
+			session.PermissionModeID = test.mode
+			session.Settings = &SessionSettings{PermissionModeID: test.mode}
+
+			if _, err := adapter.Start(context.Background(), session); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			threadStart := appServerRequestParams(t, transport.conn, appServerMethodThreadStart)
+			assertCodexAppServerApprovalAndSandboxParams(
+				t,
+				"thread/start",
+				threadStart,
+				"sandbox",
+				"danger-full-access",
+				test.approvalPolicy,
+				test.approvalsReviewer,
+			)
+
+			if _, err := adapter.Exec(context.Background(), session, textPrompt("go"), "", "turn-local-1", nil, nil); err != nil {
+				t.Fatalf("Exec: %v", err)
+			}
+			turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+			sandboxPolicy, _ := turnStart["sandboxPolicy"].(map[string]any)
+			turnStart["sandboxPolicyType"] = asString(sandboxPolicy["type"])
+			assertCodexAppServerApprovalAndSandboxParams(
+				t,
+				"turn/start",
+				turnStart,
+				"sandboxPolicyType",
+				"dangerFullAccess",
+				test.approvalPolicy,
+				test.approvalsReviewer,
+			)
+		})
+	}
+}
+
+func TestCodexAppServerAdapterDangerFullAccessSandboxAppliesOnResume(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapterWithHostMetadataAndOptions(
+		transport,
+		LegacyHostMetadata(),
+		CodexAppServerAdapterOptions{
+			SandboxPolicy: CodexAppServerSandboxPolicyDangerFullAccess,
+		},
+	)
+	session := testAppServerSession()
+	session.ProviderSessionID = "codex-thread-1"
+	session.PermissionModeID = "read-only"
+	session.Settings = &SessionSettings{PermissionModeID: "read-only"}
+
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	threadResume := appServerRequestParams(t, transport.conn, appServerMethodThreadResume)
+	assertCodexAppServerApprovalAndSandboxParams(
+		t,
+		"thread/resume",
+		threadResume,
+		"sandbox",
+		"danger-full-access",
+		"on-request",
+		"user",
+	)
+}
+
+func assertCodexAppServerApprovalAndSandboxParams(
+	t *testing.T,
+	requestName string,
+	params map[string]any,
+	sandboxKey string,
+	expectedSandbox string,
+	expectedApprovalPolicy string,
+	expectedApprovalsReviewer string,
+) {
+	t.Helper()
+
+	if got := asString(params[sandboxKey]); got != expectedSandbox {
+		t.Fatalf("%s %s = %q, want %q", requestName, sandboxKey, got, expectedSandbox)
+	}
+	if got := asString(params["approvalPolicy"]); got != expectedApprovalPolicy {
+		t.Fatalf("%s approvalPolicy = %q, want %q", requestName, got, expectedApprovalPolicy)
+	}
+	if got := asString(params["approvalsReviewer"]); got != expectedApprovalsReviewer {
+		t.Fatalf("%s approvalsReviewer = %q, want %q", requestName, got, expectedApprovalsReviewer)
+	}
+}
+
 func TestCodexAppServerReasoningEffortValuePreservesCatalogValues(t *testing.T) {
 	t.Parallel()
 

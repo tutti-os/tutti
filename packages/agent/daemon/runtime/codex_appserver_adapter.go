@@ -93,6 +93,27 @@ type appServerAdapterConfig struct {
 	command             []string
 	clientInfoName      string
 	authRequiredMessage string
+	sandboxPolicy       CodexAppServerSandboxPolicy
+}
+
+// CodexAppServerSandboxPolicy controls only the Codex process sandbox sent to
+// app-server. Application approval policy and reviewer routing continue to
+// come from the session permission mode.
+type CodexAppServerSandboxPolicy string
+
+const (
+	// CodexAppServerSandboxPolicyPermissionMode preserves the default Codex
+	// behavior: each application permission mode selects its matching sandbox.
+	// This is the zero value so existing hosts keep their current behavior.
+	CodexAppServerSandboxPolicyPermissionMode CodexAppServerSandboxPolicy = ""
+	// CodexAppServerSandboxPolicyDangerFullAccess disables the Codex process
+	// sandbox while leaving application approval and reviewer routing intact.
+	// Hosts should use this only when an outer execution sandbox is authoritative.
+	CodexAppServerSandboxPolicyDangerFullAccess CodexAppServerSandboxPolicy = "danger-full-access"
+)
+
+type CodexAppServerAdapterOptions struct {
+	SandboxPolicy CodexAppServerSandboxPolicy
 }
 
 // defaultCodexAppServerCancelGraceWindow is how long Cancel waits for codex to
@@ -326,6 +347,16 @@ func NewCodexAppServerAdapterWithHostMetadata(transport ProcessTransport, host H
 	return NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(transport, host, nil)
 }
 
+func NewCodexAppServerAdapterWithHostMetadataAndOptions(
+	transport ProcessTransport,
+	host HostMetadata,
+	options CodexAppServerAdapterOptions,
+) *CodexAppServerAdapter {
+	adapter := NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(transport, host, nil)
+	adapter.config.sandboxPolicy = validatedCodexAppServerSandboxPolicy(options.SandboxPolicy)
+	return adapter
+}
+
 func NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(
 	transport ProcessTransport,
 	host HostMetadata,
@@ -381,6 +412,15 @@ func newAppServerAdapter(
 		sessions:          make(map[string]*codexAppServerSession),
 		lifecycleLocks:    make(map[string]*codexAppServerSessionLock),
 		cancelGraceWindow: defaultCodexAppServerCancelGraceWindow,
+	}
+}
+
+func validatedCodexAppServerSandboxPolicy(policy CodexAppServerSandboxPolicy) CodexAppServerSandboxPolicy {
+	switch policy {
+	case CodexAppServerSandboxPolicyPermissionMode, CodexAppServerSandboxPolicyDangerFullAccess:
+		return policy
+	default:
+		panic(fmt.Sprintf("unsupported Codex app-server sandbox policy %q", policy))
 	}
 }
 

@@ -77,7 +77,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 	}
 	planModeMask, defaultModeMask := a.fetchCollaborationModeMasks(ctx, client, session, trace)
 
-	threadParams := appServerThreadStartParams(session, a.sessionCWD(session))
+	threadParams := appServerThreadStartParamsWithSandboxPolicy(session, a.sessionCWD(session), a.config.sandboxPolicy)
 	trace.Log("thread.start.params", codexAppServerTraceThreadStartParams(session, threadParams, false))
 	threadResult, err := trace.TypedCall(acpStartCallTimeout, appServerMethodThreadStart, func() (json.RawMessage, error) {
 		return client.ThreadStart(ctx, acpStartCallTimeout, threadParams,
@@ -232,7 +232,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 	}
 	planModeMask, defaultModeMask := a.fetchCollaborationModeMasks(ctx, client, session, trace)
 
-	params := appServerThreadStartParams(session, a.sessionCWD(session))
+	params := appServerThreadStartParamsWithSandboxPolicy(session, a.sessionCWD(session), a.config.sandboxPolicy)
 	params["threadId"] = strings.TrimSpace(session.ProviderSessionID)
 	trace.Log("thread.start.params", codexAppServerTraceThreadStartParams(session, params, true))
 	// codex replays thread/tokenUsage/updated during thread/resume so the GUI
