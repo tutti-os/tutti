@@ -134,12 +134,17 @@ package, so generic Issue consumers cannot become a second Tutti workflow
 authority. AgentGUI neither parses an Agent message into this graph nor calls
 Issue creation itself.
 
-`sourceSessionId` is the durable planning link for both origins. Issue and Task
-headers can open that source Session, while successful atomic creation projects
-one idempotent, credential-free workspace-Issue mention back into the source
-timeline. Tutti Mode Plan additionally keeps its durable workflow, immutable
-revisions, checkpoints, and the operation's `issueId`; those records represent
-review provenance and do not compete with the Issue as the execution entity.
+`sourceSessionId` is the durable planning link for both origins, but it is not
+a presentation-mode flag. The Issue and Task **Open planning session** action,
+execution profile and budget surfaces, task assignment controls, and task-graph
+stage/dependency decorations are projected only when
+`planningSource = tutti_mode_plan`. Manual, unknown, and `traditional_plan`
+Issues keep the baseline Issue Manager panels even if compatible orchestration
+metadata is present. Successful atomic creation still projects one idempotent,
+credential-free workspace-Issue mention back into the source timeline. Tutti
+Mode Plan additionally keeps its durable workflow, immutable revisions,
+checkpoints, and the operation's `issueId`; those records represent review
+provenance and do not compete with the Issue as the execution entity.
 
 On the traditional AgentGUI path, `Create only` persists the graph without
 dispatch, while sequential `Create and start` records
@@ -192,10 +197,11 @@ Tasks carry optional WorkspaceAgent, ModelPlan/model, execution directory, and
 dependency ids. Strength and budget are never task-level controls: every Task
 inherits the Issue execution profile and budget policy. The domain rejects
 missing/self/cycle dependencies and incompatible assignment values before
-persistence. The shared Issue detail editor uses the same host-supplied Agent
-and Model Plan catalogs for structured selectors and protocol filtering. An
-external host that has no Model Plan catalog adapter retains the generic text
-fallback, but Tutti Desktop supplies the authoritative workspace catalog.
+persistence. For `tutti_mode_plan` Issues, the shared Issue detail editor uses
+the same host-supplied Agent and Model Plan catalogs for structured selectors
+and protocol filtering. An external host that has no Model Plan catalog adapter
+retains the generic text fallback, but Tutti Desktop supplies the authoritative
+workspace catalog.
 Dispatch carries the saved Task Plan/model through both embedded-workbench and
 standalone-window draft launch paths and applies it to the new Session draft;
 it never mutates an active Session. Run-level Agent/Plan/model overrides record the actual attempt
@@ -276,15 +282,16 @@ In-flight Runs continue and can report their final usage. Subscription quota
 remains a provider-reported percentage; it is never converted into fake
 currency.
 
-The execution overview keeps a soft-limit recovery surface visible: users can
-raise the budget, lower intensity for future dispatch, or continue remaining
-tasks manually. Lowering intensity reduces both Issue-level controls, clears
-the soft limit, and deliberately leaves automatic dispatch paused so the user
-can review/rearrange assignments before explicitly resuming. Raising the
-budget can recover normal dispatch immediately; manual execution remains a
-separate user-authorized path. New estimates use matching completed Task runs
-from the same workspace (same explicit Plan/model) when history exists;
-otherwise they fall back to the Issue's remaining per-task budget allocation.
+For `tutti_mode_plan` Issues, the execution overview keeps a soft-limit recovery
+surface visible: users can raise the budget, lower intensity for future
+dispatch, or continue remaining tasks manually. Lowering intensity reduces
+both Issue-level controls, clears the soft limit, and deliberately leaves
+automatic dispatch paused so the user can review/rearrange assignments before
+explicitly resuming. Raising the budget can recover normal dispatch
+immediately; manual execution remains a separate user-authorized path. New
+estimates use matching completed Task runs from the same workspace (same
+explicit Plan/model) when history exists; otherwise they fall back to the
+Issue's remaining per-task budget allocation.
 
 Optional pricing on an `api_metered` ModelPlan supplies currency micros per
 million tokens for all four categories. tuttid computes exact estimates from

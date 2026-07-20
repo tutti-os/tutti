@@ -17,7 +17,11 @@ export function IssueManagerExecutionProfileFields({
   controller
 }: {
   controller: IssueManagerController;
-}): JSX.Element {
+}): JSX.Element | null {
+  if (!controller.isTuttiModePlanIssue) {
+    return null;
+  }
+
   const profile = controller.issueDraft.executionProfile ?? {
     orchestrationIntensity: 50,
     reasoningIntensity: 50
@@ -176,7 +180,11 @@ export function IssueManagerTaskAssignmentFields({
   controller
 }: {
   controller: IssueManagerController;
-}): JSX.Element {
+}): JSX.Element | null {
+  if (!controller.isTuttiModePlanIssue) {
+    return null;
+  }
+
   const draft = controller.taskDraft;
   const selectedAgentTargetId = draft.agentTargetId?.trim() || unassignedValue;
   const selectedAgent = controller.agentTargetOptions.find(

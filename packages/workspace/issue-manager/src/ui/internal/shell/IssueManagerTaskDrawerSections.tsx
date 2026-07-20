@@ -96,7 +96,8 @@ export function IssueManagerTaskDrawerHeader({
           <div className="flex shrink-0 items-center gap-2">
             {view.showTaskActions && selectedTask ? (
               <>
-                {selectedIssue?.sourceSessionId &&
+                {controller.isTuttiModePlanIssue &&
+                selectedIssue?.sourceSessionId &&
                 controller.canOpenAgentSessions ? (
                   <Button
                     type="button"
@@ -316,7 +317,9 @@ export function IssueManagerTaskDrawerReadBody({
         onOpen={controller.openReference}
         variant="plain"
       />
-      <IssueManagerTaskAssignmentOverview controller={controller} />
+      {controller.isTuttiModePlanIssue ? (
+        <IssueManagerTaskAssignmentOverview controller={controller} />
+      ) : null}
       <IssueManagerLatestRunStatusSection
         copy={copy}
         latestRun={latestRun}

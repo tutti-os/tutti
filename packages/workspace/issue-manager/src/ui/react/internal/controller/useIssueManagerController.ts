@@ -39,9 +39,10 @@ import type {
   IssueManagerNotificationState,
   TaskDraft
 } from "../../../../services/controllerTypes.ts";
-import type {
-  IssueManagerEditorMode,
-  IssueManagerReferenceTarget
+import {
+  isIssueManagerTuttiModePlanIssue,
+  type IssueManagerEditorMode,
+  type IssueManagerReferenceTarget
 } from "../../../../services/controllerModel.ts";
 import { createIssueManagerControllerActionsBridge } from "./createIssueManagerControllerActionsBridge.ts";
 import { createIssueManagerControllerBindings } from "./createIssueManagerControllerBindings.ts";
@@ -89,6 +90,7 @@ export interface IssueManagerController {
   floatingNotice: IssueManagerFloatingNoticeViewState | null;
   issues: AsyncCollectionState<IssueManagerIssueSummary[]>;
   isRunningTask: boolean;
+  isTuttiModePlanIssue: boolean;
   nodeState: IssueManagerNodeState;
   notification: IssueManagerNotificationState | null;
   openAgentSession: (run: IssueManagerRun) => Promise<void>;
@@ -335,6 +337,9 @@ export function useIssueManagerController({
     floatingNotice,
     issues,
     isRunningTask,
+    isTuttiModePlanIssue:
+      issueDetail.value?.issue.issueId === nodeState.selectedIssueId &&
+      isIssueManagerTuttiModePlanIssue(issueDetail.value.issue),
     nodeState,
     notification,
     async openMention(mention) {

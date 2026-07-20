@@ -301,6 +301,7 @@ export function IssueManagerSubtaskSection({
   onMoveTask,
   onSelectTask,
   selectedTaskId,
+  showTaskStructure,
   tasks
 }: {
   copy: IssueManagerI18nRuntime;
@@ -309,6 +310,7 @@ export function IssueManagerSubtaskSection({
   onMoveTask: IssueManagerController["moveTask"];
   onSelectTask: (taskId: string | null) => void;
   selectedTaskId: string | null;
+  showTaskStructure: boolean;
   tasks: readonly IssueManagerTaskSummary[];
 }): JSX.Element {
   const [viewMode, setViewMode] = useState<IssueManagerSubtaskViewMode>("list");
@@ -358,6 +360,7 @@ export function IssueManagerSubtaskSection({
       ) : viewMode === "board" ? (
         <IssueManagerSubtaskBoard
           copy={copy}
+          showTaskStructure={showTaskStructure}
           tasks={tasks}
           onMoveTask={onMoveTask}
           onSelectTask={handleSelectTask}
@@ -366,6 +369,7 @@ export function IssueManagerSubtaskSection({
         <IssueManagerSubtaskList
           copy={copy}
           selectedTaskId={selectedTaskId}
+          showTaskStructure={showTaskStructure}
           tasks={tasks}
           onSelectTask={handleSelectTask}
         />
@@ -422,6 +426,7 @@ function IssueManagerSubtaskList({
   copy,
   onSelectTask,
   selectedTaskId,
+  showTaskStructure,
   tasks
 }: {
   copy: IssueManagerI18nRuntime;
@@ -431,11 +436,13 @@ function IssueManagerSubtaskList({
     surface: "detail_subtasks"
   ) => void;
   selectedTaskId: string | null;
+  showTaskStructure: boolean;
   tasks: readonly IssueManagerTaskSummary[];
 }): JSX.Element {
   // Stage headers only appear once parallelism is in play; a plain
   // sequential Issue keeps the flat list.
-  const showStages = issueManagerTasksHaveParallelStructure(tasks);
+  const showStages =
+    showTaskStructure && issueManagerTasksHaveParallelStructure(tasks);
   const stages = showStages
     ? groupIssueManagerTasksIntoStages(tasks)
     : [{ kind: "sequential" as const, tasks: [...tasks] }];
@@ -468,7 +475,11 @@ function IssueManagerSubtaskList({
               type="button"
               onClick={(event) => onSelectTask(event, task, "detail_subtasks")}
             >
-              <IssueManagerSubtaskListContent copy={copy} task={task} />
+              <IssueManagerSubtaskListContent
+                copy={copy}
+                showTaskStructure={showTaskStructure}
+                task={task}
+              />
               <span className="shrink-0 text-[11px] font-normal text-[var(--text-secondary)]">
                 {formatIssueManagerTimestamp(
                   task.createdAtUnix ?? task.updatedAtUnix
@@ -484,9 +495,11 @@ function IssueManagerSubtaskList({
 
 function IssueManagerSubtaskListContent({
   copy,
+  showTaskStructure,
   task
 }: {
   copy: IssueManagerI18nRuntime;
+  showTaskStructure: boolean;
   task: IssueManagerTaskSummary;
 }): JSX.Element {
   return (
@@ -500,7 +513,9 @@ function IssueManagerSubtaskListContent({
         <Badge variant={issueManagerStatusBadgeVariant(task.status)}>
           {resolveIssueManagerStatusLabel(copy, task.status)}
         </Badge>
-        <IssueManagerTaskStructureChips copy={copy} task={task} />
+        {showTaskStructure ? (
+          <IssueManagerTaskStructureChips copy={copy} task={task} />
+        ) : null}
       </div>
       <p className="mt-2 line-clamp-2 text-[11px] font-normal leading-[1.5] text-[var(--text-secondary)]">
         {summarizeIssueManagerContent(

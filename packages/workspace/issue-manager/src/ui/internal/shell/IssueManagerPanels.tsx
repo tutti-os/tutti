@@ -180,7 +180,8 @@ export function IssueManagerIssuePane({
                     </h2>
                   </IssueManagerTitleTooltip>
                   <div className="flex shrink-0 items-center gap-2">
-                    {selectedIssue.sourceSessionId &&
+                    {controller.isTuttiModePlanIssue &&
+                    selectedIssue.sourceSessionId &&
                     controller.canOpenAgentSessions ? (
                       <Button
                         type="button"
@@ -269,10 +270,12 @@ export function IssueManagerIssuePane({
                 onOpen={controller.openReference}
                 variant="plain"
               />
-              <IssueManagerExecutionOverview
-                controller={controller}
-                issue={selectedIssue}
-              />
+              {controller.isTuttiModePlanIssue ? (
+                <IssueManagerExecutionOverview
+                  controller={controller}
+                  issue={selectedIssue}
+                />
+              ) : null}
               <IssueManagerLatestRunStatusSection
                 copy={copy}
                 latestRun={issueLatestRun}
@@ -296,6 +299,7 @@ export function IssueManagerIssuePane({
                 onMoveTask={controller.moveTask}
                 onSelectTask={controller.selectTask}
                 selectedTaskId={selectedTaskId}
+                showTaskStructure={controller.isTuttiModePlanIssue}
                 tasks={visibleTasks}
               />
             </div>

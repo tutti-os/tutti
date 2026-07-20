@@ -432,6 +432,7 @@ export function IssueManagerSubtaskBoard({
   copy,
   onMoveTask,
   onSelectTask,
+  showTaskStructure,
   tasks
 }: {
   copy: IssueManagerI18nRuntime;
@@ -446,6 +447,7 @@ export function IssueManagerSubtaskBoard({
     task: IssueManagerTaskSummary,
     surface: "detail_subtasks_board"
   ) => void;
+  showTaskStructure: boolean;
   tasks: readonly IssueManagerTaskSummary[];
 }): JSX.Element {
   const [optimisticDrop, setOptimisticDrop] =
@@ -497,6 +499,7 @@ export function IssueManagerSubtaskBoard({
           <IssueManagerSubtaskBoardColumn
             copy={copy}
             key={status}
+            showTaskStructure={showTaskStructure}
             status={status}
             tasks={groups[status]}
             visibleTaskIds={visibleTaskIds}
@@ -525,6 +528,7 @@ function IssueManagerSubtaskBoardColumn({
   onSelectTask,
   onTaskDragEnd,
   onTaskDragStart,
+  showTaskStructure,
   status,
   tasks,
   visibleTaskIds
@@ -553,6 +557,7 @@ function IssueManagerSubtaskBoardColumn({
     task: IssueManagerTaskSummary,
     sourceStatus: IssueManagerSubtaskBoardStatus
   ) => void;
+  showTaskStructure: boolean;
   status: IssueManagerSubtaskBoardStatus;
   tasks: readonly IssueManagerTaskSummary[];
   visibleTaskIds: readonly string[];
@@ -735,9 +740,11 @@ function IssueManagerSubtaskBoardColumn({
                     {task.title}
                   </span>
                 </IssueManagerTitleTooltip>
-                <span className="mt-1.5 block empty:hidden">
-                  <IssueManagerTaskStructureChips copy={copy} task={task} />
-                </span>
+                {showTaskStructure ? (
+                  <span className="mt-1.5 block empty:hidden">
+                    <IssueManagerTaskStructureChips copy={copy} task={task} />
+                  </span>
+                ) : null}
                 <p className="mt-2 line-clamp-3 text-[11px] font-normal leading-[1.5] text-[var(--text-secondary)] [overflow-wrap:anywhere]">
                   {summarizeIssueManagerContent(
                     task.content,

@@ -3,7 +3,8 @@ import test from "node:test";
 import {
   createIssueManagerDate,
   formatIssueManagerDate,
-  formatIssueManagerTimestamp
+  formatIssueManagerTimestamp,
+  isIssueManagerTuttiModePlanIssue
 } from "./model.ts";
 
 test("createIssueManagerDate normalizes unix seconds to milliseconds", () => {
@@ -27,4 +28,21 @@ test("formatIssueManagerTimestamp uses the shared English short date-time format
   const timestamp = new Date(2026, 4, 23, 12, 14).getTime();
 
   assert.equal(formatIssueManagerTimestamp(timestamp), "May 23, 12:14");
+});
+
+test("isIssueManagerTuttiModePlanIssue fails closed for non-Tutti planning sources", () => {
+  assert.equal(isIssueManagerTuttiModePlanIssue(undefined), false);
+  assert.equal(isIssueManagerTuttiModePlanIssue({}), false);
+  assert.equal(
+    isIssueManagerTuttiModePlanIssue({ planningSource: "manual" }),
+    false
+  );
+  assert.equal(
+    isIssueManagerTuttiModePlanIssue({ planningSource: "traditional_plan" }),
+    false
+  );
+  assert.equal(
+    isIssueManagerTuttiModePlanIssue({ planningSource: "tutti_mode_plan" }),
+    true
+  );
 });
