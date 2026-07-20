@@ -53,6 +53,7 @@ export const workspaceWorkbenchDesktopI18nKeys = {
   nodes: {
     agent: "nodes.agent",
     browser: "nodes.browser",
+    fileShare: "nodes.fileShare",
     files: "nodes.files",
     imageFile: "nodes.imageFile",
     textFile: "nodes.textFile",
@@ -67,6 +68,9 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     saving: "filePreview.saving",
     unsaved: "filePreview.unsaved",
     unsupportedFallback: "filePreview.unsupportedFallback"
+  },
+  fileShare: {
+    loading: "fileShare.loading"
   },
   agentProviders: {
     checking: "agentProviders.checking",

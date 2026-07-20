@@ -33,6 +33,11 @@ test("Tutti workbench product profile keeps its product, scope, factory ids, and
       order: 15
     },
     {
+      exportName: "fileShareWorkbenchContributionFactory",
+      id: "workspace-file-share",
+      order: 7
+    },
+    {
       exportName: "appCenterWorkbenchContributionFactory",
       id: "workspace-app-center",
       order: 18
@@ -98,6 +103,7 @@ test("Tutti workbench product profile keeps its product, scope, factory ids, and
       "workspace-agent-gui",
       "workspace-files",
       "workspace-issue-manager",
+      "workspace-file-share",
       "workspace-file-preview",
       "workspace-app-center",
       "workspace-browser",

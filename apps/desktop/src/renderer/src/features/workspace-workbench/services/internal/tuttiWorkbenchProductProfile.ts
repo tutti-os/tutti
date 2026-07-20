@@ -7,6 +7,7 @@ import { agentGuiWorkbenchContributionFactory } from "./contributions/agentGuiWo
 import { appCenterWorkbenchContributionFactory } from "./contributions/appCenterWorkbenchContributionFactory.ts";
 import { browserWorkbenchContributionFactory } from "./contributions/browserWorkbenchContributionFactory.ts";
 import { filePreviewWorkbenchContributionFactory } from "./contributions/filePreviewWorkbenchContributionFactory.ts";
+import { fileShareWorkbenchContributionFactory } from "./contributions/fileShareWorkbenchContributionFactory.ts";
 import { filesWorkbenchContributionFactory } from "./contributions/filesWorkbenchContributionFactory.ts";
 import { issueManagerWorkbenchContributionFactory } from "./contributions/issueManagerWorkbenchContributionFactory.ts";
 import { terminalWorkbenchContributionFactory } from "./contributions/terminalWorkbenchContributionFactory.ts";
@@ -39,6 +40,10 @@ export function createTuttiWorkbenchProductProfile(
           "tuttidClient",
           "workspaceId"
         ])
+      ),
+      bindDesktopWorkbenchContributionFactory(
+        fileShareWorkbenchContributionFactory,
+        pickDesktopWorkbenchContributionContext(context, ["i18n"])
       ),
       bindDesktopWorkbenchContributionFactory(
         appCenterWorkbenchContributionFactory,

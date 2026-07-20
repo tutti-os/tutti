@@ -909,6 +909,7 @@ export const zhCN = {
         appCenter: "应用",
         appWebview: "工作区应用",
         browser: "浏览器",
+        fileShare: "文件分享",
         files: "文件",
         imageFile: "图片文件",
         issues: "事项",
@@ -924,6 +925,71 @@ export const zhCN = {
         saving: "保存中...",
         unsaved: "有未保存更改",
         unsupportedFallback: "暂时不支持预览，使用本地软件打开。"
+      },
+      fileShare: {
+        addComment: "添加评论",
+        comment: "评论",
+        comments: "评论",
+        conversation: "关联对话",
+        copyFailed: "复制优化指令失败",
+        copyInstruction:
+          "文件{{fileName}}，获得评论{{comment}}，请基于评论完成优化",
+        copyInstructionLabel: "复制优化指令",
+        copySuccessDescription: "把指令发给你的 Agent，即可基于评论优化文件",
+        copySuccessTitle: "复制成功",
+        currentFileFromConversation: "当前文件由此对话生成",
+        demoConversationUnavailable: "演示中暂不支持打开完整对话",
+        demoConversationUpdatedAt: "更新于 {{updatedAt}}",
+        demoConversationWith: "{{owner}} 与 {{agent}} 的对话",
+        demoCommentAlice:
+          "结论速览的三分法很清晰。建议国内部分补一下字节 HiAgent，企业级私有化场景经常被问到。",
+        demoCommentAliceTimestamp: "昨天 16:42",
+        demoCommentBob:
+          "CrewAI 的用户量口径最好标注下来源，官方博客和 GitHub 口径差得挺多。",
+        demoCommentBobTimestamp: "昨天 18:07",
+        demoCommentOwner:
+          "收到，HiAgent 和口径标注我补到下一版，今天下班前更新。",
+        demoCommentOwnerTimestamp: "今天 09:15",
+        demoFileContentType: "Markdown",
+        demoFileName: "agent-platforms-research.md",
+        demoFileOwner: "曼",
+        demoOwnerName: "周曼",
+        demoMarkdownSource: `# AI Agent 平台调研报告
+
+> 调研日期：2026-06-27 范围：国内外，核心卖点为「用户可自建 Agent」+「多 Agent 协作」的产品。
+
+## 一、结论速览
+
+这类产品横跨三种形态，对两个卖点的侧重不同：
+
+| 形态 | 自定义 Agent | 多 Agent 协作 | 代表 |
+| --- | --- | --- | --- |
+| C 端智能体商店 | ✅ 核心 | 部分支持 | GPTs、扣子 Coze、腾讯元器 |
+| 企业级低代码搭建 | ✅ 核心 | ✅ 核心 | Copilot Studio、阿里百炼、Dify |
+| 开发者多 Agent 框架 | ✅ | ✅✅ 最核心卖点 | CrewAI、LangGraph、AutoGen |`,
+        demoReportBody:
+          "当前分享文件的预览内容。切换到 Source 可查看完整 Markdown",
+        demoReportTitle: "AI Agent 平台调研报告",
+        demoUserMessage:
+          "帮我调研国内外主打「用户可自建 Agent + 多 Agent 协作」的平台，按知名度/用户量排序，产出一份 Markdown 报告。",
+        demoAgentAcknowledgement:
+          "好的。我会覆盖 C 端智能体商店、企业级低代码平台和开发者框架三类形态，逐一核对公开数据来源，估算口径会单独标注。",
+        demoAgentResult:
+          "调研完成：共覆盖 14 个产品，国外 6 个、国内 8 个。两个卖点都强主打的标杆是扣子 Coze / 腾讯元器 / Copilot Studio（低代码侧）和 CrewAI / LangGraph / AutoGen（开发者侧）。报告已生成。",
+        demoUserInitial: "曼",
+        draftPlaceholder: "写下你的评论…",
+        emptyComments: "还没有评论，来发表第一条吧",
+        enterToSend: "Enter 发送 · Shift+Enter 换行",
+        generatedFile: "已生成文件",
+        justNow: "刚刚",
+        linkedConversationTitle: "AI Agent 平台竞品调研",
+        loading: "正在加载分享文件...",
+        openFullConversation: "在 Tutti 中打开完整对话",
+        panelClose: "关闭文件分享面板",
+        preview: "预览",
+        productName: "Tutti.",
+        send: "发送",
+        source: "源文件"
       },
       filesLaunch: {
         openFailedDescription: "无法在对应地址找到该文件或文件夹",
