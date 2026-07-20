@@ -181,6 +181,84 @@ describe("WorkbenchHost", () => {
       ).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
     }
   });
+
+  it("retries a node render after its external state recovers", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const listeners = new Set<() => void>();
+    let nodeState: { status: "bad" | "ready" } = { status: "bad" };
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const previousActEnvironment = (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT;
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+
+    try {
+      await act(async () => {
+        root.render(
+          <WorkbenchHost
+            externalStateSource={{
+              getNodeState() {
+                return nodeState;
+              },
+              getWorkspaceState() {
+                return null;
+              },
+              subscribeNodeState(_input, listener) {
+                listeners.add(listener);
+                return () => listeners.delete(listener);
+              }
+            }}
+            nodes={[
+              {
+                frame: { x: 0, y: 0, width: 320, height: 240 },
+                renderBody: (context) => {
+                  if (
+                    (context.externalNodeState as { status: string } | null)
+                      ?.status === "bad"
+                  ) {
+                    throw new Error("transient external state");
+                  }
+                  return <div data-node-recovered="true" />;
+                },
+                title: "Recoverable",
+                typeId: "recoverable",
+                window: { defaultOpen: true }
+              }
+            ]}
+            snapshotRepository={createSnapshotRepository()}
+            workspaceId="workspace-1"
+          />
+        );
+      });
+
+      expect(
+        container.querySelector("[data-workbench-node-render-error]")
+      ).not.toBeNull();
+      nodeState = { status: "ready" };
+      await act(async () => {
+        for (const listener of listeners) {
+          listener();
+        }
+      });
+
+      expect(container.querySelector("[data-node-recovered]")).not.toBeNull();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      consoleError.mockRestore();
+      container.remove();
+      (
+        globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+    }
+  });
 });
 
 function createSnapshotRepository(): WorkbenchHostSnapshotRepository {

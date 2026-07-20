@@ -304,7 +304,6 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
       const next = {
         ...normalizeAgentGuiWorkbenchState(request.state)
       };
-      nodeStateByKey.set(key, next);
       if (
         !clearedInstanceSeed &&
         previous &&
@@ -312,6 +311,7 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
       ) {
         return;
       }
+      nodeStateByKey.set(key, next);
       notify();
     }
   };

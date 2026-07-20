@@ -329,6 +329,25 @@ describe("agent gui workbench state", () => {
     });
   });
 
+  it("preserves node state identity for an equal write", () => {
+    const source = createAgentGuiWorkbenchNodeStateSource({
+      workspaceId: "workspace-1"
+    });
+    const request = {
+      instanceId: "agent-gui:hermes",
+      nodeId: "node-1",
+      typeId: "agent-gui" as const,
+      workspaceId: "workspace-1"
+    };
+    const state = { lastActiveAgentSessionId: "session-1" };
+
+    source.writeNodeState({ ...request, state });
+    const first = source.externalStateSource.getNodeState(request);
+    source.writeNodeState({ ...request, state: { ...state } });
+
+    expect(source.externalStateSource.getNodeState(request)).toBe(first);
+  });
+
   it("locates a node launch instanceId by the session it is showing", () => {
     const source = createAgentGuiWorkbenchNodeStateSource({
       workspaceId: "workspace-1"

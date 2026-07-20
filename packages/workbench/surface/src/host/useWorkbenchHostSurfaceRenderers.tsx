@@ -448,7 +448,7 @@ interface WorkbenchHostNodeRenderErrorBoundaryProps {
   debugDiagnostics?: WorkbenchHostProps["debugDiagnostics"];
   node: WorkbenchNode<WorkbenchHostNodeData>;
   onErrorChange?: (hasError: boolean) => void;
-  resetKey: string;
+  resetKey: unknown;
   workspaceId: string;
 }
 
@@ -473,6 +473,20 @@ function WorkbenchHostNodeRenderer(input: {
     host: input.host,
     workspaceId: input.workspaceId
   });
+  const resetKey = useMemo(
+    () => [
+      input.context.node.id,
+      input.context.node.data.typeId,
+      externalState.externalNodeState,
+      externalState.externalWorkspaceState
+    ],
+    [
+      externalState.externalNodeState,
+      externalState.externalWorkspaceState,
+      input.context.node.data.typeId,
+      input.context.node.id
+    ]
+  );
 
   return (
     <WorkbenchHostNodeRenderErrorBoundary
@@ -484,7 +498,7 @@ function WorkbenchHostNodeRenderer(input: {
           node: input.context.node
         })
       }
-      resetKey={`${input.context.node.id}:${input.context.node.data.typeId}`}
+      resetKey={resetKey}
       workspaceId={input.workspaceId}
     >
       <WorkbenchHostNodeBodyRenderer
@@ -607,7 +621,10 @@ class WorkbenchHostNodeRenderErrorBoundary extends Component<
   override componentDidUpdate(
     previousProps: WorkbenchHostNodeRenderErrorBoundaryProps
   ): void {
-    if (this.state.hasError && previousProps.resetKey !== this.props.resetKey) {
+    if (
+      this.state.hasError &&
+      !Object.is(previousProps.resetKey, this.props.resetKey)
+    ) {
       this.setState({ hasError: false });
       this.props.onErrorChange?.(false);
     }

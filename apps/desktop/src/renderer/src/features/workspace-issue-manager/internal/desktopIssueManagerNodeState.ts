@@ -84,10 +84,10 @@ export function createDesktopIssueManagerNodeStateSource(input: {
       }
       const previous = nodeStateByInstanceId.get(request.instanceId);
       const next = liveIssueManagerNodeState(request.state);
-      nodeStateByInstanceId.set(request.instanceId, next);
       if (previous && areIssueManagerLiveNodeStatesEqual(previous, next)) {
         return;
       }
+      nodeStateByInstanceId.set(request.instanceId, next);
       notify();
     }
   };
