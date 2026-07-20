@@ -41,6 +41,38 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [workspaceAgentTimelineCanonical.ts](../../../packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
+### Mid-turn provider failure renders a generic "request failed" card
+
+- Symptom:
+  A root-provider-lifecycle turn (Codex, Cursor, OpenCode) fails mid-turn —
+  for example quota exhaustion — but the conversation shows only a generic
+  "request failed" card with no detail and no classification code. The real
+  reason appears only in the durable Turn record and daemon logs.
+- Quick checks:
+  Confirm the canonical Turn settled with a non-empty `error.message`. If the
+  durable Turn carries the reason but the live card does not, inspect the
+  synthesized `daemonRootTurnSettlement` event metadata, not the provider
+  adapter — the adapter already reported the failure correctly.
+- Root cause:
+  Root-provider adapters do not emit `EventTurnFailed`; the daemon synthesizes
+  it in `ReconcileRootTurnSettlement` after the durable settle commits. The
+  settlement previously forwarded only `turnId` and `outcome`, so the
+  synthesized event had an empty detail and the visible-error projection
+  classified it as `unknown` instead of (for example) `quota_or_rate_limit`.
+- Fix:
+  Forward `Turn.ErrorMessage` through `RootTurnSettlement` and stamp it on the
+  synthesized event metadata under the `error` / `errorMessage` keys read by
+  `BestEffortErrorMessage`. Keep classification text-based in
+  `visibleFailureCode`; do not special-case providers at this layer.
+- Validation:
+  `TestReconcileRootTurnSettlementPublishesFailureDetail` settles a failed
+  root turn with a quota message and asserts the live stream emits a
+  `quota_or_rate_limit` visible error carrying the original detail.
+- References:
+  [controller_root_turn.go](../../../packages/agent/daemon/runtime/controller_root_turn.go)
+  [visible_error.go](../../../packages/agent/daemon/runtime/visible_error.go)
+  [agent_runtime_adapter.go](../../../services/tuttid/agent_runtime_adapter.go)
+
 ### Codex WebSocket reconnect rejects a long prompt metadata header
 
 - Symptom:

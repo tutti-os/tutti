@@ -587,6 +587,17 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       refreshUpdates?: boolean;
     }
   ): Promise<void> {
+    await this.refreshStatuses(providers, options);
+  }
+
+  async refreshStatuses(
+    providers?: WorkspaceAgentProvider[],
+    options?: {
+      includeNetwork?: boolean;
+      includeUpdates?: boolean;
+      refreshUpdates?: boolean;
+    }
+  ): Promise<AgentProviderStatusListResponse | null> {
     const input = {
       providers,
       includeNetwork: options?.includeNetwork,
@@ -605,7 +616,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     if (inflightRequest) {
       await inflightRequest;
     }
-    await this.requestStatuses(input);
+    return this.requestStatuses(input);
   }
 
   async checkUpdates(providers?: WorkspaceAgentProvider[]): Promise<void> {

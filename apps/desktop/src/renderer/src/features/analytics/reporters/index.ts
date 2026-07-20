@@ -59,6 +59,12 @@ export { AgentChatInputContentEnteredReporter } from "./agent-chat-input-content
 export type { AgentChatInputContentEnteredParams } from "./agent-chat-input-content-entered";
 export { AgentEnvDetectedReporter } from "./agent-env-detected";
 export type { AgentEnvDetectedParams } from "./agent-env-detected";
+export { AgentAvailabilitySnapshotReporter } from "./agent-availability-snapshot";
+export type {
+  AgentAvailabilitySnapshotParams,
+  AgentAvailabilitySnapshotTrigger,
+  AgentUnavailableReason
+} from "./agent-availability-snapshot";
 export { AgentEnvIssueReportedReporter } from "./agent-env-issue-reported";
 export type { AgentEnvIssueReportedParams } from "./agent-env-issue-reported";
 export { AgentConversationPinnedReporter } from "./agent-conversation-pinned";
