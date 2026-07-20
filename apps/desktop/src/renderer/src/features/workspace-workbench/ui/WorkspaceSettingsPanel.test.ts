@@ -324,18 +324,189 @@ test("workspace settings computer-use continues into the wizard after install", 
   );
 });
 
-test("workspace managed provider API key is masked until toggled visible", () => {
-  assert.match(source, /type=\{apiKeyVisible \? "text" : "password"\}/);
-  assert.match(source, /setVisibleAPIKeyProviderID/);
-  assert.match(source, /workspace\.settings\.apps\.managedModels\.showApiKey/);
-  assert.match(source, /workspace\.settings\.apps\.managedModels\.hideApiKey/);
+test("workspace settings general panel does not expose update preferences", () => {
+  const generalSectionStart = source.indexOf(
+    "function WorkspaceGeneralSettingsSection"
+  );
+  const appearanceSectionStart = source.indexOf(
+    "function WorkspaceAppearanceSettingsSection"
+  );
+  const generalSection = source.slice(
+    generalSectionStart,
+    appearanceSectionStart
+  );
+
+  assert.ok(generalSectionStart >= 0);
+  assert.ok(appearanceSectionStart > generalSectionStart);
+  assert.doesNotMatch(source, /WorkspaceUpdateSettingsSection/);
+  assert.doesNotMatch(
+    generalSection,
+    /workspace\.settings\.general\.updateTitle/
+  );
+  assert.doesNotMatch(
+    generalSection,
+    /workspace\.settings\.general\.updatePolicyLabel/
+  );
+  assert.doesNotMatch(
+    generalSection,
+    /workspace\.settings\.general\.updateChannelLabel/
+  );
+  assert.doesNotMatch(generalSection, /onUpdatePolicyChange/);
+  assert.doesNotMatch(generalSection, /onUpdateChannelChange/);
+  assert.doesNotMatch(generalSection, /app_update\.settings_rendered/);
 });
 
-test("workspace managed provider model rows keep stable keys while editing", () => {
-  assert.match(source, /key=\{`\$\{model\.provider\}:\$\{index\}`\}/);
+test("workspace settings about panel owns product info and keeps developer unlock tap", () => {
+  const generalSectionStart = source.indexOf(
+    "function WorkspaceGeneralSettingsSection"
+  );
+  const aboutSectionStart = source.indexOf(
+    "function WorkspaceAboutSettingsSection"
+  );
+  const appearanceSectionStart = source.indexOf(
+    "function WorkspaceAppearanceSettingsSection"
+  );
+
+  assert.ok(generalSectionStart >= 0);
+  assert.ok(aboutSectionStart > generalSectionStart);
+  assert.ok(appearanceSectionStart > aboutSectionStart);
   assert.doesNotMatch(
+    source.slice(generalSectionStart, aboutSectionStart),
+    /versionLabel/
+  );
+  assert.match(
+    source.slice(aboutSectionStart, appearanceSectionStart),
+    /tuttiDesktopIconUrl[\s\S]*onClick=\{onVersionTap\}[\s\S]*workspace\.settings\.about\.versionLabel/
+  );
+  assert.doesNotMatch(
+    source.slice(aboutSectionStart, appearanceSectionStart),
+    /workspace\.settings\.about\.(title|description)/
+  );
+  assert.match(
     source,
-    /key=\{`\$\{model\.provider\}:\$\{model\.id\}:\$\{index\}`\}/
+    /setDeveloperPanelVisible\(true\);[\s\S]*notifications\.success\(\{[\s\S]*workspace\.settings\.about\.developerModeEnabled/
+  );
+  assert.doesNotMatch(source, /selectSection\("developer"\)/);
+  assert.match(
+    source,
+    /const tuttiDesktopIconUrl = new URL\(\s*"[^"]*build\/icon\.png"/
+  );
+  assert.match(
+    source.slice(aboutSectionStart, appearanceSectionStart),
+    /WebIcon[\s\S]*openExternal\(tuttiWebsiteUrl\)[\s\S]*GitHubBrandIcon[\s\S]*openExternal\(tuttiGitHubUrl\)/
+  );
+  assert.doesNotMatch(
+    source.slice(aboutSectionStart, appearanceSectionStart),
+    /releaseNotesAction|checkForUpdates|checkUpdatesAction/
+  );
+});
+
+test("workspace settings appearance panel owns visual settings", () => {
+  assert.match(source, /WorkspaceAppearanceSettingsSection/);
+  assert.match(source, /workspace\.settings\.appearance\.themeLabel/);
+  assert.match(source, /workspace\.settings\.appearance\.dockPlacementLabel/);
+  assert.match(source, /workspace\.settings\.appearance\.wallpaperLabel/);
+});
+
+test("workspace settings window snapping is controlled by one dropdown", () => {
+  const appearanceSectionStart = source.indexOf(
+    "function WorkspaceAppearanceSettingsSection"
+  );
+  const wallpaperPickerStart = source.indexOf(
+    "function WorkspaceWallpaperPicker"
+  );
+  const appearanceSection = source.slice(
+    appearanceSectionStart,
+    wallpaperPickerStart
+  );
+
+  assert.ok(appearanceSectionStart >= 0);
+  assert.ok(wallpaperPickerStart > appearanceSectionStart);
+  assert.doesNotMatch(appearanceSection, /<Switch/);
+  assert.match(
+    appearanceSection,
+    /pendingWorkbenchWindowSnapping\.enabled[\s\S]*\? pendingWorkbenchWindowSnapping\.shortcutPreset[\s\S]*: "off"/
+  );
+  assert.match(appearanceSection, /enabled: nextValue !== "off"/);
+  assert.match(
+    appearanceSection,
+    /workbenchWindowSnappingShortcutOptions\.off/
+  );
+});
+
+test("workspace settings app source control lives in developer settings", () => {
+  const appsSectionStart = source.indexOf(
+    "function WorkspaceAppsSettingsSection"
+  );
+  const developerSectionStart = source.indexOf(
+    "function WorkspaceDeveloperSettingsSection"
+  );
+  const controlStart = source.indexOf("function AppCatalogChannelControl");
+
+  assert.ok(appsSectionStart >= 0);
+  assert.ok(developerSectionStart > appsSectionStart);
+  assert.ok(controlStart > developerSectionStart);
+  assert.doesNotMatch(
+    source.slice(appsSectionStart, developerSectionStart),
+    /appCatalogChannel/
+  );
+  assert.match(
+    source.slice(developerSectionStart, controlStart),
+    /<AppCatalogChannelControl/
+  );
+});
+
+test("workspace settings release channel control lives in developer settings", () => {
+  const developerSectionStart = source.indexOf(
+    "function WorkspaceDeveloperSettingsSection"
+  );
+  const controlStart = source.indexOf("function ReleaseChannelControl");
+  const agentSectionStart = source.indexOf(
+    "function WorkspaceAgentSettingsSection"
+  );
+  const generalSectionStart = source.indexOf(
+    "function WorkspaceGeneralSettingsSection"
+  );
+  const generalSection = source.slice(generalSectionStart, source.length);
+  const developerSection = source.slice(developerSectionStart, controlStart);
+
+  assert.ok(generalSectionStart >= 0);
+  assert.ok(developerSectionStart >= 0);
+  assert.ok(controlStart > developerSectionStart);
+  assert.ok(agentSectionStart > controlStart);
+  assert.doesNotMatch(generalSection, /releaseChannelLabel/);
+  assert.match(developerSection, /<ReleaseChannelControl/);
+});
+
+test("workspace settings apps section hosts model plans and agent bindings", () => {
+  assert.match(
+    source,
+    /function WorkspaceAppsSettingsSection\(\) \{\s*return \(\s*<SettingsRows>\s*<WorkspaceModelPlansSection \/>\s*<WorkspaceAgentModelBindingSection \/>/
+  );
+  assert.doesNotMatch(source, /managedModels/);
+});
+
+test("workspace model plan API key is masked until toggled visible", () => {
+  const editorSource = readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "WorkspaceModelPlanEditor.tsx"
+    ),
+    "utf8"
+  );
+  assert.match(editorSource, /type=\{apiKeyVisible \? "text" : "password"\}/);
+  assert.match(editorSource, /setApiKeyVisible/);
+  assert.match(
+    editorSource,
+    /workspace\.settings\.apps\.modelPlans\.showApiKey/
+  );
+  assert.match(
+    editorSource,
+    /workspace\.settings\.apps\.modelPlans\.hideApiKey/
+  );
+  assert.match(
+    editorSource,
+    /workspace\.settings\.apps\.modelPlans\.keepExistingKey/
   );
 });
 
