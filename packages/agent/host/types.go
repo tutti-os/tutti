@@ -19,6 +19,14 @@ type InteractionRef struct {
 	RequestID      string
 }
 
+// SessionInteractionSnapshot is the canonical interaction state for the
+// session's latest turn. PendingInteractions is derived from Interactions so a
+// consumer never observes actionable state from a different turn or read.
+type SessionInteractionSnapshot struct {
+	Interactions        []storesqlite.Interaction
+	PendingInteractions []storesqlite.Interaction
+}
+
 type ComposerSettings struct {
 	Model            string
 	PermissionModeID string

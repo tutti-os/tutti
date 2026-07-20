@@ -16,6 +16,7 @@ type canonicalQueryStore struct {
 	wantTurnID      string
 	turn            storesqlite.Turn
 	err             error
+	interactions    map[string][]storesqlite.Interaction
 }
 
 func (s canonicalQueryStore) GetTurn(_ context.Context, workspaceID, sessionID, turnID string) (storesqlite.Turn, bool, error) {
@@ -23,6 +24,27 @@ func (s canonicalQueryStore) GetTurn(_ context.Context, workspaceID, sessionID, 
 		return storesqlite.Turn{}, false, errors.New("unexpected canonical turn key")
 	}
 	return s.turn, true, s.err
+}
+
+func (s canonicalQueryStore) GetSession(_ context.Context, workspaceID, sessionID string) (storesqlite.Session, bool, error) {
+	if workspaceID != s.wantWorkspaceID || sessionID != s.wantSessionID {
+		return storesqlite.Session{}, false, errors.New("unexpected canonical session key")
+	}
+	return storesqlite.Session{WorkspaceID: workspaceID, ID: sessionID}, true, s.err
+}
+
+func (s canonicalQueryStore) SessionDeleted(_ context.Context, workspaceID, sessionID string) (bool, error) {
+	if workspaceID != s.wantWorkspaceID || sessionID != s.wantSessionID {
+		return false, errors.New("unexpected canonical session key")
+	}
+	return false, s.err
+}
+
+func (s canonicalQueryStore) ListLatestTurnInteractions(_ context.Context, workspaceID string, sessionIDs []string) (map[string][]storesqlite.Interaction, error) {
+	if workspaceID != s.wantWorkspaceID || len(sessionIDs) != 1 || sessionIDs[0] != s.wantSessionID {
+		return nil, errors.New("unexpected latest-turn interaction key")
+	}
+	return s.interactions, s.err
 }
 
 func TestGetTurnDelegatesCanonicalQueryWithNormalizedIdentity(t *testing.T) {
@@ -58,5 +80,39 @@ func TestGetTurnRejectsIncompleteIdentity(t *testing.T) {
 				t.Fatalf("GetTurn() error = %v, want %v", err, ErrInvalidArgument)
 			}
 		})
+	}
+}
+
+func TestGetSessionInteractionSnapshotDerivesPendingFromLatestTurnRead(t *testing.T) {
+	interactions := []storesqlite.Interaction{
+		{WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-2", RequestID: "pending", Status: storesqlite.InteractionStatusPending},
+		{WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-2", RequestID: "answered", Status: storesqlite.InteractionStatusAnswered},
+		{WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-2", RequestID: "superseded", Status: storesqlite.InteractionStatusSuperseded},
+	}
+	host := New(Config{CanonicalStore: canonicalQueryStore{
+		wantWorkspaceID: "workspace-1", wantSessionID: "session-1",
+		interactions: map[string][]storesqlite.Interaction{"session-1": interactions},
+	}})
+
+	snapshot, err := host.GetSessionInteractionSnapshot(t.Context(), SessionRef{
+		WorkspaceID: " workspace-1 ", AgentSessionID: " session-1 ",
+	})
+	if err != nil {
+		t.Fatalf("GetSessionInteractionSnapshot() error = %v", err)
+	}
+	if !reflect.DeepEqual(snapshot.Interactions, interactions) {
+		t.Fatalf("Interactions = %#v, want %#v", snapshot.Interactions, interactions)
+	}
+	if len(snapshot.PendingInteractions) != 1 || snapshot.PendingInteractions[0].RequestID != "pending" {
+		t.Fatalf("PendingInteractions = %#v, want only pending", snapshot.PendingInteractions)
+	}
+}
+
+func TestGetSessionInteractionSnapshotRejectsIncompleteIdentity(t *testing.T) {
+	host := New(Config{CanonicalStore: canonicalQueryStore{}})
+	for _, ref := range []SessionRef{{WorkspaceID: "workspace-1"}, {AgentSessionID: "session-1"}, {}} {
+		if _, err := host.GetSessionInteractionSnapshot(t.Context(), ref); !errors.Is(err, ErrInvalidArgument) {
+			t.Fatalf("GetSessionInteractionSnapshot(%#v) error = %v, want %v", ref, err, ErrInvalidArgument)
+		}
 	}
 }

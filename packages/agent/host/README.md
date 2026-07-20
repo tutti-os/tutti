@@ -37,9 +37,12 @@ without its runtime or inbox consumer fails recovery with
 `ErrGoalConsumerUnavailable` instead of silently accumulating work.
 
 `GetSession` reads canonical session truth plus an optional live runtime
-observation without starting a provider. `GetTurn` and
-`FindTurnByClientSubmitID` expose canonical turn queries without leaking an
-adapter's concrete store. `CreateSessionInput.ClientSubmitID` and
+observation without starting a provider. `GetTurn`,
+`FindTurnByClientSubmitID`, and `GetSessionInteractionSnapshot` expose
+canonical queries without leaking an adapter's concrete store. The interaction
+snapshot contains every interaction on the latest turn and derives its pending
+subset from that same read; older-turn pending rows can never become current
+actionable state. `CreateSessionInput.ClientSubmitID` and
 `SendInput.ClientSubmitID` are the typed idempotency identities and override
 the legacy metadata value when both are present.
 Runtime adapters preserve explicit downstream failures as `ProviderError` so
