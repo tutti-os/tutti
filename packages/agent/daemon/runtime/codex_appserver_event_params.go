@@ -56,27 +56,6 @@ func appServerTurnStartParams(
 	defaultModeMask map[string]any,
 	defaultModel string,
 	tuttiModeHostContext string,
-) map[string]any {
-	return appServerTurnStartParamsWithCommandNetworkAccess(
-		session,
-		threadID,
-		content,
-		planModeMask,
-		defaultModeMask,
-		defaultModel,
-		tuttiModeHostContext,
-		false,
-	)
-}
-
-func appServerTurnStartParamsWithCommandNetworkAccess(
-	session Session,
-	threadID string,
-	content []PromptContentBlock,
-	planModeMask map[string]any,
-	defaultModeMask map[string]any,
-	defaultModel string,
-	tuttiModeHostContext string,
 	commandNetworkAccess bool,
 ) map[string]any {
 	settings := session.SettingsValue()

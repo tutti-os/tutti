@@ -1719,6 +1719,7 @@ func TestCodexAppServerTurnStartKeepsLargePromptInInputOnly(t *testing.T) {
 		nil,
 		"",
 		"",
+		false,
 	)
 	if _, ok := params["responsesapiClientMetadata"]; ok {
 		t.Fatalf("responsesapiClientMetadata = %#v, want omitted", params["responsesapiClientMetadata"])

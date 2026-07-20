@@ -356,7 +356,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 	a.markTurnSettleEmits(appTurn)
 
 	trace := newCodexAppServerTurnTrace(session, turnID, execMetadataFromContext(ctx))
-	turnParams := appServerTurnStartParamsWithCommandNetworkAccess(
+	turnParams := appServerTurnStartParams(
 		session,
 		appSession.threadID,
 		providerContent,
