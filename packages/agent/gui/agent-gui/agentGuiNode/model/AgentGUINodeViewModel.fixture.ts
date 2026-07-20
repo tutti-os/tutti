@@ -78,6 +78,7 @@ export function groupAgentGUINodeViewModelFixture(
     },
     interaction: {
       isRespondingApproval: flat.isRespondingApproval,
+      isRuntimeBlocked: flat.isRuntimeBlocked,
       pendingApproval: flat.pendingApproval,
       pendingInteractivePrompt: flat.pendingInteractivePrompt,
       sessionChrome: flat.sessionChrome,
@@ -87,6 +88,7 @@ export function groupAgentGUINodeViewModelFixture(
       activeLiveState: flat.activeLiveState,
       activationError: flat.activationError,
       activeConversationBusy: flat.activeConversationBusy,
+      sessionRuntimeBlocked: flat.sessionRuntimeBlocked,
       providerReadinessGate: flat.providerReadinessGate
     },
     operations: {

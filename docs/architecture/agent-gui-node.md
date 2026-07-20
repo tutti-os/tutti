@@ -200,9 +200,19 @@ The engine owns:
 - prompt queue, send-now, and cancel-then-send coordination
 - session mutation, settings, composer options, and operation state
 - workspace/session reconciliation state
+- ephemeral per-Session runtime command availability projected by the host
 - attention/read state and cross-surface selectors
 
 The engine does not own daemon persistence, provider transport, DOM, or permanent UI layout.
+
+Runtime command availability is session-scoped whenever one workspace engine
+can contain Sessions backed by different transports. The host projects
+`available`, `transport_reconnecting`, or `transport_unavailable`; the engine
+uses that single fact to gate sends, cancellation, settings, and Interaction or
+plan responses. AgentGUI freezes the affected composer and interactive card in
+a loading state. It must not reuse the engine-wide connection state for this
+case, because one remote Session losing its owner must not disable Local Agent
+or another remote Session.
 
 ### 4.1 Read/write rules
 

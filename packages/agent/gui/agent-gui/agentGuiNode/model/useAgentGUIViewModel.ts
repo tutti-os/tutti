@@ -72,6 +72,7 @@ export function useAgentGUIViewModel(
     () => candidate.interaction,
     [
       candidate.interaction.inlineNotice,
+      candidate.interaction.isRuntimeBlocked,
       candidate.interaction.isRespondingApproval,
       candidate.interaction.pendingApproval,
       candidate.interaction.pendingInteractivePrompt,
@@ -84,7 +85,8 @@ export function useAgentGUIViewModel(
       candidate.readiness.activationError,
       candidate.readiness.activeConversationBusy,
       candidate.readiness.activeLiveState,
-      candidate.readiness.providerReadinessGate
+      candidate.readiness.providerReadinessGate,
+      candidate.readiness.sessionRuntimeBlocked
     ]
   );
   const operations = useMemo(

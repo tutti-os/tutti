@@ -36,8 +36,22 @@ export interface WorkspaceAgentConsumerCounts {
 }
 
 export interface EngineSubmitAvailability {
-  reason?: "active_turn" | "waiting";
+  reason?:
+    | "active_turn"
+    | "waiting"
+    | "transport_reconnecting"
+    | "transport_unavailable";
   state: "available" | "blocked";
+}
+
+export function selectEngineSessionRuntimeAvailability(
+  state: AgentSessionEngineState,
+  agentSessionId: string | null | undefined
+) {
+  const id = agentSessionId?.trim() ?? "";
+  return (
+    state.sessionLifecycle.operationBySessionId[id]?.runtimeAvailability ?? null
+  );
 }
 
 const EMPTY_CONSUMER_COUNTS: WorkspaceAgentConsumerCounts = {

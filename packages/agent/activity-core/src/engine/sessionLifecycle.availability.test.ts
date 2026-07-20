@@ -71,6 +71,51 @@ test("canonical submit availability covers missing, interaction, active, and set
   });
 });
 
+test("runtime availability blocks only the targeted session", () => {
+  const initial = createInitialAgentSessionEngineState();
+  const first = session(
+    {
+      ...baseTurn("session-1", "turn-1"),
+      outcome: "completed",
+      phase: "settled",
+      settledAtUnixMs: 2
+    },
+    []
+  );
+  const second = {
+    ...first,
+    agentSessionId: "session-2",
+    title: "Second session",
+    latestTurn: {
+      ...first.latestTurn!,
+      agentSessionId: "session-2",
+      turnId: "turn-2"
+    }
+  };
+  let state = rootEngineReducer(initial, {
+    type: "session/snapshotReceived",
+    sessions: [first, second]
+  }).state;
+
+  state = rootEngineReducer(state, {
+    type: "session/runtimeAvailabilityChanged",
+    agentSessionId: "session-1",
+    availability: {
+      state: "blocked",
+      reason: "transport_reconnecting"
+    }
+  }).state;
+
+  assert.deepEqual(
+    deriveCanonicalSubmitAvailability(state.sessionLifecycle, "session-1"),
+    { state: "blocked", reason: "transport_reconnecting" }
+  );
+  assert.deepEqual(
+    deriveCanonicalSubmitAvailability(state.sessionLifecycle, "session-2"),
+    { state: "available" }
+  );
+});
+
 function session(
   turn: AgentActivityTurn,
   pendingInteractions: readonly AgentActivityInteraction[]
@@ -87,5 +132,16 @@ function session(
     title: "Session",
     updatedAtUnixMs: turn.updatedAtUnixMs,
     workspaceId: "workspace-1"
+  };
+}
+
+function baseTurn(agentSessionId: string, turnId: string): AgentActivityTurn {
+  return {
+    agentSessionId,
+    origin: "user_prompt",
+    phase: "running",
+    startedAtUnixMs: 1,
+    turnId,
+    updatedAtUnixMs: 1
   };
 }

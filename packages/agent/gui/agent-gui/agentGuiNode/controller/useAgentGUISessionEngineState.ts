@@ -13,6 +13,7 @@ import {
   selectEngineSessionDetailHydrated,
   selectEngineSessionDetailLoading,
   selectEngineSessionOperationError,
+  selectEngineSessionRuntimeAvailability,
   selectEngineSessionIsRespondingToInteraction,
   selectEngineSessionReconcile,
   selectEngineSessionSettingsUpdate,
@@ -182,6 +183,11 @@ export function useAgentGUISessionEngineState(input: {
         selectEngineSubmitAvailability(state, activeConversationId)?.state ??
         "missing"
     );
+  const activeEngineRuntimeAvailability = useEngineSelector(
+    sessionEngine,
+    (state) =>
+      selectEngineSessionRuntimeAvailability(state, activeConversationId)
+  );
   const activeEngineHasPendingInteractions = useEngineSelector(
     sessionEngine,
     (state) => selectEngineHasPendingInteractions(state, activeConversationId)
@@ -201,6 +207,7 @@ export function useAgentGUISessionEngineState(input: {
     activeEngineHasPendingInteractions,
     activeEngineLatestTurn,
     activeEnginePendingInteractions,
+    activeEngineRuntimeAvailability,
     activeEngineSession,
     activeEngineSessionDeleted,
     activeLatestPendingSubmit,

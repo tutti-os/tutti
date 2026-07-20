@@ -65,4 +65,54 @@ describe("useAgentGUISessionEngineState", () => {
     ).toBe("ask");
     expect(rendered.result.current.activeEngineError).toBeNull();
   });
+
+  it("observes runtime availability for the selected session only", () => {
+    const sessionEngine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: vi.fn(() => new Promise(() => undefined)) },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    sessionEngine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: ["session-1", "session-2"].map((agentSessionId) =>
+        normalizeAgentActivitySession({
+          activeTurnId: null,
+          agentSessionId,
+          latestTurnInteractions: [],
+          pendingInteractions: [],
+          provider: "codex",
+          workspaceId: "workspace-1"
+        })
+      )
+    });
+    const rendered = renderHook(
+      ({ activeConversationId }) =>
+        useAgentGUISessionEngineState({
+          activeConversationId,
+          sessionEngine
+        }),
+      { initialProps: { activeConversationId: "session-1" } }
+    );
+
+    act(() => {
+      sessionEngine.dispatch({
+        type: "session/runtimeAvailabilityChanged",
+        agentSessionId: "session-1",
+        availability: {
+          state: "blocked",
+          reason: "transport_reconnecting"
+        }
+      });
+    });
+    expect(rendered.result.current.activeEngineRuntimeAvailability).toEqual({
+      state: "blocked",
+      reason: "transport_reconnecting"
+    });
+
+    rendered.rerender({ activeConversationId: "session-2" });
+    expect(rendered.result.current.activeEngineRuntimeAvailability).toEqual({
+      state: "available"
+    });
+  });
 });

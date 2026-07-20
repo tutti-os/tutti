@@ -37,6 +37,7 @@ export function requestSettingsUpdate(
     !commandId ||
     !workspaceId ||
     !operation ||
+    operation.runtimeAvailability.state === "blocked" ||
     state.sessionsById[id]?.workspaceId !== workspaceId ||
     Object.keys(intent.settings).length === 0
   )
@@ -103,6 +104,19 @@ export function settleSettingsUpdate(
   ) {
     const settings = update.queuedSettings;
     const commandId = update.queuedCommandId;
+    if (operation.runtimeAvailability.state === "blocked") {
+      return result(
+        setOperation(state, id, {
+          ...operation,
+          settingsUpdate: {
+            ...createInitialSettingsUpdate(),
+            queuedCommandId: commandId,
+            queuedSettings: settings,
+            status: "waitingForRuntime"
+          }
+        })
+      );
+    }
     return {
       commands: [
         settingsCommand(
@@ -162,6 +176,18 @@ export function reconcileSettingsUpdates(
     const queuedSettings = operation.settingsUpdate.queuedSettings;
     const queuedCommandId = operation.settingsUpdate.queuedCommandId;
     if (queuedSettings && queuedCommandId) {
+      if (operation.runtimeAvailability.state === "blocked") {
+        state = setOperation(state, id, {
+          ...operation,
+          settingsUpdate: {
+            ...createInitialSettingsUpdate(),
+            queuedCommandId,
+            queuedSettings,
+            status: "waitingForRuntime"
+          }
+        });
+        continue;
+      }
       commands.push(
         settingsCommand(
           id,
@@ -189,6 +215,43 @@ export function reconcileSettingsUpdates(
   return state === previous && commands.length === 0
     ? unchanged(previous)
     : { commands, state };
+}
+
+export function resumeSettingsUpdateWhenRuntimeAvailable(
+  state: SessionLifecycleState,
+  rawAgentSessionId: string
+): EngineReducerResult<SessionLifecycleState> {
+  const id = rawAgentSessionId.trim();
+  const operation = state.operationBySessionId[id];
+  const update = operation?.settingsUpdate;
+  if (
+    !operation ||
+    operation.runtimeAvailability.state !== "available" ||
+    update?.status !== "waitingForRuntime" ||
+    !update.queuedCommandId ||
+    !update.queuedSettings
+  ) {
+    return unchanged(state);
+  }
+  return {
+    commands: [
+      settingsCommand(
+        id,
+        state.sessionsById[id]?.workspaceId ?? "",
+        update.queuedCommandId,
+        update.queuedSettings
+      )
+    ],
+    state: setOperation(state, id, {
+      ...operation,
+      settingsUpdate: {
+        ...createInitialSettingsUpdate(),
+        commandId: update.queuedCommandId,
+        settings: update.queuedSettings,
+        status: "inFlight"
+      }
+    })
+  };
 }
 
 function settingsCommand(

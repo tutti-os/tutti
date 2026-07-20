@@ -159,17 +159,18 @@ the opaque `targetKey`.
 
 ## Submit Availability
 
-Hosts should return `submitAvailability` as the authoritative wire state when a
-session knows whether normal input is allowed. Consumers that need an effective
-decision should call `resolveSubmitAvailability()`: explicit wire
-`state: "available"` stays available, unknown wire blocked reasons stay
-blocked, and locally derived `active_turn` or `waiting`
-blocks fill missing or stale derived states.
+The engine derives submit availability from canonical Turns and pending
+Interactions. Hosts must not copy deprecated session-level lifecycle or submit
+availability fields into the frontend.
 
-`turnLifecycle.activeTurnId` should be cleared when a turn settles. The selector
-still treats terminal lifecycle phases such as `settled` as authoritative so an
-older runtime that leaves a stale active turn id does not permanently block the
-composer.
+A host whose command transport can differ per Session may dispatch
+`session/runtimeAvailabilityChanged`. This ephemeral, session-scoped fact is
+kept outside the canonical Session and blocks runtime-dependent commands while
+the exact Session transport reconnects or is unavailable. Omitted availability
+defaults to available, so ordinary local runtimes retain their existing
+behavior. A workspace-wide `engine/connectionChanged` event must not be used to
+represent one remote Session's transport because that would also block
+unrelated Sessions sharing the engine.
 
 ## Event Shape
 

@@ -194,7 +194,9 @@ export function useAgentGUIDetailModel(input: Input) {
     viewModel.composer.canQueueWhileBusy && !isCollaboratorConversation;
   const composerDisabledReason = isCollaboratorConversation
     ? labels.collaboratorSessionReadOnlyPlaceholder
-    : null;
+    : viewModel.readiness.sessionRuntimeBlocked
+      ? labels.activatingSession
+      : null;
   const hasNonRetryableRecoveryFailure =
     (sessionChrome.recovery?.kind === "failed" &&
       sessionChrome.recovery.canRetry === false) ||
@@ -202,10 +204,12 @@ export function useAgentGUIDetailModel(input: Input) {
   const submitDisabled =
     hasNonRetryableRecoveryFailure ||
     isCollaboratorConversation ||
+    viewModel.readiness.sessionRuntimeBlocked ||
     (!viewModel.composer.canSubmit && !canQueueWhileBusy);
   const composerDisabled =
     hasNonRetryableRecoveryFailure ||
     isCollaboratorConversation ||
+    viewModel.readiness.sessionRuntimeBlocked ||
     (!canQueueWhileBusy &&
       (viewModel.interaction.pendingApproval !== null ||
         viewModel.interaction.pendingInteractivePrompt !== null ||
@@ -222,7 +226,9 @@ export function useAgentGUIDetailModel(input: Input) {
     isCreatingConversation: viewModel.composer.isCreatingConversation,
     isInterrupting: viewModel.composer.isInterrupting,
     isSubmitting: viewModel.composer.isSubmitting,
-    isUnavailable: viewModel.readiness.activeLiveState === "failed"
+    isUnavailable:
+      viewModel.readiness.activeLiveState === "failed" ||
+      viewModel.readiness.sessionRuntimeBlocked
   });
   const conversationFlowLabels = useMemo(
     () => ({

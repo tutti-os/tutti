@@ -108,6 +108,103 @@ test("settings timeout requires an explicit retry before sending again", () => {
   });
 });
 
+test("blocked runtime availability rejects settings and interactive commands", () => {
+  const source = session(activeTurn(2), 2);
+  source.latestTurnInteractions = [interaction("pending", 3)];
+  source.pendingInteractions = source.latestTurnInteractions;
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [source]
+  }).state;
+  state = reduce(state, {
+    type: "session/runtimeAvailabilityChanged",
+    agentSessionId: "session-1",
+    availability: {
+      state: "blocked",
+      reason: "transport_unavailable"
+    }
+  }).state;
+
+  assert.deepEqual(
+    reduce(state, settingsUpdateRequested("settings-blocked")).commands,
+    []
+  );
+  assert.deepEqual(
+    reduce(state, interactionResponseRequested("interaction-blocked")).commands,
+    []
+  );
+  assert.deepEqual(
+    reduce(state, {
+      type: "session/cancelRequested",
+      agentSessionId: "session-1",
+      commandId: "cancel-blocked",
+      awaitingTurnExpiresAtUnixMs: 30_000,
+      workspaceId: "workspace-1"
+    }).commands,
+    []
+  );
+});
+
+test("a queued settings update waits for runtime reconnection", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(null, 1)]
+  }).state;
+  state = reduce(state, settingsUpdateRequested("settings-1")).state;
+  state = reduce(
+    state,
+    settingsUpdateRequested("settings-2", { planMode: true })
+  ).state;
+  state = reduce(state, {
+    type: "session/runtimeAvailabilityChanged",
+    agentSessionId: "session-1",
+    availability: {
+      state: "blocked",
+      reason: "transport_reconnecting"
+    }
+  }).state;
+
+  const settled = sessionLifecycleReducer(
+    state,
+    {
+      commandId: "settings-1",
+      commandType: "session/updateSettings",
+      correlationId: "session-1",
+      outcome: "succeeded",
+      type: "engine/commandResult",
+      value: { session: session(null, 2) }
+    },
+    {
+      queueSendNowRequiresCancel: false,
+      settingsResultValidation: {
+        kind: "valid",
+        session: session(null, 2)
+      }
+    }
+  );
+  assert.deepEqual(settled.commands, []);
+  assert.equal(
+    settled.state.operationBySessionId["session-1"]?.settingsUpdate.status,
+    "waitingForRuntime"
+  );
+
+  const resumed = reduce(settled.state, {
+    type: "session/runtimeAvailabilityChanged",
+    agentSessionId: "session-1",
+    availability: { state: "available" }
+  });
+  assert.deepEqual(resumed.commands, [
+    {
+      agentSessionId: "session-1",
+      commandId: "settings-2",
+      correlationId: "session-1",
+      settings: { planMode: true },
+      type: "session/updateSettings",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("Turn provenance survives lifecycle upserts, reconcile snapshots, and selectors", () => {
   const initialTurn: AgentActivityTurn = {
     ...activeTurn(2),
