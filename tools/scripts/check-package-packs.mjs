@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,7 +7,10 @@ import {
   getNpmReleasePackages,
   workspaceRoot
 } from "./npm-release-packages.mjs";
-import { missingPackedRelativeImports } from "./package-pack-relative-imports.mjs";
+import {
+  missingPackedModuleRelativeAssets,
+  missingPackedRelativeImports
+} from "./package-pack-relative-imports.mjs";
 import {
   packedFilesWithRawSvgDataUrls,
   packedFilesWithRelativeSvgUrls
@@ -98,6 +101,24 @@ async function checkPackage(packageConfig, destination) {
     );
     for (const file of relativeSvgUrlFiles) {
       violations.push(`consumer-unresolvable relative SVG URL in ${file}`);
+    }
+  }
+
+  if (packageConfig.name === "@tutti-os/workspace-file-manager") {
+    const unpackedDirectory = join(destination, `${tarball}.unpacked`);
+    await mkdir(unpackedDirectory, { recursive: true });
+    execFileSync("tar", ["-xzf", tarballPath, "-C", unpackedDirectory]);
+    const packageRoot = join(unpackedDirectory, "package");
+    const missingAssets = await missingPackedModuleRelativeAssets(packageRoot);
+    for (const missingAsset of missingAssets) {
+      violations.push(`missing module-relative asset ${missingAsset}`);
+    }
+    const mainEntrySource = await readFile(
+      join(packageRoot, "dist/index.js"),
+      "utf8"
+    );
+    if (/data:image\/png(?:;|,)/i.test(mainEntrySource)) {
+      violations.push("PNG data URL embedded in dist/index.js");
     }
   }
 

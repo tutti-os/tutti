@@ -219,6 +219,8 @@ following:
 - packed JavaScript does not contain raw XML SVG data URLs or bare relative SVG
   strings; SVGs interpolated into runtime CSS `url(...)` values must use a
   CSS-safe data URL or an absolute URL constructed relative to the module
+- every asset referenced through `new URL(relativePath, import.meta.url)` exists
+  at that exact module-relative location inside the packed tarball
 
 Emitting an SVG next to a bundled JavaScript file is not sufficient when the
 bundle only exports a string such as `./icon-HASH.svg`. CSS resolves that value
