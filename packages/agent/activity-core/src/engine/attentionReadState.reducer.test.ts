@@ -30,7 +30,8 @@ test("a live canonical completion becomes unread and read intent clears it", () 
     {
       completionKey: "turn:session-1:turn-1:completed",
       isUnread: true,
-      kind: "completed"
+      kind: "completed",
+      markedUnreadByUser: false
     }
   );
   state = attentionReadStateReducer(state, {
@@ -41,6 +42,53 @@ test("a live canonical completion becomes unread and read intent clears it", () 
   assert.equal(
     state.partitionsByUserId["user-1"]?.recordsBySessionId["session-1"]
       ?.isUnread,
+    false
+  );
+  assert.equal(
+    state.partitionsByUserId["user-1"]?.recordsBySessionId["session-1"]
+      ?.markedUnreadByUser,
+    false
+  );
+});
+
+test("manual unread provenance survives until the completion is read or replaced", () => {
+  const context = { sessionsById: { "session-1": { userId: "user-1" } } };
+  let state = attentionReadStateReducer(
+    createInitialAttentionReadState(),
+    { type: "turn/upserted", turn },
+    context
+  ).state;
+  state = attentionReadStateReducer(state, {
+    type: "attention/read",
+    agentSessionId: "session-1",
+    userId: "user-1"
+  }).state;
+  state = attentionReadStateReducer(state, {
+    type: "attention/unreadRequested",
+    agentSessionId: "session-1",
+    userId: "user-1"
+  }).state;
+  assert.deepEqual(
+    state.partitionsByUserId["user-1"]?.recordsBySessionId["session-1"],
+    {
+      completionKey: "turn:session-1:turn-1:completed",
+      isUnread: true,
+      kind: "completed",
+      markedUnreadByUser: true
+    }
+  );
+
+  state = attentionReadStateReducer(
+    state,
+    {
+      type: "turn/upserted",
+      turn: { ...turn, turnId: "turn-2", updatedAtUnixMs: 3 }
+    },
+    context
+  ).state;
+  assert.equal(
+    state.partitionsByUserId["user-1"]?.recordsBySessionId["session-1"]
+      ?.markedUnreadByUser,
     false
   );
 });

@@ -458,6 +458,12 @@ canonical rail entities under the rail interaction lock. While either row
 menu is open the row keeps its hover layout (short title truncation, actions
 visible) so titles cannot overlap the action cluster.
 
+Attention state preserves explicit user intent: marking the currently selected
+Session unread keeps its unread indicator while that selection remains open.
+Selecting the Session again marks it read. A new live completion or a durable
+unread completion discovered by hydration is still marked read immediately when
+its Session is already selected.
+
 Read-only host surfaces reuse the complete workbench header and declare the
 session actions they support. Omitting that capability list preserves the full
 rename-and-copy menu; a copy-only surface does not render rename or an empty
