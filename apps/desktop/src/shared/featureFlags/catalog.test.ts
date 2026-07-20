@@ -12,6 +12,10 @@ import {
   isFeatureEnabled,
   labFeatureDefinitions,
   LAB_ENABLED_FLAG,
+  LAB_AUTOMATION_RULES_FLAG,
+  LAB_MODEL_PLANS_FLAG,
+  LAB_TUTTI_MODE_FLAG,
+  LAB_WORKSPACE_AGENTS_FLAG,
   resolveDesktopWorkspaceUiMode,
   withDesktopWorkspaceUiMode,
   WORKSPACE_STANDALONE_AGENT_MODE_FLAG
@@ -64,6 +68,20 @@ test("isFeatureEnabled returns false for unknown keys", () => {
 
 test("labFeatureDefinitions excludes the master switch", () => {
   assert.ok(labFeatureDefinitions().every((d) => d.group === "lab"));
+});
+
+test("experimental Agent features require independent Lab opt-ins", () => {
+  const flags = [
+    LAB_TUTTI_MODE_FLAG,
+    LAB_MODEL_PLANS_FLAG,
+    LAB_WORKSPACE_AGENTS_FLAG,
+    LAB_AUTOMATION_RULES_FLAG
+  ];
+
+  for (const flag of flags) {
+    assert.equal(isFeatureEnabled({}, flag), false);
+    assert.equal(isFeatureEnabled({ [flag]: true }, flag), true);
+  }
 });
 
 test("workspace UI mode defaults to OS and preserves explicit selections", () => {

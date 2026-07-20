@@ -6,6 +6,10 @@ import {
 
 export const LAB_ENABLED_FLAG = "lab.enabled";
 export const BROWSER_CHROME_COOKIE_IMPORT_FLAG = "browser.chromeCookieImport";
+export const LAB_TUTTI_MODE_FLAG = "lab.tuttiMode";
+export const LAB_MODEL_PLANS_FLAG = "lab.modelPlans";
+export const LAB_WORKSPACE_AGENTS_FLAG = "lab.workspaceAgents";
+export const LAB_AUTOMATION_RULES_FLAG = "lab.automationRules";
 export const LAB_WORKBENCH_SHORTCUTS_FLAG = "lab.workbenchShortcuts";
 export const WORKSPACE_STANDALONE_AGENT_MODE_FLAG =
   "workspace.standaloneAgentMode";
@@ -78,11 +82,39 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
   },
   { key: LAB_ENABLED_FLAG, default: false, group: "lab-master" },
   {
+    key: LAB_TUTTI_MODE_FLAG,
+    default: false,
+    group: "lab",
+    labelKey: "workspace.settings.lab.tuttiModeLabel",
+    descriptionKey: "workspace.settings.lab.tuttiModeDescription"
+  },
+  {
+    key: LAB_MODEL_PLANS_FLAG,
+    default: false,
+    group: "lab",
+    labelKey: "workspace.settings.lab.modelPlansLabel",
+    descriptionKey: "workspace.settings.lab.modelPlansDescription"
+  },
+  {
+    key: LAB_WORKSPACE_AGENTS_FLAG,
+    default: false,
+    group: "lab",
+    labelKey: "workspace.settings.lab.workspaceAgentsLabel",
+    descriptionKey: "workspace.settings.lab.workspaceAgentsDescription"
+  },
+  {
+    key: LAB_AUTOMATION_RULES_FLAG,
+    default: false,
+    group: "lab",
+    labelKey: "workspace.settings.lab.automationRulesLabel",
+    descriptionKey: "workspace.settings.lab.automationRulesDescription"
+  },
+  {
     key: LAB_WORKBENCH_SHORTCUTS_FLAG,
     default: false,
     group: "lab",
-    labelKey: "workspaceSettings.lab.workbenchShortcuts.label",
-    descriptionKey: "workspaceSettings.lab.workbenchShortcuts.description"
+    labelKey: "workspace.settings.lab.workbenchShortcutsLabel",
+    descriptionKey: "workspace.settings.lab.workbenchShortcutsDescription"
   }
 ];
 
