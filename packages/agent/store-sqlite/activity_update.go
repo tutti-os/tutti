@@ -41,9 +41,12 @@ func (s *Store) UpdateSessionPinned(
 	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET pinned_at_unix_ms = ?,
-    updated_at_unix_ms = ?
+    updated_at_unix_ms = CASE
+      WHEN ? > updated_at_unix_ms THEN ?
+      ELSE updated_at_unix_ms + 1
+    END
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-`, pinnedAtUnixMS, now, workspaceID, agentSessionID)
+`, pinnedAtUnixMS, now, now, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, fmt.Errorf("update workspace agent session pinned state: %w", err)
 	}
@@ -109,9 +112,12 @@ SET title = ?,
       '$.tuttiInitialTitleEstablished',
       json('true')
     ),
-    updated_at_unix_ms = ?
+    updated_at_unix_ms = CASE
+      WHEN ? > updated_at_unix_ms THEN ?
+      ELSE updated_at_unix_ms + 1
+    END
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-`, title, now, workspaceID, agentSessionID)
+`, title, now, now, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, fmt.Errorf("update workspace agent session title: %w", err)
 	}
@@ -177,9 +183,12 @@ func (s *Store) UpdateSessionSettings(
 UPDATE workspace_agent_sessions
 SET model = ?,
     settings_json = ?,
-    updated_at_unix_ms = ?
+    updated_at_unix_ms = CASE
+      WHEN ? > updated_at_unix_ms THEN ?
+      ELSE updated_at_unix_ms + 1
+    END
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-`, strings.TrimSpace(model), settingsJSON, now, workspaceID, agentSessionID)
+`, strings.TrimSpace(model), settingsJSON, now, now, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, fmt.Errorf("update workspace agent session settings: %w", err)
 	}
