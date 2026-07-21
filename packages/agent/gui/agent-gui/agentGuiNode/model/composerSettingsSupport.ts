@@ -15,6 +15,7 @@ export interface AgentComposerSettingsSupport {
   planImplementation: boolean;
   permissionModeChangeDuringTurn: boolean;
   permissionModeChangeDeferred: boolean;
+  modelSwitch: boolean;
 }
 
 /**
@@ -24,6 +25,38 @@ export interface AgentComposerSettingsSupport {
  * the backend (tuttid composer options + adapter capability reporting) is the
  * source of truth, and the daemon clamps persisted values on its side.
  */
+export interface AgentComposerModelPlanBinding {
+  id: string;
+  name: string;
+  protocol?: string | null;
+}
+
+/**
+ * Pure parse of the composer options `runtimeContext.modelPlan` payload
+ * (`{ id, name, protocol }`) advertised for plan-bound targets. Returns null
+ * for absent or malformed payloads so the composer degrades to the
+ * provider-native model source presentation.
+ */
+export function composerModelPlanFromRuntimeContext(
+  runtimeContext: Record<string, unknown> | null | undefined
+): AgentComposerModelPlanBinding | null {
+  const raw = runtimeContext?.modelPlan;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  if (!id || !name) {
+    return null;
+  }
+  const protocol =
+    typeof record.protocol === "string" && record.protocol.trim()
+      ? record.protocol.trim()
+      : null;
+  return { id, name, protocol };
+}
+
 export function composerSettingsSupportFromOptions(
   composerOptions: AgentActivityComposerOptions | null,
   sessionCapabilities: Partial<AgentActivitySessionCapabilities> | null
@@ -65,6 +98,11 @@ export function composerSettingsSupportFromOptions(
       }) === true,
     permissionModeChangeDeferred:
       resolveAgentActivityCapability("permissionModeChangeDeferred", {
+        composerOptions,
+        sessionCapabilities
+      }) === true,
+    modelSwitch:
+      resolveAgentActivityCapability("modelSwitch", {
         composerOptions,
         sessionCapabilities
       }) === true

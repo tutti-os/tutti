@@ -7,11 +7,14 @@ import {
 } from "react";
 import type {
   AgentActivityActivateSessionResult,
+  AgentActivityCollaborationRun,
   AgentActivityGoalControlInput,
   AgentActivityGoalControlResult,
   AgentActivityCreateSessionInput,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
+  AgentActivityListModelPlansInput,
+  AgentActivityListModelPlansResult,
   AgentActivityMessageOrder,
   AgentActivityMessagePage,
   AgentActivityRenameSessionInput,
@@ -19,8 +22,10 @@ import type {
   AgentActivitySendInputResult,
   AgentActivitySession,
   AgentActivitySessionSettings,
+  AgentActivitySetCollaborationAdoptionInput,
   AgentActivitySnapshot,
   AgentActivitySnapshotListener,
+  AgentActivityStartModelConsultInput,
   AgentActivitySubmitInteractiveInput,
   AgentActivitySubmitInteractiveResult,
   AgentSessionEngine
@@ -429,6 +434,32 @@ export interface AgentActivityRuntime {
   renameSession(
     input: AgentActivityRenameSessionInput
   ): Promise<AgentActivitySession>;
+  /**
+   * Start an explicit model consult (daemon-side advisory completion against a
+   * workspace model access plan) for the given source session. Optional like
+   * other host-gated commands: hosts without collaboration-run support omit it
+   * and AgentGUI hides the consult affordance entirely. The resulting
+   * collaboration card arrives through the normal activity update pipeline, so
+   * callers need no local insertion.
+   */
+  startModelConsult?(
+    input: AgentActivityStartModelConsultInput
+  ): Promise<AgentActivityCollaborationRun>;
+  /**
+   * Record whether a consult/delegate collaboration outcome was adopted.
+   * Optional alongside startModelConsult; hosts without support omit it and
+   * the adoption controls stay hidden.
+   */
+  setCollaborationAdoption?(
+    input: AgentActivitySetCollaborationAdoptionInput
+  ): Promise<AgentActivityCollaborationRun>;
+  /**
+   * List workspace model access plans for the consult picker. Optional
+   * alongside startModelConsult.
+   */
+  listModelPlans?(
+    input: AgentActivityListModelPlansInput
+  ): Promise<AgentActivityListModelPlansResult>;
   setSessionPinned(
     input: AgentActivityRuntimeSetSessionPinnedInput
   ): Promise<AgentActivitySession>;

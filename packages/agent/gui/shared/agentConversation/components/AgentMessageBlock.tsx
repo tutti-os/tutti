@@ -9,6 +9,7 @@ import {
 import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
 import { formatAgentMessageTimestamp } from "../../../app/renderer/shell/utils/format";
 import { AgentPlanCard } from "./AgentPlanCard";
+import { AgentCollaborationRow } from "./AgentCollaborationRow";
 import { translate } from "../../../i18n/index";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
 import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
@@ -180,6 +181,16 @@ export function AgentMessageBlock({
             />
           ) : message.systemNotice ? (
             <AgentSystemNoticeMessage message={message} />
+          ) : message.contentKind === "collaboration" &&
+            message.collaboration ? (
+            <AgentCollaborationRow
+              collaboration={message.collaboration}
+              workspaceRoot={workspaceRoot}
+              basePath={basePath}
+              onLinkAction={onLinkAction}
+              workspaceAppIcons={workspaceAppIcons}
+              previewMode={previewMode}
+            />
           ) : message.contentKind === "plan" ? (
             <AgentPlanCardMessage
               message={message}
