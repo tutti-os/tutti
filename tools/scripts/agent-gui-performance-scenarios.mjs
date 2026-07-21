@@ -12,12 +12,14 @@ import {
   railScopeRevealScenario,
   virtualizedStreamingScenario
 } from "./agent-gui-layout-performance-scenarios.mjs";
+import { virtualizedScrollLocatorScenario } from "./agent-gui-scroll-performance-scenario.mjs";
 
 export const agentGuiPerformanceScenarios = [
   providerSwitchScenario,
   sessionSwitchScenario,
   providerSessionCycleScenario,
   virtualizedStreamingScenario,
+  virtualizedScrollLocatorScenario,
   railScopeRevealScenario,
   composerOverflowResizeScenario,
   workbenchWindowLifecycleScenario,

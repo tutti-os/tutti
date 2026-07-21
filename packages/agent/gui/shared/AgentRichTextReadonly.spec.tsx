@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import { render, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { fireEvent, render, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentRichTextReadonly } from "./AgentRichTextReadonly";
 import {
   registerAgentCustomMentionKind,
@@ -9,6 +9,7 @@ import {
 
 afterEach(() => {
   resetAgentCustomMentionKindsForTests();
+  vi.restoreAllMocks();
 });
 
 describe("AgentRichTextReadonly", () => {
@@ -19,6 +20,43 @@ describe("AgentRichTextReadonly", () => {
 
     expect(container).toHaveTextContent("First-frame user message");
     expect(container.querySelector(".ProseMirror")).not.toBeNull();
+  });
+
+  it("mounts a transcript window without creating editable views or reading DOM selection", () => {
+    const getSelection = vi.spyOn(document, "getSelection");
+    const { container } = render(
+      <>
+        {Array.from({ length: 30 }, (_, index) => (
+          <AgentRichTextReadonly
+            key={index}
+            value={`Historical user message ${index}`}
+          />
+        ))}
+      </>
+    );
+
+    expect(container.querySelectorAll(".ProseMirror")).toHaveLength(30);
+    expect(container.querySelector("[contenteditable]")).toBeNull();
+    expect(getSelection).not.toHaveBeenCalled();
+  });
+
+  it("delegates mention clicks without an EditorView", () => {
+    const onLinkClick = vi.fn();
+    const href = "mention://workspace-app/weather?workspaceId=workspace-1";
+    const { container } = render(
+      <AgentRichTextReadonly
+        value={`Run [@Weather](${href})`}
+        onLinkClick={onLinkClick}
+      />
+    );
+
+    const mention = container.querySelector(
+      '[data-agent-mention-kind="workspace-app"]'
+    );
+    expect(mention).not.toBeNull();
+    fireEvent.click(mention!);
+    expect(onLinkClick).toHaveBeenCalledOnce();
+    expect(onLinkClick).toHaveBeenCalledWith(href);
   });
 
   it("renders historical browser-element hrefs whose entity id contains an unescaped colon", async () => {

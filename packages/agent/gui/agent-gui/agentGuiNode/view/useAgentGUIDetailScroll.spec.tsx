@@ -107,6 +107,7 @@ describe("useAgentGUIDetailScroll", () => {
   });
 
   it("keeps a newly selected conversation bottom-locked while layout grows", () => {
+    const resizeObservers = installResizeObserverMock();
     const harness = createHarness({ scrollHeight: 100 });
     const animationFrames: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
@@ -123,9 +124,14 @@ describe("useAgentGUIDetailScroll", () => {
       )
     );
 
+    const timelineObserver = resizeObservers.find((observer) =>
+      observer.observed.has(harness.timelineContent)
+    );
+    expect(timelineObserver).toBeDefined();
+
     harness.setScrollHeight(5_000);
     act(() => {
-      harness.timeline.dispatchEvent(new Event("scroll"));
+      timelineObserver?.callback([], timelineObserver);
     });
     expect(harness.timeline.scrollTop).toBe(4_900);
 
@@ -159,6 +165,32 @@ describe("useAgentGUIDetailScroll", () => {
     });
 
     expect(harness.timeline.scrollTop).toBe(4_000);
+  });
+
+  it("does not synchronously read full timeline geometry during scrolling", () => {
+    const harness = createHarness({ scrollHeight: 5_000 });
+
+    renderHook(() =>
+      useAgentGUIDetailScroll(
+        harness.input({
+          activeConversationId: "conversation-scroll-hot-path",
+          showTimelineSkeleton: false
+        })
+      )
+    );
+    harness.resetGeometryReadCounts();
+
+    act(() => {
+      harness.timeline.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
+      harness.timeline.scrollTop = 4_000;
+      harness.timeline.dispatchEvent(new Event("scroll"));
+    });
+
+    expect(harness.geometryReadCounts()).toEqual({
+      clientHeight: 0,
+      scrollHeight: 0,
+      scrollTop: 1
+    });
   });
 
   it("does not synchronously read timeline geometry for a streaming update", () => {

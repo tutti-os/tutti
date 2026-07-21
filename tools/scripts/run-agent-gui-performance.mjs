@@ -159,6 +159,7 @@ export async function main(argv) {
       endMarker: scenario.markers.end,
       milestones: scenario.milestones,
       minimumLongEventMs: options.minimumLongEventMs,
+      profileFunctionNames: scenario.profileFunctionNames,
       sourceRoot: workspaceRoot
     });
     summary.run = {
@@ -168,6 +169,7 @@ export async function main(argv) {
       sourceProjectCount: snapshotInfo.projectCount,
       clearedRecoveryRows: snapshotInfo.clearedRecoveryRows
     };
+    applyScenarioAssessment(summary, scenario.assessTrace?.(summary));
     await writeFile(reportJSONPath, `${JSON.stringify(summary, null, 2)}\n`);
     await writeFile(
       reportMarkdownPath,
@@ -178,10 +180,18 @@ export async function main(argv) {
     );
 
     log(
-      `report-only: ${summary.renders.componentMarkers} component markers, ${summary.renders.radixFamilyMarkers} Radix-family markers, ${summary.timing.longTaskCount} renderer long tasks`
+      `${summary.mode}: ${summary.renders.componentMarkers} component markers, ${summary.renders.radixFamilyMarkers} Radix-family markers, ${summary.timing.longTaskCount} renderer long tasks`
     );
     log(`report: ${reportMarkdownPath}`);
     log(`trace: ${tracePath}`);
+    if (summary.verdict.status === "failed") {
+      throw new Error(
+        `${scenario.id} performance gate failed: ${summary.run.assertions
+          .filter((assertion) => !assertion.passed)
+          .map((assertion) => assertion.name)
+          .join(", ")}`
+      );
+    }
   } catch (error) {
     primaryError = error;
     throw error;
@@ -372,6 +382,28 @@ export function prepareWorkbenchSnapshotForPerformance(snapshot) {
     nodeStack,
     activeNodeId: selected.id
   };
+}
+
+export function applyScenarioAssessment(summary, assessment) {
+  if (!assessment) return summary;
+  summary.run.assertions.push(...(assessment.assertions ?? []));
+  summary.run.details.push(...(assessment.details ?? []));
+  const failedAssertions = summary.run.assertions.filter(
+    (assertion) => !assertion.passed
+  );
+  summary.run.outcome = failedAssertions.length === 0 ? "passed" : "failed";
+  summary.mode = "scenario-thresholds";
+  summary.verdict =
+    failedAssertions.length === 0
+      ? {
+          status: "passed",
+          reason: `${summary.run.assertions.length} scenario assertions passed`
+        }
+      : {
+          status: "failed",
+          reason: `${failedAssertions.length} of ${summary.run.assertions.length} scenario assertions failed`
+        };
+  return summary;
 }
 
 async function buildDaemon(outputPath) {

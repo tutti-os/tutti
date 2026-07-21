@@ -3,8 +3,10 @@ import {
   useContext,
   useEffect,
   useState,
+  type ComponentPropsWithoutRef,
   type JSX,
   type MouseEvent,
+  type MouseEventHandler,
   type ReactNode
 } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
@@ -54,6 +56,19 @@ interface AgentMentionNodeViewModel {
   thumbnailUrl?: string;
   /** 引用文件数量(workspace-reference 专用)。 */
   fileCount?: number;
+}
+
+type AgentMentionWrapperProps = ComponentPropsWithoutRef<"span">;
+type AgentMentionWrapper = (props: AgentMentionWrapperProps) => JSX.Element;
+
+function AgentMentionNodeWrapper(props: AgentMentionWrapperProps): JSX.Element {
+  return <NodeViewWrapper as="span" {...props} />;
+}
+
+function AgentMentionStaticWrapper(
+  props: AgentMentionWrapperProps
+): JSX.Element {
+  return <span {...props} />;
 }
 
 const AgentMentionTooltipProviderContext = createContext(true);
@@ -277,53 +292,23 @@ function hasPromptContentAfterMentionRemoval(
   return hasContent;
 }
 
-function AgentMentionLegacyFileNodeView({
-  deleteNode,
-  editor,
-  extension,
-  node,
-  selected
-}: NodeViewProps): JSX.Element {
-  const { t } = useTranslation();
-  const mention = mentionViewModel(node.attrs ?? {}, t);
-  const [isEditable, setIsEditable] = useState(editor.isEditable);
-  const extensionOptions = extension.options as {
-    removeActionAriaLabel?: string;
-  };
-  const removeActionAriaLabel =
-    typeof extensionOptions.removeActionAriaLabel === "string"
-      ? extensionOptions.removeActionAriaLabel
-      : undefined;
-
-  useEffect(() => {
-    const syncEditable = () => {
-      setIsEditable(editor.isEditable);
-    };
-
-    syncEditable();
-    editor.on("transaction", syncEditable);
-    editor.on("update", syncEditable);
-    return () => {
-      editor.off("transaction", syncEditable);
-      editor.off("update", syncEditable);
-    };
-  }, [editor]);
-
-  const handleRemove = (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!editor.isEditable) {
-      return;
-    }
-    deleteNode();
-    if (!hasPromptContentAfterMentionRemoval(editor.state.doc)) {
-      editor.commands.clearContent();
-    }
-  };
-
+function AgentMentionLegacyFileView({
+  isEditable,
+  mention,
+  onRemove,
+  removeActionAriaLabel,
+  selected,
+  Wrapper
+}: {
+  isEditable: boolean;
+  mention: AgentMentionNodeViewModel;
+  onRemove?: MouseEventHandler<HTMLButtonElement>;
+  removeActionAriaLabel?: string;
+  selected: boolean;
+  Wrapper: AgentMentionWrapper;
+}): JSX.Element {
   return (
-    <NodeViewWrapper
-      as="span"
+    <Wrapper
       aria-label={
         mention.attachmentErrorLabel
           ? `${mention.ariaLabel}, ${mention.attachmentErrorLabel}`
@@ -380,7 +365,7 @@ function AgentMentionLegacyFileNodeView({
               aria-label={removeActionAriaLabel}
               className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
               type="button"
-              onMouseDown={handleRemove}
+              onMouseDown={onRemove}
             >
               <CloseIcon className="size-3.5" />
             </button>
@@ -418,7 +403,7 @@ function AgentMentionLegacyFileNodeView({
               aria-label={removeActionAriaLabel}
               className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
               type="button"
-              onMouseDown={handleRemove}
+              onMouseDown={onRemove}
             >
               <CloseIcon className="size-3.5" />
             </button>
@@ -426,15 +411,216 @@ function AgentMentionLegacyFileNodeView({
         </span>
       )}
       <span className="tsh-agent-object-token__main">{mention.label}</span>
-    </NodeViewWrapper>
+    </Wrapper>
   );
 }
 
-export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
-  const { deleteNode, editor, extension, node, selected } = props;
+function AgentMentionView({
+  attrs,
+  isEditable,
+  onRemove,
+  removeActionAriaLabel,
+  selected,
+  Wrapper
+}: {
+  attrs: Record<string, unknown>;
+  isEditable: boolean;
+  onRemove?: MouseEventHandler<HTMLButtonElement>;
+  removeActionAriaLabel?: string;
+  selected: boolean;
+  Wrapper: AgentMentionWrapper;
+}): JSX.Element {
   const { t } = useTranslation();
   const withTooltipProvider = useContext(AgentMentionTooltipProviderContext);
-  const mention = mentionViewModel(node.attrs ?? {}, t);
+  const mention = mentionViewModel(attrs, t);
+
+  if (mention.kind === "file") {
+    return (
+      <AgentMentionLegacyFileView
+        isEditable={isEditable}
+        mention={mention}
+        onRemove={onRemove}
+        removeActionAriaLabel={removeActionAriaLabel}
+        selected={selected}
+        Wrapper={Wrapper}
+      />
+    );
+  }
+
+  if (
+    mention.kind === "workspace-app" ||
+    mention.kind === "workspace-reference" ||
+    mention.kind === "agent-target"
+  ) {
+    return (
+      <Wrapper
+        aria-label={mention.ariaLabel}
+        className={`agent-rich-text-mention-node inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] align-middle ${
+          selected ? "is-selected" : ""
+        }`}
+        contentEditable={false}
+        data-agent-file-mention="true"
+        data-agent-mention-href={mention.href}
+        data-agent-mention-icon-url={mention.iconUrl}
+        data-agent-mention-kind={mention.kind}
+      >
+        <MentionPill
+          aria-label={mention.ariaLabel}
+          className="top-0 h-6 max-w-[min(100%,var(--agent-mention-max-width,16rem))] py-0 align-middle leading-6"
+          data-agent-mention-kind={mention.kind}
+          iconUrl={mention.iconUrl}
+          iconContainerProps={{
+            "data-agent-mention-app-icon":
+              mention.kind === "agent-target" ? undefined : "true",
+            "data-agent-mention-session-icon":
+              mention.kind === "agent-target" ? "true" : undefined,
+            "data-workspace-app-icon":
+              mention.kind === "agent-target" ? undefined : "true"
+          }}
+          kind={mention.kind === "agent-target" ? "session" : "app"}
+          label={mention.label}
+          removable={isEditable}
+          removeButtonProps={
+            isEditable
+              ? {
+                  "aria-label": removeActionAriaLabel,
+                  onMouseDown: onRemove
+                }
+              : undefined
+          }
+          withTooltipProvider={withTooltipProvider}
+        />
+      </Wrapper>
+    );
+  }
+
+  if (mention.kind === "custom") {
+    // 宿主注册的自定义 mention:优先用注册的 renderChip,缺省用通用双行卡
+    // (第一行 name,第二行 summary)。点击经 rich-text surface 的 link click 委托
+    // (data-agent-mention-href)上抛 onLinkAction,由宿主二次解析 href。
+    const definition = getAgentCustomMentionKind(mention.customKind ?? "");
+    const removeAction = isEditable ? (
+      <button
+        aria-label={removeActionAriaLabel}
+        className="inline-flex size-4 shrink-0 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
+        type="button"
+        onMouseDown={onRemove}
+      >
+        <CloseIcon className="size-3.5" />
+      </button>
+    ) : null;
+    if (definition?.renderChip) {
+      return (
+        <Wrapper
+          aria-label={mention.ariaLabel}
+          className={`agent-rich-text-mention-node inline-grid max-w-[min(100%,var(--agent-mention-max-width,20rem))] align-middle ${
+            selected ? "is-selected" : ""
+          }`}
+          contentEditable={false}
+          data-agent-custom-mention="true"
+          data-agent-file-mention="true"
+          data-agent-mention-href={mention.href}
+          data-agent-mention-kind={mention.customKind || mention.kind}
+        >
+          {definition.renderChip({
+            href: mention.href,
+            name: mention.label,
+            summary: mention.summary,
+            isEditable,
+            removeAction
+          })}
+        </Wrapper>
+      );
+    }
+    return (
+      <Wrapper
+        aria-label={mention.ariaLabel}
+        className={`agent-rich-text-mention-node inline-grid max-w-[min(100%,var(--agent-mention-max-width,20rem))] align-middle ${
+          selected ? "is-selected" : ""
+        }`}
+        contentEditable={false}
+        data-agent-custom-mention="true"
+        data-agent-file-mention="true"
+        data-agent-mention-href={mention.href}
+        data-agent-mention-kind={mention.customKind || mention.kind}
+      >
+        <span
+          className="group relative grid max-w-full cursor-pointer gap-0.5 overflow-hidden rounded-[8px] border border-[var(--border-primary,rgba(0,0,0,0.08))] bg-block px-2.5 py-1.5 text-left align-middle"
+          data-slot="mention-card"
+        >
+          <span className="flex min-w-0 items-center gap-1">
+            <span
+              aria-hidden="true"
+              className="tsh-agent-object-token__kind-icon size-3.5 shrink-0"
+            />
+            <span className="truncate text-[13px] font-medium leading-[130%]">
+              {mention.label}
+            </span>
+            {removeAction}
+          </span>
+          {mention.summary ? (
+            <span className="truncate text-[12px] font-normal leading-[130%] text-[var(--text-tertiary)]">
+              {mention.summary}
+            </span>
+          ) : null}
+        </span>
+      </Wrapper>
+    );
+  }
+
+  return (
+    <Wrapper
+      className={`agent-rich-text-mention-node inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] align-middle ${
+        selected ? "is-selected" : ""
+      }`}
+      contentEditable={false}
+    >
+      <MentionPill
+        aria-label={mention.ariaLabel}
+        className="top-0 h-6 py-0 align-middle leading-6"
+        data-agent-mention-href={mention.href}
+        data-agent-mention-kind={mention.kind}
+        kind={mention.kind === "session" ? "session" : "issue"}
+        iconUrl={mention.iconUrl}
+        label={mention.label}
+        removable={isEditable}
+        removeButtonProps={
+          isEditable
+            ? {
+                "aria-label": removeActionAriaLabel,
+                onMouseDown: onRemove
+              }
+            : undefined
+        }
+        summary={mention.summary}
+        withTooltipProvider={withTooltipProvider}
+      />
+    </Wrapper>
+  );
+}
+
+export function AgentMentionReadonlyView({
+  attrs
+}: {
+  attrs: Record<string, unknown>;
+}): JSX.Element {
+  return (
+    <AgentMentionView
+      attrs={attrs}
+      isEditable={false}
+      selected={false}
+      Wrapper={AgentMentionStaticWrapper}
+    />
+  );
+}
+
+export function AgentMentionNodeView({
+  deleteNode,
+  editor,
+  extension,
+  node,
+  selected
+}: NodeViewProps): JSX.Element {
   const [isEditable, setIsEditable] = useState(editor.isEditable);
   const extensionOptions = extension.options as {
     removeActionAriaLabel?: string;
@@ -470,162 +656,14 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
     }
   };
 
-  if (mention.kind === "file") {
-    return <AgentMentionLegacyFileNodeView {...props} />;
-  }
-
-  if (
-    mention.kind === "workspace-app" ||
-    mention.kind === "workspace-reference" ||
-    mention.kind === "agent-target"
-  ) {
-    return (
-      <NodeViewWrapper
-        as="span"
-        aria-label={mention.ariaLabel}
-        className={`agent-rich-text-mention-node inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] align-middle ${
-          selected ? "is-selected" : ""
-        }`}
-        contentEditable={false}
-        data-agent-file-mention="true"
-        data-agent-mention-href={mention.href}
-        data-agent-mention-icon-url={mention.iconUrl}
-        data-agent-mention-kind={mention.kind}
-      >
-        <MentionPill
-          aria-label={mention.ariaLabel}
-          className="top-0 h-6 max-w-[min(100%,var(--agent-mention-max-width,16rem))] py-0 align-middle leading-6"
-          data-agent-mention-kind={mention.kind}
-          iconUrl={mention.iconUrl}
-          iconContainerProps={{
-            "data-agent-mention-app-icon":
-              mention.kind === "agent-target" ? undefined : "true",
-            "data-agent-mention-session-icon":
-              mention.kind === "agent-target" ? "true" : undefined,
-            "data-workspace-app-icon":
-              mention.kind === "agent-target" ? undefined : "true"
-          }}
-          kind={mention.kind === "agent-target" ? "session" : "app"}
-          label={mention.label}
-          removable={isEditable}
-          removeButtonProps={
-            isEditable
-              ? {
-                  "aria-label": removeActionAriaLabel,
-                  onMouseDown: handleRemove
-                }
-              : undefined
-          }
-          withTooltipProvider={withTooltipProvider}
-        />
-      </NodeViewWrapper>
-    );
-  }
-
-  if (mention.kind === "custom") {
-    // 宿主注册的自定义 mention:优先用注册的 renderChip,缺省用通用双行卡
-    // (第一行 name,第二行 summary)。点击经编辑器的 link click 委托
-    // (data-agent-mention-href)上抛 onLinkAction,由宿主二次解析 href。
-    const definition = getAgentCustomMentionKind(mention.customKind ?? "");
-    const removeAction = isEditable ? (
-      <button
-        aria-label={removeActionAriaLabel}
-        className="inline-flex size-4 shrink-0 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
-        type="button"
-        onMouseDown={handleRemove}
-      >
-        <CloseIcon className="size-3.5" />
-      </button>
-    ) : null;
-    if (definition?.renderChip) {
-      return (
-        <NodeViewWrapper
-          as="span"
-          aria-label={mention.ariaLabel}
-          className={`agent-rich-text-mention-node inline-grid max-w-[min(100%,var(--agent-mention-max-width,20rem))] align-middle ${
-            selected ? "is-selected" : ""
-          }`}
-          contentEditable={false}
-          data-agent-custom-mention="true"
-          data-agent-file-mention="true"
-          data-agent-mention-href={mention.href}
-          data-agent-mention-kind={mention.customKind || mention.kind}
-        >
-          {definition.renderChip({
-            href: mention.href,
-            name: mention.label,
-            summary: mention.summary,
-            isEditable,
-            removeAction
-          })}
-        </NodeViewWrapper>
-      );
-    }
-    return (
-      <NodeViewWrapper
-        as="span"
-        aria-label={mention.ariaLabel}
-        className={`agent-rich-text-mention-node inline-grid max-w-[min(100%,var(--agent-mention-max-width,20rem))] align-middle ${
-          selected ? "is-selected" : ""
-        }`}
-        contentEditable={false}
-        data-agent-custom-mention="true"
-        data-agent-file-mention="true"
-        data-agent-mention-href={mention.href}
-        data-agent-mention-kind={mention.customKind || mention.kind}
-      >
-        <span
-          className="group relative grid max-w-full cursor-pointer gap-0.5 overflow-hidden rounded-[8px] border border-[var(--border-primary,rgba(0,0,0,0.08))] bg-block px-2.5 py-1.5 text-left align-middle"
-          data-slot="mention-card"
-        >
-          <span className="flex min-w-0 items-center gap-1">
-            <span
-              aria-hidden="true"
-              className="tsh-agent-object-token__kind-icon size-3.5 shrink-0"
-            />
-            <span className="truncate text-[13px] font-medium leading-[130%]">
-              {mention.label}
-            </span>
-            {removeAction}
-          </span>
-          {mention.summary ? (
-            <span className="truncate text-[12px] font-normal leading-[130%] text-[var(--text-tertiary)]">
-              {mention.summary}
-            </span>
-          ) : null}
-        </span>
-      </NodeViewWrapper>
-    );
-  }
-
   return (
-    <NodeViewWrapper
-      as="span"
-      className={`agent-rich-text-mention-node inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] align-middle ${
-        selected ? "is-selected" : ""
-      }`}
-      contentEditable={false}
-    >
-      <MentionPill
-        aria-label={mention.ariaLabel}
-        className="top-0 h-6 py-0 align-middle leading-6"
-        data-agent-mention-href={mention.href}
-        data-agent-mention-kind={mention.kind}
-        kind={mention.kind === "session" ? "session" : "issue"}
-        iconUrl={mention.iconUrl}
-        label={mention.label}
-        removable={isEditable}
-        removeButtonProps={
-          isEditable
-            ? {
-                "aria-label": removeActionAriaLabel,
-                onMouseDown: handleRemove
-              }
-            : undefined
-        }
-        summary={mention.summary}
-        withTooltipProvider={withTooltipProvider}
-      />
-    </NodeViewWrapper>
+    <AgentMentionView
+      attrs={node.attrs ?? {}}
+      isEditable={isEditable}
+      onRemove={handleRemove}
+      removeActionAriaLabel={removeActionAriaLabel}
+      selected={selected}
+      Wrapper={AgentMentionNodeWrapper}
+    />
   );
 }
