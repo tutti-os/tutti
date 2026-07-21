@@ -1,0 +1,344 @@
+// Package modelplan defines the workspace-level model access plan domain.
+//
+// A model access plan is a named, reusable model access configuration
+// (credential, protocol, base URL, model list, detection state). Plans are
+// workspace-global resources referenced by agent targets, model usage
+// policies, and workspace apps; multiple named plans may share one protocol.
+package modelplan
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+)
+
+// Protocol is the wire protocol family used to call the plan's models.
+type Protocol string
+
+const (
+	ProtocolOpenAI    Protocol = "openai"
+	ProtocolAnthropic Protocol = "anthropic"
+)
+
+func IsProtocol(value string) bool {
+	switch Protocol(value) {
+	case ProtocolOpenAI, ProtocolAnthropic:
+		return true
+	default:
+		return false
+	}
+}
+
+// TemplateKind is the access-scheme template a plan was created from. It is a
+// presentation and guidance hint; runtime behavior derives from Protocol.
+type TemplateKind string
+
+const (
+	TemplateOfficialSubscription TemplateKind = "official_subscription"
+	TemplateCodingPlan           TemplateKind = "coding_plan"
+	TemplateDomestic             TemplateKind = "domestic"
+	TemplateRelay                TemplateKind = "relay"
+	TemplateCustom               TemplateKind = "custom"
+)
+
+func IsTemplateKind(value string) bool {
+	switch TemplateKind(value) {
+	case TemplateOfficialSubscription, TemplateCodingPlan, TemplateDomestic, TemplateRelay, TemplateCustom:
+		return true
+	default:
+		return false
+	}
+}
+
+// DetectionStage identifies one stage of the staged connection check.
+type DetectionStage string
+
+const (
+	StageNetwork        DetectionStage = "network"
+	StageAuth           DetectionStage = "auth"
+	StageModelDiscovery DetectionStage = "model_discovery"
+	StageInference      DetectionStage = "inference"
+	StageAgentRuntime   DetectionStage = "agent_runtime"
+)
+
+// DetectionStages lists every stage in execution order.
+func DetectionStages() []DetectionStage {
+	return []DetectionStage{StageNetwork, StageAuth, StageModelDiscovery, StageInference, StageAgentRuntime}
+}
+
+// StageStatus is the outcome of one detection stage.
+type StageStatus string
+
+const (
+	StagePassed  StageStatus = "passed"
+	StageFailed  StageStatus = "failed"
+	StageSkipped StageStatus = "skipped"
+	StagePending StageStatus = "pending"
+)
+
+// StageResult is the structured record of one detection stage run.
+type StageResult struct {
+	Stage         DetectionStage `json:"stage"`
+	Status        StageStatus    `json:"status"`
+	LatencyMs     int64          `json:"latencyMs,omitempty"`
+	FailureReason string         `json:"failureReason,omitempty"`
+	Remedy        string         `json:"remedy,omitempty"`
+	Detail        string         `json:"detail,omitempty"`
+	CheckedAt     time.Time      `json:"checkedAt,omitempty"`
+}
+
+// DetectionSnapshot is the latest staged detection outcome for a plan.
+type DetectionSnapshot struct {
+	Stages    []StageResult `json:"stages"`
+	CheckedAt time.Time     `json:"checkedAt,omitempty"`
+	// Model is the model id exercised by the inference stage.
+	Model string `json:"model,omitempty"`
+}
+
+// StageOutcome returns the recorded result for one stage.
+func (d DetectionSnapshot) StageOutcome(stage DetectionStage) (StageResult, bool) {
+	for _, result := range d.Stages {
+		if result.Stage == stage {
+			return result, true
+		}
+	}
+	return StageResult{}, false
+}
+
+// CorePassed reports whether the daemon-verifiable stages (network through
+// inference) all passed or were explicitly skipped.
+func (d DetectionSnapshot) CorePassed() bool {
+	core := []DetectionStage{StageNetwork, StageAuth, StageModelDiscovery, StageInference}
+	for _, stage := range core {
+		result, ok := d.StageOutcome(stage)
+		if !ok {
+			return false
+		}
+		if result.Status != StagePassed && result.Status != StageSkipped {
+			return false
+		}
+	}
+	return true
+}
+
+// FirstUseStatus tracks whether a saved plan has completed its first real
+// agent-runtime call.
+type FirstUseStatus string
+
+const (
+	FirstUsePending   FirstUseStatus = "pending"
+	FirstUseCompleted FirstUseStatus = "completed"
+)
+
+// FirstUse records the first successful agent-runtime call through the plan.
+type FirstUse struct {
+	Status         FirstUseStatus `json:"status"`
+	AgentTargetID  string         `json:"agentTargetId,omitempty"`
+	AgentSessionID string         `json:"agentSessionId,omitempty"`
+	Model          string         `json:"model,omitempty"`
+	CompletedAt    time.Time      `json:"completedAt,omitempty"`
+}
+
+// PlanStatus is the derived lifecycle status shown to users.
+type PlanStatus string
+
+const (
+	StatusDisabled        PlanStatus = "disabled"
+	StatusUndetected      PlanStatus = "undetected"
+	StatusDetectionFailed PlanStatus = "detection_failed"
+	StatusPendingFirstUse PlanStatus = "pending_first_use"
+	StatusReady           PlanStatus = "ready"
+)
+
+// Model is one model exposed by a plan.
+type Model struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Capabilities uses the shared capability vocabulary (for example
+	// "vision", "reasoning", "functionCalling"). Empty means unknown.
+	Capabilities []string `json:"capabilities,omitempty"`
+}
+
+// Plan is the durable model access plan record.
+type Plan struct {
+	ID           string
+	WorkspaceID  string
+	Name         string
+	TemplateKind TemplateKind
+	Protocol     Protocol
+	// APIKey never serializes; only PublicPlan projections leave the daemon.
+	APIKey       string `json:"-"`
+	BaseURL      string
+	Models       []Model
+	DefaultModel string
+	Enabled      bool
+	Detection    DetectionSnapshot
+	FirstUse     FirstUse
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// Status derives the user-facing lifecycle status.
+func (p Plan) Status() PlanStatus {
+	if !p.Enabled {
+		return StatusDisabled
+	}
+	if len(p.Detection.Stages) == 0 {
+		return StatusUndetected
+	}
+	if !p.Detection.CorePassed() {
+		return StatusDetectionFailed
+	}
+	if p.FirstUse.Status != FirstUseCompleted {
+		return StatusPendingFirstUse
+	}
+	return StatusReady
+}
+
+// PublicPlan is the redaction-safe projection of a plan.
+type PublicPlan struct {
+	ID           string            `json:"id"`
+	WorkspaceID  string            `json:"workspaceId"`
+	Name         string            `json:"name"`
+	TemplateKind TemplateKind      `json:"templateKind"`
+	Protocol     Protocol          `json:"protocol"`
+	HasAPIKey    bool              `json:"hasApiKey"`
+	BaseURL      string            `json:"baseUrl,omitempty"`
+	Models       []Model           `json:"models"`
+	DefaultModel string            `json:"defaultModel,omitempty"`
+	Enabled      bool              `json:"enabled"`
+	Status       PlanStatus        `json:"status"`
+	Detection    DetectionSnapshot `json:"detection"`
+	FirstUse     FirstUse          `json:"firstUse"`
+	CreatedAt    time.Time         `json:"createdAt"`
+	UpdatedAt    time.Time         `json:"updatedAt"`
+}
+
+// Public projects a plan into its redaction-safe form.
+func Public(plan Plan) PublicPlan {
+	return PublicPlan{
+		ID:           plan.ID,
+		WorkspaceID:  plan.WorkspaceID,
+		Name:         plan.Name,
+		TemplateKind: plan.TemplateKind,
+		Protocol:     plan.Protocol,
+		HasAPIKey:    plan.APIKey != "",
+		BaseURL:      plan.BaseURL,
+		Models:       CloneModels(plan.Models),
+		DefaultModel: plan.DefaultModel,
+		Enabled:      plan.Enabled,
+		Status:       plan.Status(),
+		Detection:    plan.Detection,
+		FirstUse:     plan.FirstUse,
+		CreatedAt:    plan.CreatedAt,
+		UpdatedAt:    plan.UpdatedAt,
+	}
+}
+
+// ReferenceKind identifies what kind of consumer references a plan.
+type ReferenceKind string
+
+const (
+	ReferenceAgentTarget ReferenceKind = "agent_target"
+)
+
+// Reference is one consumer that currently references a plan. Deleting a plan
+// with live references must be blocked until the consumer is rebound.
+type Reference struct {
+	Kind ReferenceKind `json:"kind"`
+	ID   string        `json:"id"`
+	Name string        `json:"name,omitempty"`
+	// Role describes how the agent target uses the plan (currently "default").
+	Role string `json:"role,omitempty"`
+}
+
+var (
+	ErrInvalidPlan = errors.New("invalid model plan")
+)
+
+// Normalize validates and canonicalizes a plan record.
+func Normalize(plan Plan) (Plan, error) {
+	plan.ID = strings.TrimSpace(plan.ID)
+	plan.WorkspaceID = strings.TrimSpace(plan.WorkspaceID)
+	plan.Name = strings.TrimSpace(plan.Name)
+	plan.BaseURL = strings.TrimSpace(plan.BaseURL)
+	plan.DefaultModel = strings.TrimSpace(plan.DefaultModel)
+	if plan.ID == "" {
+		return Plan{}, fmt.Errorf("%w: id is required", ErrInvalidPlan)
+	}
+	if plan.WorkspaceID == "" {
+		return Plan{}, fmt.Errorf("%w: workspace id is required", ErrInvalidPlan)
+	}
+	if plan.Name == "" {
+		return Plan{}, fmt.Errorf("%w: name is required", ErrInvalidPlan)
+	}
+	if !IsProtocol(string(plan.Protocol)) {
+		return Plan{}, fmt.Errorf("%w: protocol is unsupported", ErrInvalidPlan)
+	}
+	if plan.TemplateKind == "" {
+		plan.TemplateKind = TemplateCustom
+	}
+	if !IsTemplateKind(string(plan.TemplateKind)) {
+		return Plan{}, fmt.Errorf("%w: template kind is unsupported", ErrInvalidPlan)
+	}
+	plan.Models = NormalizeModels(plan.Models)
+	if plan.DefaultModel != "" && !ModelsContain(plan.Models, plan.DefaultModel) {
+		return Plan{}, fmt.Errorf("%w: default model is not in the model list", ErrInvalidPlan)
+	}
+	if plan.FirstUse.Status == "" {
+		plan.FirstUse.Status = FirstUsePending
+	}
+	return plan, nil
+}
+
+// NormalizeModels trims, de-duplicates by id, and defaults names to ids.
+func NormalizeModels(models []Model) []Model {
+	seen := map[string]bool{}
+	normalized := make([]Model, 0, len(models))
+	for _, model := range models {
+		id := strings.TrimSpace(model.ID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		name := strings.TrimSpace(model.Name)
+		if name == "" {
+			name = id
+		}
+		capabilities := make([]string, 0, len(model.Capabilities))
+		capSeen := map[string]bool{}
+		for _, capability := range model.Capabilities {
+			capability = strings.TrimSpace(capability)
+			if capability == "" || capSeen[capability] {
+				continue
+			}
+			capSeen[capability] = true
+			capabilities = append(capabilities, capability)
+		}
+		if len(capabilities) == 0 {
+			capabilities = nil
+		}
+		normalized = append(normalized, Model{ID: id, Name: name, Capabilities: capabilities})
+	}
+	return normalized
+}
+
+// ModelsContain reports whether the model list includes the model id.
+func ModelsContain(models []Model, modelID string) bool {
+	modelID = strings.TrimSpace(modelID)
+	for _, model := range models {
+		if model.ID == modelID {
+			return true
+		}
+	}
+	return false
+}
+
+// CloneModels returns a defensive copy that is never nil.
+func CloneModels(models []Model) []Model {
+	if len(models) == 0 {
+		return []Model{}
+	}
+	return append([]Model(nil), models...)
+}

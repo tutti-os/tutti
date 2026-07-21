@@ -313,7 +313,10 @@ export type ApiErrorDetails = {
     | "preferences_operation_failed"
     | "agent_quick_prompt_not_found"
     | "agent_quick_prompt_conflict"
-    | "agent_quick_prompt_operation_failed";
+    | "agent_quick_prompt_operation_failed"
+    | "agent_target_not_found"
+    | "model_plan_not_found"
+    | "model_plan_referenced";
   reason?: string;
   params?: {
     [key: string]: unknown;
@@ -636,6 +639,187 @@ export type WorkspaceResponse = {
 
 export type DeleteWorkspaceResponse = {
   workspaceId: string;
+};
+
+/**
+ * Wire protocol family used to call the plan's models.
+ */
+export type ModelPlanProtocol = "openai" | "anthropic";
+
+/**
+ * Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
+ */
+export type ModelPlanTemplateKind =
+  | "official_subscription"
+  | "coding_plan"
+  | "domestic"
+  | "relay"
+  | "custom";
+
+/**
+ * Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+ */
+export type ModelPlanStatus =
+  | "disabled"
+  | "undetected"
+  | "detection_failed"
+  | "pending_first_use"
+  | "ready";
+
+export type ModelPlanDetectionStage =
+  | "network"
+  | "auth"
+  | "model_discovery"
+  | "inference"
+  | "agent_runtime";
+
+export type ModelPlanStageStatus = "passed" | "failed" | "skipped" | "pending";
+
+export type ModelPlanStageResult = {
+  stage: ModelPlanDetectionStage;
+  status: ModelPlanStageStatus;
+  latencyMs?: number | null;
+  /**
+   * Machine-readable failure code such as connection_failed, unauthorized, model_catalog_unavailable, model_rejected, inference_failed.
+   */
+  failureReason?: string | null;
+  /**
+   * Machine-readable remedy code such as check_network_or_base_url, check_api_key, add_models_manually, check_model_id, select_model. UI layers localize.
+   */
+  remedy?: string | null;
+  detail?: string | null;
+  checkedAt?: string | null;
+};
+
+export type ModelPlanDetection = {
+  stages: Array<ModelPlanStageResult>;
+  checkedAt?: string | null;
+  /**
+   * Model id exercised by the inference stage.
+   */
+  model?: string | null;
+};
+
+export type ModelPlanFirstUse = {
+  status: "pending" | "completed";
+  agentTargetId?: string | null;
+  agentSessionId?: string | null;
+  model?: string | null;
+  completedAt?: string | null;
+};
+
+export type ModelPlanModel = {
+  id: string;
+  name: string;
+  capabilities?: Array<string> | null;
+};
+
+/**
+ * Workspace-level model access plan. Credentials are stored daemon-side only; hasApiKey is the only credential signal in responses.
+ */
+export type ModelPlan = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  templateKind: ModelPlanTemplateKind;
+  protocol: ModelPlanProtocol;
+  hasApiKey: boolean;
+  baseUrl?: string | null;
+  models: Array<ModelPlanModel>;
+  defaultModel?: string | null;
+  enabled: boolean;
+  status: ModelPlanStatus;
+  detection: ModelPlanDetection;
+  firstUse: ModelPlanFirstUse;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ListModelPlansResponse = {
+  plans: Array<ModelPlan>;
+};
+
+export type PutModelPlanRequest = {
+  name: string;
+  templateKind?: ModelPlanTemplateKind | null;
+  protocol: ModelPlanProtocol;
+  /**
+   * Omitted or null keeps the stored credential on update; a value replaces it. Never echoed back.
+   */
+  apiKey?: string | null;
+  baseUrl?: string | null;
+  models?: Array<ModelPlanModel> | null;
+  defaultModel?: string | null;
+  enabled?: boolean | null;
+};
+
+export type DuplicateModelPlanRequest = {
+  name?: string | null;
+};
+
+export type SetModelPlanEnabledRequest = {
+  enabled: boolean;
+};
+
+export type DetectModelPlanRequest = {
+  /**
+   * When set, omitted fields fall back to the stored plan and the outcome persists onto it.
+   */
+  planId?: string | null;
+  protocol?: ModelPlanProtocol | null;
+  baseUrl?: string | null;
+  apiKey?: string | null;
+  models?: Array<ModelPlanModel> | null;
+  /**
+   * Model id for the inference stage; defaults to the plan default model, then the first known model.
+   */
+  model?: string | null;
+};
+
+export type DetectModelPlanResponse = {
+  detection: ModelPlanDetection;
+  discoveredModels: Array<ModelPlanModel>;
+};
+
+export type ModelPlanReference = {
+  kind: "agent_target";
+  id: string;
+  name?: string | null;
+  /**
+   * How the agent target uses the plan, currently default.
+   */
+  role?: string | null;
+};
+
+export type ModelPlanReferencesResponse = {
+  references: Array<ModelPlanReference>;
+};
+
+export type DeleteModelPlanResponse = {
+  modelPlanId: string;
+};
+
+/**
+ * Per-workspace default model configuration for one agent target. Empty modelPlanId means the target keeps its provider-native model source.
+ */
+export type AgentModelBinding = {
+  workspaceId: string;
+  agentTargetId: string;
+  modelPlanId?: string | null;
+  defaultModel?: string | null;
+  updatedAt?: string | null;
+};
+
+export type ListAgentModelBindingsResponse = {
+  bindings: Array<AgentModelBinding>;
+};
+
+export type SetAgentModelBindingRequest = {
+  modelPlanId?: string | null;
+  /**
+   * Must belong to the referenced plan's model list when a plan is set.
+   */
+  defaultModel?: string | null;
 };
 
 export type WorkspaceAppInstallUserPhase =
@@ -2858,6 +3042,8 @@ export type WorkspaceAppId = string;
 
 export type WorkspaceAppFactoryJobId = string;
 
+export type ModelPlanId = string;
+
 /**
  * Omit to resolve the current workspace file root.
  */
@@ -4548,6 +4734,543 @@ export type PutWorkspaceWorkbenchResponses = {
 
 export type PutWorkspaceWorkbenchResponse =
   PutWorkspaceWorkbenchResponses[keyof PutWorkspaceWorkbenchResponses];
+
+export type ListModelPlansData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans";
+};
+
+export type ListModelPlansErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListModelPlansError =
+  ListModelPlansErrors[keyof ListModelPlansErrors];
+
+export type ListModelPlansResponses = {
+  /**
+   * Model access plans
+   */
+  200: ListModelPlansResponse;
+};
+
+export type ListModelPlansResponse2 =
+  ListModelPlansResponses[keyof ListModelPlansResponses];
+
+export type CreateModelPlanData = {
+  body: PutModelPlanRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans";
+};
+
+export type CreateModelPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CreateModelPlanError =
+  CreateModelPlanErrors[keyof CreateModelPlanErrors];
+
+export type CreateModelPlanResponses = {
+  /**
+   * Created model access plan
+   */
+  200: ModelPlan;
+};
+
+export type CreateModelPlanResponse =
+  CreateModelPlanResponses[keyof CreateModelPlanResponses];
+
+export type DetectModelPlanData = {
+  body: DetectModelPlanRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/detect";
+};
+
+export type DetectModelPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DetectModelPlanError =
+  DetectModelPlanErrors[keyof DetectModelPlanErrors];
+
+export type DetectModelPlanResponses = {
+  /**
+   * Staged detection outcome
+   */
+  200: DetectModelPlanResponse;
+};
+
+export type DetectModelPlanResponse2 =
+  DetectModelPlanResponses[keyof DetectModelPlanResponses];
+
+export type DeleteModelPlanData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    modelPlanID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}";
+};
+
+export type DeleteModelPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Model plan is still referenced by agent targets
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteModelPlanError =
+  DeleteModelPlanErrors[keyof DeleteModelPlanErrors];
+
+export type DeleteModelPlanResponses = {
+  /**
+   * Model access plan deleted
+   */
+  200: DeleteModelPlanResponse;
+};
+
+export type DeleteModelPlanResponse2 =
+  DeleteModelPlanResponses[keyof DeleteModelPlanResponses];
+
+export type GetModelPlanData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    modelPlanID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}";
+};
+
+export type GetModelPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetModelPlanError = GetModelPlanErrors[keyof GetModelPlanErrors];
+
+export type GetModelPlanResponses = {
+  /**
+   * Model access plan
+   */
+  200: ModelPlan;
+};
+
+export type GetModelPlanResponse =
+  GetModelPlanResponses[keyof GetModelPlanResponses];
+
+export type UpdateModelPlanData = {
+  body: PutModelPlanRequest;
+  path: {
+    workspaceID: string;
+    modelPlanID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}";
+};
+
+export type UpdateModelPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateModelPlanError =
+  UpdateModelPlanErrors[keyof UpdateModelPlanErrors];
+
+export type UpdateModelPlanResponses = {
+  /**
+   * Updated model access plan
+   */
+  200: ModelPlan;
+};
+
+export type UpdateModelPlanResponse =
+  UpdateModelPlanResponses[keyof UpdateModelPlanResponses];
+
+export type DuplicateModelPlanData = {
+  body?: DuplicateModelPlanRequest;
+  path: {
+    workspaceID: string;
+    modelPlanID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/duplicate";
+};
+
+export type DuplicateModelPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DuplicateModelPlanError =
+  DuplicateModelPlanErrors[keyof DuplicateModelPlanErrors];
+
+export type DuplicateModelPlanResponses = {
+  /**
+   * Duplicated model access plan
+   */
+  200: ModelPlan;
+};
+
+export type DuplicateModelPlanResponse =
+  DuplicateModelPlanResponses[keyof DuplicateModelPlanResponses];
+
+export type SetModelPlanEnabledData = {
+  body: SetModelPlanEnabledRequest;
+  path: {
+    workspaceID: string;
+    modelPlanID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/enabled";
+};
+
+export type SetModelPlanEnabledErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SetModelPlanEnabledError =
+  SetModelPlanEnabledErrors[keyof SetModelPlanEnabledErrors];
+
+export type SetModelPlanEnabledResponses = {
+  /**
+   * Updated model access plan
+   */
+  200: ModelPlan;
+};
+
+export type SetModelPlanEnabledResponse =
+  SetModelPlanEnabledResponses[keyof SetModelPlanEnabledResponses];
+
+export type ListModelPlanReferencesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    modelPlanID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/references";
+};
+
+export type ListModelPlanReferencesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Model access plan was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListModelPlanReferencesError =
+  ListModelPlanReferencesErrors[keyof ListModelPlanReferencesErrors];
+
+export type ListModelPlanReferencesResponses = {
+  /**
+   * Plan references
+   */
+  200: ModelPlanReferencesResponse;
+};
+
+export type ListModelPlanReferencesResponse =
+  ListModelPlanReferencesResponses[keyof ListModelPlanReferencesResponses];
+
+export type ListAgentModelBindingsData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-model-bindings";
+};
+
+export type ListAgentModelBindingsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAgentModelBindingsError =
+  ListAgentModelBindingsErrors[keyof ListAgentModelBindingsErrors];
+
+export type ListAgentModelBindingsResponses = {
+  /**
+   * Agent model bindings
+   */
+  200: ListAgentModelBindingsResponse;
+};
+
+export type ListAgentModelBindingsResponse2 =
+  ListAgentModelBindingsResponses[keyof ListAgentModelBindingsResponses];
+
+export type SetAgentModelBindingData = {
+  body: SetAgentModelBindingRequest;
+  path: {
+    workspaceID: string;
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-model-bindings/{agentTargetID}";
+};
+
+export type SetAgentModelBindingErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent target was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SetAgentModelBindingError =
+  SetAgentModelBindingErrors[keyof SetAgentModelBindingErrors];
+
+export type SetAgentModelBindingResponses = {
+  /**
+   * Updated agent model binding
+   */
+  200: AgentModelBinding;
+};
+
+export type SetAgentModelBindingResponse =
+  SetAgentModelBindingResponses[keyof SetAgentModelBindingResponses];
 
 export type ListWorkspaceAppsData = {
   body?: never;

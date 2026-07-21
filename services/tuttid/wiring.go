@@ -43,6 +43,8 @@ import (
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 	managedcredentialsservice "github.com/tutti-os/tutti/services/tuttid/service/managedcredentials"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
+	modelbindingservice "github.com/tutti-os/tutti/services/tuttid/service/modelbinding"
+	modelplanservice "github.com/tutti-os/tutti/services/tuttid/service/modelplan"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	tuttiagentservice "github.com/tutti-os/tutti/services/tuttid/service/tuttiagent"
@@ -269,6 +271,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	preferencesStore, _ := store.(workspacedata.PreferencesStore)
 	agentTargetStore, _ := store.(workspacedata.AgentTargetStore)
 	managedCredentialsStore, _ := store.(workspacedata.ManagedCredentialsStore)
+	modelPlansStore, _ := store.(workspacedata.ModelPlansStore)
 	agentActivityRepo, _ := store.(workspacedata.AgentActivityStore)
 	agentQuickPromptStore, _ := store.(workspacedata.AgentQuickPromptStore)
 	userProjectStore, _ := store.(workspacedata.UserProjectStore)
@@ -321,6 +324,16 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	managedCredentials := &managedcredentialsservice.Service{
 		Store: managedCredentialsStore,
+	}
+	modelBindingsStore, _ := store.(workspacedata.AgentModelBindingsStore)
+	modelBindings := &modelbindingservice.Service{
+		Store:   modelBindingsStore,
+		Plans:   modelPlansStore,
+		Targets: agentTargetStore,
+	}
+	modelPlans := &modelplanservice.Service{
+		Store:      modelPlansStore,
+		References: modelBindings,
 	}
 	events.RegisterIntentHandler(
 		eventstreamservice.TopicPreferencesDesktopUpdateRequested,
@@ -409,6 +422,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentModelCatalog := agentservice.NewAgentModelCatalog()
 	agentModelCatalog.ModelCapabilities = agentModelCapabilities
 	agentSessionService.ModelCatalog = agentModelCatalog
+	agentSessionService.ConfigureModelPlanBinding(modelBindingsStore, modelPlansStore, modelPlans)
 	agentSessionService.ModelCapabilities = agentModelCapabilities
 	agentSessionService.AgentTargetStore = agentTargetStore
 	agentSessionService.AgentComposerDefaultsReader = preferences
@@ -573,7 +587,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Publisher:             eventstreamservice.WorkspaceAppFactoryPublisher{Service: events},
 	}
 	agentActivityProjection.SetSessionMessageObserver(appFactoryService)
-	agentActivityProjection.SetSessionStateObserver(appFactoryService)
+	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, agentSessionService})
 	if _, err := appFactoryService.ReconcileInterruptedJobs(ctx); err != nil {
 		agentRuntime.Close()
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("reconcile interrupted app factory jobs: %w", err)
@@ -660,6 +674,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		PreferencesService:        preferences,
 		AgentMaintenanceService:   agentMaintenance,
 		ManagedCredentialsService: managedCredentials,
+		ModelPlanService:          modelPlans,
+		AgentModelBindingService:  modelBindings,
 		EventStreamService:        events,
 		WorkspaceService:          workspaceService,
 		WorkbenchService: workspaceservice.WorkbenchService{
