@@ -18,6 +18,23 @@ export type {
 } from "./AgentGUI";
 export type { AgentGUIComposerAppendRequest } from "./agent-gui/agentGuiNode/controller/useAgentGUIComposerAppendRequest";
 export {
+  createAgentStatusController,
+  selectAgentStatusControllerSnapshot,
+  type AgentStatusController,
+  type AgentStatusControllerOptions,
+  type AgentStatusControllerSnapshot,
+  type AgentStatusFrame,
+  type AgentStatusQuery,
+  type AgentStatusRequestPhase,
+  type AgentStatusRequestReason,
+  type AgentStatusSelectionKey,
+  type AgentStatusSectionState,
+  type AgentStatusSource,
+  type AgentStatusSourceError,
+  type AgentStatusStreamObserver,
+  type AgentStatusValue
+} from "./agent-gui/agentGuiNode/controller/AgentStatusController";
+export {
   AgentHandoffMenu,
   type AgentHandoffMenuLabels,
   type AgentHandoffMenuProps

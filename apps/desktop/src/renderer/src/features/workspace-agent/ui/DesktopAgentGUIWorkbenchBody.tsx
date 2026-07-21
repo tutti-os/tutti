@@ -42,9 +42,7 @@ import {
   hasDesktopAgentGUIConversationRailCollapsedState,
   resolveDesktopAgentGUIProviderForAgentTarget
 } from "./desktopAgentGUIWorkbenchStateHelpers.ts";
-import { useDesktopAgentProbes } from "./useDesktopAgentProbes.ts";
 import {
-  AGENT_PROBE_REFRESH_DEBOUNCE_MS,
   DESKTOP_AGENT_GUI_AGENT_SETTINGS,
   DESKTOP_AGENT_GUI_NOOP,
   DESKTOP_AGENT_GUI_POSITION,
@@ -57,6 +55,7 @@ import {
 } from "./desktopAgentGUIWorkbenchModel.ts";
 export { DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT } from "./desktopAgentGUIWorkbenchModel.ts";
 export type { DesktopAgentGUIConversationRailToggleDetail } from "./desktopAgentGUIWorkbenchModel.ts";
+import { useDesktopAgentStatusController } from "./useDesktopAgentStatusController.ts";
 import { useDesktopAgentGUIContextMentions } from "./useDesktopAgentGUIContextMentions.ts";
 import { useDesktopAgentGUIReadiness } from "./useDesktopAgentGUIReadiness.ts";
 import { useDesktopAgentGUIOpenConversationWindow } from "./useDesktopAgentGUIOpenConversationWindow.ts";
@@ -221,13 +220,6 @@ function DesktopAgentGUISurfaceImpl({
     workbenchState.lastActiveAgentSessionId,
     workspaceId
   ]);
-  const [agentProbeDemandBySource, setAgentProbeDemandBySource] = useState<
-    Record<string, string>
-  >({});
-  const agentProbeRefreshTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  const [agentProbeRefreshSequence, setAgentProbeRefreshSequence] = useState(0);
   const [openSessionRequest, setOpenSessionRequest] = useState<NonNullable<
     AgentGUIProps["runtimeRequests"]["openSession"]
   > | null>(null);
@@ -303,63 +295,12 @@ function DesktopAgentGUISurfaceImpl({
       workspaceId
     ]
   );
-  const agentProbeProviders = useMemo(
-    () => Array.from(new Set(Object.values(agentProbeDemandBySource))).sort(),
-    [agentProbeDemandBySource]
-  );
-  const workspaceAgentProbes = useDesktopAgentProbes({
-    previewMode,
-    providers: agentProbeProviders,
-    refreshSequence: agentProbeRefreshSequence,
-    runtimeApi,
+  const agentStatusController = useDesktopAgentStatusController({
+    agentActivityRuntime,
+    agents,
     workspaceAgentProbes: agentHostApi.workspaceAgentProbes,
     workspaceId
   });
-  const handleAgentProbeDemandChange: NonNullable<
-    AgentGUIProps["runtimeRequests"]["onProbeDemandChange"]
-  > = useCallback((probeProvider, sourceId = "default") => {
-    setAgentProbeDemandBySource((current) => {
-      if (!probeProvider) {
-        if (!(sourceId in current)) {
-          return current;
-        }
-        const next = { ...current };
-        delete next[sourceId];
-        return next;
-      }
-      if (current[sourceId] === probeProvider) {
-        return current;
-      }
-      return {
-        ...current,
-        [sourceId]: probeProvider
-      };
-    });
-  }, []);
-  const handleAgentProbeRefreshRequest: NonNullable<
-    AgentGUIProps["runtimeRequests"]["onProbeRefreshRequest"]
-  > = useCallback((probeProvider, sourceId = "default") => {
-    setAgentProbeDemandBySource((current) =>
-      current[sourceId] === probeProvider
-        ? current
-        : { ...current, [sourceId]: probeProvider }
-    );
-    if (agentProbeRefreshTimerRef.current) {
-      clearTimeout(agentProbeRefreshTimerRef.current);
-    }
-    agentProbeRefreshTimerRef.current = setTimeout(() => {
-      agentProbeRefreshTimerRef.current = null;
-      setAgentProbeRefreshSequence((current) => current + 1);
-    }, AGENT_PROBE_REFRESH_DEBOUNCE_MS);
-  }, []);
-  useEffect(() => {
-    return () => {
-      if (agentProbeRefreshTimerRef.current) {
-        clearTimeout(agentProbeRefreshTimerRef.current);
-        agentProbeRefreshTimerRef.current = null;
-      }
-    };
-  }, []);
   const handleOpenSessionActivationError = useCallback(
     (input: { agentSessionId: string; error: unknown }) => {
       Toast.Error(
@@ -659,13 +600,7 @@ function DesktopAgentGUISurfaceImpl({
       sessionAction: sessionActionRequest,
       openSession: openSessionRequest,
       prefillPrompt: prefillPromptRequest,
-      agentProbes: workspaceAgentProbes,
-      onProbeDemandChange: previewMode
-        ? undefined
-        : handleAgentProbeDemandChange,
-      onProbeRefreshRequest: previewMode
-        ? undefined
-        : handleAgentProbeRefreshRequest
+      agentStatusController: previewMode ? undefined : agentStatusController
     },
     hostCapabilities: {
       referenceProvenanceFilterEnabled,

@@ -284,6 +284,7 @@ export function useAgentGUIViewLabels(input: {
       slashStatusLimitsUnavailable: t(
         "agentHost.agentGui.slashStatusLimitsUnavailable"
       ),
+      slashStatusEmptyValue: t("agentHost.agentGui.slashStatusEmptyValue"),
       slashStatusUsageJustUpdated: t(
         "agentHost.agentGui.slashStatusUsageJustUpdated"
       ),

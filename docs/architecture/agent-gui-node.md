@@ -134,6 +134,41 @@ provider runtime observation
 
 `services/tuttid/api/openapi/tuttid.v1.yaml` is authoritative for HTTP request/response contracts. It projects the canonical domain; it does not replace `store-sqlite/canonical`.
 
+### 2.4 On-demand status
+
+AgentGUI owns one provider-neutral `AgentStatusController` for `/status`, Agent
+Info, and Agent Config. These surfaces are explicit bounded reads; mounting an
+AgentGUI node must not start background status polling.
+
+The host injects an `AgentStatusSource`. AgentGUI treats `scopeKey` as opaque
+and never resolves provider, account, local-vs-remote transport, or owner
+identity. The controller owns only loading/ready/error presentation,
+30-second request cancellation, a one-hour retained UI snapshot, 5-second
+manual-refresh debounce, and fencing callbacks from closed or replaced
+requests. Opening any status surface uses the same controller snapshot so the
+three views cannot drift into separate state machines.
+
+Every production host, including Tutti Desktop, injects this controller. A
+host adapter resolves the exact Agent Target to its provider, verifies an
+optional Session belongs to the same workspace/target/provider, and performs
+the bounded status read. AgentGUI has no legacy probe-backed status state or
+provider-derived fallback. The active conversation id is the request Session
+identity because it exists before detail hydration; raw Session chrome remains
+presentation data.
+
+A source emits at most one cached `snapshot` followed by at most one
+`refreshed` value, then completes. Backend probing may continue independently
+to fill a host-owned cache after the presentation request is canceled; late
+frames from the canceled request must not mutate AgentGUI. Errors crossing the
+port are structured codes, never provider stderr, account material, endpoints,
+or transport diagnostics.
+
+Closing `/status`, Agent Info, or Agent Config cancels only the request owned
+by that surface. Replaced requests remain fenced. A stream that completes
+without a frame is a failed refresh: a retained value may remain visible, but
+the UI must show the refresh failure rather than treating the old value as a
+new success.
+
 ## 3. Domain model
 
 ### 3.1 Session

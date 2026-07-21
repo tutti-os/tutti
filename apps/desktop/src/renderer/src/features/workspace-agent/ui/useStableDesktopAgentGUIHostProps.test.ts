@@ -71,12 +71,10 @@ test("forwards every runtimeRequests field instead of silently dropping new ones
   // field added upstream but forgotten here fails loudly instead of
   // shipping a menu action that does nothing.
   const runtimeRequests = {
-    agentProbes: { probe: "value" },
+    agentStatusController: { controller: "value" },
     composerAppend: { text: "hi" },
     composerFocusSequence: 1,
     newConversationSequence: 2,
-    onProbeDemandChange: () => {},
-    onProbeRefreshRequest: () => {},
     openSession: { agentSessionId: "session-1" },
     prefillPrompt: { prompt: "hi" },
     sessionAction: {

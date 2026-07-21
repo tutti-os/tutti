@@ -90,9 +90,7 @@ export function useStableDesktopAgentGUIHostProps({
       sessionAction: nextRuntimeRequests.sessionAction,
       openSession: nextRuntimeRequests.openSession,
       prefillPrompt: nextRuntimeRequests.prefillPrompt,
-      agentProbes: nextRuntimeRequests.agentProbes,
-      onProbeDemandChange: nextRuntimeRequests.onProbeDemandChange,
-      onProbeRefreshRequest: nextRuntimeRequests.onProbeRefreshRequest
+      agentStatusController: nextRuntimeRequests.agentStatusController
     },
     hostCapabilities: {
       referenceProvenanceFilterEnabled:

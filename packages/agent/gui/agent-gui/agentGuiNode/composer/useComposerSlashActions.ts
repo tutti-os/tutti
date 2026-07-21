@@ -68,6 +68,7 @@ type Props = Pick<
   | "onSubmitGuidance"
   | "onCapabilitySettingsRequest"
   | "onSlashStatusOpen"
+  | "onSlashStatusClose"
   | "onPromptImagesUnsupported"
   | "onRequestGitBranches"
 >;
@@ -126,6 +127,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     onSubmitGuidance,
     onCapabilitySettingsRequest,
     onSlashStatusOpen,
+    onSlashStatusClose,
     onPromptImagesUnsupported,
     onRequestGitBranches,
     draftContent,
@@ -161,7 +163,8 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
 
   const closeSlashStatusPanel = useCallback((): void => {
     setIsSlashStatusPanelOpen(false);
-  }, []);
+    onSlashStatusClose?.();
+  }, [onSlashStatusClose, setIsSlashStatusPanelOpen]);
 
   const settingsControlsDisabled =
     isSendingTurn || isSubmittingPrompt || showStopButton;
@@ -180,10 +183,19 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
   }, []);
 
   const closeSlashFloatingMenu = useCallback((): void => {
+    if (isSlashStatusPanelOpen) {
+      onSlashStatusClose?.();
+    }
     setIsSlashStatusPanelOpen(false);
     setIsReviewPickerOpen(false);
     setIsPaletteOpen(false);
-  }, []);
+  }, [
+    isSlashStatusPanelOpen,
+    onSlashStatusClose,
+    setIsPaletteOpen,
+    setIsReviewPickerOpen,
+    setIsSlashStatusPanelOpen
+  ]);
 
   const submitReviewCommand = useCallback(
     (command: string): void => {
@@ -237,17 +249,25 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         setIsReviewPickerOpen(false);
         if (!isSlashStatusPanelOpen) {
           onSlashStatusOpen?.();
+        } else {
+          onSlashStatusClose?.();
         }
         setIsSlashStatusPanelOpen((current) => !current);
         return;
       }
       if (effect.kind === "showReviewPicker") {
         clearSlashCommandDraft();
-        setIsSlashStatusPanelOpen(false);
+        if (isSlashStatusPanelOpen) {
+          onSlashStatusClose?.();
+          setIsSlashStatusPanelOpen(false);
+        }
         setIsReviewPickerOpen(true);
         return;
       }
       if (effect.kind === "activateGoalMode") {
+        if (isSlashStatusPanelOpen) {
+          onSlashStatusClose?.();
+        }
         draftPromptRef.current = GOAL_MODE_SLASH_COMMAND;
         setPaletteDraftPrompt("");
         setIsSlashStatusPanelOpen(false);
@@ -323,6 +343,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       draftContent,
       isSlashStatusPanelOpen,
       onDraftContentChange,
+      onSlashStatusClose,
       onSlashStatusOpen,
       onSettingsChange,
       onSubmit,
