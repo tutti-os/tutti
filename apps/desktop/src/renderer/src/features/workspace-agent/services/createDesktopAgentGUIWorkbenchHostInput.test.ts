@@ -1671,7 +1671,7 @@ function createWorkspaceAgentActivityService(
       };
     },
     async deleteSession() {
-      return { removed: true };
+      return { cleanupFailed: false, removed: true };
     },
     async renameSession(input) {
       return {
@@ -1747,6 +1747,7 @@ function createWorkspaceAgentActivityService(
     },
     async deleteSessionsBatch() {
       return {
+        cleanupFailedSessionIds: [],
         removedMessages: 0,
         removedSessionIds: [],
         removedSessions: 0

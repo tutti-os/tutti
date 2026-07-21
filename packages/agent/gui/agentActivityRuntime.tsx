@@ -305,6 +305,7 @@ export interface AgentActivityRuntimeDeleteSessionsBatchInput {
 }
 
 export interface AgentActivityRuntimeDeleteSessionsBatchResult {
+  cleanupFailedSessionIds: string[];
   removedMessages: number;
   removedSessionIds: string[];
   removedSessions: number;

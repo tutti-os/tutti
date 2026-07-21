@@ -3232,8 +3232,9 @@ type CheckUserProjectPathRequest struct {
 
 // ClearWorkspaceAgentSessionsResponse defines model for ClearWorkspaceAgentSessionsResponse.
 type ClearWorkspaceAgentSessionsResponse struct {
-	RemovedMessages int `json:"removedMessages"`
-	RemovedSessions int `json:"removedSessions"`
+	CleanupFailedSessionIds []string `json:"cleanupFailedSessionIds"`
+	RemovedMessages         int      `json:"removedMessages"`
+	RemovedSessions         int      `json:"removedSessions"`
 }
 
 // CliCapabilitiesResponse defines model for CliCapabilitiesResponse.

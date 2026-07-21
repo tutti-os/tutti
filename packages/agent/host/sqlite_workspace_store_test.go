@@ -28,6 +28,17 @@ type runtimeSessionInitializationObserver struct {
 	persisted storesqlite.Session
 }
 
+type runtimeSessionInitializationPolicy struct{ calls int }
+
+func (p *runtimeSessionInitializationPolicy) NormalizeRuntimeSessionInitialization(
+	_ context.Context,
+	session agenthost.ProviderRuntimeSession,
+) (agenthost.ProviderRuntimeSession, error) {
+	p.calls++
+	session.AgentTargetID = "canonical-target"
+	return session, nil
+}
+
 func (o *runtimeSessionInitializationObserver) ObserveRuntimeSessionInitialized(
 	_ context.Context,
 	runtime agenthost.ProviderRuntimeSession,
@@ -50,6 +61,7 @@ func TestSQLiteWorkspaceStoreInitializesCanonicalRuntimeSession(t *testing.T) {
 	}
 	observer := &workspaceStoreObserver{}
 	initializationObserver := &runtimeSessionInitializationObserver{}
+	initializationPolicy := &runtimeSessionInitializationPolicy{}
 	store := &agenthost.SQLiteWorkspaceStore{
 		StoreForWorkspace: func(workspaceID string) *storesqlite.Store {
 			if workspaceID != "workspace-1" {
@@ -60,6 +72,7 @@ func TestSQLiteWorkspaceStoreInitializesCanonicalRuntimeSession(t *testing.T) {
 		CurrentUserID:          func() string { return " user-1 " },
 		Clock:                  workspaceStoreClock{value: time.UnixMilli(1234)},
 		Observer:               observer,
+		InitializationPolicy:   initializationPolicy,
 		InitializationObserver: initializationObserver,
 	}
 
@@ -71,7 +84,7 @@ func TestSQLiteWorkspaceStoreInitializesCanonicalRuntimeSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InitializeRuntimeSession() error = %v", err)
 	}
-	if persisted.ID != "session-1" || persisted.UserID != "user-1" || persisted.Provider != "codex" {
+	if persisted.ID != "session-1" || persisted.UserID != "user-1" || persisted.Provider != "codex" || persisted.AgentTargetID != "canonical-target" {
 		t.Fatalf("persisted session = %#v", persisted)
 	}
 	if persisted.LastEventUnixMS != 1234 || persisted.Settings["reasoningEffort"] != "ultra" || persisted.Settings["speed"] != "standard" {
@@ -85,6 +98,9 @@ func TestSQLiteWorkspaceStoreInitializesCanonicalRuntimeSession(t *testing.T) {
 	}
 	if initializationObserver.runtime.ID != "session-1" || initializationObserver.persisted.ID != "session-1" {
 		t.Fatalf("initialization projection = %#v", initializationObserver)
+	}
+	if initializationPolicy.calls != 1 {
+		t.Fatalf("initialization policy calls = %d, want 1", initializationPolicy.calls)
 	}
 }
 

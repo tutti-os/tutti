@@ -63,8 +63,9 @@ func (api DaemonAPI) ClearWorkspaceAgentSessions(ctx context.Context, request tu
 		return writeClearWorkspaceAgentSessionsError(err), nil
 	}
 	return tuttigenerated.ClearWorkspaceAgentSessions200JSONResponse{
-		RemovedMessages: result.RemovedMessages,
-		RemovedSessions: result.RemovedSessions,
+		RemovedMessages:         result.RemovedMessages,
+		RemovedSessions:         result.RemovedSessions,
+		CleanupFailedSessionIds: append([]string(nil), result.CleanupFailedSessionIDs...),
 	}, nil
 }
 

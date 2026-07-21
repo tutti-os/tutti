@@ -238,6 +238,12 @@ and in the PR `go-lint` job. The boundary rationale and adapter rules live in
 the root `AGENTS.md` `Agent Host Boundary` section and
 `services/tuttid/service/agent/AGENTS.md`.
 
+The same check also verifies production reachability: `services/tuttid/wiring.go`
+must compose Host with `daemon/hostadapter.RuntimeController`,
+`host.SQLiteWorkspaceStore`, and `NewApplicationHostWithPorts`. This prevents
+shared lifecycle adapters from existing only in tests while production keeps a
+parallel service implementation.
+
 ## Agent GUI Degradation Ratchet
 
 The agent GUI refactor

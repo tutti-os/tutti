@@ -194,6 +194,7 @@ function requestDelete(
     return replaceRecord(state, {
       ...record,
       deleteResult: {
+        cleanupFailedSessionIds: [],
         removedMessages: 0,
         removedSessionIds: [],
         removedSessions: 0
@@ -251,12 +252,17 @@ function validDeleteResult(value: unknown): SessionDeleteMutationResult | null {
   if (
     typeof result.removedMessages !== "number" ||
     typeof result.removedSessions !== "number" ||
+    !Array.isArray(result.cleanupFailedSessionIds) ||
+    !result.cleanupFailedSessionIds.every((id) => typeof id === "string") ||
     !Array.isArray(result.removedSessionIds) ||
     !result.removedSessionIds.every((id) => typeof id === "string")
   ) {
     return null;
   }
   return {
+    cleanupFailedSessionIds: result.cleanupFailedSessionIds.map((id) =>
+      id.trim()
+    ),
     removedMessages: result.removedMessages,
     removedSessionIds: result.removedSessionIds.map((id) => id.trim()),
     removedSessions: result.removedSessions

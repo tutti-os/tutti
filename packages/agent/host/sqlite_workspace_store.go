@@ -22,7 +22,15 @@ type SQLiteWorkspaceStore struct {
 	CurrentUserID          func() string
 	Clock                  Clock
 	Observer               CommitObserver
+	InitializationPolicy   RuntimeSessionInitializationPolicy
 	InitializationObserver RuntimeSessionInitializationObserver
+}
+
+// RuntimeSessionInitializationPolicy normalizes product-owned identity fields
+// before the shared store commits the canonical session shell. It cannot write
+// canonical state itself.
+type RuntimeSessionInitializationPolicy interface {
+	NormalizeRuntimeSessionInitialization(context.Context, ProviderRuntimeSession) (ProviderRuntimeSession, error)
 }
 
 // RuntimeSessionInitializationObserver projects product-owned, repairable
@@ -71,6 +79,13 @@ func (s *SQLiteWorkspaceStore) RollbackRuntimeSessionInitialization(ctx context.
 }
 
 func (s *SQLiteWorkspaceStore) InitializeRuntimeSession(ctx context.Context, session ProviderRuntimeSession) (storesqlite.Session, error) {
+	if s != nil && s.InitializationPolicy != nil {
+		var err error
+		session, err = s.InitializationPolicy.NormalizeRuntimeSessionInitialization(ctx, session)
+		if err != nil {
+			return storesqlite.Session{}, err
+		}
+	}
 	workspaceID := strings.TrimSpace(session.WorkspaceID)
 	sessionID := strings.TrimSpace(session.ID)
 	if workspaceID == "" || sessionID == "" {
@@ -179,6 +194,14 @@ func (s *SQLiteWorkspaceStore) PlanDeleteSessions(ctx context.Context, input sto
 		return storesqlite.DeleteSessionsPlan{}, err
 	}
 	return store.PlanDeleteSessions(ctx, input)
+}
+
+func (s *SQLiteWorkspaceStore) PlanClearSessions(ctx context.Context, workspaceID string) (storesqlite.DeleteSessionsPlan, error) {
+	store, err := s.store(strings.TrimSpace(workspaceID))
+	if err != nil {
+		return storesqlite.DeleteSessionsPlan{}, err
+	}
+	return store.PlanClearSessions(ctx, workspaceID)
 }
 
 func (s *SQLiteWorkspaceStore) DeleteSessionsBatch(ctx context.Context, input storesqlite.DeleteSessionsBatchInput) (storesqlite.DeleteSessionsBatchResult, error) {

@@ -2020,7 +2020,10 @@ func TestDaemonAPIGeneratedRoutesClearAgentSessions(t *testing.T) {
 				if workspaceID != "ws-1" {
 					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
 				}
-				return agentservice.ClearSessionsResult{RemovedMessages: 5, RemovedSessions: 2}, nil
+				return agentservice.ClearSessionsResult{
+					RemovedMessages: 5, RemovedSessions: 2,
+					CleanupFailedSessionIDs: []string{"session-2"},
+				}, nil
 			},
 		},
 	}))
@@ -2040,6 +2043,9 @@ func TestDaemonAPIGeneratedRoutesClearAgentSessions(t *testing.T) {
 	decodeGeneratedRouteResponse(t, recorder, &response)
 	if response.RemovedSessions != 2 || response.RemovedMessages != 5 {
 		t.Fatalf("response = %#v, want 2 sessions and 5 messages", response)
+	}
+	if !slices.Equal(response.CleanupFailedSessionIds, []string{"session-2"}) {
+		t.Fatalf("cleanupFailedSessionIds = %#v, want session-2", response.CleanupFailedSessionIds)
 	}
 }
 

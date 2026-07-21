@@ -7,6 +7,7 @@ export type SessionMutationStatus =
   | "unknown";
 
 export interface SessionDeleteMutationResult {
+  cleanupFailedSessionIds: readonly string[];
   removedMessages: number;
   removedSessionIds: readonly string[];
   removedSessions: number;

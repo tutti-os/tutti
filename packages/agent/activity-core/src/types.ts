@@ -563,6 +563,7 @@ export interface AgentActivityDeleteSessionInput {
 }
 
 export interface AgentActivityDeleteSessionResult {
+  cleanupFailed: boolean;
   removed: boolean;
 }
 
@@ -573,6 +574,7 @@ export interface AgentActivityDeleteSessionsInput {
 }
 
 export interface AgentActivityDeleteSessionsResult {
+  cleanupFailedSessionIds: string[];
   removedMessages: number;
   removedSessionIds: string[];
   removedSessions: number;

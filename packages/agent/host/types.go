@@ -430,6 +430,8 @@ type DeleteSessionsResult struct {
 	CleanupFailedIDs  []string
 }
 
+type ClearSessionsResult = DeleteSessionsResult
+
 type PurgeDeletedSessionsInput struct {
 	CutoffUnixMS    int64
 	MaxSessions     int

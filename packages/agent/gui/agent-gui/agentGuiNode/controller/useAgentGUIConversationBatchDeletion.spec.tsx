@@ -56,6 +56,7 @@ describe("useAgentGUIConversationBatchDeletion", () => {
       workspaceId: "workspace-1"
     }));
     const deleteSessionsBatch = vi.fn(async () => ({
+      cleanupFailedSessionIds: [],
       removedMessages: 1,
       removedSessionIds: ["loaded-session", "unloaded-session"],
       removedSessions: 2
@@ -140,6 +141,7 @@ describe("useAgentGUIConversationBatchDeletion", () => {
     const deleteSessionsBatch = vi.fn(async () => {
       activeConversationIdObservedByDelete = committedActiveConversationId;
       return {
+        cleanupFailedSessionIds: [],
         removedMessages: 0,
         removedSessionIds: ["loaded-session"],
         removedSessions: 1

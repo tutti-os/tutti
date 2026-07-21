@@ -38,6 +38,10 @@ type batchCleanup struct {
 	calls           []string
 }
 
+func (s *batchManagementStore) PlanClearSessions(_ context.Context, workspaceID string) (storesqlite.DeleteSessionsPlan, error) {
+	return storesqlite.DeleteSessionsPlan{WorkspaceID: workspaceID, SessionIDs: append([]string(nil), s.plan...)}, nil
+}
+
 func (*batchCleanup) Prepare(context.Context, RuntimePreparationInput) (PreparedRuntime, error) {
 	return PreparedRuntime{}, nil
 }
@@ -96,6 +100,23 @@ func TestDeleteSessionsUsesOneCanonicalBatchAfterClosingRuntimes(t *testing.T) {
 	}
 	if result.RemovedSessions != 2 || result.RemovedMessages != 3 || !reflect.DeepEqual(result.RemovedSessionIDs, wantIDs) || !reflect.DeepEqual(result.RuntimeClosedIDs, wantIDs) {
 		t.Fatalf("DeleteSessions() result = %#v", result)
+	}
+}
+
+func TestClearSessionsUsesCanonicalPlanAndSharedDeletionCoordinator(t *testing.T) {
+	runtime := &batchRuntime{live: map[string]bool{"session-a": true, "session-b": true}}
+	store := &batchManagementStore{runtime: runtime, plan: []string{"session-a", "session-b"}}
+	host := New(Config{Runtime: runtime, SessionBatchManagement: store})
+
+	result, err := host.ClearSessions(t.Context(), " workspace-1 ")
+	if err != nil {
+		t.Fatalf("ClearSessions() error = %v", err)
+	}
+	if !reflect.DeepEqual(result.RemovedSessionIDs, []string{"session-a", "session-b"}) {
+		t.Fatalf("ClearSessions() result = %#v", result)
+	}
+	if !reflect.DeepEqual(runtime.closeOrder, []string{"session-a", "session-b"}) || store.calls != 1 {
+		t.Fatalf("clear coordinator closeOrder=%#v calls=%d", runtime.closeOrder, store.calls)
 	}
 }
 

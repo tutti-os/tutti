@@ -146,7 +146,10 @@ export function areAgentGUIUserProjectsEqual(
         project.path === candidate.path &&
         project.label === candidate.label &&
         project.sectionKey === candidate.sectionKey &&
-        project.pinnedAtUnixMs === candidate.pinnedAtUnixMs
+        project.pinnedAtUnixMs === candidate.pinnedAtUnixMs &&
+        project.createdAtUnixMs === candidate.createdAtUnixMs &&
+        project.updatedAtUnixMs === candidate.updatedAtUnixMs &&
+        project.lastUsedAtUnixMs === candidate.lastUsedAtUnixMs
       );
     })
   );

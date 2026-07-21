@@ -56,6 +56,7 @@ type SessionManagementStore interface {
 // runtimes can advertise batch support only when the backing store implements
 // one transaction rather than a renderer-side request loop.
 type SessionBatchManagementStore interface {
+	PlanClearSessions(context.Context, string) (storesqlite.DeleteSessionsPlan, error)
 	PlanDeleteSessions(context.Context, storesqlite.DeleteSessionsBatchInput) (storesqlite.DeleteSessionsPlan, error)
 	DeleteSessionsBatch(context.Context, storesqlite.DeleteSessionsBatchInput) (storesqlite.DeleteSessionsBatchResult, error)
 }

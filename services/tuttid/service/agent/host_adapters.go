@@ -31,23 +31,6 @@ func (a serviceHostStore) GetSession(ctx context.Context, workspaceID, sessionID
 			return session, ok, err
 		}
 	}
-	// Service configurations without the legacy SessionReader have always
-	// allowed a live provider session to supply the session observation. A
-	// TurnStore may still be present for turn lifecycle operations, so its
-	// absence must not suppress that established fallback.
-	if a.service.SessionReader == nil {
-		if session, ok := a.service.controller().Session(workspaceID, sessionID); ok {
-			activeTurnID := ""
-			if session.TurnLifecycle != nil && session.TurnLifecycle.ActiveTurnID != nil {
-				activeTurnID = strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID)
-			}
-			return storesqlite.Session{
-				ID: session.ID, WorkspaceID: session.WorkspaceID, Provider: session.Provider,
-				ProviderSessionID: session.ProviderSessionID, Cwd: session.Cwd, Title: session.Title,
-				Kind: storesqlite.SessionKindRoot, ActiveTurnID: activeTurnID,
-			}, true, nil
-		}
-	}
 	return storesqlite.Session{}, false, nil
 }
 
@@ -120,6 +103,14 @@ func (a serviceHostStore) PlanDeleteSessions(ctx context.Context, input storesql
 		return storesqlite.DeleteSessionsPlan{}, agenthost.ErrInvalidArgument
 	}
 	return deleter.PlanDeleteSessions(ctx, input)
+}
+
+func (a serviceHostStore) PlanClearSessions(ctx context.Context, workspaceID string) (storesqlite.DeleteSessionsPlan, error) {
+	deleter, ok := a.service.SessionReader.(SessionBatchDeleter)
+	if !ok {
+		return storesqlite.DeleteSessionsPlan{}, agenthost.ErrInvalidArgument
+	}
+	return deleter.PlanClearSessions(ctx, workspaceID)
 }
 
 func (a serviceHostStore) ListChildSessions(ctx context.Context, workspaceID, sessionID string) ([]storesqlite.Session, error) {
@@ -463,14 +454,63 @@ func NewApplicationHost(s *Service) *agenthost.Host {
 	return newApplicationHost(s, s)
 }
 
+type ApplicationHostRuntime interface {
+	agenthost.RuntimeController
+	agenthost.GoalRuntimeController
+}
+
+// ApplicationHostCanonicalPorts groups the shared canonical store roles that
+// must advance together in production.
+type ApplicationHostCanonicalPorts interface {
+	agenthost.CanonicalStore
+	agenthost.SessionManagementStore
+	agenthost.SessionBatchManagementStore
+}
+
+func NewApplicationHostWithPorts(
+	s *Service,
+	canonical ApplicationHostCanonicalPorts,
+	runtime ApplicationHostRuntime,
+) *agenthost.Host {
+	if s == nil || canonical == nil || runtime == nil {
+		return nil
+	}
+	return composeApplicationHost(s, s, canonical, canonical, canonical, runtime, runtime)
+}
+
 func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollector) *agenthost.Host {
 	if s == nil {
 		return nil
 	}
+	return newApplicationHostWithPorts(s, worktreeGC, serviceHostRuntime{service: s}, serviceHostGoalRuntime{service: s})
+}
+
+func newApplicationHostWithPorts(
+	s *Service,
+	worktreeGC agenthost.WorktreeGarbageCollector,
+	runtime agenthost.RuntimeController,
+	goalRuntime agenthost.GoalRuntimeController,
+) *agenthost.Host {
+	if s == nil {
+		return nil
+	}
+	store := serviceHostStore{service: s}
+	return composeApplicationHost(s, worktreeGC, store, store, store, runtime, goalRuntime)
+}
+
+func composeApplicationHost(
+	s *Service,
+	worktreeGC agenthost.WorktreeGarbageCollector,
+	canonical agenthost.CanonicalStore,
+	sessionManagement agenthost.SessionManagementStore,
+	sessionBatchManagement agenthost.SessionBatchManagementStore,
+	runtime agenthost.RuntimeController,
+	goalRuntime agenthost.GoalRuntimeController,
+) *agenthost.Host {
 	return agenthost.New(agenthost.Config{
-		CanonicalStore: serviceHostStore{service: s}, SessionManagement: serviceHostStore{service: s},
-		SessionBatchManagement: serviceHostStore{service: s}, SessionPurge: s.SessionPurgeStore,
-		Runtime:            serviceHostRuntime{service: s},
+		CanonicalStore: canonical, SessionManagement: sessionManagement,
+		SessionBatchManagement: sessionBatchManagement, SessionPurge: s.SessionPurgeStore,
+		Runtime:            runtime,
 		RuntimePreparation: serviceHostPreparation{service: s}, Attachments: s.PromptAttachmentStore,
 		SettingsPolicy: serviceHostSettingsPolicy{service: s},
 		Clock:          serviceHostClock{service: s}, SessionLocker: serviceHostLocker{service: s},
@@ -480,7 +520,7 @@ func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollecto
 		RuntimeOperations: s.RuntimeOperationStore, OperationEvents: serviceHostRuntimeOperationEventPublisher{service: s},
 		OperationOwner: s.RuntimeOperationOwner, StaleTurnSettler: s.StaleTurnSettler,
 		WorktreeGC: worktreeGC,
-		GoalStore:  s.GoalStateStore, GoalRuntime: serviceHostGoalRuntime{service: s}, GoalInbox: s.GoalReconcileInboxStore,
+		GoalStore:  s.GoalStateStore, GoalRuntime: goalRuntime, GoalInbox: s.GoalReconcileInboxStore,
 		GoalOwner: s.GoalOperationOwner, GoalClock: serviceHostGoalClock{service: s},
 		GoalAttemptTimeout: s.GoalOperationAttemptTimeout, GoalRecoveryBudget: s.GoalOperationRecoveryBudget,
 		GoalMaxAttempts: s.GoalOperationMaxAttempts, GoalDispatchDeadline: s.GoalOperationDispatchDeadline,

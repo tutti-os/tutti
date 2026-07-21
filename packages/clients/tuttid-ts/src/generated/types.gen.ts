@@ -2162,6 +2162,7 @@ export type DeleteWorkspaceAgentSessionsBatchResponse = {
 export type ClearWorkspaceAgentSessionsResponse = {
   removedMessages: number;
   removedSessions: number;
+  cleanupFailedSessionIds: Array<string>;
 };
 
 export type UpdateWorkspaceAgentSessionPinRequest = {

@@ -9899,6 +9899,7 @@ components:
       required:
         - removedMessages
         - removedSessions
+        - cleanupFailedSessionIds
       properties:
         removedMessages:
           type: integer
@@ -9906,6 +9907,11 @@ components:
         removedSessions:
           type: integer
           minimum: 0
+        cleanupFailedSessionIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
     UpdateWorkspaceAgentSessionPinRequest:
       type: object
       additionalProperties: false

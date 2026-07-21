@@ -4564,49 +4564,6 @@ func TestActivityProjectionPreservesMixedMessageAuditOrder(t *testing.T) {
 	}
 }
 
-func TestActivityProjectionPublishesDeletedEventsForClearedSessions(t *testing.T) {
-	repo := &activityProjectionRepoStub{
-		clearResult: agentactivitybiz.ClearSessionsResult{
-			TransactionID: "tx-clear",
-			CommitDelta: agentactivitybiz.TransactionDelta{
-				TransactionID: "tx-clear",
-				Mutations: []agentactivitybiz.TransactionMutation{
-					{WorkspaceID: "ws-1", AgentSessionID: "session-1", EntityKind: agentactivitybiz.MutationEntitySession, EntityID: "session-1", Operation: "delete"},
-					{WorkspaceID: "ws-1", AgentSessionID: "session-2", EntityKind: agentactivitybiz.MutationEntitySession, EntityID: "session-2", Operation: "delete"},
-				},
-			},
-			RemovedMessages:   5,
-			RemovedSessions:   2,
-			RemovedSessionIDs: []string{"session-1", "session-2"},
-		},
-	}
-	publisher := &activityUpdatePublisherStub{}
-	projection := NewActivityProjection(repo)
-	projection.SetPublisher(publisher)
-
-	result, err := projection.ClearSessions(context.Background(), " ws-1 ")
-	if err != nil {
-		t.Fatalf("ClearSessions() error = %v", err)
-	}
-	if result.RemovedSessions != 2 || result.RemovedMessages != 5 {
-		t.Fatalf("ClearSessions() = %#v, want clear result", result)
-	}
-	if len(publisher.events) != 2 {
-		t.Fatalf("published events = %d, want 2", len(publisher.events))
-	}
-	for _, event := range publisher.events {
-		if event.workspaceID != "ws-1" || event.eventType != "session_deleted" {
-			t.Fatalf("published event = %#v, want workspace session_deleted", event)
-		}
-		if !slices.Contains([]string{"session-1", "session-2"}, event.agentSessionID) {
-			t.Fatalf("published agentSessionID = %q, want cleared session id", event.agentSessionID)
-		}
-		if event.payload["agentSessionId"] != event.agentSessionID {
-			t.Fatalf("payload agentSessionId = %#v, want %q", event.payload["agentSessionId"], event.agentSessionID)
-		}
-	}
-}
-
 func TestServiceListsSessionMessages(t *testing.T) {
 	service := newIsolatedAgentService(newFakeRuntime())
 	lastLimit := 0
@@ -7170,7 +7127,21 @@ func (isolatedComposerCapabilityLister) ListComposerCapabilityOptions(
 func newIsolatedAgentService(runtime RuntimeController) *Service {
 	service := NewService(runtime)
 	service.CapabilityLister = isolatedComposerCapabilityLister{}
-	service.SessionInitializer = fakeSessionInitializer{}
+	installFakeCanonicalSessionStore(service)
+	if fake, ok := runtime.(*fakeRuntime); ok {
+		reader := service.SessionReader.(*fakeSessionReader)
+		for key, session := range fake.sessions {
+			settings := ComposerSettings{}
+			if session.Settings != nil {
+				settings = *session.Settings
+			}
+			reader.sessions[key] = PersistedSession{
+				ID: session.ID, WorkspaceID: session.WorkspaceID, Provider: session.Provider,
+				ProviderSessionID: session.ProviderSessionID, AgentTargetID: session.AgentTargetID,
+				Cwd: session.Cwd, Title: session.Title, Settings: settings,
+			}
+		}
+	}
 	return service
 }
 
@@ -7187,6 +7158,7 @@ func installFakeCanonicalSessionStore(service *Service) {
 		deletedAt:   map[string]int64{},
 		parentByKey: map[string]string{},
 		children:    map[string][]PersistedSession{},
+		runtime:     service.Runtime,
 	}
 	service.SessionInitializer = fakeSessionInitializer{reader: reader}
 	service.SessionReader = reader
@@ -7248,6 +7220,7 @@ type fakeSessionReader struct {
 	deletedAt   map[string]int64
 	parentByKey map[string]string
 	children    map[string][]PersistedSession
+	runtime     RuntimeController
 }
 
 type fakeSessionInitializer struct {
@@ -7380,6 +7353,10 @@ func (f *fakeSectionReader) DeleteSessionsBatch(_ context.Context, input agentac
 
 func (f *fakeSectionReader) PlanDeleteSessions(_ context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error) {
 	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: input.WorkspaceID, SessionIDs: input.SessionIDs}, nil
+}
+
+func (f *fakeSectionReader) PlanClearSessions(_ context.Context, workspaceID string) (agentactivitybiz.DeleteSessionsPlan, error) {
+	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: workspaceID}, nil
 }
 
 type fakeUserProjectReader struct {
@@ -7635,11 +7612,42 @@ func (f *fakeRuntime) Sessions(workspaceID string) []ProviderRuntimeSession {
 }
 
 func (f fakeSessionReader) GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool) {
-	session, ok := f.sessions[workspaceID+":"+agentSessionID]
+	key := workspaceID + ":" + agentSessionID
+	session, ok := f.sessions[key]
+	if !ok && f.runtime != nil {
+		if runtimeSession, found := f.runtime.Session(workspaceID, agentSessionID); found {
+			session = persistedSessionFromTestRuntime(runtimeSession)
+			if canonicalReader, supported := f.runtime.(interface {
+				GetSession(context.Context, string, string) (agentactivitybiz.Session, bool, error)
+			}); supported {
+				canonicalSession, canonicalFound, err := canonicalReader.GetSession(context.Background(), workspaceID, agentSessionID)
+				if err == nil && canonicalFound {
+					session.Kind = canonicalSession.Kind
+					session.RootAgentSessionID = canonicalSession.RootAgentSessionID
+				}
+			}
+			f.sessions[key] = session
+			ok = true
+		}
+	}
 	if ok && strings.TrimSpace(session.RailSectionKey) == "" {
 		session.RailSectionKey = "conversations"
 	}
 	return session, ok
+}
+
+func persistedSessionFromTestRuntime(session ProviderRuntimeSession) PersistedSession {
+	settings := ComposerSettings{}
+	if session.Settings != nil {
+		settings = *session.Settings
+	}
+	return PersistedSession{
+		ID: session.ID, WorkspaceID: session.WorkspaceID, Kind: agentactivitybiz.SessionKindRoot,
+		Provider: session.Provider, ProviderSessionID: session.ProviderSessionID,
+		AgentTargetID: session.AgentTargetID, Cwd: session.Cwd, RailSectionKey: "conversations",
+		Title: session.Title, Settings: settings, CreatedAtUnixMS: session.CreatedAtUnixMS,
+		UpdatedAtUnixMS: session.UpdatedAtUnixMS, LastEventUnixMS: session.UpdatedAtUnixMS,
+	}
 }
 
 func (f fakeSessionReader) SessionDeleted(_ context.Context, workspaceID string, agentSessionID string) (bool, error) {
@@ -7713,6 +7721,17 @@ func (f fakeSessionReader) PlanDeleteSessions(_ context.Context, input agentacti
 	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: input.WorkspaceID, SessionIDs: ids}, nil
 }
 
+func (f fakeSessionReader) PlanClearSessions(_ context.Context, workspaceID string) (agentactivitybiz.DeleteSessionsPlan, error) {
+	ids := make([]string, 0)
+	for _, session := range f.sessions {
+		if session.WorkspaceID == workspaceID {
+			ids = append(ids, session.ID)
+		}
+	}
+	slices.Sort(ids)
+	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: workspaceID, SessionIDs: ids}, nil
+}
+
 func (f fakeSessionReader) DeleteSessionsBatch(_ context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
 	removed := make([]string, 0, len(input.ExpectedSessionIDs))
 	for _, sessionID := range input.ExpectedSessionIDs {
@@ -7724,19 +7743,6 @@ func (f fakeSessionReader) DeleteSessionsBatch(_ context.Context, input agentact
 		removed = append(removed, sessionID)
 	}
 	return agentactivitybiz.DeleteSessionsBatchResult{RemovedSessions: len(removed), RemovedSessionIDs: removed}, nil
-}
-
-func (f fakeSessionReader) ClearSessions(_ context.Context, workspaceID string) (ClearSessionsResult, error) {
-	removed := 0
-	removedIDs := make([]string, 0)
-	for key, session := range f.sessions {
-		if session.WorkspaceID == workspaceID {
-			delete(f.sessions, key)
-			removed++
-			removedIDs = append(removedIDs, session.ID)
-		}
-	}
-	return ClearSessionsResult{RemovedSessions: removed, RemovedSessionIDs: removedIDs}, nil
 }
 
 func (f fakeSessionReader) PurgeDeletedSessions(_ context.Context, input agentactivitybiz.PurgeDeletedSessionsInput) (agentactivitybiz.PurgeDeletedSessionsResult, error) {
@@ -7943,6 +7949,10 @@ func (*activityProjectionRepoStub) DeleteSessionsBatch(context.Context, agentact
 
 func (*activityProjectionRepoStub) PlanDeleteSessions(_ context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error) {
 	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: input.WorkspaceID, SessionIDs: input.SessionIDs}, nil
+}
+
+func (*activityProjectionRepoStub) PlanClearSessions(_ context.Context, workspaceID string) (agentactivitybiz.DeleteSessionsPlan, error) {
+	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: workspaceID}, nil
 }
 
 func (r *activityProjectionRepoStub) ListSessionMessages(context.Context, agentactivitybiz.ListSessionMessagesInput) (agentactivitybiz.MessagePage, bool, error) {

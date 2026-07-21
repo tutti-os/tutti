@@ -16,6 +16,7 @@ import (
 // All methods are scoped by a host-defined workspace ID.
 type Repository interface {
 	ClearSessions(context.Context, string) (ClearSessionsResult, error)
+	PlanClearSessions(context.Context, string) (DeleteSessionsPlan, error)
 	PlanDeleteSessions(context.Context, DeleteSessionsBatchInput) (DeleteSessionsPlan, error)
 	DeleteSessionsBatch(context.Context, DeleteSessionsBatchInput) (DeleteSessionsBatchResult, error)
 	GetSession(context.Context, string, string) (Session, bool, error)

@@ -395,6 +395,7 @@ type SessionSectionDeletionCandidateReader interface {
 }
 
 type SessionBatchDeleter interface {
+	PlanClearSessions(context.Context, string) (agentactivitybiz.DeleteSessionsPlan, error)
 	PlanDeleteSessions(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error)
 	DeleteSessionsBatch(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error)
 }
@@ -404,13 +405,10 @@ type UserProjectReader interface {
 }
 
 type ClearSessionsResult struct {
-	RemovedMessages   int
-	RemovedSessions   int
-	RemovedSessionIDs []string
-}
-
-type SessionClearer interface {
-	ClearSessions(context.Context, string) (ClearSessionsResult, error)
+	RemovedMessages         int
+	RemovedSessions         int
+	RemovedSessionIDs       []string
+	CleanupFailedSessionIDs []string
 }
 
 type AgentSessionResourceReleaser interface {

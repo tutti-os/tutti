@@ -239,6 +239,28 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 	}, nil
 }
 
+// ClearSessions routes workspace-wide removal through the same runtime-close,
+// mutation-actor, atomic canonical delete, and post-commit cleanup coordinator
+// as scoped deletion. Service layers must not enumerate or clear sessions on
+// their own because doing so creates a second lifecycle authority.
+func (h *Host) ClearSessions(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if h == nil || h.sessionBatchManagement == nil || h.runtime == nil || workspaceID == "" {
+		return ClearSessionsResult{}, ErrInvalidArgument
+	}
+	plan, err := h.sessionBatchManagement.PlanClearSessions(ctx, workspaceID)
+	if err != nil {
+		return ClearSessionsResult{}, err
+	}
+	if len(plan.SessionIDs) == 0 {
+		return ClearSessionsResult{}, nil
+	}
+	return h.DeleteSessions(ctx, DeleteSessionsInput{
+		WorkspaceID: workspaceID,
+		SessionIDs:  plan.SessionIDs,
+	})
+}
+
 func containsSessionID(values []string, expected string) bool {
 	for _, value := range values {
 		if value == expected {

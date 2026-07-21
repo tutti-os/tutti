@@ -2,10 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   findBoundaryViolations,
+  findProductionCompositionViolations,
   findStaleAllowlistEntries,
   isAllowlisted,
   isTestSource
 } from "./check-agent-host-boundary.mjs";
+
+test("requires production wiring to consume shared Host adapters", () => {
+  const source = [
+    "agenthostadapter.RuntimeController{}",
+    "agenthost.SQLiteWorkspaceStore{}",
+    "agentservice.NewApplicationHostWithPorts(service, store, runtime)"
+  ].join("\n");
+  assert.deepEqual(findProductionCompositionViolations(source), []);
+  assert.equal(findProductionCompositionViolations("legacy wiring").length, 3);
+});
 
 test("flags a new *Coordinator production type declaration", () => {
   const source = [

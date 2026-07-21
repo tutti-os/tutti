@@ -604,23 +604,11 @@ func (p *ActivityProjection) PlanDeleteSessions(
 	return p.repo.PlanDeleteSessions(ctx, input)
 }
 
-func (p *ActivityProjection) ClearSessions(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {
+func (p *ActivityProjection) PlanClearSessions(ctx context.Context, workspaceID string) (agentactivitybiz.DeleteSessionsPlan, error) {
 	if p == nil || p.repo == nil {
-		return ClearSessionsResult{}, nil
+		return agentactivitybiz.DeleteSessionsPlan{}, nil
 	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	result, err := p.repo.ClearSessions(ctx, workspaceID)
-	if err != nil {
-		return ClearSessionsResult{}, err
-	}
-	if result.RemovedSessions > 0 {
-		agenthost.NotifyCommitted(ctx, p, agenthost.CanonicalDelta(result.CommitDelta))
-	}
-	return ClearSessionsResult{
-		RemovedMessages:   result.RemovedMessages,
-		RemovedSessions:   result.RemovedSessions,
-		RemovedSessionIDs: result.RemovedSessionIDs,
-	}, nil
+	return p.repo.PlanClearSessions(ctx, strings.TrimSpace(workspaceID))
 }
 
 func (p *ActivityProjection) UpdateSessionPinned(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (PersistedSession, bool, error) {

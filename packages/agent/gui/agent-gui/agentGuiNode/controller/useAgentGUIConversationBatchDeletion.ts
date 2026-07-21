@@ -206,6 +206,37 @@ export function useAgentGUIConversationBatchDeletion(
         workspaceId
       })
         .then((result) => {
+          if (result.cleanupFailedSessionIds.length > 0) {
+            try {
+              void Promise.resolve(
+                agentActivityRuntime.reportDiagnostic?.({
+                  details: {
+                    cleanupFailedSessionIds: result.cleanupFailedSessionIds
+                  },
+                  event: "agent.gui.conversation_delete.cleanup_failed",
+                  level: "warn",
+                  source: "agent-gui",
+                  workspaceId
+                })
+              ).catch((error) => {
+                console.error(
+                  "[agent-gui-cleanup-diagnostic]",
+                  JSON.stringify({
+                    error: getAgentGUIErrorMessage(error),
+                    workspaceId
+                  })
+                );
+              });
+            } catch (error) {
+              console.error(
+                "[agent-gui-cleanup-diagnostic]",
+                JSON.stringify({
+                  error: getAgentGUIErrorMessage(error),
+                  workspaceId
+                })
+              );
+            }
+          }
           const removedIds = new Set([
             ...targetIds,
             ...result.removedSessionIds

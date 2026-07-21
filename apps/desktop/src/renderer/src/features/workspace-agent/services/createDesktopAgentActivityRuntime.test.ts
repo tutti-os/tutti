@@ -459,6 +459,7 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       workspaceId: input.workspaceId
     }),
     deleteSessionsBatch: async () => ({
+      cleanupFailedSessionIds: [],
       removedMessages: 0,
       removedSessionIds: [],
       removedSessions: 0

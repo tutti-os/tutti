@@ -12,6 +12,35 @@ import (
 
 var ErrDeleteSessionsPlanChanged = errors.New("workspace agent session deletion plan changed")
 
+// PlanClearSessions resolves the exact canonical session set owned by one
+// workspace. Host uses this snapshot to close live runtimes before issuing the
+// same atomic batch deletion command used by scoped deletes.
+func (s *Store) PlanClearSessions(
+	ctx context.Context,
+	workspaceID string,
+) (DeleteSessionsPlan, error) {
+	if s == nil || s.db == nil {
+		return DeleteSessionsPlan{}, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return DeleteSessionsPlan{}, nil
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return DeleteSessionsPlan{}, fmt.Errorf("begin plan workspace agent sessions clear: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	sessionIDs, err := listAgentSessionIDsTx(ctx, tx, workspaceID)
+	if err != nil {
+		return DeleteSessionsPlan{}, err
+	}
+	return DeleteSessionsPlan{
+		WorkspaceID: workspaceID,
+		SessionIDs:  normalizedSessionIDs(sessionIDs),
+	}, nil
+}
+
 func (s *Store) PlanDeleteSessions(
 	ctx context.Context,
 	input DeleteSessionsBatchInput,
