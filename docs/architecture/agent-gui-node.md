@@ -400,6 +400,9 @@ and hosts whose capability reports the developer gate disabled, render no
 quick-prompt composer entry. AgentGUI may also present a small, localized set
 of recommended templates; those only prefill the existing editor and remain
 client-local until the user explicitly saves them through the CRUD capability.
+It may additionally present built-in, localized recommended prompts that insert
+their static content into the current composer selection without persisting or
+submitting it. Neither kind is durable quick-prompt data.
 
 ### 6.4 Multiple surfaces
 

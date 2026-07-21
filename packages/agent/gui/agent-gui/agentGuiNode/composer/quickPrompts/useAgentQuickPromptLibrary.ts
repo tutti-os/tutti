@@ -61,6 +61,7 @@ export interface AgentQuickPromptLibraryController {
   ) => Promise<boolean>;
   saveDraft: (draft: AgentQuickPromptDraft) => Promise<boolean>;
   searchQuery: string;
+  insertPromptContent: (content: string) => void;
   showReorderHandles: boolean;
   selectPrompt: (prompt: AgentHostQuickPrompt) => void;
   selectedPrompt: AgentHostQuickPrompt | null;
@@ -360,13 +361,13 @@ export function useAgentQuickPromptLibrary(input: {
     [canReorder, quickPrompts, snapshot.prompts]
   );
 
-  const selectPrompt = useCallback(
-    (prompt: AgentHostQuickPrompt) => {
+  const insertPromptContent = useCallback(
+    (content: string) => {
       if (disabled || !capabilityAvailable || isInteractionLocked) {
         return;
       }
       close();
-      onInsertPrompt(prompt.content);
+      onInsertPrompt(content);
     },
     [capabilityAvailable, close, disabled, isInteractionLocked, onInsertPrompt]
   );
@@ -377,6 +378,12 @@ export function useAgentQuickPromptLibrary(input: {
       setSearchQuery(query);
     },
     [isInteractionLocked]
+  );
+  const selectPrompt = useCallback(
+    (prompt: AgentHostQuickPrompt) => {
+      insertPromptContent(prompt.content);
+    },
+    [insertPromptContent]
   );
 
   return {
@@ -393,6 +400,7 @@ export function useAgentQuickPromptLibrary(input: {
     isInteractionLocked,
     isReordering,
     initialDraft,
+    insertPromptContent,
     labels,
     mode: effectiveMode,
     mutationError,

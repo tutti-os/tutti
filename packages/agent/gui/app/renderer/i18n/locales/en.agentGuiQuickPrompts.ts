@@ -63,6 +63,7 @@ export const enAgentGuiQuickPrompts = {
   recommendedTemplatesDescription:
     "Choose one to prefill the editor. It will not be saved or sent until you choose Save.",
   recommendedTemplatesTitle: "Recommended templates",
+  recommendedPromptsTitle: "Recommended prompts",
   returnToPrompts: "My prompts",
   save: "Save",
   saving: "Saving…",
@@ -72,7 +73,15 @@ export const enAgentGuiQuickPrompts = {
   titleLabel: "Title",
   titlePlaceholder: "Give this prompt a short name",
   titleTooLong: "Title must be 80 characters or less",
+  summaryCommonPromptsRecommendation: {
+    title: "Summarize common prompts",
+    description:
+      "Find important insights and repeated work patterns from conversation history",
+    content:
+      "Please scan and read all available conversation history and memory.\n\n1. What important insight have you discovered that I may not be aware of, and that could significantly change my decisions and work?\n2. What work do I repeat? Identify the prompts I use most often, and explain why they matter and when to use them.\n\nClearly state the accessible scope and distinguish facts, inferences, and unconfirmed items. Do not present assumptions as facts."
+  },
   trigger: "Prompts",
   triggerTooltip: "Choose a quick prompt",
+  usePrompt: "Use prompt",
   useTemplate: "Use template"
 } as const;

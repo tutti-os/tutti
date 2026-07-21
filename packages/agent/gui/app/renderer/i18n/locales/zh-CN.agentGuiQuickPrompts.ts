@@ -61,6 +61,7 @@ export const zhCNAgentGuiQuickPrompts = {
   recommendedTemplatesDescription:
     "选择后会预填到编辑窗口，保存前不会创建或发送提示词",
   recommendedTemplatesTitle: "推荐模板",
+  recommendedPromptsTitle: "推荐提示词",
   returnToPrompts: "我的提示词",
   save: "保存",
   saving: "正在保存…",
@@ -70,7 +71,14 @@ export const zhCNAgentGuiQuickPrompts = {
   titleLabel: "标题",
   titlePlaceholder: "输入简短易识别的名称",
   titleTooLong: "标题不能超过 80 个字符",
+  summaryCommonPromptsRecommendation: {
+    title: "总结常用提示词",
+    description: "从历史对话中发现关键洞察和重复工作模式",
+    content:
+      "请扫描、读取所有可访问的历史对话信息以及记忆。\n\n1. 有什么东西是你发现了但我完全没有意识到的关键点？而且这个关键点会对我的决策和工作带来巨大的改变。\n2. 我有哪些重复的工作内容？从里面挑出我常用的提示词给我，并且说明原因和使用场景。\n\n请明确说明实际可访问范围，区分事实、推断和待确认内容，不要把推测当成事实"
+  },
   trigger: "提示词",
   triggerTooltip: "选择快捷提示词",
+  usePrompt: "填入输入框",
   useTemplate: "使用模板"
 } as const;

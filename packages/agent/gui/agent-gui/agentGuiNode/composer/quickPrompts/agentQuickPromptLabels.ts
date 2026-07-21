@@ -11,6 +11,12 @@ export interface AgentQuickPromptTemplate {
   title: string;
 }
 
+export interface AgentQuickPromptRecommendation {
+  content: string;
+  description: string;
+  title: string;
+}
+
 export interface AgentQuickPromptLabels {
   add: string;
   cancel: string;
@@ -50,6 +56,8 @@ export interface AgentQuickPromptLabels {
   recommendedTemplates: readonly AgentQuickPromptTemplate[];
   recommendedTemplatesDescription: string;
   recommendedTemplatesTitle: string;
+  recommendedPromptsTitle: string;
+  summaryCommonPromptsRecommendation: AgentQuickPromptRecommendation;
   returnToPrompts: string;
   title: string;
   titleLabel: string;
@@ -58,6 +66,7 @@ export interface AgentQuickPromptLabels {
   contentTooLarge: string;
   trigger: string;
   triggerTooltip: string;
+  usePrompt: string;
   useTemplate: string;
 }
 
@@ -177,6 +186,20 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
     recommendedTemplatesTitle: t(
       "agentHost.agentGui.quickPrompts.recommendedTemplatesTitle"
     ),
+    recommendedPromptsTitle: t(
+      "agentHost.agentGui.quickPrompts.recommendedPromptsTitle"
+    ),
+    summaryCommonPromptsRecommendation: {
+      title: t(
+        "agentHost.agentGui.quickPrompts.summaryCommonPromptsRecommendation.title"
+      ),
+      description: t(
+        "agentHost.agentGui.quickPrompts.summaryCommonPromptsRecommendation.description"
+      ),
+      content: t(
+        "agentHost.agentGui.quickPrompts.summaryCommonPromptsRecommendation.content"
+      )
+    },
     returnToPrompts: t("agentHost.agentGui.quickPrompts.returnToPrompts"),
     title: t("agentHost.agentGui.quickPrompts.title"),
     titleLabel: t("agentHost.agentGui.quickPrompts.titleLabel"),
@@ -184,6 +207,7 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
     titleTooLong: t("agentHost.agentGui.quickPrompts.titleTooLong"),
     trigger: t("agentHost.agentGui.quickPrompts.trigger"),
     triggerTooltip: t("agentHost.agentGui.quickPrompts.triggerTooltip"),
+    usePrompt: t("agentHost.agentGui.quickPrompts.usePrompt"),
     useTemplate: t("agentHost.agentGui.quickPrompts.useTemplate")
   };
 }

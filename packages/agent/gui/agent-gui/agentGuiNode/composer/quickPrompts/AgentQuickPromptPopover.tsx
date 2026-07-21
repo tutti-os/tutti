@@ -25,7 +25,10 @@ import {
 } from "@tutti-os/ui-system/icons";
 import { AgentQuickPromptEditorDialog } from "./AgentQuickPromptEditorDialog";
 import { AgentQuickPromptList } from "./AgentQuickPromptList";
-import type { AgentQuickPromptTemplate } from "./agentQuickPromptLabels";
+import type {
+  AgentQuickPromptRecommendation,
+  AgentQuickPromptTemplate
+} from "./agentQuickPromptLabels";
 import type { AgentQuickPromptLibraryController } from "./useAgentQuickPromptLibrary";
 
 export function AgentQuickPromptPopover({
@@ -94,6 +97,12 @@ export function AgentQuickPromptPopover({
   const requestTemplate = (template: AgentQuickPromptTemplate): void => {
     preserveExternalFocusRef.current = true;
     controller.openCreate({ title: template.title, content: template.content });
+  };
+  const insertRecommendation = (
+    recommendation: AgentQuickPromptRecommendation
+  ): void => {
+    preserveExternalFocusRef.current = true;
+    controller.insertPromptContent(recommendation.content);
   };
   const isTemplateView = view === "templates";
 
@@ -297,6 +306,14 @@ export function AgentQuickPromptPopover({
             viewportClassName="px-2 pb-2"
             viewportTestId="agent-quick-prompt-scroll-viewport"
           >
+            {!isTemplateView && !isSorting ? (
+              <PromptRecommendation
+                disabled={controller.isInteractionLocked}
+                labels={labels}
+                recommendation={labels.summaryCommonPromptsRecommendation}
+                onSelect={insertRecommendation}
+              />
+            ) : null}
             {isTemplateView ? (
               <RecommendedTemplateList
                 disabled={controller.isInteractionLocked}
@@ -424,6 +441,54 @@ export function AgentQuickPromptPopover({
         ) : null}
       </ConfirmationDialog>
     </>
+  );
+}
+
+function PromptRecommendation({
+  disabled,
+  labels,
+  recommendation,
+  onSelect
+}: {
+  disabled: boolean;
+  labels: AgentQuickPromptLibraryController["labels"];
+  recommendation: AgentQuickPromptRecommendation;
+  onSelect: (recommendation: AgentQuickPromptRecommendation) => void;
+}): React.JSX.Element {
+  const action = usePrimaryPointerAction(() => {
+    if (!disabled) onSelect(recommendation);
+  });
+  const titleId = useId();
+
+  return (
+    <section aria-labelledby={titleId} className="px-1 pt-2">
+      <h3
+        id={titleId}
+        className="px-2 pb-1 text-[13px] font-medium text-[var(--text-primary)]"
+      >
+        {labels.recommendedPromptsTitle}
+      </h3>
+      <Button
+        {...action}
+        className="h-auto w-full justify-between px-2 py-2 text-left whitespace-normal"
+        disabled={disabled}
+        type="button"
+        variant="ghost"
+      >
+        <span className="flex min-w-0 flex-col items-start gap-0.5">
+          <span className="w-full truncate font-medium text-[var(--text-primary)]">
+            {recommendation.title}
+          </span>
+          <span className="line-clamp-2 w-full text-[12px] leading-[1.35] text-[var(--text-secondary)]">
+            {recommendation.description}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1 text-[12px] text-[var(--text-secondary)]">
+          {labels.usePrompt}
+          <ArrowRightIcon data-icon="inline-end" />
+        </span>
+      </Button>
+    </section>
   );
 }
 

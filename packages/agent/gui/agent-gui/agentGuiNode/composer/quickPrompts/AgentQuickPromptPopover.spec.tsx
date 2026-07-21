@@ -1,11 +1,16 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { createRef } from "react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import type { AgentQuickPromptLabels } from "./agentQuickPromptLabels";
 import { AgentQuickPromptPopover } from "./AgentQuickPromptPopover";
 import type { AgentQuickPromptLibraryController } from "./useAgentQuickPromptLibrary";
+import {
+  AgentRichTextEditor,
+  type AgentRichTextEditorHandle
+} from "../../agentRichText/AgentRichTextEditor";
 
 const labels = new Proxy(
   {
@@ -31,7 +36,14 @@ const labels = new Proxy(
     recommendedTemplatesTitle: "Recommended templates",
     recommendedTemplatesDescription:
       "Choose one to prefill the editor. It will not be saved or sent until you choose Save.",
+    recommendedPromptsTitle: "Recommended prompts",
     returnToPrompts: "My prompts",
+    summaryCommonPromptsRecommendation: {
+      title: "Summarize common prompts",
+      description: "Find insights and repeated work patterns",
+      content: "Summarize my common prompts"
+    },
+    usePrompt: "Use prompt",
     useTemplate: "Use template",
     recommendedTemplates: [
       {
@@ -102,6 +114,7 @@ function controller(
     reorderPrompts: vi.fn(async () => true),
     saveDraft: vi.fn(async () => true),
     searchQuery: "",
+    insertPromptContent: vi.fn(),
     showReorderHandles: false,
     selectPrompt: vi.fn(),
     selectedPrompt: null,
@@ -196,6 +209,11 @@ describe("AgentQuickPromptPopover", () => {
     expect(screen.getByPlaceholderText("Search quick prompts")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /Summarize common prompts.*Use prompt/u
+      })
+    ).toBeNull();
     expect(
       screen.queryByRole("button", {
         name: "Create from a recommended template"
@@ -328,19 +346,22 @@ describe("AgentQuickPromptPopover", () => {
 
     expect(screen.getByRole("button", { name: "Sort" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Reorder Review" })).toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: /Summarize common prompts.*Use prompt/u
+      })
+    ).toBeEnabled();
   });
 
   it("disables every mutating entry point while a shared mutation is pending", () => {
+    const subject = controller({
+      canReorder: false,
+      isInteractionLocked: true,
+      showReorderHandles: true
+    });
     render(
       <TooltipProvider>
-        <AgentQuickPromptPopover
-          controller={controller({
-            canReorder: false,
-            isInteractionLocked: true,
-            showReorderHandles: true
-          })}
-          disabled={false}
-        />
+        <AgentQuickPromptPopover controller={subject} disabled={false} />
       </TooltipProvider>
     );
 
@@ -356,6 +377,13 @@ describe("AgentQuickPromptPopover", () => {
         name: "Create from a recommended template"
       })
     ).toBeDisabled();
+    const recommendation = screen.getByRole("button", {
+      name: /Summarize common prompts.*Use prompt/u
+    });
+    expect(recommendation).toBeDisabled();
+    fireEvent.pointerDown(recommendation, { button: 0 });
+    fireEvent.click(recommendation);
+    expect(subject.insertPromptContent).not.toHaveBeenCalled();
   });
 
   it("selects a prompt on primary pointer down before the Popover closes", () => {
@@ -370,6 +398,64 @@ describe("AgentQuickPromptPopover", () => {
       button: 0
     });
     expect(subject.selectPrompt).toHaveBeenCalledOnce();
+  });
+
+  it("inserts the built-in recommendation into the composer without saving it", () => {
+    const subject = controller();
+    render(
+      <TooltipProvider>
+        <AgentQuickPromptPopover controller={subject} disabled={false} />
+      </TooltipProvider>
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", {
+        name: /Summarize common prompts.*Use prompt/u
+      }),
+      { button: 0 }
+    );
+    expect(subject.insertPromptContent).toHaveBeenCalledWith(
+      "Summarize my common prompts"
+    );
+    expect(subject.openCreate).not.toHaveBeenCalled();
+    expect(subject.saveDraft).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("heading", { name: "Recommended prompts", level: 3 })
+    ).toBeInTheDocument();
+  });
+
+  it("writes the built-in recommendation into the editor without submitting", async () => {
+    const editorRef = createRef<AgentRichTextEditorHandle>();
+    const onChange = vi.fn();
+    const onSubmit = vi.fn();
+    const subject = controller({
+      insertPromptContent: (content) =>
+        editorRef.current?.insertPlainTextAtSelection(content)
+    });
+    render(
+      <TooltipProvider>
+        <AgentRichTextEditor
+          ref={editorRef}
+          disabled={false}
+          placeholder="Prompt"
+          value=""
+          onChange={onChange}
+          onSubmit={onSubmit}
+        />
+        <AgentQuickPromptPopover controller={subject} disabled={false} />
+      </TooltipProvider>
+    );
+    await waitFor(() => expect(editorRef.current).not.toBeNull());
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", {
+        name: /Summarize common prompts.*Use prompt/u
+      }),
+      { button: 0 }
+    );
+
+    expect(onChange).toHaveBeenLastCalledWith("Summarize my common prompts");
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("starts creation on primary pointer down so the Dialog survives Popover dismissal", () => {
