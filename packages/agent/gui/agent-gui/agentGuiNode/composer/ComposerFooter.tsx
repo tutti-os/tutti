@@ -196,14 +196,15 @@ export function ComposerFooter({
                     className={cn(
                       styles.composerMenuTrigger,
                       styles.composerReferenceTrigger,
-                      "group w-auto justify-center text-[var(--agent-gui-text-secondary)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:shrink-0"
+                      "group w-auto justify-center text-[var(--agent-gui-text-secondary)] hover:text-[var(--agent-gui-text-primary)] focus-visible:text-[var(--agent-gui-text-primary)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:shrink-0"
                     )}
+                    data-testid="agent-gui-composer-mention-trigger"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={handleMentionPaletteButton}
                   >
                     <span
                       aria-hidden
-                      className="inline-block size-3.5 bg-[var(--text-secondary)] transition-colors group-hover:bg-[var(--text-primary)] group-focus-visible:bg-[var(--text-primary)]"
+                      className="inline-block size-3.5 bg-current transition-colors"
                       style={{
                         WebkitMaskImage: `url("${atLinedIconUrl}")`,
                         WebkitMaskPosition: "center",

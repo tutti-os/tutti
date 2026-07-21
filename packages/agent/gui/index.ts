@@ -102,6 +102,7 @@ export {
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
 export type {
   AgentGUIAgentsEmptyRenderer,
+  AgentGUIConversationRailLayout,
   AgentGUIProviderUnavailableStateContext,
   AgentGUIProviderUnavailableStateRenderer,
   AgentGUISidebarFooterContext,

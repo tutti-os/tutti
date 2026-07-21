@@ -266,6 +266,47 @@ describe("AgentGUINode memoization", () => {
     );
   });
 
+  it("passes host rail layout observers through the memo boundary", () => {
+    mockViewModel = createViewModel();
+    const firstObserver = vi.fn();
+    const secondObserver = vi.fn();
+    const initial = createProps();
+    const props = {
+      ...initial,
+      hostActions: {
+        ...initial.hostActions,
+        onConversationRailLayoutChange: firstObserver
+      }
+    };
+    const { rerender } = render(<AgentGUINode {...props} />);
+    const firstViewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          onConversationRailLayoutChange?: (layout: unknown) => void;
+        }
+      | undefined;
+    expect(firstViewProps?.onConversationRailLayoutChange).toBe(firstObserver);
+
+    agentGuiNodeViewSpy.mockClear();
+    rerender(
+      <AgentGUINode
+        {...props}
+        hostActions={{
+          ...props.hostActions,
+          onConversationRailLayoutChange: secondObserver
+        }}
+      />
+    );
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    const secondViewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          onConversationRailLayoutChange?: (layout: unknown) => void;
+        }
+      | undefined;
+    expect(secondViewProps?.onConversationRailLayoutChange).toBe(
+      secondObserver
+    );
+  });
+
   it("keeps rail labels stable when provider-facing labels change", () => {
     mockViewModel = createViewModel();
     const props = createProps();
