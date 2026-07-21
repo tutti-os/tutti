@@ -253,8 +253,9 @@ func Public(plan Plan) PublicPlan {
 type ReferenceKind string
 
 const (
-	ReferenceAgentTarget ReferenceKind = "agent_target"
-	ReferenceModelPolicy ReferenceKind = "model_policy"
+	ReferenceAgentTarget    ReferenceKind = "agent_target"
+	ReferenceModelPolicy    ReferenceKind = "model_policy"
+	ReferenceWorkspaceAgent ReferenceKind = "workspace_agent"
 )
 
 // Reference is one consumer that currently references a plan. Deleting a plan

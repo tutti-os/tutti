@@ -27,6 +27,20 @@ export {
   type TuttidClient
 } from "./tuttidClient.ts";
 export {
+  createWorkspaceAgentConfigurationClient,
+  type AutomationRule,
+  type AutomationRuleAction,
+  type AutomationRuleBudget,
+  type AutomationRulePermissions,
+  type AutomationRuleTarget,
+  type AutomationRuleTargetKind,
+  type ModelPlanBillingMode,
+  type ModelPlanPricing,
+  type PutAutomationRuleRequest,
+  type WorkspaceAgentConfigurationClient,
+  type WorkspaceModelRecommendation
+} from "./workspaceAgentConfigurationClient.ts";
+export {
   WORKSPACE_AGENT_INTERACTION_KINDS,
   WORKSPACE_AGENT_INTERACTION_STATUSES,
   WORKSPACE_AGENT_TURN_OUTCOMES,

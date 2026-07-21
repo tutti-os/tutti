@@ -37,6 +37,7 @@ type DaemonAPI struct {
 	AgentMaintenanceService   AgentMaintenanceService
 	ManagedCredentialsService *managedcredentialsservice.Service
 	ModelPlanService          ModelPlanService
+	WorkspaceAgentService     WorkspaceAgentService
 	AgentModelBindingService  AgentModelBindingService
 	ModelPolicyService        ModelPolicyService
 	AccountService            AccountService

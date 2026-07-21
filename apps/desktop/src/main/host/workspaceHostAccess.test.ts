@@ -40,6 +40,21 @@ function createTransportClient(
     async listAgentTargets() {
       throw new Error("not used");
     },
+    async listWorkspaceAgents() {
+      throw new Error("not used");
+    },
+    async createWorkspaceAgent() {
+      throw new Error("not used");
+    },
+    async generateWorkspaceAgentDraft() {
+      throw new Error("not used");
+    },
+    async updateWorkspaceAgent() {
+      throw new Error("not used");
+    },
+    async deleteWorkspaceAgent() {
+      throw new Error("not used");
+    },
     async setSystemAgentTargetEnabled() {
       throw new Error("not used");
     },

@@ -11,13 +11,14 @@ import (
 )
 
 type catalogEntry struct {
-	ProviderID  string   `json:"providerId"`
-	DisplayName string   `json:"displayName"`
-	IconKey     string   `json:"iconKey"`
-	LocaleKey   string   `json:"localeKey"`
-	Aliases     []string `json:"aliases"`
-	Target      target   `json:"target"`
-	Desktop     desktop  `json:"desktop"`
+	ProviderID        string   `json:"providerId"`
+	DisplayName       string   `json:"displayName"`
+	IconKey           string   `json:"iconKey"`
+	LocaleKey         string   `json:"localeKey"`
+	ModelPlanProtocol string   `json:"modelPlanProtocol"`
+	Aliases           []string `json:"aliases"`
+	Target            target   `json:"target"`
+	Desktop           desktop  `json:"desktop"`
 }
 
 type target struct {
@@ -51,11 +52,12 @@ func main() {
 	entries := make([]catalogEntry, 0, len(descriptors))
 	for _, descriptor := range descriptors {
 		entries = append(entries, catalogEntry{
-			ProviderID:  descriptor.Identity.ID,
-			DisplayName: descriptor.Identity.DisplayName,
-			IconKey:     descriptor.Identity.IconKey,
-			LocaleKey:   descriptor.Identity.LocaleKey,
-			Aliases:     append([]string{}, descriptor.Identity.Aliases...),
+			ProviderID:        descriptor.Identity.ID,
+			DisplayName:       descriptor.Identity.DisplayName,
+			IconKey:           descriptor.Identity.IconKey,
+			LocaleKey:         descriptor.Identity.LocaleKey,
+			ModelPlanProtocol: string(descriptor.Runtime.Endpoint.ModelPlanProtocol),
+			Aliases:           append([]string{}, descriptor.Identity.Aliases...),
 			Target: target{
 				ID:            descriptor.Target.ID,
 				LaunchRefType: descriptor.Target.LaunchRefType,

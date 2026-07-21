@@ -1319,6 +1319,45 @@ export const agentModelCatalogInvalidatedPayloadSchema = {
   }
 } as const;
 
+export const agentModelConfigurationChangedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "workspaceId",
+    "agentTargetIds",
+    "defaultModels",
+    "resetComposerModel",
+    "occurredAtUnixMs"
+  ],
+  properties: {
+    workspaceId: {
+      type: "string",
+      minLength: 1
+    },
+    agentTargetIds: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "string",
+        minLength: 1
+      }
+    },
+    defaultModels: {
+      type: "object",
+      additionalProperties: {
+        type: "string"
+      }
+    },
+    resetComposerModel: {
+      type: "boolean"
+    },
+    occurredAtUnixMs: {
+      type: "integer",
+      minimum: 0
+    }
+  }
+} as const;
+
 export const agentQuickpromptUpdatedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -2927,6 +2966,8 @@ export const businessEventServerFrameSchema = {
 export const businessEventPayloadSchemas = {
   "agent.activity.updated": agentActivityUpdatedPayloadSchema,
   "agent.model.catalog.invalidated": agentModelCatalogInvalidatedPayloadSchema,
+  "agent.model.configuration.changed":
+    agentModelConfigurationChangedPayloadSchema,
   "agent.quickprompt.updated": agentQuickpromptUpdatedPayloadSchema,
   "analytics.debug.reported": analyticsDebugReportedPayloadSchema,
   "preferences.agent.composer.defaults.changed":

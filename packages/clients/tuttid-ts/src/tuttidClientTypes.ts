@@ -151,6 +151,7 @@ import type {
   UserProjectListResponse,
   UserProjectPathCheckResponse
 } from "./generated/index.ts";
+import type { WorkspaceAgentConfigurationClient } from "./workspaceAgentConfigurationClient.ts";
 
 export type TuttidRequestOptions = Omit<
   RequestInit,
@@ -160,7 +161,7 @@ export type TuttidRequestOptions = Omit<
 export type TuttidTrackEvent = TrackEvent;
 export type TuttidTrackEventsRequest = TrackEventsRequest;
 
-export interface TuttidClient {
+export interface TuttidClient extends WorkspaceAgentConfigurationClient {
   listAgentQuickPrompts(): Promise<AgentQuickPromptListResponse>;
   createAgentQuickPrompt(
     request: CreateAgentQuickPromptRequest

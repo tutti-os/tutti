@@ -196,7 +196,9 @@ test("WorkspaceSettingsService retries failed daemon initialization when setting
   service.openPanel({ id: "workspace-1" });
   await waitFor(() => service.store.tuttiAgentSwitchEnabled);
 
-  assert.equal(attempts, 2);
+  // The Agents refresh triggered by openPanel also lists agent targets, so
+  // only require that the switch initialization retried at least once.
+  assert.ok(attempts >= 2);
 });
 
 test("WorkspaceSettingsService leaves migration pending after a legacy read error", async () => {
@@ -1435,6 +1437,25 @@ function createWorkspaceSettingsClient(
       }
     }),
     listAgentTargets: async () => [],
+    getAgentProviderComposerOptions: async () => {
+      throw new Error("not used");
+    },
+    listWorkspaceAgents: async () => [],
+    createWorkspaceAgent: async () => {
+      throw new Error("not used");
+    },
+    generateWorkspaceAgentDraft: async () => {
+      throw new Error("not used");
+    },
+    updateWorkspaceAgent: async () => {
+      throw new Error("not used");
+    },
+    deleteWorkspaceAgent: async () => {},
+    createAutomationRule: async () => {
+      throw new Error("not used");
+    },
+    listModelPlans: async () => [],
+    recommendWorkspaceModels: async () => [],
     setSystemAgentTargetEnabled: async () => {
       throw new Error("not used");
     },

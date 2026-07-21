@@ -97,12 +97,56 @@ export interface AgentGUIAgentAvailability {
 }
 
 export interface AgentGUIAgentOwner {
+  userId?: string | null;
   name?: string | null;
   avatarUrl?: string | null;
 }
 
 /** Host-authoritative ownership classification for Agent directory entries. */
 export type AgentGUIAgentOwnership = "self" | "shared";
+
+export interface AgentGUISharedAgentQuota {
+  unit: "runs" | "tokens";
+  remaining: number;
+  limit?: number;
+  resetAt?: string | null;
+}
+
+export interface AgentGUISharedAgentConcurrency {
+  active: number;
+  limit: number;
+}
+
+export interface AgentGUISharedAgentCostQuota {
+  currency: string;
+  remainingMicros: number;
+  limitMicros?: number;
+}
+
+export interface AgentGUISharedAgentAllowedModel {
+  modelPlanId?: string | null;
+  model: string;
+}
+
+export interface AgentGUISharedAgentPolicyPermissions {
+  consult: boolean;
+  review: boolean;
+  delegate: boolean;
+  upgrade: boolean;
+}
+
+/** Credential-free access snapshot supplied by the shared-Agent control plane. */
+export interface AgentGUISharedAgentAccess {
+  grantId: string;
+  ownerUserId: string;
+  ownerOnline: boolean;
+  auditRequired: boolean;
+  quota?: AgentGUISharedAgentQuota | null;
+  concurrency?: AgentGUISharedAgentConcurrency | null;
+  costQuota?: AgentGUISharedAgentCostQuota | null;
+  allowedModels?: readonly AgentGUISharedAgentAllowedModel[] | null;
+  policyPermissions?: AgentGUISharedAgentPolicyPermissions | null;
+}
 
 /**
  * Host-projected entry from the workspace `/agents` directory.
@@ -121,6 +165,7 @@ export interface AgentGUIAgent {
   description?: string | null;
   owner?: AgentGUIAgentOwner | null;
   ownership?: AgentGUIAgentOwnership | null;
+  sharedAccess?: AgentGUISharedAgentAccess | null;
   availability: AgentGUIAgentAvailability;
   provider: AgentGUIProvider;
   setupKind?: "target_runtime" | null;

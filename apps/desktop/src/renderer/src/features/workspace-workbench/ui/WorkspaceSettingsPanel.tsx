@@ -121,6 +121,7 @@ import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostSer
 import { useAccountService } from "./useAccountService";
 import { WorkspaceDeveloperSettingsSection } from "./WorkspaceDeveloperSettingsSection";
 import { WorkspaceLabFeatureGateRows } from "./WorkspaceLabFeatureGateRows";
+import { WorkspaceAgentsSection } from "./WorkspaceAgentsSection";
 import { SettingsRows } from "./WorkspaceSettingsRows";
 import {
   normalizeWorkspaceSettingsDefaultAgentProvider,
@@ -3394,6 +3395,8 @@ function WorkspaceAgentSettingsSection({
           focusedAnchor === "computer-use" ? focusRequestID : 0
         }
       />
+
+      <WorkspaceAgentsSection />
     </div>
   );
 }

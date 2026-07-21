@@ -14,6 +14,7 @@ import (
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 )
 
 var ErrWorkspaceNotFound = errors.New("workspace not found")
@@ -113,6 +114,14 @@ type AgentModelBindingsStore interface {
 	ListAgentModelBindings(context.Context, string) ([]modelbindingbiz.Binding, error)
 	ListAgentModelBindingsByPlan(context.Context, string, string) ([]modelbindingbiz.Binding, error)
 	PutAgentModelBinding(context.Context, modelbindingbiz.Binding) error
+}
+
+type WorkspaceAgentsStore interface {
+	DeleteWorkspaceAgent(context.Context, string, string) error
+	GetWorkspaceAgent(context.Context, string, string) (workspaceagentbiz.Agent, error)
+	ListWorkspaceAgents(context.Context, string) ([]workspaceagentbiz.Agent, error)
+	ListWorkspaceAgentsByModelPlan(context.Context, string, string) ([]workspaceagentbiz.Agent, error)
+	PutWorkspaceAgent(context.Context, workspaceagentbiz.Agent) error
 }
 
 type ManagedCredentialsStore interface {

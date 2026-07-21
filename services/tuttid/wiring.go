@@ -51,6 +51,7 @@ import (
 	tuttiagentservice "github.com/tutti-os/tutti/services/tuttid/service/tuttiagent"
 	userprojectservice "github.com/tutti-os/tutti/services/tuttid/service/userproject"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
+	workspaceagentservice "github.com/tutti-os/tutti/services/tuttid/service/workspaceagent"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -283,6 +284,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 
 	events := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
 	preferencesPublisher := eventstreamservice.DesktopPreferencesPublisher{Service: events}
+	modelConfigurationPublisher := eventstreamservice.AgentModelConfigurationPublisher{Service: events}
 	preferences := &preferencesservice.Service{
 		Store:                          preferencesStore,
 		Publisher:                      preferencesPublisher,
@@ -333,15 +335,24 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Plans:   modelPlansStore,
 		Targets: agentTargetStore,
 	}
+	workspaceAgentsStore, _ := store.(workspacedata.WorkspaceAgentsStore)
+	workspaceAgents := &workspaceagentservice.Service{
+		Store:      workspaceAgentsStore,
+		Targets:    agentTargetStore,
+		Plans:      modelPlansStore,
+		Workspaces: store,
+		Publisher:  modelConfigurationPublisher,
+	}
 	modelPlans := &modelplanservice.Service{
 		Store:         modelPlansStore,
 		FirstUseStore: modelPlanFirstUseStore,
-		References:    modelBindings,
+		References:    modelplanservice.CompositeReferenceResolver{modelBindings, workspaceAgents},
 	}
 	modelPolicyStore, _ := store.(modelpolicyservice.Store)
 	modelPolicies := &modelpolicyservice.Service{
 		Store: modelPolicyStore,
 	}
+	workspaceAgents.Completer = modelPlans
 	events.RegisterIntentHandler(
 		eventstreamservice.TopicPreferencesDesktopUpdateRequested,
 		eventstreamservice.NewPreferencesDesktopUpdateRequestedHandler(preferences),
@@ -685,6 +696,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		AgentMaintenanceService:   agentMaintenance,
 		ManagedCredentialsService: managedCredentials,
 		ModelPlanService:          modelPlans,
+		WorkspaceAgentService:     workspaceAgents,
 		AgentModelBindingService:  modelBindings,
 		ModelPolicyService:        modelPolicies,
 		EventStreamService:        events,

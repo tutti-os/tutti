@@ -130,6 +130,16 @@ func DefaultCatalog() StaticCatalog {
 	definitions = append(definitions, preferencesTopicDefinitions()...)
 	definitions = append(definitions, []TopicDefinition{
 		{
+			Name:               TopicAgentModelConfigurationChanged,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateAgentModelConfigurationChangedPayload,
+			},
+		},
+		{
 			Name:               TopicUserProjectUpdated,
 			ClientCanPublish:   false,
 			ClientCanSubscribe: true,

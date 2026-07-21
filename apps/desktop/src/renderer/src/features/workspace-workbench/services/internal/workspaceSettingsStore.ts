@@ -1,6 +1,43 @@
 import { proxy } from "valtio";
-import type { WorkspaceSettingsStoreState } from "../workspaceSettingsTypes";
+import type {
+  WorkspaceSettingsAutomationRulesMutableState,
+  WorkspaceSettingsModelPlansMutableState,
+  WorkspaceSettingsStoreState,
+  WorkspaceSettingsWorkspaceAgentsMutableState
+} from "../workspaceSettingsTypes";
 import { readDeveloperPanelVisible } from "./developerPanelVisibility.ts";
+
+export function createWorkspaceSettingsAgentsState(): WorkspaceSettingsWorkspaceAgentsMutableState {
+  return {
+    agents: [],
+    confirmingDeleteAgentID: null,
+    deletingAgentID: null,
+    draft: null,
+    feedback: null,
+    capabilityCatalog: [],
+    capabilityCatalogHarnessTargetID: null,
+    capabilityCatalogLoadFailed: false,
+    capabilityCatalogLoading: false,
+    harnessTargets: [],
+    loadFailed: false,
+    loading: false,
+    generating: false,
+    recommendingFallback: false,
+    saving: false
+  };
+}
+
+export function createWorkspaceSettingsAutomationRulesState(): WorkspaceSettingsAutomationRulesMutableState {
+  return {
+    rules: []
+  };
+}
+
+export function createWorkspaceSettingsModelPlansState(): WorkspaceSettingsModelPlansMutableState {
+  return {
+    plans: []
+  };
+}
 
 export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
   return proxy({
@@ -8,6 +45,8 @@ export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
     agentTab: "general",
     agentFocusProvider: null,
     agentFocusRequestID: 0,
+    agents: createWorkspaceSettingsAgentsState(),
+    automationRules: createWorkspaceSettingsAutomationRulesState(),
     developerPanelVisible: readDeveloperPanelVisible(),
     developerLogs: {
       clearing: false,
@@ -30,6 +69,7 @@ export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
       savingProvider: null,
       testingProvider: null
     },
+    modelPlans: createWorkspaceSettingsModelPlansState(),
     open: false,
     purgingDeletedConversations: false,
     tuttiAgentSwitchEnabled: false,

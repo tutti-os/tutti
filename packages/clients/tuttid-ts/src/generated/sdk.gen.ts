@@ -64,6 +64,9 @@ import type {
   CreateModelPolicyData,
   CreateModelPolicyErrors,
   CreateModelPolicyResponses,
+  CreateWorkspaceAgentData,
+  CreateWorkspaceAgentErrors,
+  CreateWorkspaceAgentResponses,
   CreateWorkspaceAgentSessionData,
   CreateWorkspaceAgentSessionErrors,
   CreateWorkspaceAgentSessionResponses,
@@ -112,6 +115,9 @@ import type {
   DeleteUserProjectData,
   DeleteUserProjectErrors,
   DeleteUserProjectResponses,
+  DeleteWorkspaceAgentData,
+  DeleteWorkspaceAgentErrors,
+  DeleteWorkspaceAgentResponses,
   DeleteWorkspaceAgentSessionData,
   DeleteWorkspaceAgentSessionErrors,
   DeleteWorkspaceAgentSessionResponses,
@@ -154,6 +160,9 @@ import type {
   FixWorkspaceAppFactoryJobData,
   FixWorkspaceAppFactoryJobErrors,
   FixWorkspaceAppFactoryJobResponses,
+  GenerateWorkspaceAgentDraftData,
+  GenerateWorkspaceAgentDraftErrors,
+  GenerateWorkspaceAgentDraftResponses,
   GetAccountLoginStatusData,
   GetAccountLoginStatusErrors,
   GetAccountLoginStatusResponses,
@@ -193,6 +202,9 @@ import type {
   GetStartupWorkspaceData,
   GetStartupWorkspaceErrors,
   GetStartupWorkspaceResponses,
+  GetWorkspaceAgentData,
+  GetWorkspaceAgentErrors,
+  GetWorkspaceAgentResponses,
   GetWorkspaceAgentSessionData,
   GetWorkspaceAgentSessionErrors,
   GetWorkspaceAgentSessionGoalData,
@@ -292,6 +304,8 @@ import type {
   ListWorkspaceAgentPinnedSessionPageData,
   ListWorkspaceAgentPinnedSessionPageErrors,
   ListWorkspaceAgentPinnedSessionPageResponses,
+  ListWorkspaceAgentsData,
+  ListWorkspaceAgentsErrors,
   ListWorkspaceAgentSessionGitBranchesData,
   ListWorkspaceAgentSessionGitBranchesErrors,
   ListWorkspaceAgentSessionGitBranchesResponses,
@@ -310,6 +324,7 @@ import type {
   ListWorkspaceAgentSessionSectionsResponses,
   ListWorkspaceAgentSessionsErrors,
   ListWorkspaceAgentSessionsResponses,
+  ListWorkspaceAgentsResponses,
   ListWorkspaceAppFactoryJobsData,
   ListWorkspaceAppFactoryJobsErrors,
   ListWorkspaceAppFactoryJobsResponses,
@@ -505,6 +520,9 @@ import type {
   UpdateModelPolicyData,
   UpdateModelPolicyErrors,
   UpdateModelPolicyResponses,
+  UpdateWorkspaceAgentData,
+  UpdateWorkspaceAgentErrors,
+  UpdateWorkspaceAgentResponses,
   UpdateWorkspaceAgentSessionPinData,
   UpdateWorkspaceAgentSessionPinErrors,
   UpdateWorkspaceAgentSessionPinResponses,
@@ -3446,6 +3464,126 @@ export const openWorkspace = <ThrowOnError extends boolean = false>(
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/open",
     ...options
+  });
+
+/**
+ * List the configured Agent options for one workspace
+ *
+ * Returns explicit workspace Agent configurations. Each Agent maps one harness target to an optional model access plan and carries its own instructions, skills, tools, and permissions.
+ */
+export const listWorkspaceAgents = <ThrowOnError extends boolean = false>(
+  options: Options<ListWorkspaceAgentsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceAgentsResponses,
+    ListWorkspaceAgentsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents",
+    ...options
+  });
+
+/**
+ * Create one selectable workspace Agent
+ *
+ * Creates an explicit Agent option from a harness target plus an optional model access plan. It does not generate a Harness by ModelPlan Cartesian product.
+ */
+export const createWorkspaceAgent = <ThrowOnError extends boolean = false>(
+  options: Options<CreateWorkspaceAgentData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateWorkspaceAgentResponses,
+    CreateWorkspaceAgentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Generate a reviewable workspace Agent configuration draft
+ *
+ * Uses the explicitly selected ModelPlan/model for one tool-free generation call. The result is never persisted by this operation; generated automation suggestions are conservative consult rules that callers must save disabled and let the user review before enabling.
+ */
+export const generateWorkspaceAgentDraft = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GenerateWorkspaceAgentDraftData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    GenerateWorkspaceAgentDraftResponses,
+    GenerateWorkspaceAgentDraftErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents/generate-draft",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Delete one workspace Agent configuration
+ *
+ * Deletes only the named workspace Agent. Its Harness target and ModelPlan remain unchanged.
+ */
+export const deleteWorkspaceAgent = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteWorkspaceAgentData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteWorkspaceAgentResponses,
+    DeleteWorkspaceAgentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}",
+    ...options
+  });
+
+/**
+ * Get one workspace Agent configuration
+ */
+export const getWorkspaceAgent = <ThrowOnError extends boolean = false>(
+  options: Options<GetWorkspaceAgentData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAgentResponses,
+    GetWorkspaceAgentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}",
+    ...options
+  });
+
+/**
+ * Replace one workspace Agent configuration
+ *
+ * Replaces mutable fields and increments the Agent revision. Omitted or null modelPlanId/defaultModel clear those fields. Existing sessions continue using their recorded runtime configuration.
+ */
+export const updateWorkspaceAgent = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateWorkspaceAgentData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    UpdateWorkspaceAgentResponses,
+    UpdateWorkspaceAgentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**

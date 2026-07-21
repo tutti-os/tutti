@@ -84,6 +84,7 @@ import {
   createWorkspaceFeatureFlagSettings,
   type WorkspaceFeatureFlagSettings
 } from "./workspaceFeatureFlagSettings.ts";
+import { WorkspaceAgentsController } from "./workspaceAgentsController.ts";
 
 const managedModelProviderIDs: WorkspaceManagedModelProviderID[] = [
   "agnes",
@@ -111,6 +112,7 @@ const tuttiAgentTargetID = "local:tutti-agent";
 export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   readonly _serviceBrand: undefined;
   readonly store = createWorkspaceSettingsStore();
+  readonly agents: WorkspaceAgentsController;
 
   private readonly dependencies: WorkspaceSettingsServiceDependencies;
   private readonly desktopPreferences: DesktopPreferencesService;
@@ -149,6 +151,11 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.reporterService = reporterService;
     this.appCenterService = appCenterService;
     this.reporterNow = reporterNow;
+    this.agents = new WorkspaceAgentsController({
+      client: dependencies.client,
+      onWorkspaceAgentsChanged: dependencies.onAgentTargetsChanged,
+      store: this.store
+    });
     this.scheduleTuttiAgentSwitchInitialization();
   }
 
@@ -192,8 +199,11 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.reportSettingsOpened();
       void this.refreshDeveloperLogs();
       void this.refreshManagedModelProviders();
+      void this.refreshAgentSettings();
     } else if (this.store.activeSection === "apps") {
       void this.refreshManagedModelProviders();
+    } else if (this.store.activeSection === "agent") {
+      void this.refreshAgentSettings();
     }
   }
 
@@ -265,6 +275,8 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.store.managedModels.detectingProvider = null;
       this.store.managedModels.focusedProvider = null;
       this.store.managedModels.focusRequestID = 0;
+      this.store.modelPlans.plans = [];
+      this.agents.reset();
     }
   }
 
@@ -277,6 +289,32 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.reportSettingsSectionSwitched(sectionID);
     if (sectionID === "apps") {
       void this.refreshManagedModelProviders();
+    }
+    if (sectionID === "agent") {
+      void this.refreshAgentSettings();
+    }
+  }
+
+  // The Agent tab hosts the workspace Agent directory; its editor reads the
+  // daemon-backed model plan list, so entering the tab refreshes both.
+  private async refreshAgentSettings(): Promise<void> {
+    await Promise.all([
+      this.refreshWorkspaceModelPlans(),
+      this.agents.refresh()
+    ]);
+  }
+
+  private async refreshWorkspaceModelPlans(): Promise<void> {
+    const workspaceID = this.store.workspaceID;
+    if (!workspaceID) {
+      return;
+    }
+    try {
+      this.store.modelPlans.plans =
+        await this.dependencies.client.listModelPlans(workspaceID);
+    } catch {
+      // The Agents editor surfaces plan-dependent affordances as disabled;
+      // the next section entry retries the load.
     }
   }
 

@@ -4781,6 +4781,181 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agents:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceAgents
+      tags:
+        - workspace-agent
+      summary: List the configured Agent options for one workspace
+      description: Returns explicit workspace Agent configurations. Each Agent maps one harness target to an optional model access plan and carries its own instructions, skills, tools, and permissions.
+      responses:
+        "200":
+          description: Workspace Agent configurations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWorkspaceAgentsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: createWorkspaceAgent
+      tags:
+        - workspace-agent
+      summary: Create one selectable workspace Agent
+      description: Creates an explicit Agent option from a harness target plus an optional model access plan. It does not generate a Harness by ModelPlan Cartesian product.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutWorkspaceAgentRequest"
+      responses:
+        "201":
+          description: Created workspace Agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgent"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agents/generate-draft:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    post:
+      operationId: generateWorkspaceAgentDraft
+      tags:
+        - workspace-agent
+      summary: Generate a reviewable workspace Agent configuration draft
+      description: Uses the explicitly selected ModelPlan/model for one tool-free generation call. The result is never persisted by this operation; generated automation suggestions are conservative consult rules that callers must save disabled and let the user review before enabling.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateWorkspaceAgentDraftRequest"
+      responses:
+        "200":
+          description: Generated Agent configuration draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentDraftGeneration"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agents/{workspaceAgentID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/WorkspaceAgentID"
+    get:
+      operationId: getWorkspaceAgent
+      tags:
+        - workspace-agent
+      summary: Get one workspace Agent configuration
+      responses:
+        "200":
+          description: Workspace Agent configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgent"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    put:
+      operationId: updateWorkspaceAgent
+      tags:
+        - workspace-agent
+      summary: Replace one workspace Agent configuration
+      description: Replaces mutable fields and increments the Agent revision. Omitted or null modelPlanId/defaultModel clear those fields. Existing sessions continue using their recorded runtime configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutWorkspaceAgentRequest"
+      responses:
+        "200":
+          description: Updated workspace Agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgent"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    delete:
+      operationId: deleteWorkspaceAgent
+      tags:
+        - workspace-agent
+      summary: Delete one workspace Agent configuration
+      description: Deletes only the named workspace Agent. Its Harness target and ModelPlan remain unchanged.
+      responses:
+        "200":
+          description: Workspace Agent deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteWorkspaceAgentResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
 components:
   securitySchemes:
     bearerAuth:
@@ -4962,6 +5137,13 @@ components:
         type: integer
         format: int64
         minimum: 0
+    WorkspaceAgentID:
+      name: workspaceAgentID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
   responses:
     UnauthorizedError:
       description: Bearer token is missing or invalid
@@ -5815,6 +5997,7 @@ components:
             - agent_target_not_found
             - model_plan_not_found
             - model_plan_referenced
+            - workspace_agent_not_found
         reason:
           type: string
         params:
@@ -11721,3 +11904,351 @@ components:
         name:
           type: string
           minLength: 1
+    AutomationRuleTrigger:
+      type: string
+      description: Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+      enum:
+        - on_task_complete
+        - on_task_failed
+    DeleteWorkspaceAgentResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceAgentId
+      properties:
+        workspaceAgentId:
+          type: string
+    GenerateWorkspaceAgentDraftRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - harnessAgentTargetId
+        - modelPlanId
+        - requirements
+      properties:
+        harnessAgentTargetId:
+          type: string
+          minLength: 1
+        modelPlanId:
+          type: string
+          minLength: 1
+        model:
+          type: string
+          nullable: true
+          description: Defaults to the selected ModelPlan default model.
+        requirements:
+          type: string
+          maxLength: 10000
+          description: Optional user guidance. An empty value asks for a generally useful configuration for the selected Harness.
+    ListWorkspaceAgentsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - agents
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgent"
+    PutWorkspaceAgentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - purpose
+        - harnessAgentTargetId
+        - instructions
+        - callConditions
+        - skills
+        - tools
+        - permissions
+        - enabled
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        purpose:
+          type: string
+          maxLength: 1000
+        harnessAgentTargetId:
+          type: string
+          minLength: 1
+        modelPlanId:
+          type: string
+          nullable: true
+        defaultModel:
+          type: string
+          nullable: true
+        modelFallbacks:
+          type: array
+          description: Ordered fallback Plan/model references. Omit or pass an empty array to disable failover.
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentModelRef"
+        instructions:
+          type: string
+          maxLength: 100000
+        callConditions:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        capabilitiesExplicit:
+          type: boolean
+          description: >-
+            When true, Skills and tools are an explicit allowlist, including
+            the ability to select none. Omit on update to preserve the stored
+            mode; new Agents default to automatic compatible capabilities.
+        skills:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        tools:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        permissions:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        enabled:
+          type: boolean
+    WorkspaceAgent:
+      type: object
+      additionalProperties: false
+      description: A selectable, workspace-scoped Agent made from one Harness target plus an optional model access plan and Agent-specific behavior configuration.
+      required:
+        - id
+        - agentTargetId
+        - workspaceId
+        - name
+        - purpose
+        - harness
+        - modelFallbacks
+        - instructions
+        - callConditions
+        - capabilitiesExplicit
+        - skills
+        - tools
+        - permissions
+        - enabled
+        - source
+        - revision
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          minLength: 1
+          description: Opaque Agent option id. New ids use the workspace-agent prefix and may be passed to workspace Agent session APIs.
+        agentTargetId:
+          type: string
+          minLength: 1
+          description: Compatibility alias of id for AgentGUI and session creation surfaces.
+        workspaceId:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        purpose:
+          type: string
+        harness:
+          $ref: "#/components/schemas/WorkspaceAgentHarness"
+        modelPlanId:
+          type: string
+          nullable: true
+        defaultModel:
+          type: string
+          nullable: true
+        modelFallbacks:
+          type: array
+          description: Ordered, explicit fallback chain used only when starting a new session and the primary Plan/model is not usable. Credentials remain daemon-owned.
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentModelRef"
+        instructions:
+          type: string
+        callConditions:
+          type: array
+          description: Explicit, user-editable conditions that explain when another Agent or user should invoke this Agent.
+          items:
+            type: string
+            minLength: 1
+        capabilitiesExplicit:
+          type: boolean
+          description: >-
+            False keeps Skills and tools synchronized with all capabilities
+            compatible with the selected Harness. True makes the Skills and
+            tools arrays an explicit allowlist; empty arrays then mean none.
+        skills:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        tools:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        permissions:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        enabled:
+          type: boolean
+        source:
+          $ref: "#/components/schemas/WorkspaceAgentSource"
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    WorkspaceAgentDraftGeneration:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - purpose
+        - instructions
+        - callConditions
+        - skills
+        - automationRules
+        - usedModelPlanId
+        - usedModel
+        - usage
+      properties:
+        name:
+          type: string
+          minLength: 1
+        purpose:
+          type: string
+        instructions:
+          type: string
+        callConditions:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        skills:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        automationRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentGeneratedAutomationRule"
+        usedModelPlanId:
+          type: string
+          minLength: 1
+        usedModel:
+          type: string
+          minLength: 1
+        usage:
+          $ref: "#/components/schemas/WorkspaceAgentGenerationUsage"
+    WorkspaceAgentGeneratedAutomationRule:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - trigger
+        - action
+        - modelPlanId
+        - prompt
+        - maxRunsPerSession
+        - maxTotalTokensPerSession
+      properties:
+        name:
+          type: string
+          minLength: 1
+        trigger:
+          $ref: "#/components/schemas/AutomationRuleTrigger"
+        action:
+          type: string
+          enum:
+            - consult
+        modelPlanId:
+          type: string
+          minLength: 1
+        model:
+          type: string
+          nullable: true
+        prompt:
+          type: string
+        maxRunsPerSession:
+          type: integer
+          minimum: 1
+          maximum: 3
+        maxTotalTokensPerSession:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 200000
+    WorkspaceAgentGenerationUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - inputTokens
+        - outputTokens
+      properties:
+        inputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+        outputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceAgentHarness:
+      type: object
+      additionalProperties: false
+      required:
+        - agentTargetId
+        - available
+      properties:
+        agentTargetId:
+          type: string
+          minLength: 1
+        available:
+          type: boolean
+          description: False when the referenced Harness target no longer exists. The Agent remains listable so it can be repaired or deleted.
+        provider:
+          allOf:
+            - $ref: "#/components/schemas/AgentTargetProvider"
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        iconKey:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+          nullable: true
+    WorkspaceAgentModelRef:
+      type: object
+      additionalProperties: false
+      required:
+        - modelPlanId
+      properties:
+        modelPlanId:
+          type: string
+          minLength: 1
+        model:
+          type: string
+          nullable: true
+    WorkspaceAgentSource:
+      type: string
+      description: Origin of the workspace Agent configuration. legacy_binding rows were migrated from the former fixed-target binding model.
+      enum:
+        - user
+        - legacy_binding
