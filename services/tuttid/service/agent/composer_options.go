@@ -70,8 +70,9 @@ type ComposerOptionsInput struct {
 	// serialized into runtime context or transport responses.
 	ResolvedModelPlan *modelplanbiz.Plan
 	// IgnoreModelPlanBinding forces provider-native credentials and model
-	// discovery for internal probes. It is daemon-only and must not be exposed
-	// as a user-facing session setting.
+	// discovery for internal probes and subscription checks that must not
+	// inherit the workspace target binding. It is daemon-only and must not be
+	// exposed as a user-facing session setting.
 	IgnoreModelPlanBinding   bool
 	providerTargetRef        map[string]any
 	extensionComposerProfile ExtensionComposerProfile
@@ -165,7 +166,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		}
 		input.Settings = mergeComposerSettingsWithDefaults(input.Settings, defaults)
 	}
-	settings := normalizeComposerSettingsForProvider(provider, ComposerSettings{
+	requestedSettings := ComposerSettings{
 		Model:            strings.TrimSpace(input.Settings.Model),
 		PermissionModeID: strings.TrimSpace(input.Settings.PermissionModeID),
 		PlanMode:         input.Settings.PlanMode,
@@ -173,13 +174,23 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		ComputerUse:      input.Settings.ComputerUse,
 		ReasoningEffort:  strings.TrimSpace(input.Settings.ReasoningEffort),
 		Speed:            strings.TrimSpace(input.Settings.Speed),
-	})
+	}
+	if strings.TrimSpace(requestedSettings.PermissionModeID) == "" {
+		requestedSettings.PermissionModeID = value(launchInput.PermissionModeID)
+	}
+	if requestedSettings.BrowserUse == nil {
+		requestedSettings.BrowserUse = cloneBoolPointer(launchInput.BrowserUse)
+	}
+	if requestedSettings.ComputerUse == nil {
+		requestedSettings.ComputerUse = cloneBoolPointer(launchInput.ComputerUse)
+	}
+	settings := normalizeComposerSettingsForProvider(provider, requestedSettings)
 	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
-		settings.Model = strings.TrimSpace(input.Settings.Model)
-		settings.PermissionModeID = strings.TrimSpace(input.Settings.PermissionModeID)
-		settings.PlanMode = input.Settings.PlanMode
-		settings.ReasoningEffort = strings.TrimSpace(input.Settings.ReasoningEffort)
-		settings.Speed = strings.TrimSpace(input.Settings.Speed)
+		settings.Model = strings.TrimSpace(requestedSettings.Model)
+		settings.PermissionModeID = strings.TrimSpace(requestedSettings.PermissionModeID)
+		settings.PlanMode = requestedSettings.PlanMode
+		settings.ReasoningEffort = strings.TrimSpace(requestedSettings.ReasoningEffort)
+		settings.Speed = strings.TrimSpace(requestedSettings.Speed)
 	}
 	extensionProfile := ExtensionComposerProfile{}
 	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
@@ -382,8 +393,8 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		Behavior:                composerProfileFor(provider).Behavior,
 		SlashCommandPolicy:      slashCommandPolicy,
 	}
-	if composerProfileFor(provider).LiveModelDiscovery ||
-		providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
+	if planEndpoint == nil && (composerProfileFor(provider).LiveModelDiscovery ||
+		providerTargetRefKind(input.providerTargetRef) == "agent_extension") {
 		var err error
 		options, err = s.mergeLiveComposerModelsForComposerOptions(ctx, input, effectiveSettings, options)
 		if err != nil {

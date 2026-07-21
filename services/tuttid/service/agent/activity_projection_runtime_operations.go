@@ -3,8 +3,10 @@ package agent
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
@@ -67,6 +69,7 @@ func (p *ActivityProjection) PublishRuntimeOperationEvent(
 			); err != nil {
 				return err
 			}
+			p.observeRootTurnSettledSessionState(ctx, event.WorkspaceID, agentSessionID, turn)
 			published++
 		}
 		if rawRoot, ok := event.Payload["reconciledRoot"].(map[string]any); ok {
@@ -88,6 +91,7 @@ func (p *ActivityProjection) PublishRuntimeOperationEvent(
 			); err != nil {
 				return err
 			}
+			p.observeRootTurnSettledSessionState(ctx, event.WorkspaceID, agentSessionID, turn)
 			published++
 		}
 		if published == 0 {
@@ -139,15 +143,107 @@ func (p *ActivityProjection) observeRootTurnSettled(
 	agentSessionID string,
 	turn agentactivitybiz.Turn,
 ) {
-	if p == nil || p.rootTurnObserver == nil {
+	if p == nil {
 		return
 	}
-	p.rootTurnObserver.ObserveRootTurnSettled(
-		ctx,
-		strings.TrimSpace(workspaceID),
-		strings.TrimSpace(agentSessionID),
-		turn,
-	)
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if p.rootTurnObserver != nil {
+		p.rootTurnObserver.ObserveRootTurnSettled(ctx, workspaceID, agentSessionID, turn)
+	}
+	p.observeRootTurnSettledSessionState(ctx, workspaceID, agentSessionID, turn)
+}
+
+// observeRootTurnSettledSessionState fans the committed canonical root-turn
+// settlement out to the dedicated root-turn-settle observer list.
+// Root-provider-lifecycle adapters (codex app-server, Claude SDK, standard
+// ACP) never report a settled TurnLifecycle/Turn state patch: their terminal
+// fact is a RootProviderTurn transition that the store aggregates into the
+// canonical settlement. The settled+outcome state shape the observers key on
+// therefore has to be synthesized here at the commit point, exactly like
+// SettleStaleTurnsOnStartup already does for startup reconciliation.
+//
+// Delivery is at-least-once, never exactly-once: the cancel funnel can
+// re-observe a settlement the normal aggregation already delivered
+// (AlreadySettled overlap), and outbox-style publish-then-mark retries can
+// replay it. Every observer on the dedicated list must be idempotent per
+// settled turn (automation rules dedup on the durable execution ledger plus
+// the in-memory engine claim).
+//
+// The observation is deliberately opt-in (rootTurnSettleStateObserver, not
+// the general sessionStateObserver fan-out): the general observers
+// historically never received live turn settles, and reviving one changes
+// its product semantics — each needs its own ruling first (W4③-11).
+func (p *ActivityProjection) observeRootTurnSettledSessionState(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	turn agentactivitybiz.Turn,
+) {
+	if p == nil || p.rootTurnSettleStateObserver == nil || turn.Phase != agentactivitybiz.TurnPhaseSettled {
+		return
+	}
+	turnID := strings.TrimSpace(turn.TurnID)
+	if workspaceID == "" || agentSessionID == "" || turnID == "" {
+		return
+	}
+	// The session read is load-bearing, not best-effort: runtimeContext holds
+	// the automation-origin marker (the only rescue-chain circuit breaker) and
+	// agentTargetID drives source matching. Fanning out without them could
+	// turn an automation-launched session's completion into a fresh trigger,
+	// so a failed or missing read skips this delivery entirely — the durable
+	// dedup keys on the turn, and missing one trigger beats misfiring one.
+	if p.repo == nil {
+		return
+	}
+	session, ok, err := p.repo.GetSession(ctx, workspaceID, agentSessionID)
+	if err != nil || !ok {
+		slog.Warn("read settled root turn session for state observers failed; skipping settle fan-out",
+			"event", "workspace.agent_turn.settled_session_read_failed",
+			"workspace_id", workspaceID,
+			"agent_session_id", agentSessionID,
+			"turn_id", turnID,
+			"session_found", ok,
+			"error", err,
+		)
+		return
+	}
+	outcome := strings.TrimSpace(turn.Outcome)
+	agentTargetID := strings.TrimSpace(session.AgentTargetID)
+	state := agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		Kind:          strings.TrimSpace(session.Kind),
+		AgentTargetID: agentTargetID,
+		Provider:      strings.TrimSpace(session.Provider),
+		Model:         strings.TrimSpace(session.Model),
+		RuntimeContext: agentactivitybiz.JoinSessionRuntimeContext(
+			session.Metadata,
+			session.InternalRuntimeContext,
+		),
+		LastError: strings.TrimSpace(turn.ErrorMessage),
+		TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+			Phase:   turn.Phase,
+			Outcome: &outcome,
+		},
+		Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+			TurnID:            turnID,
+			Phase:             turn.Phase,
+			Outcome:           outcome,
+			StartedAtUnixMS:   turn.StartedAtUnixMS,
+			CompletedAtUnixMS: turn.SettledAtUnixMS,
+		},
+		OccurredAtUnixMS: firstNonZeroInt64(turn.SettledAtUnixMS, turn.UpdatedAtUnixMS),
+	}
+	p.rootTurnSettleStateObserver.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    workspaceID,
+		AgentSessionID: agentSessionID,
+		AgentTargetID:  agentTargetID,
+		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		State:          state,
+	}, agentsessionstore.ReportSessionStateReply{
+		Accepted:          true,
+		StateApplied:      true,
+		LastEventAtUnixMS: firstNonZeroInt64(turn.UpdatedAtUnixMS, turn.SettledAtUnixMS),
+	})
 }
 
 func (p *ActivityProjection) publishPlanDecisionNoticeUpdate(ctx context.Context, event agentactivitybiz.RuntimeOperationEvent) error {
