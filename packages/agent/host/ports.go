@@ -27,6 +27,14 @@ type CanonicalMessageStore interface {
 	ListSessionMessages(context.Context, storesqlite.ListSessionMessagesInput) (storesqlite.MessagePage, bool, error)
 }
 
+// ReplyResourceStore owns the atomic active-turn fence for reply-resource
+// declarations. Byte materialization and product delivery stay in adapters;
+// the Host owns only which canonical turn may accept a declaration.
+type ReplyResourceStore interface {
+	AttachReplyResourceToActiveTurn(context.Context, storesqlite.AttachReplyResourceInput) (storesqlite.ReplyResource, bool, error)
+	ListTurnReplyResources(context.Context, string, string, string) ([]storesqlite.ReplyResource, error)
+}
+
 type CanonicalSubmitClaimStore interface {
 	PrepareSubmitClaim(context.Context, storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error)
 	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (storesqlite.SubmitClaim, bool, error)

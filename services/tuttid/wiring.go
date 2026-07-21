@@ -439,6 +439,11 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent session purge store is unavailable")
 	}
 	agentSessionService.SessionPurgeStore = agentSessionPurgeStore
+	replyResourceStore, ok := agentActivityRepo.(agenthost.ReplyResourceStore)
+	if !ok {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent reply resource store is unavailable")
+	}
+	agentSessionService.ReplyResourceStore = replyResourceStore
 	agentSessionService.UserProjectReader = userProjectService
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo

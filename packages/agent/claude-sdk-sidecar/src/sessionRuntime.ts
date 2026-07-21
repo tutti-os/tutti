@@ -45,6 +45,7 @@ import { CompactionTracker } from "./compaction.ts";
 import { MessageProjection } from "./messageProjection.ts";
 import { SDKMessageRouter } from "./messageRouter.ts";
 import { emit } from "./eventSink.ts";
+import { managedMCPServersFromEnv } from "./managedMCP.ts";
 import {
   canBypassPermissions,
   effectivePermissionMode,
@@ -594,6 +595,7 @@ export class SessionRuntime {
     const querySettings = querySettingsFromSessionSettings(
       this.configuration.settings
     );
+    const mcpServers = managedMCPServersFromEnv(this.env);
     // One settings snapshot feeds both the executable resolution and the SDK
     // env, so the two can never disagree (and the settings hierarchy is read
     // once per query creation).
@@ -636,6 +638,7 @@ export class SessionRuntime {
       ...(Object.keys(querySettings).length > 0
         ? { settings: querySettings }
         : {}),
+      ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
       ...claudeQueryOptionOverrides(this.claudeOptions),
       hooks: queryGenerationHooks({
         generation,

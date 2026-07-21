@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
 type SessionSeed struct {
@@ -150,6 +151,15 @@ type Driver interface {
 	Metrics() Metrics
 }
 
+// ReplyResourceDriver is the focused Host contract for turn-scoped reply
+// declarations. Reset remains test-only seeding; scenario actions use only
+// public Host commands and queries.
+type ReplyResourceDriver interface {
+	Reset(context.Context, Fixture) error
+	AttachReplyResource(context.Context, agenthost.SessionRef, agenthost.AttachReplyResourceInput) (agenthost.AttachReplyResourceResult, error)
+	ListTurnReplyResources(context.Context, agenthost.SessionRef, string) ([]storesqlite.ReplyResource, error)
+}
+
 type Scenario struct {
 	Name string
 	run  func(context.Context, Driver) error
@@ -161,6 +171,21 @@ func Run(ctx context.Context, driver Driver, scenario Scenario) error {
 	}
 	if scenario.run == nil {
 		return fmt.Errorf("agent host conformance scenario %q has no runner", scenario.Name)
+	}
+	return scenario.run(ctx, driver)
+}
+
+type ReplyResourceScenario struct {
+	Name string
+	run  func(context.Context, ReplyResourceDriver) error
+}
+
+func RunReplyResource(ctx context.Context, driver ReplyResourceDriver, scenario ReplyResourceScenario) error {
+	if driver == nil {
+		return fmt.Errorf("agent host reply resource conformance driver is required")
+	}
+	if scenario.run == nil {
+		return fmt.Errorf("agent host reply resource conformance scenario %q has no runner", scenario.Name)
 	}
 	return scenario.run(ctx, driver)
 }

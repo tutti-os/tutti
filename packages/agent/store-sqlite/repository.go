@@ -8,9 +8,12 @@ package storesqlite
 
 import (
 	"context"
+	"errors"
 
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
+
+var ErrNoActiveTurn = errors.New("workspace agent session has no active turn")
 
 // Repository is the public persistence contract for agent activity.
 // All methods are scoped by a host-defined workspace ID.
@@ -53,6 +56,13 @@ type Repository interface {
 	UpdateSessionPinned(context.Context, string, string, bool) (Session, bool, error)
 	UpdateSessionSettings(context.Context, string, string, string, map[string]any) (Session, bool, error)
 	UpdateSessionTitle(context.Context, string, string, string) (Session, bool, error)
+}
+
+// ReplyResourceRepository is kept narrow so read-only/custom activity
+// repositories are not forced to implement reply composition durability.
+type ReplyResourceRepository interface {
+	AttachReplyResourceToActiveTurn(context.Context, AttachReplyResourceInput) (ReplyResource, bool, error)
+	ListTurnReplyResources(context.Context, string, string, string) ([]ReplyResource, error)
 }
 
 // SessionTurnSummaryReader is a narrow optional read seam for consumers that
@@ -366,6 +376,46 @@ type Turn struct {
 	RootProviderTurnCompletedCommandKind   string
 	RootProviderTurnCompletedCommandStatus string
 	RootProviderTurnUpdatedAtUnixMS        int64
+}
+
+const (
+	ReplyResourceKindLocalFile        = "local_file"
+	ReplyResourceKindExternalArtifact = "external_artifact"
+)
+
+// AttachReplyResourceInput contains only an immutable resource reference. The
+// host adapter snapshots mutable file bytes before entering this canonical
+// transaction; the absolute source path never becomes canonical state.
+type AttachReplyResourceInput struct {
+	WorkspaceID     string
+	AgentSessionID  string
+	TurnID          string
+	ResourceID      string
+	DedupeKey       string
+	Kind            string
+	SourceRef       string
+	ContentHash     string
+	DisplayName     string
+	MediaType       string
+	SizeBytes       int64
+	CreatedAtUnixMS int64
+}
+
+// ReplyResource is a turn-scoped declaration of an immutable resource that
+// may be selected by the final assistant reply. Registration never sends it.
+type ReplyResource struct {
+	WorkspaceID     string
+	AgentSessionID  string
+	TurnID          string
+	ResourceID      string
+	DedupeKey       string
+	Kind            string
+	SourceRef       string
+	ContentHash     string
+	DisplayName     string
+	MediaType       string
+	SizeBytes       int64
+	CreatedAtUnixMS int64
 }
 
 // SessionTurnCursor is the stable position immediately before a descending

@@ -14,6 +14,7 @@
     "src/interactive.ts",
     "src/interactiveTurnResolver.ts",
     "src/main.ts",
+    "src/managedMCP.ts",
     "src/messageProjection.ts",
     "src/messageRouter.ts",
     "src/normalizer.ts",

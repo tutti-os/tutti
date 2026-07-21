@@ -16,6 +16,7 @@ var (
 	ErrRuntimeOperationFailed           = errors.New("agent runtime operation failed")
 	ErrRuntimeOperationIdentityMismatch = errors.New("agent runtime operation identity is inconsistent")
 	ErrGoalConsumerUnavailable          = errors.New("agent goal reconcile consumer is unavailable")
+	ErrNoActiveTurn                     = errors.New("agent session has no active turn")
 )
 
 // ProviderError preserves a provider-owned failure across the runtime adapter

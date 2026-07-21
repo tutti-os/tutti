@@ -475,7 +475,8 @@ func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollecto
 		GoalOwner: s.GoalOperationOwner, GoalClock: serviceHostGoalClock{service: s},
 		GoalAttemptTimeout: s.GoalOperationAttemptTimeout, GoalRecoveryBudget: s.GoalOperationRecoveryBudget,
 		GoalMaxAttempts: s.GoalOperationMaxAttempts, GoalDispatchDeadline: s.GoalOperationDispatchDeadline,
-		GoalActor: agenthost.NewGoalActor(),
+		GoalActor:      agenthost.NewGoalActor(),
+		ReplyResources: s.ReplyResourceStore,
 	})
 }
 

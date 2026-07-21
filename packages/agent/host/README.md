@@ -46,6 +46,13 @@ subset from that same read; older-turn pending rows can never become current
 actionable state. `CreateSessionInput.ClientSubmitID` and
 `SendInput.ClientSubmitID` are the typed idempotency identities and override
 the legacy metadata value when both are present.
+`AttachReplyResource` is the canonical declaration boundary for reply files
+and artifacts. The store atomically binds each declaration to the session's
+currently active turn and deduplicates it within that exact
+`(workspaceId, agentSessionId, turnId)` scope; declarations arriving after
+settlement fail with `ErrNoActiveTurn`. Host stores immutable reference
+metadata only. Byte snapshotting, upload, Markdown mention composition, and
+chat delivery remain adapter responsibilities.
 Runtime adapters preserve explicit downstream failures as `ProviderError` so
 Host consumers can distinguish provider-owned rejection from preparation,
 canonical-store, timeout, and other local failures with `errors.As`. The

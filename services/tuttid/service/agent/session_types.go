@@ -27,6 +27,7 @@ type Service struct {
 	SessionInitializer             SessionInitializer
 	SessionReader                  SessionReader
 	SessionPurgeStore              agenthost.SessionPurgeStore
+	ReplyResourceStore             agenthost.ReplyResourceStore
 	AgentSessionResourceReleaser   AgentSessionResourceReleaser
 	UserProjectReader              UserProjectReader
 	MessageReader                  MessageReader

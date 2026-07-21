@@ -34,6 +34,7 @@ type Config struct {
 	GoalMaxAttempts      int
 	GoalDispatchDeadline time.Duration
 	GoalActor            *GoalActor
+	ReplyResources       ReplyResourceStore
 }
 
 type Host struct {
@@ -65,6 +66,7 @@ type Host struct {
 	goalMaxAttempts      int
 	goalDispatchDeadline time.Duration
 	goalActor            *GoalActor
+	replyResources       ReplyResourceStore
 }
 
 func New(config Config) *Host {
@@ -84,7 +86,8 @@ func New(config Config) *Host {
 		goalOwner: config.GoalOwner, goalClock: config.GoalClock,
 		goalAttemptTimeout: config.GoalAttemptTimeout, goalRecoveryBudget: config.GoalRecoveryBudget,
 		goalMaxAttempts: config.GoalMaxAttempts, goalDispatchDeadline: config.GoalDispatchDeadline,
-		goalActor: goalActor,
+		goalActor:      goalActor,
+		replyResources: config.ReplyResources,
 	}
 	if host.operations != nil && host.commitObserver != nil {
 		host.operations = &observedRuntimeOperationStore{RuntimeOperationStore: host.operations, host: host}

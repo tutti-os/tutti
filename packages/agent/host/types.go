@@ -9,6 +9,26 @@ type SessionRef struct {
 	AgentSessionID string
 }
 
+// AttachReplyResourceInput registers an immutable resource reference against
+// the session's current canonical turn. It never uploads or sends a message.
+type AttachReplyResourceInput struct {
+	TurnID          string
+	ResourceID      string
+	DedupeKey       string
+	Kind            string
+	SourceRef       string
+	ContentHash     string
+	DisplayName     string
+	MediaType       string
+	SizeBytes       int64
+	CreatedAtUnixMS int64
+}
+
+type AttachReplyResourceResult struct {
+	Resource storesqlite.ReplyResource
+	Created  bool
+}
+
 // InteractionRef identifies one canonical interaction. Provider request IDs
 // are transport-local correlation values and are only unique within the Turn
 // that owns them.

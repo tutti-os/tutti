@@ -223,6 +223,14 @@ func (s *SQLiteStore) GetTurn(ctx context.Context, workspaceID string, agentSess
 	return s.agentReadStore().GetTurn(ctx, workspaceID, agentSessionID, turnID)
 }
 
+func (s *SQLiteStore) AttachReplyResourceToActiveTurn(ctx context.Context, input agentstore.AttachReplyResourceInput) (agentstore.ReplyResource, bool, error) {
+	return s.agentStore().AttachReplyResourceToActiveTurn(ctx, input)
+}
+
+func (s *SQLiteStore) ListTurnReplyResources(ctx context.Context, workspaceID string, agentSessionID string, turnID string) ([]agentstore.ReplyResource, error) {
+	return s.agentReadStore().ListTurnReplyResources(ctx, workspaceID, agentSessionID, turnID)
+}
+
 func (s *SQLiteStore) GetLatestTurn(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.Turn, bool, error) {
 	return s.agentReadStore().GetLatestTurn(ctx, workspaceID, agentSessionID)
 }
