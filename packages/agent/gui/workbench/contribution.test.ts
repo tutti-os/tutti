@@ -147,6 +147,23 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
+  it("preserves new-window behavior for a host-defined dock entry id", () => {
+    const [entry] = buildAgentGuiDockEntries({
+      agentDirectory: createTestAgentDirectory([createAgent("codex")]),
+      defaultProvider: "codex",
+      dockEntryId: "agentGui:shared",
+      order: 7
+    });
+
+    expect(entry).toMatchObject({
+      id: "agentGui:shared",
+      newWindowLaunchPayload: {
+        openInNewWindow: true
+      },
+      order: 7
+    });
+  });
+
   it("uses the unified icon URL for unified dock entries", () => {
     const entries = buildAgentGuiDockEntries({
       agentDirectory: createTestAgentDirectory([createAgent("codex")]),
