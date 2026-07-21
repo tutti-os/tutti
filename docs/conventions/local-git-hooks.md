@@ -153,8 +153,15 @@ Failure output prints an 80-line tail by default. Use
 `pnpm check:changed -- --tail-lines <n>` when a larger or smaller tail is more
 useful; full logs remain in `.tmp/check-runs`.
 
+The runner rejects unknown options, missing option values, and invalid positive
+integer values. A misspelled `--push-ready` or malformed concurrency value must
+fail instead of silently selecting a weaker or empty validation plan.
+
 After failures, prefer `pnpm check:changed -- --failed-only` to rerun failed
-lanes instead of repeating successful lanes.
+lanes instead of repeating successful lanes. Failed-lane state is bound to the
+validated base ref, HEAD, index, working tree, and untracked file contents. If
+any of those change, `--failed-only` refuses the stale result and requires a
+normal `pnpm check:changed` run.
 
 When the changed set includes deleted package test files, `check:changed` should
 not pass those missing paths to Vitest as explicit targets. Deleting source files

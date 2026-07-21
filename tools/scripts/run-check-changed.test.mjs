@@ -1,17 +1,120 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
+  buildValidationFingerprint,
+  parseCliArgs,
   printSummary,
   runLanes,
-  selectExistingLintFiles
+  selectExistingLintFiles,
+  validateFailedRunSummary
 } from "./run-check-changed.mjs";
 import {
   isAgentActivityRuntimeBoundaryRelevant,
   isRendererBoundaryRelevant
 } from "./repository-checks.mjs";
+
+test("parseCliArgs rejects unknown and invalid options", () => {
+  assert.throws(() => parseCliArgs(["--push-reddy"]), /unknown option/u);
+  assert.throws(
+    () => parseCliArgs(["--max-parallel", "nope"]),
+    /positive integer/u
+  );
+  assert.throws(() => parseCliArgs(["--base"]), /requires a value/u);
+});
+
+test("parseCliArgs accepts pnpm separators and explicit values", () => {
+  assert.deepEqual(
+    parseCliArgs([
+      "--",
+      "--dry-run",
+      "--push-ready",
+      "--base",
+      "origin/trunk",
+      "--max-parallel",
+      "2",
+      "--tail-lines",
+      "40"
+    ]),
+    {
+      baseRef: "origin/trunk",
+      dryRun: true,
+      failedOnly: false,
+      maxParallel: 2,
+      pushReady: true,
+      tailLines: 40,
+      verbose: false
+    }
+  );
+});
+
+test("validation fingerprint changes with working and staged state", () => {
+  const workspaceRoot = mkdtempSync(join(tmpdir(), "check-fingerprint-"));
+  runFixtureGit(workspaceRoot, ["init", "--quiet"]);
+  const sourcePath = join(workspaceRoot, "source.ts");
+  writeFileSync(sourcePath, "export const value = 1;\n");
+  runFixtureGit(workspaceRoot, ["add", "source.ts"]);
+  runFixtureGit(workspaceRoot, [
+    "-c",
+    "user.email=test@example.com",
+    "-c",
+    "user.name=Test",
+    "commit",
+    "--quiet",
+    "-m",
+    "init"
+  ]);
+  const initial = buildValidationFingerprint({
+    baseRef: "HEAD",
+    workspaceRoot
+  });
+  const differentBase = buildValidationFingerprint({
+    baseRef: "HEAD^{commit}",
+    workspaceRoot
+  });
+  assert.notEqual(differentBase, initial);
+
+  writeFileSync(sourcePath, "export const value = 2;\n");
+  const working = buildValidationFingerprint({
+    baseRef: "HEAD",
+    workspaceRoot
+  });
+  assert.notEqual(working, initial);
+
+  runFixtureGit(workspaceRoot, ["add", "source.ts"]);
+  writeFileSync(sourcePath, "export const value = 3;\n");
+  const staged = buildValidationFingerprint({ baseRef: "HEAD", workspaceRoot });
+  runFixtureGit(workspaceRoot, ["reset", "--quiet"]);
+  const unstaged = buildValidationFingerprint({
+    baseRef: "HEAD",
+    workspaceRoot
+  });
+  assert.notEqual(staged, unstaged);
+});
+
+test("failed-only state must match the validated workspace", () => {
+  assert.throws(
+    () => validateFailedRunSummary({ baseRef: "HEAD" }, null),
+    /legacy failed-lane state/u
+  );
+  assert.throws(
+    () =>
+      validateFailedRunSummary(
+        { baseRef: "HEAD", validationFingerprint: "before" },
+        "after"
+      ),
+    /workspace or base changed/u
+  );
+  assert.doesNotThrow(() =>
+    validateFailedRunSummary(
+      { baseRef: "HEAD", validationFingerprint: "same" },
+      "same"
+    )
+  );
+});
 
 test("renderer boundary lane covers renderer and checker changes", () => {
   for (const file of [
@@ -144,3 +247,11 @@ test("printSummary includes rerun hint for failures", () => {
     /Rerun failed lanes with: pnpm check:changed -- --failed-only/u
   );
 });
+
+function runFixtureGit(workspaceRoot, args) {
+  const result = spawnSync("git", args, {
+    cwd: workspaceRoot,
+    encoding: "utf8"
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+}

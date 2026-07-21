@@ -499,6 +499,7 @@ test("staged mode flags violations on staged added lines end to end", async () =
   runFixtureGit(workspaceRoot, ["add", "."]);
   const pass = runScript(workspaceRoot, baselinePath, ["--staged"]);
   assert.equal(pass.status, 0, pass.stderr || pass.stdout);
+  assert.doesNotMatch(pass.stderr, /fatal:/u);
 });
 
 test("full mode fails with instructions when the baseline is missing", async () => {
