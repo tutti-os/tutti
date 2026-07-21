@@ -65,7 +65,7 @@ export const zhCNAgentGuiQuickPrompts = {
     }
   },
   recommendedTemplatesDescription:
-    "选择模板后，可直接填入输入框或预填为新的快捷提示词",
+    "选择后会预填到编辑窗口，保存前不会创建或发送提示词",
   recommendedTemplatesTitle: "推荐模板",
   returnToPrompts: "我的提示词",
   save: "保存",
@@ -78,6 +78,5 @@ export const zhCNAgentGuiQuickPrompts = {
   titleTooLong: "标题不能超过 80 个字符",
   trigger: "提示词",
   triggerTooltip: "选择快捷提示词",
-  usePrompt: "填入输入框",
   useTemplate: "使用模板"
 } as const;

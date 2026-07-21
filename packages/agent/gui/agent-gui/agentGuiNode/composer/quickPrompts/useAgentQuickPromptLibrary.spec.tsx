@@ -191,30 +191,6 @@ describe("useAgentQuickPromptLibrary", () => {
     expect(rendered.result.current.mode).toBe("closed");
   });
 
-  it("inserts built-in recommendation content without persisting it", () => {
-    const quickPrompts = createQuickPrompts();
-    hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;
-    const onInsertPrompt = vi.fn();
-    const rendered = renderHook(() =>
-      useAgentQuickPromptLibrary({
-        disabled: false,
-        labels,
-        onBeforeOpen: vi.fn(),
-        onInsertPrompt
-      })
-    );
-
-    act(() => rendered.result.current.openPopover());
-    act(() =>
-      rendered.result.current.insertPromptContent("Summarize common prompts")
-    );
-
-    expect(onInsertPrompt).toHaveBeenCalledWith("Summarize common prompts");
-    expect(rendered.result.current.mode).toBe("closed");
-    expect(quickPrompts.api.create).not.toHaveBeenCalled();
-    expect(quickPrompts.api.update).not.toHaveBeenCalled();
-  });
-
   it("closes all disclosure when the feature gate turns off", () => {
     const quickPrompts = createQuickPrompts();
     hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;

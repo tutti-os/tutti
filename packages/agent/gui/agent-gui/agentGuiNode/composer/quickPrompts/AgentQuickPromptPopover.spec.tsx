@@ -1,16 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createRef } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import type { AgentQuickPromptLabels } from "./agentQuickPromptLabels";
 import { AgentQuickPromptPopover } from "./AgentQuickPromptPopover";
 import type { AgentQuickPromptLibraryController } from "./useAgentQuickPromptLibrary";
-import {
-  AgentRichTextEditor,
-  type AgentRichTextEditorHandle
-} from "../../agentRichText/AgentRichTextEditor";
 
 const labels = new Proxy(
   {
@@ -35,41 +30,35 @@ const labels = new Proxy(
     noResults: "No matching quick prompts",
     recommendedTemplatesTitle: "Recommended templates",
     recommendedTemplatesDescription:
-      "Choose a template to insert into the composer or prefill a new quick prompt.",
+      "Choose one to prefill the editor. It will not be saved or sent until you choose Save.",
     returnToPrompts: "My prompts",
-    usePrompt: "Use prompt",
     useTemplate: "Use template",
     recommendedTemplates: [
       {
-        action: "insert",
         id: "summary-common-prompts",
         title: "Summarize common prompts",
         description: "Find insights and repeated work patterns",
         content: "Summarize my common prompts"
       },
       {
-        action: "create",
         id: "understand-context",
         title: "Understand the situation",
         description: "Summarize context, constraints, risks, and next steps",
         content: "Summarize the situation"
       },
       {
-        action: "create",
         id: "create-action-plan",
         title: "Create an action plan",
         description: "Break a goal into prioritized, verifiable steps",
         content: "Create an action plan"
       },
       {
-        action: "create",
         id: "review-and-improve",
         title: "Review and improve",
         description: "Find gaps, risks, and practical improvements",
         content: "Review and improve"
       },
       {
-        action: "create",
         id: "draft-clear-update",
         title: "Draft a clear update",
         description: "Write a concise explanation for the intended audience",
@@ -119,7 +108,6 @@ function controller(
     reorderPrompts: vi.fn(async () => true),
     saveDraft: vi.fn(async () => true),
     searchQuery: "",
-    insertPromptContent: vi.fn(),
     showReorderHandles: false,
     selectPrompt: vi.fn(),
     selectedPrompt: null,
@@ -216,7 +204,7 @@ describe("AgentQuickPromptPopover", () => {
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
     expect(
       screen.queryByRole("button", {
-        name: /Summarize common prompts.*Use prompt/u
+        name: /Summarize common prompts.*Use template/u
       })
     ).toBeNull();
     expect(
@@ -353,7 +341,7 @@ describe("AgentQuickPromptPopover", () => {
     expect(screen.queryByRole("button", { name: "Reorder Review" })).toBeNull();
     expect(
       screen.queryByRole("button", {
-        name: /Summarize common prompts.*Use prompt/u
+        name: /Summarize common prompts.*Use template/u
       })
     ).toBeNull();
   });
@@ -403,17 +391,16 @@ describe("AgentQuickPromptPopover", () => {
       </TooltipProvider>
     );
 
-    const recommendation = screen.getByRole("button", {
-      name: /Summarize common prompts.*Use prompt/u
+    const summaryTemplate = screen.getByRole("button", {
+      name: /Summarize common prompts.*Use template/u
     });
     const createTemplate = screen.getByRole("button", {
       name: /Understand the situation.*Use template/u
     });
-    expect(recommendation).toBeDisabled();
+    expect(summaryTemplate).toBeDisabled();
     expect(createTemplate).toBeDisabled();
-    fireEvent.pointerDown(recommendation, { button: 0 });
-    fireEvent.click(recommendation);
-    expect(subject.insertPromptContent).not.toHaveBeenCalled();
+    fireEvent.pointerDown(summaryTemplate, { button: 0 });
+    fireEvent.click(summaryTemplate);
     expect(subject.openCreate).not.toHaveBeenCalled();
   });
 
@@ -431,7 +418,7 @@ describe("AgentQuickPromptPopover", () => {
     expect(subject.selectPrompt).toHaveBeenCalledOnce();
   });
 
-  it("keeps the built-in recommendation inside the template view", () => {
+  it("keeps the common-prompts recommendation inside the template view", () => {
     const subject = controller();
     render(
       <TooltipProvider>
@@ -441,70 +428,24 @@ describe("AgentQuickPromptPopover", () => {
 
     expect(
       screen.queryByRole("button", {
-        name: /Summarize common prompts.*Use prompt/u
+        name: /Summarize common prompts.*Use template/u
       })
     ).toBeNull();
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Recommended templates" }),
       { button: 0 }
     );
-    const recommendation = screen.getByRole("button", {
-      name: /Summarize common prompts.*Use prompt/u
+    const summaryTemplate = screen.getByRole("button", {
+      name: /Summarize common prompts.*Use template/u
     });
-    fireEvent.pointerDown(recommendation, { button: 0 });
-    fireEvent.click(recommendation);
-    expect(subject.insertPromptContent).toHaveBeenCalledWith(
-      "Summarize my common prompts"
-    );
-    expect(subject.insertPromptContent).toHaveBeenCalledOnce();
-    expect(subject.openCreate).not.toHaveBeenCalled();
+    fireEvent.pointerDown(summaryTemplate, { button: 0 });
+    fireEvent.click(summaryTemplate);
+    expect(subject.openCreate).toHaveBeenCalledWith({
+      title: "Summarize common prompts",
+      content: "Summarize my common prompts"
+    });
+    expect(subject.openCreate).toHaveBeenCalledOnce();
     expect(subject.saveDraft).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole("heading", { name: "Quick prompts", level: 2 })
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", {
-        name: /Summarize common prompts.*Use prompt/u
-      })
-    ).toBeNull();
-  });
-
-  it("writes the built-in recommendation into the editor without submitting", async () => {
-    const editorRef = createRef<AgentRichTextEditorHandle>();
-    const onChange = vi.fn();
-    const onSubmit = vi.fn();
-    const subject = controller({
-      insertPromptContent: (content) =>
-        editorRef.current?.insertPlainTextAtSelection(content)
-    });
-    render(
-      <TooltipProvider>
-        <AgentRichTextEditor
-          ref={editorRef}
-          disabled={false}
-          placeholder="Prompt"
-          value=""
-          onChange={onChange}
-          onSubmit={onSubmit}
-        />
-        <AgentQuickPromptPopover controller={subject} disabled={false} />
-      </TooltipProvider>
-    );
-    await waitFor(() => expect(editorRef.current).not.toBeNull());
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Recommended templates" }),
-      { button: 0 }
-    );
-    fireEvent.pointerDown(
-      screen.getByRole("button", {
-        name: /Summarize common prompts.*Use prompt/u
-      }),
-      { button: 0 }
-    );
-
-    expect(onChange).toHaveBeenLastCalledWith("Summarize my common prompts");
-    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("starts creation on primary pointer down so the Dialog survives Popover dismissal", () => {
@@ -521,7 +462,7 @@ describe("AgentQuickPromptPopover", () => {
     expect(subject.openCreate).toHaveBeenCalledOnce();
   });
 
-  it("supports direct insertion and create-prefill actions in recommended templates", () => {
+  it("prefills the create editor for every recommended template", () => {
     const subject = controller({
       filteredPrompts: [],
       snapshot: {
@@ -539,25 +480,24 @@ describe("AgentQuickPromptPopover", () => {
       </TooltipProvider>
     );
 
-    const recommendation = screen.getByRole("button", {
-      name: /Summarize common prompts.*Use prompt/u
+    const summaryTemplate = screen.getByRole("button", {
+      name: /Summarize common prompts.*Use template/u
     });
-    fireEvent.click(recommendation);
-    expect(subject.insertPromptContent).toHaveBeenCalledWith(
-      "Summarize my common prompts"
-    );
-    expect(subject.insertPromptContent).toHaveBeenCalledOnce();
-    expect(subject.openCreate).not.toHaveBeenCalled();
+    fireEvent.click(summaryTemplate);
+    expect(subject.openCreate).toHaveBeenNthCalledWith(1, {
+      title: "Summarize common prompts",
+      content: "Summarize my common prompts"
+    });
 
     const createTemplate = screen.getByRole("button", {
       name: /Understand the situation.*Use template/u
     });
     fireEvent.click(createTemplate);
-    expect(subject.openCreate).toHaveBeenCalledWith({
+    expect(subject.openCreate).toHaveBeenNthCalledWith(2, {
       title: "Understand the situation",
       content: "Summarize the situation"
     });
-    expect(subject.openCreate).toHaveBeenCalledOnce();
+    expect(subject.openCreate).toHaveBeenCalledTimes(2);
   });
 
   it("lets a non-empty library reopen recommended templates in the same Popover", () => {

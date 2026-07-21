@@ -1,7 +1,6 @@
 import type { TranslateFn } from "../../../../i18n";
 
 export interface AgentQuickPromptTemplate {
-  action: "create" | "insert";
   content: string;
   description: string;
   id:
@@ -60,7 +59,6 @@ export interface AgentQuickPromptLabels {
   contentTooLarge: string;
   trigger: string;
   triggerTooltip: string;
-  usePrompt: string;
   useTemplate: string;
 }
 
@@ -126,7 +124,6 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
     startSorting: t("agentHost.agentGui.quickPrompts.startSorting"),
     recommendedTemplates: [
       {
-        action: "insert",
         id: "summary-common-prompts",
         title: t(
           "agentHost.agentGui.quickPrompts.recommendedTemplates.summaryCommonPrompts.title"
@@ -139,7 +136,6 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
         )
       },
       {
-        action: "create",
         id: "understand-context",
         title: t(
           "agentHost.agentGui.quickPrompts.recommendedTemplates.understandContext.title"
@@ -152,7 +148,6 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
         )
       },
       {
-        action: "create",
         id: "create-action-plan",
         title: t(
           "agentHost.agentGui.quickPrompts.recommendedTemplates.createActionPlan.title"
@@ -165,7 +160,6 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
         )
       },
       {
-        action: "create",
         id: "review-and-improve",
         title: t(
           "agentHost.agentGui.quickPrompts.recommendedTemplates.reviewAndImprove.title"
@@ -178,7 +172,6 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
         )
       },
       {
-        action: "create",
         id: "draft-clear-update",
         title: t(
           "agentHost.agentGui.quickPrompts.recommendedTemplates.draftClearUpdate.title"
@@ -204,7 +197,6 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
     titleTooLong: t("agentHost.agentGui.quickPrompts.titleTooLong"),
     trigger: t("agentHost.agentGui.quickPrompts.trigger"),
     triggerTooltip: t("agentHost.agentGui.quickPrompts.triggerTooltip"),
-    usePrompt: t("agentHost.agentGui.quickPrompts.usePrompt"),
     useTemplate: t("agentHost.agentGui.quickPrompts.useTemplate")
   };
 }

@@ -398,11 +398,8 @@ invalidation are not Session or Turn state and must not enter
 `AgentActivityRuntime` or the workspace engine. Hosts that omit the capability,
 and hosts whose capability reports the developer gate disabled, render no
 quick-prompt composer entry. AgentGUI may also present a small, localized set
-of recommended templates. Each template declares whether it prefills the
-existing editor for an explicit CRUD save or inserts static content into the
-current composer selection without persisting or submitting it. Neither action
-creates durable quick-prompt data until the user explicitly saves through the
-CRUD capability.
+of recommended templates; those only prefill the existing editor and remain
+client-local until the user explicitly saves them through the CRUD capability.
 
 ### 6.4 Multiple surfaces
 

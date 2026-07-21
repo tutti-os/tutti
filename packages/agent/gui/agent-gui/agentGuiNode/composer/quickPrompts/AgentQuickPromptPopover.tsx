@@ -93,11 +93,6 @@ export function AgentQuickPromptPopover({
   };
   const requestTemplate = (template: AgentQuickPromptTemplate): void => {
     preserveExternalFocusRef.current = true;
-    if (template.action === "insert") {
-      setView("prompts");
-      controller.insertPromptContent(template.content);
-      return;
-    }
     controller.openCreate({ title: template.title, content: template.content });
   };
   const isTemplateView = view === "templates";
@@ -486,9 +481,7 @@ function RecommendedTemplateList({
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-1 text-[12px] text-[var(--text-secondary)]">
-            {template.action === "insert"
-              ? labels.usePrompt
-              : labels.useTemplate}
+            {labels.useTemplate}
             <ArrowRightIcon data-icon="inline-end" />
           </span>
         </Button>

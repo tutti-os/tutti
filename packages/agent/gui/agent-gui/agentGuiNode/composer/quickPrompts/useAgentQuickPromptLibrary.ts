@@ -61,7 +61,6 @@ export interface AgentQuickPromptLibraryController {
   ) => Promise<boolean>;
   saveDraft: (draft: AgentQuickPromptDraft) => Promise<boolean>;
   searchQuery: string;
-  insertPromptContent: (content: string) => void;
   showReorderHandles: boolean;
   selectPrompt: (prompt: AgentHostQuickPrompt) => void;
   selectedPrompt: AgentHostQuickPrompt | null;
@@ -400,7 +399,6 @@ export function useAgentQuickPromptLibrary(input: {
     isInteractionLocked,
     isReordering,
     initialDraft,
-    insertPromptContent,
     labels,
     mode: effectiveMode,
     mutationError,

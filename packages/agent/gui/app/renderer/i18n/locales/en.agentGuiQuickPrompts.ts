@@ -68,7 +68,7 @@ export const enAgentGuiQuickPrompts = {
     }
   },
   recommendedTemplatesDescription:
-    "Choose a template to insert into the composer or prefill a new quick prompt.",
+    "Choose one to prefill the editor. It will not be saved or sent until you choose Save.",
   recommendedTemplatesTitle: "Recommended templates",
   returnToPrompts: "My prompts",
   save: "Save",
@@ -81,6 +81,5 @@ export const enAgentGuiQuickPrompts = {
   titleTooLong: "Title must be 80 characters or less",
   trigger: "Prompts",
   triggerTooltip: "Choose a quick prompt",
-  usePrompt: "Use prompt",
   useTemplate: "Use template"
 } as const;
