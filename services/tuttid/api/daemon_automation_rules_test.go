@@ -48,7 +48,10 @@ func (s *stubAutomationRuleService) UpdateRule(_ context.Context, input automati
 
 func TestUpdateAutomationRuleDelegatesExistenceCheckToService(t *testing.T) {
 	service := &stubAutomationRuleService{err: workspacedata.ErrAutomationRuleNotFound}
-	api := DaemonAPI{AutomationRuleService: service}
+	api := DaemonAPI{
+		AutomationRuleService: service,
+		PreferencesService:    gateTestPreferences(map[string]bool{AutomationRulesFeatureFlag: true}, nil),
+	}
 	response, err := api.UpdateAutomationRule(context.Background(), tuttigenerated.UpdateAutomationRuleRequestObject{
 		WorkspaceID: "ws", AutomationRuleID: "automation-rule:missing",
 		Body: &tuttigenerated.PutAutomationRuleRequest{
@@ -96,7 +99,10 @@ func testAutomationRule() automationrulebiz.Rule {
 
 func TestCreateAutomationRuleMapsRequestAndProjection(t *testing.T) {
 	service := &stubAutomationRuleService{rule: testAutomationRule()}
-	api := DaemonAPI{AutomationRuleService: service}
+	api := DaemonAPI{
+		AutomationRuleService: service,
+		PreferencesService:    gateTestPreferences(map[string]bool{AutomationRulesFeatureFlag: true}, nil),
+	}
 	response, err := api.CreateAutomationRule(context.Background(), tuttigenerated.CreateAutomationRuleRequestObject{
 		WorkspaceID: "ws",
 		Body: &tuttigenerated.PutAutomationRuleRequest{
@@ -126,7 +132,10 @@ func TestCreateAutomationRuleMapsRequestAndProjection(t *testing.T) {
 }
 
 func TestGetAutomationRuleReturnsSpecificNotFoundCode(t *testing.T) {
-	api := DaemonAPI{AutomationRuleService: &stubAutomationRuleService{err: workspacedata.ErrAutomationRuleNotFound}}
+	api := DaemonAPI{
+		AutomationRuleService: &stubAutomationRuleService{err: workspacedata.ErrAutomationRuleNotFound},
+		PreferencesService:    gateTestPreferences(map[string]bool{AutomationRulesFeatureFlag: true}, nil),
+	}
 	response, err := api.GetAutomationRule(context.Background(), tuttigenerated.GetAutomationRuleRequestObject{
 		WorkspaceID: "ws", AutomationRuleID: "automation-rule:missing",
 	})
@@ -147,7 +156,10 @@ func TestSetAgentSessionAutomationRuleOverrideMapsRuleSelection(t *testing.T) {
 	service := &stubAutomationRuleService{override: automationrulebiz.SessionOverride{
 		WorkspaceID: "ws", AgentSessionID: "session-1", RuleIDs: []string{"rule-1"}, UpdatedAt: now,
 	}}
-	api := DaemonAPI{AutomationRuleService: service}
+	api := DaemonAPI{
+		AutomationRuleService: service,
+		PreferencesService:    gateTestPreferences(map[string]bool{AutomationRulesFeatureFlag: true}, nil),
+	}
 	response, err := api.SetAgentSessionAutomationRuleOverride(context.Background(), tuttigenerated.SetAgentSessionAutomationRuleOverrideRequestObject{
 		WorkspaceID: "ws", AgentSessionID: "session-1",
 		Body: &tuttigenerated.SetAgentSessionAutomationRuleOverrideRequest{RuleIds: []string{"rule-1"}},
@@ -167,7 +179,10 @@ func TestSetAgentSessionAutomationRuleOverrideMapsRuleSelection(t *testing.T) {
 func TestAutomationRuleRoutesAreRegistered(t *testing.T) {
 	service := &stubAutomationRuleService{rules: []automationrulebiz.Rule{testAutomationRule()}}
 	mux := http.NewServeMux()
-	RegisterRoutes(mux, NewRoutes(DaemonAPI{AutomationRuleService: service}))
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AutomationRuleService: service,
+		PreferencesService:    gateTestPreferences(map[string]bool{AutomationRulesFeatureFlag: true}, nil),
+	}))
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/workspaces/ws/automation-rules", nil))
 	if response.Code != http.StatusOK {

@@ -45,6 +45,9 @@ func (api DaemonAPI) ListCollaborationRuns(ctx context.Context, request tuttigen
 }
 
 func (api DaemonAPI) CreateCollaborationRun(ctx context.Context, request tuttigenerated.CreateCollaborationRunRequestObject) (tuttigenerated.CreateCollaborationRunResponseObject, error) {
+	if !api.automationRulesWritesEnabled(ctx) {
+		return tuttigenerated.CreateCollaborationRun400JSONResponse{InvalidRequestErrorJSONResponse: automationRulesWriteDisabledError()}, nil
+	}
 	if api.CollaborationRunService == nil {
 		return tuttigenerated.CreateCollaborationRun503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: collaborationRunServiceUnavailable(),
@@ -110,6 +113,9 @@ func (api DaemonAPI) CreateCollaborationRun(ctx context.Context, request tuttige
 }
 
 func (api DaemonAPI) SetCollaborationRunAdoption(ctx context.Context, request tuttigenerated.SetCollaborationRunAdoptionRequestObject) (tuttigenerated.SetCollaborationRunAdoptionResponseObject, error) {
+	if !api.automationRulesWritesEnabled(ctx) {
+		return tuttigenerated.SetCollaborationRunAdoption400JSONResponse{InvalidRequestErrorJSONResponse: automationRulesWriteDisabledError()}, nil
+	}
 	if api.CollaborationRunService == nil {
 		return tuttigenerated.SetCollaborationRunAdoption503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: collaborationRunServiceUnavailable(),
@@ -140,6 +146,9 @@ func (api DaemonAPI) SetCollaborationRunAdoption(ctx context.Context, request tu
 }
 
 func (api DaemonAPI) CancelCollaborationRun(ctx context.Context, request tuttigenerated.CancelCollaborationRunRequestObject) (tuttigenerated.CancelCollaborationRunResponseObject, error) {
+	if !api.automationRulesWritesEnabled(ctx) {
+		return tuttigenerated.CancelCollaborationRun400JSONResponse{InvalidRequestErrorJSONResponse: automationRulesWriteDisabledError()}, nil
+	}
 	if api.CollaborationRunService == nil {
 		return tuttigenerated.CancelCollaborationRun503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: collaborationRunServiceUnavailable(),

@@ -38,6 +38,9 @@ func (api DaemonAPI) ListAutomationRules(ctx context.Context, request tuttigener
 }
 
 func (api DaemonAPI) CreateAutomationRule(ctx context.Context, request tuttigenerated.CreateAutomationRuleRequestObject) (tuttigenerated.CreateAutomationRuleResponseObject, error) {
+	if !api.automationRulesWritesEnabled(ctx) {
+		return tuttigenerated.CreateAutomationRule400JSONResponse{InvalidRequestErrorJSONResponse: automationRulesWriteDisabledError()}, nil
+	}
 	if api.AutomationRuleService == nil {
 		return tuttigenerated.CreateAutomationRule503JSONResponse{ServiceUnavailableErrorJSONResponse: automationRuleServiceUnavailable()}, nil
 	}
@@ -66,6 +69,9 @@ func (api DaemonAPI) GetAutomationRule(ctx context.Context, request tuttigenerat
 }
 
 func (api DaemonAPI) UpdateAutomationRule(ctx context.Context, request tuttigenerated.UpdateAutomationRuleRequestObject) (tuttigenerated.UpdateAutomationRuleResponseObject, error) {
+	if !api.automationRulesWritesEnabled(ctx) {
+		return tuttigenerated.UpdateAutomationRule400JSONResponse{InvalidRequestErrorJSONResponse: automationRulesWriteDisabledError()}, nil
+	}
 	if api.AutomationRuleService == nil {
 		return tuttigenerated.UpdateAutomationRule503JSONResponse{ServiceUnavailableErrorJSONResponse: automationRuleServiceUnavailable()}, nil
 	}
@@ -86,6 +92,9 @@ func (api DaemonAPI) UpdateAutomationRule(ctx context.Context, request tuttigene
 }
 
 func (api DaemonAPI) DeleteAutomationRule(ctx context.Context, request tuttigenerated.DeleteAutomationRuleRequestObject) (tuttigenerated.DeleteAutomationRuleResponseObject, error) {
+	if !api.automationRulesWritesEnabled(ctx) {
+		return tuttigenerated.DeleteAutomationRule400JSONResponse{InvalidRequestErrorJSONResponse: automationRulesWriteDisabledError()}, nil
+	}
 	if api.AutomationRuleService == nil {
 		return tuttigenerated.DeleteAutomationRule503JSONResponse{ServiceUnavailableErrorJSONResponse: automationRuleServiceUnavailable()}, nil
 	}
@@ -113,6 +122,9 @@ func (api DaemonAPI) GetAgentSessionAutomationRuleOverride(ctx context.Context, 
 }
 
 func (api DaemonAPI) SetAgentSessionAutomationRuleOverride(ctx context.Context, request tuttigenerated.SetAgentSessionAutomationRuleOverrideRequestObject) (tuttigenerated.SetAgentSessionAutomationRuleOverrideResponseObject, error) {
+	if !api.automationRulesWritesEnabled(ctx) {
+		return tuttigenerated.SetAgentSessionAutomationRuleOverride400JSONResponse{InvalidRequestErrorJSONResponse: automationRulesWriteDisabledError()}, nil
+	}
 	if api.AutomationRuleService == nil {
 		return tuttigenerated.SetAgentSessionAutomationRuleOverride503JSONResponse{ServiceUnavailableErrorJSONResponse: automationRuleServiceUnavailable()}, nil
 	}
