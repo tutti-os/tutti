@@ -403,6 +403,13 @@ and Tailwind utilities. When package-local CSS is necessary, it must use UI
 system tokens and must not contain app-specific product styling or user-visible
 copy.
 
+Published stylesheet sources use standard CSS properties. In particular,
+author `backdrop-filter` without a handwritten `-webkit-backdrop-filter` pair.
+The consuming application's CSS build owns browser-target prefix generation;
+the packed stylesheet does not promise a second, package-owned legacy-browser
+prefixing pass. Consumer production builds should assert that optimization did
+not leave prefix-only declarations.
+
 Do not add a public `./styles.css` export for a reusable package unless that CSS
 is genuinely part of the package's stable contract. If the same need would help
 multiple packages, add the token, primitive, or utility support to

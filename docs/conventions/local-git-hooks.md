@@ -31,6 +31,7 @@ The repository currently uses `husky` with two primary hooks:
 Current behavior:
 
 - `pnpm exec lint-staged`
+- `pnpm check:backdrop-filter-authoring:staged`
 - `pnpm check:electron-runtime-boundaries:staged`
 - `pnpm check:ui-boundaries:staged`
 - `pnpm check:renderer-boundaries:staged`
@@ -80,6 +81,7 @@ machine-readable task results and log paths are recorded in
 
 That full validation currently includes:
 
+- `pnpm check:backdrop-filter-authoring`
 - `pnpm check:defaults-generated`
 - `pnpm check:agent-gui-provider-catalog-generated`
 - `pnpm check:api-generated`
