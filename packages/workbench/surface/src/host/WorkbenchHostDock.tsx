@@ -2403,7 +2403,11 @@ export function WorkbenchHostDock({
             closePopup();
           }}
           quitLabel={i18n.t("dockContextMenu.quit")}
-          showCreateNew={canCreateNewWindow(
+          showCreateNew={canCreateNewWindowInDockPopup(
+            popupEntry.entry,
+            dockContextMenuInstanceMode
+          )}
+          showCreateNewInContextMenu={canCreateNewWindow(
             popupEntry.entry,
             dockContextMenuInstanceMode
           )}
@@ -3103,6 +3107,16 @@ function canCreateNewWindow(
     stateKind !== "loading" &&
     stateKind !== "unavailable"
   );
+}
+
+function canCreateNewWindowInDockPopup(
+  entry: WorkbenchHostDockEntry,
+  instanceMode: WorkbenchHostNodeInstanceStrategy["mode"] | undefined
+): boolean {
+  if (entry.allowNewWindowInDockPopup === false) {
+    return false;
+  }
+  return canCreateNewWindow(entry, instanceMode);
 }
 
 function anchorKeyFromPopupEntry(

@@ -210,6 +210,7 @@ export function createWorkspaceAgentGuiContribution(input: {
         "workspace.agentGui.fallbackAgentLabel"
       ),
       newConversation: input.appI18n.t("workspace.agentGui.newConversation"),
+      openDetachedWindow: input.appI18n.t("workspace.agentGui.openNewWindow"),
       nodeTitle: input.i18n.t(workspaceWorkbenchDesktopI18nKeys.nodes.agent),
       untitledConversation: input.appI18n.t(
         "workspace.agentGui.untitledConversation"
@@ -270,6 +271,14 @@ export function createWorkspaceAgentGuiContribution(input: {
         agents: input.agentsService.getSnapshot().agents,
         sessionEngine
       }),
+    onOpenDetachedWindow: ({ agentTargetId, provider }) => {
+      void requestWorkspaceAgentGuiLaunch({
+        agentTargetId,
+        openInNewWindow: true,
+        provider,
+        workspaceId: input.workspaceId
+      });
+    },
     sessionEngine,
     workspaceId: input.workspaceId
   });

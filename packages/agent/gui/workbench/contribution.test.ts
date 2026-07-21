@@ -253,6 +253,7 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(entry?.id).toBe(agentGuiWorkbenchUnifiedDockEntryId());
     expect(entry?.matchNode).toBeUndefined();
+    expect(entry?.instanceMode).toBe("single");
   });
 
   it("keeps unified launch payload provider priority when opening a session", () => {
@@ -605,6 +606,7 @@ describe("agent GUI workbench contribution copy", () => {
 
     // The regular launch can reuse the contribution's opaque target binding...
     expect(dockEntry?.launchPayload).not.toHaveProperty("openInNewWindow");
+    expect(dockEntry?.allowNewWindowInDockPopup).toBe(false);
     // ...while the "New window" payload forces a fresh window.
     expect(dockEntry?.newWindowLaunchPayload).toMatchObject({
       openInNewWindow: true

@@ -244,6 +244,7 @@ export function WorkbenchHostDockPopup({
   resolveDockPreviewCacheKey,
   showAllWindowsLabel,
   showCreateNew,
+  showCreateNewInContextMenu,
   showOpen,
   variant
 }: {
@@ -281,9 +282,12 @@ export function WorkbenchHostDockPopup({
   resolveDockPreviewCacheKey?: WorkbenchDockPreviewCacheKeyResolver<WorkbenchHostNodeData>;
   showAllWindowsLabel?: string;
   showCreateNew?: boolean;
+  showCreateNewInContextMenu?: boolean;
   showOpen?: boolean;
   variant?: WorkbenchHostDockPopupVariant;
 }) {
+  const resolvedShowCreateNewInContextMenu =
+    showCreateNewInContextMenu ?? showCreateNew;
   const resolvedLabelMode = labelMode ?? "hover-overlay";
   const resolvedVariant = variant ?? "default";
   const isMinimizedStack = resolvedVariant === "minimized-stack";
@@ -860,7 +864,7 @@ export function WorkbenchHostDockPopup({
       >
         {isContextMenu ? (
           <WorkbenchHostDockContextMenu
-            canCreateNew={showCreateNew !== false}
+            canCreateNew={resolvedShowCreateNewInContextMenu !== false}
             canEnterFullscreen={canEnterFullscreen === true}
             canShowAllWindows={canShowAllWindows === true}
             dockRetention={dockRetention}

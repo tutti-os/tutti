@@ -211,6 +211,10 @@ function createAgentGuiWorkbenchDockEntry(input: {
   visibility: WorkbenchHostDockEntry["visibility"];
 }): WorkbenchHostDockEntry {
   return {
+    allowNewWindowInDockPopup: false,
+    // Agent GUI windows are multi-instance, but dock clicks should focus the
+    // lone open window directly and only open the picker when 2+ are open.
+    instanceMode: "single",
     icon: input.icon,
     iconSize: "large",
     id: input.dockEntryId,

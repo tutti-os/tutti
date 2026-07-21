@@ -277,6 +277,12 @@ export interface WorkbenchHostDockEntry {
    * `launch` keeps clicks on the launch request path even when matching nodes
    * already exist.
    */
+  /**
+   * When false, hides the dock hover-popup "New window" tile even for
+   * multi-instance entries. Context-menu "New window" remains available unless
+   * the entry is otherwise disabled. Defaults to true.
+   */
+  allowNewWindowInDockPopup?: boolean;
   clickBehavior?: "default" | "launch";
   hoverActions?: readonly WorkbenchHostDockEntryAction[];
   icon: ReactNode;
