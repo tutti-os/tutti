@@ -176,9 +176,9 @@ INSERT INTO managed_model_provider_credentials (
 	}
 	if err := store.applyAgentModelBindingsV1(ctx); err != nil {
 		t.Fatalf("applyAgentModelBindingsV1() error = %v", err)
+	}
 	if err := store.applyModelPlanRevisionsV1(ctx); err != nil {
 		t.Fatalf("applyModelPlanRevisionsV1() error = %v", err)
-	}
 	}
 
 	plan, err := store.GetModelPlan(ctx, "ws-legacy", "mp-migrated-anthropic")
@@ -265,6 +265,9 @@ WHERE workspace_id = 'ws-retry' AND provider_id = 'openai'
 	if err := store.applyAgentModelBindingsV1(ctx); err != nil {
 		t.Fatalf("retry applyAgentModelBindingsV1() error = %v", err)
 	}
+	if err := store.applyModelPlanRevisionsV1(ctx); err != nil {
+		t.Fatalf("retry applyModelPlanRevisionsV1() error = %v", err)
+	}
 	if _, err := store.GetModelPlan(ctx, "ws-retry", "mp-migrated-openai"); err != nil {
 		t.Fatalf("GetModelPlan(retried migration) error = %v", err)
 	}
@@ -328,6 +331,7 @@ func resetModelPlanMigrations(t *testing.T, store *SQLiteStore) {
 	for _, statement := range []string{
 		`DROP TABLE agent_target_model_bindings`,
 		`DROP TABLE model_plan_first_use_candidates`,
+		`DROP TABLE model_plan_revisions`,
 		`DROP TABLE model_plans`,
 	} {
 		if _, err := store.writeDB.ExecContext(ctx, statement); err != nil {
@@ -337,7 +341,7 @@ func resetModelPlanMigrations(t *testing.T, store *SQLiteStore) {
 	if _, err := store.writeDB.ExecContext(ctx, `
 DELETE FROM tuttid_schema_migrations
 WHERE id IN (?, ?)
-`, schemaMigrationModelPlansV1, schemaMigrationAgentModelBindingsV1); err != nil {
+`, schemaMigrationModelPlansV1, schemaMigrationAgentModelBindingsV1, schemaMigrationModelPlanRevisionsV1); err != nil {
 		t.Fatalf("reset model plan migration markers error = %v", err)
 	}
 }

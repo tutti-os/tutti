@@ -15,7 +15,6 @@ export interface AgentComposerSettingsSupport {
   planImplementation: boolean;
   permissionModeChangeDuringTurn: boolean;
   permissionModeChangeDeferred: boolean;
-  modelSwitch: boolean;
 }
 
 /**
@@ -98,11 +97,6 @@ export function composerSettingsSupportFromOptions(
       }) === true,
     permissionModeChangeDeferred:
       resolveAgentActivityCapability("permissionModeChangeDeferred", {
-        composerOptions,
-        sessionCapabilities
-      }) === true,
-    modelSwitch:
-      resolveAgentActivityCapability("modelSwitch", {
         composerOptions,
         sessionCapabilities
       }) === true

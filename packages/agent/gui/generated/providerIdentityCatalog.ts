@@ -118,7 +118,7 @@ export const generatedProviderIdentityCatalog = [
     displayName: "OpenCode",
     iconKey: "opencode",
     localeKey: "agentHost.agentGui.conversationFilterOpenCode",
-    modelPlanProtocol: "openai",
+    modelPlanProtocol: "",
     aliases: ["open-code", "open code", "opencode-ai", "opencode_ai"],
     target: {
       id: "local:opencode",
@@ -158,34 +158,6 @@ export const generatedProviderIdentityCatalog = [
       managed: false,
       managedOrder: 0,
       statusProbePriority: 0,
-      usageProbeKind: "",
-      visibilityGate: "",
-      runtimeProbeFallback: "",
-      installBootstrap: false,
-      refreshOnAccountChange: false,
-      unavailableDockOrderOffset: 0,
-      developerLogs: false,
-      defaultProviderEligible: false,
-      defaultProviderPriority: 0
-    }
-  },
-  {
-    providerId: "hermes",
-    displayName: "Hermes Agent",
-    iconKey: "hermes",
-    localeKey: "agentHost.agentGui.conversationFilterHermes",
-    modelPlanProtocol: "",
-    aliases: ["hermes-agent", "hermes agent"],
-    target: {
-      id: "local:hermes",
-      launchRefType: "local_cli",
-      enabled: false,
-      sortOrder: 70
-    },
-    desktop: {
-      managed: true,
-      managedOrder: 6,
-      statusProbePriority: 6,
       usageProbeKind: "",
       visibilityGate: "",
       runtimeProbeFallback: "",
