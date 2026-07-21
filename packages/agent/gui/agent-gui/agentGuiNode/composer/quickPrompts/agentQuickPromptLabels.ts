@@ -1,19 +1,15 @@
 import type { TranslateFn } from "../../../../i18n";
 
 export interface AgentQuickPromptTemplate {
+  action: "create" | "insert";
   content: string;
   description: string;
   id:
+    | "summary-common-prompts"
     | "understand-context"
     | "create-action-plan"
     | "review-and-improve"
     | "draft-clear-update";
-  title: string;
-}
-
-export interface AgentQuickPromptRecommendation {
-  content: string;
-  description: string;
   title: string;
 }
 
@@ -56,8 +52,6 @@ export interface AgentQuickPromptLabels {
   recommendedTemplates: readonly AgentQuickPromptTemplate[];
   recommendedTemplatesDescription: string;
   recommendedTemplatesTitle: string;
-  recommendedPromptsTitle: string;
-  summaryCommonPromptsRecommendation: AgentQuickPromptRecommendation;
   returnToPrompts: string;
   title: string;
   titleLabel: string;
@@ -132,6 +126,20 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
     startSorting: t("agentHost.agentGui.quickPrompts.startSorting"),
     recommendedTemplates: [
       {
+        action: "insert",
+        id: "summary-common-prompts",
+        title: t(
+          "agentHost.agentGui.quickPrompts.recommendedTemplates.summaryCommonPrompts.title"
+        ),
+        description: t(
+          "agentHost.agentGui.quickPrompts.recommendedTemplates.summaryCommonPrompts.description"
+        ),
+        content: t(
+          "agentHost.agentGui.quickPrompts.recommendedTemplates.summaryCommonPrompts.content"
+        )
+      },
+      {
+        action: "create",
         id: "understand-context",
         title: t(
           "agentHost.agentGui.quickPrompts.recommendedTemplates.understandContext.title"
@@ -144,6 +152,7 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
         )
       },
       {
+        action: "create",
         id: "create-action-plan",
         title: t(
           "agentHost.agentGui.quickPrompts.recommendedTemplates.createActionPlan.title"
@@ -156,6 +165,7 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
         )
       },
       {
+        action: "create",
         id: "review-and-improve",
         title: t(
           "agentHost.agentGui.quickPrompts.recommendedTemplates.reviewAndImprove.title"
@@ -168,6 +178,7 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
         )
       },
       {
+        action: "create",
         id: "draft-clear-update",
         title: t(
           "agentHost.agentGui.quickPrompts.recommendedTemplates.draftClearUpdate.title"
@@ -186,20 +197,6 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
     recommendedTemplatesTitle: t(
       "agentHost.agentGui.quickPrompts.recommendedTemplatesTitle"
     ),
-    recommendedPromptsTitle: t(
-      "agentHost.agentGui.quickPrompts.recommendedPromptsTitle"
-    ),
-    summaryCommonPromptsRecommendation: {
-      title: t(
-        "agentHost.agentGui.quickPrompts.summaryCommonPromptsRecommendation.title"
-      ),
-      description: t(
-        "agentHost.agentGui.quickPrompts.summaryCommonPromptsRecommendation.description"
-      ),
-      content: t(
-        "agentHost.agentGui.quickPrompts.summaryCommonPromptsRecommendation.content"
-      )
-    },
     returnToPrompts: t("agentHost.agentGui.quickPrompts.returnToPrompts"),
     title: t("agentHost.agentGui.quickPrompts.title"),
     titleLabel: t("agentHost.agentGui.quickPrompts.titleLabel"),

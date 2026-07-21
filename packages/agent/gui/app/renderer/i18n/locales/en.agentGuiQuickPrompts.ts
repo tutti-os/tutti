@@ -6,7 +6,7 @@ export const enAgentGuiQuickPrompts = {
   contentPlaceholder: "Write the reusable prompt text",
   contentTooLarge: "Prompt text must be 32 KiB or less",
   createTitle: "New quick prompt",
-  createFromTemplate: "Create from a recommended template",
+  createFromTemplate: "Recommended templates",
   delete: "Delete",
   deleteConfirm: "Delete prompt",
   deleteDescription: 'Delete "{{title}}"? This cannot be undone.',
@@ -35,6 +35,13 @@ export const enAgentGuiQuickPrompts = {
   reorderError: "The prompt order could not be saved. Try dragging again.",
   retry: "Try again",
   recommendedTemplates: {
+    summaryCommonPrompts: {
+      title: "Summarize common prompts",
+      description:
+        "Find important insights and repeated work patterns from conversation history",
+      content:
+        "Please scan and read all available conversation history and memory.\n\n1. What important insight have you discovered that I may not be aware of, and that could significantly change my decisions and work?\n2. What work do I repeat? Identify the prompts I use most often, and explain why they matter and when to use them.\n\nClearly state the accessible scope and distinguish facts, inferences, and unconfirmed items. Do not present assumptions as facts."
+    },
     understandContext: {
       title: "Understand the situation",
       description: "Summarize context, constraints, risks, and next steps",
@@ -61,9 +68,8 @@ export const enAgentGuiQuickPrompts = {
     }
   },
   recommendedTemplatesDescription:
-    "Choose one to prefill the editor. It will not be saved or sent until you choose Save.",
+    "Choose a template to insert into the composer or prefill a new quick prompt.",
   recommendedTemplatesTitle: "Recommended templates",
-  recommendedPromptsTitle: "Recommended prompts",
   returnToPrompts: "My prompts",
   save: "Save",
   saving: "Saving…",
@@ -73,13 +79,6 @@ export const enAgentGuiQuickPrompts = {
   titleLabel: "Title",
   titlePlaceholder: "Give this prompt a short name",
   titleTooLong: "Title must be 80 characters or less",
-  summaryCommonPromptsRecommendation: {
-    title: "Summarize common prompts",
-    description:
-      "Find important insights and repeated work patterns from conversation history",
-    content:
-      "Please scan and read all available conversation history and memory.\n\n1. What important insight have you discovered that I may not be aware of, and that could significantly change my decisions and work?\n2. What work do I repeat? Identify the prompts I use most often, and explain why they matter and when to use them.\n\nClearly state the accessible scope and distinguish facts, inferences, and unconfirmed items. Do not present assumptions as facts."
-  },
   trigger: "Prompts",
   triggerTooltip: "Choose a quick prompt",
   usePrompt: "Use prompt",
