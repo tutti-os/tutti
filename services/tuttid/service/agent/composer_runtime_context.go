@@ -14,8 +14,9 @@ func (s *Service) mergeRuntimeComposerContextForComposerOptions(
 	requestSettings ComposerSettings,
 	locale string,
 	extensionProfile ExtensionComposerProfile,
+	requestedPermissionModeID string,
 	options ComposerOptions,
-) ComposerOptions {
+) (ComposerOptions, error) {
 	// The discovery cache signature belongs to the request that created the
 	// hidden session. Runtime projection may already have selected a model or
 	// mode, so deriving the key from options.EffectiveSettings here would turn
@@ -23,7 +24,7 @@ func (s *Service) mergeRuntimeComposerContextForComposerOptions(
 	scope := newComposerLiveModelScopeForInput(input, requestSettings)
 	runtimeContext := s.composerRuntimeContextFromSession(scope)
 	if len(runtimeContext) == 0 {
-		return options
+		return options, nil
 	}
 	if options.RuntimeContext == nil {
 		options.RuntimeContext = map[string]any{}
@@ -43,7 +44,7 @@ func (s *Service) mergeRuntimeComposerContextForComposerOptions(
 	}
 	configOptions := runtimeConfigOptionsAsMapSlice(runtimeContext["configOptions"])
 	if len(configOptions) == 0 {
-		return options
+		return options, nil
 	}
 	options.RuntimeContext["configOptions"] = mergeRuntimeConfigOptions(
 		runtimeConfigOptionsAsMapSlice(options.RuntimeContext["configOptions"]),
@@ -51,17 +52,25 @@ func (s *Service) mergeRuntimeComposerContextForComposerOptions(
 	)
 	configValues, _ := runtimeContext["config"].(map[string]any)
 	if permissionOption, ok := runtimeConfigOptionByID(configOptions, extensionProfile.PermissionConfigOptionID); ok {
-		if config, current := composerPermissionConfigFromRuntimeOption(
-			input.Provider,
-			permissionOption,
-			configValues,
-			locale,
-			extensionProfile.PermissionModes,
-		); len(config.Modes) > 0 {
-			options.PermissionConfig = config
-			options.EffectiveSettings.PermissionModeID = current
-			options.RuntimeContext["permissionModeId"] = nullableString(current)
+		projection, err := projectExtensionPermissionConfig(extensionPermissionProjectionInput{
+			AgentTargetID: input.AgentTargetID,
+			FallbackID:    requestSettings.PermissionModeID,
+			Locale:        locale,
+			Profile:       extensionProfile,
+			Provider:      input.Provider,
+			Runtime: &extensionPermissionRuntimeState{
+				CurrentRuntimeID: runtimeConfigOptionCurrentValue(permissionOption, configValues),
+				Options:          composerConfigOptionValuesFromAny(permissionOption["options"]),
+			},
+			SelectedID: requestedPermissionModeID,
+		})
+		if err != nil {
+			return ComposerOptions{}, err
 		}
+		logExtensionPermissionProjectionDiagnostics(projection, input.AgentTargetID, input.Provider)
+		options.PermissionConfig = projection.Config
+		options.EffectiveSettings.PermissionModeID = projection.CurrentID
+		options.RuntimeContext["permissionModeId"] = nullableString(projection.CurrentID)
 	}
 	if reasoningOption, ok := runtimeConfigOptionByID(configOptions, extensionProfile.ReasoningConfigOptionID); ok {
 		if config, current := composerReasoningConfigFromRuntimeOption(
@@ -74,7 +83,7 @@ func (s *Service) mergeRuntimeComposerContextForComposerOptions(
 			options.RuntimeContext["reasoningEffort"] = nullableString(current)
 		}
 	}
-	return options
+	return options, nil
 }
 
 func (s *Service) composerRuntimeContextFromSession(
@@ -211,83 +220,6 @@ func runtimeConfigOptionMatchesID(option map[string]any, id string) bool {
 	}
 	return strings.TrimSpace(stringFromAny(option["id"])) == id ||
 		strings.TrimSpace(stringFromAny(option["runtimeId"])) == id
-}
-
-func composerPermissionConfigFromRuntimeOption(
-	provider string,
-	option map[string]any,
-	configValues map[string]any,
-	locale string,
-	declaredModes []ExtensionComposerPermissionMode,
-) (PermissionConfig, string) {
-	values := composerConfigOptionValuesFromAny(option["options"])
-	runtimeCurrent := runtimeConfigOptionCurrentValue(option, configValues)
-	modeByRuntimeID := make(map[string]ExtensionComposerPermissionMode, len(declaredModes))
-	for _, mode := range declaredModes {
-		runtimeID := strings.TrimSpace(mode.RuntimeID)
-		if runtimeID != "" {
-			modeByRuntimeID[runtimeID] = mode
-		}
-	}
-	config := PermissionConfig{
-		Configurable: false,
-		Modes:        make([]PermissionModeOption, 0, len(values)),
-	}
-	representativeBySemantic := map[PermissionModeSemantic]string{}
-	for _, value := range values {
-		runtimeID := strings.TrimSpace(value.Value)
-		declared, ok := modeByRuntimeID[runtimeID]
-		if !ok {
-			continue
-		}
-		semantic, ok := supportedExtensionPermissionSemantic(declared.Semantic)
-		if !ok {
-			continue
-		}
-		if _, exists := representativeBySemantic[semantic]; exists {
-			continue
-		}
-		modeID := string(semantic)
-		representativeBySemantic[semantic] = modeID
-		label, description := permissionModeDisplay(provider, modeID, semantic, locale)
-		if text := strings.TrimSpace(value.Label); text != "" {
-			label = text
-		}
-		if text := strings.TrimSpace(value.Description); text != "" {
-			description = text
-		}
-		config.Modes = append(config.Modes, PermissionModeOption{
-			Description: description,
-			ID:          modeID,
-			Semantic:    semantic,
-			Label:       label,
-		})
-	}
-	current := ""
-	if declared, ok := modeByRuntimeID[runtimeCurrent]; ok {
-		if semantic, supported := supportedExtensionPermissionSemantic(declared.Semantic); supported {
-			current = representativeBySemantic[semantic]
-		}
-	}
-	if current == "" && len(config.Modes) > 0 {
-		current = config.Modes[0].ID
-	}
-	config.DefaultValue = current
-	config.Configurable = len(config.Modes) > 1
-	return config, current
-}
-
-func supportedExtensionPermissionSemantic(value PermissionModeSemantic) (PermissionModeSemantic, bool) {
-	switch value {
-	case PermissionModeSemanticAskBeforeWrite,
-		PermissionModeSemanticAcceptEdits,
-		PermissionModeSemanticLockedDown,
-		PermissionModeSemanticAuto,
-		PermissionModeSemanticFullAccess:
-		return value, true
-	default:
-		return "", false
-	}
 }
 
 func applyExtensionComposerCapabilities(options ComposerOptions, profile ExtensionComposerProfile) ComposerOptions {

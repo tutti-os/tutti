@@ -69,6 +69,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}
 	input.Provider = provider
 	input.ProviderTargetRef = launch.ProviderTargetRef
+	permissionModeExplicit := strings.TrimSpace(value(input.PermissionModeID)) != ""
 	if err := s.applyCreateSessionComposerDefaults(ctx, &input); err != nil {
 		return CreateSessionResult{}, err
 	}
@@ -152,7 +153,13 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}
 	if providerTargetRefKind(input.ProviderTargetRef) == "agent_extension" {
 		nodeStartedAt = time.Now()
-		if err := s.validateExtensionComposerSettingsForCreate(ctx, workspaceID, cwd, input); err != nil {
+		if err := s.validateExtensionComposerSettingsForCreate(
+			ctx,
+			workspaceID,
+			cwd,
+			&input,
+			permissionModeExplicit,
+		); err != nil {
 			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "settings_validated", provider, nodeStartedAt, err)
 			return CreateSessionResult{}, err
 		}

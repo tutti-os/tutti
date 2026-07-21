@@ -144,24 +144,21 @@ func TestExtensionCapabilitiesRemainUnknownWithoutLiveRuntimeFacts(t *testing.T)
 }
 
 func TestExtensionSpawnPermissionUsesSemanticComposerIDs(t *testing.T) {
-	service := newIsolatedAgentService(newFakeRuntime())
-	service.ExtensionComposerProfiles = extensionComposerProfileResolverStub{
-		profile: ExtensionComposerProfile{
-			DefaultPermissionModeID:      "ask-before-write",
-			PermissionModeIDsAreSemantic: true,
+	projection, err := projectExtensionPermissionConfig(extensionPermissionProjectionInput{
+		Profile: ExtensionComposerProfile{
+			DefaultPermissionModeID: "ask-before-write",
+			PermissionModeIDPolicy:  ExtensionPermissionModeIDPolicySemantic,
 			PermissionModes: []ExtensionComposerPermissionMode{
 				{RuntimeID: "ask", Semantic: PermissionModeSemanticAskBeforeWrite},
 				{RuntimeID: "auto", Semantic: PermissionModeSemanticAuto},
 				{RuntimeID: "always-approve", Semantic: PermissionModeSemanticFullAccess},
 			},
 		},
-	}
-	config, err := service.extensionComposerPermissionConfig(context.Background(), map[string]any{
-		"extensionInstallationId": "spawn@1.0.0",
-	}, "")
+	})
 	if err != nil {
-		t.Fatalf("extensionComposerPermissionConfig: %v", err)
+		t.Fatalf("projectExtensionPermissionConfig: %v", err)
 	}
+	config := projection.Config
 	if config.DefaultValue != "ask-before-write" || len(config.Modes) != 3 {
 		t.Fatalf("permission config = %#v", config)
 	}

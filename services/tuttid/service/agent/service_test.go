@@ -2912,7 +2912,7 @@ func TestServiceGetComposerOptionsPreservesGenericExtensionTargetAndProjectsSign
 		WorkspaceID:   "workspace-1",
 		Cwd:           t.TempDir(),
 		Settings: ComposerSettings{
-			PermissionModeID: "ask-before-write",
+			PermissionModeID: "default",
 			ReasoningEffort:  "deep",
 		},
 	})
@@ -2929,18 +2929,19 @@ func TestServiceGetComposerOptionsPreservesGenericExtensionTargetAndProjectsSign
 		t.Fatalf("modelConfig = %#v, want live extension model options", options.ModelConfig)
 	}
 	if !options.PermissionConfig.Configurable ||
-		options.PermissionConfig.DefaultValue != "ask-before-write" ||
-		len(options.PermissionConfig.Modes) != 5 ||
+		options.PermissionConfig.DefaultValue != "default" ||
+		len(options.PermissionConfig.Modes) != 6 ||
 		options.PermissionConfig.Modes[1].Semantic != PermissionModeSemanticAcceptEdits ||
-		options.PermissionConfig.Modes[4].Semantic != PermissionModeSemanticFullAccess {
+		options.PermissionConfig.Modes[4].Semantic != PermissionModeSemanticFullAccess ||
+		options.PermissionConfig.Modes[5].Semantic != PermissionModeSemanticFullAccess {
 		t.Fatalf("permissionConfig = %#v, want runtime extension permission modes", options.PermissionConfig)
 	}
 	permissionModeIDs := make([]string, 0, len(options.PermissionConfig.Modes))
 	for _, mode := range options.PermissionConfig.Modes {
 		permissionModeIDs = append(permissionModeIDs, mode.ID)
 	}
-	if !slices.Equal(permissionModeIDs, []string{"ask-before-write", "accept-edits", "auto", "locked-down", "full-access"}) {
-		t.Fatalf("permission mode ids = %#v, want semantic representatives", permissionModeIDs)
+	if !slices.Equal(permissionModeIDs, []string{"default", "acceptEdits", "auto", "dontAsk", "bypassPermissions", "fullAccess"}) {
+		t.Fatalf("permission mode ids = %#v, want exact runtime ids", permissionModeIDs)
 	}
 	if !options.ReasoningConfig.Configurable ||
 		options.ReasoningConfig.CurrentValue != "enabled" ||
@@ -2975,8 +2976,8 @@ func TestServiceGetComposerOptionsPreservesGenericExtensionTargetAndProjectsSign
 	if len(runtime.startCalls) != 1 || runtime.startCalls[0].ProviderTargetRef["kind"] != "agent_extension" {
 		t.Fatalf("runtime start calls = %#v, want one target-scoped extension discovery", runtime.startCalls)
 	}
-	if runtime.startCalls[0].PermissionModeID != "ask-before-write" || runtime.startCalls[0].ReasoningEffort != "deep" {
-		t.Fatalf("runtime start settings = %#v, want signed semantic permission and requested reasoning", runtime.startCalls[0])
+	if runtime.startCalls[0].PermissionModeID != "default" || runtime.startCalls[0].ReasoningEffort != "deep" {
+		t.Fatalf("runtime start settings = %#v, want exact runtime permission and requested reasoning", runtime.startCalls[0])
 	}
 	if len(runtime.closeCalls) != 1 || len(runtime.sessions) != 0 {
 		t.Fatalf("runtime cleanup = calls %#v sessions %#v, want hidden discovery closed immediately", runtime.closeCalls, runtime.sessions)

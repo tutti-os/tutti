@@ -107,9 +107,10 @@ func (s *Service) validateExtensionComposerSettingsForCreate(
 	ctx context.Context,
 	workspaceID string,
 	cwd string,
-	input CreateSessionInput,
+	input *CreateSessionInput,
+	permissionModeExplicit bool,
 ) error {
-	if providerTargetRefKind(input.ProviderTargetRef) != "agent_extension" {
+	if input == nil || providerTargetRefKind(input.ProviderTargetRef) != "agent_extension" {
 		return nil
 	}
 	settings := ComposerSettings{
@@ -117,6 +118,12 @@ func (s *Service) validateExtensionComposerSettingsForCreate(
 		PermissionModeID: strings.TrimSpace(value(input.PermissionModeID)),
 		ReasoningEffort:  strings.TrimSpace(value(input.ReasoningEffort)),
 		Speed:            strings.TrimSpace(value(input.Speed)),
+	}
+	if !permissionModeExplicit {
+		// Persisted defaults are fallback preferences, not caller selections.
+		// Let Composer Options ignore a stale default and resolve runtime/profile
+		// state instead of treating old data as an explicit invalid request.
+		settings.PermissionModeID = ""
 	}
 	options, err := s.GetComposerOptions(ctx, ComposerOptionsInput{
 		AgentTargetID:            input.AgentTargetID,
@@ -129,6 +136,14 @@ func (s *Service) validateExtensionComposerSettingsForCreate(
 	if err != nil {
 		return err
 	}
+	if !permissionModeExplicit {
+		resolved := strings.TrimSpace(options.EffectiveSettings.PermissionModeID)
+		if resolved == "" {
+			input.PermissionModeID = nil
+		} else {
+			input.PermissionModeID = stringPointer(resolved)
+		}
+	}
 	if err := validateExtensionComposerOption(
 		preferencesbiz.AgentComposerDefaultsFieldModel,
 		settings.Model,
@@ -136,10 +151,18 @@ func (s *Service) validateExtensionComposerSettingsForCreate(
 	); err != nil {
 		return err
 	}
-	if settings.PermissionModeID != "" &&
+	if permissionModeExplicit && settings.PermissionModeID != "" &&
 		(!options.PermissionConfig.Configurable ||
 			!permissionModeConfigHasModeID(options.PermissionConfig, settings.PermissionModeID)) {
-		return fmt.Errorf("%w: permission mode is not supported by agent target", ErrInvalidArgument)
+		available := make([]string, 0, len(options.PermissionConfig.Modes))
+		for _, mode := range options.PermissionConfig.Modes {
+			available = append(available, strings.TrimSpace(mode.ID))
+		}
+		return &UnsupportedPermissionModeIDError{
+			AgentTargetID:              strings.TrimSpace(input.AgentTargetID),
+			PermissionModeID:           settings.PermissionModeID,
+			AvailablePermissionModeIDs: available,
+		}
 	}
 	reasoningConfig := composerReasoningConfigForSelectedModel(options)
 	if err := validateExtensionComposerOption(

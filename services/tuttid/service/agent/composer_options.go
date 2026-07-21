@@ -123,6 +123,7 @@ type ComposerOptions struct {
 }
 
 func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsInput) (ComposerOptions, error) {
+	requestedPermissionModeID := strings.TrimSpace(input.Settings.PermissionModeID)
 	provider := agentprovider.Normalize(input.Provider)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	if agentTargetID != "" {
@@ -201,18 +202,20 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	locale := normalizeComposerLocale(input.Locale)
 	permissionConfig := composerPermissionConfig(provider, effectiveSettings.PermissionModeID, locale)
 	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
-		var err error
-		permissionConfig, err = s.extensionComposerPermissionConfig(
-			ctx,
-			input.providerTargetRef,
-			effectiveSettings.PermissionModeID,
-		)
+		permissionProjection, err := projectExtensionPermissionConfig(extensionPermissionProjectionInput{
+			AgentTargetID: input.AgentTargetID,
+			FallbackID:    effectiveSettings.PermissionModeID,
+			Locale:        locale,
+			Profile:       extensionProfile,
+			Provider:      provider,
+			SelectedID:    requestedPermissionModeID,
+		})
 		if err != nil {
 			return ComposerOptions{}, err
 		}
-		if effectiveSettings.PermissionModeID == "" {
-			effectiveSettings.PermissionModeID = permissionConfig.DefaultValue
-		}
+		logExtensionPermissionProjectionDiagnostics(permissionProjection, input.AgentTargetID, provider)
+		permissionConfig = permissionProjection.Config
+		effectiveSettings.PermissionModeID = permissionProjection.CurrentID
 	}
 	modelOptions := s.enrichModelCapabilityOptions(ctx, provider, composerSelectedModelOptions(effectiveSettings.Model))
 	if composerProfileFor(provider).Behavior.ModelOptionsAuthoritative {
@@ -312,7 +315,18 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		}
 	}
 	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
-		options = s.mergeRuntimeComposerContextForComposerOptions(input, effectiveSettings, locale, extensionProfile, options)
+		var err error
+		options, err = s.mergeRuntimeComposerContextForComposerOptions(
+			input,
+			effectiveSettings,
+			locale,
+			extensionProfile,
+			requestedPermissionModeID,
+			options,
+		)
+		if err != nil {
+			return ComposerOptions{}, err
+		}
 		options = applyExtensionComposerCapabilities(options, extensionProfile)
 	}
 	options = s.applyModelPlanComposerOverlay(ctx, input, options)

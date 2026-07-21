@@ -52,3 +52,23 @@ func TestClassifySessionTitleTooLongHasStableReasonAndLimit(t *testing.T) {
 		t.Fatalf("params = %#v, want maxCharacters = %d", classified.Params, agentservice.MaxSessionTitleRunes)
 	}
 }
+
+func TestClassifyUnsupportedPermissionModeHasStableReasonAndOptions(t *testing.T) {
+	err := &agentservice.UnsupportedPermissionModeIDError{
+		AgentTargetID:              "extension:codebuddy",
+		PermissionModeID:           "full-access",
+		AvailablePermissionModeIDs: []string{"default", "bypassPermissions", "fullAccess"},
+	}
+	classified := Classify(err)
+	if classified.Reason != ReasonUnsupportedPermissionModeID || !errors.Is(classified, agentservice.ErrInvalidArgument) {
+		t.Fatalf("classified = %#v, want stable unsupported permission reason", classified)
+	}
+	if classified.Params["agentTargetId"] != "extension:codebuddy" ||
+		classified.Params["permissionModeId"] != "full-access" {
+		t.Fatalf("params = %#v, want target and rejected id", classified.Params)
+	}
+	available, ok := classified.Params["availablePermissionModeIds"].([]string)
+	if !ok || len(available) != 3 || available[1] != "bypassPermissions" {
+		t.Fatalf("availablePermissionModeIds = %#v", classified.Params["availablePermissionModeIds"])
+	}
+}

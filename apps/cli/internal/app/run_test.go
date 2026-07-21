@@ -967,6 +967,40 @@ func TestRunDynamicJSONMapsDaemonInvalidInputToExitCodeTwo(t *testing.T) {
 	}
 }
 
+func TestRunDynamicJSONPreservesUnsupportedPermissionReasonAndOmitsFalseRetryable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.start","path":["agent","start"],"summary":"Start agent","output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.start/invoke":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"code":"invalid_request","reason":"unsupported_permission_mode_id","developerMessage":"refresh Composer Options and use an advertised permission id","retryable":false}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "agent", "start"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("code = %d, want 2; stderr = %s", code, stderr.String())
+	}
+	assertCLIJSONError(t, stdout.Bytes(), "unsupported_permission_mode_id", "refresh Composer Options")
+	var envelope map[string]map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode CLI error: %v", err)
+	}
+	if _, present := envelope["error"]["retryable"]; present {
+		t.Fatalf("stdout = %s, want false retryable omitted by JSON contract", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestRunDynamicJSONUnknownCommandIsStructured(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

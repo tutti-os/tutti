@@ -945,6 +945,44 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   proving bypass mode allows an ordinary Bash request without
   `approval_requested`, while `AskUserQuestion` still surfaces user input.
 
+### Extension session create rejects a semantic permission id
+
+- Symptom:
+  An extension exposes a full-access option whose id is provider-specific, such
+  as `bypassPermissions`, but session creation fails after a caller sends
+  `full-access`. The Tutti CLI reports
+  `reasonCode=unsupported_permission_mode_id` and lists the currently accepted
+  ids.
+- Quick checks:
+  Query Composer Options for the exact Agent target. Compare
+  `permissionConfig.modes[].id` with `permissionConfig.modes[].semantic` and
+  inspect the submitted `permissionModeId`. Multiple ids may legitimately have
+  the same semantic.
+- Root cause:
+  `semantic` is provider-neutral classification metadata. It is only a launch
+  id for extensions whose signed Composer profile declares semantic launch
+  permission mapping. Runtime-id extensions require the exact provider-owned
+  id returned by Composer Options.
+- Fix:
+  Refresh Composer Options and round-trip the selected `id` verbatim. Do not
+  hard-code a provider permission alias or collapse modes by semantic. Extension
+  implementations keep the signed Composer profile as the launch contract;
+  runtime config options may enrich current state and labels but cannot rewrite
+  ids. Composer Options ignores a persisted default that is no longer in the
+  signed profile and falls back to live runtime state, then the profile default;
+  an explicit obsolete id still fails. Exact runtime ids also take precedence
+  over semantic and historical aliases in the Standard ACP lookup.
+- Validation:
+  Confirm Composer Options preserves every declared runtime id in profile order,
+  including multiple ids with the same semantic, and that the exact selected id
+  reaches the runtime start input and final Standard ACP mapping. Test an exact
+  runtime id that collides with another mode's semantic alias, plus an obsolete
+  persisted default. An invalid explicitly supplied semantic alias must fail
+  before hidden discovery or visible session creation.
+- References:
+  [extension_composer_options.go](../../../services/tuttid/service/agent/extension_composer_options.go)
+  [composer_runtime_context.go](../../../services/tuttid/service/agent/composer_runtime_context.go)
+
 ### Claude Code logs out after sending a message (invalid_grant, credentials wiped)
 
 - Symptom:

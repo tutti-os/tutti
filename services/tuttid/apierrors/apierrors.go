@@ -89,6 +89,7 @@ const (
 	ReasonWorkspaceAgentSessionNotFound                  = "workspace_agent_session_not_found"
 	ReasonWorkspaceAgentSessionTitleTooLong              = "workspace_agent_session_title_too_long"
 	ReasonWorkspaceAgentSessionUnavailable               = "workspace_agent_session_service_unavailable"
+	ReasonUnsupportedPermissionModeID                    = "unsupported_permission_mode_id"
 	ReasonAgentProviderUnavailable                       = "agent_provider_unavailable"
 	ReasonAgentRuntimeOperationReconciling               = "agent_runtime_operation_reconciling"
 	ReasonAgentRuntimeOperationFailed                    = "agent_runtime_operation_failed"
@@ -352,6 +353,21 @@ func Classify(err error) *ProtocolError {
 			params["availableModels"] = invalidModelErr.AvailableModels
 		}
 		return InvalidRequest("agent.invalid_model", WithCause(err), WithParams(params))
+	}
+	var unsupportedPermissionErr *agentservice.UnsupportedPermissionModeIDError
+	if errors.As(err, &unsupportedPermissionErr) {
+		params := map[string]any{
+			"agentTargetId":    strings.TrimSpace(unsupportedPermissionErr.AgentTargetID),
+			"permissionModeId": strings.TrimSpace(unsupportedPermissionErr.PermissionModeID),
+		}
+		if len(unsupportedPermissionErr.AvailablePermissionModeIDs) > 0 {
+			params["availablePermissionModeIds"] = unsupportedPermissionErr.AvailablePermissionModeIDs
+		}
+		return InvalidRequest(
+			ReasonUnsupportedPermissionModeID,
+			WithCause(err),
+			WithParams(params),
+		)
 	}
 	switch {
 	case errors.Is(err, agentservice.ErrNotAGitRepo):

@@ -25,12 +25,13 @@ func (r agentExtensionComposerProfileResolver) ResolveExtensionComposerProfile(
 		return agentservice.ExtensionComposerProfile{}, err
 	}
 	result := agentservice.ExtensionComposerProfile{
-		Capabilities: capabilities,
+		Capabilities:           capabilities,
+		PermissionModeIDPolicy: agentservice.ExtensionPermissionModeIDPolicyRuntime,
 	}
 	result.ModelConfigOptionID, result.PermissionConfigOptionID, result.ReasoningConfigOptionID = profile.ACPConfigOptionIDs()
 	if launchPermission := profile.LaunchPermissionSetting(); launchPermission != nil {
 		result.DefaultPermissionModeID = launchPermission.DefaultSemantic
-		result.PermissionModeIDsAreSemantic = true
+		result.PermissionModeIDPolicy = agentservice.ExtensionPermissionModeIDPolicySemantic
 		if result.DefaultPermissionModeID == "" {
 			result.DefaultPermissionModeID = "ask-before-write"
 		}

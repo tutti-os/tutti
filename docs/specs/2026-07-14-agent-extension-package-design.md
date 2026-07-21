@@ -781,15 +781,30 @@ Manifest 声明不能覆盖实际 ACP handshake，也不能开启当前 host 不
 
 `configOptions` is the canonical profile shape. During compatibility migration,
 the loader also accepts the earlier top-level `model` and `permission` source
-objects. These declarations identify or constrain ACP fields; they do not
-manufacture models, modes, values, labels, or commands absent from the current
-runtime catalog.
+objects. These declarations identify or constrain ACP fields. Model, reasoning,
+and command catalogs still require runtime facts; the signed `permissionModes`
+list is the independent launch-permission contract and does not depend on model
+catalog discovery.
 
 Known permission semantics are `ask-before-write`, `accept-edits`, `auto`,
 `locked-down`, `full-access`, and the plan-only `read-only` mapping. The composer
-projects a supported runtime value as its Tutti semantic tier, while the generic
-adapter retains and writes the signed `runtimeId`. Runtime values absent from
-the signed mapping are not admitted. Reasoning option ids
+returns each signed `runtimeId` as `permissionConfig.modes[].id` by default and
+retains every distinct runtime id even when several modes share one semantic.
+Only a profile with `launchSettings.permission` exposes the closed Tutti
+semantic as its public id, because that launch contract explicitly maps the
+semantic back to a runtime value. Clients must round-trip the advertised `id`
+verbatim; `semantic` is classification metadata and is never a portable
+provider permission id.
+
+Runtime ids are compared case-insensitively at the Standard ACP command
+boundary and therefore must be unique ignoring case. Exact declared runtime ids
+are registered before semantic and historical aliases; an alias can never
+redirect an advertised id to another permission tier.
+
+Runtime permission config options may enrich the current selection, label, and
+description for a signed runtime id. They cannot collapse modes by semantic,
+rewrite public ids, admit unsigned values, or make permission availability
+depend on model discovery. Reasoning option ids
 `thought_level`, `effort`, and `model_reasoning_effort` project as
 `reasoning_effort`, with deterministic alias precedence and the original id
 retained for ACP writes. Unrelated runtime options such as `sandbox` remain

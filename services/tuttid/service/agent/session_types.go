@@ -135,12 +135,24 @@ type ExtensionComposerProfileResolver interface {
 	ResolveExtensionComposerProfile(context.Context, string) (ExtensionComposerProfile, error)
 }
 
+// ExtensionPermissionModeIDPolicy defines the identifier contract exposed by
+// Composer Options for an extension permission mode. Runtime IDs are exact
+// provider-owned values. Semantic IDs are Tutti's closed permission vocabulary
+// and are only valid when the extension's launch contract explicitly consumes
+// that vocabulary.
+type ExtensionPermissionModeIDPolicy string
+
+const (
+	ExtensionPermissionModeIDPolicyRuntime  ExtensionPermissionModeIDPolicy = "runtime-id"
+	ExtensionPermissionModeIDPolicySemantic ExtensionPermissionModeIDPolicy = "semantic-id"
+)
+
 type ExtensionComposerProfile struct {
 	Capabilities                     []string
 	ModelConfigOptionID              string
 	PermissionConfigOptionID         string
 	DefaultPermissionModeID          string
-	PermissionModeIDsAreSemantic     bool
+	PermissionModeIDPolicy           ExtensionPermissionModeIDPolicy
 	PermissionModes                  []ExtensionComposerPermissionMode
 	ReasoningConfigOptionID          string
 	Skills                           *ExtensionComposerSkillProfile
