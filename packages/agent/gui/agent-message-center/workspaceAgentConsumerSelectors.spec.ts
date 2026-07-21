@@ -177,6 +177,7 @@ describe("workspaceAgentConsumerSelectors", () => {
           capabilities: {
             imageInput: false,
             modelImageInputRequired: false,
+            modelPlanBinding: false,
             skills: false,
             compact: false,
             tokenUsage: false,

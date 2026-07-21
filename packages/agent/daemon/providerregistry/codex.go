@@ -23,7 +23,8 @@ func codexDescriptor() ProviderDescriptor {
 					"OPENAI_API_BASE_URL",
 					"OPENAI_API_BASE",
 				},
-				ConfigKind: EndpointConfigKindCodexCLI,
+				ConfigKind:        EndpointConfigKindCodexCLI,
+				ModelPlanProtocol: ModelPlanProtocolOpenAI,
 			},
 		},
 		Status: StatusDescriptor{
@@ -91,6 +92,7 @@ func codexDescriptor() ProviderDescriptor {
 				CapabilityPlanMode,
 				CapabilityInterrupt,
 				CapabilityActiveTurnGuidance,
+				CapabilityModelPlanBinding,
 				CapabilityPlanImplementation,
 				CapabilityPermissionModeChangeDuringTurn,
 				CapabilityPermissionModeChangeDeferred,

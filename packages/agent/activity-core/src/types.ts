@@ -695,6 +695,7 @@ export interface AgentActivitySessionPermissionConfig {
 export interface AgentActivitySessionCapabilities {
   imageInput: boolean;
   modelImageInputRequired: boolean;
+  modelPlanBinding: boolean;
   skills: boolean;
   compact: boolean;
   tokenUsage: boolean;

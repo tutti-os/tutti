@@ -1090,6 +1090,346 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/model-plans:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listModelPlans
+      tags:
+        - model-plan
+      summary: List workspace model access plans
+      description: Returns every named model access plan for the workspace. Credentials never appear in responses; only hasApiKey is exposed.
+      responses:
+        "200":
+          description: Model access plans
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListModelPlansResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: createModelPlan
+      tags:
+        - model-plan
+      summary: Create one named model access plan
+      description: Creates a plan for one access scheme (official subscription, coding plan, relay, or custom compatible endpoint). Multiple named plans may share one protocol. New plans start undetected and pending first use.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutModelPlanRequest"
+      responses:
+        "200":
+          description: Created model access plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelPlan"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/model-plans/detect:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    post:
+      operationId: detectModelPlan
+      tags:
+        - model-plan
+      summary: Run the staged connection detection for a plan or draft
+      description: Runs the network, auth, model discovery, and minimal real inference stages in order and reports one structured result per stage. The agent_runtime stage stays pending until the plan completes its first real agent call. With planId the outcome persists onto the stored plan; omitted fields fall back to stored values. Without planId the request verifies an unsaved draft.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DetectModelPlanRequest"
+      responses:
+        "200":
+          description: Staged detection outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectModelPlanResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/ModelPlanNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/model-plans/{modelPlanID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/ModelPlanID"
+    get:
+      operationId: getModelPlan
+      tags:
+        - model-plan
+      summary: Get one model access plan
+      responses:
+        "200":
+          description: Model access plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelPlan"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/ModelPlanNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    put:
+      operationId: updateModelPlan
+      tags:
+        - model-plan
+      summary: Update one model access plan
+      description: Replaces the mutable plan fields. Omitting apiKey keeps the stored credential. Changing the credential, base URL, or protocol resets detection and first-use state, so the plan must be re-verified before it reads as usable. Changes affect only calls that have not started yet.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutModelPlanRequest"
+      responses:
+        "200":
+          description: Updated model access plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelPlan"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/ModelPlanNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    delete:
+      operationId: deleteModelPlan
+      tags:
+        - model-plan
+      summary: Delete one model access plan
+      description: Deletion is blocked with a 409 while any agent target still references the plan. Callers rebind or clear those bindings first; the references endpoint lists them.
+      responses:
+        "200":
+          description: Model access plan deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteModelPlanResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/ModelPlanNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/ModelPlanReferencedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/duplicate:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/ModelPlanID"
+    post:
+      operationId: duplicateModelPlan
+      tags:
+        - model-plan
+      summary: Duplicate one model access plan
+      description: Clones the plan, including its credential, into a new disabled plan that must be re-detected before use.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DuplicateModelPlanRequest"
+      responses:
+        "200":
+          description: Duplicated model access plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelPlan"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/ModelPlanNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/enabled:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/ModelPlanID"
+    patch:
+      operationId: setModelPlanEnabled
+      tags:
+        - model-plan
+      summary: Enable or disable one model access plan
+      description: Disabling a plan blocks new calls through it without deleting the configuration. Running calls are never interrupted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetModelPlanEnabledRequest"
+      responses:
+        "200":
+          description: Updated model access plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelPlan"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/ModelPlanNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/references:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/ModelPlanID"
+    get:
+      operationId: listModelPlanReferences
+      tags:
+        - model-plan
+      summary: List consumers that reference one model access plan
+      description: Returns the agent targets that currently reference the plan so change and delete impact can be shown before committing.
+      responses:
+        "200":
+          description: Plan references
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelPlanReferencesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/ModelPlanNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-model-bindings:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listAgentModelBindings
+      tags:
+        - model-plan
+      summary: List per-workspace agent target model bindings
+      description: Returns the default model plan and default model bound to each agent target in the workspace. Targets without a binding keep their provider-native model source.
+      responses:
+        "200":
+          description: Agent model bindings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAgentModelBindingsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-model-bindings/{agentTargetID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: agentTargetID
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    put:
+      operationId: setAgentModelBinding
+      tags:
+        - model-plan
+      summary: Set or clear one agent target model binding
+      description: Binds the agent target to a default model plan and model for the workspace. An all-empty body clears the binding. Changes affect only sessions that have not started; running sessions keep their recorded configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAgentModelBindingRequest"
+      responses:
+        "200":
+          description: Updated agent model binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentModelBinding"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/AgentTargetNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/apps:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -4222,6 +4562,13 @@ components:
       schema:
         type: string
         minLength: 1
+    ModelPlanID:
+      name: modelPlanID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     WorkspaceFilePath:
       name: path
       in: query
@@ -4474,6 +4821,45 @@ components:
                   code: workspace_operation_failed
                   reason: workspace_operation_failed
                   developerMessage: workspace operation failed
+    AgentTargetNotFoundError:
+      description: Agent target was not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            agentTargetNotFound:
+              value:
+                error:
+                  code: agent_target_not_found
+                  reason: agent_target_not_found
+                  developerMessage: agent target not found
+    ModelPlanNotFoundError:
+      description: Model access plan was not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            modelPlanNotFound:
+              value:
+                error:
+                  code: model_plan_not_found
+                  reason: model_plan_not_found
+                  developerMessage: model plan not found
+    ModelPlanReferencedError:
+      description: Model plan is still referenced by agent targets
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            modelPlanReferenced:
+              value:
+                error:
+                  code: model_plan_referenced
+                  reason: model_plan_referenced
+                  developerMessage: model plan is still referenced; rebind or disable consumers first
     PreferencesOperationError:
       description: Desktop preferences operation failed in an upstream adapter or command
       content:
@@ -5167,6 +5553,9 @@ components:
             - agent_quick_prompt_not_found
             - agent_quick_prompt_conflict
             - agent_quick_prompt_operation_failed
+            - agent_target_not_found
+            - model_plan_not_found
+            - model_plan_referenced
         reason:
           type: string
         params:
@@ -5928,6 +6317,369 @@ components:
       properties:
         workspaceId:
           type: string
+    ModelPlanProtocol:
+      type: string
+      description: Wire protocol family used to call the plan's models.
+      enum:
+        - openai
+        - anthropic
+    ModelPlanTemplateKind:
+      type: string
+      description: Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
+      enum:
+        - official_subscription
+        - coding_plan
+        - domestic
+        - relay
+        - custom
+    ModelPlanStatus:
+      type: string
+      description: Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+      enum:
+        - disabled
+        - undetected
+        - detection_failed
+        - pending_first_use
+        - ready
+    ModelPlanDetectionStage:
+      type: string
+      enum:
+        - network
+        - auth
+        - model_discovery
+        - inference
+        - agent_runtime
+    ModelPlanStageStatus:
+      type: string
+      enum:
+        - passed
+        - failed
+        - skipped
+        - pending
+    ModelPlanStageResult:
+      type: object
+      additionalProperties: false
+      required:
+        - stage
+        - status
+      properties:
+        stage:
+          $ref: "#/components/schemas/ModelPlanDetectionStage"
+        status:
+          $ref: "#/components/schemas/ModelPlanStageStatus"
+        latencyMs:
+          type: integer
+          format: int64
+          nullable: true
+        failureReason:
+          type: string
+          nullable: true
+          description: Machine-readable failure code such as connection_failed, unauthorized, model_catalog_unavailable, model_rejected, inference_failed.
+        remedy:
+          type: string
+          nullable: true
+          description: Machine-readable remedy code such as check_network_or_base_url, check_api_key, add_models_manually, check_model_id, select_model. UI layers localize.
+        detail:
+          type: string
+          nullable: true
+        checkedAt:
+          type: string
+          format: date-time
+          nullable: true
+    ModelPlanDetection:
+      type: object
+      additionalProperties: false
+      required:
+        - stages
+      properties:
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelPlanStageResult"
+        checkedAt:
+          type: string
+          format: date-time
+          nullable: true
+        model:
+          type: string
+          nullable: true
+          description: Model id exercised by the inference stage.
+    ModelPlanFirstUse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - pending
+            - completed
+        agentTargetId:
+          type: string
+          nullable: true
+        agentSessionId:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+    ModelPlanModel:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        capabilities:
+          type: array
+          nullable: true
+          items:
+            type: string
+    ModelPlan:
+      type: object
+      additionalProperties: false
+      description: Workspace-level model access plan. Credentials are stored daemon-side only; hasApiKey is the only credential signal in responses.
+      required:
+        - id
+        - workspaceId
+        - name
+        - templateKind
+        - protocol
+        - hasApiKey
+        - models
+        - enabled
+        - status
+        - detection
+        - firstUse
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        name:
+          type: string
+        templateKind:
+          $ref: "#/components/schemas/ModelPlanTemplateKind"
+        protocol:
+          $ref: "#/components/schemas/ModelPlanProtocol"
+        hasApiKey:
+          type: boolean
+        baseUrl:
+          type: string
+          nullable: true
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelPlanModel"
+        defaultModel:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/ModelPlanStatus"
+        detection:
+          $ref: "#/components/schemas/ModelPlanDetection"
+        firstUse:
+          $ref: "#/components/schemas/ModelPlanFirstUse"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ListModelPlansResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - plans
+      properties:
+        plans:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelPlan"
+    PutModelPlanRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - protocol
+      properties:
+        name:
+          type: string
+          minLength: 1
+        templateKind:
+          allOf:
+            - $ref: "#/components/schemas/ModelPlanTemplateKind"
+          nullable: true
+        protocol:
+          $ref: "#/components/schemas/ModelPlanProtocol"
+        apiKey:
+          type: string
+          nullable: true
+          description: Omitted or null keeps the stored credential on update; a value replaces it. Never echoed back.
+        baseUrl:
+          type: string
+          nullable: true
+        models:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/ModelPlanModel"
+        defaultModel:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+          nullable: true
+    DuplicateModelPlanRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          nullable: true
+    SetModelPlanEnabledRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          x-go-type: "*bool"
+    DetectModelPlanRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        planId:
+          type: string
+          nullable: true
+          description: When set, omitted fields fall back to the stored plan and the outcome persists onto it.
+        protocol:
+          allOf:
+            - $ref: "#/components/schemas/ModelPlanProtocol"
+          nullable: true
+        baseUrl:
+          type: string
+          nullable: true
+        apiKey:
+          type: string
+          nullable: true
+        models:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/ModelPlanModel"
+        model:
+          type: string
+          nullable: true
+          description: Model id for the inference stage; defaults to the plan default model, then the first known model.
+    DetectModelPlanResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - detection
+        - discoveredModels
+      properties:
+        detection:
+          $ref: "#/components/schemas/ModelPlanDetection"
+        discoveredModels:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelPlanModel"
+    ModelPlanReference:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - id
+      properties:
+        kind:
+          type: string
+          enum:
+            - agent_target
+        id:
+          type: string
+        name:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+          description: How the agent target uses the plan, currently default.
+    ModelPlanReferencesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - references
+      properties:
+        references:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelPlanReference"
+    DeleteModelPlanResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - modelPlanId
+      properties:
+        modelPlanId:
+          type: string
+    AgentModelBinding:
+      type: object
+      additionalProperties: false
+      description: Per-workspace default model configuration for one agent target. Empty modelPlanId means the target keeps its provider-native model source.
+      required:
+        - workspaceId
+        - agentTargetId
+      properties:
+        workspaceId:
+          type: string
+        agentTargetId:
+          type: string
+        modelPlanId:
+          type: string
+          nullable: true
+        defaultModel:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    ListAgentModelBindingsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - bindings
+      properties:
+        bindings:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentModelBinding"
+    SetAgentModelBindingRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        modelPlanId:
+          type: string
+          nullable: true
+        defaultModel:
+          type: string
+          nullable: true
+          description: Must belong to the referenced plan's model list when a plan is set.
     WorkspaceAppInstallUserPhase:
       type: string
       enum:
@@ -8408,6 +9160,7 @@ components:
       required:
         - imageInput
         - modelImageInputRequired
+        - modelPlanBinding
         - skills
         - compact
         - tokenUsage
@@ -8428,6 +9181,11 @@ components:
           type: boolean
         modelImageInputRequired:
           type: boolean
+        modelPlanBinding:
+          type: boolean
+          description: >-
+            The provider runtime accepts a session-scoped model access plan
+            endpoint and credential.
         skills:
           type: boolean
         compact:

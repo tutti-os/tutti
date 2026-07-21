@@ -92,6 +92,7 @@ func normalizeProviderIdentity(value string) string {
 const (
 	CapabilityImageInput                     = "imageInput"
 	CapabilityModelImageInputRequired        = "modelImageInputRequired"
+	CapabilityModelPlanBinding               = "modelPlanBinding"
 	CapabilitySkills                         = "skills"
 	CapabilityCompact                        = "compact"
 	CapabilityTokenUsage                     = "tokenUsage"
@@ -112,6 +113,7 @@ const (
 var knownCapabilities = [...]string{
 	CapabilityImageInput,
 	CapabilityModelImageInputRequired,
+	CapabilityModelPlanBinding,
 	CapabilitySkills,
 	CapabilityCompact,
 	CapabilityTokenUsage,

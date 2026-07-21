@@ -121,6 +121,7 @@ test("desktop agent activity adapter maps typed canonical session control fields
         imageInput: false,
         interrupt: false,
         modelImageInputRequired: false,
+        modelPlanBinding: false,
         permissionModeChangeDeferred: false,
         permissionModeChangeDuringTurn: false,
         planImplementation: false,
@@ -711,6 +712,7 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
             imageInput: true,
             interrupt: true,
             modelImageInputRequired: true,
+            modelPlanBinding: true,
             permissionModeChangeDeferred: false,
             permissionModeChangeDuringTurn: false,
             planImplementation: false,
@@ -783,6 +785,7 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
   assert.equal(options.capabilities?.planMode, true);
   assert.equal(options.capabilities?.browserUse, true);
   assert.equal(options.capabilities?.activeTurnGuidance, true);
+  assert.equal(options.capabilities?.modelPlanBinding, true);
   assert.equal(diagnostics.length, 1);
   const diagnostic = diagnostics[0] as {
     details: Record<string, unknown>;

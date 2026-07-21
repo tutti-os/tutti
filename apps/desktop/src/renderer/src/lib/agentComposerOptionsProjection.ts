@@ -93,6 +93,7 @@ function sessionCapabilitiesFromValue(
     imageInput: capabilities.imageInput === true,
     interrupt: capabilities.interrupt === true,
     modelImageInputRequired: capabilities.modelImageInputRequired === true,
+    modelPlanBinding: capabilities.modelPlanBinding === true,
     permissionModeChangeDeferred:
       capabilities.permissionModeChangeDeferred === true,
     permissionModeChangeDuringTurn:

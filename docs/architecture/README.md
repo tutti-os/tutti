@@ -25,6 +25,7 @@ Stable change rules live in [Conventions](../conventions/README.md).
 - [Agent Reference Mention Resolution](./agent-reference-mention-resolution.md)
 - [Tutti Agent Readiness Bootstrap](./tutti-agent-readiness-bootstrap.md)
 - [Agent Provider CLI Updates](./agent-provider-cli-updates.md)
+- [Model Access Plans](./model-access-plans.md)
 
 ## Desktop And Transport
 

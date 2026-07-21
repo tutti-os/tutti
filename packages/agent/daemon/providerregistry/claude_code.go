@@ -18,7 +18,8 @@ func claudeCodeDescriptor() ProviderDescriptor {
 					"ANTHROPIC_BASE_URL",
 					"ANTHROPIC_API_BASE_URL",
 				},
-				ConfigKind: EndpointConfigKindClaudeSettings,
+				ConfigKind:        EndpointConfigKindClaudeSettings,
+				ModelPlanProtocol: ModelPlanProtocolAnthropic,
 			},
 		},
 		Status: StatusDescriptor{
@@ -86,6 +87,7 @@ func claudeCodeDescriptor() ProviderDescriptor {
 				"planMode",
 				CapabilityInterrupt,
 				CapabilityActiveTurnGuidance,
+				CapabilityModelPlanBinding,
 				"permissionModeChangeDuringTurn",
 			},
 			PermissionConfigurable:  true,

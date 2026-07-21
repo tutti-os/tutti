@@ -3,6 +3,7 @@
 export const AGENT_CAPABILITY_KEYS = [
   "imageInput",
   "modelImageInputRequired",
+  "modelPlanBinding",
   "skills",
   "compact",
   "tokenUsage",

@@ -376,6 +376,28 @@ func TestResolveProviderProjectionsDoNotExposeDescriptors(t *testing.T) {
 	}
 }
 
+func TestResolveModelPlanProtocolOnlyForPreparedProviders(t *testing.T) {
+	tests := []struct {
+		provider string
+		want     ModelPlanProtocol
+	}{
+		{provider: CodexProviderID, want: ModelPlanProtocolOpenAI},
+		{provider: ClaudeCodeProviderID, want: ModelPlanProtocolAnthropic},
+		{provider: TuttiAgentProviderID, want: ModelPlanProtocolOpenAI},
+	}
+	for _, test := range tests {
+		protocol, ok := ResolveModelPlanProtocol(test.provider)
+		if !ok || protocol != test.want {
+			t.Fatalf("ResolveModelPlanProtocol(%q) = %q, %v; want %q, true", test.provider, protocol, ok, test.want)
+		}
+	}
+	for _, provider := range []string{OpenCodeProviderID, CursorProviderID, "unknown"} {
+		if protocol, ok := ResolveModelPlanProtocol(provider); ok {
+			t.Fatalf("ResolveModelPlanProtocol(%q) = %q, true; want unresolved", provider, protocol)
+		}
+	}
+}
+
 func TestValidateRejectsUnsupportedDescriptorStrategies(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -389,6 +411,12 @@ func TestValidateRejectsUnsupportedDescriptorStrategies(t *testing.T) {
 		{name: "runtime command", mutate: func(value *ProviderDescriptor) { value.Runtime.Command[1] = " " }},
 		{name: "runtime client info", mutate: func(value *ProviderDescriptor) { value.Runtime.ClientInfoName = " " }},
 		{name: "runtime auth message", mutate: func(value *ProviderDescriptor) { value.Runtime.AuthRequiredMessage = " " }},
+		{name: "model plan protocol", mutate: func(value *ProviderDescriptor) { value.Runtime.Endpoint.ModelPlanProtocol = "poison" }},
+		{name: "model plan capability missing", mutate: func(value *ProviderDescriptor) {
+			value.ComposerProfile.Capabilities = slices.DeleteFunc(value.ComposerProfile.Capabilities, func(capability string) bool {
+				return capability == CapabilityModelPlanBinding
+			})
+		}},
 		{name: "status kind", mutate: func(value *ProviderDescriptor) { value.Status.Kind = "poison" }},
 		{name: "status auth command", mutate: func(value *ProviderDescriptor) { value.Status.AuthStatusCommand[0] = " " }},
 		{name: "status auth marker", mutate: func(value *ProviderDescriptor) { value.Status.AuthMarkerPaths[0] = " " }},

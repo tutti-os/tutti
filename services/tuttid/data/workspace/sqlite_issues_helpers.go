@@ -55,6 +55,15 @@ func isSQLiteUniqueConstraintError(err error) bool {
 	}
 }
 
+func isSQLiteForeignKeyConstraintError(err error) bool {
+	var sqliteErr *sqlitedriver.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+	return sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY ||
+		sqliteErr.Code()&0xff == sqlite3.SQLITE_CONSTRAINT && strings.Contains(strings.ToLower(sqliteErr.Error()), "foreign key")
+}
+
 func issueListWhere(filter workspaceissues.IssueListFilter) ([]string, []any) {
 	return issueListWhereForFilter(filter, true)
 }

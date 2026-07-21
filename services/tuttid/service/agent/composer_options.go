@@ -329,6 +329,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		}
 		options = applyExtensionComposerCapabilities(options, extensionProfile)
 	}
+	options = s.applyModelPlanComposerOverlay(ctx, input, options)
 	return options, nil
 }
 
