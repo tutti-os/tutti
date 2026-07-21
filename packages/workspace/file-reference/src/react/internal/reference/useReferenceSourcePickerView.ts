@@ -30,7 +30,8 @@ import {
 } from "@tutti-os/workspace-file-preview";
 import {
   ROOT_CHILDREN_KEY,
-  createReferenceSourcePickerController
+  createReferenceSourcePickerController,
+  type ReferencePickerSelectionMode
 } from "./referenceSourcePickerController.ts";
 
 export type { WorkspaceFileManagerArrangeMode };
@@ -130,6 +131,7 @@ export interface UseReferenceSourcePickerViewInput {
    */
   onConfirmBundles?: (result: ReferenceGroupedSelection) => void;
   provenanceFilter?: ReferenceProvenanceFilter | null;
+  selectionMode?: ReferencePickerSelectionMode;
 }
 
 /**
@@ -146,14 +148,20 @@ export function useReferenceSourcePickerView({
   onConfirm,
   isNodeSelectable,
   onConfirmBundles,
-  provenanceFilter = null
+  provenanceFilter = null,
+  selectionMode = "multiple"
 }: UseReferenceSourcePickerViewInput) {
   const readSnapshot = useSnapshot as <T extends object>(store: T) => T;
   const scope = useMemo<ReferenceScope>(() => ({ workspaceId }), [workspaceId]);
 
   const controller = useMemo(
-    () => createReferenceSourcePickerController({ aggregator, scope }),
-    [aggregator, scope]
+    () =>
+      createReferenceSourcePickerController({
+        aggregator,
+        scope,
+        selectionMode
+      }),
+    [aggregator, scope, selectionMode]
   );
   const snapshot = readSnapshot(controller.store);
 
@@ -836,12 +844,18 @@ export function useReferenceSourcePickerView({
     focusedNode,
     selection: selectableSelection,
     selectionCount: selectableSelection.length,
+    canCreateDirectory: capabilities?.directoryCreatable === true,
     setActiveSource,
     enterFolder,
     selectGroup,
     navigateToBreadcrumb,
     navigateToRoot,
     setFocusedNode,
+    createDirectory: async (parent: ReferenceNode | null, name: string) => {
+      const created = await controller.createDirectory(parent, name);
+      setFocusedNode(created);
+      return created;
+    },
     setSearchQuery: (query: string) =>
       controller.setSearchQuery(query, searchScopeNodeId),
     setFilters: (filters: string[]) =>

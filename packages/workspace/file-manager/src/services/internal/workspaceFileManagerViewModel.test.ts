@@ -203,7 +203,8 @@ test("search mode disables mutating file manager actions", () => {
 
   assert.equal(rootView.canImportFromDrop, false);
   assert.equal(contextMenuView.contextMenu?.entry?.path, searchResultPath);
-  assert.equal(contextMenuView.showCreateAction, false);
+  assert.equal(contextMenuView.showCreateDirectoryAction, false);
+  assert.equal(contextMenuView.showCreateFileAction, false);
   assert.equal(contextMenuView.showDeleteAction, false);
   assert.equal(contextMenuView.showImportAction, false);
   assert.equal(contextMenuView.showMoveAction, false);
@@ -348,7 +349,7 @@ test("keeps default-browser opening available in external locations", () => {
   assert.equal(contextMenuView.showOpenInDefaultBrowserAction, true);
 });
 
-test("keeps create context-menu action behind create capabilities", () => {
+test("keeps each create context-menu action behind its matching capability", () => {
   const store = createStore(
     createCapabilities({
       canCreateDirectory: false,
@@ -360,13 +361,21 @@ test("keeps create context-menu action behind create capabilities", () => {
     resolveWorkspaceFileManagerContextMenuViewState({
       state: store
     });
-  assert.equal(withoutCreateCapabilities.showCreateAction, false);
+  assert.equal(withoutCreateCapabilities.showCreateDirectoryAction, false);
+  assert.equal(withoutCreateCapabilities.showCreateFileAction, false);
 
   store.capabilities.canCreateFile = true;
-  const withCreateCapability = resolveWorkspaceFileManagerContextMenuViewState({
-    state: store
-  });
-  assert.equal(withCreateCapability.showCreateAction, true);
+  const withFileCreateCapability =
+    resolveWorkspaceFileManagerContextMenuViewState({ state: store });
+  assert.equal(withFileCreateCapability.showCreateDirectoryAction, false);
+  assert.equal(withFileCreateCapability.showCreateFileAction, true);
+
+  store.capabilities.canCreateDirectory = true;
+  store.capabilities.canCreateFile = false;
+  const withDirectoryCreateCapability =
+    resolveWorkspaceFileManagerContextMenuViewState({ state: store });
+  assert.equal(withDirectoryCreateCapability.showCreateDirectoryAction, true);
+  assert.equal(withDirectoryCreateCapability.showCreateFileAction, false);
 });
 
 function createCopy() {

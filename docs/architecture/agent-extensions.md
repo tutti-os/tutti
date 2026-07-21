@@ -74,9 +74,14 @@ active installation version.
 
 At launch the runtime controller asks `AgentRuntimeResolver` for unknown
 providers. The resolver verifies the fixed installation reference, evaluates
-the declarative discovery profile, prefers a compatible runtime already on the
-user's PATH, and creates the generic standard ACP adapter. It never loads
-JavaScript, React, Go plugins, or native modules from the extension.
+the declarative discovery profile, prefers a compatible local runtime, and
+creates the generic standard ACP adapter. A candidate may add signed
+`searchPaths` entries with `scope: "user"`; every path must be a bounded
+relative path below the current user's home directory. Those paths are
+prepended to the shared runtime-command environment, so the extension can
+describe an official vendor install location without adding provider-specific
+filesystem code to `tuttid`. It never loads JavaScript, React, Go plugins, or
+native modules from the extension.
 
 The generic adapter applies declarative tool aliases before canonical activity
 normalization and maps composer permission semantics onto runtime permission
@@ -257,11 +262,14 @@ snapshot. Partial signed-authority state never falls back to legacy validation,
 and legacy packages are redownloaded into signed authority when their source is
 reachable rather than being reinterpreted as a signed installation.
 
-Setup probes a compatible executable from the daemon PATH first. A compatible
-local runtime wins even when a managed runtime exists. Otherwise, the installer
-runs manifest-owned argv directly in a private staging root beside the fixed
-user-local installation; it does not invoke a shell or mutate any project
-package manifest, lockfile, `node_modules`, or global package state.
+Setup probes a compatible executable from signed user-relative search paths and
+the shared daemon runtime PATH first. A compatible local runtime wins even when
+a managed runtime exists. The desktop daemon does not source interactive shell
+startup files such as `.zshrc`; vendor install locations outside its process
+PATH belong in extension metadata, not provider-specific core code. Otherwise,
+the installer runs manifest-owned argv directly in a private staging root beside
+the fixed user-local installation; it does not invoke a shell or mutate any
+project package manifest, lockfile, `node_modules`, or global package state.
 Environment inheritance is allowlisted. Runner CWD and package-manager
 cache/config live in a Tutti-managed scratch directory under that same
 user-local runtime root. Tutti rejects symlinks in every existing ancestor of

@@ -36,6 +36,7 @@ type PatchAgentComposerDefaultsForTargetInput struct {
 }
 
 type PutInput struct {
+	AgentCLIUpdateCheckEnabled bool
 	// AgentComposerDefaultsByProvider is accepted for wire compatibility but
 	// ignored on write: the legacy provider-keyed defaults are frozen after
 	// the one-time migration onto AgentComposerDefaultsByAgentTarget.
@@ -137,6 +138,7 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 	windowSnapping := resolveWindowSnapping(stored, input.WindowSnapping)
 
 	preferences, err := s.Store.PutDesktopPreferences(ctx, preferencesbiz.DesktopPreferences{
+		AgentCLIUpdateCheckEnabled: input.AgentCLIUpdateCheckEnabled,
 		// The legacy provider-keyed defaults are frozen: client input is
 		// ignored so nothing writes the old field anymore; the stored value
 		// is only kept for downgrade compatibility and should pass through

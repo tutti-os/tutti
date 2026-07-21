@@ -41,7 +41,25 @@ test("React Compiler preserves field-keyed Agent GUI host projections", async ()
   assert.match(compiled, /nextIdentity\.nodeId/);
   assert.match(compiled, /nextIdentity\.workspaceId/);
   assert.match(compiled, /nextWorkspace\.fileReferenceAdapter/);
+  assert.match(compiled, /nextWorkspace\.selectProjectDirectory/);
   assert.match(compiled, /nextHostActions\.onOpenConversationWindow/);
+});
+
+test("forwards the explicitly selected project directory capability", () => {
+  const selectProjectDirectory = async () => ({ path: "/workspace/project" });
+  const result = useStableDesktopAgentGUIHostProps({
+    hostActions: {},
+    hostCapabilities: {},
+    identity: { currentUserId: null, nodeId: "node-1", workspaceId: "ws-1" },
+    renderSlots: {},
+    runtimeRequests: {},
+    workspace: { selectProjectDirectory }
+  } as never);
+
+  assert.strictEqual(
+    result.workspace.selectProjectDirectory,
+    selectProjectDirectory
+  );
 });
 
 test("forwards every runtimeRequests field instead of silently dropping new ones", () => {

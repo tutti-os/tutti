@@ -5,6 +5,9 @@ import { readDeveloperPanelVisible } from "./developerPanelVisibility.ts";
 export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
   return proxy({
     activeSection: "general",
+    agentTab: "general",
+    agentFocusProvider: null,
+    agentFocusRequestID: 0,
     developerPanelVisible: readDeveloperPanelVisible(),
     developerLogs: {
       clearing: false,

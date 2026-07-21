@@ -60,3 +60,10 @@ test("workspace app context advertises the Agent Activity automation capability"
     /capabilities:\s*\[[\s\S]*?"agentActivity@1"/
   );
 });
+
+test("workspace app user project removal is normalized and workspace scoped", () => {
+  assert.match(
+    workspaceAppContextSource,
+    /appExternal\.userProjectsRemove,[\s\S]*?requireWorkspaceAppGuestContext\(event\.sender\)[\s\S]*?normalizeTuttiExternalUserProjectPathInput\(\s*payload,\s*"remove"\s*\)[\s\S]*?operation: "userProjects\.remove",[\s\S]*?workspaceId: context\.workspaceID/
+  );
+});

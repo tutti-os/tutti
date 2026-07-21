@@ -429,6 +429,7 @@ export interface TuttiExternalBridge {
     getSnapshot(): Promise<WorkspaceUserProjectServiceSnapshot>;
     list(): Promise<{ projects: WorkspaceUserProject[] }>;
     move(input: WorkspaceUserProjectMoveInput): Promise<void>;
+    remove(input: TuttiExternalUserProjectPathInput): Promise<void>;
     prepareSelection(
       input: WorkspaceUserProjectSelectionPreparationInput
     ): Promise<WorkspaceUserProjectSelectionPreparation>;
@@ -572,6 +573,13 @@ export type TuttiExternalRendererRequest =
       appId: string;
       input: WorkspaceUserProjectMoveInput;
       operation: "userProjects.move";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      input: TuttiExternalUserProjectPathInput;
+      operation: "userProjects.remove";
       requestId: string;
       workspaceId: string;
     }

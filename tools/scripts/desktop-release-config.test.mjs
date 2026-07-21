@@ -188,6 +188,33 @@ test("desktop release workflow passes tsh-aligned Feishu card context", async ()
   assert.doesNotMatch(workflow, /RELEASE_ASSET_DIRECTORY:\s+release-assets/);
 });
 
+test("desktop release workflow scopes generated notes to the previous release tag", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const previousTagIndex = workflow.indexOf(
+    "name: Resolve previous GitHub release tag"
+  );
+  const stageIndex = workflow.indexOf("name: Stage GitHub release assets");
+
+  assert.notEqual(
+    previousTagIndex,
+    -1,
+    "the previous release tag should be resolved"
+  );
+  assert.ok(
+    previousTagIndex < stageIndex,
+    "the previous release tag should be resolved first"
+  );
+  assert.match(
+    workflow,
+    /node apps\/desktop\/scripts\/resolve-previous-release-tag\.mjs/
+  );
+  assert.match(workflow, /generate_release_notes:\s+true/);
+  assert.match(
+    workflow,
+    /previous_tag:\s+\${{\s*steps\.previous-release-tag\.outputs\.tag\s*}}/
+  );
+});
+
 test("desktop release workflow defaults Feishu notifications on outside manual dispatch", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
@@ -362,6 +389,37 @@ test("desktop release workflow generates summaries and stable changelog metadata
   assert.match(
     releaseWorkflows,
     /RELEASE_SUMMARY_PATH:\s+release-summary\/release-summary\.json/
+  );
+});
+
+test("desktop promotion consumes the checksummed summary staged with the draft", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+
+  const summaryIndex = workflow.indexOf(
+    "name: Generate desktop release summary"
+  );
+  const validationIndex = workflow.indexOf(
+    "name: Validate desktop release summary"
+  );
+  const checksumIndex = workflow.indexOf("name: Generate checksums");
+  const draftIndex = workflow.indexOf("name: Stage GitHub release assets");
+  assert.notEqual(summaryIndex, -1);
+  assert.notEqual(validationIndex, -1);
+  assert.notEqual(checksumIndex, -1);
+  assert.notEqual(draftIndex, -1);
+  assert.ok(summaryIndex < validationIndex);
+  assert.ok(validationIndex < checksumIndex);
+  assert.ok(checksumIndex < draftIndex);
+  assert.match(workflow, /--output release-assets\/release-summary\.json/);
+  assert.match(
+    workflow,
+    /validate-release-summary\.mjs release-assets\/release-summary\.json/
+  );
+  assert.match(promoteWorkflow, /release-assets\/release-summary\.json/);
+  assert.doesNotMatch(
+    promoteWorkflow,
+    /Generate desktop release summary|secrets\.AGNES_API_KEY/
   );
 });
 

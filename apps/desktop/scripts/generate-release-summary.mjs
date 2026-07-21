@@ -3,7 +3,11 @@
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { parseReleaseTag } from "./lib/releaseConfig.mjs";
+import {
+  isPrereleaseVersion,
+  normalizeVersion,
+  resolvePreviousReleaseTag
+} from "./lib/previousReleaseTag.mjs";
 
 const schemaVersion = "tutti.desktop.release.summary.v1";
 const agnesEndpoint = "https://apihub.agnes-ai.com/v1/chat/completions";
@@ -46,14 +50,6 @@ function requireOption(value, label) {
   return normalized;
 }
 
-function normalizeVersion(tag) {
-  return parseReleaseTag(tag) ?? tag.replace(/^v/u, "");
-}
-
-function isPrereleaseVersion(version) {
-  return /-[0-9A-Za-z.-]+$/u.test(version);
-}
-
 function resolveChannel({ channel = "", version }) {
   if (channel === "stable" || channel === "rc" || channel === "beta") {
     return channel;
@@ -81,37 +77,6 @@ function listReleaseTags() {
     .split("\n")
     .map((tag) => tag.trim())
     .filter(Boolean);
-}
-
-function parseStableCore(version) {
-  const match = /^(?<core>\d+\.\d+\.\d+)(?:-(?:rc|beta)\.\d+)?$/u.exec(version);
-  return match?.groups?.core ?? "";
-}
-
-function resolvePreviousTag({ channel, tag, version }) {
-  const tags = listReleaseTags().filter((candidate) => candidate !== tag);
-  if (channel === "stable") {
-    return (
-      tags.find(
-        (candidate) => !isPrereleaseVersion(normalizeVersion(candidate))
-      ) ?? ""
-    );
-  }
-
-  const stableCore = parseStableCore(version);
-  return (
-    tags.find((candidate) => {
-      const candidateVersion = normalizeVersion(candidate);
-      return (
-        candidateVersion.startsWith(`${stableCore}-${channel}.`) &&
-        isPrereleaseVersion(candidateVersion)
-      );
-    }) ??
-    tags.find(
-      (candidate) => !isPrereleaseVersion(normalizeVersion(candidate))
-    ) ??
-    ""
-  );
 }
 
 function resolveGitSha(target) {
@@ -384,7 +349,13 @@ async function buildReleaseSummary(options) {
   const targetCommit = resolveGitSha(target);
   const requestedCompareFrom = String(options.compareFrom ?? "").trim();
   const compareFrom =
-    requestedCompareFrom || resolvePreviousTag({ channel, tag, version });
+    requestedCompareFrom ||
+    resolvePreviousReleaseTag({
+      channel,
+      tag,
+      tags: listReleaseTags(),
+      version
+    });
   const collected = collectReleaseInput({ compareFrom, target });
   const baseInput = {
     channel,

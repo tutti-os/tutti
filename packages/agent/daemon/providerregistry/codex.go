@@ -55,6 +55,14 @@ func codexDescriptor() ProviderDescriptor {
 				BinaryName:      "codex",
 				IncludeOptional: true,
 			},
+			Update: UpdateDescriptor{
+				Capability:      UpdateCapabilitySupported,
+				Source:          UpdateSourceNPM,
+				Strategy:        UpdateStrategyManagedNPM,
+				PackageName:     "@openai/codex",
+				BinaryName:      "codex",
+				IncludeOptional: true,
+			},
 			LoginArgs: []string{"login", "-c", `service_tier="fast"`},
 			AuthWatch: AuthWatchDescriptor{
 				Sources: []AuthWatchSourceDescriptor{

@@ -79,18 +79,19 @@ func (h *Host) CancelTurn(ctx context.Context, input CancelTurnInput) (CancelTur
 	return result, nil
 }
 
-func (h *Host) SubmitInteractive(ctx context.Context, ref SessionRef, requestID string, input SubmitInteractiveInput) (SubmitInteractiveResult, error) {
+func (h *Host) SubmitInteractive(ctx context.Context, ref InteractionRef, input SubmitInteractiveInput) (SubmitInteractiveResult, error) {
 	ref.WorkspaceID = strings.TrimSpace(ref.WorkspaceID)
 	ref.AgentSessionID = strings.TrimSpace(ref.AgentSessionID)
-	requestID = strings.TrimSpace(requestID)
-	if h == nil || h.store == nil || h.runtime == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" || requestID == "" {
+	ref.TurnID = strings.TrimSpace(ref.TurnID)
+	ref.RequestID = strings.TrimSpace(ref.RequestID)
+	if h == nil || h.store == nil || h.runtime == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" || ref.TurnID == "" || ref.RequestID == "" {
 		return SubmitInteractiveResult{}, ErrInvalidArgument
 	}
 	route, err := h.resolveRuntimeControlRoute(ctx, ref.WorkspaceID, ref.AgentSessionID)
 	if err != nil {
 		return SubmitInteractiveResult{}, err
 	}
-	operation, claimDisposition, claimed, err := h.prepareInteractiveRuntimeOperation(ctx, ref, requestID, input, route.RootAgentSessionID)
+	operation, claimDisposition, claimed, err := h.prepareInteractiveRuntimeOperation(ctx, ref, input, route.RootAgentSessionID)
 	if err != nil {
 		return SubmitInteractiveResult{}, err
 	}

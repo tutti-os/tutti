@@ -126,7 +126,11 @@ func (b *sqliteProjectionBuilder) Build(ctx context.Context) (activityreplicatio
 		mutation.TransactionID = "sqlite-projection"
 		mutations = append(mutations, mutation)
 	}
-	return activityreplication.ChangeBatch{SchemaVersion: activityreplication.SchemaVersion, Mutations: mutations}, nil
+	return activityreplication.ChangeBatch{
+		SchemaVersion:   activityreplication.SchemaVersion,
+		ProjectionEpoch: activityreplication.ProjectionEpoch,
+		Mutations:       mutations,
+	}, nil
 }
 
 func (b *sqliteProjectionBuilder) seedMutation(ctx context.Context, mutation activityreplication.Mutation) error {

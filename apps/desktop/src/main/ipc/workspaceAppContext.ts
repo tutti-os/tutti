@@ -510,6 +510,23 @@ export function registerWorkspaceAppContextIpc(
     }
   );
   registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.userProjectsRemove,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input = normalizeTuttiExternalUserProjectPathInput(
+        payload,
+        "remove"
+      );
+      return requestWorkspaceAppExternalRenderer<void>(context, {
+        appId: context.appID,
+        input,
+        operation: "userProjects.remove",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
+  registerDesktopIpcHandler(
     desktopIpcChannels.appExternal.userProjectsPrepareSelection,
     async (event, payload) => {
       const context = requireWorkspaceAppGuestContext(event.sender);

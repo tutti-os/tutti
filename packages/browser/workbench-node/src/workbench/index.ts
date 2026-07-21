@@ -11,6 +11,7 @@ import type {
   WorkbenchHostNodeDefinition
 } from "@tutti-os/workbench-surface";
 import type { BrowserNodeFeature } from "../core/feature.ts";
+import type { BrowserNodeAutomationTargetMetadata } from "../core/types.ts";
 import { BrowserNode } from "../react/BrowserNode.tsx";
 import { BrowserNodeWorkbenchHeader } from "../react/BrowserNodeChrome.tsx";
 
@@ -25,6 +26,10 @@ export interface BrowserNodeExternalState {
 }
 
 export interface CreateBrowserNodeDefinitionInput {
+  automationTarget?: Omit<
+    BrowserNodeAutomationTargetMetadata,
+    "focused" | "selected" | "surfaceId" | "tabId"
+  > | null;
   defaultUrl: string;
   dockIcon?: ReactNode;
   feature: BrowserNodeFeature;
@@ -74,6 +79,7 @@ const defaultBrowserNodeFrame: WorkbenchFrame = {
 export const defaultBrowserNodeTypeId = "browser";
 
 export function createBrowserNodeDefinition({
+  automationTarget = null,
   defaultUrl,
   feature,
   frame = defaultBrowserNodeFrame,
@@ -88,6 +94,12 @@ export function createBrowserNodeDefinition({
     },
     renderBody: (context) =>
       createElement(BrowserNode, {
+        automationTarget: automationTarget
+          ? {
+              ...automationTarget,
+              focused: context.isFocused
+            }
+          : null,
         defaultUrl: resolveBrowserNodeInitialUrl({
           activation: context.activation,
           defaultUrl,

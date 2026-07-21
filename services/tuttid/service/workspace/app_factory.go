@@ -565,6 +565,7 @@ func (s *AppFactoryService) validatePackage(ctx context.Context, workspaceID str
 		RuntimeProfile:  strings.TrimSpace(manifest.Runtime.Profile),
 		RuntimeDir:      job.RuntimeDir,
 		DataDir:         job.DataDir,
+		DatabaseDir:     filepath.Join(filepath.Dir(job.DataDir), "database"),
 		LogDir:          job.LogDir,
 	})
 	if err != nil {

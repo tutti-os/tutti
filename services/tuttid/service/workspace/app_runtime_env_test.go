@@ -34,10 +34,10 @@ func TestWorkspaceAppProcessEnvUsesAllowlistAndExplicitOverrides(t *testing.T) {
 		"TUTTI_STATE_DIR":          "/daemon/state",
 		"TUTTI_APP_AMBIENT_SECRET": "must-not-leak",
 		"TUTTI_WORKSPACE_ROOT":     "/legacy/workspace",
-		"NEXTOP_WORKSPACE_ROOT":    "/legacy/workspace",
 	} {
 		t.Setenv(key, value)
 	}
+	t.Setenv(removedWorkspaceRootCompatibilityEnvKey, "/legacy/workspace")
 
 	env := workspaceAppProcessEnv(
 		"PATH=/managed/bin",
@@ -46,7 +46,7 @@ func TestWorkspaceAppProcessEnvUsesAllowlistAndExplicitOverrides(t *testing.T) {
 		"TUTTI_APP_SERVER_TOKEN=app-scoped-token",
 		"CUSTOM_EXPLICIT_OVERRIDE=explicit-value",
 		"TUTTI_WORKSPACE_ROOT=/explicit/legacy-root",
-		"NEXTOP_WORKSPACE_ROOT=/explicit/legacy-root",
+		removedWorkspaceRootCompatibilityEnvKey+"=/explicit/legacy-root",
 	)
 
 	for key, want := range map[string]string{
@@ -91,7 +91,7 @@ func TestWorkspaceAppProcessEnvUsesAllowlistAndExplicitOverrides(t *testing.T) {
 		"TUTTI_STATE_DIR",
 		"TUTTI_APP_AMBIENT_SECRET",
 		"TUTTI_WORKSPACE_ROOT",
-		"NEXTOP_WORKSPACE_ROOT",
+		removedWorkspaceRootCompatibilityEnvKey,
 	} {
 		if got := envValue(env, key); got != "" {
 			t.Fatalf("env[%s] = %q, want omitted", key, got)

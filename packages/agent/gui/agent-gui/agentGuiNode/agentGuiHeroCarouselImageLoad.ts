@@ -1,7 +1,6 @@
 import claudeVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/claude-vinyl.png";
 import codexVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/codex-vinyl.png";
 import cursorVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/cursor-vinyl.png";
-import hermesVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/hermes-vinyl.png";
 import openclawVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/openclaw-vinyl.png";
 import opencodeVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/opencode-vinyl.png";
 import tuttiVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/tutti-vinyl.png";
@@ -11,7 +10,6 @@ const AGENT_VINYL_COVER_BY_PROVIDER: Readonly<Record<string, string>> = {
   "claude-code": claudeVinylAssetUrl,
   codex: codexVinylAssetUrl,
   cursor: cursorVinylAssetUrl,
-  hermes: hermesVinylAssetUrl,
   openclaw: openclawVinylAssetUrl,
   opencode: opencodeVinylAssetUrl,
   "tutti-agent": tuttiVinylAssetUrl

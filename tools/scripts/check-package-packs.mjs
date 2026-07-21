@@ -15,6 +15,10 @@ import {
   packedFilesWithRawSvgDataUrls,
   packedFilesWithRelativeSvgUrls
 } from "./package-pack-svg-data-urls.mjs";
+import {
+  externalBundledTiptapImports,
+  packagePeerContractViolations
+} from "./package-pack-peer-contracts.mjs";
 
 const forbiddenPrefixes = [
   "package/src/",
@@ -54,6 +58,9 @@ async function checkPackage(packageConfig, destination) {
   const entries = listTarballEntries(tarballPath);
   const entrySet = new Set(entries);
   const violations = [];
+  violations.push(
+    ...packagePeerContractViolations(packageConfig.name, packageConfig.manifest)
+  );
   const requiredFiles = getRequiredFiles(packageConfig.manifest);
   const packageForbiddenPrefixes = sourcePublishingPackages.has(
     packageConfig.name
@@ -101,6 +108,22 @@ async function checkPackage(packageConfig, destination) {
     );
     for (const file of relativeSvgUrlFiles) {
       violations.push(`consumer-unresolvable relative SVG URL in ${file}`);
+    }
+  }
+
+  if (packageConfig.name === "@tutti-os/ui-rich-text") {
+    const unpackedDirectory = join(destination, `${tarball}.unpacked`);
+    await mkdir(unpackedDirectory, { recursive: true });
+    execFileSync("tar", ["-xzf", tarballPath, "-C", unpackedDirectory]);
+    const editorSource = await readFile(
+      join(unpackedDirectory, "package/dist/editor/index.js"),
+      "utf8"
+    );
+    for (const specifier of externalBundledTiptapImports(
+      packageConfig.name,
+      editorSource
+    )) {
+      violations.push(`unbundled internal Tiptap extension ${specifier}`);
     }
   }
 

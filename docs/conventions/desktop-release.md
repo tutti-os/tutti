@@ -299,7 +299,7 @@ Promotion performs these checks before changing public state:
 - `SHA256SUMS.txt` exists and the downloaded draft assets match it
 - the target version does not move the selected public channel backwards
 
-It then repairs or uploads the immutable AWS objects, updates release notes, publishes a stable GitHub Release when applicable, writes the selected stable/RC/beta pointer, refreshes the stable alias, verifies the public CloudFront pointer, and sends the promoted release notification. Promotion is serialized with the `desktop-release-promotion` concurrency group because stable and prerelease pointers are mutable shared state.
+It then consumes the checksummed `release-summary.json` staged with the Draft Release, repairs or uploads the immutable AWS objects, updates release notes, publishes a stable GitHub Release when applicable, writes the selected stable/RC/beta pointer, refreshes the stable alias, verifies the public CloudFront pointer, and sends the promoted release notification. Promotion never regenerates the summary or calls the summary model. GitHub Draft assets remain mutable until promotion, so any restage or asset replacement invalidates the prior human approval and requires another review of the current `SHA256SUMS.txt`; cryptographic binding to an external approval record or immutable candidate ID is not implemented. Promotion is serialized with the `desktop-release-promotion` concurrency group because stable and prerelease pointers are mutable shared state.
 
 RC and beta promotions preserve the existing GitHub policy: their GitHub Releases remain drafts while their AWS channel pointers become available. Stable promotion changes the GitHub Release from draft to public and marks it Latest.
 
@@ -312,11 +312,26 @@ Summary generation is best-effort:
 - if `AGNES_API_KEY` is configured, the workflow asks Agnes to summarize commits and diff stats
 - if the key is missing, the API fails, or the response is invalid, the workflow falls back to a deterministic commit-based summary
 
-The summary is used to:
+The Stage job adds the summary to the Draft Release assets before generating
+`SHA256SUMS.txt`. The summary and installable archives are therefore in the
+same checksummed candidate set. Electron updater `.yml` and `.blockmap` files
+remain outside `SHA256SUMS.txt` under the existing checksum policy. The summary
+is used to:
 
 - upsert a managed English `Release Summary` section into the GitHub Release body
 - enrich the Feishu release card with the Chinese summary when Feishu notification is enabled
 - update `changelog.json` for stable releases
+
+Before staging the Draft Release, generate GitHub's detailed release notes with
+an explicit comparison tag. RC and beta notes compare against the newest tag in
+the same version/channel series, falling back to the newest stable tag; stable
+notes compare against the newest stable tag. Do not rely on GitHub's implicit
+previous-release selection because RC and beta GitHub Releases remain drafts
+and therefore are not valid published-release comparison anchors.
+
+Managed summary and direct-download sections must be preserved when release
+notes approach GitHub's 125,000-character body limit. Trim only the generated
+detail entries and leave a visible truncation notice.
 
 Do not commit real model API keys. Configure `AGNES_API_KEY` as a GitHub secret.
 

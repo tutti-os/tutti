@@ -2,11 +2,17 @@ package agentextension
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
 func TestReleaseDownloadsRejectIntermediateHTTPSDowngradeRedirect(t *testing.T) {
@@ -107,5 +113,56 @@ func TestReleaseDownloadsRejectConfiguredRedirectPolicyHTTPSDowngrade(t *testing
 	}
 	if insecureRequests != 0 {
 		t.Fatalf("insecure redirect target received %d requests", insecureRequests)
+	}
+}
+
+func TestVerifyReleasePreservesSignedOptionalManifestFields(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := map[string]any{
+		"schemaVersion":     releaseSchema,
+		"agentKey":          "grok",
+		"version":           "0.1.2",
+		"artifactUrl":       "https://example.test/grok-0.1.2.zip",
+		"artifactSha256":    "abc",
+		"artifactSizeBytes": 1,
+		"publishedAt":       "2026-07-21T00:00:00Z",
+		"gitSha":            "test",
+		"manifest": map[string]any{
+			"schemaVersion": "tutti.agent.manifest.v2",
+			"agentKey":      "grok",
+			"version":       "0.1.2",
+			"name":          "Grok Build",
+			"icon":          map[string]any{"type": "asset", "src": "assets/icon.svg"},
+			"runtime": map[string]any{
+				"kind":    "standard-acp",
+				"install": map[string]any{"runner": "binary"},
+				"launch":  map[string]any{"executable": "grok", "args": []string{"agent", "stdio"}},
+			},
+			"profiles": map[string]any{"discovery": "profiles/discovery.json"},
+		},
+		"signature": map[string]any{
+			"algorithm": "ed25519",
+			"keyId":     "test-grok-key",
+			"value":     "",
+		},
+	}
+	payload, err := releasePayloadFromJSON(mustJSON(t, document))
+	if err != nil {
+		t.Fatal(err)
+	}
+	document["signature"].(map[string]any)["value"] = base64.StdEncoding.EncodeToString(ed25519.Sign(privateKey, payload))
+
+	var release Release
+	if err := json.Unmarshal(mustJSON(t, document), &release); err != nil {
+		t.Fatal(err)
+	}
+	source := tuttitypes.AgentExtensionSource{
+		Key: "grok", SigningKeyID: "test-grok-key", SigningPublicKey: publicKeyPEM(t, publicKey),
+	}
+	if err := verifyRelease(release, source); err != nil {
+		t.Fatalf("verifyRelease() error = %v", err)
 	}
 }

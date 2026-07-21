@@ -1,6 +1,7 @@
 import { Switch } from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
 import {
+  EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
   LAB_MODEL_PLANS_FLAG,
   LAB_TUTTI_MODE_FLAG,
@@ -36,6 +37,11 @@ const featureGateRows = [
     labelKey: "workspace.settings.lab.workbenchShortcutsLabel" as const,
     descriptionKey:
       "workspace.settings.lab.workbenchShortcutsDescription" as const
+  },
+  {
+    key: EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
+    labelKey: "workspace.settings.lab.previewAgentsLabel" as const,
+    descriptionKey: "workspace.settings.lab.previewAgentsDescription" as const
   }
 ] as const;
 

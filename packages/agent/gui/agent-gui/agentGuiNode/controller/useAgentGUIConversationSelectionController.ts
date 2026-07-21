@@ -3,11 +3,12 @@ import {
   selectEngineSession,
   selectEngineSessionDetailHydrated,
   selectLatestActivationForSession,
+  type AttentionReadRecord,
   type AgentSessionEngine,
   type PendingActivationIntentRecord
 } from "@tutti-os/agent-activity-core";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { translate } from "../../../i18n/index";
 import type { AgentGUINodeData } from "../../../types";
@@ -42,7 +43,7 @@ interface UseAgentGUIConversationSelectionControllerInput {
   agentActivityRuntime: AgentActivityRuntime;
   attentionReadRecordsBySessionId: Record<
     string,
-    { isUnread?: boolean } | undefined
+    AttentionReadRecord | undefined
   >;
   conversationIdsRef: RefObject<Set<string>>;
   conversationsRef: RefObject<AgentGUIConversationSummary[]>;
@@ -89,6 +90,19 @@ export function clearFailedAgentGUIActivationSelection(
     : current;
 }
 
+export function shouldMarkActiveConversationRead(input: {
+  activeConversationId: string;
+  previousActiveConversationId: string | null;
+  record: AttentionReadRecord | undefined;
+}): boolean {
+  const { activeConversationId, previousActiveConversationId, record } = input;
+  if (!record?.isUnread) return false;
+  return (
+    !record.markedUnreadByUser ||
+    previousActiveConversationId !== activeConversationId
+  );
+}
+
 export function useAgentGUIConversationSelectionController(
   input: UseAgentGUIConversationSelectionControllerInput
 ) {
@@ -123,6 +137,7 @@ export function useAgentGUIConversationSelectionController(
     transientConversation,
     workspaceId
   } = input;
+  const previousAttentionActiveConversationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const userId = currentUserId?.trim() ?? "";
@@ -160,10 +175,23 @@ export function useAgentGUIConversationSelectionController(
             translate("agentHost.agentGui.sessionActivationFailed")
         );
       }
+      previousAttentionActiveConversationIdRef.current = null;
       return;
     }
-    if (!activeConversationId) return;
-    if (attentionReadRecordsBySessionId[activeConversationId]?.isUnread) {
+    if (!activeConversationId) {
+      previousAttentionActiveConversationIdRef.current = null;
+      return;
+    }
+    const previousActiveConversationId =
+      previousAttentionActiveConversationIdRef.current;
+    previousAttentionActiveConversationIdRef.current = activeConversationId;
+    if (
+      shouldMarkActiveConversationRead({
+        activeConversationId,
+        previousActiveConversationId,
+        record: attentionReadRecordsBySessionId[activeConversationId]
+      })
+    ) {
       sessionEngine.dispatch({
         type: "attention/read",
         agentSessionId: activeConversationId,

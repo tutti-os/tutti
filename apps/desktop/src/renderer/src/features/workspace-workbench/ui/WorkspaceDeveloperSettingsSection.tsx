@@ -28,7 +28,6 @@ import {
   desktopUpdateChannels,
   normalizeDesktopFileExtension,
   type DesktopAppCatalogChannel,
-  type DesktopFeatureFlags,
   type DesktopFileDefaultOpener,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopUpdateChannel
@@ -41,7 +40,6 @@ import {
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { formatWorkspaceSettingsBytes } from "../services/workspaceSettingsFormat";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
-import { WorkspaceAgentExtensionDeveloperSettings } from "./WorkspaceAgentExtensionDeveloperSettings";
 import { SettingsRow, SettingsRows } from "./WorkspaceSettingsRows";
 
 const workspaceSettingsSelectTriggerClass =
@@ -71,7 +69,6 @@ export function WorkspaceDeveloperSettingsSection() {
   const pendingFeatureFlags =
     desktopPreferencesState.changingFeatureFlags ??
     desktopPreferencesState.featureFlags;
-  const agentExtensionFeatureFlags = pendingFeatureFlags;
   const analyticsDebugAvailable = analyticsDebugPreferenceState.available;
   const analyticsDebugEnabled = analyticsDebugPreferenceState.enabled;
   const appCatalogChannel = desktopPreferencesState.appCatalogChannel;
@@ -114,9 +111,6 @@ export function WorkspaceDeveloperSettingsSection() {
   };
   const onClearLogs = () => {
     void settingsService.clearDeveloperLogs();
-  };
-  const onAgentExtensionFeatureFlagsChange = (flags: DesktopFeatureFlags) => {
-    void settingsService.changeFeatureFlags(flags);
   };
   const onDeveloperPanelVisibleChange = (visible: boolean) => {
     settingsService.setDeveloperPanelVisible(visible);
@@ -360,12 +354,6 @@ export function WorkspaceDeveloperSettingsSection() {
           onCheckedChange={onTuttiAgentSwitchEnabledChange}
         />
       </div>
-
-      <WorkspaceAgentExtensionDeveloperSettings
-        disabled={featureFlagsUpdating}
-        featureFlags={agentExtensionFeatureFlags}
-        onFeatureFlagsChange={onAgentExtensionFeatureFlagsChange}
-      />
 
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">

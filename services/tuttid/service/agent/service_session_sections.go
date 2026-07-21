@@ -371,6 +371,7 @@ func (s *Service) DeleteSessionsBatch(
 			if err := s.cleanupRuntime(ctx, workspaceID, sessionID); err != nil {
 				return DeleteSessionsBatchResult{}, err
 			}
+			s.releaseAgentResources(ctx, sessionID)
 		}
 	}
 	return DeleteSessionsBatchResult{

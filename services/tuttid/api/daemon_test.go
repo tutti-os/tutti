@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -115,6 +116,7 @@ type stubAgentSessionService struct {
 	updateTitleFn                   func(context.Context, string, string, string) (agentservice.Session, error)
 	updateVisibleFn                 func(context.Context, string, string, bool) (agentservice.Session, error)
 	updateSettingsFn                func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
+	submitInteractiveFn             func(context.Context, agenthost.InteractionRef, agenthost.SubmitInteractiveInput) (agentservice.Session, error)
 	planDecisionFn                  func(context.Context, string, string, string, string, agentservice.SubmitPlanDecisionInput) (agentactivitybiz.RuntimeOperation, error)
 }
 
@@ -447,8 +449,11 @@ func (s stubAgentSessionService) UpdateSettings(ctx context.Context, workspaceID
 	return s.updateSettingsFn(ctx, workspaceID, agentSessionID, settings)
 }
 
-func (stubAgentSessionService) SubmitInteractive(context.Context, string, string, string, agentservice.SubmitInteractiveInput) (agentservice.Session, error) {
-	return agentservice.Session{}, nil
+func (s stubAgentSessionService) SubmitInteractive(ctx context.Context, ref agenthost.InteractionRef, input agenthost.SubmitInteractiveInput) (agentservice.Session, error) {
+	if s.submitInteractiveFn == nil {
+		return agentservice.Session{}, nil
+	}
+	return s.submitInteractiveFn(ctx, ref, input)
 }
 
 func (s rejectingWorkbenchStore) GetWorkbenchSnapshot(context.Context, string) (workspacebiz.WorkbenchSnapshot, error) {
@@ -2328,6 +2333,7 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 			putFn: func(_ context.Context, input preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
 				captured = input
 				return preferencesbiz.DesktopPreferences{
+					AgentCLIUpdateCheckEnabled:                  input.AgentCLIUpdateCheckEnabled,
 					AgentGUIConversationRailCollapsedByProvider: input.AgentGUIConversationRailCollapsedByProvider,
 					AgentConversationDetailMode:                 input.AgentConversationDetailMode,
 					AgentDockLayout:                             input.AgentDockLayout,
@@ -2348,6 +2354,7 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 
 	recorder := performGeneratedRouteRequest(t, mux, http.MethodPut, "/v1/preferences/desktop", map[string]any{
 		"preferences": map[string]any{
+			"agentCliUpdateCheckEnabled":      false,
 			"agentComposerDefaultsByProvider": map[string]any{},
 			"agentGuiConversationRailCollapsedByProvider": map[string]any{
 				"claude-code": false,
@@ -2370,6 +2377,9 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
+	if captured.AgentCLIUpdateCheckEnabled {
+		t.Fatal("captured agent CLI update check = true, want false")
+	}
 	if !captured.AgentGUIConversationRailCollapsedByProvider["codex"] {
 		t.Fatalf("captured rail preference = %#v, want codex true", captured.AgentGUIConversationRailCollapsedByProvider)
 	}
@@ -2387,6 +2397,9 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 	}
 	var response tuttigenerated.DesktopPreferencesStateResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Preferences.AgentCliUpdateCheckEnabled {
+		t.Fatal("response agent CLI update check = true, want false")
+	}
 	if response.Preferences.AgentGuiConversationRailCollapsedByProvider.Codex == nil ||
 		!*response.Preferences.AgentGuiConversationRailCollapsedByProvider.Codex {
 		t.Fatalf("response rail codex = %#v, want true", response.Preferences.AgentGuiConversationRailCollapsedByProvider.Codex)
@@ -2416,8 +2429,8 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 
 	var response tuttigenerated.ListAgentTargetsResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if len(response.Targets) != 8 {
-		t.Fatalf("targets len = %d, want descriptor catalog size 8", len(response.Targets))
+	if len(response.Targets) != 7 {
+		t.Fatalf("targets len = %d, want descriptor catalog size 7", len(response.Targets))
 	}
 	wantIDs := []string{
 		agenttargetbiz.IDLocalCodex,
@@ -2426,7 +2439,6 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 		agenttargetbiz.IDLocalTuttiAgent,
 		agenttargetbiz.IDLocalOpenCode,
 		providerregistry.NexightTargetID,
-		providerregistry.HermesTargetID,
 		providerregistry.OpenClawTargetID,
 	}
 	for index, target := range response.Targets {

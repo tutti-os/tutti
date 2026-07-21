@@ -488,7 +488,7 @@ export function normalizeTuttiExternalUserProjectCreateInput(
 
 export function normalizeTuttiExternalUserProjectPathInput(
   input: unknown,
-  operation: "checkPath" | "use"
+  operation: "checkPath" | "remove" | "use"
 ): TuttiExternalUserProjectPathInput {
   if (!isRecord(input)) {
     throw new Error(`userProjects.${operation} input must be an object.`);

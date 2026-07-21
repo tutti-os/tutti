@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentextensiondata "github.com/tutti-os/tutti/services/tuttid/data/agentextension"
@@ -240,6 +241,47 @@ func TestManagerReconcileSnapshotsDevelopmentLocalPackage(t *testing.T) {
 	}
 	if second.Version == first.Version || second.DisplayName != "Local Gemini" {
 		t.Fatalf("changed local package did not activate a new snapshot: first=%#v second=%#v", first, second)
+	}
+}
+
+func TestManagerResolveRuntimeUsesSignedUserSearchPath(t *testing.T) {
+	homeDir := t.TempDir()
+	binDir := filepath.Join(homeDir, ".kimi-code", "bin")
+	if err := os.MkdirAll(binDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	executable := filepath.Join(binDir, "kimi")
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\nprintf '0.28.0\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := testManifest()
+	manifest.AgentKey = "kimi-code"
+	manifest.Name = "Kimi Code"
+	discovery := `{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["kimi"],"searchPaths":[{"scope":"user","path":".kimi-code/bin"}],"version":{"args":["--version"],"constraint":">=0.28.0 <1.0.0"},"launchArgs":["acp"],"probe":{"kind":"acp-initialize","timeoutMs":15000}}]}`
+	manager := Manager{
+		Installations: agentextensiondata.NewFileInstallationStore(t.TempDir()),
+		RuntimeResolver: runtimecmd.Resolver{
+			Environ: func() []string { return []string{"PATH=/usr/bin:/bin"} },
+			HomeDir: func() (string, error) { return homeDir, nil },
+		},
+	}
+	installation, err := installTestPackage(
+		t,
+		&manager,
+		Release{AgentKey: manifest.AgentKey, Version: manifest.Version},
+		testPackageZIPFor(t, manifest, discovery),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	binding, err := manager.ResolveRuntimeForCWD(context.Background(), installation.ID, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding.Source != "local" || binding.Version != "0.28.0" || len(binding.Command) != 2 || binding.Command[0] != executable || binding.Command[1] != "acp" {
+		t.Fatalf("ResolveRuntimeForCWD() = %#v", binding)
 	}
 }
 
@@ -469,6 +511,27 @@ func TestValidateComposerProfileAcceptsDeclarativeSkillRoots(t *testing.T) {
 	}
 }
 
+func TestComposerAutomaticPermissionDecisionsAreRestrictedBySemantic(t *testing.T) {
+	var profile ComposerProfile
+	if err := json.Unmarshal([]byte(`{
+		"schemaVersion":"tutti.agent.composer.v1",
+		"permissionModes":[{"runtimeId":"dont_ask","semantic":"full-access","automaticDecision":"approved"}]
+	}`), &profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateComposerProfile(profile); err != nil {
+		t.Fatalf("validateComposerProfile() error = %v", err)
+	}
+	decisions := profile.AutomaticPermissionDecisions()
+	if decisions["full-access"] != "approved" || decisions["dont_ask"] != "approved" {
+		t.Fatalf("automatic decisions = %#v", decisions)
+	}
+	profile.PermissionModes[0].Semantic = "ask-before-write"
+	if err := validateComposerProfile(profile); err == nil {
+		t.Fatal("validateComposerProfile() accepted auto-approval outside full-access")
+	}
+}
+
 func TestComposerProfileACPConfigOptionIDs(t *testing.T) {
 	t.Run("canonical", func(t *testing.T) {
 		profile := ComposerProfile{SchemaVersion: "tutti.agent.composer.v1"}
@@ -665,18 +728,7 @@ func TestValidateDiscoveryLaunchPlaceholdersFailsClosed(t *testing.T) {
 	}
 	profile := func(args ...string) DiscoveryProfile {
 		value := DiscoveryProfile{}
-		value.Candidates = append(value.Candidates, struct {
-			BinaryNames []string `json:"binaryNames"`
-			Version     struct {
-				Args       []string `json:"args"`
-				Constraint string   `json:"constraint"`
-			} `json:"version"`
-			LaunchArgs []string `json:"launchArgs"`
-			Probe      struct {
-				Kind      string `json:"kind"`
-				TimeoutMS int    `json:"timeoutMs"`
-			} `json:"probe,omitempty"`
-		}{LaunchArgs: args})
+		value.Candidates = append(value.Candidates, DiscoveryCandidate{LaunchArgs: args})
 		return value
 	}
 	if err := validateDiscoveryLaunchPlaceholders(profile("--no-auto-update", "--permission-mode", "${permissionMode}", "agent", "stdio"), composer); err != nil {

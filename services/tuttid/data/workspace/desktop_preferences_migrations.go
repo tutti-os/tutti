@@ -23,6 +23,7 @@ func (s *SQLiteStore) applyDesktopPreferencesV1(ctx context.Context) error {
 	_, err = s.writeDB.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS desktop_preferences (
   id TEXT PRIMARY KEY,
+  agent_cli_update_check_enabled INTEGER NOT NULL DEFAULT 1,
   agent_dock_layout TEXT NOT NULL DEFAULT 'unified',
   dock_icon_style TEXT NOT NULL DEFAULT 'flat',
   dock_placement TEXT NOT NULL DEFAULT 'bottom',
@@ -83,6 +84,36 @@ VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesDeletedAgentRetentionV1, unixMs(time.Now().UTC()))
 	if err != nil {
 		return fmt.Errorf("record desktop deleted agent conversation retention migration: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) applyDesktopPreferencesAgentCLIUpdateCheckV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesAgentCLIUpdateCheckV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	hasColumn, err := s.hasColumn(ctx, "desktop_preferences", "agent_cli_update_check_enabled")
+	if err != nil {
+		return err
+	}
+	if !hasColumn {
+		if _, err := s.writeDB.ExecContext(ctx, `
+ALTER TABLE desktop_preferences
+  ADD COLUMN agent_cli_update_check_enabled INTEGER NOT NULL DEFAULT 1;
+`); err != nil {
+			return fmt.Errorf("migrate desktop agent CLI update check preference: %w", err)
+		}
+	}
+	_, err = s.writeDB.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesAgentCLIUpdateCheckV1, unixMs(time.Now().UTC()))
+	if err != nil {
+		return fmt.Errorf("record desktop agent CLI update check preference migration: %w", err)
 	}
 	return nil
 }

@@ -237,7 +237,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
         : undefined
   });
 
-  registerIpcHandlers({
+  const ipcDisposables = await registerIpcHandlers({
     daemonEndpoint: desktopAppServices.daemonEndpoint,
     fileDialogs: desktopAppServices.fileDialogs,
     logger,
@@ -288,6 +288,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
     logger,
     tuttid: desktopAppServices.tuttid,
     disposables: [
+      ...ipcDisposables,
       hostPreferencesEventStream,
       agentPowerSaveBlocker,
       {

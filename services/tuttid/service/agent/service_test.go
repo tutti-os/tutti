@@ -5356,6 +5356,8 @@ func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
 
 func TestServiceDeletesPersistedSession(t *testing.T) {
 	service := newIsolatedAgentService(newFakeRuntime())
+	releaser := &fakeAgentSessionResourceReleaser{}
+	service.AgentSessionResourceReleaser = releaser
 	service.SessionReader = fakeSessionReader{
 		sessions: map[string]PersistedSession{
 			"ws-1:session-1": {
@@ -5375,6 +5377,9 @@ func TestServiceDeletesPersistedSession(t *testing.T) {
 	}
 	if _, err := service.Get(context.Background(), "ws-1", "session-1"); err != ErrSessionNotFound {
 		t.Fatalf("Get after delete error = %v, want %v", err, ErrSessionNotFound)
+	}
+	if !slices.Equal(releaser.released, []string{"session-1"}) {
+		t.Fatalf("released Agent resources = %#v", releaser.released)
 	}
 }
 
@@ -6647,10 +6652,8 @@ func TestServiceDoesNotReconcileStalePersistedTurnWhenRuntimeSessionIsWorking(t 
 
 	if _, err := service.SubmitInteractive(
 		context.Background(),
-		"ws-1",
-		"session-1",
-		"permission-1",
-		SubmitInteractiveInput{OptionID: stringRef("approve")},
+		agenthost.InteractionRef{WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1", RequestID: "permission-1"},
+		agenthost.SubmitInteractiveInput{OptionID: stringRef("approve")},
 	); err != nil {
 		t.Fatalf("SubmitInteractive returned error: %v", err)
 	}
@@ -7255,6 +7258,15 @@ func (f fakeSessionInitializer) InitializeRuntimeSession(
 		CreatedAtUnixMS:        session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:        session.UpdatedAtUnixMS,
 	}, nil
+}
+
+type fakeAgentSessionResourceReleaser struct {
+	released []string
+}
+
+func (f *fakeAgentSessionResourceReleaser) ReleaseAgent(_ context.Context, agentSessionID string) error {
+	f.released = append(f.released, agentSessionID)
+	return nil
 }
 
 type fakeSectionReader struct {

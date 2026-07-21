@@ -55,13 +55,15 @@ export interface WorkspaceFileManagerContextMenuProps {
   ) => ReactElement | null;
   showCopyAction: boolean;
   showCopyPathAction: boolean;
-  showCreateAction: boolean;
+  showCreateDirectoryAction: boolean;
+  showCreateFileAction: boolean;
   showDeleteAction: boolean;
   showImportAction: boolean;
   showExportAction: boolean;
   showOpenInAppBrowserAction: boolean;
   showOpenInDefaultBrowserAction: boolean;
   showOpenInFileViewerAction: boolean;
+  showOpenAction: boolean;
   showOpenWithAction: boolean;
   showOpenWithOtherAction: boolean;
   showRevealInFolderAction: boolean;
@@ -96,13 +98,15 @@ export function WorkspaceFileManagerContextMenu({
   positionMode = "local",
   showCopyAction,
   showCopyPathAction,
-  showCreateAction,
+  showCreateDirectoryAction,
+  showCreateFileAction,
   showDeleteAction,
   showImportAction,
   showExportAction,
   showOpenInAppBrowserAction,
   showOpenInDefaultBrowserAction,
   showOpenInFileViewerAction,
+  showOpenAction,
   showOpenWithAction,
   showOpenWithOtherAction,
   showRevealInFolderAction,
@@ -180,11 +184,14 @@ export function WorkspaceFileManagerContextMenu({
     positionMode,
     showCopyAction,
     showCopyPathAction,
+    showCreateDirectoryAction,
+    showCreateFileAction,
     showExportAction,
     showImportAction,
     showOpenInAppBrowserAction,
     showOpenInDefaultBrowserAction,
     showOpenInFileViewerAction,
+    showOpenAction,
     showOpenWithAction,
     showOpenWithOtherAction,
     showRevealInFolderAction,
@@ -201,6 +208,27 @@ export function WorkspaceFileManagerContextMenu({
   const transferItems: ContextMenuActionItem[] = [];
   const dangerItems: ContextMenuActionItem[] = [];
   const createItems: ContextMenuActionItem[] = [];
+
+  if (!entry || isDirectory) {
+    if (showCreateFileAction) {
+      createItems.push({
+        action: onCreateFile,
+        disabled: busy,
+        icon: <NewWorkspaceLinedIcon className="size-4" />,
+        key: "create-file",
+        label: copy.t("createFileLabel")
+      });
+    }
+    if (showCreateDirectoryAction) {
+      createItems.push({
+        action: onCreateDirectory,
+        disabled: busy,
+        icon: <FileLinedIcon className="size-4" />,
+        key: "create-directory",
+        label: copy.t("createDirectoryLabel")
+      });
+    }
+  }
 
   if (entry) {
     if (showRenameAction) {
@@ -268,22 +296,6 @@ export function WorkspaceFileManagerContextMenu({
       });
     }
   } else {
-    if (showCreateAction) {
-      createItems.push({
-        action: onCreateFile,
-        disabled: busy,
-        icon: <NewWorkspaceLinedIcon className="size-4" />,
-        key: "create-file",
-        label: copy.t("createFileLabel")
-      });
-      createItems.push({
-        action: onCreateDirectory,
-        disabled: busy,
-        icon: <FileLinedIcon className="size-4" />,
-        key: "create-directory",
-        label: copy.t("createDirectoryLabel")
-      });
-    }
     if (showImportAction) {
       transferItems.push({
         action: onImport,
@@ -299,6 +311,7 @@ export function WorkspaceFileManagerContextMenu({
     key: string;
   }> = entry
     ? [
+        { items: createItems, key: "create" },
         { items: editItems, key: "edit" },
         { items: transferItems, key: "transfer" },
         { items: dangerItems, key: "danger" }
@@ -329,7 +342,7 @@ export function WorkspaceFileManagerContextMenu({
         event.preventDefault();
       }}
     >
-      {entry ? (
+      {entry && showOpenAction ? (
         <ContextMenuActionButton
           disabled={busy}
           icon={<EyeIcon className="size-4" />}
@@ -364,7 +377,10 @@ export function WorkspaceFileManagerContextMenu({
         <ContextMenuActionGroup
           key={group.key}
           items={group.items}
-          showDivider={entry !== null || groupIndex > 0}
+          showDivider={
+            groupIndex > 0 ||
+            (entry !== null && (showOpenAction || showOpenWithAction))
+          }
           onClose={onClose}
         />
       ))}

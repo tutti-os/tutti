@@ -13,6 +13,7 @@ import { proxy } from "valtio/vanilla";
 import {
   Button,
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -722,20 +723,16 @@ export function WorkspaceUserProjectSelect({
                 </p>
               ) : null}
               <DialogFooter>
-                <Button
-                  disabled={disabled || isCreatingProject}
-                  size="dialog"
-                  type="button"
-                  variant="secondary"
-                  onClick={closeProjectDialog}
-                  onPointerDown={(event) => {
-                    if (event.button === 0 && !isCreatingProject) {
-                      closeProjectDialog();
-                    }
-                  }}
-                >
-                  {resolvedLabels.createProjectCancel}
-                </Button>
+                <DialogClose asChild>
+                  <Button
+                    disabled={disabled || isCreatingProject}
+                    size="dialog"
+                    type="button"
+                    variant="secondary"
+                  >
+                    {resolvedLabels.createProjectCancel}
+                  </Button>
+                </DialogClose>
                 <Button
                   disabled={
                     disabled || isCreatingProject || !draftProjectName.trim()

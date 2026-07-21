@@ -80,6 +80,7 @@ Automated AgentGUI performance reports:
 pnpm perf:agent-gui
 pnpm perf:agent-gui -- --list-scenarios
 pnpm perf:agent-gui -- --scenario session-switch
+pnpm perf:agent-gui -- --scenario virtualized-streaming
 ```
 
 The command reads `~/.tutti-dev/tuttid.db` by default and uses SQLite online
@@ -88,17 +89,23 @@ copy keeps projects, sessions, and rail data, but clears recoverable operation
 queues and the selected AgentGUI session before starting an isolated daemon and
 Electron `userData` directory. This prevents the diagnostic run from resuming a
 real provider session while avoiding a schema-sensitive fixture.
+All scenarios run with invisible, non-activating Electron windows while keeping
+the real renderer, compositor, and CDP trace pipeline active. Native pointer
+events pass through those windows; scenario interaction is injected through
+CDP.
 
 Outputs are stored under
 `.tmp/perf/agent-gui/<scenario>/<timestamp>/`: `trace.json`,
 `report.json`, `report.md`, and `desktop.log`. Metric values are report-only;
 only infrastructure, scenario, trace, or analysis failures return a non-zero
-exit code. Available scenarios cover one Provider switch, one Session switch,
-two Provider/Session switching rounds, internal Workbench window lifecycle, and
-native Electron window state changes. The native window scenario is currently
-macOS-only because its minimize completion signal comes from the typed macOS
-host event. Use `--source-db`, `--from-target-id`, or `--to-target-id` to
-override the defaults.
+exit code. Available scenarios also cover deterministic streaming into an
+already virtualized transcript, fresh-scope Rail reveal, hero composer
+prompt-tip layout measurement during resize, internal Workbench window lifecycle, and
+native Electron window state changes. The streaming scenario rewrites only the
+isolated snapshot and shadows `cursor-agent` only inside the isolated Desktop
+process, so it cannot send input to an installed Agent provider. The native
+window scenarios are currently macOS-only. Use `--source-db`,
+`--from-target-id`, or `--to-target-id` to override the defaults.
 
 The Markdown report contains scenario assertions, observed milestone phases,
 renderer-main `RunTask`/layout/paint metrics, React component fanout, and static

@@ -6,6 +6,7 @@ import {
   type AgentActivityTurn,
   type CanonicalAgentSession,
   type PendingActivationIntentRecord,
+  type SessionRuntimeAvailability,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import { useEffect, useMemo } from "react";
@@ -50,6 +51,7 @@ interface UseAgentGUISessionPresentationInput {
   activeEngineAvailability: "available" | "blocked" | "missing";
   activeEngineHasPendingInteractions: boolean;
   activeEngineLatestTurn: AgentActivityTurn | null;
+  activeEngineRuntimeAvailability: SessionRuntimeAvailability | null;
   activeEngineSession: CanonicalAgentSession | null;
   activeLatestPendingSubmitTurnId: string | null;
   activeLiveState: "inactive" | "activating" | "active" | "failed";
@@ -131,6 +133,8 @@ export function useAgentGUISessionPresentation(
     input.activeConversationId && input.activeLatestPendingSubmitTurnId
   );
   const activeSubmitBlocked = input.activeEngineAvailability === "blocked";
+  const sessionRuntimeBlocked =
+    input.activeEngineRuntimeAvailability?.state === "blocked";
   const activeConversationBusy = input.activeEngineSession
     ? input.activeEngineAvailability === "blocked"
     : agentActivityDisplayStatusBusy(input.activityDisplayStatus) ||
@@ -251,6 +255,7 @@ export function useAgentGUISessionPresentation(
     !input.isInterrupting;
   const canQueueWhileBusy =
     input.activeConversationId !== null &&
+    !sessionRuntimeBlocked &&
     (activeConversationBusy ||
       input.isSubmitting ||
       input.activeEngineHasPendingInteractions);
@@ -340,6 +345,7 @@ export function useAgentGUISessionPresentation(
     hasSentUserMessage,
     isRespondingApproval,
     pendingInteractivePrompt,
+    sessionRuntimeBlocked,
     sessionChrome
   };
 }

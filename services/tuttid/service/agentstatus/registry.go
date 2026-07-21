@@ -43,9 +43,24 @@ type ProviderSpec struct {
 	AuthStatusCommandTimeout     time.Duration
 	AuthMarkerPaths              []string
 	Install                      InstallerSpec
+	Update                       ProviderUpdateSpec
 	AdapterInstall               InstallerSpec
 	LoginArgs                    []string
 	LoginActionKind              ActionKind
+}
+
+type ProviderUpdateStrategy string
+
+const ProviderUpdateStrategyManagedNPM ProviderUpdateStrategy = "managed_npm"
+
+type ProviderUpdateSpec struct {
+	Capability        UpdateCapability
+	Source            UpdateSource
+	Strategy          ProviderUpdateStrategy
+	PackageName       string
+	BinaryName        string
+	IncludeOptional   bool
+	UnsupportedReason string
 }
 
 type AdapterPackageRequirement struct {
@@ -143,8 +158,17 @@ func providerSpecFromDescriptor(descriptor providerregistry.ProviderDescriptor) 
 		AuthStatusCommandTimeout: time.Duration(
 			descriptor.Status.AuthStatusCommandTimeoutSeconds,
 		) * time.Second,
-		AuthMarkerPaths:    append([]string(nil), descriptor.Status.AuthMarkerPaths...),
-		Install:            install,
+		AuthMarkerPaths: append([]string(nil), descriptor.Status.AuthMarkerPaths...),
+		Install:         install,
+		Update: ProviderUpdateSpec{
+			Capability:        UpdateCapability(descriptor.Status.Update.Capability),
+			Source:            UpdateSource(descriptor.Status.Update.Source),
+			Strategy:          ProviderUpdateStrategy(descriptor.Status.Update.Strategy),
+			PackageName:       descriptor.Status.Update.PackageName,
+			BinaryName:        descriptor.Status.Update.BinaryName,
+			IncludeOptional:   descriptor.Status.Update.IncludeOptional,
+			UnsupportedReason: descriptor.Status.Update.UnsupportedReason,
+		},
 		LoginArgs:          append([]string(nil), descriptor.Status.LoginArgs...),
 		LoginActionKind:    ActionKind(descriptor.Status.LoginActionKind),
 		SupportStatus:      ProviderSupportStatus(descriptor.Status.SupportStatus),

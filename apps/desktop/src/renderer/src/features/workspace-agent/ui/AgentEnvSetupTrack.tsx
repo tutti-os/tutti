@@ -57,6 +57,8 @@ export function AgentEnvSetupTrack({
     manualCommand,
     installPending,
     loginPending,
+    updateAvailable,
+    updating,
     redetecting,
     ready,
     busy,
@@ -67,12 +69,15 @@ export function AgentEnvSetupTrack({
     stages.find((entry) => entry.id === "detect")?.status === "running";
   return (
     <div className="flex flex-col gap-4">
-      {ready ? null : (
+      {ready && !busy ? null : (
         <p className="m-0 text-[13px] text-[var(--text-secondary)]">
           {busy
-            ? t("workspace.agentEnv.busyInstalling", {
-                provider: providerLabel
-              })
+            ? t(
+                updating
+                  ? "workspace.agentEnv.busyUpdating"
+                  : "workspace.agentEnv.busyInstalling",
+                { provider: providerLabel }
+              )
             : detectRunning
               ? t("workspace.agentEnv.detecting", { provider: providerLabel })
               : t("workspace.agentEnv.setupRemaining", {
@@ -102,6 +107,8 @@ export function AgentEnvSetupTrack({
           const problem = remediation
             ? describeStageProblem(remediation.problem, providerLabel, t)
             : null;
+          const updateActionVisible =
+            stage.id === "install" && (updateAvailable || updating);
           const actionPending =
             remediation?.actionId === "login"
               ? loginPending
@@ -208,7 +215,21 @@ export function AgentEnvSetupTrack({
                   </pre>
                 ) : null}
               </span>
-              {remediation && problem ? (
+              {updateActionVisible ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={updating}
+                  onClick={() => actions.runStageAction("update")}
+                >
+                  {updating ? (
+                    <LoadingIcon className="size-4 animate-spin" />
+                  ) : null}
+                  {updating
+                    ? t("workspace.agentEnv.actionUpdating")
+                    : t("workspace.agentEnv.actionUpdate")}
+                </Button>
+              ) : remediation && problem ? (
                 <Button
                   type="button"
                   size="sm"

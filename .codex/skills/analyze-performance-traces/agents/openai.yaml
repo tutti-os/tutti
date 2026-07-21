@@ -1,4 +1,4 @@
 interface:
   display_name: "Analyze Performance Traces"
-  short_description: "Find code hotspots in large Chromium traces"
-  default_prompt: "Use $analyze-performance-traces to locate concrete code hotspots in this performance trace and propose behavior-preserving optimizations."
+  short_description: "Trace renderer jank to exact source paths"
+  default_prompt: "Use $analyze-performance-traces to audit this trace or reported performance chain, locate exact source bottlenecks, and propose semantically safe fixes."

@@ -37,7 +37,8 @@
     "./workbench/browser-element-context": "./workbench/browser-element-context/index.ts",
     "./workbench/tool-sidebar": "./workbench/tool-sidebar/index.ts",
     "./workbench/types": "./workbench/types.ts",
-    "./styles.css": "./app/renderer/agentactivity.css"
+    "./styles.css": "./app/renderer/agentactivity.css",
+    "./agent-sidebar-preferences": "./agent-sidebar-preferences.ts"
   },
   "files": [
     "dist",
@@ -56,11 +57,6 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-virtual": "^3.13.12",
-    "@tiptap/core": "^3.11.1",
-    "@tiptap/pm": "^3.23.6",
-    "@tiptap/react": "^3.11.1",
-    "@tiptap/starter-kit": "^3.11.1",
-    "@tiptap/suggestion": "^3.11.1",
     "@tutti-os/agent-activity-core": "workspace:*",
     "@tutti-os/browser-node": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
@@ -89,6 +85,11 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
+    "@tiptap/core": "^3.11.1",
+    "@tiptap/pm": "^3.23.6",
+    "@tiptap/react": "^3.11.1",
+    "@tiptap/starter-kit": "^3.11.1",
+    "@tiptap/suggestion": "^3.11.1",
     "@tutti-os/client-tuttid-ts": "workspace:*",
     "@tutti-os/config-tsconfig": "workspace:*",
     "@types/lodash": "^4.17.24",
@@ -104,6 +105,11 @@
     "vitest": "^4.0.13"
   },
   "peerDependencies": {
+    "@tiptap/core": "^3.11.1",
+    "@tiptap/pm": "^3.23.6",
+    "@tiptap/react": "^3.11.1",
+    "@tiptap/starter-kit": "^3.11.1",
+    "@tiptap/suggestion": "^3.11.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

@@ -49,6 +49,7 @@ export function connectDesktopHostPreferencesEventStream(
         deps.preferences.getUpdatePolicy() !== nextPreferences.updatePolicy;
 
       deps.preferences.sync({
+        agentCliUpdateCheckEnabled: nextPreferences.agentCliUpdateCheckEnabled,
         agentComposerDefaultsByProvider:
           nextPreferences.agentComposerDefaultsByProvider,
         agentGuiConversationRailCollapsedByProvider:

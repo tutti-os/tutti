@@ -732,6 +732,13 @@ The host owns:
 - raw protocol decoding
 - host-specific retry capability
 
+When command reachability differs by Session, the host also projects
+`session/runtimeAvailabilityChanged` into the shared engine. This state is
+ephemeral transport coordination, not a canonical Session field. The engine
+gates runtime-dependent commands and AgentGUI presents the same frozen/loading
+interaction for every host; a host must not map one Session's transport loss to
+the workspace-wide engine connection state.
+
 ## Needs Attention Contract
 
 Agent Message Center counts user-actionable items, not all session messages.

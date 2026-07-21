@@ -25,6 +25,7 @@ type RuntimeBinding struct {
 	PermissionConfigOptionID     string
 	ReasoningConfigOptionID      string
 	PermissionModes              map[string]string
+	AutomaticPermissionDecisions map[string]string
 	PlanModeRuntimeID            string
 	PlanModeDisabledRuntimeID    string
 	PlanModeUsesLaunchPermission bool
@@ -73,6 +74,7 @@ func runtimeAdapterConfig(binding RuntimeBinding, agentTargetID string) agentrun
 		ReasoningConfigOptionID:      binding.ReasoningConfigOptionID,
 		RestrictConfigOptions:        true,
 		PermissionModes:              binding.PermissionModes,
+		AutomaticPermissionDecisions: binding.AutomaticPermissionDecisions,
 		PlanModeRuntimeID:            binding.PlanModeRuntimeID,
 		PlanModeDisabledRuntimeID:    binding.PlanModeDisabledRuntimeID,
 		PlanModeUsesLaunchPermission: binding.PlanModeUsesLaunchPermission,

@@ -54,12 +54,14 @@ This package owns:
 - built-in provider adapters and ACP protocol handling
 - process transport abstractions
 - runtime-to-activity report emission
+- provider descriptors for update capability, trusted source, and execution strategy
 
 The host daemon owns:
 
 - HTTP, IPC, or CLI APIs
 - durable persistence and event publishing
 - provider availability and install status
+- update metadata caching, source-ownership verification, and update actions
 - workspace attachment, runtime VM lifecycle, and product auth
 
 ## Live Session Recycling

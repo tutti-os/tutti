@@ -56,6 +56,7 @@ test("tuttid event stream client dispatches typed topic events", async () => {
       payload: {
         initialized: true,
         preferences: {
+          agentCliUpdateCheckEnabled: true,
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
           deletedAgentConversationRetentionDays: 30,
@@ -90,6 +91,7 @@ test("tuttid event stream client dispatches typed topic events", async () => {
       payload: {
         initialized: true,
         preferences: {
+          agentCliUpdateCheckEnabled: true,
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
           deletedAgentConversationRetentionDays: 30,
@@ -232,6 +234,7 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
       payload: {
         initialized: true,
         preferences: {
+          agentCliUpdateCheckEnabled: true,
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
           deletedAgentConversationRetentionDays: 30,
@@ -266,6 +269,7 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
       payload: {
         initialized: true,
         preferences: {
+          agentCliUpdateCheckEnabled: true,
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
           deletedAgentConversationRetentionDays: 30,
@@ -301,6 +305,7 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
       payload: {
         initialized: true,
         preferences: {
+          agentCliUpdateCheckEnabled: true,
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
           deletedAgentConversationRetentionDays: 30,
@@ -390,6 +395,7 @@ test("tuttid event stream client can opt out of a default scope", async () => {
       payload: {
         initialized: true,
         preferences: {
+          agentCliUpdateCheckEnabled: true,
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
           deletedAgentConversationRetentionDays: 30,
@@ -450,6 +456,7 @@ test("tuttid event stream client publishes typed intents after connect", async (
     "preferences.desktop.update.requested",
     {
       preferences: {
+        agentCliUpdateCheckEnabled: true,
         agentComposerDefaultsByProvider: {},
         agentDockLayout: "legacySplit",
         deletedAgentConversationRetentionDays: 30,
@@ -480,6 +487,7 @@ test("tuttid event stream client publishes typed intents after connect", async (
       id: socket.sentEventIDs[0],
       payload: {
         preferences: {
+          agentCliUpdateCheckEnabled: true,
           agentComposerDefaultsByProvider: {},
           agentDockLayout: "legacySplit",
           deletedAgentConversationRetentionDays: 30,
@@ -558,6 +566,7 @@ test("tuttid event stream client fails handshake on unexpected pre-ready frames"
         payload: {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentDockLayout: "legacySplit",
             deletedAgentConversationRetentionDays: 30,
@@ -795,6 +804,7 @@ test("tuttid event stream client tears down a failed handshake before retrying",
     "preferences.desktop.update.requested",
     {
       preferences: {
+        agentCliUpdateCheckEnabled: true,
         agentComposerDefaultsByProvider: {},
         agentDockLayout: "legacySplit",
         deletedAgentConversationRetentionDays: 30,

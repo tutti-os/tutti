@@ -85,6 +85,32 @@ if (typeof Range !== "undefined") {
   });
 }
 
+const testLocalStorageValues = new Map<string, string>();
+const testLocalStorage: Storage = {
+  get length() {
+    return testLocalStorageValues.size;
+  },
+  clear() {
+    testLocalStorageValues.clear();
+  },
+  getItem(key) {
+    return testLocalStorageValues.get(key) ?? null;
+  },
+  key(index) {
+    return Array.from(testLocalStorageValues.keys())[index] ?? null;
+  },
+  removeItem(key) {
+    testLocalStorageValues.delete(key);
+  },
+  setItem(key, value) {
+    testLocalStorageValues.set(key, String(value));
+  }
+};
+Object.defineProperty(window, "localStorage", {
+  configurable: true,
+  value: testLocalStorage
+});
+
 let restoreReactRenderLoopConsoleTrap: (() => void) | null = null;
 
 beforeEach(() => {
@@ -94,7 +120,7 @@ beforeEach(() => {
   });
   resetAgentHostApiForTests();
   resetMentionSearchBrowseCacheForTests();
-  installTestLocalStorage();
+  testLocalStorage.clear();
   installTestAgentHostApi();
 });
 
@@ -115,28 +141,6 @@ function resetMentionSearchBrowseCacheForTests(): void {
       __tuttiResetAgentMentionSearchBrowseCacheForTests?: () => void;
     }
   ).__tuttiResetAgentMentionSearchBrowseCacheForTests?.();
-}
-
-function installTestLocalStorage(): void {
-  if (typeof window.localStorage?.clear === "function") {
-    return;
-  }
-  const values = new Map<string, string>();
-  Object.defineProperty(window, "localStorage", {
-    configurable: true,
-    value: {
-      get length() {
-        return values.size;
-      },
-      clear: () => values.clear(),
-      getItem: (key: string) => values.get(key) ?? null,
-      key: (index: number) => Array.from(values.keys())[index] ?? null,
-      removeItem: (key: string) => values.delete(key),
-      setItem: (key: string, value: string) => {
-        values.set(key, String(value));
-      }
-    }
-  });
 }
 
 function installTestAgentHostApi(): void {

@@ -188,6 +188,29 @@ test("resolveSelection / file 节点产出 path,与现状一致", async () => {
   });
 });
 
+test("resolveSelection / folder 节点产出原始 group id", async () => {
+  const { source } = makeSource({
+    __root__: {
+      items: [
+        {
+          type: "group",
+          id: "/ws/projects/demo",
+          displayName: "demo"
+        }
+      ],
+      nextCursor: null
+    }
+  });
+  const result = await source.listChildren(scope, { node: null });
+  const folderNode = result.entries[0]!;
+
+  assert.deepEqual(source.resolveSelection(folderNode), {
+    path: "/ws/projects/demo",
+    kind: "folder",
+    displayName: "demo"
+  });
+});
+
 test("聚合器源根哨兵进入时,backend 收到 parentGroupId=null", async () => {
   const { source, calls } = makeSource({
     __root__: { items: [], nextCursor: null }

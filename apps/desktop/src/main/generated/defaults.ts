@@ -81,12 +81,30 @@ export const generatedDefaults = {
         enabled: false
       },
       {
+        key: "hermes",
+        releaseIndexUrl:
+          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/versions.json",
+        signingKeyId: "tutti-hermes-release-v1",
+        signingPublicKey:
+          "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAIeel8ddNiN3b4qOq0KucF3BRxfi3zourM0BVyGuP8eY=\n-----END PUBLIC KEY-----\n",
+        enabled: false
+      },
+      {
+        key: "kimi-code",
+        releaseIndexUrl:
+          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/versions.json",
+        signingKeyId: "tutti-kimi-code-release-v1",
+        signingPublicKey:
+          "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAnO+V8MpPIY90uDINyaJjtENg/vPQpURo0AltBZLqvgw=\n-----END PUBLIC KEY-----\n",
+        enabled: false
+      },
+      {
         key: "grok",
         releaseIndexUrl:
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/grok/versions.json",
-        signingKeyId: "tutti-grok-release-v1",
+        signingKeyId: "tutti-grok-release-v2",
         signingPublicKey:
-          "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA2ZaE97XclDVCG9MLnQ5z1ZTd8FJPeLqj6KDsY69Iyu8=\n-----END PUBLIC KEY-----\n",
+          "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAwEnBjsJWjJnmmCCmS2MZTMaNJZSkfVhL7rm3lcsutyA=\n-----END PUBLIC KEY-----\n",
         enabled: false
       }
     ]

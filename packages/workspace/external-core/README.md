@@ -29,7 +29,8 @@ trusted app APIs may read or update host workspace state directly.
 - `settings.open()` for user-activated host settings navigation, including the managed models tab.
 - `userProjects.*` for trusted app access to local user project paths, default
   project selection, project directory creation, and recently used project
-  state.
+  state. Removing a project only removes the recent-project registration; host
+  files and Agent conversations remain intact.
 - `workspace.openFeature()` for user-activated host workspace navigation, such as opening the message center.
 - `logs.write()` for fire-and-forget frontend diagnostics that append to the workspace app `web.log`.
 
@@ -60,7 +61,7 @@ import { createTuttiExternalRichTextMentionService } from "@tutti-os/workspace-e
 
 const mentionService = createTuttiExternalRichTextMentionService({
   getBridge: () => window.tuttiExternal,
-  providerIds: ["workspace-app", "agent-session", "agent-generated-file"],
+  providerIds: ["workspace-app", "agent-session", "agent-generated-file"]
 });
 ```
 

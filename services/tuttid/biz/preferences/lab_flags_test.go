@@ -8,6 +8,7 @@ func TestLabFlagRegistryKeysAndDefaults(t *testing.T) {
 		LabFlagModelPlans,
 		LabFlagWorkspaceAgents,
 		LabFlagAutomationRules,
+		LabFlagPreviewAgents,
 	}
 	if len(labFlagDefaults) != len(keys) {
 		t.Fatalf("registry has %d entries, want %d", len(labFlagDefaults), len(keys))
@@ -40,6 +41,7 @@ func TestIsLabFlagEnabledFailsClosed(t *testing.T) {
 		LabFlagModelPlans,
 		LabFlagWorkspaceAgents,
 		LabFlagAutomationRules,
+		LabFlagPreviewAgents,
 	} {
 		if IsLabFlagEnabled(nil, key) {
 			t.Fatalf("IsLabFlagEnabled(nil, %q) = true, want false", key)

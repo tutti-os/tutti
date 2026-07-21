@@ -67,6 +67,7 @@ export {
   WorkspaceFileManagerContextMenu,
   type WorkspaceFileManagerContextMenuProps
 } from "./ui/WorkspaceFileManagerContextMenu.tsx";
+export { WorkspaceFileManagerCreateDialog } from "./ui/WorkspaceFileManagerMenus.tsx";
 export { WorkspaceFileEntryIcon } from "./ui/WorkspaceFileEntryIcon.tsx";
 export { useWorkspaceFileEntryIconUrls } from "./ui/useWorkspaceFileEntryIconUrls.ts";
 export type { WorkspaceFileManagerEntryDragMode } from "./ui/WorkspaceFileManagerPanels.tsx";

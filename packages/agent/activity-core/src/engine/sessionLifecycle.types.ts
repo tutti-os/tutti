@@ -26,14 +26,29 @@ export interface SessionCancelState {
 }
 
 export interface SessionOperationState {
+  runtimeAvailability: SessionRuntimeAvailability;
   cancel: SessionCancelState;
   operationError: string | null;
   settingsUpdate: SessionSettingsUpdateState;
 }
 
+/**
+ * Host-projected, session-scoped reachability for commands that must reach the
+ * session runtime. This is intentionally separate from the canonical Session:
+ * transport reachability is ephemeral and may differ between Sessions sharing
+ * one workspace engine.
+ */
+export type SessionRuntimeAvailability =
+  | { state: "available" }
+  | {
+      state: "blocked";
+      reason: "transport_reconnecting" | "transport_unavailable";
+    };
+
 export type SessionSettingsUpdateStatus =
   | "idle"
   | "inFlight"
+  | "waitingForRuntime"
   | "failed"
   | "unknown";
 
@@ -174,6 +189,12 @@ export interface SessionSettingsUpdateRequestedIntent {
   workspaceId: string;
 }
 
+export interface SessionRuntimeAvailabilityChangedIntent {
+  type: "session/runtimeAvailabilityChanged";
+  agentSessionId: string;
+  availability: SessionRuntimeAvailability;
+}
+
 export type SessionLifecycleIntent =
   | InteractionUpsertedIntent
   | InteractionResponseRequestedIntent
@@ -183,6 +204,7 @@ export type SessionLifecycleIntent =
   | SessionErrorRecordedIntent
   | SessionMetadataPatchedIntent
   | SessionRemovedIntent
+  | SessionRuntimeAvailabilityChangedIntent
   | SessionSettingsUpdateRequestedIntent
   | SessionSnapshotReceivedIntent
   | SessionStopRequestedIntent

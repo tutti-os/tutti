@@ -3173,11 +3173,11 @@ func TestAppCenterServiceRemoveDeletesWorkspaceAppState(t *testing.T) {
 		StateDir:       t.TempDir(),
 	}
 	stateRoot := service.workspaceAppStateRoot("ws-1", "sample-app")
-	if err := os.MkdirAll(filepath.Join(stateRoot, "data"), 0o755); err != nil {
-		t.Fatalf("create app data dir: %v", err)
+	if err := os.MkdirAll(filepath.Join(stateRoot, "database"), 0o755); err != nil {
+		t.Fatalf("create app database dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(stateRoot, "data", "app.sqlite"), []byte("sqlite data"), 0o644); err != nil {
-		t.Fatalf("write app data: %v", err)
+	if err := os.WriteFile(filepath.Join(stateRoot, "database", "app.sqlite"), []byte("sqlite data"), 0o644); err != nil {
+		t.Fatalf("write app database: %v", err)
 	}
 
 	if _, err := service.Remove(context.Background(), "ws-1", "sample-app"); err != nil {

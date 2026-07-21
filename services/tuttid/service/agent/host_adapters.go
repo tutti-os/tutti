@@ -147,6 +147,13 @@ func (a serviceHostStore) ListSessionInteractions(ctx context.Context, input sto
 	return a.service.TurnStore.ListSessionInteractions(ctx, input)
 }
 
+func (a serviceHostStore) ListLatestTurnInteractions(ctx context.Context, workspaceID string, sessionIDs []string) (map[string][]storesqlite.Interaction, error) {
+	if a.service.TurnStore == nil {
+		return nil, nil
+	}
+	return a.service.TurnStore.ListLatestTurnInteractions(ctx, workspaceID, sessionIDs)
+}
+
 func (a serviceHostStore) PrepareSubmitClaim(ctx context.Context, input storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error) {
 	if a.service.SubmitClaimStore == nil {
 		return storesqlite.SubmitClaim{}, false, nil

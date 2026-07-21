@@ -501,6 +501,9 @@ const (
 type ListSessionInteractionsInput struct {
 	WorkspaceID    string
 	AgentSessionID string
+	// TurnID and RequestID select one exact canonical Interaction when both are set.
+	TurnID    string
+	RequestID string
 	// Status filters by interaction status when non-empty.
 	Status string
 }

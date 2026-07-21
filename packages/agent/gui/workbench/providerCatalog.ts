@@ -7,7 +7,6 @@ export const agentGuiWorkbenchProviders = [
   "cursor",
   "tutti-agent",
   "opencode",
-  "hermes",
   "openclaw"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
@@ -18,12 +17,24 @@ export const agentGuiWorkbenchDefaultDockProviders = [
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
 export const agentGuiWorkbenchDockSuppressedProviders = [
-  "hermes",
   "opencode"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
 export const agentGuiWorkbenchComingSoonProviders =
   [] as const satisfies readonly AgentGuiWorkbenchProvider[];
+
+// Agent integrations still being validated in Tutti. These are gated behind
+// the Early Access integrations switch: selection surfaces (dock, launchpad,
+// app center, and Agents settings) only show them when the switch is on. This
+// describes Tutti's integration maturity, not the upstream Agent's maturity.
+// Call sites consume the predicate rather than branching on provider names.
+export const agentGuiWorkbenchEarlyAccessProviders = [
+  "openclaw"
+] as const satisfies readonly AgentGuiWorkbenchProvider[];
+
+/** @deprecated Use agentGuiWorkbenchEarlyAccessProviders. */
+export const agentGuiWorkbenchPreviewProviders =
+  agentGuiWorkbenchEarlyAccessProviders;
 
 const defaultDockProviderSet = new Set<AgentGuiWorkbenchProvider>(
   agentGuiWorkbenchDefaultDockProviders
@@ -33,6 +44,9 @@ const dockSuppressedProviderSet = new Set<AgentGuiWorkbenchProvider>(
 );
 const comingSoonProviderSet = new Set<AgentGuiWorkbenchProvider>(
   agentGuiWorkbenchComingSoonProviders
+);
+const previewProviderSet = new Set<AgentGuiWorkbenchProvider>(
+  agentGuiWorkbenchEarlyAccessProviders
 );
 const agentGuiWorkbenchLabelProviders = [
   ...agentGuiWorkbenchProviders,
@@ -72,6 +86,30 @@ export function isAgentGuiWorkbenchComingSoonProvider(
 ): boolean {
   return comingSoonProviderSet.has(provider);
 }
+
+export function isAgentGuiWorkbenchEarlyAccessProvider(
+  provider: AgentGuiWorkbenchProvider
+): boolean {
+  return previewProviderSet.has(provider);
+}
+
+/** @deprecated Use isAgentGuiWorkbenchEarlyAccessProvider. */
+export const isAgentGuiWorkbenchPreviewProvider =
+  isAgentGuiWorkbenchEarlyAccessProvider;
+
+// Whether a provider should be shown given the Early Access integrations
+// switch. Stable integrations always show; early-access integrations show only
+// when enabled.
+export function isAgentGuiWorkbenchProviderVisibleWithEarlyAccess(
+  provider: AgentGuiWorkbenchProvider,
+  earlyAccessEnabled: boolean
+): boolean {
+  return earlyAccessEnabled || !previewProviderSet.has(provider);
+}
+
+/** @deprecated Use isAgentGuiWorkbenchProviderVisibleWithEarlyAccess. */
+export const isAgentGuiWorkbenchProviderVisibleWithPreview =
+  isAgentGuiWorkbenchProviderVisibleWithEarlyAccess;
 
 export function isAgentGuiWorkbenchProvider(
   value: unknown

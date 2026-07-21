@@ -34,6 +34,7 @@ import type {
 } from "./controller/useAgentGUINodeController";
 import type {
   AgentGUISidebarFooterContext,
+  AgentGUIConversationRailLayout,
   AgentGUIAgentsEmptyRenderer,
   AgentGUIProviderUnavailableStateRenderer,
   AgentMentionReferenceTargetResolver,
@@ -67,6 +68,7 @@ export interface AgentGUINodeWorkspace {
   resolveExternalPromptEntries?: AgentComposerProps["resolveExternalPromptEntries"];
   prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
   promptAssetLimit?: number | null;
+  projectDirectorySourceAggregator?: ReferenceSourceAggregator | null;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
   resolveReferenceEntryIconUrl?: (
     entry: WorkspaceFileEntry
@@ -174,6 +176,14 @@ export interface AgentGUINodeHostActions {
     tone?: "info" | "warning" | "error"
   ) => void;
   onEngagementEvent?: AgentGUIEngagementEventSink;
+  /**
+   * Reports live left-side rail layout width while the conversation rail is
+   * being resized. Hosts with external chrome aligned to the rail can consume
+   * this instead of observing package DOM/style mutations.
+   */
+  onConversationRailLayoutChange?: (
+    layout: AgentGUIConversationRailLayout
+  ) => void;
 }
 
 export interface AgentGUINodeRenderSlots {
@@ -324,6 +334,8 @@ export function areAgentGUINodePropsEqual(
     pw.resolveExternalPromptEntries === nw.resolveExternalPromptEntries &&
     pw.prepareExternalPromptFiles === nw.prepareExternalPromptFiles &&
     pw.promptAssetLimit === nw.promptAssetLimit &&
+    pw.projectDirectorySourceAggregator ===
+      nw.projectDirectorySourceAggregator &&
     pw.referenceSourceAggregator === nw.referenceSourceAggregator &&
     pw.resolveReferenceEntryIconUrl === nw.resolveReferenceEntryIconUrl &&
     pw.resolveMentionReferenceTarget === nw.resolveMentionReferenceTarget &&
@@ -389,6 +401,7 @@ export function areAgentGUINodePropsEqual(
     pa.onToggleMaximize === na.onToggleMaximize &&
     pa.onShowMessage === na.onShowMessage &&
     pa.onEngagementEvent === na.onEngagementEvent &&
+    pa.onConversationRailLayoutChange === na.onConversationRailLayoutChange &&
     ps.providerRailEmpty === ns.providerRailEmpty &&
     ps.providerUnavailableState === ns.providerUnavailableState &&
     ps.sidebarFooter === ns.sidebarFooter

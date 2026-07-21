@@ -37,9 +37,12 @@ without its runtime or inbox consumer fails recovery with
 `ErrGoalConsumerUnavailable` instead of silently accumulating work.
 
 `GetSession` reads canonical session truth plus an optional live runtime
-observation without starting a provider. `GetTurn` and
-`FindTurnByClientSubmitID` expose canonical turn queries without leaking an
-adapter's concrete store. `CreateSessionInput.ClientSubmitID` and
+observation without starting a provider. `GetTurn`,
+`FindTurnByClientSubmitID`, and `GetSessionInteractionSnapshot` expose
+canonical queries without leaking an adapter's concrete store. The interaction
+snapshot contains every interaction on the latest turn and derives its pending
+subset from that same read; older-turn pending rows can never become current
+actionable state. `CreateSessionInput.ClientSubmitID` and
 `SendInput.ClientSubmitID` are the typed idempotency identities and override
 the legacy metadata value when both are present.
 Runtime adapters preserve explicit downstream failures as `ProviderError` so
@@ -83,6 +86,12 @@ in-progress errors to the responder. The Interaction's pre-delivery `answered`
 state is a durable claim marker, not the runtime's terminal result; completed
 operation and responder dispositions follow an authoritative runtime
 `superseded` result instead of being overwritten by that marker.
+Interactive identity is always the typed `InteractionRef` tuple
+`(workspaceId, agentSessionId, turnId, requestId)`. Provider request ids remain
+unchanged and are only unique within their owning Turn. The response payload
+contains no identity fields. Durable operation idempotency uses the same tuple;
+an operation id that disagrees with its structured identity is an invariant
+failure and must fail closed rather than guessing or rewriting stored data.
 
 Adapters retain authorization and identity, transport, runtime process or VM
 selection, desktop APIs, attachment ingress, and cloud inbox/outbox behavior.

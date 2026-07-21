@@ -7,11 +7,19 @@ import {
   desktopWindowStateScenario,
   workbenchWindowLifecycleScenario
 } from "./agent-gui-window-performance-scenarios.mjs";
+import {
+  composerOverflowResizeScenario,
+  railScopeRevealScenario,
+  virtualizedStreamingScenario
+} from "./agent-gui-layout-performance-scenarios.mjs";
 
 export const agentGuiPerformanceScenarios = [
   providerSwitchScenario,
   sessionSwitchScenario,
   providerSessionCycleScenario,
+  virtualizedStreamingScenario,
+  railScopeRevealScenario,
+  composerOverflowResizeScenario,
   workbenchWindowLifecycleScenario,
   desktopWindowStateScenario
 ];

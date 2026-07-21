@@ -18,7 +18,8 @@ Before finishing:
 - If `tutti.app.json` declares `references.listEndpoint`, that endpoint accepts JSON `POST` requests with optional `parentGroupId`, `filterText`, `cursor`, `timeRange`, and returns direct group/reference items using `location`, not host absolute `path`.
 - If `tutti.app.json` declares `references.searchEndpoint`, that endpoint accepts JSON `POST` requests with a required `query` plus optional `cursor`, `limit`, `kinds`, `timeRange`, and returns a flat, relevance-ordered list of reference items (no group items) using `location`, not host absolute `path`.
 - The `searchEndpoint` matches `query` against each file's **own name** only (the `displayName`), never against `location.path`, the containing folder/project, or `parentGroupLabel` — searching `2` must not return a file named `cover.svg` just because it lives in a project named `2222`.
-- Durable app data is written only under `TUTTI_APP_DATA_DIR`.
+- Durable app artifacts and non-database state are written only under `TUTTI_APP_DATA_DIR`.
+- Active databases, SQLite WAL/SHM files, indexes, and other database-managed files are written only under `TUTTI_APP_DATABASE_DIR`.
 - Runtime scratch data is written only under `TUTTI_APP_RUNTIME_DIR`.
 - Logs are written only under `TUTTI_APP_LOG_DIR`.
 - Reusable app-managed binaries are written only under `TUTTI_APP_TOOLCHAIN_ROOT`.

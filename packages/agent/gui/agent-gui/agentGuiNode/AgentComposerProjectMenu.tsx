@@ -17,6 +17,7 @@ import {
 } from "@tutti-os/ui-system";
 import type { AgentGUIComposerSettingsVM } from "./model/agentGuiNodeTypes";
 import styles from "./AgentGUINode.styles";
+import { createAgentGUIUserProjectSelectionApi } from "./agentGuiUserProjectSelectionApi";
 
 export type AgentProjectDropdownLabels = Pick<
   WorkspaceUserProjectSelectLabelOverrides,
@@ -68,19 +69,11 @@ export function AgentProjectDropdown({
   );
   const userProjectApi = useMemo(
     () =>
-      !previewMode && agentHostApi.userProjects
-        ? {
-            ...agentHostApi.userProjects,
-            selectDirectory:
-              selectProjectDirectory ?? agentHostApi.workspace.selectDirectory
-          }
-        : null,
-    [
-      agentHostApi.userProjects,
-      agentHostApi.workspace.selectDirectory,
-      previewMode,
-      selectProjectDirectory
-    ]
+      createAgentGUIUserProjectSelectionApi({
+        selectProjectDirectory,
+        userProjects: previewMode ? null : agentHostApi.userProjects
+      }),
+    [agentHostApi.userProjects, previewMode, selectProjectDirectory]
   );
 
   if (previewMode) {

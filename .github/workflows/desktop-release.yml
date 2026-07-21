@@ -480,8 +480,34 @@ jobs:
             release-assets-input \
             release-assets
 
+      - name: Generate desktop release summary
+        env:
+          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+          RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+          RELEASE_TARGET: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+        run: |
+          node apps/desktop/scripts/generate-release-summary.mjs \
+            --output release-assets/release-summary.json
+
+      - name: Validate desktop release summary
+        env:
+          RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+          RELEASE_TARGET: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+        run: node apps/desktop/scripts/validate-release-summary.mjs release-assets/release-summary.json
+
       - name: Generate checksums
         run: node apps/desktop/scripts/generate-checksums.mjs release-assets
+
+      - id: previous-release-tag
+        name: Resolve previous GitHub release tag
+        env:
+          RELEASE_CHANNEL: ${{ env.TUTTI_DESKTOP_RELEASE_CHANNEL }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+        run: |
+          previous_tag="$(node apps/desktop/scripts/resolve-previous-release-tag.mjs)"
+          echo "tag=${previous_tag}" >> "$GITHUB_OUTPUT"
 
       - id: stage-release
         name: Stage GitHub release assets
@@ -495,6 +521,7 @@ jobs:
           prerelease: ${{ needs.resolve.outputs.release_prerelease == 'true' }}
           make_latest: ${{ needs.resolve.outputs.release_make_latest == 'true' }}
           generate_release_notes: true
+          previous_tag: ${{ steps.previous-release-tag.outputs.tag }}
           files: |
             release-assets/*
 
@@ -546,21 +573,11 @@ jobs:
             --recursive \
             --cache-control "public, max-age=31536000, immutable"
 
-      - name: Generate desktop release summary
-        env:
-          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
-          RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
-          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
-          RELEASE_TARGET: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
-        run: |
-          node apps/desktop/scripts/generate-release-summary.mjs \
-            --output release-summary.json
-
       - name: Upload desktop release summary artifact
         uses: actions/upload-artifact@v7
         with:
           name: tutti-desktop-release-summary
-          path: release-summary.json
+          path: release-assets/release-summary.json
 
       - name: Update release notes with summary
         env:
@@ -569,7 +586,7 @@ jobs:
           gh release view "${TUTTI_DESKTOP_RELEASE_TAG}" --json body --jq .body > release-body.md
           node apps/desktop/scripts/upsert-release-summary.mjs \
             release-body.md \
-            release-summary.json \
+            release-assets/release-summary.json \
             updated-release-body.md
           gh release edit "${TUTTI_DESKTOP_RELEASE_TAG}" --notes-file updated-release-body.md
 
@@ -584,7 +601,8 @@ jobs:
       expected_channel: ${{ needs.resolve.outputs.release_channel }}
       source_ref: ${{ github.ref_name }}
       notify_feishu: ${{ needs.resolve.outputs.notify_feishu == 'true' }}
-    secrets: inherit
+    secrets:
+      FEISHU_RELEASE_WEBHOOK_URL: ${{ secrets.FEISHU_RELEASE_WEBHOOK_URL }}
 
   notify-draft-feishu:
     name: Notify Draft Release

@@ -399,6 +399,9 @@ export function WorkspaceAppExternalBridge({
         case "userProjects.move":
           await userProjectsApi.move?.(request.input);
           return undefined;
+        case "userProjects.remove":
+          await userProjectsApi.remove?.(request.input);
+          return undefined;
         case "userProjects.prepareSelection":
           return userProjectsApi.prepareSelection?.(request.input);
         case "userProjects.refresh":

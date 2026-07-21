@@ -37,7 +37,17 @@ test("workspace lifecycle gives pageview and availability the same activation op
           auth: { status: "authenticated" },
           availability: { status: "ready" },
           cli: { installed: true },
-          provider: "codex"
+          provider: "codex",
+          update: {
+            capability: "unsupported",
+            currentVersion: null,
+            lastCheckedAt: null,
+            latestVersion: null,
+            reasonCode: null,
+            source: null,
+            unsupportedReason: "update_strategy_unsupported",
+            updateAvailable: null
+          }
         }
       ];
     }

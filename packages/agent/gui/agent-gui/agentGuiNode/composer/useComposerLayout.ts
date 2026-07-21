@@ -137,7 +137,6 @@ export function useComposerLayout({
       setIsPromptTipOverflowing(hasInlineOverflow(element));
     };
 
-    measure();
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
@@ -146,10 +145,8 @@ export function useComposerLayout({
     if (element.parentElement) {
       resizeObserver?.observe(element.parentElement);
     }
-    window.addEventListener("resize", measure);
     return () => {
       resizeObserver?.disconnect();
-      window.removeEventListener("resize", measure);
     };
   }, [activePromptTipId, activePromptTipText, previewMode]);
   useLayoutEffect(() => {

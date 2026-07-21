@@ -39,8 +39,13 @@ func TestPlanDecisionIdentityRejectsCrossScopeAndPayloadMismatch(t *testing.T) {
 	input.OperationID = "operation-retry"
 	input.Payload["clientSubmitId"] = "plan-decision:operation-retry"
 	input.Payload["idempotencyKey"] = "decision-other"
-	if _, _, err := store.PrepareRuntimeOperation(context.Background(), input); !errors.Is(err, ErrRuntimeOperationConflict) {
+	if _, _, err := store.PrepareRuntimeOperation(context.Background(), input); !errors.Is(err, ErrRuntimeOperationIdentityMismatch) {
 		t.Fatalf("same turn different key error = %v", err)
+	}
+	input.OperationID = "operation-1"
+	input.Payload["clientSubmitId"] = "plan-decision:operation-1"
+	if _, _, err := store.PrepareRuntimeOperation(context.Background(), input); !errors.Is(err, ErrRuntimeOperationConflict) {
+		t.Fatalf("same operation different payload error = %v", err)
 	}
 	input.RequestID = "request-other"
 	if _, _, err := store.PrepareRuntimeOperation(context.Background(), input); err == nil {

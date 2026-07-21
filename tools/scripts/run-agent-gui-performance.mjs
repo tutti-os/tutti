@@ -91,6 +91,15 @@ export async function main(argv) {
     await mkdir(stateDirectory, { recursive: true });
     await snapshotSQLiteDatabase(options.sourceDatabase, databasePath);
     const snapshotInfo = await prepareDatabaseSnapshot(databasePath);
+    const scenarioSnapshot = scenario.prepareSnapshot
+      ? await scenario.prepareSnapshot({
+          databasePath,
+          runtimeDirectory,
+          sqliteExec,
+          sqliteJSON,
+          workspaceRoot
+        })
+      : null;
     log(
       `snapshot ready: ${snapshotInfo.sessionCount} sessions, ${snapshotInfo.projectCount} projects`
     );
@@ -101,6 +110,7 @@ export async function main(argv) {
       cdpPort,
       daemonPath,
       desktopLogPath,
+      environment: scenarioSnapshot?.environment,
       stateDirectory,
       userDataDirectory
     });
@@ -117,6 +127,7 @@ export async function main(argv) {
     const context = {
       browserClient,
       pageClient,
+      scenarioData: scenarioSnapshot?.data ?? null,
       targetID: targetIDFromWebSocket(pageWebSocket)
     };
     const prepared = await scenario.prepare(context, {
@@ -201,8 +212,8 @@ export async function main(argv) {
 async function snapshotSQLiteDatabase(sourcePath, destinationPath) {
   const escapedDestination = destinationPath.replaceAll("'", "''");
   await runCommand("sqlite3", [
-    "-readonly",
     sourcePath,
+    "PRAGMA query_only=ON;",
     ".timeout 10000",
     `.backup '${escapedDestination}'`
   ]);
@@ -373,15 +384,17 @@ async function buildDaemon(outputPath) {
 }
 
 function startDesktop(input) {
-  log(`starting isolated Desktop on CDP ${input.cdpPort}`);
+  log(`starting headless isolated Desktop on CDP ${input.cdpPort}`);
   const logStream = createWriteStream(input.desktopLogPath, { flags: "w" });
   const child = spawn("pnpm", ["dev:desktop"], {
     cwd: workspaceRoot,
     detached: process.platform !== "win32",
     env: {
       ...process.env,
+      ...input.environment,
       TUTTI_ANALYTICS_DISABLED: "1",
       TUTTI_DESKTOP_LOG_OUTPUT: "tee",
+      TUTTI_DESKTOP_PERFORMANCE_HEADLESS: "1",
       TUTTI_DESKTOP_USER_DATA_DIR: input.userDataDirectory,
       TUTTI_ELECTRON_JS_FLAGS: "--max-old-space-size=8192",
       TUTTI_ELECTRON_REMOTE_DEBUGGING_PORT: String(input.cdpPort),

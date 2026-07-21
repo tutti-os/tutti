@@ -308,6 +308,7 @@ Extension package 只安装 manifest、profiles、assets 和 locales，不携带
   "candidates": [
     {
       "binaryNames": ["gemini"],
+      "searchPaths": [{ "scope": "user", "path": ".vendor/bin" }],
       "version": {
         "args": ["--version"],
         "constraint": ">=0.50.0"
@@ -339,7 +340,7 @@ Extension package 只安装 manifest、profiles、assets 和 locales，不携带
 
 仅发现同名文件不能判定 Agent `ready`。版本不兼容、ACP 启动失败和认证未完成必须保留为不同状态，供 Agent GUI 展示准确原因和操作。
 
-Discovery Profile 只允许声明受限的路径候选、argv、版本解析、ACP probe 和认证状态规则，不能声明任意探测脚本。Tutti 现有 runtime command resolver 对 `PATH`、Homebrew、pnpm、Volta、asdf、mise、fnm、nvm 和常见用户 bin 目录的处理应继续作为统一底层能力，第三方 extension 不重复实现文件系统扫描。
+Discovery Profile 只允许声明受限的路径候选、argv、版本解析、ACP probe 和认证状态规则，不能声明任意探测脚本。`searchPaths` 目前只接受 `scope: "user"` 与不含 `.`、`..` 的用户主目录相对路径；绝对路径、路径穿越和其他 scope 都会在安装 extension 时被拒绝。声明的目录先于共享搜索环境探测。Tutti 现有 runtime command resolver 对 `PATH`、Homebrew、pnpm、Volta、asdf、mise、fnm、nvm 和常见用户 bin 目录的处理应继续作为统一底层能力，第三方 extension 不重复实现文件系统扫描。
 
 ### 8.2 标准安装命令
 

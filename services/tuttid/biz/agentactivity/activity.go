@@ -135,13 +135,14 @@ type SubmitClaim = agentstore.SubmitClaim
 type SubmitClaimPrepare = agentstore.SubmitClaimPrepare
 
 var (
-	ErrRuntimeOperationConflict     = agentstore.ErrRuntimeOperationConflict
-	ErrRuntimeOperationNotClaimable = agentstore.ErrRuntimeOperationNotClaimable
-	ErrRuntimeOperationLeaseLost    = agentstore.ErrRuntimeOperationLeaseLost
-	ErrRuntimeOperationSubjectState = agentstore.ErrRuntimeOperationSubjectState
-	ErrGoalOperationConflict        = agentstore.ErrGoalOperationConflict
-	ErrGoalStateAbsent              = agentstore.ErrGoalStateAbsent
-	ErrGoalReconcileConflict        = agentstore.ErrGoalReconcileConflict
+	ErrRuntimeOperationConflict         = agentstore.ErrRuntimeOperationConflict
+	ErrRuntimeOperationIdentityMismatch = agentstore.ErrRuntimeOperationIdentityMismatch
+	ErrRuntimeOperationNotClaimable     = agentstore.ErrRuntimeOperationNotClaimable
+	ErrRuntimeOperationLeaseLost        = agentstore.ErrRuntimeOperationLeaseLost
+	ErrRuntimeOperationSubjectState     = agentstore.ErrRuntimeOperationSubjectState
+	ErrGoalOperationConflict            = agentstore.ErrGoalOperationConflict
+	ErrGoalStateAbsent                  = agentstore.ErrGoalStateAbsent
+	ErrGoalReconcileConflict            = agentstore.ErrGoalReconcileConflict
 )
 
 const (

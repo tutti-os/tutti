@@ -9,6 +9,7 @@ import { registerBrowserGuestWebContents } from "../browser/browserGuestRegistry
 import { registerTuttiAssetProtocolForSession } from "../host/tuttiAssetProtocol.ts";
 import { registerWorkspaceAppGuestWebContents } from "../ipc/workspaceAppContext";
 import { resolveDesktopWindowBackgroundColor } from "../desktopTheme";
+import { resolveDesktopPerformanceHeadless } from "../defaults.ts";
 import { getDesktopLogger } from "../logging";
 import type { DesktopLocale } from "../../shared/i18n";
 import type { DesktopDockPlacement } from "../../shared/preferences/index.ts";
@@ -86,6 +87,7 @@ export function createWorkspaceWindow(
   options: CreateWorkspaceWindowOptions
 ): BrowserWindow {
   const logger = getDesktopLogger();
+  const performanceHeadless = resolveDesktopPerformanceHeadless();
   const windowKind = options.windowKind ?? "workspace";
   if (windowKind === "workspace") {
     workspaceWindows.assertDurableWorkspaceAvailable(options.workspaceID);
@@ -133,6 +135,7 @@ export function createWorkspaceWindow(
     height: agentWindowBounds?.height ?? 840,
     minWidth: windowKind === "agent" ? agentWindowMinWidthPx : 960,
     minHeight: windowKind === "agent" ? agentWindowMinHeightPx : 640,
+    ...(performanceHeadless ? { opacity: 0, skipTaskbar: true } : {}),
     ...(agentWindowBounds
       ? {
           x: agentWindowBounds.x,
@@ -150,6 +153,7 @@ export function createWorkspaceWindow(
         }
       : {}),
     webPreferences: {
+      backgroundThrottling: !performanceHeadless,
       contextIsolation: true,
       nodeIntegration: false,
       preload: options.preloadPath,
@@ -157,6 +161,10 @@ export function createWorkspaceWindow(
       webviewTag: true
     }
   });
+  if (performanceHeadless) {
+    workspaceWindow.setFocusable(false);
+    workspaceWindow.setIgnoreMouseEvents(true);
+  }
   reportPredefinePageviewByWindow.set(
     workspaceWindow,
     primaryWindowAnalyticsClaim.claim()
@@ -298,6 +306,12 @@ export function getWorkspaceWindowKind(
   workspaceWindow: BrowserWindow
 ): "agent" | "workspace" | null {
   return workspaceWindows.getKind(workspaceWindow);
+}
+
+export function getWorkspaceWindowWorkspaceID(
+  workspaceWindow: BrowserWindow
+): string | null {
+  return workspaceWindows.getWorkspaceID(workspaceWindow);
 }
 
 export function findWorkspaceWindow(

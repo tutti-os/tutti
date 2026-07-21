@@ -1,5 +1,6 @@
 import { enAgentGuiProviderIdentity } from "./en.agentGuiProviderIdentity.ts";
 import { enAgentGuiQuickPrompts } from "./en.agentGuiQuickPrompts.ts";
+import { enAgentGuiReferencePicker } from "./en.agentGuiReferencePicker.ts";
 import { enAgentGuiRuntimeNotices } from "./en.agentGuiRuntimeNotices.ts";
 import { enAgentGuiSlashPalette } from "./en.agentGuiSlashPalette.ts";
 import { enAgentGuiSessionActions } from "./en.agentGuiSessionActions.ts";
@@ -688,44 +689,7 @@ export const enAgentGui = {
   addContent: "Add files and more",
   quickPrompts: enAgentGuiQuickPrompts,
   referenceWorkspaceFiles: "Reference workspace files",
-  referencePicker: {
-    clearFilter: "Clear filter",
-    confirm: "Use references",
-    emptyDirectory: "This folder is empty.",
-    emptyPreview: "Select a file to see details",
-    emptySearch: "No matching files or folders.",
-    fileTypeAll: "All types",
-    fileTypeDocument: "Documents",
-    fileTypeImage: "Images",
-    fileTypeOther: "Other",
-    fileTypeSeparator: ", ",
-    fileTypeVideo: "Videos",
-    fileTypeWebpage: "Web pages",
-    loadMore: "Load more",
-    loadMoreGroups: "Load more",
-    loading: "Loading...",
-    loadError: "Couldn't load this content. Try again later.",
-    previewBinary: "This file looks like binary content.",
-    previewDecodeFailed: "This file couldn't be decoded as UTF-8 text.",
-    previewError: "Couldn't load a preview.",
-    previewFileTooLarge: "This file is larger than {{maxSize}}.",
-    previewFolder: "Folder preview is not available.",
-    previewHierarchy: "Location",
-    previewLoading: "Loading preview...",
-    previewModified: "Produced at",
-    previewSize: "Size",
-    previewSource: "Source",
-    previewTextTooLarge: "This text file is larger than {{maxSize}}.",
-    previewTooLarge: "This file is too large to preview.",
-    previewUnavailable: "Preview is not available in this workspace.",
-    previewUnsupported: "This file type can't be previewed here.",
-    searchPlaceholder: "Search files and folders",
-    selectGroupHint: "Select a folder on the left",
-    selectedCount: "{{count}} selected",
-    sourceColumn: "Category",
-    title: "Pick workspace references",
-    workspaceRootGroup: "Workspace"
-  },
+  ...enAgentGuiReferencePicker,
   projectLocked: "Project cannot be changed after the session starts",
   projectMissingDescription:
     "This conversation's working directory no longer exists",

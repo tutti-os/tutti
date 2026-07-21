@@ -290,7 +290,7 @@ func TestWaitRespondChildInteractionAndReturnFinalMessage(t *testing.T) {
 	}
 
 	responded, err := service.Respond(context.Background(), RespondInput{
-		WorkspaceID: "ws-1", AgentSessionID: "child-1", RequestID: interaction.RequestID, Semantic: "approve",
+		WorkspaceID: "ws-1", AgentSessionID: "child-1", TurnID: interaction.TurnID, RequestID: interaction.RequestID, Semantic: "approve",
 	})
 	if err != nil {
 		t.Fatalf("Respond() error = %v", err)

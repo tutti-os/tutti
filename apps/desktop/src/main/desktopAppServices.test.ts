@@ -56,6 +56,9 @@ function createHostServices(): DesktopHostServices {
       }
     },
     preferences: {
+      getAgentCliUpdateCheckEnabled() {
+        return true;
+      },
       getAgentComposerDefaultsByProvider() {
         return {};
       },
@@ -121,6 +124,7 @@ function createHostServices(): DesktopHostServices {
       }
     },
     workspaceLaunch: {
+      async ensureAgentBrowserHost() {},
       async openStartupWindow() {},
       async replaceWorkspaceWindow() {},
       async showAgentWindow() {},

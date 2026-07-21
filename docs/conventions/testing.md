@@ -83,7 +83,14 @@ without requiring a manually started Desktop or manually exported trace. It
 makes a transactionally consistent SQLite backup of
 `~/.tutti-dev/tuttid.db`, clears recoverable operation queues and active AgentGUI
 session selection only in that copy, then starts an isolated daemon and
-Electron `userData` directory. The source database is never opened for writes.
+Electron `userData` directory. The source database is never written; the
+SQLite source connection enables `query_only` before online backup.
+The runner also sets `TUTTI_DESKTOP_PERFORMANCE_HEADLESS=1`; workspace and
+standalone Agent windows remain fully rendered for CDP tracing but use zero
+opacity, stay out of the taskbar, disable background throttling, and never
+activate over the developer's current app. They are also non-focusable and
+ignore native mouse events, so pointer input passes through to the underlying
+application; CDP-injected scenario input remains available.
 
 Reports and traces are written under
 `.tmp/perf/agent-gui/<scenario>/<timestamp>/`. Metric values are
@@ -100,11 +107,24 @@ declaration when static symbol matching succeeds. Those links identify source
 ownership, not a runtime call stack or proof of causation.
 
 The capture runner ships `provider-switch`, `session-switch`,
-`provider-session-cycle`, `workbench-window-lifecycle`, and
+`provider-session-cycle`, `virtualized-streaming`, `rail-scope-reveal`,
+`composer-overflow-resize`, `workbench-window-lifecycle`, and
 `desktop-window-state`. List them with `--list-scenarios`; select one with
 `--scenario <id>`. Scenario modules own preparation, completion conditions,
 semantic assertions, milestones, and metadata; runtime startup, trace capture,
 renderer analysis, and report rendering stay scenario-neutral.
+
+`virtualized-streaming` requires one root Session with at least thirty settled
+Turns in the source snapshot. It changes only the isolated copy to route that
+Session through the repository's deterministic fake Cursor ACP executable,
+then asserts that the transcript is virtualized while real daemon events drive
+repeated React DOM mutations. It never launches or sends input to a developer's
+installed Agent provider. `rail-scope-reveal` asserts the exact active-row
+`scrollIntoView` call during a fresh Agent scope restore.
+`composer-overflow-resize` maximizes the AgentGUI Workbench node, narrows the
+renderer viewport, asserts the hero prompt-tip's native `scrollWidth` and
+`clientWidth` getters were read after resize, then restores the original
+viewport metrics.
 
 `workbench-window-lifecycle` measures the internal AgentGUI Workbench node's
 minimize, restore, maximize, unmaximize, close, and reopen mechanics.

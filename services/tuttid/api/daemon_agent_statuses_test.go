@@ -49,6 +49,13 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 				if !input.ForceRefresh {
 					t.Fatal("ForceRefresh = false, want true")
 				}
+				if !input.IncludeUpdates {
+					t.Fatal("IncludeUpdates = false, want true")
+				}
+				if !input.RefreshUpdates {
+					t.Fatal("RefreshUpdates = false, want true")
+				}
+				updateAvailable := true
 				return agentstatusservice.Snapshot{
 					CapturedAt: capturedAt,
 					Providers: []agentstatusservice.ProviderStatus{{
@@ -72,6 +79,14 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 						CLI: agentstatusservice.CLIStatus{
 							Installed: true,
 						},
+						Update: agentstatusservice.UpdateStatus{
+							Capability:      agentstatusservice.UpdateCapabilitySupported,
+							Source:          agentstatusservice.UpdateSourceNPM,
+							CurrentVersion:  "1.0.0",
+							LatestVersion:   "1.1.0",
+							UpdateAvailable: &updateAvailable,
+							LastCheckedAt:   &capturedAt,
+						},
 						Provider: "claude-code",
 					}},
 				}, nil
@@ -79,7 +94,7 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 		},
 	}))
 
-	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/agent-providers/status?providers=claude-code&refresh=true", nil)
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/agent-providers/status?providers=claude-code&includeUpdates=true&refreshUpdates=true&refresh=true", nil)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
@@ -107,6 +122,12 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 	}
 	if len(activeAction.Log) != 2 || activeAction.Log[0] != "installing adapter" {
 		t.Fatalf("activeAction.log = %#v, want split installer stdout", activeAction.Log)
+	}
+	update := response.Providers[0].Update
+	if update.Capability != tuttigenerated.Supported || update.Source == nil || *update.Source != tuttigenerated.AgentProviderUpdateSourceNpm ||
+		update.CurrentVersion == nil || *update.CurrentVersion != "1.0.0" || update.LatestVersion == nil || *update.LatestVersion != "1.1.0" ||
+		update.UpdateAvailable == nil || !*update.UpdateAvailable || update.LastCheckedAt == nil {
+		t.Fatalf("update = %#v", update)
 	}
 }
 
@@ -302,5 +323,35 @@ func TestDaemonAPIRoutesRunAgentProviderAction(t *testing.T) {
 	}
 	if response.Message == nil || *response.Message != "adapter boom" {
 		t.Fatalf("message = %#v, want adapter boom", response.Message)
+	}
+}
+
+func TestDaemonAPIRoutesRunAgentProviderUpdateAction(t *testing.T) {
+	completedAt := time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentStatusService: stubAgentStatusService{
+			runActionFn: func(_ context.Context, input agentstatusservice.RunActionInput) (agentstatusservice.RunActionResult, error) {
+				if input.Provider != "tutti-agent" || input.ActionID != agentstatusservice.ActionUpdate {
+					t.Fatalf("input = %#v, want tutti-agent update", input)
+				}
+				return agentstatusservice.RunActionResult{
+					Provider:    "tutti-agent",
+					ActionID:    agentstatusservice.ActionUpdate,
+					Status:      agentstatusservice.RunActionCompleted,
+					CompletedAt: completedAt,
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/agent-providers/tutti-agent/actions/update/run", nil)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response tuttigenerated.AgentProviderActionRunResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.ActionID != tuttigenerated.AgentProviderActionIDUpdate || response.Status != tuttigenerated.AgentProviderActionRunStatusCompleted {
+		t.Fatalf("response = %#v", response)
 	}
 }

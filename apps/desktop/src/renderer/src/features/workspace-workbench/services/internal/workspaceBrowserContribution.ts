@@ -63,6 +63,10 @@ export function createWorkspaceBrowserContribution(input: {
     resolveSearchUrl: resolveWorkspaceBrowserSearchUrl
   });
   input.browserService.ensureFeatureConnected(feature);
+  input.browserService.setUserAutomationSurface({
+    feature,
+    workspaceId: input.workspaceId
+  });
 
   const contribution = createBrowserWorkbenchContribution({
     contributionId: "workspace-browser",
@@ -81,6 +85,10 @@ export function createWorkspaceBrowserContribution(input: {
     }),
     feature,
     node: {
+      automationTarget: {
+        surfaceRole: "user",
+        workspaceId: input.workspaceId
+      },
       renderTrafficLights: input.renderTrafficLights
     },
     typeId: workspaceBrowserNodeID

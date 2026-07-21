@@ -8,6 +8,7 @@ export interface WorkspaceLaunchOwnerWindow {
 }
 
 export interface WorkspaceLaunchAdapters {
+  ensureAgentBrowserHost(input: WorkspaceLaunchAgentWindowInput): Promise<void>;
   showAgentWindow(input: WorkspaceLaunchAgentWindowInput): Promise<void>;
   showWorkspaceWindow(
     workspaceID: string,
@@ -36,6 +37,7 @@ export interface WorkspaceLaunchAgentWindowInput {
 }
 
 export interface WorkspaceLaunch {
+  ensureAgentBrowserHost(input: WorkspaceLaunchAgentWindowInput): Promise<void>;
   openStartupWindow(): Promise<void>;
   showAgentWindow(input: WorkspaceLaunchAgentWindowInput): Promise<void>;
   showWorkspace(
@@ -58,6 +60,9 @@ export function createWorkspaceLaunch(
   deps: WorkspaceLaunchDependencies
 ): WorkspaceLaunch {
   return {
+    ensureAgentBrowserHost(input) {
+      return deps.adapters.ensureAgentBrowserHost(input);
+    },
     async openStartupWindow() {
       try {
         const workspaceID = await resolveStartupWorkspaceID();

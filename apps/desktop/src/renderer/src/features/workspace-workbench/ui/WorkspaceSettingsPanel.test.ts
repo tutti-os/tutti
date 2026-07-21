@@ -25,6 +25,13 @@ const defaultProvidersSource = readFileSync(
   ),
   "utf8"
 );
+const agentsTabSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "WorkspaceAgentsSettingsTab.tsx"
+  ),
+  "utf8"
+);
 const labFeatureGateRowsSource = readFileSync(
   resolve(
     dirname(fileURLToPath(import.meta.url)),
@@ -142,6 +149,31 @@ test("workspace settings agent panel owns browser-use connection mode", () => {
     /function WorkspaceAgentSettingsSection[\s\S]*workspace\.settings\.general\.browserUseConnectionModeLabel[\s\S]*workspace\.settings\.general\.browserUseConnectionModeOptions\.autoConnect[\s\S]*<ComputerUseSetupRow/
   );
   assert.match(source, /changeBrowserUseConnectionMode/);
+});
+
+test("workspace settings Agents tab controls daemon-owned Agent Target enablement", () => {
+  assert.match(source, /const agentsService = useService\(IAgentsService\)/);
+  assert.match(source, /agentsService=\{agentsService\}/);
+  assert.match(
+    source,
+    /settingsService\.setAgentTargetEnabled\(\s*agentTargetID,\s*enabled\s*\)/
+  );
+  assert.match(agentsTabSource, /agentTargetByID/);
+  assert.match(
+    source,
+    /tuttiAgentSwitchEnabled=\{\s*settingsState\.tuttiAgentSwitchEnabled\s*\}/
+  );
+  assert.match(agentsTabSource, /tuttiAgentSwitchEnabled/);
+  assert.match(agentsTabSource, /agentTarget\?\.enabled \?\? false/);
+  assert.match(
+    agentsTabSource,
+    /workspace\.settings\.agent\.agents\.enabledColumn/
+  );
+  assert.doesNotMatch(agentsTabSource, /showInSidebar/);
+  assert.doesNotMatch(
+    agentsTabSource,
+    /useAgentGUIProviderRailPreferences|changeAgentGUIProviderManagerVisibility/
+  );
 });
 
 test("workspace settings computer-use tooltip and polling stay wired", () => {
@@ -304,6 +336,106 @@ test("workspace managed provider model rows keep stable keys while editing", () 
   assert.doesNotMatch(
     source,
     /key=\{`\$\{model\.provider\}:\$\{model\.id\}:\$\{index\}`\}/
+  );
+});
+
+test("labs keeps the shortcut toggle in the list but moves shortcut config behind a secondary page", () => {
+  // Toggle stays in the Labs list owned by the shared feature-gate rows.
+  assert.match(labFeatureGateRowsSource, /LAB_WORKBENCH_SHORTCUTS_FLAG/);
+  // Secondary-page view state (single-level, no nav stack).
+  assert.match(
+    source,
+    /const \[labView, setLabView\] = useState<"root" \| "workbenchShortcuts">\("root"\)/
+  );
+  // Turning the feature off leaves the secondary page.
+  assert.match(
+    source,
+    /if \(!workbenchShortcutsEnabled && labView === "workbenchShortcuts"\) \{\s*setLabView\("root"\)/
+  );
+  // The "more" entry only shows when the toggle is on and opens the sub-page.
+  assert.match(
+    source,
+    /workbenchShortcutsEnabled \? \(\s*<button[\s\S]{0,400}workspace-settings-lab-configure-shortcuts[\s\S]{0,400}setLabView\("workbenchShortcuts"\)/
+  );
+  // The two shortcut rows render only inside the secondary page guard.
+  assert.match(
+    source,
+    /labView === "workbenchShortcuts" && workbenchShortcutsEnabled[\s\S]{0,1200}newAgentConversationShortcutLabel[\s\S]{0,600}newSameTypeWindowShortcutLabel/
+  );
+  // Back affordance on the secondary page.
+  assert.match(source, /workspace\.settings\.lab\.backLabel/);
+});
+
+test("Lab owns the Preview Agents (Early Access) gate", () => {
+  // The toggle lives in the shared Lab rows, wired to the Early Access flag.
+  assert.match(
+    labFeatureGateRowsSource,
+    /EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG/
+  );
+  assert.match(
+    labFeatureGateRowsSource,
+    /workspace\.settings\.lab\.previewAgentsLabel/
+  );
+  // The Agents tab no longer renders its own Early Access switch, and the
+  // bespoke handler is gone from the panel.
+  assert.doesNotMatch(
+    agentsTabSource,
+    /workspace\.settings\.agent\.agents\.earlyAccessLabel/
+  );
+  assert.doesNotMatch(source, /onEarlyAccessEnabledChange/);
+});
+
+test("agents settings routes readiness status to environment detection", () => {
+  assert.match(
+    source,
+    /onOpenEnvironment=\{\(provider\) =>\s*agentEnvService\.open\(\{ focus: "detect", provider \}\)/
+  );
+  assert.match(
+    agentsTabSource,
+    /workspace\.settings\.agent\.agents\.environmentColumn/
+  );
+  assert.match(agentsTabSource, /onOpenEnvironment\(provider\)/);
+  assert.doesNotMatch(agentsTabSource, /manageColumnConfig/);
+  assert.doesNotMatch(
+    agentsTabSource,
+    /manageConfigDetected|manageConfigMissing/
+  );
+});
+
+test("agents settings exposes stable update checks and routes update actions through Environment", () => {
+  assert.match(agentsTabSource, /checkUpdates\(managedAgentProviders\)/);
+  assert.match(
+    agentsTabSource,
+    /workspace\.settings\.agent\.agents\.checkUpdates/
+  );
+  assert.match(agentsTabSource, /isCheckingUpdates\(\)/);
+  assert.match(
+    agentsTabSource,
+    /snapshot\.pendingActions\.some\(\s*\(action\) => action\.actionId === "update"/
+  );
+  assert.match(
+    agentsTabSource,
+    /disabled=\{checkingUpdates \|\| agentUpdatePending\}/
+  );
+  assert.doesNotMatch(agentsTabSource, /runAction\(provider, "update"/);
+  assert.match(
+    agentsTabSource,
+    /resolveAgentProviderUpdateRowPresentation\(providerStatus\)/
+  );
+  assert.match(source, /setAgentCliUpdateCheckEnabled\(enabled\)/);
+  assert.match(
+    agentsTabSource,
+    /workspace\.settings\.agent\.agents\.autoCheckUpdates/
+  );
+  // Mount always loads local readiness. Remote discovery is additionally
+  // requested only while the durable automatic-check preference is enabled.
+  assert.match(
+    agentsTabSource,
+    /ensureLoaded\(\{\s*providers:\s*managedAgentProviders\s*\}\)/
+  );
+  assert.match(
+    agentsTabSource,
+    /if \(!autoCheckEnabled\)[\s\S]*includeUpdates:\s*true/
   );
 });
 

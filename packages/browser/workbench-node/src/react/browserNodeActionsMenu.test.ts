@@ -120,3 +120,8 @@ test("Browser Node address-bar icon actions use shared hover tooltips", () => {
     /<TooltipTrigger asChild>[\s\S]*?<Button[\s\S]*?<TooltipContent side="bottom">[\s\S]*?actions\.more/
   );
 });
+
+test("Browser Node keeps cold lifecycle state internal", () => {
+  assert.doesNotMatch(browserNodeChromeSource, /runtime\.lifecycle === "cold"/);
+  assert.doesNotMatch(browserNodeChromeSource, /coldStatus/);
+});

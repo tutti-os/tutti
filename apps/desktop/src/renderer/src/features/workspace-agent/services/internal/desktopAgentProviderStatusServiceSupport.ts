@@ -16,12 +16,16 @@ export function normalizeAgentProviderActionOptions(
 export function providerStatusRequestKey(input: {
   providers?: readonly WorkspaceAgentProvider[];
   includeNetwork?: boolean;
+  includeUpdates?: boolean;
   refresh?: boolean;
+  refreshUpdates?: boolean;
 }): string {
   const providers = [...new Set(input.providers ?? [])].sort();
   return JSON.stringify({
     includeNetwork: input.includeNetwork === true,
+    includeUpdates: input.includeUpdates === true,
     refresh: input.refresh === true,
+    refreshUpdates: input.refreshUpdates === true,
     providers: providers.length > 0 ? providers : null
   });
 }

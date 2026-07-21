@@ -6366,6 +6366,8 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__conversation-item {
+  --agent-gui-conversation-actions-width: 72px;
+
   position: relative;
   display: block;
   box-sizing: border-box;
@@ -6383,6 +6385,12 @@ button.agent-gui-node__conversation-section-toggle:hover
   transition:
     background-color 140ms ease,
     border-color 140ms ease;
+}
+
+.agent-gui-node__conversation-item:has(
+  .agent-gui-node__conversation-open-window-button
+) {
+  --agent-gui-conversation-actions-width: 96px;
 }
 
 .agent-gui-node__conversation-item:focus-within,
@@ -6439,9 +6447,13 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__conversation-item:has(
     .agent-gui-node__conversation-actions [data-state="open"]
   )
+  .agent-gui-node__conversation-select,
+.agent-gui-node__conversation-item:has(
+    .agent-gui-node__conversation-actions:focus-within
+  )
   .agent-gui-node__conversation-select {
   grid-template-columns: minmax(0, 1fr) 0;
-  padding-right: 96px;
+  padding-right: calc(var(--agent-gui-conversation-actions-width) + 24px);
 }
 
 .agent-gui-node__conversation-item[data-pending-delete="true"]
@@ -6482,7 +6494,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   justify-content: flex-start;
   gap: 0;
   box-sizing: border-box;
-  min-width: 72px;
+  min-width: var(--agent-gui-conversation-actions-width);
   max-width: calc(100% - 20px);
   opacity: 0;
   transform: translateY(-50%);

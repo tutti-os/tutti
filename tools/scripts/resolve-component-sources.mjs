@@ -148,7 +148,7 @@ async function collectSourceFiles(directory) {
 function isSearchableSourceFile(fileName) {
   return (
     /\.(?:ts|tsx)$/u.test(fileName) &&
-    !fileName.endsWith('.d.ts') &&
+    !fileName.endsWith(".d.ts") &&
     !/\.(?:test|spec|stories)\.[^.]+$/u.test(fileName)
   );
 }

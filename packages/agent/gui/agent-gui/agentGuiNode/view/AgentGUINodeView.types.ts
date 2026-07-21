@@ -51,6 +51,13 @@ export type AgentWorkspaceReferenceInitialTargetResolver = (
   input: AgentWorkspaceReferenceInitialTargetInput
 ) => ReferenceLocateTarget | null;
 
+export interface AgentGUIConversationRailLayout {
+  providerRailWidthPx: number;
+  conversationRailWidthPx: number;
+  leftPanelWidthPx: number;
+  resizing: boolean;
+}
+
 export interface AgentGUIViewLabels {
   initialPlaceholder: string;
   followupPlaceholder: string;
@@ -617,6 +624,9 @@ export interface AgentGUINodeViewProps {
   prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
   promptAssetLimit?: number | null;
   onConversationRailWidthChanged: (widthPx: number) => void;
+  onConversationRailLayoutChange?: (
+    layout: AgentGUIConversationRailLayout
+  ) => void;
   labels: AgentGUIViewLabels;
   conversationRailLabels: AgentGUIConversationRailLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
@@ -626,6 +636,7 @@ export interface AgentGUINodeViewProps {
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   workspaceFileReferenceCopy?: WorkspaceFileReferenceCopy | null;
+  projectDirectorySourceAggregator?: ReferenceSourceAggregator | null;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
   resolveWorkspaceReferenceEntryIconUrl?: (
     entry: WorkspaceFileEntry

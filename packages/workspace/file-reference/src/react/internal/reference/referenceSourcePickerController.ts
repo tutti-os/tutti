@@ -34,6 +34,7 @@ import {
  */
 
 export type ReferenceSourcePickerMode = "browse" | "search";
+export type ReferencePickerSelectionMode = "multiple" | "single";
 
 export interface ReferenceSourceNodeChildrenState {
   /** 已累积的子节点(含多页 append)。 */
@@ -149,6 +150,10 @@ export interface ReferenceSourcePickerController {
    * 结果整体替换(保留旧结果直到新结果就绪)。无更多 / 在途 / 非查询态时 no-op。
    */
   loadMoreSearch(): void;
+  createDirectory(
+    parent: ReferenceNode | null,
+    name: string
+  ): Promise<ReferenceNode>;
   toggleSelection(node: ReferenceNode): void;
   toggleSingleSelectionAndExpand(node: ReferenceNode): void;
   clearSelection(): void;
@@ -172,6 +177,7 @@ export interface ReferenceSourcePickerController {
 export interface CreateReferenceSourcePickerControllerInput {
   aggregator: ReferenceSourceAggregator;
   scope: ReferenceScope;
+  selectionMode?: ReferencePickerSelectionMode;
   searchDebounceMs?: number;
 }
 
@@ -226,6 +232,7 @@ export function createReferenceSourcePickerController(
   let provenanceFilter: ReferenceProvenanceFilter | null = null;
   let provenanceFilterKey = "disabled";
   const { aggregator, scope } = input;
+  const selectionMode = input.selectionMode ?? "multiple";
   const searchDebounceMs = input.searchDebounceMs ?? defaultSearchDebounceMs;
 
   let retained = false;
@@ -972,6 +979,41 @@ export function createReferenceSourcePickerController(
         true
       );
     },
+    async createDirectory(parent, name) {
+      const sourceId = parent?.ref.sourceId ?? snapshot.activeSourceId;
+      if (!sourceId) {
+        throw new Error("reference directory source is not selected");
+      }
+      if (!aggregator.createDirectory) {
+        throw new Error(
+          "reference source aggregator cannot create directories"
+        );
+      }
+      const created = await aggregator.createDirectory(scope, sourceId, {
+        parent,
+        name
+      });
+      const key = childrenKeyForNode(parent);
+      const current = snapshot.bySource[sourceId]?.childrenByKey[key];
+      if (current?.loaded) {
+        setChildrenState(sourceId, key, {
+          entries: sortReferenceNodes(
+            dedupeReferenceNodes([...current.entries, created])
+          )
+        });
+      } else {
+        await loadChildren(sourceId, parent, { append: false });
+      }
+      if (parent) {
+        const parentKey = nodeRefKey(parent.ref);
+        updateTab(sourceId, (tab) => ({
+          ...tab,
+          expandedKeys: { ...tab.expandedKeys, [parentKey]: true }
+        }));
+      }
+      setSnapshot({ selection: [created] });
+      return created;
+    },
     toggleSelection(node) {
       // 文件与文件夹都可作为引用选中(文件夹的展开在 confirm 时按源处理)。
       const key = nodeRefKey(node.ref);
@@ -983,7 +1025,9 @@ export function createReferenceSourcePickerController(
           ...current,
           selection: exists
             ? current.selection.filter((item) => nodeRefKey(item.ref) !== key)
-            : [...current.selection, node]
+            : selectionMode === "single"
+              ? [node]
+              : [...current.selection, node]
         };
       });
     },

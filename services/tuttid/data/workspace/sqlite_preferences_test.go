@@ -74,6 +74,7 @@ func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
 	ctx := context.Background()
 
 	saved, err := store.PutDesktopPreferences(ctx, preferencesbiz.DesktopPreferences{
+		AgentCLIUpdateCheckEnabled: false,
 		AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
 			"codex": {
 				Model:            "gpt-5",
@@ -112,6 +113,9 @@ func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
 	if !saved.Initialized {
 		t.Fatal("PutDesktopPreferences() initialized = false, want true")
 	}
+	if saved.AgentCLIUpdateCheckEnabled {
+		t.Fatal("PutDesktopPreferences() agent CLI update check = true, want false")
+	}
 
 	reloaded, err := store.GetDesktopPreferences(ctx)
 	if err != nil {
@@ -119,6 +123,9 @@ func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
 	}
 	if !reloaded.Initialized {
 		t.Fatal("GetDesktopPreferences() initialized = false, want true")
+	}
+	if reloaded.AgentCLIUpdateCheckEnabled {
+		t.Fatal("GetDesktopPreferences() agent CLI update check = true, want false")
 	}
 	if reloaded.Locale != "zh-CN" {
 		t.Fatalf("GetDesktopPreferences() locale = %q, want zh-CN", reloaded.Locale)

@@ -30,3 +30,36 @@ func (h *Host) FindTurnByClientSubmitID(ctx context.Context, ref SessionRef, cli
 	}
 	return h.store.FindTurnByClientSubmitID(ctx, ref.WorkspaceID, ref.AgentSessionID, clientSubmitID)
 }
+
+// GetSessionInteractionSnapshot returns every interaction from the canonical
+// latest turn and derives the actionable subset from that same read. It does
+// not start or resume a provider runtime.
+func (h *Host) GetSessionInteractionSnapshot(ctx context.Context, ref SessionRef) (SessionInteractionSnapshot, error) {
+	ref = normalizedSessionRef(ref)
+	if h == nil || h.store == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" {
+		return SessionInteractionSnapshot{}, ErrInvalidArgument
+	}
+	if deleted, err := h.store.SessionDeleted(ctx, ref.WorkspaceID, ref.AgentSessionID); err != nil {
+		return SessionInteractionSnapshot{}, err
+	} else if deleted {
+		return SessionInteractionSnapshot{}, ErrSessionNotFound
+	}
+	if _, found, err := h.store.GetSession(ctx, ref.WorkspaceID, ref.AgentSessionID); err != nil {
+		return SessionInteractionSnapshot{}, err
+	} else if !found {
+		return SessionInteractionSnapshot{}, ErrSessionNotFound
+	}
+
+	bySession, err := h.store.ListLatestTurnInteractions(ctx, ref.WorkspaceID, []string{ref.AgentSessionID})
+	if err != nil {
+		return SessionInteractionSnapshot{}, err
+	}
+	interactions := append([]storesqlite.Interaction(nil), bySession[ref.AgentSessionID]...)
+	pending := make([]storesqlite.Interaction, 0, len(interactions))
+	for _, interaction := range interactions {
+		if interaction.Status == storesqlite.InteractionStatusPending {
+			pending = append(pending, interaction)
+		}
+	}
+	return SessionInteractionSnapshot{Interactions: interactions, PendingInteractions: pending}, nil
+}

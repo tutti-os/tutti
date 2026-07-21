@@ -402,7 +402,7 @@ func TestProjectActivityEventsToStreamEventsAddsVisibleTurnFailureMessage(t *tes
 	t.Parallel()
 
 	session := reportTestSession()
-	session.Provider = ProviderHermes
+	session.Provider = hermesExtensionTestProvider
 	session.AgentSessionID = "4e70b18d-b8b5-47a1-b293-3b98e4a23310"
 
 	events := ProjectActivityEventsToStreamEvents(session, []activityshared.Event{

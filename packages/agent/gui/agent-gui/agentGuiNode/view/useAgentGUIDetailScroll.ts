@@ -33,6 +33,7 @@ interface Input {
   showTimelineSkeleton: boolean;
   submittedPromptScrollConversationRef: MutableRefObject<string | null>;
   timelineConversationId: string | null;
+  timelineContentRef: RefObject<HTMLDivElement | null>;
   timelineRef: RefObject<HTMLDivElement | null>;
   timelineScrollAnchorRef: MutableRefObject<{
     conversationId: string;
@@ -53,6 +54,7 @@ export function useAgentGUIDetailScroll(input: Input) {
     showTimelineSkeleton,
     submittedPromptScrollConversationRef,
     timelineConversationId,
+    timelineContentRef,
     timelineRef,
     timelineScrollAnchorRef,
     viewModel
@@ -62,7 +64,11 @@ export function useAgentGUIDetailScroll(input: Input) {
     useState(true);
   const bottomLockOwnerRef = useRef<string | null>(null);
   const userScrollAwayIntentConversationRef = useRef<string | null>(null);
+  const lastShowTimelineSkeletonRef = useRef(showTimelineSkeleton);
   useLayoutEffect(() => {
+    const timelineSkeletonChanged =
+      lastShowTimelineSkeletonRef.current !== showTimelineSkeleton;
+    lastShowTimelineSkeletonRef.current = showTimelineSkeleton;
     const timeline = timelineRef.current;
     if (!timeline) {
       return;
@@ -79,17 +85,27 @@ export function useAgentGUIDetailScroll(input: Input) {
       return;
     }
 
-    const maxScrollTop = Math.max(
-      0,
-      timeline.scrollHeight - timeline.clientHeight
-    );
     const anchor = timelineScrollAnchorRef.current;
     const prependAnchor = pendingPrependScrollAnchorRef.current;
     const shouldScrollSubmittedPromptToBottom =
       submittedPromptScrollConversationRef.current === activeConversationId;
-    let nextScrollTop = timeline.scrollTop;
     const conversationChanged =
       !anchor || anchor.conversationId !== activeConversationId;
+    const shouldRestorePrependAnchor =
+      prependAnchor?.conversationId === activeConversationId;
+    if (
+      !conversationChanged &&
+      !shouldScrollSubmittedPromptToBottom &&
+      !shouldRestorePrependAnchor &&
+      !timelineSkeletonChanged
+    ) {
+      return;
+    }
+    const maxScrollTop = Math.max(
+      0,
+      timeline.scrollHeight - timeline.clientHeight
+    );
+    let nextScrollTop: number;
     if (conversationChanged || shouldScrollSubmittedPromptToBottom) {
       bottomLockOwnerRef.current = activeConversationId;
       userScrollAwayIntentConversationRef.current = null;
@@ -108,7 +124,7 @@ export function useAgentGUIDetailScroll(input: Input) {
       if (shouldScrollSubmittedPromptToBottom) {
         pendingPrependScrollAnchorRef.current = null;
       }
-    } else if (prependAnchor?.conversationId === activeConversationId) {
+    } else if (shouldRestorePrependAnchor && prependAnchor) {
       const nextScrollHeight = timeline.scrollHeight;
       const delta = nextScrollHeight - prependAnchor.scrollHeight;
       nextScrollTop = Math.max(0, prependAnchor.scrollTop + delta);
@@ -312,6 +328,7 @@ export function useAgentGUIDetailScroll(input: Input) {
 
   useEffect(() => {
     const timeline = timelineRef.current;
+    const timelineContent = timelineContentRef.current;
     const activeConversationId = timelineConversationId;
     if (!timeline || !activeConversationId) {
       return;
@@ -380,6 +397,38 @@ export function useAgentGUIDetailScroll(input: Input) {
       }
     };
 
+    const syncObservedTimelineGeometry = (): void => {
+      const anchor = timelineScrollAnchorRef.current;
+      if (!anchor || anchor.conversationId !== activeConversationId) {
+        return;
+      }
+
+      const scrollHeight = timeline.scrollHeight;
+      const clientHeight = timeline.clientHeight;
+      const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
+      const bottomLocked = bottomLockOwnerRef.current === activeConversationId;
+      let scrollTop = Math.min(maxScrollTop, timeline.scrollTop);
+      if (bottomLocked) {
+        setTimelineScrollTopInstantly(timeline, maxScrollTop);
+        scrollTop = maxScrollTop;
+      }
+      timelineScrollAnchorRef.current = {
+        conversationId: activeConversationId,
+        scrollHeight,
+        scrollTop,
+        clientHeight
+      };
+      const atBottom =
+        maxScrollTop - scrollTop <= AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX;
+      if (atBottom) {
+        bottomLockOwnerRef.current = activeConversationId;
+      }
+      setIsTimelineScrolledToTop(
+        scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
+      );
+      setIsTimelineScrolledToBottom(bottomLocked || atBottom);
+    };
+
     const captureWheelIntent = (event: WheelEvent): void => {
       if (event.deltaY < 0) {
         userScrollAwayIntentConversationRef.current = activeConversationId;
@@ -399,7 +448,16 @@ export function useAgentGUIDetailScroll(input: Input) {
     timeline.addEventListener("scroll", captureScrollAnchor, { passive: true });
     timeline.addEventListener("wheel", captureWheelIntent, { passive: true });
     timeline.addEventListener("keydown", captureKeyboardIntent);
+    const geometryObserver =
+      timelineContent && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(syncObservedTimelineGeometry)
+        : null;
+    geometryObserver?.observe(timeline);
+    if (timelineContent) {
+      geometryObserver?.observe(timelineContent);
+    }
     return () => {
+      geometryObserver?.disconnect();
       timeline.removeEventListener("scroll", captureScrollAnchor);
       timeline.removeEventListener("wheel", captureWheelIntent);
       timeline.removeEventListener("keydown", captureKeyboardIntent);

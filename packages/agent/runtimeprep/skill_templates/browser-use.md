@@ -14,10 +14,13 @@ Drive the browser only through `{{CLI_COMMAND}} browser`. The Tutti daemon owns 
 1. Navigate when needed: `{{CLI_COMMAND}} browser navigate --url <url>`.
 2. Read the current page with `{{CLI_COMMAND}} browser snapshot`; use returned `uid` values for interactions.
 3. Act with `{{CLI_COMMAND}} browser click --uid <uid>` or `{{CLI_COMMAND}} browser fill --uid <uid> --value <text>`.
-4. Use `{{CLI_COMMAND}} browser eval --script '() => document.title'` for page JS, `{{CLI_COMMAND}} browser screenshot` for a PNG path, and `{{CLI_COMMAND}} browser list-pages` to inspect open pages.
-5. Re-run `snapshot` after navigation or UI-changing actions because `uid` values can change.
+4. Use `{{CLI_COMMAND}} browser list-pages` to inspect the User Browser and your Agent Browser tabs. Select a stable target with `{{CLI_COMMAND}} browser select-page --page-id <id>` when needed.
+5. Create an Agent Browser tab with `{{CLI_COMMAND}} browser new-page --url <url>` and close a page you own with `{{CLI_COMMAND}} browser close-page --page-id <id>`.
+6. Use `{{CLI_COMMAND}} browser eval --script '() => document.title'` for page JS and `{{CLI_COMMAND}} browser screenshot` for a PNG path.
+7. Re-run `snapshot` after navigation or UI-changing actions because `uid` values can change.
 
 ## Guardrails
 
-- The browser session is shared per workspace; do not open or close it yourself.
-- If the daemon reports startup failure or missing Chrome, report that error instead of falling back to shell/browser tools.
+- The desktop browser session includes visible in-app BrowserNode tabs for the current workspace. Website App tabs are outside this automation scope.
+- User Browser tabs may contain the user's active work. Read or modify them only when that is required by the request.
+- If the desktop BrowserNode host or the headless managed Chrome backend is unavailable, report that error instead of falling back to shell/browser tools.

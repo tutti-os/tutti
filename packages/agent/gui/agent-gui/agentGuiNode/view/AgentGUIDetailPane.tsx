@@ -184,6 +184,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
 }: AgentGUIDetailPaneProps): React.JSX.Element {
   "use memo";
   const timelineRef = useRef<HTMLDivElement | null>(null);
+  const timelineContentRef = useRef<HTMLDivElement | null>(null);
   const bottomDockRef = useRef<HTMLDivElement | null>(null);
   const timelineScrollAnchorRef = useRef<{
     conversationId: string;
@@ -358,6 +359,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [submitInteractivePrompt]
   );
   const canSwitchComposerProvider = true;
+  const isInteractionPending =
+    viewModel.interaction.isRespondingApproval ||
+    viewModel.interaction.isRuntimeBlocked;
   const homeComposerProviderTargets = homeTargetProjection.agentTargets;
   const selectedHomeComposerTarget = homeTargetProjection.selectedAgentTarget;
   const composerProviderTargets =
@@ -461,7 +465,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       isInterrupting:
         viewModel.composer.isInterrupting || viewModel.composer.isCancelPending,
       isSendingTurn: isComposerSending,
-      isSubmittingPrompt: viewModel.interaction.isRespondingApproval,
+      isSubmittingPrompt: isInteractionPending,
       uiLanguage,
       labels: composerLabels,
       workspaceUserProjectI18n,
@@ -552,6 +556,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.detail.hasSentUserMessage,
       viewModel.composer.isInterrupting,
       viewModel.interaction.isRespondingApproval,
+      viewModel.interaction.isRuntimeBlocked,
       viewModel.composer.promptImagesSupported,
       viewModel.composer.queueStatus,
       viewModel.composer.queuedPrompts,
@@ -592,7 +597,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     viewModel.composer.queuedPrompts.map((prompt) => prompt.id).join(","),
     viewModel.composer.queueStatus,
     viewModel.composer.drainingQueuedPromptId ?? "",
-    viewModel.interaction.isRespondingApproval ? "1" : "0"
+    isInteractionPending ? "1" : "0"
   ].join("|");
 
   useEffect(() => {
@@ -612,6 +617,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     showTimelineSkeleton,
     submittedPromptScrollConversationRef,
     timelineConversationId,
+    timelineContentRef,
     timelineRef,
     timelineScrollAnchorRef,
     viewModel
@@ -634,6 +640,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         scrollbarMode="native"
         className="flex h-full min-h-0 flex-1 flex-col [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"
         viewportRef={timelineRef}
+        viewportContentRef={timelineContentRef}
         viewportTestId="agent-gui-timeline"
         viewportClassName={`${styles.timeline} ${
           hasActiveConversation
@@ -680,7 +687,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
                   : undefined
               }
               inlineNoticeChrome={inlineNoticeChrome}
-              isRespondingApproval={viewModel.interaction.isRespondingApproval}
+              isRespondingApproval={isInteractionPending}
               previewMode={previewMode}
               onSubmitApprovalOption={submitApprovalOption}
               onRetryActivation={retryActivation}
@@ -721,7 +728,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           bottomDockReplacementPrompt={bottomDockReplacementPrompt}
           composerProps={bottomDockComposerProps}
           inlineNoticeChrome={inlineNoticeChrome}
-          isRespondingApproval={viewModel.interaction.isRespondingApproval}
+          isRespondingApproval={isInteractionPending}
           sessionChrome={sessionChrome}
           keyboardShortcutsEnabled={isActive}
           chromeLabels={chromeLabels}

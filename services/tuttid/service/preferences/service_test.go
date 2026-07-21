@@ -158,6 +158,7 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	}
 
 	preferences, err := service.Put(context.Background(), PutInput{
+		AgentCLIUpdateCheckEnabled: true,
 		AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
 			" claude ": {
 				Model:            " claude-3-5 ",
@@ -197,6 +198,9 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	}
 	if !preferences.Initialized {
 		t.Fatal("Put() initialized = false, want true")
+	}
+	if !store.putInput.AgentCLIUpdateCheckEnabled {
+		t.Fatal("stored agent CLI update check = false, want true")
 	}
 	if store.putInput.DockPlacement != "left" {
 		t.Fatalf("stored dockPlacement = %q, want left", store.putInput.DockPlacement)

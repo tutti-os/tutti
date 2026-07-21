@@ -20,6 +20,7 @@ export interface AgentGUIReferencePickerSurfaceProps {
   initialTarget: ReferenceSourcePickerProps["initialTarget"];
   isNodeSelectable: ReferenceSourcePickerProps["isNodeSelectable"];
   open: boolean;
+  purpose: "directory" | "reference";
   provenanceFilter: AgentComposerReferenceProvenanceFilter | null;
   resolveEntryIconUrl: ReferenceSourcePickerProps["resolveEntryIconUrl"];
   workspaceId: string;
@@ -37,6 +38,7 @@ export function AgentGUIReferencePickerSurface({
   initialTarget,
   isNodeSelectable,
   open,
+  purpose,
   provenanceFilter,
   resolveEntryIconUrl,
   workspaceId,
@@ -52,6 +54,7 @@ export function AgentGUIReferencePickerSurface({
       isNodeSelectable={isNodeSelectable}
       fileManagerCopy={fileManagerCopy ?? undefined}
       open={open}
+      purpose={purpose}
       provenanceFilter={provenanceFilter?.snapshot.value}
       provenanceFilterControl={
         provenanceFilter ? (

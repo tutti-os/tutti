@@ -14,7 +14,6 @@ const (
 	ProviderTuttiAgent = providerregistry.TuttiAgentProviderID
 	ProviderCursor     = providerregistry.CursorProviderID
 	ProviderNexight    = providerregistry.NexightProviderID
-	ProviderHermes     = providerregistry.HermesProviderID
 	ProviderOpenClaw   = providerregistry.OpenClawProviderID
 	ProviderOpenCode   = providerregistry.OpenCodeProviderID
 

@@ -26,6 +26,7 @@ export interface AgentToolSidebarHandle {
   addPanel(panel: AgentToolPanelId, resourceId?: string): string | null;
   close(): void;
   closeTab(tabId: string): void;
+  ensurePanel(panel: AgentToolPanelId, resourceId?: string): string | null;
   openPanel(panel: AgentToolPanelId, resourceId?: string): string | null;
 }
 
@@ -115,6 +116,7 @@ export const AgentToolSidebar = forwardRef<
     closePanel,
     closePanelTab,
     contentReadyTabIds,
+    ensurePanel,
     handleSidebarTransitionEnd,
     isEmptySidebar,
     isEmptySidebarClosing,
@@ -146,9 +148,10 @@ export const AgentToolSidebar = forwardRef<
       addPanel,
       close: closePanel,
       closeTab: closePanelTab,
+      ensurePanel,
       openPanel
     }),
-    [addPanel, closePanel, closePanelTab, openPanel]
+    [addPanel, closePanel, closePanelTab, ensurePanel, openPanel]
   );
 
   const isHostHeaderDrag = headerDrag?.mode === "host";

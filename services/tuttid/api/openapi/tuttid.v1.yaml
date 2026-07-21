@@ -2689,10 +2689,31 @@ paths:
             wizard's network diagnostic sets this.
           schema:
             type: boolean
+        - name: includeUpdates
+          in: query
+          required: false
+          description: >-
+            Opt into cached remote update discovery for provider CLIs. Off by
+            default so ordinary readiness and status requests stay purely
+            local. Discovery failures are reported on each provider's update
+            status and do not fail the status request.
+          schema:
+            type: boolean
         - name: refresh
           in: query
           required: false
-          description: Bypass the daemon provider-readiness cache.
+          description: >-
+            Bypass only the daemon's local provider-readiness cache. This does
+            not opt into or refresh remote update discovery.
+          schema:
+            type: boolean
+        - name: refreshUpdates
+          in: query
+          required: false
+          description: >-
+            Bypass only the provider update-metadata cache when includeUpdates
+            is true. This does not bypass local readiness or network-diagnostic
+            caches and does not opt into discovery by itself.
           schema:
             type: boolean
       responses:
@@ -5260,6 +5281,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - agentCliUpdateCheckEnabled
         - agentComposerDefaultsByProvider
         - agentGuiConversationRailCollapsedByProvider
         - agentConversationDetailMode
@@ -5280,6 +5302,10 @@ components:
         - updateChannel
         - updatePolicy
       properties:
+        agentCliUpdateCheckEnabled:
+          type: boolean
+          default: true
+          description: Whether tuttid may periodically discover newer managed agent CLI releases on this device. This never authorizes automatic installation.
         agentComposerDefaultsByProvider:
           $ref: "#/components/schemas/DesktopAgentComposerDefaultsByProvider"
         agentComposerDefaultsByAgentTarget:
@@ -5409,8 +5435,6 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         nexight:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
-        hermes:
-          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         openclaw:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         opencode:
@@ -5432,8 +5456,6 @@ components:
         cursor:
           type: boolean
         nexight:
-          type: boolean
-        hermes:
           type: boolean
         openclaw:
           type: boolean
@@ -7460,8 +7482,18 @@ components:
       type: string
       enum:
         - install
+        - update
         - login
         - refresh
+    AgentProviderUpdateCapability:
+      type: string
+      enum:
+        - supported
+        - unsupported
+    AgentProviderUpdateSource:
+      type: string
+      enum:
+        - npm
     AgentProviderProbeStatus:
       type: string
       enum:
@@ -7478,6 +7510,7 @@ components:
       enum:
         - detect
         - install
+        - update
         - repair
         - verify
         - done
@@ -7725,6 +7758,49 @@ components:
           type: string
           nullable: true
           description: The authentication method reported by the provider CLI (e.g. oauth, apiKey).
+    AgentProviderUpdateStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - capability
+        - source
+        - currentVersion
+        - latestVersion
+        - updateAvailable
+        - unsupportedReason
+        - lastCheckedAt
+        - reasonCode
+      properties:
+        capability:
+          $ref: "#/components/schemas/AgentProviderUpdateCapability"
+        source:
+          allOf:
+            - $ref: "#/components/schemas/AgentProviderUpdateSource"
+          nullable: true
+        currentVersion:
+          type: string
+          nullable: true
+        latestVersion:
+          type: string
+          nullable: true
+        updateAvailable:
+          type: boolean
+          nullable: true
+          description: >-
+            Null when discovery has not run, failed, or the current/latest
+            versions cannot be compared safely.
+        unsupportedReason:
+          type: string
+          nullable: true
+          description: Stable reason why this provider cannot be updated by tuttid.
+        lastCheckedAt:
+          type: string
+          format: date-time
+          nullable: true
+        reasonCode:
+          type: string
+          nullable: true
+          description: Non-fatal discovery or version-comparison result code.
     AgentProviderStatus:
       type: object
       additionalProperties: false
@@ -7734,6 +7810,7 @@ components:
         - cli
         - adapter
         - auth
+        - update
         - actions
       properties:
         provider:
@@ -7746,6 +7823,8 @@ components:
           $ref: "#/components/schemas/AgentProviderAdapterStatus"
         auth:
           $ref: "#/components/schemas/AgentProviderAuthInfo"
+        update:
+          $ref: "#/components/schemas/AgentProviderUpdateStatus"
         actions:
           type: array
           items:

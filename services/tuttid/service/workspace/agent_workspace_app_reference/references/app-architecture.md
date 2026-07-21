@@ -70,7 +70,8 @@ Tutti package startup:
 - Bind to `$TUTTI_APP_HOST:$TUTTI_APP_PORT`.
 - Use `$TUTTI_APP_NODE` for the app server and `$TUTTI_APP_NPM` for prepare/build steps; do not rely on system runtime names. Use `$TUTTI_APP_PYTHON` only when adapting an existing Python helper, not as the primary agent-enabled app server.
 - Treat `$TUTTI_APP_PACKAGE_DIR` as read-only after startup.
-- Store durable data under `$TUTTI_APP_DATA_DIR`.
+- Store durable artifacts and non-database state under `$TUTTI_APP_DATA_DIR`.
+- Store active SQLite databases, WAL/SHM files, indexes, and other database-managed files under the host-local durable `$TUTTI_APP_DATABASE_DIR`; multiple database files are allowed.
 - Store scratch files under `$TUTTI_APP_RUNTIME_DIR`.
 - Write file logs under `$TUTTI_APP_LOG_DIR` only when needed.
 - Do not expect a workspace-root environment variable. Use `$TUTTI_WORKSPACE_ID` and `$TUTTI_CLI` for explicit workspace-scoped capabilities; app-owned agents receive the selected project directory through their process `cwd`.

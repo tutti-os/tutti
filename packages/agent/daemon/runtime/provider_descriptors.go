@@ -136,6 +136,7 @@ type StandardACPAdapterConfig struct {
 	ReasoningConfigOptionID      string
 	RestrictConfigOptions        bool
 	PermissionModes              map[string]string
+	AutomaticPermissionDecisions map[string]string
 	PlanModeRuntimeID            string
 	PlanModeDisabledRuntimeID    string
 	PlanModeUsesLaunchPermission bool
@@ -172,7 +173,7 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 	}
 	host = normalizeHostMetadata(host)
 	permissionModes := cloneStandardACPToolAliases(config.PermissionModes)
-	return &standardACPAdapter{
+	adapter := &standardACPAdapter{
 		config: standardACPConfig{
 			provider:                     provider,
 			adapterName:                  strings.TrimSpace(config.Name),
@@ -200,7 +201,28 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 			env:                          func(session Session) []string { return standardACPEnv(session, host) },
 		},
 		transport: transport, host: host, sessions: make(map[string]*standardACPSession),
-	}, nil
+	}
+	if decisions := automaticPermissionDecisionFromMap(config.AutomaticPermissionDecisions); decisions != nil {
+		adapter.config.automaticPermissionDecision = decisions
+	}
+	return adapter, nil
+}
+
+func automaticPermissionDecisionFromMap(input map[string]string) func(string) string {
+	decisions := make(map[string]string, len(input))
+	for id, decision := range input {
+		normalizedID := strings.ToLower(strings.TrimSpace(id))
+		normalizedDecision := strings.TrimSpace(decision)
+		if normalizedID != "" && (normalizedDecision == "approved" || normalizedDecision == "denied") {
+			decisions[normalizedID] = normalizedDecision
+		}
+	}
+	if len(decisions) == 0 {
+		return nil
+	}
+	return func(permissionModeID string) string {
+		return decisions[strings.ToLower(strings.TrimSpace(permissionModeID))]
+	}
 }
 
 func cloneStandardACPToolAliases(input map[string]string) map[string]string {

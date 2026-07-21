@@ -1,0 +1,104 @@
+#!/usr/bin/env node
+import process from "node:process";
+import readline from "node:readline";
+
+const args = process.argv.slice(2);
+
+if (args.includes("about")) {
+  process.stdout.write(
+    `${JSON.stringify({
+      cliVersion: "tutti-perf-fixture",
+      subscriptionTier: "Fixture",
+      userEmail: "performance-fixture@localhost"
+    })}\n`
+  );
+} else if (args.includes("--version") || args.includes("version")) {
+  process.stdout.write("cursor-agent tutti-perf-fixture\n");
+} else if (args.includes("acp")) {
+  runACPFixture();
+} else {
+  process.stdout.write("Logged in as performance-fixture@localhost\n");
+}
+
+function runACPFixture() {
+  const input = readline.createInterface({ input: process.stdin });
+  let canceled = false;
+  input.on("line", (line) => {
+    void handleMessage(line).catch((error) => {
+      process.stderr.write(`${error.stack ?? error.message}\n`);
+      process.exitCode = 1;
+    });
+  });
+
+  async function handleMessage(line) {
+    const message = JSON.parse(line);
+    switch (message.method) {
+      case "initialize":
+        respond(message.id, {
+          protocolVersion: 1,
+          agentInfo: { name: "tutti-perf-cursor", title: "Tutti Perf Cursor" },
+          agentCapabilities: { loadSession: true }
+        });
+        return;
+      case "session/new":
+        respond(message.id, {
+          configOptions: [],
+          sessionId: "tutti-perf-cursor-session"
+        });
+        return;
+      case "session/load":
+      case "session/resume":
+      case "session/set_mode":
+      case "session/set_config_option":
+        respond(message.id, { configOptions: [] });
+        return;
+      case "session/cancel":
+        canceled = true;
+        return;
+      case "session/prompt":
+        canceled = false;
+        await streamPrompt(message.id);
+        return;
+      default:
+        if (message.id !== undefined) {
+          write({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: {
+              code: -32601,
+              message: `method not found: ${message.method}`
+            }
+          });
+        }
+    }
+  }
+
+  async function streamPrompt(promptID) {
+    for (let index = 0; index < 48 && !canceled; index += 1) {
+      notify("session/update", {
+        sessionId: "tutti-perf-cursor-session",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: `Virtualized streaming fixture chunk ${String(index + 1).padStart(2, "0")}: ${"layout-safe-content ".repeat(8)}\n\n`
+          }
+        }
+      });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    respond(promptID, { stopReason: canceled ? "canceled" : "end_turn" });
+  }
+}
+
+function respond(id, result) {
+  write({ jsonrpc: "2.0", id, result });
+}
+
+function notify(method, params) {
+  write({ jsonrpc: "2.0", method, params });
+}
+
+function write(value) {
+  process.stdout.write(`${JSON.stringify(value)}\n`);
+}

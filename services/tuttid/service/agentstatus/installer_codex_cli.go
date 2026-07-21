@@ -52,6 +52,19 @@ func (s Service) runManagedNPMPackageInstaller(
 	spec ManagedNPMPackageInstallerSpec,
 	existingCLIPath string,
 ) (InstallCommandResult, error) {
+	return s.runManagedNPMPackageAction(ctx, provider, ActionInstall, spec, existingCLIPath)
+}
+
+// runManagedNPMPackageAction is the controlled npm execution primitive shared
+// by install and update. The workflows that decide whether and why it runs are
+// separate; the action id keeps progress ownership and reporting distinct.
+func (s Service) runManagedNPMPackageAction(
+	ctx context.Context,
+	provider string,
+	actionID ActionID,
+	spec ManagedNPMPackageInstallerSpec,
+	existingCLIPath string,
+) (InstallCommandResult, error) {
 	packageName := strings.TrimSpace(spec.PackageName)
 	binaryName := strings.TrimSpace(spec.BinaryName)
 	if packageName == "" {
@@ -118,7 +131,7 @@ func (s Service) runManagedNPMPackageInstaller(
 	for i, registry := range registries {
 		registryDisplay := displayNPMRegistry(registry)
 		setActiveAction(ctx, provider, ActiveAction{
-			ID:         ActionInstall,
+			ID:         actionID,
 			Status:     "running",
 			Step:       step,
 			Registry:   registryDisplay,
@@ -135,7 +148,7 @@ func (s Service) runManagedNPMPackageInstaller(
 		cancel()
 		if err == nil && result.ExitCode == 0 {
 			setActiveAction(ctx, provider, ActiveAction{
-				ID:         ActionInstall,
+				ID:         actionID,
 				Status:     "running",
 				Step:       "verify",
 				Registry:   registryDisplay,
@@ -147,7 +160,7 @@ func (s Service) runManagedNPMPackageInstaller(
 		if !binConflictRepaired && s.repairManagedNPMBinEEXIST(ctx, result, installPrefix, binaryName, spec.PackageVersion, baseEnv) {
 			binConflictRepaired = true
 			setActiveAction(ctx, provider, ActiveAction{
-				ID:         ActionInstall,
+				ID:         actionID,
 				Status:     "running",
 				Step:       "repair",
 				Registry:   registryDisplay,
@@ -165,7 +178,7 @@ func (s Service) runManagedNPMPackageInstaller(
 			cancel()
 			if err == nil && result.ExitCode == 0 {
 				setActiveAction(ctx, provider, ActiveAction{
-					ID:         ActionInstall,
+					ID:         actionID,
 					Status:     "running",
 					Step:       "verify",
 					Registry:   registryDisplay,

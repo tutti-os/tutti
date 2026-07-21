@@ -4,6 +4,39 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### An extension Agent is installed in the terminal but Tutti cannot detect it
+
+- Symptom:
+  Running the Agent CLI in an interactive terminal works, while the extension
+  setup dialog reports that no compatible runtime is installed.
+- Quick checks:
+  Resolve the executable with `command -v` in the terminal and compare its
+  parent directory with the desktop daemon's effective PATH. Check the signed
+  extension `profiles/discovery.json` for a matching user-relative
+  `searchPaths` entry and confirm that the reported CLI version satisfies its
+  constraint.
+- Root cause:
+  The desktop daemon inherits the GUI process environment and does not source
+  `.zshrc` or other interactive shell startup files. Some official installers
+  place a self-contained CLI in a vendor directory under the user's home, so
+  the terminal can find it only after shell initialization.
+- Fix:
+  Declare the vendor-owned location in the extension candidate, for example
+  `{"scope":"user","path":".vendor/bin"}`. Keep the vendor path out of
+  core and let the shared runtime resolver prepend the validated directory.
+  Update the extension version constraint and managed package recipe to match
+  the same official CLI generation.
+- Validation:
+  Run discovery with a daemon PATH that omits the vendor directory and an
+  injected user home containing the CLI. Assert that the binding is `local`,
+  uses the absolute vendor executable, passes the version constraint, and
+  retains the declared ACP launch arguments. Also reject absolute paths,
+  parent traversal, and unsupported scopes.
+- References:
+  [agent-extensions.md](../../architecture/agent-extensions.md)
+  [runtime_contract.go](../../../services/tuttid/service/agentextension/runtime_contract.go)
+  [manager.go](../../../services/tuttid/service/agentextension/manager.go)
+
 ### Clicking provider login repeatedly opens terminals and browser auth pages
 
 - Symptom:

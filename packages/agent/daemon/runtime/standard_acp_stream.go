@@ -275,7 +275,7 @@ func errString(err error) string {
 	return err.Error()
 }
 
-func (a *standardACPAdapter) logHermesStartupDiagnostics(stage string, payload map[string]any) {
+func (a *standardACPAdapter) logStandardACPStartupDiagnostics(stage string, payload map[string]any) {
 	if a == nil || !a.config.startupDiagnostics {
 		return
 	}
@@ -285,8 +285,8 @@ func (a *standardACPAdapter) logHermesStartupDiagnostics(stage string, payload m
 	payload["stage"] = stage
 	payload["provider"] = a.config.provider
 	payload["adapter"] = a.config.adapterName
-	slog.Info("agent session Hermes startup diagnostics",
-		"event", "agent_session.hermes_startup_diagnostics."+stage,
+	slog.Info("agent session standard ACP startup diagnostics",
+		"event", "agent_session.standard_acp_startup_diagnostics."+stage,
 		"payload_json", jsonStringForLog(payload),
 	)
 }

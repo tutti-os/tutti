@@ -6,6 +6,7 @@ import {
   createInitialSettingsUpdate,
   reconcileSettingsUpdates,
   requestSettingsUpdate,
+  resumeSettingsUpdateWhenRuntimeAvailable,
   settleSettingsUpdate
 } from "./sessionSettings.reducer.ts";
 import type {
@@ -82,6 +83,12 @@ export function sessionLifecycleReducer(
       );
     case "session/metadataPatched":
       return patchSessionMetadata(state, intent.agentSessionId, intent.patch);
+    case "session/runtimeAvailabilityChanged":
+      return changeRuntimeAvailability(
+        state,
+        intent.agentSessionId,
+        intent.availability
+      );
     case "turn/upserted":
       return reconcilePendingCancels(
         state,
@@ -226,6 +233,8 @@ function requestInteractionResponse(
     !workspaceId ||
     !commandId ||
     state.sessionsById[agentSessionId]?.workspaceId !== workspaceId ||
+    state.operationBySessionId[agentSessionId]?.runtimeAvailability.state ===
+      "blocked" ||
     interaction?.status !== "pending" ||
     existing?.status === "responding" ||
     (existing &&
@@ -269,6 +278,32 @@ function requestInteractionResponse(
       workspaceId
     })
   };
+}
+
+function changeRuntimeAvailability(
+  state: SessionLifecycleState,
+  rawAgentSessionId: string,
+  availability: SessionOperationState["runtimeAvailability"]
+): EngineReducerResult<SessionLifecycleState> {
+  const agentSessionId = rawAgentSessionId.trim();
+  const operation = state.operationBySessionId[agentSessionId];
+  if (!agentSessionId || !operation) return unchanged(state);
+  const current = operation.runtimeAvailability;
+  if (
+    current.state === availability.state &&
+    (current.state !== "blocked" ||
+      (availability.state === "blocked" &&
+        current.reason === availability.reason))
+  ) {
+    return unchanged(state);
+  }
+  const changed = updateOperation(state, agentSessionId, (value) => ({
+    ...value,
+    runtimeAvailability: availability
+  }));
+  return availability.state === "available"
+    ? resumeSettingsUpdateWhenRuntimeAvailable(changed.state, agentSessionId)
+    : changed;
 }
 
 function settleInteractionResponse(
@@ -392,7 +427,8 @@ function requestCancel(
     !id ||
     !workspaceId ||
     state.deletedSessionIds[id] ||
-    (session && session.workspaceId !== workspaceId)
+    (session && session.workspaceId !== workspaceId) ||
+    state.operationBySessionId[id]?.runtimeAvailability.state === "blocked"
   ) {
     return unchanged(state);
   }
@@ -680,6 +716,7 @@ function setOperation(
 }
 function initialOperation(): SessionOperationState {
   return {
+    runtimeAvailability: { state: "available" },
     cancel: initialCancel(),
     operationError: null,
     settingsUpdate: createInitialSettingsUpdate()

@@ -27,6 +27,7 @@ Electron startup, daemon supervision, macOS packaging, updates, and performance 
 
 - [Packaged Tutti starts but external shells cannot find `tutti`](./desktop-release.md#packaged-tutti-starts-but-external-shells-cannot-find-tutti)
 - [Desktop stable release alias disappears or is not first on Releases](./desktop-release.md#desktop-stable-release-alias-disappears-or-is-not-first-on-releases)
+- [Desktop release notes exceed GitHub's body limit](./desktop-release.md#desktop-release-notes-exceed-githubs-body-limit)
 - [Desktop dev GUI exits before opening](./desktop-release.md#desktop-dev-gui-exits-before-opening)
 - [Running a development tuttid breaks the production Agent session](./desktop-release.md#running-a-development-tuttid-breaks-the-production-agent-session)
 - [macOS updates fail from a mounted DMG](./desktop-release.md#macos-updates-fail-from-a-mounted-dmg)

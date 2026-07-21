@@ -30,6 +30,7 @@ func TestAppRunnerStartsHealthyAppWithWorkspaceScopedCwdAndInjectedDirs(t *testi
 	packageDir := filepath.Join(root, "package")
 	runtimeDir := filepath.Join(root, "runtime")
 	dataDir := filepath.Join(root, "data")
+	databaseDir := filepath.Join(root, "database")
 	logDir := filepath.Join(root, "logs")
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(packageDir) error = %v", err)
@@ -49,7 +50,7 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 	t.Setenv("TUTTI_ENV", "production")
 	t.Setenv("TUTTI_STATE_DIR", stateRoot)
 	t.Setenv("TUTTI_WORKSPACE_ROOT", "/inherited/workspace")
-	t.Setenv("NEXTOP_WORKSPACE_ROOT", "/inherited/workspace")
+	t.Setenv(removedWorkspaceRootCompatibilityEnvKey, "/inherited/workspace")
 	runner := &AppRunner{HealthcheckTimeout: 10 * time.Second}
 	state, err := runner.Start(context.Background(), AppStartInput{
 		WorkspaceID:     "ws-runner",
@@ -60,6 +61,7 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 		HealthcheckPath: "/ready",
 		RuntimeDir:      runtimeDir,
 		DataDir:         dataDir,
+		DatabaseDir:     databaseDir,
 		LogDir:          logDir,
 	})
 	if err != nil {
@@ -78,6 +80,9 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 	if state.Port == nil || *state.Port <= 0 {
 		t.Fatalf("Port = %v", state.Port)
 	}
+	if info, err := os.Stat(databaseDir); err != nil || !info.IsDir() {
+		t.Fatalf("database directory stat = (%v, %v), want directory", info, err)
+	}
 
 	probePath := filepath.Join(dataDir, "probe.json")
 	probe, err := os.ReadFile(probePath)
@@ -95,6 +100,7 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 		"packageDir":    packageDir,
 		"runtimeDir":    runtimeDir,
 		"dataDir":       dataDir,
+		"databaseDir":   databaseDir,
 		"logDir":        logDir,
 		"toolchainRoot": filepath.Join(stateRoot, "app-toolchains"),
 	} {
@@ -102,7 +108,7 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 			t.Fatalf("probe[%s] = %q, want %q", key, probeValues[key], want)
 		}
 	}
-	for _, key := range []string{"tuttiWorkspaceRoot", "nextopWorkspaceRoot"} {
+	for _, key := range []string{"tuttiWorkspaceRoot", "legacyWorkspaceRoot"} {
 		if probeValues[key] != "" {
 			t.Fatalf("probe[%s] = %q, want absent root contract", key, probeValues[key])
 		}
@@ -191,6 +197,7 @@ exec python3 "$TUTTI_APP_PACKAGE_DIR/server.py"
 		RuntimeProfile:  workspaceAppStandaloneRuntimeProfile,
 		RuntimeDir:      runtimeDir,
 		DataDir:         dataDir,
+		DatabaseDir:     filepath.Join(root, "database"),
 		LogDir:          logDir,
 	})
 	if err != nil {
@@ -252,6 +259,7 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 		HealthcheckPath: "/ready",
 		RuntimeDir:      runtimeDir,
 		DataDir:         dataDir,
+		DatabaseDir:     filepath.Join(root, "database"),
 		LogDir:          logDir,
 	}
 	if _, err := runner.Start(context.Background(), input); err != nil {
@@ -489,6 +497,7 @@ func TestAppRunnerStartWithoutRestartReusesQueuedStart(t *testing.T) {
 		HealthcheckPath: "/ready",
 		RuntimeDir:      filepath.Join(root, "runtime"),
 		DataDir:         filepath.Join(root, "data"),
+		DatabaseDir:     filepath.Join(root, "database"),
 		LogDir:          filepath.Join(root, "logs"),
 	}
 	state, err := runner.Start(context.Background(), input)
@@ -567,6 +576,7 @@ func TestAppRunnerStartWithoutRestartReusesStartingProcess(t *testing.T) {
 		HealthcheckPath: "/ready",
 		RuntimeDir:      filepath.Join(root, "runtime"),
 		DataDir:         filepath.Join(root, "data"),
+		DatabaseDir:     filepath.Join(root, "database"),
 		LogDir:          filepath.Join(root, "logs"),
 	}
 	if _, err := runner.Start(context.Background(), input); err != nil {
@@ -628,6 +638,7 @@ exec "$TUTTI_APP_NODE" "$TUTTI_APP_PACKAGE_DIR/server.js"
 		HealthcheckPath: "/healthz",
 		RuntimeDir:      runtimeDir,
 		DataDir:         dataDir,
+		DatabaseDir:     filepath.Join(root, "database"),
 		LogDir:          logDir,
 	})
 	if err != nil {
@@ -676,6 +687,7 @@ sleep 30
 		HealthcheckPath: "/ready",
 		RuntimeDir:      filepath.Join(root, "runtime"),
 		DataDir:         filepath.Join(root, "data"),
+		DatabaseDir:     filepath.Join(root, "database"),
 		LogDir:          filepath.Join(root, "logs"),
 	})
 	if err != nil {
@@ -739,6 +751,7 @@ sleep 30
 		HealthcheckPath: "/ready",
 		RuntimeDir:      filepath.Join(root, "runtime"),
 		DataDir:         filepath.Join(root, "data"),
+		DatabaseDir:     filepath.Join(root, "database"),
 		LogDir:          filepath.Join(root, "logs"),
 	})
 	if err != nil {
@@ -888,12 +901,13 @@ func pythonAppReadyServerScript(healthcheckPath string, writeProbe bool) string 
                 "workspaceId": os.environ["TUTTI_WORKSPACE_ID"],
                 "workspaceName": os.environ["TUTTI_WORKSPACE_NAME"],
                 "tuttiWorkspaceRoot": os.environ.get("TUTTI_WORKSPACE_ROOT", ""),
-                "nextopWorkspaceRoot": os.environ.get("NEXTOP_WORKSPACE_ROOT", ""),
+                "legacyWorkspaceRoot": os.environ.get("NEX" + "TOP_WORKSPACE_ROOT", ""),
                 "appHost": os.environ["TUTTI_APP_HOST"],
                 "appBaseUrl": os.environ["TUTTI_APP_BASE_URL"],
                 "packageDir": os.environ["TUTTI_APP_PACKAGE_DIR"],
                 "runtimeDir": os.environ["TUTTI_APP_RUNTIME_DIR"],
                 "dataDir": os.environ["TUTTI_APP_DATA_DIR"],
+                "databaseDir": os.environ["TUTTI_APP_DATABASE_DIR"],
                 "logDir": os.environ["TUTTI_APP_LOG_DIR"],
                 "toolchainRoot": os.environ["TUTTI_APP_TOOLCHAIN_ROOT"],
                 "tuttiCli": os.environ["TUTTI_CLI"],

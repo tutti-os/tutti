@@ -159,7 +159,17 @@ function createReadyStatus(
     auth: { status: "authenticated" },
     availability: { status: "ready" },
     cli: { installed: true },
-    provider
+    provider,
+    update: {
+      capability: "unsupported",
+      currentVersion: null,
+      lastCheckedAt: null,
+      latestVersion: null,
+      reasonCode: null,
+      source: null,
+      unsupportedReason: "update_strategy_unsupported",
+      updateAvailable: null
+    }
   };
 }
 
@@ -172,7 +182,17 @@ function createUnavailableStatus(
     auth: { status: "required" },
     availability: { status: "auth_required" },
     cli: { installed: true },
-    provider
+    provider,
+    update: {
+      capability: "unsupported",
+      currentVersion: null,
+      lastCheckedAt: null,
+      latestVersion: null,
+      reasonCode: null,
+      source: null,
+      unsupportedReason: "update_strategy_unsupported",
+      updateAvailable: null
+    }
   };
 }
 

@@ -376,6 +376,7 @@ export interface AgentGUIComposerViewModel {
 
 export interface AgentGUIInteractionViewModel {
   isRespondingApproval: boolean;
+  isRuntimeBlocked: boolean;
   pendingApproval: AgentGUIApprovalRequest | null;
   pendingInteractivePrompt: AgentGUIInteractivePrompt | null;
   sessionChrome: AgentGUISessionChrome;
@@ -386,6 +387,7 @@ export interface AgentGUIReadinessViewModel {
   activeLiveState: "inactive" | "activating" | "active" | "failed";
   activationError: string | null;
   activeConversationBusy: boolean;
+  sessionRuntimeBlocked: boolean;
   providerReadinessGate: AgentGUIProviderReadinessGate | null;
 }
 

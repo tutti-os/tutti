@@ -12,6 +12,8 @@ type ScrollAreaProps = React.HTMLAttributes<HTMLDivElement> & {
   scrollHideDelay?: number;
   type?: ScrollAreaType;
   viewportClassName?: string;
+  /** Receives the element that directly wraps children inside the viewport. */
+  viewportContentRef?: React.Ref<HTMLDivElement>;
   viewportContentStyle?: React.CSSProperties;
   viewportProps?: Omit<
     React.ComponentPropsWithoutRef<"div">,
@@ -51,6 +53,7 @@ function ScrollArea({
   scrollHideDelay: _scrollHideDelay,
   type,
   viewportClassName,
+  viewportContentRef,
   viewportContentStyle,
   viewportProps,
   viewportRef,
@@ -66,6 +69,7 @@ function ScrollArea({
     scrollbarMode,
     type,
     viewportClassName,
+    viewportContentRef,
     viewportContentStyle,
     viewportProps,
     viewportRef,
@@ -94,6 +98,7 @@ function NativeScrollArea({
   scrollbarMode,
   type,
   viewportClassName,
+  viewportContentRef,
   viewportContentStyle,
   viewportProps,
   viewportRef,
@@ -115,6 +120,7 @@ function NativeScrollArea({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       alwaysVisible={false}
+      contentRef={viewportContentRef}
       viewportClassName={cn(
         nativeScrollbarClassName(alwaysVisible),
         viewportClassName
@@ -139,6 +145,7 @@ function CustomScrollArea({
   scrollbarMode,
   type,
   viewportClassName,
+  viewportContentRef,
   viewportContentStyle,
   viewportProps,
   viewportRef,
@@ -158,7 +165,7 @@ function CustomScrollArea({
     <ScrollAreaFrame
       {...props}
       className={className}
-      contentRef={contentRef}
+      contentRef={setRefs(contentRef, viewportContentRef)}
       data-scrollbar-mode={scrollbarMode}
       onBlur={(event) => {
         onBlur?.(event);

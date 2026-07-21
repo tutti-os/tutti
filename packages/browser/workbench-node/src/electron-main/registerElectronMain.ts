@@ -21,8 +21,10 @@ import type {
   BrowserNodeSetZoomFactorInput,
   BrowserNodeShowDevToolsContextMenuInput,
   BrowserNodeStopFindInPageInput,
-  BrowserNodeUnregisterGuestInput
+  BrowserNodeUnregisterGuestInput,
+  BrowserNodeUpdateAutomationTargetInput
 } from "../core/types.ts";
+import type { BrowserNodeAutomationTargetRegistry } from "./automationTypes.ts";
 import { createBrowserGuestManager } from "./guestManager.ts";
 import type {
   BrowserGuestManager,
@@ -62,6 +64,7 @@ export interface BrowserNodeElectronMainChannels {
   readonly showDevToolsContextMenu?: string;
   readonly stopFindInPage?: string;
   readonly unregisterGuest: string;
+  readonly updateAutomationTarget?: string;
 }
 
 export interface BrowserNodeElectronDevToolsContextMenuInput {
@@ -76,6 +79,7 @@ export interface BrowserNodeElectronScreenshotSaveInput extends BrowserNodeScree
 }
 
 export interface RegisterBrowserNodeElectronMainInput {
+  readonly automationRegistry?: BrowserNodeAutomationTargetRegistry;
   readonly channels: BrowserNodeElectronMainChannels;
   readonly chooseDownloadDirectory?: (
     ownerWindow: BrowserWindow
@@ -172,6 +176,7 @@ export function registerBrowserNodeElectronMain(
     }
 
     const manager = createBrowserGuestManager({
+      automationRegistry: input.automationRegistry,
       chooseDownloadDirectory: input.chooseDownloadDirectory
         ? () =>
             input.chooseDownloadDirectory?.(ownerWindow) ??
@@ -371,6 +376,18 @@ export function registerBrowserNodeElectronMain(
       payload as BrowserNodeUnregisterGuestInput
     )
   );
+  if (input.channels.updateAutomationTarget) {
+    input.registerHandler(
+      input.channels.updateAutomationTarget,
+      (event, payload) => {
+        const normalized = payload as BrowserNodeUpdateAutomationTargetInput;
+        resolveOwnedManager(event).manager.updateAutomationTarget(
+          normalized.nodeId,
+          normalized.automationTarget
+        );
+      }
+    );
+  }
   input.registerHandler(input.channels.navigate, (event, payload) =>
     resolveOwnedManager(event).manager.navigate(
       payload as BrowserNodeNavigateInput

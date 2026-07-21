@@ -26,10 +26,11 @@ const (
 )
 
 var (
-	ErrRuntimeOperationConflict     = errors.New("runtime operation identity conflicts with an existing operation")
-	ErrRuntimeOperationNotClaimable = errors.New("runtime operation is not claimable")
-	ErrRuntimeOperationLeaseLost    = errors.New("runtime operation lease is not owned by the caller")
-	ErrRuntimeOperationSubjectState = errors.New("runtime operation subject is not in the required state")
+	ErrRuntimeOperationConflict         = errors.New("runtime operation identity conflicts with an existing operation")
+	ErrRuntimeOperationIdentityMismatch = errors.New("runtime operation durable identity does not match its subject")
+	ErrRuntimeOperationNotClaimable     = errors.New("runtime operation is not claimable")
+	ErrRuntimeOperationLeaseLost        = errors.New("runtime operation lease is not owned by the caller")
+	ErrRuntimeOperationSubjectState     = errors.New("runtime operation subject is not in the required state")
 )
 
 type RuntimeOperation struct {

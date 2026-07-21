@@ -196,7 +196,10 @@ export function rootEngineReducer(
     ]?.phase === "settled" &&
     state.sessionLifecycle.turnsById[
       canonicalTurnKey(planIntent.agentSessionId, planIntent.turnId)
-    ]?.outcome === "completed"
+    ]?.outcome === "completed" &&
+    state.sessionLifecycle.operationBySessionId[
+      planIntent.agentSessionId.trim()
+    ]?.runtimeAvailability.state !== "blocked"
   );
   const submitIntent =
     intent.type === "submit/requested" ||

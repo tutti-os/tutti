@@ -17,6 +17,8 @@ import type {
 } from "@shared/contracts/ipc";
 import {
   AddLinedIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
   AskLinedIcon,
   Button,
   CheckIcon,
@@ -38,6 +40,7 @@ import {
   LoadingIcon,
   OpenLinkLinedIcon,
   RadioIndicator,
+  SectionTabs,
   Select,
   SelectContent,
   SelectItem,
@@ -97,12 +100,17 @@ import {
   type DesktopWorkbenchWindowSnappingShortcutPreset
 } from "../../../../../shared/preferences/index.ts";
 import {
+  EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
+import { IAgentEnvService } from "../../workspace-agent/services/agentEnvService.interface.ts";
+import { IAgentsService } from "../../workspace-agent/services/agentsService.interface.ts";
+import { IAgentProviderStatusService } from "../../workspace-agent/services/agentProviderStatusService.interface.ts";
+import { WorkspaceAgentsSettingsTab } from "./WorkspaceAgentsSettingsTab.tsx";
 import {
   desktopThemeSources,
   type DesktopThemeAppearance,
@@ -177,7 +185,8 @@ export function WorkspaceSettingsPanel({
 }) {
   const { t } = useTranslation();
   const notifications = useService(INotificationService);
-  const { state: desktopPreferencesState } = useDesktopPreferencesService();
+  const { service: desktopPreferencesService, state: desktopPreferencesState } =
+    useDesktopPreferencesService();
   const { service: settingsService, state: settingsState } =
     useWorkspaceSettingsService();
   const versionTapCountRef = useRef(0);
@@ -187,6 +196,13 @@ export function WorkspaceSettingsPanel({
   const labSectionVisible =
     settingsState.developerPanelVisible &&
     isFeatureEnabled(pendingFeatureFlags, LAB_ENABLED_FLAG);
+  const earlyAccessIntegrationsEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG
+  );
+  const agentsService = useService(IAgentsService);
+  const agentProviderStatusService = useService(IAgentProviderStatusService);
+  const agentEnvService = useService(IAgentEnvService);
 
   useEffect(() => {
     if (settingsState.open) {
@@ -369,38 +385,112 @@ export function WorkspaceSettingsPanel({
                 }
               />
             ) : settingsState.activeSection === "agent" ? (
-              <WorkspaceAgentSettingsSection
-                agentConversationDetailMode={
-                  desktopPreferencesState.agentConversationDetailMode
-                }
-                browserUseConnectionMode={
-                  desktopPreferencesState.browserUseConnectionMode
-                }
-                changingAgentConversationDetailMode={
-                  desktopPreferencesState.changingAgentConversationDetailMode
-                }
-                changingDefaultAgentProvider={
-                  desktopPreferencesState.changingDefaultAgentProvider
-                }
-                changingBrowserUseConnectionMode={
-                  desktopPreferencesState.changingBrowserUseConnectionMode
-                }
-                defaultAgentProvider={
-                  desktopPreferencesState.defaultAgentProvider
-                }
-                focusedAnchor={settingsState.generalFocusAnchor}
-                focusRequestID={settingsState.generalFocusRequestID}
-                onBrowserUseConnectionModeChange={(mode) => {
-                  void settingsService.changeBrowserUseConnectionMode(mode);
-                }}
-                onAgentConversationDetailModeChange={(mode) => {
-                  void settingsService.changeAgentConversationDetailMode(mode);
-                }}
-                onDefaultAgentProviderChange={(provider) => {
-                  void settingsService.changeDefaultAgentProvider(provider);
-                }}
-                onOpenExternalAgentImport={onOpenExternalAgentImport}
-              />
+              <div className="flex min-h-0 flex-col gap-5 pt-5">
+                <SectionTabs
+                  ariaLabel={t("workspace.settings.nav.agent")}
+                  className="h-8 shrink-0"
+                  tabs={[
+                    {
+                      value: "general" as const,
+                      label: t("workspace.settings.agent.tabs.general")
+                    },
+                    {
+                      value: "agents" as const,
+                      label: t("workspace.settings.agent.tabs.agents")
+                    }
+                  ]}
+                  value={settingsState.agentTab}
+                  onValueChange={(tab) => settingsService.selectAgentTab(tab)}
+                />
+                {settingsState.agentTab === "agents" ? (
+                  <WorkspaceAgentsSettingsTab
+                    autoCheckEnabled={
+                      desktopPreferencesState.agentCliUpdateCheckEnabled
+                    }
+                    autoCheckPending={
+                      desktopPreferencesState.changingAgentCliUpdateCheckEnabled !==
+                      null
+                    }
+                    agentProviderStatusService={agentProviderStatusService}
+                    agentsService={agentsService}
+                    focusProvider={settingsState.agentFocusProvider}
+                    focusRequestID={settingsState.agentFocusRequestID}
+                    tuttiAgentSwitchEnabled={
+                      settingsState.tuttiAgentSwitchEnabled
+                    }
+                    earlyAccessEnabled={earlyAccessIntegrationsEnabled}
+                    featureFlags={pendingFeatureFlags}
+                    featureFlagsPending={
+                      desktopPreferencesState.changingFeatureFlags !== null
+                    }
+                    onAgentEnabledChange={(agentTargetID, enabled) =>
+                      settingsService.setAgentTargetEnabled(
+                        agentTargetID,
+                        enabled
+                      )
+                    }
+                    onAutoCheckEnabledChange={(enabled) => {
+                      void desktopPreferencesService
+                        .setAgentCliUpdateCheckEnabled(enabled)
+                        .catch((error) => {
+                          notifications.error({
+                            description:
+                              error instanceof Error && error.message.trim()
+                                ? error.message
+                                : undefined,
+                            title: t(
+                              "workspace.settings.agent.agents.autoCheckUpdatesFailed"
+                            )
+                          });
+                        });
+                    }}
+                    onExtensionEnabledChange={(flag, enabled) => {
+                      return settingsService.changeFeatureFlags({
+                        ...pendingFeatureFlags,
+                        [flag]: enabled
+                      });
+                    }}
+                    onOpenEnvironment={(provider) =>
+                      agentEnvService.open({ focus: "detect", provider })
+                    }
+                  />
+                ) : (
+                  <WorkspaceAgentSettingsSection
+                    agentConversationDetailMode={
+                      desktopPreferencesState.agentConversationDetailMode
+                    }
+                    browserUseConnectionMode={
+                      desktopPreferencesState.browserUseConnectionMode
+                    }
+                    changingAgentConversationDetailMode={
+                      desktopPreferencesState.changingAgentConversationDetailMode
+                    }
+                    changingDefaultAgentProvider={
+                      desktopPreferencesState.changingDefaultAgentProvider
+                    }
+                    changingBrowserUseConnectionMode={
+                      desktopPreferencesState.changingBrowserUseConnectionMode
+                    }
+                    defaultAgentProvider={
+                      desktopPreferencesState.defaultAgentProvider
+                    }
+                    focusedAnchor={settingsState.generalFocusAnchor}
+                    focusRequestID={settingsState.generalFocusRequestID}
+                    onBrowserUseConnectionModeChange={(mode) => {
+                      void settingsService.changeBrowserUseConnectionMode(mode);
+                    }}
+                    onAgentConversationDetailModeChange={(mode) => {
+                      void settingsService.changeAgentConversationDetailMode(
+                        mode
+                      );
+                    }}
+                    onDefaultAgentProviderChange={(provider) => {
+                      void settingsService.changeDefaultAgentProvider(provider);
+                    }}
+                    onOpenExternalAgentImport={onOpenExternalAgentImport}
+                  />
+                )}
+              </div>
             ) : settingsState.activeSection === "appearance" ? (
               <WorkspaceAppearanceSettingsSection
                 changingDockPlacement={
@@ -1534,7 +1624,64 @@ function WorkspaceLabSettingsSection({
     pendingFeatureFlags,
     LAB_WORKBENCH_SHORTCUTS_FLAG
   );
-  const shortcutsDisabled = isUpdatingFlags || !workbenchShortcutsEnabled;
+
+  // The two shortcut bindings live on a secondary page reached from the Labs
+  // list; the toggle itself stays in the list. `labView` is a single-level
+  // secondary view (no navigation stack), mirroring the panel's other in-place
+  // view swaps. When the feature is turned off the secondary page becomes
+  // unreachable, so fall back to the list.
+  const [labView, setLabView] = useState<"root" | "workbenchShortcuts">("root");
+  useEffect(() => {
+    if (!workbenchShortcutsEnabled && labView === "workbenchShortcuts") {
+      setLabView("root");
+    }
+  }, [workbenchShortcutsEnabled, labView]);
+
+  if (labView === "workbenchShortcuts" && workbenchShortcutsEnabled) {
+    return (
+      <SettingsRows>
+        <div className="flex w-full items-center gap-2">
+          <Button
+            aria-label={t("workspace.settings.lab.backLabel")}
+            size="icon-sm"
+            title={t("workspace.settings.lab.backLabel")}
+            type="button"
+            variant="ghost"
+            onClick={() => setLabView("root")}
+          >
+            <ArrowLeftIcon aria-hidden="true" size={16} />
+          </Button>
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.lab.workbenchShortcutsLabel")}
+          </strong>
+        </div>
+
+        <WorkspaceLabShortcutRow
+          disabled={isUpdatingFlags}
+          label={t("workspace.settings.lab.newAgentConversationShortcutLabel")}
+          value={workbenchShortcuts.newAgentConversation}
+          onChange={(binding) => {
+            onWorkbenchShortcutsChange({
+              ...workbenchShortcuts,
+              newAgentConversation: binding
+            });
+          }}
+        />
+
+        <WorkspaceLabShortcutRow
+          disabled={isUpdatingFlags}
+          label={t("workspace.settings.lab.newSameTypeWindowShortcutLabel")}
+          value={workbenchShortcuts.newSameTypeWindow}
+          onChange={(binding) => {
+            onWorkbenchShortcutsChange({
+              ...workbenchShortcuts,
+              newSameTypeWindow: binding
+            });
+          }}
+        />
+      </SettingsRows>
+    );
+  }
 
   return (
     <SettingsRows>
@@ -1544,29 +1691,24 @@ function WorkspaceLabSettingsSection({
         onFeatureFlagsChange={onFeatureFlagsChange}
       />
 
-      <WorkspaceLabShortcutRow
-        disabled={shortcutsDisabled}
-        label={t("workspace.settings.lab.newAgentConversationShortcutLabel")}
-        value={workbenchShortcuts.newAgentConversation}
-        onChange={(binding) => {
-          onWorkbenchShortcutsChange({
-            ...workbenchShortcuts,
-            newAgentConversation: binding
-          });
-        }}
-      />
-
-      <WorkspaceLabShortcutRow
-        disabled={shortcutsDisabled}
-        label={t("workspace.settings.lab.newSameTypeWindowShortcutLabel")}
-        value={workbenchShortcuts.newSameTypeWindow}
-        onChange={(binding) => {
-          onWorkbenchShortcutsChange({
-            ...workbenchShortcuts,
-            newSameTypeWindow: binding
-          });
-        }}
-      />
+      {workbenchShortcutsEnabled ? (
+        <button
+          className="flex w-full items-center justify-between gap-4 rounded-md border-0 bg-transparent px-0 py-1 text-left outline-none transition-colors duration-150 hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)] disabled:opacity-70"
+          data-testid="workspace-settings-lab-configure-shortcuts"
+          disabled={isUpdatingFlags}
+          type="button"
+          onClick={() => setLabView("workbenchShortcuts")}
+        >
+          <span className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.lab.workbenchShortcutsManageLabel")}
+          </span>
+          <ArrowRightIcon
+            aria-hidden="true"
+            className="text-[var(--text-secondary)]"
+            size={16}
+          />
+        </button>
+      ) : null}
     </SettingsRows>
   );
 }
@@ -3054,7 +3196,7 @@ function WorkspaceAgentSettingsSection({
   }, [focusedAnchor, focusRequestID]);
 
   return (
-    <div className="flex flex-col gap-6 pb-[22px] pt-5">
+    <div className="flex flex-col gap-6 pb-[22px]">
       <div className="flex w-full flex-col gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">

@@ -849,6 +849,17 @@ func TestInteractionsAllowSameRequestIDInDifferentTurns(t *testing.T) {
 	if err != nil || len(interactions) != 2 || interactions[0].TurnID == interactions[1].TurnID {
 		t.Fatalf("interactions=%#v error=%v, want independently owned rows", interactions, err)
 	}
+	exact, err := store.ListSessionInteractions(ctx, ListSessionInteractionsInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-2", RequestID: "same-request",
+	})
+	if err != nil || len(exact) != 1 || exact[0].TurnID != "turn-2" || exact[0].RequestID != "same-request" {
+		t.Fatalf("exact interactions=%#v error=%v", exact, err)
+	}
+	if _, err := store.ListSessionInteractions(ctx, ListSessionInteractionsInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-2",
+	}); err == nil {
+		t.Fatal("partial exact interaction identity error = nil")
+	}
 }
 
 func TestSessionActiveTurnReferenceRejectsOrphanAndCrossSessionTurns(t *testing.T) {

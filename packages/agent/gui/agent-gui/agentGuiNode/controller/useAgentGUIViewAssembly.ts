@@ -185,6 +185,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     },
     interaction: {
       isRespondingApproval: session.isRespondingApproval,
+      isRuntimeBlocked: session.sessionRuntimeBlocked,
       pendingApproval: detail.pendingApproval,
       pendingInteractivePrompt: session.pendingInteractivePrompt,
       sessionChrome: session.sessionChrome,
@@ -201,6 +202,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       activeLiveState: detail.activeLiveState,
       activationError: detail.activationError,
       activeConversationBusy: session.activeConversationBusy,
+      sessionRuntimeBlocked: session.sessionRuntimeBlocked,
       providerReadinessGate
     },
     operations: {

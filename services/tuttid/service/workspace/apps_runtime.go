@@ -278,6 +278,7 @@ func (s *AppCenterService) startPackage(ctx context.Context, workspaceID string,
 		RuntimeProfile:  appRuntimeProfileForPackage(appPackage),
 		RuntimeDir:      filepath.Join(root, "runtime"),
 		DataDir:         filepath.Join(root, "data"),
+		DatabaseDir:     filepath.Join(root, "database"),
 		LogDir:          filepath.Join(root, "logs"),
 		Restart:         restart,
 	})

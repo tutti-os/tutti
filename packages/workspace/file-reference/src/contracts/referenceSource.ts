@@ -164,6 +164,8 @@ export interface ReferenceSourceCapabilities {
    * 已选分类作为 search() 的 filters 下钻到 daemon 过滤。三源(本地/应用/任务)均为 true。
    */
   filterable?: boolean;
+  /** 是否允许 picker 在该源的目录下创建子目录。 */
+  directoryCreatable?: boolean;
   /** Provenance dimensions this source can enforce before pagination. */
   provenanceDimensions?: readonly ReferenceProvenanceDimension[];
 }
@@ -208,6 +210,15 @@ export interface ReferenceSourceService {
   describeReferenceHandle?(node: ReferenceNode): ReferenceHandle | null;
 
   search?(scope: ReferenceScope, input: SearchInput): Promise<SearchResult>;
+
+  /**
+   * 可选:在 parent(null = 源根)下创建一个直接子目录并返回其 canonical picker 节点。
+   * 路径拼接、名称校验和越界防护由源负责,picker 不解释不透明 nodeId。
+   */
+  createDirectory?(
+    scope: ReferenceScope,
+    input: { parent: ReferenceNode | null; name: string }
+  ): Promise<ReferenceNode>;
 
   open?(scope: ReferenceScope, node: ReferenceNode): Promise<void>;
   listOpenWithApplications?(

@@ -11,7 +11,8 @@ Use these environment variables:
 - `TUTTI_APP_INSTALLATION_ID`: current `<workspace-id>:<app-id>` installation id.
 - `TUTTI_APP_PACKAGE_DIR`: package files, read-only at runtime.
 - `TUTTI_APP_RUNTIME_DIR`: scratch/runtime files.
-- `TUTTI_APP_DATA_DIR`: durable app data.
+- `TUTTI_APP_DATA_DIR`: durable app artifacts and non-database state.
+- `TUTTI_APP_DATABASE_DIR`: host-local durable database files for this installation. Put active SQLite databases and their WAL/SHM files here; multiple database files are allowed.
 - `TUTTI_APP_LOG_DIR`: app logs.
 - `TUTTI_APP_TOOLCHAIN_ROOT`: shared daemon-owned toolchain cache for app-managed binaries that are safe to reuse across workspace app installations.
 - `TUTTI_APP_NODE`: managed Node.js executable path for generated apps.
@@ -33,6 +34,18 @@ The runner does not inject a workspace filesystem root. Use `TUTTI_WORKSPACE_ID`
 Read `TUTTI_APP_SERVER_TOKEN` only in the app server process. Never send it to browser code, persist it, or write it to logs. It remains available for non-Agent app-scoped daemon resources. Agent catalog and composer discovery must not use this token, daemon URL, workspace ID, or app ID; call the `@tutti-os/agent-acp-kit/tutti` facade, which owns `TUTTI_CLI` execution.
 
 For local Tutti capabilities, use `TUTTI_CLI`.
+
+`TUTTI_APP_DATABASE_DIR` is intentionally separate from `TUTTI_APP_DATA_DIR`.
+The data directory may be exposed through app references, uploads, backup, or a
+synchronized workspace implementation, while a live SQLite database requires
+local filesystem locking and atomic-write semantics. Do not put a live SQLite
+database in `TUTTI_APP_DATA_DIR`, and do not expose host paths from either
+directory to browser code. An app can keep exportable snapshots or documents in
+the data directory while keeping its active database in the database directory.
+
+`TUTTI_CLI` is the complete app-facing CLI contract. App code and generated
+skills must not require, parse, or document host-internal CLI configuration
+variables; the host-provided command owns its own connection configuration.
 
 Tutti keeps the managed runtime baseline outside app packages under daemon-owned state. Operators can override the cache with `TUTTI_APP_RUNTIME_CACHE_ROOT`, point at an exact prepared runtime with `TUTTI_APP_RUNTIME_ROOT`, or override first-use runtime downloads with `TUTTI_APP_RUNTIME_CATALOG`. App packages must not set these variables themselves.
 

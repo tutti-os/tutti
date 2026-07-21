@@ -58,6 +58,7 @@ test("desktop host preferences follows authoritative preference events", async (
   eventStreamClient.emitDesktopPreferencesUpdated({
     initialized: true,
     preferences: {
+      agentCliUpdateCheckEnabled: true,
       agentComposerDefaultsByProvider: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
@@ -99,6 +100,7 @@ test("desktop host preferences follows authoritative preference events", async (
   eventStreamClient.emitDesktopPreferencesUpdated({
     initialized: true,
     preferences: {
+      agentCliUpdateCheckEnabled: true,
       agentComposerDefaultsByProvider: {
         "claude-code": {
           permissionModeId: "bypassPermissions"
@@ -144,6 +146,7 @@ test("desktop host preferences follows authoritative preference events", async (
   eventStreamClient.emitDesktopPreferencesUpdated({
     initialized: true,
     preferences: {
+      agentCliUpdateCheckEnabled: false,
       agentComposerDefaultsByProvider: {
         "claude-code": {
           permissionModeId: "bypassPermissions"
@@ -182,6 +185,7 @@ test("desktop host preferences follows authoritative preference events", async (
 });
 
 function createHostPreferencesState(): DesktopHostPreferencesState {
+  let agentCliUpdateCheckEnabled = true;
   let agentGUIConversationRailCollapsedByProvider: DesktopPreferencesStateResponse["preferences"]["agentGuiConversationRailCollapsedByProvider"] =
     {};
   let agentConversationDetailMode: DesktopPreferencesStateResponse["preferences"]["agentConversationDetailMode"] =
@@ -220,6 +224,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
   };
 
   return {
+    getAgentCliUpdateCheckEnabled() {
+      return agentCliUpdateCheckEnabled;
+    },
     getAgentComposerDefaultsByProvider() {
       return {};
     },
@@ -278,6 +285,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
       return () => undefined;
     },
     sync(input) {
+      if (input.agentCliUpdateCheckEnabled !== undefined) {
+        agentCliUpdateCheckEnabled = input.agentCliUpdateCheckEnabled;
+      }
       if (input.agentGuiConversationRailCollapsedByProvider) {
         agentGUIConversationRailCollapsedByProvider =
           input.agentGuiConversationRailCollapsedByProvider;

@@ -368,6 +368,84 @@ test("toggleSingleSelectionAndExpand single-selects and expands folders", async 
   );
 });
 
+test("single selection mode replaces the previous selection", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({ tabs: tabsTwo, children: {} }),
+    scope,
+    searchDebounceMs: 0,
+    selectionMode: "single"
+  });
+  controller.open();
+  await flush();
+
+  controller.toggleSelection(folder("workspace-file", "/first"));
+  controller.toggleSelection(folder("workspace-file", "/second"));
+
+  assert.deepEqual(
+    controller.getSnapshot().selection.map((node) => node.ref.nodeId),
+    ["/second"]
+  );
+});
+
+test("createDirectory delegates to the active source and selects the created folder", async () => {
+  const parent = folder("workspace-file", "/projects", "projects");
+  const created = folder(
+    "workspace-file",
+    "/projects/new-project",
+    "new-project"
+  );
+  const calls: Array<{ parent: ReferenceNode | null; name: string }> = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: {
+      ...fakeAggregator({
+        tabs: tabsTwo,
+        children: {
+          [`workspace-file:${SOURCE_ROOT_NODE_ID}`]: {
+            entries: [parent],
+            nextCursor: null
+          },
+          "workspace-file:/projects": {
+            entries: [
+              folder("workspace-file", "/projects/existing", "existing")
+            ],
+            nextCursor: null
+          }
+        }
+      }),
+      async createDirectory(_scope, sourceId, input) {
+        assert.equal(sourceId, "workspace-file");
+        calls.push(input);
+        return created;
+      }
+    },
+    scope,
+    searchDebounceMs: 0,
+    selectionMode: "single"
+  });
+  controller.open();
+  await flush();
+  controller.ensureChildren(parent);
+  await flush();
+
+  const result = await controller.createDirectory(parent, "new-project");
+
+  assert.equal(result, created);
+  assert.deepEqual(calls, [{ parent, name: "new-project" }]);
+  const parentKey = nodeRefKey(parent.ref);
+  const snapshot = controller.getSnapshot();
+  assert.equal(
+    snapshot.bySource["workspace-file"]?.expandedKeys[parentKey],
+    true
+  );
+  assert.deepEqual(
+    snapshot.bySource["workspace-file"]?.childrenByKey[parentKey]?.entries.map(
+      (node) => node.ref.nodeId
+    ),
+    ["/projects/existing", "/projects/new-project"]
+  );
+  assert.deepEqual(snapshot.selection, [created]);
+});
+
 test("expandNode 展开定位到的 folder 并懒加载子节点", async () => {
   const controller = createReferenceSourcePickerController({
     aggregator: fakeAggregator({

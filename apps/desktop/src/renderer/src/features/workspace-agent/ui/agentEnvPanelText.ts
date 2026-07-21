@@ -13,7 +13,6 @@ const PROVIDER_LABELS: Partial<Record<WorkspaceAgentProvider, string>> = {
   "claude-code": "Claude Code",
   cursor: "Cursor",
   nexight: "Nexight",
-  hermes: "Hermes",
   openclaw: "OpenClaw",
   opencode: "Open Code"
 };

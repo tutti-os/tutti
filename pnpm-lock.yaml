@@ -272,21 +272,6 @@ importers:
       "@tanstack/react-virtual":
         specifier: ^3.13.12
         version: 3.13.26(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      "@tiptap/core":
-        specifier: ^3.11.1
-        version: 3.23.6(@tiptap/pm@3.23.6)
-      "@tiptap/pm":
-        specifier: ^3.23.6
-        version: 3.23.6
-      "@tiptap/react":
-        specifier: ^3.11.1
-        version: 3.23.6(@floating-ui/dom@1.7.6)(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      "@tiptap/starter-kit":
-        specifier: ^3.11.1
-        version: 3.23.6
-      "@tiptap/suggestion":
-        specifier: ^3.11.1
-        version: 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)
       "@tutti-os/agent-activity-core":
         specifier: workspace:*
         version: link:../activity-core
@@ -372,6 +357,21 @@ importers:
       "@testing-library/react":
         specifier: ^16.3.0
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      "@tiptap/core":
+        specifier: ^3.11.1
+        version: 3.23.6(@tiptap/pm@3.23.6)
+      "@tiptap/pm":
+        specifier: ^3.23.6
+        version: 3.23.6
+      "@tiptap/react":
+        specifier: ^3.11.1
+        version: 3.23.6(@floating-ui/dom@1.7.6)(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      "@tiptap/starter-kit":
+        specifier: ^3.11.1
+        version: 3.23.6
+      "@tiptap/suggestion":
+        specifier: ^3.11.1
+        version: 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)
       "@tutti-os/client-tuttid-ts":
         specifier: workspace:*
         version: link:../../clients/tuttid-ts
@@ -556,6 +556,13 @@ importers:
 
   packages/ui/rich-text:
     dependencies:
+      "@tutti-os/ui-i18n-runtime":
+        specifier: workspace:*
+        version: link:../i18n-runtime
+      "@tutti-os/ui-system":
+        specifier: workspace:*
+        version: link:../system
+    devDependencies:
       "@tiptap/core":
         specifier: ^3.23.6
         version: 3.23.6(@tiptap/pm@3.23.6)
@@ -574,13 +581,6 @@ importers:
       "@tiptap/react":
         specifier: ^3.23.6
         version: 3.23.6(@floating-ui/dom@1.7.6)(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      "@tutti-os/ui-i18n-runtime":
-        specifier: workspace:*
-        version: link:../i18n-runtime
-      "@tutti-os/ui-system":
-        specifier: workspace:*
-        version: link:../system
-    devDependencies:
       "@tutti-os/config-tsconfig":
         specifier: workspace:*
         version: link:../../configs/tsconfig

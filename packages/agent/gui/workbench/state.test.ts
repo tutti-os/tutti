@@ -26,7 +26,7 @@ describe("agent gui workbench state", () => {
           "target-a": { model: "target-model" }
         },
         composerOverridesByProvider: {
-          hermes: { permissionModeId: "read-only" },
+          openclaw: { permissionModeId: "read-only" },
           unsupported: { model: "ignored" }
         } as never,
         lastActiveAgentSessionId: "session-1",
@@ -34,16 +34,16 @@ describe("agent gui workbench state", () => {
           " target-a ": " session-1 ",
           empty: " "
         },
-        provider: "hermes"
+        provider: "openclaw"
       })
     ).toEqual({
-      ...createDefaultAgentGuiWorkbenchNodeState("hermes"),
+      ...createDefaultAgentGuiWorkbenchNodeState("openclaw"),
       composerOverrides: { model: "gpt-5" },
       composerOverridesByAgentTargetId: {
         "target-a": { model: "target-model" }
       },
       composerOverridesByProvider: {
-        hermes: { permissionModeId: "read-only" }
+        openclaw: { permissionModeId: "read-only" }
       },
       lastActiveAgentSessionId: "session-1",
       lastActiveAgentSessionIdByAgentTargetId: {

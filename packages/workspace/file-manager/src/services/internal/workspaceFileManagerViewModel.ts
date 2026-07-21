@@ -92,7 +92,8 @@ export interface WorkspaceFileManagerContextMenuViewState {
   isBusy: boolean;
   isLoading: boolean;
   isMutating: boolean;
-  showCreateAction: boolean;
+  showCreateDirectoryAction: boolean;
+  showCreateFileAction: boolean;
   showCopyAction: boolean;
   showDeleteAction: boolean;
   showExportAction: boolean;
@@ -276,12 +277,16 @@ export function resolveWorkspaceFileManagerContextMenuViewState(input: {
     isBusy: state.busyAction !== null,
     isLoading: state.isLoading,
     isMutating: state.isMutating,
-    showCreateAction:
+    showCreateDirectoryAction:
       !isExternalLocation &&
       !isRecentLocation &&
       !isSearchMode &&
-      (state.capabilities.canCreateDirectory ||
-        state.capabilities.canCreateFile),
+      state.capabilities.canCreateDirectory,
+    showCreateFileAction:
+      !isExternalLocation &&
+      !isRecentLocation &&
+      !isSearchMode &&
+      state.capabilities.canCreateFile,
     showCopyAction: state.capabilities.canCopy,
     showDeleteAction:
       state.capabilities.canDelete &&

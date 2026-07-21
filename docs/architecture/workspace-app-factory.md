@@ -140,6 +140,7 @@ apps/
   packages/<appId>/<version>/
   workspaces/<workspaceId>/<appId>/
     data/
+    database/
     runtime/
     logs/
 ```
@@ -151,7 +152,8 @@ directory.
 ## Preparation And Validation
 
 When present, `prepare.sh` must be an executable file. It runs with Factory
-runtime/data/log/toolchain environment directories and a bounded timeout.
+runtime/data/log/toolchain environment directories and a bounded timeout. It
+must not create or migrate an active app database during package preparation.
 
 Validation then verifies:
 
@@ -162,9 +164,10 @@ Validation then verifies:
 - a non-empty, runtime-cleaned `AGENTS.md`;
 - successful dry-run startup and healthcheck within the validation timeout.
 
-Validation uses the normal App Runner with a Factory-scoped workspace id and
-always stops the dry-run process afterward. Failure records a structured
-validation result and moves the job to `failed`.
+Validation uses the normal App Runner with a Factory-scoped workspace id,
+including an isolated `TUTTI_APP_DATABASE_DIR`, and always stops the dry-run
+process afterward. Failure records a structured validation result and moves the
+job to `failed`.
 
 This is local package/runtime validation, not static security analysis or
 cross-machine portability certification.
@@ -191,7 +194,10 @@ environment boundaries include:
 
 - `TUTTI_APP_PACKAGE_DIR`: read-only package content;
 - `TUTTI_APP_RUNTIME_DIR`: scratch/runtime data;
-- `TUTTI_APP_DATA_DIR`: durable app data;
+- `TUTTI_APP_DATA_DIR`: durable app artifacts and non-database state;
+- `TUTTI_APP_DATABASE_DIR`: host-local durable active databases and their
+  sidecar files, separate from data that may be referenced, exported, backed
+  up, or synchronized;
 - `TUTTI_APP_LOG_DIR`: backend logs;
 - `TUTTI_APP_TOOLCHAIN_ROOT`: reusable app-managed tools;
 - `TUTTI_APP_SERVER_TOKEN`: server-only scoped daemon access.
@@ -202,7 +208,8 @@ capabilities; App Factory does not currently provide sandbox, VM, container, or
 firewall isolation.
 
 App schemas and data migrations remain owned by each generated app. Package
-rollback changes code, not `TUTTI_APP_DATA_DIR`.
+rollback changes code, not `TUTTI_APP_DATA_DIR` or
+`TUTTI_APP_DATABASE_DIR`.
 
 ## Events And UI
 

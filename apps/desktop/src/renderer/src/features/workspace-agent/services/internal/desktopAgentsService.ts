@@ -1,5 +1,9 @@
 import type { AgentTarget, TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { AgentGUIAgent, AgentGUIProvider } from "@tutti-os/agent-gui";
+import {
+  isAgentGuiWorkbenchProvider,
+  isAgentGuiWorkbenchProviderVisibleWithEarlyAccess
+} from "@tutti-os/agent-gui/workbench/providerCatalog";
 import type {
   AgentsSnapshot,
   AgentTargetPresentation,
@@ -7,6 +11,7 @@ import type {
 } from "../agentsService.interface.ts";
 
 export interface DesktopAgentsServiceDependencies {
+  earlyAccessEnabled?: boolean;
   clearTimeout?: (timer: ReturnType<typeof setTimeout>) => void;
   now?: () => number;
   retryDelayMs?: number;
@@ -35,9 +40,11 @@ export class DesktopAgentsService implements IAgentsService {
   private requestSequence = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private snapshot: AgentsSnapshot = EMPTY_AGENTS_SNAPSHOT;
+  private earlyAccessEnabled: boolean;
 
   constructor(dependencies: DesktopAgentsServiceDependencies) {
     this.dependencies = dependencies;
+    this.earlyAccessEnabled = dependencies.earlyAccessEnabled ?? false;
   }
 
   getSnapshot(): AgentsSnapshot {
@@ -72,7 +79,25 @@ export class DesktopAgentsService implements IAgentsService {
     if (this.snapshot.status !== "idle" || snapshot.status === "idle") {
       return;
     }
-    this.setSnapshot(snapshot);
+    this.setSnapshot({
+      ...snapshot,
+      agents: mapAgentTargetPresentationsToAgents(snapshot.agentTargets, {
+        earlyAccessEnabled: this.earlyAccessEnabled
+      })
+    });
+  }
+
+  setEarlyAccessEnabled(enabled: boolean): void {
+    if (this.earlyAccessEnabled === enabled) {
+      return;
+    }
+    this.earlyAccessEnabled = enabled;
+    this.setSnapshot({
+      ...this.snapshot,
+      agents: mapAgentTargetPresentationsToAgents(this.snapshot.agentTargets, {
+        earlyAccessEnabled: enabled
+      })
+    });
   }
 
   load(signal?: AbortSignal): Promise<AgentsSnapshot> {
@@ -130,7 +155,9 @@ export class DesktopAgentsService implements IAgentsService {
         response.targets
       );
       const agentTargets = daemonAgentTargets;
-      const agents = mapAgentTargetPresentationsToAgents(daemonAgentTargets);
+      const agents = mapAgentTargetPresentationsToAgents(daemonAgentTargets, {
+        earlyAccessEnabled: this.earlyAccessEnabled
+      });
       const nextSnapshot: AgentsSnapshot = {
         agents,
         agentTargets,
@@ -228,10 +255,21 @@ export function mapAgentTargetsToPresentations(
 }
 
 export function mapAgentTargetPresentationsToAgents(
-  targets: readonly AgentTargetPresentation[]
+  targets: readonly AgentTargetPresentation[],
+  options: { earlyAccessEnabled?: boolean } = {}
 ): readonly AgentGUIAgent[] {
   return targets
-    .filter((target) => target.enabled)
+    .filter(
+      (target) =>
+        target.enabled &&
+        (options.earlyAccessEnabled === true ||
+          (target.launchRefType !== "agent_extension" &&
+            (!isAgentGuiWorkbenchProvider(target.provider) ||
+              isAgentGuiWorkbenchProviderVisibleWithEarlyAccess(
+                target.provider,
+                false
+              ))))
+    )
     .map((target) => ({
       agentTargetId: target.agentTargetId,
       name: target.name,

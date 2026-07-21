@@ -12,40 +12,32 @@ import (
 func (s *Service) Respond(ctx context.Context, input RespondInput) (RespondResult, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	turnID := strings.TrimSpace(input.TurnID)
 	requestID := strings.TrimSpace(input.RequestID)
 	semantic := strings.ToLower(strings.TrimSpace(input.Semantic))
-	if workspaceID == "" || agentSessionID == "" || requestID == "" || s.TurnStore == nil {
+	if workspaceID == "" || agentSessionID == "" || turnID == "" || requestID == "" {
 		return RespondResult{}, ErrInvalidArgument
 	}
 	if semantic != "" && strings.TrimSpace(value(input.Action)) != "" {
 		return RespondResult{}, fmt.Errorf("%w: action and semantic are mutually exclusive", ErrInvalidArgument)
 	}
 
-	interactions, err := s.TurnStore.ListSessionInteractions(ctx, agentactivitybiz.ListSessionInteractionsInput{
-		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
-	})
-	if err != nil {
-		return RespondResult{}, err
-	}
-	matches := make([]agentactivitybiz.Interaction, 0, 1)
-	for _, interaction := range interactions {
-		if strings.TrimSpace(interaction.RequestID) != requestID {
-			continue
-		}
-		matches = append(matches, interaction)
-	}
-	if len(matches) == 0 {
-		return RespondResult{}, fmt.Errorf("%w: %q", ErrInteractionRequestNotFound, requestID)
-	}
-	if len(matches) != 1 {
-		return RespondResult{}, fmt.Errorf("%w: %q matched %d interactions", ErrInteractionRequestAmbiguous, requestID, len(matches))
-	}
-
-	interaction := matches[0]
 	action := input.Action
 	if semantic != "" {
+		if s.TurnStore == nil {
+			return RespondResult{}, ErrInvalidArgument
+		}
+		interactions, err := s.TurnStore.ListSessionInteractions(ctx, agentactivitybiz.ListSessionInteractionsInput{
+			WorkspaceID: workspaceID, AgentSessionID: agentSessionID, TurnID: turnID, RequestID: requestID,
+		})
+		if err != nil {
+			return RespondResult{}, err
+		}
+		if len(interactions) != 1 || strings.TrimSpace(interactions[0].TurnID) != turnID || strings.TrimSpace(interactions[0].RequestID) != requestID {
+			return RespondResult{}, fmt.Errorf("%w: %q", ErrInteractionRequestNotFound, requestID)
+		}
 		matchingActions := make([]InteractionAction, 0, 1)
-		for _, candidate := range interactionActions(interaction) {
+		for _, candidate := range interactionActions(interactions[0]) {
 			if strings.EqualFold(strings.TrimSpace(candidate.Semantic), semantic) {
 				matchingActions = append(matchingActions, candidate)
 			}
@@ -63,18 +55,19 @@ func (s *Service) Respond(ctx context.Context, input RespondInput) (RespondResul
 
 	result, err := s.ApplicationHost().SubmitInteractive(
 		ctx,
-		agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID},
-		requestID,
+		agenthost.InteractionRef{
+			WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+			TurnID: turnID, RequestID: requestID,
+		},
 		agenthost.SubmitInteractiveInput{
-			TurnID: strings.TrimSpace(interaction.TurnID), Action: action,
-			OptionID: input.OptionID, Payload: clonePayload(input.Payload),
+			Action: action, OptionID: input.OptionID, Payload: clonePayload(input.Payload),
 		},
 	)
 	if err != nil {
 		return RespondResult{}, normalizeRuntimeError(err)
 	}
 	return RespondResult{
-		RequestID: requestID, TurnID: strings.TrimSpace(interaction.TurnID), Disposition: result.Disposition,
+		RequestID: requestID, TurnID: turnID, Disposition: result.Disposition,
 	}, nil
 }
 

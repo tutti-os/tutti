@@ -101,7 +101,7 @@ func TestResolveAgentExtensionSourcesAppliesLocalPackageOnlyInDevelopment(t *tes
 
 func TestGrokAgentExtensionSourcePinsApprovedSigningIdentity(t *testing.T) {
 	source := agentExtensionSourceByKey(t, ResolveAgentExtensionSources(), "grok")
-	if source.Enabled || source.SigningKeyID != "tutti-grok-release-v1" ||
+	if source.Enabled || source.SigningKeyID != "tutti-grok-release-v2" ||
 		source.ReleaseIndexURL != "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/grok/versions.json" {
 		t.Fatalf("grok source activation/key identity = %#v", source)
 	}
@@ -113,7 +113,7 @@ func TestGrokAgentExtensionSourcePinsApprovedSigningIdentity(t *testing.T) {
 		t.Fatalf("parse grok signing public key: %v", err)
 	}
 	digest := sha256.Sum256(block.Bytes)
-	if got := hex.EncodeToString(digest[:]); got != "408e1275a69d250897a5889505124ec32e91cfa209d01aa582b370f5d3b255d3" {
+	if got := hex.EncodeToString(digest[:]); got != "1d9c96185b82d9ad0a2102374365a958e6f10d2c9bbdb4a6ab0f7effc503745b" {
 		t.Fatalf("grok signing public key SPKI digest = %s", got)
 	}
 }

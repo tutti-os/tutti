@@ -19,7 +19,6 @@ test("projectDesktopAgentProviderReadinessGates maps provider availability to Ag
         providerStatus("claude-code", "auth_required"),
         providerStatus("tutti-agent", "auth_required"),
         providerStatus("opencode", "ready"),
-        providerStatus("hermes", "ready"),
         providerStatus("openclaw", "unsupported")
       ]
     }
@@ -30,7 +29,6 @@ test("projectDesktopAgentProviderReadinessGates maps provider availability to Ag
   assert.equal(gates["claude-code"]?.status, "auth_required");
   assert.equal(gates["tutti-agent"]?.status, "auth_required");
   assert.equal(gates.opencode, null);
-  assert.equal(gates.hermes, null);
   assert.equal(gates.openclaw?.status, "unavailable");
 });
 
@@ -102,6 +100,16 @@ function providerStatus(
     cli: {
       installed: availability !== "not_installed"
     },
-    provider
+    provider,
+    update: {
+      capability: "unsupported",
+      currentVersion: null,
+      lastCheckedAt: null,
+      latestVersion: null,
+      reasonCode: null,
+      source: null,
+      unsupportedReason: "update_strategy_unsupported",
+      updateAvailable: null
+    }
   };
 }

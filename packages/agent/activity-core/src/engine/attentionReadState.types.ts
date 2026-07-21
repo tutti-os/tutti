@@ -4,6 +4,7 @@ export interface AttentionReadRecord {
   completionKey: string;
   isUnread: boolean;
   kind: AttentionCompletionKind;
+  markedUnreadByUser: boolean;
 }
 
 export interface AttentionReadPartition {

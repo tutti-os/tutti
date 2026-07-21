@@ -588,6 +588,12 @@ test("normalizes user project inputs", () => {
     }
   );
   assert.deepEqual(
+    normalizeTuttiExternalUserProjectPathInput({ path: " /repo " }, "remove"),
+    {
+      path: "/repo"
+    }
+  );
+  assert.deepEqual(
     normalizeTuttiExternalUserProjectMoveInput({
       beforeProjectId: " before ",
       projectId: " project "

@@ -663,6 +663,15 @@ func (s *Store) ListSessionInteractions(ctx context.Context, input ListSessionIn
 	query := agentInteractionSelectSQL + `
 WHERE workspace_id = ? AND agent_session_id = ?`
 	args := []any{workspaceID, agentSessionID}
+	turnID := strings.TrimSpace(input.TurnID)
+	requestID := strings.TrimSpace(input.RequestID)
+	if turnID != "" || requestID != "" {
+		if turnID == "" || requestID == "" {
+			return nil, errors.New("workspace agent interaction turn and request ids must be provided together")
+		}
+		query += ` AND turn_id = ? AND request_id = ?`
+		args = append(args, turnID, requestID)
+	}
 	if status := strings.TrimSpace(input.Status); status != "" {
 		query += ` AND status = ?`
 		args = append(args, status)

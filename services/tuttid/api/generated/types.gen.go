@@ -114,6 +114,7 @@ const (
 	AgentProviderActionIDInstall AgentProviderActionID = "install"
 	AgentProviderActionIDLogin   AgentProviderActionID = "login"
 	AgentProviderActionIDRefresh AgentProviderActionID = "refresh"
+	AgentProviderActionIDUpdate  AgentProviderActionID = "update"
 )
 
 // Valid indicates whether the value is a known member of the AgentProviderActionID enum.
@@ -124,6 +125,8 @@ func (e AgentProviderActionID) Valid() bool {
 	case AgentProviderActionIDLogin:
 		return true
 	case AgentProviderActionIDRefresh:
+		return true
+	case AgentProviderActionIDUpdate:
 		return true
 	default:
 		return false
@@ -176,6 +179,7 @@ const (
 	AgentProviderActiveActionPhaseError   AgentProviderActiveActionPhase = "error"
 	AgentProviderActiveActionPhaseInstall AgentProviderActiveActionPhase = "install"
 	AgentProviderActiveActionPhaseRepair  AgentProviderActiveActionPhase = "repair"
+	AgentProviderActiveActionPhaseUpdate  AgentProviderActiveActionPhase = "update"
 	AgentProviderActiveActionPhaseVerify  AgentProviderActiveActionPhase = "verify"
 )
 
@@ -191,6 +195,8 @@ func (e AgentProviderActiveActionPhase) Valid() bool {
 	case AgentProviderActiveActionPhaseInstall:
 		return true
 	case AgentProviderActiveActionPhaseRepair:
+		return true
+	case AgentProviderActiveActionPhaseUpdate:
 		return true
 	case AgentProviderActiveActionPhaseVerify:
 		return true
@@ -400,6 +406,39 @@ func (e AgentProviderSkillOptionSourceKind) Valid() bool {
 	}
 }
 
+// Defines values for AgentProviderUpdateCapability.
+const (
+	Supported   AgentProviderUpdateCapability = "supported"
+	Unsupported AgentProviderUpdateCapability = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderUpdateCapability enum.
+func (e AgentProviderUpdateCapability) Valid() bool {
+	switch e {
+	case Supported:
+		return true
+	case Unsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentProviderUpdateSource.
+const (
+	AgentProviderUpdateSourceNpm AgentProviderUpdateSource = "npm"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderUpdateSource enum.
+func (e AgentProviderUpdateSource) Valid() bool {
+	switch e {
+	case AgentProviderUpdateSourceNpm:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentSlashCommandEffect.
 const (
 	ActivateGoalMode AgentSlashCommandEffect = "activateGoalMode"
@@ -462,22 +501,22 @@ func (e AgentTargetExtensionLaunchRefType) Valid() bool {
 
 // Defines values for AgentTargetInstallPlanRunner.
 const (
-	Binary AgentTargetInstallPlanRunner = "binary"
-	Npm    AgentTargetInstallPlanRunner = "npm"
-	Pnpm   AgentTargetInstallPlanRunner = "pnpm"
-	Uv     AgentTargetInstallPlanRunner = "uv"
+	AgentTargetInstallPlanRunnerBinary AgentTargetInstallPlanRunner = "binary"
+	AgentTargetInstallPlanRunnerNpm    AgentTargetInstallPlanRunner = "npm"
+	AgentTargetInstallPlanRunnerPnpm   AgentTargetInstallPlanRunner = "pnpm"
+	AgentTargetInstallPlanRunnerUv     AgentTargetInstallPlanRunner = "uv"
 )
 
 // Valid indicates whether the value is a known member of the AgentTargetInstallPlanRunner enum.
 func (e AgentTargetInstallPlanRunner) Valid() bool {
 	switch e {
-	case Binary:
+	case AgentTargetInstallPlanRunnerBinary:
 		return true
-	case Npm:
+	case AgentTargetInstallPlanRunnerNpm:
 		return true
-	case Pnpm:
+	case AgentTargetInstallPlanRunnerPnpm:
 		return true
-	case Uv:
+	case AgentTargetInstallPlanRunnerUv:
 		return true
 	default:
 		return false
@@ -2663,6 +2702,7 @@ type AgentProviderStatus struct {
 	Cli          AgentProviderCliStatus      `json:"cli"`
 	Network      *AgentProviderNetworkStatus `json:"network,omitempty"`
 	Provider     WorkspaceAgentProvider      `json:"provider"`
+	Update       AgentProviderUpdateStatus   `json:"update"`
 }
 
 // AgentProviderStatusListResponse defines model for AgentProviderStatusListResponse.
@@ -2676,6 +2716,30 @@ type AgentProviderStatusListResponse struct {
 type AgentProviderTerminalCommand struct {
 	Cwd   *string `json:"cwd,omitempty"`
 	Input string  `json:"input"`
+}
+
+// AgentProviderUpdateCapability defines model for AgentProviderUpdateCapability.
+type AgentProviderUpdateCapability string
+
+// AgentProviderUpdateSource defines model for AgentProviderUpdateSource.
+type AgentProviderUpdateSource string
+
+// AgentProviderUpdateStatus defines model for AgentProviderUpdateStatus.
+type AgentProviderUpdateStatus struct {
+	Capability     AgentProviderUpdateCapability `json:"capability"`
+	CurrentVersion *string                       `json:"currentVersion"`
+	LastCheckedAt  *time.Time                    `json:"lastCheckedAt"`
+	LatestVersion  *string                       `json:"latestVersion"`
+
+	// ReasonCode Non-fatal discovery or version-comparison result code.
+	ReasonCode *string                    `json:"reasonCode"`
+	Source     *AgentProviderUpdateSource `json:"source"`
+
+	// UnsupportedReason Stable reason why this provider cannot be updated by tuttid.
+	UnsupportedReason *string `json:"unsupportedReason"`
+
+	// UpdateAvailable Null when discovery has not run, failed, or the current/latest versions cannot be compared safely.
+	UpdateAvailable *bool `json:"updateAvailable"`
 }
 
 // AgentQuickPrompt defines model for AgentQuickPrompt.
@@ -3373,7 +3437,6 @@ type DesktopAgentComposerDefaultsByProvider struct {
 	ClaudeCode *DesktopAgentComposerDefaults `json:"claude-code,omitempty"`
 	Codex      *DesktopAgentComposerDefaults `json:"codex,omitempty"`
 	Cursor     *DesktopAgentComposerDefaults `json:"cursor,omitempty"`
-	Hermes     *DesktopAgentComposerDefaults `json:"hermes,omitempty"`
 	Nexight    *DesktopAgentComposerDefaults `json:"nexight,omitempty"`
 	Openclaw   *DesktopAgentComposerDefaults `json:"openclaw,omitempty"`
 	Opencode   *DesktopAgentComposerDefaults `json:"opencode,omitempty"`
@@ -3391,7 +3454,6 @@ type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	ClaudeCode *bool `json:"claude-code,omitempty"`
 	Codex      *bool `json:"codex,omitempty"`
 	Cursor     *bool `json:"cursor,omitempty"`
-	Hermes     *bool `json:"hermes,omitempty"`
 	Nexight    *bool `json:"nexight,omitempty"`
 	Openclaw   *bool `json:"openclaw,omitempty"`
 	Opencode   *bool `json:"opencode,omitempty"`
@@ -3430,6 +3492,8 @@ type DesktopMinimizeAnimation string
 
 // DesktopPreferences defines model for DesktopPreferences.
 type DesktopPreferences struct {
+	// AgentCliUpdateCheckEnabled Whether tuttid may periodically discover newer managed agent CLI releases on this device. This never authorizes automatic installation.
+	AgentCliUpdateCheckEnabled                  bool                                               `json:"agentCliUpdateCheckEnabled"`
 	AgentComposerDefaultsByAgentTarget          *DesktopAgentComposerDefaultsByAgentTarget         `json:"agentComposerDefaultsByAgentTarget,omitempty"`
 	AgentComposerDefaultsByProvider             DesktopAgentComposerDefaultsByProvider             `json:"agentComposerDefaultsByProvider"`
 	AgentConversationDetailMode                 DesktopAgentConversationDetailMode                 `json:"agentConversationDetailMode"`
@@ -5322,8 +5386,14 @@ type GetAgentProviderStatusesParams struct {
 	// IncludeNetwork Opt into the network connectivity probe (registry / provider API / proxy reachability). Off by default so the common detection path stays local and never blocks on the network; only the agent-env wizard's network diagnostic sets this.
 	IncludeNetwork *bool `form:"includeNetwork,omitempty" json:"includeNetwork,omitempty"`
 
-	// Refresh Bypass the daemon provider-readiness cache.
+	// IncludeUpdates Opt into cached remote update discovery for provider CLIs. Off by default so ordinary readiness and status requests stay purely local. Discovery failures are reported on each provider's update status and do not fail the status request.
+	IncludeUpdates *bool `form:"includeUpdates,omitempty" json:"includeUpdates,omitempty"`
+
+	// Refresh Bypass only the daemon's local provider-readiness cache. This does not opt into or refresh remote update discovery.
 	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
+
+	// RefreshUpdates Bypass only the provider update-metadata cache when includeUpdates is true. This does not bypass local readiness or network-diagnostic caches and does not opt into discovery by itself.
+	RefreshUpdates *bool `form:"refreshUpdates,omitempty" json:"refreshUpdates,omitempty"`
 }
 
 // ListCliCapabilitiesParams defines parameters for ListCliCapabilities.

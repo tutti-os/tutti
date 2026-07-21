@@ -125,6 +125,7 @@ export const workspaceAppExternalChannels = {
   userProjectsGetSnapshot: "workspace-app-user-projects:get-snapshot",
   userProjectsList: "workspace-app-user-projects:list",
   userProjectsMove: "workspace-app-user-projects:move",
+  userProjectsRemove: "workspace-app-user-projects:remove",
   userProjectsPrepareSelection: "workspace-app-user-projects:prepare-selection",
   userProjectsRefresh: "workspace-app-user-projects:refresh",
   userProjectsRememberDefaultSelection:
@@ -356,6 +357,16 @@ export function createWorkspaceAppExternalBridge(
       move(input) {
         return dependencies.invoke<void>(
           workspaceAppExternalChannels.userProjectsMove,
+          input
+        );
+      },
+      remove(input: TuttiExternalUserProjectPathInput) {
+        requireUserActivation(
+          dependencies.isUserActivationActive(),
+          "userProjects.remove"
+        );
+        return dependencies.invoke<void>(
+          workspaceAppExternalChannels.userProjectsRemove,
           input
         );
       },

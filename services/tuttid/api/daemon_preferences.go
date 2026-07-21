@@ -408,6 +408,7 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		}
 	}
 	preferences, err := api.PreferencesService.Put(ctx, preferencesservice.PutInput{
+		AgentCLIUpdateCheckEnabled: request.Body.Preferences.AgentCliUpdateCheckEnabled,
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromGenerated(
 			request.Body.Preferences.AgentComposerDefaultsByProvider,
 		),
@@ -478,7 +479,6 @@ func agentGUIConversationRailCollapsedByProviderFromGenerated(
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "codex", value.Codex)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "tutti-agent", value.TuttiAgent)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "cursor", value.Cursor)
-	setAgentGUIConversationRailCollapsedFromGenerated(result, "hermes", value.Hermes)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "openclaw", value.Openclaw)
 	return result
 }
@@ -502,7 +502,6 @@ func agentComposerDefaultsByProviderFromGenerated(
 	setAgentComposerDefaultsFromGenerated(result, "codex", value.Codex)
 	setAgentComposerDefaultsFromGenerated(result, "tutti-agent", value.TuttiAgent)
 	setAgentComposerDefaultsFromGenerated(result, "cursor", value.Cursor)
-	setAgentComposerDefaultsFromGenerated(result, "hermes", value.Hermes)
 	setAgentComposerDefaultsFromGenerated(result, "openclaw", value.Openclaw)
 	return result
 }

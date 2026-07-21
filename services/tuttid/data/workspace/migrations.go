@@ -38,6 +38,7 @@ const schemaMigrationDesktopPreferencesShowAppDeveloperSourcesV1 = "desktop_pref
 const schemaMigrationDesktopPreferencesAgentConversationDetailModeV1 = "desktop_preferences_agent_conversation_detail_mode_v1"
 const schemaMigrationDesktopPreferencesFeatureFlagsV1 = "desktop_preferences_feature_flags_v1"
 const schemaMigrationDesktopPreferencesDeletedAgentRetentionV1 = "desktop_preferences_deleted_agent_retention_v1"
+const schemaMigrationDesktopPreferencesAgentCLIUpdateCheckV1 = "desktop_preferences_agent_cli_update_check_v1"
 const schemaMigrationAgentDataMaintenanceV1 = "agent_data_maintenance_v1"
 const schemaMigrationUserProjectsV1 = "user_projects_v1"
 const schemaMigrationUserProjectsV2 = "user_projects_v2"
@@ -171,6 +172,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyDesktopPreferencesDeletedAgentRetentionV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyDesktopPreferencesAgentCLIUpdateCheckV1(ctx); err != nil {
 		return err
 	}
 	if err := s.applyAgentDataMaintenanceV1(ctx); err != nil {

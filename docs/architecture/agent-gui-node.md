@@ -209,9 +209,19 @@ The engine owns:
 - prompt queue, send-now, and cancel-then-send coordination
 - session mutation, settings, composer options, and operation state
 - workspace/session reconciliation state
+- ephemeral per-Session runtime command availability projected by the host
 - attention/read state and cross-surface selectors
 
 The engine does not own daemon persistence, provider transport, DOM, or permanent UI layout.
+
+Runtime command availability is session-scoped whenever one workspace engine
+can contain Sessions backed by different transports. The host projects
+`available`, `transport_reconnecting`, or `transport_unavailable`; the engine
+uses that single fact to gate sends, cancellation, settings, and Interaction or
+plan responses. AgentGUI freezes the affected composer and interactive card in
+a loading state. It must not reuse the engine-wide connection state for this
+case, because one remote Session losing its owner must not disable Local Agent
+or another remote Session.
 
 ### 4.1 Read/write rules
 
@@ -270,6 +280,8 @@ Rail selection, detail hydration, older-page loading, and transcript projection 
 A focused controller may own detail paging/loading/error. Canonical messages, Turns, Interactions, and optimistic prompts still come from the engine. An empty message list means neither hydrated nor not-found.
 
 Timeline projection is pure, deterministic, and provider-neutral. React views render rows/cards and dispatch actions.
+
+High-frequency transcript updates must not pair DOM mutation with unconditional synchronous reads of the timeline's full scroll geometry. Conversation switches, explicit submit-to-bottom requests, skeleton transitions, and older-page prepend restoration may perform pre-paint scroll correction; ordinary content growth preserves bottom lock and user scroll-away state from observed content and viewport geometry after layout.
 
 ## 5. Agent identity and provider architecture
 
@@ -382,6 +394,12 @@ Workspace picker results and internal workspace-reference drags remain live refe
 | `renderSlots`      | narrow product-neutral presentation slots |
 
 Do not restore flat compatibility props or hide workflow inside a render slot.
+Host chrome that aligns to AgentGUI's internal layout must consume explicit
+package signals such as `hostActions.onConversationRailLayoutChange`; it must
+not observe package DOM, CSS variables, or class names with
+`MutationObserver`. Composer affordances belong in AgentGUI itself or a
+narrow `renderSlots` contract, not in host-owned portals inserted into package
+DOM.
 
 ### 6.3 `AgentActivityRuntime` and `AgentHostApi`
 
@@ -449,7 +467,10 @@ canonical Interaction(pending)
   -> answered or superseded projection
 ```
 
-Every surface shares request identity and submitting state.
+Every surface shares the exact interaction identity
+`(workspaceId, agentSessionId, turnId, requestId)` and submitting state.
+Provider request ids remain unchanged and may repeat across Turns; no adapter
+may recover a missing Turn by scanning for a session-wide request-id match.
 
 A synthesized plan decision uses a durable `plan_decision` operation. A provider-native plan Interaction continues through `interactive_response`. Similar UI does not justify merging their write paths.
 
@@ -478,6 +499,12 @@ through `sessionActions.ts` and the node resolves the target session against
 canonical rail entities under the rail interaction lock. While either row
 menu is open the row keeps its hover layout (short title truncation, actions
 visible) so titles cannot overlap the action cluster.
+
+Attention state preserves explicit user intent: marking the currently selected
+Session unread keeps its unread indicator while that selection remains open.
+Selecting the Session again marks it read. A new live completion or a durable
+unread completion discovered by hydration is still marked read immediately when
+its Session is already selected.
 
 Read-only host surfaces reuse the complete workbench header and declare the
 session actions they support. Omitting that capability list preserves the full
@@ -540,6 +567,27 @@ Diagnose in owner order:
 6. Did projection/view render only its input?
 
 Do not start by adding a fallback to the visible component.
+
+### 8.1 Agent settings surface
+
+The desktop settings panel's agent section has two tabs: General Settings and
+an Agents tab. The Agents tab renders provider rows from the authoritative
+identity catalog plus the live `IAgentProviderStatusService`; it does not copy
+a provider registry. Its Enable/Disable control reads all Agent Targets from
+`IAgentsService` and persists the daemon-owned Agent Target `enabled` field.
+Disabled targets remain in this settings control plane so they can be
+re-enabled, but they are excluded from the AgentGUI agent projection and from
+CLI discovery and launch. The device-global provider-rail preferences remain
+presentation-only (ordering and optional sidebar personalization); they do not
+authorize an Agent Target or replace daemon enablement. Staged
+(Beta/Preview/in-progress) rows are gated by the `lab.previewAgents` switch via
+the provider-neutral `agentGuiWorkbenchPreviewProviders` predicate; stable rows
+always show in settings. Deep links reach the tab through the existing
+`openWorkspaceSettingsPanel` intent (now carrying optional `pane`/`provider`)
+plus a bumped `agentFocus` request that scrolls and briefly highlights the row;
+a link to a hidden preview agent surfaces an "enable Preview Agents" hint rather
+than failing silently. This is a settings surface, not a second Agent Target
+state store.
 
 ## 9. Folder guide
 

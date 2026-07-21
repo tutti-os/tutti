@@ -22,8 +22,11 @@ func runRuntimeCommitObserverFailure(ctx context.Context, driver Driver) error {
 	}
 	optionID := "approve"
 	if _, err := driver.SubmitInteractive(ctx,
-		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-observer-runtime"},
-		"request-observer-runtime", agenthost.SubmitInteractiveInput{TurnID: "turn-observer-runtime", OptionID: &optionID},
+		agenthost.InteractionRef{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-observer-runtime",
+			TurnID: "turn-observer-runtime", RequestID: "request-observer-runtime",
+		},
+		agenthost.SubmitInteractiveInput{OptionID: &optionID},
 	); err != nil {
 		return fmt.Errorf("observer failure escaped committed runtime command: %w", err)
 	}

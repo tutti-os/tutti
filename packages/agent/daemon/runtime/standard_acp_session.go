@@ -15,7 +15,7 @@ import (
 func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]activityshared.Event, error) {
 	unlockLifecycle := a.lockSessionLifecycle(session.AgentSessionID)
 	defer unlockLifecycle()
-	a.logHermesStartupDiagnostics("start.enter", map[string]any{
+	a.logStandardACPStartupDiagnostics("start.enter", map[string]any{
 		"room_id":            session.RoomID,
 		"agent_session_id":   session.AgentSessionID,
 		"cwd":                session.CWD,
@@ -24,7 +24,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 	})
 	client, initializeResult, err := a.startInitializedClient(ctx, session)
 	if err != nil {
-		a.logHermesStartupDiagnostics("start.initialized_client_failed", map[string]any{
+		a.logStandardACPStartupDiagnostics("start.initialized_client_failed", map[string]any{
 			"room_id":          session.RoomID,
 			"agent_session_id": session.AgentSessionID,
 			"error":            err.Error(),
@@ -66,7 +66,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		return nil, err
 	}
 	newSessionStartedAt := time.Now()
-	a.logHermesStartupDiagnostics("session_new.start", map[string]any{
+	a.logStandardACPStartupDiagnostics("session_new.start", map[string]any{
 		"room_id":          session.RoomID,
 		"agent_session_id": session.AgentSessionID,
 		"cwd":              firstNonEmpty(session.CWD, "/"),
@@ -77,7 +77,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		return err
 	})
 	if err != nil {
-		a.logHermesStartupDiagnostics("session_new.failed", map[string]any{
+		a.logStandardACPStartupDiagnostics("session_new.failed", map[string]any{
 			"room_id":          session.RoomID,
 			"agent_session_id": session.AgentSessionID,
 			"elapsed_ms":       time.Since(newSessionStartedAt).Milliseconds(),
@@ -91,7 +91,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 	}
 	providerSessionID, err := acpSessionID(newSessionResult)
 	if err != nil {
-		a.logHermesStartupDiagnostics("session_new.invalid_result", map[string]any{
+		a.logStandardACPStartupDiagnostics("session_new.invalid_result", map[string]any{
 			"room_id":          session.RoomID,
 			"agent_session_id": session.AgentSessionID,
 			"elapsed_ms":       time.Since(newSessionStartedAt).Milliseconds(),
@@ -99,7 +99,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		})
 		return nil, err
 	}
-	a.logHermesStartupDiagnostics("session_new.succeeded", map[string]any{
+	a.logStandardACPStartupDiagnostics("session_new.succeeded", map[string]any{
 		"room_id":             session.RoomID,
 		"agent_session_id":    session.AgentSessionID,
 		"provider_session_id": providerSessionID,
@@ -112,7 +112,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 	applyACPModelsResult(&acpSession.acpLiveState, newSessionResult)
 	applyACPModesResult(&acpSession.acpLiveState, newSessionResult)
 	if err := a.applySessionConfigOptions(ctx, client, session, newSessionResult); err != nil {
-		a.logHermesStartupDiagnostics("config_options.failed", map[string]any{
+		a.logStandardACPStartupDiagnostics("config_options.failed", map[string]any{
 			"room_id":             session.RoomID,
 			"agent_session_id":    session.AgentSessionID,
 			"provider_session_id": session.ProviderSessionID,
@@ -121,7 +121,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		return nil, err
 	}
 	if err := a.applyACPMode(ctx, client, session, a.startupModeID(session)); err != nil {
-		a.logHermesStartupDiagnostics("session_mode.failed", map[string]any{
+		a.logStandardACPStartupDiagnostics("session_mode.failed", map[string]any{
 			"room_id":             session.RoomID,
 			"agent_session_id":    session.AgentSessionID,
 			"provider_session_id": session.ProviderSessionID,
@@ -134,7 +134,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 	started = true
 	keepSession = true
 	a.closeReplacedSession(previousSession, client)
-	a.logHermesStartupDiagnostics("start.succeeded", map[string]any{
+	a.logStandardACPStartupDiagnostics("start.succeeded", map[string]any{
 		"room_id":             session.RoomID,
 		"agent_session_id":    session.AgentSessionID,
 		"provider_session_id": session.ProviderSessionID,
@@ -366,7 +366,7 @@ func (a *standardACPAdapter) startInitializedClient(
 		ExecutableIdentity: cloneExecutableIdentity(a.config.executableIdentity),
 	})
 	if err != nil {
-		a.logHermesStartupDiagnostics("process_prepare.failed", map[string]any{
+		a.logStandardACPStartupDiagnostics("process_prepare.failed", map[string]any{
 			"room_id":          session.RoomID,
 			"agent_session_id": session.AgentSessionID,
 			"error":            err.Error(),
@@ -381,7 +381,7 @@ func (a *standardACPAdapter) startInitializedClient(
 		}
 	}
 	processStartedAt := time.Now()
-	a.logHermesStartupDiagnostics("process_start.start", map[string]any{
+	a.logStandardACPStartupDiagnostics("process_start.start", map[string]any{
 		"room_id":          session.RoomID,
 		"agent_session_id": session.AgentSessionID,
 		"cwd":              spec.CWD,
@@ -391,7 +391,7 @@ func (a *standardACPAdapter) startInitializedClient(
 	conn, err := a.transport.Start(ctx, spec)
 	if err != nil {
 		cleanupPreparedLaunch(cleanup)
-		a.logHermesStartupDiagnostics("process_start.failed", map[string]any{
+		a.logStandardACPStartupDiagnostics("process_start.failed", map[string]any{
 			"room_id":          session.RoomID,
 			"agent_session_id": session.AgentSessionID,
 			"elapsed_ms":       time.Since(processStartedAt).Milliseconds(),
@@ -400,7 +400,7 @@ func (a *standardACPAdapter) startInitializedClient(
 		return nil, nil, err
 	}
 	conn = wrapProviderLaunchCleanup(conn, cleanup)
-	a.logHermesStartupDiagnostics("process_start.succeeded", map[string]any{
+	a.logStandardACPStartupDiagnostics("process_start.succeeded", map[string]any{
 		"room_id":          session.RoomID,
 		"agent_session_id": session.AgentSessionID,
 		"elapsed_ms":       time.Since(processStartedAt).Milliseconds(),
@@ -427,7 +427,7 @@ func (a *standardACPAdapter) startInitializedClient(
 		initializeParams = a.config.initializeParams()
 	}
 	initializeStartedAt := time.Now()
-	a.logHermesStartupDiagnostics("initialize.start", map[string]any{
+	a.logStandardACPStartupDiagnostics("initialize.start", map[string]any{
 		"room_id":          session.RoomID,
 		"agent_session_id": session.AgentSessionID,
 		"timeout_ms":       acpStartCallTimeout.Milliseconds(),
@@ -437,7 +437,7 @@ func (a *standardACPAdapter) startInitializedClient(
 		return err
 	})
 	if err != nil {
-		a.logHermesStartupDiagnostics("initialize.failed", map[string]any{
+		a.logStandardACPStartupDiagnostics("initialize.failed", map[string]any{
 			"room_id":          session.RoomID,
 			"agent_session_id": session.AgentSessionID,
 			"elapsed_ms":       time.Since(initializeStartedAt).Milliseconds(),
@@ -445,7 +445,7 @@ func (a *standardACPAdapter) startInitializedClient(
 		})
 		return nil, nil, err
 	}
-	a.logHermesStartupDiagnostics("initialize.succeeded", map[string]any{
+	a.logStandardACPStartupDiagnostics("initialize.succeeded", map[string]any{
 		"room_id":          session.RoomID,
 		"agent_session_id": session.AgentSessionID,
 		"elapsed_ms":       time.Since(initializeStartedAt).Milliseconds(),
@@ -454,12 +454,12 @@ func (a *standardACPAdapter) startInitializedClient(
 
 	if a.config.beforeNewSession != nil {
 		beforeNewSessionStartedAt := time.Now()
-		a.logHermesStartupDiagnostics("before_new_session.start", map[string]any{
+		a.logStandardACPStartupDiagnostics("before_new_session.start", map[string]any{
 			"room_id":          session.RoomID,
 			"agent_session_id": session.AgentSessionID,
 		})
 		if err := a.config.beforeNewSession(ctx, client, session, initializeResult); err != nil {
-			a.logHermesStartupDiagnostics("before_new_session.failed", map[string]any{
+			a.logStandardACPStartupDiagnostics("before_new_session.failed", map[string]any{
 				"room_id":          session.RoomID,
 				"agent_session_id": session.AgentSessionID,
 				"elapsed_ms":       time.Since(beforeNewSessionStartedAt).Milliseconds(),
@@ -471,7 +471,7 @@ func (a *standardACPAdapter) startInitializedClient(
 			}
 			return nil, nil, err
 		}
-		a.logHermesStartupDiagnostics("before_new_session.succeeded", map[string]any{
+		a.logStandardACPStartupDiagnostics("before_new_session.succeeded", map[string]any{
 			"room_id":          session.RoomID,
 			"agent_session_id": session.AgentSessionID,
 			"elapsed_ms":       time.Since(beforeNewSessionStartedAt).Milliseconds(),

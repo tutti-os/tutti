@@ -47,9 +47,15 @@ import { useAgentGUIWorkspaceReferencePicker } from "./view/useAgentGUIWorkspace
 import type { AgentGUINodeViewProps } from "./view/AgentGUINodeView.types";
 import { useAgentGUINodeEngagement } from "./engagement/useAgentGUINodeEngagement";
 import { isAgentGUIProviderReady } from "./model/agentGuiProviderReadiness";
+import {
+  useAgentGUIConversationRailResizePointerMove,
+  type AgentGUIConversationRailResizeInteraction
+} from "./view/useAgentGUIConversationRailResizePointerMove";
+
 export type {
   AgentGUINodeViewProps,
   AgentGUIAgentsEmptyRenderer,
+  AgentGUIConversationRailLayout,
   AgentGUIProviderUnavailableStateContext,
   AgentGUIProviderUnavailableStateRenderer,
   AgentGUISidebarFooterContext,
@@ -119,6 +125,7 @@ export function AgentGUINodeView({
   prepareExternalPromptFiles = null,
   promptAssetLimit = null,
   onConversationRailWidthChanged,
+  onConversationRailLayoutChange,
   labels,
   conversationRailLabels,
   workspaceUserProjectI18n,
@@ -128,6 +135,7 @@ export function AgentGUINodeView({
   selectProjectDirectory,
   workspaceFileReferenceCopy = null,
   onRequestGitBranches = null,
+  projectDirectorySourceAggregator = null,
   referenceSourceAggregator = null,
   resolveWorkspaceReferenceEntryIconUrl,
   resolveMentionReferenceTarget = null,
@@ -147,12 +155,8 @@ export function AgentGUINodeView({
     viewModel
   });
   const [providerManagerOpen, setProviderManagerOpen] = useState(false);
-  const railResizeInteractionRef = useRef<{
-    lastWidthPx: number;
-    pointerId: number;
-    startClientX: number;
-    startWidthPx: number;
-  } | null>(null);
+  const railResizeInteractionRef =
+    useRef<AgentGUIConversationRailResizeInteraction | null>(null);
   const [isRailResizing, setIsRailResizing] = useState(false);
   const [railResizeWidthPx, setRailResizeWidthPx] = useState<number | null>(
     null
@@ -166,12 +170,16 @@ export function AgentGUINodeView({
     confirmWorkspaceReferenceBundles,
     confirmWorkspaceReferencePicker,
     isWorkspaceReferencePickerNodeSelectable,
+    requestProjectDirectory,
     requestWorkspaceReferences,
+    workspaceReferencePickerAggregator,
     workspaceReferencePickerOpen,
+    workspaceReferencePickerPurpose,
     workspaceReferencePickerTarget
   } = useAgentGUIWorkspaceReferencePicker({
     onWorkspaceFileReferencesAdded,
     previewMode,
+    projectDirectorySourceAggregator,
     referenceSourceAggregator,
     resolveMentionReferenceTarget,
     resolveWorkspaceReferenceInitialTarget,
@@ -179,6 +187,9 @@ export function AgentGUINodeView({
     workspaceFileReferenceAdapter,
     workspaceFileReferenceCopy
   });
+  const effectiveSelectProjectDirectory = projectDirectorySourceAggregator
+    ? requestProjectDirectory
+    : selectProjectDirectory;
   const createConversationDisabled =
     viewModel.rail.selectedAgentTarget.disabled === true;
   const createConversationAction = useStableEventCallback(
@@ -265,6 +276,7 @@ export function AgentGUINodeView({
       ),
     [conversationRailMaxWidthPx, conversationRailMinWidthPx]
   );
+  const providerRailWidthPx = conversationRailCollapsed ? 0 : 52;
 
   const handleConversationRailResizePointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>): void => {
@@ -289,30 +301,15 @@ export function AgentGUINodeView({
     [conversationRailCollapsed, conversationRailWidthPx, previewMode]
   );
 
-  const handleConversationRailResizePointerMove = useCallback(
-    (event: PointerEvent<HTMLDivElement>): void => {
-      if (previewMode) {
-        return;
-      }
-      const resizeState = railResizeInteractionRef.current;
-      if (!resizeState || resizeState.pointerId !== event.pointerId) {
-        return;
-      }
-
-      const nextWidthPx = clampConversationRailWidth(
-        resizeState.startWidthPx + event.clientX - resizeState.startClientX
-      );
-      if (resizeState.lastWidthPx !== nextWidthPx) {
-        resizeState.lastWidthPx = nextWidthPx;
-        layoutElementRef.current?.style.setProperty(
-          "--agent-gui-conversation-rail-width",
-          `${nextWidthPx}px`
-        );
-        event.currentTarget.setAttribute("aria-valuenow", String(nextWidthPx));
-      }
-    },
-    [clampConversationRailWidth, previewMode]
-  );
+  const handleConversationRailResizePointerMove =
+    useAgentGUIConversationRailResizePointerMove({
+      clampConversationRailWidth,
+      layoutElementRef,
+      onConversationRailLayoutChange,
+      previewMode,
+      providerRailWidthPx,
+      railResizeInteractionRef
+    });
 
   const endConversationRailResize = useCallback(
     (event?: PointerEvent<HTMLDivElement>): void => {
@@ -390,13 +387,12 @@ export function AgentGUINodeView({
   const effectiveConversationRailWidthPx = conversationRailCollapsed
     ? 0
     : visualConversationRailWidthPx;
-  const renderProviderRail = !conversationRailCollapsed;
 
   const layoutStyle = {
     "--agent-gui-conversation-rail-width": `${effectiveConversationRailWidthPx}px`,
     "--agent-gui-conversation-rail-content-width": `${visualConversationRailWidthPx}px`,
     "--agent-gui-detail-min-width": `${detailMinWidthPx}px`,
-    "--agent-gui-provider-rail-width": renderProviderRail ? "52px" : "0px",
+    "--agent-gui-provider-rail-width": `${providerRailWidthPx}px`,
     gridTemplateColumns:
       "var(--agent-gui-provider-rail-width) var(--agent-gui-conversation-rail-width) minmax(var(--agent-gui-detail-min-width), 1fr)"
   } as CSSProperties;
@@ -447,8 +443,13 @@ export function AgentGUINodeView({
     selectedAgentTarget: viewModel.rail.selectedAgentTarget
   });
   const openAgentSettings = useCallback(() => {
-    openWorkspaceSettingsPanel({ section: "agent" });
-  }, []);
+    // Provider-scoped config menu -> Agents tab, focusing this provider's row.
+    openWorkspaceSettingsPanel({
+      section: "agent",
+      pane: "agents",
+      provider: effectiveRailConfigProvider ?? undefined
+    });
+  }, [effectiveRailConfigProvider]);
   const [renameConversationTarget, setRenameConversationTarget] = useState<
     AgentGUINodeViewModel["rail"]["conversations"][number] | null
   >(null);
@@ -512,7 +513,7 @@ export function AgentGUINodeView({
       onConfirmDeleteConversation: confirmDeleteConversation,
       onOpenProjectFiles: openProjectFiles,
       onOpenConversationWindow: openConversationWindow,
-      selectProjectDirectory
+      selectProjectDirectory: effectiveSelectProjectDirectory
     }),
     [
       cancelDeleteConversation,
@@ -534,7 +535,7 @@ export function AgentGUINodeView({
       requestDeleteConversation,
       requestRenameConversation,
       selectConversation,
-      selectProjectDirectory,
+      effectiveSelectProjectDirectory,
       sectionAgentTargetFallbackId,
       viewModel.rail.agentTargets,
       viewModel.rail.agentTargetsLoading,
@@ -645,7 +646,6 @@ export function AgentGUINodeView({
                   providerAuthAccountLabel={effectiveProviderAuthAccountLabel}
                   onAgentConfigMenuOpen={onAgentConfigMenuOpen}
                   onAgentUsageRefresh={onAgentUsageRefresh}
-                  onOpenAgentManager={() => setProviderManagerOpen(true)}
                   onOpenAgentEnvSetup={openAgentEnvSetup}
                   onOpenAgentSettings={openAgentSettings}
                 />
@@ -731,7 +731,7 @@ export function AgentGUINodeView({
               resolveExternalPromptEntries={resolveExternalPromptEntries}
               prepareExternalPromptFiles={prepareExternalPromptFiles}
               promptAssetLimit={promptAssetLimit}
-              selectProjectDirectory={selectProjectDirectory}
+              selectProjectDirectory={effectiveSelectProjectDirectory}
               onRequestGitBranches={onRequestGitBranches}
               onRequestComposerFocus={requestComposerFocus}
               workspaceAppIcons={effectiveWorkspaceAppIcons}
@@ -742,7 +742,7 @@ export function AgentGUINodeView({
           </section>
         </div>
         <AgentGUIReferencePickerSurface
-          aggregator={referenceSourceAggregator}
+          aggregator={workspaceReferencePickerAggregator}
           copy={
             workspaceFileReferenceCopy ?? fallbackWorkspaceFileReferenceCopy
           }
@@ -752,12 +752,17 @@ export function AgentGUINodeView({
           initialTarget={workspaceReferencePickerTarget}
           isNodeSelectable={isWorkspaceReferencePickerNodeSelectable}
           open={workspaceReferencePickerOpen}
+          purpose={workspaceReferencePickerPurpose}
           provenanceFilter={referenceProvenanceFilter}
           resolveEntryIconUrl={resolveWorkspaceReferenceEntryIconUrl}
           workspaceId={viewModel.shell.workspaceId}
           onClose={closeWorkspaceReferencePicker}
           onConfirm={confirmWorkspaceReferencePicker}
-          onConfirmBundles={confirmWorkspaceReferenceBundles}
+          onConfirmBundles={
+            workspaceReferencePickerPurpose === "reference"
+              ? confirmWorkspaceReferenceBundles
+              : undefined
+          }
         />
         <AgentGUIRenameConversationDialog
           conversation={renameConversationTarget}

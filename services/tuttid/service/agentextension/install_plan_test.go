@@ -232,12 +232,12 @@ func TestInstallPlanServiceRejectsInvalidScopeAndTarget(t *testing.T) {
 func TestValidateRuntimeContractRequiresExactUVPackage(t *testing.T) {
 	manifest := testManifest()
 	manifest.Runtime.Install.Runner = "uv"
-	manifest.Runtime.Install.Args = []string{"tool", "install", "gemini-cli==1.2.3", "--target", "${installRoot}"}
+	manifest.Runtime.Install.Args = []string{"tool", "install", "gemini-cli[acp]==1.2.3"}
 	manifest.Runtime.Launch.Executable = "${installRoot}/bin/gemini"
 	if err := validateRuntimeContract(manifest); err != nil {
 		t.Fatalf("validateRuntimeContract(exact uv package) error = %v", err)
 	}
-	manifest.Runtime.Install.Args[2] = "gemini-cli"
+	manifest.Runtime.Install.Args[2] = "gemini-cli[acp]"
 	if err := validateRuntimeContract(manifest); err == nil {
 		t.Fatal("validateRuntimeContract(unversioned uv package) error = nil")
 	}

@@ -45,6 +45,7 @@ import {
 } from "@tutti-os/workspace-file-preview/react";
 import {
   WorkspaceFileEntryIcon,
+  WorkspaceFileManagerCreateDialog,
   useWorkspaceFileEntryIconUrls,
   WorkspaceFileManagerContextMenu,
   resolveRevealInFolderLabel,
@@ -104,6 +105,7 @@ export interface ReferenceSourcePickerProps {
   open: boolean;
   provenanceFilter?: ReferenceProvenanceFilter | null;
   provenanceFilterControl?: ReactNode;
+  purpose?: "directory" | "reference";
   workspaceId: string;
 }
 
@@ -177,6 +179,7 @@ export function ReferenceSourcePicker({
   open,
   provenanceFilter = null,
   provenanceFilterControl,
+  purpose = "reference",
   resolveEntryIconUrl,
   resolveOpenWithApplicationIcon,
   workspaceId
@@ -192,8 +195,15 @@ export function ReferenceSourcePicker({
     onClose,
     onConfirm,
     onConfirmBundles,
-    provenanceFilter
+    provenanceFilter: purpose === "directory" ? null : provenanceFilter,
+    selectionMode: purpose === "directory" ? "single" : "multiple"
   });
+  const [createDirectoryDialog, setCreateDirectoryDialog] = useState<{
+    errorMessage: string | null;
+    name: string;
+    parent: ReferenceNode | null;
+    submitting: boolean;
+  } | null>(null);
   const hasVisibleContent = view.isQuery
     ? view.searchResults.length > 0
     : view.currentEntries.length > 0;
@@ -236,6 +246,75 @@ export function ReferenceSourcePicker({
       });
     };
   }, [onClose, open]);
+
+  useEffect(() => {
+    if (!open) {
+      setCreateDirectoryDialog(null);
+    }
+  }, [open]);
+
+  const openCreateDirectoryDialog = (
+    explicitParent?: ReferenceNode | null
+  ): void => {
+    const focusedDirectory =
+      view.focusedNode?.kind === "folder" ? view.focusedNode : null;
+    setCreateDirectoryDialog({
+      errorMessage: null,
+      name: "",
+      parent:
+        explicitParent === undefined
+          ? (focusedDirectory ?? view.currentNode)
+          : explicitParent,
+      submitting: false
+    });
+  };
+
+  const confirmCreateDirectory = async (): Promise<void> => {
+    if (!createDirectoryDialog || !fileManagerCopy) {
+      return;
+    }
+    const name = createDirectoryDialog.name.trim();
+    if (!name) {
+      setCreateDirectoryDialog((current) =>
+        current
+          ? {
+              ...current,
+              errorMessage: fileManagerCopy.t("createNameRequired")
+            }
+          : null
+      );
+      return;
+    }
+    if (name === "." || name === ".." || /[\\/]/.test(name)) {
+      setCreateDirectoryDialog((current) =>
+        current
+          ? {
+              ...current,
+              errorMessage: fileManagerCopy.t("createNameInvalid")
+            }
+          : null
+      );
+      return;
+    }
+    setCreateDirectoryDialog((current) =>
+      current ? { ...current, errorMessage: null, submitting: true } : null
+    );
+    try {
+      await view.createDirectory(createDirectoryDialog.parent, name);
+      view.setSearchQuery("");
+      setCreateDirectoryDialog(null);
+    } catch {
+      setCreateDirectoryDialog((current) =>
+        current
+          ? {
+              ...current,
+              errorMessage: fileManagerCopy.t("unknownErrorMessage"),
+              submitting: false
+            }
+          : null
+      );
+    }
+  };
 
   // 三栏可拖拽 + 双击自动适配:layoutRef 量整体宽度,content/panel ref 用于双击适配。
   const layoutRef = useRef<HTMLDivElement | null>(null);
@@ -355,12 +434,23 @@ export function ReferenceSourcePicker({
     event: MouseEvent<HTMLElement>,
     node: ReferenceNode
   ): void => {
-    if (!fileManagerCopy || node.kind !== "file") {
+    const canOpenReferenceFileMenu =
+      purpose === "reference" && node.kind === "file";
+    const canOpenDirectoryCreateMenu =
+      purpose === "directory" &&
+      view.canCreateDirectory &&
+      node.kind === "folder";
+    if (
+      !fileManagerCopy ||
+      (!canOpenReferenceFileMenu && !canOpenDirectoryCreateMenu)
+    ) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
-    view.setFocusedNode(node);
+    if (canOpenReferenceFileMenu) {
+      view.setFocusedNode(node);
+    }
     setContextMenu({
       node,
       x: event.clientX,
@@ -404,7 +494,7 @@ export function ReferenceSourcePicker({
     onClose();
   };
 
-  const dialog = (
+  const pickerDialog = (
     <div
       className="nodrag fixed inset-0 grid place-items-center bg-[var(--backdrop)] px-3 py-4 backdrop-blur-md [-webkit-app-region:no-drag] sm:px-6 sm:py-8"
       style={{ zIndex: "var(--z-panel)" }}
@@ -421,7 +511,11 @@ export function ReferenceSourcePicker({
         <CardHeader className="gap-3 px-4 pt-4 pb-4 sm:px-6">
           <div className="flex items-start justify-between gap-4">
             <CardTitle id={titleId}>
-              {copy.t("referencePicker.title")}
+              {copy.t(
+                purpose === "directory"
+                  ? "directoryPicker.title"
+                  : "referencePicker.title"
+              )}
             </CardTitle>
             <Button
               aria-label={copy.t("actions.cancel")}
@@ -492,7 +586,9 @@ export function ReferenceSourcePicker({
                       <Input
                         className="pl-9"
                         placeholder={copy.t(
-                          "referencePicker.searchPlaceholder"
+                          purpose === "directory"
+                            ? "directoryPicker.searchPlaceholder"
+                            : "referencePicker.searchPlaceholder"
                         )}
                         value={searchInput.value}
                         onBlur={searchInput.onBlur}
@@ -501,7 +597,8 @@ export function ReferenceSourcePicker({
                         onCompositionStart={searchInput.onCompositionStart}
                       />
                     </div>
-                    {view.capabilities?.filterable &&
+                    {purpose === "reference" &&
+                    view.capabilities?.filterable &&
                     view.filterCategories.length > 0 ? (
                       <FilterCategoryFilter
                         categories={view.filterCategories}
@@ -511,7 +608,20 @@ export function ReferenceSourcePicker({
                         onToggle={toggleFilter}
                       />
                     ) : null}
-                    {provenanceFilterControl}
+                    {purpose === "reference" ? provenanceFilterControl : null}
+                    {purpose === "directory" &&
+                    view.canCreateDirectory &&
+                    fileManagerCopy ? (
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                        onClick={() => openCreateDirectoryDialog()}
+                      >
+                        <AddLinedIcon aria-hidden className="size-4" />
+                        {fileManagerCopy.t("createDirectoryLabel")}
+                      </Button>
+                    ) : null}
                   </div>
                   <ScrollArea
                     className="min-h-0 flex-1"
@@ -545,7 +655,11 @@ export function ReferenceSourcePicker({
                         // 查询态(关键词或筛选):扁平结果
                         view.searchResults.length === 0 ? (
                           <Feedback>
-                            {copy.t("referencePicker.emptySearch")}
+                            {copy.t(
+                              purpose === "directory"
+                                ? "directoryPicker.emptySearch"
+                                : "referencePicker.emptySearch"
+                            )}
                           </Feedback>
                         ) : (
                           view.searchResults.map((node) => (
@@ -636,21 +750,32 @@ export function ReferenceSourcePicker({
                       }
                       showCopyAction={false}
                       showCopyPathAction={false}
-                      showCreateAction={false}
+                      showCreateDirectoryAction={
+                        purpose === "directory" &&
+                        view.canCreateDirectory &&
+                        contextMenu?.node.kind === "folder"
+                      }
+                      showCreateFileAction={false}
                       showDeleteAction={false}
                       showExportAction={false}
                       showImportAction={false}
                       showOpenInAppBrowserAction={false}
                       showOpenInDefaultBrowserAction={false}
                       showOpenInFileViewerAction={false}
-                      showOpenWithAction={true}
-                      showOpenWithOtherAction={true}
-                      showRevealInFolderAction={true}
+                      showOpenAction={purpose === "reference"}
+                      showOpenWithAction={purpose === "reference"}
+                      showOpenWithOtherAction={purpose === "reference"}
+                      showRevealInFolderAction={purpose === "reference"}
                       showRenameAction={false}
                       onClose={() => setContextMenu(null)}
                       onCopy={noopAsync}
                       onCopyPath={noopAsync}
-                      onCreateDirectory={noopVoid}
+                      onCreateDirectory={() => {
+                        const parent = contextMenu?.node;
+                        if (parent?.kind === "folder") {
+                          openCreateDirectoryDialog(parent);
+                        }
+                      }}
                       onCreateFile={noopVoid}
                       onDelete={noopVoid}
                       onExport={noopAsync}
@@ -716,7 +841,11 @@ export function ReferenceSourcePicker({
 
         <Footer
           cancelLabel={copy.t("actions.cancel")}
-          confirmLabel={copy.t("referencePicker.confirm")}
+          confirmLabel={copy.t(
+            purpose === "directory"
+              ? "directoryPicker.confirm"
+              : "referencePicker.confirm"
+          )}
           countLabel={copy.t("referencePicker.selectedCount", {
             count: view.selectionCount
           })}
@@ -728,6 +857,37 @@ export function ReferenceSourcePicker({
         />
       </Card>
     </div>
+  );
+  const dialog = (
+    <>
+      {pickerDialog}
+      {fileManagerCopy ? (
+        <WorkspaceFileManagerCreateDialog
+          busy={createDirectoryDialog?.submitting === true}
+          copy={fileManagerCopy}
+          dialog={
+            createDirectoryDialog
+              ? {
+                  errorMessage: createDirectoryDialog.errorMessage,
+                  kind: "directory",
+                  name: createDirectoryDialog.name
+                }
+              : null
+          }
+          onClose={() => {
+            if (!createDirectoryDialog?.submitting) {
+              setCreateDirectoryDialog(null);
+            }
+          }}
+          onConfirm={() => void confirmCreateDirectory()}
+          onNameChange={(name) => {
+            setCreateDirectoryDialog((current) =>
+              current ? { ...current, errorMessage: null, name } : null
+            );
+          }}
+        />
+      ) : null}
+    </>
   );
 
   if (typeof document === "undefined") {
@@ -1084,13 +1244,15 @@ export function ReferenceSourceContentPane({
             resolveOpenWithApplicationIcon={resolveOpenWithApplicationIcon}
             showCopyAction={false}
             showCopyPathAction={false}
-            showCreateAction={false}
+            showCreateDirectoryAction={false}
+            showCreateFileAction={false}
             showDeleteAction={false}
             showExportAction={false}
             showImportAction={false}
             showOpenInAppBrowserAction={false}
             showOpenInDefaultBrowserAction={false}
             showOpenInFileViewerAction={false}
+            showOpenAction={true}
             showOpenWithAction={true}
             showOpenWithOtherAction={true}
             showRevealInFolderAction={true}

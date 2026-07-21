@@ -140,6 +140,12 @@ export function createReferenceListSource(
     input;
 
   function fileReferenceOf(node: ReferenceNode): WorkspaceFileReference {
+    if (node.kind === "folder") {
+      return {
+        path: decodeSegment(GROUP_PREFIX, node.ref.nodeId),
+        kind: "folder"
+      };
+    }
     return { path: decodeSegment(FILE_PREFIX, node.ref.nodeId), kind: "file" };
   }
 
@@ -229,9 +235,10 @@ export function createReferenceListSource(
     },
 
     resolveSelection(node: ReferenceNode): SelectedReference {
+      const reference = fileReferenceOf(node);
       return {
-        path: decodeSegment(FILE_PREFIX, node.ref.nodeId),
-        kind: "file",
+        path: reference.path,
+        kind: reference.kind === "folder" ? "folder" : "file",
         ...(node.displayName ? { displayName: node.displayName } : {})
       };
     }

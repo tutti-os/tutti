@@ -9,6 +9,24 @@ type SessionRef struct {
 	AgentSessionID string
 }
 
+// InteractionRef identifies one canonical interaction. Provider request IDs
+// are transport-local correlation values and are only unique within the Turn
+// that owns them.
+type InteractionRef struct {
+	WorkspaceID    string
+	AgentSessionID string
+	TurnID         string
+	RequestID      string
+}
+
+// SessionInteractionSnapshot is the canonical interaction state for the
+// session's latest turn. PendingInteractions is derived from Interactions so a
+// consumer never observes actionable state from a different turn or read.
+type SessionInteractionSnapshot struct {
+	Interactions        []storesqlite.Interaction
+	PendingInteractions []storesqlite.Interaction
+}
+
 type ComposerSettings struct {
 	Model            string
 	PermissionModeID string
@@ -270,7 +288,6 @@ type SendInput struct {
 }
 
 type SubmitInteractiveInput struct {
-	TurnID   string
 	Action   *string
 	OptionID *string
 	Payload  map[string]any

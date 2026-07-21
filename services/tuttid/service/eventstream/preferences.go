@@ -74,6 +74,7 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 	payload, err := json.Marshal(desktopPreferencesUpdatedPayload{
 		Initialized: preferences.Initialized,
 		Preferences: desktopPreferencesSettingsPayload{
+			AgentCLIUpdateCheckEnabled: preferences.AgentCLIUpdateCheckEnabled,
 			AgentComposerDefaultsByProvider: desktopAgentComposerDefaultsByProviderPayloadFromBiz(
 				preferences.AgentComposerDefaultsByProvider,
 			),
@@ -164,6 +165,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 		}
 
 		_, err = mutator.Put(ctx, preferencesservice.PutInput{
+			AgentCLIUpdateCheckEnabled:                  decoded.AgentCLIUpdateCheckEnabled,
 			AgentComposerDefaultsByProvider:             decoded.AgentComposerDefaultsByProvider,
 			AgentComposerDefaultsByAgentTarget:          decoded.AgentComposerDefaultsByAgentTarget,
 			AgentGUIConversationRailCollapsedByProvider: decoded.AgentGUIConversationRailCollapsedByProvider,
@@ -195,6 +197,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 }
 
 type decodedDesktopPreferencesMutationPayload struct {
+	AgentCLIUpdateCheckEnabled                  bool
 	AgentComposerDefaultsByProvider             map[string]preferencesbiz.AgentComposerDefaults
 	AgentComposerDefaultsByAgentTarget          map[string]preferencesbiz.AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
@@ -237,6 +240,7 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 	}
 
 	return decodedDesktopPreferencesMutationPayload{
+		AgentCLIUpdateCheckEnabled: decoded.Preferences.AgentCLIUpdateCheckEnabled,
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromPayload(
 			decoded.Preferences.AgentComposerDefaultsByProvider,
 		),

@@ -1,18 +1,19 @@
 package conformance
 
 var (
-	createEmptySessionScenario        = Scenario{Name: "create empty session", run: runCreateEmptySession}
-	createWithInitialContentScenario  = Scenario{Name: "create with initial content", run: runCreateWithInitialContent}
-	resumePersistedSessionScenario    = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
-	sendInputScenario                 = Scenario{Name: "send input", run: runSendInput}
-	duplicateClientSubmitIDScenario   = Scenario{Name: "duplicate client submit id", run: runDuplicateClientSubmitID}
-	exactTurnCancelScenario           = Scenario{Name: "exact turn cancel", run: runExactTurnCancel}
-	interactiveResponseScenario       = Scenario{Name: "interactive response", run: runInteractiveResponse}
-	interactiveResponseRaceScenario   = Scenario{Name: "interactive response race", run: runInteractiveResponseRace}
-	planDecisionScenario              = Scenario{Name: "plan decision", run: runPlanDecision}
-	initialTitleCASScenario           = Scenario{Name: "initial title cas", run: runInitialTitleCAS}
-	getSessionScenario                = Scenario{Name: "get session", run: runGetSession}
-	historicalAndLiveSettingsScenario = Scenario{
+	createEmptySessionScenario          = Scenario{Name: "create empty session", run: runCreateEmptySession}
+	createWithInitialContentScenario    = Scenario{Name: "create with initial content", run: runCreateWithInitialContent}
+	resumePersistedSessionScenario      = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
+	sendInputScenario                   = Scenario{Name: "send input", run: runSendInput}
+	duplicateClientSubmitIDScenario     = Scenario{Name: "duplicate client submit id", run: runDuplicateClientSubmitID}
+	exactTurnCancelScenario             = Scenario{Name: "exact turn cancel", run: runExactTurnCancel}
+	interactiveResponseScenario         = Scenario{Name: "interactive response", run: runInteractiveResponse}
+	interactiveResponseReusedIDScenario = Scenario{Name: "interactive response reuses provider request id across turns", run: runInteractiveResponseReusedRequestID}
+	interactiveResponseRaceScenario     = Scenario{Name: "interactive response race", run: runInteractiveResponseRace}
+	planDecisionScenario                = Scenario{Name: "plan decision", run: runPlanDecision}
+	initialTitleCASScenario             = Scenario{Name: "initial title cas", run: runInitialTitleCAS}
+	getSessionScenario                  = Scenario{Name: "get session", run: runGetSession}
+	historicalAndLiveSettingsScenario   = Scenario{
 		Name: "historical and live settings",
 		run:  runHistoricalAndLiveSettings,
 	}
@@ -31,6 +32,7 @@ func Scenarios() []Scenario {
 		duplicateClientSubmitIDScenario,
 		exactTurnCancelScenario,
 		interactiveResponseScenario,
+		interactiveResponseReusedIDScenario,
 		interactiveResponseRaceScenario,
 		planDecisionScenario,
 		initialTitleCASScenario,
@@ -65,6 +67,7 @@ func CoordinatorScenarios() []Scenario {
 	return []Scenario{
 		exactTurnCancelScenario,
 		interactiveResponseScenario,
+		interactiveResponseReusedIDScenario,
 		interactiveResponseRaceScenario,
 		planDecisionScenario,
 		{Name: "recover operations before stale turns and worktree sweep", run: runRecoveryOrder},

@@ -212,6 +212,7 @@ export const zhCN = {
       detecting: "正在检测 {{provider}} 环境…",
       ready: "{{provider}} 已就绪。",
       busyInstalling: "正在设置 {{provider}}…",
+      busyUpdating: "正在更新 {{provider}}…",
       busyVerifying: "正在校验 {{provider}}…",
       actionDetect: "重新检测",
       redetectDisabledInstalling: "安装进行中，暂时无法重新检测",
@@ -219,6 +220,8 @@ export const zhCN = {
       actionInstall: "安装",
       actionRepair: "修复安装",
       actionUpgrade: "升级",
+      actionUpdate: "更新",
+      actionUpdating: "更新中…",
       actionRelogin: "重新登录",
       actionLogin: "登录",
       actionRetry: "重试",
@@ -456,6 +459,48 @@ export const zhCN = {
     },
     settings: {
       close: "关闭设置",
+      agent: {
+        agents: {
+          autoCheckUpdates: "自动检查更新",
+          autoCheckUpdatesFailed: "无法保存自动检查更新设置",
+          autoCheckUpdatesHint: "定期检查；只有点击更新后才会安装",
+          checkUpdates: "检查更新",
+          checkUpdatesFailed: "暂时无法检查 Agent CLI 更新",
+          checkingUpdates: "正在检查更新…",
+          currentVersionSummary: "{{current}}",
+          disabled: "已停用",
+          earlyAccessBadge: "抢先体验",
+          earlyAccessDescription: "显示仍在 Tutti 中测试和验证的 Agent 集成",
+          earlyAccessHiddenHint:
+            "在实验室中开启抢先体验 Agent 集成即可管理 {{agent}}",
+          earlyAccessLabel: "抢先体验 Agent 集成",
+          empty: "暂无可显示的 Agent",
+          enableAgent: "启用 {{agent}}",
+          enableChangeFailed: "无法更改 {{agent}} 的启用状态",
+          enabled: "已启用",
+          enabledColumn: "启用状态",
+          environmentColumn: "就绪状态",
+          extensionCodeBuddy: "CodeBuddy Code",
+          extensionEnableToSetUp: "启用后进行设置",
+          extensionGemini: "Gemini CLI",
+          extensionGrok: "Grok Build",
+          extensionHermes: "Hermes Agent",
+          extensionGitHubCopilot: "GitHub Copilot CLI",
+          extensionKilo: "Kilo Code",
+          extensionKimiCode: "Kimi Code",
+          extensionPreparing: "正在准备集成…",
+          extensionQwen: "Qwen Code",
+          updateAvailableLatest: "有可用更新 · {{latest}}",
+          updateAvailableSummary: "{{current}} → {{latest}}",
+          updateCheckFailed: "暂时无法检查更新",
+          updateCheckFailedSummary: "{{current}} · 暂时无法检查",
+          updateUpToDateSummary: "{{current}} · 已是最新"
+        },
+        tabs: {
+          agents: "Agents",
+          general: "通用设置"
+        }
+      },
       appearance: {
         dockPlacementDescription: "控制工作区 dock 栏停靠的位置",
         dockPlacementLabel: "Dock 布局",
@@ -823,18 +868,6 @@ export const zhCN = {
         fileDefaultOpenersDescription:
           "按文件后缀选择工作区文件激活时优先使用的打开方式",
         fileDefaultOpenersLabel: "默认文件打开方式",
-        codebuddyAgentDescription:
-          "在 Tutti 中显示 CodeBuddy Code，Agent Extension 预览期间默认关闭",
-        codebuddyAgentLabel: "启用 CodeBuddy Code Agent",
-        copilotAgentDescription:
-          "在 Tutti 中显示 GitHub Copilot CLI，Agent Extension 预览期间默认关闭",
-        copilotAgentLabel: "启用 GitHub Copilot CLI Agent",
-        geminiAgentDescription:
-          "在 Tutti 中显示 Gemini CLI，Agent Extension 预览期间默认关闭",
-        geminiAgentLabel: "启用 Gemini CLI Agent",
-        kiloAgentDescription:
-          "在 Tutti 中显示 Kilo Code，Agent Extension 预览期间默认关闭",
-        kiloAgentLabel: "启用 Kilo Code Agent",
         labVisibilityDescription: "在独立设置页中显示实验性控制项",
         labVisibilityLabel: "显示实验室页",
         logMissing: "暂无文件",
@@ -884,6 +917,7 @@ export const zhCN = {
         visibilityLabel: "显示开发者面板"
       },
       lab: {
+        backLabel: "返回",
         automationRulesDescription: "显示自动化规则配置与会话覆盖选项",
         automationRulesLabel: "自动化规则",
         clearShortcutLabel: "清除 {{label}}",
@@ -892,11 +926,14 @@ export const zhCN = {
         newAgentConversationShortcutLabel: "新建 Agent 对话",
         newSameTypeWindowShortcutLabel: "新建同类型窗口",
         preferencesSaveFailed: "暂时无法更新实验室设置",
+        previewAgentsDescription: "显示仍在 Tutti 中测试和验证的 Agent 集成",
+        previewAgentsLabel: "抢先体验 Agent 集成",
         shortcutUnbound: "未绑定",
         tuttiModeDescription: "启用 Agent 对话中的 Tutti 模式规划与编排控制",
         tuttiModeLabel: "Tutti 模式",
         workbenchShortcutsDescription: "启用可配置的工作台快捷键操作",
         workbenchShortcutsLabel: "工作台快捷键",
+        workbenchShortcutsManageLabel: "配置键盘快捷键",
         workspaceAgentsDescription: "显示自定义 Agent 的创建与配置",
         workspaceAgentsLabel: "自定义 Agent"
       },
@@ -964,6 +1001,9 @@ export const zhCN = {
         login: "登录",
         loginFailed: "登录失败",
         loginRequired: "需要先登录本地 CLI 才能使用这个 Agent",
+        updateFailed: "更新失败",
+        updateFailedDescription: "暂时无法更新本地 Agent，请稍后重试",
+        updateFailedTimedOut: "更新超时，请稍后重试",
         manageActionConnect: "连接",
         manageActionLogin: "登录",
         manageActionOpeningLogin: "打开中...",
@@ -977,7 +1017,6 @@ export const zhCN = {
         manageProviderClaudeCode: "Claude Code",
         manageProviderCodex: "Codex",
         manageProviderCursor: "Cursor",
-        manageProviderHermes: "Hermes",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
         manageProviderOpenCode: "Open Code",

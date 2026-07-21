@@ -46,7 +46,6 @@ export const knownProviderIds = [
   "claude-code",
   "codex",
   "cursor",
-  "hermes",
   "nexight",
   "openclaw",
   "opencode",
@@ -906,7 +905,8 @@ function readMergeHead(workspaceRoot) {
   try {
     return execFileSync("git", ["rev-parse", "--verify", "MERGE_HEAD"], {
       cwd: workspaceRoot,
-      encoding: "utf8"
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
     }).trim();
   } catch {
     return null;

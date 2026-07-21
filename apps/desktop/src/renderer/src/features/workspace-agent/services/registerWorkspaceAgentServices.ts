@@ -10,11 +10,16 @@ import type { IReporterService } from "../../analytics/services/reporterService.
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 import type { IDesktopPreferencesService } from "../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import type { NotificationService } from "@tutti-os/ui-notifications";
+import {
+  EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
+  isFeatureEnabled
+} from "../../../../../shared/featureFlags/catalog.ts";
 import type { WorkspaceWindowLifecycle } from "../../../lib/workspaceWindowLifecycle.ts";
 import { IAgentEnvService } from "./agentEnvService.interface.ts";
 import { IAgentProviderStatusService } from "./agentProviderStatusService.interface";
 import type { AgentProviderTerminalCommandRunner } from "./agentProviderStatusService.interface";
 import { bindDesktopManagedAgentProviderVisibilityRefresh } from "./internal/desktopAgentProviderVisibilityRefresh.ts";
+import { bindDesktopAgentsEarlyAccessSync } from "./internal/desktopAgentsEarlyAccessSync.ts";
 import { DesktopAgentProviderStatusService } from "./internal/desktopAgentProviderStatusService";
 import { desktopManagedAgentProviders } from "./internal/desktopManagedAgentProviders.ts";
 import { startManagedAgentInstallBootstraps } from "./internal/tuttiAgentInstallBootstrap.ts";
@@ -108,10 +113,19 @@ export function registerWorkspaceAgentServices(
     );
   };
   startManagedAgentInstallBootstraps(agentProviderStatusService);
+  const preferencesStore = input.desktopPreferencesService.store;
   const agentsService = new DesktopAgentsService({
+    earlyAccessEnabled: isFeatureEnabled(
+      preferencesStore.featureFlags,
+      EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG
+    ),
     tuttidClient: input.tuttidClient
   });
   registry.registerInstance(IAgentsService, agentsService);
+  const disposeAgentsEarlyAccessSync = bindDesktopAgentsEarlyAccessSync({
+    agentsService,
+    preferencesStore
+  });
   const agentQuickPromptService = new DesktopAgentQuickPromptService({
     desktopPreferencesService: input.desktopPreferencesService,
     eventStreamClient: input.eventStreamClient,
@@ -142,6 +156,7 @@ export function registerWorkspaceAgentServices(
     agentQuickPromptService,
     workspaceAgentActivityService,
     dispose() {
+      disposeAgentsEarlyAccessSync();
       disposeManagedAgentProviderVisibilityRefresh();
       agentEnvService.dispose();
       agentProviderStatusService.dispose();

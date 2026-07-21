@@ -689,6 +689,7 @@ export function StandaloneAgentWindow({
       >
         <StandaloneAgentToolSidebar
           activityService={workspaceAgentActivityService}
+          agentSessionId={nodeState.lastActiveAgentSessionId}
           appOpenId={openAppId}
           appI18n={toolWorkbench.appI18n}
           browserApi={desktopApi.browser}

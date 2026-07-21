@@ -351,8 +351,18 @@ export interface TuttidClient {
      * agent-env wizard's network diagnostic sets this.
      */
     includeNetwork?: boolean;
-    /** Bypass the daemon provider-readiness cache. */
+    /**
+     * Opt into cached remote provider CLI update discovery. Off by default so
+     * ordinary readiness reads remain local.
+     */
+    includeUpdates?: boolean;
+    /** Bypass only the daemon provider-readiness cache. */
     refresh?: boolean;
+    /**
+     * Bypass only cached update metadata when includeUpdates is true. This
+     * does not refresh local readiness.
+     */
+    refreshUpdates?: boolean;
   }): Promise<AgentProviderStatusListResponse>;
   probeAgentProvider(
     provider: WorkspaceAgentProvider

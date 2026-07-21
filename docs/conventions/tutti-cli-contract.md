@@ -335,11 +335,13 @@ blocks for the new stop point instead of immediately replaying the previous
 session stop state.
 
 `agent respond --json` answers one pending interaction selected by
-`--session-id` and `--request-id`. `--action`, `--option`, and object-valued
+`--session-id`, `--turn-id`, and `--request-id`. Provider request ids are
+transport-local and may repeat across Turns, so callers must pass the exact
+Turn returned by `agent wait`. `--action`, `--option`, and object-valued
 `--payload` map directly to the Host interactive input. `--semantic` is a thin
 shortcut that resolves exactly one matching `actions[].semantic` from the
 stored interaction; the CLI must not keep a provider-to-semantic mapping.
-Unknown requests and missing or ambiguous semantics are invalid input errors.
+Unknown exact interaction tuples and missing or ambiguous semantics are invalid input errors.
 The first responder atomically claims the pending interaction. Later responses
 with the same action/option/payload return `answered`; different responses
 return `superseded`. The result exposes the request and turn ids plus that Host
@@ -369,7 +371,9 @@ The command must not collapse several agents that share one provider or make
 callers guess a default from list order. Callers select an exact id and start it with
 `agent start --agent-id <agent-id> ...`; provider-specific command
 families such as `codex start` and `claude start` are not part of the
-agent-facing CLI contract.
+agent-facing CLI contract. A disabled Agent Target is absent from `agent list`,
+and an explicit `agent start` for its id must fail before session creation; CLI
+callers cannot bypass the daemon-owned enablement state.
 
 During the agent-id migration window, old app integrations may continue to
 invoke `agent providers`, provider-based composer/skill inputs, and the exact

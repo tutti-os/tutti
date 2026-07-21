@@ -23,6 +23,12 @@ export function useAgentGUIConversationRailLabels(
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
+  "directoryPicker.confirm": "agentHost.agentGui.directoryPicker.confirm",
+  "directoryPicker.emptySearch":
+    "agentHost.agentGui.directoryPicker.emptySearch",
+  "directoryPicker.searchPlaceholder":
+    "agentHost.agentGui.directoryPicker.searchPlaceholder",
+  "directoryPicker.title": "agentHost.agentGui.directoryPicker.title",
   "referencePicker.confirm": "agentHost.agentGui.referencePicker.confirm",
   "referencePicker.clearFilter":
     "agentHost.agentGui.referencePicker.clearFilter",

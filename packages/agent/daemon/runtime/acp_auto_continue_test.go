@@ -304,8 +304,8 @@ func TestStandardACPAdapterWithoutOptInDoesNotAutoContinue(t *testing.T) {
 
 	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
 	transport.conn.retriableErrorPrompts = 1
-	adapter := NewHermesAdapter(transport)
-	session := standardTestSession(ProviderHermes)
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}

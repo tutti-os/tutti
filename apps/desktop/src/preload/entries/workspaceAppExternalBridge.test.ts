@@ -1279,6 +1279,40 @@ test("workspace app external bridge invokes user project move without activation
   ]);
 });
 
+test("workspace app external bridge requires activation before removing a user project", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  let active = false;
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => active,
+    send: unexpectedSend,
+    async invoke<TResult>(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+      return undefined as TResult;
+    }
+  });
+
+  assert.throws(
+    () => bridge.userProjects.remove({ path: "/workspace/repo" }),
+    /requires a user action/
+  );
+  active = true;
+  await bridge.userProjects.remove({ path: "/workspace/repo" });
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.userProjectsRemove,
+      payload: { path: "/workspace/repo" }
+    }
+  ]);
+});
+
 test("workspace app external bridge invokes user project snapshot reads without activation", async () => {
   const calls: Array<{ channel: string; payload?: unknown }> = [];
   const snapshot = {

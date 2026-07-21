@@ -122,6 +122,21 @@ repository's managed development entry points. Environment separation and
 single-owner locking are complementary: separation prevents unintended access;
 locking prevents concurrent mutation after a root has been selected.
 
+## Desktop Preferences
+
+Device-global desktop preferences are durable daemon state in the
+`desktop_preferences` row of `tuttid.db`. They are not workspace settings and
+must be changed through the preferences service/API so the daemon can persist,
+normalize, and publish the authoritative preferences event.
+
+`agent_cli_update_check_enabled` stores the
+`agentCliUpdateCheckEnabled` preference as a non-null SQLite boolean and
+defaults to `true`, including for existing databases upgraded by migration. It
+controls only the daemon's periodic managed-provider CLI update discovery. A
+false value cancels scheduling and any in-flight discovery; it does not remove
+cached metadata, change local readiness, or disable an explicit user-requested
+update action.
+
 Migrated agent runtime state should derive from the same root:
 
 ```text
@@ -175,6 +190,7 @@ Migrated agent runtime state should derive from the same root:
         <installation-scope>/
           runtime/
           data/
+          database/
           logs/
     factory/
       jobs/
@@ -336,8 +352,12 @@ Tutti provider startup.
 - the bundled CLI discovers the managed daemon by reading `<state-dir>/run/tuttid.listener.json`
 - packaged desktop shim install or repair uses `<state-dir>/bin/tutti` as the canonical user-level command path and points it at the packaged CLI binary; on macOS and Linux, when the login-shell `PATH` already contains writable `~/.local/bin` or `~/bin`, desktop also maintains a Tutti-owned forwarding shim there without replacing third-party commands
 - local development scripts install or repair `<state-dir>/bin/tutti-dev` as the development CLI command and default it to `TUTTI_ENV=development`
-- workspace app package cache, per-installation runtime/data/log state, and
+- workspace app package cache, per-installation runtime/data/database/log state, and
   app factory job working directories live under `<state-dir>/apps`
+- each workspace app installation receives a host-local durable `database/`
+  directory for active SQLite databases and other files that require local
+  filesystem locking; uninstalling the installation removes it with the rest
+  of that installation's state
 - workspace apps receive `<state-dir>/app-toolchains` as the shared cache root
   for reusable app-managed binaries
 

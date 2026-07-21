@@ -25,6 +25,61 @@ func TestMigratedProviderIdentityAndPlanStrategyMatchCanonicalContract(t *testin
 	}
 }
 
+func TestMigratedProviderUpdateSupportMatrixIsDescriptorDriven(t *testing.T) {
+	want := map[string]UpdateDescriptor{
+		CodexProviderID:      {Capability: UpdateCapabilitySupported, Source: UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM, PackageName: "@openai/codex", BinaryName: "codex", IncludeOptional: true},
+		TuttiAgentProviderID: {Capability: UpdateCapabilitySupported, Source: UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM, PackageName: "@tutti-os/tutti-agent", BinaryName: "tutti-agent", IncludeOptional: true},
+		ClaudeCodeProviderID: {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
+		CursorProviderID:     {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
+		OpenCodeProviderID:   {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
+		OpenClawProviderID:   {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonUnmanagedSource},
+		NexightProviderID:    {Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonProvider},
+	}
+	for provider, expected := range want {
+		descriptor, ok := Find(provider)
+		if !ok {
+			t.Fatalf("Find(%q) = false", provider)
+		}
+		if descriptor.Status.Update != expected {
+			t.Fatalf("provider %q update = %#v, want %#v", provider, descriptor.Status.Update, expected)
+		}
+	}
+}
+
+func TestValidateRejectsUnsafeProviderUpdateDeclarations(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*UpdateDescriptor)
+	}{
+		{name: "missing capability", mutate: func(update *UpdateDescriptor) { update.Capability = "" }},
+		{name: "unsupported source", mutate: func(update *UpdateDescriptor) { update.Source = "official_script" }},
+		{name: "missing package", mutate: func(update *UpdateDescriptor) { update.PackageName = "" }},
+		{name: "unsupported with execution", mutate: func(update *UpdateDescriptor) {
+			*update = UpdateDescriptor{Capability: UpdateCapabilityUnsupported, Source: UpdateSourceNPM, UnsupportedReason: UpdateUnsupportedReasonProvider}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			descriptor := codexDescriptor()
+			test.mutate(&descriptor.Status.Update)
+			if err := Validate(descriptor); err == nil {
+				t.Fatal("Validate() error = nil")
+			}
+		})
+	}
+	t.Run("official script cannot claim managed update", func(t *testing.T) {
+		descriptor := claudeCodeDescriptor()
+		descriptor.Status.Update = UpdateDescriptor{
+			Capability: UpdateCapabilitySupported,
+			Source:     UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM,
+			PackageName: "@anthropic-ai/claude-code", BinaryName: "claude",
+		}
+		if err := Validate(descriptor); err == nil {
+			t.Fatal("Validate() error = nil")
+		}
+	})
+}
+
 func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	if err := ValidateMigrated(); err != nil {
 		t.Fatalf("ValidateMigrated() error = %v", err)
@@ -92,7 +147,6 @@ func TestMigratedProviderSetIsComplete(t *testing.T) {
 		ClaudeCodeProviderID: true,
 		CodexProviderID:      true,
 		CursorProviderID:     true,
-		HermesProviderID:     true,
 		NexightProviderID:    true,
 		OpenClawProviderID:   true,
 		OpenCodeProviderID:   true,
@@ -106,6 +160,17 @@ func TestMigratedProviderSetIsComplete(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("providers missing from migrated registry: %#v", want)
+	}
+}
+
+func TestExternalizedProvidersAreNotBuiltInTargets(t *testing.T) {
+	for _, provider := range []string{"hermes", "kimi-code"} {
+		if _, ok := Find(provider); ok {
+			t.Fatalf("Find(%q) = true, want signed Agent Extension ownership", provider)
+		}
+		if normalized, ok := NormalizeOpenProviderID("acp:" + provider); !ok || normalized != "acp:"+provider {
+			t.Fatalf("NormalizeOpenProviderID(acp:%s) = %q, %v", provider, normalized, ok)
+		}
 	}
 }
 
@@ -138,7 +203,6 @@ func TestMigratedProviderSidecarPoliciesAreDescriptorOwned(t *testing.T) {
 		TuttiAgentProviderID: {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC},
 		OpenCodeProviderID:   {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC},
 		NexightProviderID:    {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".nexight/skills"},
-		HermesProviderID:     {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".agent_context/skills"},
 		OpenClawProviderID:   {ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC, SkillRoot: ".openclaw/skills"},
 	}
 	for _, descriptor := range Migrated() {
@@ -160,7 +224,6 @@ func TestMigratedProviderDesktopIntegrationIsDescriptorOwned(t *testing.T) {
 		TuttiAgentProviderID: {Managed: true, ManagedOrder: 4, StatusProbePriority: 4, VisibilityGate: DesktopVisibilityGateTuttiAgent, InstallBootstrap: true, RefreshOnAccountChange: true},
 		OpenCodeProviderID:   {Managed: true, ManagedOrder: 5, StatusProbePriority: 5, DefaultProviderEligible: true, DefaultProviderPriority: 4},
 		NexightProviderID:    {},
-		HermesProviderID:     {Managed: true, ManagedOrder: 6, StatusProbePriority: 6},
 		OpenClawProviderID:   {Managed: true, ManagedOrder: 7, StatusProbePriority: 7, UnavailableDockOrderOffset: 200},
 	}
 	for _, descriptor := range Migrated() {

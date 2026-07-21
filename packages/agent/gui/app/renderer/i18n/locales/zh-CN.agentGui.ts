@@ -1,5 +1,6 @@
 import { zhCNAgentGuiProviderIdentity } from "./zh-CN.agentGuiProviderIdentity.ts";
 import { zhCNAgentGuiQuickPrompts } from "./zh-CN.agentGuiQuickPrompts.ts";
+import { zhCNAgentGuiReferencePicker } from "./zh-CN.agentGuiReferencePicker.ts";
 import { zhCNAgentGuiRuntimeNotices } from "./zh-CN.agentGuiRuntimeNotices.ts";
 import { zhCNAgentGuiSlashPalette } from "./zh-CN.agentGuiSlashPalette.ts";
 import { zhCNAgentGuiSessionActions } from "./zh-CN.agentGuiSessionActions.ts";
@@ -638,44 +639,7 @@ export const zhCNAgentGui = {
   addContent: "添加文件等内容",
   quickPrompts: zhCNAgentGuiQuickPrompts,
   referenceWorkspaceFiles: "引用空间文件",
-  referencePicker: {
-    clearFilter: "清除筛选",
-    confirm: "引用文件",
-    emptyDirectory: "当前目录为空",
-    emptyPreview: "选择一个文件查看详情",
-    emptySearch: "没有匹配的文件或文件夹",
-    fileTypeAll: "全部类型",
-    fileTypeDocument: "文档",
-    fileTypeImage: "图片",
-    fileTypeOther: "其他",
-    fileTypeSeparator: "、",
-    fileTypeVideo: "视频",
-    fileTypeWebpage: "网页",
-    loadMore: "加载更多",
-    loadMoreGroups: "拉取更多",
-    loading: "正在加载",
-    loadError: "加载内容失败，请稍后重试",
-    previewBinary: "这个文件更像二进制内容",
-    previewDecodeFailed: "暂时无法按 UTF-8 文本解码这个文件",
-    previewError: "加载预览失败",
-    previewFileTooLarge: "这个文件超过了 {{maxSize}}",
-    previewFolder: "暂不支持预览文件夹",
-    previewHierarchy: "所属层级",
-    previewLoading: "正在加载预览",
-    previewModified: "产出时间",
-    previewSize: "文件大小",
-    previewSource: "产出来源",
-    previewTextTooLarge: "这个文本文件超过了 {{maxSize}}",
-    previewTooLarge: "文件过大，无法预览",
-    previewUnavailable: "当前工作区无法预览文件",
-    previewUnsupported: "暂不支持预览这种文件类型",
-    searchPlaceholder: "搜索文件和文件夹",
-    selectGroupHint: "从左侧选择一个目录",
-    selectedCount: "已选择 {{count}} 项",
-    title: "选择工作区引用",
-    sourceColumn: "分类",
-    workspaceRootGroup: "工作区"
-  },
+  ...zhCNAgentGuiReferencePicker,
   projectLocked: "会话开始后项目不可更改",
   projectMissingDescription: "此对话的工作目录已不存在",
   fileMentionEnterFolder: "进入文件夹",

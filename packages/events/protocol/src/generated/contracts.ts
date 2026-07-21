@@ -45,6 +45,7 @@ export type BusinessEventEnvelopeV1<
 };
 
 export interface PreferencesDesktopPreferencesV1 {
+  agentCliUpdateCheckEnabled: boolean;
   agentComposerDefaultsByProvider: {
     "claude-code"?: {
       model?: string;
@@ -71,12 +72,6 @@ export interface PreferencesDesktopPreferencesV1 {
       speed?: string;
     };
     nexight?: {
-      model?: string;
-      permissionModeId?: string;
-      reasoningEffort?: string;
-      speed?: string;
-    };
-    hermes?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
@@ -110,7 +105,6 @@ export interface PreferencesDesktopPreferencesV1 {
     "tutti-agent"?: boolean;
     cursor?: boolean;
     nexight?: boolean;
-    hermes?: boolean;
     openclaw?: boolean;
     opencode?: boolean;
   };

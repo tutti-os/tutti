@@ -91,7 +91,12 @@ export function WorkspaceFileManagerContextMenuContainer({
       contextMenuRef={contextMenuRef}
       showCopyAction={view.showCopyAction}
       showCopyPathAction={true}
-      showCreateAction={view.showCreateAction}
+      showCreateDirectoryAction={
+        view.contextMenu?.entry === null && view.showCreateDirectoryAction
+      }
+      showCreateFileAction={
+        view.contextMenu?.entry === null && view.showCreateFileAction
+      }
       showDeleteAction={view.showDeleteAction}
       showImportAction={view.showImportAction}
       showExportAction={view.showExportAction}
@@ -109,6 +114,7 @@ export function WorkspaceFileManagerContextMenuContainer({
       showOpenInFileViewerAction={
         showInternalOpenWithActions && view.showOpenInFileViewerAction
       }
+      showOpenAction={true}
       showOpenWithAction={view.showOpenWithAction}
       showOpenWithOtherAction={view.showOpenWithOtherAction}
       showRevealInFolderAction={view.showRevealInFolderAction}

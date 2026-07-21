@@ -18,6 +18,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
         return {
           initialized: false,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -54,6 +55,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
   assert.deepEqual(putRequests, [
     {
       preferences: {
+        agentCliUpdateCheckEnabled: true,
         agentComposerDefaultsByProvider: {},
         agentGuiConversationRailCollapsedByProvider: {},
         agentConversationDetailMode: "coding",
@@ -82,6 +84,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
       }
     }
   ]);
+  assert.equal(state.getAgentCliUpdateCheckEnabled(), true);
   assert.equal(state.getDockPlacement(), "bottom");
   assert.equal(state.getLocale(), "zh-CN");
   assert.equal(state.getDefaultAgentProvider(), "codex");
@@ -104,6 +107,7 @@ test("createDesktopHostPreferencesState defaults missing rc package preferences 
         return {
           initialized: false,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -152,6 +156,7 @@ test("createDesktopHostPreferencesState keeps missing beta package preferences o
         return {
           initialized: false,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -199,6 +204,7 @@ test("createDesktopHostPreferencesState keeps initialized theme preferences", as
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -253,6 +259,7 @@ test("createDesktopHostPreferencesState keeps initialized stable update channel"
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -303,6 +310,7 @@ test("createDesktopHostPreferencesState migrates the old rc default update chann
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -366,6 +374,7 @@ test("createDesktopHostPreferencesState preserves initialized rc channel on rc p
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -423,6 +432,7 @@ test("createDesktopHostPreferencesState aligns a changed packaged rc version to 
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -485,6 +495,7 @@ test("createDesktopHostPreferencesState preserves a manual channel on the same p
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -542,6 +553,7 @@ test("createDesktopHostPreferencesState preserves manual rc on the same packaged
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -604,6 +616,7 @@ test("createDesktopHostPreferencesState aligns a changed packaged stable version
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -666,6 +679,7 @@ test("createDesktopHostPreferencesState retries packaged channel alignment after
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -724,6 +738,7 @@ test("createDesktopHostPreferencesState preserves rc after the stable default mi
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -766,6 +781,7 @@ test("createDesktopHostPreferencesState notifies subscribers after sync changes"
         return {
           initialized: true,
           preferences: {
+            agentCliUpdateCheckEnabled: true,
             agentComposerDefaultsByProvider: {},
             agentGuiConversationRailCollapsedByProvider: {},
             agentConversationDetailMode: "coding",
@@ -801,6 +817,8 @@ test("createDesktopHostPreferencesState notifies subscribers after sync changes"
 
   state.sync({ locale: "zh-CN" });
   state.sync({ locale: "zh-CN" });
+  state.sync({ agentCliUpdateCheckEnabled: false });
+  state.sync({ agentCliUpdateCheckEnabled: false });
   state.sync({ defaultAgentProvider: "claude-code" });
   state.sync({ defaultAgentProvider: "claude-code" });
   state.sync({ browserUseConnectionMode: "autoConnect" });
@@ -814,7 +832,8 @@ test("createDesktopHostPreferencesState notifies subscribers after sync changes"
   unsubscribe();
   state.sync({ locale: "en" });
 
-  assert.equal(notifications, 6);
+  assert.equal(notifications, 7);
+  assert.equal(state.getAgentCliUpdateCheckEnabled(), false);
 });
 
 function createLogger(): DesktopLogger {

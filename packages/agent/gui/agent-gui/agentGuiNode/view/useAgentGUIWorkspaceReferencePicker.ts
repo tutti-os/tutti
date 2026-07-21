@@ -16,6 +16,7 @@ import type { AgentGUINodeViewProps } from "./AgentGUINodeView.types";
 interface Input {
   onWorkspaceFileReferencesAdded: AgentGUINodeViewProps["onWorkspaceFileReferencesAdded"];
   previewMode: boolean;
+  projectDirectorySourceAggregator: AgentGUINodeViewProps["projectDirectorySourceAggregator"];
   referenceSourceAggregator: AgentGUINodeViewProps["referenceSourceAggregator"];
   resolveMentionReferenceTarget: AgentGUINodeViewProps["resolveMentionReferenceTarget"];
   resolveWorkspaceReferenceInitialTarget: AgentGUINodeViewProps["resolveWorkspaceReferenceInitialTarget"];
@@ -28,6 +29,7 @@ export function useAgentGUIWorkspaceReferencePicker(input: Input) {
   const {
     onWorkspaceFileReferencesAdded,
     previewMode,
+    projectDirectorySourceAggregator,
     referenceSourceAggregator,
     resolveMentionReferenceTarget,
     resolveWorkspaceReferenceInitialTarget,
@@ -37,11 +39,16 @@ export function useAgentGUIWorkspaceReferencePicker(input: Input) {
   } = input;
   const [workspaceReferencePickerOpen, setWorkspaceReferencePickerOpen] =
     useState(false);
+  const [workspaceReferencePickerPurpose, setWorkspaceReferencePickerPurpose] =
+    useState<"directory" | "reference">("reference");
   // 打开引用 picker 时的定位目标(点任务/应用行的产物图标时设置;「+」按钮则为 null)。
   const [workspaceReferencePickerTarget, setWorkspaceReferencePickerTarget] =
     useState<ReferenceLocateTarget | null>(null);
   const workspaceReferencePickerResolverRef = useRef<
     ((result: WorkspaceReferencePickResult) => void) | null
+  >(null);
+  const projectDirectoryPickerResolverRef = useRef<
+    ((result: { path: string } | null) => void) | null
   >(null);
   const emptyReferencePickResult: WorkspaceReferencePickResult = useMemo(
     () => ({ files: [], mentionItems: [] }),
@@ -49,9 +56,15 @@ export function useAgentGUIWorkspaceReferencePicker(input: Input) {
   );
   const hostLocalFileSourceId = "host-local-file";
   const isWorkspaceReferencePickerNodeSelectable = useCallback(
-    (node: ReferenceNode) =>
-      node.ref.sourceId !== hostLocalFileSourceId || node.kind === "file",
-    [hostLocalFileSourceId]
+    (node: ReferenceNode) => {
+      if (workspaceReferencePickerPurpose === "directory") {
+        return node.kind === "folder";
+      }
+      return (
+        node.ref.sourceId !== hostLocalFileSourceId || node.kind === "file"
+      );
+    },
+    [hostLocalFileSourceId, workspaceReferencePickerPurpose]
   );
   const requestWorkspaceReferences = useCallback(
     async (
@@ -77,8 +90,12 @@ export function useAgentGUIWorkspaceReferencePicker(input: Input) {
               }) ?? null)
             : null;
       setWorkspaceReferencePickerTarget(target);
+      setWorkspaceReferencePickerPurpose("reference");
       setWorkspaceReferencePickerOpen(true);
       return await new Promise<WorkspaceReferencePickResult>((resolve) => {
+        workspaceReferencePickerResolverRef.current?.(emptyReferencePickResult);
+        projectDirectoryPickerResolverRef.current?.(null);
+        projectDirectoryPickerResolverRef.current = null;
         workspaceReferencePickerResolverRef.current = resolve;
       });
     },
@@ -95,11 +112,28 @@ export function useAgentGUIWorkspaceReferencePicker(input: Input) {
       workspaceFileReferenceCopy
     ]
   );
+  const requestProjectDirectory = useCallback(async () => {
+    if (previewMode || !projectDirectorySourceAggregator) {
+      return null;
+    }
+    setWorkspaceReferencePickerTarget(null);
+    setWorkspaceReferencePickerPurpose("directory");
+    setWorkspaceReferencePickerOpen(true);
+    return await new Promise<{ path: string } | null>((resolve) => {
+      workspaceReferencePickerResolverRef.current?.(emptyReferencePickResult);
+      workspaceReferencePickerResolverRef.current = null;
+      projectDirectoryPickerResolverRef.current?.(null);
+      projectDirectoryPickerResolverRef.current = resolve;
+    });
+  }, [emptyReferencePickResult, previewMode, projectDirectorySourceAggregator]);
   const closeWorkspaceReferencePicker = useCallback(() => {
     workspaceReferencePickerResolverRef.current?.(emptyReferencePickResult);
     workspaceReferencePickerResolverRef.current = null;
+    projectDirectoryPickerResolverRef.current?.(null);
+    projectDirectoryPickerResolverRef.current = null;
     setWorkspaceReferencePickerOpen(false);
     setWorkspaceReferencePickerTarget(null);
+    setWorkspaceReferencePickerPurpose("reference");
   }, [emptyReferencePickResult]);
   const settleReferencePicker = useCallback(
     (
@@ -110,6 +144,7 @@ export function useAgentGUIWorkspaceReferencePicker(input: Input) {
       workspaceReferencePickerResolverRef.current = null;
       setWorkspaceReferencePickerOpen(false);
       setWorkspaceReferencePickerTarget(null);
+      setWorkspaceReferencePickerPurpose("reference");
       if (addedFiles.length > 0) {
         void onWorkspaceFileReferencesAdded?.(addedFiles);
       }
@@ -118,9 +153,20 @@ export function useAgentGUIWorkspaceReferencePicker(input: Input) {
   );
   const confirmWorkspaceReferencePicker = useCallback(
     (refs: WorkspaceFileReference[]) => {
+      if (workspaceReferencePickerPurpose === "directory") {
+        const directory = refs.find((ref) => ref.kind === "folder") ?? null;
+        projectDirectoryPickerResolverRef.current?.(
+          directory ? { path: directory.path } : null
+        );
+        projectDirectoryPickerResolverRef.current = null;
+        setWorkspaceReferencePickerOpen(false);
+        setWorkspaceReferencePickerTarget(null);
+        setWorkspaceReferencePickerPurpose("reference");
+        return;
+      }
       settleReferencePicker({ files: refs, mentionItems: [] }, refs);
     },
-    [settleReferencePicker]
+    [settleReferencePicker, workspaceReferencePickerPurpose]
   );
   // 「文件夹=一个 reference 节点」确认:navigable 源文件夹折叠成 workspace-reference
   // mention item(只携带可解析句柄 source+id+groupId,不展开文件);松散文件仍按 file
@@ -175,8 +221,14 @@ export function useAgentGUIWorkspaceReferencePicker(input: Input) {
     confirmWorkspaceReferenceBundles,
     confirmWorkspaceReferencePicker,
     isWorkspaceReferencePickerNodeSelectable,
+    requestProjectDirectory,
     requestWorkspaceReferences,
+    workspaceReferencePickerAggregator:
+      workspaceReferencePickerPurpose === "directory"
+        ? (projectDirectorySourceAggregator ?? null)
+        : (referenceSourceAggregator ?? null),
     workspaceReferencePickerOpen,
+    workspaceReferencePickerPurpose,
     workspaceReferencePickerTarget
   };
 }

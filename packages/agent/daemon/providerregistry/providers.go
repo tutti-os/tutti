@@ -11,8 +11,6 @@ const (
 	TuttiAgentTargetID   = "local:tutti-agent"
 	NexightProviderID    = canonical.NexightProviderID
 	NexightTargetID      = "local:nexight"
-	HermesProviderID     = canonical.HermesProviderID
-	HermesTargetID       = "local:hermes"
 	OpenClawProviderID   = canonical.OpenClawProviderID
 	OpenClawTargetID     = "local:openclaw"
 )
@@ -35,6 +33,7 @@ func cursorDescriptor() ProviderDescriptor {
 		Status: StatusDescriptor{
 			Kind: StatusKindGenericCLI, AuthOutputParserKind: AuthOutputParserKindCursor, AuthMarkerParserKind: AuthMarkerParserKindFileExists, AuthCommandRunnerKind: AuthCommandRunnerKindCursor, StaticSpecResolverKind: StaticSpecResolverKindCursor, BinaryNames: []string{"cursor-agent", "agent"}, AuthStatusCommand: []string{"status"}, AuthMarkerPaths: []string{"~/.cursor/cli-config.json"}, LoginArgs: []string{"login"},
 			Install: InstallerDescriptor{Kind: InstallerKindOfficialScript, DisplayCommand: "curl https://cursor.com/install -fsS | bash", ScriptURL: "https://cursor.com/install", ScriptShell: "bash"},
+			Update:  UpdateDescriptor{Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonOfficialScript},
 		},
 		ComposerProfile: ComposerProfileDescriptor{
 			// Cursor exposes its account-scoped model catalog from ACP session/new,
@@ -67,6 +66,7 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 		Status: StatusDescriptor{
 			Kind: StatusKindGenericCLI, AuthOutputParserKind: AuthOutputParserKindCodex, AuthMarkerParserKind: AuthMarkerParserKindTuttiToken, AuthCommandRunnerKind: AuthCommandRunnerKindGeneric, StaticSpecResolverKind: StaticSpecResolverKindGeneric, BinaryNames: []string{"tutti-agent"}, AdapterBinaryNames: []string{"tutti-agent"}, AuthStatusCommand: []string{"login", "status"}, AuthMarkerPaths: []string{"~/.tutti-agent/auth.json"}, LoginArgs: []string{"login"}, LoginActionKind: StatusActionKindDaemon,
 			Install: InstallerDescriptor{Kind: InstallerKindManagedNPM, DisplayCommand: "npm install -g @tutti-os/tutti-agent --include=optional", PackageName: "@tutti-os/tutti-agent", BinaryName: "tutti-agent", IncludeOptional: true},
+			Update:  UpdateDescriptor{Capability: UpdateCapabilitySupported, Source: UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM, PackageName: "@tutti-os/tutti-agent", BinaryName: "tutti-agent", IncludeOptional: true},
 		},
 		ComposerProfile: ComposerProfileDescriptor{
 			ModelSelection: true, ModelCatalog: ModelCatalogKindTuttiCLI, ReasoningEffort: true, ReasoningEffortOptions: ReasoningEffortOptionsModelCatalog, DefaultReasoningEffort: "high", Speed: true,
@@ -91,21 +91,6 @@ func nexightDescriptor() ProviderDescriptor {
 	return descriptor
 }
 
-func hermesDescriptor() ProviderDescriptor {
-	descriptor := unsupportedACPDescriptor(HermesProviderID, HermesTargetID, RuntimeDescriptor{
-		Kind: RuntimeKindStandardACP, Name: "hermes-acp", Command: []string{"hermes", "acp"}, AuthRequiredMessage: "Hermes ACP requires authentication in the runtime VM; ensure Hermes host credentials are synced before starting Agent GUI",
-		StandardACP: StandardACPRuntimeDescriptor{AdapterStrategy: StandardACPAdapterStrategyGeneric, PermissionModes: []RuntimePermissionModeDescriptor{{InputID: "yolo", RuntimeID: "yolo"}}, DefaultPermissionModeRuntimeID: "yolo", StartupDiagnostics: true, DeriveImageInputFromPrompt: true, DeriveCapabilitiesFromCommands: []string{CapabilityCompact}},
-	}, StatusDescriptor{Kind: StatusKindGenericCLI, BinaryNames: []string{"hermes"}, AuthMarkerPaths: []string{"~/.hermes/auth.json", "~/.config/hermes/auth.json"}, LoginArgs: []string{"login"}}, ComposerProfileDescriptor{
-		Capabilities: []string{CapabilityInterrupt}, DefaultPermissionModeID: "yolo", PermissionModes: []PermissionModeDescriptor{{ID: "yolo", Semantic: "unconfigurable"}},
-	}, 70)
-	descriptor.Events.Aliases = []string{"hermes-agent", "hermes_agent"}
-	descriptor.Sidecar.SkillRoot = ".agent_context/skills"
-	descriptor.Desktop.Managed = true
-	descriptor.Desktop.ManagedOrder = 6
-	descriptor.Desktop.StatusProbePriority = 6
-	return descriptor
-}
-
 func openClawDescriptor() ProviderDescriptor {
 	descriptor := unsupportedACPDescriptor(OpenClawProviderID, OpenClawTargetID, RuntimeDescriptor{
 		Kind: RuntimeKindStandardACP, Name: "openclaw-acp", Command: []string{"openclaw", "acp", "-v"}, AuthRequiredMessage: "OpenClaw ACP requires authentication in the runtime VM; ensure OpenClaw host credentials are synced before starting Agent GUI",
@@ -113,6 +98,7 @@ func openClawDescriptor() ProviderDescriptor {
 	}, StatusDescriptor{
 		Kind: StatusKindGenericCLI, BinaryNames: []string{"openclaw"}, AuthMarkerPaths: []string{"~/.openclaw/auth.json", "~/.config/openclaw/auth.json"}, LoginArgs: []string{"login"},
 		Install: InstallerDescriptor{Kind: InstallerKindShellCommand, DisplayCommand: "npm install -g openclaw", ShellCommand: "npm install -g openclaw"},
+		Update:  UpdateDescriptor{Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonUnmanagedSource},
 	}, ComposerProfileDescriptor{Capabilities: []string{CapabilityInterrupt}}, 80)
 	descriptor.Events.Aliases = []string{"open-claw", "open_claw"}
 	descriptor.Sidecar.SkillRoot = ".openclaw/skills"
@@ -129,6 +115,9 @@ func unsupportedACPDescriptor(providerID string, targetID string, runtime Runtim
 	status.AuthMarkerParserKind = AuthMarkerParserKindFileExists
 	status.AuthCommandRunnerKind = AuthCommandRunnerKindGeneric
 	status.StaticSpecResolverKind = StaticSpecResolverKindGeneric
+	if status.Update.Capability == "" {
+		status.Update = UpdateDescriptor{Capability: UpdateCapabilityUnsupported, UnsupportedReason: UpdateUnsupportedReasonProvider}
+	}
 	return ProviderDescriptor{
 		Identity: canonicalProviderIdentity(providerID), Runtime: runtime, Status: status, ComposerProfile: composer,
 		Target:  TargetDescriptor{ID: targetID, LaunchRefType: TargetLaunchRefTypeLocalCLI, Enabled: false, SortOrder: sortOrder},

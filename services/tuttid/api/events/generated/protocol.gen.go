@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:83185aed5c6abee1"
+	BusinessEventCatalogRevision = "sha256:b4b2007289c5233f"
 )
 
 type Topic string
@@ -64,6 +64,7 @@ type EventEnvelope struct {
 }
 
 type PreferencesDesktopPreferences struct {
+	AgentCliUpdateCheckEnabled      bool `json:"agentCliUpdateCheckEnabled"`
 	AgentComposerDefaultsByProvider struct {
 		ClaudeCode *struct {
 			Model            *string `json:"model,omitempty"`
@@ -95,12 +96,6 @@ type PreferencesDesktopPreferences struct {
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
 			Speed            *string `json:"speed,omitempty"`
 		} `json:"nexight,omitempty"`
-		Hermes *struct {
-			Model            *string `json:"model,omitempty"`
-			PermissionModeId *string `json:"permissionModeId,omitempty"`
-			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
-			Speed            *string `json:"speed,omitempty"`
-		} `json:"hermes,omitempty"`
 		Openclaw *struct {
 			Model            *string `json:"model,omitempty"`
 			PermissionModeId *string `json:"permissionModeId,omitempty"`
@@ -126,7 +121,6 @@ type PreferencesDesktopPreferences struct {
 		TuttiAgent *bool `json:"tutti-agent,omitempty"`
 		Cursor     *bool `json:"cursor,omitempty"`
 		Nexight    *bool `json:"nexight,omitempty"`
-		Hermes     *bool `json:"hermes,omitempty"`
 		Openclaw   *bool `json:"openclaw,omitempty"`
 		Opencode   *bool `json:"opencode,omitempty"`
 	} `json:"agentGuiConversationRailCollapsedByProvider"`

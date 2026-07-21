@@ -15,7 +15,7 @@ test("workspace user project i18n resolves package defaults", () => {
   assert.equal(i18n.t("projectSelect.noProject"), "No project");
   assert.equal(
     i18n.t("projectSelect.createProjectNameLabel"),
-    "Enter a project name. A folder will be created in Documents/tutti"
+    "Enter a project name. A folder will be created under /workspace"
   );
   assert.equal(
     i18n.t("projectSelect.createProjectFailed"),
@@ -35,6 +35,6 @@ test("workspace user project i18n follows merged host locale resources", () => {
   assert.equal(i18n.t("projectSelect.linkExistingProject"), "使用已有项目");
   assert.equal(
     i18n.t("projectSelect.createProjectNameLabel"),
-    "输入项目名称。系统会在 Documents/tutti 中创建文件夹"
+    "输入项目名称。系统会在 /workspace 下创建文件夹"
   );
 });
