@@ -3,9 +3,13 @@
 package agentruntime
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -41,5 +45,42 @@ func TestPrepareProcessExecutableCreatesImmutablePrivateSnapshot(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Dir(snapshotPath)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("verified snapshot directory remains after close: %v", err)
+	}
+}
+
+func TestLocalProcessTransportKeepsVerifiedSnapshotUntilProcessExit(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "runtime")
+	contents := []byte("#!/bin/sh\nsleep 0.1\nif [ -f \"$0\" ]; then printf available; else printf missing; fi\n")
+	if err := os.WriteFile(script, contents, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(contents)
+	conn, err := NewLocalProcessTransport().Start(context.Background(), ProcessSpec{
+		Command: []string{script},
+		ExecutableIdentity: &ExecutableIdentity{
+			SHA256: hex.EncodeToString(digest[:]), SizeBytes: int64(len(contents)),
+		},
+	})
+	if err != nil {
+		t.Fatalf("start verified process: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	var output strings.Builder
+	for {
+		frame, err := conn.Recv()
+		if err != nil {
+			t.Fatalf("receive process frame: %v", err)
+		}
+		output.Write(frame.Stdout)
+		if frame.ExitCode != nil {
+			if *frame.ExitCode != 0 {
+				t.Fatalf("verified process exit code = %d", *frame.ExitCode)
+			}
+			break
+		}
+	}
+	if got := output.String(); got != "available" {
+		t.Fatalf("verified process snapshot state = %q, want available", got)
 	}
 }

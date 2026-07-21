@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -55,6 +56,7 @@ type Release struct {
 	GitSHA            string           `json:"gitSha"`
 	Signature         ReleaseSignature `json:"signature"`
 	signedPayload     []byte
+	signedDocument    []byte
 }
 
 type ReleaseSignature struct {
@@ -77,7 +79,37 @@ func (release *Release) UnmarshalJSON(data []byte) error {
 	}
 	*release = Release(wire)
 	release.signedPayload = payload
+	release.signedDocument = append([]byte(nil), data...)
 	return nil
+}
+
+// MarshalJSON preserves the wire shape that was covered by the release
+// signature. In particular, optional zero-value manifest structs cannot be
+// reintroduced when a release record is written to local state and later
+// reverified.
+func (release Release) MarshalJSON() ([]byte, error) {
+	if len(release.signedDocument) > 0 {
+		var original Release
+		if err := json.Unmarshal(release.signedDocument, &original); err == nil &&
+			sameReleaseWire(release, original) {
+			return append([]byte(nil), release.signedDocument...), nil
+		}
+	}
+	type releaseWire Release
+	return json.Marshal(releaseWire(release))
+}
+
+func sameReleaseWire(left, right Release) bool {
+	return left.SchemaVersion == right.SchemaVersion &&
+		left.AgentKey == right.AgentKey &&
+		left.Version == right.Version &&
+		reflect.DeepEqual(left.Manifest, right.Manifest) &&
+		left.ArtifactURL == right.ArtifactURL &&
+		left.ArtifactSHA256 == right.ArtifactSHA256 &&
+		left.ArtifactSizeBytes == right.ArtifactSizeBytes &&
+		left.PublishedAt == right.PublishedAt &&
+		left.GitSHA == right.GitSHA &&
+		left.Signature == right.Signature
 }
 
 func (m *Manager) getJSON(ctx context.Context, rawURL string, limit int64, target any) error {
