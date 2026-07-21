@@ -13,6 +13,10 @@ import (
 
 type serviceHostStore struct{ service *Service }
 
+type canonicalSessionMessageReader interface {
+	ListSessionMessages(context.Context, storesqlite.ListSessionMessagesInput) (storesqlite.MessagePage, bool, error)
+}
+
 func (a serviceHostStore) GetSession(ctx context.Context, workspaceID, sessionID string) (storesqlite.Session, bool, error) {
 	if a.service == nil {
 		return storesqlite.Session{}, false, nil
@@ -152,6 +156,17 @@ func (a serviceHostStore) ListLatestTurnInteractions(ctx context.Context, worksp
 		return nil, nil
 	}
 	return a.service.TurnStore.ListLatestTurnInteractions(ctx, workspaceID, sessionIDs)
+}
+
+func (a serviceHostStore) ListSessionMessages(ctx context.Context, input storesqlite.ListSessionMessagesInput) (storesqlite.MessagePage, bool, error) {
+	if a.service == nil {
+		return storesqlite.MessagePage{}, false, nil
+	}
+	reader, ok := a.service.TurnStore.(canonicalSessionMessageReader)
+	if !ok {
+		return storesqlite.MessagePage{}, false, nil
+	}
+	return reader.ListSessionMessages(ctx, input)
 }
 
 func (a serviceHostStore) PrepareSubmitClaim(ctx context.Context, input storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error) {

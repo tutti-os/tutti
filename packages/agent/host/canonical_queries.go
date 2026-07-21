@@ -31,6 +31,26 @@ func (h *Host) FindTurnByClientSubmitID(ctx context.Context, ref SessionRef, cli
 	return h.store.FindTurnByClientSubmitID(ctx, ref.WorkspaceID, ref.AgentSessionID, clientSubmitID)
 }
 
+// ListSessionMessages reads one version-cursor page of canonical message
+// snapshots without starting or resuming a provider runtime. Session identity
+// is carried only by SessionRef; the query owns filters and pagination.
+func (h *Host) ListSessionMessages(ctx context.Context, ref SessionRef, query SessionMessageQuery) (storesqlite.MessagePage, bool, error) {
+	ref = normalizedSessionRef(ref)
+	if h == nil || h.store == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" {
+		return storesqlite.MessagePage{}, false, ErrInvalidArgument
+	}
+	return h.store.ListSessionMessages(ctx, storesqlite.ListSessionMessagesInput{
+		WorkspaceID:    ref.WorkspaceID,
+		AgentSessionID: ref.AgentSessionID,
+		MessageID:      strings.TrimSpace(query.MessageID),
+		TurnID:         strings.TrimSpace(query.TurnID),
+		AfterVersion:   query.AfterVersion,
+		BeforeVersion:  query.BeforeVersion,
+		Limit:          query.Limit,
+		Order:          query.Order,
+	})
+}
+
 // GetSessionInteractionSnapshot returns every interaction from the canonical
 // latest turn and derives the actionable subset from that same read. It does
 // not start or resume a provider runtime.

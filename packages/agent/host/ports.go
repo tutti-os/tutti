@@ -23,6 +23,10 @@ type CanonicalTurnStore interface {
 	ListSessionInteractions(context.Context, storesqlite.ListSessionInteractionsInput) ([]storesqlite.Interaction, error)
 }
 
+type CanonicalMessageStore interface {
+	ListSessionMessages(context.Context, storesqlite.ListSessionMessagesInput) (storesqlite.MessagePage, bool, error)
+}
+
 type CanonicalSubmitClaimStore interface {
 	PrepareSubmitClaim(context.Context, storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error)
 	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (storesqlite.SubmitClaim, bool, error)
@@ -35,6 +39,7 @@ type CanonicalSubmitClaimStore interface {
 type CanonicalStore interface {
 	CanonicalSessionStore
 	CanonicalTurnStore
+	CanonicalMessageStore
 	CanonicalSubmitClaimStore
 }
 

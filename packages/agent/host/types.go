@@ -27,6 +27,18 @@ type SessionInteractionSnapshot struct {
 	PendingInteractions []storesqlite.Interaction
 }
 
+// SessionMessageQuery selects one page of canonical message snapshots. Session
+// identity comes from SessionRef so transport adapters cannot accidentally
+// query a different session through duplicated identity fields.
+type SessionMessageQuery struct {
+	MessageID     string
+	TurnID        string
+	AfterVersion  uint64
+	BeforeVersion uint64
+	Limit         int
+	Order         storesqlite.MessageOrder
+}
+
 type ComposerSettings struct {
 	Model            string
 	PermissionModeID string
