@@ -181,6 +181,32 @@ export function createAgentGuiWorkbenchContribution(
     nodes: [
       {
         frame,
+        getHeaderFrameRenderKey: (context) => {
+          if (context.isDragging) {
+            return "dragging";
+          }
+          const rawWorkbenchState = (context.externalNodeState ??
+            context.node.data.runtimeNodeState) as
+            | Partial<AgentGuiWorkbenchNodeState>
+            | null
+            | undefined;
+          const workbenchState = normalizeAgentGuiWorkbenchState(
+            migrateLegacyAgentGuiWorkbenchState(rawWorkbenchState)
+          );
+          const isAutoCollapsed = shouldAutoCollapseAgentGUIConversationRail(
+            context.node.frame.width
+          );
+          if (
+            workbenchState.conversationRailCollapsed === true ||
+            isAutoCollapsed
+          ) {
+            return "collapsed";
+          }
+          return `expanded:${clampAgentGUIConversationRailWidthPx(
+            workbenchState.conversationRailWidthPx,
+            context.node.frame.width
+          )}`;
+        },
         instance: { mode: "multi" },
         onBodyRenderErrorChange: ({ hasError, node }) => {
           setAgentGuiWorkbenchBodyRenderError(node.id, hasError);
@@ -368,19 +394,20 @@ export function createAgentGuiWorkbenchContribution(
                 nextCollapsed === false &&
                 node.displayMode !== "fullscreen"
               ) {
+                const currentFrame = windowActions.getFrame();
                 const expandedFrame = resolveAgentGUIExpandedWindowFrame({
                   conversationRailWidthPx: nodeState.conversationRailWidthPx,
                   desktopSize: surfaceSize,
-                  height: node.frame.height,
+                  height: currentFrame.height,
                   position: {
-                    x: node.frame.x,
-                    y: node.frame.y
+                    x: currentFrame.x,
+                    y: currentFrame.y
                   },
-                  width: node.frame.width
+                  width: currentFrame.width
                 });
 
                 windowActions.resize({
-                  ...node.frame,
+                  ...currentFrame,
                   height: expandedFrame.size.height,
                   width: expandedFrame.size.width,
                   x: expandedFrame.position.x,

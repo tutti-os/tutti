@@ -27,6 +27,7 @@ test("analyzer bounds metrics by scenario markers", async () => {
           complete(1_300, 20_000, "RunTask"),
           complete(1_400, 5_000, "Layout"),
           input(1_500, "click"),
+          input(1_550, "scroll", 4_000),
           completeOnThread(1_600, 80_000, "RunTask", 9, 3),
           timestampMarker(
             2_000,
@@ -34,7 +35,15 @@ test("analyzer bounds metrics by scenario markers", async () => {
           ),
           marker(4_000, "tutti-perf:provider-switch:rail-stable-observed"),
           marker(30_000, "tutti-perf:provider-switch:end"),
-          component(31_000, "AfterScenario")
+          component(31_000, "AfterScenario"),
+          profileChunk(1_600, {
+            nodes: [
+              profileNode(1, "(root)"),
+              profileNode(2, "hasSelection", 1),
+              profileNode(3, "updateStateInner", 2)
+            ],
+            samples: [2, 3]
+          })
         ]
       })
     );
@@ -56,7 +65,8 @@ test("analyzer bounds metrics by scenario markers", async () => {
           marker: "tutti-perf:provider-switch:rail-stable-observed"
         }
       ],
-      minimumLongEventMs: 16
+      minimumLongEventMs: 16,
+      profileFunctionNames: ["hasSelection", "updateStateInner"]
     });
 
     assert.equal(summary.window.durationMs, 29);
@@ -72,7 +82,17 @@ test("analyzer bounds metrics by scenario markers", async () => {
       summary.window.phases.map((phase) => phase.durationMs),
       [1, 2, 26]
     );
-    assert.deepEqual(summary.inputEvents, { click: 1 });
+    assert.deepEqual(summary.inputEvents, { click: 1, scroll: 1 });
+    assert.deepEqual(summary.inputEventTiming.scroll, {
+      count: 1,
+      totalInclusiveMs: 4,
+      maxMs: 4
+    });
+    assert.deepEqual(summary.cpuProfile.functionSamples, {
+      hasSelection: 2,
+      updateStateInner: 1
+    });
+    assert.equal(summary.cpuProfile.sampleCount, 2);
     assert.match(renderElectronTraceMarkdown(summary), /report-only/);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -167,14 +187,36 @@ function completeOnThread(ts, dur, name, pid, tid) {
   return { dur, name, ph: "X", pid, tid, ts };
 }
 
-function input(ts, type) {
+function input(ts, type, dur = 10) {
   return {
     args: { data: { type } },
-    dur: 10,
+    dur,
     name: "EventDispatch",
     ph: "X",
     pid: 1,
     tid: 2,
     ts
+  };
+}
+
+function profileChunk(ts, cpuProfile) {
+  return {
+    args: {
+      data: { cpuProfile, timeDeltas: cpuProfile.samples.map(() => 100) }
+    },
+    id: "0x1",
+    name: "ProfileChunk",
+    ph: "P",
+    pid: 1,
+    tid: 4,
+    ts
+  };
+}
+
+function profileNode(id, functionName, parent) {
+  return {
+    callFrame: { functionName, scriptId: 1 },
+    id,
+    ...(parent == null ? {} : { parent })
   };
 }

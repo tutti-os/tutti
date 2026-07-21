@@ -432,6 +432,7 @@ export interface WorkbenchHostNodeHeaderWindowActions {
   applyQuickLayout(target: WorkbenchQuickLayoutTarget): void;
   close(): void;
   focus(): void;
+  getFrame(): WorkbenchFrame;
   minimize(): void;
   resize(frame: WorkbenchFrame): void;
   toggleDisplayMode(): void;
@@ -449,7 +450,9 @@ export interface WorkbenchHostNodeHeaderContext<
   externalWorkspaceState: TExternalWorkspaceState;
   instanceId: string;
   instanceKey?: string | null;
+  isDragging: boolean;
   isFocused: boolean;
+  isResizing: boolean;
   node: WorkbenchNode<WorkbenchHostNodeData>;
   surfaceSize: WorkbenchSize;
   windowActions: WorkbenchHostNodeHeaderWindowActions;
@@ -481,6 +484,24 @@ type WorkbenchHostHeaderRenderer<
   ): ReactNode;
 }["bivarianceHack"];
 
+export type WorkbenchHostNodeHeaderFrameRenderKey =
+  | boolean
+  | number
+  | string
+  | null;
+
+type WorkbenchHostHeaderFrameRenderKeyResolver<
+  TExternalNodeState = unknown,
+  TExternalWorkspaceState = unknown
+> = {
+  bivarianceHack(
+    context: WorkbenchHostNodeHeaderContext<
+      TExternalNodeState,
+      TExternalWorkspaceState
+    >
+  ): WorkbenchHostNodeHeaderFrameRenderKey;
+}["bivarianceHack"];
+
 type WorkbenchHostWindowCloseEffectResolver<
   TExternalNodeState = unknown,
   TExternalWorkspaceState = unknown
@@ -507,6 +528,14 @@ export interface WorkbenchHostNodeDefinition<
   description?: string;
   frame: WorkbenchFrame;
   getWindowCloseEffect?: WorkbenchHostWindowCloseEffectResolver<
+    TExternalNodeState,
+    TExternalWorkspaceState
+  >;
+  /**
+   * Projects frame-derived header presentation during direct manipulation.
+   * Equal keys skip renderHeader; omitted definitions keep live frame renders.
+   */
+  getHeaderFrameRenderKey?: WorkbenchHostHeaderFrameRenderKeyResolver<
     TExternalNodeState,
     TExternalWorkspaceState
   >;

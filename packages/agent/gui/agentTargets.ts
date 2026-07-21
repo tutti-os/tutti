@@ -60,6 +60,7 @@ export function createSharedAgentGUIAgentTarget(input: {
   agentTargetId?: string | null;
   badge?: AgentGUIAgentTargetBadge | null;
   ownerLabel?: string | null;
+  ownerDeviceLabel?: string | null;
   iconUrl?: string | null;
   maskIconUrl?: string | null;
   unavailableReason?: string | null;
@@ -85,6 +86,9 @@ export function createSharedAgentGUIAgentTarget(input: {
     ...(badge ? { badge } : {}),
     ...(input.ownerLabel?.trim()
       ? { ownerLabel: input.ownerLabel.trim() }
+      : {}),
+    ...(input.ownerDeviceLabel?.trim()
+      ? { ownerDeviceLabel: input.ownerDeviceLabel.trim() }
       : {}),
     ...(input.iconUrl?.trim() ? { iconUrl: input.iconUrl.trim() } : {}),
     ...(input.maskIconUrl?.trim()
@@ -249,6 +253,7 @@ function normalizeAgentGUIAgentTarget(
     maskIconUrl,
     heroImageUrl,
     ownerLabel,
+    ownerDeviceLabel,
     unavailableReason,
     ...rest
   } = target;
@@ -278,6 +283,9 @@ function normalizeAgentGUIAgentTarget(
     ...(maskIconUrl?.trim() ? { maskIconUrl: maskIconUrl.trim() } : {}),
     ...(heroImageUrl?.trim() ? { heroImageUrl: heroImageUrl.trim() } : {}),
     ...(ownerLabel?.trim() ? { ownerLabel: ownerLabel.trim() } : {}),
+    ...(ownerDeviceLabel?.trim()
+      ? { ownerDeviceLabel: ownerDeviceLabel.trim() }
+      : {}),
     ...(unavailableReason?.trim()
       ? { unavailableReason: unavailableReason.trim() }
       : {})

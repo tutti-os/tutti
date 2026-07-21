@@ -9,10 +9,40 @@ import {
   agentGuiPerformanceScenarios,
   resolveAgentGuiPerformanceScenario
 } from "./agent-gui-performance-scenarios.mjs";
+import { composerInputScenario } from "./agent-gui-composer-performance-scenarios.mjs";
 import {
+  applyScenarioAssessment,
   findUnknownAgentTargetMigrationIDs,
   prepareWorkbenchSnapshotForPerformance
 } from "./run-agent-gui-performance.mjs";
+
+test("scenario trace assessment turns report metrics into a gate", () => {
+  const summary = {
+    mode: "report-only",
+    verdict: { status: "ungraded", reason: "report only" },
+    run: {
+      assertions: [{ name: "semantic contract", passed: true }],
+      details: [],
+      outcome: "passed"
+    }
+  };
+
+  applyScenarioAssessment(summary, {
+    assertions: [
+      { name: "scroll budget", passed: true },
+      { name: "EditorView samples", passed: false }
+    ],
+    details: [{ label: "Scroll", value: "4 ms" }]
+  });
+
+  assert.equal(summary.mode, "scenario-thresholds");
+  assert.deepEqual(summary.verdict, {
+    status: "failed",
+    reason: "1 of 3 scenario assertions failed"
+  });
+  assert.equal(summary.run.outcome, "failed");
+  assert.deepEqual(summary.run.details, [{ label: "Scroll", value: "4 ms" }]);
+});
 
 test("performance snapshot rejects newer Agent target migrations", () => {
   assert.deepEqual(
@@ -134,7 +164,9 @@ test("performance scenario registry exposes renderer and window scenarios", () =
       "session-switch",
       "provider-session-cycle",
       "virtualized-streaming",
+      "virtualized-scroll-locator",
       "rail-scope-reveal",
+      "composer-input",
       "composer-overflow-resize",
       "workbench-window-lifecycle",
       "desktop-window-state"
@@ -147,5 +179,39 @@ test("performance scenario registry exposes renderer and window scenarios", () =
   assert.throws(
     () => resolveAgentGuiPerformanceScenario("missing"),
     /unknown scenario: missing/
+  );
+});
+
+test("composer input summary requires text, IME, and mention keyboard semantics", () => {
+  const report = composerInputScenario.summarize(
+    { dockComposer: true, editorReady: true, sessionID: "session-1" },
+    {
+      categoryChanged: true,
+      compositionEnds: 1,
+      compositionStarts: 1,
+      compositionUpdates: 3,
+      highlightChanged: true,
+      imeCommitted: true,
+      inputEvents: 58,
+      mentionClosed: true,
+      mentionKeys: ["ArrowDown", "Tab", "Escape"],
+      mentionOpened: true
+    }
+  );
+
+  assert.equal(report.outcome, "passed");
+  assert.deepEqual(
+    report.assertions.map((assertion) => assertion.name),
+    [
+      "dock composer active",
+      "per-character text input observed",
+      "IME composition lifecycle observed",
+      "IME text committed once",
+      "@ mention panel opened",
+      "mention selection moved",
+      "mention category cycled",
+      "mention keyboard events observed",
+      "mention panel closed"
+    ]
   );
 });

@@ -119,6 +119,8 @@ export interface AgentGUIAgent {
   maskIconUrl?: string | null;
   heroImageUrl?: string | null;
   description?: string | null;
+  /** Host-resolved display name of the device that owns this Agent target. */
+  ownerDeviceLabel?: string | null;
   owner?: AgentGUIAgentOwner | null;
   ownership?: AgentGUIAgentOwnership | null;
   availability: AgentGUIAgentAvailability;
@@ -171,6 +173,7 @@ export interface AgentGUIAgentTarget {
   heroImageUrl?: string | null;
   badge?: AgentGUIAgentTargetBadge | null;
   ownerLabel?: string;
+  ownerDeviceLabel?: string;
   ownership?: AgentGUIAgentOwnership;
   availability?: AgentGUIAgentAvailability;
   disabled?: boolean;

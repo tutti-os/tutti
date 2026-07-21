@@ -24,14 +24,24 @@ interface AgentMessageLocatorVisibleFrame {
   topOffsetPx: number;
 }
 
+interface AgentMessageLocatorVirtualSelectionSource {
+  readonly scrollOffset: number | null;
+  readonly scrollRect: { readonly height: number } | null;
+  getVirtualItemForOffset(
+    offset: number
+  ): { readonly index: number } | undefined;
+}
+
 export function AgentMessageLocatorRail({
   items,
   label,
-  onLocate
+  onLocate,
+  virtualSelectionSource
 }: {
   items: readonly AgentMessageLocatorItem[];
   label?: string;
   onLocate: (item: AgentMessageLocatorItem) => void;
+  virtualSelectionSource?: AgentMessageLocatorVirtualSelectionSource;
 }): JSX.Element | null {
   const locatorRef = useRef<HTMLElement | null>(null);
   const locatorViewportRef = useRef<HTMLDivElement | null>(null);
@@ -49,6 +59,10 @@ export function AgentMessageLocatorRail({
   >(new Set());
   const [visibleFrame, setVisibleFrame] =
     useState<AgentMessageLocatorVisibleFrame | null>(null);
+  const virtualSelectionReady =
+    !virtualSelectionSource ||
+    (virtualSelectionSource.scrollOffset !== null &&
+      virtualSelectionSource.scrollRect !== null);
   useEffect(() => {
     if (isPanelOpen) {
       setShouldRenderPanel(true);
@@ -71,9 +85,24 @@ export function AgentMessageLocatorRail({
   );
   useEffect(() => {
     if (selectedKey && !items.some((item) => item.key === selectedKey)) {
-      setSelectedKey(null);
+      const locator = locatorRef.current;
+      const scrollParent = locator
+        ? findMessageLocatorScrollParent(locator)
+        : null;
+      const nextSelectedKey = virtualSelectionSource
+        ? selectVirtualizedMessageLocatorItemAtViewportCenter(
+            virtualSelectionSource,
+            items,
+            scrollParent?.scrollTop ?? virtualSelectionSource.scrollOffset
+          )
+        : null;
+      setSelectedKey(
+        items.some((item) => item.key === nextSelectedKey)
+          ? nextSelectedKey
+          : null
+      );
     }
-  }, [items, selectedKey]);
+  }, [items, selectedKey, virtualSelectionSource]);
   useEffect(() => {
     const previousAgentResponseByKey = previousAgentResponseByKeyRef.current;
     const currentKeys = new Set(items.map((item) => item.key));
@@ -182,12 +211,17 @@ export function AgentMessageLocatorRail({
     let animationFrame: number | null = null;
     const updateSelectedFromScroll = (): void => {
       animationFrame = null;
-      const nextSelectedKey = selectMessageLocatorItemAtViewportCenter(
-        scrollParent,
-        items
-      );
+      const nextSelectedKey = virtualSelectionSource
+        ? selectVirtualizedMessageLocatorItemAtViewportCenter(
+            virtualSelectionSource,
+            items,
+            scrollParent.scrollTop
+          )
+        : selectMessageLocatorItemAtViewportCenter(scrollParent, items);
       if (nextSelectedKey) {
-        setSelectedKey(nextSelectedKey);
+        setSelectedKey((currentKey) =>
+          currentKey === nextSelectedKey ? currentKey : nextSelectedKey
+        );
       }
     };
     const scheduleUpdate = (): void => {
@@ -205,7 +239,7 @@ export function AgentMessageLocatorRail({
         window.cancelAnimationFrame(animationFrame);
       }
     };
-  }, [items]);
+  }, [items, virtualSelectionReady, virtualSelectionSource]);
   useLayoutEffect(() => {
     const selectedIndex = selectedKey
       ? items.findIndex((item) => item.key === selectedKey)
@@ -393,6 +427,7 @@ export function AgentMessageLocatorRail({
               aria-label={item.summary}
               title={item.summary}
               data-selected={item.key === selectedKey ? "true" : undefined}
+              data-agent-message-locator-turn-group-index={item.turnGroupIndex}
               data-unread-agent-response={
                 unreadAgentResponseKeys.has(item.key) ? "true" : undefined
               }
@@ -621,4 +656,39 @@ function selectMessageLocatorItemAtViewportCenter(
   }
 
   return nearest?.key ?? null;
+}
+
+function selectVirtualizedMessageLocatorItemAtViewportCenter(
+  source: AgentMessageLocatorVirtualSelectionSource,
+  items: readonly AgentMessageLocatorItem[],
+  observedScrollOffset = source.scrollOffset
+): string | null {
+  const viewportHeight = source.scrollRect?.height;
+  if (observedScrollOffset === null || viewportHeight === undefined) {
+    return null;
+  }
+  const virtualTurn = source.getVirtualItemForOffset(
+    observedScrollOffset + viewportHeight / 2
+  );
+  if (!virtualTurn) {
+    return null;
+  }
+
+  let start = 0;
+  let end = items.length - 1;
+  let matchedIndex = -1;
+  while (start <= end) {
+    const middle = Math.floor((start + end) / 2);
+    const item = items[middle];
+    if (!item) {
+      break;
+    }
+    if (item.turnGroupIndex <= virtualTurn.index) {
+      matchedIndex = middle;
+      start = middle + 1;
+    } else {
+      end = middle - 1;
+    }
+  }
+  return items[matchedIndex < 0 ? 0 : matchedIndex]?.key ?? null;
 }

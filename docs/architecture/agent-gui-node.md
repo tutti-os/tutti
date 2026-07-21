@@ -263,6 +263,12 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 
 The Rail query cache stores section metadata, ordered Session IDs, cursors, and totals only. Session entities always come from the engine.
 
+Presentation-invisible Sessions remain canonical engine entities and stay
+available through exact Session selectors for trusted open, reconcile, and
+command flows. Plural consumer selectors exclude them before Rail and Message
+Center collection projection; a hidden Session must not become a list row just
+because it is resumable or receives later canonical updates.
+
 When runtime sections are enabled, projection unions IDs from the current section, search, and reconciliation, then joins canonical Sessions. Unchanged summaries preserve structural sharing so unrelated engine updates do not rebuild the whole Rail snapshot.
 
 Scroll, section collapse, visible limits, and search query belong to mounted view scope. Non-search state is isolated by `workspaceId + agentTargetId/all`; search creates a temporary navigation scope. `activeConversationId` expresses selection only. Scrolling requires an explicit reveal intent.
@@ -282,6 +288,10 @@ A focused controller may own detail paging/loading/error. Canonical messages, Tu
 Timeline projection is pure, deterministic, and provider-neutral. React views render rows/cards and dispatch actions.
 
 High-frequency transcript updates must not pair DOM mutation with unconditional synchronous reads of the timeline's full scroll geometry. Conversation switches, explicit submit-to-bottom requests, skeleton transitions, and older-page prepend restoration may perform pre-paint scroll correction; ordinary content growth preserves bottom lock and user scroll-away state from observed content and viewport geometry after layout.
+
+A virtualized transcript derives message-locator selection from the virtualizer's measured turn positions and explicit transcript identity. The currently mounted DOM window is rendering output, not a selection source; range changes must not make the locator temporarily select a neighboring message.
+
+Historical rich text renders from the canonical Tiptap document through a static schema renderer. Only interactive composer surfaces own a Tiptap Editor/ProseMirror EditorView; read-only transcript and title surfaces reuse the same mention/token presentation without mounting editor lifecycle.
 
 ## 5. Agent identity and provider architecture
 
@@ -334,10 +344,12 @@ already-inline extension icons retain their authoritative URL.
 
 Handoff target menus are an AgentGUI presentation contract. The shared
 `AgentHandoffMenu` renders exact `agentTargetId` rows, ownership metadata, and
-temporary disclosure/icon-motion state; a host supplies its authoritative
-ready target projection and retains launch orchestration in `onSelect`. Host
-surfaces must not reconstruct a second handoff row model or infer target
-identity from provider.
+optional host-resolved `ownerDeviceLabel` metadata directly from the same
+target, plus temporary disclosure/icon-motion state; a host supplies its
+authoritative ready target projection and retains launch orchestration in
+`onSelect`. Host surfaces must not reconstruct a second handoff row model,
+observe the portaled menu DOM, or infer target identity from provider or
+visible text.
 
 For a signed Agent Extension, package `icon` is the primary identity and
 optional package `maskIcon` is the conversation-row glyph. All assets remain
@@ -373,6 +385,13 @@ Code uses stable horizontal layers and behavior-oriented vertical modules:
 A controller may compose flows but cannot become a second lifecycle state machine. Extract complete behavior first; do not scatter it into a pile of domainless helpers.
 
 Activation and existing-Session submit share a canonical prompt envelope. Submit eligibility includes text and renderable structured content; an individual composer does not redefine it.
+
+Composer text transactions may publish the current draft, but the draft value
+must not drive synchronous pre-paint geometry reads. The dock observes the
+actual editor, input area, and attachment containers; its initial and
+subsequent `ResizeObserver` deliveries own height measurement after layout.
+Viewport resizing is covered by those element observations and must not add a
+duplicate global resize measurement source.
 
 External OS file paste and drop enter one host-injected classification boundary before draft attachment creation. The synchronous `resolveExternalPromptEntries` port classifies each source index as a live `WorkspaceFileReference` or a snapshot requiring preparation. AgentGUI owns ordered mention insertion and draft reconciliation: references become ordinary file/folder mentions and never consume prompt-asset slots, while only `prepare` entries create pending attachment state and enter `prepareExternalPromptFiles`. A host without the resolver prepares every external entry. The preparer owns native-path or byte lookup, size enforcement, persistence, and remote transport; each prepared input has one `sourceIndex` result, one failure must not fail siblings, successful results include a provider-readable `path` or `url`, and failures carry typed error codes. Hosts that classify path-backed entries as references must reject any such entry that unexpectedly reaches preparation, so classification failure cannot silently create a duplicate snapshot.
 

@@ -21,6 +21,7 @@ import { resolveHandoffTargetOwnershipLabel } from "./handoffTargetPresentation"
 
 export interface AgentHandoffMenuLabels {
   action: string;
+  deviceSource?: (deviceLabel: string) => string;
   menu: string;
   self: string;
   shared: string;
@@ -61,6 +62,67 @@ export function AgentHandoffMenu({
 }: AgentHandoffMenuProps): JSX.Element {
   const [isIconPlaying, setIsIconPlaying] = useState(false);
   const menuDisabled = disabled || targets.length === 0;
+  const tooltip = labels.tooltip.trim();
+
+  const trigger = (
+    <span className="inline-flex">
+      <SelectTrigger
+        size="sm"
+        aria-label={labels.action}
+        data-testid={testId}
+        onClick={
+          isolateTriggerEvents
+            ? (event) => {
+                event.stopPropagation();
+              }
+            : undefined
+        }
+        onKeyDown={
+          isolateTriggerEvents
+            ? (event) => {
+                event.stopPropagation();
+              }
+            : undefined
+        }
+        onPointerDown={
+          isolateTriggerEvents
+            ? (event) => {
+                event.stopPropagation();
+              }
+            : undefined
+        }
+        onBlur={() => {
+          setIsIconPlaying(false);
+        }}
+        onFocus={() => {
+          setIsIconPlaying(true);
+        }}
+        onMouseEnter={() => {
+          setIsIconPlaying(true);
+        }}
+        onMouseLeave={() => {
+          setIsIconPlaying(false);
+        }}
+        className={cn(
+          styles.composerMenuTrigger,
+          styles.composerProviderSelect,
+          styles.composerHandoffTrigger,
+          "w-auto max-w-[180px] [&>svg:last-child]:hidden",
+          triggerClassName
+        )}
+      >
+        <span className="flex min-w-0 items-center gap-1.5">
+          <AgentComposerHandoffIcon
+            disabled={menuDisabled}
+            isPlaying={isIconPlaying}
+          />
+          {!iconOnly ? (
+            <span className="min-w-0 truncate">{triggerLabel}</span>
+          ) : null}
+        </span>
+      </SelectTrigger>
+    </span>
+  );
 
   return (
     <span
@@ -100,70 +162,16 @@ export function AgentHandoffMenu({
           onSelect(target);
         }}
       >
-        <TooltipProvider delayDuration={120}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex">
-                <SelectTrigger
-                  size="sm"
-                  aria-label={labels.action}
-                  data-testid={testId}
-                  onClick={
-                    isolateTriggerEvents
-                      ? (event) => {
-                          event.stopPropagation();
-                        }
-                      : undefined
-                  }
-                  onKeyDown={
-                    isolateTriggerEvents
-                      ? (event) => {
-                          event.stopPropagation();
-                        }
-                      : undefined
-                  }
-                  onPointerDown={
-                    isolateTriggerEvents
-                      ? (event) => {
-                          event.stopPropagation();
-                        }
-                      : undefined
-                  }
-                  onBlur={() => {
-                    setIsIconPlaying(false);
-                  }}
-                  onFocus={() => {
-                    setIsIconPlaying(true);
-                  }}
-                  onMouseEnter={() => {
-                    setIsIconPlaying(true);
-                  }}
-                  onMouseLeave={() => {
-                    setIsIconPlaying(false);
-                  }}
-                  className={cn(
-                    styles.composerMenuTrigger,
-                    styles.composerProviderSelect,
-                    styles.composerHandoffTrigger,
-                    "w-auto max-w-[180px] [&>svg:last-child]:hidden",
-                    triggerClassName
-                  )}
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <AgentComposerHandoffIcon
-                      disabled={menuDisabled}
-                      isPlaying={isIconPlaying}
-                    />
-                    {!iconOnly ? (
-                      <span className="min-w-0 truncate">{triggerLabel}</span>
-                    ) : null}
-                  </span>
-                </SelectTrigger>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="top">{labels.tooltip}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {tooltip ? (
+          <TooltipProvider delayDuration={120}>
+            <Tooltip>
+              <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+              <TooltipContent side="top">{tooltip}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          trigger
+        )}
         <SelectContent
           align={align}
           className={cn(
@@ -179,6 +187,10 @@ export function AgentHandoffMenu({
               self: labels.self,
               shared: labels.shared
             });
+            const ownerDeviceLabel = target.ownerDeviceLabel?.trim() ?? "";
+            const deviceSourceLabel = ownerDeviceLabel
+              ? (labels.deviceSource?.(ownerDeviceLabel) ?? ownerDeviceLabel)
+              : null;
             return (
               <SelectItem
                 key={`${target.provider}:${target.targetId}`}
@@ -205,9 +217,12 @@ export function AgentHandoffMenu({
                   </span>
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span className="min-w-0 truncate">{target.label}</span>
-                    {ownershipLabel ? (
-                      <span className="min-w-0 truncate text-[11px] leading-none text-[var(--agent-gui-text-secondary)]">
-                        {ownershipLabel}
+                    {ownershipLabel || deviceSourceLabel ? (
+                      <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] leading-none text-[var(--agent-gui-text-secondary)]">
+                        {ownershipLabel ? <span>{ownershipLabel}</span> : null}
+                        {deviceSourceLabel ? (
+                          <span>{deviceSourceLabel}</span>
+                        ) : null}
                       </span>
                     ) : null}
                   </span>

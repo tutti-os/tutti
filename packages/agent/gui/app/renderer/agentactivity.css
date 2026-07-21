@@ -325,7 +325,6 @@
   backdrop-filter: none;
   transform-origin: bottom left;
   -webkit-app-region: no-drag;
-  -webkit-backdrop-filter: none;
 }
 
 .workspace-agents-status-panel[data-layer="raised"] {

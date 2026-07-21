@@ -335,43 +335,29 @@ export function useAgentGUIDetailScroll(input: Input) {
     }
 
     const captureScrollAnchor = (): void => {
-      let scrollTop = timeline.scrollTop;
       const previousAnchor = timelineScrollAnchorRef.current;
-      const geometryChanged =
-        previousAnchor?.conversationId !== activeConversationId ||
-        previousAnchor.scrollHeight !== timeline.scrollHeight ||
-        previousAnchor.clientHeight !== timeline.clientHeight;
-      const inferredUserScrollAway =
-        previousAnchor?.conversationId === activeConversationId &&
-        !geometryChanged &&
-        scrollTop < previousAnchor.scrollTop - 1;
+      if (
+        !previousAnchor ||
+        previousAnchor.conversationId !== activeConversationId
+      ) {
+        return;
+      }
+      const scrollTop = timeline.scrollTop;
+      const inferredUserScrollAway = scrollTop < previousAnchor.scrollTop - 1;
       const explicitUserScrollAway =
         userScrollAwayIntentConversationRef.current === activeConversationId;
       if (explicitUserScrollAway || inferredUserScrollAway) {
         bottomLockOwnerRef.current = null;
         userScrollAwayIntentConversationRef.current = null;
       }
-      if (
-        geometryChanged &&
-        bottomLockOwnerRef.current === activeConversationId
-      ) {
-        const maxScrollTop = Math.max(
-          0,
-          timeline.scrollHeight - timeline.clientHeight
-        );
-        if (maxScrollTop - scrollTop > AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX) {
-          setTimelineScrollTopInstantly(timeline, maxScrollTop);
-          scrollTop = maxScrollTop;
-        }
-      }
       timelineScrollAnchorRef.current = {
         conversationId: activeConversationId,
-        scrollHeight: timeline.scrollHeight,
+        scrollHeight: previousAnchor.scrollHeight,
         scrollTop,
-        clientHeight: timeline.clientHeight
+        clientHeight: previousAnchor.clientHeight
       };
       const atBottom =
-        timeline.scrollHeight - scrollTop - timeline.clientHeight <=
+        previousAnchor.scrollHeight - scrollTop - previousAnchor.clientHeight <=
         AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX;
       if (atBottom) {
         bottomLockOwnerRef.current = activeConversationId;
@@ -390,7 +376,7 @@ export function useAgentGUIDetailScroll(input: Input) {
       ) {
         pendingPrependScrollAnchorRef.current = {
           conversationId: activeConversationId,
-          scrollHeight: timeline.scrollHeight,
+          scrollHeight: previousAnchor.scrollHeight,
           scrollTop
         };
         actions.loadOlderConversationMessages();

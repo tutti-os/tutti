@@ -114,8 +114,9 @@ export function createWorkbenchHostNodeHeaderContext<
       resolvedExternalState.externalWorkspaceState as TExternalWorkspaceState,
     instanceId: context.node.data.instanceId,
     instanceKey: context.node.data.instanceKey ?? null,
-    isFocused:
-      selectFocusedWorkbenchNode(host.getSnapshot())?.id === context.node.id,
+    isDragging: context.isDragging,
+    isFocused: context.isFocused,
+    isResizing: context.isResizing,
     node: context.node,
     surfaceSize: context.surfaceSize,
     windowActions: createWorkbenchHostNodeHeaderWindowActions(context, {

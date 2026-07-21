@@ -1,10 +1,11 @@
-import { useEffect, type JSX } from "react";
+import { useMemo, type JSX, type MouseEvent } from "react";
 import type { JSONContent } from "@tiptap/core";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { renderToReactElement } from "@tiptap/static-renderer";
 import { cn } from "../app/renderer/lib/utils";
 import { plainTextToAgentRichTextDoc } from "../agent-gui/agentGuiNode/agentRichText/agentRichTextDocument";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "../agent-gui/agentGuiNode/agentRichText/agentRichTextCaretAnchor";
 import { createAgentRichTextReadonlyExtensions } from "../agent-gui/agentGuiNode/agentRichText/agentRichTextExtensions";
+import { AgentMentionReadonlyView } from "../agent-gui/agentGuiNode/agentRichText/AgentMentionNodeView";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "./AgentMessageMarkdown";
 import type { AgentGUIProviderSkillOption } from "../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import {
@@ -15,6 +16,7 @@ import {
 
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
+const EMPTY_SKILLS: readonly AgentGUIProviderSkillOption[] = [];
 
 interface AgentRichTextReadonlyProps {
   value: string;
@@ -31,101 +33,79 @@ export function AgentRichTextReadonly({
   className,
   editorClassName,
   onLinkClick,
-  availableSkills = [],
+  availableSkills = EMPTY_SKILLS,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
   agentTargets
 }: AgentRichTextReadonlyProps): JSX.Element {
   "use memo";
   const contextAgentTargets = useAgentTargetPresentations();
   const effectiveAgentTargets = agentTargets ?? contextAgentTargets;
-  const contentDoc = plainTextToAgentRichTextDocWithMentionPresentations(
-    value,
-    availableSkills,
-    workspaceAppIcons,
-    effectiveAgentTargets
+  const contentDoc = useMemo(
+    () =>
+      plainTextToAgentRichTextDocWithMentionPresentations(
+        value,
+        availableSkills,
+        workspaceAppIcons,
+        effectiveAgentTargets
+      ),
+    [availableSkills, effectiveAgentTargets, value, workspaceAppIcons]
   );
   const isMentionOnly = isMentionOnlyRichTextDoc(contentDoc);
-  const editor = useEditor({
-    // AgentGUI is client-only. Deferring editor creation leaves every user
-    // message blank for one commit, then changes each transcript turn's
-    // measured height when TipTap mounts.
-    immediatelyRender: true,
-    editable: false,
-    extensions: createAgentRichTextReadonlyExtensions({
-      skills: availableSkills
-    }),
-    content: contentDoc,
-    editorProps: {
-      attributes: {
-        class: cn(
-          editorClassName,
-          "max-w-full overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] [&_p]:m-0 [&_p]:min-h-[1.45em] [&_a[data-agent-file-mention=true]]:cursor-pointer [&_[data-agent-file-mention=true]]:overflow-hidden"
-        )
-      },
-      handleDOMEvents: {
-        click: (_view, event) => {
-          if (!onLinkClick || !(event.target instanceof Element)) {
-            return false;
+  const extensions = useMemo(
+    () =>
+      createAgentRichTextReadonlyExtensions({
+        skills: availableSkills
+      }),
+    [availableSkills]
+  );
+  const renderedContent = useMemo(
+    () =>
+      renderToReactElement({
+        content: contentDoc,
+        extensions,
+        options: {
+          nodeMapping: {
+            agentFileMention: ({ node }) => (
+              <AgentMentionReadonlyView attrs={node.attrs ?? {}} />
+            )
           }
-          const mention = event.target.closest(
-            '[data-agent-file-mention="true"]'
-          );
-          if (!(mention instanceof HTMLElement)) {
-            return false;
-          }
-          const href =
-            mention instanceof HTMLAnchorElement
-              ? mention.getAttribute("href") || ""
-              : mention.getAttribute("data-agent-mention-href") || "";
-          if (!href) {
-            return false;
-          }
-          event.preventDefault();
-          event.stopPropagation();
-          onLinkClick(href);
-          return true;
         }
-      }
-    }
-  });
+      }),
+    [contentDoc, extensions]
+  );
 
-  useEffect(() => {
-    if (!editor || editor.isDestroyed) {
+  const handleClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (!onLinkClick || !(event.target instanceof Element)) {
       return;
     }
-    const nextDoc = plainTextToAgentRichTextDocWithMentionPresentations(
-      value,
-      availableSkills,
-      workspaceAppIcons,
-      effectiveAgentTargets
-    );
-    if (JSON.stringify(editor.getJSON()) === JSON.stringify(nextDoc)) {
+    const mention = event.target.closest('[data-agent-file-mention="true"]');
+    if (!(mention instanceof HTMLElement)) {
       return;
     }
-    editor.commands.setContent(nextDoc, { emitUpdate: false });
-  }, [
-    availableSkills,
-    effectiveAgentTargets,
-    editor,
-    value,
-    workspaceAppIcons
-  ]);
-
-  if (!editor) {
-    return (
-      <div
-        className={className}
-        data-agent-mention-only={isMentionOnly ? "true" : undefined}
-      />
-    );
-  }
+    const href = mention.getAttribute("data-agent-mention-href") || "";
+    if (!href) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    onLinkClick(href);
+  };
 
   return (
     <div
       className={className}
       data-agent-mention-only={isMentionOnly ? "true" : undefined}
     >
-      <EditorContent editor={editor} />
+      <div
+        className={cn(
+          "tiptap ProseMirror",
+          editorClassName,
+          "max-w-full overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] [&_p]:m-0 [&_p]:min-h-[1.45em] [&_a[data-agent-file-mention=true]]:cursor-pointer [&_[data-agent-file-mention=true]]:overflow-hidden"
+        )}
+        onClick={handleClick}
+      >
+        {renderedContent}
+      </div>
     </div>
   );
 }

@@ -30,6 +30,22 @@ describe("AgentHandoffMenu", () => {
     );
   });
 
+  it("does not create an empty tooltip when its tooltip label is blank", async () => {
+    render(
+      <AgentHandoffMenu
+        labels={{ ...labels, tooltip: "   " }}
+        targets={targets}
+        onSelect={vi.fn()}
+      />
+    );
+
+    const trigger = screen.getByRole("combobox", { name: "Handoff" });
+    fireEvent.pointerMove(trigger.parentElement!, { pointerType: "mouse" });
+
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
   it("renders self and shared ownership and selects the exact target", async () => {
     const onSelect = vi.fn();
     render(
@@ -57,7 +73,11 @@ describe("AgentHandoffMenu", () => {
     expect(selfTarget).toBeEnabled();
     expect(sharedTarget).toBeEnabled();
     expect(within(selfTarget).getByText("My Agent")).toBeVisible();
+    expect(within(selfTarget).getByText("From My Mac mini")).toBeVisible();
     expect(within(sharedTarget).getByText("Lin · Shared Agent")).toBeVisible();
+    expect(
+      within(sharedTarget).getByText("From Lin's MacBook Pro")
+    ).toBeVisible();
     expect(offlineTarget).toHaveTextContent("Offline Agent");
     expect(offlineTarget).toHaveAttribute("aria-disabled", "true");
 
@@ -105,6 +125,7 @@ describe("AgentHandoffMenu", () => {
 
 const labels = {
   action: "Handoff",
+  deviceSource: (deviceLabel: string) => `From ${deviceLabel}`,
   menu: "Choose an agent for handoff",
   self: "My Agent",
   shared: "Shared Agent",
@@ -115,12 +136,14 @@ const targets: readonly AgentGUIAgentTarget[] = [
   target({
     targetId: "target-self",
     label: "Research Codex",
+    ownerDeviceLabel: "My Mac mini",
     ownership: "self"
   }),
   target({
     targetId: "target-shared",
     label: "Claude Code",
     ownerLabel: "Lin",
+    ownerDeviceLabel: "Lin's MacBook Pro",
     ownership: "shared",
     badge: { iconUrl: "owner.png", label: "Lin" }
   }),

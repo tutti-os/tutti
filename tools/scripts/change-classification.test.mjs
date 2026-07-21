@@ -89,3 +89,17 @@ test("provider source changes select catalog and strategy checks", () => {
   assert.ok(keys.includes("generated:agent-provider-catalog"));
   assert.ok(keys.includes("boundary:agent-provider-strategy"));
 });
+
+test("stylesheet and HTML changes select the backdrop-filter authoring policy", () => {
+  for (const file of [
+    "packages/workbench/launchpad/src/styles/workbench-launchpad.css",
+    "apps/desktop/index.html"
+  ]) {
+    const checks = selectRepositoryChecks([file]);
+
+    assert.ok(
+      checks.some((check) => check.key === "policy:backdrop-filter-authoring"),
+      `${file} should select the backdrop-filter policy`
+    );
+  }
+});

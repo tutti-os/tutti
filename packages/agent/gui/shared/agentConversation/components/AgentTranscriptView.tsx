@@ -430,6 +430,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           items={userMessageLocatorItems}
           label={labels.userMessageLocator}
           onLocate={handleLocateUserMessage}
+          virtualSelectionSource={rowVirtualizer}
         />
         <div
           ref={virtualizerHostRef}

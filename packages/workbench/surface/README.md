@@ -43,11 +43,19 @@ When a node body or header needs host-owned business state, pass an
 `externalNodeState` and `externalWorkspaceState`. If the source exposes
 `subscribe(...)`, the host re-renders when that subscription notifies.
 
-Node body context also exposes `isDragging` and `isResizing`. The Workbench
+Node body and header contexts expose `isDragging` and `isResizing`. The Workbench
 shell continues applying live frame geometry during direct manipulation, while
 an expensive body adapter may use these flags to suppress frame-only renders
 until the interaction settles. The adapter must still observe both interaction
 transitions so the final committed frame reaches responsive body layout.
+
+Headers keep live frame renders by default. A definition may provide
+`getHeaderFrameRenderKey(context)` when several intermediate frames produce the
+same visible header layout. During drag or resize, equal primitive keys skip
+`renderHeader`; changes to node data, external state, focus, or interaction
+state still render. Call `context.windowActions.getFrame()` inside actions that
+need execution-time geometry instead of closing over a frame omitted from the
+key.
 
 Host-owned business instances are represented with `projectedNodes`. A
 projected node tells the workbench that a shell should currently exist for a

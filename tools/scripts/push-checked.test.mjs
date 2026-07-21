@@ -13,6 +13,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { createIsolatedGitEnvironment } from "./git-environment.mjs";
+
 const sourceScriptPath = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "push-checked.mjs"
@@ -151,12 +153,12 @@ function runPushChecked(fixture, extraEnv = {}) {
   return spawnSync(process.execPath, [fixture.copiedScriptPath], {
     cwd: fixture.workspaceRoot,
     encoding: "utf8",
-    env: {
+    env: createIsolatedGitEnvironment(fixture.workspaceRoot, {
       ...process.env,
       ...extraEnv,
       PATH: `${fixture.binRoot}:${process.env.PATH ?? ""}`,
       TUTTI_PUSH_CHECKED_TEST_LOG: fixture.pnpmLogPath
-    }
+    })
   });
 }
 
@@ -169,7 +171,11 @@ function remoteHead(remoteRoot) {
 }
 
 function runGit(cwd, args) {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    env: createIsolatedGitEnvironment(cwd)
+  });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result;
 }

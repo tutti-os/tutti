@@ -1,6 +1,8 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode
@@ -1930,8 +1932,18 @@ export function useWorkbenchGenieAnimation<TData>({
     []
   );
 
-  return {
-    genieLayer:
+  const minimizeNodeToAnchorRef = useRef(minimizeNodeToAnchor);
+  useLayoutEffect(() => {
+    minimizeNodeToAnchorRef.current = minimizeNodeToAnchor;
+  }, [minimizeNodeToAnchor]);
+  const stableMinimizeNodeToAnchor = useCallback(
+    (nodeID: string, minimize?: () => void) => {
+      minimizeNodeToAnchorRef.current(nodeID, minimize);
+    },
+    []
+  );
+  const genieLayer = useMemo(
+    () =>
       typeof document === "undefined"
         ? null
         : createPortal(
@@ -1971,18 +1983,37 @@ export function useWorkbenchGenieAnimation<TData>({
             </>,
             document.body
           ),
-    isNodeGenieHidden: useCallback(
-      (nodeID: string) => genieHiddenNodeIDs.has(nodeID),
-      [genieHiddenNodeIDs]
-    ),
-    isPendingMinimizedDockNode: useCallback(
-      (nodeID: string) => pendingMinimizedNode?.id === nodeID,
-      [pendingMinimizedNode]
-    ),
-    launchNodeFromAnchor,
-    minimizeNodeToAnchor,
-    pendingMinimizedNode,
-    registerDockAnchor,
-    shouldAnimateMinimizedDockEnter
-  };
+    [isCanvasActive, pendingRenderedPreviewCapture]
+  );
+  const isNodeGenieHidden = useCallback(
+    (nodeID: string) => genieHiddenNodeIDs.has(nodeID),
+    [genieHiddenNodeIDs]
+  );
+  const isPendingMinimizedDockNode = useCallback(
+    (nodeID: string) => pendingMinimizedNode?.id === nodeID,
+    [pendingMinimizedNode]
+  );
+
+  return useMemo(
+    () => ({
+      genieLayer,
+      isNodeGenieHidden,
+      isPendingMinimizedDockNode,
+      launchNodeFromAnchor,
+      minimizeNodeToAnchor: stableMinimizeNodeToAnchor,
+      pendingMinimizedNode,
+      registerDockAnchor,
+      shouldAnimateMinimizedDockEnter
+    }),
+    [
+      genieLayer,
+      isNodeGenieHidden,
+      isPendingMinimizedDockNode,
+      launchNodeFromAnchor,
+      pendingMinimizedNode,
+      registerDockAnchor,
+      shouldAnimateMinimizedDockEnter,
+      stableMinimizeNodeToAnchor
+    ]
+  );
 }

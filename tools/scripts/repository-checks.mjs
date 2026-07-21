@@ -18,6 +18,13 @@ export const repositoryCheckDefinitions = [
     matches: () => true
   },
   {
+    group: "policy",
+    key: "policy:backdrop-filter-authoring",
+    label: "backdrop-filter authoring policy",
+    script: "check:backdrop-filter-authoring",
+    matches: isBackdropFilterAuthoringRelevant
+  },
+  {
     group: "contracts",
     key: "contracts:tool-tests",
     label: "repository tool contracts",
@@ -163,6 +170,13 @@ export function isToolContractRelevant(file) {
     normalized === "docs/conventions/desktop-release.md" ||
     normalized ===
       "services/tuttid/service/workspace/agent_workspace_app_reference/references/github-actions-release.md"
+  );
+}
+
+function isBackdropFilterAuthoringRelevant(file) {
+  return (
+    /^(?:apps|packages|services)\//u.test(file) &&
+    /\.(?:cjs|css|cts|html|js|jsx|mjs|mts|ts|tsx)$/u.test(file)
   );
 }
 

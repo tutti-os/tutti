@@ -236,6 +236,7 @@ export interface AgentComposerProps {
     handoffConversation: string;
     handoffConversationTooltip: string;
     handoffConversationMenu: string;
+    handoffTargetDeviceSource: (deviceLabel: string) => string;
     handoffTargetSelf: string;
     handoffTargetShared: string;
     providerSwitchLabel: string;

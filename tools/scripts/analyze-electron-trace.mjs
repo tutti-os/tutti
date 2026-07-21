@@ -66,11 +66,18 @@ export async function analyzeElectronTrace(input) {
   const threadNames = new Map();
   const componentThreadCounts = new Map();
   const threadAnalyses = new Map();
+  const cpuProfiles = new Map();
+  const profileFunctionNames = new Set(input.profileFunctionNames ?? []);
+  const profileFunctionSamples = Object.fromEntries(
+    [...profileFunctionNames].map((functionName) => [functionName, 0])
+  );
   const processIDs = new Set();
   let traceEventCount = 0;
   let scenarioEventCount = 0;
   let scenarioStartUs = null;
   let scenarioEndUs = null;
+  let scenarioRendererProcessID = null;
+  let profileSampleCount = 0;
 
   await streamTraceEvents(tracePath, (event) => {
     traceEventCount += 1;
@@ -88,6 +95,7 @@ export async function analyzeElectronTrace(input) {
     const markerName = traceMarkerName(event);
     if (markerName === startMarker && timestampUs !== null) {
       scenarioStartUs = timestampUs;
+      scenarioRendererProcessID = event.pid ?? null;
       return true;
     }
     const milestone = milestoneByMarker.get(markerName);
@@ -105,9 +113,24 @@ export async function analyzeElectronTrace(input) {
       timestampUs !== null
     ) {
       scenarioEndUs = timestampUs;
-      return false;
+      return true;
     }
+    profileSampleCount += processProfileChunk({
+      countSamples:
+        scenarioStartUs !== null &&
+        timestampUs !== null &&
+        timestampUs >= scenarioStartUs &&
+        (scenarioEndUs === null || timestampUs <= scenarioEndUs) &&
+        event.pid === scenarioRendererProcessID,
+      event,
+      functionNames: profileFunctionNames,
+      functionSamples: profileFunctionSamples,
+      profiles: cpuProfiles
+    });
     if (scenarioStartUs === null || timestampUs === null) {
+      return true;
+    }
+    if (scenarioEndUs !== null && timestampUs >= scenarioEndUs) {
       return true;
     }
 
@@ -128,6 +151,14 @@ export async function analyzeElectronTrace(input) {
       const eventType = event.args?.data?.type;
       if (typeof eventType === "string") {
         incrementCount(threadAnalysis.inputEventCounts, eventType);
+        const inputDurationUs = finiteNumber(event.dur) ?? 0;
+        if (event.ph === "X" && inputDurationUs > 0) {
+          updateDurationStats(
+            threadAnalysis.inputEventStats,
+            eventType,
+            inputDurationUs
+          );
+        }
       }
     }
 
@@ -270,13 +301,19 @@ export async function analyzeElectronTrace(input) {
         left.localeCompare(right)
       )
     ),
+    inputEventTiming: durationStatsSummary(renderer.inputEventStats),
+    cpuProfile: {
+      sampleCount: profileSampleCount,
+      functionSamples: profileFunctionSamples
+    },
     cautions: [
       "Timing and event totals are restricted to the selected renderer main thread.",
       "Inclusive duration totals may overlap; do not sum them into wall time.",
       "React component counts come from development component tracks and include profiling overhead.",
       "Component source links are static declaration matches, not runtime stack attribution.",
       "Source links resolve against the current checkout and may drift from the revision that produced an imported trace.",
-      "Report-only mode never fails on metric values; scenario or trace failures still return a non-zero exit code."
+      "CPU profile function counts are inclusive sampled stacks whose ProfileChunk event falls inside the marker window.",
+      "The standalone analyzer is report-only; a capture scenario may apply explicit thresholds to these metrics."
     ]
   };
 }
@@ -288,7 +325,7 @@ export function renderElectronTraceMarkdown(summary, options = {}) {
     "## Summary",
     "",
     `- Performance verdict: ${summary.verdict.status} — ${summary.verdict.reason}`,
-    `- Mode: ${summary.mode}; metric values never fail the command`,
+    `- Mode: ${summary.mode}; ${summary.mode === "report-only" ? "metric values never fail the command" : "configured scenario thresholds fail the command"}`,
     `- Scenario window: ${summary.window.durationMs} ms`,
     `- Renderer thread: ${summary.rendererThread?.name ?? "unresolved"} (${summary.rendererThread?.key ?? "n/a"}; ${summary.rendererThread?.selectionReason ?? "n/a"})`,
     `- Renderer events: ${summary.window.rendererEventCount.toLocaleString("en-US")} of ${summary.window.eventCount.toLocaleString("en-US")} trace-window events`,
@@ -315,6 +352,24 @@ export function renderElectronTraceMarkdown(summary, options = {}) {
     `- Layout inclusive: ${summary.timing.layoutInclusiveMs} ms`,
     `- PrePaint inclusive: ${summary.timing.prePaintInclusiveMs} ms`,
     `- Paint inclusive: ${summary.timing.paintInclusiveMs} ms`,
+    "",
+    "## Input event timing",
+    "",
+    "| Event | Count | Total ms | Max ms |",
+    "| --- | ---: | ---: | ---: |",
+    ...Object.entries(summary.inputEventTiming).map(
+      ([eventType, timing]) =>
+        `| ${escapeMarkdown(eventType)} | ${timing.count} | ${timing.totalInclusiveMs} | ${timing.maxMs} |`
+    ),
+    "",
+    "## Sampled JavaScript functions",
+    "",
+    "| Function | Inclusive samples |",
+    "| --- | ---: |",
+    ...Object.entries(summary.cpuProfile.functionSamples).map(
+      ([functionName, samples]) =>
+        `| ${escapeMarkdown(functionName)} | ${samples} |`
+    ),
     "",
     "## React component fanout",
     "",
@@ -487,12 +542,68 @@ function createThreadAnalysis() {
     eventCount: 0,
     eventStats: new Map(),
     inputEventCounts: new Map(),
+    inputEventStats: new Map(),
     componentCounts: new Map(),
     componentMarkerCount: 0,
     radixComponentMarkerCount: 0,
     longTaskCount: 0,
     longestTasks: []
   };
+}
+
+function processProfileChunk(input) {
+  const data = input.event.args?.data;
+  if (
+    input.event.name !== "ProfileChunk" ||
+    !data?.cpuProfile ||
+    input.event.pid == null ||
+    input.functionNames.size === 0
+  ) {
+    return 0;
+  }
+  const profileKey = `${input.event.pid}:${input.event.id ?? "default"}`;
+  let nodes = input.profiles.get(profileKey);
+  if (!nodes) {
+    nodes = new Map();
+    input.profiles.set(profileKey, nodes);
+  }
+  for (const node of data.cpuProfile.nodes ?? []) {
+    if (node?.id != null) nodes.set(node.id, node);
+  }
+  if (!input.countSamples) return 0;
+  const samples = data.cpuProfile.samples ?? [];
+  for (const sampleID of samples) {
+    const matchedFunctions = new Set();
+    const visitedNodes = new Set();
+    let node = nodes.get(sampleID);
+    while (node && !visitedNodes.has(node.id)) {
+      visitedNodes.add(node.id);
+      const functionName = node.callFrame?.functionName;
+      if (input.functionNames.has(functionName)) {
+        matchedFunctions.add(functionName);
+      }
+      node = nodes.get(node.parent);
+    }
+    for (const functionName of matchedFunctions) {
+      input.functionSamples[functionName] += 1;
+    }
+  }
+  return samples.length;
+}
+
+function durationStatsSummary(stats) {
+  return Object.fromEntries(
+    [...stats.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([name, value]) => [
+        name,
+        {
+          count: value.count,
+          totalInclusiveMs: round(value.totalUs / 1_000),
+          maxMs: round(value.maxUs / 1_000)
+        }
+      ])
+  );
 }
 
 function selectRendererThread(componentCounts, threadNames, analyses) {
