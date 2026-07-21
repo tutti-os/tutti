@@ -160,8 +160,8 @@ func (r *recordingReporter) Report(_ context.Context, report agentsessionstore.R
 	return nil
 }
 
-func (r *recordingReporter) ReportSubmitProvenance(_ context.Context, report agentsessionstore.ReportActivityInput) error {
-	return r.Report(context.Background(), report)
+func (r *recordingReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	return r.Report(ctx, report)
 }
 
 func (r *recordingReporter) snapshot() []reportCall {
