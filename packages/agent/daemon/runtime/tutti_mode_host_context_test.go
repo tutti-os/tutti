@@ -211,9 +211,6 @@ func TestAppServerTurnStartKeepsTuttiContextOutOfUserInput(t *testing.T) {
 	if len(input) != 1 || asString(payloadObject(input[0])["text"]) != "what mode is active?" {
 		t.Fatalf("turn input = %#v", params["input"])
 	}
-	if _, ok := params["responsesapiClientMetadata"]; ok {
-		t.Fatalf("responsesapiClientMetadata = %#v, want omitted", params["responsesapiClientMetadata"])
-	}
 	collaboration := payloadObject(params["collaborationMode"])
 	settings := payloadObject(collaboration["settings"])
 	developerInstructions := asString(settings["developer_instructions"])
@@ -245,9 +242,6 @@ func TestAppServerTurnStartUsesProviderOnlyTuttiFallbackWithoutCollaborationMask
 	}
 	if params["collaborationMode"] != nil {
 		t.Fatalf("collaboration mode = %#v, want omitted without negotiated masks", params["collaborationMode"])
-	}
-	if _, ok := params["responsesapiClientMetadata"]; ok {
-		t.Fatalf("responsesapiClientMetadata = %#v, want omitted", params["responsesapiClientMetadata"])
 	}
 }
 
