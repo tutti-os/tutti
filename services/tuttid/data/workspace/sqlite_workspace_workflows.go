@@ -149,7 +149,7 @@ func (s *SQLiteStore) ListWorkflowsBySourceSession(
 	workspaceID string,
 	sourceSessionID string,
 ) ([]workflowbiz.Workflow, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.readDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
@@ -158,7 +158,7 @@ func (s *SQLiteStore) ListWorkflowsBySourceSession(
 		return nil, errors.New("workspace id and source session id are required")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT workflow_id, workflow_type, owner, trigger_kind, source_turn_id,
        source_tool_call_id, status, current_revision_id, created_at_unix_ms,
        updated_at_unix_ms

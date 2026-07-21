@@ -70,6 +70,8 @@ export interface IssueManagerIssueSummary {
   title: string;
   content?: string;
   status: IssueManagerStatus;
+  planningSource?: IssueManagerPlanningSource;
+  sourceSessionId?: string;
   taskCount?: number;
   notStartedCount?: number;
   runningCount?: number;

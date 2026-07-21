@@ -37,6 +37,24 @@ func (s Service) CreateIssue(ctx context.Context, input CreateIssueInput) (Issue
 	if err != nil {
 		return Issue{}, err
 	}
+	issue, err := s.buildIssue(ctx, store, input)
+	if err != nil {
+		return Issue{}, err
+	}
+	created, err := store.CreateIssue(ctx, issue)
+	if err != nil {
+		return Issue{}, err
+	}
+	if err := store.TouchTopicActivity(ctx, issue.WorkspaceID, issue.TopicID, issue.UpdatedAtUnixMS); err != nil {
+		return Issue{}, err
+	}
+	return created, nil
+}
+
+func (s Service) buildIssue(ctx context.Context, store Store, input CreateIssueInput) (Issue, error) {
+	if input.SequentialExecution && input.ParallelExecution {
+		return Issue{}, ErrInvalidArgument
+	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	topicID := strings.TrimSpace(input.TopicID)
 	actorUserID := strings.TrimSpace(input.ActorUserID)
@@ -47,30 +65,53 @@ func (s Service) CreateIssue(ctx context.Context, input CreateIssueInput) (Issue
 	if _, err := store.GetTopic(ctx, workspaceID, topicID); err != nil {
 		return Issue{}, err
 	}
+	planningSource := PlanningSourceManual
+	if strings.TrimSpace(input.PlanningSource) != "" {
+		var ok bool
+		planningSource, ok = NormalizePlanningSource(input.PlanningSource)
+		if !ok {
+			return Issue{}, ErrInvalidArgument
+		}
+	}
+	profile := DefaultExecutionProfile()
+	if input.HasExecutionProfile {
+		var ok bool
+		profile, ok = NormalizeExecutionProfile(input.ExecutionProfile)
+		if !ok {
+			return Issue{}, ErrInvalidArgument
+		}
+	}
+	budget := DefaultBudget()
+	if input.HasBudget {
+		var ok bool
+		budget, ok = NormalizeBudget(input.Budget)
+		if !ok {
+			return Issue{}, ErrInvalidArgument
+		}
+	}
 	now := s.nowUnixMS()
 	issue := Issue{
-		IssueID:         s.resolveID(IDKindIssue, input.IssueID),
-		TopicID:         topicID,
-		WorkspaceID:     workspaceID,
-		Title:           title,
-		Content:         strings.TrimSpace(input.Content),
-		SearchText:      TrimSearchText(input.Content),
-		Status:          StatusNotStarted,
-		CreatorUserID:   actorUserID,
-		CreatedAtUnixMS: now,
-		UpdatedAtUnixMS: now,
+		IssueID:             s.resolveID(IDKindIssue, input.IssueID),
+		TopicID:             topicID,
+		WorkspaceID:         workspaceID,
+		Title:               title,
+		Content:             strings.TrimSpace(input.Content),
+		SearchText:          TrimSearchText(input.Content),
+		Status:              StatusNotStarted,
+		PlanningSource:      planningSource,
+		SourceSessionID:     strings.TrimSpace(input.SourceSessionID),
+		SequentialExecution: input.SequentialExecution,
+		ParallelExecution:   input.ParallelExecution,
+		ExecutionProfile:    profile,
+		Budget:              budget,
+		CreatorUserID:       actorUserID,
+		CreatedAtUnixMS:     now,
+		UpdatedAtUnixMS:     now,
 	}
 	if issue.IssueID == "" {
 		return Issue{}, ErrInvalidArgument
 	}
-	created, err := store.CreateIssue(ctx, issue)
-	if err != nil {
-		return Issue{}, err
-	}
-	if err := store.TouchTopicActivity(ctx, workspaceID, topicID, now); err != nil {
-		return Issue{}, err
-	}
-	return created, nil
+	return issue, nil
 }
 
 func (s Service) UpdateIssue(ctx context.Context, input UpdateIssueInput) (Issue, error) {

@@ -244,15 +244,40 @@ func scanWorkspaceIssue(scanner issueScanner) (workspaceissues.Issue, error) {
 	var item workspaceissues.Issue
 	var id int64
 	var status string
+	var planningSource string
+	var budgetMode string
+	var budgetStatus string
+	var hasRemainingQuota int
+	var sequentialExecution int
+	var parallelExecution int
 	err := scanner.Scan(
 		&id, &item.IssueID, &item.TopicID, &item.WorkspaceID, &item.Title, &item.Content,
-		&item.SearchText, &status, &item.TaskCount, &item.NotStartedCount, &item.RunningCount,
+		&item.SearchText, &status, &planningSource, &item.SourceSessionID, &sequentialExecution,
+		&parallelExecution,
+		&item.ExecutionProfile.ReasoningIntensity, &item.ExecutionProfile.OrchestrationIntensity,
+		&budgetMode, &item.Budget.TokenLimit, &item.Budget.ConsumedTokens,
+		&item.Budget.QuotaWaterlinePercent, &item.Budget.RemainingQuotaPercent,
+		&hasRemainingQuota, &budgetStatus,
+		&item.TaskCount, &item.NotStartedCount, &item.RunningCount,
 		&item.PendingAcceptanceCount, &item.CompletedCount, &item.FailedCount,
 		&item.CanceledCount, &item.CreatorUserID, &item.CreatorDisplayName,
 		&item.CreatorAvatarURL, &item.CreatedAtUnixMS, &item.UpdatedAtUnixMS,
 	)
 	item.ID = uint64(id)
 	item.Status = workspaceissues.Status(status)
+	item.PlanningSource = workspaceissues.PlanningSource(planningSource)
+	item.SequentialExecution = sequentialExecution != 0
+	item.ParallelExecution = parallelExecution != 0
+	item.Budget.Mode = workspaceissues.BudgetMode(budgetMode)
+	item.Budget.HasRemainingQuota = hasRemainingQuota != 0
+	item.Budget.Status = workspaceissues.BudgetStatus(budgetStatus)
+	if err == nil {
+		normalizedBudget, ok := workspaceissues.NormalizeBudget(item.Budget)
+		if !ok {
+			return workspaceissues.Issue{}, fmt.Errorf("invalid persisted workspace issue budget")
+		}
+		item.Budget = normalizedBudget
+	}
 	return item, err
 }
 

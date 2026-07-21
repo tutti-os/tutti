@@ -15,6 +15,10 @@ var _ workspaceissues.Store = (*SQLiteStore)(nil)
 
 const issueSelectColumns = `
 id, issue_id, topic_id, workspace_id, title, content, search_text, status,
+planning_source, source_session_id, sequential_execution, parallel_execution, reasoning_intensity, orchestration_intensity,
+budget_mode, budget_token_limit, budget_consumed_tokens,
+budget_quota_waterline_percent, budget_remaining_quota_percent,
+budget_has_remaining_quota, budget_status,
 task_count, not_started_count, running_count, pending_acceptance_count,
 completed_count, failed_count, canceled_count, creator_user_id,
 creator_display_name, creator_avatar_url, created_at_unix_ms, updated_at_unix_ms`
@@ -30,6 +34,12 @@ permission_mode_id, reasoning_effort,
 execution_directory, dependency_task_ids_json, parallelizable,
 creator_user_id, creator_display_name,
 creator_avatar_url, latest_run_id, created_at_unix_ms, updated_at_unix_ms`
+
+// workspaceIssueExecer abstracts the write handle (direct connection or
+// in-flight transaction) used by issue and task insert helpers.
+type workspaceIssueExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
 
 const runSelectColumns = `
 id, run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
@@ -244,14 +254,30 @@ func (s *SQLiteStore) CreateIssue(ctx context.Context, issue workspaceissues.Iss
 		return workspaceissues.Issue{}, err
 	}
 
-	_, err := s.writeDB.ExecContext(ctx, `
+	if _, err := insertWorkspaceIssue(ctx, s.writeDB, issue); err != nil {
+		return workspaceissues.Issue{}, err
+	}
+
+	return s.GetIssue(ctx, issue.WorkspaceID, issue.IssueID)
+}
+
+func insertWorkspaceIssue(ctx context.Context, execer workspaceIssueExecer, issue workspaceissues.Issue) (workspaceissues.Issue, error) {
+	result, err := execer.ExecContext(ctx, `
 INSERT INTO workspace_issues (
   issue_id, topic_id, workspace_id, title, content, search_text, status,
+  planning_source, source_session_id, sequential_execution, parallel_execution, reasoning_intensity, orchestration_intensity,
+  budget_mode, budget_token_limit, budget_consumed_tokens,
+  budget_quota_waterline_percent, budget_remaining_quota_percent,
+  budget_has_remaining_quota, budget_status,
   task_count, not_started_count, running_count, pending_acceptance_count,
   completed_count, failed_count, canceled_count, creator_user_id,
   creator_display_name, creator_avatar_url, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, issue.IssueID, issue.TopicID, issue.WorkspaceID, issue.Title, issue.Content, issue.SearchText, string(issue.Status),
+		string(issue.PlanningSource), issue.SourceSessionID, boolToInt(issue.SequentialExecution), boolToInt(issue.ParallelExecution), issue.ExecutionProfile.ReasoningIntensity,
+		issue.ExecutionProfile.OrchestrationIntensity, string(issue.Budget.Mode), issue.Budget.TokenLimit,
+		issue.Budget.ConsumedTokens, issue.Budget.QuotaWaterlinePercent, issue.Budget.RemainingQuotaPercent,
+		boolToInt(issue.Budget.HasRemainingQuota), string(issue.Budget.Status),
 		issue.TaskCount, issue.NotStartedCount, issue.RunningCount, issue.PendingAcceptanceCount,
 		issue.CompletedCount, issue.FailedCount, issue.CanceledCount, issue.CreatorUserID,
 		issue.CreatorDisplayName, issue.CreatorAvatarURL, issue.CreatedAtUnixMS, issue.UpdatedAtUnixMS)
@@ -261,8 +287,12 @@ INSERT INTO workspace_issues (
 		}
 		return workspaceissues.Issue{}, fmt.Errorf("create workspace issue: %w", err)
 	}
-
-	return s.GetIssue(ctx, issue.WorkspaceID, issue.IssueID)
+	id, err := result.LastInsertId()
+	if err != nil {
+		return workspaceissues.Issue{}, fmt.Errorf("read created workspace issue id: %w", err)
+	}
+	issue.ID = uint64(id)
+	return issue, nil
 }
 
 func (s *SQLiteStore) GetIssue(ctx context.Context, workspaceID string, issueID string) (workspaceissues.Issue, error) {
@@ -292,9 +322,16 @@ func (s *SQLiteStore) UpdateIssue(ctx context.Context, issue workspaceissues.Iss
 
 	result, err := s.writeDB.ExecContext(ctx, `
 UPDATE workspace_issues
-SET title = ?, content = ?, search_text = ?, status = ?, updated_at_unix_ms = ?
+SET title = ?, content = ?, search_text = ?, status = ?,
+    reasoning_intensity = ?, orchestration_intensity = ?, budget_mode = ?,
+    budget_token_limit = ?, budget_consumed_tokens = ?,
+    budget_quota_waterline_percent = ?, budget_remaining_quota_percent = ?,
+    budget_has_remaining_quota = ?, budget_status = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND issue_id = ?
-`, issue.Title, issue.Content, issue.SearchText, string(issue.Status), issue.UpdatedAtUnixMS,
+`, issue.Title, issue.Content, issue.SearchText, string(issue.Status), issue.ExecutionProfile.ReasoningIntensity,
+		issue.ExecutionProfile.OrchestrationIntensity, string(issue.Budget.Mode), issue.Budget.TokenLimit,
+		issue.Budget.ConsumedTokens, issue.Budget.QuotaWaterlinePercent, issue.Budget.RemainingQuotaPercent,
+		boolToInt(issue.Budget.HasRemainingQuota), string(issue.Budget.Status), issue.UpdatedAtUnixMS,
 		issue.WorkspaceID, issue.IssueID)
 	if err != nil {
 		return workspaceissues.Issue{}, fmt.Errorf("update workspace issue: %w", err)

@@ -12,6 +12,7 @@ type Store interface {
 
 	ListIssues(context.Context, IssueListFilter) (IssueList, error)
 	CreateIssue(context.Context, Issue) (Issue, error)
+	CreateIssueWithTasks(context.Context, Issue, []Task) (Issue, []Task, error)
 	GetIssue(context.Context, string, string) (Issue, error)
 	UpdateIssue(context.Context, Issue) (Issue, error)
 	DeleteIssue(context.Context, string, string, string) (bool, error)

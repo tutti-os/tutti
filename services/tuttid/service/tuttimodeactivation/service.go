@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	activationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	activationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
 

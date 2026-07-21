@@ -1073,6 +1073,41 @@ func (s *fakeStore) CreateIssue(_ context.Context, issue Issue) (Issue, error) {
 	return issue, nil
 }
 
+func (s *fakeStore) CreateIssueWithTasks(_ context.Context, issue Issue, tasks []Task) (Issue, []Task, error) {
+	issueKeyValue := issueKey(issue.WorkspaceID, issue.IssueID)
+	if _, exists := s.issues[issueKeyValue]; exists {
+		return Issue{}, nil, ErrIssueAlreadyExists
+	}
+	if len(tasks) == 0 {
+		return Issue{}, nil, ErrInvalidArgument
+	}
+	for _, task := range tasks {
+		if task.WorkspaceID != issue.WorkspaceID || task.IssueID != issue.IssueID {
+			return Issue{}, nil, ErrInvalidArgument
+		}
+		if _, exists := s.tasks[taskKey(task.WorkspaceID, task.IssueID, task.TaskID)]; exists {
+			return Issue{}, nil, ErrTaskAlreadyExists
+		}
+	}
+	s.nextID++
+	issue.ID = s.nextID
+	createdTasks := make([]Task, 0, len(tasks))
+	for index, task := range tasks {
+		s.nextID++
+		task.ID = s.nextID
+		task.SortIndex = index + 1
+		createdTasks = append(createdTasks, task)
+	}
+	s.issues[issueKeyValue] = issue
+	for _, task := range createdTasks {
+		s.tasks[taskKey(task.WorkspaceID, task.IssueID, task.TaskID)] = task
+	}
+	topic := s.topics[topicKey(issue.WorkspaceID, issue.TopicID)]
+	topic.LastActivityAtUnixMS = issue.UpdatedAtUnixMS
+	s.topics[topicKey(issue.WorkspaceID, issue.TopicID)] = topic
+	return issue, createdTasks, nil
+}
+
 func (s *fakeStore) GetIssue(_ context.Context, workspaceID string, issueID string) (Issue, error) {
 	issue, ok := s.issues[issueKey(workspaceID, issueID)]
 	if !ok {

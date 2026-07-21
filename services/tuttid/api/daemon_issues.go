@@ -104,12 +104,7 @@ func (api DaemonAPI) CreateWorkspaceIssue(ctx context.Context, request tuttigene
 		return tuttigenerated.CreateWorkspaceIssue400JSONResponse{InvalidRequestErrorJSONResponse: issueManagerEmptyBodyError()}, nil
 	}
 
-	issue, err := api.IssueService.CreateIssue(ctx, string(request.WorkspaceID), workspaceservice.CreateIssueManagerIssueInput{
-		IssueID: optionalString(request.Body.IssueId),
-		TopicID: request.Body.TopicId,
-		Title:   request.Body.Title,
-		Content: optionalString(request.Body.Content),
-	})
+	issue, err := api.IssueService.CreateIssue(ctx, string(request.WorkspaceID), issueManagerCreateIssueInputFromGenerated(*request.Body))
 	if err != nil {
 		return writeCreateWorkspaceIssueError(err), nil
 	}

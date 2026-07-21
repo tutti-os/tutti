@@ -33,12 +33,28 @@ type Service struct {
 }
 
 type CreateIssueInput struct {
-	IssueID     string
-	TopicID     string
-	WorkspaceID string
-	ActorUserID string
-	Title       string
-	Content     string
+	IssueID             string
+	TopicID             string
+	WorkspaceID         string
+	ActorUserID         string
+	Title               string
+	Content             string
+	PlanningSource      string
+	SourceSessionID     string
+	SequentialExecution bool
+	ParallelExecution   bool
+	ExecutionProfile    ExecutionProfile
+	HasExecutionProfile bool
+	Budget              Budget
+	HasBudget           bool
+	// AutoTokenBudgetHistoryHint is the summed observed usage of comparable
+	// completed task runs. It is ignored for fixed budgets.
+	AutoTokenBudgetHistoryHint int64
+}
+
+type CreateIssueWithTasksInput struct {
+	Issue CreateIssueInput
+	Tasks []CreateTaskItemInput
 }
 
 type CreateTopicInput struct {

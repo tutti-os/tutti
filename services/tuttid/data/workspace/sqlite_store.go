@@ -382,3 +382,10 @@ func nullableUnixMs(value sql.NullInt64) *time.Time {
 func unixMs(value time.Time) int64 {
 	return value.UnixMilli()
 }
+
+func unixMsOrZero(value time.Time) int64 {
+	if value.IsZero() {
+		return 0
+	}
+	return unixMs(value)
+}
