@@ -30,6 +30,22 @@ describe("AgentHandoffMenu", () => {
     );
   });
 
+  it("does not create an empty tooltip when its tooltip label is blank", async () => {
+    render(
+      <AgentHandoffMenu
+        labels={{ ...labels, tooltip: "   " }}
+        targets={targets}
+        onSelect={vi.fn()}
+      />
+    );
+
+    const trigger = screen.getByRole("combobox", { name: "Handoff" });
+    fireEvent.pointerMove(trigger.parentElement!, { pointerType: "mouse" });
+
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
   it("renders self and shared ownership and selects the exact target", async () => {
     const onSelect = vi.fn();
     render(

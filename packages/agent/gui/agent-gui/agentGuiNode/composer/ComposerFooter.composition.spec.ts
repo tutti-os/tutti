@@ -25,7 +25,10 @@ describe("ComposerFooter trigger composition", () => {
       /<TooltipTrigger asChild>\s*<span className="inline-flex">\s*<SelectTrigger/u
     );
     expect(handoffMenuSource).toMatch(
-      /<TooltipTrigger asChild>\s*<span className="inline-flex">\s*<SelectTrigger/u
+      /const trigger = \(\s*<span className="inline-flex">\s*<SelectTrigger/u
+    );
+    expect(handoffMenuSource).toContain(
+      "<TooltipTrigger asChild>{trigger}</TooltipTrigger>"
     );
   });
 
@@ -36,7 +39,10 @@ describe("ComposerFooter trigger composition", () => {
     );
     expect(handoffMenuSource).not.toContain("title={labels.tooltip}");
     expect(handoffMenuSource).toContain(
-      '<TooltipContent side="top">{labels.tooltip}</TooltipContent>'
+      "const tooltip = labels.tooltip.trim();"
+    );
+    expect(handoffMenuSource).toContain(
+      '<TooltipContent side="top">{tooltip}</TooltipContent>'
     );
   });
 
