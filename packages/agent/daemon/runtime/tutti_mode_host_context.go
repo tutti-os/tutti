@@ -147,6 +147,7 @@ func renderTuttiModeWorkflowGuide(cliName string) string {
 		"    agentTargetId: local:codex\n"+
 		"    model: gpt-5.4-codex\n"+
 		"    permissionModeId: full-access\n"+
+		"    autoAccept: true\n"+
 		"  - id: task-2\n"+
 		"    title: Draft the install and login answers\n"+
 		"    content: Write the install and login Q&A entries following the outline.\n"+
@@ -172,15 +173,16 @@ func renderTuttiModeWorkflowGuide(cliName string) string {
 		"    agentTargetId: local:claude-code\n"+
 		"    model: claude-opus-4-8\n"+
 		"    permissionModeId: bypassPermissions\n"+
+		"    autoAccept: true\n"+
 		"---\n"+
 		"Plan narrative in prose: goal, approach, scope boundaries, and risks.\n"+
 		"END plan.md\n"+
 		"  Keep topicId \"default\" unless the user targets a specific issue topic; discover topic ids with `%[1]s issue topic list --json`. Scale both the task count and the model tier with the intensity (execution.orchestrationIntensity). "+
 		"Execution defaults to strictly sequential; plan for parallelism deliberately. Identify independent workstreams and shape them as parallel groups: tasks in the same group carry `parallelizable: true`, share the same dependsOn, and never depend on each other — dependencies always outrank the flag, so a parallelizable task that depends on its neighbor just runs serially with a misleading label. "+
-		"Parallelizable tasks are safe by construction: each runs in an isolated git worktree branched from the shared checkout, and its work lands on a per-run branch instead of the base checkout. Because of that, follow every parallel group with an integration task that dependsOn all group members; its brief must merge the group's branches, resolve overlaps, and verify the combined result (successor prompts receive the exact branch names). Express ordering constraints with dependsOn only. "+
-		"Each completed task normally stops for the user's acceptance before successors start; set `autoAccept: true` on a task whose completed result needs no human review gate so execution flows on unattended.\n"+
+		"Parallelizable tasks are safe by construction: each runs in an isolated git worktree branched from the shared checkout, and its work lands on a per-run branch instead of the base checkout. Worktree isolation requires the shared checkout to be a git repository — when the plan starts from a fresh or non-git directory, the first task must initialize one (`git init` plus an initial commit) or every task must carry its own unique absolute execution directory; otherwise the group silently degrades to one-at-a-time execution. Because of that, follow every parallel group with an integration task that dependsOn all group members; its brief must merge the group's branches, resolve overlaps, and verify the combined result (successor prompts receive the exact branch names). Express ordering constraints with dependsOn only. "+
+		"Set `autoAccept: true` on every task by default so accepted plans run unattended: the user approved the whole plan at review, and after each task settles this conversation is woken with the result to verify, rework, or re-plan — that wake is the review gate. Omit autoAccept only on a task whose outcome the user personally must inspect or confirm before work may continue (for example choosing between visual directions, or authorizing a publish); such a task parks at pending acceptance until you or the user accept it.\n"+
 		"Step 3, end the turn as soon as propose returns a workflowId (nextAction \"stop\") — there is no wait command, and polling with plan get wastes the turn. The user reviews the plan in their own time; their decision reaches you as a new user message. "+
-		"If that message requests changes, update the plan document, run `%[1]s plan revise --workflow-id <workflowId> --file <absolute path> --request-id <new id>`, and end the turn again. If the user accepts, Tutti materializes the accepted plan into an Issue and orchestrates the tasks — you never start executing them yourself.\n"+
+		"If that message requests changes, update the plan document, run `%[1]s plan revise --workflow-id <workflowId> --file <absolute path> --request-id <new id>`, and end the turn again. If the user accepts, Tutti materializes the accepted plan into an Issue, dispatches the tasks, and this conversation becomes the plan's orchestrator: after every task settles you are woken with the result and the board state to verify outcomes, accept or rework pending tasks, and adjust the remaining graph through `%[1]s issue` commands — but you never execute the tasks' work yourself. The user can steer you with messages at any time, and stopping this conversation stops every running task.\n"+
 		"A Tutti plan exists only after plan propose returns a workflowId; a plan that was only shown in chat was never submitted.\n",
 		cliName)
 }
