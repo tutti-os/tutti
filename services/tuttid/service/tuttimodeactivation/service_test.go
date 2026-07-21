@@ -234,3 +234,72 @@ func (p *recordingPublisher) PublishTuttiModeActivationUpdated(_ context.Context
 	p.updates = append(p.updates, update)
 	return nil
 }
+
+func TestSetRejectsWritesWhenTuttiModeFlagDisabled(t *testing.T) {
+	t.Parallel()
+
+	store := newMemoryStore()
+	service := &Service{
+		Store: store,
+		FeatureFlags: func(context.Context) (map[string]bool, error) {
+			return map[string]bool{}, nil
+		},
+	}
+	input := SetInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
+	}
+	if _, err := service.Set(context.Background(), input); !errors.Is(err, ErrTuttiModeDisabled) {
+		t.Fatalf("Set() with flag off error = %v, want ErrTuttiModeDisabled", err)
+	}
+
+	// Reads stay available while writes are gated.
+	if _, err := service.Get(context.Background(), "workspace-1", "session-1"); err != nil {
+		t.Fatalf("Get() with flag off error = %v, want nil", err)
+	}
+}
+
+func TestSetAllowsWritesWhenTuttiModeFlagEnabled(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	store := newMemoryStore()
+	ids := []string{"activation-1", "revision-1"}
+	service := &Service{
+		Store: store,
+		FeatureFlags: func(context.Context) (map[string]bool, error) {
+			return map[string]bool{TuttiModeFeatureFlag: true}, nil
+		},
+		Now: func() time.Time { return now },
+		NewID: func() string {
+			value := ids[0]
+			ids = ids[1:]
+			return value
+		},
+	}
+	result, err := service.Set(context.Background(), SetInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
+	})
+	if err != nil || !result.Changed {
+		t.Fatalf("Set() with flag on result = %#v error = %v, want applied change", result, err)
+	}
+}
+
+func TestSetFailsClosedWhenFeatureFlagReadFails(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		Store: newMemoryStore(),
+		FeatureFlags: func(context.Context) (map[string]bool, error) {
+			return nil, errors.New("preferences read failed")
+		},
+	}
+	_, err := service.Set(context.Background(), SetInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
+	})
+	if err == nil || errors.Is(err, ErrTuttiModeDisabled) {
+		t.Fatalf("Set() with flag read failure error = %v, want wrapped read error", err)
+	}
+}

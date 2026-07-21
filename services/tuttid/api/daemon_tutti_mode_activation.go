@@ -174,6 +174,9 @@ func writeUpdateTuttiModeActivationError(err error) tuttigenerated.UpdateWorkspa
 	if errors.Is(err, tuttimodeactivationservice.ErrInvalidInput) {
 		protocolErr = apierrors.InvalidRequest("invalid_tutti_mode_activation", apierrors.WithCause(err))
 	}
+	if errors.Is(err, tuttimodeactivationservice.ErrTuttiModeDisabled) {
+		protocolErr = apierrors.InvalidRequest("tutti_mode_disabled", apierrors.WithCause(err))
+	}
 	switch protocolErr.Code {
 	case tuttigenerated.WorkspaceNotFound:
 		return tuttigenerated.UpdateWorkspaceAgentSessionTuttiModeActivation404JSONResponse{

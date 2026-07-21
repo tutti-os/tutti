@@ -393,6 +393,9 @@ func decideWorkspaceWorkflowError(err error) tuttigenerated.DecideWorkspaceWorkf
 		return tuttigenerated.DecideWorkspaceWorkflowCheckpoint409JSONResponse(protocolErrorResponse(apierrors.InvalidRequest("workspace_workflow_decision_conflict", apierrors.WithCause(err))))
 	}
 	protocolErr := workflowProtocolError(err)
+	if errors.Is(err, tuttimodeplanservice.ErrTuttiModeDisabled) {
+		protocolErr = apierrors.InvalidRequest("tutti_mode_disabled", apierrors.WithCause(err))
+	}
 	if protocolErr.Code == tuttigenerated.InvalidRequest {
 		return tuttigenerated.DecideWorkspaceWorkflowCheckpoint400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
 	}
