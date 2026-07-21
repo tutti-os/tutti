@@ -8,6 +8,7 @@ export type BusinessEventScopeName = "global" | "desktop" | "workspace";
 
 export type BusinessEventTopic =
   | "agent.activity.updated"
+  | "agent.collaboration.updated"
   | "agent.model.catalog.invalidated"
   | "agent.model.configuration.changed"
   | "agent.quickprompt.updated"
@@ -353,6 +354,20 @@ export type AgentActivityUpdatedPayloadV1 =
       };
     };
 
+export interface AgentCollaborationUpdatedPayloadV1 {
+  workspaceId: string;
+  runId: string;
+  mode: "consult" | "fork" | "delegate" | "handoff";
+  status: "running" | "completed" | "failed" | "canceled";
+  sourceSessionId?: string;
+  targetSessionId?: string;
+  modelPlanId?: string;
+  model?: string;
+  triggerSource: "user" | "agent" | "policy";
+  adoption?: "pending" | "adopted" | "rejected" | "not_applicable";
+  occurredAtUnixMs: number;
+}
+
 export interface AgentModelCatalogInvalidatedPayloadV1 {
   providers: readonly string[];
   occurredAtUnixMs: number;
@@ -451,6 +466,12 @@ export type AgentActivityUpdatedEventV1 = BusinessEventEnvelopeV1<
   2
 >;
 
+export type AgentCollaborationUpdatedEventV1 = BusinessEventEnvelopeV1<
+  "agent.collaboration.updated",
+  AgentCollaborationUpdatedPayloadV1,
+  1
+>;
+
 export type AgentModelCatalogInvalidatedEventV1 = BusinessEventEnvelopeV1<
   "agent.model.catalog.invalidated",
   AgentModelCatalogInvalidatedPayloadV1,
@@ -538,6 +559,7 @@ export type ClientToServerEventTopic =
 
 export type ServerToClientEventTopic =
   | "agent.activity.updated"
+  | "agent.collaboration.updated"
   | "agent.model.catalog.invalidated"
   | "agent.model.configuration.changed"
   | "agent.quickprompt.updated"
@@ -556,6 +578,7 @@ export type ClientToServerEventV1 =
 
 export type ServerToClientEventV1 =
   | AgentActivityUpdatedEventV1
+  | AgentCollaborationUpdatedEventV1
   | AgentModelCatalogInvalidatedEventV1
   | AgentModelConfigurationChangedEventV1
   | AgentQuickpromptUpdatedEventV1

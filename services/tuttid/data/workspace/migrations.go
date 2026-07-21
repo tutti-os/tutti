@@ -57,6 +57,7 @@ const schemaMigrationModelPlansV1 = "model_plans_v1"
 const schemaMigrationAgentModelBindingsV1 = "agent_model_bindings_v1"
 const schemaMigrationAgentModelBindingsV2 = "agent_model_bindings_v2"
 const schemaMigrationWorkspaceAgentsV5 = "workspace_agents_contract_cleanup_v1"
+const schemaMigrationCollabRunsV1 = "collab_runs_v1"
 const schemaMigrationAppFactoryJobsV1 = "app_factory_jobs_v1"
 const schemaMigrationAppFactoryJobsV2 = "app_factory_jobs_v2"
 const schemaMigrationAppFactoryJobsV3 = "app_factory_jobs_v3"
@@ -253,6 +254,10 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyWorkspaceAgentsV5(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyCollabRunsV1(ctx); err != nil {
 		return err
 	}
 

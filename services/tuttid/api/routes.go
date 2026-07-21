@@ -319,6 +319,33 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 	registerWorkspaceAgentRoutes(mux, routes, wrapper)
 	registerModelGovernanceRoutes(mux, routes, wrapper)
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/collaboration-runs", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			wrapper.ListCollaborationRuns(w, r)
+		case http.MethodPost:
+			routes.CreateCollaborationRun(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")))
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/adoption", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.SetCollaborationRunAdoption(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.CollaborationRunID(r.PathValue("collaborationRunID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.CancelCollaborationRun(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.CollaborationRunID(r.PathValue("collaborationRunID")))
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/managed-model-providers", func(w http.ResponseWriter, r *http.Request) {
 		routes.HandleManagedModelProviders(w, r, r.PathValue("workspaceID"))
 	})

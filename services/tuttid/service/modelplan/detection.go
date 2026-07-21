@@ -152,6 +152,7 @@ func (s *Service) Detect(ctx context.Context, input DetectInput) (DetectResult, 
 		if err := s.Store.PutModelPlan(ctx, stored); err != nil {
 			return DetectResult{}, err
 		}
+		s.publishChanged(stored.WorkspaceID)
 	}
 
 	return DetectResult{Detection: snapshot, DiscoveredModels: discovered}, nil
@@ -247,6 +248,7 @@ func (s *Service) checkAuthAndDiscovery(ctx context.Context, protocol modelplanb
 			discovery.Status = modelplanbiz.StageSkipped
 			return auth, discovery, nil
 		case response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusMethodNotAllowed:
+			lastStatus = response.StatusCode
 			response.Body.Close()
 			continue
 		case response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices:
@@ -298,7 +300,7 @@ func (s *Service) checkInference(ctx context.Context, protocol modelplanbiz.Prot
 		result.Remedy = RemedySelectModel
 		return result
 	}
-	completion, err := s.complete(ctx, completionRequest{
+	completion, err := s.Complete(ctx, CompletionRequest{
 		Protocol:  protocol,
 		BaseURL:   baseURL,
 		APIKey:    apiKey,
@@ -308,7 +310,7 @@ func (s *Service) checkInference(ctx context.Context, protocol modelplanbiz.Prot
 	})
 	result.LatencyMs = completion.LatencyMs
 	if err != nil {
-		var httpErr *completionHTTPError
+		var httpErr *CompletionHTTPError
 		switch {
 		case errors.As(err, &httpErr) && (httpErr.StatusCode == http.StatusUnauthorized || httpErr.StatusCode == http.StatusForbidden):
 			result.Status = modelplanbiz.StageFailed
@@ -318,6 +320,7 @@ func (s *Service) checkInference(ctx context.Context, protocol modelplanbiz.Prot
 			result.Status = modelplanbiz.StageFailed
 			result.FailureReason = FailureModelRejected
 			result.Remedy = RemedyCheckModelID
+			result.Detail = httpErr.SafeDetail()
 		default:
 			result.Status = modelplanbiz.StageFailed
 			result.FailureReason = FailureInference
@@ -447,33 +450,56 @@ func sanitizeTransportError(err error) string {
 	return message
 }
 
-// completionRequest is the minimal request used by the detection inference
-// stage.
-type completionRequest struct {
+// CompletionRequest is a minimal single-turn completion against a plan's
+// protocol endpoint. It backs the detection inference stage and daemon-side
+// advisory (consult) calls.
+type CompletionRequest struct {
 	Protocol  modelplanbiz.Protocol
 	BaseURL   string
 	APIKey    string
 	Model     string
+	System    string
 	Prompt    string
 	MaxTokens int
 }
 
-type completionResult struct {
+// CompletionUsage reports provider-recorded token usage when available.
+type CompletionUsage struct {
+	InputTokens  int64 `json:"inputTokens,omitempty"`
+	OutputTokens int64 `json:"outputTokens,omitempty"`
+}
+
+type CompletionResult struct {
+	Text      string
 	LatencyMs int64
+	Usage     CompletionUsage
 }
 
-type completionHTTPError struct {
+// CompletionHTTPError is a non-2xx provider response with a body snippet that
+// never includes request credentials.
+type CompletionHTTPError struct {
 	StatusCode int
+	Body       string
 }
 
-func (e *completionHTTPError) Error() string {
+func (e *CompletionHTTPError) Error() string {
 	return fmt.Sprintf("completion endpoint returned status %d", e.StatusCode)
 }
 
-func (s *Service) complete(ctx context.Context, request completionRequest) (completionResult, error) {
+// SafeDetail returns a short body snippet for diagnostics.
+func (e *CompletionHTTPError) SafeDetail() string {
+	body := strings.TrimSpace(e.Body)
+	if len(body) > 300 {
+		body = body[:300]
+	}
+	return body
+}
+
+// Complete performs one minimal real completion call using the plan protocol.
+func (s *Service) Complete(ctx context.Context, request CompletionRequest) (CompletionResult, error) {
 	endpoint, err := planCompletionURL(request.Protocol, request.BaseURL)
 	if err != nil {
-		return completionResult{}, err
+		return CompletionResult{}, err
 	}
 	maxTokens := request.MaxTokens
 	if maxTokens <= 0 {
@@ -488,22 +514,30 @@ func (s *Service) complete(ctx context.Context, request completionRequest) (comp
 				{"role": "user", "content": request.Prompt},
 			},
 		}
+		if strings.TrimSpace(request.System) != "" {
+			body["system"] = request.System
+		}
 		payload = body
 	} else {
+		messages := make([]map[string]any, 0, 2)
+		if strings.TrimSpace(request.System) != "" {
+			messages = append(messages, map[string]any{"role": "system", "content": request.System})
+		}
+		messages = append(messages, map[string]any{"role": "user", "content": request.Prompt})
 		payload = map[string]any{
 			"model":      request.Model,
 			"max_tokens": maxTokens,
-			"messages":   []map[string]any{{"role": "user", "content": request.Prompt}},
+			"messages":   messages,
 			"stream":     false,
 		}
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
-		return completionResult{}, err
+		return CompletionResult{}, err
 	}
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(encoded))
 	if err != nil {
-		return completionResult{}, err
+		return CompletionResult{}, err
 	}
 	applyPlanAuthHeaders(httpRequest, request.Protocol, request.APIKey)
 	httpRequest.Header.Set("Content-Type", "application/json")
@@ -512,18 +546,63 @@ func (s *Service) complete(ctx context.Context, request completionRequest) (comp
 	response, err := s.httpClient().Do(httpRequest)
 	latency := time.Since(started).Milliseconds()
 	if err != nil {
-		return completionResult{LatencyMs: latency}, err
+		return CompletionResult{LatencyMs: latency}, err
 	}
 	defer response.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
-		return completionResult{LatencyMs: latency}, err
+		return CompletionResult{LatencyMs: latency}, err
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return completionResult{LatencyMs: latency}, &completionHTTPError{StatusCode: response.StatusCode}
+		return CompletionResult{LatencyMs: latency}, &CompletionHTTPError{StatusCode: response.StatusCode, Body: string(raw)}
 	}
-	if !json.Valid(raw) {
-		return completionResult{LatencyMs: latency}, errors.New("decode completion response: invalid json")
+	text, usage, err := decodeCompletionText(request.Protocol, raw)
+	if err != nil {
+		return CompletionResult{LatencyMs: latency}, err
 	}
-	return completionResult{LatencyMs: latency}, nil
+	return CompletionResult{Text: text, LatencyMs: latency, Usage: usage}, nil
+}
+
+func decodeCompletionText(protocol modelplanbiz.Protocol, raw []byte) (string, CompletionUsage, error) {
+	if protocol == modelplanbiz.ProtocolAnthropic {
+		var payload struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+			Usage struct {
+				InputTokens  int64 `json:"input_tokens"`
+				OutputTokens int64 `json:"output_tokens"`
+			} `json:"usage"`
+		}
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return "", CompletionUsage{}, fmt.Errorf("decode anthropic completion: %w", err)
+		}
+		var builder strings.Builder
+		for _, block := range payload.Content {
+			if block.Type == "" || block.Type == "text" {
+				builder.WriteString(block.Text)
+			}
+		}
+		return builder.String(), CompletionUsage{InputTokens: payload.Usage.InputTokens, OutputTokens: payload.Usage.OutputTokens}, nil
+	}
+	var payload struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int64 `json:"prompt_tokens"`
+			CompletionTokens int64 `json:"completion_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return "", CompletionUsage{}, fmt.Errorf("decode openai completion: %w", err)
+	}
+	text := ""
+	if len(payload.Choices) > 0 {
+		text = payload.Choices[0].Message.Content
+	}
+	return text, CompletionUsage{InputTokens: payload.Usage.PromptTokens, OutputTokens: payload.Usage.CompletionTokens}, nil
 }

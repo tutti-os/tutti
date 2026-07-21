@@ -8,6 +8,7 @@ import (
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentquickpromptbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentquickprompt"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 	managedcredentialsbiz "github.com/tutti-os/tutti/services/tuttid/biz/managedcredentials"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
@@ -122,6 +123,12 @@ type WorkspaceAgentsStore interface {
 	ListWorkspaceAgents(context.Context, string) ([]workspaceagentbiz.Agent, error)
 	ListWorkspaceAgentsByModelPlan(context.Context, string, string) ([]workspaceagentbiz.Agent, error)
 	PutWorkspaceAgent(context.Context, workspaceagentbiz.Agent) error
+}
+
+type CollaborationRunsStore interface {
+	GetCollaborationRun(context.Context, string, string) (collabrunbiz.Run, error)
+	ListCollaborationRuns(context.Context, string, string, int) ([]collabrunbiz.Run, error)
+	PutCollaborationRun(context.Context, collabrunbiz.Run) error
 }
 
 type ManagedCredentialsStore interface {

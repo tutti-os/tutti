@@ -483,7 +483,7 @@ func TestDetectionCompletionAcceptsProviderResponse(t *testing.T) {
 
 	service := newTestService(newMemoryPlanStore())
 	service.HTTPClient = fake.Client()
-	_, err := service.complete(context.Background(), completionRequest{
+	_, err := service.Complete(context.Background(), CompletionRequest{
 		Protocol: modelplanbiz.ProtocolOpenAI,
 		BaseURL:  fake.URL + "/v1",
 		APIKey:   "sk",

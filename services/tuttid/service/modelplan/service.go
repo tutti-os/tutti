@@ -29,10 +29,16 @@ type ReferenceResolver interface {
 	ListModelPlanReferences(ctx context.Context, workspaceID string, planID string) ([]modelplanbiz.Reference, error)
 }
 
+// ChangePublisher lets the service broadcast plan catalog changes.
+type ChangePublisher interface {
+	PublishModelPlansChanged(workspaceID string)
+}
+
 type Service struct {
 	Store         workspacedata.ModelPlansStore
 	FirstUseStore workspacedata.ModelPlanFirstUseStore
 	References    ReferenceResolver
+	Publisher     ChangePublisher
 	Now           func() time.Time
 	HTTPClient    *http.Client
 	NewID         func() string
@@ -344,6 +350,12 @@ func (s *Service) httpClient() *http.Client {
 		return s.HTTPClient
 	}
 	return httpx.NewClient(20 * time.Second)
+}
+
+func (s *Service) publishChanged(workspaceID string) {
+	if s.Publisher != nil {
+		s.Publisher.PublishModelPlansChanged(workspaceID)
+	}
 }
 
 func derefString(value *string) string {

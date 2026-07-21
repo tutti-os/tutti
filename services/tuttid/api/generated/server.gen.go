@@ -358,6 +358,18 @@ type ServerInterface interface {
 	// Stream upload bytes into one workspace app upload session
 	// (PUT /v1/workspaces/{workspaceID}/apps/{appID}/uploads/{uploadID}/content)
 	PutWorkspaceAppUploadContent(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID, uploadID string)
+	// List workspace collaboration runs
+	// (GET /v1/workspaces/{workspaceID}/collaboration-runs)
+	ListCollaborationRuns(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListCollaborationRunsParams)
+	// Start or record one collaboration run
+	// (POST /v1/workspaces/{workspaceID}/collaboration-runs)
+	CreateCollaborationRun(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
+	// Record whether a collaboration run outcome was adopted
+	// (POST /v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/adoption)
+	SetCollaborationRunAdoption(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, collaborationRunID CollaborationRunID)
+	// Cancel a running consult
+	// (POST /v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/cancel)
+	CancelCollaborationRun(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, collaborationRunID CollaborationRunID)
 	// List direct children for one workspace directory
 	// (GET /v1/workspaces/{workspaceID}/files/directory)
 	ListWorkspaceFileDirectory(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListWorkspaceFileDirectoryParams)
@@ -4961,6 +4973,181 @@ func (siw *ServerInterfaceWrapper) PutWorkspaceAppUploadContent(w http.ResponseW
 	handler.ServeHTTP(w, r)
 }
 
+// ListCollaborationRuns operation middleware
+func (siw *ServerInterfaceWrapper) ListCollaborationRuns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCollaborationRunsParams
+
+	// ------------- Optional query parameter "sourceSessionId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sourceSessionId", r.URL.Query(), &params.SourceSessionId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sourceSessionId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sourceSessionId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCollaborationRuns(w, r, workspaceID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCollaborationRun operation middleware
+func (siw *ServerInterfaceWrapper) CreateCollaborationRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCollaborationRun(w, r, workspaceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetCollaborationRunAdoption operation middleware
+func (siw *ServerInterfaceWrapper) SetCollaborationRunAdoption(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "collaborationRunID" -------------
+	var collaborationRunID CollaborationRunID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "collaborationRunID", r.PathValue("collaborationRunID"), &collaborationRunID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "collaborationRunID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetCollaborationRunAdoption(w, r, workspaceID, collaborationRunID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelCollaborationRun operation middleware
+func (siw *ServerInterfaceWrapper) CancelCollaborationRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "collaborationRunID" -------------
+	var collaborationRunID CollaborationRunID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "collaborationRunID", r.PathValue("collaborationRunID"), &collaborationRunID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "collaborationRunID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelCollaborationRun(w, r, workspaceID, collaborationRunID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListWorkspaceFileDirectory operation middleware
 func (siw *ServerInterfaceWrapper) ListWorkspaceFileDirectory(w http.ResponseWriter, r *http.Request) {
 
@@ -8279,6 +8466,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/uploads/{uploadID}", wrapper.CancelWorkspaceAppUpload)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/uploads/{uploadID}/complete", wrapper.CompleteWorkspaceAppUpload)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/uploads/{uploadID}/content", wrapper.PutWorkspaceAppUploadContent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/collaboration-runs", wrapper.ListCollaborationRuns)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/collaboration-runs", wrapper.CreateCollaborationRun)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/adoption", wrapper.SetCollaborationRunAdoption)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/cancel", wrapper.CancelCollaborationRun)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/directory", wrapper.ListWorkspaceFileDirectory)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/directory", wrapper.CreateWorkspaceFileDirectory)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/files/entry", wrapper.DeleteWorkspaceFileEntry)
@@ -20638,6 +20829,459 @@ func (response PutWorkspaceAppUploadContent503JSONResponse) VisitPutWorkspaceApp
 	return err
 }
 
+type ListCollaborationRunsRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	Params      ListCollaborationRunsParams
+}
+
+type ListCollaborationRunsResponseObject interface {
+	VisitListCollaborationRunsResponse(w http.ResponseWriter) error
+}
+
+type ListCollaborationRuns200JSONResponse ListCollaborationRunsResponse
+
+func (response ListCollaborationRuns200JSONResponse) VisitListCollaborationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCollaborationRuns400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ListCollaborationRuns400JSONResponse) VisitListCollaborationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCollaborationRuns401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ListCollaborationRuns401JSONResponse) VisitListCollaborationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCollaborationRuns405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListCollaborationRuns405JSONResponse) VisitListCollaborationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCollaborationRuns502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ListCollaborationRuns502JSONResponse) VisitListCollaborationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCollaborationRuns503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListCollaborationRuns503JSONResponse) VisitListCollaborationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCollaborationRunRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	Body        *CreateCollaborationRunJSONRequestBody
+}
+
+type CreateCollaborationRunResponseObject interface {
+	VisitCreateCollaborationRunResponse(w http.ResponseWriter) error
+}
+
+type CreateCollaborationRun200JSONResponse CollaborationRun
+
+func (response CreateCollaborationRun200JSONResponse) VisitCreateCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCollaborationRun400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response CreateCollaborationRun400JSONResponse) VisitCreateCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCollaborationRun401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response CreateCollaborationRun401JSONResponse) VisitCreateCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCollaborationRun404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response CreateCollaborationRun404JSONResponse) VisitCreateCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCollaborationRun405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response CreateCollaborationRun405JSONResponse) VisitCreateCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCollaborationRun502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response CreateCollaborationRun502JSONResponse) VisitCreateCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCollaborationRun503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response CreateCollaborationRun503JSONResponse) VisitCreateCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCollaborationRunAdoptionRequestObject struct {
+	WorkspaceID        WorkspaceID        `json:"workspaceID"`
+	CollaborationRunID CollaborationRunID `json:"collaborationRunID"`
+	Body               *SetCollaborationRunAdoptionJSONRequestBody
+}
+
+type SetCollaborationRunAdoptionResponseObject interface {
+	VisitSetCollaborationRunAdoptionResponse(w http.ResponseWriter) error
+}
+
+type SetCollaborationRunAdoption200JSONResponse CollaborationRun
+
+func (response SetCollaborationRunAdoption200JSONResponse) VisitSetCollaborationRunAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCollaborationRunAdoption400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response SetCollaborationRunAdoption400JSONResponse) VisitSetCollaborationRunAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCollaborationRunAdoption401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response SetCollaborationRunAdoption401JSONResponse) VisitSetCollaborationRunAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCollaborationRunAdoption404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response SetCollaborationRunAdoption404JSONResponse) VisitSetCollaborationRunAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCollaborationRunAdoption405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response SetCollaborationRunAdoption405JSONResponse) VisitSetCollaborationRunAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCollaborationRunAdoption502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response SetCollaborationRunAdoption502JSONResponse) VisitSetCollaborationRunAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetCollaborationRunAdoption503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response SetCollaborationRunAdoption503JSONResponse) VisitSetCollaborationRunAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelCollaborationRunRequestObject struct {
+	WorkspaceID        WorkspaceID        `json:"workspaceID"`
+	CollaborationRunID CollaborationRunID `json:"collaborationRunID"`
+}
+
+type CancelCollaborationRunResponseObject interface {
+	VisitCancelCollaborationRunResponse(w http.ResponseWriter) error
+}
+
+type CancelCollaborationRun200JSONResponse CollaborationRun
+
+func (response CancelCollaborationRun200JSONResponse) VisitCancelCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelCollaborationRun400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response CancelCollaborationRun400JSONResponse) VisitCancelCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelCollaborationRun401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response CancelCollaborationRun401JSONResponse) VisitCancelCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelCollaborationRun404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response CancelCollaborationRun404JSONResponse) VisitCancelCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelCollaborationRun405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response CancelCollaborationRun405JSONResponse) VisitCancelCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelCollaborationRun502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response CancelCollaborationRun502JSONResponse) VisitCancelCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelCollaborationRun503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response CancelCollaborationRun503JSONResponse) VisitCancelCollaborationRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListWorkspaceFileDirectoryRequestObject struct {
 	WorkspaceID WorkspaceID `json:"workspaceID"`
 	Params      ListWorkspaceFileDirectoryParams
@@ -29286,6 +29930,18 @@ type StrictServerInterface interface {
 	// Stream upload bytes into one workspace app upload session
 	// (PUT /v1/workspaces/{workspaceID}/apps/{appID}/uploads/{uploadID}/content)
 	PutWorkspaceAppUploadContent(ctx context.Context, request PutWorkspaceAppUploadContentRequestObject) (PutWorkspaceAppUploadContentResponseObject, error)
+	// List workspace collaboration runs
+	// (GET /v1/workspaces/{workspaceID}/collaboration-runs)
+	ListCollaborationRuns(ctx context.Context, request ListCollaborationRunsRequestObject) (ListCollaborationRunsResponseObject, error)
+	// Start or record one collaboration run
+	// (POST /v1/workspaces/{workspaceID}/collaboration-runs)
+	CreateCollaborationRun(ctx context.Context, request CreateCollaborationRunRequestObject) (CreateCollaborationRunResponseObject, error)
+	// Record whether a collaboration run outcome was adopted
+	// (POST /v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/adoption)
+	SetCollaborationRunAdoption(ctx context.Context, request SetCollaborationRunAdoptionRequestObject) (SetCollaborationRunAdoptionResponseObject, error)
+	// Cancel a running consult
+	// (POST /v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/cancel)
+	CancelCollaborationRun(ctx context.Context, request CancelCollaborationRunRequestObject) (CancelCollaborationRunResponseObject, error)
 	// List direct children for one workspace directory
 	// (GET /v1/workspaces/{workspaceID}/files/directory)
 	ListWorkspaceFileDirectory(ctx context.Context, request ListWorkspaceFileDirectoryRequestObject) (ListWorkspaceFileDirectoryResponseObject, error)
@@ -32942,6 +33598,131 @@ func (sh *strictHandler) PutWorkspaceAppUploadContent(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutWorkspaceAppUploadContentResponseObject); ok {
 		if err := validResponse.VisitPutWorkspaceAppUploadContentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCollaborationRuns operation middleware
+func (sh *strictHandler) ListCollaborationRuns(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListCollaborationRunsParams) {
+	var request ListCollaborationRunsRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCollaborationRuns(ctx, request.(ListCollaborationRunsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCollaborationRuns")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCollaborationRunsResponseObject); ok {
+		if err := validResponse.VisitListCollaborationRunsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateCollaborationRun operation middleware
+func (sh *strictHandler) CreateCollaborationRun(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
+	var request CreateCollaborationRunRequestObject
+
+	request.WorkspaceID = workspaceID
+
+	var body CreateCollaborationRunJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateCollaborationRun(ctx, request.(CreateCollaborationRunRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateCollaborationRun")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateCollaborationRunResponseObject); ok {
+		if err := validResponse.VisitCreateCollaborationRunResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetCollaborationRunAdoption operation middleware
+func (sh *strictHandler) SetCollaborationRunAdoption(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, collaborationRunID CollaborationRunID) {
+	var request SetCollaborationRunAdoptionRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.CollaborationRunID = collaborationRunID
+
+	var body SetCollaborationRunAdoptionJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetCollaborationRunAdoption(ctx, request.(SetCollaborationRunAdoptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetCollaborationRunAdoption")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetCollaborationRunAdoptionResponseObject); ok {
+		if err := validResponse.VisitSetCollaborationRunAdoptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelCollaborationRun operation middleware
+func (sh *strictHandler) CancelCollaborationRun(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, collaborationRunID CollaborationRunID) {
+	var request CancelCollaborationRunRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.CollaborationRunID = collaborationRunID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelCollaborationRun(ctx, request.(CancelCollaborationRunRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelCollaborationRun")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelCollaborationRunResponseObject); ok {
+		if err := validResponse.VisitCancelCollaborationRunResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

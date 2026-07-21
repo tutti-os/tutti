@@ -1299,6 +1299,65 @@ export const agentActivityUpdatedPayloadSchema = {
   }
 } as const;
 
+export const agentCollaborationUpdatedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "workspaceId",
+    "runId",
+    "mode",
+    "status",
+    "triggerSource",
+    "occurredAtUnixMs"
+  ],
+  properties: {
+    workspaceId: {
+      type: "string",
+      minLength: 1
+    },
+    runId: {
+      type: "string",
+      minLength: 1
+    },
+    mode: {
+      type: "string",
+      enum: ["consult", "fork", "delegate", "handoff"]
+    },
+    status: {
+      type: "string",
+      enum: ["running", "completed", "failed", "canceled"]
+    },
+    sourceSessionId: {
+      type: "string",
+      minLength: 1
+    },
+    targetSessionId: {
+      type: "string",
+      minLength: 1
+    },
+    modelPlanId: {
+      type: "string",
+      minLength: 1
+    },
+    model: {
+      type: "string",
+      minLength: 1
+    },
+    triggerSource: {
+      type: "string",
+      enum: ["user", "agent", "policy"]
+    },
+    adoption: {
+      type: "string",
+      enum: ["pending", "adopted", "rejected", "not_applicable"]
+    },
+    occurredAtUnixMs: {
+      type: "integer",
+      minimum: 0
+    }
+  }
+} as const;
+
 export const agentModelCatalogInvalidatedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -2965,6 +3024,7 @@ export const businessEventServerFrameSchema = {
 
 export const businessEventPayloadSchemas = {
   "agent.activity.updated": agentActivityUpdatedPayloadSchema,
+  "agent.collaboration.updated": agentCollaborationUpdatedPayloadSchema,
   "agent.model.catalog.invalidated": agentModelCatalogInvalidatedPayloadSchema,
   "agent.model.configuration.changed":
     agentModelConfigurationChangedPayloadSchema,

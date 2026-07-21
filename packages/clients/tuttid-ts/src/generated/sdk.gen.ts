@@ -25,6 +25,9 @@ import type {
   AuthenticateAgentTargetRuntimeData,
   AuthenticateAgentTargetRuntimeErrors,
   AuthenticateAgentTargetRuntimeResponses,
+  CancelCollaborationRunData,
+  CancelCollaborationRunErrors,
+  CancelCollaborationRunResponses,
   CancelWorkspaceAgentTurnData,
   CancelWorkspaceAgentTurnErrors,
   CancelWorkspaceAgentTurnResponses,
@@ -58,6 +61,9 @@ import type {
   CreateAgentQuickPromptData,
   CreateAgentQuickPromptErrors,
   CreateAgentQuickPromptResponses,
+  CreateCollaborationRunData,
+  CreateCollaborationRunErrors,
+  CreateCollaborationRunResponses,
   CreateModelPlanData,
   CreateModelPlanErrors,
   CreateModelPlanResponses,
@@ -283,6 +289,9 @@ import type {
   ListCliCapabilitiesData,
   ListCliCapabilitiesErrors,
   ListCliCapabilitiesResponses,
+  ListCollaborationRunsData,
+  ListCollaborationRunsErrors,
+  ListCollaborationRunsResponses,
   ListModelPlanReferencesData,
   ListModelPlanReferencesErrors,
   ListModelPlanReferencesResponses,
@@ -478,6 +487,9 @@ import type {
   SetAgentSessionModelPolicyOverrideData,
   SetAgentSessionModelPolicyOverrideErrors,
   SetAgentSessionModelPolicyOverrideResponses,
+  SetCollaborationRunAdoptionData,
+  SetCollaborationRunAdoptionErrors,
+  SetCollaborationRunAdoptionResponses,
   SetModelPlanEnabledData,
   SetModelPlanEnabledErrors,
   SetModelPlanEnabledResponses,
@@ -1486,6 +1498,88 @@ export const listModelPlanReferences = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/references",
+    ...options
+  });
+
+/**
+ * List workspace collaboration runs
+ *
+ * Returns collaboration runs (model consults, forks, delegations, handoffs) newest first. Credentials never appear on run records.
+ */
+export const listCollaborationRuns = <ThrowOnError extends boolean = false>(
+  options: Options<ListCollaborationRunsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListCollaborationRunsResponses,
+    ListCollaborationRunsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs",
+    ...options
+  });
+
+/**
+ * Start or record one collaboration run
+ *
+ * Mode consult executes a daemon-side advisory completion against a workspace model access plan synchronously and returns the completed or failed run; the advisor never executes tools and task ownership never changes. Modes fork, delegate, and handoff record a run for a target session the GUI already created through the session-create path.
+ */
+export const createCollaborationRun = <ThrowOnError extends boolean = false>(
+  options: Options<CreateCollaborationRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateCollaborationRunResponses,
+    CreateCollaborationRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Record whether a collaboration run outcome was adopted
+ *
+ * Consult and delegate outcomes track adoption (pending, adopted, rejected). Fork and handoff runs are not adoptable.
+ */
+export const setCollaborationRunAdoption = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SetCollaborationRunAdoptionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    SetCollaborationRunAdoptionResponses,
+    SetCollaborationRunAdoptionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/adoption",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Cancel a running consult
+ *
+ * Marks a still-running consult canceled and aborts its in-flight completion call. Settled runs are returned unchanged.
+ */
+export const cancelCollaborationRun = <ThrowOnError extends boolean = false>(
+  options: Options<CancelCollaborationRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CancelCollaborationRunResponses,
+    CancelCollaborationRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/cancel",
     ...options
   });
 
