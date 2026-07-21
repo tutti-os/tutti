@@ -10,6 +10,8 @@ const (
 	LabFlagModelPlans      = "lab.modelPlans"
 	LabFlagWorkspaceAgents = "lab.workspaceAgents"
 	LabFlagAutomationRules = "lab.automationRules"
+	// Durable key for Early Access agent-integration visibility (Agents directory).
+	LabFlagPreviewAgents = "lab.previewAgents"
 )
 
 // labFlagDefaults is fail-closed: every Lab flag defaults to off.
@@ -18,6 +20,7 @@ var labFlagDefaults = map[string]bool{
 	LabFlagModelPlans:      false,
 	LabFlagWorkspaceAgents: false,
 	LabFlagAutomationRules: false,
+	LabFlagPreviewAgents:   false,
 }
 
 // IsLabFlag reports whether key is a registered Lab flag.
