@@ -23,7 +23,7 @@ func newMemoryPlanStore() *memoryPlanStore {
 	return &memoryPlanStore{plans: map[string]modelplanbiz.Plan{}}
 }
 
-func (s *memoryPlanStore) key(workspaceID string, planID string) string {
+func (*memoryPlanStore) key(workspaceID string, planID string) string {
 	return workspaceID + "/" + planID
 }
 

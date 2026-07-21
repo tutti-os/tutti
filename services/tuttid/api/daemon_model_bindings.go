@@ -36,6 +36,11 @@ func (api DaemonAPI) ListAgentModelBindings(ctx context.Context, request tuttige
 }
 
 func (api DaemonAPI) SetAgentModelBinding(ctx context.Context, request tuttigenerated.SetAgentModelBindingRequestObject) (tuttigenerated.SetAgentModelBindingResponseObject, error) {
+	if !api.modelPlansWritesEnabled(ctx) {
+		return tuttigenerated.SetAgentModelBinding400JSONResponse{
+			InvalidRequestErrorJSONResponse: modelPlansWriteDisabledError(),
+		}, nil
+	}
 	if api.AgentModelBindingService == nil {
 		return tuttigenerated.SetAgentModelBinding503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: modelBindingServiceUnavailable(),

@@ -48,6 +48,14 @@ func NormalizeOpen(provider string) string {
 	return ""
 }
 
+// ModelPlanProtocol resolves the model API protocol declared by the provider's
+// runtime strategy. The returned value is transport-neutral so model-plan
+// ownership remains in the tuttid modelplan business package.
+func ModelPlanProtocol(provider string) (string, bool) {
+	protocol, ok := providerregistry.ResolveModelPlanProtocol(provider)
+	return string(protocol), ok
+}
+
 func IsSupported(provider string) bool {
 	return Normalize(provider) != ""
 }

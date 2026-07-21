@@ -33,9 +33,19 @@ const (
 	EndpointConfigKindClaudeSettings EndpointConfigKind = "claude_settings"
 )
 
+// ModelPlanProtocol identifies the external model API protocol that a runtime
+// can consume through Tutti's model-plan endpoint injection.
+type ModelPlanProtocol string
+
+const (
+	ModelPlanProtocolAnthropic ModelPlanProtocol = "anthropic"
+	ModelPlanProtocolOpenAI    ModelPlanProtocol = "openai"
+)
+
 type RuntimeEndpointDescriptor struct {
-	BaseURLEnvVars []string
-	ConfigKind     EndpointConfigKind
+	BaseURLEnvVars    []string
+	ConfigKind        EndpointConfigKind
+	ModelPlanProtocol ModelPlanProtocol
 }
 
 // InstallerKind is a transport-neutral installer identifier. tuttid converts
@@ -297,6 +307,8 @@ type ComposerConfigOptionIDs struct {
 const (
 	CapabilityImageInput                     = canonical.CapabilityImageInput
 	CapabilityModelImageInputRequired        = canonical.CapabilityModelImageInputRequired
+	CapabilityModelSwitch                    = canonical.CapabilityModelSwitch
+	CapabilityModelPlanBinding               = canonical.CapabilityModelPlanBinding
 	CapabilitySkills                         = canonical.CapabilitySkills
 	CapabilityCompact                        = canonical.CapabilityCompact
 	CapabilityTokenUsage                     = canonical.CapabilityTokenUsage

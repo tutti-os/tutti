@@ -66,6 +66,7 @@ func (p ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInpu
 		claudeSkillListingBudgetEnv + "=" + claudeSkillListingBudgetChars,
 	}
 	env = append(env, p.claudeCodeExecutableEnv()...)
+	env = append(env, modelEndpointClaudeEnv(input.ModelEndpoint)...)
 	// Plan mode is enabled through the SDK permission mode selected by the
 	// daemon runtime. We intentionally do NOT set
 	// CLAUDE_CONFIG_DIR to seed `permissions.defaultMode=plan`: pointing the CLI

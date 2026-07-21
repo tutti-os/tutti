@@ -137,6 +137,19 @@ false value cancels scheduling and any in-flight discovery; it does not remove
 cached metadata, change local readiness, or disable an explicit user-requested
 update action.
 
+## Model Access Plans
+
+Workspace model access plans and agent-target bindings are daemon-owned rows in
+`tuttid.db`. `model_plans` stores the plan configuration and verification
+projection; API keys are encrypted in `api_key_ciphertext` and must never be
+returned through public plan DTOs. `agent_target_model_bindings` stores only
+the target's plan id and optional default model.
+
+The initial migration copies existing managed model-provider credentials into
+stable `mp-migrated-<provider>` plans without removing the legacy rows, because
+the workspace-app credential broker still owns that legacy surface. Normal
+reads use the SQLite read pool and mutations use the single writer connection.
+
 Migrated agent runtime state should derive from the same root:
 
 ```text

@@ -1872,6 +1872,14 @@ export type WorkspaceAgentInteraction = {
 export type WorkspaceAgentCapabilities = {
   imageInput: boolean;
   modelImageInputRequired: boolean;
+  /**
+   * The provider can apply a model change to the next call in the current session.
+   */
+  modelSwitch: boolean;
+  /**
+   * The provider runtime accepts a session-scoped model access plan endpoint and credential.
+   */
+  modelPlanBinding: boolean;
   skills: boolean;
   compact: boolean;
   tokenUsage: boolean;

@@ -93,13 +93,11 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}
 	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{"content_block_count": len(normalizedContent)})
 	requestedModel := value(input.Model)
-	input.Model = s.resolveCreateSessionModel(ctx, provider, input.ProviderTargetRef, value(input.Cwd), input.Model)
 	nodeStartedAt := time.Now()
-	if providerTargetRefKind(input.ProviderTargetRef) != "agent_extension" {
-		if err := s.validateComposerModelForCreate(ctx, provider, workspaceID, value(input.Cwd), requestedModel); err != nil {
-			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
-			return CreateSessionResult{}, err
-		}
+	planEndpoint, err := s.resolveCreateSessionModelForPlanOrProvider(ctx, workspaceID, provider, requestedModel, &input)
+	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
+		return CreateSessionResult{}, err
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.model_validated", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
@@ -218,6 +216,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 			TurnID:  strings.TrimSpace(hostResult.TurnID),
 		}, getErr
 	}
+	s.registerPendingPlanFirstUse(workspaceID, session.ID, planEndpoint, input.AgentTargetID)
 	if len(normalizedContent) == 0 {
 		return CreateSessionResult{
 			Session: decorateIsolatedSession(serviceSessionWithPersistedFreshness(
@@ -368,12 +367,14 @@ func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd st
 		return preparedRuntime{Cwd: cwd}, nil
 	}
 	provider := strings.TrimSpace(input.Provider)
+	planEndpoint, _ := s.resolveModelPlanEndpoint(ctx, workspaceID, input.AgentTargetID, provider, value(input.Model))
 	prepared, err := s.RuntimePreparer.Prepare(ctx, runtimeprep.PrepareInput{
 		WorkspaceID:               workspaceID,
 		AgentSessionID:            strings.TrimSpace(input.AgentSessionID),
 		AgentTargetID:             strings.TrimSpace(input.AgentTargetID),
 		Provider:                  provider,
 		Cwd:                       cwd,
+		ModelEndpoint:             planEndpoint,
 		Title:                     value(input.Title),
 		PermissionModeID:          value(input.PermissionModeID),
 		PlanMode:                  clampComposerPlanModeForLaunch(provider, input.ProviderTargetRef, valueBool(input.PlanMode)),

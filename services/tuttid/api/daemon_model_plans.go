@@ -65,6 +65,11 @@ func (api DaemonAPI) GetModelPlan(ctx context.Context, request tuttigenerated.Ge
 }
 
 func (api DaemonAPI) CreateModelPlan(ctx context.Context, request tuttigenerated.CreateModelPlanRequestObject) (tuttigenerated.CreateModelPlanResponseObject, error) {
+	if !api.modelPlansWritesEnabled(ctx) {
+		return tuttigenerated.CreateModelPlan400JSONResponse{
+			InvalidRequestErrorJSONResponse: modelPlansWriteDisabledError(),
+		}, nil
+	}
 	if api.ModelPlanService == nil {
 		return tuttigenerated.CreateModelPlan503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: modelPlanServiceUnavailable(),
@@ -90,6 +95,11 @@ func (api DaemonAPI) CreateModelPlan(ctx context.Context, request tuttigenerated
 }
 
 func (api DaemonAPI) UpdateModelPlan(ctx context.Context, request tuttigenerated.UpdateModelPlanRequestObject) (tuttigenerated.UpdateModelPlanResponseObject, error) {
+	if !api.modelPlansWritesEnabled(ctx) {
+		return tuttigenerated.UpdateModelPlan400JSONResponse{
+			InvalidRequestErrorJSONResponse: modelPlansWriteDisabledError(),
+		}, nil
+	}
 	if api.ModelPlanService == nil {
 		return tuttigenerated.UpdateModelPlan503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: modelPlanServiceUnavailable(),
@@ -120,6 +130,11 @@ func (api DaemonAPI) UpdateModelPlan(ctx context.Context, request tuttigenerated
 }
 
 func (api DaemonAPI) DeleteModelPlan(ctx context.Context, request tuttigenerated.DeleteModelPlanRequestObject) (tuttigenerated.DeleteModelPlanResponseObject, error) {
+	if !api.modelPlansWritesEnabled(ctx) {
+		return tuttigenerated.DeleteModelPlan400JSONResponse{
+			InvalidRequestErrorJSONResponse: modelPlansWriteDisabledError(),
+		}, nil
+	}
 	if api.ModelPlanService == nil {
 		return tuttigenerated.DeleteModelPlan503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: modelPlanServiceUnavailable(),
@@ -146,6 +161,11 @@ func (api DaemonAPI) DeleteModelPlan(ctx context.Context, request tuttigenerated
 }
 
 func (api DaemonAPI) DuplicateModelPlan(ctx context.Context, request tuttigenerated.DuplicateModelPlanRequestObject) (tuttigenerated.DuplicateModelPlanResponseObject, error) {
+	if !api.modelPlansWritesEnabled(ctx) {
+		return tuttigenerated.DuplicateModelPlan400JSONResponse{
+			InvalidRequestErrorJSONResponse: modelPlansWriteDisabledError(),
+		}, nil
+	}
 	if api.ModelPlanService == nil {
 		return tuttigenerated.DuplicateModelPlan503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: modelPlanServiceUnavailable(),
@@ -170,6 +190,11 @@ func (api DaemonAPI) DuplicateModelPlan(ctx context.Context, request tuttigenera
 }
 
 func (api DaemonAPI) SetModelPlanEnabled(ctx context.Context, request tuttigenerated.SetModelPlanEnabledRequestObject) (tuttigenerated.SetModelPlanEnabledResponseObject, error) {
+	if !api.modelPlansWritesEnabled(ctx) {
+		return tuttigenerated.SetModelPlanEnabled400JSONResponse{
+			InvalidRequestErrorJSONResponse: modelPlansWriteDisabledError(),
+		}, nil
+	}
 	if api.ModelPlanService == nil {
 		return tuttigenerated.SetModelPlanEnabled503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: modelPlanServiceUnavailable(),
@@ -219,6 +244,11 @@ func (api DaemonAPI) ListModelPlanReferences(ctx context.Context, request tuttig
 }
 
 func (api DaemonAPI) DetectModelPlan(ctx context.Context, request tuttigenerated.DetectModelPlanRequestObject) (tuttigenerated.DetectModelPlanResponseObject, error) {
+	if !api.modelPlansWritesEnabled(ctx) {
+		return tuttigenerated.DetectModelPlan400JSONResponse{
+			InvalidRequestErrorJSONResponse: modelPlansWriteDisabledError(),
+		}, nil
+	}
 	if api.ModelPlanService == nil {
 		return tuttigenerated.DetectModelPlan503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: modelPlanServiceUnavailable(),

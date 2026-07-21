@@ -60,6 +60,18 @@ func ResolveProviderID(value string) (string, bool) {
 	return migratedDescriptors[index].Identity.ID, true
 }
 
+// ResolveModelPlanProtocol returns the model API protocol declared by a
+// migrated provider runtime. Providers without endpoint injection support are
+// intentionally unresolved.
+func ResolveModelPlanProtocol(value string) (ModelPlanProtocol, bool) {
+	index, ok := providerDescriptorIndex[normalize(value)]
+	if !ok {
+		return "", false
+	}
+	protocol := migratedDescriptors[index].Runtime.Endpoint.ModelPlanProtocol
+	return protocol, protocol != ""
+}
+
 // EventProvider describes the small immutable event-normalization projection
 // consumed on per-event hot paths.
 type EventProvider struct {
@@ -251,6 +263,16 @@ func Validate(descriptor ProviderDescriptor) error {
 	case "", EndpointConfigKindCodexCLI, EndpointConfigKindClaudeSettings:
 	default:
 		return fmt.Errorf("provider %q endpoint config kind %q is unsupported", providerID, descriptor.Runtime.Endpoint.ConfigKind)
+	}
+	switch descriptor.Runtime.Endpoint.ModelPlanProtocol {
+	case "", ModelPlanProtocolOpenAI, ModelPlanProtocolAnthropic:
+	default:
+		return fmt.Errorf("provider %q model plan protocol %q is unsupported", providerID, descriptor.Runtime.Endpoint.ModelPlanProtocol)
+	}
+	hasModelPlanProtocol := descriptor.Runtime.Endpoint.ModelPlanProtocol != ""
+	hasModelPlanCapability := containsNormalized(descriptor.ComposerProfile.Capabilities, normalize(CapabilityModelPlanBinding))
+	if hasModelPlanProtocol != hasModelPlanCapability {
+		return fmt.Errorf("provider %q model plan protocol and capability must be declared together", providerID)
 	}
 	switch descriptor.Status.Kind {
 	case StatusKindCodexCLI, StatusKindClaudeCLI, StatusKindOpenCodeCLI, StatusKindGenericCLI:

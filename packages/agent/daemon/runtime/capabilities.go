@@ -26,6 +26,8 @@ const (
 	CapabilityPermissionModeChangeDuringTurn = providerregistry.CapabilityPermissionModeChangeDuringTurn
 	CapabilityPermissionModeChangeDeferred   = providerregistry.CapabilityPermissionModeChangeDeferred
 	CapabilityReview                         = providerregistry.CapabilityReview
+	CapabilityModelSwitch                    = providerregistry.CapabilityModelSwitch
+	CapabilityModelPlanBinding               = providerregistry.CapabilityModelPlanBinding
 	// CapabilityGoalPause marks providers whose goal is a controllable
 	// entity with a real paused state (codex thread goals). Providers
 	// without it (Claude Code: /goal command in, goal_status attachments
