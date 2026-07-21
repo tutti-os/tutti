@@ -30,15 +30,15 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@tiptap/extension-document": "^3.23.6",
-    "@tiptap/extension-hard-break": "^3.23.6",
-    "@tiptap/extension-paragraph": "^3.23.6",
-    "@tiptap/extension-text": "^3.23.6",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
     "@tutti-os/ui-system": "workspace:*"
   },
   "devDependencies": {
     "@tiptap/core": "^3.23.6",
+    "@tiptap/extension-document": "^3.23.6",
+    "@tiptap/extension-hard-break": "^3.23.6",
+    "@tiptap/extension-paragraph": "^3.23.6",
+    "@tiptap/extension-text": "^3.23.6",
     "@tiptap/react": "^3.23.6",
     "@tutti-os/config-tsconfig": "workspace:*",
     "@types/node": "^24.0.1",

@@ -556,6 +556,16 @@ importers:
 
   packages/ui/rich-text:
     dependencies:
+      "@tutti-os/ui-i18n-runtime":
+        specifier: workspace:*
+        version: link:../i18n-runtime
+      "@tutti-os/ui-system":
+        specifier: workspace:*
+        version: link:../system
+    devDependencies:
+      "@tiptap/core":
+        specifier: ^3.23.6
+        version: 3.23.6(@tiptap/pm@3.23.6)
       "@tiptap/extension-document":
         specifier: ^3.23.6
         version: 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))
@@ -568,16 +578,6 @@ importers:
       "@tiptap/extension-text":
         specifier: ^3.23.6
         version: 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))
-      "@tutti-os/ui-i18n-runtime":
-        specifier: workspace:*
-        version: link:../i18n-runtime
-      "@tutti-os/ui-system":
-        specifier: workspace:*
-        version: link:../system
-    devDependencies:
-      "@tiptap/core":
-        specifier: ^3.23.6
-        version: 3.23.6(@tiptap/pm@3.23.6)
       "@tiptap/react":
         specifier: ^3.23.6
         version: 3.23.6(@floating-ui/dom@1.7.6)(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
