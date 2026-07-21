@@ -267,7 +267,7 @@ async function prepareDesktopWindow(context, options) {
       return {
         ready: Boolean(workspaceID && hostWindow?.minimize && hostWindow?.toggleMaximize && hostWorkspace?.showWorkspace && document.querySelector('[data-app-header="true"]')),
         workspaceID,
-        maximized: document.documentElement.dataset.tuttiWindowMaximized === 'true'
+        maximized: document.documentElement?.dataset.tuttiWindowMaximized === 'true'
       };
     })()`,
     options.timeoutMs,
@@ -281,7 +281,7 @@ async function prepareDesktopWindow(context, options) {
     );
     await waitForEvaluation(
       pageClient,
-      "({ ready: document.documentElement.dataset.tuttiWindowMaximized !== 'true' })",
+      "({ ready: document.documentElement?.dataset.tuttiWindowMaximized !== 'true' })",
       options.timeoutMs,
       "normal native window before scenario"
     );

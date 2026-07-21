@@ -75,6 +75,13 @@ export function resolveDesktopDevelopmentAppName(
   return `${safeAppName} Dev`;
 }
 
+export function resolveDesktopPerformanceHeadless(): boolean {
+  return (
+    resolveTuttiEnv() === "development" &&
+    process.env.TUTTI_DESKTOP_PERFORMANCE_HEADLESS?.trim() === "1"
+  );
+}
+
 export function resolveDesktopLoginProtocolScheme(): "tutti" | "tutti-dev" {
   return resolveTuttiEnv() === "development" ? "tutti-dev" : "tutti";
 }

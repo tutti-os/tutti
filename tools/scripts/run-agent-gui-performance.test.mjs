@@ -133,6 +133,9 @@ test("performance scenario registry exposes renderer and window scenarios", () =
       "provider-switch",
       "session-switch",
       "provider-session-cycle",
+      "virtualized-streaming",
+      "rail-scope-reveal",
+      "composer-overflow-resize",
       "workbench-window-lifecycle",
       "desktop-window-state"
     ]

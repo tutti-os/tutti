@@ -184,6 +184,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
 }: AgentGUIDetailPaneProps): React.JSX.Element {
   "use memo";
   const timelineRef = useRef<HTMLDivElement | null>(null);
+  const timelineContentRef = useRef<HTMLDivElement | null>(null);
   const bottomDockRef = useRef<HTMLDivElement | null>(null);
   const timelineScrollAnchorRef = useRef<{
     conversationId: string;
@@ -616,6 +617,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     showTimelineSkeleton,
     submittedPromptScrollConversationRef,
     timelineConversationId,
+    timelineContentRef,
     timelineRef,
     timelineScrollAnchorRef,
     viewModel
@@ -638,6 +640,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         scrollbarMode="native"
         className="flex h-full min-h-0 flex-1 flex-col [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"
         viewportRef={timelineRef}
+        viewportContentRef={timelineContentRef}
         viewportTestId="agent-gui-timeline"
         viewportClassName={`${styles.timeline} ${
           hasActiveConversation

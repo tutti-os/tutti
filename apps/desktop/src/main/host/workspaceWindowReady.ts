@@ -11,6 +11,7 @@ export interface WorkspaceWindowReadyTarget {
     listener: WorkspaceWindowReadyListener
   ): unknown;
   show(): void;
+  showInactive(): void;
   webContents: {
     isDestroyed(): boolean;
     once(event: string, listener: WorkspaceWindowReadyListener): unknown;
@@ -24,6 +25,7 @@ export interface WorkspaceWindowReadyTarget {
 export interface AwaitWorkspaceWindowReadyOptions {
   maximizeOnShow?: boolean;
   showOnReady?: boolean;
+  showInactive?: boolean;
 }
 
 export async function awaitWorkspaceWindowReady(
@@ -65,7 +67,11 @@ export async function awaitWorkspaceWindowReady(
           if (options.maximizeOnShow !== false) {
             window.maximize();
           }
-          window.show();
+          if (options.showInactive) {
+            window.showInactive();
+          } else {
+            window.show();
+          }
         }
         resolve();
       });
@@ -77,7 +83,11 @@ export async function awaitWorkspaceWindowReady(
           if (options.maximizeOnShow !== false) {
             window.maximize();
           }
-          window.show();
+          if (options.showInactive) {
+            window.showInactive();
+          } else {
+            window.show();
+          }
         }
         resolve();
       });

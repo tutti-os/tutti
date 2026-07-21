@@ -787,7 +787,7 @@ describe("AgentTranscriptView", () => {
     }
   });
 
-  it("keeps the selected user message locator tick inside the locator viewport", async () => {
+  it("keeps the selected locator tick visible through resize without reading viewport geometry", async () => {
     const turns = Array.from({ length: 16 }, (_, index) => ({
       id: `turn-${index + 1}`,
       userMessage: {
@@ -821,23 +821,37 @@ describe("AgentTranscriptView", () => {
     }));
 
     render(
-      <AgentTranscriptView
-        conversation={projectAgentConversationVM(detailViewModel({ turns }))}
-        labels={{
-          thinkingLabel: "Thought process",
-          toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
-          turnSummary: "Changed files",
-          userMessageLocator: "User messages"
-        }}
-      />
+      <div data-testid="agent-gui-timeline">
+        <AgentTranscriptView
+          conversation={projectAgentConversationVM(detailViewModel({ turns }))}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files",
+            userMessageLocator: "User messages"
+          }}
+        />
+      </div>
     );
 
+    const timeline = screen.getByTestId("agent-gui-timeline");
     const locator = screen.getByTestId("agent-message-locator");
     const viewport = screen.getByTestId("agent-message-locator-viewport");
+    let timelineClientHeight = 96;
+    Object.defineProperty(timeline, "clientHeight", {
+      configurable: true,
+      get: () => timelineClientHeight
+    });
+    await flushAnimationFrame();
+
+    let viewportClientHeightReadCount = 0;
     Object.defineProperty(viewport, "clientHeight", {
       configurable: true,
-      value: 96
+      get: () => {
+        viewportClientHeightReadCount += 1;
+        return timelineClientHeight;
+      }
     });
 
     fireEvent.click(
@@ -847,9 +861,18 @@ describe("AgentTranscriptView", () => {
     await waitFor(() => {
       expect(viewport.scrollTop).toBeGreaterThan(0);
     });
+    expect(viewportClientHeightReadCount).toBe(0);
     expect(
       locator.querySelectorAll(".agent-gui-message-locator__tick")[14]
     ).toHaveAttribute("data-selected", "true");
+
+    const scrollTopBeforeResize = viewport.scrollTop;
+    timelineClientHeight = 120;
+    fireEvent(window, new Event("resize"));
+    await flushAnimationFrame();
+
+    expect(viewport.scrollTop).toBeLessThan(scrollTopBeforeResize);
+    expect(viewportClientHeightReadCount).toBe(0);
   });
 
   it("keeps a compact locator safety inset above composer scroll padding", async () => {

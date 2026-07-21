@@ -1,12 +1,14 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MutableRefObject, RefObject } from "react";
+import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { AgentGUINodeViewProps } from "../AgentGUINodeView";
 import { useAgentGUIDetailScroll } from "./useAgentGUIDetailScroll";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("useAgentGUIDetailScroll", () => {
@@ -159,6 +161,85 @@ describe("useAgentGUIDetailScroll", () => {
     expect(harness.timeline.scrollTop).toBe(4_000);
   });
 
+  it("does not synchronously read timeline geometry for a streaming update", () => {
+    const harness = createHarness({ scrollHeight: 5_000 });
+    const { rerender } = renderHook(
+      ({ conversation }) =>
+        useAgentGUIDetailScroll(
+          harness.input({
+            activeConversationId: "conversation-streaming",
+            conversation,
+            showTimelineSkeleton: false
+          })
+        ),
+      { initialProps: { conversation: conversationVM("first") } }
+    );
+    harness.resetGeometryReadCounts();
+
+    rerender({ conversation: conversationVM("second") });
+
+    expect(harness.geometryReadCounts()).toEqual({
+      clientHeight: 0,
+      scrollHeight: 0,
+      scrollTop: 0
+    });
+  });
+
+  it("keeps the bottom lock through observed streaming content growth", () => {
+    const resizeObservers = installResizeObserverMock();
+    const harness = createHarness({ scrollHeight: 5_000 });
+
+    renderHook(() =>
+      useAgentGUIDetailScroll(
+        harness.input({
+          activeConversationId: "conversation-observed",
+          showTimelineSkeleton: false
+        })
+      )
+    );
+    const timelineObserver = resizeObservers.find((observer) =>
+      observer.observed.has(harness.timelineContent)
+    );
+    expect(timelineObserver).toBeDefined();
+
+    harness.setScrollHeight(6_000);
+    act(() => {
+      timelineObserver?.callback([], timelineObserver);
+    });
+
+    expect(harness.timeline.scrollTop).toBe(5_900);
+  });
+
+  it("preserves user scroll-away through observed streaming content growth", () => {
+    const resizeObservers = installResizeObserverMock();
+    const harness = createHarness({ scrollHeight: 5_000 });
+
+    renderHook(() =>
+      useAgentGUIDetailScroll(
+        harness.input({
+          activeConversationId: "conversation-observed-away",
+          showTimelineSkeleton: false
+        })
+      )
+    );
+    const timelineObserver = resizeObservers.find((observer) =>
+      observer.observed.has(harness.timelineContent)
+    );
+    expect(timelineObserver).toBeDefined();
+    act(() => {
+      harness.timeline.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
+      harness.timeline.scrollTop = 4_000;
+      harness.timeline.dispatchEvent(new Event("scroll"));
+    });
+
+    harness.setScrollHeight(6_000);
+    act(() => {
+      timelineObserver?.callback([], timelineObserver);
+    });
+
+    expect(harness.timeline.scrollTop).toBe(4_000);
+  });
+
   it("moves floating dock controls above a growing composer without reserving timeline space", () => {
     const harness = createHarness({ scrollHeight: 5_000 });
     const composerInputShell = document.createElement("div");
@@ -222,16 +303,37 @@ function mockRect(input: {
 
 function createHarness(input: { scrollHeight: number }) {
   const timeline = document.createElement("div");
+  const timelineContent = document.createElement("div");
   const bottomDock = document.createElement("div");
+  let scrollTop = 0;
   let scrollHeight = input.scrollHeight;
+  let clientHeightReadCount = 0;
+  let scrollHeightReadCount = 0;
+  let scrollTopReadCount = 0;
   Object.defineProperties(timeline, {
     clientHeight: {
       configurable: true,
-      get: () => 100
+      get: () => {
+        clientHeightReadCount += 1;
+        return 100;
+      }
     },
     scrollHeight: {
       configurable: true,
-      get: () => scrollHeight
+      get: () => {
+        scrollHeightReadCount += 1;
+        return scrollHeight;
+      }
+    },
+    scrollTop: {
+      configurable: true,
+      get: () => {
+        scrollTopReadCount += 1;
+        return scrollTop;
+      },
+      set: (value: number) => {
+        scrollTop = value;
+      }
     }
   });
 
@@ -247,36 +349,86 @@ function createHarness(input: { scrollHeight: number }) {
     scrollTop: number;
   } | null>(null);
   const submittedPromptScrollConversationRef = mutableRef<string | null>(null);
+  const actions = {
+    loadOlderConversationMessages: vi.fn()
+  } as unknown as AgentGUINodeViewProps["actions"];
 
   return {
     bottomDock,
     timeline,
+    timelineContent,
+    resetGeometryReadCounts() {
+      clientHeightReadCount = 0;
+      scrollHeightReadCount = 0;
+      scrollTopReadCount = 0;
+    },
+    geometryReadCounts() {
+      return {
+        clientHeight: clientHeightReadCount,
+        scrollHeight: scrollHeightReadCount,
+        scrollTop: scrollTopReadCount
+      };
+    },
     setScrollHeight(value: number) {
       scrollHeight = value;
     },
     input(options: {
       activeConversationId: string;
+      conversation?: AgentConversationVM;
       showTimelineSkeleton: boolean;
       timelineConversationId?: string;
     }) {
       return {
-        actions: {
-          loadOlderConversationMessages: vi.fn()
-        } as unknown as AgentGUINodeViewProps["actions"],
+        actions,
         bottomDockRef: ref(bottomDock),
         bottomDockStoreRevision: "stable",
-        conversation: null,
+        conversation: options.conversation ?? null,
         pendingPrependScrollAnchorRef,
         showTimelineSkeleton: options.showTimelineSkeleton,
         submittedPromptScrollConversationRef,
         timelineConversationId:
           options.timelineConversationId ?? options.activeConversationId,
+        timelineContentRef: ref(timelineContent),
         timelineRef: ref(timeline),
         timelineScrollAnchorRef,
         viewModel: viewModel(options.activeConversationId)
       };
     }
   };
+}
+
+function conversationVM(id: string): AgentConversationVM {
+  return { id } as unknown as AgentConversationVM;
+}
+
+interface ResizeObserverMock extends ResizeObserver {
+  readonly callback: ResizeObserverCallback;
+  readonly observed: Set<Element>;
+}
+
+function installResizeObserverMock(): ResizeObserverMock[] {
+  const observers: ResizeObserverMock[] = [];
+  class TestResizeObserver implements ResizeObserverMock {
+    readonly observed = new Set<Element>();
+
+    constructor(readonly callback: ResizeObserverCallback) {
+      observers.push(this);
+    }
+
+    observe(target: Element): void {
+      this.observed.add(target);
+    }
+
+    unobserve(target: Element): void {
+      this.observed.delete(target);
+    }
+
+    disconnect(): void {
+      this.observed.clear();
+    }
+  }
+  vi.stubGlobal("ResizeObserver", TestResizeObserver);
+  return observers;
 }
 
 function viewModel(activeConversationId: string): AgentGUINodeViewModel {

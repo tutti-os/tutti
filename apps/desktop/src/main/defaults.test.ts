@@ -7,6 +7,7 @@ import {
   resolveDesktopLoginCallbackUrl,
   resolveDesktopLoginProtocolClientRegistration,
   resolveDesktopLoginProtocolScheme,
+  resolveDesktopPerformanceHeadless,
   resolveDesktopUserDataPath,
   resolveTuttiEnv
 } from "./defaults.ts";
@@ -199,6 +200,24 @@ test("resolveDesktopDevelopmentAppName isolates development single-instance iden
 
     process.env.TUTTI_ENV = "production";
     assert.equal(resolveDesktopDevelopmentAppName("Tutti"), null);
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveDesktopPerformanceHeadless is limited to explicit development diagnostics", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.TUTTI_ENV = "development";
+    delete process.env.TUTTI_DESKTOP_PERFORMANCE_HEADLESS;
+    assert.equal(resolveDesktopPerformanceHeadless(), false);
+
+    process.env.TUTTI_DESKTOP_PERFORMANCE_HEADLESS = "1";
+    assert.equal(resolveDesktopPerformanceHeadless(), true);
+
+    process.env.TUTTI_ENV = "production";
+    assert.equal(resolveDesktopPerformanceHeadless(), false);
   } finally {
     restoreEnv(previousEnv);
   }

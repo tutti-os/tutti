@@ -218,9 +218,10 @@ export function AgentMessageLocatorRail({
     const railHeight =
       (items.length - 1) * AGENT_MESSAGE_LOCATOR_ITEM_SPACING_PX +
       AGENT_MESSAGE_LOCATOR_HIT_SIZE_PX;
-    const viewportHeight =
-      viewport.clientHeight ||
-      Math.min(railHeight, visibleFrame?.heightPx ?? railHeight);
+    const viewportHeight = Math.min(
+      railHeight,
+      visibleFrame?.heightPx ?? railHeight
+    );
     scrollMessageLocatorViewportToIndex(
       viewport,
       selectedIndex,
