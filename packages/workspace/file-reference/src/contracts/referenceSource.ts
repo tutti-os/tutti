@@ -34,7 +34,7 @@ export interface ReferenceNode {
   displayName: string;
   /**
    * 可选的「上下文标签」:搜索结果里展示该项的归属(如应用名 / 议题标题),
-   * 替代不透明 nodeId 作为副标题。各源自行填充;本地源不填(回退展示 path)。
+   * 各源需要展示上下文时自行填充。picker 不得把不透明 nodeId 当作展示文案。
    */
   contextLabel?: string | null;
   /** folder 是否可下钻(懒加载箭头)。 */
@@ -75,12 +75,18 @@ export interface ListChildrenResult {
 
 export interface SearchInput {
   query: string;
+  /**
+   * 允许出现在搜索结果里的节点类型。source 必须在分页/limit 前执行该约束。
+   * 缺省表示调用方不限制结果类型。
+   */
+  kinds?: Array<ReferenceNode["kind"]>;
   /** Host-controlled provenance constraint. Sources must filter before paging. */
   provenanceFilter?: ReferenceProvenanceFilter | null;
   /**
    * 已选「文件类型筛选分类」id 数组(全局统一口径,见 core/referenceFilterCategories)。
-   * 筛选与搜索在底层是同一能力:query 可空、filters 非空时即「仅按类型查」。
-   * 空数组/缺省 = 不按类型过滤。各源把它下钻到 daemon 真正过滤。
+   * 仅在关键字搜索时下钻到 source/daemon,并在分页/limit 前执行。
+   * 浏览态由 picker 递归加载并投影整棵源树；只有包含匹配文件的文件夹会保留。
+   * 空数组/缺省 = 不按类型过滤。
    */
   filters?: string[];
   cursor?: string | null;

@@ -1,6 +1,7 @@
 /**
- * 全局统一「文件类型筛选分类」—— 筛选与搜索在底层是同一能力:search() 接收的
- * filters 即此处的分类 id 数组,各源 daemon 按扩展名/媒体类型真正过滤。
+ * 全局统一「文件类型筛选分类」。浏览态递归投影源树并仅保留含匹配文件的目录;
+ * 关键字搜索时,search() 接收的 filters 即此处的分类 id 数组,各源 daemon 在
+ * 分页/limit 前按扩展名或媒体类型过滤。
  *
  * 这是分类口径的「单一 TS 来源」。其余各处均为逐字镜像,改一处务必同步全部:
  *   - Go 宿主侧:services/tuttid/data/workspace/reference_filter_categories.go

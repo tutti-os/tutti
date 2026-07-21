@@ -110,7 +110,9 @@ export interface WorkspaceFileReferenceAdapter {
     input: WorkspaceFileReferenceScope & {
       limit?: number;
       query: string;
-      /** 已选文件类型筛选分类 id;query 可空、filters 非空时即「仅按类型查」。 */
+      /** 搜索结果类型约束,必须在 limit 前执行。 */
+      kinds?: Array<"file" | "folder">;
+      /** 已选文件类型筛选分类 id;仅在有关键词的搜索中下钻。 */
       filters?: string[];
       /**
        * 可选:把搜索限定在工作区根下的某子路径(左栏选中的「位置」,如 文稿/下载/桌面)。

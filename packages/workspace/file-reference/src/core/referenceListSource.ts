@@ -41,7 +41,7 @@ export interface ReferenceListFile {
   displayName?: string | null;
   /**
    * 可选的归属标签(如应用名 / 议题标题),用于搜索结果副标题。
-   * 各源在「跨整源搜索拍平」时填入父级上下文;不填则副标题回退展示 nodeId。
+   * 各源在「跨整源搜索拍平」时填入父级上下文;不填则不展示副标题。
    */
   parentLabel?: string | null;
   createdTimeMs?: number | null;
@@ -73,6 +73,8 @@ export interface ReferenceListResult {
 /** 递归搜索请求(跨整源,非当前层 filter)。 */
 export interface ReferenceListSearchRequest {
   query: string;
+  /** 结果类型约束,backend 必须在分页/limit 前执行。 */
+  kinds?: Array<ReferenceNode["kind"]>;
   /** 已选文件类型筛选分类 id(全局统一口径);空数组/缺省 = 不按类型过滤。 */
   filters?: string[];
   cursor?: string | null;
@@ -294,6 +296,9 @@ export function createReferenceListSource(
       const result = await backendSearch(scope, {
         query: input.query,
         cursor: input.cursor ?? null,
+        ...(input.kinds && input.kinds.length > 0
+          ? { kinds: input.kinds }
+          : {}),
         ...(input.filters && input.filters.length > 0
           ? { filters: input.filters }
           : {}),

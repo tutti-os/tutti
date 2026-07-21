@@ -91,8 +91,6 @@ const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
     "agentHost.agentGui.referencePicker.selectGroupHint",
   "referencePicker.selectedCount":
     "agentHost.agentGui.referencePicker.selectedCount",
-  "referencePicker.workspaceRootGroup":
-    "agentHost.agentGui.referencePicker.workspaceRootGroup",
   "referencePicker.sourceColumn":
     "agentHost.agentGui.referencePicker.sourceColumn",
   "referencePicker.title": "agentHost.agentGui.referencePicker.title"

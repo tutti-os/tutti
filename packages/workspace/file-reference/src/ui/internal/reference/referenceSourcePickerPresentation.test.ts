@@ -53,6 +53,19 @@ test("formatReferenceNodePathText does not duplicate the focused group when hier
   );
 });
 
+test("formatReferenceNodePathText never exposes an opaque node id", () => {
+  const node = {
+    displayName: "111.md",
+    kind: "file",
+    ref: {
+      sourceId: "workspace-file",
+      nodeId: "opaque-workspace-reference-id"
+    }
+  } satisfies ReferenceNode;
+
+  assert.equal(formatReferenceNodePathText(node), "111.md");
+});
+
 test("formatReferencePreviewDateTime formats timestamps in the requested user time zone", () => {
   const timestamp = Date.UTC(2026, 5, 12, 3, 24);
 

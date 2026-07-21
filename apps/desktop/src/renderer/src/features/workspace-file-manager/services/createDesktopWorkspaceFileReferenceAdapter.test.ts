@@ -136,6 +136,37 @@ test("desktop workspace file reference adapter passes search abort signals to tu
   assert.equal(observedSignal, abortController.signal);
 });
 
+test("desktop workspace file reference adapter maps reference kinds before search", async () => {
+  let observedRequest:
+    | Parameters<TuttidClient["searchWorkspaceFiles"]>[1]
+    | undefined;
+  const adapter = createDesktopWorkspaceFileReferenceAdapter({
+    hostFilesApi: {} as DesktopHostFilesApi,
+    tuttidClient: {
+      async searchWorkspaceFiles(
+        _workspaceId: string,
+        request: Parameters<TuttidClient["searchWorkspaceFiles"]>[1]
+      ) {
+        observedRequest = request;
+        return {
+          entries: [],
+          root: "/Users/test/project/tutti",
+          workspaceId: "workspace-1"
+        };
+      }
+    } as unknown as TuttidClient,
+    workspaceId: "workspace-1"
+  });
+
+  await adapter.searchReferences?.({
+    query: "notes",
+    kinds: ["file"],
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(observedRequest?.includeKinds, ["file"]);
+});
+
 test("desktop workspace file reference adapter preserves file creation times from search", async () => {
   const adapter = createDesktopWorkspaceFileReferenceAdapter({
     hostFilesApi: {} as DesktopHostFilesApi,

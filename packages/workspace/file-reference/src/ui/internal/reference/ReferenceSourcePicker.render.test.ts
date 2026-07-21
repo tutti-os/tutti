@@ -158,11 +158,6 @@ test("reference source picker renders shared folder icons and content errors", a
           onClose() {},
           onConfirm() {},
           open: true,
-          provenanceFilterControl: createElement(
-            "span",
-            null,
-            "provenance-control"
-          ),
           purpose: "directory",
           workspaceId: "workspace-directory-purpose-test"
         } as unknown as ReferenceSourcePickerProps)
@@ -174,7 +169,6 @@ test("reference source picker renders shared folder icons and content errors", a
     assert.match(bodyText, /createDirectoryLabel/);
     assert.match(bodyText, /directoryPicker\.confirm/);
     assert.doesNotMatch(bodyText, /referencePicker\.fileTypeAll/);
-    assert.doesNotMatch(bodyText, /provenance-control/);
     assert.equal(
       dom.window.document.querySelector("input")?.getAttribute("placeholder"),
       "directoryPicker.searchPlaceholder"
@@ -363,6 +357,33 @@ test("reference source picker renders shared folder icons and content errors", a
       ),
       null
     );
+
+    const opaqueNodeId = "f:L3dvcmtzcGFjZS8xMTEubWQ";
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...createFolderOnlyView(folderNode),
+      currentEntries: [],
+      isQuery: true,
+      searchQuery: "111",
+      searchResults: [file(opaqueNodeId, "111.md")]
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          onClose() {},
+          onConfirm() {},
+          open: true,
+          workspaceId: "workspace-reference-opaque-node-id-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+
+    const searchBodyText = dom.window.document.body.textContent ?? "";
+    assert.match(searchBodyText, /111\.md/);
+    assert.doesNotMatch(searchBodyText, new RegExp(opaqueNodeId));
   } finally {
     if (root) {
       await act(async () => {

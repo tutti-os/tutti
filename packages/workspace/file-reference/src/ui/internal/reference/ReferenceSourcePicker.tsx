@@ -58,7 +58,6 @@ import type {
   ReferenceLocateTarget,
   ReferenceNode
 } from "../../../contracts/referenceSource.ts";
-import type { ReferenceProvenanceFilter } from "../../../contracts/referenceProvenance.ts";
 import type {
   WorkspaceFileReference,
   WorkspaceFileReferenceCopy
@@ -103,8 +102,6 @@ export interface ReferenceSourcePickerProps {
    */
   onConfirmBundles?: (result: ReferenceGroupedSelection) => void;
   open: boolean;
-  provenanceFilter?: ReferenceProvenanceFilter | null;
-  provenanceFilterControl?: ReactNode;
   purpose?: "directory" | "reference";
   workspaceId: string;
 }
@@ -177,8 +174,6 @@ export function ReferenceSourcePicker({
   onConfirm,
   onConfirmBundles,
   open,
-  provenanceFilter = null,
-  provenanceFilterControl,
   purpose = "reference",
   resolveEntryIconUrl,
   resolveOpenWithApplicationIcon,
@@ -189,13 +184,12 @@ export function ReferenceSourcePicker({
     aggregator,
     workspaceId,
     open,
-    workspaceRootGroupLabel: copy.t("referencePicker.workspaceRootGroup"),
     initialTarget,
     isNodeSelectable,
     onClose,
     onConfirm,
     onConfirmBundles,
-    provenanceFilter: purpose === "directory" ? null : provenanceFilter,
+    searchResultKind: purpose === "directory" ? "folder" : "file",
     selectionMode: purpose === "directory" ? "single" : "multiple"
   });
   const [createDirectoryDialog, setCreateDirectoryDialog] = useState<{
@@ -608,7 +602,6 @@ export function ReferenceSourcePicker({
                         onToggle={toggleFilter}
                       />
                     ) : null}
-                    {purpose === "reference" ? provenanceFilterControl : null}
                     {purpose === "directory" &&
                     view.canCreateDirectory &&
                     fileManagerCopy ? (
@@ -929,11 +922,11 @@ export function ReferenceSourceContentPane({
     aggregator,
     workspaceId,
     open: true,
-    workspaceRootGroupLabel: copy.t("referencePicker.workspaceRootGroup"),
     initialTarget,
     isNodeSelectable: () => false,
     onClose: noopVoid,
-    onConfirm: noopVoid
+    onConfirm: noopVoid,
+    searchResultKind: "file"
   });
   const hasVisibleContent = view.isQuery
     ? view.searchResults.length > 0
@@ -1389,13 +1382,26 @@ function SourceSidebar({
             (view.sidebarHasMoreBySource[tab.sourceId] ?? false);
           return (
             <div key={tab.sourceId} className="flex flex-col gap-0.5">
-              {/* 一级源:Finder 风格分区标题,无箭头、不可折叠。 */}
-              <p
-                className="px-2 pt-1.5 pb-0.5 text-[11px] font-semibold text-[var(--text-tertiary)]"
+              {/* 一级源:Finder 风格分区标题,同时作为源根入口。 */}
+              <button
+                aria-current={
+                  view.activeSourceId === tab.sourceId &&
+                  view.selectedGroupKey == null
+                    ? "true"
+                    : undefined
+                }
+                className={cn(
+                  "px-2 pt-1.5 pb-0.5 text-left text-[11px] font-semibold text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]",
+                  view.activeSourceId === tab.sourceId &&
+                    view.selectedGroupKey == null &&
+                    "text-[var(--text-primary)]"
+                )}
                 data-autofit-label
+                type="button"
+                onClick={() => view.selectSourceRoot(tab.sourceId)}
               >
                 {tab.label}
-              </p>
+              </button>
               {groups.length === 0 ? (
                 view.isLoadingTabs ? (
                   <p className="px-2 py-1 text-[12px] text-[var(--text-tertiary)]">
@@ -1501,7 +1507,7 @@ function SearchResultRow({
   onSingleSelect: (node: ReferenceNode) => void;
   onToggle: (node: ReferenceNode) => void;
 }): JSX.Element {
-  const contextLabel = node.contextLabel ?? node.ref.nodeId;
+  const contextLabel = node.contextLabel?.trim() || null;
   const active = selected || (focused && selectable);
   return (
     <div
@@ -1540,11 +1546,13 @@ function SearchResultRow({
               {node.displayName}
             </span>
           </FullTextTooltip>
-          <FullTextTooltip content={contextLabel}>
-            <span className="block truncate text-[11px] text-[var(--text-secondary)]">
-              {contextLabel}
-            </span>
-          </FullTextTooltip>
+          {contextLabel ? (
+            <FullTextTooltip content={contextLabel}>
+              <span className="block truncate text-[11px] text-[var(--text-secondary)]">
+                {contextLabel}
+              </span>
+            </FullTextTooltip>
+          ) : null}
         </span>
       </div>
       {selectable ? (

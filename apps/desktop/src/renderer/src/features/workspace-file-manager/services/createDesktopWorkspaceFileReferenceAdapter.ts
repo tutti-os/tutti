@@ -153,6 +153,7 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
       limit = 30,
       query,
       filters,
+      kinds,
       within,
       signal,
       workspaceId
@@ -162,6 +163,13 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
         {
           limit,
           query,
+          ...(kinds && kinds.length > 0
+            ? {
+                includeKinds: kinds.map((kind) =>
+                  kind === "folder" ? "directory" : "file"
+                )
+              }
+            : {}),
           ...(filters && filters.length > 0 ? { filters } : {}),
           ...(within ? { within } : {})
         },

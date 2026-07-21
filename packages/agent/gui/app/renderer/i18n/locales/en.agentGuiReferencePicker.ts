@@ -40,7 +40,6 @@ export const enAgentGuiReferencePicker = {
     selectGroupHint: "Select a folder on the left",
     selectedCount: "{{count}} selected",
     sourceColumn: "Category",
-    title: "Pick workspace references",
-    workspaceRootGroup: "Workspace"
+    title: "Pick workspace references"
   }
 } as const;
