@@ -35,7 +35,15 @@ type BareIconButtonProps = Omit<
 
 const BareIconButton = React.forwardRef<HTMLButtonElement, BareIconButtonProps>(
   (
-    { className, size = "md", asChild = false, type = "button", ...props },
+    {
+      className,
+      size = "md",
+      asChild = false,
+      type = "button",
+      title,
+      "aria-label": ariaLabel,
+      ...props
+    },
     ref
   ) => {
     const Comp = asChild ? Slot.Root : "button";
@@ -46,6 +54,8 @@ const BareIconButton = React.forwardRef<HTMLButtonElement, BareIconButtonProps>(
         data-slot="bare-icon-button"
         data-size={size}
         type={type}
+        aria-label={ariaLabel}
+        title={title ?? ariaLabel}
         className={cn(bareIconButtonVariants({ size, className }))}
         {...props}
       />
