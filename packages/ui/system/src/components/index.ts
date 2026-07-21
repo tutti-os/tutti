@@ -21,6 +21,7 @@ export * from "./select";
 export * from "./separator";
 export * from "./section-tabs";
 export * from "./shortcut-badge";
+export * from "./slider";
 export * from "./sonner";
 export * from "./spinner";
 export * from "./sortable";

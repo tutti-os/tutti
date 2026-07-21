@@ -12,6 +12,7 @@ export type GoalExecInput = {
   prompt: string;
   content?: unknown;
   turnOrigin?: string;
+  hostContext?: string;
   goal: GoalCommandDispatch;
 };
 

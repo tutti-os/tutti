@@ -8,6 +8,7 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 type reentrantQueueReporter struct {
@@ -48,7 +49,7 @@ func (r *reentrantQueueReporter) snapshot() []string {
 func queuedReport(title string) agentsessionstore.ReportActivityInput {
 	return agentsessionstore.ReportActivityInput{
 		WorkspaceID: "ws-1",
-		Source:      agentsessionstore.EventSource{AgentID: "session-1"},
+		Source:      canonical.EventSource{AgentID: "session-1"},
 		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
 			AgentSessionID: "session-1",
 			Title:          title,

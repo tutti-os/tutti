@@ -45,8 +45,8 @@ type Service struct {
 	GoalReconcileInboxStore        GoalReconcileInboxStore
 	SubmitClaimStore               SubmitClaimStore
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
-	TuttiModeActivations           TuttiModeActivationCoordinator
-	SourceSessionDeletions         SourceSessionDeletionCoordinator
+	TuttiModeActivations           TuttiModeActivationPort
+	SourceSessionDeletions         SourceSessionDeletionPort
 	SessionDeletionEvents          SessionDeletionEventPublisher
 	RuntimeOperationClock          func() time.Time
 	RuntimeOperationOwner          string
@@ -100,7 +100,7 @@ type Service struct {
 
 type GoalReconcileInboxStore = agenthost.GoalReconcileInboxStore
 
-type TuttiModeActivationCoordinator interface {
+type TuttiModeActivationPort interface {
 	Get(context.Context, string, string) (*tuttimodeactivationbiz.Activation, error)
 	List(context.Context, string, []string) (map[string]tuttimodeactivationbiz.Activation, error)
 	Set(context.Context, tuttimodeactivationservice.SetInput) (tuttimodeactivationservice.SetResult, error)
@@ -442,7 +442,7 @@ type SessionBatchDeleter interface {
 	PlanClearSessions(context.Context, string) (agentactivitybiz.DeleteSessionsPlan, error)
 	PlanDeleteSessions(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error)
 	// DeleteSessionsBatch is a persistence-only fallback for isolated stores.
-	// Production deletion uses SourceSessionDeletionCoordinator so workflow
+	// Production deletion uses SourceSessionDeletionPort so workflow
 	// policy remains in the Tutti mode plan service.
 	DeleteSessionsBatch(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error)
 }

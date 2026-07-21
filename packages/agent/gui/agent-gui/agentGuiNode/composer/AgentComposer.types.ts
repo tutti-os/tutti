@@ -153,6 +153,12 @@ export interface AgentComposerProps {
     planModeLabel: string;
     tuttiModeLabel: string;
     tuttiModeDescription: string;
+    tuttiBudgetTitle: string;
+    tuttiBudgetIntensityLabel: string;
+    tuttiBudgetIntensityMin: string;
+    tuttiBudgetIntensityMax: string;
+    tuttiBudgetConfirm: string;
+    tuttiBudgetCancel: string;
     planModeDescription?: string;
     planModeOnLabel: string;
     planModeOffLabel: string;

@@ -253,29 +253,14 @@ export function useNodeFrameResize({
   const [isResizing, setIsResizing] = useState(false);
   const [draftFrame, setDraftFrame] = useState<NodeFrame | null>(null);
   const zoomRef = useRef(zoom);
-
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
-
   const minSizeRef = useRef(minSize);
-  useEffect(() => {
-    minSizeRef.current = minSize;
-  }, [minSize]);
-
   const onResizeRef = useRef(onResize);
-  useEffect(() => {
-    onResizeRef.current = onResize;
-  }, [onResize]);
-
   const onResizeEndRef = useRef(onResizeEnd);
-  useEffect(() => {
-    onResizeEndRef.current = onResizeEnd;
-  }, [onResizeEnd]);
-
-  useEffect(() => {
-    draftFrameRef.current = draftFrame;
-  }, [draftFrame]);
+  zoomRef.current = zoom;
+  minSizeRef.current = minSize;
+  onResizeRef.current = onResize;
+  onResizeEndRef.current = onResizeEnd;
+  draftFrameRef.current = draftFrame;
 
   useEffect(() => {
     return () => {

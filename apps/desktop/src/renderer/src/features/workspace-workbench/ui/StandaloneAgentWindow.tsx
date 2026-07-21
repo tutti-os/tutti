@@ -802,7 +802,6 @@ export function StandaloneAgentWindow({
               dockPreviewCache={dockPreviewCache}
               onLinkAction={handleLinkAction}
               onCapabilitySettingsRequest={handleCapabilitySettingsRequest}
-              onCreateIssueFromPlan={agentGuiHostInput.createIssueFromPlan}
               onOpenAgentConversationWindow={({
                 agentSessionId,
                 agentTargetId,

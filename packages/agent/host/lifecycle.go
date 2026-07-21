@@ -27,12 +27,18 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	metadata := submissionMetadata(input.Metadata, input.ClientSubmitID)
 	goalMetadata := clonePayload(metadata)
 	claimMetadata := metadata
-	if isTypedGoal {
+	if isTypedGoal || len(normalized) == 0 {
 		normalized = nil
 		claimMetadata = nil
 	}
-	claim, claimPending, err := h.prepareSubmitClaim(ctx, ref, claimMetadata)
+	if len(normalized) > 0 && strings.TrimSpace(input.TurnID) == "" {
+		input.TurnID = uuid.NewString()
+	}
+	claim, claimPending, err := h.prepareSubmitClaim(ctx, ref, claimMetadata, input.TurnID)
 	if err != nil {
+		if errors.Is(err, storesqlite.ErrSubmitClaimTurnConflict) {
+			return CreateSessionResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
+		}
 		return CreateSessionResult{}, err
 	}
 	if claim.ClientSubmitID != "" && !claimPending {
@@ -178,18 +184,25 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		h.observeStep(ctx, "session_create", "runtime_exec", session.ID, session.Provider, startedAt, ErrSubmitDeliveryUnknown)
 		return CreateSessionResult{}, cleanup(ErrSubmitDeliveryUnknown, true, true)
 	}
+	if expectedTurnID := strings.TrimSpace(input.TurnID); expectedTurnID != "" && turnID != expectedTurnID {
+		claimPending = false
+		return CreateSessionResult{}, ErrSubmitDeliveryUnknown
+	}
 	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
 		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{
 			WorkspaceID: workspaceID, AgentSessionID: session.ID, TurnID: turnID,
 			ClientSubmitID: input.ClientSubmitID, Content: content, DisplayPrompt: displayPrompt,
 		}); err != nil {
-			return CreateSessionResult{}, cleanup(err, true, true)
+			// Provider acceptance is already possible. Keep the runtime, canonical
+			// session, and prepared claim intact so a retry cannot dispatch twice.
+			claimPending = false
+			return CreateSessionResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
 		}
 	}
 	if claim.ClientSubmitID != "" {
 		claimPending = false
 		if err := h.acceptSubmitClaim(ref, claim.ClientSubmitID, turnID); err != nil {
-			return CreateSessionResult{}, err
+			return CreateSessionResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
 		}
 	}
 	if refreshed, ok := h.runtime.Session(workspaceID, session.ID); ok {
@@ -298,8 +311,14 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 			Kind: "goalControl", GoalControl: &goalResult,
 		}, nil
 	}
-	claim, claimPending, err := h.prepareSubmitClaim(ctx, ref, metadata)
+	if !input.Guidance && strings.TrimSpace(input.TurnID) == "" {
+		input.TurnID = uuid.NewString()
+	}
+	claim, claimPending, err := h.prepareSubmitClaim(ctx, ref, metadata, input.TurnID)
 	if err != nil {
+		if errors.Is(err, storesqlite.ErrSubmitClaimTurnConflict) {
+			return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
+		}
 		return SendInputResult{}, err
 	}
 	if claim.ClientSubmitID != "" && !claimPending {
@@ -364,6 +383,12 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 	}()
 	if err != nil {
 		h.observeStep(ctx, "message_send", "runtime_exec", ref.AgentSessionID, session.Provider, startedAt, err)
+		if input.Guidance {
+			// Guidance targets an already-live turn and transport failure cannot
+			// prove rejection. Preserve the claim as a replay fence.
+			claimPending = false
+			return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
+		}
 		return SendInputResult{}, err
 	}
 	turnID := strings.TrimSpace(execResult.TurnID)
@@ -371,18 +396,23 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 		h.observeStep(ctx, "message_send", "runtime_exec", ref.AgentSessionID, session.Provider, startedAt, ErrSubmitDeliveryUnknown)
 		return SendInputResult{}, ErrSubmitDeliveryUnknown
 	}
+	if expectedTurnID := strings.TrimSpace(input.TurnID); !input.Guidance && expectedTurnID != "" && turnID != expectedTurnID {
+		claimPending = false
+		return SendInputResult{}, ErrSubmitDeliveryUnknown
+	}
 	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
 		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{
 			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, TurnID: turnID,
 			ClientSubmitID: input.ClientSubmitID, Content: content, DisplayPrompt: displayPrompt, Guidance: input.Guidance,
 		}); err != nil {
-			return SendInputResult{}, err
+			claimPending = false
+			return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
 		}
 	}
 	if claim.ClientSubmitID != "" {
 		claimPending = false
 		if err := h.acceptSubmitClaim(ref, claim.ClientSubmitID, turnID); err != nil {
-			return SendInputResult{}, err
+			return SendInputResult{}, errors.Join(ErrSubmitDeliveryUnknown, err)
 		}
 	}
 	h.observeStep(ctx, "message_send", "runtime_exec", ref.AgentSessionID, session.Provider, startedAt, nil)

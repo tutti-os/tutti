@@ -126,6 +126,12 @@ export interface AgentGUIViewLabels {
   normalModeDescription?: string;
   tuttiModeLabel: string;
   tuttiModeDescription: string;
+  tuttiBudgetTitle: string;
+  tuttiBudgetIntensityLabel: string;
+  tuttiBudgetIntensityMin: string;
+  tuttiBudgetIntensityMax: string;
+  tuttiBudgetConfirm: string;
+  tuttiBudgetCancel: string;
   tuttiModeUpdateFailed: string;
   tuttiModeUpdateUncertain: string;
   tuttiModePlanPanel: TuttiModePlanPanelLabels;
@@ -138,8 +144,6 @@ export interface AgentGUIViewLabels {
   tuttiModePlanReplanFeedbackSuffix: (to: string) => string;
   tuttiModePlanLoadFailed: string;
   tuttiModePlanRetry: string;
-  /** Accepted plan whose Issue creation durably failed; message is the cause. */
-  tuttiModePlanIssueCreateFailed: (message: string) => string;
   planModeDescription?: string;
   planModeOnLabel: string;
   planModeOffLabel: string;
@@ -612,6 +616,7 @@ export interface AgentGUINodeViewProps {
       permissionMode?: string;
     }) => void;
     setTuttiModeActive: (active: boolean) => void;
+    setTuttiModeOrchestrationIntensity: (value: number) => void;
     retryTuttiModeActivation: () => void;
     selectHomeComposerAgentTarget: (input: {
       provider: AgentGUIProvider;

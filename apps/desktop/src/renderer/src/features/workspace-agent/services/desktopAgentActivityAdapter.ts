@@ -189,6 +189,13 @@ export function createDesktopAgentActivityAdapter({
             input.initialContent ?? []
           ),
           initialDisplayPrompt: input.initialDisplayPrompt ?? null,
+          ...(input.initialTuttiModeActivation
+            ? {
+                initialTuttiModeActivation: {
+                  ...input.initialTuttiModeActivation
+                }
+              }
+            : {}),
           ...(input.submitDiagnostics
             ? {
                 submitDiagnostics: toTuttidSubmitDiagnostics(

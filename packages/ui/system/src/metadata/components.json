@@ -1268,6 +1268,26 @@
       "storyboard": true
     },
     {
+      "id": "slider",
+      "layer": "base",
+      "name": "Slider",
+      "export": "Slider",
+      "from": "@tutti-os/ui-system/components",
+      "category": "primitive",
+      "status": "stable",
+      "source": "src/components/slider/index.tsx",
+      "description": "Token-backed slider primitive for selecting one value or a bounded range.",
+      "useCases": [
+        "Intensity controls",
+        "Numeric range filters",
+        "Continuous settings"
+      ],
+      "migrationHints": [
+        "Replace native range inputs with Slider so focus, disabled, track, and thumb treatments stay aligned across renderer surfaces."
+      ],
+      "storyboard": true
+    },
+    {
       "id": "tooltip",
       "layer": "base",
       "name": "Tooltip",

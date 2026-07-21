@@ -2,7 +2,6 @@ import type {
   AgentTarget,
   TuttidClient,
   TuttidEventStreamClient,
-  WorkspaceAgent,
   WorkspaceWorkflowSnapshot,
   WorkspaceWorkflowTaskAssignment
 } from "@tutti-os/client-tuttid-ts";
@@ -14,7 +13,6 @@ import type {
   TuttiModePlanReviewRuntime,
   TuttiModePlanTaskAssignmentInput
 } from "@tutti-os/agent-gui";
-import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 
 export interface DesktopTuttiModePlanReviewRuntimeInput {
   tuttidClient: Pick<
@@ -22,9 +20,7 @@ export interface DesktopTuttiModePlanReviewRuntimeInput {
     | "listPendingWorkspaceWorkflows"
     | "decideWorkspaceWorkflowCheckpoint"
     | "listAgentTargets"
-    | "listWorkspaceAgents"
     | "getAgentProviderComposerOptions"
-    | "listWorkspaceModelPlans"
   >;
   eventStreamClient?: Pick<
     TuttidEventStreamClient,
@@ -137,15 +133,6 @@ interface AssignmentAgentDirectoryEntry {
   provider: string;
 }
 
-function workspaceAgentIsSelectable(agent: WorkspaceAgent): boolean {
-  return (
-    agent.enabled &&
-    agent.harness.available &&
-    agent.harness.enabled !== false &&
-    Boolean(agent.harness.provider)
-  );
-}
-
 function createAssignmentOptionsSource(
   tuttidClient: DesktopTuttiModePlanReviewRuntimeInput["tuttidClient"]
 ): TuttiModePlanAssignmentOptionsSource {
@@ -160,14 +147,9 @@ function createAssignmentOptionsSource(
   ): Promise<readonly AssignmentAgentDirectoryEntry[]> => {
     const cached = directoryPromises.get(workspaceId);
     if (cached) return cached;
-    // Built-in Harness targets and workspace Agents coexist in the assignment
-    // directory, mirroring the AgentGUI rail: built-ins keep their placement
-    // and workspace Agents are appended, deduped by agentTargetId.
-    const request = Promise.all([
-      tuttidClient.listAgentTargets(),
-      tuttidClient.listWorkspaceAgents(workspaceId)
-    ])
-      .then(([targetResponse, workspaceAgentResponse]) => {
+    const request = tuttidClient
+      .listAgentTargets()
+      .then((targetResponse) => {
         const entries: AssignmentAgentDirectoryEntry[] = [];
         const seen = new Set<string>();
         for (const target of targetResponse.targets) {
@@ -177,17 +159,6 @@ function createAssignmentOptionsSource(
             agentTargetId: target.id,
             label: target.name,
             provider: target.provider
-          });
-        }
-        for (const agent of workspaceAgentResponse.agents) {
-          if (!workspaceAgentIsSelectable(agent) || seen.has(agent.id)) {
-            continue;
-          }
-          seen.add(agent.id);
-          entries.push({
-            agentTargetId: agent.id,
-            label: agent.name,
-            provider: agent.harness.provider ?? ""
           });
         }
         return entries;
@@ -227,32 +198,15 @@ function createAssignmentOptionsSource(
           reasoningEfforts: []
         };
       }
-      const [composerOptions, plans] = await Promise.all([
-        tuttidClient.getAgentProviderComposerOptions(
-          entry.provider as AgentTarget["provider"],
-          { agentTargetId }
-        ),
-        tuttidClient.listWorkspaceModelPlans(workspaceId).catch(() => null)
-      ]);
-      const planProtocol =
-        resolveAgentGUIProviderCatalogIdentity(entry.provider)
-          ?.modelPlanProtocol || null;
-      const compatiblePlans = (plans?.plans ?? []).filter(
-        (plan) =>
-          plan.enabled &&
-          (plan.status === "ready" || plan.status === "pending_first_use") &&
-          planProtocol !== null &&
-          plan.protocol === planProtocol
+      const composerOptions = await tuttidClient.getAgentProviderComposerOptions(
+        entry.provider as AgentTarget["provider"],
+        { agentTargetId }
       );
       return {
         models: composerOptions.modelConfig.options.map(
           (option) => option.value
         ),
-        modelPlans: compatiblePlans.map((plan) => ({
-          modelPlanId: plan.id,
-          label: plan.name,
-          models: plan.models.map((model) => model.id)
-        })),
+        modelPlans: [],
         permissionModes: composerOptions.permissionConfig.modes.map((mode) => ({
           id: mode.id,
           label: mode.label

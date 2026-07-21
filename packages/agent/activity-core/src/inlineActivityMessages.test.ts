@@ -9,6 +9,7 @@ import type {
 
 const completeTurnContract = {
   agentSessionId: "session-contract",
+  capabilityRefs: [],
   completedCommand: null,
   error: null,
   fileChanges: null,
@@ -190,6 +191,7 @@ test("accepts live turn events with nullable outcome and capability provenance",
         error: null,
         fileChanges: null,
         outcome: null,
+        origin: "user_prompt",
         phase: "running",
         settledAtUnixMs: null,
         startedAtUnixMs: 10,

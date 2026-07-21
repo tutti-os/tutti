@@ -346,6 +346,11 @@ func activitySessionDeletedEventPayload(workspaceID string, agentSessionID strin
 	}
 }
 
+func (p *ActivityProjection) PublishSessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) {
+	p.publishActivityUpdated(ctx, workspaceID, agentSessionID,
+		"session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
+}
+
 func isFailedAgentLifecycleStatus(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "failed", "failure", "error", "errored":

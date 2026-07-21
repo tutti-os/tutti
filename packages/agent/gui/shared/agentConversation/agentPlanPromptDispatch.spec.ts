@@ -108,6 +108,7 @@ describe("dispatchAgentPlanPromptAction", () => {
           latestTurn: {
             agentSessionId: "session-1",
             outcome: "completed",
+            origin: "user_prompt",
             phase: "settled",
             settledAtUnixMs: 2,
             startedAtUnixMs: 1,
@@ -125,6 +126,7 @@ describe("dispatchAgentPlanPromptAction", () => {
             currentRevision: {
               activationId: "tutti-1",
               createdAtUnixMs: 1,
+              orchestrationIntensity: 50,
               revision: 1,
               source: "slash_command",
               status: "active"

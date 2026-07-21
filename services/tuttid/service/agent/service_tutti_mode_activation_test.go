@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
@@ -253,7 +255,7 @@ func TestCreateSnapshotBindFailureCompensatesSessionActivationAndClaimBeforeDisp
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Create() error = %v, want bind failure", err)
 	}
-	if len(runtime.execCalls) != 0 || len(runtime.closeCalls) != 1 {
+	if len(runtime.execCalls) != 0 || len(runtime.closeCalls) != 0 {
 		t.Fatalf("exec=%#v close=%#v", runtime.execCalls, runtime.closeCalls)
 	}
 	if _, ok := runtime.Session("ws-1", "session-bind-failure"); ok {
@@ -555,6 +557,20 @@ func seedDurableClientSubmitEvidence(t *testing.T, store *workspacedata.SQLiteSt
 		OccurredAtUnixMS: occurredAt - 1, StartedAtUnixMS: occurredAt - 2,
 	}); err != nil {
 		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+	projection := NewActivityProjection(store)
+	if _, err := projection.ReportSessionState(ctx, canonical.ReportSessionStateInput{
+		WorkspaceID: "ws-1", AgentSessionID: sessionID,
+		SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		State: canonical.WorkspaceAgentSessionStateUpdate{
+			Provider: "codex", OccurredAtUnixMS: occurredAt - 1,
+			Turn: &canonical.WorkspaceAgentTurnStateUpdate{
+				TurnID: turnID, Phase: agentactivitybiz.TurnPhaseSubmitted,
+				StartedAtUnixMS: occurredAt - 1,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("ReportSessionState(turn) error = %v", err)
 	}
 	if _, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID: "ws-1", AgentSessionID: sessionID, Origin: "runtime", Provider: "codex",

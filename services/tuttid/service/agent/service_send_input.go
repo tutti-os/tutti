@@ -12,6 +12,10 @@ import (
 
 func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (SendInputResult, error) {
 	input.ClientSubmitID = strings.TrimSpace(input.ClientSubmitID)
+	if input.ClientSubmitID == "" {
+		legacyClientSubmitID, _ := input.Metadata["clientSubmitId"].(string)
+		input.ClientSubmitID = strings.TrimSpace(legacyClientSubmitID)
+	}
 	logAgentSubmitTrace("service.send.entered", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, nil)
 	nodeStartedAt := time.Now()
 	normalizedContent, _, err := normalizePromptContent(input.Content)
@@ -27,17 +31,29 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...),
 		Content:        normalizedContent, DisplayPrompt: input.DisplayPrompt,
 		Metadata: cloneMetadata(input.Metadata), ClientSubmitID: input.ClientSubmitID, Guidance: input.Guidance,
+		TurnID: input.TurnID,
 	}
 	var preparedTurnID string
 	var preparedSnapshot tuttimodeactivationbiz.TurnSnapshot
 	if _, typedGoal := agenthost.ParseTypedGoalControl(normalizedContent, input.Guidance); !typedGoal {
 		runtimeSession, _ := s.controller().Session(workspaceID, agentSessionID)
-		preparedTurnID, preparedSnapshot, err = s.prepareTuttiModeExec(ctx, workspaceID, agentSessionID, input.Guidance, runtimeSession, "")
-		if err != nil {
-			return SendInputResult{}, err
+		existingCanonicalTurnID, claimErr := s.existingSubmitCanonicalTurnID(ctx, workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata)
+		if claimErr != nil {
+			return SendInputResult{}, claimErr
 		}
-		hostInput.TurnID = preparedTurnID
-		hostInput.TuttiModeSnapshot = runtimeTuttiModeTurnSnapshot(preparedSnapshot)
+		if existingCanonicalTurnID != "" {
+			// A durable claim already owns this submit: reuse its canonical
+			// turn so a retry reconciles instead of redispatching.
+			preparedTurnID = existingCanonicalTurnID
+			hostInput.TurnID = existingCanonicalTurnID
+		} else {
+			preparedTurnID, preparedSnapshot, err = s.prepareTuttiModeExec(ctx, workspaceID, agentSessionID, input.Guidance, runtimeSession, input.TurnID)
+			if err != nil {
+				return SendInputResult{}, err
+			}
+			hostInput.TurnID = preparedTurnID
+			hostInput.TuttiModeSnapshot = runtimeTuttiModeTurnSnapshot(preparedSnapshot)
+		}
 	}
 	hostResult, err := s.ApplicationHost().SendInput(ctx,
 		agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID},
@@ -63,15 +79,8 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		}
 		return SendInputResult{Session: session, Kind: "goalControl", GoalControl: &goal}, nil
 	}
-	if preparedTurnID != "" {
-		if strings.TrimSpace(hostResult.TurnID) != preparedTurnID {
-			return SendInputResult{}, ErrSubmitDeliveryUnknown
-		}
-		if !input.Guidance && s.TuttiModeActivations != nil {
-			if _, err := s.TuttiModeActivations.AcceptTurnSnapshot(ctx, workspaceID, agentSessionID, preparedTurnID); err != nil {
-				return SendInputResult{}, deliveryUnknownError(err)
-			}
-		}
+	if preparedTurnID != "" && strings.TrimSpace(hostResult.TurnID) != preparedTurnID {
+		return SendInputResult{}, ErrSubmitDeliveryUnknown
 	}
 	turnID := hostResult.TurnID
 	provider := strings.TrimSpace(hostResult.Session.Provider)

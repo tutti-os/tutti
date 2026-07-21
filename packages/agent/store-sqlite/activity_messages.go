@@ -42,6 +42,7 @@ func (*Store) upsertAgentMessageTx(
 	input MessageUpdate,
 	now int64,
 	allowLegacyTurnless bool,
+	protectExisting bool,
 ) (Message, bool, error) {
 	existing, ok, err := getAgentMessageForUpdate(ctx, tx, workspaceID, agentSessionID, input.MessageID)
 	if err != nil {
@@ -71,7 +72,7 @@ func (*Store) upsertAgentMessageTx(
 	if ok && agentMessageProjectionAlreadyApplied(existing, message) {
 		return existing, true, nil
 	}
-	if ok {
+	if ok && protectExisting {
 		return Message{}, false, fmt.Errorf(
 			"workspace agent activity message %q conflicts with durable submit provenance",
 			input.MessageID,

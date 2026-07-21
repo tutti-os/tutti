@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
-	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
@@ -85,7 +85,7 @@ func (p *ActivityProjection) ReportSubmitProvenance(
 		return fmt.Errorf("atomic submit provenance did not preserve canonical message identity")
 	}
 
-	stateReply := agentsessionstore.ReportSessionStateReply{
+	stateReply := canonical.ReportSessionStateReply{
 		Accepted:          result.State.Accepted,
 		StateApplied:      result.State.StateApplied,
 		LastEventAtUnixMS: result.State.LastEventUnixMS,
@@ -115,7 +115,7 @@ func (p *ActivityProjection) ReportSubmitProvenance(
 		"messages":       activityMessagesEventPayload(result.Messages.Messages),
 		"workspaceId":    strings.TrimSpace(messageInput.WorkspaceID),
 	})
-	p.observeSessionMessages(ctx, messageInput, agentsessionstore.ReportSessionMessagesReply{
+	p.observeSessionMessages(ctx, messageInput, canonical.ReportSessionMessagesReply{
 		AcceptedCount: result.Messages.AcceptedCount,
 		LatestVersion: result.Messages.LatestVersion,
 	})

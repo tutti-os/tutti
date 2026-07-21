@@ -4,25 +4,13 @@ import type {
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
-import type {
-  Client,
-  CollaborationRun,
-  TuttidClient
-} from "@tutti-os/client-tuttid-ts";
-import {
-  cancelCollaborationRun,
-  createCollaborationRun,
-  normalizeTuttidError,
-  retryCollaborationRun,
-  setCollaborationRunAdoption
-} from "@tutti-os/client-tuttid-ts";
+import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import type { IWorkspaceUserProjectService } from "../../../workspace-user-project/index.ts";
 import { agentActivitySessionFromTuttidSession } from "../desktopAgentActivityAdapter.ts";
 import { reportAgentSubmitTraceDiagnostic } from "../desktopAgentRuntimeSubmitDiagnostics.ts";
 import type { IWorkspaceAgentActivityService } from "../workspaceAgentActivityService.interface.ts";
 import {
-  agentSessionActivationError,
   normalizeComposerSettings,
   resolveComposerPermissionMode
 } from "./desktopAgentHostProjection.ts";
@@ -47,7 +35,6 @@ export interface WorkspaceAgentActivityMutationOperationsDependencies {
     data?: unknown;
     workspaceId: string;
   }): void;
-  resolveCollaborationClient(): Promise<Client>;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   sessionCommandTarget(
     workspaceId: string
@@ -237,7 +224,6 @@ export class WorkspaceAgentActivityMutationOperations {
         workspaceId,
         agentSessionId: requestedAgentSessionId,
         agentTargetId: input.agentTargetId,
-        automationRuleOverride: input.automationRuleOverride ?? null,
         capabilityRefs: input.capabilityRefs ?? null,
         cwd: resolvedCwd?.cwd ?? null,
         initialContent: input.initialContent ?? [],
@@ -245,7 +231,6 @@ export class WorkspaceAgentActivityMutationOperations {
         initialTuttiModeActivation: input.initialTuttiModeActivation ?? null,
         submitDiagnostics: input.submitDiagnostics,
         model: input.settings?.model ?? null,
-        modelPlanId: input.settings?.modelPlanId ?? null,
         planMode: input.settings?.planMode ?? null,
         permissionModeId: resolveComposerPermissionMode(input.settings),
         reasoningEffort: input.settings?.reasoningEffort ?? null,
@@ -265,8 +250,6 @@ export class WorkspaceAgentActivityMutationOperations {
         fields: { activeTurnPhase: session.activeTurn?.phase ?? null }
       });
     }
-    const activationError = agentSessionActivationError(session);
-    const activationFailed = activationError !== undefined;
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
       clientSubmitId: input.mode === "new" ? input.clientSubmitId : null,
@@ -283,13 +266,8 @@ export class WorkspaceAgentActivityMutationOperations {
     return {
       activation: {
         mode: input.mode,
-        status: activationFailed
-          ? "failed"
-          : input.mode === "existing"
-            ? "already_attached"
-            : "attached"
+        status: input.mode === "existing" ? "already_attached" : "attached"
       },
-      ...(activationError ? { error: activationError } : {}),
       session
     };
   }
@@ -322,11 +300,15 @@ export class WorkspaceAgentActivityMutationOperations {
       provider: result.session.provider,
       submitDiagnostics: input.submitDiagnostics,
       workspaceId,
-      fields: {
-        turnOutcome: result.turn.outcome ?? null,
-        turnId: result.turnId,
-        turnPhase: result.turn.phase
-      }
+      fields:
+        result.kind === "goalControl"
+          ? { resultKind: "goalControl" }
+          : {
+              resultKind: "turn",
+              turnOutcome: result.turn.outcome ?? null,
+              turnId: result.turnId,
+              turnPhase: result.turn.phase
+            }
     });
     this.dependencies.upsertAuthoritativeSession(
       result.session,
@@ -347,158 +329,6 @@ export class WorkspaceAgentActivityMutationOperations {
       input.agentSessionId,
       input.turnId
     );
-  }
-
-  async startModelConsult(
-    input: Parameters<
-      NonNullable<IWorkspaceAgentActivityService["startModelConsult"]>
-    >[0]
-  ): ReturnType<
-    NonNullable<IWorkspaceAgentActivityService["startModelConsult"]>
-  > {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const client = await this.dependencies.resolveCollaborationClient();
-    const response = await createCollaborationRun({
-      body: {
-        contextText: input.contextText?.trim() || undefined,
-        mode: "consult",
-        model: input.model,
-        modelPlanId: input.modelPlanId,
-        question: input.question,
-        sourceSessionId: input.agentSessionId,
-        triggerReason: "composer_consult",
-        triggerSource: "user"
-      },
-      client,
-      path: { workspaceID: workspaceId },
-      signal: input.signal
-    });
-    return agentActivityCollaborationRunFromTuttid(
-      unwrapCollaborationData(response, "Model consult request failed.")
-    );
-  }
-
-  async startAgentCollaboration(
-    input: Parameters<
-      NonNullable<IWorkspaceAgentActivityService["startAgentCollaboration"]>
-    >[0]
-  ): ReturnType<
-    NonNullable<IWorkspaceAgentActivityService["startAgentCollaboration"]>
-  > {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const client = await this.dependencies.resolveCollaborationClient();
-    const response = await createCollaborationRun({
-      body: {
-        contextScope: input.contextScope,
-        contextText: input.contextText?.trim() || undefined,
-        mode: input.mode,
-        model: input.model?.trim() || undefined,
-        modelPlanId: input.modelPlanId?.trim() || undefined,
-        question: input.question,
-        sourceSessionId: input.agentSessionId,
-        targetAgentTargetId: input.targetAgentTargetId,
-        triggerReason: input.triggerReason?.trim() || "composer_agent_mention",
-        triggerSource: "user"
-      },
-      client,
-      path: { workspaceID: workspaceId },
-      signal: input.signal
-    });
-    return agentActivityCollaborationRunFromTuttid(
-      unwrapCollaborationData(response, "Agent collaboration request failed.")
-    );
-  }
-
-  async setCollaborationAdoption(
-    input: Parameters<
-      NonNullable<IWorkspaceAgentActivityService["setCollaborationAdoption"]>
-    >[0]
-  ): ReturnType<
-    NonNullable<IWorkspaceAgentActivityService["setCollaborationAdoption"]>
-  > {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const client = await this.dependencies.resolveCollaborationClient();
-    const response = await setCollaborationRunAdoption({
-      body: { adoption: input.adoption },
-      client,
-      path: {
-        collaborationRunID: input.runId,
-        workspaceID: workspaceId
-      },
-      signal: input.signal
-    });
-    return agentActivityCollaborationRunFromTuttid(
-      unwrapCollaborationData(
-        response,
-        "Collaboration adoption request failed."
-      )
-    );
-  }
-
-  async cancelCollaboration(
-    input: Parameters<
-      NonNullable<IWorkspaceAgentActivityService["cancelCollaboration"]>
-    >[0]
-  ): ReturnType<
-    NonNullable<IWorkspaceAgentActivityService["cancelCollaboration"]>
-  > {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const client = await this.dependencies.resolveCollaborationClient();
-    const response = await cancelCollaborationRun({
-      client,
-      path: {
-        collaborationRunID: input.runId,
-        workspaceID: workspaceId
-      },
-      signal: input.signal
-    });
-    return agentActivityCollaborationRunFromTuttid(
-      unwrapCollaborationData(response, "Collaboration cancel request failed.")
-    );
-  }
-
-  async retryCollaboration(
-    input: Parameters<
-      NonNullable<IWorkspaceAgentActivityService["retryCollaboration"]>
-    >[0]
-  ): ReturnType<
-    NonNullable<IWorkspaceAgentActivityService["retryCollaboration"]>
-  > {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const client = await this.dependencies.resolveCollaborationClient();
-    const response = await retryCollaborationRun({
-      client,
-      path: {
-        collaborationRunID: input.runId,
-        workspaceID: workspaceId
-      },
-      signal: input.signal
-    });
-    return agentActivityCollaborationRunFromTuttid(
-      unwrapCollaborationData(response, "Collaboration retry request failed.")
-    );
-  }
-
-  async setAutomationRuleOverride(
-    input: Parameters<
-      NonNullable<IWorkspaceAgentActivityService["setAutomationRuleOverride"]>
-    >[0]
-  ): ReturnType<
-    NonNullable<IWorkspaceAgentActivityService["setAutomationRuleOverride"]>
-  > {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const override =
-      await this.dependencies.tuttidClient.setAgentSessionAutomationRuleOverride(
-        workspaceId,
-        input.agentSessionId,
-        { disabled: input.disabled, ruleIds: [...input.ruleIds] }
-      );
-    return {
-      agentSessionId: override.agentSessionId,
-      workspaceId: override.workspaceId,
-      disabled: override.disabled,
-      ruleIds: [...override.ruleIds]
-    };
   }
 
   async goalControl(
@@ -638,98 +468,4 @@ export class WorkspaceAgentActivityMutationOperations {
       );
     return { cwd: response.root, noProject: false };
   }
-}
-
-export function unwrapCollaborationData<TResult>(
-  response: { data?: TResult; error?: unknown; response?: Response },
-  fallback: string
-): TResult {
-  if (response.error !== undefined) {
-    throw (
-      normalizeTuttidError(response.error, response.response?.status ?? 0) ??
-      new Error(fallback)
-    );
-  }
-  if (response.data === undefined) {
-    throw new Error(fallback);
-  }
-  return response.data;
-}
-
-function agentActivityCollaborationRunFromTuttid(run: CollaborationRun): {
-  adoption: CollaborationRun["adoption"];
-  attempt: number;
-  completedAtUnixMs: number | null;
-  contextScope: string | null;
-  durationMs: number | null;
-  cost: { currency: string; estimatedMicros: number } | null;
-  failureReason: string | null;
-  failureStage: string | null;
-  id: string;
-  mode: CollaborationRun["mode"];
-  model: string | null;
-  modelPlanId: string | null;
-  resultText: string | null;
-  retryOfRunId: string | null;
-  sourceSessionId: string | null;
-  startedAtUnixMs: number | null;
-  status: CollaborationRun["status"];
-  targetAgentTargetId: string | null;
-  targetSessionId: string | null;
-  triggerReason: string | null;
-  triggerSource: CollaborationRun["triggerSource"];
-  usage: {
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadTokens: number;
-    cacheWriteTokens: number;
-  } | null;
-  workspaceId: string;
-} {
-  return {
-    adoption: run.adoption,
-    attempt: run.attempt,
-    completedAtUnixMs: unixMsFromIsoTimestamp(run.completedAt),
-    contextScope: run.contextScope ?? null,
-    durationMs: run.durationMs ?? null,
-    cost: run.cost
-      ? {
-          currency: run.cost.currency,
-          estimatedMicros: run.cost.estimatedMicros
-        }
-      : null,
-    failureReason: run.failureReason ?? null,
-    failureStage: run.failureStage ?? null,
-    id: run.id,
-    mode: run.mode,
-    model: run.model ?? null,
-    modelPlanId: run.modelPlanId ?? null,
-    resultText: run.resultText ?? null,
-    retryOfRunId: run.retryOfRunId ?? null,
-    sourceSessionId: run.sourceSessionId ?? null,
-    startedAtUnixMs: unixMsFromIsoTimestamp(run.startedAt),
-    status: run.status,
-    targetAgentTargetId: run.targetAgentTargetId ?? null,
-    targetSessionId: run.targetSessionId ?? null,
-    triggerReason: run.triggerReason ?? null,
-    triggerSource: run.triggerSource,
-    usage: run.usage
-      ? {
-          inputTokens: run.usage.inputTokens,
-          outputTokens: run.usage.outputTokens,
-          cacheReadTokens: run.usage.cacheReadTokens,
-          cacheWriteTokens: run.usage.cacheWriteTokens
-        }
-      : null,
-    workspaceId: run.workspaceId
-  };
-}
-
-function unixMsFromIsoTimestamp(
-  value: string | null | undefined
-): number | null {
-  const normalized = value?.trim() ?? "";
-  if (!normalized) return null;
-  const parsed = Date.parse(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
 }

@@ -387,6 +387,7 @@ test("turn capability references never hydrate current Tutti state", () => {
           { capability: "tutti", source: "slash_command" as const }
         ],
         outcome: null,
+        origin: "user_prompt",
         phase: "running",
         settledAtUnixMs: null,
         startedAtUnixMs: 1,

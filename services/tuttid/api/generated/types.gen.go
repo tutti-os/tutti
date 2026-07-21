@@ -4257,10 +4257,22 @@ type CreateCollaborationRunRequest struct {
 
 // CreateIssueManagerIssueRequest defines model for CreateIssueManagerIssueRequest.
 type CreateIssueManagerIssueRequest struct {
-	Content *string `json:"content,omitempty"`
-	IssueId *string `json:"issueId,omitempty"`
-	Title   string  `json:"title"`
-	TopicId string  `json:"topicId"`
+	Budget           *IssueManagerBudget           `json:"budget,omitempty"`
+	Content          *string                       `json:"content,omitempty"`
+	ExecutionProfile *IssueManagerExecutionProfile `json:"executionProfile,omitempty"`
+	IssueId          *string                       `json:"issueId,omitempty"`
+
+	// ParallelExecution Persist the user's parallel Create-and-Start choice. Mutually exclusive with sequentialExecution.
+	ParallelExecution *bool `json:"parallelExecution,omitempty"`
+
+	// PlanningSource How the issue entered the durable execution workflow.
+	PlanningSource *IssueManagerPlanningSource `json:"planningSource,omitempty"`
+
+	// SequentialExecution Persist the user's Create-and-Start choice so successor dispatch survives desktop restarts.
+	SequentialExecution *bool   `json:"sequentialExecution,omitempty"`
+	SourceSessionId     *string `json:"sourceSessionId,omitempty"`
+	Title               string  `json:"title"`
+	TopicId             string  `json:"topicId"`
 }
 
 // CreateIssueManagerRunRequest defines model for CreateIssueManagerRunRequest.
@@ -4276,11 +4288,17 @@ type CreateIssueManagerRunRequest struct {
 
 // CreateIssueManagerTaskRequest defines model for CreateIssueManagerTaskRequest.
 type CreateIssueManagerTaskRequest struct {
-	Content   *string               `json:"content,omitempty"`
-	DueAtUnix *int64                `json:"dueAtUnix,omitempty"`
-	Priority  *IssueManagerPriority `json:"priority,omitempty"`
-	TaskId    *string               `json:"taskId,omitempty"`
-	Title     string                `json:"title"`
+	AgentTargetId      *string               `json:"agentTargetId,omitempty"`
+	Content            *string               `json:"content,omitempty"`
+	DependencyTaskIds  *[]string             `json:"dependencyTaskIds,omitempty"`
+	DueAtUnix          *int64                `json:"dueAtUnix,omitempty"`
+	ExecutionDirectory *string               `json:"executionDirectory,omitempty"`
+	Model              *string               `json:"model,omitempty"`
+	ModelPlanId        *string               `json:"modelPlanId,omitempty"`
+	Parallelizable     *bool                 `json:"parallelizable,omitempty"`
+	Priority           *IssueManagerPriority `json:"priority,omitempty"`
+	TaskId             *string               `json:"taskId,omitempty"`
+	Title              string                `json:"title"`
 }
 
 // CreateIssueManagerTasksRequest defines model for CreateIssueManagerTasksRequest.
@@ -4370,6 +4388,9 @@ type DecideWorkspaceWorkflowCheckpointRequest struct {
 	DecidedBy string                                           `json:"decidedBy"`
 	Decision  DecideWorkspaceWorkflowCheckpointRequestDecision `json:"decision"`
 	Reason    *string                                          `json:"reason,omitempty"`
+
+	// TaskAssignments Optional per-task assignment overrides. Only valid when accepting a task review checkpoint; recorded durably with the decision and merged into the materialized Issue tasks.
+	TaskAssignments *[]WorkspaceWorkflowTaskAssignment `json:"taskAssignments,omitempty"`
 }
 
 // DecideWorkspaceWorkflowCheckpointRequestDecision defines model for DecideWorkspaceWorkflowCheckpointRequest.Decision.
@@ -4824,6 +4845,15 @@ type IssueManagerContextRefsResponse struct {
 	ContextRefs []IssueManagerContextRef `json:"contextRefs"`
 }
 
+// IssueManagerCost defines model for IssueManagerCost.
+type IssueManagerCost struct {
+	ActualMicros int64 `json:"actualMicros"`
+
+	// Currency ISO 4217 currency code. USD is used when a ModelPlan publishes API prices.
+	Currency        string `json:"currency"`
+	EstimatedMicros int64  `json:"estimatedMicros"`
+}
+
 // IssueManagerExecutionProfile defines model for IssueManagerExecutionProfile.
 type IssueManagerExecutionProfile struct {
 	// OrchestrationIntensity Issue-owned decomposition, dependency, review, and retry strength.
@@ -4835,24 +4865,38 @@ type IssueManagerExecutionProfile struct {
 
 // IssueManagerIssue defines model for IssueManagerIssue.
 type IssueManagerIssue struct {
-	CanceledCount          int                `json:"canceledCount"`
-	CompletedCount         int                `json:"completedCount"`
-	Content                string             `json:"content"`
-	CreatedAtUnix          int64              `json:"createdAtUnix"`
-	CreatorAvatarUrl       string             `json:"creatorAvatarUrl"`
-	CreatorDisplayName     string             `json:"creatorDisplayName"`
-	CreatorUserId          string             `json:"creatorUserId"`
-	FailedCount            int                `json:"failedCount"`
-	IssueId                string             `json:"issueId"`
-	NotStartedCount        int                `json:"notStartedCount"`
-	PendingAcceptanceCount int                `json:"pendingAcceptanceCount"`
-	RunningCount           int                `json:"runningCount"`
-	Status                 IssueManagerStatus `json:"status"`
-	TaskCount              int                `json:"taskCount"`
-	Title                  string             `json:"title"`
-	TopicId                string             `json:"topicId"`
-	UpdatedAtUnix          int64              `json:"updatedAtUnix"`
-	WorkspaceId            string             `json:"workspaceId"`
+	Budget             IssueManagerBudget           `json:"budget"`
+	CanceledCount      int                          `json:"canceledCount"`
+	CompletedCount     int                          `json:"completedCount"`
+	Content            string                       `json:"content"`
+	CreatedAtUnix      int64                        `json:"createdAtUnix"`
+	CreatorAvatarUrl   string                       `json:"creatorAvatarUrl"`
+	CreatorDisplayName string                       `json:"creatorDisplayName"`
+	CreatorUserId      string                       `json:"creatorUserId"`
+	ExecutionProfile   IssueManagerExecutionProfile `json:"executionProfile"`
+	FailedCount        int                          `json:"failedCount"`
+	IssueId            string                       `json:"issueId"`
+	NotStartedCount    int                          `json:"notStartedCount"`
+
+	// ParallelExecution When true, the daemon dispatches every dependency-ready task whose execution directory is isolated; dependencies still require user acceptance.
+	ParallelExecution      bool `json:"parallelExecution"`
+	PendingAcceptanceCount int  `json:"pendingAcceptanceCount"`
+
+	// PlanningSource How the issue entered the durable execution workflow.
+	PlanningSource IssueManagerPlanningSource `json:"planningSource"`
+	RunningCount   int                        `json:"runningCount"`
+
+	// SequentialExecution When true, the daemon dispatches the next eligible task after each user acceptance while budget remains active.
+	SequentialExecution bool `json:"sequentialExecution"`
+
+	// SourceSessionId Optional Agent session that produced the plan. Empty for manually created issues.
+	SourceSessionId string             `json:"sourceSessionId"`
+	Status          IssueManagerStatus `json:"status"`
+	TaskCount       int                `json:"taskCount"`
+	Title           string             `json:"title"`
+	TopicId         string             `json:"topicId"`
+	UpdatedAtUnix   int64              `json:"updatedAtUnix"`
+	WorkspaceId     string             `json:"workspaceId"`
 }
 
 // IssueManagerIssueContextRef defines model for IssueManagerIssueContextRef.
@@ -5001,21 +5045,34 @@ type IssueManagerStatusFilter string
 
 // IssueManagerTask defines model for IssueManagerTask.
 type IssueManagerTask struct {
-	Content            string               `json:"content"`
-	CreatedAtUnix      int64                `json:"createdAtUnix"`
-	CreatorAvatarUrl   string               `json:"creatorAvatarUrl"`
-	CreatorDisplayName string               `json:"creatorDisplayName"`
-	CreatorUserId      string               `json:"creatorUserId"`
-	DueAtUnix          int64                `json:"dueAtUnix"`
-	IssueId            string               `json:"issueId"`
-	LatestRunId        string               `json:"latestRunId"`
-	Priority           IssueManagerPriority `json:"priority"`
-	SortIndex          int                  `json:"sortIndex"`
-	Status             IssueManagerStatus   `json:"status"`
-	TaskId             string               `json:"taskId"`
-	Title              string               `json:"title"`
-	UpdatedAtUnix      int64                `json:"updatedAtUnix"`
-	WorkspaceId        string               `json:"workspaceId"`
+	// AgentTargetId Opaque WorkspaceAgent assignment. Empty means not assigned yet.
+	AgentTargetId      string   `json:"agentTargetId"`
+	Content            string   `json:"content"`
+	CreatedAtUnix      int64    `json:"createdAtUnix"`
+	CreatorAvatarUrl   string   `json:"creatorAvatarUrl"`
+	CreatorDisplayName string   `json:"creatorDisplayName"`
+	CreatorUserId      string   `json:"creatorUserId"`
+	DependencyTaskIds  []string `json:"dependencyTaskIds"`
+	DueAtUnix          int64    `json:"dueAtUnix"`
+	ExecutionDirectory string   `json:"executionDirectory"`
+	IssueId            string   `json:"issueId"`
+	LatestRunId        string   `json:"latestRunId"`
+
+	// Model Explicit model assignment. Empty delegates to the assigned Agent/Plan default.
+	Model string `json:"model"`
+
+	// ModelPlanId Explicit Plan assignment. Empty delegates to the WorkspaceAgent default.
+	ModelPlanId string `json:"modelPlanId"`
+
+	// Parallelizable Opts this task out of the Issue's sequential default so it may run alongside other dependency-ready tasks. False keeps strict sequential ordering.
+	Parallelizable bool                 `json:"parallelizable"`
+	Priority       IssueManagerPriority `json:"priority"`
+	SortIndex      int                  `json:"sortIndex"`
+	Status         IssueManagerStatus   `json:"status"`
+	TaskId         string               `json:"taskId"`
+	Title          string               `json:"title"`
+	UpdatedAtUnix  int64                `json:"updatedAtUnix"`
+	WorkspaceId    string               `json:"workspaceId"`
 }
 
 // IssueManagerTaskContextRef defines model for IssueManagerTaskContextRef.
@@ -5059,6 +5116,14 @@ type IssueManagerTaskResponse struct {
 // IssueManagerTasksResponse defines model for IssueManagerTasksResponse.
 type IssueManagerTasksResponse struct {
 	Tasks []IssueManagerTask `json:"tasks"`
+}
+
+// IssueManagerTokenUsage defines model for IssueManagerTokenUsage.
+type IssueManagerTokenUsage struct {
+	CacheReadTokens  int64 `json:"cacheReadTokens"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens"`
+	InputTokens      int64 `json:"inputTokens"`
+	OutputTokens     int64 `json:"outputTokens"`
 }
 
 // IssueManagerTopic defines model for IssueManagerTopic.
@@ -5576,6 +5641,9 @@ type TuttiModeActivation struct {
 
 // TuttiModeActivationIntent defines model for TuttiModeActivationIntent.
 type TuttiModeActivationIntent struct {
+	// OrchestrationIntensity Optional orchestration intensity carried with the initial activation. Omitted uses the daemon default.
+	OrchestrationIntensity *int `json:"orchestrationIntensity,omitempty"`
+
 	// Source User-visible interaction that created this activation revision.
 	Source TuttiModeActivationSource `json:"source"`
 	Status TuttiModeActivationStatus `json:"status"`
@@ -5592,7 +5660,10 @@ type TuttiModeActivationRevision struct {
 	ActivationId    openapi_types.UUID `json:"activationId"`
 	CreatedAtUnixMs int64              `json:"createdAtUnixMs"`
 	Id              openapi_types.UUID `json:"id"`
-	Revision        int64              `json:"revision"`
+
+	// OrchestrationIntensity Session-scoped orchestration intensity captured with this activation revision. Higher values ask the planning agent for finer-grained task decomposition.
+	OrchestrationIntensity int   `json:"orchestrationIntensity"`
+	Revision               int64 `json:"revision"`
 
 	// Source User-visible interaction that created this activation revision.
 	Source TuttiModeActivationSource `json:"source"`
@@ -5645,15 +5716,24 @@ type TuttiModePlanExecutionMode string
 
 // TuttiModePlanTask defines model for TuttiModePlanTask.
 type TuttiModePlanTask struct {
-	AgentTargetId      *string                   `json:"agentTargetId"`
-	Content            string                    `json:"content"`
-	DependsOn          []string                  `json:"dependsOn"`
-	ExecutionDirectory *string                   `json:"executionDirectory"`
-	Id                 string                    `json:"id"`
-	Model              *string                   `json:"model"`
-	ModelPlanId        *string                   `json:"modelPlanId"`
-	Priority           TuttiModePlanTaskPriority `json:"priority"`
-	Title              string                    `json:"title"`
+	AgentTargetId      *string  `json:"agentTargetId"`
+	Content            string   `json:"content"`
+	DependsOn          []string `json:"dependsOn"`
+	ExecutionDirectory *string  `json:"executionDirectory"`
+	Id                 string   `json:"id"`
+	Model              *string  `json:"model"`
+	ModelPlanId        *string  `json:"modelPlanId"`
+
+	// Parallelizable Opts this task out of the sequential default so it may run alongside other ready tasks. Persisted onto the materialized Issue task.
+	Parallelizable bool `json:"parallelizable"`
+
+	// PermissionModeId Task-level permission mode applied when the materialized Issue task launches.
+	PermissionModeId *string                   `json:"permissionModeId"`
+	Priority         TuttiModePlanTaskPriority `json:"priority"`
+
+	// ReasoningEffort Task-level reasoning effort applied when the materialized Issue task launches.
+	ReasoningEffort *string `json:"reasoningEffort"`
+	Title           string  `json:"title"`
 }
 
 // TuttiModePlanTaskPriority defines model for TuttiModePlanTask.Priority.
@@ -5675,12 +5755,13 @@ type UpdateIssueManagerIssueRequest struct {
 
 // UpdateIssueManagerTaskRequest defines model for UpdateIssueManagerTaskRequest.
 type UpdateIssueManagerTaskRequest struct {
-	Content   *string               `json:"content,omitempty"`
-	DueAtUnix *int64                `json:"dueAtUnix,omitempty"`
-	Priority  *IssueManagerPriority `json:"priority,omitempty"`
-	SortIndex *int                  `json:"sortIndex,omitempty"`
-	Status    *IssueManagerStatus   `json:"status,omitempty"`
-	Title     *string               `json:"title,omitempty"`
+	Content        *string               `json:"content,omitempty"`
+	DueAtUnix      *int64                `json:"dueAtUnix,omitempty"`
+	Parallelizable *bool                 `json:"parallelizable,omitempty"`
+	Priority       *IssueManagerPriority `json:"priority,omitempty"`
+	SortIndex      *int                  `json:"sortIndex,omitempty"`
+	Status         *IssueManagerStatus   `json:"status,omitempty"`
+	Title          *string               `json:"title,omitempty"`
 }
 
 // UpdateIssueManagerTopicRequest defines model for UpdateIssueManagerTopicRequest.
@@ -5694,6 +5775,9 @@ type UpdateIssueManagerTopicRequest struct {
 type UpdateTuttiModeActivationRequest struct {
 	// ExpectedRevision Optional optimistic-concurrency guard. Zero means no activation revision exists yet.
 	ExpectedRevision *int64 `json:"expectedRevision,omitempty"`
+
+	// OrchestrationIntensity Optional orchestration intensity persisted with the appended activation revision. Omitted keeps the current value, or the daemon default for the first revision.
+	OrchestrationIntensity *int `json:"orchestrationIntensity,omitempty"`
 
 	// Source User-visible interaction that created this activation revision.
 	Source TuttiModeActivationSource `json:"source"`
@@ -6914,6 +6998,19 @@ type WorkspaceWorkflowSnapshot struct {
 // WorkspaceWorkflowStatus defines model for WorkspaceWorkflowStatus.
 type WorkspaceWorkflowStatus string
 
+// WorkspaceWorkflowTaskAssignment User-owned per-task assignment override recorded with an accepted task review decision. Null fields keep the plan document value; empty strings clear it.
+type WorkspaceWorkflowTaskAssignment struct {
+	AgentTargetId *string `json:"agentTargetId,omitempty"`
+	Model         *string `json:"model,omitempty"`
+	ModelPlanId   *string `json:"modelPlanId,omitempty"`
+
+	// Parallelizable Overrides the plan document's per-task parallel opt-in; null keeps it.
+	Parallelizable   *bool   `json:"parallelizable,omitempty"`
+	PermissionModeId *string `json:"permissionModeId,omitempty"`
+	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+	TaskId           string  `json:"taskId"`
+}
+
 // WorkspaceWorkflowTurnLink defines model for WorkspaceWorkflowTurnLink.
 type WorkspaceWorkflowTurnLink struct {
 	CreatedAtUnixMs int64                             `json:"createdAtUnixMs"`
@@ -7301,7 +7398,7 @@ type AttachWorkspaceTerminalParams struct {
 type ListWorkspaceWorkflowsParams struct {
 	SourceSessionId string `form:"sourceSessionId" json:"sourceSessionId"`
 
-	// CheckpointStatus Currently only pending checkpoints are listable.
+	// CheckpointStatus When omitted, returns every workflow for the source session. Pass pending to return only workflows with a pending checkpoint.
 	CheckpointStatus *ListWorkspaceWorkflowsParamsCheckpointStatus `form:"checkpointStatus,omitempty" json:"checkpointStatus,omitempty"`
 }
 

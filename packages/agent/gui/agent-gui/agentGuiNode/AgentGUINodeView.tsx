@@ -34,9 +34,9 @@ import { type AgentGUIConversationRailState } from "./view/AgentGUIConversationR
 import { AgentGUIConversationRailController } from "./controller/AgentGUIConversationRailController";
 import {
   AgentGUIDetailPane,
-  EMPTY_WORKSPACE_APP_ICONS,
-  mergeWorkspaceAppIconsFromCommands
+  EMPTY_WORKSPACE_APP_ICONS
 } from "./view/AgentGUIDetailPane";
+import { mergeWorkspaceAppIconsFromCommands } from "./view/agentGUIDetailModelHelpers";
 import { AgentGUIRenameConversationDialog } from "./view/AgentGUIRenameConversationDialog";
 import { AgentGUIReferencePickerSurface } from "./view/AgentGUIReferencePickerSurface";
 import {

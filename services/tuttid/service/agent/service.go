@@ -82,6 +82,10 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}
 	input.AgentSessionID = agentSessionIDOrNew(input.AgentSessionID)
 	input.ClientSubmitID = strings.TrimSpace(input.ClientSubmitID)
+	if input.ClientSubmitID == "" {
+		legacyClientSubmitID, _ := input.Metadata["clientSubmitId"].(string)
+		input.ClientSubmitID = strings.TrimSpace(legacyClientSubmitID)
+	}
 	logAgentSubmitTrace("service.create.entered", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"provider": provider})
 	var normalizedContent []PromptContentBlock
 	if len(input.InitialContent) > 0 {
@@ -102,9 +106,13 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		return CreateSessionResult{}, err
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt)
+	input.RuntimeContext = runtimeContextWithSessionRuntimeSnapshot(input.RuntimeContext, input, provider, planResolution)
 	logAgentSubmitTrace("service.create.model_validated", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"model": value(input.Model),
 	})
+	if err := s.applyCreateSessionReasoningIntensity(ctx, provider, value(input.Model), &input); err != nil {
+		return CreateSessionResult{}, err
+	}
 	input.ReasoningEffort = s.clampReasoningEffortPointerForLaunch(
 		ctx,
 		provider,
@@ -211,18 +219,39 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	var preparedTuttiModeTurnID string
 	_, typedGoal := agenthost.ParseTypedGoalControl(normalizedContent, false)
 	if len(normalizedContent) > 0 && !typedGoal {
-		turnID, snapshot, snapshotErr := s.prepareTuttiModeExec(ctx, workspaceID, input.AgentSessionID, false, ProviderRuntimeSession{}, "")
-		if snapshotErr != nil {
-			return CreateSessionResult{}, snapshotErr
+		canonicalTurnID, claimErr := s.existingSubmitCanonicalTurnID(ctx, workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata)
+		if claimErr != nil {
+			return CreateSessionResult{}, claimErr
 		}
-		preparedTuttiModeTurnID = turnID
-		hostInput.TurnID = turnID
-		hostInput.TuttiModeSnapshot = runtimeTuttiModeTurnSnapshot(snapshot)
+		if canonicalTurnID != "" {
+			// A durable claim already owns this submit: reuse its canonical
+			// turn instead of binding a fresh snapshot, so a retry reconciles
+			// against the claimed turn and never redispatches.
+			preparedTuttiModeTurnID = canonicalTurnID
+			hostInput.TurnID = canonicalTurnID
+		} else {
+			turnID, snapshot, snapshotErr := s.prepareTuttiModeExec(ctx, workspaceID, input.AgentSessionID, false, ProviderRuntimeSession{}, "")
+			if snapshotErr != nil {
+				if input.InitialTuttiModeActivation != nil {
+					activationErr := s.deleteTuttiModeActivationSessionState(context.WithoutCancel(ctx), workspaceID, input.AgentSessionID)
+					snapshotErr = errors.Join(snapshotErr, activationErr)
+				}
+				return CreateSessionResult{}, snapshotErr
+			}
+			preparedTuttiModeTurnID = turnID
+			hostInput.TurnID = turnID
+			hostInput.TuttiModeSnapshot = runtimeTuttiModeTurnSnapshot(snapshot)
+		}
 	}
 	logAgentSubmitTrace("service.create.runtime_start_requested", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, nil)
 	hostResult, err := s.ApplicationHost().CreateSession(ctx, workspaceID, hostInput)
 	if err != nil {
-		_ = s.deleteTuttiModeActivationSessionState(context.WithoutCancel(ctx), workspaceID, input.AgentSessionID)
+		// Delivery-unknown means provider acceptance is already possible:
+		// keep the prepared claim, bound snapshot, and activation so a retry
+		// reconciles instead of double-dispatching.
+		if !errors.Is(err, ErrSubmitDeliveryUnknown) {
+			_ = s.deleteTuttiModeActivationSessionState(context.WithoutCancel(ctx), workspaceID, input.AgentSessionID)
+		}
 		return CreateSessionResult{}, err
 	}
 	keepWorktree = true
@@ -243,17 +272,9 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 			TurnID:  strings.TrimSpace(hostResult.TurnID),
 		}, getErr
 	}
-	if preparedTuttiModeTurnID != "" {
-		if strings.TrimSpace(hostResult.TurnID) != preparedTuttiModeTurnID {
-			return CreateSessionResult{}, ErrSubmitDeliveryUnknown
-		}
-		if s.TuttiModeActivations != nil {
-			if _, err := s.TuttiModeActivations.AcceptTurnSnapshot(ctx, workspaceID, session.ID, preparedTuttiModeTurnID); err != nil {
-				return CreateSessionResult{}, deliveryUnknownError(err)
-			}
-		}
+	if preparedTuttiModeTurnID != "" && strings.TrimSpace(hostResult.TurnID) != preparedTuttiModeTurnID {
+		return CreateSessionResult{}, ErrSubmitDeliveryUnknown
 	}
-	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "runtime_started", session.Provider, nodeStartedAt)
 	if len(normalizedContent) == 0 {
 		created, err := s.projectSessionForResponse(ctx, workspaceID, serviceSessionWithPersistedFreshness(
 			session,
@@ -612,22 +633,7 @@ func (s *Service) UpdatePin(ctx context.Context, workspaceID string, agentSessio
 	if err != nil {
 		return Session{}, err
 	}
-	persisted := persistedSessionFromHost(result.Canonical)
-	if result.Live {
-		service := serviceSession(
-			result.Session,
-			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(result.Session)),
-		)
-		return s.withProtocolV2TurnState(
-			ctx,
-			workspaceID,
-			mergePersistedSessionState(service, persisted),
-		)
-	}
-	return sessionFromPersisted(
-		persisted,
-		s.persistedSessionCanResume(ctx, persisted),
-	), nil
+	return s.projectHostSessionResult(ctx, result.Canonical, result.Session, result.Live, false)
 }
 
 func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentSessionID string) error {

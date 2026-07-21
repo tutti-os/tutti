@@ -5,6 +5,7 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func TestSubmittedTurnActivityEventProjectsCapabilityReferences(t *testing.T) {
@@ -18,7 +19,7 @@ func TestSubmittedTurnActivityEventProjectsCapabilityReferences(t *testing.T) {
 		t.Fatalf("submitted events = %#v", events)
 	}
 	patch, ok := statePatchFromSessionEvent(
-		agentsessionstore.EventSource{Provider: ProviderCodex},
+		canonical.EventSource{Provider: ProviderCodex},
 		events[0],
 		"agent-1",
 		100,

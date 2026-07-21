@@ -2026,6 +2026,10 @@ export type TuttiModeActivationRevision = {
   revision: number;
   status: TuttiModeActivationStatus;
   source: TuttiModeActivationSource;
+  /**
+   * Session-scoped orchestration intensity captured with this activation revision. Higher values ask the planning agent for finer-grained task decomposition.
+   */
+  orchestrationIntensity: number;
   createdAtUnixMs: number;
 };
 
@@ -2042,6 +2046,10 @@ export type TuttiModeActivation = {
 export type TuttiModeActivationIntent = {
   status: TuttiModeActivationStatus;
   source: TuttiModeActivationSource;
+  /**
+   * Optional orchestration intensity carried with the initial activation. Omitted uses the daemon default.
+   */
+  orchestrationIntensity?: number | null;
 };
 
 export type TuttiModeActivationResponse = {
@@ -2054,6 +2062,10 @@ export type TuttiModeActivationResponse = {
 export type UpdateTuttiModeActivationRequest = {
   status: TuttiModeActivationStatus;
   source: TuttiModeActivationSource;
+  /**
+   * Optional orchestration intensity persisted with the appended activation revision. Omitted keeps the current value, or the daemon default for the first revision.
+   */
+  orchestrationIntensity?: number | null;
   /**
    * Optional optimistic-concurrency guard. Zero means no activation revision exists yet.
    */
@@ -3192,8 +3204,20 @@ export type TuttiModePlanTask = {
   agentTargetId: string | null;
   modelPlanId: string | null;
   model: string | null;
+  /**
+   * Task-level permission mode applied when the materialized Issue task launches.
+   */
+  permissionModeId: string | null;
+  /**
+   * Task-level reasoning effort applied when the materialized Issue task launches.
+   */
+  reasoningEffort: string | null;
   executionDirectory: string | null;
   dependsOn: Array<string>;
+  /**
+   * Opts this task out of the sequential default so it may run alongside other ready tasks. Persisted onto the materialized Issue task.
+   */
+  parallelizable: boolean;
 };
 
 export type TuttiModePlanDocument = {
@@ -3285,10 +3309,30 @@ export type WorkspaceWorkflowListResponse = {
   workflows: Array<WorkspaceWorkflowSnapshot>;
 };
 
+/**
+ * User-owned per-task assignment override recorded with an accepted task review decision. Null fields keep the plan document value; empty strings clear it.
+ */
+export type WorkspaceWorkflowTaskAssignment = {
+  taskId: string;
+  agentTargetId?: string | null;
+  modelPlanId?: string | null;
+  model?: string | null;
+  permissionModeId?: string | null;
+  reasoningEffort?: string | null;
+  /**
+   * Overrides the plan document's per-task parallel opt-in; null keeps it.
+   */
+  parallelizable?: boolean | null;
+};
+
 export type DecideWorkspaceWorkflowCheckpointRequest = {
   decision: "accepted" | "rejected" | "canceled";
   decidedBy: string;
   reason?: string | null;
+  /**
+   * Optional per-task assignment overrides. Only valid when accepting a task review checkpoint; recorded durably with the decision and merged into the materialized Issue tasks.
+   */
+  taskAssignments?: Array<WorkspaceWorkflowTaskAssignment> | null;
 };
 
 export type CreateWorkspaceRequest = {
@@ -3367,6 +3411,22 @@ export type IssueManagerBudget = {
   status: IssueManagerBudgetStatus;
 };
 
+export type IssueManagerTokenUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+};
+
+export type IssueManagerCost = {
+  /**
+   * ISO 4217 currency code. USD is used when a ModelPlan publishes API prices.
+   */
+  currency: string;
+  estimatedMicros: number;
+  actualMicros: number;
+};
+
 export type IssueManagerStatusCounts = {
   all: number;
   notStarted: number;
@@ -3396,6 +3456,21 @@ export type IssueManagerIssue = {
   title: string;
   content: string;
   status: IssueManagerStatus;
+  planningSource: IssueManagerPlanningSource;
+  /**
+   * Optional Agent session that produced the plan. Empty for manually created issues.
+   */
+  sourceSessionId: string;
+  /**
+   * When true, the daemon dispatches the next eligible task after each user acceptance while budget remains active.
+   */
+  sequentialExecution: boolean;
+  /**
+   * When true, the daemon dispatches every dependency-ready task whose execution directory is isolated; dependencies still require user acceptance.
+   */
+  parallelExecution: boolean;
+  executionProfile: IssueManagerExecutionProfile;
+  budget: IssueManagerBudget;
   taskCount: number;
   notStartedCount: number;
   runningCount: number;
@@ -3420,6 +3495,24 @@ export type IssueManagerTask = {
   priority: IssueManagerPriority;
   sortIndex: number;
   dueAtUnix: number;
+  /**
+   * Opaque WorkspaceAgent assignment. Empty means not assigned yet.
+   */
+  agentTargetId: string;
+  /**
+   * Explicit Plan assignment. Empty delegates to the WorkspaceAgent default.
+   */
+  modelPlanId: string;
+  /**
+   * Explicit model assignment. Empty delegates to the assigned Agent/Plan default.
+   */
+  model: string;
+  executionDirectory: string;
+  dependencyTaskIds: Array<string>;
+  /**
+   * Opts this task out of the Issue's sequential default so it may run alongside other dependency-ready tasks. False keeps strict sequential ordering.
+   */
+  parallelizable: boolean;
   creatorUserId: string;
   creatorDisplayName: string;
   creatorAvatarUrl: string;
@@ -3602,6 +3695,18 @@ export type CreateIssueManagerIssueRequest = {
   topicId: string;
   title: string;
   content?: string;
+  planningSource?: IssueManagerPlanningSource;
+  sourceSessionId?: string;
+  /**
+   * Persist the user's Create-and-Start choice so successor dispatch survives desktop restarts.
+   */
+  sequentialExecution?: boolean;
+  /**
+   * Persist the user's parallel Create-and-Start choice. Mutually exclusive with sequentialExecution.
+   */
+  parallelExecution?: boolean;
+  executionProfile?: IssueManagerExecutionProfile;
+  budget?: IssueManagerBudget;
 };
 
 export type CreateIssueManagerTopicRequest = {
@@ -3628,6 +3733,12 @@ export type CreateIssueManagerTaskRequest = {
   content?: string;
   priority?: IssueManagerPriority;
   dueAtUnix?: number;
+  agentTargetId?: string;
+  modelPlanId?: string;
+  model?: string;
+  executionDirectory?: string;
+  dependencyTaskIds?: Array<string>;
+  parallelizable?: boolean;
 };
 
 export type CreateIssueManagerTasksRequest = {
@@ -3641,6 +3752,7 @@ export type UpdateIssueManagerTaskRequest = {
   priority?: IssueManagerPriority;
   dueAtUnix?: number;
   sortIndex?: number;
+  parallelizable?: boolean;
 };
 
 export type AddIssueManagerContextRefItem = {
@@ -6634,7 +6746,7 @@ export type ListWorkspaceWorkflowsData = {
   query: {
     sourceSessionId: string;
     /**
-     * Currently only pending checkpoints are listable.
+     * When omitted, returns every workflow for the source session. Pass pending to return only workflows with a pending checkpoint.
      */
     checkpointStatus?: "pending";
   };

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
-	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 

@@ -117,6 +117,7 @@ function createViewModel(): AgentGUINodeViewModel {
       canSubmit: false,
       isTuttiModeActive: false,
       isTuttiModeUpdating: false,
+      tuttiModeOrchestrationIntensity: 50,
       tuttiModeUpdateStatus: "idle",
       composerSettings:
         {} as AgentGUINodeViewModel["composer"]["composerSettings"],

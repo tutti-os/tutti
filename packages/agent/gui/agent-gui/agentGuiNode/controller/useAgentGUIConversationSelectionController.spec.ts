@@ -76,6 +76,7 @@ describe("clearFailedAgentGUIActivationSelection", () => {
         agentActivityRuntime: {} as AgentActivityRuntime,
         attentionReadRecordsBySessionId: {},
         conversationIdsRef: { current: new Set() },
+        conversationsRef: { current: [transientConversation] },
         conversationListQuery: {},
         currentUserId: null,
         data,
@@ -89,7 +90,9 @@ describe("clearFailedAgentGUIActivationSelection", () => {
         reloadSelectedConversationRef: { current: vi.fn() },
         sessionEngine: {
           dispatch: vi.fn(),
-          getSnapshot: vi.fn(() => ({}))
+          getSnapshot: vi.fn(() => ({
+            pendingIntents: { activationsByRequestId: {} }
+          }))
         } as unknown as AgentSessionEngine,
         setActiveConversationId,
         setDetailError: vi.fn(),
@@ -98,6 +101,9 @@ describe("clearFailedAgentGUIActivationSelection", () => {
           setIsComposerHome(next);
         },
         setIsLoadingMessages: vi.fn(),
+        clearRailRevealRequest: vi.fn(),
+        requestRailReveal: vi.fn(),
+        transientConversation,
         workspaceId: "workspace-1"
       });
       useAgentGUIConversationRouting({
@@ -119,7 +125,9 @@ describe("clearFailedAgentGUIActivationSelection", () => {
         },
         sessionEngine: {
           dispatch: vi.fn(),
-          getSnapshot: vi.fn(() => ({}))
+          getSnapshot: vi.fn(() => ({
+            pendingIntents: { activationsByRequestId: {} }
+          }))
         } as unknown as AgentSessionEngine,
         setIntent,
         transientConversation,

@@ -25,10 +25,7 @@ import type {
   AgentHomeSuggestionAction,
   AgentGUINodeViewModel
 } from "../model/agentGuiNodeTypes";
-import {
-  agentPromptContentDisplayText,
-  updateAgentComposerDraft
-} from "../model/agentComposerDraft";
+import { updateAgentComposerDraft } from "../model/agentComposerDraft";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import type { AgentGUIManagedHomeTargetProjection } from "../model/agentGuiProviderRailOrder";
 import type {
@@ -38,9 +35,7 @@ import type {
 } from "../AgentGUINodeView";
 import {
   buildAgentConversationHandoffPrompt,
-  commandAppSource,
-  handoffProjectPathForConversation,
-  workspaceAppIconKey
+  handoffProjectPathForConversation
 } from "./agentGUIDetailModelHelpers";
 import { AgentGUIBottomDockPane } from "./AgentGUIBottomDockPane";
 import {
@@ -51,22 +46,15 @@ import {
 import { AgentGUIContentToast } from "./AgentGUIContentToast";
 import { AgentGUIConversationTimelinePane } from "./AgentGUIConversationTimelinePane";
 import {
-  stringValue,
   useOptionalStableEventCallback,
   useStableEventCallback
 } from "./agentGUIViewUtils";
 import styles from "../AgentGUINode.styles";
 import { useAgentGUIDetailScroll } from "./useAgentGUIDetailScroll";
 import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
+import { useAgentGUIPlanReviewControls } from "./useAgentGUIPlanReviewControls";
 import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
-import {
-  TuttiModePlanPanel,
-  mergeTaskAssignmentDraft,
-  taskAssignmentInputsFromDrafts,
-  useTuttiModePlanPanels,
-  type TuttiModePlanTaskAssignmentDraft,
-  type TuttiModePlanTaskAssignmentDrafts
-} from "../../../workspaceWorkflow";
+import { TuttiModePlanPanel } from "../../../workspaceWorkflow";
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -116,52 +104,6 @@ export interface AgentGUIDetailPaneProps {
   onRequestComposerFocus: () => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
-}
-
-export function mergeWorkspaceAppIconsFromCommands(input: {
-  commands: AgentGUINodeViewModel["composer"]["availableCommands"];
-  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  workspaceId: string;
-}): readonly AgentMessageMarkdownWorkspaceAppIcon[] {
-  const seen = new Set(
-    input.workspaceAppIcons.flatMap((icon) => {
-      const appId = icon.appId.trim();
-      const iconUrl = icon.iconUrl?.trim() ?? "";
-      if (!appId || !iconUrl) {
-        return [];
-      }
-      return [
-        workspaceAppIconKey(appId, icon.workspaceId?.trim() ?? ""),
-        workspaceAppIconKey(appId, "")
-      ];
-    })
-  );
-  let next: AgentMessageMarkdownWorkspaceAppIcon[] | null = null;
-  for (const command of input.commands) {
-    const source = commandAppSource(command);
-    if (!source) {
-      continue;
-    }
-    const appId = stringValue(source.appId).trim();
-    const iconUrl = stringValue(source.iconUrl).trim();
-    if (!appId || !iconUrl) {
-      continue;
-    }
-    const key = workspaceAppIconKey(appId, input.workspaceId);
-    if (seen.has(key)) {
-      continue;
-    }
-    if (!next) {
-      next = [...input.workspaceAppIcons];
-    }
-    next.push({
-      appId,
-      iconUrl,
-      workspaceId: input.workspaceId
-    });
-    seen.add(key);
-  }
-  return next ?? input.workspaceAppIcons;
 }
 
 export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
@@ -257,96 +199,27 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     viewModel
   });
   const slashStatus = slashStatusOverride ?? derivedSlashStatus;
-  const tuttiModePlanPanels = useTuttiModePlanPanels({
-    enabled: !previewMode,
-    workspaceId: viewModel.shell.workspaceId,
-    sourceSessionId: viewModel.rail.activeConversationId,
-    decidedBy: viewModel.shell.currentUserId?.trim() || "local"
+  const {
+    acceptPendingPlan,
+    cancelPendingPlan,
+    handlePlanAssignmentDraftChange,
+    pendingPlanPanel,
+    pendingPlanSubmitting,
+    planAssignmentDrafts,
+    planReviewIntensityDiverged,
+    planReviewSendActive,
+    setTuttiModeActiveAndSettleReview,
+    submitGuidancePromptAndScrollToBottom,
+    submitPromptOrDecidePlan,
+    tuttiModePlanPanels
+  } = useAgentGUIPlanReviewControls({
+    actions,
+    labels,
+    pendingPrependScrollAnchorRef,
+    previewMode,
+    submittedPromptScrollConversationRef,
+    viewModel
   });
-  // Assignment drafts are host-owned (keyed by panel id) so a composer-driven
-  // accept can carry them; the panel only renders and reports edits.
-  const [planAssignmentDrafts, setPlanAssignmentDrafts] = useState<
-    Readonly<Record<string, TuttiModePlanTaskAssignmentDrafts>>
-  >({});
-  const handlePlanAssignmentDraftChange = useStableEventCallback(
-    (
-      panelId: string,
-      taskId: string,
-      patch: TuttiModePlanTaskAssignmentDraft
-    ): void => {
-      setPlanAssignmentDrafts((current) => ({
-        ...current,
-        [panelId]: mergeTaskAssignmentDraft(
-          current[panelId] ?? {},
-          taskId,
-          patch
-        )
-      }));
-    }
-  );
-  // The composer decides the earliest actionable checkpoint (single-review
-  // flow: at most one is pending per session).
-  const pendingPlanPanel =
-    tuttiModePlanPanels.panels.find((panel) => panel.actionable) ?? null;
-  const pendingPlanSubmitting =
-    pendingPlanPanel !== null &&
-    tuttiModePlanPanels.submittingCheckpointId ===
-      pendingPlanPanel.checkpoint.id;
-  const planReviewSendActive =
-    pendingPlanPanel !== null && !pendingPlanSubmitting;
-  // Once the session intensity diverges from the plan's snapshot, an empty
-  // send means "re-plan at the new intensity" instead of accepting; matching
-  // values (including adjusting back) restore accept semantics.
-  const planReviewIntensityDiverged =
-    pendingPlanPanel !== null &&
-    viewModel.composer.tuttiModeOrchestrationIntensity !==
-      pendingPlanPanel.execution.orchestrationIntensity;
-  const decidePendingPlan = useStableEventCallback(
-    (decision: "accepted" | "rejected" | "canceled", reason?: string): void => {
-      if (!pendingPlanPanel || pendingPlanSubmitting) return;
-      const assignments =
-        decision === "accepted"
-          ? taskAssignmentInputsFromDrafts(
-              planAssignmentDrafts[pendingPlanPanel.id] ?? {},
-              pendingPlanPanel.tasks
-            )
-          : [];
-      void tuttiModePlanPanels.decide({
-        workflowId: pendingPlanPanel.workflowId,
-        checkpointId: pendingPlanPanel.checkpoint.id,
-        decision,
-        reason,
-        taskAssignments: assignments.length > 0 ? assignments : undefined
-      });
-    }
-  );
-  const acceptPendingPlan = useStableEventCallback((): void => {
-    if (planReviewIntensityDiverged && pendingPlanPanel) {
-      decidePendingPlan(
-        "rejected",
-        labels.tuttiModePlanReplanFeedback(
-          String(pendingPlanPanel.execution.orchestrationIntensity),
-          String(viewModel.composer.tuttiModeOrchestrationIntensity)
-        )
-      );
-      return;
-    }
-    decidePendingPlan("accepted");
-  });
-  const cancelPendingPlan = useStableEventCallback((): void => {
-    decidePendingPlan("canceled");
-  });
-  // Turning Tutti mode off with a review still pending also cancels the
-  // checkpoint: the banner and composer decision semantics clear with it, and
-  // the agent continues naturally on the next message without plan context.
-  const setTuttiModeActiveAndSettleReview = useStableEventCallback(
-    (active: boolean): void => {
-      if (!active) {
-        decidePendingPlan("canceled");
-      }
-      setTuttiModeActive(active);
-    }
-  );
   const handleInterruptCurrentTurn = useCallback(() => {
     actions.interruptCurrentTurn(labels.noRunningResponse);
   }, [actions.interruptCurrentTurn, labels.noRunningResponse]);
@@ -371,7 +244,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const updateComposerSettings = useStableEventCallback(
     actions.updateComposerSettings
   );
-  const setTuttiModeActive = useStableEventCallback(actions.setTuttiModeActive);
+  const setTuttiModeOrchestrationIntensity = useStableEventCallback(
+    actions.setTuttiModeOrchestrationIntensity
+  );
   const selectHomeComposerAgentTarget = useStableEventCallback(
     actions.selectHomeComposerAgentTarget
   );
@@ -403,70 +278,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     },
     []
   );
-  const submitPrompt = useStableEventCallback(actions.submitPrompt);
   const goalControl = useStableEventCallback(actions.goalControl);
-  const submitGuidancePrompt = useStableEventCallback(
-    actions.submitGuidancePrompt
-  );
-  const requestSubmittedPromptScrollToBottom = useCallback(() => {
-    const activeConversationId = viewModel.rail.activeConversationId;
-    if (!activeConversationId) {
-      return;
-    }
-    submittedPromptScrollConversationRef.current = activeConversationId;
-    pendingPrependScrollAnchorRef.current = null;
-  }, [viewModel.rail.activeConversationId]);
-  const submitPromptAndScrollToBottom = useCallback(
-    (
-      content: AgentPromptContentBlock[],
-      displayPrompt?: string,
-      options?: Parameters<AgentComposerProps["onSubmit"]>[2]
-    ): void => {
-      requestSubmittedPromptScrollToBottom();
-      if (displayPrompt === undefined) {
-        submitPrompt(content, undefined, options);
-        return;
-      }
-      submitPrompt(content, displayPrompt, options);
-    },
-    [requestSubmittedPromptScrollToBottom, submitPrompt]
-  );
-  // While a plan review is pending the composer doubles as the decision
-  // surface: typed text becomes request-changes feedback (the daemon relays
-  // it to the agent), an empty send accepts. Normal sends resume once the
-  // checkpoint settles.
-  const submitPromptOrDecidePlan = useStableEventCallback(
-    (...args: Parameters<typeof submitPrompt>): void => {
-      const [content] = args;
-      if (pendingPlanPanel && !pendingPlanSubmitting) {
-        let feedback = agentPromptContentDisplayText(content).trim();
-        // Slash commands (e.g. the usage chip's "/compact") are never plan
-        // feedback — let them flow through the normal submit path.
-        if (feedback && !feedback.startsWith("/")) {
-          if (planReviewIntensityDiverged) {
-            feedback += labels.tuttiModePlanReplanFeedbackSuffix(
-              String(viewModel.composer.tuttiModeOrchestrationIntensity)
-            );
-          }
-          decidePendingPlan("rejected", feedback);
-          updateDraftContent(
-            updateAgentComposerDraft(viewModel.composer.draftContent, {
-              prompt: ""
-            })
-          );
-          return;
-        }
-      }
-      submitPromptAndScrollToBottom(...args);
-    }
-  );
-  const submitGuidancePromptAndScrollToBottom = useCallback(
-    (...args: Parameters<typeof submitGuidancePrompt>): void => {
-      requestSubmittedPromptScrollToBottom();
-      submitGuidancePrompt(...args);
-    },
-    [requestSubmittedPromptScrollToBottom, submitGuidancePrompt]
-  );
   const showPromptImagesUnsupported = useStableEventCallback(
     actions.showPromptImagesUnsupported
   );
@@ -687,7 +499,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       showStopButton,
       slashStatus,
       submitDisabled,
-      setTuttiModeActive,
+      setTuttiModeActiveAndSettleReview,
       submitInteractivePrompt,
       submitPromptOrDecidePlan,
       planReviewSendActive,

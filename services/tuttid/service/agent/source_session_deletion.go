@@ -8,11 +8,11 @@ import (
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
-// SourceSessionDeletionCoordinator is the Tutti-owned use-case boundary for
+// SourceSessionDeletionPort is the Tutti-owned use-case boundary for
 // atomically deleting agent sessions together with activation and workflow
 // lifecycle state. Production wiring must prefer this coordinator over the
 // persistence-only fallbacks.
-type SourceSessionDeletionCoordinator interface {
+type SourceSessionDeletionPort interface {
 	DeleteSourceSession(context.Context, string, string) (agentactivitybiz.DeleteSessionsBatchResult, error)
 	DeleteSourceSessionsBatch(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error)
 	ClearSourceSessions(context.Context, string) (agentactivitybiz.ClearSessionsResult, error)

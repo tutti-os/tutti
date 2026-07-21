@@ -1,14 +1,9 @@
 import type { AgentActivityUpdatedEvent } from "@tutti-os/agent-activity-core";
 import type { TuttidEventStreamClient } from "@tutti-os/client-tuttid-ts";
-import type { WorkspaceAgentModelConfigurationChangedEvent } from "../workspaceAgentActivityService.interface.ts";
 import type { WorkspaceAgentSessionEngineHost } from "./workspaceAgentSessionEngineHost.ts";
-import { subscribeWorkspaceAgentModelConfigurationChanges } from "./workspaceAgentModelConfigurationBridge.ts";
 
 export function subscribeWorkspaceAgentScopedEvents(input: {
   eventStreamClient?: TuttidEventStreamClient;
-  modelConfigurationChangedListeners: ReadonlySet<
-    (event: WorkspaceAgentModelConfigurationChangedEvent) => void
-  >;
   onAgentActivityUpdated: (event: AgentActivityUpdatedEvent) => void;
   sessionEngineHost: WorkspaceAgentSessionEngineHost | undefined;
   workspaceId: string;
@@ -40,10 +35,4 @@ export function subscribeWorkspaceAgentScopedEvents(input: {
     },
     { scope: { workspaceId: input.workspaceId } }
   );
-  subscribeWorkspaceAgentModelConfigurationChanges({
-    eventStreamClient,
-    listeners: input.modelConfigurationChangedListeners,
-    sessionEngineHost: input.sessionEngineHost,
-    workspaceId: input.workspaceId
-  });
 }

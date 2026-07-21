@@ -1850,7 +1850,7 @@ export const acceptAgentSessionWork = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * List recoverable Tutti-owned workflows for a source Agent session
+ * List Tutti-owned workflows for a source Agent session
  */
 export const listWorkspaceWorkflows = <ThrowOnError extends boolean = false>(
   options: Options<ListWorkspaceWorkflowsData, ThrowOnError>

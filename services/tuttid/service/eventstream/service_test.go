@@ -339,7 +339,7 @@ func TestAgentActivityUpdatedValidationAcceptsLiveTurnCapabilityReferences(t *te
 			payload := strings.Replace(`{
 		"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"turn_update",
 		"data":{"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"turn_update","occurredAtUnixMs":10,"activeTurnId":"turn-1",
-		"turn":{"turnId":"turn-1","agentSessionId":"session-1","capabilityRefs":[{"capability":"tutti","source":"slash_command"}],"phase":"PHASE","outcome":null,"error":null,"fileChanges":null,"completedCommand":null,"startedAtUnixMs":10,"settledAtUnixMs":null,"updatedAtUnixMs":10}}
+		"turn":{"turnId":"turn-1","agentSessionId":"session-1","capabilityRefs":[{"capability":"tutti","source":"slash_command"}],"phase":"PHASE","origin":"user_prompt","outcome":null,"error":null,"fileChanges":null,"completedCommand":null,"startedAtUnixMs":10,"settledAtUnixMs":null,"updatedAtUnixMs":10}}
 	}`, "PHASE", phase, 1)
 			if err := catalog.ValidatePublish(TopicAgentActivityUpdated, DirectionServerToClient, []byte(payload)); err != nil {
 				t.Fatalf("valid %s turn with capability refs: %v", phase, err)

@@ -182,7 +182,8 @@ export class SessionRuntime {
         input.prompt,
         input.content,
         input.turnOrigin,
-        input.goal
+        input.goal,
+        input.hostContext
       )
     );
     this.router = new SDKMessageRouter({
@@ -262,10 +263,24 @@ export class SessionRuntime {
       return;
     }
     if (goal?.operationId && goal.revision > 0) {
-      this.goalExecQueue.accept({ turnId, prompt, content, turnOrigin, goal });
+      this.goalExecQueue.accept({
+        turnId,
+        prompt,
+        content,
+        turnOrigin,
+        hostContext,
+        goal
+      });
       return;
     }
-    this.dispatchExec(turnId, prompt, content, turnOrigin);
+    this.dispatchExec(
+      turnId,
+      prompt,
+      content,
+      turnOrigin,
+      undefined,
+      hostContext
+    );
   }
 
   private dispatchExec(
@@ -273,7 +288,8 @@ export class SessionRuntime {
     prompt: string,
     content?: unknown,
     turnOrigin?: string,
-    goal?: GoalCommandDispatch
+    goal?: GoalCommandDispatch,
+    hostContext = ""
   ): void {
     this.turns.closeSyntheticBeforeUserTurn();
     const turn: RuntimeTurn = {
@@ -309,22 +325,16 @@ export class SessionRuntime {
           content,
           prompt
         ) as unknown as SDKUserMessage["message"]["content"];
-        generation.expectPromptEcho(turn.promptUuid);
+        let outboundContent = sdkContent;
         if (hostContext.trim()) {
-          generation.promptQueue.push({
-            uuid: crypto.randomUUID(),
-            type: "user",
-            session_id: this.providerSessionId,
-            parent_tool_use_id: null,
-            isSynthetic: true,
-            shouldQuery: false,
-            origin: { kind: "coordinator" },
-            message: {
-              role: "user",
-              content: hostContext.trim()
-            }
-          } as SDKUserMessage);
+          const hostContextBlock = { type: "text" as const, text: hostContext.trim() };
+          if (Array.isArray(sdkContent)) {
+            sdkContent.unshift(hostContextBlock);
+          } else {
+            outboundContent = [hostContextBlock, { type: "text" as const, text: sdkContent }];
+          }
         }
+        generation.expectPromptEcho(turn.promptUuid);
         generation.promptQueue.push({
           uuid: turn.promptUuid,
           type: "user",
@@ -332,7 +342,7 @@ export class SessionRuntime {
           parent_tool_use_id: null,
           message: {
             role: "user",
-            content: sdkContent
+            content: outboundContent
           }
         } as SDKUserMessage);
         this.consume(generation);

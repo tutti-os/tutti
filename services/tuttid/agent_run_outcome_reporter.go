@@ -42,7 +42,7 @@ func (r agentRunOutcomeReporter) Report(
 }
 
 func (r agentRunOutcomeReporter) BindGoalProvenance(ctx context.Context, input agentsessionstore.BindGoalProvenanceInput) (agentsessionstore.GoalProvenanceBinding, error) {
-	ledger, ok := r.inner.(agentsessionstore.GoalProvenanceLedger)
+	ledger, ok := r.DurableActivityReporter.(agentsessionstore.GoalProvenanceLedger)
 	if !ok {
 		return agentsessionstore.GoalProvenanceBinding{}, errors.New("agent activity reporter does not support goal provenance")
 	}
@@ -50,7 +50,7 @@ func (r agentRunOutcomeReporter) BindGoalProvenance(ctx context.Context, input a
 }
 
 func (r agentRunOutcomeReporter) LookupGoalProvenance(ctx context.Context, input agentsessionstore.LookupGoalProvenanceInput) (agentsessionstore.GoalProvenanceBinding, bool, error) {
-	ledger, ok := r.inner.(agentsessionstore.GoalProvenanceLedger)
+	ledger, ok := r.DurableActivityReporter.(agentsessionstore.GoalProvenanceLedger)
 	if !ok {
 		return agentsessionstore.GoalProvenanceBinding{}, false, errors.New("agent activity reporter does not support goal provenance")
 	}

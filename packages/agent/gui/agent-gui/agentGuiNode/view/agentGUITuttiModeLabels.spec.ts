@@ -12,8 +12,17 @@ describe("agentGUITuttiModeLabels", () => {
     expect(labels.tuttiModeUpdateFailed).toBe(
       "agentHost.agentGui.tuttiModeUpdateFailed"
     );
-    expect(labels.tuttiModePlanPanel.configurationReview).toBe(
-      "agentHost.agentGui.tuttiModePlan.configurationReview"
+    expect(labels.tuttiModePlanPanel.taskReview).toBe(
+      "agentHost.agentGui.tuttiModePlan.taskReview"
+    );
+    expect(labels.tuttiModePlanPanel.permissionMode).toBe(
+      "agentHost.agentGui.tuttiModePlan.permissionMode"
+    );
+    expect(labels.tuttiModePlanPanel.reasoningEffort).toBe(
+      "agentHost.agentGui.tuttiModePlan.reasoningEffort"
+    );
+    expect(labels.tuttiModePlanPanel.assignmentOptionsLoading).toBe(
+      "agentHost.agentGui.tuttiModePlan.assignmentOptionsLoading"
     );
     expect(labels.tuttiModePlanLoadFailed).toBe(
       "agentHost.agentGui.tuttiModePlan.loadFailed"

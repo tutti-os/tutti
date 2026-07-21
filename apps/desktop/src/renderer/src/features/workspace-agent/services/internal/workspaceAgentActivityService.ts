@@ -21,9 +21,9 @@ import {
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
-import { agentActivitySessionFromTuttidSession } from "../desktopAgentActivityAdapter.ts";
 import {
   normalizeComposerSettings,
+  resolveComposerPermissionMode,
   resolveDesktopAgentGUIProvider
 } from "./desktopAgentHostProjection.ts";
 import type {
@@ -46,10 +46,7 @@ import { WorkspaceAgentActivityAnalytics } from "./workspaceAgentActivityAnalyti
 import { WorkspaceAgentActivityQueryOperations } from "./workspaceAgentActivityQueryOperations.ts";
 import { WorkspaceAgentActivityImportOperations } from "./workspaceAgentActivityImportOperations.ts";
 import { loadWorkspaceAgentComposerOptions } from "./workspaceAgentComposerOptions.ts";
-import {
-  unwrapCollaborationData,
-  WorkspaceAgentActivityMutationOperations
-} from "./workspaceAgentActivityMutationOperations.ts";
+import { WorkspaceAgentActivityMutationOperations } from "./workspaceAgentActivityMutationOperations.ts";
 
 function waitForPromiseWithSignal<T>(
   promise: Promise<T>,
@@ -146,7 +143,6 @@ export class WorkspaceAgentActivityService
       hostFilesApi: dependencies.hostFilesApi,
       load: (workspaceId, signal) => this.load(workspaceId, signal),
       markSessionDeleted: (input) => this.markSessionDeleted(input),
-      resolveCollaborationClient: () => this.resolveCollaborationClient(),
       runtimeApi: dependencies.runtimeApi,
       sessionCommandTarget: (workspaceId) => ({
         adapter: this.entry(workspaceId).adapter
@@ -821,6 +817,34 @@ export class WorkspaceAgentActivityService
     input: Parameters<AgentActivityRuntime["unactivateSession"]>[0]
   ): ReturnType<IWorkspaceAgentActivityService["unactivateSession"]> {
     return this.mutationOperations.unactivateSession(input);
+  }
+
+  private async resolveWorkspaceAgentCwd(input: {
+    agentSessionId: string;
+    cwd: string | null | undefined;
+    workspaceId: string;
+  }): Promise<{ cwd: string | null; noProject: boolean }> {
+    const trimmed = input.cwd?.trim() ?? "";
+    if (!trimmed) {
+      const directory =
+        await this.dependencies.hostFilesApi?.createUserDocumentsProjectDirectory(
+          {
+            name: `session-${input.agentSessionId.trim()}`,
+            allowExisting: true
+          }
+        );
+      this.dependencies.workspaceUserProjectService?.rememberNoProjectPath(
+        directory?.path
+      );
+      return { cwd: directory?.path ?? null, noProject: true };
+    }
+    if (trimmed !== "/") return { cwd: trimmed, noProject: false };
+    const response =
+      await this.dependencies.tuttidClient.listWorkspaceFileDirectory(
+        input.workspaceId,
+        {}
+      );
+    return { cwd: response.root, noProject: false };
   }
 
   protected createEntry(workspaceId: string): WorkspaceAgentActivityEntry {

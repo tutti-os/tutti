@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { normalizeOptionalWorkspaceAgentStatus } from "../../../shared/workspaceAgentStatusNormalizer";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
+import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import { createAgentSessionHandoffPrompt } from "../agentRichText/agentFileMentionExtension";
 import type {
@@ -13,7 +14,7 @@ import type {
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIAgentTarget } from "../../../types";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
-import { conversationPlainTitle } from "./agentGUIViewUtils";
+import { conversationPlainTitle, stringValue } from "./agentGUIViewUtils";
 
 export function commandAppSource(
   command: unknown
@@ -289,4 +290,50 @@ export function handoffProjectPathForConversation(
   return (
     conversation?.project?.path?.trim() || conversation?.cwd?.trim() || null
   );
+}
+
+export function mergeWorkspaceAppIconsFromCommands(input: {
+  commands: AgentGUINodeViewModel["composer"]["availableCommands"];
+  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  workspaceId: string;
+}): readonly AgentMessageMarkdownWorkspaceAppIcon[] {
+  const seen = new Set(
+    input.workspaceAppIcons.flatMap((icon) => {
+      const appId = icon.appId.trim();
+      const iconUrl = icon.iconUrl?.trim() ?? "";
+      if (!appId || !iconUrl) {
+        return [];
+      }
+      return [
+        workspaceAppIconKey(appId, icon.workspaceId?.trim() ?? ""),
+        workspaceAppIconKey(appId, "")
+      ];
+    })
+  );
+  let next: AgentMessageMarkdownWorkspaceAppIcon[] | null = null;
+  for (const command of input.commands) {
+    const source = commandAppSource(command);
+    if (!source) {
+      continue;
+    }
+    const appId = stringValue(source.appId).trim();
+    const iconUrl = stringValue(source.iconUrl).trim();
+    if (!appId || !iconUrl) {
+      continue;
+    }
+    const key = workspaceAppIconKey(appId, input.workspaceId);
+    if (seen.has(key)) {
+      continue;
+    }
+    if (!next) {
+      next = [...input.workspaceAppIcons];
+    }
+    next.push({
+      appId,
+      iconUrl,
+      workspaceId: input.workspaceId
+    });
+    seen.add(key);
+  }
+  return next ?? input.workspaceAppIcons;
 }

@@ -111,6 +111,39 @@ func (s *Service) prepareTuttiModeExec(ctx context.Context, workspaceID, agentSe
 	return turnID, bound, nil
 }
 
+// existingSubmitCanonicalTurnID returns the canonical turn already claimed for
+// a client submit, so a retry reuses the claimed turn instead of allocating a
+// fresh one that would conflict with the durable claim.
+func (s *Service) existingSubmitCanonicalTurnID(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	typedClientSubmitID string,
+	metadata map[string]any,
+) (string, error) {
+	if s == nil || s.SubmitClaimStore == nil {
+		return "", nil
+	}
+	clientSubmitID := strings.TrimSpace(typedClientSubmitID)
+	if clientSubmitID == "" {
+		legacy, _ := metadata["clientSubmitId"].(string)
+		clientSubmitID = strings.TrimSpace(legacy)
+	}
+	if clientSubmitID == "" {
+		return "", nil
+	}
+	claim, found, err := s.SubmitClaimStore.GetSubmitClaim(
+		ctx,
+		strings.TrimSpace(workspaceID),
+		strings.TrimSpace(agentSessionID),
+		clientSubmitID,
+	)
+	if err != nil || !found {
+		return "", err
+	}
+	return strings.TrimSpace(claim.CanonicalTurnID), nil
+}
+
 func (s *Service) execWithTuttiModeSnapshot(
 	ctx context.Context,
 	workspaceID, agentSessionID string,

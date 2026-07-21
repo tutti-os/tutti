@@ -1,7 +1,6 @@
 // Agent GUI controller — shared TypeScript types for the controller hook.
 
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
-import type { PlanIssueCreationOptions } from "../../../shared/agentConversation/planImplementationPresentation";
 import type {
   AgentGUIAgentTarget,
   AgentGUINodeData,
@@ -72,14 +71,6 @@ export interface UseAgentGUINodeControllerInput {
   onRememberComposerDefaults?: (
     input: AgentGUIRememberComposerDefaultsInput
   ) => void | Promise<AgentGUIRememberComposerDefaultsResult>;
-  onCreateIssueFromPlan?: (input: {
-    agentSessionId: string;
-    creationOptions?: PlanIssueCreationOptions;
-    planTurnId: string;
-    workspaceId: string;
-  }) =>
-    | Promise<{ issueId: string; topicId: string }>
-    | { issueId: string; topicId: string };
   onShowMessage?: (
     message: string,
     tone?: "info" | "warning" | "error"

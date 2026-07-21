@@ -1,3 +1,4 @@
+import { enAgentGuiOrchestration } from "./en.agentGuiOrchestration.ts";
 import { enAgentGuiProviderIdentity } from "./en.agentGuiProviderIdentity.ts";
 import { enAgentGuiQuickPrompts } from "./en.agentGuiQuickPrompts.ts";
 import { enAgentGuiReferencePicker } from "./en.agentGuiReferencePicker.ts";
@@ -6,7 +7,7 @@ import { enAgentGuiModelPlans } from "./en.agentGuiModelPlans.ts";
 import { enAgentGuiSlashPalette } from "./en.agentGuiSlashPalette.ts";
 import { enAgentGuiSessionActions } from "./en.agentGuiSessionActions.ts";
 import { enAgentGuiCollaboration } from "./en.agentGuiCollaboration.ts";
-import { enTuttiModePlan } from "./en.tuttiModePlan.ts";
+import { enAgentGuiUsageStatus } from "./en.agentGuiUsageStatus.ts";
 
 export const enAgentGui = {
   initialPlaceholder: "Type @ to reference sessions, files, tasks, and apps",
@@ -266,27 +267,7 @@ export const enAgentGui = {
       "Optimized for professional work and long-running agents"
   },
   permissionLabel: "Run permissions",
-  planModeLabel: "Plan Mode",
-  normalModeLabel: "Normal",
-  normalModeDescription: "Execute the request directly",
-  tuttiModeLabel: "Tutti",
-  tuttiModeDescription:
-    "Ask the agent to prefer Tutti's native workflow capabilities",
-  tuttiModeRemove: "Turn off Tutti mode",
-  tuttiBudgetTitle: "Tutti intensity",
-  tuttiBudgetIntensityLabel: "Intensity",
-  tuttiBudgetIntensityMin: "Minimal",
-  tuttiBudgetIntensityMax: "Maximal",
-  tuttiBudgetConfirm: "Confirm",
-  tuttiBudgetCancel: "Cancel",
-  tuttiModeUpdateFailed: "Tutti mode couldn't be updated. Try again.",
-  tuttiModeUpdateUncertain:
-    "Tutti mode is still being reconciled. Try again after it finishes.",
-  tuttiModePlan: enTuttiModePlan,
-  planModeDescription: "Plan first, then implement or break down into an Issue",
-  planModeOnLabel: "On",
-  planModeOffLabel: "Off",
-  planUnavailable: "Plan unavailable",
+  ...enAgentGuiOrchestration,
   queuedLabel: "Queued",
   queuePausedByUserLabel:
     "The queue is paused because you interrupted the current response.",
@@ -296,35 +277,7 @@ export const enAgentGui = {
   queuedPromptMoreActions: "More queued prompt actions",
   stop: "Stop",
   stopping: "Stopping...",
-  slashStatusTitle: "Status",
-  slashStatusSession: "Session",
-  slashStatusBaseUrl: "Base URL",
-  slashStatusContext: "Context",
-  slashStatusLimits: "Usage Limits",
-  slashStatusAccount: "Account",
-  slashStatusClose: "Close",
-  slashStatusFiveHourLimit: "5h limit",
-  slashStatusWeeklyLimit: "7d limit",
-  slashStatusLimitPercentLeft: "{{percent}}% left",
-  slashStatusLimitReset: "resets {{reset}}",
-  slashStatusContextValue:
-    "{{percentLeft}}% left ({{usedTokens}} used / {{totalTokens}})",
-  slashStatusContextUnavailable: "—",
-  slashStatusLimitsUnavailable: "Rate limits unavailable from this agent",
-  slashStatusEmptyValue: "—",
-  slashStatusUsageJustUpdated: "Updated just now",
-  slashStatusUsageMinutesAgo: "Updated {{count}}m ago",
-  slashStatusUsageHoursAgo: "Updated {{count}}h ago",
-  slashStatusUsageUpdating: "Updating…",
-  slashStatusUsageRefreshFailed: "Refresh failed",
-  slashStatusUsageRefreshAria: "Refresh usage",
-  usageChipLabel: "Context {{percent}}%",
-  usageTooltipLabel: "Context usage",
-  usagePopoverTitle: "Context Usage",
-  usageContextWindowLabel: "Context window",
-  usageTokensLabel: "Tokens",
-  usageLimitsLabel: "Limits",
-  usageCompactAction: "Compact",
+  ...enAgentGuiUsageStatus,
   planCardTitle: "Plan",
   planCardCopy: "Copy plan",
   copyCode: "Copy code",

@@ -34,9 +34,7 @@ import {
 import {
   EMPTY_AGENT_GUI_MESSAGES,
   composerTargetDataFromProviderTarget,
-  isExplicitAgentGUIAgentTarget,
-  type AgentGUIRememberComposerDefaultsInput,
-  type AgentGUIRememberComposerDefaultsResult
+  isExplicitAgentGUIAgentTarget
 } from "./agentGuiController.providerHelpers";
 import type { UseAgentGUINodeControllerInput } from "./agentGuiController.types";
 import { reportAgentGUIActiveConversationCleared } from "./agentGuiController.reporting";

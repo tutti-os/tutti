@@ -509,6 +509,7 @@ test("desktop agent activity adapter creates, projects, and revision-updates the
       activationId: "activation-1",
       createdAtUnixMs: 10,
       id: "revision-1",
+      orchestrationIntensity: 80,
       revision: 1,
       source: "slash_command" as const,
       status: "active" as const
@@ -524,6 +525,7 @@ test("desktop agent activity adapter creates, projects, and revision-updates the
       activationId: "activation-1",
       createdAtUnixMs: 20,
       id: "revision-2",
+      orchestrationIntensity: 25,
       revision: 2,
       source: "badge_remove" as const,
       status: "inactive" as const

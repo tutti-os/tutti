@@ -17,6 +17,9 @@ export type {
   AgentGUIReferenceProvenanceFilterCatalog
 } from "./AgentGUI";
 export type {
+  TuttiModePlanAssignmentAgentDetail,
+  TuttiModePlanAssignmentAgentOption,
+  TuttiModePlanAssignmentOptionsSource,
   TuttiModePlanReviewSnapshot,
   TuttiModePlanReviewRuntime,
   TuttiModePlanTaskAssignmentInput

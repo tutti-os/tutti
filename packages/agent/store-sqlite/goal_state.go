@@ -160,6 +160,7 @@ INSERT INTO workspace_agent_goal_control_operations (
 		goalControlAuditMessageUpdate(input, revision),
 		input.OccurredAtUnixMS,
 		false,
+		true,
 	)
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, fmt.Errorf("insert goal control audit: %w", err)

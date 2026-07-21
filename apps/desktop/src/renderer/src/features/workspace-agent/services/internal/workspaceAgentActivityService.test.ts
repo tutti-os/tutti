@@ -826,6 +826,10 @@ test("WorkspaceAgentActivityService starts session-event streams and preserves u
       topic: "agent.activity.updated"
     },
     {
+      scope: { workspaceId: "ws-1" },
+      topic: "workspace.tuttimode.updated"
+    },
+    {
       scope: null,
       topic: "agent.model.catalog.invalidated"
     },
@@ -1213,7 +1217,7 @@ test("WorkspaceAgentActivityService dispose releases every event stream subscrip
   });
 
   service.onSessionEvent("ws-1", () => {});
-  assert.equal(activeSubscriptions.size, 4);
+  assert.equal(activeSubscriptions.size, 5);
 
   service.dispose();
   service.dispose();
@@ -2556,6 +2560,7 @@ function workspaceAgentSession(overrides: {
     resumable: true,
     settings: overrides.settings ?? {},
     title: "Session 1",
+    tuttiModeActivation: null,
     updatedAtUnixMs,
     visible: true
   };

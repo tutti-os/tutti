@@ -146,7 +146,7 @@ func (s *Store) ReportActivityState(
 				)
 			}
 			acceptedMessage, messageAccepted, messageErr := s.upsertAgentMessageTx(
-				ctx, tx, workspaceID, agentSessionID, message, now, false,
+				ctx, tx, workspaceID, agentSessionID, message, now, false, true,
 			)
 			if messageErr != nil {
 				return ActivityStateReportResult{}, messageErr
@@ -328,7 +328,7 @@ func (s *Store) ReportSessionMessages(
 		if message.MessageID == "" {
 			continue
 		}
-		acceptedMessage, accepted, err := s.upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, message, now, allowLegacyTurnless)
+		acceptedMessage, accepted, err := s.upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, message, now, allowLegacyTurnless, false)
 		if err != nil {
 			return MessageReportResult{}, err
 		}

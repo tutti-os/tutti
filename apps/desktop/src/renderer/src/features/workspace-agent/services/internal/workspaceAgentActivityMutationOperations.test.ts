@@ -118,9 +118,6 @@ function createOperations(input: {
       throw new Error("unexpected load");
     },
     markSessionDeleted: () => {},
-    resolveCollaborationClient: async () => {
-      throw new Error("unexpected collaboration client resolution");
-    },
     runtimeApi: { logTerminalDiagnostic: async () => {} },
     sessionCommandTarget: () => ({ adapter: input.adapter }),
     tuttidClient: {} as TuttidClient,
