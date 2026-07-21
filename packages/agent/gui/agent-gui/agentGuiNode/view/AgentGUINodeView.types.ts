@@ -346,6 +346,7 @@ export interface AgentGUIViewLabels {
   }) => string;
   slashStatusContextUnavailable: string;
   slashStatusLimitsUnavailable: string;
+  slashStatusEmptyValue: string;
   slashStatusUsageJustUpdated: string;
   slashStatusUsageMinutesAgo: (count: number) => string;
   slashStatusUsageHoursAgo: (count: number) => string;
@@ -515,9 +516,11 @@ export interface AgentGUINodeViewProps {
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
   slashStatusLimitsUnavailable?: boolean;
+  slashStatusOverride?: AgentComposerProps["slashStatus"];
   providerAuthAccountLabels?: Partial<Record<string, string>>;
   railConfigProvider?: string | null;
   railSlashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
+  slashStatusLimitsResolvedEmpty?: boolean;
   /** Capture time of the usage/limits shown in the rail config menu (for the
    * freshness indicator). Null when no usage snapshot is available. */
   slashStatusUsageCapturedAtUnixMs?: number | null;
@@ -527,10 +530,13 @@ export interface AgentGUINodeViewProps {
    * the config menu shows a "no limits / retry" row rather than hiding the
    * whole section when there are no meters to display. */
   slashStatusUsageAttempted?: boolean;
+  onAgentConfigMenuClose?: () => void;
   onAgentConfigMenuOpen?: () => void;
   /** Forces a fresh usage probe from the config menu's refresh control. */
   onAgentUsageRefresh?: () => void;
   onSlashStatusOpen?: AgentComposerProps["onSlashStatusOpen"];
+  onSlashStatusClose?: AgentComposerProps["onSlashStatusClose"];
+  onSlashStatusRefresh?: AgentComposerProps["onSlashStatusRefresh"];
   accountMenuState?: AgentGUIAccountMenuState | null;
   previewMode?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;

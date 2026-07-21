@@ -20,18 +20,14 @@ import type {
   NodeFrame,
   Point
 } from "../../types";
-import type {
-  DesktopSize,
-  WorkspaceDesktopAgentProbeDemandChange,
-  WorkspaceDesktopAgentProbeRefreshRequest,
-  WorkspaceDesktopAgentProbesState
-} from "../workspaceDesktop/types";
+import type { DesktopSize } from "../workspaceDesktop/types";
 import type {
   AgentGUIOpenSessionRequest,
   AgentGUIPrefillPromptRequest,
   AgentGUIRememberComposerDefaultsInput,
   AgentGUIRememberComposerDefaultsResult
 } from "./controller/useAgentGUINodeController";
+import type { AgentStatusController } from "./controller/AgentStatusController";
 import type {
   AgentGUISidebarFooterContext,
   AgentGUIConversationRailLayout,
@@ -111,9 +107,8 @@ export interface AgentGUINodeRuntimeRequests {
   sessionAction?: AgentGUISessionActionRequest | null;
   openSession?: AgentGUIOpenSessionRequest | null;
   prefillPrompt?: AgentGUIPrefillPromptRequest | null;
-  agentProbes?: WorkspaceDesktopAgentProbesState | null;
-  onProbeDemandChange?: WorkspaceDesktopAgentProbeDemandChange;
-  onProbeRefreshRequest?: WorkspaceDesktopAgentProbeRefreshRequest;
+  /** On-demand status capability. Transport and owner resolution stay host-owned. */
+  agentStatusController?: AgentStatusController | null;
 }
 
 export interface AgentGUINodeHostCapabilities {
@@ -367,9 +362,7 @@ export function areAgentGUINodePropsEqual(
     pr.sessionAction === nr.sessionAction &&
     pr.openSession === nr.openSession &&
     pr.prefillPrompt === nr.prefillPrompt &&
-    pr.agentProbes === nr.agentProbes &&
-    pr.onProbeDemandChange === nr.onProbeDemandChange &&
-    pr.onProbeRefreshRequest === nr.onProbeRefreshRequest &&
+    pr.agentStatusController === nr.agentStatusController &&
     pc.capabilityMenuState === nc.capabilityMenuState &&
     pc.accountMenuState === nc.accountMenuState &&
     pc.agentTargets === nc.agentTargets &&

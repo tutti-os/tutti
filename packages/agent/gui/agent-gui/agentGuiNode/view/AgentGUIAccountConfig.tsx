@@ -325,12 +325,14 @@ interface AgentGUIConfigMenuProps {
   providerScopedActionsVisible: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
+  slashStatusLimitsResolvedEmpty: boolean;
   slashStatusUsageCapturedAtUnixMs: number | null;
   slashStatusUsageDidFail: boolean;
   slashStatusUsageAttempted: boolean;
   provider?: string | null;
   providerAuthAccountLabel?: string | null;
   onAgentConfigMenuOpen?: () => void;
+  onAgentConfigMenuClose?: () => void;
   onAgentUsageRefresh?: () => void;
   onOpenAgentEnvSetup: () => void;
   onOpenAgentSettings: () => void;
@@ -343,12 +345,14 @@ export function AgentGUIConfigMenu({
   providerScopedActionsVisible,
   slashStatusLimits,
   slashStatusLimitsLoading,
+  slashStatusLimitsResolvedEmpty,
   slashStatusUsageCapturedAtUnixMs,
   slashStatusUsageDidFail,
   slashStatusUsageAttempted,
   provider,
   providerAuthAccountLabel,
   onAgentConfigMenuOpen,
+  onAgentConfigMenuClose,
   onAgentUsageRefresh,
   onOpenAgentEnvSetup,
   onOpenAgentSettings
@@ -367,6 +371,8 @@ export function AgentGUIConfigMenu({
         // something unrelated refreshes it.
         if (nextOpen) {
           onAgentConfigMenuOpen?.();
+        } else {
+          onAgentConfigMenuClose?.();
         }
       }}
     >
@@ -442,7 +448,9 @@ export function AgentGUIConfigMenu({
                         className="min-w-0 truncate text-[var(--text-tertiary)]"
                         data-testid="agent-gui-config-usage-unavailable"
                       >
-                        {labels.slashStatusLimitsUnavailable}
+                        {slashStatusLimitsResolvedEmpty
+                          ? labels.slashStatusEmptyValue
+                          : labels.slashStatusLimitsUnavailable}
                       </span>
                     ) : null}
                   </div>

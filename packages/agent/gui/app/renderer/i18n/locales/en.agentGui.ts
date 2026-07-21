@@ -289,8 +289,9 @@ export const enAgentGui = {
   slashStatusLimitReset: "resets {{reset}}",
   slashStatusContextValue:
     "{{percentLeft}}% left ({{usedTokens}} used / {{totalTokens}})",
-  slashStatusContextUnavailable: "Context usage unavailable",
+  slashStatusContextUnavailable: "—",
   slashStatusLimitsUnavailable: "Rate limits unavailable from this agent",
+  slashStatusEmptyValue: "—",
   slashStatusUsageJustUpdated: "Updated just now",
   slashStatusUsageMinutesAgo: "Updated {{count}}m ago",
   slashStatusUsageHoursAgo: "Updated {{count}}h ago",

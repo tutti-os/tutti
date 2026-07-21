@@ -1,0 +1,484 @@
+import "@testing-library/jest-dom/vitest";
+import { act, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  createLocalAgentGUIAgentTarget,
+  createSharedAgentGUIAgentTarget
+} from "../../agentTargets";
+import type { AgentGUINodeData, NodeFrame } from "../../types";
+import { buildAgentComposerDraft } from "./model/agentComposerDraft";
+import {
+  groupAgentGUINodeViewModelFixture,
+  type AgentGUINodeViewModelFixtureOverrides,
+  type FlatAgentGUINodeViewModelFixture
+} from "./model/AgentGUINodeViewModel.fixture";
+import type {
+  AgentComposerDraft,
+  AgentGUINodeViewModel
+} from "./model/agentGuiNodeTypes";
+import {
+  createAgentStatusController,
+  type AgentStatusController,
+  type AgentStatusQuery,
+  type AgentStatusControllerSnapshot,
+  type AgentStatusStreamObserver
+} from "./controller/AgentStatusController";
+import { AgentGUINode } from "./AgentGUINode";
+
+const { agentGuiNodeViewSpy, agentProbeInfoPopoverSpy } = vi.hoisted(() => ({
+  agentGuiNodeViewSpy: vi.fn(),
+  agentProbeInfoPopoverSpy: vi.fn()
+}));
+
+let mockViewModel: AgentGUINodeViewModel;
+
+vi.mock("../../i18n/index", () => ({
+  useTranslation: () => ({ t: (key: string) => key })
+}));
+
+vi.mock("./controller/useAgentGUINodeController", () => ({
+  useAgentGUINodeController: () => ({
+    viewModel: mockViewModel,
+    actions: {
+      createConversation: vi.fn(),
+      selectConversation: vi.fn(),
+      submitPrompt: vi.fn(),
+      submitGuidancePrompt: vi.fn(),
+      showPromptImagesUnsupported: vi.fn(),
+      submitApprovalOption: vi.fn(),
+      submitInteractivePrompt: vi.fn(),
+      interruptCurrentTurn: vi.fn(),
+      updateDraftContent: vi.fn(),
+      updateComposerSettings: vi.fn(),
+      sendQueuedPromptNext: vi.fn(),
+      removeQueuedPrompt: vi.fn(),
+      editQueuedPrompt: vi.fn(),
+      removeProject: vi.fn(),
+      toggleProjectPinned: vi.fn(),
+      confirmDeleteProjectConversations: vi.fn(),
+      requestDeleteConversation: vi.fn(),
+      retryActivation: vi.fn(),
+      continueInNewConversation: vi.fn(),
+      cancelDeleteConversation: vi.fn(),
+      confirmDeleteConversation: vi.fn()
+    }
+  })
+}));
+
+vi.mock("./AgentGUINodeView", () => ({
+  AgentGUINodeView: (props: unknown) => {
+    agentGuiNodeViewSpy(props);
+    return <div data-testid="agent-gui-view" />;
+  }
+}));
+
+vi.mock("../shared/WorkspaceNodeWindow", () => ({
+  WorkspaceNodeWindow: ({
+    children,
+    width,
+    height,
+    titleAccessory
+  }: {
+    children: (frame: {
+      size: { width: number; height: number };
+    }) => React.ReactNode;
+    width: number;
+    height: number;
+    titleAccessory?: React.ReactNode;
+  }) => (
+    <div>
+      {titleAccessory}
+      {children({ size: { width, height } })}
+    </div>
+  )
+}));
+
+vi.mock("../shared/CanvasNodeGhostIconButton", () => ({
+  CanvasNodeGhostIconButton: ({ children }: { children: React.ReactNode }) => (
+    <button>{children}</button>
+  )
+}));
+
+vi.mock("../shared/canvasNodeChromeIcons", () => ({
+  CanvasNodePanelLinedIcon: () => <span />
+}));
+
+vi.mock("../workspaceDesktop/view/AgentProbeInfoPopover", () => ({
+  AgentProbeInfoPopover: (props: unknown) => {
+    agentProbeInfoPopoverSpy(props);
+    return <div />;
+  }
+}));
+
+describe("AgentGUINode status controller integration", () => {
+  afterEach(() => {
+    agentGuiNodeViewSpy.mockReset();
+    agentProbeInfoPopoverSpy.mockReset();
+  });
+
+  it("routes info, config, and slash status through exact-scope requests", () => {
+    mockViewModel = createViewModel();
+    const queries: AgentStatusQuery[] = [];
+    const unsubscribes: ReturnType<typeof vi.fn>[] = [];
+    const controller = createAgentStatusController({
+      source: {
+        open: (query) => {
+          queries.push(query);
+          const unsubscribe = vi.fn();
+          unsubscribes.push(unsubscribe);
+          return unsubscribe;
+        }
+      }
+    });
+    render(
+      <AgentGUINode
+        {...createProps({
+          runtimeRequests: { agentStatusController: controller }
+        })}
+      />
+    );
+
+    const infoProps = agentProbeInfoPopoverSpy.mock.calls.at(-1)?.[0] as {
+      onOpen?: () => void;
+    };
+    act(() => infoProps.onOpen?.());
+    let viewProps = latestViewProps();
+    act(() => viewProps.onAgentConfigMenuOpen?.());
+    viewProps = latestViewProps();
+    act(() => viewProps.onSlashStatusOpen?.());
+    viewProps = latestViewProps();
+    act(() => viewProps.onSlashStatusClose?.());
+
+    expect(queries).toEqual([
+      statusQuery("agent-info"),
+      statusQuery("agent-config"),
+      statusQuery("slash-status")
+    ]);
+    expect(unsubscribes).toHaveLength(3);
+    expect(
+      unsubscribes.every((unsubscribe) => unsubscribe.mock.calls.length === 1)
+    ).toBe(true);
+  });
+
+  it("does not project status from the previous target after a target switch", () => {
+    mockViewModel = createViewModel();
+    let observer: AgentStatusStreamObserver | null = null;
+    const controller = createAgentStatusController({
+      source: {
+        open: (_query, nextObserver) => {
+          observer = nextObserver;
+          return vi.fn();
+        }
+      }
+    });
+    const props = createProps({
+      runtimeRequests: { agentStatusController: controller }
+    });
+    const { rerender } = render(<AgentGUINode {...props} />);
+    let viewProps = latestViewProps();
+    act(() => viewProps.onSlashStatusOpen?.());
+    act(() => {
+      observer?.onFrame({
+        kind: "refreshed",
+        value: {
+          contextState: "unavailable",
+          limitsState: "available",
+          quotas: [{ quotaType: "weekly", percentRemaining: 80 }]
+        }
+      });
+    });
+    expect(latestViewProps().slashStatusOverride?.limits).toHaveLength(1);
+
+    mockViewModel = createViewModel({
+      selectedAgentTarget: createLocalAgentGUIAgentTarget("claude-code"),
+      agentTargets: [createLocalAgentGUIAgentTarget("claude-code")]
+    });
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({ provider: "claude-code" })}
+      />
+    );
+    viewProps = latestViewProps();
+    expect(viewProps.slashStatusOverride?.limits).toEqual([]);
+  });
+
+  it("switches status controllers synchronously when their query keys match", () => {
+    mockViewModel = createViewModel();
+    const props = createProps({
+      runtimeRequests: {
+        agentStatusController: statusControllerWithUsedTokens(10)
+      }
+    });
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(
+      latestViewProps().slashStatusOverride?.contextWindow?.usedTokens
+    ).toBe(10);
+
+    rerender(
+      <AgentGUINode
+        {...props}
+        runtimeRequests={{
+          agentStatusController: statusControllerWithUsedTokens(20)
+        }}
+      />
+    );
+
+    expect(
+      latestViewProps().slashStatusOverride?.contextWindow?.usedTokens
+    ).toBe(20);
+  });
+
+  it("uses the active conversation binding before raw session hydration", () => {
+    const target = createSharedAgentGUIAgentTarget({
+      provider: "codex",
+      sharedAgentId: "shared-1",
+      label: "Shared Codex"
+    });
+    mockViewModel = createViewModel({
+      activeConversationId: "binding-1",
+      activeConversation: {
+        id: "binding-1",
+        agentTargetId: target.agentTargetId ?? target.targetId,
+        provider: "codex",
+        title: "Shared session",
+        status: "completed",
+        cwd: "/workspace",
+        updatedAtUnixMs: 1
+      },
+      conversations: [],
+      selectedAgentTarget: target,
+      agentTargets: [target],
+      sessionChrome: {
+        auth: null,
+        approval: null,
+        recovery: null,
+        rawState: null
+      }
+    });
+    const open = vi.fn(() => vi.fn());
+    const controller = createAgentStatusController({ source: { open } });
+    render(
+      <AgentGUINode
+        {...createProps({
+          runtimeRequests: { agentStatusController: controller }
+        })}
+      />
+    );
+
+    act(() => latestViewProps().onSlashStatusOpen?.());
+
+    expect(open).toHaveBeenCalledWith(
+      {
+        scopeKey: "shared-agent:shared-1",
+        agentSessionId: "binding-1",
+        reason: "slash-status",
+        forceRefresh: false
+      },
+      expect.any(Object)
+    );
+  });
+
+  it("closes only the request owned by the surface that is closing", () => {
+    mockViewModel = createViewModel();
+    const unsubscribes: ReturnType<typeof vi.fn>[] = [];
+    const controller = createAgentStatusController({
+      source: {
+        open: () => {
+          const unsubscribe = vi.fn();
+          unsubscribes.push(unsubscribe);
+          return unsubscribe;
+        }
+      }
+    });
+    render(
+      <AgentGUINode
+        {...createProps({
+          runtimeRequests: { agentStatusController: controller }
+        })}
+      />
+    );
+
+    const infoProps = agentProbeInfoPopoverSpy.mock.calls.at(-1)?.[0] as {
+      onOpen?: () => void;
+      onClose?: () => void;
+    };
+    act(() => infoProps.onOpen?.());
+    act(() => latestViewProps().onSlashStatusOpen?.());
+    expect(unsubscribes[0]).toHaveBeenCalledOnce();
+
+    act(() => infoProps.onClose?.());
+    expect(unsubscribes[1]).not.toHaveBeenCalled();
+
+    act(() => latestViewProps().onSlashStatusClose?.());
+    expect(unsubscribes[1]).toHaveBeenCalledOnce();
+
+    act(() => latestViewProps().onAgentConfigMenuOpen?.());
+    act(() => latestViewProps().onAgentConfigMenuClose?.());
+    expect(unsubscribes[2]).toHaveBeenCalledOnce();
+  });
+});
+
+interface CapturedViewProps {
+  onAgentConfigMenuOpen?: () => void;
+  onAgentConfigMenuClose?: () => void;
+  onSlashStatusOpen?: () => void;
+  onSlashStatusClose?: () => void;
+  slashStatusOverride?: {
+    contextWindow?: { usedTokens?: number | null } | null;
+    limits?: readonly unknown[];
+  } | null;
+}
+
+function latestViewProps(): CapturedViewProps {
+  return agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as CapturedViewProps;
+}
+
+function statusQuery(reason: AgentStatusQuery["reason"]): AgentStatusQuery {
+  return {
+    scopeKey: "local:codex",
+    agentSessionId: null,
+    reason,
+    forceRefresh: false
+  };
+}
+
+function statusControllerWithUsedTokens(
+  usedTokens: number
+): AgentStatusController {
+  const snapshot: AgentStatusControllerSnapshot = {
+    query: statusQuery("slash-status"),
+    value: {
+      agentSessionId: null,
+      contextState: "available",
+      contextWindow: { usedTokens, totalTokens: 100 },
+      limitsState: "available",
+      quotas: []
+    },
+    phase: "ready",
+    isRefreshing: false,
+    errorCode: null
+  };
+  return {
+    close: vi.fn(),
+    getSnapshot: () => snapshot,
+    invalidate: vi.fn(),
+    open: vi.fn(),
+    subscribe: () => () => {}
+  };
+}
+
+function createProps(
+  overrides: Partial<Parameters<typeof AgentGUINode>[0]> = {}
+): Parameters<typeof AgentGUINode>[0] {
+  return {
+    identity: {
+      nodeId: "agent-gui-1",
+      workspaceId: "room-1",
+      currentUserId: "user-1",
+      title: "Codex"
+    },
+    workspace: {
+      path: "/workspace",
+      agentSettings: { avoidGroupingEdits: false }
+    },
+    frame: {
+      position: { x: 80, y: 56 },
+      width: 880,
+      height: 520,
+      desktopSize: { width: 1280, height: 720 },
+      isActive: true
+    },
+    state: createState(),
+    runtimeRequests: {},
+    hostCapabilities: {},
+    hostActions: {
+      onClose: vi.fn(),
+      onResize: vi.fn<(frame: NodeFrame) => void>(),
+      onUpdateNode: vi.fn()
+    },
+    renderSlots: {},
+    ...overrides
+  };
+}
+
+function createState(
+  overrides: Partial<AgentGUINodeData> = {}
+): AgentGUINodeData {
+  return {
+    provider: "codex",
+    lastActiveAgentSessionId: null,
+    conversationRailWidthPx: null,
+    conversationRailCollapsed: false,
+    ...overrides
+  };
+}
+
+function createViewModel(
+  overrides: AgentGUINodeViewModelFixtureOverrides = {}
+): AgentGUINodeViewModel {
+  const draftContent: AgentComposerDraft = buildAgentComposerDraft({
+    prompt: ""
+  });
+  return groupAgentGUINodeViewModelFixture({
+    workspaceId: "room-1",
+    data: createState(),
+    activeConversationId: null,
+    activeConversation: null,
+    conversations: [],
+    userProjects: [],
+    conversation: null,
+    conversationDetail: null,
+    selectedAgentTarget: createLocalAgentGUIAgentTarget("codex"),
+    agentTargets: [createLocalAgentGUIAgentTarget("codex")],
+    agentTargetsLoading: false,
+    conversationFilter: { kind: "all" },
+    draftPrompt: "",
+    draftContent,
+    sessionChrome: {
+      auth: null,
+      approval: null,
+      recovery: null,
+      rawState: null
+    },
+    pendingInteractivePrompt: null,
+    queuedPrompts: [],
+    queueStatus: "active",
+    canSubmit: true,
+    canQueueWhileBusy: false,
+    isSubmitting: false,
+    isInterrupting: false,
+    promptImagesSupported: true,
+    availability: "ready",
+    listError: null,
+    isCreatingConversation: false,
+    isLoadingConversations: false,
+    isLoadingMessages: false,
+    detailError: null,
+    deletingConversationId: null,
+    deletingConversationTitle: null,
+    composerSettings: {
+      sessionSettings: null,
+      draftSettings: {
+        model: null,
+        reasoningEffort: null,
+        planMode: false,
+        permissionModeId: "full-access"
+      },
+      defaultModel: null,
+      defaultReasoningEffort: null,
+      supportsModel: false,
+      supportsReasoningEffort: true,
+      supportsPlanMode: true,
+      isSettingsLoading: false,
+      modelUnavailable: false,
+      reasoningUnavailable: false,
+      availableModels: [],
+      availableReasoningEfforts: []
+    },
+    availableCommands: [],
+    availableSkills: [],
+    ...overrides
+  } as FlatAgentGUINodeViewModelFixture);
+}

@@ -136,7 +136,6 @@ export function handleDesktopAgentGUIShowMessage(
   Toast.tips(message);
 }
 
-export const AGENT_PROBE_REFRESH_DEBOUNCE_MS = 300;
 export const DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS =
   [] satisfies readonly AgentContextMentionProvider[];
 export const DESKTOP_AGENT_GUI_EMPTY_PROVIDER_STATUS_SNAPSHOT = {
