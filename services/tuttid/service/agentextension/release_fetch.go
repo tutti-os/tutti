@@ -54,12 +54,30 @@ type Release struct {
 	PublishedAt       string           `json:"publishedAt"`
 	GitSHA            string           `json:"gitSha"`
 	Signature         ReleaseSignature `json:"signature"`
+	signedPayload     []byte
 }
 
 type ReleaseSignature struct {
 	Algorithm string `json:"algorithm"`
 	KeyID     string `json:"keyId"`
 	Value     string `json:"value"`
+}
+
+func (release *Release) UnmarshalJSON(data []byte) error {
+	type releaseWire Release
+	var wire releaseWire
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&wire); err != nil {
+		return err
+	}
+	payload, err := releasePayloadFromJSON(data)
+	if err != nil {
+		return err
+	}
+	*release = Release(wire)
+	release.signedPayload = payload
+	return nil
 }
 
 func (m *Manager) getJSON(ctx context.Context, rawURL string, limit int64, target any) error {
@@ -169,16 +187,7 @@ func verifyRelease(release Release, source tuttitypes.AgentExtensionSource) erro
 	if !ok {
 		return errors.New("extension signing key must be Ed25519")
 	}
-	raw, err := json.Marshal(release)
-	if err != nil {
-		return err
-	}
-	var unsigned map[string]any
-	if err := json.Unmarshal(raw, &unsigned); err != nil {
-		return err
-	}
-	delete(unsigned, "signature")
-	payload, err := json.Marshal(unsigned)
+	payload, err := releasePayload(release)
 	if err != nil {
 		return err
 	}
@@ -187,4 +196,24 @@ func verifyRelease(release Release, source tuttitypes.AgentExtensionSource) erro
 		return errors.New("agent extension release signature is invalid")
 	}
 	return nil
+}
+
+func releasePayload(release Release) ([]byte, error) {
+	if len(release.signedPayload) > 0 {
+		return release.signedPayload, nil
+	}
+	raw, err := json.Marshal(release)
+	if err != nil {
+		return nil, err
+	}
+	return releasePayloadFromJSON(raw)
+}
+
+func releasePayloadFromJSON(raw []byte) ([]byte, error) {
+	var unsigned map[string]any
+	if err := json.Unmarshal(raw, &unsigned); err != nil {
+		return nil, err
+	}
+	delete(unsigned, "signature")
+	return json.Marshal(unsigned)
 }
