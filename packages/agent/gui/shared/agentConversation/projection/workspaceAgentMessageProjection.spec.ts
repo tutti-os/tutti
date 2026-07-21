@@ -1234,7 +1234,7 @@ function session(
   });
 }
 
-it("hides tutti-plan issue dispatch delegate cards in the timeline", () => {
+it("hides tutti-plan issue dispatch delegate cards but keeps other collaborations", () => {
   const items = projectWorkspaceAgentMessagesToTimelineItems([
     message({
       messageId: "collab:cr-plan",
@@ -1255,15 +1255,11 @@ it("hides tutti-plan issue dispatch delegate cards in the timeline", () => {
     })
   ]);
 
-  // The plan-issue panel carries dispatch state per task, so the dispatch
-  // delegate record never lands in the timeline.
-  expect(items.some((item) => item.eventId === "collab:cr-plan")).toBe(false);
-  // Collaboration runs have no typed card on this surface; other records
-  // still project as ordinary assistant messages.
-  expect(
-    items.filter((item) => item.itemType === "collaboration")
-  ).toHaveLength(0);
-  expect(items.some((item) => item.eventId === "collab:cr-manual")).toBe(true);
+  const collaborationItems = items.filter(
+    (item) => item.itemType === "collaboration"
+  );
+  expect(collaborationItems).toHaveLength(1);
+  expect(collaborationItems[0]?.eventId).toBe("collab:cr-manual");
 });
 
 function message(
