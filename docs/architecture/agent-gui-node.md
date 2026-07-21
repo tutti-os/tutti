@@ -263,6 +263,12 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 
 The Rail query cache stores section metadata, ordered Session IDs, cursors, and totals only. Session entities always come from the engine.
 
+Presentation-invisible Sessions remain canonical engine entities and stay
+available through exact Session selectors for trusted open, reconcile, and
+command flows. Plural consumer selectors exclude them before Rail and Message
+Center collection projection; a hidden Session must not become a list row just
+because it is resumable or receives later canonical updates.
+
 When runtime sections are enabled, projection unions IDs from the current section, search, and reconciliation, then joins canonical Sessions. Unchanged summaries preserve structural sharing so unrelated engine updates do not rebuild the whole Rail snapshot.
 
 Scroll, section collapse, visible limits, and search query belong to mounted view scope. Non-search state is isolated by `workspaceId + agentTargetId/all`; search creates a temporary navigation scope. `activeConversationId` expresses selection only. Scrolling requires an explicit reveal intent.
