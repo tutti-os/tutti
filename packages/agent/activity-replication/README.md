@@ -40,4 +40,11 @@ or daemon to a consumer's module graph.
 Consumers should validate an ordered batch with `ValidateBatch`, preserve the
 original durable cursor for duplicate acknowledgements, count duplicate and
 stale mutations in `acceptedCount`, and use `SummarizeAcknowledgements` to
-produce the batch result.
+produce the batch result. `ProjectionEpoch` is an explicit rebaseline fence:
+when a cloud projection is destructively reset, its paired consumer release
+must increment the epoch. Clients then treat acknowledgement rows from an
+older epoch as untrusted and replay the canonical projection in dependency
+order before relying on cloud-derived features. The cloud sink must be deployed
+before clients that emit the new field; it rejects a different epoch rather
+than applying a partially compatible projection. This is an intentional
+fail-closed release fence, not a compatibility mode.
