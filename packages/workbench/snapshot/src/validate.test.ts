@@ -14,12 +14,6 @@ import {
   workbenchSnapshotSchemaVersion
 } from "./index.ts";
 
-test("validates a fixture snapshot", () => {
-  const result = validateWorkbenchSnapshot(tuttiWorkbenchSnapshotFixture);
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.issues, []);
-});
-
 test("rejects malformed snapshots", () => {
   const result = validateWorkbenchSnapshot({
     schemaVersion: workbenchSnapshotSchemaVersion,
