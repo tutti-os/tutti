@@ -32,8 +32,6 @@ on:
         description: Promoted GitHub release URL
         value: ${{ jobs.promote.outputs.release_url }}
     secrets:
-      AGNES_API_KEY:
-        required: false
       FEISHU_RELEASE_WEBHOOK_URL:
         required: false
   workflow_dispatch:
@@ -212,6 +210,7 @@ jobs:
       - name: Verify staged release assets
         run: |
           test -f release-assets/SHA256SUMS.txt
+          test -f release-assets/release-summary.json
           if ! grep -Eq "  .+\.(dmg|zip|exe|AppImage)$" release-assets/SHA256SUMS.txt; then
             echo "SHA256SUMS.txt does not contain an installable desktop artifact." >&2
             exit 1
@@ -220,6 +219,13 @@ jobs:
             cd release-assets
             sha256sum --check SHA256SUMS.txt
           )
+
+      - name: Validate staged release summary
+        env:
+          RELEASE_CHANNEL: ${{ env.TUTTI_DESKTOP_RELEASE_CHANNEL }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+          RELEASE_TARGET: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+        run: node apps/desktop/scripts/validate-release-summary.mjs release-assets/release-summary.json
 
       - name: Install AWS CLI
         run: |
@@ -306,19 +312,11 @@ jobs:
             --size-only \
             --cache-control "public, max-age=31536000, immutable"
 
-      - name: Generate desktop release summary
-        env:
-          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
-          RELEASE_CHANNEL: ${{ env.TUTTI_DESKTOP_RELEASE_CHANNEL }}
-          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
-          RELEASE_TARGET: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
-        run: node apps/desktop/scripts/generate-release-summary.mjs --output release-summary.json
-
       - name: Upload desktop release summary artifact
         uses: actions/upload-artifact@v7
         with:
           name: promoted-desktop-release-summary-${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
-          path: release-summary.json
+          path: release-assets/release-summary.json
 
       - name: Update release notes with summary and direct downloads
         env:
@@ -329,7 +327,7 @@ jobs:
           gh release view "${RELEASE_TAG}" --json body --jq .body > release-body.md
           node apps/desktop/scripts/upsert-release-summary.mjs \
             release-body.md \
-            release-summary.json \
+            release-assets/release-summary.json \
             release-body-with-summary.md
           node apps/desktop/scripts/upsert-release-download-links.mjs \
             release-body-with-summary.md \
@@ -362,7 +360,7 @@ jobs:
           fi
           node apps/desktop/scripts/upsert-release-changelog.mjs \
             existing-changelog.json \
-            release-summary.json \
+            release-assets/release-summary.json \
             changelog.json
           aws s3 cp changelog.json "${s3_root}/changelog.json" \
             --content-type "application/json" \

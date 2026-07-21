@@ -392,6 +392,37 @@ test("desktop release workflow generates summaries and stable changelog metadata
   );
 });
 
+test("desktop promotion consumes the checksummed summary staged with the draft", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+
+  const summaryIndex = workflow.indexOf(
+    "name: Generate desktop release summary"
+  );
+  const validationIndex = workflow.indexOf(
+    "name: Validate desktop release summary"
+  );
+  const checksumIndex = workflow.indexOf("name: Generate checksums");
+  const draftIndex = workflow.indexOf("name: Stage GitHub release assets");
+  assert.notEqual(summaryIndex, -1);
+  assert.notEqual(validationIndex, -1);
+  assert.notEqual(checksumIndex, -1);
+  assert.notEqual(draftIndex, -1);
+  assert.ok(summaryIndex < validationIndex);
+  assert.ok(validationIndex < checksumIndex);
+  assert.ok(checksumIndex < draftIndex);
+  assert.match(workflow, /--output release-assets\/release-summary\.json/);
+  assert.match(
+    workflow,
+    /validate-release-summary\.mjs release-assets\/release-summary\.json/
+  );
+  assert.match(promoteWorkflow, /release-assets\/release-summary\.json/);
+  assert.doesNotMatch(
+    promoteWorkflow,
+    /Generate desktop release summary|secrets\.AGNES_API_KEY/
+  );
+});
+
 test("desktop release workflow keeps prereleases as drafts and reserves the public list for stable", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
