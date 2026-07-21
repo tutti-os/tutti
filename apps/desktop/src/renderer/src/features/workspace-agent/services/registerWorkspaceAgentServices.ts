@@ -119,7 +119,8 @@ export function registerWorkspaceAgentServices(
       preferencesStore.featureFlags,
       EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG
     ),
-    tuttidClient: input.tuttidClient
+    tuttidClient: input.tuttidClient,
+    workspaceId: input.workspaceId
   });
   registry.registerInstance(IAgentsService, agentsService);
   const disposeAgentsEarlyAccessSync = bindDesktopAgentsEarlyAccessSync({
