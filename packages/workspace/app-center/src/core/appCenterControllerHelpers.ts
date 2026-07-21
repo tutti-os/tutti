@@ -238,6 +238,7 @@ export function areWorkspaceAppFactoryJobsEqual(
     const rightJob = right[index];
     return (
       rightJob !== undefined &&
+      leftJob.agentTargetId === rightJob.agentTargetId &&
       leftJob.agentSessionId === rightJob.agentSessionId &&
       leftJob.appId === rightJob.appId &&
       leftJob.createdAtUnixMs === rightJob.createdAtUnixMs &&

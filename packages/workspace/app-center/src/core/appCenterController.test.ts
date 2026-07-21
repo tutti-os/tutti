@@ -255,6 +255,64 @@ test("WorkspaceAppCenterController sorts factory jobs and reports snapshot appli
   );
 });
 
+test("WorkspaceAppCenterController discards an older factory refresh after an authoritative snapshot", async () => {
+  let resolveFactoryRefresh: (
+    snapshot: WorkspaceAppFactorySnapshot
+  ) => void = () => {};
+  const factoryRefresh = new Promise<WorkspaceAppFactorySnapshot>((resolve) => {
+    resolveFactoryRefresh = resolve;
+  });
+  const discarded: string[] = [];
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async listWorkspaceAppFactoryJobs() {
+        return factoryRefresh;
+      }
+    }),
+    hooks: {
+      onRefreshDiscard(input) {
+        discarded.push(input.snapshotKind);
+      }
+    }
+  });
+
+  const refresh = controller.refresh("workspace-1");
+  controller.applyFactorySnapshot(
+    "workspace-1",
+    createFactorySnapshot({
+      jobs: [createFactoryJob({ status: "generating", updatedAtUnixMs: 2 })]
+    })
+  );
+  resolveFactoryRefresh(createFactorySnapshot());
+  await refresh;
+
+  assert.equal(controller.store.factoryJobs[0]?.status, "generating");
+  assert.deepEqual(discarded, ["factory_jobs"]);
+});
+
+test("WorkspaceAppCenterController treats agent target changes as factory state changes", () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway()
+  });
+  controller.applyFactorySnapshot(
+    "workspace-1",
+    createFactorySnapshot({
+      jobs: [createFactoryJob({ agentTargetId: "target-1" })]
+    })
+  );
+
+  controller.applyFactorySnapshot(
+    "workspace-1",
+    createFactorySnapshot({
+      jobs: [createFactoryJob({ agentTargetId: "target-2" })]
+    })
+  );
+
+  assert.equal(controller.store.factoryJobs[0]?.agentTargetId, "target-2");
+});
+
 test("WorkspaceAppCenterController keeps a factory job visible while publish is pending", async () => {
   const readyJob = createFactoryJob({ status: "ready" });
   let resolvePublish: (

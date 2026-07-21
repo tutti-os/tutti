@@ -89,6 +89,9 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     workspaceId: string,
     snapshot: WorkspaceAppFactorySnapshot
   ): void {
+    // Any authoritative factory snapshot supersedes reads that started before
+    // it, including the factory half of an in-flight full refresh.
+    this.factoryLoadSequence += 1;
     this.clearOperationCursorsOnWorkspaceChange(workspaceId);
     if (this.store.workspaceId !== workspaceId) {
       this.store.workspaceId = workspaceId;
