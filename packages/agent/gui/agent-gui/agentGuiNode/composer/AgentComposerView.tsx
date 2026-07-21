@@ -134,6 +134,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     onSubmit,
     onProviderSelect,
     onHandoffConversation,
+    onSlashStatusRefresh,
     compactSupported = null,
     hasCompactableContext = true
   } = input.props;
@@ -544,9 +545,20 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                   slashStatusContextUnavailable:
                     labels.slashStatusContextUnavailable,
                   slashStatusLimitsUnavailable:
-                    labels.slashStatusLimitsUnavailable
+                    labels.slashStatusLimitsUnavailable,
+                  slashStatusEmptyValue: labels.slashStatusEmptyValue,
+                  slashStatusUsageJustUpdated:
+                    labels.slashStatusUsageJustUpdated,
+                  slashStatusUsageMinutesAgo: labels.slashStatusUsageMinutesAgo,
+                  slashStatusUsageHoursAgo: labels.slashStatusUsageHoursAgo,
+                  slashStatusUsageUpdating: labels.slashStatusUsageUpdating,
+                  slashStatusUsageRefreshFailed:
+                    labels.slashStatusUsageRefreshFailed,
+                  slashStatusUsageRefreshAria:
+                    labels.slashStatusUsageRefreshAria
                 }}
                 onClose={closeSlashStatusPanel}
+                onRefresh={onSlashStatusRefresh}
               />
             </ComposerFloatingMenuSurface>
             <ComposerFloatingMenuSurface

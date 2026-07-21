@@ -198,6 +198,13 @@ export interface AgentComposerProps {
     }) => string;
     slashStatusContextUnavailable: string;
     slashStatusLimitsUnavailable: string;
+    slashStatusEmptyValue: string;
+    slashStatusUsageJustUpdated: string;
+    slashStatusUsageMinutesAgo: (count: number) => string;
+    slashStatusUsageHoursAgo: (count: number) => string;
+    slashStatusUsageUpdating: string;
+    slashStatusUsageRefreshFailed: string;
+    slashStatusUsageRefreshAria: string;
     usageChipLabel: (input: { percent: number }) => string;
     usageTooltipLabel: string;
     usagePopoverTitle: string;
@@ -285,6 +292,8 @@ export interface AgentComposerProps {
     capability: AgentComposerCapabilitySettingsTarget
   ) => void;
   onSlashStatusOpen?: () => void;
+  onSlashStatusClose?: () => void;
+  onSlashStatusRefresh?: () => void;
   onSubmit: (
     content: AgentPromptContentBlock[],
     displayPrompt?: string,
@@ -363,6 +372,10 @@ export interface AgentComposerSlashStatus {
   limits?: readonly AgentComposerSlashStatusLimit[];
   limitsLoading?: boolean;
   limitsUnavailable?: boolean;
+  limitsResolvedEmpty?: boolean;
+  limitsCapturedAtUnixMs?: number | null;
+  refreshFailed?: boolean;
+  isRefreshing?: boolean;
 }
 
 export interface AgentComposerSlashStatusLimit {
