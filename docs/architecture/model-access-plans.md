@@ -17,7 +17,8 @@ or workspace-app plan consumers.
 - `services/tuttid/service/modelplan` owns CRUD, staged endpoint detection,
   deletion protection, and first-use projection state.
 - `services/tuttid/service/modelbinding` owns target-to-plan validation and
-  reference listing.
+  reference listing. A binding is accepted only when the target provider
+  declares model-plan support for the plan's protocol.
 - `packages/agent/daemon/providerregistry` declares whether a provider runtime
   accepts a model-plan endpoint and which protocol it consumes.
 - `packages/agent/runtimeprep` contains the provider-specific endpoint
@@ -44,8 +45,12 @@ their provider-native credential sources.
 4. Runtime preparation injects the endpoint and credential only into the
    session-scoped provider environment/configuration. Credentials are never
    returned by the API or written into generated instructions and manifests.
-5. After the first completed runtime turn, tuttid records the plan's first-use
-   projection. Failed turns do not complete it.
+5. Before Host starts the provider runtime, tuttid durably records the
+   session-to-plan attribution. After the first completed runtime turn, tuttid
+   records the plan's first-use projection and removes that attribution.
+   Failed turns do not complete it. Startup reconciliation replays any
+   attribution whose completed canonical turn was committed before an
+   observer failure or process shutdown.
 
 Disabling a plan prevents new sessions from using it; existing running
 sessions are not interrupted. Deleting a plan is rejected while an agent

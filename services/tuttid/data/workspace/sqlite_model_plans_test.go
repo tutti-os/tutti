@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
@@ -120,15 +122,12 @@ INSERT INTO managed_model_provider_credentials (
 		t.Fatalf("insert legacy credential error = %v", err)
 	}
 
-	// Simulate the upgrade path: reset the migration marker and re-apply.
-	if _, err := store.writeDB.ExecContext(ctx, `DELETE FROM tuttid_schema_migrations WHERE id = ?`, schemaMigrationModelPlansV1); err != nil {
-		t.Fatalf("reset migration marker error = %v", err)
-	}
-	if _, err := store.writeDB.ExecContext(ctx, `DROP TABLE model_plans`); err != nil {
-		t.Fatalf("drop model_plans error = %v", err)
-	}
+	resetModelPlanMigrations(t, store)
 	if err := store.applyModelPlansV1(ctx); err != nil {
 		t.Fatalf("applyModelPlansV1() error = %v", err)
+	}
+	if err := store.applyAgentModelBindingsV1(ctx); err != nil {
+		t.Fatalf("applyAgentModelBindingsV1() error = %v", err)
 	}
 
 	plan, err := store.GetModelPlan(ctx, "ws-legacy", "mp-migrated-anthropic")
@@ -155,5 +154,132 @@ INSERT INTO managed_model_provider_credentials (
 	}
 	if plan.Status() != modelplanbiz.StatusUndetected {
 		t.Fatalf("migrated plan status = %q, want undetected", plan.Status())
+	}
+}
+
+func TestModelPlansMigrationRollsBackFailedBackfillAndRetries(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	createModelPlanTestWorkspace(t, store, "ws-retry")
+	ciphertext, err := encryptManagedCredential("legacy-key")
+	if err != nil {
+		t.Fatalf("encryptManagedCredential() error = %v", err)
+	}
+	if _, err := store.writeDB.ExecContext(ctx, `
+INSERT INTO managed_model_provider_credentials (
+  workspace_id, provider_id, enabled, api_key_ciphertext, base_url, models_json, updated_at_unix_ms
+) VALUES ('ws-retry', 'openai', 1, ?, 'https://relay.example/v1', '{invalid', 1700000000000)
+`, ciphertext); err != nil {
+		t.Fatalf("insert invalid legacy credential error = %v", err)
+	}
+
+	resetModelPlanMigrations(t, store)
+	if err := store.applyModelPlansV1(ctx); err == nil {
+		t.Fatal("applyModelPlansV1() error = nil, want invalid legacy models failure")
+	}
+	applied, err := store.hasMigration(ctx, schemaMigrationModelPlansV1)
+	if err != nil {
+		t.Fatalf("hasMigration() error = %v", err)
+	}
+	if applied {
+		t.Fatal("failed model plan migration recorded its marker")
+	}
+	var tableCount int
+	if err := store.writeDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'model_plans'`).Scan(&tableCount); err != nil {
+		t.Fatalf("inspect rolled back model_plans table error = %v", err)
+	}
+	if tableCount != 0 {
+		t.Fatalf("model_plans table count after rollback = %d, want 0", tableCount)
+	}
+
+	if _, err := store.writeDB.ExecContext(ctx, `
+UPDATE managed_model_provider_credentials
+SET models_json = '[{"id":"gpt-retry","name":"GPT Retry"}]'
+WHERE workspace_id = 'ws-retry' AND provider_id = 'openai'
+`); err != nil {
+		t.Fatalf("repair legacy credential error = %v", err)
+	}
+	if err := store.applyModelPlansV1(ctx); err != nil {
+		t.Fatalf("retry applyModelPlansV1() error = %v", err)
+	}
+	if err := store.applyAgentModelBindingsV1(ctx); err != nil {
+		t.Fatalf("retry applyAgentModelBindingsV1() error = %v", err)
+	}
+	if _, err := store.GetModelPlan(ctx, "ws-retry", "mp-migrated-openai"); err != nil {
+		t.Fatalf("GetModelPlan(retried migration) error = %v", err)
+	}
+}
+
+func TestModelPlanBindingForeignKeysAndFirstUseCandidates(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	createModelPlanTestWorkspace(t, store, "ws-bindings")
+	now := time.UnixMilli(1700000000000).UTC()
+	plan := modelplanbiz.Plan{
+		ID: "mp-bound", WorkspaceID: "ws-bindings", Name: "Bound", TemplateKind: modelplanbiz.TemplateCustom,
+		Protocol: modelplanbiz.ProtocolOpenAI, Models: []modelplanbiz.Model{{ID: "gpt-test", Name: "GPT Test"}},
+		Enabled: true, FirstUse: modelplanbiz.FirstUse{Status: modelplanbiz.FirstUsePending}, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := store.PutModelPlan(ctx, plan); err != nil {
+		t.Fatalf("PutModelPlan() error = %v", err)
+	}
+	binding := modelbindingbiz.Binding{
+		WorkspaceID: "ws-bindings", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		ModelPlanID: "mp-bound", DefaultModel: "gpt-test", UpdatedAt: now,
+	}
+	if err := store.PutAgentModelBinding(ctx, binding); err != nil {
+		t.Fatalf("PutAgentModelBinding() error = %v", err)
+	}
+	if err := store.DeleteModelPlan(ctx, "ws-bindings", "mp-bound"); !errors.Is(err, ErrModelPlanReferenced) {
+		t.Fatalf("DeleteModelPlan(referenced) error = %v, want ErrModelPlanReferenced", err)
+	}
+
+	candidate := modelplanbiz.FirstUseCandidate{
+		WorkspaceID: "ws-bindings", AgentSessionID: "session-1", PlanID: "mp-bound",
+		AgentTargetID: agenttargetbiz.IDLocalCodex, Model: "gpt-test", PlanUpdatedAt: now, CreatedAt: now,
+	}
+	if err := store.PutModelPlanFirstUseCandidate(ctx, candidate); err != nil {
+		t.Fatalf("PutModelPlanFirstUseCandidate() error = %v", err)
+	}
+	loaded, err := store.GetModelPlanFirstUseCandidate(ctx, "ws-bindings", "session-1")
+	if err != nil || loaded.PlanID != "mp-bound" || loaded.Model != "gpt-test" {
+		t.Fatalf("GetModelPlanFirstUseCandidate() = %#v, error = %v", loaded, err)
+	}
+
+	if err := store.DeleteAgentTarget(ctx, agenttargetbiz.IDLocalCodex); err != nil {
+		t.Fatalf("DeleteAgentTarget() error = %v", err)
+	}
+	if _, err := store.GetAgentModelBinding(ctx, "ws-bindings", agenttargetbiz.IDLocalCodex); !errors.Is(err, ErrAgentModelBindingNotFound) {
+		t.Fatalf("GetAgentModelBinding() after target delete error = %v, want ErrAgentModelBindingNotFound", err)
+	}
+	if err := store.DeleteModelPlan(ctx, "ws-bindings", "mp-bound"); err != nil {
+		t.Fatalf("DeleteModelPlan(after target cascade) error = %v", err)
+	}
+	if _, err := store.GetModelPlanFirstUseCandidate(ctx, "ws-bindings", "session-1"); !errors.Is(err, ErrModelPlanFirstUseCandidateNotFound) {
+		t.Fatalf("GetModelPlanFirstUseCandidate() after plan delete error = %v, want not found", err)
+	}
+}
+
+func resetModelPlanMigrations(t *testing.T, store *SQLiteStore) {
+	t.Helper()
+	ctx := context.Background()
+	for _, statement := range []string{
+		`DROP TABLE agent_target_model_bindings`,
+		`DROP TABLE model_plan_first_use_candidates`,
+		`DROP TABLE model_plans`,
+	} {
+		if _, err := store.writeDB.ExecContext(ctx, statement); err != nil {
+			t.Fatalf("reset model plan migration with %q error = %v", statement, err)
+		}
+	}
+	if _, err := store.writeDB.ExecContext(ctx, `
+DELETE FROM tuttid_schema_migrations
+WHERE id IN (?, ?)
+`, schemaMigrationModelPlansV1, schemaMigrationAgentModelBindingsV1); err != nil {
+		t.Fatalf("reset model plan migration markers error = %v", err)
 	}
 }

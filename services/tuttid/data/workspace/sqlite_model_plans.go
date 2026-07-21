@@ -14,6 +14,9 @@ import (
 // ErrModelPlanNotFound reports a missing model plan row.
 var ErrModelPlanNotFound = errors.New("model plan not found")
 
+// ErrModelPlanReferenced reports a plan delete blocked by a durable binding.
+var ErrModelPlanReferenced = errors.New("model plan is referenced")
+
 func (s *SQLiteStore) ListModelPlans(ctx context.Context, workspaceID string) ([]modelplanbiz.Plan, error) {
 	if s == nil || s.readDB == nil {
 		return nil, errors.New("workspace database is not initialized")
@@ -122,6 +125,9 @@ DELETE FROM model_plans
 WHERE workspace_id = ? AND plan_id = ?
 `, workspaceID, planID)
 	if err != nil {
+		if isSQLiteForeignKeyConstraintError(err) {
+			return ErrModelPlanReferenced
+		}
 		return fmt.Errorf("delete model plan: %w", err)
 	}
 	affected, err := result.RowsAffected()

@@ -307,7 +307,6 @@ type ComposerConfigOptionIDs struct {
 const (
 	CapabilityImageInput                     = canonical.CapabilityImageInput
 	CapabilityModelImageInputRequired        = canonical.CapabilityModelImageInputRequired
-	CapabilityModelSwitch                    = canonical.CapabilityModelSwitch
 	CapabilityModelPlanBinding               = canonical.CapabilityModelPlanBinding
 	CapabilitySkills                         = canonical.CapabilitySkills
 	CapabilityCompact                        = canonical.CapabilityCompact

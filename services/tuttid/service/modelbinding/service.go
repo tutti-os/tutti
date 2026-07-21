@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
@@ -56,8 +57,11 @@ func (s *Service) SetBinding(ctx context.Context, input SetBindingInput) (modelb
 	if err != nil {
 		return modelbindingbiz.Binding{}, fmt.Errorf("%w: %w", ErrInvalidBindingInput, err)
 	}
+	var target agenttargetbiz.Target
 	if s.Targets != nil {
-		if _, err := s.Targets.GetAgentTarget(ctx, binding.AgentTargetID); err != nil {
+		var err error
+		target, err = s.Targets.GetAgentTarget(ctx, binding.AgentTargetID)
+		if err != nil {
 			return modelbindingbiz.Binding{}, err
 		}
 	}
@@ -78,8 +82,20 @@ func (s *Service) SetBinding(ctx context.Context, input SetBindingInput) (modelb
 		if binding.DefaultModel != "" && !modelplanbiz.ModelsContain(plan.Models, binding.DefaultModel) {
 			return modelbindingbiz.Binding{}, ErrModelNotInPlan
 		}
+		if s.Targets != nil {
+			protocol, ok := agentproviderbiz.ModelPlanProtocol(target.Provider)
+			if !ok {
+				return modelbindingbiz.Binding{}, fmt.Errorf("%w: agent provider %q does not support model plan bindings", ErrPlanNotUsable, target.Provider)
+			}
+			if protocol != string(plan.Protocol) {
+				return modelbindingbiz.Binding{}, fmt.Errorf("%w: agent provider %q requires %s protocol, plan uses %s", ErrPlanNotUsable, target.Provider, protocol, plan.Protocol)
+			}
+		}
 	}
 	if err := s.Store.PutAgentModelBinding(ctx, binding); err != nil {
+		if errors.Is(err, workspacedata.ErrAgentModelBindingReferenceInvalid) {
+			return modelbindingbiz.Binding{}, ErrPlanNotUsable
+		}
 		return modelbindingbiz.Binding{}, err
 	}
 	return binding, nil

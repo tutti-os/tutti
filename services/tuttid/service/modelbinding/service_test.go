@@ -124,7 +124,9 @@ func newBindingTestService(store *memoryBindingStore) *Service {
 			},
 		}},
 		Targets: staticTargets{targets: map[string]agenttargetbiz.Target{
-			"local:codex": {ID: "local:codex", Name: "Codex"},
+			"local:codex":    {ID: "local:codex", Provider: "codex", Name: "Codex"},
+			"local:claude":   {ID: "local:claude", Provider: "claude-code", Name: "Claude Code"},
+			"local:opencode": {ID: "local:opencode", Provider: "opencode", Name: "OpenCode"},
 		}},
 		Now: func() time.Time { return time.UnixMilli(1700000000000).UTC() },
 	}
@@ -160,6 +162,22 @@ func TestSetBindingValidatesPlanAndModel(t *testing.T) {
 		ModelPlanID:   "mp-1",
 	}); !errors.Is(err, workspacedata.ErrAgentTargetNotFound) {
 		t.Fatalf("SetBinding(missing target) error = %v, want ErrAgentTargetNotFound", err)
+	}
+
+	if _, err := service.SetBinding(ctx, SetBindingInput{
+		WorkspaceID:   "ws",
+		AgentTargetID: "local:claude",
+		ModelPlanID:   "mp-1",
+	}); !errors.Is(err, ErrPlanNotUsable) {
+		t.Fatalf("SetBinding(protocol mismatch) error = %v, want ErrPlanNotUsable", err)
+	}
+
+	if _, err := service.SetBinding(ctx, SetBindingInput{
+		WorkspaceID:   "ws",
+		AgentTargetID: "local:opencode",
+		ModelPlanID:   "mp-1",
+	}); !errors.Is(err, ErrPlanNotUsable) {
+		t.Fatalf("SetBinding(unsupported provider) error = %v, want ErrPlanNotUsable", err)
 	}
 
 	binding, err := service.SetBinding(ctx, SetBindingInput{

@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
-	"sync"
+	"time"
 
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
@@ -27,23 +27,16 @@ type AgentModelPlanSource interface {
 // ModelPlanFirstUseMarker completes a plan's pending-first-use lifecycle
 // after the first successful agent turn through that plan.
 type ModelPlanFirstUseMarker interface {
-	MarkFirstUse(ctx context.Context, workspaceID string, planID string, agentTargetID string, agentSessionID string, model string) error
+	PrepareFirstUse(context.Context, modelplanbiz.FirstUseCandidate) error
+	CompleteFirstUse(ctx context.Context, workspaceID string, agentSessionID string) error
+	ListPendingFirstUses(context.Context) ([]modelplanbiz.FirstUseCandidate, error)
 }
 
-// modelPlanBindingRuntime holds the optional model plan integration wiring
-// plus the pending first-use ledger keyed by workspace/session.
+// modelPlanBindingRuntime holds the optional model plan integration wiring.
 type modelPlanBindingRuntime struct {
 	Bindings AgentModelBindingSource
 	Plans    AgentModelPlanSource
 	FirstUse ModelPlanFirstUseMarker
-	mu       sync.Mutex
-	pending  map[string]pendingPlanFirstUse
-}
-
-type pendingPlanFirstUse struct {
-	PlanID        string
-	AgentTargetID string
-	Model         string
 }
 
 func (s *Service) modelPlanRuntime() *modelPlanBindingRuntime {
@@ -118,12 +111,13 @@ func (s *Service) resolveModelPlanEndpoint(ctx context.Context, workspaceID stri
 	}
 	model := resolvePlanSessionModel(plan, binding, requestedModel)
 	return &runtimeprep.ModelEndpointConfig{
-		PlanID:   plan.ID,
-		PlanName: plan.Name,
-		Protocol: string(plan.Protocol),
-		BaseURL:  plan.BaseURL,
-		APIKey:   plan.APIKey,
-		Model:    model,
+		PlanID:              plan.ID,
+		PlanName:            plan.Name,
+		Protocol:            string(plan.Protocol),
+		BaseURL:             plan.BaseURL,
+		APIKey:              plan.APIKey,
+		Model:               model,
+		PlanUpdatedAtUnixMS: plan.UpdatedAt.UnixMilli(),
 	}, modelplanbiz.CloneModels(plan.Models)
 }
 
@@ -163,28 +157,22 @@ func resolvePlanSessionModel(plan modelplanbiz.Plan, binding modelbindingbiz.Bin
 	return requestedModel
 }
 
-func (s *Service) registerPendingPlanFirstUse(workspaceID string, agentSessionID string, endpoint *runtimeprep.ModelEndpointConfig, agentTargetID string) {
+func (s *Service) preparePlanFirstUse(ctx context.Context, workspaceID string, agentSessionID string, endpoint *runtimeprep.ModelEndpointConfig, agentTargetID string) error {
 	if endpoint == nil {
-		return
+		return nil
 	}
 	runtime := s.modelPlanRuntime()
 	if runtime.FirstUse == nil {
-		return
+		return nil
 	}
-	runtime.mu.Lock()
-	defer runtime.mu.Unlock()
-	if runtime.pending == nil {
-		runtime.pending = map[string]pendingPlanFirstUse{}
-	}
-	runtime.pending[pendingPlanFirstUseKey(workspaceID, agentSessionID)] = pendingPlanFirstUse{
-		PlanID:        endpoint.PlanID,
-		AgentTargetID: strings.TrimSpace(agentTargetID),
-		Model:         endpoint.Model,
-	}
-}
-
-func pendingPlanFirstUseKey(workspaceID string, agentSessionID string) string {
-	return strings.TrimSpace(workspaceID) + "/" + strings.TrimSpace(agentSessionID)
+	return runtime.FirstUse.PrepareFirstUse(ctx, modelplanbiz.FirstUseCandidate{
+		WorkspaceID:    strings.TrimSpace(workspaceID),
+		AgentSessionID: strings.TrimSpace(agentSessionID),
+		PlanID:         endpoint.PlanID,
+		AgentTargetID:  strings.TrimSpace(agentTargetID),
+		Model:          endpoint.Model,
+		PlanUpdatedAt:  time.UnixMilli(endpoint.PlanUpdatedAtUnixMS).UTC(),
+	})
 }
 
 // ObserveAgentSessionState completes pending plan first uses when a session's
@@ -202,25 +190,47 @@ func (s *Service) ObserveAgentSessionState(ctx context.Context, input canonical.
 	if runtime.FirstUse == nil {
 		return
 	}
-	key := pendingPlanFirstUseKey(input.WorkspaceID, input.AgentSessionID)
-	runtime.mu.Lock()
-	pending, ok := runtime.pending[key]
-	if ok {
-		delete(runtime.pending, key)
-	}
-	runtime.mu.Unlock()
-	if !ok {
-		return
-	}
-	if err := runtime.FirstUse.MarkFirstUse(ctx, strings.TrimSpace(input.WorkspaceID), pending.PlanID, pending.AgentTargetID, strings.TrimSpace(input.AgentSessionID), pending.Model); err != nil {
+	if err := runtime.FirstUse.CompleteFirstUse(ctx, strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.AgentSessionID)); err != nil {
 		slog.Warn("mark model plan first use failed",
 			"event", "agent.model_plan.first_use_mark_failed",
 			"workspace_id", strings.TrimSpace(input.WorkspaceID),
 			"agent_session_id", strings.TrimSpace(input.AgentSessionID),
-			"model_plan_id", pending.PlanID,
 			"error", err,
 		)
 	}
+}
+
+// ReconcilePendingModelPlanFirstUses recovers first-use projections that were
+// committed by Host but whose best-effort observer did not finish before a
+// shutdown or transient storage error.
+func (s *Service) ReconcilePendingModelPlanFirstUses(ctx context.Context) error {
+	runtime := s.modelPlanRuntime()
+	if runtime.FirstUse == nil || s.TurnStore == nil {
+		return nil
+	}
+	candidates, err := runtime.FirstUse.ListPendingFirstUses(ctx)
+	if err != nil {
+		return err
+	}
+	for _, candidate := range candidates {
+		turns, err := s.TurnStore.ListSessionTurns(ctx, candidate.WorkspaceID, candidate.AgentSessionID)
+		if err != nil {
+			return err
+		}
+		completed := false
+		for _, turn := range turns {
+			if turn.Phase == canonical.TurnPhaseSettled && turn.Outcome == canonical.TurnOutcomeCompleted {
+				completed = true
+				break
+			}
+		}
+		if completed {
+			if err := runtime.FirstUse.CompleteFirstUse(ctx, candidate.WorkspaceID, candidate.AgentSessionID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // applyModelPlanComposerOverlay replaces the provider-native model options

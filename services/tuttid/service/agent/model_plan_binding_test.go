@@ -28,12 +28,35 @@ func (s staticPlanSource) GetModelPlan(context.Context, string, string) (modelpl
 }
 
 type recordingFirstUse struct {
-	calls []string
+	calls      []string
+	candidates map[string]modelplanbiz.FirstUseCandidate
 }
 
-func (r *recordingFirstUse) MarkFirstUse(_ context.Context, workspaceID string, planID string, agentTargetID string, agentSessionID string, model string) error {
-	r.calls = append(r.calls, workspaceID+"/"+planID+"/"+agentTargetID+"/"+agentSessionID+"/"+model)
+func (r *recordingFirstUse) PrepareFirstUse(_ context.Context, candidate modelplanbiz.FirstUseCandidate) error {
+	if r.candidates == nil {
+		r.candidates = map[string]modelplanbiz.FirstUseCandidate{}
+	}
+	r.candidates[candidate.WorkspaceID+"/"+candidate.AgentSessionID] = candidate
 	return nil
+}
+
+func (r *recordingFirstUse) CompleteFirstUse(_ context.Context, workspaceID string, agentSessionID string) error {
+	key := workspaceID + "/" + agentSessionID
+	candidate, ok := r.candidates[key]
+	if !ok {
+		return nil
+	}
+	r.calls = append(r.calls, workspaceID+"/"+candidate.PlanID+"/"+candidate.AgentTargetID+"/"+agentSessionID+"/"+candidate.Model)
+	delete(r.candidates, key)
+	return nil
+}
+
+func (r *recordingFirstUse) ListPendingFirstUses(context.Context) ([]modelplanbiz.FirstUseCandidate, error) {
+	candidates := make([]modelplanbiz.FirstUseCandidate, 0, len(r.candidates))
+	for _, candidate := range r.candidates {
+		candidates = append(candidates, candidate)
+	}
+	return candidates, nil
 }
 
 func newPlanBoundService(protocol modelplanbiz.Protocol, enabled bool) (*Service, *recordingFirstUse) {
@@ -138,7 +161,9 @@ func TestObserveAgentSessionStateMarksFirstUseOnCompletedTurn(t *testing.T) {
 	ctx := context.Background()
 	service, firstUse := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
 	endpoint, _ := service.resolveModelPlanEndpoint(ctx, "ws", "local:codex", "codex", "")
-	service.registerPendingPlanFirstUse("ws", "session-1", endpoint, "local:codex")
+	if err := service.preparePlanFirstUse(ctx, "ws", "session-1", endpoint, "local:codex"); err != nil {
+		t.Fatalf("preparePlanFirstUse() error = %v", err)
+	}
 
 	completed := "completed"
 	failed := "failed"

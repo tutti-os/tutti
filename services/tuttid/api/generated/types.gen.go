@@ -4684,10 +4684,7 @@ type WorkspaceAgentCapabilities struct {
 	ModelImageInputRequired bool `json:"modelImageInputRequired"`
 
 	// ModelPlanBinding The provider runtime accepts a session-scoped model access plan endpoint and credential.
-	ModelPlanBinding bool `json:"modelPlanBinding"`
-
-	// ModelSwitch The provider can apply a model change to the next call in the current session.
-	ModelSwitch                    bool `json:"modelSwitch"`
+	ModelPlanBinding               bool `json:"modelPlanBinding"`
 	PermissionModeChangeDeferred   bool `json:"permissionModeChangeDeferred"`
 	PermissionModeChangeDuringTurn bool `json:"permissionModeChangeDuringTurn"`
 	PlanImplementation             bool `json:"planImplementation"`

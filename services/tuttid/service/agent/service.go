@@ -159,7 +159,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "settings_validated", provider, nodeStartedAt)
 	}
 	nodeStartedAt = time.Now()
-	prepared, err := s.prepareRuntime(ctx, workspaceID, cwd, input)
+	prepared, err := s.prepareRuntime(ctx, workspaceID, cwd, input, planEndpoint)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt, err)
 		return CreateSessionResult{}, err
@@ -169,6 +169,9 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.runtime_prepared", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{"cwd": prepared.Cwd, "env_count": len(prepared.Env)})
+	if err := s.preparePlanFirstUse(ctx, workspaceID, input.AgentSessionID, planEndpoint, input.AgentTargetID); err != nil {
+		return CreateSessionResult{}, err
+	}
 	ctx = withServicePreparedRuntime(ctx, s, prepared)
 	runtimeSettings := ComposerSettings{
 		Model:            clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
@@ -216,7 +219,6 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 			TurnID:  strings.TrimSpace(hostResult.TurnID),
 		}, getErr
 	}
-	s.registerPendingPlanFirstUse(workspaceID, session.ID, planEndpoint, input.AgentTargetID)
 	if len(normalizedContent) == 0 {
 		return CreateSessionResult{
 			Session: decorateIsolatedSession(serviceSessionWithPersistedFreshness(
@@ -362,12 +364,17 @@ type preparedRuntime struct {
 	Env []string
 }
 
-func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd string, input CreateSessionInput) (preparedRuntime, error) {
+func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd string, input CreateSessionInput, endpoints ...*runtimeprep.ModelEndpointConfig) (preparedRuntime, error) {
 	if s.RuntimePreparer == nil {
 		return preparedRuntime{Cwd: cwd}, nil
 	}
 	provider := strings.TrimSpace(input.Provider)
-	planEndpoint, _ := s.resolveModelPlanEndpoint(ctx, workspaceID, input.AgentTargetID, provider, value(input.Model))
+	var planEndpoint *runtimeprep.ModelEndpointConfig
+	if len(endpoints) > 0 {
+		planEndpoint = endpoints[0]
+	} else {
+		planEndpoint, _ = s.resolveModelPlanEndpoint(ctx, workspaceID, input.AgentTargetID, provider, value(input.Model))
+	}
 	prepared, err := s.RuntimePreparer.Prepare(ctx, runtimeprep.PrepareInput{
 		WorkspaceID:               workspaceID,
 		AgentSessionID:            strings.TrimSpace(input.AgentSessionID),

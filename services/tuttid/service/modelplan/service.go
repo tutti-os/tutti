@@ -29,18 +29,13 @@ type ReferenceResolver interface {
 	ListModelPlanReferences(ctx context.Context, workspaceID string, planID string) ([]modelplanbiz.Reference, error)
 }
 
-// ChangePublisher lets the service broadcast plan catalog changes.
-type ChangePublisher interface {
-	PublishModelPlansChanged(workspaceID string)
-}
-
 type Service struct {
-	Store      workspacedata.ModelPlansStore
-	References ReferenceResolver
-	Publisher  ChangePublisher
-	Now        func() time.Time
-	HTTPClient *http.Client
-	NewID      func() string
+	Store         workspacedata.ModelPlansStore
+	FirstUseStore workspacedata.ModelPlanFirstUseStore
+	References    ReferenceResolver
+	Now           func() time.Time
+	HTTPClient    *http.Client
+	NewID         func() string
 }
 
 type PutPlanInput struct {
@@ -103,7 +98,6 @@ func (s *Service) CreatePlan(ctx context.Context, input PutPlanInput) (modelplan
 	if err := s.Store.PutModelPlan(ctx, normalized); err != nil {
 		return modelplanbiz.PublicPlan{}, err
 	}
-	s.publishChanged(normalized.WorkspaceID)
 	return modelplanbiz.Public(normalized), nil
 }
 
@@ -139,7 +133,6 @@ func (s *Service) UpdatePlan(ctx context.Context, input PutPlanInput) (modelplan
 	if err := s.Store.PutModelPlan(ctx, normalized); err != nil {
 		return modelplanbiz.PublicPlan{}, err
 	}
-	s.publishChanged(normalized.WorkspaceID)
 	return modelplanbiz.Public(normalized), nil
 }
 
@@ -169,7 +162,6 @@ func (s *Service) DuplicatePlan(ctx context.Context, workspaceID string, planID 
 	if err := s.Store.PutModelPlan(ctx, normalized); err != nil {
 		return modelplanbiz.PublicPlan{}, err
 	}
-	s.publishChanged(normalized.WorkspaceID)
 	return modelplanbiz.Public(normalized), nil
 }
 
@@ -183,7 +175,6 @@ func (s *Service) SetPlanEnabled(ctx context.Context, workspaceID string, planID
 	if err := s.Store.PutModelPlan(ctx, plan); err != nil {
 		return modelplanbiz.PublicPlan{}, err
 	}
-	s.publishChanged(plan.WorkspaceID)
 	return modelplanbiz.Public(plan), nil
 }
 
@@ -200,9 +191,11 @@ func (s *Service) DeletePlan(ctx context.Context, workspaceID string, planID str
 		return fmt.Errorf("%w: %d consumers", ErrPlanReferenced, len(references))
 	}
 	if err := s.Store.DeleteModelPlan(ctx, workspaceID, planID); err != nil {
+		if errors.Is(err, workspacedata.ErrModelPlanReferenced) {
+			return ErrPlanReferenced
+		}
 		return err
 	}
-	s.publishChanged(workspaceID)
 	return nil
 }
 
@@ -253,11 +246,64 @@ func (s *Service) MarkFirstUse(ctx context.Context, workspaceID string, planID s
 		CheckedAt: now,
 	})
 	plan.UpdatedAt = now
-	if err := s.Store.PutModelPlan(ctx, plan); err != nil {
+	return s.Store.PutModelPlan(ctx, plan)
+}
+
+// PrepareFirstUse durably records which plan endpoint a session will use
+// before the Host is allowed to start its provider runtime.
+func (s *Service) PrepareFirstUse(ctx context.Context, candidate modelplanbiz.FirstUseCandidate) error {
+	if s.FirstUseStore == nil {
+		return errors.New("model plan first use store is not configured")
+	}
+	candidate.WorkspaceID = strings.TrimSpace(candidate.WorkspaceID)
+	candidate.AgentSessionID = strings.TrimSpace(candidate.AgentSessionID)
+	candidate.PlanID = strings.TrimSpace(candidate.PlanID)
+	candidate.AgentTargetID = strings.TrimSpace(candidate.AgentTargetID)
+	candidate.Model = strings.TrimSpace(candidate.Model)
+	candidate.PlanUpdatedAt = candidate.PlanUpdatedAt.UTC()
+	candidate.CreatedAt = s.now()
+	return s.FirstUseStore.PutModelPlanFirstUseCandidate(ctx, candidate)
+}
+
+// CompleteFirstUse resolves a durable session attribution and removes it only
+// after the plan update succeeds. Replays are therefore safe after a crash.
+func (s *Service) CompleteFirstUse(ctx context.Context, workspaceID string, agentSessionID string) error {
+	if s.FirstUseStore == nil {
+		return errors.New("model plan first use store is not configured")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	candidate, err := s.FirstUseStore.GetModelPlanFirstUseCandidate(ctx, workspaceID, agentSessionID)
+	if errors.Is(err, workspacedata.ErrModelPlanFirstUseCandidateNotFound) {
+		return nil
+	}
+	if err != nil {
 		return err
 	}
-	s.publishChanged(plan.WorkspaceID)
-	return nil
+	plan, err := s.Store.GetModelPlan(ctx, workspaceID, candidate.PlanID)
+	if errors.Is(err, workspacedata.ErrModelPlanNotFound) {
+		return s.FirstUseStore.DeleteModelPlanFirstUseCandidate(ctx, workspaceID, agentSessionID)
+	}
+	if err != nil {
+		return err
+	}
+	if plan.FirstUse.Status == modelplanbiz.FirstUseCompleted || !plan.UpdatedAt.Equal(candidate.PlanUpdatedAt) {
+		return s.FirstUseStore.DeleteModelPlanFirstUseCandidate(ctx, workspaceID, agentSessionID)
+	}
+	if err := s.MarkFirstUse(ctx, workspaceID, candidate.PlanID, candidate.AgentTargetID, agentSessionID, candidate.Model); err != nil {
+		if errors.Is(err, workspacedata.ErrModelPlanNotFound) {
+			return s.FirstUseStore.DeleteModelPlanFirstUseCandidate(ctx, workspaceID, agentSessionID)
+		}
+		return err
+	}
+	return s.FirstUseStore.DeleteModelPlanFirstUseCandidate(ctx, workspaceID, agentSessionID)
+}
+
+func (s *Service) ListPendingFirstUses(ctx context.Context) ([]modelplanbiz.FirstUseCandidate, error) {
+	if s.FirstUseStore == nil {
+		return []modelplanbiz.FirstUseCandidate{}, nil
+	}
+	return s.FirstUseStore.ListModelPlanFirstUseCandidates(ctx)
 }
 
 func credentialChanged(before modelplanbiz.Plan, after modelplanbiz.Plan) bool {
@@ -298,12 +344,6 @@ func (s *Service) httpClient() *http.Client {
 		return s.HTTPClient
 	}
 	return httpx.NewClient(20 * time.Second)
-}
-
-func (s *Service) publishChanged(workspaceID string) {
-	if s.Publisher != nil {
-		s.Publisher.PublishModelPlansChanged(workspaceID)
-	}
 }
 
 func derefString(value *string) string {

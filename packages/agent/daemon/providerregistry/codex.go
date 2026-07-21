@@ -92,7 +92,6 @@ func codexDescriptor() ProviderDescriptor {
 				CapabilityPlanMode,
 				CapabilityInterrupt,
 				CapabilityActiveTurnGuidance,
-				CapabilityModelSwitch,
 				CapabilityModelPlanBinding,
 				CapabilityPlanImplementation,
 				CapabilityPermissionModeChangeDuringTurn,

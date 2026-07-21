@@ -143,7 +143,11 @@ Workspace model access plans and agent-target bindings are daemon-owned rows in
 `tuttid.db`. `model_plans` stores the plan configuration and verification
 projection; API keys are encrypted in `api_key_ciphertext` and must never be
 returned through public plan DTOs. `agent_target_model_bindings` stores only
-the target's plan id and optional default model.
+the target's plan id and optional default model. Its target and plan foreign
+keys cascade target deletion and prevent a referenced plan from being deleted.
+`model_plan_first_use_candidates` durably attributes prepared sessions to
+plans until a completed canonical turn settles first-use state; startup
+reconciliation retries candidates left by observer failure or shutdown.
 
 The initial migration copies existing managed model-provider credentials into
 stable `mp-migrated-<provider>` plans without removing the legacy rows, because

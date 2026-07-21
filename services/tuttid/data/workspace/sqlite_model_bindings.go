@@ -13,6 +13,10 @@ import (
 // ErrAgentModelBindingNotFound reports a missing binding row.
 var ErrAgentModelBindingNotFound = errors.New("agent model binding not found")
 
+// ErrAgentModelBindingReferenceInvalid reports a binding whose target or plan
+// disappeared before the write committed.
+var ErrAgentModelBindingReferenceInvalid = errors.New("agent model binding reference is invalid")
+
 func (s *SQLiteStore) ListAgentModelBindings(ctx context.Context, workspaceID string) ([]modelbindingbiz.Binding, error) {
 	if s == nil || s.readDB == nil {
 		return nil, errors.New("workspace database is not initialized")
@@ -75,6 +79,9 @@ ON CONFLICT(workspace_id, agent_target_id) DO UPDATE SET
   updated_at_unix_ms = excluded.updated_at_unix_ms
 `, binding.WorkspaceID, binding.AgentTargetID, binding.ModelPlanID, binding.DefaultModel, unixMs(binding.UpdatedAt))
 	if err != nil {
+		if isSQLiteForeignKeyConstraintError(err) {
+			return ErrAgentModelBindingReferenceInvalid
+		}
 		return fmt.Errorf("put agent model binding: %w", err)
 	}
 	return nil

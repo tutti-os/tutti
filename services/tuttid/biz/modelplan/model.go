@@ -2,8 +2,8 @@
 //
 // A model access plan is a named, reusable model access configuration
 // (credential, protocol, base URL, model list, detection state). Plans are
-// workspace-global resources referenced by agent targets, model usage
-// policies, and workspace apps; multiple named plans may share one protocol.
+// workspace-global resources referenced by agent targets; multiple named
+// plans may share one protocol.
 package modelplan
 
 import (
@@ -138,6 +138,19 @@ type FirstUse struct {
 	AgentSessionID string         `json:"agentSessionId,omitempty"`
 	Model          string         `json:"model,omitempty"`
 	CompletedAt    time.Time      `json:"completedAt,omitempty"`
+}
+
+// FirstUseCandidate durably attributes a newly created agent session to the
+// plan endpoint prepared for it. It is removed after the first completed turn
+// has been projected into FirstUse.
+type FirstUseCandidate struct {
+	WorkspaceID    string
+	AgentSessionID string
+	PlanID         string
+	AgentTargetID  string
+	Model          string
+	PlanUpdatedAt  time.Time
+	CreatedAt      time.Time
 }
 
 // PlanStatus is the derived lifecycle status shown to users.

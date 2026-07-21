@@ -272,6 +272,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentTargetStore, _ := store.(workspacedata.AgentTargetStore)
 	managedCredentialsStore, _ := store.(workspacedata.ManagedCredentialsStore)
 	modelPlansStore, _ := store.(workspacedata.ModelPlansStore)
+	modelPlanFirstUseStore, _ := store.(workspacedata.ModelPlanFirstUseStore)
 	agentActivityRepo, _ := store.(workspacedata.AgentActivityStore)
 	agentQuickPromptStore, _ := store.(workspacedata.AgentQuickPromptStore)
 	userProjectStore, _ := store.(workspacedata.UserProjectStore)
@@ -332,8 +333,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Targets: agentTargetStore,
 	}
 	modelPlans := &modelplanservice.Service{
-		Store:      modelPlansStore,
-		References: modelBindings,
+		Store:         modelPlansStore,
+		FirstUseStore: modelPlanFirstUseStore,
+		References:    modelBindings,
 	}
 	events.RegisterIntentHandler(
 		eventstreamservice.TopicPreferencesDesktopUpdateRequested,
@@ -441,6 +443,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
 	agentSessionService.TurnStore = agentActivityRepo
+	if err := agentSessionService.ReconcilePendingModelPlanFirstUses(ctx); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("reconcile model plan first use: %w", err)
+	}
 	agentSessionService.TurnSummaryReader = agentActivityRepo
 	agentSessionService.RuntimeOperationStore = agentActivityRepo
 	agentSessionService.GoalStateStore = agentActivityRepo

@@ -17,9 +17,9 @@ type ModelEndpointConfig struct {
 	Protocol string
 	BaseURL  string
 	APIKey   string
-	// Model is the default model id for the session; providers may still
-	// switch models within the plan on later calls.
-	Model string
+	// Model is the default model id for the session.
+	Model               string
+	PlanUpdatedAtUnixMS int64
 }
 
 // codexModelPlanProviderID names the injected Codex model provider entry.

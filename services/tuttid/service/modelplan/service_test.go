@@ -15,12 +15,13 @@ import (
 )
 
 type memoryPlanStore struct {
-	mu    sync.Mutex
-	plans map[string]modelplanbiz.Plan
+	mu         sync.Mutex
+	plans      map[string]modelplanbiz.Plan
+	candidates map[string]modelplanbiz.FirstUseCandidate
 }
 
 func newMemoryPlanStore() *memoryPlanStore {
-	return &memoryPlanStore{plans: map[string]modelplanbiz.Plan{}}
+	return &memoryPlanStore{plans: map[string]modelplanbiz.Plan{}, candidates: map[string]modelplanbiz.FirstUseCandidate{}}
 }
 
 func (*memoryPlanStore) key(workspaceID string, planID string) string {
@@ -67,6 +68,40 @@ func (s *memoryPlanStore) DeleteModelPlan(_ context.Context, workspaceID string,
 	return nil
 }
 
+func (s *memoryPlanStore) PutModelPlanFirstUseCandidate(_ context.Context, candidate modelplanbiz.FirstUseCandidate) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.candidates[candidate.WorkspaceID+"/"+candidate.AgentSessionID] = candidate
+	return nil
+}
+
+func (s *memoryPlanStore) GetModelPlanFirstUseCandidate(_ context.Context, workspaceID string, agentSessionID string) (modelplanbiz.FirstUseCandidate, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	candidate, ok := s.candidates[workspaceID+"/"+agentSessionID]
+	if !ok {
+		return modelplanbiz.FirstUseCandidate{}, workspacedata.ErrModelPlanFirstUseCandidateNotFound
+	}
+	return candidate, nil
+}
+
+func (s *memoryPlanStore) ListModelPlanFirstUseCandidates(context.Context) ([]modelplanbiz.FirstUseCandidate, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	candidates := make([]modelplanbiz.FirstUseCandidate, 0, len(s.candidates))
+	for _, candidate := range s.candidates {
+		candidates = append(candidates, candidate)
+	}
+	return candidates, nil
+}
+
+func (s *memoryPlanStore) DeleteModelPlanFirstUseCandidate(_ context.Context, workspaceID string, agentSessionID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.candidates, workspaceID+"/"+agentSessionID)
+	return nil
+}
+
 type staticReferences struct {
 	references []modelplanbiz.Reference
 }
@@ -78,8 +113,9 @@ func (s staticReferences) ListModelPlanReferences(context.Context, string, strin
 func newTestService(store workspacedata.ModelPlansStore) *Service {
 	counter := 0
 	return &Service{
-		Store: store,
-		Now:   func() time.Time { return time.UnixMilli(1700000000000).UTC() },
+		Store:         store,
+		FirstUseStore: store.(workspacedata.ModelPlanFirstUseStore),
+		Now:           func() time.Time { return time.UnixMilli(1700000000000).UTC() },
 		NewID: func() string {
 			counter++
 			return "mp-" + strings.Repeat("x", counter)
@@ -177,6 +213,49 @@ func TestCreateAndUpdatePlanResetsVerificationOnCredentialChange(t *testing.T) {
 	}
 	if rotated.FirstUse.Status != modelplanbiz.FirstUsePending {
 		t.Fatalf("UpdatePlan(rotate) first use = %q, want pending", rotated.FirstUse.Status)
+	}
+}
+
+func TestFirstUseCandidateSurvivesUntilCompletion(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newMemoryPlanStore()
+	service := newTestService(store)
+	created, err := service.CreatePlan(ctx, PutPlanInput{
+		WorkspaceID: "ws", Name: "Plan", TemplateKind: "custom", Protocol: "openai",
+		Models: []modelplanbiz.Model{{ID: "gpt-test", Name: "GPT Test"}}, Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("CreatePlan() error = %v", err)
+	}
+	candidate := modelplanbiz.FirstUseCandidate{
+		WorkspaceID: "ws", AgentSessionID: "session-1", PlanID: created.ID,
+		AgentTargetID: "local:codex", Model: "gpt-test", PlanUpdatedAt: created.UpdatedAt,
+	}
+	if err := service.PrepareFirstUse(ctx, candidate); err != nil {
+		t.Fatalf("PrepareFirstUse() error = %v", err)
+	}
+	pending, err := service.ListPendingFirstUses(ctx)
+	if err != nil || len(pending) != 1 || pending[0].PlanID != created.ID {
+		t.Fatalf("ListPendingFirstUses() = %#v, error = %v", pending, err)
+	}
+	if err := service.CompleteFirstUse(ctx, "ws", "session-1"); err != nil {
+		t.Fatalf("CompleteFirstUse() error = %v", err)
+	}
+	completed, err := service.GetPlan(ctx, "ws", created.ID)
+	if err != nil {
+		t.Fatalf("GetPlan() error = %v", err)
+	}
+	if completed.FirstUse.Status != modelplanbiz.FirstUseCompleted || completed.FirstUse.AgentSessionID != "session-1" {
+		t.Fatalf("completed first use = %#v", completed.FirstUse)
+	}
+	pending, err = service.ListPendingFirstUses(ctx)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("ListPendingFirstUses() after completion = %#v, error = %v", pending, err)
+	}
+	if err := service.CompleteFirstUse(ctx, "ws", "session-1"); err != nil {
+		t.Fatalf("CompleteFirstUse(replay) error = %v", err)
 	}
 }
 
@@ -389,7 +468,7 @@ func TestDetectAnthropicProtocolWithoutCatalogFallsBackToInference(t *testing.T)
 	assertStage(t, result.Detection, modelplanbiz.StageInference, modelplanbiz.StagePassed)
 }
 
-func TestCompleteReturnsTextAndUsage(t *testing.T) {
+func TestDetectionCompletionAcceptsProviderResponse(t *testing.T) {
 	t.Parallel()
 
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -404,7 +483,7 @@ func TestCompleteReturnsTextAndUsage(t *testing.T) {
 
 	service := newTestService(newMemoryPlanStore())
 	service.HTTPClient = fake.Client()
-	result, err := service.Complete(context.Background(), CompletionRequest{
+	_, err := service.complete(context.Background(), completionRequest{
 		Protocol: modelplanbiz.ProtocolOpenAI,
 		BaseURL:  fake.URL + "/v1",
 		APIKey:   "sk",
@@ -412,13 +491,7 @@ func TestCompleteReturnsTextAndUsage(t *testing.T) {
 		Prompt:   "hello",
 	})
 	if err != nil {
-		t.Fatalf("Complete() error = %v", err)
-	}
-	if result.Text != "advice text" {
-		t.Fatalf("Complete() text = %q", result.Text)
-	}
-	if result.Usage.InputTokens != 10 || result.Usage.OutputTokens != 3 {
-		t.Fatalf("Complete() usage = %#v", result.Usage)
+		t.Fatalf("complete() error = %v", err)
 	}
 }
 

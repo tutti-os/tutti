@@ -9127,7 +9127,6 @@ components:
       required:
         - imageInput
         - modelImageInputRequired
-        - modelSwitch
         - modelPlanBinding
         - skills
         - compact
@@ -9149,11 +9148,6 @@ components:
           type: boolean
         modelImageInputRequired:
           type: boolean
-        modelSwitch:
-          type: boolean
-          description: >-
-            The provider can apply a model change to the next call in the
-            current session.
         modelPlanBinding:
           type: boolean
           description: >-
