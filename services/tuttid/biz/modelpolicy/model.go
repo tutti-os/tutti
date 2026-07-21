@@ -144,15 +144,6 @@ const (
 	AcceptanceUserAccepted AcceptanceState = "user_accepted"
 )
 
-func IsAcceptanceState(value string) bool {
-	switch AcceptanceState(value) {
-	case AcceptanceAgentClaimed, AcceptanceAutoChecked, AcceptanceUserAccepted:
-		return true
-	default:
-		return false
-	}
-}
-
 // Acceptance records the session's completion ladder position.
 type Acceptance struct {
 	WorkspaceID    string          `json:"workspaceId"`

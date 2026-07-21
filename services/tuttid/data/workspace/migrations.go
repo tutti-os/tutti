@@ -52,6 +52,7 @@ const schemaMigrationManagedCredentialsV1 = "managed_credentials_v1"
 const schemaMigrationModelPlansV1 = "model_plans_v1"
 const schemaMigrationAgentModelBindingsV1 = "agent_model_bindings_v1"
 const schemaMigrationAgentModelBindingsV2 = "agent_model_bindings_v2"
+const schemaMigrationAgentModelBindingsV3 = "agent_model_bindings_v3"
 const schemaMigrationAppFactoryJobsV1 = "app_factory_jobs_v1"
 const schemaMigrationAppFactoryJobsV2 = "app_factory_jobs_v2"
 const schemaMigrationAppFactoryJobsV3 = "app_factory_jobs_v3"
@@ -232,6 +233,11 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyModelPoliciesV1(ctx); err != nil {
+		return err
+	}
+	// Runs after model_usage_policies exists so the bindings table can gain a
+	// foreign key referencing it.
+	if err := s.applyAgentModelBindingsV3(ctx); err != nil {
 		return err
 	}
 	if err := s.applyAppFactoryJobsV1(ctx); err != nil {

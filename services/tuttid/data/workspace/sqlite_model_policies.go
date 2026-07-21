@@ -13,6 +13,10 @@ import (
 // ErrModelPolicyNotFound reports a missing model usage policy row.
 var ErrModelPolicyNotFound = errors.New("model usage policy not found")
 
+// ErrModelPolicyReferenced reports that a policy could not be deleted because an
+// agent binding still references it (enforced by the bindings foreign key).
+var ErrModelPolicyReferenced = errors.New("model usage policy is still referenced")
+
 func (s *SQLiteStore) ListModelPolicies(ctx context.Context, workspaceID string) ([]modelpolicybiz.Policy, error) {
 	if s == nil || s.readDB == nil {
 		return nil, errors.New("workspace database is not initialized")
@@ -113,6 +117,11 @@ DELETE FROM model_usage_policies
 WHERE workspace_id = ? AND policy_id = ?
 `, workspaceID, policyID)
 	if err != nil {
+		// A binding foreign key (ON DELETE RESTRICT) atomically blocks deletion
+		// while any agent binding still references the policy.
+		if isSQLiteForeignKeyConstraintError(err) {
+			return ErrModelPolicyReferenced
+		}
 		return fmt.Errorf("delete model policy: %w", err)
 	}
 	affected, err := result.RowsAffected()
@@ -229,6 +238,11 @@ func (s *SQLiteStore) PutAgentSessionAcceptance(ctx context.Context, acceptance 
 	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
+	// user_accepted is terminal: once a user has accepted the work, concurrent
+	// automation (agent_claimed / auto_checked writes) must never downgrade it.
+	// The stickiness is enforced here at the write boundary — not by a racy
+	// read-then-write in the service — so it holds under concurrency. The
+	// literal mirrors modelpolicybiz.AcceptanceUserAccepted.
 	_, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO agent_session_acceptance (
   workspace_id, agent_session_id, state, review_run_id, updated_at_unix_ms
@@ -237,6 +251,7 @@ ON CONFLICT(workspace_id, agent_session_id) DO UPDATE SET
   state = excluded.state,
   review_run_id = excluded.review_run_id,
   updated_at_unix_ms = excluded.updated_at_unix_ms
+WHERE agent_session_acceptance.state <> 'user_accepted'
 `, acceptance.WorkspaceID, acceptance.AgentSessionID, string(acceptance.State), acceptance.ReviewRunID, unixMs(acceptance.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("put agent session acceptance: %w", err)

@@ -189,18 +189,29 @@ func (s *Service) resolveEffectivePolicy(ctx context.Context, workspaceID string
 func (s *Service) runReview(ctx context.Context, workspaceID string, agentSessionID string, policy modelpolicybiz.Policy) {
 	if s.Budget != nil {
 		runs, totalTokens, err := s.Budget.SumPolicyReviewUsage(ctx, workspaceID, agentSessionID)
-		if err == nil {
-			if runs >= policy.ReviewRule.EffectiveMaxRuns() || totalTokens >= policy.ReviewRule.EffectiveMaxTotalTokens() {
-				slog.Info("model policy review budget exhausted; skipping automated review",
-					"event", "model_policy.review_budget_exhausted",
-					"workspace_id", workspaceID,
-					"agent_session_id", agentSessionID,
-					"policy_id", policy.ID,
-					"runs", runs,
-					"total_tokens", totalTokens,
-				)
-				return
-			}
+		if err != nil {
+			// Fail closed: without trustworthy usage accounting the per-session
+			// run/token budget cannot be enforced, so never start a billable
+			// review that could spend unmetered tokens.
+			slog.Warn("model policy review budget read failed; skipping automated review",
+				"event", "model_policy.review_budget_read_failed",
+				"workspace_id", workspaceID,
+				"agent_session_id", agentSessionID,
+				"policy_id", policy.ID,
+				"error", err,
+			)
+			return
+		}
+		if runs >= policy.ReviewRule.EffectiveMaxRuns() || totalTokens >= policy.ReviewRule.EffectiveMaxTotalTokens() {
+			slog.Info("model policy review budget exhausted; skipping automated review",
+				"event", "model_policy.review_budget_exhausted",
+				"workspace_id", workspaceID,
+				"agent_session_id", agentSessionID,
+				"policy_id", policy.ID,
+				"runs", runs,
+				"total_tokens", totalTokens,
+			)
+			return
 		}
 	}
 	result, err := s.Runner.RunPolicyReviewConsult(ctx, ReviewConsultInput{

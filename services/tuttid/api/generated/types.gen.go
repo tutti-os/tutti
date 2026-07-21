@@ -698,6 +698,7 @@ const (
 	MethodNotAllowed                ApiErrorDetailsCode = "method_not_allowed"
 	ModelPlanNotFound               ApiErrorDetailsCode = "model_plan_not_found"
 	ModelPlanReferenced             ApiErrorDetailsCode = "model_plan_referenced"
+	ModelPolicyReferenced           ApiErrorDetailsCode = "model_policy_referenced"
 	PreferencesOperationFailed      ApiErrorDetailsCode = "preferences_operation_failed"
 	ServiceUnavailable              ApiErrorDetailsCode = "service_unavailable"
 	Unauthorized                    ApiErrorDetailsCode = "unauthorized"
@@ -728,6 +729,8 @@ func (e ApiErrorDetailsCode) Valid() bool {
 	case ModelPlanNotFound:
 		return true
 	case ModelPlanReferenced:
+		return true
+	case ModelPolicyReferenced:
 		return true
 	case PreferencesOperationFailed:
 		return true
@@ -1432,12 +1435,15 @@ func (e ModelPlanProtocol) Valid() bool {
 // Defines values for ModelPlanReferenceKind.
 const (
 	ModelPlanReferenceKindAgentTarget ModelPlanReferenceKind = "agent_target"
+	ModelPlanReferenceKindModelPolicy ModelPlanReferenceKind = "model_policy"
 )
 
 // Valid indicates whether the value is a known member of the ModelPlanReferenceKind enum.
 func (e ModelPlanReferenceKind) Valid() bool {
 	switch e {
 	case ModelPlanReferenceKindAgentTarget:
+		return true
+	case ModelPlanReferenceKindModelPolicy:
 		return true
 	default:
 		return false
@@ -4339,7 +4345,7 @@ type ModelPlanReference struct {
 	Kind ModelPlanReferenceKind `json:"kind"`
 	Name *string                `json:"name,omitempty"`
 
-	// Role How the agent target uses the plan, currently default.
+	// Role How the consumer uses the plan. Agent target bindings report "default"; model usage policies report the bound role (execution, planning, or review).
 	Role *string `json:"role,omitempty"`
 }
 
@@ -5822,6 +5828,9 @@ type ModelPlanNotFoundError = ApiErrorResponse
 
 // ModelPlanReferencedError defines model for ModelPlanReferencedError.
 type ModelPlanReferencedError = ApiErrorResponse
+
+// ModelPolicyReferencedError defines model for ModelPolicyReferencedError.
+type ModelPolicyReferencedError = ApiErrorResponse
 
 // PreferencesOperationError defines model for PreferencesOperationError.
 type PreferencesOperationError = ApiErrorResponse

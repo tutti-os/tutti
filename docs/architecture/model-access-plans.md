@@ -5,9 +5,18 @@ supported agent runtimes through a named model endpoint. A plan owns its wire
 protocol, endpoint, encrypted credential, model catalog, default model,
 detection state, enabled state, and first-successful-use state.
 
-This slice intentionally contains only plans and per-agent-target bindings. It
-does not define model-usage policies, review automation, acceptance workflows,
-or workspace-app plan consumers.
+This slice owns plans and per-agent-target bindings. A separate staged layer,
+`services/tuttid/service/modelpolicy`, adds model-usage policies (role-to-plan
+mappings, per-session overrides, and a session acceptance record) and registers
+those policies as plan consumers for the deletion protection below. Binding and
+policy links are validated in both directions: a binding may reference only a
+model-usage policy that exists in the same workspace, and a policy cannot be
+deleted while any agent binding references it — deletion is rejected with a 409
+until those bindings are cleared or rebound. The daemon does not yet execute a
+policy's role map or its fixed review rule: review automation and automated
+acceptance advancement remain deferred to a later stack layer, so only the
+explicit user-acceptance endpoint moves the acceptance ladder today. This slice
+does not define workspace-app plan consumers.
 
 ## Ownership
 
@@ -53,9 +62,13 @@ their provider-native credential sources.
    observer failure or process shutdown.
 
 Disabling a plan prevents new sessions from using it; existing running
-sessions are not interrupted. Deleting a plan is rejected while an agent
-target binding references it. The references API currently returns only
-`agent_target` entries.
+sessions are not interrupted. Deleting a plan is rejected while any consumer
+still references it: agent target bindings and model-usage policies both
+count. The references API returns `agent_target` and `model_policy` entries,
+each carrying the consumer's role (bindings report `default`; policies report
+`execution`, `planning`, or `review`). Symmetrically, deleting a model-usage
+policy is rejected while any agent binding still references it; rebind or clear
+those bindings first.
 
 ## Rollout Gate
 

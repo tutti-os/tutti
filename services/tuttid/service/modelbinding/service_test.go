@@ -10,12 +10,14 @@ import (
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
+	modelpolicybiz "github.com/tutti-os/tutti/services/tuttid/biz/modelpolicy"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
 
 type memoryBindingStore struct {
 	mu       sync.Mutex
 	bindings map[string]modelbindingbiz.Binding
+	putErr   error
 }
 
 func newMemoryBindingStore() *memoryBindingStore {
@@ -63,6 +65,9 @@ func (s *memoryBindingStore) GetAgentModelBinding(_ context.Context, workspaceID
 func (s *memoryBindingStore) PutAgentModelBinding(_ context.Context, binding modelbindingbiz.Binding) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.putErr != nil {
+		return s.putErr
+	}
 	s.bindings[s.key(binding.WorkspaceID, binding.AgentTargetID)] = binding
 	return nil
 }
@@ -129,6 +134,122 @@ func newBindingTestService(store *memoryBindingStore) *Service {
 			"local:opencode": {ID: "local:opencode", Provider: "opencode", Name: "OpenCode"},
 		}},
 		Now: func() time.Time { return time.UnixMilli(1700000000000).UTC() },
+	}
+}
+
+type staticPolicies struct {
+	policies map[string]modelpolicybiz.Policy
+}
+
+func (s staticPolicies) GetModelPolicy(_ context.Context, _ string, policyID string) (modelpolicybiz.Policy, error) {
+	policy, ok := s.policies[policyID]
+	if !ok {
+		return modelpolicybiz.Policy{}, workspacedata.ErrModelPolicyNotFound
+	}
+	return policy, nil
+}
+
+func TestSetBindingValidatesModelPolicy(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newMemoryBindingStore()
+	service := newBindingTestService(store)
+	service.Policies = staticPolicies{policies: map[string]modelpolicybiz.Policy{
+		"pol-1": {ID: "pol-1", WorkspaceID: "ws", Name: "Careful"},
+	}}
+
+	// A non-empty but missing policy is rejected with a stable service error.
+	if _, err := service.SetBinding(ctx, SetBindingInput{
+		WorkspaceID:   "ws",
+		AgentTargetID: "local:codex",
+		ModelPolicyID: "pol-missing",
+	}); !errors.Is(err, ErrPolicyNotUsable) {
+		t.Fatalf("SetBinding(missing policy) error = %v, want ErrPolicyNotUsable", err)
+	}
+	if _, err := service.GetBinding(ctx, "ws", "local:codex"); !errors.Is(err, workspacedata.ErrAgentModelBindingNotFound) {
+		t.Fatalf("rejected binding must not persist: GetBinding err = %v", err)
+	}
+
+	// A valid policy-only binding is accepted.
+	binding, err := service.SetBinding(ctx, SetBindingInput{
+		WorkspaceID:   "ws",
+		AgentTargetID: "local:codex",
+		ModelPolicyID: "pol-1",
+	})
+	if err != nil {
+		t.Fatalf("SetBinding(valid policy) error = %v", err)
+	}
+	if binding.ModelPolicyID != "pol-1" {
+		t.Fatalf("binding = %#v, want ModelPolicyID pol-1", binding)
+	}
+
+	// An all-empty clear stays valid and removes the binding.
+	if _, err := service.SetBinding(ctx, SetBindingInput{WorkspaceID: "ws", AgentTargetID: "local:codex"}); err != nil {
+		t.Fatalf("SetBinding(clear) error = %v", err)
+	}
+	if _, err := service.GetBinding(ctx, "ws", "local:codex"); !errors.Is(err, workspacedata.ErrAgentModelBindingNotFound) {
+		t.Fatalf("GetBinding(after clear) error = %v, want ErrAgentModelBindingNotFound", err)
+	}
+}
+
+func TestSetBindingMapsStorageReferenceErrorToNeutralError(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newMemoryBindingStore()
+	// Pre-validation passes (plan mp-1 and policy pol-1 both exist), but the
+	// write is rejected by a foreign key because a reference disappeared in the
+	// race window. The store cannot say which reference failed.
+	store.putErr = workspacedata.ErrAgentModelBindingReferenceInvalid
+	service := newBindingTestService(store)
+	service.Policies = staticPolicies{policies: map[string]modelpolicybiz.Policy{
+		"pol-1": {ID: "pol-1", WorkspaceID: "ws", Name: "Careful"},
+	}}
+
+	_, err := service.SetBinding(ctx, SetBindingInput{
+		WorkspaceID:   "ws",
+		AgentTargetID: "local:codex",
+		ModelPlanID:   "mp-1",
+		DefaultModel:  "model-a",
+		ModelPolicyID: "pol-1",
+	})
+	if !errors.Is(err, ErrBindingReferenceUnusable) {
+		t.Fatalf("SetBinding(storage reference error) error = %v, want ErrBindingReferenceUnusable", err)
+	}
+	// It must not be misattributed to the plan.
+	if errors.Is(err, ErrPlanNotUsable) {
+		t.Fatalf("SetBinding() error should not claim the plan is unusable: %v", err)
+	}
+}
+
+func TestSetBindingFailsClosedWhenPolicyValidationUnavailable(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	service := newBindingTestService(newMemoryBindingStore())
+	service.Policies = nil // dependency missing
+
+	// An empty policy id needs no validation and stays valid.
+	if _, err := service.SetBinding(ctx, SetBindingInput{
+		WorkspaceID:   "ws",
+		AgentTargetID: "local:codex",
+		ModelPlanID:   "mp-1",
+		DefaultModel:  "model-a",
+	}); err != nil {
+		t.Fatalf("SetBinding(no policy link) error = %v", err)
+	}
+
+	// A non-empty policy link with no validator fails closed and is not persisted.
+	if _, err := service.SetBinding(ctx, SetBindingInput{
+		WorkspaceID:   "ws",
+		AgentTargetID: "local:claude",
+		ModelPolicyID: "pol-1",
+	}); err == nil {
+		t.Fatalf("SetBinding(policy link, no validator) error = nil, want fail-closed error")
+	}
+	if _, err := service.GetBinding(ctx, "ws", "local:claude"); !errors.Is(err, workspacedata.ErrAgentModelBindingNotFound) {
+		t.Fatalf("binding persisted despite fail-closed guard: err = %v", err)
 	}
 }
 

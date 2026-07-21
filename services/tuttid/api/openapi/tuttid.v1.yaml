@@ -1555,6 +1555,7 @@ paths:
       tags:
         - model-plan
       summary: Delete one legacy role-based model policy
+      description: Deletion is blocked with a 409 while any agent binding still references the policy. Callers rebind or clear those bindings first.
       responses:
         "200":
           description: Model usage policy deleted
@@ -1570,6 +1571,8 @@ paths:
           $ref: "#/components/responses/WorkspaceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/ModelPolicyReferencedError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -4821,6 +4824,7 @@ components:
       required: true
       schema:
         type: string
+        minLength: 1
     ModelPolicyID:
       name: modelPolicyID
       in: path
@@ -5119,6 +5123,19 @@ components:
                   code: model_plan_referenced
                   reason: model_plan_referenced
                   developerMessage: model plan is still referenced; rebind or disable consumers first
+    ModelPolicyReferencedError:
+      description: Model usage policy is still referenced by agent bindings
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            modelPolicyReferenced:
+              value:
+                error:
+                  code: model_policy_referenced
+                  reason: model_policy_referenced
+                  developerMessage: model usage policy is still referenced; rebind or clear the referencing bindings first
     PreferencesOperationError:
       description: Desktop preferences operation failed in an upstream adapter or command
       content:
@@ -5815,6 +5832,7 @@ components:
             - agent_target_not_found
             - model_plan_not_found
             - model_plan_referenced
+            - model_policy_referenced
         reason:
           type: string
         params:
@@ -6869,6 +6887,7 @@ components:
           type: string
           enum:
             - agent_target
+            - model_policy
         id:
           type: string
         name:
@@ -6877,7 +6896,7 @@ components:
         role:
           type: string
           nullable: true
-          description: How the agent target uses the plan, currently default.
+          description: How the consumer uses the plan. Agent target bindings report "default"; model usage policies report the bound role (execution, planning, or review).
     ModelPlanReferencesResponse:
       type: object
       additionalProperties: false

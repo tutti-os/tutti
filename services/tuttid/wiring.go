@@ -330,19 +330,28 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Store: managedCredentialsStore,
 	}
 	modelBindingsStore, _ := store.(workspacedata.AgentModelBindingsStore)
+	modelPolicyStore, _ := store.(modelpolicyservice.Store)
+	// Narrow cross-domain reads over biz types keep referential integrity
+	// bidirectional without any modelbinding <-> modelpolicy service cycle:
+	// bindings validate their policy link, and policy deletion checks bindings.
+	bindingPolicyLookup, _ := store.(modelbindingservice.PolicyLookup)
+	policyBindingReferences, _ := store.(modelpolicyservice.BindingReferenceReader)
 	modelBindings := &modelbindingservice.Service{
-		Store:   modelBindingsStore,
-		Plans:   modelPlansStore,
-		Targets: agentTargetStore,
+		Store:    modelBindingsStore,
+		Plans:    modelPlansStore,
+		Targets:  agentTargetStore,
+		Policies: bindingPolicyLookup,
+	}
+	modelPolicies := &modelpolicyservice.Service{
+		Store:             modelPolicyStore,
+		BindingReferences: policyBindingReferences,
 	}
 	modelPlans := &modelplanservice.Service{
 		Store:         modelPlansStore,
 		FirstUseStore: modelPlanFirstUseStore,
-		References:    modelBindings,
-	}
-	modelPolicyStore, _ := store.(modelpolicyservice.Store)
-	modelPolicies := &modelpolicyservice.Service{
-		Store: modelPolicyStore,
+		// Plan deletion stays blocked while any consumer domain still points at
+		// the plan: agent model bindings and model usage policies alike.
+		References: modelplanservice.CompositeReferenceResolver{modelBindings, modelPolicies},
 	}
 	events.RegisterIntentHandler(
 		eventstreamservice.TopicPreferencesDesktopUpdateRequested,

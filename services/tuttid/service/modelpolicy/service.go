@@ -13,14 +13,26 @@ import (
 	"strings"
 	"time"
 
+	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	modelpolicybiz "github.com/tutti-os/tutti/services/tuttid/biz/modelpolicy"
+	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
 
 var (
-	ErrInvalidPolicyInput     = errors.New("invalid model usage policy input")
-	ErrInvalidAcceptanceState = errors.New("invalid acceptance state")
+	ErrInvalidPolicyInput              = errors.New("invalid model usage policy input")
+	ErrInvalidAcceptanceState          = errors.New("invalid acceptance state")
+	ErrPolicyReferenced                = errors.New("model usage policy is still referenced")
+	ErrPolicyReferenceCheckUnavailable = errors.New("model usage policy reference check is unavailable")
 )
+
+// BindingReferenceReader lists agent bindings that reference a policy so
+// deletion can be blocked while consumers remain. It is a narrow read over biz
+// types so deletion never takes a modelpolicy -> modelbinding service
+// dependency.
+type BindingReferenceReader interface {
+	ListAgentModelBindingsByModelPolicy(ctx context.Context, workspaceID string, policyID string) ([]modelbindingbiz.Binding, error)
+}
 
 // Store is the persistence surface for policies, overrides, and acceptance.
 // *workspacedata.SQLiteStore satisfies it.
@@ -40,6 +52,9 @@ type Service struct {
 	Store Store
 	Now   func() time.Time
 	NewID func() string
+
+	// BindingReferences guards policy deletion against live agent bindings.
+	BindingReferences BindingReferenceReader
 
 	// Review automation collaborators; see ConfigureReviewAutomation.
 	Bindings BindingSource
@@ -105,7 +120,32 @@ func (s *Service) PutPolicy(ctx context.Context, input PutPolicyInput) (modelpol
 }
 
 func (s *Service) DeletePolicy(ctx context.Context, workspaceID string, policyID string) error {
-	return s.Store.DeleteModelPolicy(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(policyID))
+	workspaceID = strings.TrimSpace(workspaceID)
+	policyID = strings.TrimSpace(policyID)
+	// Fail closed: the reference reader must be wired. Deletion integrity is
+	// ultimately enforced atomically by the store's ON DELETE RESTRICT foreign
+	// key, but a missing reader signals a wiring fault, so refuse rather than
+	// delete blind.
+	if s.BindingReferences == nil {
+		return ErrPolicyReferenceCheckUnavailable
+	}
+	// Fast path: a precise, count-bearing error for the common referenced case.
+	bindings, err := s.BindingReferences.ListAgentModelBindingsByModelPolicy(ctx, workspaceID, policyID)
+	if err != nil {
+		return err
+	}
+	if len(bindings) > 0 {
+		return fmt.Errorf("%w: %d agent bindings", ErrPolicyReferenced, len(bindings))
+	}
+	// Atomic backstop: a binding created between the check above and here
+	// (TOCTOU) is rejected by the bindings ON DELETE RESTRICT foreign key.
+	if err := s.Store.DeleteModelPolicy(ctx, workspaceID, policyID); err != nil {
+		if errors.Is(err, workspacedata.ErrModelPolicyReferenced) {
+			return ErrPolicyReferenced
+		}
+		return err
+	}
+	return nil
 }
 
 // ListModelPlanReferences reports policies referencing a plan through any
