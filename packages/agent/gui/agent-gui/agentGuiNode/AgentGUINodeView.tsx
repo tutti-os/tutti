@@ -47,6 +47,10 @@ import { useAgentGUIWorkspaceReferencePicker } from "./view/useAgentGUIWorkspace
 import type { AgentGUINodeViewProps } from "./view/AgentGUINodeView.types";
 import { useAgentGUINodeEngagement } from "./engagement/useAgentGUINodeEngagement";
 import { isAgentGUIProviderReady } from "./model/agentGuiProviderReadiness";
+import {
+  useAgentGUIConversationRailResizePointerMove,
+  type AgentGUIConversationRailResizeInteraction
+} from "./view/useAgentGUIConversationRailResizePointerMove";
 
 export type {
   AgentGUINodeViewProps,
@@ -151,18 +155,11 @@ export function AgentGUINodeView({
     viewModel
   });
   const [providerManagerOpen, setProviderManagerOpen] = useState(false);
-  const railResizeInteractionRef = useRef<{
-    lastWidthPx: number;
-    pointerId: number;
-    startClientX: number;
-    startWidthPx: number;
-  } | null>(null);
+  const railResizeInteractionRef =
+    useRef<AgentGUIConversationRailResizeInteraction | null>(null);
   const [isRailResizing, setIsRailResizing] = useState(false);
   const [railResizeWidthPx, setRailResizeWidthPx] = useState<number | null>(
     null
-  );
-  const reportConversationRailLayoutChange = useOptionalStableEventCallback(
-    onConversationRailLayoutChange
   );
   const [
     localComposerFocusRequestSequence,
@@ -304,41 +301,15 @@ export function AgentGUINodeView({
     [conversationRailCollapsed, conversationRailWidthPx, previewMode]
   );
 
-  const handleConversationRailResizePointerMove = useCallback(
-    (event: PointerEvent<HTMLDivElement>): void => {
-      if (previewMode) {
-        return;
-      }
-      const resizeState = railResizeInteractionRef.current;
-      if (!resizeState || resizeState.pointerId !== event.pointerId) {
-        return;
-      }
-
-      const nextWidthPx = clampConversationRailWidth(
-        resizeState.startWidthPx + event.clientX - resizeState.startClientX
-      );
-      if (resizeState.lastWidthPx !== nextWidthPx) {
-        resizeState.lastWidthPx = nextWidthPx;
-        layoutElementRef.current?.style.setProperty(
-          "--agent-gui-conversation-rail-width",
-          `${nextWidthPx}px`
-        );
-        reportConversationRailLayoutChange?.({
-          providerRailWidthPx,
-          conversationRailWidthPx: nextWidthPx,
-          leftPanelWidthPx: providerRailWidthPx + nextWidthPx,
-          resizing: true
-        });
-        event.currentTarget.setAttribute("aria-valuenow", String(nextWidthPx));
-      }
-    },
-    [
+  const handleConversationRailResizePointerMove =
+    useAgentGUIConversationRailResizePointerMove({
       clampConversationRailWidth,
+      layoutElementRef,
+      onConversationRailLayoutChange,
       previewMode,
       providerRailWidthPx,
-      reportConversationRailLayoutChange
-    ]
-  );
+      railResizeInteractionRef
+    });
 
   const endConversationRailResize = useCallback(
     (event?: PointerEvent<HTMLDivElement>): void => {
