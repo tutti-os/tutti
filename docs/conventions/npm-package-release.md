@@ -191,6 +191,12 @@ Published packages should not include:
 - package-local build config
 - generated junk files
 
+Packages that expose Tiptap runtime objects or types must declare their shared
+Tiptap runtime packages as peer dependencies, with the same ranges repeated as
+development dependencies for workspace builds. Component-internal extensions
+can remain regular dependencies. A package-private copy of the shared runtime
+can make structurally identical extensions type-incompatible in consumers.
+
 Runtime assets that are rendered or referenced by public entrypoints must also
 survive the packed package shape. When a public runtime entrypoint such as
 `./workbench` or `./ui` renders a package-local image, icon bitmap, schema, or

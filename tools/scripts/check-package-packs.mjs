@@ -15,6 +15,7 @@ import {
   packedFilesWithRawSvgDataUrls,
   packedFilesWithRelativeSvgUrls
 } from "./package-pack-svg-data-urls.mjs";
+import { packagePeerContractViolations } from "./package-pack-peer-contracts.mjs";
 
 const forbiddenPrefixes = [
   "package/src/",
@@ -54,6 +55,9 @@ async function checkPackage(packageConfig, destination) {
   const entries = listTarballEntries(tarballPath);
   const entrySet = new Set(entries);
   const violations = [];
+  violations.push(
+    ...packagePeerContractViolations(packageConfig.name, packageConfig.manifest)
+  );
   const requiredFiles = getRequiredFiles(packageConfig.manifest);
   const packageForbiddenPrefixes = sourcePublishingPackages.has(
     packageConfig.name
