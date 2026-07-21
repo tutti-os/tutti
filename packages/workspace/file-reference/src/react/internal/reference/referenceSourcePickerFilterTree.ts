@@ -27,7 +27,8 @@ export async function buildReferenceSourcePickerFilteredTree(input: {
   sourceId: string;
 }): Promise<ReferenceSourcePickerFilteredTree> {
   const childrenByKey: Record<string, ReferenceSourceNodeChildrenState> = {};
-  const folderMatchesByKey = new Map<string, Promise<boolean>>();
+  const folderEntriesByKey = new Map<string, ReferenceNode[]>();
+  const folderLoadsByKey = new Map<string, Promise<void>>();
   const runListTask = createAsyncTaskLimiter(FILTER_TREE_LIST_CONCURRENCY);
 
   const loadAllChildren = async (node: NodeRef): Promise<ReferenceNode[]> => {
@@ -54,11 +55,10 @@ export async function buildReferenceSourcePickerFilteredTree(input: {
     return [...entriesByKey.values()];
   };
 
-  const filterFolder = (folder: ReferenceNode): Promise<boolean> => {
+  const scheduleFolderLoad = (folder: ReferenceNode): void => {
     const key = nodeRefKey(folder.ref);
-    const existing = folderMatchesByKey.get(key);
-    if (existing) {
-      return existing;
+    if (folderLoadsByKey.has(key)) {
+      return;
     }
     const pending = (async () => {
       let entries: ReferenceNode[];
@@ -69,30 +69,16 @@ export async function buildReferenceSourcePickerFilteredTree(input: {
           throw error;
         }
         childrenByKey[key] = failedChildrenState(error);
-        return false;
+        return;
       }
-      const retained = await filterEntries(entries);
-      childrenByKey[key] = loadedChildrenState(retained);
-      return retained.length > 0;
-    })();
-    folderMatchesByKey.set(key, pending);
-    return pending;
-  };
-
-  const filterEntries = async (
-    entries: readonly ReferenceNode[]
-  ): Promise<ReferenceNode[]> => {
-    const retained = await Promise.all(
-      entries.map(async (entry) => {
+      folderEntriesByKey.set(key, entries);
+      for (const entry of entries) {
         if (entry.kind === "folder") {
-          return (await filterFolder(entry)) ? entry : null;
+          scheduleFolderLoad(entry);
         }
-        return matchesFilterCategories(entry.displayName, false, input.filters)
-          ? entry
-          : null;
-      })
-    );
-    return retained.filter((entry): entry is ReferenceNode => entry !== null);
+      }
+    })();
+    folderLoadsByKey.set(key, pending);
   };
 
   const rootRef = {
@@ -100,11 +86,85 @@ export async function buildReferenceSourcePickerFilteredTree(input: {
     nodeId: SOURCE_ROOT_NODE_ID
   };
   const rootEntries = await runListTask(() => loadAllChildren(rootRef));
+  for (const entry of rootEntries) {
+    if (entry.kind === "folder") {
+      scheduleFolderLoad(entry);
+    }
+  }
+  let awaitedLoadCount = 0;
+  while (awaitedLoadCount < folderLoadsByKey.size) {
+    const pendingLoads = [...folderLoadsByKey.values()].slice(awaitedLoadCount);
+    awaitedLoadCount += pendingLoads.length;
+    await Promise.all(pendingLoads);
+  }
+
+  const matchingFolderKeys = findFoldersWithMatchingDescendants(
+    folderEntriesByKey,
+    input.filters
+  );
+  for (const [key, entries] of folderEntriesByKey) {
+    childrenByKey[key] = loadedChildrenState(
+      filterEntries(entries, matchingFolderKeys, input.filters)
+    );
+  }
   childrenByKey[ROOT_CHILDREN_KEY] = loadedChildrenState(
-    await filterEntries(rootEntries)
+    filterEntries(rootEntries, matchingFolderKeys, input.filters)
   );
   throwIfAborted(input.signal);
   return { childrenByKey };
+}
+
+function findFoldersWithMatchingDescendants(
+  folderEntriesByKey: ReadonlyMap<string, readonly ReferenceNode[]>,
+  filters: readonly string[]
+): ReadonlySet<string> {
+  const matchingFolderKeys = new Set<string>();
+  const parentKeysByChildKey = new Map<string, Set<string>>();
+  const pendingKeys: string[] = [];
+
+  for (const [parentKey, entries] of folderEntriesByKey) {
+    for (const entry of entries) {
+      if (entry.kind === "folder") {
+        const childKey = nodeRefKey(entry.ref);
+        const parentKeys = parentKeysByChildKey.get(childKey) ?? new Set();
+        parentKeys.add(parentKey);
+        parentKeysByChildKey.set(childKey, parentKeys);
+      } else if (
+        !matchingFolderKeys.has(parentKey) &&
+        matchesFilterCategories(entry.displayName, false, filters)
+      ) {
+        matchingFolderKeys.add(parentKey);
+        pendingKeys.push(parentKey);
+      }
+    }
+  }
+
+  for (let index = 0; index < pendingKeys.length; index += 1) {
+    const childKey = pendingKeys[index];
+    if (!childKey) {
+      continue;
+    }
+    for (const parentKey of parentKeysByChildKey.get(childKey) ?? []) {
+      if (matchingFolderKeys.has(parentKey)) {
+        continue;
+      }
+      matchingFolderKeys.add(parentKey);
+      pendingKeys.push(parentKey);
+    }
+  }
+  return matchingFolderKeys;
+}
+
+function filterEntries(
+  entries: readonly ReferenceNode[],
+  matchingFolderKeys: ReadonlySet<string>,
+  filters: readonly string[]
+): ReferenceNode[] {
+  return entries.filter((entry) =>
+    entry.kind === "folder"
+      ? matchingFolderKeys.has(nodeRefKey(entry.ref))
+      : matchesFilterCategories(entry.displayName, false, filters)
+  );
 }
 
 function loadedChildrenState(

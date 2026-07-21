@@ -108,6 +108,54 @@ test("filter tree isolates an unreadable descendant folder", async () => {
   );
 });
 
+test("filter tree terminates when folders form a cycle", async () => {
+  const photos = folder("/workspace/photos", "photos");
+  const nested = folder("/workspace/photos/nested", "nested");
+  const entriesByNodeId: Record<string, ReferenceNode[]> = {
+    [SOURCE_ROOT_NODE_ID]: [photos],
+    [photos.ref.nodeId]: [nested],
+    [nested.ref.nodeId]: [
+      photos,
+      file("/workspace/photos/nested/banner.jpg", "banner.jpg")
+    ]
+  };
+  const aggregator = {
+    async listChildren(_scope, node) {
+      return {
+        entries: entriesByNodeId[node.nodeId] ?? [],
+        nextCursor: null
+      };
+    }
+  } as ReferenceSourceAggregator;
+
+  const tree = await buildReferenceSourcePickerFilteredTree({
+    aggregator,
+    filters: ["image"],
+    scope: { workspaceId: "workspace-1" },
+    signal: new AbortController().signal,
+    sourceId: "workspace-file"
+  });
+
+  assert.deepEqual(
+    tree.childrenByKey[ROOT_CHILDREN_KEY]?.entries.map(
+      (entry) => entry.displayName
+    ),
+    ["photos"]
+  );
+  assert.deepEqual(
+    tree.childrenByKey[nodeRefKey(photos.ref)]?.entries.map(
+      (entry) => entry.displayName
+    ),
+    ["nested"]
+  );
+  assert.deepEqual(
+    tree.childrenByKey[nodeRefKey(nested.ref)]?.entries.map(
+      (entry) => entry.displayName
+    ),
+    ["photos", "banner.jpg"]
+  );
+});
+
 test("filter tree still reports a source-root read failure", async () => {
   const aggregator = {
     async listChildren() {
