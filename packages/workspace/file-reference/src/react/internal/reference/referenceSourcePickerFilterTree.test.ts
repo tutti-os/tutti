@@ -64,6 +64,69 @@ test("filter tree keeps only folders whose descendants contain a matching file",
   assert.deepEqual(tree.childrenByKey[nodeRefKey(documents.ref)]?.entries, []);
 });
 
+test("filter tree isolates an unreadable descendant folder", async () => {
+  const photos = folder("/Users/me/Pictures", "Pictures");
+  const library = folder("/Users/me/Library", "Library");
+  const protectedFolder = folder(
+    "/Users/me/Library/Application Support/CloudDocs",
+    "CloudDocs"
+  );
+  const entriesByNodeId: Record<string, ReferenceNode[]> = {
+    [SOURCE_ROOT_NODE_ID]: [photos, library],
+    [photos.ref.nodeId]: [file("/Users/me/Pictures/cover.png", "cover.png")],
+    [library.ref.nodeId]: [protectedFolder]
+  };
+  const aggregator = {
+    async listChildren(_scope, node) {
+      if (node.nodeId === protectedFolder.ref.nodeId) {
+        throw new Error("EACCES: operation not permitted");
+      }
+      return {
+        entries: entriesByNodeId[node.nodeId] ?? [],
+        nextCursor: null
+      };
+    }
+  } as ReferenceSourceAggregator;
+
+  const tree = await buildReferenceSourcePickerFilteredTree({
+    aggregator,
+    filters: ["image"],
+    scope: { workspaceId: "workspace-1" },
+    signal: new AbortController().signal,
+    sourceId: "host-local-file"
+  });
+
+  assert.deepEqual(
+    tree.childrenByKey[ROOT_CHILDREN_KEY]?.entries.map(
+      (entry) => entry.displayName
+    ),
+    ["Pictures"]
+  );
+  assert.equal(
+    tree.childrenByKey[nodeRefKey(protectedFolder.ref)]?.error?.message,
+    "EACCES: operation not permitted"
+  );
+});
+
+test("filter tree still reports a source-root read failure", async () => {
+  const aggregator = {
+    async listChildren() {
+      throw new Error("source unavailable");
+    }
+  } as unknown as ReferenceSourceAggregator;
+
+  await assert.rejects(
+    buildReferenceSourcePickerFilteredTree({
+      aggregator,
+      filters: ["image"],
+      scope: { workspaceId: "workspace-1" },
+      signal: new AbortController().signal,
+      sourceId: "workspace-file"
+    }),
+    /source unavailable/
+  );
+});
+
 function folder(nodeId: string, displayName: string): ReferenceNode {
   return {
     displayName,

@@ -61,7 +61,16 @@ export async function buildReferenceSourcePickerFilteredTree(input: {
       return existing;
     }
     const pending = (async () => {
-      const entries = await runListTask(() => loadAllChildren(folder.ref));
+      let entries: ReferenceNode[];
+      try {
+        entries = await runListTask(() => loadAllChildren(folder.ref));
+      } catch (error) {
+        if (input.signal.aborted || isAbortError(error)) {
+          throw error;
+        }
+        childrenByKey[key] = failedChildrenState(error);
+        return false;
+      }
       const retained = await filterEntries(entries);
       childrenByKey[key] = loadedChildrenState(retained);
       return retained.length > 0;
@@ -108,6 +117,20 @@ function loadedChildrenState(
     loading: false,
     nextCursor: null
   };
+}
+
+function failedChildrenState(error: unknown): ReferenceSourceNodeChildrenState {
+  return {
+    entries: [],
+    error: error instanceof Error ? error : new Error(String(error)),
+    loaded: false,
+    loading: false,
+    nextCursor: null
+  };
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 function createAsyncTaskLimiter(concurrency: number) {
