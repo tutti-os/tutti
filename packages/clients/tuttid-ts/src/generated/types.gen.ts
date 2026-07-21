@@ -2369,6 +2369,12 @@ export type DeleteAgentQuickPromptRequest = {
   expectedVersion: number;
 };
 
+export type MoveAgentQuickPromptRequest = {
+  promptId: string;
+  beforePromptId: string | null;
+  expectedVersion: number;
+};
+
 export type UserProject = {
   id: string;
   path: string;
@@ -3722,7 +3728,7 @@ export type CreateAgentQuickPromptErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * Agent quick prompt limit or expected version conflicts with current state
+   * Agent quick prompt limit, expected version, or ordering anchor conflicts with current state
    */
   409: ApiErrorResponse;
   /**
@@ -3747,6 +3753,57 @@ export type CreateAgentQuickPromptResponses = {
 
 export type CreateAgentQuickPromptResponse =
   CreateAgentQuickPromptResponses[keyof CreateAgentQuickPromptResponses];
+
+export type MoveAgentQuickPromptData = {
+  body: MoveAgentQuickPromptRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-quick-prompts/move";
+};
+
+export type MoveAgentQuickPromptErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent quick prompt was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Agent quick prompt limit, expected version, or ordering anchor conflicts with current state
+   */
+  409: ApiErrorResponse;
+  /**
+   * Agent quick prompt persistence operation failed
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type MoveAgentQuickPromptError =
+  MoveAgentQuickPromptErrors[keyof MoveAgentQuickPromptErrors];
+
+export type MoveAgentQuickPromptResponses = {
+  /**
+   * Authoritative Agent quick prompt order
+   */
+  200: AgentQuickPromptListResponse;
+};
+
+export type MoveAgentQuickPromptResponse =
+  MoveAgentQuickPromptResponses[keyof MoveAgentQuickPromptResponses];
 
 export type DeleteAgentQuickPromptData = {
   body: DeleteAgentQuickPromptRequest;
@@ -3775,7 +3832,7 @@ export type DeleteAgentQuickPromptErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * Agent quick prompt limit or expected version conflicts with current state
+   * Agent quick prompt limit, expected version, or ordering anchor conflicts with current state
    */
   409: ApiErrorResponse;
   /**
@@ -3828,7 +3885,7 @@ export type UpdateAgentQuickPromptErrors = {
    */
   405: ApiErrorResponse;
   /**
-   * Agent quick prompt limit or expected version conflicts with current state
+   * Agent quick prompt limit, expected version, or ordering anchor conflicts with current state
    */
   409: ApiErrorResponse;
   /**

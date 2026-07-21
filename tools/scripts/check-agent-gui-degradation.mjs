@@ -905,7 +905,8 @@ function readMergeHead(workspaceRoot) {
   try {
     return execFileSync("git", ["rev-parse", "--verify", "MERGE_HEAD"], {
       cwd: workspaceRoot,
-      encoding: "utf8"
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
     }).trim();
   } catch {
     return null;

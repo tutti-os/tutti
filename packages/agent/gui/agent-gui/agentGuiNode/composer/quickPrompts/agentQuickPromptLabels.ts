@@ -4,6 +4,7 @@ export interface AgentQuickPromptTemplate {
   content: string;
   description: string;
   id:
+    | "summary-common-prompts"
     | "understand-context"
     | "create-action-plan"
     | "review-and-improve"
@@ -24,19 +25,29 @@ export interface AgentQuickPromptLabels {
   deleteDescription: (title: string) => string;
   deleteTitle: string;
   deleting: string;
+  dragCancel: (title: string, position: number, total: number) => string;
+  dragDrop: (title: string, position: number, total: number) => string;
+  dragHandle: (title: string) => string;
+  dragInstructions: string;
+  dragMove: (title: string, position: number, total: number) => string;
+  dragStart: (title: string, position: number, total: number) => string;
   edit: string;
   editTitle: string;
   empty: string;
+  finishSorting: string;
   loadError: string;
   loading: string;
   moreActions: string;
   mutationError: string;
   noResults: string;
   required: string;
+  reorderConflict: string;
+  reorderError: string;
   retry: string;
   save: string;
   saving: string;
   searchPlaceholder: string;
+  startSorting: string;
   recommendedTemplates: readonly AgentQuickPromptTemplate[];
   recommendedTemplatesDescription: string;
   recommendedTemplatesTitle: string;
@@ -67,20 +78,63 @@ export function agentQuickPromptLabels(t: TranslateFn): AgentQuickPromptLabels {
       t("agentHost.agentGui.quickPrompts.deleteDescription", { title }),
     deleteTitle: t("agentHost.agentGui.quickPrompts.deleteTitle"),
     deleting: t("agentHost.agentGui.quickPrompts.deleting"),
+    dragCancel: (title, position, total) =>
+      t("agentHost.agentGui.quickPrompts.dragCancel", {
+        title,
+        position,
+        total
+      }),
+    dragDrop: (title, position, total) =>
+      t("agentHost.agentGui.quickPrompts.dragDrop", {
+        title,
+        position,
+        total
+      }),
+    dragHandle: (title) =>
+      t("agentHost.agentGui.quickPrompts.dragHandle", { title }),
+    dragInstructions: t("agentHost.agentGui.quickPrompts.dragInstructions"),
+    dragMove: (title, position, total) =>
+      t("agentHost.agentGui.quickPrompts.dragMove", {
+        title,
+        position,
+        total
+      }),
+    dragStart: (title, position, total) =>
+      t("agentHost.agentGui.quickPrompts.dragStart", {
+        title,
+        position,
+        total
+      }),
     edit: t("agentHost.agentGui.quickPrompts.edit"),
     editTitle: t("agentHost.agentGui.quickPrompts.editTitle"),
     empty: t("agentHost.agentGui.quickPrompts.empty"),
+    finishSorting: t("agentHost.agentGui.quickPrompts.finishSorting"),
     loadError: t("agentHost.agentGui.quickPrompts.loadError"),
     loading: t("agentHost.agentGui.quickPrompts.loading"),
     moreActions: t("agentHost.agentGui.quickPrompts.moreActions"),
     mutationError: t("agentHost.agentGui.quickPrompts.mutationError"),
     noResults: t("agentHost.agentGui.quickPrompts.noResults"),
     required: t("agentHost.agentGui.quickPrompts.required"),
+    reorderConflict: t("agentHost.agentGui.quickPrompts.reorderConflict"),
+    reorderError: t("agentHost.agentGui.quickPrompts.reorderError"),
     retry: t("agentHost.agentGui.quickPrompts.retry"),
     save: t("agentHost.agentGui.quickPrompts.save"),
     saving: t("agentHost.agentGui.quickPrompts.saving"),
     searchPlaceholder: t("agentHost.agentGui.quickPrompts.searchPlaceholder"),
+    startSorting: t("agentHost.agentGui.quickPrompts.startSorting"),
     recommendedTemplates: [
+      {
+        id: "summary-common-prompts",
+        title: t(
+          "agentHost.agentGui.quickPrompts.recommendedTemplates.summaryCommonPrompts.title"
+        ),
+        description: t(
+          "agentHost.agentGui.quickPrompts.recommendedTemplates.summaryCommonPrompts.description"
+        ),
+        content: t(
+          "agentHost.agentGui.quickPrompts.recommendedTemplates.summaryCommonPrompts.content"
+        )
+      },
       {
         id: "understand-context",
         title: t(

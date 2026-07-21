@@ -904,6 +904,7 @@ function createDependenciesStub(): {
       createAgentQuickPrompt: fail,
       deleteAgentQuickPrompt: fail,
       listAgentQuickPrompts: fail,
+      moveAgentQuickPrompt: fail,
       listAgentTargets: fail,
       setSystemAgentTargetEnabled: fail,
       updateAgentQuickPrompt: fail,

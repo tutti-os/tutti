@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   createWriteStream,
   existsSync,
@@ -25,13 +26,13 @@ const workspaceRoot = join(scriptDirectory, "..", "..");
 const golangciLintBinary = resolveGolangciLintBinary({ cwd: workspaceRoot });
 const pnpmCommand = resolvePnpmCommand();
 const pnpmShellCommand = formatCommand(pnpmCommand);
-const maxParallel = Number.parseInt(readOption("--max-parallel") ?? "4", 10);
-const tailLines = readPositiveIntegerOption("--tail-lines", 80);
-const dryRun = process.argv.includes("--dry-run");
-const failedOnly = process.argv.includes("--failed-only");
-const pushReady = process.argv.includes("--push-ready");
-const verbose = process.argv.includes("--verbose");
-const baseRef = readOption("--base") ?? resolveDefaultBaseRef();
+let maxParallel = 4;
+let tailLines = 80;
+let dryRun = false;
+let failedOnly = false;
+let pushReady = false;
+let verbose = false;
+let baseRef = resolveDefaultBaseRef();
 const tmpRoot = join(workspaceRoot, ".tmp", "check-runs");
 const latestSummaryPath = join(tmpRoot, "latest.json");
 
@@ -54,6 +55,11 @@ export async function main() {
     return;
   }
 
+  const validationFingerprint = buildValidationFingerprint({
+    baseRef,
+    workspaceRoot
+  });
+
   const runId = new Date().toISOString().replace(/[:.]/g, "-");
   const runDirectory = join(tmpRoot, runId);
   mkdirSync(runDirectory, { recursive: true });
@@ -74,6 +80,7 @@ export async function main() {
     runDirectory,
     startedAt: new Date(startedAt).toISOString(),
     tailLines,
+    validationFingerprint,
     results
   };
   writeFileSync(
@@ -255,6 +262,14 @@ function readFailedLanes() {
     return [];
   }
   const summary = JSON.parse(readFileSync(latestSummaryPath, "utf8"));
+  if (!summary.baseRef || !summary.validationFingerprint) {
+    validateFailedRunSummary(summary, null);
+  }
+  const currentFingerprint = buildValidationFingerprint({
+    baseRef,
+    workspaceRoot
+  });
+  validateFailedRunSummary(summary, currentFingerprint);
   return (summary.results ?? [])
     .filter((result) => result.exitCode !== 0)
     .map((result) => ({
@@ -262,6 +277,19 @@ function readFailedLanes() {
       label: result.label,
       command: result.command
     }));
+}
+
+export function validateFailedRunSummary(summary, currentFingerprint) {
+  if (!summary.baseRef || !summary.validationFingerprint) {
+    throw new UserFacingError(
+      "cannot reuse legacy failed-lane state; run pnpm check:changed"
+    );
+  }
+  if (currentFingerprint !== summary.validationFingerprint) {
+    throw new UserFacingError(
+      "workspace or base changed since the failed run; run pnpm check:changed"
+    );
+  }
 }
 
 export async function runLanes(inputLanes, runDirectory) {
@@ -450,21 +478,116 @@ function resolvePnpmCommand() {
   }
 }
 
-function readOption(name) {
-  const index = process.argv.indexOf(name);
-  if (index === -1) {
-    return null;
+export function parseCliArgs(inputArgs) {
+  const options = {
+    baseRef: null,
+    dryRun: false,
+    failedOnly: false,
+    maxParallel: 4,
+    pushReady: false,
+    tailLines: 80,
+    verbose: false
+  };
+  const args = inputArgs.filter((arg) => arg !== "--");
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    switch (arg) {
+      case "--dry-run":
+        options.dryRun = true;
+        break;
+      case "--failed-only":
+        options.failedOnly = true;
+        break;
+      case "--push-ready":
+        options.pushReady = true;
+        break;
+      case "--verbose":
+        options.verbose = true;
+        break;
+      case "--base":
+        options.baseRef = readCliValue(args, ++index, arg);
+        break;
+      case "--max-parallel":
+        options.maxParallel = readPositiveIntegerCliValue(args, ++index, arg);
+        break;
+      case "--tail-lines":
+        options.tailLines = readPositiveIntegerCliValue(args, ++index, arg);
+        break;
+      default:
+        throw new UserFacingError(`unknown option: ${arg}`);
+    }
   }
-  return process.argv[index + 1] ?? null;
+
+  return options;
 }
 
-function readPositiveIntegerOption(name, defaultValue) {
-  const value = readOption(name);
-  if (value === null) {
-    return defaultValue;
+function readCliValue(args, index, option) {
+  const value = args[index];
+  if (!value || value.startsWith("--")) {
+    throw new UserFacingError(`${option} requires a value`);
   }
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
+  return value;
+}
+
+function readPositiveIntegerCliValue(args, index, option) {
+  const value = readCliValue(args, index, option);
+  if (!/^[1-9]\d*$/u.test(value)) {
+    throw new UserFacingError(`${option} requires a positive integer`);
+  }
+  return Number.parseInt(value, 10);
+}
+
+function applyCliOptions(options) {
+  maxParallel = options.maxParallel;
+  tailLines = options.tailLines;
+  dryRun = options.dryRun;
+  failedOnly = options.failedOnly;
+  pushReady = options.pushReady;
+  verbose = options.verbose;
+  baseRef = options.baseRef ?? resolveDefaultBaseRef();
+}
+
+export function buildValidationFingerprint(input) {
+  const root = input.workspaceRoot;
+  const hash = createHash("sha256");
+  const addGitOutput = (label, args) => {
+    const result = spawnSync("git", args, {
+      cwd: root,
+      encoding: null
+    });
+    if (result.status !== 0) {
+      throw new Error(
+        `check:changed failed to fingerprint git ${args.join(" ")}`
+      );
+    }
+    hash.update(label);
+    hash.update(result.stdout);
+  };
+
+  hash.update(`base-ref:${input.baseRef}\n`);
+  addGitOutput("base-oid", ["rev-parse", "--verify", input.baseRef]);
+  addGitOutput("head-oid", ["rev-parse", "--verify", "HEAD"]);
+  addGitOutput("working-diff", ["diff", "--binary", "HEAD"]);
+  addGitOutput("staged-diff", ["diff", "--cached", "--binary", "HEAD"]);
+
+  const untrackedResult = spawnSync(
+    "git",
+    ["ls-files", "--others", "--exclude-standard", "-z"],
+    { cwd: root, encoding: "utf8" }
+  );
+  if (untrackedResult.status !== 0) {
+    throw new Error("check:changed failed to fingerprint untracked files");
+  }
+  for (const file of untrackedResult.stdout
+    .split("\0")
+    .filter(Boolean)
+    .sort()) {
+    hash.update(`untracked:${file}\n`);
+    hash.update(readFileSync(join(root, file)));
+  }
+
+  return hash.digest("hex");
 }
 
 function isLintableCodeFile(file) {
@@ -548,12 +671,21 @@ function failureExcerpt(path, lineCount) {
   };
 }
 
+class UserFacingError extends Error {}
+
 const currentPath = fileURLToPath(import.meta.url);
 if (process.argv[1] && resolve(process.argv[1]) === currentPath) {
-  main().catch((error) => {
-    console.error(
-      error instanceof Error ? (error.stack ?? error.message) : error
-    );
-    process.exitCode = 1;
-  });
+  Promise.resolve()
+    .then(() => applyCliOptions(parseCliArgs(process.argv.slice(2))))
+    .then(() => main())
+    .catch((error) => {
+      console.error(
+        error instanceof UserFacingError
+          ? `check:changed: ${error.message}`
+          : error instanceof Error
+            ? (error.stack ?? error.message)
+            : error
+      );
+      process.exitCode = 1;
+    });
 }

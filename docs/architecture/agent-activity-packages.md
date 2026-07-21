@@ -227,6 +227,17 @@ the composer picker and management dialogs, but quick-prompt entities must not
 be copied into `AgentActivityRuntime`, a workspace engine, a Session, or a Turn.
 The daemon remains authoritative for durable prompt records and optimistic
 version conflicts; event payloads are content-free refresh hints.
+Quick-prompt ordering follows the same boundary: `tuttid` stores a dense
+integer `sort_order` and accepts one moved prompt plus a nullable
+`beforePromptId` anchor and the moved prompt's expected version. Desktop may
+project the resulting order optimistically, but it must replace that projection
+with the daemon's authoritative list. AgentGUI only renders and requests moves;
+hosts that omit the optional move capability keep the library read/write-only.
+The v2 prompt-order schema is a forward-only daemon migration. After it is
+applied, rollback means disabling the quick-prompt feature flag or reverting
+the renderer surface; do not run an older daemon writer against that database.
+Older writers do not maintain `sort_order`, so binary daemon downgrade followed
+by create/delete is not a supported recovery path.
 Conversation rail sections are also an `AgentActivityRuntime` contract:
 AgentGUI calls `listSessionSections` for the first page of every returned rail
 section and `listSessionSectionPage` for Show more by `sectionKey` and cursor.

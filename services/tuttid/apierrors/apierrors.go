@@ -37,6 +37,7 @@ const (
 	ReasonAgentQuickPromptNotFound                       = "agent_quick_prompt_not_found"
 	ReasonAgentQuickPromptVersionConflict                = "agent_quick_prompt_version_conflict"
 	ReasonAgentQuickPromptLimitExceeded                  = "agent_quick_prompt_limit_exceeded"
+	ReasonAgentQuickPromptOrderConflict                  = "agent_quick_prompt_order_conflict"
 	ReasonAgentQuickPromptOperationFailed                = "agent_quick_prompt_operation_failed"
 	ReasonAgentQuickPromptServiceUnavailable             = "agent_quick_prompt_service_unavailable"
 	ReasonInvalidEntryKind                               = "invalid_entry_kind"

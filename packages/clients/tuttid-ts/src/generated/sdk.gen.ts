@@ -337,6 +337,9 @@ import type {
   LogoutAccountData,
   LogoutAccountErrors,
   LogoutAccountResponses,
+  MoveAgentQuickPromptData,
+  MoveAgentQuickPromptErrors,
+  MoveAgentQuickPromptResponses,
   MoveUserProjectData,
   MoveUserProjectErrors,
   MoveUserProjectResponses,
@@ -816,6 +819,26 @@ export const createAgentQuickPrompt = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/agent-quick-prompts",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Move a device-local Agent quick prompt before an anchor or to the end
+ */
+export const moveAgentQuickPrompt = <ThrowOnError extends boolean = false>(
+  options: Options<MoveAgentQuickPromptData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    MoveAgentQuickPromptResponses,
+    MoveAgentQuickPromptErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-quick-prompts/move",
     ...options,
     headers: {
       "Content-Type": "application/json",

@@ -44,6 +44,7 @@ const schemaMigrationUserProjectsV1 = "user_projects_v1"
 const schemaMigrationUserProjectsV2 = "user_projects_v2"
 const schemaMigrationUserProjectsV3 = "user_projects_v3"
 const schemaMigrationAgentQuickPromptsV1 = "agent_quick_prompts_v1"
+const schemaMigrationAgentQuickPromptsV2 = "agent_quick_prompts_v2"
 const schemaMigrationWorkspaceAppsV1 = "workspace_apps_v1"
 const schemaMigrationWorkspaceAppsV2 = "workspace_apps_v2"
 const schemaMigrationWorkspaceAppsV3 = "workspace_apps_v3"
@@ -192,6 +193,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyAgentQuickPromptsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentQuickPromptsV2(ctx); err != nil {
 		return err
 	}
 

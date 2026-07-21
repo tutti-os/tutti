@@ -62,7 +62,8 @@ function createQuickPrompts() {
       createdAtUnixMs: 1,
       updatedAtUnixMs: 4
     })),
-    remove: vi.fn(async () => {})
+    remove: vi.fn(async () => {}),
+    move: vi.fn(async () => snapshot.prompts)
   };
   return {
     api,
@@ -77,6 +78,89 @@ function createQuickPrompts() {
 describe("useAgentQuickPromptLibrary", () => {
   beforeEach(() => {
     hostApi = null;
+  });
+
+  it("preserves canonical host order and sends an anchor move", async () => {
+    const quickPrompts = createQuickPrompts();
+    const older = {
+      ...quickPrompts.snapshot().prompts[0]!,
+      id: "older",
+      title: "Older",
+      updatedAtUnixMs: 1
+    };
+    const newer = {
+      ...older,
+      id: "newer",
+      title: "Newer",
+      updatedAtUnixMs: 99
+    };
+    quickPrompts.publish({
+      ...quickPrompts.snapshot(),
+      status: "ready",
+      prompts: [older, newer],
+      revision: 1
+    });
+    hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;
+    const rendered = renderHook(() =>
+      useAgentQuickPromptLibrary({
+        disabled: false,
+        labels,
+        onBeforeOpen: vi.fn(),
+        onInsertPrompt: vi.fn()
+      })
+    );
+    expect(
+      rendered.result.current.filteredPrompts.map((prompt) => prompt.id)
+    ).toEqual(["older", "newer"]);
+    let moved = false;
+    await act(async () => {
+      moved = await rendered.result.current.reorderPrompts("older", null);
+    });
+    expect(moved).toBe(true);
+    expect(quickPrompts.api.move).toHaveBeenCalledWith({
+      promptId: "older",
+      beforePromptId: null,
+      expectedVersion: older.version
+    });
+  });
+
+  it("locks reorder and all mutating entry points while the shared host snapshot is pending", () => {
+    const quickPrompts = createQuickPrompts();
+    const second = {
+      ...quickPrompts.snapshot().prompts[0]!,
+      id: "prompt-2",
+      title: "Plan"
+    };
+    quickPrompts.publish({
+      ...quickPrompts.snapshot(),
+      status: "ready",
+      prompts: [...quickPrompts.snapshot().prompts, second],
+      pendingMutationIds: ["other-window-update"],
+      revision: 1
+    });
+    hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;
+    const onInsertPrompt = vi.fn();
+    const rendered = renderHook(() =>
+      useAgentQuickPromptLibrary({
+        disabled: false,
+        labels,
+        onBeforeOpen: vi.fn(),
+        onInsertPrompt
+      })
+    );
+
+    expect(rendered.result.current.isInteractionLocked).toBe(true);
+    expect(rendered.result.current.canReorder).toBe(false);
+    act(() => {
+      rendered.result.current.openCreate();
+      rendered.result.current.openEdit(second);
+      rendered.result.current.deletePrompt(second);
+      rendered.result.current.selectPrompt(second);
+      rendered.result.current.setSearchQuery("plan");
+    });
+    expect(rendered.result.current.mode).toBe("closed");
+    expect(rendered.result.current.searchQuery).toBe("");
+    expect(onInsertPrompt).not.toHaveBeenCalled();
   });
 
   it("lazy-loads when opened and inserts a selection without a submit path", () => {

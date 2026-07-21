@@ -18,6 +18,7 @@ type Store interface {
 	CreateAgentQuickPrompt(context.Context, agentquickpromptbiz.Prompt) error
 	UpdateAgentQuickPrompt(context.Context, agentquickpromptbiz.Prompt, int64) (agentquickpromptbiz.Prompt, error)
 	DeleteAgentQuickPrompt(context.Context, string, int64) error
+	MoveAgentQuickPrompt(context.Context, string, *string, int64, int64) ([]agentquickpromptbiz.Prompt, bool, error)
 }
 
 type EventPublisher interface {
@@ -119,6 +120,41 @@ func (s Service) Delete(ctx context.Context, input agentquickpromptbiz.DeleteInp
 		Version: input.ExpectedVersion, OccurredAtUnixMS: now,
 	})
 	return nil
+}
+
+func (s Service) Move(ctx context.Context, input agentquickpromptbiz.MoveInput) ([]agentquickpromptbiz.Prompt, error) {
+	if s.Store == nil {
+		return nil, errors.New("agent quick prompt store is not configured")
+	}
+	promptID := strings.TrimSpace(input.PromptID)
+	if promptID == "" || input.ExpectedVersion < 1 {
+		return nil, agentquickpromptbiz.ErrInvalidArgument
+	}
+	var beforePromptID *string
+	if input.BeforePromptID != nil {
+		trimmed := strings.TrimSpace(*input.BeforePromptID)
+		if trimmed == "" {
+			return nil, agentquickpromptbiz.ErrInvalidArgument
+		}
+		beforePromptID = &trimmed
+	}
+	now := s.now().UTC().UnixMilli()
+	prompts, changed, err := s.Store.MoveAgentQuickPrompt(ctx, promptID, beforePromptID, input.ExpectedVersion, now)
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		for _, prompt := range prompts {
+			if prompt.ID == promptID {
+				s.publish(ctx, agentquickpromptbiz.UpdatedEvent{
+					PromptID: prompt.ID, ChangeKind: agentquickpromptbiz.ChangeKindUpdated,
+					Version: prompt.Version, OccurredAtUnixMS: now,
+				})
+				break
+			}
+		}
+	}
+	return prompts, nil
 }
 
 func validateFields(title string, content string) (string, error) {

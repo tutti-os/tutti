@@ -4299,6 +4299,13 @@ type ModelPlanStatus string
 // ModelPlanTemplateKind Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
 type ModelPlanTemplateKind string
 
+// MoveAgentQuickPromptRequest defines model for MoveAgentQuickPromptRequest.
+type MoveAgentQuickPromptRequest struct {
+	BeforePromptId  *string `json:"beforePromptId"`
+	ExpectedVersion int64   `json:"expectedVersion"`
+	PromptId        string  `json:"promptId"`
+}
+
 // MoveUserProjectRequest defines model for MoveUserProjectRequest.
 type MoveUserProjectRequest struct {
 	BeforeProjectId *string `json:"beforeProjectId"`
@@ -5929,6 +5936,9 @@ type GetAgentProviderComposerOptionsJSONRequestBody = GetAgentProviderComposerOp
 
 // CreateAgentQuickPromptJSONRequestBody defines body for CreateAgentQuickPrompt for application/json ContentType.
 type CreateAgentQuickPromptJSONRequestBody = CreateAgentQuickPromptRequest
+
+// MoveAgentQuickPromptJSONRequestBody defines body for MoveAgentQuickPrompt for application/json ContentType.
+type MoveAgentQuickPromptJSONRequestBody = MoveAgentQuickPromptRequest
 
 // DeleteAgentQuickPromptJSONRequestBody defines body for DeleteAgentQuickPrompt for application/json ContentType.
 type DeleteAgentQuickPromptJSONRequestBody = DeleteAgentQuickPromptRequest

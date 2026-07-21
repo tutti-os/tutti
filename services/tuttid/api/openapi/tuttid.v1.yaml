@@ -421,6 +421,39 @@ paths:
           $ref: "#/components/responses/AgentQuickPromptOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-quick-prompts/move:
+    post:
+      operationId: moveAgentQuickPrompt
+      tags:
+        - agent-quick-prompt
+      summary: Move a device-local Agent quick prompt before an anchor or to the end
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveAgentQuickPromptRequest"
+      responses:
+        "200":
+          description: Authoritative Agent quick prompt order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentQuickPromptListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/AgentQuickPromptNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/AgentQuickPromptConflictError"
+        "502":
+          $ref: "#/components/responses/AgentQuickPromptOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/agent-quick-prompts/{promptId}:
     parameters:
       - name: promptId
@@ -4847,7 +4880,7 @@ components:
           schema:
             $ref: "#/components/schemas/ApiErrorResponse"
     AgentQuickPromptConflictError:
-      description: Agent quick prompt limit or expected version conflicts with current state
+      description: Agent quick prompt limit, expected version, or ordering anchor conflicts with current state
       content:
         application/json:
           schema:
@@ -10342,6 +10375,25 @@ components:
       required:
         - expectedVersion
       properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 1
+    MoveAgentQuickPromptRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - promptId
+        - beforePromptId
+        - expectedVersion
+      properties:
+        promptId:
+          type: string
+          minLength: 1
+        beforePromptId:
+          type: string
+          nullable: true
+          minLength: 1
         expectedVersion:
           type: integer
           format: int64

@@ -81,6 +81,7 @@ type AgentQuickPromptStore interface {
 	CreateAgentQuickPrompt(context.Context, agentquickpromptbiz.Prompt) error
 	UpdateAgentQuickPrompt(context.Context, agentquickpromptbiz.Prompt, int64) (agentquickpromptbiz.Prompt, error)
 	DeleteAgentQuickPrompt(context.Context, string, int64) error
+	MoveAgentQuickPrompt(context.Context, string, *string, int64, int64) ([]agentquickpromptbiz.Prompt, bool, error)
 }
 
 type PreferencesStore interface {
