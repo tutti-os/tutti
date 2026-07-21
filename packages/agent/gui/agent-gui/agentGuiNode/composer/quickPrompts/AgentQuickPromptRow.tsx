@@ -72,6 +72,7 @@ export function AgentQuickPromptRow({
                   aria-label={labels.dragHandle(prompt.title)}
                   className="cursor-grab text-[var(--text-tertiary)] hover:text-[var(--text-primary)] focus-visible:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:text-[var(--text-disabled)] disabled:opacity-100"
                   size="md"
+                  title=""
                 >
                   <GripVerticalIcon />
                 </BareIconButton>
@@ -115,6 +116,7 @@ export function AgentQuickPromptRow({
                 className={`mt-1.5 ${actionRevealClass}`}
                 disabled={pending}
                 size="md"
+                title=""
               >
                 <EditIcon />
               </BareIconButton>
@@ -129,6 +131,7 @@ export function AgentQuickPromptRow({
                 className={`mt-1.5 ${actionRevealClass}`}
                 disabled={pending}
                 size="md"
+                title=""
               >
                 <DeleteIcon />
               </BareIconButton>

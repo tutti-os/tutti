@@ -27,4 +27,17 @@ describe("BareIconButton", () => {
       screen.getByRole("button", { name: "Remove member" })
     ).toHaveAttribute("title", "Remove Ada");
   });
+
+  it("suppresses native hover title when title is empty", () => {
+    render(
+      <BareIconButton aria-label="Edit prompt" title="">
+        <span aria-hidden="true">E</span>
+      </BareIconButton>
+    );
+
+    expect(screen.getByRole("button", { name: "Edit prompt" })).toHaveAttribute(
+      "title",
+      ""
+    );
+  });
 });
