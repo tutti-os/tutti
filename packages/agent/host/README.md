@@ -59,9 +59,16 @@ historical sessions persist settings only, while live sessions update the
 runtime first and persist the resulting settings only after the runtime
 accepts the change. Provider-specific model, reasoning, and speed normalization
 stays behind `SettingsPolicy`. `UpdatePin` mutates canonical metadata only.
-`DeleteSession` closes a live runtime before writing the canonical tombstone;
-authorization, shared bindings, transport DTOs, and local view cleanup remain
-adapter responsibilities.
+`DeleteSession` and `DeleteSessions` enter one deletion coordinator. The
+canonical store first resolves the complete root/child closure; Host acquires
+the shared session-mutation actor and session locks in stable order, closes
+every live runtime in that closure, and commits only if the store resolves the
+same closure inside the write transaction. A changed child tree is replanned
+before any tombstone is written. Goal provider mutations use the same outer
+session-mutation actor, so clear/set/reconcile work cannot race session
+deletion. Post-commit runtime cleanup failures are reported separately from
+the committed delete result. Authorization, shared bindings, transport DTOs,
+and local view cleanup remain adapter responsibilities.
 
 `PurgeDeletedSessions` is the separate permanent-removal command for bounded
 batches of canonical tombstones. Host owns the command boundary and delegates

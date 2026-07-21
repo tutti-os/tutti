@@ -42,8 +42,10 @@ func (h *Host) StepGoalOperationWorker(ctx context.Context, recovering bool) err
 		}
 		op := operation
 		opCtx, cancel := context.WithTimeout(ctx, h.goalOperationAttemptTimeout())
-		err := h.withGoalActor(opCtx, op.WorkspaceID, op.AgentSessionID, func(actorCtx context.Context) error {
-			return h.recoverGoalOperation(actorCtx, op, recovering)
+		err := h.withSessionMutationActor(opCtx, op.WorkspaceID, op.AgentSessionID, func(commandCtx context.Context) error {
+			return h.withGoalActor(commandCtx, op.WorkspaceID, op.AgentSessionID, func(actorCtx context.Context) error {
+				return h.recoverGoalOperation(actorCtx, op, recovering)
+			})
 		})
 		cancel()
 		if err != nil && !errors.Is(err, ErrRuntimeOperationInProgress) {

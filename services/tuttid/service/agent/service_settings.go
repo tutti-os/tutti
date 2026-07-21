@@ -25,14 +25,14 @@ func (s *Service) clampReasoningEffortForModel(
 		model = composerDefaultModel(ctx, provider, "", s.ModelCatalog)
 	}
 	catalogOptions, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, "", model)
-	if !ok || !catalogOptions.ReasoningEffortsAdvertised {
+	if !ok || !catalogOptions.Selection.ReasoningEffortsAdvertised {
 		return normalizeReasoningEffortForProvider(provider, selected)
 	}
 	return resolveAdvertisedReasoningEffort(
 		provider,
 		selected,
-		catalogOptions.DefaultReasoningEffort,
-		catalogOptions.ReasoningEfforts,
+		catalogOptions.Selection.DefaultReasoningEffort,
+		catalogOptions.Selection.ReasoningEfforts,
 	)
 }
 

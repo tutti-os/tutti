@@ -209,6 +209,7 @@ test("activation intent owns the transport command and confirmation deadline", (
   assert.equal(pendingActivation?.status, "requested");
   assert.equal(pendingActivation?.displayPrompt, "/browser");
   assert.equal(pendingActivation?.optimisticTitle, "Review browser flow");
+  assert.equal(pendingActivation?.railSectionKey, "project:/workspace");
   assert.deepEqual(pendingActivation?.content, [
     { type: "text", text: "hello" }
   ]);
@@ -636,6 +637,7 @@ function activation() {
     expiresAtUnixMs: 120_000,
     initialDisplayPrompt: "/browser",
     optimisticTitle: "Review browser flow",
+    railSectionKey: "project:/workspace",
     runtimeContent: [{ type: "text" as const, text: "runtime instructions" }],
     submitDiagnostics: { submittedAtUnixMs: 1 },
     mode: "new" as const,

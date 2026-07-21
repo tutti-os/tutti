@@ -759,7 +759,7 @@ func (a *CodexAppServerAdapter) quiesceUnprovenGoalTurn(session Session, provide
 			)
 			_ = client.Close()
 		}
-		// The durable GoalActor is notified only after exact quiesce has
+		// The durable Host goal mutation lane is notified only after exact quiesce has
 		// completed. Failed quiesce is explicit evidence: the service attaches
 		// repair work and must not mark the observation converged.
 		if finalizeErr := a.reportGoalReconcileRequired(session, requestID, providerTurnID, reason, fenceMode, current, "finalized", quiesceErr); finalizeErr != nil {

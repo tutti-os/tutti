@@ -6,74 +6,82 @@ import (
 )
 
 type Config struct {
-	CanonicalStore       CanonicalStore
-	SessionManagement    SessionManagementStore
-	SessionPurge         SessionPurgeStore
-	Runtime              RuntimeController
-	RuntimePreparation   RuntimePreparationPort
-	SettingsPolicy       SettingsPolicy
-	Attachments          AttachmentMaterializer
-	Clock                Clock
-	SessionLocker        SessionLocker
-	RuntimeStartGate     RuntimeStartGate
-	LifecycleObserver    LifecycleObserver
-	CommitObserver       CommitObserver
-	RuntimeOperations    RuntimeOperationStore
-	OperationEvents      RuntimeOperationEventPublisher
-	OperationOwner       string
-	Scheduler            Scheduler
-	StaleTurnSettler     StaleTurnSettler
-	WorktreeGC           WorktreeGarbageCollector
-	GoalStore            GoalStateStore
-	GoalRuntime          GoalRuntimeController
-	GoalInbox            GoalReconcileInboxStore
-	GoalOwner            string
-	GoalClock            Clock
-	GoalAttemptTimeout   time.Duration
-	GoalRecoveryBudget   time.Duration
-	GoalMaxAttempts      int
-	GoalDispatchDeadline time.Duration
-	GoalActor            *GoalActor
+	CanonicalStore         CanonicalStore
+	SessionManagement      SessionManagementStore
+	SessionBatchManagement SessionBatchManagementStore
+	SessionPurge           SessionPurgeStore
+	Runtime                RuntimeController
+	RuntimePreparation     RuntimePreparationPort
+	SettingsPolicy         SettingsPolicy
+	Attachments            AttachmentMaterializer
+	Clock                  Clock
+	SessionLocker          SessionLocker
+	RuntimeStartGate       RuntimeStartGate
+	LifecycleObserver      LifecycleObserver
+	CommitObserver         CommitObserver
+	RuntimeOperations      RuntimeOperationStore
+	OperationEvents        RuntimeOperationEventPublisher
+	OperationOwner         string
+	Scheduler              Scheduler
+	StaleTurnSettler       StaleTurnSettler
+	WorktreeGC             WorktreeGarbageCollector
+	GoalStore              GoalStateStore
+	GoalRuntime            GoalRuntimeController
+	GoalInbox              GoalReconcileInboxStore
+	GoalOwner              string
+	GoalClock              Clock
+	GoalAttemptTimeout     time.Duration
+	GoalRecoveryBudget     time.Duration
+	GoalMaxAttempts        int
+	GoalDispatchDeadline   time.Duration
+	GoalActor              *SessionActor
+	SessionMutationActor   *SessionActor
 }
 
 type Host struct {
-	store                CanonicalStore
-	sessionManagement    SessionManagementStore
-	sessionPurge         SessionPurgeStore
-	runtime              RuntimeController
-	preparation          RuntimePreparationPort
-	settingsPolicy       SettingsPolicy
-	attachments          AttachmentMaterializer
-	clock                Clock
-	locker               SessionLocker
-	startupGate          RuntimeStartGate
-	observer             LifecycleObserver
-	commitObserver       CommitObserver
-	operations           RuntimeOperationStore
-	events               RuntimeOperationEventPublisher
-	owner                string
-	scheduler            Scheduler
-	staleTurns           StaleTurnSettler
-	worktreeGC           WorktreeGarbageCollector
-	goals                GoalStateStore
-	goalRuntime          GoalRuntimeController
-	goalInbox            GoalReconcileInboxStore
-	goalOwner            string
-	goalClock            Clock
-	goalAttemptTimeout   time.Duration
-	goalRecoveryBudget   time.Duration
-	goalMaxAttempts      int
-	goalDispatchDeadline time.Duration
-	goalActor            *GoalActor
+	store                  CanonicalStore
+	sessionManagement      SessionManagementStore
+	sessionBatchManagement SessionBatchManagementStore
+	sessionPurge           SessionPurgeStore
+	runtime                RuntimeController
+	preparation            RuntimePreparationPort
+	settingsPolicy         SettingsPolicy
+	attachments            AttachmentMaterializer
+	clock                  Clock
+	locker                 SessionLocker
+	startupGate            RuntimeStartGate
+	observer               LifecycleObserver
+	commitObserver         CommitObserver
+	operations             RuntimeOperationStore
+	events                 RuntimeOperationEventPublisher
+	owner                  string
+	scheduler              Scheduler
+	staleTurns             StaleTurnSettler
+	worktreeGC             WorktreeGarbageCollector
+	goals                  GoalStateStore
+	goalRuntime            GoalRuntimeController
+	goalInbox              GoalReconcileInboxStore
+	goalOwner              string
+	goalClock              Clock
+	goalAttemptTimeout     time.Duration
+	goalRecoveryBudget     time.Duration
+	goalMaxAttempts        int
+	goalDispatchDeadline   time.Duration
+	goalActor              *SessionActor
+	sessionMutationActor   *SessionActor
 }
 
 func New(config Config) *Host {
 	goalActor := config.GoalActor
 	if goalActor == nil {
-		goalActor = NewGoalActor()
+		goalActor = NewSessionActor()
+	}
+	sessionMutationActor := config.SessionMutationActor
+	if sessionMutationActor == nil {
+		sessionMutationActor = NewSessionActor()
 	}
 	host := &Host{
-		store: config.CanonicalStore, sessionManagement: config.SessionManagement, sessionPurge: config.SessionPurge, runtime: config.Runtime,
+		store: config.CanonicalStore, sessionManagement: config.SessionManagement, sessionBatchManagement: config.SessionBatchManagement, sessionPurge: config.SessionPurge, runtime: config.Runtime,
 		preparation: config.RuntimePreparation, settingsPolicy: config.SettingsPolicy, attachments: config.Attachments,
 		clock: config.Clock, locker: config.SessionLocker, startupGate: config.RuntimeStartGate,
 		observer: config.LifecycleObserver, commitObserver: config.CommitObserver,
@@ -84,7 +92,7 @@ func New(config Config) *Host {
 		goalOwner: config.GoalOwner, goalClock: config.GoalClock,
 		goalAttemptTimeout: config.GoalAttemptTimeout, goalRecoveryBudget: config.GoalRecoveryBudget,
 		goalMaxAttempts: config.GoalMaxAttempts, goalDispatchDeadline: config.GoalDispatchDeadline,
-		goalActor: goalActor,
+		goalActor: goalActor, sessionMutationActor: sessionMutationActor,
 	}
 	if host.operations != nil && host.commitObserver != nil {
 		host.operations = &observedRuntimeOperationStore{RuntimeOperationStore: host.operations, host: host}

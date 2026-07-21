@@ -539,22 +539,6 @@ func (p *ActivityProjection) ListSessionSections(
 	return p.repo.ListSessionSections(ctx, input)
 }
 
-func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
-	if p == nil || p.repo == nil {
-		return false, nil
-	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	agentSessionID = strings.TrimSpace(agentSessionID)
-	result, err := p.repo.DeleteSessionWithCommit(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		return false, err
-	}
-	if result.RemovedSessions > 0 {
-		agenthost.NotifyCommitted(ctx, p, agenthost.CanonicalDelta(result.CommitDelta))
-	}
-	return result.RemovedSessions > 0, nil
-}
-
 func (p *ActivityProjection) RollbackRuntimeSessionInitialization(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	if p == nil || p.repo == nil {
 		return false, nil
@@ -608,6 +592,16 @@ func (p *ActivityProjection) DeleteSessionsBatch(
 		agenthost.NotifyCommitted(ctx, p, agenthost.CanonicalDelta(result.CommitDelta))
 	}
 	return result, nil
+}
+
+func (p *ActivityProjection) PlanDeleteSessions(
+	ctx context.Context,
+	input agentactivitybiz.DeleteSessionsBatchInput,
+) (agentactivitybiz.DeleteSessionsPlan, error) {
+	if p == nil || p.repo == nil {
+		return agentactivitybiz.DeleteSessionsPlan{}, nil
+	}
+	return p.repo.PlanDeleteSessions(ctx, input)
 }
 
 func (p *ActivityProjection) ClearSessions(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {

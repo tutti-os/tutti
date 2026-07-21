@@ -153,19 +153,6 @@ func (t *strictCodexHandshakeTransport) Read(p []byte) (int, error) {
 	return copy(p, response), nil
 }
 
-func TestNormalizeCodexModelPreservesAdvertisedEmptyReasoningEfforts(t *testing.T) {
-	model, ok := normalizeCodexModel([]byte(`{"id":"no-reasoning","supportedReasoningEfforts":[]}`))
-	if !ok {
-		t.Fatal("normalizeCodexModel ok = false")
-	}
-	if !model.ReasoningEffortsAdvertised {
-		t.Fatal("ReasoningEffortsAdvertised = false, want true")
-	}
-	if model.SupportedReasoningEfforts == nil || len(model.SupportedReasoningEfforts) != 0 {
-		t.Fatalf("SupportedReasoningEfforts = %#v, want advertised empty list", model.SupportedReasoningEfforts)
-	}
-}
-
 func TestCodexCLIModelListerResolvesCodexFromKnownUserBin(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".local", "bin")

@@ -488,6 +488,7 @@ The reusable standalone-tool sidebar contract lives in `packages/agent/gui/workb
 ```text
 home composer submit
   -> engine pending activation + optimistic Session/message
+     (including the resolved immutable railSectionKey)
   -> Host CreateSession(initial content, clientSubmitId)
   -> provisional runtime + canonical transaction
   -> first Turn accepted
@@ -495,6 +496,10 @@ home composer submit
 ```
 
 Initial-content create is one transaction. Failure compensates the provisional runtime/canonical shell; it must not leave a Turn-less Session.
+The pending activation carries the same resolved project section key as the
+create command. Exact rail projection therefore shows the conversation as soon
+as the intent is accepted; it does not wait for provider startup or invent a
+temporary catch-all section.
 
 ### 7.2 Existing conversation submit
 

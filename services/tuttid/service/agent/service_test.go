@@ -2694,6 +2694,7 @@ func TestServiceGetSkillBundleRequiresRenderer(t *testing.T) {
 func TestServiceDeleteCleansPreparedRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
+	installFakeCanonicalSessionStore(service)
 	cleanupCalls := make([]runtimeprep.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result:       runtimeprep.PreparedRuntime{Cwd: "/prepared/workdir"},
@@ -2715,7 +2716,7 @@ func TestServiceDeleteCleansPreparedRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}
-	if !removed {
+	if !removed.Removed {
 		t.Fatal("Delete removed = false, want true")
 	}
 	if len(cleanupCalls) != 1 {
@@ -5259,6 +5260,7 @@ func TestServiceDeleteSessionsBatchClosesAllRuntimesBeforePersistence(t *testing
 	}}
 	service := newIsolatedAgentService(runtime)
 	service.SessionReader = reader
+	service.AgentSessionResourceReleaser = &fakeAgentSessionResourceReleaser{err: errors.New("release browser resources")}
 
 	result, err := service.DeleteSessionsBatch(context.Background(), "ws-1", DeleteSessionsBatchInput{
 		SessionIDs: []string{" session-1 ", "session-2"},
@@ -5269,7 +5271,7 @@ func TestServiceDeleteSessionsBatchClosesAllRuntimesBeforePersistence(t *testing
 	if len(runtime.closeCalls) != 2 || reader.batchDeleteCalls != 1 || !slices.Equal(reader.lastBatchDeleteInput.SessionIDs, []string{"session-1", "session-2"}) {
 		t.Fatalf("close calls=%#v batch input=%#v calls=%d", runtime.closeCalls, reader.lastBatchDeleteInput, reader.batchDeleteCalls)
 	}
-	if result.RemovedSessions != 2 {
+	if result.RemovedSessions != 2 || !slices.Equal(result.CleanupFailedSessionIDs, []string{"session-1", "session-2"}) {
 		t.Fatalf("result = %#v", result)
 	}
 }
@@ -5373,11 +5375,31 @@ func TestServiceDeletesPersistedSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}
-	if !removed {
+	if !removed.Removed {
 		t.Fatal("Delete removed = false, want true")
 	}
 	if _, err := service.Get(context.Background(), "ws-1", "session-1"); err != ErrSessionNotFound {
 		t.Fatalf("Get after delete error = %v, want %v", err, ErrSessionNotFound)
+	}
+	if !slices.Equal(releaser.released, []string{"session-1"}) {
+		t.Fatalf("released Agent resources = %#v", releaser.released)
+	}
+}
+
+func TestServiceDeleteReportsPostCommitCleanupFailure(t *testing.T) {
+	service := newIsolatedAgentService(newFakeRuntime())
+	releaser := &fakeAgentSessionResourceReleaser{err: errors.New("release browser resources")}
+	service.AgentSessionResourceReleaser = releaser
+	service.SessionReader = fakeSessionReader{sessions: map[string]PersistedSession{
+		"ws-1:session-1": {ID: "session-1", WorkspaceID: "ws-1", Provider: "codex"},
+	}}
+
+	result, err := service.Delete(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+	if !result.Removed || !result.CleanupFailed {
+		t.Fatalf("Delete result = %#v, want committed delete with cleanup failure", result)
 	}
 	if !slices.Equal(releaser.released, []string{"session-1"}) {
 		t.Fatalf("released Agent resources = %#v", releaser.released)
@@ -5406,6 +5428,9 @@ func TestServiceDeleteNormalizesWrappedRuntimeSessionNotFound(t *testing.T) {
 	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{ID: "session-1", WorkspaceID: "ws-1"}
 	runtime.closeErr = fmt.Errorf("runtime close: %w", ErrSessionNotFound)
 	service := newIsolatedAgentService(runtime)
+	service.SessionReader = &fakeSessionReader{sessions: map[string]PersistedSession{
+		"ws-1:session-1": {ID: "session-1", WorkspaceID: "ws-1"},
+	}}
 
 	_, err := service.Delete(context.Background(), "ws-1", "session-1")
 	if err != ErrSessionNotFound {
@@ -5416,6 +5441,7 @@ func TestServiceDeleteNormalizesWrappedRuntimeSessionNotFound(t *testing.T) {
 func TestServiceDeleteClosesRuntimeSession(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
+	installFakeCanonicalSessionStore(service)
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
@@ -5429,7 +5455,7 @@ func TestServiceDeleteClosesRuntimeSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}
-	if !removed {
+	if !removed.Removed {
 		t.Fatal("Delete removed = false, want true")
 	}
 	if len(runtime.closeCalls) != 1 || runtime.closeCalls[0].AgentSessionID != session.ID {
@@ -5687,7 +5713,7 @@ func TestServiceTypedGoalUsesDurableSagaBeforeTurnSubmit(t *testing.T) {
 	}
 }
 
-func TestGoalActorSlowRevisionOneResultCannotOverwriteRevisionTwoClear(t *testing.T) {
+func TestGoalSessionMutationLaneOrdersSlowSetBeforeClear(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)
 	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-goal-actor", Name: "Goal Actor"}); err != nil {
@@ -5732,48 +5758,40 @@ func TestGoalActorSlowRevisionOneResultCannotOverwriteRevisionTwoClear(t *testin
 		setDone <- goalCallResult{result: result, err: err}
 	}()
 	<-setStarted
-	clearResult, err := service.GoalControl(ctx, "ws-goal-actor", "session-goal-actor", "clear", "")
-	if err != nil {
-		t.Fatalf("clear while set RPC is slow: %v", err)
-	}
+	clearDone := make(chan goalCallResult, 1)
+	go func() {
+		result, err := service.GoalControl(ctx, "ws-goal-actor", "session-goal-actor", "clear", "")
+		clearDone <- goalCallResult{result: result, err: err}
+	}()
 	close(releaseSet)
 	setCall := <-setDone
 	if setCall.err != nil {
 		t.Fatalf("slow set completion: %v", setCall.err)
 	}
+	clearCall := <-clearDone
+	if clearCall.err != nil {
+		t.Fatalf("ordered clear: %v", clearCall.err)
+	}
 	state, found, err := store.GetSessionGoalState(ctx, "ws-goal-actor", "session-goal-actor")
 	if err != nil || !found || state.Revision != 2 || !state.Tombstoned || len(state.Desired) != 0 ||
-		state.SyncStatus != agentactivitybiz.GoalSyncStatusPending || state.PendingOperationID == "" {
+		state.SyncStatus != agentactivitybiz.GoalSyncStatusSynced || state.PendingOperationID != "" {
 		t.Fatalf("current state=%#v found=%v error=%v", state, found, err)
 	}
-	if setCall.result.Goal != nil || setCall.result.GoalState == nil || setCall.result.GoalState.Revision != 2 {
-		t.Fatalf("stale response leaked revision one: %#v", setCall.result)
+	if setCall.result.GoalState == nil || setCall.result.GoalState.Revision != 1 {
+		t.Fatalf("set result=%#v, want revision one", setCall.result)
 	}
-	if clearResult.OperationID == "" {
+	if clearCall.result.OperationID == "" {
 		t.Fatal("clear operation id is empty")
 	}
 	runtime.mu.Lock()
 	calls := append([]RuntimeGoalControlInput(nil), runtime.goalControlCalls...)
 	runtime.mu.Unlock()
 	if len(calls) != 2 || calls[0].Action != "set" || calls[1].Action != "clear" {
-		t.Fatalf("provider calls before worker=%#v, want no synchronous compensation", calls)
-	}
-	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
-		t.Fatalf("run durable repair: %v", err)
-	}
-	state, found, err = store.GetSessionGoalState(ctx, "ws-goal-actor", "session-goal-actor")
-	if err != nil || !found || state.SyncStatus != agentactivitybiz.GoalSyncStatusSynced || state.PendingOperationID != "" {
-		t.Fatalf("repaired state=%#v found=%v error=%v", state, found, err)
-	}
-	runtime.mu.Lock()
-	calls = append([]RuntimeGoalControlInput(nil), runtime.goalControlCalls...)
-	runtime.mu.Unlock()
-	if len(calls) != 3 || calls[2].Action != "clear" {
-		t.Fatalf("provider calls after worker=%#v, want durable clear repair", calls)
+		t.Fatalf("provider calls=%#v, want ordered set then clear", calls)
 	}
 }
 
-func TestGoalActorAmbiguousOldErrorSchedulesDurableRepairOfNewerRevision(t *testing.T) {
+func TestGoalSessionMutationLaneRunsClearAfterAmbiguousSetFailure(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)
 	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-goal-error", Name: "Goal Error"}); err != nil {
@@ -5808,29 +5826,22 @@ func TestGoalActorAmbiguousOldErrorSchedulesDurableRepairOfNewerRevision(t *test
 		setDone <- err
 	}()
 	<-setStarted
-	if _, err := service.GoalControl(ctx, "ws-goal-error", "session-goal-error", "clear", ""); err != nil {
-		t.Fatalf("newer clear: %v", err)
-	}
 	close(releaseSet)
 	if err := <-setDone; err == nil {
 		t.Fatal("ambiguous old provider result unexpectedly succeeded")
 	}
+	if _, err := service.GoalControl(ctx, "ws-goal-error", "session-goal-error", "clear", ""); err != nil {
+		t.Fatalf("clear after failed set: %v", err)
+	}
 	state, found, err := store.GetSessionGoalState(ctx, "ws-goal-error", "session-goal-error")
-	if err != nil || !found || state.Revision != 2 || state.PendingOperationID == "" || state.SyncStatus != agentactivitybiz.GoalSyncStatusPending {
-		t.Fatalf("durable repair state=%#v found=%v err=%v", state, found, err)
-	}
-	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
-		t.Fatalf("repair ambiguous old result: %v", err)
-	}
-	state, found, err = store.GetSessionGoalState(ctx, "ws-goal-error", "session-goal-error")
-	if err != nil || !found || state.PendingOperationID != "" || state.SyncStatus != agentactivitybiz.GoalSyncStatusSynced {
-		t.Fatalf("repaired state=%#v found=%v err=%v", state, found, err)
+	if err != nil || !found || state.Revision != 2 || state.PendingOperationID != "" || state.SyncStatus != agentactivitybiz.GoalSyncStatusSynced || !state.Tombstoned {
+		t.Fatalf("cleared state=%#v found=%v err=%v", state, found, err)
 	}
 	runtime.mu.Lock()
 	calls := append([]RuntimeGoalControlInput(nil), runtime.goalControlCalls...)
 	runtime.mu.Unlock()
-	if len(calls) != 3 || calls[0].Action != "set" || calls[1].Action != "clear" || calls[2].Action != "clear" {
-		t.Fatalf("provider calls=%#v, want set, clear, durable clear repair", calls)
+	if len(calls) != 2 || calls[0].Action != "set" || calls[1].Action != "clear" {
+		t.Fatalf("provider calls=%#v, want set then clear", calls)
 	}
 }
 
@@ -7169,6 +7180,18 @@ func newTestService(runtime RuntimeController) *Service {
 	return service
 }
 
+func installFakeCanonicalSessionStore(service *Service) {
+	reader := &fakeSessionReader{
+		sessions:    map[string]PersistedSession{},
+		tombstoned:  map[string]bool{},
+		deletedAt:   map[string]int64{},
+		parentByKey: map[string]string{},
+		children:    map[string][]PersistedSession{},
+	}
+	service.SessionInitializer = fakeSessionInitializer{reader: reader}
+	service.SessionReader = reader
+}
+
 func seedPersistedLiveSettingsSession(service *Service, session ProviderRuntimeSession) {
 	settings := ComposerSettings{}
 	if session.Settings != nil {
@@ -7228,7 +7251,8 @@ type fakeSessionReader struct {
 }
 
 type fakeSessionInitializer struct {
-	err error
+	err    error
+	reader *fakeSessionReader
 }
 
 func (f fakeSessionInitializer) InitializeRuntimeSession(
@@ -7239,7 +7263,7 @@ func (f fakeSessionInitializer) InitializeRuntimeSession(
 		return PersistedSession{}, f.err
 	}
 	settings := cloneComposerSettingsPointerValue(session.Settings)
-	return PersistedSession{
+	persisted := PersistedSession{
 		ID:                     strings.TrimSpace(session.ID),
 		WorkspaceID:            strings.TrimSpace(session.WorkspaceID),
 		Kind:                   agentactivitybiz.SessionKindRoot,
@@ -7258,16 +7282,21 @@ func (f fakeSessionInitializer) InitializeRuntimeSession(
 		StartedAtUnixMS:        session.CreatedAtUnixMS,
 		CreatedAtUnixMS:        session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:        session.UpdatedAtUnixMS,
-	}, nil
+	}
+	if f.reader != nil {
+		f.reader.sessions[persisted.WorkspaceID+":"+persisted.ID] = persisted
+	}
+	return persisted, nil
 }
 
 type fakeAgentSessionResourceReleaser struct {
 	released []string
+	err      error
 }
 
 func (f *fakeAgentSessionResourceReleaser) ReleaseAgent(_ context.Context, agentSessionID string) error {
 	f.released = append(f.released, agentSessionID)
-	return nil
+	return f.err
 }
 
 type fakeSectionReader struct {
@@ -7347,6 +7376,10 @@ func (f *fakeSectionReader) DeleteSessionsBatch(_ context.Context, input agentac
 	f.batchDeleteCalls++
 	f.lastBatchDeleteInput = input
 	return f.batchDeleteResult, f.batchDeleteErr
+}
+
+func (f *fakeSectionReader) PlanDeleteSessions(_ context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error) {
+	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: input.WorkspaceID, SessionIDs: input.SessionIDs}, nil
 }
 
 type fakeUserProjectReader struct {
@@ -7669,13 +7702,28 @@ func (f *fakeSessionReader) UpdateSessionPinned(_ context.Context, workspaceID s
 	return session, true, nil
 }
 
-func (f fakeSessionReader) DeleteSession(_ context.Context, workspaceID string, agentSessionID string) (bool, error) {
-	key := workspaceID + ":" + agentSessionID
-	if _, ok := f.sessions[key]; !ok {
-		return false, nil
+func (f fakeSessionReader) PlanDeleteSessions(_ context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error) {
+	ids := make([]string, 0, len(input.SessionIDs))
+	for _, sessionID := range input.SessionIDs {
+		if _, ok := f.sessions[input.WorkspaceID+":"+sessionID]; ok {
+			ids = append(ids, sessionID)
+		}
 	}
-	delete(f.sessions, key)
-	return true, nil
+	slices.Sort(ids)
+	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: input.WorkspaceID, SessionIDs: ids}, nil
+}
+
+func (f fakeSessionReader) DeleteSessionsBatch(_ context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
+	removed := make([]string, 0, len(input.ExpectedSessionIDs))
+	for _, sessionID := range input.ExpectedSessionIDs {
+		key := input.WorkspaceID + ":" + sessionID
+		if _, ok := f.sessions[key]; !ok {
+			continue
+		}
+		delete(f.sessions, key)
+		removed = append(removed, sessionID)
+	}
+	return agentactivitybiz.DeleteSessionsBatchResult{RemovedSessions: len(removed), RemovedSessionIDs: removed}, nil
 }
 
 func (f fakeSessionReader) ClearSessions(_ context.Context, workspaceID string) (ClearSessionsResult, error) {
@@ -7861,10 +7909,6 @@ func (r *activityProjectionRepoStub) ClearSessions(context.Context, string) (age
 	return r.clearResult, nil
 }
 
-func (*activityProjectionRepoStub) DeleteSessionWithCommit(context.Context, string, string) (agentactivitybiz.DeleteSessionResult, error) {
-	return agentactivitybiz.DeleteSessionResult{}, nil
-}
-
 func (*activityProjectionRepoStub) GetSession(context.Context, string, string) (agentactivitybiz.Session, bool, error) {
 	return agentactivitybiz.Session{}, false, nil
 }
@@ -7895,6 +7939,10 @@ func (*activityProjectionRepoStub) ListSessionSectionDeletionCandidates(context.
 
 func (*activityProjectionRepoStub) DeleteSessionsBatch(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
 	return agentactivitybiz.DeleteSessionsBatchResult{}, nil
+}
+
+func (*activityProjectionRepoStub) PlanDeleteSessions(_ context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error) {
+	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: input.WorkspaceID, SessionIDs: input.SessionIDs}, nil
 }
 
 func (r *activityProjectionRepoStub) ListSessionMessages(context.Context, agentactivitybiz.ListSessionMessagesInput) (agentactivitybiz.MessagePage, bool, error) {

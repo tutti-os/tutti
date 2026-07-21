@@ -223,6 +223,9 @@ function requestActivation(
     expiresAtUnixMs: intent.expiresAtUnixMs,
     initialTurnExpected:
       intent.initialTurnExpected ?? runtimeContent.length > 0,
+    ...(intent.railSectionKey?.trim()
+      ? { railSectionKey: intent.railSectionKey.trim() }
+      : {}),
     ...(intent.submitDiagnostics
       ? { submitDiagnostics: { ...intent.submitDiagnostics } }
       : {}),

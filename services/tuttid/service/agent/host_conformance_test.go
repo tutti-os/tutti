@@ -680,7 +680,7 @@ func (d *legacyHostConformanceDriver) DeleteSession(ctx context.Context, ref age
 	_, persisted := d.sessions.GetSession(ref.WorkspaceID, ref.AgentSessionID)
 	deleted, err := d.service.Delete(ctx, ref.WorkspaceID, ref.AgentSessionID)
 	return agenthost.DeleteSessionResult{
-		Deleted: deleted, RuntimeClosed: live && deleted, CanonicalRemoved: persisted && deleted,
+		Deleted: deleted.Removed, RuntimeClosed: live && deleted.Removed, CanonicalRemoved: persisted && deleted.Removed,
 	}, err
 }
 

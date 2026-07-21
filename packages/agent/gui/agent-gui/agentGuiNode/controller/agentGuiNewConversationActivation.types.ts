@@ -31,6 +31,9 @@ export interface UseAgentGUINewConversationActivationInput {
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
   selectedProjectPathRef: RefObject<string | null>;
+  userProjectsRef: RefObject<
+    import("../../../host/agentHostApi").AgentHostUserProject[]
+  >;
   draftByScopeKeyRef: RefObject<Record<string, AgentComposerDraft>>;
   submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
   draftSettingsBySessionIdRef: RefObject<

@@ -93,7 +93,7 @@ type stubAgentSessionService struct {
 	clearFn                         func(context.Context, string) (agentservice.ClearSessionsResult, error)
 	composerOptionsFn               func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	createFn                        func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
-	deleteFn                        func(context.Context, string, string) (bool, error)
+	deleteFn                        func(context.Context, string, string) (agentservice.DeleteSessionResult, error)
 	listSectionDeletionCandidatesFn func(context.Context, string, agentservice.ListSessionSectionDeletionCandidatesInput) (agentservice.SessionSectionDeletionCandidates, error)
 	deleteSessionsBatchFn           func(context.Context, string, agentservice.DeleteSessionsBatchInput) (agentservice.DeleteSessionsBatchResult, error)
 	importExternalFn                func(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
@@ -388,9 +388,9 @@ func (s stubAgentSessionService) ApplyGitPatchForPath(ctx context.Context, works
 	return agentservice.ApplyGitPatchResult{}, nil
 }
 
-func (s stubAgentSessionService) Delete(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
+func (s stubAgentSessionService) Delete(ctx context.Context, workspaceID string, agentSessionID string) (agentservice.DeleteSessionResult, error) {
 	if s.deleteFn == nil {
-		return true, nil
+		return agentservice.DeleteSessionResult{Removed: true}, nil
 	}
 	return s.deleteFn(ctx, workspaceID, agentSessionID)
 }
@@ -1124,9 +1124,10 @@ func TestDaemonAPIGeneratedRoutesDeleteAgentSessionsBatchForwardsExactIDs(t *tes
 					t.Fatalf("delete input = %#v, want exact session IDs", input)
 				}
 				return agentservice.DeleteSessionsBatchResult{
-					RemovedMessages:   5,
-					RemovedSessions:   2,
-					RemovedSessionIDs: []string{"session-1", "session-2"},
+					RemovedMessages:         5,
+					RemovedSessions:         2,
+					RemovedSessionIDs:       []string{"session-1", "session-2"},
+					CleanupFailedSessionIDs: []string{"session-2"},
 				}, nil
 			},
 		},
@@ -1145,6 +1146,11 @@ func TestDaemonAPIGeneratedRoutesDeleteAgentSessionsBatchForwardsExactIDs(t *tes
 	var response tuttigenerated.DeleteWorkspaceAgentSessionsBatchResponse
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode response error = %v", err)
+	}
+	if response.RemovedMessages != 5 || response.RemovedSessions != 2 ||
+		!slices.Equal(response.RemovedSessionIds, []string{"session-1", "session-2"}) ||
+		!slices.Equal(response.CleanupFailedSessionIds, []string{"session-2"}) {
+		t.Fatalf("response = %#v", response)
 	}
 	if response.RemovedSessions != 2 || !slices.Equal(response.RemovedSessionIds, []string{"session-1", "session-2"}) {
 		t.Fatalf("response = %#v", response)
@@ -1973,14 +1979,14 @@ func TestDaemonAPIGeneratedRoutesDeleteAgentSession(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		AgentSessionService: stubAgentSessionService{
-			deleteFn: func(_ context.Context, workspaceID string, agentSessionID string) (bool, error) {
+			deleteFn: func(_ context.Context, workspaceID string, agentSessionID string) (agentservice.DeleteSessionResult, error) {
 				if workspaceID != "ws-1" {
 					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
 				}
 				if agentSessionID != "agent-session-1" {
 					t.Fatalf("agentSessionID = %q, want agent-session-1", agentSessionID)
 				}
-				return true, nil
+				return agentservice.DeleteSessionResult{Removed: true, CleanupFailed: true}, nil
 			},
 		},
 	}))
@@ -2000,6 +2006,9 @@ func TestDaemonAPIGeneratedRoutesDeleteAgentSession(t *testing.T) {
 	decodeGeneratedRouteResponse(t, recorder, &response)
 	if !response.Removed {
 		t.Fatal("removed = false, want true")
+	}
+	if !response.CleanupFailed {
+		t.Fatal("cleanupFailed = false, want true")
 	}
 }
 

@@ -9823,8 +9823,11 @@ components:
       additionalProperties: false
       required:
         - removed
+        - cleanupFailed
       properties:
         removed:
+          type: boolean
+        cleanupFailed:
           type: boolean
     WorkspaceAgentSessionSectionDeletionCandidatesResponse:
       type: object
@@ -9872,6 +9875,7 @@ components:
         - removedMessages
         - removedSessions
         - removedSessionIds
+        - cleanupFailedSessionIds
       properties:
         removedMessages:
           type: integer
@@ -9880,6 +9884,11 @@ components:
           type: integer
           minimum: 0
         removedSessionIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        cleanupFailedSessionIds:
           type: array
           items:
             type: string

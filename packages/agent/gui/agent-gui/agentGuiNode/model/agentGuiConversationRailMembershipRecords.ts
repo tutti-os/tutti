@@ -32,7 +32,7 @@ export function projectConversationRailMembershipRecords(
         id: record.agentSessionId,
         pinnedAtUnixMs: null,
         projectionSource: "pending_activation" as const,
-        railSectionKey: null,
+        railSectionKey: record.railSectionKey?.trim() || null,
         title: record.title ?? ""
       }))
   ];

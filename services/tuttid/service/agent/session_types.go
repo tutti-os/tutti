@@ -271,10 +271,16 @@ type DeleteSessionsBatchInput struct {
 	SessionIDs []string
 }
 
+type DeleteSessionResult struct {
+	Removed       bool
+	CleanupFailed bool
+}
+
 type DeleteSessionsBatchResult struct {
-	RemovedMessages   int
-	RemovedSessions   int
-	RemovedSessionIDs []string
+	RemovedMessages         int
+	RemovedSessions         int
+	RemovedSessionIDs       []string
+	CleanupFailedSessionIDs []string
 }
 
 type ListPinnedSessionPageInput struct {
@@ -389,6 +395,7 @@ type SessionSectionDeletionCandidateReader interface {
 }
 
 type SessionBatchDeleter interface {
+	PlanDeleteSessions(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error)
 	DeleteSessionsBatch(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error)
 }
 
@@ -408,10 +415,6 @@ type SessionClearer interface {
 
 type AgentSessionResourceReleaser interface {
 	ReleaseAgent(context.Context, string) error
-}
-
-type SessionDeleter interface {
-	DeleteSession(context.Context, string, string) (bool, error)
 }
 
 type SessionPinUpdater interface {

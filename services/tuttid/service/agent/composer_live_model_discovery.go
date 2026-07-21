@@ -294,11 +294,8 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 			s.setComposerRuntimeContextForScope(scope, time.Now().UTC(), runtimeContext)
 		}
 		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), liveModelDiscoveryLifecycleTimeout)
-		_, cleanupErr := s.Delete(cleanupCtx, scope.workspaceID, session.ID)
+		cleanupErr := s.cleanupLiveModelDiscoveryRuntime(cleanupCtx, scope.workspaceID, session.ID)
 		cancelCleanup()
-		if errors.Is(cleanupErr, ErrSessionNotFound) {
-			cleanupErr = nil
-		}
 		if cleanupErr == nil {
 			s.untrackLiveModelDiscoverySession(scope.workspaceID, session.ID)
 		} else {
@@ -338,10 +335,22 @@ func (s *Service) scheduleLiveModelDiscoveryDelete(workspaceID string, agentSess
 	time.AfterFunc(delay, func() {
 		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), liveModelDiscoveryLifecycleTimeout)
 		defer cancelCleanup()
-		if _, err := s.Delete(cleanupCtx, workspaceID, agentSessionID); err == nil || errors.Is(err, ErrSessionNotFound) {
+		if err := s.cleanupLiveModelDiscoveryRuntime(cleanupCtx, workspaceID, agentSessionID); err == nil {
 			s.untrackLiveModelDiscoverySession(workspaceID, agentSessionID)
 		}
 	})
+}
+
+func (s *Service) cleanupLiveModelDiscoveryRuntime(ctx context.Context, workspaceID, agentSessionID string) error {
+	if _, live := s.controller().Session(workspaceID, agentSessionID); live {
+		err := normalizeRuntimeError(s.controller().Close(ctx, RuntimeCloseInput{
+			WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+		}))
+		if err != nil && !errors.Is(err, ErrSessionNotFound) {
+			return err
+		}
+	}
+	return s.cleanupRuntime(ctx, workspaceID, agentSessionID)
 }
 
 func (s *Service) liveModelDiscoveryDeleteDelay() time.Duration {

@@ -172,7 +172,7 @@ func resolveAdvertisedReasoningEffort(
 	return firstValue
 }
 
-func composerReasoningOptionValuesToRuntimeOptions(
+func composerConfigOptionValuesToRuntimeOptions(
 	options []ComposerConfigOptionValue,
 ) []map[string]string {
 	result := make([]map[string]string, 0, len(options))

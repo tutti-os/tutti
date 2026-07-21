@@ -2,6 +2,7 @@ package storesqlite
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -131,6 +132,26 @@ func TestDeleteSessionsBatchExpandsChildSessionTree(t *testing.T) {
 	for _, sessionID := range []string{"root", "child-1", "child-2"} {
 		if !containsString(result.RemovedSessionIDs, sessionID) {
 			t.Fatalf("removed session ids=%#v, want %s", result.RemovedSessionIDs, sessionID)
+		}
+	}
+}
+
+func TestDeleteSessionsBatchRejectsChangedDeletionPlan(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	seedChildSessionTree(t, store)
+
+	_, err := store.DeleteSessionsBatch(context.Background(), DeleteSessionsBatchInput{
+		WorkspaceID:        "ws-1",
+		SessionIDs:         []string{"root"},
+		ExpectedSessionIDs: []string{"root"},
+	})
+	if !errors.Is(err, ErrDeleteSessionsPlanChanged) {
+		t.Fatalf("DeleteSessionsBatch() error = %v, want plan changed", err)
+	}
+	for _, sessionID := range []string{"root", "child-1", "child-2"} {
+		if deleted, lookupErr := store.SessionDeleted(context.Background(), "ws-1", sessionID); lookupErr != nil || deleted {
+			t.Fatalf("SessionDeleted(%s)=%v err=%v after rejected plan", sessionID, deleted, lookupErr)
 		}
 	}
 }

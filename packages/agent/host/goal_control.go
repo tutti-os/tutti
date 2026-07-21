@@ -91,6 +91,31 @@ func (h *Host) goalControl(
 	ctx context.Context,
 	input GoalControlInput,
 ) (GoalControlResult, error) {
+	if h == nil {
+		return GoalControlResult{}, ErrInvalidArgument
+	}
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return GoalControlResult{}, ErrInvalidArgument
+	}
+	var result GoalControlResult
+	err := h.withSessionMutationActor(ctx, workspaceID, agentSessionID, func(actorCtx context.Context) error {
+		var commandErr error
+		result, commandErr = h.goalControlSerialized(actorCtx, input)
+		return commandErr
+	})
+	return result, err
+}
+
+// goalControlSerialized keeps the provider mutation and its durable revision
+// transition in one per-session command lane. A clear submitted immediately
+// after set must reach the provider after set; revision repair alone cannot
+// prevent the older provider call from temporarily resurrecting a goal.
+func (h *Host) goalControlSerialized(
+	ctx context.Context,
+	input GoalControlInput,
+) (GoalControlResult, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 	action := strings.TrimSpace(input.Action)

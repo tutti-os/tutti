@@ -414,6 +414,20 @@ type DeleteSessionResult struct {
 	Deleted          bool
 	RuntimeClosed    bool
 	CanonicalRemoved bool
+	CleanupFailed    bool
+}
+
+type DeleteSessionsInput struct {
+	WorkspaceID string
+	SessionIDs  []string
+}
+
+type DeleteSessionsResult struct {
+	RemovedSessionIDs []string
+	RemovedSessions   int
+	RemovedMessages   int
+	RuntimeClosedIDs  []string
+	CleanupFailedIDs  []string
 }
 
 type PurgeDeletedSessionsInput struct {

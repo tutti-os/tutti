@@ -2,8 +2,12 @@ package agenthost
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
+
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
 // GetSession reads canonical truth and, when present, the current provider
@@ -127,37 +131,147 @@ func (h *Host) UpdatePin(ctx context.Context, input UpdatePinInput) (UpdatePinRe
 	return UpdatePinResult{Session: live, Canonical: canonical, Live: ok}, nil
 }
 
-// DeleteSession closes a live runtime before writing the canonical tombstone.
-// Authorization, binding deletion, and local view cleanup remain adapter work.
+// DeleteSession and DeleteSessions share one deletion coordinator so child
+// expansion, runtime shutdown, canonical tombstones, and goal mutation
+// serialization cannot diverge between entry points.
 func (h *Host) DeleteSession(ctx context.Context, ref SessionRef) (DeleteSessionResult, error) {
 	ref = normalizedSessionRef(ref)
-	if h == nil || h.sessionManagement == nil || h.runtime == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" {
+	if h == nil || h.sessionBatchManagement == nil || h.runtime == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" {
 		return DeleteSessionResult{}, ErrInvalidArgument
 	}
-	result := DeleteSessionResult{}
-	if _, live := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID); live {
-		if err := h.runtime.Close(ctx, RuntimeCloseInput(ref)); err != nil {
-			return DeleteSessionResult{}, err
-		}
-		result.RuntimeClosed = true
-	}
-	removed, err := h.sessionManagement.DeleteSession(ctx, ref.WorkspaceID, ref.AgentSessionID)
+	batch, err := h.DeleteSessions(ctx, DeleteSessionsInput{
+		WorkspaceID: ref.WorkspaceID,
+		SessionIDs:  []string{ref.AgentSessionID},
+	})
 	if err != nil {
 		return DeleteSessionResult{}, err
 	}
-	result.CanonicalRemoved = removed
-	result.Deleted = removed || result.RuntimeClosed
+	result := DeleteSessionResult{
+		Deleted:          len(batch.RemovedSessionIDs) > 0 || len(batch.RuntimeClosedIDs) > 0,
+		RuntimeClosed:    containsSessionID(batch.RuntimeClosedIDs, ref.AgentSessionID),
+		CanonicalRemoved: containsSessionID(batch.RemovedSessionIDs, ref.AgentSessionID),
+		CleanupFailed:    len(batch.CleanupFailedIDs) > 0,
+	}
 	if !result.Deleted {
 		return DeleteSessionResult{}, ErrSessionNotFound
 	}
-	if h.preparation != nil {
-		if err := h.preparation.Cleanup(ctx, RuntimeCleanupInput{
-			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
-		}); err != nil {
-			return DeleteSessionResult{}, err
+	return result, nil
+}
+
+// DeleteSessions closes every selected live runtime before committing one
+// canonical batch tombstone transaction. A missing batch store is reported as
+// unsupported; Host never degrades this command into sequential deletes.
+func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (DeleteSessionsResult, error) {
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	sessionIDs := normalizedUniqueSessionIDs(input.SessionIDs)
+	if h == nil || h.sessionBatchManagement == nil || h.runtime == nil || workspaceID == "" || len(sessionIDs) == 0 {
+		return DeleteSessionsResult{}, ErrInvalidArgument
+	}
+	runtimeClosedIDs := make([]string, 0, len(sessionIDs))
+	var deleted storesqlite.DeleteSessionsBatchResult
+	for {
+		plan, err := h.sessionBatchManagement.PlanDeleteSessions(ctx, storesqlite.DeleteSessionsBatchInput{
+			WorkspaceID: workspaceID,
+			SessionIDs:  sessionIDs,
+		})
+		if err != nil {
+			return DeleteSessionsResult{}, err
+		}
+		if len(plan.SessionIDs) == 0 {
+			break
+		}
+		err = h.withSessionMutationActors(ctx, workspaceID, plan.SessionIDs, func(commandCtx context.Context) error {
+			releases := make([]func(), 0, len(plan.SessionIDs))
+			for _, sessionID := range plan.SessionIDs {
+				release, acquireErr := h.acquireSession(commandCtx, SessionRef{WorkspaceID: workspaceID, AgentSessionID: sessionID})
+				if acquireErr != nil {
+					releaseSessionLocks(releases)
+					return acquireErr
+				}
+				releases = append(releases, release)
+			}
+			defer releaseSessionLocks(releases)
+			for _, sessionID := range plan.SessionIDs {
+				if _, live := h.runtime.Session(workspaceID, sessionID); !live {
+					continue
+				}
+				if closeErr := h.runtime.Close(commandCtx, RuntimeCloseInput{WorkspaceID: workspaceID, AgentSessionID: sessionID}); closeErr != nil {
+					return closeErr
+				}
+				runtimeClosedIDs = append(runtimeClosedIDs, sessionID)
+			}
+			var deleteErr error
+			deleted, deleteErr = h.sessionBatchManagement.DeleteSessionsBatch(commandCtx, storesqlite.DeleteSessionsBatchInput{
+				WorkspaceID:        workspaceID,
+				SessionIDs:         sessionIDs,
+				ExpectedSessionIDs: plan.SessionIDs,
+			})
+			return deleteErr
+		})
+		if errors.Is(err, storesqlite.ErrDeleteSessionsPlanChanged) {
+			if ctx.Err() != nil {
+				return DeleteSessionsResult{}, ctx.Err()
+			}
+			continue
+		}
+		if err != nil {
+			return DeleteSessionsResult{}, err
+		}
+		break
+	}
+	runtimeClosedIDs = normalizedUniqueSessionIDs(runtimeClosedIDs)
+	cleanupSessionIDs := normalizedUniqueSessionIDs(append(append([]string(nil), deleted.RemovedSessionIDs...), runtimeClosedIDs...))
+	cleanupFailedIDs := make([]string, 0)
+	for _, sessionID := range cleanupSessionIDs {
+		if h.preparation == nil {
+			continue
+		}
+		if err := h.preparation.Cleanup(ctx, RuntimeCleanupInput{WorkspaceID: workspaceID, AgentSessionID: sessionID}); err != nil {
+			cleanupFailedIDs = append(cleanupFailedIDs, sessionID)
 		}
 	}
-	return result, nil
+	return DeleteSessionsResult{
+		RemovedSessionIDs: append([]string(nil), deleted.RemovedSessionIDs...),
+		RemovedSessions:   deleted.RemovedSessions,
+		RemovedMessages:   deleted.RemovedMessages,
+		RuntimeClosedIDs:  runtimeClosedIDs,
+		CleanupFailedIDs:  cleanupFailedIDs,
+	}, nil
+}
+
+func containsSessionID(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizedUniqueSessionIDs(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func releaseSessionLocks(releases []func()) {
+	for index := len(releases) - 1; index >= 0; index-- {
+		if releases[index] != nil {
+			releases[index]()
+		}
+	}
 }
 
 func normalizedSessionRef(ref SessionRef) SessionRef {

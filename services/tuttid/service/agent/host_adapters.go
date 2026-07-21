@@ -106,12 +106,20 @@ func (a serviceHostStore) UpdateSessionPinned(ctx context.Context, workspaceID, 
 	return activitySessionFromPersisted(persisted), updated, err
 }
 
-func (a serviceHostStore) DeleteSession(ctx context.Context, workspaceID, sessionID string) (bool, error) {
-	deleter, ok := a.service.SessionReader.(SessionDeleter)
+func (a serviceHostStore) DeleteSessionsBatch(ctx context.Context, input storesqlite.DeleteSessionsBatchInput) (storesqlite.DeleteSessionsBatchResult, error) {
+	deleter, ok := a.service.SessionReader.(SessionBatchDeleter)
 	if !ok {
-		return false, nil
+		return storesqlite.DeleteSessionsBatchResult{}, agenthost.ErrInvalidArgument
 	}
-	return deleter.DeleteSession(ctx, workspaceID, sessionID)
+	return deleter.DeleteSessionsBatch(ctx, input)
+}
+
+func (a serviceHostStore) PlanDeleteSessions(ctx context.Context, input storesqlite.DeleteSessionsBatchInput) (storesqlite.DeleteSessionsPlan, error) {
+	deleter, ok := a.service.SessionReader.(SessionBatchDeleter)
+	if !ok {
+		return storesqlite.DeleteSessionsPlan{}, agenthost.ErrInvalidArgument
+	}
+	return deleter.PlanDeleteSessions(ctx, input)
 }
 
 func (a serviceHostStore) ListChildSessions(ctx context.Context, workspaceID, sessionID string) ([]storesqlite.Session, error) {
@@ -300,7 +308,7 @@ func (a serviceHostPreparation) Prepare(ctx context.Context, input agenthost.Run
 }
 
 func (a serviceHostPreparation) Cleanup(ctx context.Context, input agenthost.RuntimeCleanupInput) error {
-	return a.service.cleanupRuntime(ctx, input.WorkspaceID, input.AgentSessionID)
+	return a.service.cleanupSessionResources(ctx, input.WorkspaceID, input.AgentSessionID)
 }
 
 type serviceHostLocker struct{ service *Service }
@@ -460,7 +468,8 @@ func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollecto
 		return nil
 	}
 	return agenthost.New(agenthost.Config{
-		CanonicalStore: serviceHostStore{service: s}, SessionManagement: serviceHostStore{service: s}, SessionPurge: s.SessionPurgeStore,
+		CanonicalStore: serviceHostStore{service: s}, SessionManagement: serviceHostStore{service: s},
+		SessionBatchManagement: serviceHostStore{service: s}, SessionPurge: s.SessionPurgeStore,
 		Runtime:            serviceHostRuntime{service: s},
 		RuntimePreparation: serviceHostPreparation{service: s}, Attachments: s.PromptAttachmentStore,
 		SettingsPolicy: serviceHostSettingsPolicy{service: s},
@@ -475,7 +484,7 @@ func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollecto
 		GoalOwner: s.GoalOperationOwner, GoalClock: serviceHostGoalClock{service: s},
 		GoalAttemptTimeout: s.GoalOperationAttemptTimeout, GoalRecoveryBudget: s.GoalOperationRecoveryBudget,
 		GoalMaxAttempts: s.GoalOperationMaxAttempts, GoalDispatchDeadline: s.GoalOperationDispatchDeadline,
-		GoalActor: agenthost.NewGoalActor(),
+		GoalActor: agenthost.NewSessionActor(),
 	})
 }
 

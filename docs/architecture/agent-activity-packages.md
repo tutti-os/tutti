@@ -73,6 +73,15 @@ runtime mutation; provider normalization stays in an adapter policy. Pin and
 canonical delete are Host commands, while authorization, transport DTOs,
 shared bindings, and local view cleanup remain adapter-owned.
 
+Single and batch canonical delete are the same Host command shape. The store
+plans the complete descendant closure, Host quiesces that exact closure under
+the shared session-mutation lane, and the write transaction rejects a stale
+plan. Renderer-side request loops are not an atomic batch-delete
+implementation. `daemon/hostadapter` is the official daemon-runtime-to-Host
+adapter, `host.SQLiteWorkspaceStore` is the workspace-routed canonical store,
+and `daemon/modelcatalog` owns provider model/reasoning/speed normalization;
+product daemons compose these modules instead of copying their mappings.
+
 Permanent deletion is intentionally distinct from the normal canonical delete
 command. `Host.PurgeDeletedSessions` accepts a cutoff and bounded batch limits,
 while `store-sqlite` selects tombstones globally by deletion time, fences every

@@ -57,7 +57,18 @@ describe("useAgentGUINewConversationActivation", () => {
         setDetailError: vi.fn(),
         isCreatingConversationRef: { current: false },
         onDataChangeRef: { current: vi.fn() },
-        selectedProjectPathRef: { current: null },
+        selectedProjectPathRef: { current: "/workspace" },
+        userProjectsRef: {
+          current: [
+            {
+              id: "project-1",
+              label: "Workspace",
+              path: "/workspace",
+              pinnedAtUnixMs: 0,
+              sectionKey: "project:/workspace"
+            }
+          ]
+        },
         draftByScopeKeyRef: { current: {} },
         submittedDraftSnapshotsRef: { current: {} },
         draftSettingsBySessionIdRef: { current: {} },
@@ -121,7 +132,8 @@ describe("useAgentGUINewConversationActivation", () => {
     expect(activate.mock.calls[0]?.[0]).toMatchObject({
       initialContent: [{ type: "text", text: "$review-code inspect this" }],
       initialDisplayPrompt: "/review-code inspect this",
-      optimisticTitle: "/review-code inspect this"
+      optimisticTitle: "/review-code inspect this",
+      railSectionKey: "project:/workspace"
     });
     expect(activate.mock.calls[0]?.[0].settings).toMatchObject({
       computerUse: true

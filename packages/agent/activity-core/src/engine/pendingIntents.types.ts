@@ -34,6 +34,7 @@ interface PendingActivationIntentRecordBase {
   errorMessage: string | null;
   expiresAtUnixMs: number;
   initialTurnExpected: boolean;
+  railSectionKey?: string;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   pendingSettingsPatch?: Readonly<Record<string, unknown>>;
   settingsUpdateStatus?: "failed" | "inFlight" | "unknown";
@@ -97,6 +98,7 @@ interface SessionActivationRequestedIntentBase {
   cwd?: string;
   expiresAtUnixMs: number;
   initialTurnExpected?: boolean;
+  railSectionKey?: string;
   initialDisplayPrompt?: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;

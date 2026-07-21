@@ -16,7 +16,7 @@ import (
 // All methods are scoped by a host-defined workspace ID.
 type Repository interface {
 	ClearSessions(context.Context, string) (ClearSessionsResult, error)
-	DeleteSessionWithCommit(context.Context, string, string) (DeleteSessionResult, error)
+	PlanDeleteSessions(context.Context, DeleteSessionsBatchInput) (DeleteSessionsPlan, error)
 	DeleteSessionsBatch(context.Context, DeleteSessionsBatchInput) (DeleteSessionsBatchResult, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
 	ListChildSessions(context.Context, string, string) ([]Session, error)
@@ -212,6 +212,12 @@ type SessionSectionDeletionCandidates struct {
 }
 
 type DeleteSessionsBatchInput struct {
+	WorkspaceID        string
+	SessionIDs         []string
+	ExpectedSessionIDs []string
+}
+
+type DeleteSessionsPlan struct {
 	WorkspaceID string
 	SessionIDs  []string
 }

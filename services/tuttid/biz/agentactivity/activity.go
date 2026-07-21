@@ -11,13 +11,13 @@ type Repository = agentstore.Repository
 type SessionTurnSummaryReader = agentstore.SessionTurnSummaryReader
 
 type ClearSessionsResult = agentstore.ClearSessionsResult
-type DeleteSessionResult = agentstore.DeleteSessionResult
 type PurgeDeletedSessionsInput = agentstore.PurgeDeletedSessionsInput
 type PurgedSession = agentstore.PurgedSession
 type PurgeDeletedSessionsResult = agentstore.PurgeDeletedSessionsResult
 type ListSessionSectionDeletionCandidatesInput = agentstore.ListSessionSectionDeletionCandidatesInput
 type SessionSectionDeletionCandidates = agentstore.SessionSectionDeletionCandidates
 type DeleteSessionsBatchInput = agentstore.DeleteSessionsBatchInput
+type DeleteSessionsPlan = agentstore.DeleteSessionsPlan
 type DeleteSessionsBatchResult = agentstore.DeleteSessionsBatchResult
 type TransactionDelta = agentstore.TransactionDelta
 type TransactionMutation = agentstore.TransactionMutation

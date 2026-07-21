@@ -56,10 +56,12 @@ func (h *Host) ReconcileGoal(ctx context.Context, ref SessionRef) (GoalStateResu
 		return GoalStateResult{}, ErrInvalidArgument
 	}
 	var result GoalStateResult
-	err := h.withGoalActor(ctx, workspaceID, agentSessionID, func(actorCtx context.Context) error {
-		var reconcileErr error
-		result, reconcileErr = h.reconcileGoalLocked(actorCtx, workspaceID, agentSessionID)
-		return reconcileErr
+	err := h.withSessionMutationActor(ctx, workspaceID, agentSessionID, func(commandCtx context.Context) error {
+		return h.withGoalActor(commandCtx, workspaceID, agentSessionID, func(actorCtx context.Context) error {
+			var reconcileErr error
+			result, reconcileErr = h.reconcileGoalLocked(actorCtx, workspaceID, agentSessionID)
+			return reconcileErr
+		})
 	})
 	return result, err
 }

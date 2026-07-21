@@ -191,12 +191,12 @@ func (s *SQLiteStore) DeleteSession(ctx context.Context, workspaceID string, age
 	return s.agentStore().DeleteSession(ctx, workspaceID, agentSessionID)
 }
 
-func (s *SQLiteStore) DeleteSessionWithCommit(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.DeleteSessionResult, error) {
-	return s.agentStore().DeleteSessionWithCommit(ctx, workspaceID, agentSessionID)
-}
-
 func (s *SQLiteStore) DeleteSessionsBatch(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
 	return s.agentStore().DeleteSessionsBatch(ctx, input)
+}
+
+func (s *SQLiteStore) PlanDeleteSessions(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error) {
+	return s.agentReadStore().PlanDeleteSessions(ctx, input)
 }
 
 func (s *SQLiteStore) ClearSessions(ctx context.Context, workspaceID string) (agentactivitybiz.ClearSessionsResult, error) {

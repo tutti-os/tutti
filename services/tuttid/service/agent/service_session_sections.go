@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 )
@@ -337,47 +338,17 @@ func (s *Service) DeleteSessionsBatch(
 	if workspaceID == "" || err != nil {
 		return DeleteSessionsBatchResult{}, ErrInvalidArgument
 	}
-	deleter, ok := s.SessionReader.(SessionBatchDeleter)
-	if !ok {
-		return DeleteSessionsBatchResult{}, fmt.Errorf("%w: session batch deleter is unavailable", ErrInvalidArgument)
-	}
-	runtimeClosed := make(map[string]struct{})
-	for _, agentSessionID := range sessionIDs {
-		if _, ok := s.controller().Session(workspaceID, agentSessionID); ok {
-			if err := s.controller().Close(ctx, RuntimeCloseInput{
-				WorkspaceID:    workspaceID,
-				AgentSessionID: agentSessionID,
-			}); err != nil {
-				return DeleteSessionsBatchResult{}, normalizeRuntimeError(err)
-			}
-			runtimeClosed[agentSessionID] = struct{}{}
-		}
-	}
-	result, err := deleter.DeleteSessionsBatch(ctx, agentactivitybiz.DeleteSessionsBatchInput{
-		WorkspaceID: workspaceID,
-		SessionIDs:  sessionIDs,
+	result, err := s.ApplicationHost().DeleteSessions(ctx, agenthost.DeleteSessionsInput{
+		WorkspaceID: workspaceID, SessionIDs: sessionIDs,
 	})
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
-	removed := make(map[string]struct{}, len(result.RemovedSessionIDs))
-	for _, sessionID := range result.RemovedSessionIDs {
-		removed[sessionID] = struct{}{}
-	}
-	for _, sessionID := range sessionIDs {
-		_, wasRemoved := removed[sessionID]
-		_, wasClosed := runtimeClosed[sessionID]
-		if wasRemoved || wasClosed {
-			if err := s.cleanupRuntime(ctx, workspaceID, sessionID); err != nil {
-				return DeleteSessionsBatchResult{}, err
-			}
-			s.releaseAgentResources(ctx, sessionID)
-		}
-	}
 	return DeleteSessionsBatchResult{
-		RemovedMessages:   result.RemovedMessages,
-		RemovedSessions:   result.RemovedSessions,
-		RemovedSessionIDs: result.RemovedSessionIDs,
+		RemovedMessages:         result.RemovedMessages,
+		RemovedSessions:         result.RemovedSessions,
+		RemovedSessionIDs:       result.RemovedSessionIDs,
+		CleanupFailedSessionIDs: result.CleanupFailedIDs,
 	}, nil
 }
 

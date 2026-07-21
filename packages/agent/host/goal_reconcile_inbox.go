@@ -98,6 +98,12 @@ func (h *Host) escalateGoalReconcileInboxTerminal(ctx context.Context, item stor
 	if h.goals == nil {
 		return errors.New("goal reconcile inbox terminal escalation store is unavailable")
 	}
+	return h.withSessionMutationActor(ctx, item.WorkspaceID, item.AgentSessionID, func(actorCtx context.Context) error {
+		return h.escalateGoalReconcileInboxTerminalSerialized(actorCtx, item, cause)
+	})
+}
+
+func (h *Host) escalateGoalReconcileInboxTerminalSerialized(ctx context.Context, item storesqlite.GoalReconcileInboxItem, cause error) error {
 	return h.withGoalActor(ctx, item.WorkspaceID, item.AgentSessionID, func(actorCtx context.Context) error {
 		for attempt := 0; attempt < 3; attempt++ {
 			state, found, err := h.goals.GetSessionGoalState(actorCtx, item.WorkspaceID, item.AgentSessionID)

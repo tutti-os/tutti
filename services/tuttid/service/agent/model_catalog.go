@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/modelcatalog"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	tuttiagentservice "github.com/tutti-os/tutti/services/tuttid/service/tuttiagent"
@@ -19,23 +20,11 @@ const (
 	codexModelErrorCacheTTL = 5 * time.Second
 )
 
-type AgentModelOption struct {
-	ID                         string
-	DisplayName                string
-	Description                string
-	DefaultReasoningEffort     string
-	IsDefault                  bool
-	ReasoningEffortsAdvertised bool
-	SupportedReasoningEfforts  []AgentModelReasoningEffortOption
-	SupportsImageInput         *bool
-}
+type AgentModelOption = modelcatalog.ModelOption
 
-type AgentModelReasoningEffortOption struct {
-	Default     bool
-	Description string
-	Label       string
-	Value       string
-}
+type AgentModelReasoningEffortOption = modelcatalog.ReasoningEffortOption
+
+type AgentModelSpeedOption = modelcatalog.SpeedOption
 
 type AgentModelCatalogResult struct {
 	Provider  string

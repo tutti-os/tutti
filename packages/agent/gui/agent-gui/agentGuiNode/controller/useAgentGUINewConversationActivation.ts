@@ -30,6 +30,7 @@ import {
   type UseAgentGUINewConversationActivationInput
 } from "./agentGuiNewConversationActivation.types";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import { resolveAgentGUIConversationProject } from "../model/agentGuiConversationProjectResolver";
 import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
 
 export function useAgentGUINewConversationActivation(
@@ -45,6 +46,7 @@ export function useAgentGUINewConversationActivation(
     isCreatingConversationRef,
     onDataChangeRef,
     selectedProjectPathRef,
+    userProjectsRef,
     draftByScopeKeyRef,
     submittedDraftSnapshotsRef,
     draftSettingsBySessionIdRef,
@@ -118,6 +120,13 @@ export function useAgentGUINewConversationActivation(
             }
       );
       const selectedProjectPath = selectedProjectPathRef.current;
+      const selectedProject = resolveAgentGUIConversationProject(
+        selectedProjectPath,
+        userProjectsRef.current
+      );
+      const railSectionKey = !selectedProjectPath?.trim()
+        ? "conversations"
+        : selectedProject?.sectionKey?.trim() || undefined;
       const initialNodeSettings = readNodeDefaultDraftSettings({
         data: targetData.data,
         defaultReasoningEffort,
@@ -173,6 +182,7 @@ export function useAgentGUINewConversationActivation(
         agentTargetId,
         clientSubmitId: submitTrace.clientSubmitId,
         cwd: selectedProjectPath ?? "",
+        ...(railSectionKey ? { railSectionKey } : {}),
         initialContent: normalizedInitialContent,
         ...(initialTurnExpected !== undefined ? { initialTurnExpected } : {}),
         initialDisplayPrompt,
