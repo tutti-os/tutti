@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 )
 
@@ -14,7 +14,7 @@ import (
 // turn lifecycle. Issue Agents are not required to call the Issue Manager CLI
 // themselves, so a normal completed turn cannot be mistaken for a vanished
 // session by the fallback reconciler.
-func (s IssueManagerService) ObserveAgentSessionState(ctx context.Context, input agentsessionstore.ReportSessionStateInput, _ agentsessionstore.ReportSessionStateReply) {
+func (s IssueManagerService) ObserveAgentSessionState(ctx context.Context, input canonical.ReportSessionStateInput, _ canonical.ReportSessionStateReply) {
 	status, ok := issueRunStatusFromSessionState(input.State)
 	if !ok || s.Store == nil {
 		return
@@ -79,7 +79,7 @@ func (s IssueManagerService) ObserveAgentSessionState(ctx context.Context, input
 	}
 }
 
-func issueRunStatusFromSessionState(state agentsessionstore.WorkspaceAgentSessionStateUpdate) (workspaceissues.Status, bool) {
+func issueRunStatusFromSessionState(state canonical.WorkspaceAgentSessionStateUpdate) (workspaceissues.Status, bool) {
 	outcome := ""
 	if lifecycle := state.TurnLifecycle; lifecycle != nil && strings.TrimSpace(lifecycle.Phase) == "settled" && lifecycle.Outcome != nil {
 		outcome = strings.TrimSpace(*lifecycle.Outcome)

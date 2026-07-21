@@ -3848,6 +3848,8 @@ export type CompleteIssueManagerRunRequest = {
   status: IssueManagerRunCompletionStatus;
   summary?: string;
   errorMessage?: string;
+  usage?: IssueManagerTokenUsage;
+  remainingQuotaPercent?: number;
   outputs: Array<CompleteIssueManagerRunOutputItem>;
 };
 

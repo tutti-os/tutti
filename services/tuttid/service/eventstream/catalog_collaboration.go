@@ -21,21 +21,6 @@ type agentCollaborationUpdatedPayload struct {
 	OccurredAtUnixMS int64  `json:"occurredAtUnixMs"`
 }
 
-func collaborationTopicDefinitions() []TopicDefinition {
-	return []TopicDefinition{
-		{
-			Name:               TopicAgentCollaborationUpdated,
-			ClientCanPublish:   false,
-			ClientCanSubscribe: true,
-			Version:            1,
-			directions:         []Direction{DirectionServerToClient},
-			validators: map[Direction]PayloadValidator{
-				DirectionServerToClient: validateAgentCollaborationUpdatedPayload,
-			},
-		},
-	}
-}
-
 func validateAgentCollaborationUpdatedPayload(payload []byte) error {
 	var decoded agentCollaborationUpdatedPayload
 	if err := decodeJSONStrict(payload, &decoded); err != nil {

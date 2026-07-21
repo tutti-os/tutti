@@ -508,10 +508,13 @@ func (api DaemonAPI) CompleteWorkspaceIssueRun(ctx context.Context, request tutt
 	}
 
 	detail, err := api.IssueService.CompleteRun(ctx, string(request.WorkspaceID), string(request.IssueID), "", string(request.RunID), workspaceservice.CompleteIssueManagerRunInput{
-		Status:       string(request.Body.Status),
-		Summary:      optionalString(request.Body.Summary),
-		ErrorMessage: optionalString(request.Body.ErrorMessage),
-		Outputs:      issueManagerRunOutputsInputFromGenerated(request.Body.Outputs),
+		Status:                   string(request.Body.Status),
+		Summary:                  optionalString(request.Body.Summary),
+		ErrorMessage:             optionalString(request.Body.ErrorMessage),
+		Outputs:                  issueManagerRunOutputsInputFromGenerated(request.Body.Outputs),
+		Usage:                    issueManagerTokenUsageFromGenerated(request.Body.Usage),
+		RemainingQuotaPercent:    optionalFloat64(request.Body.RemainingQuotaPercent),
+		HasRemainingQuotaPercent: request.Body.RemainingQuotaPercent != nil,
 	})
 	if err != nil {
 		return writeCompleteWorkspaceIssueRunError(err), nil
@@ -582,10 +585,13 @@ func (api DaemonAPI) CompleteWorkspaceIssueTaskRun(ctx context.Context, request 
 	}
 
 	detail, err := api.IssueService.CompleteRun(ctx, string(request.WorkspaceID), string(request.IssueID), string(request.TaskID), string(request.RunID), workspaceservice.CompleteIssueManagerRunInput{
-		Status:       string(request.Body.Status),
-		Summary:      optionalString(request.Body.Summary),
-		ErrorMessage: optionalString(request.Body.ErrorMessage),
-		Outputs:      issueManagerRunOutputsInputFromGenerated(request.Body.Outputs),
+		Status:                   string(request.Body.Status),
+		Summary:                  optionalString(request.Body.Summary),
+		ErrorMessage:             optionalString(request.Body.ErrorMessage),
+		Outputs:                  issueManagerRunOutputsInputFromGenerated(request.Body.Outputs),
+		Usage:                    issueManagerTokenUsageFromGenerated(request.Body.Usage),
+		RemainingQuotaPercent:    optionalFloat64(request.Body.RemainingQuotaPercent),
+		HasRemainingQuotaPercent: request.Body.RemainingQuotaPercent != nil,
 	})
 	if err != nil {
 		return writeCompleteWorkspaceIssueTaskRunError(err), nil
@@ -648,6 +654,23 @@ func issueManagerCreateIssueInputFromGenerated(item tuttigenerated.CreateIssueMa
 	}
 }
 
+func issueManagerCreateTaskInputFromGenerated(item tuttigenerated.CreateIssueManagerTaskRequest) workspaceservice.CreateIssueManagerTaskItemInput {
+	return workspaceservice.CreateIssueManagerTaskItemInput{
+		TaskID:             optionalString(item.TaskId),
+		Title:              item.Title,
+		Content:            optionalString(item.Content),
+		Priority:           optionalIssueManagerPriority(item.Priority),
+		DueAtUnixMS:        optionalUnixMillis(item.DueAtUnix),
+		AgentTargetID:      optionalString(item.AgentTargetId),
+		ModelPlanID:        optionalString(item.ModelPlanId),
+		Model:              optionalString(item.Model),
+		ExecutionDirectory: optionalString(item.ExecutionDirectory),
+		DependencyTaskIDs:  issueManagerOptionalStringSlice(item.DependencyTaskIds),
+		Parallelizable:     item.Parallelizable != nil && *item.Parallelizable,
+		AutoAccept:         item.AutoAccept != nil && *item.AutoAccept,
+	}
+}
+
 func issueManagerExecutionProfileFromGenerated(value *tuttigenerated.IssueManagerExecutionProfile) workspaceissues.ExecutionProfile {
 	if value == nil {
 		return workspaceissues.ExecutionProfile{}
@@ -662,11 +685,25 @@ func issueManagerBudgetFromGenerated(value *tuttigenerated.IssueManagerBudget) w
 	return workspaceissues.Budget{Mode: workspaceissues.BudgetMode(value.Mode), TokenLimit: value.TokenLimit, ConsumedTokens: value.ConsumedTokens, QuotaWaterlinePercent: value.QuotaWaterlinePercent, RemainingQuotaPercent: optionalFloat64(value.RemainingQuotaPercent), HasRemainingQuota: value.RemainingQuotaPercent != nil, Status: workspaceissues.BudgetStatus(value.Status)}
 }
 
+func issueManagerTokenUsageFromGenerated(value *tuttigenerated.IssueManagerTokenUsage) workspaceissues.TokenUsage {
+	if value == nil {
+		return workspaceissues.TokenUsage{}
+	}
+	return workspaceissues.TokenUsage{InputTokens: value.InputTokens, OutputTokens: value.OutputTokens, CacheReadTokens: value.CacheReadTokens, CacheWriteTokens: value.CacheWriteTokens}
+}
+
 func optionalFloat64(value *float64) float64 {
 	if value == nil {
 		return 0
 	}
 	return *value
+}
+
+func issueManagerOptionalStringSlice(value *[]string) []string {
+	if value == nil {
+		return nil
+	}
+	return append([]string(nil), (*value)...)
 }
 
 func optionalPlanningSource(value *tuttigenerated.IssueManagerPlanningSource) string {

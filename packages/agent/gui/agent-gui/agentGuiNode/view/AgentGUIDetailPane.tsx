@@ -12,7 +12,7 @@ import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-p
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
-import type { AgentCollaborationVM } from "../../../shared/agentConversation/contracts/agentCollaborationVM";
+import { latestAssistantMessageText } from "../../../shared/agentConversation/projection/agentConversationProjection";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "../../../workbench/contribution";
 import { resolveAgentGuiWorkbenchProviderLabel } from "../../../workbench/providerCatalog";
 import type {
@@ -81,14 +81,10 @@ export interface AgentGUIDetailPaneProps {
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
   slashStatusLimitsUnavailable: boolean;
-  slashStatusOverride?: AgentComposerProps["slashStatus"];
   onSlashStatusOpen?: AgentComposerProps["onSlashStatusOpen"];
-  onSlashStatusClose?: AgentComposerProps["onSlashStatusClose"];
-  onSlashStatusRefresh?: AgentComposerProps["onSlashStatusRefresh"];
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: AgentGUINodeViewProps["onHandoffConversation"];
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
-  capabilityControlsReadOnly?: AgentComposerProps["capabilityControlsReadOnly"];
   onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
   onAgentProviderLogin?: (provider?: string | null) => void;
   onRequestWorkspaceReferences?:
@@ -96,6 +92,7 @@ export interface AgentGUIDetailPaneProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
+  resolveExternalPromptEntries?: AgentComposerProps["resolveExternalPromptEntries"];
   prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
   promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
@@ -121,17 +118,14 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   slashStatusLimits,
   slashStatusLimitsLoading,
   slashStatusLimitsUnavailable,
-  slashStatusOverride,
   onSlashStatusOpen,
-  onSlashStatusClose,
-  onSlashStatusRefresh,
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
-  capabilityControlsReadOnly = false,
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
+  resolveExternalPromptEntries = null,
   prepareExternalPromptFiles = null,
   promptAssetLimit = null,
   selectProjectDirectory,
@@ -184,7 +178,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     showStopButton,
     showTimelineSkeleton,
     showUnavailableChatEmpty,
-    slashStatus: derivedSlashStatus,
+    slashStatus,
     submitDisabled,
     timelineConversationId,
     timelineInteractionLocked
@@ -196,7 +190,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     slashStatusLimitsUnavailable,
     viewModel
   });
-  const slashStatus = slashStatusOverride ?? derivedSlashStatus;
   const handleInterruptCurrentTurn = useCallback(() => {
     actions.interruptCurrentTurn(labels.noRunningResponse);
   }, [actions.interruptCurrentTurn, labels.noRunningResponse]);
@@ -261,16 +254,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       }
     },
     []
-  );
-  const reviseFailedCollaboration = useStableEventCallback(
-    (collaboration: AgentCollaborationVM) => {
-      const prompt = collaboration.requestText?.trim();
-      if (!prompt) return;
-      updateDraftContent(
-        updateAgentComposerDraft(viewModel.composer.draftContent, { prompt })
-      );
-      onRequestComposerFocus();
-    }
   );
   const submitPrompt = useStableEventCallback(actions.submitPrompt);
   const goalControl = useStableEventCallback(actions.goalControl);
@@ -400,8 +383,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       provider: composerProvider,
       slashStatus,
       onSlashStatusOpen,
-      onSlashStatusClose,
-      onSlashStatusRefresh,
       usage: viewModel.detail.usage,
       draftContent: viewModel.composer.draftContent,
       engagement: composerEngagement,
@@ -455,14 +436,19 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       handoffMenuLabel: labels.handoffConversationMenu,
       isInterrupting:
         viewModel.composer.isInterrupting || viewModel.composer.isCancelPending,
+      modelConsult:
+        viewModel.rail.activeConversationId !== null
+          ? {
+              agentSessionId: viewModel.rail.activeConversationId,
+              lastAssistantMessageText: latestAssistantMessageText(conversation)
+            }
+          : null,
       isSendingTurn: isComposerSending,
       isSubmittingPrompt: isInteractionPending,
-      projectMissingProbeEnabled: !viewModel.composer.isCreatingConversation,
       uiLanguage,
       labels: composerLabels,
       workspaceUserProjectI18n,
       capabilityMenuState,
-      capabilityControlsReadOnly,
       onDraftContentChange: updateDraftContent,
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
@@ -490,6 +476,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onLinkAction: stableLinkAction,
       onHandoffConversation: stableHandoffConversation,
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
+      resolveExternalPromptEntries,
       prepareExternalPromptFiles,
       promptAssetLimit,
       selectProjectDirectory: stableSelectProjectDirectory,
@@ -498,7 +485,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [
       canQueueWhileBusy,
       capabilityMenuState,
-      capabilityControlsReadOnly,
       canSwitchComposerProvider,
       composerDisabled,
       composerDisabledReason,
@@ -529,6 +515,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       editQueuedPrompt,
       onCapabilitySettingsRequest,
       removeQueuedPrompt,
+      resolveExternalPromptEntries,
       prepareExternalPromptFiles,
       promptAssetLimit,
       sendQueuedPromptNext,
@@ -568,7 +555,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.composer.drainingQueuedPromptId,
       viewModel.detail.hasSentUserMessage,
       viewModel.composer.isInterrupting,
-      viewModel.composer.isCreatingConversation,
       viewModel.composer.isTuttiModeActive,
       viewModel.composer.isTuttiModeUpdating,
       viewModel.composer.tuttiModeOrchestrationIntensity,
@@ -733,7 +719,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               loadingLabel={labels.loadingConversation}
               empty={conversationFlowEmpty}
               onLinkAction={stableLinkAction}
-              onReviseCollaboration={reviseFailedCollaboration}
               onAuthLogin={authLogin}
               availableSkills={viewModel.composer.availableSkills}
               workspaceAppIcons={workspaceAppIcons}

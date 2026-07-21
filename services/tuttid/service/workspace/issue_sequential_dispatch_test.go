@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
@@ -272,11 +272,11 @@ func TestIssueAgentSessionSettlementCompletesRunWithUsageAndAgentClaim(t *testin
 		t.Fatalf("CreateIssueFromPlan() error = %v", err)
 	}
 	outcome := "completed"
-	service.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	service.ObserveAgentSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    "workspace-settlement",
 		AgentSessionID: creator.inputs[0].AgentSessionID,
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &outcome},
+		State: canonical.WorkspaceAgentSessionStateUpdate{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &outcome},
 			RuntimeContext: map[string]any{
 				"usage": map[string]any{
 					"inputTokens":      int64(100),
@@ -290,7 +290,7 @@ func TestIssueAgentSessionSettlementCompletesRunWithUsageAndAgentClaim(t *testin
 				},
 			},
 		},
-	}, agentsessionstore.ReportSessionStateReply{})
+	}, canonical.ReportSessionStateReply{})
 
 	settled, err := service.GetIssueDetail(ctx, "workspace-settlement", detail.Issue.IssueID)
 	if err != nil {
@@ -1365,13 +1365,13 @@ func TestAgentSettlementCompletesOnlyTheInitiatingTurnRun(t *testing.T) {
 	resolver.initiatingTurnByRunID[first.LatestRunID] = "turn-brief"
 	sessionID := creator.inputs[0].AgentSessionID
 	outcome := "completed"
-	settledState := func(turnID string) agentsessionstore.ReportSessionStateInput {
-		return agentsessionstore.ReportSessionStateInput{
+	settledState := func(turnID string) canonical.ReportSessionStateInput {
+		return canonical.ReportSessionStateInput{
 			WorkspaceID:    "ws-turn-match",
 			AgentSessionID: sessionID,
-			State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
-				TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &outcome},
-				Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+			State: canonical.WorkspaceAgentSessionStateUpdate{
+				TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &outcome},
+				Turn: &canonical.WorkspaceAgentTurnStateUpdate{
 					TurnID:  turnID,
 					Phase:   "settled",
 					Outcome: outcome,
@@ -1382,7 +1382,7 @@ func TestAgentSettlementCompletesOnlyTheInitiatingTurnRun(t *testing.T) {
 
 	// A different turn settling in the delegate conversation (e.g. a human
 	// interjection) must not complete the run.
-	service.ObserveAgentSessionState(ctx, settledState("turn-interjection"), agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(ctx, settledState("turn-interjection"), canonical.ReportSessionStateReply{})
 	after, err := service.GetIssueDetail(ctx, "ws-turn-match", detail.Issue.IssueID)
 	if err != nil {
 		t.Fatalf("GetIssueDetail() error = %v", err)
@@ -1392,7 +1392,7 @@ func TestAgentSettlementCompletesOnlyTheInitiatingTurnRun(t *testing.T) {
 	}
 
 	// The run's own initiating turn settling completes it.
-	service.ObserveAgentSessionState(ctx, settledState("turn-brief"), agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(ctx, settledState("turn-brief"), canonical.ReportSessionStateReply{})
 	settled, err := service.GetIssueDetail(ctx, "ws-turn-match", detail.Issue.IssueID)
 	if err != nil {
 		t.Fatalf("GetIssueDetail() error = %v", err)

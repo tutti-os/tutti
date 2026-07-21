@@ -8,6 +8,7 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 // IssuePlanningTimelineReporter writes the durable reverse link from a Plan
@@ -41,7 +42,7 @@ func (r IssuePlanningTimelineReporter) ReportIssuePlanningLink(
 	// not belong to any agent turn (the source turn already settled when the
 	// user accepted), and a synthetic turn id would open a live turn record no
 	// terminal event ever settles — wedging the session's active-turn slot.
-	update := agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+	update := canonical.WorkspaceAgentSessionMessageUpdate{
 		MessageID:         "plan-issue:" + issueID,
 		Role:              "assistant",
 		Kind:              "session_audit",
@@ -50,11 +51,11 @@ func (r IssuePlanningTimelineReporter) ReportIssuePlanningLink(
 		OccurredAtUnixMS:  occurredAt.UnixMilli(),
 		CompletedAtUnixMS: occurredAt.UnixMilli(),
 	}
-	if _, err := r.Projection.ReportSessionMessages(ctx, agentsessionstore.ReportSessionMessagesInput{
+	if _, err := r.Projection.ReportSessionMessages(ctx, canonical.ReportSessionMessagesInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: sourceSessionID,
 		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		Updates:        []agentsessionstore.WorkspaceAgentSessionMessageUpdate{update},
+		Updates:        []canonical.WorkspaceAgentSessionMessageUpdate{update},
 	}); err != nil {
 		slog.Warn("report plan Issue timeline link failed",
 			"event", "agent.plan_issue.timeline_report_failed",

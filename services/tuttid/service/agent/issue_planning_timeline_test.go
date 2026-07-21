@@ -7,6 +7,7 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
@@ -18,10 +19,10 @@ func TestIssuePlanningTimelineReporterLinksSourceSessionToIssue(t *testing.T) {
 		t.Fatalf("Create workspace error = %v", err)
 	}
 	projection := NewActivityProjection(store)
-	if _, err := projection.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	if _, err := projection.ReportSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID: "ws-1", AgentSessionID: "session-1",
 		SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			Provider: "codex", CurrentPhase: "idle", OccurredAtUnixMS: 1000,
 		},
 	}); err != nil {

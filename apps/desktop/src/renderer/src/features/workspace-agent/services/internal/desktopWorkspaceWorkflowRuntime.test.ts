@@ -552,6 +552,7 @@ test("desktop workflow runtime relays only settled turn updates as session_settl
           agentSessionId: "session-1",
           phase,
           outcome: phase === "settled" ? "completed" : null,
+          origin: "user_prompt",
           error: null,
           fileChanges: null,
           completedCommand: null,

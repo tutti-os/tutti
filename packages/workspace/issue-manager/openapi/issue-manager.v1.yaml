@@ -2198,6 +2198,12 @@ components:
           type: string
         errorMessage:
           type: string
+        usage:
+          $ref: "#/components/schemas/IssueManagerTokenUsage"
+        remainingQuotaPercent:
+          type: number
+          format: double
+          minimum: 0
         outputs:
           type: array
           items:

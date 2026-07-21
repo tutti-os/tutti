@@ -76,7 +76,6 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
         turnAttachmentLocatorRef={turnAttachmentLocatorRef}
         onTurnAttachmentVisibilityChange={onTurnAttachmentVisibilityChange}
         onLinkAction={onLinkAction}
-        onReviseCollaboration={onReviseCollaboration}
         onAuthLogin={onAuthLogin}
         availableSkills={availableSkills}
         workspaceAppIcons={workspaceAppIcons}

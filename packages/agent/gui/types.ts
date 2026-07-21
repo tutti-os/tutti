@@ -3,6 +3,7 @@ import type {
   AgentSettings,
   AgentProvider
 } from "./contexts/settings/domain/agentSettings";
+import type { PlanIssueBudgetPreset } from "./shared/agentConversation/planImplementationPresentation";
 import type { NodeLabelColorOverride } from "./shared/types/labelColor";
 import type {
   AgentHostTemplateBootstrapAction,
@@ -58,6 +59,8 @@ export interface AgentGUINodeData {
   composerOverridesByProvider?: Partial<
     Record<AgentGUIProvider, AgentHostAgentSessionComposerSettings | null>
   > | null;
+  /** Remembered defaults for provider Plan decomposition review. */
+  planIssueBudgetPreset?: PlanIssueBudgetPreset | null;
 }
 
 /**

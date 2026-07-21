@@ -12,7 +12,7 @@
       "packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx": 10,
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentRichTextEditor.tsx": 6,
       "packages/agent/gui/agent-gui/agentGuiNode/composer/AgentComposerChrome.tsx": 8,
-      "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIDetailPane.tsx": 6,
+      "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIDetailPane.tsx": 9,
       "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIProviderRail.tsx": 12,
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterPanel.tsx": 22,
       "packages/agent/gui/app/renderer/components/ZoomableImage.tsx": 9,

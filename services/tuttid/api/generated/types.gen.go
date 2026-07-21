@@ -4230,10 +4230,12 @@ type CompleteIssueManagerRunOutputItem struct {
 
 // CompleteIssueManagerRunRequest defines model for CompleteIssueManagerRunRequest.
 type CompleteIssueManagerRunRequest struct {
-	ErrorMessage *string                             `json:"errorMessage,omitempty"`
-	Outputs      []CompleteIssueManagerRunOutputItem `json:"outputs"`
-	Status       IssueManagerRunCompletionStatus     `json:"status"`
-	Summary      *string                             `json:"summary,omitempty"`
+	ErrorMessage          *string                             `json:"errorMessage,omitempty"`
+	Outputs               []CompleteIssueManagerRunOutputItem `json:"outputs"`
+	RemainingQuotaPercent *float64                            `json:"remainingQuotaPercent,omitempty"`
+	Status                IssueManagerRunCompletionStatus     `json:"status"`
+	Summary               *string                             `json:"summary,omitempty"`
+	Usage                 *IssueManagerTokenUsage             `json:"usage,omitempty"`
 }
 
 // CompleteWorkspaceAppUploadResponse defines model for CompleteWorkspaceAppUploadResponse.

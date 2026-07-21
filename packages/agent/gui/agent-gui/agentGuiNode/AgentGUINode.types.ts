@@ -152,6 +152,7 @@ export interface AgentGUINodeHostActions {
     agentTargetId?: string | null;
     draftPrompt: string;
     provider: AgentGUIProvider;
+    sourceAgentSessionId: string;
     userProjectPath?: string | null;
   }) => void | Promise<void>;
   onCapabilitySettingsRequest?: (
