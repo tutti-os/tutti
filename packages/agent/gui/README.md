@@ -194,6 +194,7 @@ export interface AgentGUIAgent {
   maskIconUrl?: string | null;
   heroImageUrl?: string | null;
   description?: string | null;
+  ownerDeviceLabel?: string | null;
   owner?: {
     name?: string | null;
     avatarUrl?: string | null;
@@ -229,8 +230,10 @@ home-carousel artwork come from `agents[].name`, `agents[].iconUrl`,
 `agents[].maskIconUrl`, and `agents[].heroImageUrl`. Hosts must pass fully
 resolved presentation URLs from their authoritative directory. All identity
 surfaces use `iconUrl`; conversation rows use `maskIconUrl` where present.
-`owner.avatarUrl` is rendered separately as an ownership badge. Invalid entries
-and duplicate `agentTargetId` values are discarded by
+`owner.avatarUrl` is rendered separately as an ownership badge.
+`ownerDeviceLabel` is optional host-resolved presentation metadata rendered on
+the exact Handoff target row. Invalid entries and duplicate `agentTargetId`
+values are discarded by
 `normalizeAgentGUIAgents`, with the first occurrence preserving host order.
 Hosts set `agents[].ownership` to `"self"` or `"shared"` from their authoritative
 directory or launch reference. Owner name and avatar are presentation metadata

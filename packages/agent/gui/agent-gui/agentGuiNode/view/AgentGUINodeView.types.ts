@@ -378,6 +378,7 @@ export interface AgentGUIViewLabels {
   handoffConversation: string;
   handoffConversationTooltip: string;
   handoffConversationMenu: string;
+  handoffTargetDeviceSource: (deviceLabel: string) => string;
   handoffTargetSelf: string;
   handoffTargetShared: string;
   projectLocked: string;

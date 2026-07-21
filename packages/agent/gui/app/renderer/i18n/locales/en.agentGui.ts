@@ -433,6 +433,7 @@ export const enAgentGui = {
   handoffConversation: "Handoff",
   handoffConversationTooltip: "Hand off to another agent",
   handoffConversationMenu: "Choose an agent for handoff",
+  handoffTargetDeviceSource: "From {{device}}",
   handoffTargetSelf: "My Agent",
   handoffTargetShared: "Shared Agent",
   startConversation: "Start session",

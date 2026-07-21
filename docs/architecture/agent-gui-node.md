@@ -338,10 +338,12 @@ already-inline extension icons retain their authoritative URL.
 
 Handoff target menus are an AgentGUI presentation contract. The shared
 `AgentHandoffMenu` renders exact `agentTargetId` rows, ownership metadata, and
-temporary disclosure/icon-motion state; a host supplies its authoritative
-ready target projection and retains launch orchestration in `onSelect`. Host
-surfaces must not reconstruct a second handoff row model or infer target
-identity from provider.
+optional host-resolved `ownerDeviceLabel` metadata directly from the same
+target, plus temporary disclosure/icon-motion state; a host supplies its
+authoritative ready target projection and retains launch orchestration in
+`onSelect`. Host surfaces must not reconstruct a second handoff row model,
+observe the portaled menu DOM, or infer target identity from provider or
+visible text.
 
 For a signed Agent Extension, package `icon` is the primary identity and
 optional package `maskIcon` is the conversation-row glyph. All assets remain

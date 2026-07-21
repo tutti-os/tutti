@@ -15,6 +15,7 @@ export function normalizeAgentGUIAgents(
     const iconUrl = agent.iconUrl.trim();
     const maskIconUrl = agent.maskIconUrl?.trim() ?? "";
     const heroImageUrl = agent.heroImageUrl?.trim() ?? "";
+    const ownerDeviceLabel = agent.ownerDeviceLabel?.trim() ?? "";
     if (
       !agentTargetId ||
       !name ||
@@ -36,6 +37,7 @@ export function normalizeAgentGUIAgents(
       ...(agent.description?.trim()
         ? { description: agent.description.trim() }
         : {}),
+      ...(ownerDeviceLabel ? { ownerDeviceLabel } : {}),
       ...(ownerName || ownerAvatarUrl
         ? {
             owner: {
@@ -110,6 +112,9 @@ export function projectAgentGUIAgentsToTargets(
     iconUrl: agent.iconUrl,
     ...(agent.maskIconUrl ? { maskIconUrl: agent.maskIconUrl } : {}),
     ...(agent.heroImageUrl ? { heroImageUrl: agent.heroImageUrl } : {}),
+    ...(agent.ownerDeviceLabel
+      ? { ownerDeviceLabel: agent.ownerDeviceLabel }
+      : {}),
     ...(agent.owner?.avatarUrl
       ? {
           badge: {

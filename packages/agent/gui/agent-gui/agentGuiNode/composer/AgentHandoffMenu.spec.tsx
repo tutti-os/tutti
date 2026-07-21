@@ -73,7 +73,11 @@ describe("AgentHandoffMenu", () => {
     expect(selfTarget).toBeEnabled();
     expect(sharedTarget).toBeEnabled();
     expect(within(selfTarget).getByText("My Agent")).toBeVisible();
+    expect(within(selfTarget).getByText("From My Mac mini")).toBeVisible();
     expect(within(sharedTarget).getByText("Lin · Shared Agent")).toBeVisible();
+    expect(
+      within(sharedTarget).getByText("From Lin's MacBook Pro")
+    ).toBeVisible();
     expect(offlineTarget).toHaveTextContent("Offline Agent");
     expect(offlineTarget).toHaveAttribute("aria-disabled", "true");
 
@@ -121,6 +125,7 @@ describe("AgentHandoffMenu", () => {
 
 const labels = {
   action: "Handoff",
+  deviceSource: (deviceLabel: string) => `From ${deviceLabel}`,
   menu: "Choose an agent for handoff",
   self: "My Agent",
   shared: "Shared Agent",
@@ -131,12 +136,14 @@ const targets: readonly AgentGUIAgentTarget[] = [
   target({
     targetId: "target-self",
     label: "Research Codex",
+    ownerDeviceLabel: "My Mac mini",
     ownership: "self"
   }),
   target({
     targetId: "target-shared",
     label: "Claude Code",
     ownerLabel: "Lin",
+    ownerDeviceLabel: "Lin's MacBook Pro",
     ownership: "shared",
     badge: { iconUrl: "owner.png", label: "Lin" }
   }),

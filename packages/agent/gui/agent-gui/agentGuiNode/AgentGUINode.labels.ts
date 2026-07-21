@@ -754,6 +754,10 @@ export function useAgentGUIViewLabels(input: {
         "agentHost.agentGui.handoffConversationTooltip"
       ),
       handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu"),
+      handoffTargetDeviceSource: (deviceLabel: string) =>
+        t("agentHost.agentGui.handoffTargetDeviceSource", {
+          device: deviceLabel
+        }),
       handoffTargetSelf: t("agentHost.agentGui.handoffTargetSelf"),
       handoffTargetShared: t("agentHost.agentGui.handoffTargetShared")
     }),

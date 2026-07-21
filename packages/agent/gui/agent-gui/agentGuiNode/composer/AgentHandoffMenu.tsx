@@ -21,6 +21,7 @@ import { resolveHandoffTargetOwnershipLabel } from "./handoffTargetPresentation"
 
 export interface AgentHandoffMenuLabels {
   action: string;
+  deviceSource?: (deviceLabel: string) => string;
   menu: string;
   self: string;
   shared: string;
@@ -186,6 +187,10 @@ export function AgentHandoffMenu({
               self: labels.self,
               shared: labels.shared
             });
+            const ownerDeviceLabel = target.ownerDeviceLabel?.trim() ?? "";
+            const deviceSourceLabel = ownerDeviceLabel
+              ? (labels.deviceSource?.(ownerDeviceLabel) ?? ownerDeviceLabel)
+              : null;
             return (
               <SelectItem
                 key={`${target.provider}:${target.targetId}`}
@@ -212,9 +217,12 @@ export function AgentHandoffMenu({
                   </span>
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span className="min-w-0 truncate">{target.label}</span>
-                    {ownershipLabel ? (
-                      <span className="min-w-0 truncate text-[11px] leading-none text-[var(--agent-gui-text-secondary)]">
-                        {ownershipLabel}
+                    {ownershipLabel || deviceSourceLabel ? (
+                      <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] leading-none text-[var(--agent-gui-text-secondary)]">
+                        {ownershipLabel ? <span>{ownershipLabel}</span> : null}
+                        {deviceSourceLabel ? (
+                          <span>{deviceSourceLabel}</span>
+                        ) : null}
                       </span>
                     ) : null}
                   </span>
