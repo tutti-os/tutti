@@ -108,9 +108,9 @@ declaration when static symbol matching succeeds. Those links identify source
 ownership, not a runtime call stack or proof of causation.
 
 The capture runner ships `provider-switch`, `session-switch`,
-`provider-session-cycle`, `virtualized-streaming`, `rail-scope-reveal`,
-`virtualized-scroll-locator`, `composer-overflow-resize`,
-`workbench-window-lifecycle`, and
+`provider-session-cycle`, `virtualized-streaming`,
+`virtualized-scroll-locator`, `rail-scope-reveal`, `composer-input`,
+`composer-overflow-resize`, `workbench-window-lifecycle`, and
 `desktop-window-state`. List them with `--list-scenarios`; select one with
 `--scenario <id>`. Scenario modules own preparation, completion conditions,
 semantic assertions, milestones, and metadata; runtime startup, trace capture,
@@ -139,6 +139,10 @@ Neither scenario launches or sends input to a developer's installed Agent provid
 renderer viewport, asserts the hero prompt-tip's native `scrollWidth` and
 `clientWidth` getters were read after resize, then restores the original
 viewport metrics.
+`composer-input` restores a settled Session so the dock composer is active,
+injects text one character at a time, drives a real CDP IME composition
+lifecycle, then opens the `@` panel and verifies ArrowDown, Tab, and Escape
+navigation without submitting the draft.
 
 `workbench-window-lifecycle` measures the internal AgentGUI Workbench node's
 minimize, restore, maximize, unmaximize, close, and reopen mechanics.
