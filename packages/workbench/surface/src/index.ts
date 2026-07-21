@@ -74,6 +74,7 @@ export type {
   WorkbenchHostNodeBodyContext,
   WorkbenchHostNodeData,
   WorkbenchHostNodeDefinition,
+  WorkbenchHostNodeHeaderFrameRenderKey,
   WorkbenchHostNodeHeaderContext,
   WorkbenchHostNodeHeaderWindowActions,
   WorkbenchHostNodeInstanceStrategy,

@@ -1695,6 +1695,33 @@ describe("agent GUI workbench contribution copy", () => {
     expect(screen.queryByTestId("agent-gui-window-detail-title")).toBeNull();
   });
 
+  it("keys direct-manipulation header renders by visible rail layout", () => {
+    const definition = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    }).nodes?.[0];
+    const getKey = definition?.getHeaderFrameRenderKey;
+    const createContext = (input: { isDragging?: boolean; width: number }) =>
+      ({
+        externalNodeState: {
+          conversationRailCollapsed: false,
+          conversationRailWidthPx: 520
+        },
+        isDragging: input.isDragging === true,
+        node: {
+          data: { runtimeNodeState: null },
+          frame: { height: 560, width: input.width, x: 0, y: 0 }
+        }
+      }) as never;
+
+    expect(getKey?.(createContext({ isDragging: true, width: 700 }))).toBe(
+      "dragging"
+    );
+    expect(getKey?.(createContext({ width: 600 }))).toBe("collapsed");
+    expect(getKey?.(createContext({ width: 650 }))).toBe("expanded:420");
+    expect(getKey?.(createContext({ width: 700 }))).toBe("expanded:470");
+  });
+
   it("renders the expanded workbench header as a rail titlebar plus detail title", () => {
     const openDetachedWindow = vi.fn();
     const contribution = createTestAgentGuiWorkbenchContribution({

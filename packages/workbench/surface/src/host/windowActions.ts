@@ -24,6 +24,14 @@ export function createWorkbenchHostNodeHeaderWindowActions(
     focus() {
       context.controller.commands.focusNode(context.node.id);
     },
+    getFrame() {
+      return (
+        context.controller
+          .getSnapshot()
+          .nodes.find((node) => node.id === context.node.id)?.frame ??
+        context.node.frame
+      );
+    },
     minimize() {
       context.genie.minimizeNodeToAnchor(context.node.id, () =>
         context.controller.commands.minimizeNode(context.node.id)

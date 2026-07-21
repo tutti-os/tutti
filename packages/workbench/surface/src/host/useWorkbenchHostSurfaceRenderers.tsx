@@ -1,4 +1,4 @@
-import { Component, useCallback, useMemo } from "react";
+import { Component, memo, useCallback, useMemo } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import type { WorkbenchNode } from "../core/types.ts";
 import type {
@@ -38,6 +38,8 @@ import type {
   WorkbenchHostNodeBodyContext,
   WorkbenchHostNodeData,
   WorkbenchHostNodeDefinition,
+  WorkbenchHostNodeHeaderContext,
+  WorkbenchHostNodeHeaderFrameRenderKey,
   WorkbenchHostProps,
   WorkbenchHostRuntimeHandle
 } from "./types.ts";
@@ -259,7 +261,7 @@ export function useWorkbenchHostSurfaceRenderers(input: {
       }
 
       return (
-        <WorkbenchHostNodeHeaderRenderer
+        <MemoizedWorkbenchHostNodeHeaderStateBridge
           context={context}
           definition={definition}
           externalStateSource={input.externalStateSource}
@@ -509,29 +511,147 @@ function WorkbenchHostNodeRenderer(input: {
   );
 }
 
-function WorkbenchHostNodeHeaderRenderer(input: {
+interface WorkbenchHostNodeHeaderStateBridgeProps {
   context: Parameters<WorkbenchRenderWindowHeader<WorkbenchHostNodeData>>[0];
   definition: WorkbenchHostNodeDefinition;
   externalStateSource?: WorkbenchHostExternalStateSource;
   host: WorkbenchHostRuntimeHandle;
   workspaceId: string;
-}): ReactNode {
+}
+
+function WorkbenchHostNodeHeaderStateBridge(
+  input: WorkbenchHostNodeHeaderStateBridgeProps
+): ReactNode {
   const externalState = useWorkbenchHostExternalState({
     externalStateSource: input.externalStateSource,
     node: input.context.node,
     workspaceId: input.workspaceId
   });
-  return input.definition.renderHeader?.(
-    createWorkbenchHostNodeHeaderContext({
-      context: input.context,
-      definition: input.definition,
-      externalState,
-      externalStateSource: input.externalStateSource,
-      host: input.host,
-      workspaceId: input.workspaceId
-    })
+  const context = createWorkbenchHostNodeHeaderContext({
+    context: input.context,
+    definition: input.definition,
+    externalState,
+    externalStateSource: input.externalStateSource,
+    host: input.host,
+    workspaceId: input.workspaceId
+  });
+  const getFrameRenderKey = input.definition.getHeaderFrameRenderKey;
+
+  return (
+    <MemoizedWorkbenchHostNodeHeaderRenderer
+      context={context}
+      definition={input.definition}
+      frameRenderKey={getFrameRenderKey?.(context) ?? null}
+      hasFrameRenderKey={getFrameRenderKey !== undefined}
+      host={input.host}
+      renderRevision={input.context.renderRevision}
+    />
   );
 }
+
+function areWorkbenchHostNodeHeaderStateBridgePropsEqual(
+  previous: WorkbenchHostNodeHeaderStateBridgeProps,
+  next: WorkbenchHostNodeHeaderStateBridgeProps
+): boolean {
+  return (
+    previous.definition === next.definition &&
+    previous.externalStateSource === next.externalStateSource &&
+    previous.host === next.host &&
+    previous.workspaceId === next.workspaceId &&
+    previous.context.controller === next.context.controller &&
+    previous.context.isDragging === next.context.isDragging &&
+    previous.context.isFocused === next.context.isFocused &&
+    previous.context.isResizing === next.context.isResizing &&
+    previous.context.node === next.context.node &&
+    previous.context.renderRevision === next.context.renderRevision &&
+    previous.context.surfaceSize.width === next.context.surfaceSize.width &&
+    previous.context.surfaceSize.height === next.context.surfaceSize.height
+  );
+}
+
+const MemoizedWorkbenchHostNodeHeaderStateBridge = memo(
+  WorkbenchHostNodeHeaderStateBridge,
+  areWorkbenchHostNodeHeaderStateBridgePropsEqual
+);
+
+interface WorkbenchHostNodeHeaderRendererProps {
+  context: WorkbenchHostNodeHeaderContext;
+  definition: WorkbenchHostNodeDefinition;
+  frameRenderKey: WorkbenchHostNodeHeaderFrameRenderKey;
+  hasFrameRenderKey: boolean;
+  host: WorkbenchHostRuntimeHandle;
+  renderRevision: object;
+}
+
+function WorkbenchHostNodeHeaderRenderer(
+  input: WorkbenchHostNodeHeaderRendererProps
+): ReactNode {
+  return input.definition.renderHeader?.(input.context);
+}
+
+function areWorkbenchHostNodeHeaderRendererPropsEqual(
+  previous: WorkbenchHostNodeHeaderRendererProps,
+  next: WorkbenchHostNodeHeaderRendererProps
+): boolean {
+  if (
+    previous.definition !== next.definition ||
+    previous.host !== next.host ||
+    previous.renderRevision !== next.renderRevision ||
+    previous.context.activation !== next.context.activation ||
+    previous.context.externalNodeState !== next.context.externalNodeState ||
+    previous.context.externalWorkspaceState !==
+      next.context.externalWorkspaceState ||
+    previous.context.isDragging !== next.context.isDragging ||
+    previous.context.isFocused !== next.context.isFocused ||
+    previous.context.isResizing !== next.context.isResizing
+  ) {
+    return false;
+  }
+
+  const previousNode = previous.context.node;
+  const nextNode = next.context.node;
+  const nonFrameInputsEqual =
+    previous.context.surfaceSize.width === next.context.surfaceSize.width &&
+    previous.context.surfaceSize.height === next.context.surfaceSize.height &&
+    previousNode.id === nextNode.id &&
+    previousNode.kind === nextNode.kind &&
+    previousNode.title === nextNode.title &&
+    previousNode.displayMode === nextNode.displayMode &&
+    previousNode.restoreFrame === nextNode.restoreFrame &&
+    previousNode.isMinimized === nextNode.isMinimized &&
+    previousNode.minimizedAtUnixMs === nextNode.minimizedAtUnixMs &&
+    previousNode.sizeConstraints === nextNode.sizeConstraints &&
+    previousNode.data === nextNode.data;
+  if (!nonFrameInputsEqual) {
+    return false;
+  }
+
+  if (
+    (next.context.isDragging || next.context.isResizing) &&
+    next.hasFrameRenderKey
+  ) {
+    return Object.is(previous.frameRenderKey, next.frameRenderKey);
+  }
+
+  return areWorkbenchFramesEqual(previousNode.frame, nextNode.frame);
+}
+
+function areWorkbenchFramesEqual(
+  previous: WorkbenchNode["frame"],
+  next: WorkbenchNode["frame"]
+): boolean {
+  return (
+    previous.x === next.x &&
+    previous.y === next.y &&
+    previous.width === next.width &&
+    previous.height === next.height
+  );
+}
+
+const MemoizedWorkbenchHostNodeHeaderRenderer = memo(
+  WorkbenchHostNodeHeaderRenderer,
+  areWorkbenchHostNodeHeaderRendererPropsEqual
+);
 
 interface WorkbenchHostSurfaceRenderErrorBoundaryProps {
   children: ReactNode;

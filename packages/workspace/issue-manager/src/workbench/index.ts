@@ -123,6 +123,10 @@ export function createIssueManagerWorkbenchNodeDefinition<
     instance: {
       mode: "single"
     },
+    getHeaderFrameRenderKey: ({ isDragging, node }) =>
+      isDragging
+        ? "dragging"
+        : shouldAutoCollapseIssueManagerSidebar(node.frame.width),
     renderBody: (context) =>
       createElement(IssueManagerNode, {
         emptyIllustration,
@@ -222,8 +226,9 @@ export function createIssueManagerWorkbenchNodeDefinition<
             nextCollapsed === false &&
             node.displayMode !== "fullscreen"
           ) {
+            const currentFrame = windowActions.getFrame();
             windowActions.resize(
-              resolveIssueManagerExpandedFrame(node.frame, surfaceSize.width)
+              resolveIssueManagerExpandedFrame(currentFrame, surfaceSize.width)
             );
             applyTaskListCollapsed(false);
             return;

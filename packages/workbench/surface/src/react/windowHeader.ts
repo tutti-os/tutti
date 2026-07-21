@@ -17,10 +17,14 @@ export interface ResolveWorkbenchWindowHeaderInput<TData = unknown> {
   controller: WorkbenchController<TData>;
   defaultActions: ReactNode;
   genie: WorkbenchHeaderGenieControls;
+  isDragging: boolean;
+  isFocused: boolean;
+  isResizing: boolean;
   node: WorkbenchNode<TData>;
   onDoubleClick: WorkbenchWindowHeaderDragHandleProps["onDoubleClick"];
   onDragStart: WorkbenchWindowHeaderDragHandleProps["onPointerDown"];
   renderHeader?: WorkbenchRenderWindowHeader<TData>;
+  renderRevision: object;
   windowChromeMode?: WorkbenchWindowChromeMode;
 }
 
@@ -52,10 +56,14 @@ export function resolveWorkbenchWindowHeader<TData>({
   controller,
   defaultActions,
   genie,
+  isDragging,
+  isFocused,
+  isResizing,
   node,
   onDoubleClick,
   onDragStart,
   renderHeader,
+  renderRevision,
   windowChromeMode = "system"
 }: ResolveWorkbenchWindowHeaderInput<TData>): ResolvedWorkbenchWindowHeader<TData> {
   const context: WorkbenchWindowHeaderContext<TData> = {
@@ -67,7 +75,11 @@ export function resolveWorkbenchWindowHeader<TData>({
       onPointerDown: onDragStart
     },
     genie,
+    isDragging,
+    isFocused,
+    isResizing,
     node,
+    renderRevision,
     surfaceSize: controller.getSnapshot().surfaceSize
   };
 
