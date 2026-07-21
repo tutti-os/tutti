@@ -9,6 +9,7 @@ import {
   agentGuiPerformanceScenarios,
   resolveAgentGuiPerformanceScenario
 } from "./agent-gui-performance-scenarios.mjs";
+import { composerInputScenario } from "./agent-gui-composer-performance-scenarios.mjs";
 import {
   applyScenarioAssessment,
   findUnknownAgentTargetMigrationIDs,
@@ -165,6 +166,7 @@ test("performance scenario registry exposes renderer and window scenarios", () =
       "virtualized-streaming",
       "virtualized-scroll-locator",
       "rail-scope-reveal",
+      "composer-input",
       "composer-overflow-resize",
       "workbench-window-lifecycle",
       "desktop-window-state"
@@ -177,5 +179,39 @@ test("performance scenario registry exposes renderer and window scenarios", () =
   assert.throws(
     () => resolveAgentGuiPerformanceScenario("missing"),
     /unknown scenario: missing/
+  );
+});
+
+test("composer input summary requires text, IME, and mention keyboard semantics", () => {
+  const report = composerInputScenario.summarize(
+    { dockComposer: true, editorReady: true, sessionID: "session-1" },
+    {
+      categoryChanged: true,
+      compositionEnds: 1,
+      compositionStarts: 1,
+      compositionUpdates: 3,
+      highlightChanged: true,
+      imeCommitted: true,
+      inputEvents: 58,
+      mentionClosed: true,
+      mentionKeys: ["ArrowDown", "Tab", "Escape"],
+      mentionOpened: true
+    }
+  );
+
+  assert.equal(report.outcome, "passed");
+  assert.deepEqual(
+    report.assertions.map((assertion) => assertion.name),
+    [
+      "dock composer active",
+      "per-character text input observed",
+      "IME composition lifecycle observed",
+      "IME text committed once",
+      "@ mention panel opened",
+      "mention selection moved",
+      "mention category cycled",
+      "mention keyboard events observed",
+      "mention panel closed"
+    ]
   );
 });

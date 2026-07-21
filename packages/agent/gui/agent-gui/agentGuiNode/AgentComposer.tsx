@@ -543,7 +543,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const layout = useComposerLayout({
     isHeroLayout,
     inputDisabled,
-    paletteDraftPrompt,
     showFileMentionPalette,
     showFloatingCommandMenu,
     previewMode,
