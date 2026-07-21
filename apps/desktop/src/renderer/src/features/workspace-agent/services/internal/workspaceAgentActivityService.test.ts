@@ -2594,3 +2594,92 @@ function planDecisionResponse(
     }
   };
 }
+test("WorkspaceAgentActivityService exposes durable AutomationRule session overrides", async () => {
+  const calls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      async listAutomationRules(workspaceId: string) {
+        calls.push(["list", workspaceId]);
+        return {
+          rules: [
+            {
+              id: "rule-review",
+              name: "Review completed work",
+              enabled: true,
+              trigger: "on_task_complete"
+            }
+          ]
+        };
+      },
+      async getAgentSessionAutomationRuleOverride(
+        workspaceId: string,
+        agentSessionId: string
+      ) {
+        calls.push(["get", workspaceId, agentSessionId]);
+        return {
+          agentSessionId,
+          workspaceId,
+          disabled: false,
+          ruleIds: ["rule-review"]
+        };
+      },
+      async setAgentSessionAutomationRuleOverride(
+        workspaceId: string,
+        agentSessionId: string,
+        request: { disabled: boolean; ruleIds: string[] }
+      ) {
+        calls.push(["set", workspaceId, agentSessionId, request]);
+        return { agentSessionId, workspaceId, ...request };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  assert.deepEqual(
+    await service.listAutomationRules({ workspaceId: " ws-1 " }),
+    {
+      rules: [
+        {
+          // The retired action split no longer travels on the daemon
+          // contract; the runtime summary keeps an empty placeholder.
+          action: "",
+          enabled: true,
+          id: "rule-review",
+          name: "Review completed work",
+          trigger: "on_task_complete"
+        }
+      ]
+    }
+  );
+  assert.deepEqual(
+    await service.getAutomationRuleOverride({
+      agentSessionId: "session-1",
+      workspaceId: " ws-1 "
+    }),
+    {
+      agentSessionId: "session-1",
+      workspaceId: "ws-1",
+      disabled: false,
+      ruleIds: ["rule-review"]
+    }
+  );
+  assert.deepEqual(
+    await service.setAutomationRuleOverride({
+      agentSessionId: "session-1",
+      workspaceId: " ws-1 ",
+      disabled: true,
+      ruleIds: []
+    }),
+    {
+      agentSessionId: "session-1",
+      workspaceId: "ws-1",
+      disabled: true,
+      ruleIds: []
+    }
+  );
+  assert.deepEqual(calls, [
+    ["list", "ws-1"],
+    ["get", "ws-1", "session-1"],
+    ["set", "ws-1", "session-1", { disabled: true, ruleIds: [] }]
+  ]);
+});

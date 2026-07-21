@@ -28,6 +28,7 @@ import (
 	agentquickpromptservice "github.com/tutti-os/tutti/services/tuttid/service/agentquickprompt"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
+	automationruleservice "github.com/tutti-os/tutti/services/tuttid/service/automationrule"
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	appclicli "github.com/tutti-os/tutti/services/tuttid/service/cli/appcli"
@@ -344,6 +345,14 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Workspaces: store,
 		Publisher:  modelConfigurationPublisher,
 	}
+	automationRulesStore, _ := store.(workspacedata.AutomationRulesStore)
+	automationRules := &automationruleservice.Service{
+		Store:     automationRulesStore,
+		Agents:    workspaceAgents,
+		Targets:   agentTargetStore,
+		Usage:     automationRulesStore,
+		Publisher: eventstreamservice.AgentAutomationRulesPublisher{Service: events},
+	}
 	modelPolicyStore, _ := store.(modelpolicyservice.Store)
 	modelPolicies := &modelpolicyservice.Service{
 		Store: modelPolicyStore,
@@ -519,6 +528,10 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.AvailabilityChecker = agentservice.AgentStatusProviderAvailabilityChecker{
 		Service: &agentStatusService,
 	}
+	automationExecutor := &automationruleservice.DaemonExecutor{Agents: agentSessionService, Ledger: automationRulesStore}
+	automationRules.Executor = automationExecutor
+	automationRules.Sources = automationExecutor
+
 	agentHost := agentservice.NewApplicationHost(agentSessionService)
 	agentSessionService.SetApplicationHost(agentHost)
 	// Host fixes startup order: durable runtime operations first, then goal
@@ -710,6 +723,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		AgentModelBindingService:  modelBindings,
 		ModelPolicyService:        modelPolicies,
 		CollaborationRunService:   collabRuns,
+		AutomationRuleService:     automationRules,
 
 		EventStreamService: events,
 		WorkspaceService:   workspaceService,

@@ -82,6 +82,78 @@ VALUES (?, ?)
 	return nil
 }
 
+// applyModelPlanRevisionsV1 adds immutable, secret-bearing plan revisions.
+// Session runtime context stores only the plan id/revision/fingerprint; the
+// encrypted endpoint credential remains in this daemon-owned table.
+//
+// Historical rows intentionally do not reference model_plans: deleting a
+// plan from the current catalog must not make existing sessions impossible to
+// resume. Workspace deletion still cascades every revision.
+func (s *SQLiteStore) applyModelPlanRevisionsV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationModelPlanRevisionsV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	hasRevision, err := s.hasColumn(ctx, "model_plans", "revision")
+	if err != nil {
+		return err
+	}
+	if !hasRevision {
+		if _, err := s.writeDB.ExecContext(ctx, `ALTER TABLE model_plans ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;`); err != nil {
+			return fmt.Errorf("add model plan revision: %w", err)
+		}
+	}
+
+	now := unixMs(time.Now().UTC())
+	_, err = s.writeDB.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS model_plan_revisions (
+  workspace_id TEXT NOT NULL,
+  plan_id TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  template_kind TEXT NOT NULL DEFAULT 'custom',
+  protocol TEXT NOT NULL,
+  api_key_ciphertext TEXT NOT NULL DEFAULT '',
+  base_url TEXT NOT NULL DEFAULT '',
+  models_json TEXT NOT NULL DEFAULT '[]',
+  default_model TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 0,
+  detection_json TEXT NOT NULL DEFAULT '{}',
+  first_use_json TEXT NOT NULL DEFAULT '{}',
+  created_at_unix_ms INTEGER NOT NULL,
+  updated_at_unix_ms INTEGER NOT NULL,
+  recorded_at_unix_ms INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, plan_id, revision),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_plan_revisions_lookup
+  ON model_plan_revisions(workspace_id, plan_id, revision DESC);
+
+INSERT OR IGNORE INTO model_plan_revisions (
+  workspace_id, plan_id, revision, name, template_kind, protocol,
+  api_key_ciphertext, base_url, models_json, default_model, enabled,
+  detection_json, first_use_json, created_at_unix_ms, updated_at_unix_ms,
+  recorded_at_unix_ms
+)
+SELECT workspace_id, plan_id, revision, name, template_kind, protocol,
+  api_key_ciphertext, base_url, models_json, default_model, enabled,
+  detection_json, first_use_json, created_at_unix_ms, updated_at_unix_ms, ?
+FROM model_plans;
+
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, now, schemaMigrationModelPlanRevisionsV1, now)
+	if err != nil {
+		return fmt.Errorf("migrate model plan revisions v1: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) applyAgentModelBindingsV1(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationAgentModelBindingsV1)
 	if err != nil {

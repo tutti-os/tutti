@@ -29,9 +29,10 @@ func (s *Service) GetSkillBundle(ctx context.Context, workspaceID string, input 
 	if s.RuntimePreparer == nil || !ok {
 		return SkillBundle{}, ErrSkillBundleUnavailable
 	}
-	launch, err := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
+	launchInput := CreateSessionInput{
 		AgentTargetID: agentTargetID,
-	})
+	}
+	launch, err := s.resolveCreateSessionLaunch(ctx, workspaceID, &launchInput)
 	if err != nil {
 		return SkillBundle{}, err
 	}

@@ -317,6 +317,7 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 	})
 
 	registerWorkspaceAgentRoutes(mux, routes, wrapper)
+	registerAutomationRuleRoutes(mux, routes)
 	registerModelGovernanceRoutes(mux, routes, wrapper)
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/collaboration-runs", func(w http.ResponseWriter, r *http.Request) {

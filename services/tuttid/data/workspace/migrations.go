@@ -58,6 +58,7 @@ const schemaMigrationAgentModelBindingsV1 = "agent_model_bindings_v1"
 const schemaMigrationAgentModelBindingsV2 = "agent_model_bindings_v2"
 const schemaMigrationWorkspaceAgentsV5 = "workspace_agents_contract_cleanup_v1"
 const schemaMigrationCollabRunsV1 = "collab_runs_v1"
+const schemaMigrationModelPlanRevisionsV1 = "model_plan_revisions_v1"
 const schemaMigrationAppFactoryJobsV1 = "app_factory_jobs_v1"
 const schemaMigrationAppFactoryJobsV2 = "app_factory_jobs_v2"
 const schemaMigrationAppFactoryJobsV3 = "app_factory_jobs_v3"
@@ -231,6 +232,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyModelPlansV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyModelPlanRevisionsV1(ctx); err != nil {
+		return err
+	}
 	if err := s.applyAgentModelBindingsV1(ctx); err != nil {
 		return err
 	}
@@ -262,6 +266,12 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 
 	if err := s.applyModelPoliciesV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAutomationRulesV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAutomationRulesV2(ctx); err != nil {
 		return err
 	}
 	if err := s.applyAppFactoryJobsV1(ctx); err != nil {

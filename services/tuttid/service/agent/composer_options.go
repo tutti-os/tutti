@@ -8,6 +8,7 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
 
@@ -64,6 +65,14 @@ type ComposerOptionsInput struct {
 	WorkspaceID              string
 	Settings                 ComposerSettings
 	IncludeCapabilityCatalog *bool
+	// ResolvedModelPlan is a daemon-only exact plan override supplied by a
+	// WorkspaceAgent resolver. It may contain a credential and must never be
+	// serialized into runtime context or transport responses.
+	ResolvedModelPlan *modelplanbiz.Plan
+	// IgnoreModelPlanBinding forces provider-native credentials and model
+	// discovery for internal probes. It is daemon-only and must not be exposed
+	// as a user-facing session setting.
+	IgnoreModelPlanBinding   bool
 	providerTargetRef        map[string]any
 	extensionComposerProfile ExtensionComposerProfile
 }
@@ -126,11 +135,13 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	requestedPermissionModeID := strings.TrimSpace(input.Settings.PermissionModeID)
 	provider := agentprovider.Normalize(input.Provider)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	launchInput := CreateSessionInput{}
 	if agentTargetID != "" {
-		launch, err := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
+		launchInput = CreateSessionInput{
 			AgentTargetID: agentTargetID,
 			Provider:      provider,
-		})
+		}
+		launch, err := s.resolveCreateSessionLaunch(ctx, input.WorkspaceID, &launchInput)
 		if err != nil {
 			return ComposerOptions{}, err
 		}
@@ -179,9 +190,45 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		}
 		input.extensionComposerProfile = extensionProfile
 	}
+	modelPlanResolution := modelPlanResolution{}
+	if input.IgnoreModelPlanBinding {
+		modelPlanResolution.ModelConfiguration = newProviderNativeModelConfiguration(
+			provider,
+			input.AgentTargetID,
+		)
+	} else if launchInput.ResolvedModelPlan != nil {
+		requestedModel := settings.Model
+		if requestedModel == "" {
+			requestedModel = strings.TrimSpace(value(launchInput.Model))
+			settings.Model = requestedModel
+		}
+		var err error
+		modelPlanResolution, err = resolveProvidedModelPlan(
+			provider,
+			input.AgentTargetID,
+			*launchInput.ResolvedModelPlan,
+			launchInput.AgentDefaultModel,
+			requestedModel,
+		)
+		if err != nil {
+			return ComposerOptions{}, err
+		}
+	} else {
+		modelPlanResolution = s.resolveModelPlan(
+			ctx,
+			input.WorkspaceID,
+			input.AgentTargetID,
+			provider,
+			settings.Model,
+		)
+	}
+	planEndpoint := modelPlanResolution.Endpoint
+	if planEndpoint != nil {
+		settings.Model = planEndpoint.Model
+	}
 	catalogProjection := composerModelCatalogProjection{}
 	catalogProjectionOK := false
-	if composerOptionsProviderUsesModelCatalog(provider) {
+	if planEndpoint == nil && composerOptionsProviderUsesModelCatalog(provider) {
 		catalogProjection, catalogProjectionOK = composerModelOptionsFromCatalog(
 			ctx,
 			s.ModelCatalog,
@@ -191,6 +238,9 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		)
 	}
 	defaultModel := composerConfiguredDefaultModel(provider)
+	if planEndpoint != nil {
+		defaultModel = planEndpoint.Model
+	}
 	if catalogProjectionOK && catalogProjection.DefaultModel != "" {
 		defaultModel = catalogProjection.DefaultModel
 	}
@@ -227,12 +277,13 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		capabilities = nil
 	}
 	runtimeContext := map[string]any{
-		"capabilities":     capabilities,
-		"configOptions":    composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions),
-		"model":            nullableString(effectiveSettings.Model),
-		"permissionModeId": nullableString(effectiveSettings.PermissionModeID),
-		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
-		"speed":            nullableString(effectiveSettings.Speed),
+		"capabilities":       capabilities,
+		"configOptions":      composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions),
+		"model":              nullableString(effectiveSettings.Model),
+		"modelConfiguration": modelPlanResolution.ModelConfiguration.runtimeContext(),
+		"permissionModeId":   nullableString(effectiveSettings.PermissionModeID),
+		"reasoningEffort":    nullableString(effectiveSettings.ReasoningEffort),
+		"speed":              nullableString(effectiveSettings.Speed),
 	}
 	commands := []ComposerCommandOption{}
 	slashCommandPolicy := composerSlashCommandPolicy(provider)
@@ -251,13 +302,38 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if agentTargetID != "" {
 		runtimeContext["agentTargetId"] = agentTargetID
 	}
-	skills := s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, nil, input.providerTargetRef)
+	if launchInput.WorkspaceAgentRevision > 0 {
+		runtimeContext["workspaceAgentRevision"] = launchInput.WorkspaceAgentRevision
+		runtimeContext["harnessAgentTargetId"] = launchInput.HarnessAgentTargetID
+	}
+	skills := filterWorkspaceAgentComposerSkills(
+		s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, nil, input.providerTargetRef),
+		launchInput.AgentSkills,
+		launchInput.AgentCapabilitiesExplicit,
+	)
 	capabilityCatalog := []ComposerCapabilityOption{}
 	capabilityErrors := []string(nil)
 	if composerOptionsIncludeCapabilityCatalog(input) {
 		capabilityCatalog, capabilityErrors = s.listComposerCapabilityOptions(ctx, provider, input.Cwd, skills)
+		capabilityCatalog = filterWorkspaceAgentComposerCapabilities(
+			capabilityCatalog,
+			launchInput.AgentTools,
+			launchInput.AgentCapabilitiesExplicit,
+		)
 	}
 	runtimeContext["skills"] = composerSkillOptionsRuntimeContext(skills)
+	if launchInput.WorkspaceAgentRevision > 0 {
+		runtimeContext["workspaceAgent"] = map[string]any{
+			"id":                   agentTargetID,
+			"revision":             launchInput.WorkspaceAgentRevision,
+			"harnessId":            launchInput.HarnessAgentTargetID,
+			"name":                 strings.TrimSpace(launchInput.AgentName),
+			"description":          strings.TrimSpace(launchInput.AgentDescription),
+			"capabilitiesExplicit": launchInput.AgentCapabilitiesExplicit,
+			"skills":               append([]string(nil), launchInput.AgentSkills...),
+			"tools":                append([]string(nil), launchInput.AgentTools...),
+		}
+	}
 	runtimeContext["capabilityCatalog"] = composerCapabilityOptionsRuntimeContext(capabilityCatalog)
 	if len(capabilityErrors) > 0 {
 		runtimeContext["capabilityCatalogErrors"] = capabilityErrors
@@ -329,7 +405,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		}
 		options = applyExtensionComposerCapabilities(options, extensionProfile)
 	}
-	options = s.applyModelPlanComposerOverlay(ctx, input, options)
+	options = applyResolvedModelPlanComposerOverlay(options, modelPlanResolution)
 	return options, nil
 }
 

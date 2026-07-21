@@ -593,6 +593,86 @@ export class WorkspaceAgentActivityService
     );
   }
 
+  async listAutomationRules(input: {
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    rules: {
+      id: string;
+      name: string;
+      enabled: boolean;
+      trigger: string;
+      action: string;
+    }[];
+  }> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const response =
+      await this.dependencies.tuttidClient.listAutomationRules(workspaceId);
+    return {
+      rules: response.rules.map((rule) => ({
+        id: rule.id,
+        name: rule.name,
+        enabled: rule.enabled,
+        trigger: rule.trigger,
+        // The automation domain retired its action split; every rule
+        // launches a follow-up session. The runtime summary field stays for
+        // contract stability and is no longer populated from the daemon.
+        action: ""
+      }))
+    };
+  }
+
+  async getAutomationRuleOverride(input: {
+    agentSessionId: string;
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    agentSessionId: string;
+    workspaceId: string;
+    disabled: boolean;
+    ruleIds: string[];
+  }> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const override =
+      await this.dependencies.tuttidClient.getAgentSessionAutomationRuleOverride(
+        workspaceId,
+        input.agentSessionId
+      );
+    return {
+      agentSessionId: override.agentSessionId,
+      workspaceId: override.workspaceId,
+      disabled: override.disabled,
+      ruleIds: [...override.ruleIds]
+    };
+  }
+
+  async setAutomationRuleOverride(input: {
+    agentSessionId: string;
+    disabled: boolean;
+    ruleIds: string[];
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    agentSessionId: string;
+    workspaceId: string;
+    disabled: boolean;
+    ruleIds: string[];
+  }> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const override =
+      await this.dependencies.tuttidClient.setAgentSessionAutomationRuleOverride(
+        workspaceId,
+        input.agentSessionId,
+        { disabled: input.disabled, ruleIds: [...input.ruleIds] }
+      );
+    return {
+      agentSessionId: override.agentSessionId,
+      workspaceId: override.workspaceId,
+      disabled: override.disabled,
+      ruleIds: [...override.ruleIds]
+    };
+  }
+
   async goalControl(
     input: Parameters<AgentActivityAdapter["goalControl"]>[0]
   ): Promise<AgentActivityGoalControlResult> {

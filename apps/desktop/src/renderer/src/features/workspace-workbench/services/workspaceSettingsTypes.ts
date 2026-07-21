@@ -4,6 +4,7 @@ import type {
 } from "@shared/contracts/ipc";
 import type {
   AutomationRule,
+  AutomationRuleTrigger,
   WorkspaceAgent,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
@@ -211,19 +212,88 @@ export interface WorkspaceSettingsWorkspaceAgentsSnapshotState {
   readonly saving: boolean;
 }
 
+export type WorkspaceAutomationRuleTrigger = AutomationRuleTrigger;
+
 export type WorkspaceAutomationRule = WorkspaceSettingsReadonly<AutomationRule>;
 
 /**
- * Minimal AutomationRule slice. The workspace Agents controller upserts
- * daemon-saved rules here so the directory reflects generated suggestions;
- * the dedicated rules editor lands with the automation-rules feature.
+ * One selectable automation launch target: a built-in Harness target or an
+ * enabled WorkspaceAgent. Built-ins stay selectable even when no
+ * WorkspaceAgent exists.
  */
+export interface WorkspaceAutomationTargetOption {
+  readonly id: string;
+  readonly name: string;
+  readonly provider: string;
+  readonly kind: "builtin" | "workspaceAgent";
+}
+
+/**
+ * Permission-mode and tool option catalogs resolved from the selected target
+ * Agent's composer capability directory.
+ */
+export interface WorkspaceAutomationTargetCatalog {
+  agentTargetId: string;
+  loading: boolean;
+  loadFailed: boolean;
+  permissionModes: readonly { readonly id: string; readonly label: string }[];
+  tools: readonly { readonly id: string; readonly label: string }[];
+}
+
+/**
+ * Local edit buffer for one daemon-owned AutomationRule. A rule has exactly
+ * one behavior: launch a new target-Agent session that mentions the source
+ * session, so the buffer carries a single target plus its narrowed
+ * permissions.
+ */
+export interface WorkspaceAutomationRuleDraft {
+  automationRuleId: string | null;
+  name: string;
+  enabled: boolean;
+  trigger: WorkspaceAutomationRuleTrigger;
+  sourceWorkspaceAgentId: string;
+  targetAgentId: string;
+  permissionModeId: string;
+  allowedTools: readonly string[];
+  maxRunsPerSession: string;
+  maxTotalTokensPerSession: string;
+  prompt: string;
+}
+
+export type WorkspaceAutomationRuleFeedbackKind =
+  | "deleteFailed"
+  | "invalidBudget"
+  | "requiredFields"
+  | "saveFailed";
+
+export interface WorkspaceAutomationRuleFeedback {
+  readonly kind: WorkspaceAutomationRuleFeedbackKind;
+}
+
 export interface WorkspaceSettingsAutomationRulesMutableState {
   rules: WorkspaceAutomationRule[];
+  confirmingDeleteRuleID: string | null;
+  deletingRuleID: string | null;
+  draft: WorkspaceAutomationRuleDraft | null;
+  feedback: WorkspaceAutomationRuleFeedback | null;
+  loadFailed: boolean;
+  loading: boolean;
+  saving: boolean;
+  targetOptions: WorkspaceAutomationTargetOption[];
+  targetCatalog: WorkspaceAutomationTargetCatalog | null;
 }
 
 export interface WorkspaceSettingsAutomationRulesSnapshotState {
   readonly rules: readonly WorkspaceAutomationRule[];
+  readonly confirmingDeleteRuleID: string | null;
+  readonly deletingRuleID: string | null;
+  readonly draft: Readonly<WorkspaceAutomationRuleDraft> | null;
+  readonly feedback: WorkspaceAutomationRuleFeedback | null;
+  readonly loadFailed: boolean;
+  readonly loading: boolean;
+  readonly saving: boolean;
+  readonly targetOptions: readonly WorkspaceAutomationTargetOption[];
+  readonly targetCatalog: Readonly<WorkspaceAutomationTargetCatalog> | null;
 }
 
 /**

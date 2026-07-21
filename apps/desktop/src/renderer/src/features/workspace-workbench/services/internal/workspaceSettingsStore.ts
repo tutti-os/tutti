@@ -21,15 +21,22 @@ export function createWorkspaceSettingsAgentsState(): WorkspaceSettingsWorkspace
   };
 }
 
-export function createWorkspaceSettingsAutomationRulesState(): WorkspaceSettingsAutomationRulesMutableState {
-  return {
-    rules: []
-  };
+export function createWorkspaceSettingsModelPlansState(): WorkspaceSettingsModelPlansMutableState {
+  return { plans: [] };
 }
 
-export function createWorkspaceSettingsModelPlansState(): WorkspaceSettingsModelPlansMutableState {
+export function createWorkspaceSettingsAutomationRulesState(): WorkspaceSettingsAutomationRulesMutableState {
   return {
-    plans: []
+    confirmingDeleteRuleID: null,
+    deletingRuleID: null,
+    draft: null,
+    feedback: null,
+    loadFailed: false,
+    loading: false,
+    rules: [],
+    saving: false,
+    targetCatalog: null,
+    targetOptions: []
   };
 }
 

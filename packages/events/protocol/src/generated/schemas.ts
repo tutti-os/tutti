@@ -1299,6 +1299,22 @@ export const agentActivityUpdatedPayloadSchema = {
   }
 } as const;
 
+export const agentAutomationRulesChangedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["workspaceId", "occurredAtUnixMs"],
+  properties: {
+    workspaceId: {
+      type: "string",
+      minLength: 1
+    },
+    occurredAtUnixMs: {
+      type: "integer",
+      minimum: 0
+    }
+  }
+} as const;
+
 export const agentCollaborationUpdatedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -3024,6 +3040,7 @@ export const businessEventServerFrameSchema = {
 
 export const businessEventPayloadSchemas = {
   "agent.activity.updated": agentActivityUpdatedPayloadSchema,
+  "agent.automation.rules.changed": agentAutomationRulesChangedPayloadSchema,
   "agent.collaboration.updated": agentCollaborationUpdatedPayloadSchema,
   "agent.model.catalog.invalidated": agentModelCatalogInvalidatedPayloadSchema,
   "agent.model.configuration.changed":

@@ -79,10 +79,11 @@ func (s *Service) persistedSessionCanResume(ctx context.Context, session Persist
 	}
 	input := runtimeResumeInputFromPersistedSession(session)
 	if input.AgentTargetID != "" {
-		launch, err := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
+		launchInput := CreateSessionInput{
 			AgentTargetID: input.AgentTargetID,
 			Provider:      input.Provider,
-		})
+		}
+		launch, err := s.resolveCreateSessionLaunch(ctx, session.WorkspaceID, &launchInput)
 		if err != nil {
 			return false
 		}
@@ -104,6 +105,10 @@ func serviceSession(session ProviderRuntimeSession, resumable bool) Session {
 	normalizedSettings := normalizeObservedComposerSettingsForProvider(
 		normalizedProvider,
 		cloneComposerSettingsPointerValue(session.Settings),
+	)
+	normalizedSettings = composerSettingsWithRuntimeSnapshot(
+		normalizedSettings,
+		session.RuntimeContext,
 	)
 	metadata, internalRuntimeContext, err := agentactivitybiz.SplitSessionRuntimeContext(session.RuntimeContext)
 	if err != nil {
@@ -181,6 +186,7 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 		CreatedAtUnixMS:   createdAtUnixMS,
 		UpdatedAtUnixMS:   updatedAtUnixMS,
 		Visible:           session.Metadata.Visible,
+		RuntimeContext:    persistedSessionRuntimeContext(session),
 	}, resumable)
 	result.ActiveTurnID = strings.TrimSpace(session.ActiveTurnID)
 	result.RailSectionKey = strings.TrimSpace(session.RailSectionKey)
@@ -231,6 +237,13 @@ func mergePersistedSessionState(session Session, persisted PersistedSession) Ses
 	if session.Settings == nil {
 		session.Settings = normalizeComposerSettingsPointerForProvider(session.Provider, &persisted.Settings)
 	}
+	if session.Settings != nil {
+		settings := composerSettingsWithRuntimeSnapshot(
+			*session.Settings,
+			persistedSessionRuntimeContext(persisted),
+		)
+		session.Settings = &settings
+	}
 	session.PermissionConfig = composerPermissionConfig(session.Provider, permissionModeIDFromSettings(session.Settings), preferencesbiz.DefaultDesktopLocale)
 	session.PinnedAtUnixMS = persisted.PinnedAtUnixMS
 	if persisted.UpdatedAtUnixMS > 0 &&
@@ -253,7 +266,11 @@ func serviceSessionWithPersistedFreshness(session ProviderRuntimeSession, persis
 		service.ProviderSessionID = strings.TrimSpace(session.ProviderSessionID)
 	}
 	if liveSettings := normalizeComposerSettingsPointerForProvider(session.Provider, session.Settings); liveSettings != nil {
-		service.Settings = liveSettings
+		settings := composerSettingsWithRuntimeSnapshot(
+			*liveSettings,
+			persistedSessionRuntimeContext(persisted),
+		)
+		service.Settings = &settings
 	} else if service.Settings == nil {
 		service.Settings = normalizeComposerSettingsPointerForProvider(session.Provider, session.Settings)
 	}
@@ -299,6 +316,17 @@ func permissionModeIDFromSettings(settings *ComposerSettings) string {
 		return ""
 	}
 	return strings.TrimSpace(settings.PermissionModeID)
+}
+
+func composerSettingsWithRuntimeSnapshot(
+	settings ComposerSettings,
+	runtimeContext map[string]any,
+) ComposerSettings {
+	snapshot, exists, err := sessionRuntimeSnapshotFromContext(runtimeContext)
+	if err == nil && exists {
+		settings.ModelPlanID = strings.TrimSpace(snapshot.ModelPlanID)
+	}
+	return settings
 }
 
 func boolPointer(value bool) *bool {

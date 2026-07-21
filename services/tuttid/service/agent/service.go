@@ -59,7 +59,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, input CreateSessionInput) (CreateSessionResult, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	input.AgentTargetID = strings.TrimSpace(input.AgentTargetID)
-	launch, err := s.resolveCreateSessionLaunch(ctx, input)
+	launch, err := s.resolveCreateSessionLaunch(ctx, workspaceID, &input)
 	if err != nil {
 		return CreateSessionResult{}, err
 	}
@@ -95,7 +95,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{"content_block_count": len(normalizedContent)})
 	requestedModel := value(input.Model)
 	nodeStartedAt := time.Now()
-	planEndpoint, err := s.resolveCreateSessionModelForPlanOrProvider(ctx, workspaceID, provider, requestedModel, &input)
+	planResolution, err := s.resolveCreateSessionModelForPlanOrProvider(ctx, workspaceID, provider, requestedModel, &input)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
 		return CreateSessionResult{}, err
@@ -166,7 +166,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "settings_validated", provider, nodeStartedAt)
 	}
 	nodeStartedAt = time.Now()
-	prepared, err := s.prepareRuntime(ctx, workspaceID, cwd, input, planEndpoint)
+	prepared, err := s.prepareRuntime(ctx, workspaceID, cwd, input, planResolution.Endpoint)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt, err)
 		return CreateSessionResult{}, err
@@ -176,7 +176,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.runtime_prepared", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{"cwd": prepared.Cwd, "env_count": len(prepared.Env)})
-	if err := s.preparePlanFirstUse(ctx, workspaceID, input.AgentSessionID, planEndpoint, input.AgentTargetID); err != nil {
+	if err := s.preparePlanFirstUse(ctx, workspaceID, input.AgentSessionID, planResolution.Endpoint, input.AgentTargetID); err != nil {
 		return CreateSessionResult{}, err
 	}
 	ctx = withServicePreparedRuntime(ctx, s, prepared)
@@ -309,11 +309,17 @@ type resolvedCreateSessionLaunch struct {
 	ProviderTargetRef map[string]any
 }
 
-func (s *Service) resolveCreateSessionLaunch(ctx context.Context, input CreateSessionInput) (resolvedCreateSessionLaunch, error) {
+func (s *Service) resolveCreateSessionLaunch(ctx context.Context, workspaceID string, input *CreateSessionInput) (resolvedCreateSessionLaunch, error) {
+	if input == nil {
+		return resolvedCreateSessionLaunch{}, ErrInvalidArgument
+	}
 	requestProvider := strings.TrimSpace(input.Provider)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	if agentTargetID == "" {
 		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target id is required for agent session launch", ErrInvalidArgument)
+	}
+	if strings.HasPrefix(agentTargetID, workspaceAgentIDPrefix) {
+		return s.resolveWorkspaceAgentLaunch(ctx, strings.TrimSpace(workspaceID), input, requestProvider)
 	}
 	if s.AgentTargetStore == nil {
 		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target store is unavailable", ErrInvalidArgument)
@@ -341,6 +347,7 @@ func (s *Service) resolveCreateSessionLaunch(ctx context.Context, input CreateSe
 	if requestProvider != "" && requestProvider != derivedProvider {
 		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: provider does not match agent target", ErrInvalidArgument)
 	}
+	input.HarnessAgentTargetID = normalized.ID
 	return resolvedCreateSessionLaunch{
 		Provider:          derivedProvider,
 		ProviderTargetRef: derivedRef,
@@ -372,16 +379,30 @@ type preparedRuntime struct {
 }
 
 func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd string, input CreateSessionInput, endpoints ...*runtimeprep.ModelEndpointConfig) (preparedRuntime, error) {
-	if s.RuntimePreparer == nil {
-		return preparedRuntime{Cwd: cwd}, nil
-	}
-	provider := strings.TrimSpace(input.Provider)
 	var planEndpoint *runtimeprep.ModelEndpointConfig
 	if len(endpoints) > 0 {
 		planEndpoint = endpoints[0]
 	} else {
+		provider := strings.TrimSpace(input.Provider)
 		planEndpoint, _ = s.resolveModelPlanEndpoint(ctx, workspaceID, input.AgentTargetID, provider, value(input.Model))
 	}
+	return s.prepareRuntimeWithModelEndpoint(ctx, workspaceID, cwd, input, planEndpoint)
+}
+
+// prepareRuntimeWithModelEndpoint prepares a launch with an already resolved
+// endpoint. Create and snapshot-based resume use this path so plan resolution
+// cannot drift between validation and process preparation.
+func (s *Service) prepareRuntimeWithModelEndpoint(
+	ctx context.Context,
+	workspaceID string,
+	cwd string,
+	input CreateSessionInput,
+	planEndpoint *runtimeprep.ModelEndpointConfig,
+) (preparedRuntime, error) {
+	if s.RuntimePreparer == nil {
+		return preparedRuntime{Cwd: cwd}, nil
+	}
+	provider := strings.TrimSpace(input.Provider)
 	prepared, err := s.RuntimePreparer.Prepare(ctx, runtimeprep.PrepareInput{
 		WorkspaceID:               workspaceID,
 		AgentSessionID:            strings.TrimSpace(input.AgentSessionID),
@@ -398,6 +419,12 @@ func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd st
 		Model:                     clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
 		ReasoningEffort:           normalizeReasoningEffortForLaunch(provider, input.ProviderTargetRef, value(input.ReasoningEffort)),
 		ConversationDetailMode:    input.ConversationDetailMode,
+		AgentName:                 input.AgentName,
+		AgentDescription:          input.AgentDescription,
+		AgentInstructions:         input.AgentInstructions,
+		AgentCapabilitiesExplicit: input.AgentCapabilitiesExplicit,
+		AgentSkills:               append([]string(nil), input.AgentSkills...),
+		AgentTools:                append([]string(nil), input.AgentTools...),
 		ExtraSkills:               sessionSkillBundlesToProviderSkillBundles(input.ExtraSkills),
 		Metadata:                  input.Metadata,
 		ExternalRolloutSourcePath: input.ExternalRolloutSourcePath,

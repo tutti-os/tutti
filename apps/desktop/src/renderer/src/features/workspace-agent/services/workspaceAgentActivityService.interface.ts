@@ -242,6 +242,40 @@ export interface IWorkspaceAgentActivityService {
     attachmentId: string;
     workspaceId: string;
   }): Promise<WorkspaceAgentActivityAttachment>;
+  listAutomationRules?(input: {
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    rules: {
+      id: string;
+      name: string;
+      enabled: boolean;
+      trigger: string;
+      action: string;
+    }[];
+  }>;
+  getAutomationRuleOverride?(input: {
+    agentSessionId: string;
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    agentSessionId: string;
+    workspaceId: string;
+    disabled: boolean;
+    ruleIds: string[];
+  }>;
+  setAutomationRuleOverride?(input: {
+    agentSessionId: string;
+    disabled: boolean;
+    ruleIds: string[];
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<{
+    agentSessionId: string;
+    workspaceId: string;
+    disabled: boolean;
+    ruleIds: string[];
+  }>;
   renameSession(
     input: AgentActivityRenameSessionInput
   ): Promise<AgentActivitySession>;

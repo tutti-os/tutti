@@ -318,7 +318,8 @@ export type ApiErrorDetails = {
     | "model_plan_not_found"
     | "model_plan_referenced"
     | "workspace_agent_not_found"
-    | "collaboration_run_not_found";
+    | "collaboration_run_not_found"
+    | "automation_rule_not_found";
   reason?: string;
   params?: {
     [key: string]: unknown;
@@ -644,6 +645,100 @@ export type DeleteWorkspaceResponse = {
 };
 
 /**
+ * Every rule targets a launchable Agent. The legacy model kind retired with the consult action and no longer appears.
+ */
+export type AutomationRuleTargetKind = "agent";
+
+export type AutomationRuleTarget = {
+  kind: AutomationRuleTargetKind;
+  /**
+   * Target Agent that receives the automated follow-up session. Accepts a WorkspaceAgent id or a built-in Harness AgentTarget id; the Agent must be enabled and launchable.
+   */
+  workspaceAgentId?: string | null;
+  /**
+   * Retired consult-era field; always empty. Launches inherit the target Agent's model configuration.
+   */
+  modelPlanId?: string | null;
+  /**
+   * Retired consult-era field; always empty.
+   */
+  model?: string | null;
+  /**
+   * Retired consult-era field; always empty.
+   */
+  requiredCapabilities: Array<string>;
+};
+
+/**
+ * Authority narrowing applied to the automatically launched target session. The option catalogs follow the selected target Agent's capability directory.
+ */
+export type AutomationRulePermissions = {
+  permissionModeId?: string | null;
+  allowedTools: Array<string>;
+};
+
+/**
+ * Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
+ */
+export type AutomationRuleBudget = {
+  maxRunsPerSession: number;
+  maxTotalTokensPerSession: number;
+};
+
+/**
+ * One workspace automation rule. A triggered rule launches a new target-Agent session whose first message carries the rule prompt, a source-session mention, and a short event note.
+ */
+export type AutomationRule = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  enabled: boolean;
+  trigger: AutomationRuleTrigger;
+  /**
+   * Optional source-session Agent filter. Empty means all non-automation-origin sessions.
+   */
+  sourceWorkspaceAgentId?: string | null;
+  target: AutomationRuleTarget;
+  permissions: AutomationRulePermissions;
+  budget: AutomationRuleBudget;
+  prompt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ListAutomationRulesResponse = {
+  rules: Array<AutomationRule>;
+};
+
+export type PutAutomationRuleRequest = {
+  name: string;
+  enabled: boolean;
+  trigger: AutomationRuleTrigger;
+  sourceWorkspaceAgentId?: string | null;
+  target: AutomationRuleTarget;
+  permissions: AutomationRulePermissions;
+  budget: AutomationRuleBudget;
+  prompt: string;
+};
+
+export type DeleteAutomationRuleResponse = {
+  automationRuleId: string;
+};
+
+export type AgentSessionAutomationRuleOverride = {
+  workspaceId: string;
+  agentSessionId: string;
+  disabled: boolean;
+  ruleIds: Array<string>;
+  updatedAt?: string | null;
+};
+
+export type SetAgentSessionAutomationRuleOverrideRequest = {
+  disabled: boolean;
+  ruleIds: Array<string>;
+};
+
+/**
  * Wire protocol family used to call the plan's models.
  */
 export type ModelPlanProtocol = "openai" | "anthropic";
@@ -722,6 +817,7 @@ export type ModelPlanModel = {
 export type ModelPlan = {
   id: string;
   workspaceId: string;
+  revision: number;
   name: string;
   templateKind: ModelPlanTemplateKind;
   protocol: ModelPlanProtocol;
@@ -3377,6 +3473,8 @@ export type AgentTurnId = string;
 export type TerminalAfterSeq = number;
 
 export type WorkspaceAgentId = string;
+
+export type AutomationRuleId = string;
 
 export type IssueManagerIssueId = string;
 
@@ -11059,6 +11157,342 @@ export type UpdateWorkspaceAgentResponses = {
 
 export type UpdateWorkspaceAgentResponse =
   UpdateWorkspaceAgentResponses[keyof UpdateWorkspaceAgentResponses];
+
+export type ListAutomationRulesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/automation-rules";
+};
+
+export type ListAutomationRulesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAutomationRulesError =
+  ListAutomationRulesErrors[keyof ListAutomationRulesErrors];
+
+export type ListAutomationRulesResponses = {
+  /**
+   * Workspace automation rules
+   */
+  200: ListAutomationRulesResponse;
+};
+
+export type ListAutomationRulesResponse2 =
+  ListAutomationRulesResponses[keyof ListAutomationRulesResponses];
+
+export type CreateAutomationRuleData = {
+  body: PutAutomationRuleRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/automation-rules";
+};
+
+export type CreateAutomationRuleErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CreateAutomationRuleError =
+  CreateAutomationRuleErrors[keyof CreateAutomationRuleErrors];
+
+export type CreateAutomationRuleResponses = {
+  /**
+   * Created automation rule
+   */
+  201: AutomationRule;
+};
+
+export type CreateAutomationRuleResponse =
+  CreateAutomationRuleResponses[keyof CreateAutomationRuleResponses];
+
+export type DeleteAutomationRuleData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    automationRuleID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}";
+};
+
+export type DeleteAutomationRuleErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteAutomationRuleError =
+  DeleteAutomationRuleErrors[keyof DeleteAutomationRuleErrors];
+
+export type DeleteAutomationRuleResponses = {
+  /**
+   * Automation rule deleted
+   */
+  200: DeleteAutomationRuleResponse;
+};
+
+export type DeleteAutomationRuleResponse2 =
+  DeleteAutomationRuleResponses[keyof DeleteAutomationRuleResponses];
+
+export type GetAutomationRuleData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    automationRuleID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}";
+};
+
+export type GetAutomationRuleErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAutomationRuleError =
+  GetAutomationRuleErrors[keyof GetAutomationRuleErrors];
+
+export type GetAutomationRuleResponses = {
+  /**
+   * Workspace automation rule
+   */
+  200: AutomationRule;
+};
+
+export type GetAutomationRuleResponse =
+  GetAutomationRuleResponses[keyof GetAutomationRuleResponses];
+
+export type UpdateAutomationRuleData = {
+  body: PutAutomationRuleRequest;
+  path: {
+    workspaceID: string;
+    automationRuleID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}";
+};
+
+export type UpdateAutomationRuleErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateAutomationRuleError =
+  UpdateAutomationRuleErrors[keyof UpdateAutomationRuleErrors];
+
+export type UpdateAutomationRuleResponses = {
+  /**
+   * Updated automation rule
+   */
+  200: AutomationRule;
+};
+
+export type UpdateAutomationRuleResponse =
+  UpdateAutomationRuleResponses[keyof UpdateAutomationRuleResponses];
+
+export type GetAgentSessionAutomationRuleOverrideData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override";
+};
+
+export type GetAgentSessionAutomationRuleOverrideErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAgentSessionAutomationRuleOverrideError =
+  GetAgentSessionAutomationRuleOverrideErrors[keyof GetAgentSessionAutomationRuleOverrideErrors];
+
+export type GetAgentSessionAutomationRuleOverrideResponses = {
+  /**
+   * Session automation rule override
+   */
+  200: AgentSessionAutomationRuleOverride;
+};
+
+export type GetAgentSessionAutomationRuleOverrideResponse =
+  GetAgentSessionAutomationRuleOverrideResponses[keyof GetAgentSessionAutomationRuleOverrideResponses];
+
+export type SetAgentSessionAutomationRuleOverrideData = {
+  body: SetAgentSessionAutomationRuleOverrideRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override";
+};
+
+export type SetAgentSessionAutomationRuleOverrideErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SetAgentSessionAutomationRuleOverrideError =
+  SetAgentSessionAutomationRuleOverrideErrors[keyof SetAgentSessionAutomationRuleOverrideErrors];
+
+export type SetAgentSessionAutomationRuleOverrideResponses = {
+  /**
+   * Updated session automation rule override
+   */
+  200: AgentSessionAutomationRuleOverride;
+};
+
+export type SetAgentSessionAutomationRuleOverrideResponse =
+  SetAgentSessionAutomationRuleOverrideResponses[keyof SetAgentSessionAutomationRuleOverrideResponses];
 
 export type ListWorkspaceIssueTopicsData = {
   body?: never;

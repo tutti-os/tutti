@@ -873,9 +873,60 @@ export const en = {
           title: "Agents"
         },
         automationRules: {
-          actions: {
-            consult: "Consult model"
-          },
+          addRule: "Add automation",
+          allAgents: "All Agents",
+          allowedToolsHint:
+            "Select nothing to inherit the target Agent's tool configuration.",
+          allowedToolsLabel: "Allowed tools",
+          budgetDescription:
+            "Limits apply independently to each source session. Zero uses the daemon safety default and is never unlimited.",
+          budgetLabel: "Budget",
+          budgetSummary: "{{runs}} runs · {{tokens}} tokens",
+          chooseTargetAgent: "Choose a target Agent",
+          delete: "Delete",
+          deleteConfirm: "Delete this automation?",
+          deleteFailed: "Couldn't delete the automation — try again.",
+          deleting: "Deleting...",
+          description:
+            "When an Agent finishes or fails a task, automatically start a new session for a target Agent with the source session mentioned in the first message.",
+          disabled: "Disabled",
+          edit: "Edit",
+          editTitle: "Edit {{rule}}",
+          editorDescription:
+            "A triggered rule launches a new session for the target Agent and @-mentions the event's source session alongside your prompt. New automations start disabled with conservative limits.",
+          emptyDescription:
+            "Add a rule when finished or failed Agent work should automatically launch a follow-up session.",
+          emptyTitle: "No automation rules yet",
+          enabled: "Enabled",
+          enabledLabel: "Run automatically on matching task events",
+          invalidBudget:
+            "Enter non-negative whole numbers for both budget limits.",
+          loadFailed: "We couldn't load automation rules.",
+          maxRunsLabel: "Maximum runs per source session",
+          maxTokensLabel: "Maximum total tokens per source session",
+          nameLabel: "Name",
+          namePlaceholder: "Completion follow-up",
+          permissionModeDefault: "Use target Agent default",
+          permissionModeLabel: "Permission mode",
+          promptLabel: "Prompt",
+          promptPlaceholder:
+            "Describe the follow-up work the launched session should perform.",
+          requiredFields: "Enter a name and choose a target Agent.",
+          retry: "Try again",
+          save: "Save automation",
+          saveFailed:
+            "Couldn't save the automation — check its target, permissions, and budget.",
+          saving: "Saving...",
+          sourceAgentLabel: "Source Agent",
+          targetAgentLabel: "Target Agent",
+          targetLabel: "Target",
+          targetOptionsLoadFailed:
+            "Couldn't load the target Agent's capability options.",
+          targetOptionsLoading: "Loading target capability options...",
+          title: "Automation rules",
+          toolsEmpty:
+            "No selectable tools for this target — the launched session keeps the target Agent's tool configuration.",
+          triggerLabel: "Trigger",
           triggers: {
             onTaskComplete: "When a task completes",
             onTaskFailed: "When a task fails or is interrupted"

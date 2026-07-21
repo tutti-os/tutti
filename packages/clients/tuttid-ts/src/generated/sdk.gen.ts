@@ -61,6 +61,9 @@ import type {
   CreateAgentQuickPromptData,
   CreateAgentQuickPromptErrors,
   CreateAgentQuickPromptResponses,
+  CreateAutomationRuleData,
+  CreateAutomationRuleErrors,
+  CreateAutomationRuleResponses,
   CreateCollaborationRunData,
   CreateCollaborationRunErrors,
   CreateCollaborationRunResponses,
@@ -112,6 +115,9 @@ import type {
   DeleteAgentQuickPromptData,
   DeleteAgentQuickPromptErrors,
   DeleteAgentQuickPromptResponses,
+  DeleteAutomationRuleData,
+  DeleteAutomationRuleErrors,
+  DeleteAutomationRuleResponses,
   DeleteModelPlanData,
   DeleteModelPlanErrors,
   DeleteModelPlanResponses,
@@ -184,12 +190,18 @@ import type {
   GetAgentSessionAcceptanceData,
   GetAgentSessionAcceptanceErrors,
   GetAgentSessionAcceptanceResponses,
+  GetAgentSessionAutomationRuleOverrideData,
+  GetAgentSessionAutomationRuleOverrideErrors,
+  GetAgentSessionAutomationRuleOverrideResponses,
   GetAgentSessionModelPolicyOverrideData,
   GetAgentSessionModelPolicyOverrideErrors,
   GetAgentSessionModelPolicyOverrideResponses,
   GetAgentTargetSetupData,
   GetAgentTargetSetupErrors,
   GetAgentTargetSetupResponses,
+  GetAutomationRuleData,
+  GetAutomationRuleErrors,
+  GetAutomationRuleResponses,
   GetDesktopPreferencesData,
   GetDesktopPreferencesErrors,
   GetDesktopPreferencesResponses,
@@ -286,6 +298,9 @@ import type {
   ListAgentTargetsData,
   ListAgentTargetsErrors,
   ListAgentTargetsResponses,
+  ListAutomationRulesData,
+  ListAutomationRulesErrors,
+  ListAutomationRulesResponses,
   ListCliCapabilitiesData,
   ListCliCapabilitiesErrors,
   ListCliCapabilitiesResponses,
@@ -484,6 +499,9 @@ import type {
   SetAgentModelBindingData,
   SetAgentModelBindingErrors,
   SetAgentModelBindingResponses,
+  SetAgentSessionAutomationRuleOverrideData,
+  SetAgentSessionAutomationRuleOverrideErrors,
+  SetAgentSessionAutomationRuleOverrideResponses,
   SetAgentSessionModelPolicyOverrideData,
   SetAgentSessionModelPolicyOverrideErrors,
   SetAgentSessionModelPolicyOverrideResponses,
@@ -523,6 +541,9 @@ import type {
   UpdateAgentQuickPromptData,
   UpdateAgentQuickPromptErrors,
   UpdateAgentQuickPromptResponses,
+  UpdateAutomationRuleData,
+  UpdateAutomationRuleErrors,
+  UpdateAutomationRuleResponses,
   UpdateModelPlanData,
   UpdateModelPlanErrors,
   UpdateModelPlanResponses,
@@ -3646,6 +3667,142 @@ export const updateWorkspaceAgent = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * List workspace automation rules
+ *
+ * Returns action-centric rules that react to Agent session lifecycle events. Rules target either a ModelPlan for a tool-free consult or a WorkspaceAgent for fork, delegate, and handoff actions.
+ */
+export const listAutomationRules = <ThrowOnError extends boolean = false>(
+  options: Options<ListAutomationRulesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListAutomationRulesResponses,
+    ListAutomationRulesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules",
+    ...options
+  });
+
+/**
+ * Create a workspace automation rule
+ */
+export const createAutomationRule = <ThrowOnError extends boolean = false>(
+  options: Options<CreateAutomationRuleData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateAutomationRuleResponses,
+    CreateAutomationRuleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Delete a workspace automation rule
+ */
+export const deleteAutomationRule = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteAutomationRuleData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteAutomationRuleResponses,
+    DeleteAutomationRuleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}",
+    ...options
+  });
+
+/**
+ * Get a workspace automation rule
+ */
+export const getAutomationRule = <ThrowOnError extends boolean = false>(
+  options: Options<GetAutomationRuleData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAutomationRuleResponses,
+    GetAutomationRuleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}",
+    ...options
+  });
+
+/**
+ * Replace a workspace automation rule
+ *
+ * Replaces mutable rule fields. Changes apply only to future trigger evaluations; already-started actions keep their recorded configuration.
+ */
+export const updateAutomationRule = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateAutomationRuleData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    UpdateAutomationRuleResponses,
+    UpdateAutomationRuleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get the session-level automation rule override
+ *
+ * An absent override returns disabled=false and an empty rule id list.
+ */
+export const getAgentSessionAutomationRuleOverride = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetAgentSessionAutomationRuleOverrideData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAgentSessionAutomationRuleOverrideResponses,
+    GetAgentSessionAutomationRuleOverrideErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override",
+    ...options
+  });
+
+/**
+ * Disable or select automation rules for one session
+ *
+ * Disabled stops every future rule evaluation for this session. A non-empty ruleIds list replaces the workspace rule set for this session; an empty list uses all enabled workspace rules. Already-started actions are unchanged.
+ */
+export const setAgentSessionAutomationRuleOverride = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SetAgentSessionAutomationRuleOverrideData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    SetAgentSessionAutomationRuleOverrideResponses,
+    SetAgentSessionAutomationRuleOverrideErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override",
     ...options,
     headers: {
       "Content-Type": "application/json",

@@ -171,6 +171,38 @@ type Model struct {
 	// Capabilities uses the shared capability vocabulary (for example
 	// "vision", "reasoning", "functionCalling"). Empty means unknown.
 	Capabilities []string `json:"capabilities,omitempty"`
+	// Pricing stores user/provider supplied unit prices as currency micros
+	// per one million tokens. It is metadata only and never contains
+	// credentials.
+	Pricing *ModelPricing `json:"pricing,omitempty"`
+}
+
+// BillingMode distinguishes metered API cost from subscription quota
+// protection. Subscription plans never expose a fabricated monetary amount.
+type BillingMode string
+
+const (
+	BillingAPIMetered        BillingMode = "api_metered"
+	BillingSubscriptionQuota BillingMode = "subscription_quota"
+)
+
+func (kind TemplateKind) BillingMode() BillingMode {
+	switch kind {
+	case TemplateOfficialSubscription, TemplateCodingPlan:
+		return BillingSubscriptionQuota
+	default:
+		return BillingAPIMetered
+	}
+}
+
+// ModelPricing stores user/provider supplied unit prices as currency micros
+// per one million tokens. It is metadata only and never contains credentials.
+type ModelPricing struct {
+	Currency                   string `json:"currency"`
+	InputMicrosPerMillion      int64  `json:"inputMicrosPerMillion"`
+	OutputMicrosPerMillion     int64  `json:"outputMicrosPerMillion"`
+	CacheReadMicrosPerMillion  int64  `json:"cacheReadMicrosPerMillion"`
+	CacheWriteMicrosPerMillion int64  `json:"cacheWriteMicrosPerMillion"`
 }
 
 // Plan is the durable model access plan record.
@@ -218,7 +250,9 @@ func (p Plan) Status() PlanStatus {
 type PublicPlan struct {
 	ID           string            `json:"id"`
 	WorkspaceID  string            `json:"workspaceId"`
+	Revision     uint64            `json:"revision"`
 	Name         string            `json:"name"`
+	BillingMode  BillingMode       `json:"billingMode"`
 	TemplateKind TemplateKind      `json:"templateKind"`
 	Protocol     Protocol          `json:"protocol"`
 	HasAPIKey    bool              `json:"hasApiKey"`
@@ -238,7 +272,9 @@ func Public(plan Plan) PublicPlan {
 	return PublicPlan{
 		ID:           plan.ID,
 		WorkspaceID:  plan.WorkspaceID,
+		Revision:     plan.Revision,
 		Name:         plan.Name,
+		BillingMode:  plan.TemplateKind.BillingMode(),
 		TemplateKind: plan.TemplateKind,
 		Protocol:     plan.Protocol,
 		HasAPIKey:    plan.APIKey != "",
@@ -261,6 +297,7 @@ const (
 	ReferenceAgentTarget    ReferenceKind = "agent_target"
 	ReferenceModelPolicy    ReferenceKind = "model_policy"
 	ReferenceWorkspaceAgent ReferenceKind = "workspace_agent"
+	ReferenceAutomationRule ReferenceKind = "automation_rule"
 )
 
 // Reference is one consumer that currently references a plan. Deleting a plan

@@ -821,9 +821,54 @@ export const zhCN = {
           title: "Agents"
         },
         automationRules: {
-          actions: {
-            consult: "咨询模型"
-          },
+          addRule: "添加自动化",
+          allAgents: "全部 Agent",
+          allowedToolsHint: "不选择时跟随目标 Agent 的工具配置",
+          allowedToolsLabel: "允许的工具",
+          budgetDescription:
+            "限制会对每个来源会话独立计算。填写 0 会使用 daemon 的安全默认值，不代表无限制",
+          budgetLabel: "预算",
+          budgetSummary: "{{runs}} 次 · {{tokens}} tokens",
+          chooseTargetAgent: "选择目标 Agent",
+          delete: "删除",
+          deleteConfirm: "删除这条自动化？",
+          deleteFailed: "自动化删除失败，请重试",
+          deleting: "删除中...",
+          description:
+            "当 Agent 完成或失败任务后，自动新建一个目标 Agent 会话，并在首条消息中 @ 事件来源会话",
+          disabled: "已停用",
+          edit: "编辑",
+          editTitle: "编辑 {{rule}}",
+          editorDescription:
+            "触发后会为目标 Agent 新建会话，首条消息包含你的提示词并 @ 事件来源会话。新自动化默认停用并使用保守限制",
+          emptyDescription:
+            "当 Agent 完成或失败工作后需要自动发起后续会话时，可添加一条规则",
+          emptyTitle: "还没有自动化规则",
+          enabled: "已启用",
+          enabledLabel: "匹配的任务结束后自动运行",
+          invalidBudget: "两个预算限制都必须填写非负整数",
+          loadFailed: "暂时无法加载自动化规则",
+          maxRunsLabel: "每个来源会话最多运行次数",
+          maxTokensLabel: "每个来源会话最多使用 Token 数",
+          nameLabel: "名称",
+          namePlaceholder: "完成后续跟进",
+          permissionModeDefault: "使用目标 Agent 的默认值",
+          permissionModeLabel: "权限模式",
+          promptLabel: "提示词",
+          promptPlaceholder: "描述新会话应该执行的后续任务",
+          requiredFields: "请填写名称并选择目标 Agent",
+          retry: "重试",
+          save: "保存自动化",
+          saveFailed: "自动化保存失败，请检查目标、权限和预算",
+          saving: "保存中...",
+          sourceAgentLabel: "来源 Agent",
+          targetAgentLabel: "目标 Agent",
+          targetLabel: "目标",
+          targetOptionsLoadFailed: "无法加载目标 Agent 的能力目录",
+          targetOptionsLoading: "正在加载目标能力目录...",
+          title: "自动化规则",
+          toolsEmpty: "该目标没有可选工具，新会话将沿用目标 Agent 的工具配置",
+          triggerLabel: "触发条件",
           triggers: {
             onTaskComplete: "任务完成时",
             onTaskFailed: "任务失败或中断时"

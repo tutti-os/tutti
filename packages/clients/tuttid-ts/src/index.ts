@@ -28,18 +28,33 @@ export {
 } from "./tuttidClient.ts";
 export {
   createWorkspaceAgentConfigurationClient,
-  type AutomationRule,
-  type AutomationRuleAction,
-  type AutomationRuleBudget,
-  type AutomationRulePermissions,
-  type AutomationRuleTarget,
-  type AutomationRuleTargetKind,
   type ModelPlanBillingMode,
   type ModelPlanPricing,
-  type PutAutomationRuleRequest,
   type WorkspaceAgentConfigurationClient,
   type WorkspaceModelRecommendation
 } from "./workspaceAgentConfigurationClient.ts";
+export type {
+  AgentSessionAutomationRuleOverride,
+  AutomationRule,
+  AutomationRuleBudget,
+  AutomationRulePermissions,
+  AutomationRuleTarget,
+  AutomationRuleTargetKind,
+  AutomationRuleTrigger,
+  ModelPlan,
+  ModelPlanDetection,
+  ModelPlanDetectionStage,
+  ModelPlanFirstUse,
+  ModelPlanModel,
+  ModelPlanProtocol,
+  ModelPlanReference,
+  ModelPlanStageResult,
+  ModelPlanStageStatus,
+  ModelPlanStatus,
+  ModelPlanTemplateKind,
+  PutAutomationRuleRequest,
+  SetAgentSessionAutomationRuleOverrideRequest
+} from "./generated/index.ts";
 export {
   WORKSPACE_AGENT_INTERACTION_KINDS,
   WORKSPACE_AGENT_INTERACTION_STATUSES,

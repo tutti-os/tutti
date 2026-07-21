@@ -1,9 +1,19 @@
 import {
+  createAutomationRule,
+  getAgentSessionAutomationRuleOverride,
+  setAgentSessionAutomationRuleOverride,
   createWorkspaceAgent,
+  deleteAutomationRule,
   deleteWorkspaceAgent,
+  listAutomationRules,
   listWorkspaceAgents,
+  updateAutomationRule,
   updateWorkspaceAgent,
-  type AutomationRuleTrigger,
+  type AutomationRule,
+  type AgentSessionAutomationRuleOverride,
+  type ListAutomationRulesResponse,
+  type PutAutomationRuleRequest,
+  type SetAgentSessionAutomationRuleOverrideRequest,
   type DeleteWorkspaceAgentResponse,
   type ListWorkspaceAgentsResponse,
   type ModelPlanStatus,
@@ -12,78 +22,6 @@ import {
 } from "./generated/index.ts";
 import type { Client } from "./generated/client/index.ts";
 import { unwrapData } from "./tuttidClientResponse.ts";
-
-// Hand-written mirrors of the daemon AutomationRule contract. The curated
-// OpenAPI surface only carries automation suggestions embedded in
-// WorkspaceAgentDraftGeneration; once the rule CRUD schemas land in
-// tuttid.v1.yaml these types should be replaced by the generated ones.
-export type AutomationRuleAction = "consult" | "fork" | "delegate" | "handoff";
-
-export type AutomationRuleTargetKind = "model" | "agent";
-
-export type AutomationRuleTarget = {
-  kind: AutomationRuleTargetKind;
-  /**
-   * Required for fork, delegate, and handoff. The Agent must be enabled and launchable.
-   */
-  workspaceAgentId?: string | null;
-  /**
-   * Required for consult. The ModelPlan must be enabled.
-   */
-  modelPlanId?: string | null;
-  /**
-   * Optional consult model; defaults to the target ModelPlan default model.
-   */
-  model?: string | null;
-  requiredCapabilities: Array<string>;
-};
-
-/**
- * Authority narrowing applied to automatically launched WorkspaceAgents. Consult is always tool-free and ignores these fields.
- */
-export type AutomationRulePermissions = {
-  permissionModeId?: string | null;
-  allowedTools: Array<string>;
-};
-
-/**
- * Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
- */
-export type AutomationRuleBudget = {
-  maxRunsPerSession: number;
-  maxTotalTokensPerSession: number;
-};
-
-export type AutomationRule = {
-  id: string;
-  workspaceId: string;
-  name: string;
-  enabled: boolean;
-  trigger: AutomationRuleTrigger;
-  action: AutomationRuleAction;
-  /**
-   * Optional source-session Agent filter. Empty means all non-automation-origin sessions.
-   */
-  sourceWorkspaceAgentId?: string | null;
-  target: AutomationRuleTarget;
-  permissions: AutomationRulePermissions;
-  budget: AutomationRuleBudget;
-  prompt: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type PutAutomationRuleRequest = {
-  name: string;
-  enabled: boolean;
-  trigger: AutomationRuleTrigger;
-  action: AutomationRuleAction;
-  sourceWorkspaceAgentId?: string | null;
-  target: AutomationRuleTarget;
-  permissions: AutomationRulePermissions;
-  budget: AutomationRuleBudget;
-  prompt: string;
-};
 
 /**
  * Budget and cost semantic derived from the access scheme. Subscription quota plans never expose fabricated monetary cost.
@@ -124,6 +62,31 @@ export type WorkspaceModelRecommendation = {
 };
 
 export interface WorkspaceAgentConfigurationClient {
+  listAutomationRules(
+    workspaceID: string
+  ): Promise<ListAutomationRulesResponse>;
+  createAutomationRule(
+    workspaceID: string,
+    request: PutAutomationRuleRequest
+  ): Promise<AutomationRule>;
+  updateAutomationRule(
+    workspaceID: string,
+    automationRuleID: string,
+    request: PutAutomationRuleRequest
+  ): Promise<AutomationRule>;
+  deleteAutomationRule(
+    workspaceID: string,
+    automationRuleID: string
+  ): Promise<void>;
+  getAgentSessionAutomationRuleOverride(
+    workspaceID: string,
+    agentSessionID: string
+  ): Promise<AgentSessionAutomationRuleOverride>;
+  setAgentSessionAutomationRuleOverride(
+    workspaceID: string,
+    agentSessionID: string,
+    request: SetAgentSessionAutomationRuleOverrideRequest
+  ): Promise<AgentSessionAutomationRuleOverride>;
   listWorkspaceAgents(
     workspaceID: string
   ): Promise<ListWorkspaceAgentsResponse>;
@@ -146,6 +109,62 @@ export function createWorkspaceAgentConfigurationClient(
   client: Client
 ): WorkspaceAgentConfigurationClient {
   return {
+    async listAutomationRules(workspaceID) {
+      return unwrapData(
+        await listAutomationRules({ client, path: { workspaceID } }),
+        "Automation rules request failed."
+      );
+    },
+    async createAutomationRule(workspaceID, request) {
+      return unwrapData(
+        await createAutomationRule({
+          body: request,
+          client,
+          path: { workspaceID }
+        }),
+        "Create automation rule request failed."
+      );
+    },
+    async updateAutomationRule(workspaceID, automationRuleID, request) {
+      return unwrapData(
+        await updateAutomationRule({
+          body: request,
+          client,
+          path: { automationRuleID, workspaceID }
+        }),
+        "Update automation rule request failed."
+      );
+    },
+    async deleteAutomationRule(workspaceID, automationRuleID) {
+      await deleteAutomationRule({
+        client,
+        path: { automationRuleID, workspaceID },
+        throwOnError: true
+      });
+    },
+    async getAgentSessionAutomationRuleOverride(workspaceID, agentSessionID) {
+      return unwrapData(
+        await getAgentSessionAutomationRuleOverride({
+          client,
+          path: { agentSessionID, workspaceID }
+        }),
+        "Automation rule override request failed."
+      );
+    },
+    async setAgentSessionAutomationRuleOverride(
+      workspaceID,
+      agentSessionID,
+      request
+    ) {
+      return unwrapData(
+        await setAgentSessionAutomationRuleOverride({
+          body: request,
+          client,
+          path: { agentSessionID, workspaceID }
+        }),
+        "Set automation rule override request failed."
+      );
+    },
     async listWorkspaceAgents(workspaceID) {
       return unwrapData(
         await listWorkspaceAgents({ client, path: { workspaceID } }),

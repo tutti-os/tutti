@@ -40,6 +40,24 @@ function createTransportClient(
     async listAgentTargets() {
       throw new Error("not used");
     },
+    async listAutomationRules() {
+      throw new Error("not used");
+    },
+    async createAutomationRule() {
+      throw new Error("not used");
+    },
+    async updateAutomationRule() {
+      throw new Error("not used");
+    },
+    async deleteAutomationRule() {
+      throw new Error("not used");
+    },
+    async getAgentSessionAutomationRuleOverride() {
+      throw new Error("not used");
+    },
+    async setAgentSessionAutomationRuleOverride() {
+      throw new Error("not used");
+    },
     async listWorkspaceAgents() {
       throw new Error("not used");
     },

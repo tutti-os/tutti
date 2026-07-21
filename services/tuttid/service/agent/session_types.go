@@ -11,8 +11,11 @@ import (
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
+	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
@@ -25,6 +28,7 @@ type Service struct {
 	ModelCapabilities              ModelCapabilitiesResolver
 	AgentTargetStore               AgentTargetStore
 	SessionInitializer             SessionInitializer
+	WorkspaceAgentResolver         WorkspaceAgentResolver
 	SessionReader                  SessionReader
 	SessionPurgeStore              agenthost.SessionPurgeStore
 	AgentSessionResourceReleaser   AgentSessionResourceReleaser
@@ -125,6 +129,10 @@ type AgentTargetStore interface {
 
 type AgentComposerDefaultsReader interface {
 	GetAgentComposerDefaultsForTarget(context.Context, string) (preferencesbiz.AgentComposerDefaults, error)
+}
+
+type WorkspaceAgentResolver interface {
+	Resolve(context.Context, string, string) (workspaceagentbiz.Resolved, error)
 }
 
 type ComposerCapabilityLister interface {
@@ -473,14 +481,46 @@ type RuntimeSetVisibleInput = agenthost.RuntimeSetVisibleInput
 type RuntimeSetTitleInput = agenthost.RuntimeSetTitleInput
 type ComposerSettingsPatch = agenthost.ComposerSettingsPatch
 
+type RuntimeSubmitProvenanceInput = agenthost.RuntimeSubmitProvenanceInput
+
 type RuntimeStreamEvent struct {
 	EventType string
 	Data      any
 }
 
 type CreateSessionInput struct {
-	AgentSessionID         string
-	AgentTargetID          string
+	AgentSessionID string
+	AgentTargetID  string
+	// WorkspaceAgentRevision and HarnessAgentTargetID identify the immutable
+	// user-facing Agent definition and underlying Harness selected for launch.
+	// Legacy system targets leave the revision zero and use AgentTargetID as the
+	// Harness id.
+	WorkspaceAgentRevision    int64
+	HarnessAgentTargetID      string
+	AgentName                 string
+	AgentDescription          string
+	AgentDefaultModel         string
+	AgentInstructions         string
+	AgentCallConditions       []string
+	AgentCapabilitiesExplicit bool
+	AgentSkills               []string
+	AgentTools                []string
+	// AutomationRuleOverride is persisted after the runtime session starts but
+	// before its initial turn executes, so the first completion observes the
+	// session-local rule selection. Nil inherits enabled workspace rules.
+	AutomationRuleOverride *automationrulebiz.SessionOverride
+	// InitialTuttiModeActivation applies the independent, session-scoped Tutti
+	// mode activation before the first turn starts. CapabilityRefs remain audit
+	// records and never imply this intent.
+	InitialTuttiModeActivation *TuttiModeActivationIntent
+	// ResolvedModelPlan is a daemon-only exact plan override supplied by a
+	// WorkspaceAgent resolver. It may contain a credential and must never be
+	// serialized into runtime context or transport responses.
+	ResolvedModelPlan *modelplanbiz.Plan
+	// IgnoreModelPlanBinding forces provider-native credentials and model
+	// discovery for internal probes. It is daemon-only and must not be exposed
+	// as a user-facing session setting.
+	IgnoreModelPlanBinding bool
 	Provider               string
 	InitialContent         []PromptContentBlock
 	InitialDisplayPrompt   string
@@ -489,12 +529,22 @@ type CreateSessionInput struct {
 	Title                  *string
 	Cwd                    *string
 	PermissionModeID       *string
-	Model                  *string
-	PlanMode               *bool
-	BrowserUse             *bool
-	ComputerUse            *bool
-	ProviderTargetRef      map[string]any
-	ReasoningEffort        *string
+	// StrictPermissionMode rejects an explicit unsupported permission mode
+	// instead of applying the provider default. It is used by unattended
+	// automation so a typo cannot silently broaden authority.
+	StrictPermissionMode bool
+	Model                *string
+	ModelPlanID          *string
+	PlanMode             *bool
+	BrowserUse           *bool
+	ComputerUse          *bool
+	ProviderTargetRef    map[string]any
+	ReasoningEffort      *string
+	// ReasoningIntensity is an Issue-owned 0-100 strength request. When an
+	// explicit ReasoningEffort is absent, Create compiles it against the
+	// selected model's ordered reasoning-effort catalog. It is daemon-only and
+	// is not persisted as a per-session user setting.
+	ReasoningIntensity     *int
 	RuntimeContext         map[string]any
 	Isolation              string
 	Speed                  *string
@@ -515,6 +565,13 @@ type CreateSessionInput struct {
 type CreateSessionResult struct {
 	Session Session
 	TurnID  string
+}
+
+type TuttiModeActivationIntent struct {
+	State  string
+	Source string
+	// OrchestrationIntensity is optional; nil uses the daemon default.
+	OrchestrationIntensity *int
 }
 
 type SessionSkillBundle struct {

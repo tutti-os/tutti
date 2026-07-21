@@ -333,6 +333,7 @@ func generatedModelPlan(plan modelplanbiz.PublicPlan) tuttigenerated.ModelPlan {
 	result := tuttigenerated.ModelPlan{
 		Id:           plan.ID,
 		WorkspaceId:  plan.WorkspaceID,
+		Revision:     int64(plan.Revision),
 		Name:         plan.Name,
 		TemplateKind: tuttigenerated.ModelPlanTemplateKind(plan.TemplateKind),
 		Protocol:     tuttigenerated.ModelPlanProtocol(plan.Protocol),

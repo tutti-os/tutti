@@ -694,6 +694,7 @@ const (
 	AgentQuickPromptNotFound        ApiErrorDetailsCode = "agent_quick_prompt_not_found"
 	AgentQuickPromptOperationFailed ApiErrorDetailsCode = "agent_quick_prompt_operation_failed"
 	AgentTargetNotFound             ApiErrorDetailsCode = "agent_target_not_found"
+	AutomationRuleNotFound          ApiErrorDetailsCode = "automation_rule_not_found"
 	CollaborationRunNotFound        ApiErrorDetailsCode = "collaboration_run_not_found"
 	InvalidRequest                  ApiErrorDetailsCode = "invalid_request"
 	MethodNotAllowed                ApiErrorDetailsCode = "method_not_allowed"
@@ -722,6 +723,8 @@ func (e ApiErrorDetailsCode) Valid() bool {
 	case AgentQuickPromptOperationFailed:
 		return true
 	case AgentTargetNotFound:
+		return true
+	case AutomationRuleNotFound:
 		return true
 	case CollaborationRunNotFound:
 		return true
@@ -814,6 +817,21 @@ const (
 func (e AppReferenceListReferenceItemType) Valid() bool {
 	switch e {
 	case AppReferenceListReferenceItemTypeReference:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AutomationRuleTargetKind.
+const (
+	AutomationRuleTargetKindAgent AutomationRuleTargetKind = "agent"
+)
+
+// Valid indicates whether the value is a known member of the AutomationRuleTargetKind enum.
+func (e AutomationRuleTargetKind) Valid() bool {
+	switch e {
+	case AutomationRuleTargetKindAgent:
 		return true
 	default:
 		return false
@@ -2031,16 +2049,16 @@ func (e WorkspaceAgentSessionSectionKind) Valid() bool {
 
 // Defines values for WorkspaceAgentSource.
 const (
-	WorkspaceAgentSourceLegacyBinding WorkspaceAgentSource = "legacy_binding"
-	WorkspaceAgentSourceUser          WorkspaceAgentSource = "user"
+	LegacyBinding WorkspaceAgentSource = "legacy_binding"
+	User          WorkspaceAgentSource = "user"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentSource enum.
 func (e WorkspaceAgentSource) Valid() bool {
 	switch e {
-	case WorkspaceAgentSourceLegacyBinding:
+	case LegacyBinding:
 		return true
-	case WorkspaceAgentSourceUser:
+	case User:
 		return true
 	default:
 		return false
@@ -3125,6 +3143,15 @@ type AgentSessionAcceptanceResponse struct {
 	Acceptance *AgentSessionAcceptance `json:"acceptance,omitempty"`
 }
 
+// AgentSessionAutomationRuleOverride defines model for AgentSessionAutomationRuleOverride.
+type AgentSessionAutomationRuleOverride struct {
+	AgentSessionId string     `json:"agentSessionId"`
+	Disabled       bool       `json:"disabled"`
+	RuleIds        []string   `json:"ruleIds"`
+	UpdatedAt      *time.Time `json:"updatedAt,omitempty"`
+	WorkspaceId    string     `json:"workspaceId"`
+}
+
 // AgentSessionComposerSettings defines model for AgentSessionComposerSettings.
 type AgentSessionComposerSettings struct {
 	BrowserUse       *bool   `json:"browserUse,omitempty"`
@@ -3422,6 +3449,62 @@ type AuthenticateAgentTargetRuntimeRequest struct {
 	ClientActionId string `json:"clientActionId"`
 	MethodId       string `json:"methodId"`
 }
+
+// AutomationRule One workspace automation rule. A triggered rule launches a new target-Agent session whose first message carries the rule prompt, a source-session mention, and a short event note.
+type AutomationRule struct {
+	// Budget Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
+	Budget    AutomationRuleBudget `json:"budget"`
+	CreatedAt time.Time            `json:"createdAt"`
+	Enabled   bool                 `json:"enabled"`
+	Id        string               `json:"id"`
+	Name      string               `json:"name"`
+
+	// Permissions Authority narrowing applied to the automatically launched target session. The option catalogs follow the selected target Agent's capability directory.
+	Permissions AutomationRulePermissions `json:"permissions"`
+	Prompt      string                    `json:"prompt"`
+
+	// SourceWorkspaceAgentId Optional source-session Agent filter. Empty means all non-automation-origin sessions.
+	SourceWorkspaceAgentId *string              `json:"sourceWorkspaceAgentId,omitempty"`
+	Target                 AutomationRuleTarget `json:"target"`
+
+	// Trigger Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+	Trigger     AutomationRuleTrigger `json:"trigger"`
+	UpdatedAt   time.Time             `json:"updatedAt"`
+	WorkspaceId string                `json:"workspaceId"`
+}
+
+// AutomationRuleBudget Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
+type AutomationRuleBudget struct {
+	MaxRunsPerSession        int   `json:"maxRunsPerSession"`
+	MaxTotalTokensPerSession int64 `json:"maxTotalTokensPerSession"`
+}
+
+// AutomationRulePermissions Authority narrowing applied to the automatically launched target session. The option catalogs follow the selected target Agent's capability directory.
+type AutomationRulePermissions struct {
+	AllowedTools     []string `json:"allowedTools"`
+	PermissionModeId *string  `json:"permissionModeId,omitempty"`
+}
+
+// AutomationRuleTarget defines model for AutomationRuleTarget.
+type AutomationRuleTarget struct {
+	// Kind Every rule targets a launchable Agent. The legacy model kind retired with the consult action and no longer appears.
+	Kind AutomationRuleTargetKind `json:"kind"`
+
+	// Model Retired consult-era field; always empty.
+	Model *string `json:"model,omitempty"`
+
+	// ModelPlanId Retired consult-era field; always empty. Launches inherit the target Agent's model configuration.
+	ModelPlanId *string `json:"modelPlanId,omitempty"`
+
+	// RequiredCapabilities Retired consult-era field; always empty.
+	RequiredCapabilities []string `json:"requiredCapabilities"`
+
+	// WorkspaceAgentId Target Agent that receives the automated follow-up session. Accepts a WorkspaceAgent id or a built-in Harness AgentTarget id; the Agent must be enabled and launchable.
+	WorkspaceAgentId *string `json:"workspaceAgentId,omitempty"`
+}
+
+// AutomationRuleTargetKind Every rule targets a launchable Agent. The legacy model kind retired with the consult action and no longer appears.
+type AutomationRuleTargetKind string
 
 // AutomationRuleTrigger Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
 type AutomationRuleTrigger string
@@ -3803,6 +3886,11 @@ type CreateWorkspaceTerminalRequest struct {
 // DeleteAgentQuickPromptRequest defines model for DeleteAgentQuickPromptRequest.
 type DeleteAgentQuickPromptRequest struct {
 	ExpectedVersion int64 `json:"expectedVersion"`
+}
+
+// DeleteAutomationRuleResponse defines model for DeleteAutomationRuleResponse.
+type DeleteAutomationRuleResponse struct {
+	AutomationRuleId string `json:"automationRuleId"`
 }
 
 // DeleteIssueManagerContextRefResponse defines model for DeleteIssueManagerContextRefResponse.
@@ -4476,6 +4564,11 @@ type ListAgentTargetsResponse struct {
 	Targets []AgentTarget `json:"targets"`
 }
 
+// ListAutomationRulesResponse defines model for ListAutomationRulesResponse.
+type ListAutomationRulesResponse struct {
+	Rules []AutomationRule `json:"rules"`
+}
+
 // ListCollaborationRunsResponse defines model for ListCollaborationRunsResponse.
 type ListCollaborationRunsResponse struct {
 	Runs []CollaborationRun `json:"runs"`
@@ -4524,6 +4617,7 @@ type ModelPlan struct {
 
 	// Protocol Wire protocol family used to call the plan's models.
 	Protocol ModelPlanProtocol `json:"protocol"`
+	Revision int64             `json:"revision"`
 
 	// Status Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
 	Status ModelPlanStatus `json:"status"`
@@ -4718,6 +4812,23 @@ type PublishWorkspaceAppFactoryJobResponse struct {
 	WorkspaceId string                 `json:"workspaceId"`
 }
 
+// PutAutomationRuleRequest defines model for PutAutomationRuleRequest.
+type PutAutomationRuleRequest struct {
+	// Budget Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
+	Budget  AutomationRuleBudget `json:"budget"`
+	Enabled bool                 `json:"enabled"`
+	Name    string               `json:"name"`
+
+	// Permissions Authority narrowing applied to the automatically launched target session. The option catalogs follow the selected target Agent's capability directory.
+	Permissions            AutomationRulePermissions `json:"permissions"`
+	Prompt                 string                    `json:"prompt"`
+	SourceWorkspaceAgentId *string                   `json:"sourceWorkspaceAgentId,omitempty"`
+	Target                 AutomationRuleTarget      `json:"target"`
+
+	// Trigger Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+	Trigger AutomationRuleTrigger `json:"trigger"`
+}
+
 // PutDesktopPreferencesRequest defines model for PutDesktopPreferencesRequest.
 type PutDesktopPreferencesRequest struct {
 	Preferences DesktopPreferences `json:"preferences"`
@@ -4852,6 +4963,12 @@ type SetAgentModelBindingRequest struct {
 	DefaultModel  *string `json:"defaultModel,omitempty"`
 	ModelPlanId   *string `json:"modelPlanId,omitempty"`
 	ModelPolicyId *string `json:"modelPolicyId,omitempty"`
+}
+
+// SetAgentSessionAutomationRuleOverrideRequest defines model for SetAgentSessionAutomationRuleOverrideRequest.
+type SetAgentSessionAutomationRuleOverrideRequest struct {
+	Disabled bool     `json:"disabled"`
+	RuleIds  []string `json:"ruleIds"`
 }
 
 // SetAgentSessionModelPolicyOverrideRequest defines model for SetAgentSessionModelPolicyOverrideRequest.
@@ -6036,6 +6153,9 @@ type AgentSessionID = string
 // AgentTurnID defines model for AgentTurnID.
 type AgentTurnID = string
 
+// AutomationRuleID defines model for AutomationRuleID.
+type AutomationRuleID = string
+
 // CliCommandID defines model for CliCommandID.
 type CliCommandID = string
 
@@ -6450,6 +6570,9 @@ type ImportWorkspaceExternalAgentSessionsJSONRequestBody = ImportExternalAgentSe
 // ScanWorkspaceExternalAgentSessionImportsJSONRequestBody defines body for ScanWorkspaceExternalAgentSessionImports for application/json ContentType.
 type ScanWorkspaceExternalAgentSessionImportsJSONRequestBody = ExternalAgentImportScanRequest
 
+// SetAgentSessionAutomationRuleOverrideJSONRequestBody defines body for SetAgentSessionAutomationRuleOverride for application/json ContentType.
+type SetAgentSessionAutomationRuleOverrideJSONRequestBody = SetAgentSessionAutomationRuleOverrideRequest
+
 // GoalControlWorkspaceAgentSessionJSONRequestBody defines body for GoalControlWorkspaceAgentSession for application/json ContentType.
 type GoalControlWorkspaceAgentSessionJSONRequestBody = WorkspaceAgentSessionGoalControlRequest
 
@@ -6530,6 +6653,12 @@ type RollbackWorkspaceAppJSONRequestBody = RollbackWorkspaceAppRequest
 
 // PrepareWorkspaceAppUploadJSONRequestBody defines body for PrepareWorkspaceAppUpload for application/json ContentType.
 type PrepareWorkspaceAppUploadJSONRequestBody = PrepareWorkspaceAppUploadRequest
+
+// CreateAutomationRuleJSONRequestBody defines body for CreateAutomationRule for application/json ContentType.
+type CreateAutomationRuleJSONRequestBody = PutAutomationRuleRequest
+
+// UpdateAutomationRuleJSONRequestBody defines body for UpdateAutomationRule for application/json ContentType.
+type UpdateAutomationRuleJSONRequestBody = PutAutomationRuleRequest
 
 // CreateCollaborationRunJSONRequestBody defines body for CreateCollaborationRun for application/json ContentType.
 type CreateCollaborationRunJSONRequestBody = CreateCollaborationRunRequest

@@ -26,11 +26,13 @@ const (
 	FailureNoModel          = "no_model_selected"
 	FailureModelRejected    = "model_rejected"
 	FailureInference        = "inference_failed"
+	FailureAgentRuntime     = "agent_runtime_failed"
 	RemedyCheckNetwork      = "check_network_or_base_url"
 	RemedyCheckAPIKey       = "check_api_key"
 	RemedyAddModelsManually = "add_models_manually"
 	RemedyCheckModelID      = "check_model_id"
 	RemedySelectModel       = "select_model"
+	RemedyRetryAgentRuntime = "retry_compatible_agent"
 )
 
 var ErrDetectionInput = errors.New("invalid model plan detection input")

@@ -187,6 +187,12 @@ type ServerInterface interface {
 	// Read one workspace agent session attachment
 	// (GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/attachments/{attachmentID})
 	ReadWorkspaceAgentSessionAttachment(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID, attachmentID AgentSessionAttachmentID)
+	// Get the session-level automation rule override
+	// (GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override)
+	GetAgentSessionAutomationRuleOverride(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
+	// Disable or select automation rules for one session
+	// (PUT /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override)
+	SetAgentSessionAutomationRuleOverride(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
 	// List git branches for the agent session working directory
 	// (GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches)
 	ListWorkspaceAgentSessionGitBranches(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
@@ -358,6 +364,21 @@ type ServerInterface interface {
 	// Stream upload bytes into one workspace app upload session
 	// (PUT /v1/workspaces/{workspaceID}/apps/{appID}/uploads/{uploadID}/content)
 	PutWorkspaceAppUploadContent(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID, uploadID string)
+	// List workspace automation rules
+	// (GET /v1/workspaces/{workspaceID}/automation-rules)
+	ListAutomationRules(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
+	// Create a workspace automation rule
+	// (POST /v1/workspaces/{workspaceID}/automation-rules)
+	CreateAutomationRule(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
+	// Delete a workspace automation rule
+	// (DELETE /v1/workspaces/{workspaceID}/automation-rules/{automationRuleID})
+	DeleteAutomationRule(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, automationRuleID AutomationRuleID)
+	// Get a workspace automation rule
+	// (GET /v1/workspaces/{workspaceID}/automation-rules/{automationRuleID})
+	GetAutomationRule(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, automationRuleID AutomationRuleID)
+	// Replace a workspace automation rule
+	// (PUT /v1/workspaces/{workspaceID}/automation-rules/{automationRuleID})
+	UpdateAutomationRule(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, automationRuleID AutomationRuleID)
 	// List workspace collaboration runs
 	// (GET /v1/workspaces/{workspaceID}/collaboration-runs)
 	ListCollaborationRuns(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListCollaborationRunsParams)
@@ -2548,6 +2569,88 @@ func (siw *ServerInterfaceWrapper) ReadWorkspaceAgentSessionAttachment(w http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReadWorkspaceAgentSessionAttachment(w, r, workspaceID, agentSessionID, attachmentID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAgentSessionAutomationRuleOverride operation middleware
+func (siw *ServerInterfaceWrapper) GetAgentSessionAutomationRuleOverride(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "agentSessionID" -------------
+	var agentSessionID AgentSessionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentSessionID", r.PathValue("agentSessionID"), &agentSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentSessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgentSessionAutomationRuleOverride(w, r, workspaceID, agentSessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAgentSessionAutomationRuleOverride operation middleware
+func (siw *ServerInterfaceWrapper) SetAgentSessionAutomationRuleOverride(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "agentSessionID" -------------
+	var agentSessionID AgentSessionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentSessionID", r.PathValue("agentSessionID"), &agentSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentSessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAgentSessionAutomationRuleOverride(w, r, workspaceID, agentSessionID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4964,6 +5067,193 @@ func (siw *ServerInterfaceWrapper) PutWorkspaceAppUploadContent(w http.ResponseW
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutWorkspaceAppUploadContent(w, r, workspaceID, appID, uploadID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAutomationRules operation middleware
+func (siw *ServerInterfaceWrapper) ListAutomationRules(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAutomationRules(w, r, workspaceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAutomationRule operation middleware
+func (siw *ServerInterfaceWrapper) CreateAutomationRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAutomationRule(w, r, workspaceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAutomationRule operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAutomationRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "automationRuleID" -------------
+	var automationRuleID AutomationRuleID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "automationRuleID", r.PathValue("automationRuleID"), &automationRuleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "automationRuleID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAutomationRule(w, r, workspaceID, automationRuleID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAutomationRule operation middleware
+func (siw *ServerInterfaceWrapper) GetAutomationRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "automationRuleID" -------------
+	var automationRuleID AutomationRuleID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "automationRuleID", r.PathValue("automationRuleID"), &automationRuleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "automationRuleID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAutomationRule(w, r, workspaceID, automationRuleID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAutomationRule operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAutomationRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "automationRuleID" -------------
+	var automationRuleID AutomationRuleID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "automationRuleID", r.PathValue("automationRuleID"), &automationRuleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "automationRuleID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAutomationRule(w, r, workspaceID, automationRuleID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8409,6 +8699,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/acceptance", wrapper.GetAgentSessionAcceptance)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/acceptance", wrapper.AcceptAgentSessionWork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/attachments/{attachmentID}", wrapper.ReadWorkspaceAgentSessionAttachment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override", wrapper.GetAgentSessionAutomationRuleOverride)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override", wrapper.SetAgentSessionAutomationRuleOverride)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches", wrapper.ListWorkspaceAgentSessionGitBranches)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal", wrapper.GetWorkspaceAgentSessionGoal)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal", wrapper.GoalControlWorkspaceAgentSession)
@@ -8466,6 +8758,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/uploads/{uploadID}", wrapper.CancelWorkspaceAppUpload)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/uploads/{uploadID}/complete", wrapper.CompleteWorkspaceAppUpload)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/uploads/{uploadID}/content", wrapper.PutWorkspaceAppUploadContent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/automation-rules", wrapper.ListAutomationRules)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/automation-rules", wrapper.CreateAutomationRule)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}", wrapper.DeleteAutomationRule)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}", wrapper.GetAutomationRule)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}", wrapper.UpdateAutomationRule)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/collaboration-runs", wrapper.ListCollaborationRuns)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/collaboration-runs", wrapper.CreateCollaborationRun)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/adoption", wrapper.SetCollaborationRunAdoption)
@@ -14175,6 +14472,225 @@ type ReadWorkspaceAgentSessionAttachment503JSONResponse struct {
 }
 
 func (response ReadWorkspaceAgentSessionAttachment503JSONResponse) VisitReadWorkspaceAgentSessionAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentSessionAutomationRuleOverrideRequestObject struct {
+	WorkspaceID    WorkspaceID    `json:"workspaceID"`
+	AgentSessionID AgentSessionID `json:"agentSessionID"`
+}
+
+type GetAgentSessionAutomationRuleOverrideResponseObject interface {
+	VisitGetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error
+}
+
+type GetAgentSessionAutomationRuleOverride200JSONResponse AgentSessionAutomationRuleOverride
+
+func (response GetAgentSessionAutomationRuleOverride200JSONResponse) VisitGetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentSessionAutomationRuleOverride400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GetAgentSessionAutomationRuleOverride400JSONResponse) VisitGetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentSessionAutomationRuleOverride401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetAgentSessionAutomationRuleOverride401JSONResponse) VisitGetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentSessionAutomationRuleOverride405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetAgentSessionAutomationRuleOverride405JSONResponse) VisitGetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentSessionAutomationRuleOverride502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response GetAgentSessionAutomationRuleOverride502JSONResponse) VisitGetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAgentSessionAutomationRuleOverride503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetAgentSessionAutomationRuleOverride503JSONResponse) VisitGetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentSessionAutomationRuleOverrideRequestObject struct {
+	WorkspaceID    WorkspaceID    `json:"workspaceID"`
+	AgentSessionID AgentSessionID `json:"agentSessionID"`
+	Body           *SetAgentSessionAutomationRuleOverrideJSONRequestBody
+}
+
+type SetAgentSessionAutomationRuleOverrideResponseObject interface {
+	VisitSetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error
+}
+
+type SetAgentSessionAutomationRuleOverride200JSONResponse AgentSessionAutomationRuleOverride
+
+func (response SetAgentSessionAutomationRuleOverride200JSONResponse) VisitSetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentSessionAutomationRuleOverride400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response SetAgentSessionAutomationRuleOverride400JSONResponse) VisitSetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentSessionAutomationRuleOverride401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response SetAgentSessionAutomationRuleOverride401JSONResponse) VisitSetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentSessionAutomationRuleOverride404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response SetAgentSessionAutomationRuleOverride404JSONResponse) VisitSetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentSessionAutomationRuleOverride405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response SetAgentSessionAutomationRuleOverride405JSONResponse) VisitSetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentSessionAutomationRuleOverride502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response SetAgentSessionAutomationRuleOverride502JSONResponse) VisitSetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentSessionAutomationRuleOverride503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response SetAgentSessionAutomationRuleOverride503JSONResponse) VisitSetAgentSessionAutomationRuleOverrideResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -20818,6 +21334,559 @@ type PutWorkspaceAppUploadContent503JSONResponse struct {
 }
 
 func (response PutWorkspaceAppUploadContent503JSONResponse) VisitPutWorkspaceAppUploadContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAutomationRulesRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+}
+
+type ListAutomationRulesResponseObject interface {
+	VisitListAutomationRulesResponse(w http.ResponseWriter) error
+}
+
+type ListAutomationRules200JSONResponse ListAutomationRulesResponse
+
+func (response ListAutomationRules200JSONResponse) VisitListAutomationRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAutomationRules400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ListAutomationRules400JSONResponse) VisitListAutomationRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAutomationRules401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ListAutomationRules401JSONResponse) VisitListAutomationRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAutomationRules405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListAutomationRules405JSONResponse) VisitListAutomationRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAutomationRules502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ListAutomationRules502JSONResponse) VisitListAutomationRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAutomationRules503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListAutomationRules503JSONResponse) VisitListAutomationRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAutomationRuleRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	Body        *CreateAutomationRuleJSONRequestBody
+}
+
+type CreateAutomationRuleResponseObject interface {
+	VisitCreateAutomationRuleResponse(w http.ResponseWriter) error
+}
+
+type CreateAutomationRule201JSONResponse AutomationRule
+
+func (response CreateAutomationRule201JSONResponse) VisitCreateAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAutomationRule400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response CreateAutomationRule400JSONResponse) VisitCreateAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAutomationRule401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response CreateAutomationRule401JSONResponse) VisitCreateAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAutomationRule405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response CreateAutomationRule405JSONResponse) VisitCreateAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAutomationRule502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response CreateAutomationRule502JSONResponse) VisitCreateAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAutomationRule503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response CreateAutomationRule503JSONResponse) VisitCreateAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAutomationRuleRequestObject struct {
+	WorkspaceID      WorkspaceID      `json:"workspaceID"`
+	AutomationRuleID AutomationRuleID `json:"automationRuleID"`
+}
+
+type DeleteAutomationRuleResponseObject interface {
+	VisitDeleteAutomationRuleResponse(w http.ResponseWriter) error
+}
+
+type DeleteAutomationRule200JSONResponse DeleteAutomationRuleResponse
+
+func (response DeleteAutomationRule200JSONResponse) VisitDeleteAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAutomationRule400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response DeleteAutomationRule400JSONResponse) VisitDeleteAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAutomationRule401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response DeleteAutomationRule401JSONResponse) VisitDeleteAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAutomationRule404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response DeleteAutomationRule404JSONResponse) VisitDeleteAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAutomationRule405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response DeleteAutomationRule405JSONResponse) VisitDeleteAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAutomationRule502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response DeleteAutomationRule502JSONResponse) VisitDeleteAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAutomationRule503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response DeleteAutomationRule503JSONResponse) VisitDeleteAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAutomationRuleRequestObject struct {
+	WorkspaceID      WorkspaceID      `json:"workspaceID"`
+	AutomationRuleID AutomationRuleID `json:"automationRuleID"`
+}
+
+type GetAutomationRuleResponseObject interface {
+	VisitGetAutomationRuleResponse(w http.ResponseWriter) error
+}
+
+type GetAutomationRule200JSONResponse AutomationRule
+
+func (response GetAutomationRule200JSONResponse) VisitGetAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAutomationRule400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GetAutomationRule400JSONResponse) VisitGetAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAutomationRule401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetAutomationRule401JSONResponse) VisitGetAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAutomationRule404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response GetAutomationRule404JSONResponse) VisitGetAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAutomationRule405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetAutomationRule405JSONResponse) VisitGetAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAutomationRule502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response GetAutomationRule502JSONResponse) VisitGetAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAutomationRule503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetAutomationRule503JSONResponse) VisitGetAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAutomationRuleRequestObject struct {
+	WorkspaceID      WorkspaceID      `json:"workspaceID"`
+	AutomationRuleID AutomationRuleID `json:"automationRuleID"`
+	Body             *UpdateAutomationRuleJSONRequestBody
+}
+
+type UpdateAutomationRuleResponseObject interface {
+	VisitUpdateAutomationRuleResponse(w http.ResponseWriter) error
+}
+
+type UpdateAutomationRule200JSONResponse AutomationRule
+
+func (response UpdateAutomationRule200JSONResponse) VisitUpdateAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAutomationRule400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response UpdateAutomationRule400JSONResponse) VisitUpdateAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAutomationRule401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response UpdateAutomationRule401JSONResponse) VisitUpdateAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAutomationRule404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response UpdateAutomationRule404JSONResponse) VisitUpdateAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAutomationRule405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response UpdateAutomationRule405JSONResponse) VisitUpdateAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAutomationRule502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response UpdateAutomationRule502JSONResponse) VisitUpdateAutomationRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAutomationRule503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response UpdateAutomationRule503JSONResponse) VisitUpdateAutomationRuleResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -29759,6 +30828,12 @@ type StrictServerInterface interface {
 	// Read one workspace agent session attachment
 	// (GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/attachments/{attachmentID})
 	ReadWorkspaceAgentSessionAttachment(ctx context.Context, request ReadWorkspaceAgentSessionAttachmentRequestObject) (ReadWorkspaceAgentSessionAttachmentResponseObject, error)
+	// Get the session-level automation rule override
+	// (GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override)
+	GetAgentSessionAutomationRuleOverride(ctx context.Context, request GetAgentSessionAutomationRuleOverrideRequestObject) (GetAgentSessionAutomationRuleOverrideResponseObject, error)
+	// Disable or select automation rules for one session
+	// (PUT /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override)
+	SetAgentSessionAutomationRuleOverride(ctx context.Context, request SetAgentSessionAutomationRuleOverrideRequestObject) (SetAgentSessionAutomationRuleOverrideResponseObject, error)
 	// List git branches for the agent session working directory
 	// (GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches)
 	ListWorkspaceAgentSessionGitBranches(ctx context.Context, request ListWorkspaceAgentSessionGitBranchesRequestObject) (ListWorkspaceAgentSessionGitBranchesResponseObject, error)
@@ -29930,6 +31005,21 @@ type StrictServerInterface interface {
 	// Stream upload bytes into one workspace app upload session
 	// (PUT /v1/workspaces/{workspaceID}/apps/{appID}/uploads/{uploadID}/content)
 	PutWorkspaceAppUploadContent(ctx context.Context, request PutWorkspaceAppUploadContentRequestObject) (PutWorkspaceAppUploadContentResponseObject, error)
+	// List workspace automation rules
+	// (GET /v1/workspaces/{workspaceID}/automation-rules)
+	ListAutomationRules(ctx context.Context, request ListAutomationRulesRequestObject) (ListAutomationRulesResponseObject, error)
+	// Create a workspace automation rule
+	// (POST /v1/workspaces/{workspaceID}/automation-rules)
+	CreateAutomationRule(ctx context.Context, request CreateAutomationRuleRequestObject) (CreateAutomationRuleResponseObject, error)
+	// Delete a workspace automation rule
+	// (DELETE /v1/workspaces/{workspaceID}/automation-rules/{automationRuleID})
+	DeleteAutomationRule(ctx context.Context, request DeleteAutomationRuleRequestObject) (DeleteAutomationRuleResponseObject, error)
+	// Get a workspace automation rule
+	// (GET /v1/workspaces/{workspaceID}/automation-rules/{automationRuleID})
+	GetAutomationRule(ctx context.Context, request GetAutomationRuleRequestObject) (GetAutomationRuleResponseObject, error)
+	// Replace a workspace automation rule
+	// (PUT /v1/workspaces/{workspaceID}/automation-rules/{automationRuleID})
+	UpdateAutomationRule(ctx context.Context, request UpdateAutomationRuleRequestObject) (UpdateAutomationRuleResponseObject, error)
 	// List workspace collaboration runs
 	// (GET /v1/workspaces/{workspaceID}/collaboration-runs)
 	ListCollaborationRuns(ctx context.Context, request ListCollaborationRunsRequestObject) (ListCollaborationRunsResponseObject, error)
@@ -31809,6 +32899,69 @@ func (sh *strictHandler) ReadWorkspaceAgentSessionAttachment(w http.ResponseWrit
 	}
 }
 
+// GetAgentSessionAutomationRuleOverride operation middleware
+func (sh *strictHandler) GetAgentSessionAutomationRuleOverride(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID) {
+	var request GetAgentSessionAutomationRuleOverrideRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AgentSessionID = agentSessionID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAgentSessionAutomationRuleOverride(ctx, request.(GetAgentSessionAutomationRuleOverrideRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAgentSessionAutomationRuleOverride")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAgentSessionAutomationRuleOverrideResponseObject); ok {
+		if err := validResponse.VisitGetAgentSessionAutomationRuleOverrideResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetAgentSessionAutomationRuleOverride operation middleware
+func (sh *strictHandler) SetAgentSessionAutomationRuleOverride(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID) {
+	var request SetAgentSessionAutomationRuleOverrideRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AgentSessionID = agentSessionID
+
+	var body SetAgentSessionAutomationRuleOverrideJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetAgentSessionAutomationRuleOverride(ctx, request.(SetAgentSessionAutomationRuleOverrideRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetAgentSessionAutomationRuleOverride")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetAgentSessionAutomationRuleOverrideResponseObject); ok {
+		if err := validResponse.VisitSetAgentSessionAutomationRuleOverrideResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListWorkspaceAgentSessionGitBranches operation middleware
 func (sh *strictHandler) ListWorkspaceAgentSessionGitBranches(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID) {
 	var request ListWorkspaceAgentSessionGitBranchesRequestObject
@@ -33598,6 +34751,157 @@ func (sh *strictHandler) PutWorkspaceAppUploadContent(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutWorkspaceAppUploadContentResponseObject); ok {
 		if err := validResponse.VisitPutWorkspaceAppUploadContentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAutomationRules operation middleware
+func (sh *strictHandler) ListAutomationRules(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
+	var request ListAutomationRulesRequestObject
+
+	request.WorkspaceID = workspaceID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAutomationRules(ctx, request.(ListAutomationRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAutomationRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAutomationRulesResponseObject); ok {
+		if err := validResponse.VisitListAutomationRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAutomationRule operation middleware
+func (sh *strictHandler) CreateAutomationRule(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
+	var request CreateAutomationRuleRequestObject
+
+	request.WorkspaceID = workspaceID
+
+	var body CreateAutomationRuleJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAutomationRule(ctx, request.(CreateAutomationRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAutomationRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAutomationRuleResponseObject); ok {
+		if err := validResponse.VisitCreateAutomationRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAutomationRule operation middleware
+func (sh *strictHandler) DeleteAutomationRule(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, automationRuleID AutomationRuleID) {
+	var request DeleteAutomationRuleRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AutomationRuleID = automationRuleID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAutomationRule(ctx, request.(DeleteAutomationRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAutomationRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAutomationRuleResponseObject); ok {
+		if err := validResponse.VisitDeleteAutomationRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAutomationRule operation middleware
+func (sh *strictHandler) GetAutomationRule(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, automationRuleID AutomationRuleID) {
+	var request GetAutomationRuleRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AutomationRuleID = automationRuleID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAutomationRule(ctx, request.(GetAutomationRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAutomationRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAutomationRuleResponseObject); ok {
+		if err := validResponse.VisitGetAutomationRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAutomationRule operation middleware
+func (sh *strictHandler) UpdateAutomationRule(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, automationRuleID AutomationRuleID) {
+	var request UpdateAutomationRuleRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AutomationRuleID = automationRuleID
+
+	var body UpdateAutomationRuleJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAutomationRule(ctx, request.(UpdateAutomationRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAutomationRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAutomationRuleResponseObject); ok {
+		if err := validResponse.VisitUpdateAutomationRuleResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

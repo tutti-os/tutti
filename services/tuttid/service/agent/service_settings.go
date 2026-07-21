@@ -99,6 +99,57 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	defer release()
 	ref := agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID}
 	ctx = withServiceHeldSessionLock(ctx, s, ref)
+	observed, err := s.ApplicationHost().GetSession(ctx, ref)
+	if err != nil {
+		return Session{}, err
+	}
+	provider := strings.TrimSpace(observed.Canonical.Provider)
+	runtimeContext := observed.Canonical.InternalRuntimeContext
+	currentSettings := composerSettingsFromPayload(observed.Canonical.Settings)
+	if observed.Live {
+		provider = strings.TrimSpace(observed.Session.Provider)
+		runtimeContext = observed.Session.RuntimeContext
+		if observed.Session.Settings != nil {
+			currentSettings = *observed.Session.Settings
+		}
+	}
+	if settings.Model != nil {
+		if err := s.validateSessionModelAgainstRuntimeSnapshot(
+			ctx,
+			strings.TrimSpace(workspaceID),
+			runtimeContext,
+			strings.TrimSpace(*settings.Model),
+		); err != nil {
+			return Session{}, err
+		}
+	}
+	selectedModel := currentSettings.Model
+	selectedReasoningEffort := currentSettings.ReasoningEffort
+	if settings.Model != nil {
+		selectedModel = strings.TrimSpace(*settings.Model)
+	}
+	if settings.ReasoningEffort != nil {
+		selectedReasoningEffort = *settings.ReasoningEffort
+	}
+	// A live Codex-derived runtime owns the freshest per-model reasoning
+	// catalog. Let its adapter resolve active updates; the daemon-side catalog
+	// remains the authority for pre-session create/resume only.
+	if (settings.Model != nil || settings.ReasoningEffort != nil) &&
+		!composerProviderUsesModelReasoningCatalog(provider) {
+		clampedReasoningEffort := s.clampReasoningEffortForModel(
+			ctx,
+			provider,
+			selectedModel,
+			selectedReasoningEffort,
+		)
+		if settings.ReasoningEffort != nil || clampedReasoningEffort != selectedReasoningEffort {
+			settings.ReasoningEffort = &clampedReasoningEffort
+		}
+	}
+	if settings.Speed != nil {
+		normalizedSpeed := normalizeSpeedForProvider(provider, *settings.Speed)
+		settings.Speed = &normalizedSpeed
+	}
 	result, err := s.ApplicationHost().UpdateSettings(ctx, agenthost.UpdateSettingsInput{
 		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Settings: settings,
 	})

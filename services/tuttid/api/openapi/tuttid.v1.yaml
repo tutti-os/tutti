@@ -5058,6 +5058,201 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/automation-rules:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listAutomationRules
+      tags:
+        - automation-rule
+      summary: List workspace automation rules
+      description: Returns action-centric rules that react to Agent session lifecycle events. Rules target either a ModelPlan for a tool-free consult or a WorkspaceAgent for fork, delegate, and handoff actions.
+      responses:
+        "200":
+          description: Workspace automation rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAutomationRulesResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: createAutomationRule
+      tags:
+        - automation-rule
+      summary: Create a workspace automation rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutAutomationRuleRequest"
+      responses:
+        "201":
+          description: Created automation rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationRule"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AutomationRuleID"
+    get:
+      operationId: getAutomationRule
+      tags:
+        - automation-rule
+      summary: Get a workspace automation rule
+      responses:
+        "200":
+          description: Workspace automation rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationRule"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    put:
+      operationId: updateAutomationRule
+      tags:
+        - automation-rule
+      summary: Replace a workspace automation rule
+      description: Replaces mutable rule fields. Changes apply only to future trigger evaluations; already-started actions keep their recorded configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutAutomationRuleRequest"
+      responses:
+        "200":
+          description: Updated automation rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationRule"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    delete:
+      operationId: deleteAutomationRule
+      tags:
+        - automation-rule
+      summary: Delete a workspace automation rule
+      responses:
+        "200":
+          description: Automation rule deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteAutomationRuleResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    get:
+      operationId: getAgentSessionAutomationRuleOverride
+      tags:
+        - automation-rule
+      summary: Get the session-level automation rule override
+      description: An absent override returns disabled=false and an empty rule id list.
+      responses:
+        "200":
+          description: Session automation rule override
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionAutomationRuleOverride"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    put:
+      operationId: setAgentSessionAutomationRuleOverride
+      tags:
+        - automation-rule
+      summary: Disable or select automation rules for one session
+      description: Disabled stops every future rule evaluation for this session. A non-empty ruleIds list replaces the workspace rule set for this session; an empty list uses all enabled workspace rules. Already-started actions are unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAgentSessionAutomationRuleOverrideRequest"
+      responses:
+        "200":
+          description: Updated session automation rule override
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionAutomationRuleOverride"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
 components:
   securitySchemes:
     bearerAuth:
@@ -5248,6 +5443,13 @@ components:
         minimum: 0
     WorkspaceAgentID:
       name: workspaceAgentID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    AutomationRuleID:
+      name: automationRuleID
       in: path
       required: true
       schema:
@@ -6108,6 +6310,7 @@ components:
             - model_plan_referenced
             - workspace_agent_not_found
             - collaboration_run_not_found
+            - automation_rule_not_found
         reason:
           type: string
         params:
@@ -6869,6 +7072,206 @@ components:
       properties:
         workspaceId:
           type: string
+    AutomationRuleTargetKind:
+      type: string
+      description: Every rule targets a launchable Agent. The legacy model kind retired with the consult action and no longer appears.
+      enum:
+        - agent
+    AutomationRuleTarget:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - requiredCapabilities
+      properties:
+        kind:
+          $ref: "#/components/schemas/AutomationRuleTargetKind"
+        workspaceAgentId:
+          type: string
+          nullable: true
+          description: Target Agent that receives the automated follow-up session. Accepts a WorkspaceAgent id or a built-in Harness AgentTarget id; the Agent must be enabled and launchable.
+        modelPlanId:
+          type: string
+          nullable: true
+          description: Retired consult-era field; always empty. Launches inherit the target Agent's model configuration.
+        model:
+          type: string
+          nullable: true
+          description: Retired consult-era field; always empty.
+        requiredCapabilities:
+          type: array
+          description: Retired consult-era field; always empty.
+          items:
+            type: string
+            minLength: 1
+    AutomationRulePermissions:
+      type: object
+      additionalProperties: false
+      required:
+        - allowedTools
+      description: Authority narrowing applied to the automatically launched target session. The option catalogs follow the selected target Agent's capability directory.
+      properties:
+        permissionModeId:
+          type: string
+          nullable: true
+        allowedTools:
+          type: array
+          items:
+            type: string
+            minLength: 1
+    AutomationRuleBudget:
+      type: object
+      additionalProperties: false
+      required:
+        - maxRunsPerSession
+        - maxTotalTokensPerSession
+      description: Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
+      properties:
+        maxRunsPerSession:
+          type: integer
+          minimum: 0
+        maxTotalTokensPerSession:
+          type: integer
+          format: int64
+          minimum: 0
+    AutomationRule:
+      type: object
+      additionalProperties: false
+      description: One workspace automation rule. A triggered rule launches a new target-Agent session whose first message carries the rule prompt, a source-session mention, and a short event note.
+      required:
+        - id
+        - workspaceId
+        - name
+        - enabled
+        - trigger
+        - target
+        - permissions
+        - budget
+        - prompt
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          minLength: 1
+        workspaceId:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        enabled:
+          type: boolean
+        trigger:
+          $ref: "#/components/schemas/AutomationRuleTrigger"
+        sourceWorkspaceAgentId:
+          type: string
+          nullable: true
+          description: Optional source-session Agent filter. Empty means all non-automation-origin sessions.
+        target:
+          $ref: "#/components/schemas/AutomationRuleTarget"
+        permissions:
+          $ref: "#/components/schemas/AutomationRulePermissions"
+        budget:
+          $ref: "#/components/schemas/AutomationRuleBudget"
+        prompt:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ListAutomationRulesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - rules
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/AutomationRule"
+    PutAutomationRuleRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - enabled
+        - trigger
+        - target
+        - permissions
+        - budget
+        - prompt
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        enabled:
+          type: boolean
+        trigger:
+          $ref: "#/components/schemas/AutomationRuleTrigger"
+        sourceWorkspaceAgentId:
+          type: string
+          nullable: true
+        target:
+          $ref: "#/components/schemas/AutomationRuleTarget"
+        permissions:
+          $ref: "#/components/schemas/AutomationRulePermissions"
+        budget:
+          $ref: "#/components/schemas/AutomationRuleBudget"
+        prompt:
+          type: string
+          maxLength: 100000
+    DeleteAutomationRuleResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - automationRuleId
+      properties:
+        automationRuleId:
+          type: string
+    AgentSessionAutomationRuleOverride:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - agentSessionId
+        - disabled
+        - ruleIds
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        agentSessionId:
+          type: string
+          minLength: 1
+        disabled:
+          type: boolean
+        ruleIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    SetAgentSessionAutomationRuleOverrideRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - disabled
+        - ruleIds
+      properties:
+        disabled:
+          type: boolean
+        ruleIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
     ModelPlanProtocol:
       type: string
       description: Wire protocol family used to call the plan's models.
@@ -7003,6 +7406,7 @@ components:
       required:
         - id
         - workspaceId
+        - revision
         - name
         - templateKind
         - protocol
@@ -7019,6 +7423,10 @@ components:
           type: string
         workspaceId:
           type: string
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
         name:
           type: string
         templateKind:

@@ -34,6 +34,7 @@ import type {
   WorkspaceSettingsGeneralFocusAnchor,
   WorkspaceSettingsSectionID,
   WorkspaceAgentDraft,
+  WorkspaceAutomationRuleDraft,
   WorkspaceManagedModelProviderDraft,
   WorkspaceManagedModelProviderID
 } from "./workspaceSettingsTypes";
@@ -62,6 +63,20 @@ export interface IWorkspaceAgentsController {
   updateDraft(patch: Partial<WorkspaceAgentDraft>): void;
 }
 
+export interface IWorkspaceAutomationRulesController {
+  beginDraft(): void;
+  beginEditRule(automationRuleID: string): void;
+  cancelDeleteRule(): void;
+  cancelDraft(): void;
+  confirmDeleteRule(automationRuleID: string): Promise<void>;
+  refresh(): Promise<void>;
+  requestDeleteRule(automationRuleID: string): void;
+  retryTargetCatalog(): Promise<void>;
+  saveDraft(): Promise<void>;
+  selectDraftTarget(targetAgentID: string): Promise<void>;
+  updateDraft(patch: Partial<WorkspaceAutomationRuleDraft>): void;
+}
+
 export interface WorkspaceSettingsOpenOptions {
   anchor?: WorkspaceSettingsGeneralFocusAnchor;
   pane?: string;
@@ -72,6 +87,7 @@ export interface WorkspaceSettingsOpenOptions {
 export interface IWorkspaceSettingsService {
   readonly _serviceBrand: undefined;
   readonly agents: IWorkspaceAgentsController;
+  readonly automationRules: IWorkspaceAutomationRulesController;
   readonly store: WorkspaceSettingsReadableStoreState;
 
   checkComputerUseStatus(): Promise<DesktopComputerUseStatus>;

@@ -29,6 +29,7 @@ type SessionInteractionSnapshot struct {
 
 type ComposerSettings struct {
 	Model            string
+	ModelPlanID      string
 	PermissionModeID string
 	PlanMode         bool
 	// BrowserUse is tri-state: nil means "use the default" (on), so the
@@ -144,6 +145,16 @@ type RuntimeExecResult struct {
 	SessionStatus      string
 	TurnLifecycle      TurnLifecycle
 	SubmitAvailability SubmitAvailability
+}
+
+type RuntimeSubmitProvenanceInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	TurnID         string
+	ClientSubmitID string
+	Content        []PromptContentBlock
+	DisplayPrompt  string
+	Guidance       bool
 }
 
 type CompletedCommand struct {

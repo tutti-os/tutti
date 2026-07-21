@@ -479,3 +479,29 @@ test("workspace Agent editor keeps only the simplified fields", () => {
   assert.doesNotMatch(editorSource, /draft\.enabled|enabledLabel|<Switch/);
   assert.doesNotMatch(editorSource, /executionRole|planningRole|reviewRole/);
 });
+test("workspace automation editor launches a single target with bounded authority", () => {
+  const editorSource = readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "WorkspaceAutomationRuleEditor.tsx"
+    ),
+    "utf8"
+  );
+
+  // The retired consult/fork/delegate/handoff action split must not return.
+  assert.doesNotMatch(editorSource, /"consult"|"fork"|"delegate"|"handoff"/);
+  assert.doesNotMatch(
+    editorSource,
+    /actionLabel|modelPlanId|requiredCapabilities/
+  );
+  assert.match(editorSource, /draft\.sourceWorkspaceAgentId/);
+  assert.match(editorSource, /draft\.targetAgentId/);
+  assert.match(editorSource, /onSelectTarget/);
+  assert.match(editorSource, /targetCatalog\.permissionModes/);
+  assert.match(editorSource, /targetCatalog\.tools/);
+  assert.match(editorSource, /draft\.permissionModeId/);
+  assert.match(editorSource, /draft\.allowedTools/);
+  assert.match(editorSource, /draft\.maxRunsPerSession/);
+  assert.match(editorSource, /draft\.maxTotalTokensPerSession/);
+  assert.doesNotMatch(editorSource, /executionRole|planningRole|reviewRole/);
+});

@@ -6,13 +6,14 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:3f3d3b869c422719"
+	BusinessEventCatalogRevision = "sha256:e235d56c79f0ab66"
 )
 
 type Topic string
 
 const (
 	TopicAgentActivityUpdated                           Topic = "agent.activity.updated"
+	TopicAgentAutomationRulesChanged                    Topic = "agent.automation.rules.changed"
 	TopicAgentCollaborationUpdated                      Topic = "agent.collaboration.updated"
 	TopicAgentModelCatalogInvalidated                   Topic = "agent.model.catalog.invalidated"
 	TopicAgentModelConfigurationChanged                 Topic = "agent.model.configuration.changed"
@@ -242,6 +243,11 @@ type AgentActivityUpdatedPayload struct {
 	Data           any     `json:"data"`
 }
 
+type AgentAutomationRulesChangedPayload struct {
+	WorkspaceId      string `json:"workspaceId"`
+	OccurredAtUnixMs int    `json:"occurredAtUnixMs"`
+}
+
 type AgentCollaborationUpdatedPayload struct {
 	WorkspaceId      string  `json:"workspaceId"`
 	RunId            string  `json:"runId"`
@@ -345,6 +351,15 @@ type AgentActivityUpdatedEvent struct {
 	EmittedAt string                      `json:"emittedAt"`
 	Scope     *EventScope                 `json:"scope,omitempty"`
 	Payload   AgentActivityUpdatedPayload `json:"payload"`
+}
+
+type AgentAutomationRulesChangedEvent struct {
+	ID        string                             `json:"id"`
+	Topic     Topic                              `json:"topic"`
+	Version   int                                `json:"version"`
+	EmittedAt string                             `json:"emittedAt"`
+	Scope     *EventScope                        `json:"scope,omitempty"`
+	Payload   AgentAutomationRulesChangedPayload `json:"payload"`
 }
 
 type AgentCollaborationUpdatedEvent struct {
@@ -540,6 +555,13 @@ var BusinessEventDefinitions = []EventDefinition{
 		Scope:     ScopeNameWorkspace,
 	},
 	{
+		Topic:     TopicAgentAutomationRulesChanged,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "agent",
+		Scope:     ScopeNameWorkspace,
+	},
+	{
 		Topic:     TopicAgentCollaborationUpdated,
 		Version:   1,
 		Direction: DirectionServerToClient,
@@ -641,20 +663,21 @@ var BusinessEventDefinitions = []EventDefinition{
 
 var businessEventDefinitionByTopic = map[Topic]EventDefinition{
 	TopicAgentActivityUpdated:                           BusinessEventDefinitions[0],
-	TopicAgentCollaborationUpdated:                      BusinessEventDefinitions[1],
-	TopicAgentModelCatalogInvalidated:                   BusinessEventDefinitions[2],
-	TopicAgentModelConfigurationChanged:                 BusinessEventDefinitions[3],
-	TopicAgentQuickpromptUpdated:                        BusinessEventDefinitions[4],
-	TopicAnalyticsDebugReported:                         BusinessEventDefinitions[5],
-	TopicPreferencesAgentComposerDefaultsChanged:        BusinessEventDefinitions[6],
-	TopicPreferencesAgentComposerDefaultsPatchRequested: BusinessEventDefinitions[7],
-	TopicPreferencesDesktopUpdateRequested:              BusinessEventDefinitions[8],
-	TopicPreferencesDesktopUpdated:                      BusinessEventDefinitions[9],
-	TopicUserProjectUpdated:                             BusinessEventDefinitions[10],
-	TopicWorkspaceAppUpdated:                            BusinessEventDefinitions[11],
-	TopicWorkspaceAppfactoryJobUpdated:                  BusinessEventDefinitions[12],
-	TopicWorkspaceIssueUpdated:                          BusinessEventDefinitions[13],
-	TopicWorkspaceWorkbenchNodeLaunchRequested:          BusinessEventDefinitions[14],
+	TopicAgentAutomationRulesChanged:                    BusinessEventDefinitions[1],
+	TopicAgentCollaborationUpdated:                      BusinessEventDefinitions[2],
+	TopicAgentModelCatalogInvalidated:                   BusinessEventDefinitions[3],
+	TopicAgentModelConfigurationChanged:                 BusinessEventDefinitions[4],
+	TopicAgentQuickpromptUpdated:                        BusinessEventDefinitions[5],
+	TopicAnalyticsDebugReported:                         BusinessEventDefinitions[6],
+	TopicPreferencesAgentComposerDefaultsChanged:        BusinessEventDefinitions[7],
+	TopicPreferencesAgentComposerDefaultsPatchRequested: BusinessEventDefinitions[8],
+	TopicPreferencesDesktopUpdateRequested:              BusinessEventDefinitions[9],
+	TopicPreferencesDesktopUpdated:                      BusinessEventDefinitions[10],
+	TopicUserProjectUpdated:                             BusinessEventDefinitions[11],
+	TopicWorkspaceAppUpdated:                            BusinessEventDefinitions[12],
+	TopicWorkspaceAppfactoryJobUpdated:                  BusinessEventDefinitions[13],
+	TopicWorkspaceIssueUpdated:                          BusinessEventDefinitions[14],
+	TopicWorkspaceWorkbenchNodeLaunchRequested:          BusinessEventDefinitions[15],
 }
 
 var ClientToServerTopics = []Topic{
@@ -664,6 +687,7 @@ var ClientToServerTopics = []Topic{
 
 var ServerToClientTopics = []Topic{
 	TopicAgentActivityUpdated,
+	TopicAgentAutomationRulesChanged,
 	TopicAgentCollaborationUpdated,
 	TopicAgentModelCatalogInvalidated,
 	TopicAgentModelConfigurationChanged,
@@ -703,6 +727,8 @@ func IsServerToClientTopic(topic Topic) bool {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return true
+	case TopicAgentAutomationRulesChanged:
+		return true
 	case TopicAgentCollaborationUpdated:
 		return true
 	case TopicAgentModelCatalogInvalidated:
@@ -736,6 +762,8 @@ func PayloadPrototypeForTopic(topic Topic) (any, bool) {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return &AgentActivityUpdatedPayload{}, true
+	case TopicAgentAutomationRulesChanged:
+		return &AgentAutomationRulesChangedPayload{}, true
 	case TopicAgentCollaborationUpdated:
 		return &AgentCollaborationUpdatedPayload{}, true
 	case TopicAgentModelCatalogInvalidated:
@@ -773,6 +801,8 @@ func EventPrototypeForTopic(topic Topic) (any, bool) {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return &AgentActivityUpdatedEvent{}, true
+	case TopicAgentAutomationRulesChanged:
+		return &AgentAutomationRulesChangedEvent{}, true
 	case TopicAgentCollaborationUpdated:
 		return &AgentCollaborationUpdatedEvent{}, true
 	case TopicAgentModelCatalogInvalidated:

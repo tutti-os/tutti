@@ -152,6 +152,16 @@ func DefaultCatalog() StaticCatalog {
 			},
 		},
 		{
+			Name:               TopicAgentAutomationRulesChanged,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateAgentAutomationRulesChangedPayload,
+			},
+		},
+		{
 			Name:               TopicUserProjectUpdated,
 			ClientCanPublish:   false,
 			ClientCanSubscribe: true,

@@ -8,6 +8,7 @@ import (
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentquickpromptbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentquickprompt"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 	managedcredentialsbiz "github.com/tutti-os/tutti/services/tuttid/biz/managedcredentials"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
@@ -123,6 +124,22 @@ type WorkspaceAgentsStore interface {
 	ListWorkspaceAgents(context.Context, string) ([]workspaceagentbiz.Agent, error)
 	ListWorkspaceAgentsByModelPlan(context.Context, string, string) ([]workspaceagentbiz.Agent, error)
 	PutWorkspaceAgent(context.Context, workspaceagentbiz.Agent) error
+}
+
+type AutomationRulesStore interface {
+	DeleteAutomationRule(context.Context, string, string) error
+	GetAutomationRule(context.Context, string, string) (automationrulebiz.Rule, error)
+	ListAutomationRules(context.Context, string) ([]automationrulebiz.Rule, error)
+	ListAutomationRulesByPlan(context.Context, string, string) ([]automationrulebiz.Rule, error)
+	CreateAutomationRule(context.Context, automationrulebiz.Rule) error
+	UpdateAutomationRule(context.Context, automationrulebiz.Rule) (automationrulebiz.Rule, error)
+	GetAutomationRuleSessionOverride(context.Context, string, string) (automationrulebiz.SessionOverride, bool, error)
+	PutAutomationRuleSessionOverride(context.Context, automationrulebiz.SessionOverride) error
+	RecordAutomationRuleExecution(context.Context, automationrulebiz.Execution) error
+	MarkAutomationRuleExecutionLaunchFailed(ctx context.Context, workspaceID string, targetSessionID string, failureReason string) error
+	AutomationRuleExecutionExists(ctx context.Context, workspaceID string, sourceSessionID string, ruleID string, triggerID string) (bool, error)
+	AutomationRuleUsage(ctx context.Context, workspaceID string, sourceSessionID string, ruleID string) (int, int64, error)
+	RecordAutomationTargetUsage(ctx context.Context, workspaceID string, targetSessionID string, totalTokens int64) error
 }
 
 type CollaborationRunsStore interface {

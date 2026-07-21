@@ -62,6 +62,15 @@ interface ModelRecommendationListResponse {
 export type PutWorkspaceAgentInput = PutWorkspaceAgentRequest;
 export type PutAutomationRuleInput = PutAutomationRuleRequest;
 
+/**
+ * Permission-mode and tool option catalogs resolved from one target Agent's
+ * composer capability directory.
+ */
+export interface AutomationTargetCatalogResult {
+  permissionModes: { id: string; label: string }[];
+  tools: { id: string; label: string }[];
+}
+
 export interface RecommendWorkspaceModelsInput {
   limit?: number;
   preferredPlanId?: string;
@@ -109,6 +118,21 @@ export interface DesktopWorkspaceSettingsClient {
     provider: WorkspaceAgentProvider,
     agentTargetID: string
   ): Promise<AgentProviderComposerOptionsResponse>;
+  listAutomationRules(workspaceID: string): Promise<AutomationRule[]>;
+  getAutomationTargetCatalog(
+    workspaceID: string,
+    provider: string,
+    agentTargetID: string
+  ): Promise<AutomationTargetCatalogResult>;
+  updateAutomationRule(
+    workspaceID: string,
+    automationRuleID: string,
+    input: PutAutomationRuleInput
+  ): Promise<AutomationRule>;
+  deleteAutomationRule(
+    workspaceID: string,
+    automationRuleID: string
+  ): Promise<void>;
   listWorkspaceAgents(workspaceID: string): Promise<WorkspaceAgentDefinition[]>;
   createWorkspaceAgent(
     workspaceID: string,
@@ -176,13 +200,17 @@ export function createDesktopWorkspaceSettingsClient(input: {
   runtimeApi: DesktopRuntimeApi;
   tuttidClient: Pick<
     TuttidClient,
+    | "createAutomationRule"
     | "createWorkspaceAgent"
+    | "deleteAutomationRule"
     | "deleteWorkspaceAgent"
     | "getAgentProviderComposerOptions"
     | "listAgentTargets"
+    | "listAutomationRules"
     | "listWorkspaceAgents"
     | "purgeDeletedAgentConversations"
     | "setSystemAgentTargetEnabled"
+    | "updateAutomationRule"
     | "updateWorkspaceAgent"
   >;
 }): DesktopWorkspaceSettingsClient {
@@ -236,6 +264,24 @@ export function createDesktopWorkspaceSettingsClient(input: {
         }
       );
     },
+    async getAutomationTargetCatalog(workspaceID, provider, agentTargetID) {
+      const options = await input.tuttidClient.getAgentProviderComposerOptions(
+        provider as AgentTarget["provider"],
+        { agentTargetId: agentTargetID, workspaceId: workspaceID }
+      );
+      return {
+        permissionModes: options.permissionConfig.modes.map((mode) => ({
+          id: mode.id,
+          label: mode.label
+        })),
+        tools: options.capabilityCatalog
+          .filter(
+            (option) =>
+              option.kind !== "skill" && option.status !== "unsupported"
+          )
+          .map((option) => ({ id: option.id, label: option.label }))
+      };
+    },
     async listWorkspaceAgents(workspaceID) {
       return (await input.tuttidClient.listWorkspaceAgents(workspaceID)).agents;
     },
@@ -255,17 +301,23 @@ export function createDesktopWorkspaceSettingsClient(input: {
         workspaceAgentID
       );
     },
+    async listAutomationRules(workspaceID) {
+      return (await input.tuttidClient.listAutomationRules(workspaceID)).rules;
+    },
     async createAutomationRule(workspaceID, body) {
-      // The curated daemon does not expose AutomationRule CRUD endpoints yet;
-      // this targets the upstream contract so generated suggestions persist
-      // once the routes land.
-      return await requestDaemon<AutomationRule>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/automation-rules`,
-        {
-          body,
-          method: "POST"
-        }
+      return await input.tuttidClient.createAutomationRule(workspaceID, body);
+    },
+    async updateAutomationRule(workspaceID, automationRuleID, body) {
+      return await input.tuttidClient.updateAutomationRule(
+        workspaceID,
+        automationRuleID,
+        body
+      );
+    },
+    async deleteAutomationRule(workspaceID, automationRuleID) {
+      await input.tuttidClient.deleteAutomationRule(
+        workspaceID,
+        automationRuleID
       );
     },
     async listModelPlans(workspaceID) {

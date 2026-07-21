@@ -85,6 +85,7 @@ import {
   type WorkspaceFeatureFlagSettings
 } from "./workspaceFeatureFlagSettings.ts";
 import { WorkspaceAgentsController } from "./workspaceAgentsController.ts";
+import { WorkspaceAutomationRulesController } from "./workspaceAutomationRulesController.ts";
 
 const managedModelProviderIDs: WorkspaceManagedModelProviderID[] = [
   "agnes",
@@ -113,6 +114,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   readonly _serviceBrand: undefined;
   readonly store = createWorkspaceSettingsStore();
   readonly agents: WorkspaceAgentsController;
+  readonly automationRules: WorkspaceAutomationRulesController;
 
   private readonly dependencies: WorkspaceSettingsServiceDependencies;
   private readonly desktopPreferences: DesktopPreferencesService;
@@ -154,6 +156,10 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.agents = new WorkspaceAgentsController({
       client: dependencies.client,
       onWorkspaceAgentsChanged: dependencies.onAgentTargetsChanged,
+      store: this.store
+    });
+    this.automationRules = new WorkspaceAutomationRulesController({
+      client: dependencies.client,
       store: this.store
     });
     this.scheduleTuttiAgentSwitchInitialization();
@@ -277,6 +283,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.store.managedModels.focusRequestID = 0;
       this.store.modelPlans.plans = [];
       this.agents.reset();
+      this.automationRules.reset();
     }
   }
 
@@ -300,7 +307,8 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   private async refreshAgentSettings(): Promise<void> {
     await Promise.all([
       this.refreshWorkspaceModelPlans(),
-      this.agents.refresh()
+      this.agents.refresh(),
+      this.automationRules.refresh()
     ]);
   }
 

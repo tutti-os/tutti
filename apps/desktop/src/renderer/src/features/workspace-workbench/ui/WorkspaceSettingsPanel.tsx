@@ -104,6 +104,7 @@ import {
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
+  LAB_AUTOMATION_RULES_FLAG,
   LAB_WORKSPACE_AGENTS_FLAG,
   resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
@@ -123,6 +124,7 @@ import { useAccountService } from "./useAccountService";
 import { WorkspaceDeveloperSettingsSection } from "./WorkspaceDeveloperSettingsSection";
 import { WorkspaceLabFeatureGateRows } from "./WorkspaceLabFeatureGateRows";
 import { WorkspaceAgentsSection } from "./WorkspaceAgentsSection";
+import { WorkspaceAutomationRulesSection } from "./WorkspaceAutomationRulesSection";
 import { SettingsRows } from "./WorkspaceSettingsRows";
 import {
   normalizeWorkspaceSettingsDefaultAgentProvider,
@@ -3405,6 +3407,9 @@ function WorkspaceAgentSettingsSection({
 
       {isFeatureEnabled(featureFlags, LAB_WORKSPACE_AGENTS_FLAG) ? (
         <WorkspaceAgentsSection />
+      ) : null}
+      {isFeatureEnabled(featureFlags, LAB_AUTOMATION_RULES_FLAG) ? (
+        <WorkspaceAutomationRulesSection />
       ) : null}
     </div>
   );

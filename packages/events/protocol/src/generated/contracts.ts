@@ -8,6 +8,7 @@ export type BusinessEventScopeName = "global" | "desktop" | "workspace";
 
 export type BusinessEventTopic =
   | "agent.activity.updated"
+  | "agent.automation.rules.changed"
   | "agent.collaboration.updated"
   | "agent.model.catalog.invalidated"
   | "agent.model.configuration.changed"
@@ -354,6 +355,11 @@ export type AgentActivityUpdatedPayloadV1 =
       };
     };
 
+export interface AgentAutomationRulesChangedPayloadV1 {
+  workspaceId: string;
+  occurredAtUnixMs: number;
+}
+
 export interface AgentCollaborationUpdatedPayloadV1 {
   workspaceId: string;
   runId: string;
@@ -466,6 +472,12 @@ export type AgentActivityUpdatedEventV1 = BusinessEventEnvelopeV1<
   2
 >;
 
+export type AgentAutomationRulesChangedEventV1 = BusinessEventEnvelopeV1<
+  "agent.automation.rules.changed",
+  AgentAutomationRulesChangedPayloadV1,
+  1
+>;
+
 export type AgentCollaborationUpdatedEventV1 = BusinessEventEnvelopeV1<
   "agent.collaboration.updated",
   AgentCollaborationUpdatedPayloadV1,
@@ -559,6 +571,7 @@ export type ClientToServerEventTopic =
 
 export type ServerToClientEventTopic =
   | "agent.activity.updated"
+  | "agent.automation.rules.changed"
   | "agent.collaboration.updated"
   | "agent.model.catalog.invalidated"
   | "agent.model.configuration.changed"
@@ -578,6 +591,7 @@ export type ClientToServerEventV1 =
 
 export type ServerToClientEventV1 =
   | AgentActivityUpdatedEventV1
+  | AgentAutomationRulesChangedEventV1
   | AgentCollaborationUpdatedEventV1
   | AgentModelCatalogInvalidatedEventV1
   | AgentModelConfigurationChangedEventV1
