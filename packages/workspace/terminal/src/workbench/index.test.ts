@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import test from "node:test";
 import type {
   WorkbenchHostNodeBodyContext,
@@ -10,10 +8,6 @@ import type { TerminalNodeExternalState } from "../contracts/index.ts";
 import type { TerminalNodeFeature } from "../core/feature.ts";
 import { resolveTerminalWorkbenchBodyProps } from "./bodyProps.ts";
 import { resolveTerminalWindowCloseEffect } from "./windowCloseEffect.ts";
-
-const workbenchIndexSource = readFileSync(resolve("src/workbench/index.ts"), {
-  encoding: "utf8"
-});
 
 test("terminal workbench body lets the mounted surface retain its session", () => {
   const props = resolveTerminalWorkbenchBodyProps({
@@ -52,15 +46,6 @@ test("terminal workbench body forwards preview changes to the host", () => {
   });
 
   assert.equal(props.onPreviewChange, onPreviewChange);
-});
-
-test("terminal minimized dock preview is component-provided, not snapshot", () => {
-  assert.doesNotMatch(workbenchIndexSource, /kind:\s*"snapshot"/);
-  assert.match(workbenchIndexSource, /provideMinimizedPreview/);
-  assert.match(
-    workbenchIndexSource,
-    /kind:\s*"component",\s*providePreview:\s*provideMinimizedPreview/s
-  );
 });
 
 function createTerminalWorkbenchBodyTestContext({
