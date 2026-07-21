@@ -176,7 +176,7 @@ export function isToolContractRelevant(file) {
 function isBackdropFilterAuthoringRelevant(file) {
   return (
     /^(?:apps|packages|services)\//u.test(file) &&
-    /\.(?:cjs|css|cts|js|jsx|mjs|mts|ts|tsx)$/u.test(file)
+    /\.(?:cjs|css|cts|html|js|jsx|mjs|mts|ts|tsx)$/u.test(file)
   );
 }
 
