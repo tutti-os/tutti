@@ -8436,20 +8436,34 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   width: max-content;
   max-width: min(100%, var(--agent-mention-max-width, 16rem));
   color: inherit;
-  vertical-align: baseline;
+  vertical-align: middle;
 }
 
+/* Entity mentions wrap the shared MentionPill in an interactive link. Keep
+   that link layout-only so the pill remains the single owner of its visual
+   box; otherwise the wrapper's padding and offset create a second pill around
+   it and push adjacent queued mentions apart. */
 .agent-gui-node__composer-queued-prompt-markdown
   [data-agent-file-mention="true"].tsh-agent-object-token--entity {
   color: inherit;
-  top: 3px;
+  top: 0;
+  gap: 0;
   max-width: min(100%, var(--agent-mention-max-width, 16rem));
-  min-height: 24px;
-  padding: 2px 4px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  line-height: 20px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  line-height: inherit;
   transition: none;
+}
+
+.agent-gui-node__composer-queued-prompt-markdown
+  [data-agent-file-mention="true"].tsh-agent-object-token--file,
+.agent-gui-node__composer-queued-prompt-markdown
+  [data-agent-file-mention="true"].tsh-agent-object-token--entity
+  > [data-slot="mention-pill"] {
+  top: 0;
+  vertical-align: middle;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
