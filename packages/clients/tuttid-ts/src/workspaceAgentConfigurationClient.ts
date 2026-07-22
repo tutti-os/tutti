@@ -6,6 +6,7 @@ import {
   deleteAutomationRule,
   deleteWorkspaceAgent,
   listAutomationRules,
+  listModelPlans,
   listWorkspaceAgents,
   updateAutomationRule,
   updateWorkspaceAgent,
@@ -15,6 +16,7 @@ import {
   type PutAutomationRuleRequest,
   type SetAgentSessionAutomationRuleOverrideRequest,
   type DeleteWorkspaceAgentResponse,
+  type ListModelPlansResponse,
   type ListWorkspaceAgentsResponse,
   type ModelPlanStatus,
   type PutWorkspaceAgentRequest,
@@ -87,6 +89,7 @@ export interface WorkspaceAgentConfigurationClient {
     agentSessionID: string,
     request: SetAgentSessionAutomationRuleOverrideRequest
   ): Promise<AgentSessionAutomationRuleOverride>;
+  listModelPlans(workspaceID: string): Promise<ListModelPlansResponse>;
   listWorkspaceAgents(
     workspaceID: string
   ): Promise<ListWorkspaceAgentsResponse>;
@@ -163,6 +166,12 @@ export function createWorkspaceAgentConfigurationClient(
           path: { agentSessionID, workspaceID }
         }),
         "Set automation rule override request failed."
+      );
+    },
+    async listModelPlans(workspaceID) {
+      return unwrapData(
+        await listModelPlans({ client, path: { workspaceID } }),
+        "Model plans request failed."
       );
     },
     async listWorkspaceAgents(workspaceID) {

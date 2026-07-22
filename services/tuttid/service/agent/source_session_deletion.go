@@ -28,17 +28,17 @@ func (s *Service) Delete(ctx context.Context, workspaceID string, agentSessionID
 	if workspaceID == "" || agentSessionID == "" {
 		return DeleteSessionResult{}, ErrInvalidArgument
 	}
-	runtimeClosed := false
-	if _, ok := s.controller().Session(workspaceID, agentSessionID); ok {
-		if err := s.controller().Close(ctx, RuntimeCloseInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: agentSessionID,
-		}); err != nil {
-			return DeleteSessionResult{}, normalizeRuntimeError(err)
-		}
-		runtimeClosed = true
-	}
 	if s.SourceSessionDeletions != nil {
+		runtimeClosed := false
+		if _, ok := s.controller().Session(workspaceID, agentSessionID); ok {
+			if err := s.controller().Close(ctx, RuntimeCloseInput{
+				WorkspaceID:    workspaceID,
+				AgentSessionID: agentSessionID,
+			}); err != nil {
+				return DeleteSessionResult{}, normalizeRuntimeError(err)
+			}
+			runtimeClosed = true
+		}
 		result, err := s.SourceSessionDeletions.DeleteSourceSession(ctx, workspaceID, agentSessionID)
 		if err != nil {
 			return DeleteSessionResult{}, err
@@ -54,45 +54,13 @@ func (s *Service) Delete(ctx context.Context, workspaceID string, agentSessionID
 		s.releaseAgentResources(ctx, agentSessionID)
 		return DeleteSessionResult{Removed: removed || runtimeClosed}, nil
 	}
-	if s.ApplicationHost() != nil {
-		result, err := s.ApplicationHost().DeleteSession(ctx, agenthost.SessionRef{
-			WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
-		})
-		return DeleteSessionResult{Removed: result.Deleted, CleanupFailed: result.CleanupFailed}, err
-	}
-	deleter, ok := s.SessionReader.(SessionDeleter)
-	if !ok {
-		if runtimeClosed {
-			if err := s.cleanupRuntime(ctx, workspaceID, agentSessionID); err != nil {
-				return DeleteSessionResult{}, err
-			}
-			if err := s.deleteTuttiModeActivationSessionState(ctx, workspaceID, agentSessionID); err != nil {
-				return DeleteSessionResult{}, err
-			}
-			return DeleteSessionResult{Removed: true}, nil
-		}
-		if err := s.deleteTuttiModeActivationSessionState(ctx, workspaceID, agentSessionID); err != nil {
-			return DeleteSessionResult{}, err
-		}
-		return DeleteSessionResult{}, ErrSessionNotFound
-	}
-	removed, err := deleter.DeleteSession(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		return DeleteSessionResult{}, err
-	}
-	if !removed {
-		if err := s.deleteTuttiModeActivationSessionState(ctx, workspaceID, agentSessionID); err != nil {
-			return DeleteSessionResult{}, err
-		}
-		if !runtimeClosed {
-			return DeleteSessionResult{}, ErrSessionNotFound
-		}
-	}
-	if err := s.cleanupRuntime(ctx, workspaceID, agentSessionID); err != nil {
-		return DeleteSessionResult{}, err
-	}
-	s.releaseAgentResources(ctx, agentSessionID)
-	return DeleteSessionResult{Removed: removed || runtimeClosed}, nil
+	// Host owns live close + canonical removal; do not pre-close or the
+	// live-only delete-before-report conformance path cannot observe the
+	// session.
+	result, err := s.ApplicationHost().DeleteSession(ctx, agenthost.SessionRef{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+	})
+	return DeleteSessionResult{Removed: result.Deleted, CleanupFailed: result.CleanupFailed}, err
 }
 
 func (s *Service) Clear(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {
@@ -100,18 +68,18 @@ func (s *Service) Clear(ctx context.Context, workspaceID string) (ClearSessionsR
 	if workspaceID == "" {
 		return ClearSessionsResult{}, ErrInvalidArgument
 	}
-	for _, session := range s.controller().Sessions(workspaceID) {
-		if err := s.controller().Close(ctx, RuntimeCloseInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: session.ID,
-		}); err != nil {
-			return ClearSessionsResult{}, normalizeRuntimeError(err)
-		}
-		if err := s.cleanupRuntime(ctx, workspaceID, session.ID); err != nil {
-			return ClearSessionsResult{}, err
-		}
-	}
 	if s.SourceSessionDeletions != nil {
+		for _, session := range s.controller().Sessions(workspaceID) {
+			if err := s.controller().Close(ctx, RuntimeCloseInput{
+				WorkspaceID:    workspaceID,
+				AgentSessionID: session.ID,
+			}); err != nil {
+				return ClearSessionsResult{}, normalizeRuntimeError(err)
+			}
+			if err := s.cleanupRuntime(ctx, workspaceID, session.ID); err != nil {
+				return ClearSessionsResult{}, err
+			}
+		}
 		result, err := s.SourceSessionDeletions.ClearSourceSessions(ctx, workspaceID)
 		if err != nil {
 			return ClearSessionsResult{}, err
@@ -126,30 +94,16 @@ func (s *Service) Clear(ctx context.Context, workspaceID string) (ClearSessionsR
 			RemovedSessionIDs: result.RemovedSessionIDs,
 		}, nil
 	}
-	if s.ApplicationHost() != nil {
-		result, err := s.ApplicationHost().ClearSessions(ctx, workspaceID)
-		if err != nil {
-			return ClearSessionsResult{}, err
-		}
-		return ClearSessionsResult{
-			RemovedMessages:         result.RemovedMessages,
-			RemovedSessions:         result.RemovedSessions,
-			RemovedSessionIDs:       result.RemovedSessionIDs,
-			CleanupFailedSessionIDs: result.CleanupFailedIDs,
-		}, nil
-	}
-	clearer, ok := s.SessionReader.(SessionClearer)
-	if !ok {
-		return ClearSessionsResult{}, ErrSessionNotFound
-	}
-	result, err := clearer.ClearSessions(ctx, workspaceID)
+	result, err := s.ApplicationHost().ClearSessions(ctx, workspaceID)
 	if err != nil {
 		return ClearSessionsResult{}, err
 	}
-	for _, removedSessionID := range result.RemovedSessionIDs {
-		s.releaseAgentResources(ctx, removedSessionID)
-	}
-	return result, nil
+	return ClearSessionsResult{
+		RemovedMessages:         result.RemovedMessages,
+		RemovedSessions:         result.RemovedSessions,
+		RemovedSessionIDs:       result.RemovedSessionIDs,
+		CleanupFailedSessionIDs: result.CleanupFailedIDs,
+	}, nil
 }
 
 func (s *Service) publishSessionDeletedEvents(ctx context.Context, workspaceID string, sessionIDs []string) {

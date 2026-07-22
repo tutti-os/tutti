@@ -24,7 +24,7 @@ export interface DesktopTuttiModePlanReviewRuntimeInput {
     | "listAgentTargets"
     | "listWorkspaceAgents"
     | "getAgentProviderComposerOptions"
-    | "listWorkspaceModelPlans"
+    | "listModelPlans"
   >;
   eventStreamClient?: Pick<
     TuttidEventStreamClient,
@@ -139,7 +139,6 @@ interface AssignmentAgentDirectoryEntry {
 
 function workspaceAgentIsSelectable(agent: WorkspaceAgent): boolean {
   return (
-    agent.enabled &&
     agent.harness.available &&
     agent.harness.enabled !== false &&
     Boolean(agent.harness.provider)
@@ -232,7 +231,7 @@ function createAssignmentOptionsSource(
           entry.provider as AgentTarget["provider"],
           { agentTargetId }
         ),
-        tuttidClient.listWorkspaceModelPlans(workspaceId).catch(() => null)
+        tuttidClient.listModelPlans(workspaceId).catch(() => null)
       ]);
       const planProtocol =
         resolveAgentGUIProviderCatalogIdentity(entry.provider)

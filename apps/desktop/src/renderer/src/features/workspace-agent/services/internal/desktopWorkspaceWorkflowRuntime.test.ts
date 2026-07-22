@@ -254,45 +254,69 @@ test("desktop workflow runtime builds agent-scoped assignment option catalogs", 
               agentTargetId: "workspace-agent:openrouter",
               workspaceId,
               name: "OpenRouter",
-              purpose: "",
-              enabled: true,
+              description: "",
               harness: {
                 agentTargetId: "codex",
                 available: true,
                 enabled: true,
                 provider: "codex"
               },
-              modelFallbacks: []
+              modelFallbacks: [],
+              instructions: "",
+              callConditions: [],
+              capabilitiesExplicit: false,
+              skills: [],
+              tools: [],
+              source: "user",
+              revision: 1,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z"
             },
             {
               id: "workspace-agent:disabled",
               agentTargetId: "workspace-agent:disabled",
               workspaceId,
               name: "Disabled workspace agent",
-              purpose: "",
-              enabled: false,
+              description: "",
               harness: {
                 agentTargetId: "codex",
                 available: true,
-                enabled: true,
+                enabled: false,
                 provider: "codex"
               },
-              modelFallbacks: []
+              modelFallbacks: [],
+              instructions: "",
+              callConditions: [],
+              capabilitiesExplicit: false,
+              skills: [],
+              tools: [],
+              source: "user",
+              revision: 1,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z"
             },
             {
               id: "workspace-agent:broken-harness",
               agentTargetId: "workspace-agent:broken-harness",
               workspaceId,
               name: "Broken harness agent",
-              purpose: "",
-              enabled: true,
+              description: "",
               harness: {
                 agentTargetId: "gone",
                 available: false,
                 enabled: true,
                 provider: "codex"
               },
-              modelFallbacks: []
+              modelFallbacks: [],
+              instructions: "",
+              callConditions: [],
+              capabilitiesExplicit: false,
+              skills: [],
+              tools: [],
+              source: "user",
+              revision: 1,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z"
             }
           ]
         } as never;
@@ -318,7 +342,7 @@ test("desktop workflow runtime builds agent-scoped assignment option catalogs", 
           }
         } as never;
       },
-      async listWorkspaceModelPlans(workspaceId: string) {
+      async listModelPlans(workspaceId: string) {
         assert.equal(workspaceId, "workspace-1");
         return {
           plans: [
