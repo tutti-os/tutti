@@ -1,1 +1,2 @@
+. "$(dirname -- "$0")/find-pnpm.sh"
 pnpm check:changed -- --push-ready

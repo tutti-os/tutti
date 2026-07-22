@@ -1,3 +1,4 @@
+. "$(dirname -- "$0")/find-pnpm.sh"
 pnpm exec lint-staged
 pnpm check:backdrop-filter-authoring:staged
 pnpm check:electron-runtime-boundaries:staged
