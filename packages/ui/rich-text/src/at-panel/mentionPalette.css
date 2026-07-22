@@ -129,6 +129,7 @@
   max-width: 100%;
   min-width: 0;
   flex-shrink: 0;
+  border-bottom: 1px solid var(--rich-text-at-mention-line-1);
 }
 
 .rich-text-at-mention-palette__tabs-layout {
@@ -375,9 +376,9 @@
   position: relative;
   box-sizing: border-box;
   min-width: 0;
-  height: 33px;
+  height: 32px;
   padding-inline: 16px;
-  border-bottom: 1px solid var(--rich-text-at-mention-line-1);
+  border-bottom: 0;
 }
 
 .rich-text-at-mention-palette [data-slot="underline-tabs-viewport"] {
