@@ -32,9 +32,9 @@ func (s *Service) applyCreateSessionReasoningIntensity(
 	values := reasoningEffortValuesForProvider(provider)
 	if composerProviderUsesModelReasoningCatalog(provider) {
 		catalog, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, "", model)
-		if ok && catalog.ReasoningEffortsAdvertised {
-			values = make([]string, 0, len(catalog.ReasoningEfforts))
-			for _, option := range catalog.ReasoningEfforts {
+		if ok && catalog.Selection.ReasoningEffortsAdvertised {
+			values = make([]string, 0, len(catalog.Selection.ReasoningEfforts))
+			for _, option := range catalog.Selection.ReasoningEfforts {
 				values = append(values, option.Value)
 			}
 		} else if profile.ReasoningEffortOptions == providerregistry.ReasoningEffortOptionsStrictModelCatalog {

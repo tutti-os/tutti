@@ -21,6 +21,7 @@ func (p *ActivityProjection) NormalizeRuntimeSessionInitialization(
 	}
 	canonicalTargetID, runtimeContext := p.canonicalizeAgentTargetID(
 		ctx,
+		session.WorkspaceID,
 		session.AgentTargetID,
 		session.RuntimeContext,
 	)

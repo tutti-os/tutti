@@ -11,8 +11,8 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
-	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
@@ -450,6 +450,7 @@ func applyResolvedModelPlanComposerOverlay(options ComposerOptions, resolution m
 		options.EffectiveSettings,
 		modelOptions,
 		options.ReasoningConfig.Options,
+		nil,
 	)
 	options.RuntimeContext["modelPlan"] = map[string]any{
 		"id":       resolution.ModelConfiguration.ModelPlanID,

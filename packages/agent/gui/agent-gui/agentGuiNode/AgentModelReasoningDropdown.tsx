@@ -29,7 +29,7 @@ import {
 } from "@tutti-os/ui-system";
 import type { AgentGUIComposerSettingsVM } from "./model/agentGuiNodeTypes";
 import type { AgentComposerSettingsMenuLabels } from "./model/composerSettingsMenuModel";
-import { ComposerOptionInfoTooltip } from "./AgentComposerSettingsMenus";
+import { ComposerOptionInfoTooltip } from "./AgentComposerModelReasoningDropdown";
 import {
   buildComposerModelMenuModel,
   type ComposerMenuOption
