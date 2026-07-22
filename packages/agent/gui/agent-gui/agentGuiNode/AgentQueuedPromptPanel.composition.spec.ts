@@ -18,6 +18,29 @@ const queuedMentionStyles = css.slice(
 );
 
 describe("AgentQueuedPromptPanel CSS composition", () => {
+  it("keeps mention pill icons visible while hiding standalone media", () => {
+    const mediaSelector =
+      ':is(img, video, table, hr, br, input):not([data-slot="mention-pill"] *)';
+    expect(queuedMentionStyles).toMatch(
+      /:is\(img, video, table, hr, br, input\):not\(\[data-slot="mention-pill"\] \*\)\s*\{[^}]*display:\s*none;/s
+    );
+    expect(queuedMentionStyles).not.toMatch(
+      /:is\(img, video, table, hr, br, input\)\s*\{[^}]*display:\s*none;/s
+    );
+
+    const mentionPill = document.createElement("span");
+    mentionPill.dataset.slot = "mention-pill";
+    const mentionIcon = document.createElement("img");
+    const standaloneImage = document.createElement("img");
+    mentionPill.append(mentionIcon);
+    document.body.append(mentionPill, standaloneImage);
+
+    expect(mentionIcon.matches(mediaSelector)).toBe(false);
+    expect(standaloneImage.matches(mediaSelector)).toBe(true);
+    mentionPill.remove();
+    standaloneImage.remove();
+  });
+
   it("keeps the entity link layout-only around the shared mention pill", () => {
     expect(queuedMentionStyles).toMatch(
       /\[data-agent-file-mention="true"\]\.tsh-agent-object-token--entity\s*\{[^}]*top:\s*0;[^}]*gap:\s*0;[^}]*min-height:\s*0;[^}]*padding:\s*0;[^}]*border:\s*0;[^}]*line-height:\s*inherit;/s
