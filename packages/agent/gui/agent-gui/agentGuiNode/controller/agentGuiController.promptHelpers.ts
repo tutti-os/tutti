@@ -1,7 +1,10 @@
 // Agent GUI controller — prompt content normalization and optimistic messages.
 
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
-import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
+import type {
+  AgentActivityInitialGoalControl,
+  AgentActivityMessage
+} from "@tutti-os/agent-activity-core";
 import { mergeAgentGUITimelineItems } from "../model/agentGuiConversationModel";
 import { projectWorkspaceAgentMessagesToTimelineItems } from "../../../shared/agentConversation/projection/workspaceAgentMessageProjection";
 import { createWorkspaceAgentActivityUserMessageIdFromClientSubmitId } from "../../../shared/workspaceAgentMessageOverlay";
@@ -62,6 +65,27 @@ export function createOptimisticPromptMessage(input: {
     },
     occurredAtUnixMs: input.occurredAtUnixMs,
     startedAtUnixMs: input.occurredAtUnixMs
+  };
+}
+
+export function createOptimisticGoalControlMessage(
+  input: Parameters<typeof createOptimisticPromptMessage>[0] & {
+    goalControl: Readonly<AgentActivityInitialGoalControl>;
+  }
+): AgentActivityMessage {
+  const message = createOptimisticPromptMessage(input);
+  return {
+    ...message,
+    kind: "session_audit",
+    payload: {
+      ...message.payload,
+      action: input.goalControl.action,
+      goalControl: true,
+      ...(input.goalControl.objective !== undefined
+        ? { objective: input.goalControl.objective }
+        : {}),
+      messageId: message.messageId
+    }
   };
 }
 

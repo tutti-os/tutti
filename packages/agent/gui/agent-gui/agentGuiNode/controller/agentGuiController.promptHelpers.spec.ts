@@ -3,7 +3,10 @@ import {
   mergeAgentActivityMessages,
   type AgentActivityMessage
 } from "@tutti-os/agent-activity-core";
-import { createOptimisticPromptMessage } from "./agentGuiController.promptHelpers";
+import {
+  createOptimisticGoalControlMessage,
+  createOptimisticPromptMessage
+} from "./agentGuiController.promptHelpers";
 
 // Step 9 (ADR 0004 desktop-half): optimistic echoes must not carry
 // daemon-domain version numbers. Durable rows use the store's small monotonic
@@ -80,5 +83,25 @@ describe("createOptimisticPromptMessage", () => {
     const merged = mergeAgentActivityMessages([echo], [durableTwin]);
     expect(merged).toHaveLength(1);
     expect(merged[0]).toMatchObject({ version: 3, turnId: "turn-2" });
+  });
+
+  it("marks an initial goal as a control event instead of a prompt turn", () => {
+    const echo = createOptimisticGoalControlMessage({
+      ...echoInput,
+      displayPrompt: "/goal ship it",
+      goalControl: { action: "set", objective: "ship it" }
+    });
+
+    expect(echo).toMatchObject({
+      kind: "session_audit",
+      payload: {
+        __agentGuiOptimisticPrompt: true,
+        action: "set",
+        goalControl: true,
+        messageId: "client-submit:user:submit-1",
+        objective: "ship it",
+        text: "/goal ship it"
+      }
+    });
   });
 });

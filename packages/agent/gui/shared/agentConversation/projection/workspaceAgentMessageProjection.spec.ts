@@ -5,6 +5,7 @@ import {
   type AgentActivitySession
 } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityCard } from "../../workspaceAgentActivityListViewModel";
+import { mergeWorkspaceAgentActivityDurableAndOverlayMessages } from "../../workspaceAgentMessageOverlay";
 import { projectWorkspaceAgentMessagesToConversationVM } from "./workspaceAgentMessageProjection";
 
 describe("projectWorkspaceAgentMessagesToConversationVM", () => {
@@ -417,7 +418,7 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     ]);
   });
 
-  it("keeps goal control audits out of the user conversation", () => {
+  it("projects goal control audits as dedicated non-turn rows", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
       session: session({
@@ -449,11 +450,84 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       ]
     });
 
+    expect(conversation.rows.map((row) => row.kind)).toEqual([
+      "message",
+      "goal-control"
+    ]);
     expect(
-      conversation.rows
-        .filter((row) => row.kind === "message")
-        .flatMap((row) => row.messages.map((item) => item.body))
-    ).toEqual(["Pause the goal"]);
+      conversation.rows.find((row) => row.kind === "goal-control")
+    ).toMatchObject({
+      action: "pause",
+      body: "/goal pause",
+      turnId: null
+    });
+    expect(conversation.sourceDetail.turns).toHaveLength(1);
+  });
+
+  it("keeps the goal control row identity stable when the durable audit replaces its optimistic echo", () => {
+    const optimistic = message({
+      messageId: "client-submit:user:submit-goal-1",
+      version: 0,
+      turnId: "pending:submit-goal-1",
+      role: "user",
+      kind: "session_audit",
+      payload: {
+        __agentGuiOptimisticPrompt: true,
+        action: "set",
+        clientSubmitId: "submit-goal-1",
+        goalControl: true,
+        messageId: "client-submit:user:submit-goal-1",
+        text: "/goal ship it"
+      },
+      occurredAtUnixMs: 100
+    });
+    const durable = message({
+      messageId: "goal-control:operation-1",
+      version: 1,
+      turnId: undefined,
+      role: "user",
+      kind: "session_audit",
+      payload: {
+        action: "set",
+        clientSubmitId: "submit-goal-1",
+        goalControl: true,
+        messageId: "client-submit:user:submit-goal-1",
+        operationId: "operation-1",
+        text: "/goal ship it"
+      },
+      occurredAtUnixMs: 100
+    });
+    const optimisticConversation =
+      projectWorkspaceAgentMessagesToConversationVM({
+        activity: activity(),
+        session: session({ effectiveStatus: "completed" }),
+        messages: [optimistic]
+      });
+    const mergedMessages = mergeWorkspaceAgentActivityDurableAndOverlayMessages(
+      {
+        durableMessages: [durable],
+        localMessages: [optimistic]
+      }
+    );
+    const durableConversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session({ effectiveStatus: "completed" }),
+      messages: mergedMessages
+    });
+    const optimisticRow = optimisticConversation.rows.find(
+      (row) => row.kind === "goal-control"
+    );
+    const durableRow = durableConversation.rows.find(
+      (row) => row.kind === "goal-control"
+    );
+
+    expect(mergedMessages).toEqual([durable]);
+    expect(optimisticRow?.id).toBe(
+      "goal-control:client-submit:user:submit-goal-1"
+    );
+    expect(durableRow?.id).toBe(optimisticRow?.id);
+    expect(optimisticConversation.sourceDetail.turns).toHaveLength(0);
+    expect(durableConversation.sourceDetail.turns).toHaveLength(0);
   });
 
   it("projects only the latest text snapshot for a stable message id", () => {

@@ -216,7 +216,7 @@ A child Interaction may appear in the root conversation, but submission carries 
 
 Goal is a Session-level durable entity, not a Turn command. It owns desired/observed state, revision, and an independent operation.
 
-A Goal operation may produce zero or more provider Turns, but it cannot reserve or fabricate Turn IDs. Goal control bypasses the prompt pipeline and does not create a user transcript message.
+A Goal operation may produce zero or more provider Turns, but it cannot reserve or fabricate Turn IDs. Goal control bypasses the prompt pipeline and does not create a user transcript Turn message. AgentGUI may project its durable session audit as a dedicated `goal-control` timeline row; that row has no Turn ID and does not participate in Turn counts, processing ownership, cancellation, or settlement.
 
 Host owns recovery for runtime operations, Goal operations, and the reconcile inbox. An adapter must not start a second worker or state machine.
 
@@ -544,7 +544,9 @@ and runtime adapter preserve the structured `{action, objective}` command, the
 host integration creates a non-provisional Session without initial content,
 and Goal control completes without manufacturing a Turn. The structured field
 is authoritative; integrations must not reparse the display prompt to recover
-Goal semantics.
+Goal semantics. AgentGUI represents the pending control and its durable audit
+with the same client-submit presentation identity, so canonical replacement
+does not remove and recreate the visible `goal-control` row.
 The pending activation carries the same resolved project section key as the
 create command. Exact rail projection therefore shows the conversation as soon
 as the intent is accepted; it does not wait for provider startup or invent a

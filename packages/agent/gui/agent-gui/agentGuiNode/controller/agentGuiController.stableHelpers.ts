@@ -121,6 +121,7 @@ export function stabilizeConversationDetail(
     previous.cwd === next.cwd &&
     previous.workspaceRoot === next.workspaceRoot &&
     previous.showProcessingIndicator === next.showProcessingIndicator &&
+    previous.goalControls === next.goalControls &&
     previous.turns === next.turns &&
     previous.sessionTurns === next.sessionTurns &&
     previous.session === session &&

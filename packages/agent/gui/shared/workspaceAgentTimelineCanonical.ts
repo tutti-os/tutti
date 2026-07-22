@@ -1,4 +1,5 @@
 import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
+import { appendWorkspaceAgentGoalControl } from "./workspaceAgentGoalControlProjection";
 import {
   isWorkspaceAgentToolCallItem,
   resolveWorkspaceAgentToolName
@@ -6,6 +7,7 @@ import {
 import type {
   BuildWorkspaceAgentSessionDetailInput,
   WorkspaceAgentSessionDetailAgentItem,
+  WorkspaceAgentSessionDetailGoalControl,
   WorkspaceAgentSessionDetailToolCall,
   WorkspaceAgentSessionDetailToolGroupEntry,
   WorkspaceAgentSessionDetailTurn,
@@ -48,6 +50,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
   workspaceRoot = null
 }: BuildWorkspaceAgentSessionDetailInput): WorkspaceAgentSessionDetailViewModel {
   const turns = new Map<string, WorkspaceAgentSessionDetailTurn>();
+  const goalControls: WorkspaceAgentSessionDetailGoalControl[] = [];
   const recentUserMessages = new Map<
     string,
     WorkspaceAgentActivityTimelineItem
@@ -64,6 +67,12 @@ export function buildCanonicalWorkspaceAgentDetailView({
     const role = messageRole(item);
     const body = messageBody(item);
     const explicitTurnId = item.turnId?.trim();
+
+    if (
+      appendWorkspaceAgentGoalControl(goalControls, item, itemId(item), body)
+    ) {
+      continue;
+    }
 
     if (role === "user") {
       const turnId = explicitTurnId || `seq:${item.seq || item.id}`;
@@ -213,6 +222,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
     sessionTurns,
     cwd: session.cwd.trim(),
     workspaceRoot: workspaceRoot?.trim() || null,
+    goalControls,
     turns: visibleTurns,
     showProcessingIndicator: shouldShowProcessingIndicator(
       session,

@@ -551,10 +551,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
 
 - Symptom:
   Clearing a goal while its current turn is still running leaves the composer
-  on a non-clickable send spinner. The transcript shows `/goal clear` followed
-  by a new processing row even though no new user turn started. Claude Code may
-  instead append a native `Goal cleared: …` assistant message at the bottom of
-  the transcript after the interrupted turn.
+  on a non-clickable send spinner. The transcript treats `/goal clear` as a
+  user Turn followed by a new processing row even though no new user work
+  started. Claude Code may instead append a native `Goal cleared: …` assistant
+  message at the bottom of the transcript after the interrupted turn.
 - Quick checks:
   Inspect the AgentGUI clear handler and the engine pending-submit records. If
   clear calls `executePrompt` with an immediate `/goal clear`, the control has
@@ -573,7 +573,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   row at the bottom.
 - Fix:
   Route every goal action, including clear, through the dedicated runtime
-  goal-control API. Do not create a user message, pending submit, or pseudo turn.
+  goal-control API. Do not create a user Turn message, pending submit, or pseudo
+  turn. A surface may project the durable session audit as a dedicated
+  `goal-control` row, but that row must carry no Turn ID and must not affect
+  processing ownership or Turn counts.
   If the provider needs an internal clear-command turn, register its generated
   turn ID and suppress only that turn's assistant/thinking acknowledgement at
   the runtime-adapter boundary before persistence. Do not filter by localized
@@ -588,11 +591,12 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   active light or dark theme instead of using the inverted neutral toast style.
 - Validation:
   Clear a goal while a turn is running and verify the goal-control API is called
-  without an engine submit dispatch. The clear command must not appear in the
-  transcript, the original processing row must remain in place, and Stop must
-  remain clickable until the active turn settles or is interrupted. For Claude
-  Code, verify the native acknowledgement is absent both live and after reload,
-  while identical text from an ordinary assistant turn remains visible.
+  without an engine submit dispatch. If the clear control is visible, it must
+  be a `goal-control` row with no Turn ID; the original processing row must
+  remain in place, and Stop must remain clickable until the active turn settles
+  or is interrupted. For Claude Code, verify the native acknowledgement is
+  absent both live and after reload, while identical text from an ordinary
+  assistant turn remains visible.
 - References:
   [useAgentGUISubmitInteractionActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISubmitInteractionActions.ts)
   [claude_sdk_goal.go](../../../packages/agent/daemon/runtime/claude_sdk_goal.go)
@@ -2181,3 +2185,37 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [Agent Goal Control Design](../../specs/2026-07-15-agent-goal-control-design.md)
   [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
   [goal_state.go](../../../packages/agent/store-sqlite/goal_state.go)
+
+### Initial Goal prompt disappears when the Agent starts responding
+
+- Symptom:
+  A new conversation opened with `/goal <objective>` first shows the submitted
+  command, then removes it as soon as the durable session or the first provider
+  response arrives. The response and processing state remain visible.
+- Quick checks:
+  Compare the optimistic activation message with the durable
+  `session_audit`. Verify both carry the same `clientSubmitId` and inspect the
+  transcript projection after the overlay removes the optimistic twin. If the
+  durable Goal audit is filtered from all presentation output, the replacement
+  leaves no visible row.
+- Root cause:
+  The optimistic activation was projected as an ordinary user message while
+  the canonical Goal control was correctly persisted as a session-level audit.
+  Overlay reconciliation removed the optimistic message by `clientSubmitId`,
+  then the message projector discarded the durable audit, so two individually
+  correct policies composed into a disappearing row.
+- Fix:
+  Mark the optimistic activation as Goal control when
+  `initialGoalControl` is present. Project both optimistic and durable forms as
+  a dedicated `goal-control` row outside the Turn model. Derive the row identity
+  from the audit payload's client-submit message identity before falling back
+  to the durable operation ID, so replacement preserves the renderer key.
+- Validation:
+  Project the optimistic-only state and the durable-after-overlay state. Both
+  must contain one `goal-control` row with the same ID and zero Turns. Also
+  verify the dedicated row renders, the first real provider Turn remains the
+  sole Turn, and reload produces the same control row.
+- References:
+  [workspaceAgentMessageOverlay.ts](../../../packages/agent/gui/shared/workspaceAgentMessageOverlay.ts)
+  [workspaceAgentMessageProjection.ts](../../../packages/agent/gui/shared/agentConversation/projection/workspaceAgentMessageProjection.ts)
+  [workspaceAgentTimelineCanonical.ts](../../../packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts)

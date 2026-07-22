@@ -35,20 +35,41 @@ export function projectWorkspaceAgentMessagesToConversationVM(
 export function projectWorkspaceAgentMessagesToTimelineItems(
   messages: readonly AgentActivityMessage[]
 ): WorkspaceAgentActivityTimelineItem[] {
-  const sortedMessages = latestMessageSnapshots(messages)
-    .filter((message) => !isGoalControlAudit(message))
-    .sort(compareMessagesByDisplayOrder);
+  const sortedMessages = latestMessageSnapshots(messages).sort(
+    compareMessagesByDisplayOrder
+  );
   const mergedToolPayloadByKey = new Map<string, Record<string, unknown>>();
 
   return sortedMessages.map((message, index) => {
     const kind = normalizeToken(message.kind);
     const role = normalizeToken(message.role);
     const payload = normalizedPayload(message.payload);
+    const goalControlAudit = isGoalControlAudit(message);
     const id = normalizedMessageId(message.version, index);
     const seq = index + 1;
-    const eventId = message.messageId.trim() || `message:${id}`;
+    const eventId = goalControlAudit
+      ? firstNonEmptyString(
+          stringValue(payload.messageId),
+          message.messageId,
+          `message:${id}`
+        )
+      : message.messageId.trim() || `message:${id}`;
     const turnId = message.turnId?.trim() || undefined;
     const occurredAtUnixMs = messageDisplayOrderTime(message);
+
+    if (goalControlAudit) {
+      return messageTimelineItem({
+        message,
+        id,
+        seq,
+        eventId,
+        actorType: "user",
+        itemType: "goal.control",
+        role: "user",
+        content: messageText(message),
+        occurredAtUnixMs
+      });
+    }
 
     if (kind === "tool_call") {
       const callId = firstNonEmptyString(
