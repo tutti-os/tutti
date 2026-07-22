@@ -17,6 +17,17 @@ type stateRuntimeBackend struct {
 	stateErr error
 }
 
+type provenanceRuntimeBackend struct {
+	RuntimeBackend
+	input agentruntime.SubmitProvenanceInput
+	err   error
+}
+
+func (b *provenanceRuntimeBackend) DurablyReportSubmitProvenance(_ context.Context, input agentruntime.SubmitProvenanceInput) error {
+	b.input = input
+	return b.err
+}
+
 func (b *stateRuntimeBackend) Session(_, _ string) (agentruntime.Session, bool) {
 	return b.session, true
 }
@@ -151,5 +162,52 @@ func TestRuntimeControllerFailsClosedWithoutBackend(t *testing.T) {
 	}
 	if controller.CanResume(host.RuntimeResumeInput{}) {
 		t.Fatal("CanResume reported support without a runtime backend")
+	}
+}
+
+func TestRuntimeControllerDelegatesDurableSubmitProvenance(t *testing.T) {
+	backend := &provenanceRuntimeBackend{}
+	controller := &RuntimeController{Backend: backend}
+	input := host.RuntimeSubmitProvenanceInput{
+		WorkspaceID: " workspace-1 ", AgentSessionID: "session-1", TurnID: "turn-1",
+		ClientSubmitID: "submit-1", DisplayPrompt: "display", Guidance: true,
+		Content: []host.PromptContentBlock{{Type: "text", Text: "hello"}},
+	}
+
+	if err := controller.DurablyReportSubmitProvenance(t.Context(), input); err != nil {
+		t.Fatal(err)
+	}
+	if backend.input.RoomID != input.WorkspaceID || backend.input.AgentSessionID != input.AgentSessionID ||
+		backend.input.TurnID != input.TurnID || backend.input.ClientSubmitID != input.ClientSubmitID ||
+		backend.input.DisplayPrompt != input.DisplayPrompt || !backend.input.Guidance {
+		t.Fatalf("delegated provenance = %#v", backend.input)
+	}
+	if len(backend.input.Content) != 1 || backend.input.Content[0].Text != "hello" {
+		t.Fatalf("delegated content = %#v", backend.input.Content)
+	}
+}
+
+func TestRuntimeControllerPreservesTypedExecIdentity(t *testing.T) {
+	input := host.RuntimeExecInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1", ClientSubmitID: "submit-1",
+		CapabilityRefs: []host.CapabilityReference{{Capability: "browser-use", Source: "composer"}},
+		TuttiModeSnapshot: &host.TuttiModeTurnSnapshot{
+			ActivationID: "activation-1", RevisionID: "revision-1", Revision: 2,
+			State: "active", Source: "workspace", OrchestrationIntensity: 75,
+		},
+	}
+
+	projected := runtimeExecInput(input)
+	if projected.TurnID != input.TurnID || projected.ClientSubmitID != input.ClientSubmitID {
+		t.Fatalf("projected exec identity = %#v", projected)
+	}
+	if len(projected.CapabilityRefs) != 1 || projected.CapabilityRefs[0].Capability != "browser-use" || projected.CapabilityRefs[0].Source != "composer" {
+		t.Fatalf("projected capability refs = %#v", projected.CapabilityRefs)
+	}
+	if projected.TuttiModeSnapshot == nil || projected.TuttiModeSnapshot.ActivationID != "activation-1" ||
+		projected.TuttiModeSnapshot.RevisionID != "revision-1" || projected.TuttiModeSnapshot.Revision != 2 ||
+		projected.TuttiModeSnapshot.State != "active" || projected.TuttiModeSnapshot.Source != "workspace" ||
+		projected.TuttiModeSnapshot.OrchestrationIntensity != 75 {
+		t.Fatalf("projected Tutti Mode snapshot = %#v", projected.TuttiModeSnapshot)
 	}
 }

@@ -23,6 +23,7 @@ type RuntimeBackend interface {
 	State(string, string) (agentruntime.SessionStateSnapshot, error)
 	CanResume(agentruntime.ResumeInput) bool
 	Exec(context.Context, agentruntime.ExecInput) (agentruntime.ExecResult, error)
+	DurablyReportSubmitProvenance(context.Context, agentruntime.SubmitProvenanceInput) error
 	ValidatePromptContent(context.Context, agentruntime.ExecInput) error
 	Cancel(context.Context, agentruntime.CancelInput) (agentruntime.CancelResult, error)
 	SubmitInteractive(context.Context, agentruntime.SubmitInteractiveInput) (agentruntime.SubmitInteractiveResult, error)
@@ -44,6 +45,7 @@ type RuntimeController struct {
 
 var (
 	_ host.RuntimeController                 = (*RuntimeController)(nil)
+	_ host.RuntimeSubmitProvenanceReporter   = (*RuntimeController)(nil)
 	_ host.GoalRuntimeController             = (*RuntimeController)(nil)
 	_ host.GoalRuntimeReconciler             = (*RuntimeController)(nil)
 	_ host.GoalRuntimeRecoveryPolicyResolver = (*RuntimeController)(nil)
@@ -128,6 +130,13 @@ func (a *RuntimeController) Exec(ctx context.Context, input host.RuntimeExecInpu
 			State: result.SubmitAvailability.State, Reason: result.SubmitAvailability.Reason,
 		},
 	}, mapRuntimeError(err)
+}
+
+func (a *RuntimeController) DurablyReportSubmitProvenance(ctx context.Context, input host.RuntimeSubmitProvenanceInput) error {
+	if err := a.requireBackend(); err != nil {
+		return err
+	}
+	return mapRuntimeError(a.Backend.DurablyReportSubmitProvenance(ctx, runtimeSubmitProvenanceInput(input)))
 }
 
 func (a *RuntimeController) ValidatePromptContent(ctx context.Context, input host.RuntimeExecInput) error {
@@ -354,17 +363,55 @@ func runtimeResumeInput(input host.RuntimeResumeInput) agentruntime.ResumeInput 
 }
 
 func runtimeExecInput(input host.RuntimeExecInput) agentruntime.ExecInput {
-	content := make([]agentruntime.PromptContentBlock, 0, len(input.Content))
-	for _, block := range input.Content {
+	return agentruntime.ExecInput{
+		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		TurnID: input.TurnID, ClientSubmitID: input.ClientSubmitID,
+		CapabilityRefs:    runtimeCapabilityReferences(input.CapabilityRefs),
+		TuttiModeSnapshot: runtimeTuttiModeSnapshot(input.TuttiModeSnapshot),
+		Content:           runtimePromptContent(input.Content),
+		DisplayPrompt:     input.DisplayPrompt, InitialTitle: input.InitialTitle, InitialTitleBase: input.InitialTitleBase,
+		Metadata: cloneMap(input.Metadata), Guidance: input.Guidance,
+	}
+}
+
+func runtimeSubmitProvenanceInput(input host.RuntimeSubmitProvenanceInput) agentruntime.SubmitProvenanceInput {
+	return agentruntime.SubmitProvenanceInput{
+		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		TurnID: input.TurnID, ClientSubmitID: input.ClientSubmitID,
+		Content: runtimePromptContent(input.Content), DisplayPrompt: input.DisplayPrompt,
+		Guidance: input.Guidance,
+	}
+}
+
+func runtimePromptContent(input []host.PromptContentBlock) []agentruntime.PromptContentBlock {
+	content := make([]agentruntime.PromptContentBlock, 0, len(input))
+	for _, block := range input {
 		content = append(content, agentruntime.PromptContentBlock{
 			Type: block.Type, Text: block.Text, MimeType: block.MimeType, Data: block.Data, URL: block.URL,
 			AttachmentID: block.AttachmentID, Name: block.Name, Path: block.Path,
 		})
 	}
-	return agentruntime.ExecInput{
-		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID, Content: content,
-		DisplayPrompt: input.DisplayPrompt, InitialTitle: input.InitialTitle, InitialTitleBase: input.InitialTitleBase,
-		Metadata: cloneMap(input.Metadata), Guidance: input.Guidance,
+	return content
+}
+
+func runtimeCapabilityReferences(input []host.CapabilityReference) []agentruntime.CapabilityReference {
+	references := make([]agentruntime.CapabilityReference, 0, len(input))
+	for _, reference := range input {
+		references = append(references, agentruntime.CapabilityReference{
+			Capability: reference.Capability,
+			Source:     reference.Source,
+		})
+	}
+	return references
+}
+
+func runtimeTuttiModeSnapshot(input *host.TuttiModeTurnSnapshot) *agentruntime.TuttiModeTurnSnapshot {
+	if input == nil {
+		return nil
+	}
+	return &agentruntime.TuttiModeTurnSnapshot{
+		ActivationID: input.ActivationID, RevisionID: input.RevisionID, Revision: input.Revision,
+		State: input.State, Source: input.Source, OrchestrationIntensity: input.OrchestrationIntensity,
 	}
 }
 
