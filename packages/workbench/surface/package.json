@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/workbench-surface",
-  "version": "0.1.0",
+  "version": "0.0.194",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -35,10 +35,10 @@
     "vitest": "^4.0.13"
   },
   "dependencies": {
-    "@tutti-os/ui-i18n-runtime": "workspace:*",
-    "@tutti-os/ui-react-hooks": "workspace:*",
-    "@tutti-os/workbench-snapshot": "workspace:*",
-    "@tutti-os/ui-system": "workspace:*"
+    "@tutti-os/ui-i18n-runtime": "0.0.194",
+    "@tutti-os/ui-react-hooks": "0.0.194",
+    "@tutti-os/workbench-snapshot": "0.0.194",
+    "@tutti-os/ui-system": "0.0.194"
   },
   "peerDependencies": {
     "react": "^19.1.0",
