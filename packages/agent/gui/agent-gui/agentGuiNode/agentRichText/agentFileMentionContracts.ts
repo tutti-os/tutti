@@ -15,6 +15,7 @@ export type AgentMentionKind =
   | "workspace-reference"
   | "workspace-app-factory"
   | "workspace-issue"
+  | "pasted-text"
   | "custom";
 
 export type AgentMentionReferenceSource = "app" | "task";
@@ -122,6 +123,14 @@ export interface AgentMentionWorkspaceAppFactoryItem {
   contextPath?: string;
 }
 
+export interface AgentMentionPastedTextItem {
+  kind: "pasted-text";
+  href: string;
+  targetId: string;
+  name: string;
+  path: string;
+}
+
 // 宿主注册的自定义 mention(见 shared/agentCustomMentionKinds):href 是完整信息源
 // (round-trip 无损),item 只承载通用展示字段;业务细节由宿主在注册的钩子里从 href 还原。
 export interface AgentMentionCustomItem {
@@ -147,6 +156,7 @@ export type AgentContextMentionItem =
   | AgentMentionWorkspaceReferenceItem
   | AgentMentionWorkspaceAppFactoryItem
   | AgentMentionWorkspaceIssueItem
+  | AgentMentionPastedTextItem
   | AgentMentionCustomItem;
 
 export type AgentFileMentionItem = AgentContextMentionItem;

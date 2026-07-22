@@ -26,7 +26,7 @@ export function mentionVisual(item: AgentContextMentionItem): {
   kindLabel: string;
   primary: string;
 } {
-  if (item.kind === "file") {
+  if (item.kind === "file" || item.kind === "pasted-text") {
     return {
       kindLabel: "File",
       primary: item.name

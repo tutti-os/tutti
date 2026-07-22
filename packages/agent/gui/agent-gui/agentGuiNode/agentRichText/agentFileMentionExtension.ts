@@ -33,6 +33,7 @@ export type {
   AgentMentionFileItem,
   AgentMentionFileNavigationAction,
   AgentMentionKind,
+  AgentMentionPastedTextItem,
   AgentMentionReferenceSource,
   AgentMentionScope,
   AgentMentionSessionItem,
@@ -243,7 +244,7 @@ export function createAgentFileMentionExtension(
         "data-agent-mention-href": href,
         "data-agent-mention-kind": item.kind,
         "aria-label":
-          item.kind === "file"
+          item.kind === "file" || item.kind === "pasted-text"
             ? visual.primary
             : `${visual.kindLabel} ${visual.primary}`.trim()
       };
@@ -268,11 +269,11 @@ export function createAgentFileMentionExtension(
             ? { "data-agent-mention-thumbnail-url": fileThumbnailUrl }
             : {}),
           class:
-            item.kind === "file"
+            item.kind === "file" || item.kind === "pasted-text"
               ? "tsh-agent-object-token tsh-agent-object-token--file"
               : "tsh-agent-object-token tsh-agent-object-token--entity"
         }),
-        ...(item.kind === "file"
+        ...(item.kind === "file" || item.kind === "pasted-text"
           ? [
               fileThumbnailUrl
                 ? [

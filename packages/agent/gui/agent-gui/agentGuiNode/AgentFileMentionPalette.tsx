@@ -537,6 +537,20 @@ function agentMentionItemToRowItem(
     };
   }
 
+  if (item.kind === "pasted-text") {
+    return {
+      kind: "file",
+      name: item.name,
+      visualKind: resolveAgentMentionFileVisualKind({
+        path: item.path,
+        entryKind: "file"
+      }),
+      thumbnailUrl: null,
+      childCountLabel: null,
+      entryKind: "file"
+    };
+  }
+
   if (item.kind === "custom") {
     // 自定义 mention 只经 draftPrompt prefill 进入 composer,不出现在 @ 面板候选;
     // 兜底按通用条目展示(label 即注册方给的 name)。
