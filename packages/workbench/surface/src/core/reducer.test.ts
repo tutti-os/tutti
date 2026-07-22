@@ -60,6 +60,42 @@ test("selects the focused visible node when the stack top is minimized", () => {
   assert.equal(selectFocusedVisibleWorkbenchNode(state)?.id, "a");
 });
 
+test("keeps an already focused visible node stable", () => {
+  const state = createWorkbenchInitialState({
+    nodes: [makeNode("a"), makeNode("b")],
+    nodeStack: ["a", "b"]
+  });
+
+  const nextState = reduceWorkbenchState(state, {
+    type: "focusNode",
+    nodeID: "b"
+  });
+
+  assert.equal(nextState, state);
+  assert.equal(nextState.nodes, state.nodes);
+  assert.equal(nextState.nodeStack, state.nodeStack);
+});
+
+test("focuses background nodes and restores minimized focused nodes", () => {
+  let state = createWorkbenchInitialState({
+    nodes: [makeNode("a"), makeNode("b")],
+    nodeStack: ["a", "b"]
+  });
+
+  state = reduceWorkbenchState(state, { type: "focusNode", nodeID: "a" });
+  assert.equal(selectFocusedWorkbenchNode(state)?.id, "a");
+
+  state = reduceWorkbenchState(state, { type: "minimizeNode", nodeID: "a" });
+  assert.equal(state.nodes.find((node) => node.id === "a")?.isMinimized, true);
+
+  state = reduceWorkbenchState(state, { type: "focusNode", nodeID: "a" });
+  assert.equal(state.nodes.find((node) => node.id === "a")?.isMinimized, false);
+  assert.equal(
+    state.nodes.find((node) => node.id === "a")?.minimizedAtUnixMs,
+    null
+  );
+});
+
 test("tracks active resize node separately from active drag node", () => {
   let state = createWorkbenchInitialState({ nodes: [makeNode("a")] });
 
