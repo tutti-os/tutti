@@ -389,5 +389,3 @@ function normalizePermissionModeValue(
   const normalized = value?.trim().toLowerCase().replace(/\s+/g, "-");
   return normalized || undefined;
 }
-
-export { AgentModelReasoningDropdown } from "./AgentModelReasoningDropdown.tsx";
