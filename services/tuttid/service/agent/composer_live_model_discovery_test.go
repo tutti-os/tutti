@@ -105,6 +105,44 @@ func TestLiveModelOptionsFromRunningSessionFiltersProvider(t *testing.T) {
 	}
 }
 
+func TestLiveModelOptionsFromRunningCodexSessionPreservesReasoningProfiles(t *testing.T) {
+	t.Parallel()
+	runtime := newFakeRuntime()
+	runtime.sessions["codex-1"] = ProviderRuntimeSession{
+		ID: "codex-1", WorkspaceID: "ws-1", Provider: "codex",
+		RuntimeContext: map[string]any{
+			"configOptions": []map[string]any{{
+				"id": "model",
+				"options": []any{map[string]any{
+					"value":                   "gpt-5.6-sol",
+					"name":                    "GPT-5.6-Sol",
+					"reasoningEffort":         "low",
+					"supportsReasoningEffort": true,
+					"reasoningEfforts": []map[string]any{
+						{"value": "low", "name": "Low", "default": true},
+						{"value": "medium", "name": "Medium"},
+						{"value": "high", "name": "High"},
+						{"value": "xhigh", "name": "X-High"},
+						{"value": "max", "name": "Max"},
+						{"value": "ultra", "name": "Ultra"},
+					},
+				}},
+			}},
+		},
+	}
+
+	options, hasSession := newIsolatedAgentService(runtime).liveModelOptionsFromRunningSession("ws-1", "codex")
+	if !hasSession || len(options) != 1 {
+		t.Fatalf("Codex options = %#v hasSession = %v, want one live model", options, hasSession)
+	}
+	if !options[0].ReasoningEffortsAdvertised || options[0].ReasoningEffort != "low" || len(options[0].ReasoningEfforts) != 6 {
+		t.Fatalf("Codex reasoning profile = %#v, want Low through Ultra", options[0])
+	}
+	if got := options[0].ReasoningEfforts[5]; got.Value != "ultra" || got.Label != "Ultra" {
+		t.Fatalf("Codex final reasoning option = %#v, want Ultra", got)
+	}
+}
+
 func TestLiveModelOptionsFromRunningSessionBreaksTimestampTiesBySessionID(t *testing.T) {
 	t.Parallel()
 	runtime := newFakeRuntime()

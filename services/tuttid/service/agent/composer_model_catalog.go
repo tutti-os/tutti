@@ -30,28 +30,8 @@ func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCata
 		)
 		return composerModelCatalogProjection{}, false
 	}
-	options := make([]ComposerConfigOptionValue, 0, len(result.Models)+1)
 	catalogProjection := modelcatalog.ProjectComposerCatalog(result.Models, selectedModel)
-	for _, model := range result.Models {
-		id := strings.TrimSpace(model.ID)
-		if id == "" {
-			continue
-		}
-		if containsModelOption(options, id) {
-			continue
-		}
-		name := strings.TrimSpace(model.DisplayName)
-		if name == "" {
-			name = id
-		}
-		options = append(options, ComposerConfigOptionValue{
-			ID:                 id,
-			Label:              name,
-			Value:              id,
-			Description:        strings.TrimSpace(model.Description),
-			SupportsImageInput: model.SupportsImageInput,
-		})
-	}
+	options := composerModelOptionsFromCanonicalCatalog(result.Models)
 	selection := catalogProjection.Selection
 	if selection.Found && !containsModelOption(options, selection.Model.ID) {
 		options = append(options, ComposerConfigOptionValue{

@@ -9,11 +9,6 @@ func stringFromAny(input any) string {
 	return ""
 }
 
-func boolFromAny(input any) (bool, bool) {
-	value, ok := input.(bool)
-	return value, ok
-}
-
 func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOptionValue) []map[string]any {
 	if len(options) == 0 {
 		return []map[string]any{}

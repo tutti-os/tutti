@@ -82,6 +82,7 @@ func normalizeCodexReasoningEfforts(value any) []ReasoningEffortOption {
 			option.Value = firstNonBlank(stringMapValue(typed, "reasoningEffort"), stringMapValue(typed, "effort"), stringMapValue(typed, "value"))
 			option.Label = firstNonBlank(stringMapValue(typed, "label"), stringMapValue(typed, "name"))
 			option.Description = stringMapValue(typed, "description")
+			option.Default = boolMapValue(typed, "default") || boolMapValue(typed, "isDefault")
 		}
 		if option.Value == "" {
 			continue
