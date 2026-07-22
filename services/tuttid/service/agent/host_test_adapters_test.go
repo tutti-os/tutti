@@ -205,6 +205,15 @@ func (a serviceHostRuntime) Exec(ctx context.Context, input RuntimeExecInput) (R
 	result, err := a.service.controller().Exec(ctx, input)
 	return result, normalizeRuntimeError(err)
 }
+func (a serviceHostRuntime) DurablyReportSubmitProvenance(ctx context.Context, input RuntimeSubmitProvenanceInput) error {
+	reporter, ok := a.service.controller().(interface {
+		DurablyReportSubmitProvenance(context.Context, RuntimeSubmitProvenanceInput) error
+	})
+	if !ok {
+		return nil
+	}
+	return reporter.DurablyReportSubmitProvenance(ctx, input)
+}
 func (a serviceHostRuntime) ValidatePromptContent(ctx context.Context, input RuntimeExecInput) error {
 	return normalizeRuntimeError(a.service.controller().ValidatePromptContent(ctx, input))
 }

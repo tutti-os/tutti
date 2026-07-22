@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -147,88 +146,6 @@ type serviceHostStartupGate struct{ service *Service }
 
 func (a serviceHostStartupGate) Acquire(ctx context.Context, provider string) (func(), error) {
 	return a.service.awaitClaudeStartupSlot(ctx, provider)
-}
-
-type serviceHostRuntime struct{ service *Service }
-
-func (a serviceHostRuntime) Start(ctx context.Context, input RuntimeStartInput) (ProviderRuntimeSession, error) {
-	session, err := a.service.controller().Start(ctx, input)
-	session.Provisional = input.Provisional
-	if err != nil {
-		a.service.invalidateProviderAvailability(input.Provider)
-	}
-	return session, normalizeRuntimeError(err)
-}
-func (a serviceHostRuntime) Resume(ctx context.Context, input RuntimeResumeInput) (ProviderRuntimeSession, error) {
-	session, err := a.service.controller().Resume(ctx, input)
-	return session, normalizeRuntimeError(err)
-}
-func (a serviceHostRuntime) Session(workspaceID, sessionID string) (ProviderRuntimeSession, bool) {
-	return a.service.controller().Session(workspaceID, sessionID)
-}
-func (a serviceHostRuntime) CanResume(input RuntimeResumeInput) bool {
-	return a.service.controller().CanResume(input)
-}
-func (a serviceHostRuntime) Exec(ctx context.Context, input RuntimeExecInput) (RuntimeExecResult, error) {
-	result, err := a.service.controller().Exec(ctx, input)
-	return result, normalizeRuntimeError(err)
-}
-func (a serviceHostRuntime) DurablyReportSubmitProvenance(ctx context.Context, input RuntimeSubmitProvenanceInput) error {
-	reporter, ok := a.service.controller().(interface {
-		DurablyReportSubmitProvenance(context.Context, RuntimeSubmitProvenanceInput) error
-	})
-	if !ok {
-		return nil
-	}
-	return reporter.DurablyReportSubmitProvenance(ctx, input)
-}
-func (a serviceHostRuntime) ValidatePromptContent(ctx context.Context, input RuntimeExecInput) error {
-	return normalizeRuntimeError(a.service.controller().ValidatePromptContent(ctx, input))
-}
-func (a serviceHostRuntime) Cancel(ctx context.Context, input RuntimeCancelInput) (RuntimeCancelResult, error) {
-	return a.service.controller().Cancel(ctx, input)
-}
-func (a serviceHostRuntime) SubmitInteractive(ctx context.Context, input RuntimeSubmitInteractiveInput) (RuntimeSubmitInteractiveResult, error) {
-	return a.service.controller().SubmitInteractive(ctx, input)
-}
-func (a serviceHostRuntime) InteractiveDisposition(workspaceID, rootAgentSessionID, agentSessionID, turnID, requestID string) RuntimeInteractiveDisposition {
-	return a.service.controller().InteractiveDisposition(workspaceID, rootAgentSessionID, agentSessionID, turnID, requestID)
-}
-func (a serviceHostRuntime) UpdateSettings(ctx context.Context, input RuntimeUpdateSettingsInput) error {
-	return normalizeRuntimeError(a.service.controller().UpdateSettings(ctx, input))
-}
-func (a serviceHostRuntime) SetTitle(ctx context.Context, input RuntimeSetTitleInput) (ProviderRuntimeSession, error) {
-	return a.service.controller().SetTitle(ctx, input)
-}
-func (a serviceHostRuntime) SetVisible(ctx context.Context, input RuntimeSetVisibleInput) (ProviderRuntimeSession, error) {
-	return a.service.controller().SetVisible(ctx, input)
-}
-func (a serviceHostRuntime) Close(ctx context.Context, input RuntimeCloseInput) error {
-	return normalizeRuntimeError(a.service.controller().Close(ctx, input))
-}
-
-type serviceHostGoalRuntime struct{ service *Service }
-
-func (a serviceHostGoalRuntime) GoalControl(ctx context.Context, input agenthost.RuntimeGoalControlInput) (agenthost.RuntimeGoalControlResult, error) {
-	result, err := a.service.controller().GoalControl(ctx, input)
-	return result, normalizeRuntimeError(err)
-}
-
-func (a serviceHostGoalRuntime) ReconcileGoal(ctx context.Context, input agenthost.RuntimeGoalControlInput) (agenthost.RuntimeGoalReconcileResult, error) {
-	reconciler, ok := a.service.controller().(RuntimeGoalReconciler)
-	if !ok {
-		return agenthost.RuntimeGoalReconcileResult{}, errors.New("agent runtime goal reconciliation is unavailable")
-	}
-	result, err := reconciler.ReconcileGoal(ctx, input)
-	return result, normalizeRuntimeError(err)
-}
-
-func (a serviceHostGoalRuntime) GoalRecoveryPolicy(ctx context.Context, input agenthost.RuntimeGoalControlInput) (agenthost.RuntimeGoalRecoveryPolicy, error) {
-	resolver, ok := a.service.controller().(RuntimeGoalRecoveryPolicyResolver)
-	if !ok {
-		return agenthost.RuntimeGoalRecoveryPolicy{}, nil
-	}
-	return resolver.GoalRecoveryPolicy(ctx, input)
 }
 
 type serviceHostClock struct{ service *Service }

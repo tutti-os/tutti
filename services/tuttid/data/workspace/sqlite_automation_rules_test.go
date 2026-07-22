@@ -143,12 +143,6 @@ func TestAutomationRulesMigrationRetiresConsultRowsAndKeepsAgentLaunches(t *test
 	}); err != nil {
 		t.Fatalf("PutModelPlan() error = %v", err)
 	}
-	if err := store.PutAgentModelBinding(ctx, modelbindingbiz.Binding{
-		WorkspaceID: "ws-legacy-automation", AgentTargetID: "local:codex",
-		ModelPlanID: "plan-review", DefaultModel: "reasoner", ModelPolicyID: "policy-review", UpdatedAt: now,
-	}); err != nil {
-		t.Fatalf("PutAgentModelBinding() error = %v", err)
-	}
 	if err := store.PutModelPolicy(ctx, modelpolicybiz.Policy{
 		ID: "policy-review", WorkspaceID: "ws-legacy-automation", Name: "Legacy Review",
 		Review:     modelpolicybiz.PlanModelRef{ModelPlanID: "plan-review", Model: "reasoner"},
@@ -156,6 +150,12 @@ func TestAutomationRulesMigrationRetiresConsultRowsAndKeepsAgentLaunches(t *test
 		CreatedAt:  now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("PutModelPolicy() error = %v", err)
+	}
+	if err := store.PutAgentModelBinding(ctx, modelbindingbiz.Binding{
+		WorkspaceID: "ws-legacy-automation", AgentTargetID: "local:codex",
+		ModelPlanID: "plan-review", DefaultModel: "reasoner", ModelPolicyID: "policy-review", UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("PutAgentModelBinding() error = %v", err)
 	}
 
 	// Reset to a pre-v1 state, then replay v1 (which backfills a legacy
