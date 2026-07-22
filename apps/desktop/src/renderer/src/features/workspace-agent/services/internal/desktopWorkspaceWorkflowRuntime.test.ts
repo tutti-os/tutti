@@ -344,7 +344,7 @@ test("desktop workflow runtime builds agent-scoped assignment option catalogs", 
           }
         } as never;
       },
-      async listModelPlans(workspaceId: string) {
+      async listWorkspaceModelPlans(workspaceId: string) {
         assert.equal(workspaceId, "workspace-1");
         return {
           plans: [

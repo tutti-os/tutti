@@ -8,10 +8,6 @@ import (
 	"time"
 )
 
-const schemaMigrationUserProjectsV1 = "user_projects_v1"
-const schemaMigrationUserProjectsV2 = "user_projects_v2"
-const schemaMigrationUserProjectsV3 = "user_projects_v3"
-
 func (s *SQLiteStore) applyUserProjectsV1(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationUserProjectsV1)
 	if err != nil {

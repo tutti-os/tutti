@@ -81,7 +81,10 @@ export interface AgentGUIDetailPaneProps {
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
   slashStatusLimitsUnavailable: boolean;
+  slashStatusOverride?: AgentComposerProps["slashStatus"];
   onSlashStatusOpen?: AgentComposerProps["onSlashStatusOpen"];
+  onSlashStatusClose?: AgentComposerProps["onSlashStatusClose"];
+  onSlashStatusRefresh?: AgentComposerProps["onSlashStatusRefresh"];
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: AgentGUINodeViewProps["onHandoffConversation"];
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
@@ -118,7 +121,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   slashStatusLimits,
   slashStatusLimitsLoading,
   slashStatusLimitsUnavailable,
+  slashStatusOverride,
   onSlashStatusOpen,
+  onSlashStatusClose,
+  onSlashStatusRefresh,
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
@@ -178,7 +184,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     showStopButton,
     showTimelineSkeleton,
     showUnavailableChatEmpty,
-    slashStatus,
+    slashStatus: derivedSlashStatus,
     submitDisabled,
     timelineConversationId,
     timelineInteractionLocked
@@ -190,6 +196,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     slashStatusLimitsUnavailable,
     viewModel
   });
+  const slashStatus = slashStatusOverride ?? derivedSlashStatus;
   const handleInterruptCurrentTurn = useCallback(() => {
     actions.interruptCurrentTurn(labels.noRunningResponse);
   }, [actions.interruptCurrentTurn, labels.noRunningResponse]);
@@ -383,6 +390,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       provider: composerProvider,
       slashStatus,
       onSlashStatusOpen,
+      onSlashStatusClose,
+      onSlashStatusRefresh,
       usage: viewModel.detail.usage,
       draftContent: viewModel.composer.draftContent,
       engagement: composerEngagement,
@@ -509,6 +518,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels,
       stableHandoffConversation,
       onSlashStatusOpen,
+      onSlashStatusClose,
+      onSlashStatusRefresh,
       previewMode,
       workspaceReferencePickerOpen,
       composerActivePrompt,
