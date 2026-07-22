@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/workspace-issue-manager",
-  "version": "0.1.0",
+  "version": "0.0.192",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -35,14 +35,14 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@tutti-os/ui-i18n-runtime": "workspace:*",
-    "@tutti-os/ui-react-hooks": "workspace:*",
-    "@tutti-os/ui-rich-text": "workspace:*",
-    "@tutti-os/ui-system": "workspace:*",
-    "@tutti-os/workbench-surface": "workspace:*",
-    "@tutti-os/workspace-file-reference": "workspace:*",
-    "@tutti-os/workspace-file-preview": "workspace:*",
-    "@tutti-os/workspace-user-project": "workspace:*",
+    "@tutti-os/ui-i18n-runtime": "0.0.192",
+    "@tutti-os/ui-react-hooks": "0.0.192",
+    "@tutti-os/ui-rich-text": "0.0.192",
+    "@tutti-os/ui-system": "0.0.192",
+    "@tutti-os/workbench-surface": "0.0.192",
+    "@tutti-os/workspace-file-reference": "0.0.192",
+    "@tutti-os/workspace-file-preview": "0.0.192",
+    "@tutti-os/workspace-user-project": "0.0.192",
     "valtio": "^2.3.2"
   },
   "devDependencies": {
