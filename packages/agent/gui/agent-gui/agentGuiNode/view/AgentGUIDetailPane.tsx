@@ -184,6 +184,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     selectedAgentTargetComingSoon,
     sessionChrome,
     showStopButton,
+    stopDisabled,
     showTimelineSkeleton,
     showUnavailableChatEmpty,
     slashStatus: derivedSlashStatus,
@@ -432,6 +433,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         ? labels.followupPlaceholder
         : labels.initialPlaceholder,
       showStopButton,
+      stopDisabled: stopDisabled || timelineInteractionLocked,
       previewMode,
       workspaceReferencePickerOpen,
       referenceProvenanceFilter,
@@ -536,6 +538,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
       showStopButton,
+      stopDisabled,
       slashStatus,
       submitDisabled,
       setTuttiModeActive,

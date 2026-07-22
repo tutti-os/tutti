@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildAgentConversationHandoffPrompt,
   handoffProjectPathForConversation,
+  isAgentGUITransportNoticeVisible,
+  resolveAgentGUIStopControl,
   shouldShowAgentGUIStopButton
 } from "./agentGUIDetailModelHelpers.ts";
 
@@ -78,6 +80,49 @@ describe("shouldShowAgentGUIStopButton", () => {
         isCreatingConversation: true
       })
     ).toBe(false);
+  });
+});
+
+describe("transport availability presentation", () => {
+  it.each(["transport-connecting", "transport-unavailable"] as const)(
+    "gives %s recovery chrome priority over other bottom-dock notices",
+    (kind) => {
+      expect(
+        isAgentGUITransportNoticeVisible({
+          kind,
+          message: "Connection unavailable",
+          canRetry: false
+        })
+      ).toBe(true);
+    }
+  );
+
+  it("does not hide existing chrome while reconnecting is still delayed", () => {
+    expect(isAgentGUITransportNoticeVisible(null)).toBe(false);
+    expect(
+      isAgentGUITransportNoticeVisible({
+        kind: "failed",
+        message: "Existing failure",
+        canRetry: false
+      })
+    ).toBe(false);
+  });
+
+  it("keeps Stop visible but disables it while active work is disconnected", () => {
+    expect(
+      resolveAgentGUIStopControl({
+        hasPendingApproval: false,
+        hasPendingInteractivePrompt: false,
+        isAuthBlocked: false,
+        isCancelPending: false,
+        isConversationBusy: true,
+        isCreatingConversation: false,
+        isInterrupting: false,
+        isSubmitting: false,
+        isUnavailable: false,
+        sessionRuntimeBlocked: true
+      })
+    ).toEqual({ disabled: true, visible: true });
   });
 });
 

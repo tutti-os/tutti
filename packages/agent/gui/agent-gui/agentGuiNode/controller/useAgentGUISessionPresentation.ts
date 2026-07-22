@@ -7,7 +7,8 @@ import {
   type CanonicalAgentSession,
   type PendingActivationIntentRecord,
   type SessionRuntimeAvailability,
-  type AgentSessionEngine
+  type AgentSessionEngine,
+  selectEngineSessionRuntimeAvailability
 } from "@tutti-os/agent-activity-core";
 import { useEffect, useMemo } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
@@ -39,6 +40,7 @@ import { isNonRetryableResumeErrorCode } from "./agentGuiController.errors";
 import { projectAgentGUIMessagesToTimelineItems } from "./agentGuiController.promptHelpers";
 import { promptRequestId } from "./agentGuiController.diagnostics";
 import { reportAgentGUIRenderStateDiagnostic } from "./agentGuiController.reporting";
+import { AgentGUITransportAvailabilityController } from "./AgentGUITransportAvailabilityController";
 
 interface CurrentValue<T> {
   current: T;
@@ -78,6 +80,7 @@ interface UseAgentGUISessionPresentationInput {
   planImplementationTurnIdRef: CurrentValue<string | null>;
   optimisticGoalControl: AgentGUIOptimisticGoalControl | null;
   agentTargetsLoading: boolean;
+  ownerDeviceLabel?: string | null;
   serverInteractivePrompt: AgentGUIInteractivePrompt | null;
   sessionEngine: AgentSessionEngine;
   workspaceId: string;
@@ -135,6 +138,25 @@ export function useAgentGUISessionPresentation(
   const activeSubmitBlocked = input.activeEngineAvailability === "blocked";
   const sessionRuntimeBlocked =
     input.activeEngineRuntimeAvailability?.state === "blocked";
+  const transportAvailabilityController = useMemo(
+    () =>
+      new AgentGUITransportAvailabilityController({
+        source: {
+          getAvailability: () =>
+            selectEngineSessionRuntimeAvailability(
+              input.sessionEngine.getSnapshot(),
+              input.activeConversationId
+            ),
+          subscribe: input.sessionEngine.subscribe
+        }
+      }),
+    [input.activeConversationId, input.sessionEngine]
+  );
+  const visibleTransportAvailability = useEngineSelector(
+    transportAvailabilityController,
+    identityAvailability,
+    Object.is
+  );
   const activeConversationBusy = input.activeEngineSession
     ? input.activeEngineAvailability === "blocked"
     : agentActivityDisplayStatusBusy(input.activityDisplayStatus) ||
@@ -177,6 +199,30 @@ export function useAgentGUISessionPresentation(
     input.optimisticGoalControl
   ]);
   const sessionChrome = useMemo<AgentGUISessionChrome>(() => {
+    if (visibleTransportAvailability?.state === "blocked") {
+      const device =
+        input.ownerDeviceLabel?.trim() ||
+        translate("agentHost.agentGui.sharedDeviceLabel");
+      const reconnecting =
+        visibleTransportAvailability.reason === "transport_reconnecting";
+      return {
+        auth: null,
+        approval: null,
+        recovery: {
+          kind: reconnecting ? "transport-connecting" : "transport-unavailable",
+          message: translate(
+            reconnecting
+              ? "agentHost.agentGui.runtimeConnecting"
+              : input.activeEngineActiveTurn !== null
+                ? "agentHost.agentGui.runtimeUnavailableActive"
+                : "agentHost.agentGui.runtimeUnavailable",
+            { device }
+          ),
+          canRetry: false
+        },
+        rawState: sessionChromeRawState
+      };
+    }
     const normalizedError = input.activationError?.trim() ?? "";
     const authState = input.activeSessionState?.authState?.trim() ?? "";
     const providerSessionMissing = isNonRetryableResumeErrorCode(
@@ -235,10 +281,13 @@ export function useAgentGUISessionPresentation(
     input.activationError,
     input.activationErrorCode,
     input.activeConversationId,
+    input.activeEngineActiveTurn,
     input.activeLiveState,
     input.activeSessionState,
     input.activePendingActivation?.mode,
     input.pendingApproval,
+    input.ownerDeviceLabel,
+    visibleTransportAvailability,
     sessionChromeRawState
   ]);
   const canSubmit =
@@ -348,4 +397,10 @@ export function useAgentGUISessionPresentation(
     sessionRuntimeBlocked,
     sessionChrome
   };
+}
+
+function identityAvailability(
+  availability: SessionRuntimeAvailability | null
+): SessionRuntimeAvailability | null {
+  return availability;
 }

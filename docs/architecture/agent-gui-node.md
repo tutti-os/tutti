@@ -258,10 +258,24 @@ Runtime command availability is session-scoped whenever one workspace engine
 can contain Sessions backed by different transports. The host projects
 `available`, `transport_reconnecting`, or `transport_unavailable`; the engine
 uses that single fact to gate sends, cancellation, settings, and Interaction or
-plan responses. AgentGUI freezes the affected composer and interactive card in
-a loading state. It must not reuse the engine-wide connection state for this
-case, because one remote Session losing its owner must not disable Local Agent
-or another remote Session.
+plan responses. AgentGUI preserves an editable composer draft, disables
+runtime-dependent actions, and keeps an active Stop control visible but disabled
+until the transport recovers. It must not reuse the engine-wide connection state
+for this case, because one remote Session losing its owner must not disable Local
+Agent or another remote Session.
+
+AgentGUI projects blocked transport availability through the Session chrome
+above the composer and gives it precedence over other recovery, approval, or
+prompt notices because those actions cannot complete while the transport is
+blocked. `transport_unavailable` appears immediately;
+`transport_reconnecting` appears only after a 300-millisecond controller delay
+so short background reconnects do not flash. During that delay, the raw
+availability gate already blocks commands, but AgentGUI keeps the existing
+recovery, approval, or prompt chrome visible until the transport notice replaces
+it. An unavailable notice remains visible while reconnecting is delayed, so a
+state transition cannot leave an empty notice gap. Recovery removes the notice
+without a success banner. The notice does not offer a manual retry because
+transport recovery is host-owned.
 
 ### 4.1 Read/write rules
 

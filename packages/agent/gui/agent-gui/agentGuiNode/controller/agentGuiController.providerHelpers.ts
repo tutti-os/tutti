@@ -43,6 +43,19 @@ export function resolveAgentGUIProviderRailTargetSelection(input: {
     : "open-home-composer";
 }
 
+export function ownerDeviceLabelForConversation(
+  conversation: AgentGUIConversationSummary | null,
+  targets: readonly AgentGUIAgentTarget[]
+): string | null {
+  const agentTargetId = conversation?.agentTargetId?.trim() ?? "";
+  if (!agentTargetId) return null;
+  return (
+    targets
+      .find((target) => target.agentTargetId === agentTargetId)
+      ?.ownerDeviceLabel?.trim() || null
+  );
+}
+
 export function agentActivityInteractionListsEqual(
   left: readonly AgentActivityInteraction[],
   right: readonly AgentActivityInteraction[]

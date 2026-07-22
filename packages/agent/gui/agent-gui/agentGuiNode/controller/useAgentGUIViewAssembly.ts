@@ -15,6 +15,7 @@ import type { useAgentGUIComposerCapabilities } from "./useAgentGUIComposerCapab
 import type { useAgentGUISessionDetailTransport } from "./useAgentGUISessionDetailTransport";
 import { resolveAgentGUIProviderReadinessGateForView } from "../model/agentGuiProviderReadiness";
 import type { useAgentGUITuttiModeActivation } from "./useAgentGUITuttiModeActivation";
+import { ownerDeviceLabelForConversation } from "./agentGuiController.providerHelpers";
 
 type ConversationPresentationInput = Parameters<
   typeof useAgentGUIConversationPresentation
@@ -76,6 +77,14 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
 export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   const { activeConversation, visibleConversations } =
     useAgentGUIConversationPresentation(input);
+  const activeConversationOwnerDeviceLabel = useMemo(
+    () =>
+      ownerDeviceLabelForConversation(
+        activeConversation,
+        input.normalizedProviderTargets
+      ),
+    [activeConversation?.agentTargetId, input.normalizedProviderTargets]
+  );
   const stableActiveSessionViewProjection =
     useMemo<ActiveSessionViewProjection>(
       () =>
@@ -107,6 +116,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   const session = useAgentGUISessionPresentation({
     ...input,
     activeConversation,
+    ownerDeviceLabel: activeConversationOwnerDeviceLabel,
     activeLiveState: detail.activeLiveState,
     activationError: detail.activationError,
     activationErrorCode: detail.activationErrorCode,

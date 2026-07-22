@@ -32,5 +32,10 @@ export const zhCNAgentGuiRuntimeNotices = {
   systemNoticePlanImplementationPendingConfirmation: "计划实现正在等待确认",
   systemNoticePlanImplementationCompleted: "计划实现已开始",
   systemNoticeWarning: "Agent 警告",
-  systemNoticeDefault: "Agent 通知"
+  systemNoticeDefault: "Agent 通知",
+  sharedDeviceLabel: "共享设备",
+  runtimeConnecting: "正在连接 {{device}}…",
+  runtimeUnavailable: "与 {{device}} 的连接已断开，系统将自动重试",
+  runtimeUnavailableActive:
+    "与 {{device}} 的连接已断开，暂时无法发送或停止；任务可能仍在设备上运行"
 } as const;

@@ -43,7 +43,12 @@ export interface AgentGUISessionChrome {
   approval: AgentGUIApprovalRequest | null;
   recovery:
     | {
-        kind: "activating" | "failed" | "warning";
+        kind:
+          | "activating"
+          | "failed"
+          | "warning"
+          | "transport-connecting"
+          | "transport-unavailable";
         message: string;
         canRetry?: boolean;
         followupAction?: never;

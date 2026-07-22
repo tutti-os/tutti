@@ -6,8 +6,10 @@ import type {
 import {
   composerOptionsForTarget,
   composerOptionsLoadingForTarget,
+  ownerDeviceLabelForConversation,
   resolveAgentGUIProviderRailTargetSelection
 } from "./agentGuiController.providerHelpers";
+import { createSharedAgentGUIAgentTarget } from "../../../agentTargets";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 
@@ -108,6 +110,49 @@ describe("provider rail target selection", () => {
         nextFilter: { kind: "all" }
       })
     ).toBe("open-home-composer");
+  });
+});
+
+describe("conversation owner device label", () => {
+  it("uses the exact active conversation target instead of the selected composer target", () => {
+    const deviceA = createSharedAgentGUIAgentTarget({
+      agentTargetId: "target-a",
+      label: "Shared A",
+      ownerDeviceLabel: "Device A",
+      provider: "codex",
+      sharedAgentId: "shared-a"
+    });
+    const deviceB = createSharedAgentGUIAgentTarget({
+      agentTargetId: "target-b",
+      label: "Shared B",
+      ownerDeviceLabel: "Device B",
+      provider: "codex",
+      sharedAgentId: "shared-b"
+    });
+
+    expect(
+      ownerDeviceLabelForConversation(
+        conversation("session-b", "target-b", "codex"),
+        [deviceA, deviceB]
+      )
+    ).toBe("Device B");
+  });
+
+  it("fails closed when the active conversation target is unavailable", () => {
+    expect(
+      ownerDeviceLabelForConversation(
+        conversation("session-b", "missing", "codex"),
+        [
+          createSharedAgentGUIAgentTarget({
+            agentTargetId: "target-a",
+            label: "Shared A",
+            ownerDeviceLabel: "Device A",
+            provider: "codex",
+            sharedAgentId: "shared-a"
+          })
+        ]
+      )
+    ).toBeNull();
   });
 });
 
