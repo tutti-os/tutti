@@ -32,7 +32,10 @@ does not define workspace-app plan consumers.
   accepts a model-plan endpoint and which protocol it consumes.
 - `packages/agent/runtimeprep` contains the provider-specific endpoint
   adapters. Codex and Tutti Agent receive a session-scoped Codex provider
-  configuration; Claude Code receives its supported environment contract.
+  configuration; Claude Code receives its supported environment contract;
+  OpenCode receives a session-scoped `opencode.json` provider block via
+  `OPENCODE_CONFIG` (credential travels only as `TUTTI_MODEL_PLAN_API_KEY`
+  with an `{env:…}` reference in the file).
 - `services/tuttid/service/agent` is an adapter: it resolves the workspace
   binding, supplies the endpoint to runtime preparation, and projects the
   first completed turn back to the plan service. It does not change session or
@@ -43,10 +46,10 @@ does not define workspace-app plan consumers.
 
 Provider support is fail-closed. A provider may advertise
 `modelPlanBinding` only when its registry descriptor declares a protocol and a
-matching runtime-preparation adapter exists. OpenCode and Cursor currently keep
-their provider-native credential sources. Provider catalog identity carries
-`modelPlanProtocol` so desktop resolves protocols through the catalog instead
-of provider-identity switches.
+matching runtime-preparation adapter exists. OpenCode consumes `openai` plans
+through that path; Cursor currently keeps its provider-native credential
+source. Provider catalog identity carries `modelPlanProtocol` so desktop
+resolves protocols through the catalog instead of provider-identity switches.
 
 ## Request And Runtime Flow
 
@@ -125,15 +128,22 @@ agent target binding (workspace settings)
   -> runtimeprep.PrepareInput.ModelEndpoint
   -> CodexPreparer: session config.toml [model_providers.tutti-model-plan] + env_key
      ClaudeCodePreparer: ANTHROPIC_BASE_URL + ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN
+     OpenCodePreparer: session opencode.json provider block via OPENCODE_CONFIG
   -> provider runtime speaks to the plan endpoint for the whole session
 ```
 
 Rules:
 
-- Protocol compatibility is explicit: `codex`/`tutti-agent` consume `openai`
-  plans, `claude-code` consumes `anthropic` plans. Cursor and OpenCode only
-  reserve the `modelPlanBinding` capability; they advertise `modelSwitch` but
-  receive no endpoint injection yet — no fake UI entry points.
+- Protocol compatibility is explicit: `codex`/`tutti-agent`/`opencode` consume
+  `openai` plans, `claude-code` consumes `anthropic` plans. Cursor keeps
+  provider-native credentials (no endpoint injection) — no fake UI entry
+  points.
+- Model addressing is a second registry strategy
+  (`ModelPlanModelAddressing`): OpenCode declares `provider_prefixed`, so its
+  composer/settings values carry the injected `tutti-model-plan/<model>`
+  namespace resolved against the session-scoped provider block. Other providers
+  consume raw plan model ids; validation and first-use markers strip the
+  namespace back to plan-domain ids.
 - Disabled or protocol-mismatched plans fall back to the provider-native
   credential source with a structured log, never a broken session.
 - A plan-bound session validates requested models against the plan's model
@@ -165,7 +175,13 @@ the user.
 
 Explicit in-composer “model consult” (ask another plan/model for advice from
 the current session) is not a product surface: do not ship composer entry
-points, runtime commands, or timeline cards for it.
+points, runtime commands, or timeline cards for it. The composer's `@` panel
+may still list enabled plan models as `workspace-model` mentions for prompt
+context; that chip is presentation-only and must not imply a consult runtime.
+
+Desktop first-use for a `pending_first_use` plan launches Agent GUI against a
+protocol-compatible harness target with the plan/model prefilled
+(`launchFirstUse` + `compatibleWorkspaceModelPlanFirstUseTargets`).
 
 ## Migration
 

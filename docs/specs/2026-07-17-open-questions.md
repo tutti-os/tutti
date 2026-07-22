@@ -248,13 +248,14 @@
 
 ### W3②-4 方案下拉對「無 modelPlanProtocol 的 Runtime」只保留當前選中項
 
-- 現狀（2-4 驗證中的既有語義，未改動）：provider 目錄中只有 codex(openai)
-  與 claude-code(anthropic) 聲明了 modelPlanProtocol；cursor/opencode 等
-  Runtime 的 protocol 為空 → 方案下拉只顯示「使用 Agent Runtime 默認模型」
+- 現狀：provider 目錄中 `codex`/`tutti-agent`/`opencode` 聲明
+  `modelPlanProtocol=openai`，`claude-code` 聲明 `anthropic`；`cursor` 等
+  Runtime 的 protocol 仍為空 → 方案下拉只顯示「使用 Agent Runtime 默認模型」
   與（若存量已綁）當前方案。這是 daemon `validateHarnessPlan` 的鏡像
   （不支持的 provider 綁任何方案都會被拒），非過濾 bug。
-- 建議：若未來 cursor/opencode 支持注入，需在 provider catalog 聲明
-  `modelPlanProtocol` 並重新生成目錄，前端無需再改。
+- OpenCode 已落地原生 openai plan 注入（`OpenCodePreparer` +
+  `ModelPlanModelAddressing=provider_prefixed`）；若未來 cursor 支持注入，
+  需在 provider catalog 聲明 `modelPlanProtocol` 並重新生成目錄，前端無需再改。
 
 ## Wave 3-④（Tutti Mode 交互：Budget popup / 單次流程 / 任務級指派）
 
