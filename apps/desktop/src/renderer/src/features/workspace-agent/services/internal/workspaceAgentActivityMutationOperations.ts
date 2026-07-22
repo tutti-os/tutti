@@ -83,6 +83,7 @@ export class WorkspaceAgentActivityMutationOperations {
       await this.dependencies.load(workspaceId, input.signal);
     }
     return {
+      cleanupFailedSessionIds: [...(response.cleanupFailedSessionIds ?? [])],
       removedMessages: response.removedMessages,
       removedSessionIds,
       removedSessions: response.removedSessions

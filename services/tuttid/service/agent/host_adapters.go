@@ -148,8 +148,6 @@ func (a serviceHostStartupGate) Acquire(ctx context.Context, provider string) (f
 	return a.service.awaitClaudeStartupSlot(ctx, provider)
 }
 
-}
-
 type serviceHostClock struct{ service *Service }
 
 func (c serviceHostClock) Now() time.Time {

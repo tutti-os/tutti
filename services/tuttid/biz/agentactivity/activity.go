@@ -19,6 +19,7 @@ type SessionSectionDeletionCandidates = agentstore.SessionSectionDeletionCandida
 type DeleteSessionsBatchInput = agentstore.DeleteSessionsBatchInput
 type DeleteSessionsPlan = agentstore.DeleteSessionsPlan
 type DeleteSessionsBatchResult = agentstore.DeleteSessionsBatchResult
+type DeleteSessionResult = agentstore.DeleteSessionResult
 type TransactionDelta = agentstore.TransactionDelta
 type TransactionMutation = agentstore.TransactionMutation
 

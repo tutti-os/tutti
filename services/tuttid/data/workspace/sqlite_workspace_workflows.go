@@ -728,13 +728,6 @@ func scanWorkflowOperation(scanner workflowRowScanner, workflowID string) (workf
 	return operation, nil
 }
 
-func nullableText(value string) any {
-	if value == "" {
-		return nil
-	}
-	return value
-}
-
 func optionalUnixMs(value int64) time.Time {
 	if value == 0 {
 		return time.Time{}
