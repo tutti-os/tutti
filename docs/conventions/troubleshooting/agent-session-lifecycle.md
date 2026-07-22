@@ -2219,3 +2219,32 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [workspaceAgentMessageOverlay.ts](../../../packages/agent/gui/shared/workspaceAgentMessageOverlay.ts)
   [workspaceAgentMessageProjection.ts](../../../packages/agent/gui/shared/agentConversation/projection/workspaceAgentMessageProjection.ts)
   [workspaceAgentTimelineCanonical.ts](../../../packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts)
+
+### Goal clear duplicates the live Agent work section
+
+- Symptom:
+  While a Goal Turn is still streaming, clicking clear inserts `/goal clear`
+  between two identical Agent work sections. Both sections continue updating
+  together even though the daemon executed only one Turn.
+- Quick checks:
+  Inspect canonical Turns and message ownership. If Agent messages on both
+  sides of the turnless Goal audit carry the same Turn ID, compare transcript
+  group keys before inspecting provider retries or duplicate persistence.
+- Root cause:
+  Chronological insertion produced `Turn T -> goal-control -> Turn T`. A
+  grouping pass treated the turnless row as a hard boundary and created two
+  groups with key `T`; the work-section map retained the later model for that
+  shared key, so both Turn positions rendered the same rows.
+- Fix:
+  Keep a turnless session row inside the current presentation group only when
+  the next lifecycle-owned row proves that the surrounding Turn ID is
+  unchanged. Preserve the session row's null Turn ID; presentation continuity
+  must not manufacture lifecycle ownership.
+- Validation:
+  Cover `T -> goal-control -> T` and assert one Turn group, one processed-time
+  section, one Goal control row, and one copy of each Agent row. Also cover
+  `T1 -> goal-control -> T2` and verify the Goal control remains an independent
+  orphan between different Turns.
+- References:
+  [agentTranscriptModel.ts](../../../packages/agent/gui/shared/agentConversation/components/agentTranscriptModel.ts)
+  [AgentTranscriptView.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx)

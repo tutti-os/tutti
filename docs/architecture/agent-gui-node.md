@@ -218,6 +218,11 @@ Goal is a Session-level durable entity, not a Turn command. It owns desired/obse
 
 A Goal operation may produce zero or more provider Turns, but it cannot reserve or fabricate Turn IDs. Goal control bypasses the prompt pipeline and does not create a user transcript Turn message. AgentGUI may project its durable session audit as a dedicated `goal-control` timeline row; that row has no Turn ID and does not participate in Turn counts, processing ownership, cancellation, or settlement.
 
+When a session-level timeline row occurs chronologically between two rows from
+the same Turn, transcript presentation keeps one Turn group and renders the
+session-level row as an interstitial item. This presentation grouping does not
+assign the row a Turn ID or make it lifecycle-owned by that Turn.
+
 Host owns recovery for runtime operations, Goal operations, and the reconcile inbox. An adapter must not start a second worker or state machine.
 
 On daemon restart, Host recovery first restores durable operations, then settles unrecoverable active Turns as `settled/interrupted` and supersedes pending Interactions.
