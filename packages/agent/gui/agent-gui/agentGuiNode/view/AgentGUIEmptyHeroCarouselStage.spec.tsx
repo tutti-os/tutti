@@ -25,7 +25,11 @@ const items: readonly AgentGUIAgentAvatarPresentation[] = [
   }
 ];
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("AgentGUIEmptyHeroCarouselStage", () => {
   it("keeps CSS fallback alignment in preview mode", () => {
@@ -70,5 +74,39 @@ describe("AgentGUIEmptyHeroCarouselStage", () => {
     expect(
       layer?.style.getPropertyValue("--agent-gui-hero-carousel-slot-left")
     ).toBe("0px");
+  });
+
+  it("defers alignment measurement after the selected provider updates", () => {
+    const requestFrame = vi.fn(() => 1);
+    vi.stubGlobal("requestAnimationFrame", requestFrame);
+    const getBoundingClientRect = vi.spyOn(
+      HTMLElement.prototype,
+      "getBoundingClientRect"
+    );
+    const view = render(
+      <AgentGUIEmptyHeroCarouselStage
+        activeAgentTargetId="codex"
+        items={items}
+        previewMode={false}
+        providerSelectLabel="Select provider"
+      >
+        <div data-carousel-placeholder />
+      </AgentGUIEmptyHeroCarouselStage>
+    );
+    getBoundingClientRect.mockClear();
+
+    view.rerender(
+      <AgentGUIEmptyHeroCarouselStage
+        activeAgentTargetId="claude"
+        items={items}
+        previewMode={false}
+        providerSelectLabel="Select provider"
+      >
+        <div data-carousel-placeholder />
+      </AgentGUIEmptyHeroCarouselStage>
+    );
+
+    expect(getBoundingClientRect).not.toHaveBeenCalled();
+    expect(requestFrame).toHaveBeenCalledTimes(1);
   });
 });
