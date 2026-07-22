@@ -204,6 +204,7 @@ type legacyHostConformanceDriver struct {
 	recoverySteps  *[]string
 	createdTurns   map[string]string
 	directHost     bool
+	goalNowUnixMS  int64
 }
 
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
@@ -240,7 +241,8 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.service.GoalStateStore = d.goalStore
 	d.service.GoalReconcileInboxStore = d.goalInbox
 	d.service.GoalOperationOwner = "host-goal-conformance-worker"
-	d.service.GoalOperationClock = func() time.Time { return time.UnixMilli(1_000) }
+	d.goalNowUnixMS = 1_000
+	d.service.GoalOperationClock = func() time.Time { return time.UnixMilli(d.goalNowUnixMS) }
 	if fixture.DisableGoalInbox {
 		d.service.GoalReconcileInboxStore = nil
 	}
@@ -266,10 +268,21 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		case "clear":
 			providerGoal = nil
 		}
+		providerPhase := "applied"
+		evidence := map[string]any{"confidence": "authoritative"}
+		if fixture.AcceptGoalControlsOnly {
+			providerPhase = "accepted"
+			evidence = map[string]any{"confidence": "accepted_only", "phase": "accepted"}
+		}
 		return RuntimeGoalControlResult{
-			AgentSessionID: input.AgentSessionID, Goal: clonePayload(providerGoal), ProviderPhase: "applied",
-			Evidence: map[string]any{"confidence": "authoritative"},
+			AgentSessionID: input.AgentSessionID, Goal: clonePayload(providerGoal),
+			Evidence: evidence, ProviderPhase: providerPhase,
 		}, nil
+	}
+	if fixture.AcceptGoalControlsOnly {
+		d.runtime.goalRecoveryPolicyHook = func(context.Context, RuntimeGoalControlInput) (RuntimeGoalRecoveryPolicy, error) {
+			return RuntimeGoalRecoveryPolicy{QuerySupported: false, ReplaySetAfterRestart: false}, nil
+		}
 	}
 	d.runtime.goalReconcileHook = func(_ context.Context, input RuntimeGoalControlInput) (RuntimeGoalReconcileResult, error) {
 		goalMu.Lock()
@@ -739,6 +752,11 @@ func (d *legacyHostConformanceDriver) ReconcileGoal(ctx context.Context, ref age
 		return hostconformance.GoalObservation{}, err
 	}
 	return hostGoalStateObservation(agenthost.GoalStateResult{State: result.State}), nil
+}
+
+func (d *legacyHostConformanceDriver) StepGoalOperations(ctx context.Context, nowUnixMS int64) error {
+	d.goalNowUnixMS = nowUnixMS
+	return d.service.ApplicationHost().StepGoalOperationWorker(ctx, false)
 }
 
 func hostGoalControlObservation(result agenthost.GoalControlResult) hostconformance.GoalObservation {

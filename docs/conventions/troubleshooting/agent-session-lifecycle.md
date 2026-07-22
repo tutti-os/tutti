@@ -2186,6 +2186,41 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
   [goal_state.go](../../../packages/agent/store-sqlite/goal_state.go)
 
+### Accepted Goal clear is sent repeatedly until convergence times out
+
+- Symptom:
+  One `/goal clear` produces repeated provider control requests at the Goal
+  worker interval. Each request is accepted, but the durable operation remains
+  `dispatched` with provider phase `accepted`, its attempt count keeps rising,
+  and it eventually fails with `accepted goal operation exceeded its
+convergence deadline`.
+- Quick checks:
+  Correlate logs by `agent_session_id`, operation ID, and Goal revision. Verify
+  there is one user control audit but multiple provider `action=clear` calls.
+  Inspect `workspace_agent_goal_control_operations`: an accepted operation with
+  increasing attempts and unchanged accepted evidence identifies Host replay,
+  not repeated user input.
+- Root cause:
+  The steady-state Goal worker treated clear's provider idempotence as
+  permission to resubmit an already accepted command. Acceptance had already
+  crossed the delivery boundary, so every later worker claim queued another
+  native clear command while the Host was supposed to wait for applied
+  lifecycle evidence.
+- Fix:
+  For every accepted Goal mutation, make the steady-state worker defer without
+  calling the provider again. Keep the convergence deadline so missing applied
+  evidence still terminates. Reserve replay for startup crash recovery and
+  gate it with the adapter recovery policy; query-incapable adapters may replay
+  an idempotent clear once, while unsafe set replay remains rejected.
+- Validation:
+  Return `accepted` from a clear, advance the worker clock past its next claim,
+  and step the steady-state worker. The provider call count must remain one,
+  while the operation stays pending and `applying`. Existing deadline coverage
+  must still fail a lost-evidence operation without another provider call.
+- References:
+  [goal_operation_worker.go](../../../packages/agent/host/goal_operation_worker.go)
+  [goal_scenarios.go](../../../packages/agent/host/conformance/goal_scenarios.go)
+
 ### Initial Goal prompt disappears when the Agent starts responding
 
 - Symptom:

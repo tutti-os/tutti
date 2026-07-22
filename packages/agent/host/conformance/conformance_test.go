@@ -18,7 +18,7 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
 		{name: "title policy", scenarios: TitlePolicyScenarios(), wantCount: 1},
 		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 7},
-		{name: "goal", scenarios: GoalScenarios(), wantCount: 6},
+		{name: "goal", scenarios: GoalScenarios(), wantCount: 7},
 		{name: "commit observer", scenarios: CommitObserverScenarios(), wantCount: 2},
 	}
 	for _, catalog := range catalogs {

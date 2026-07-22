@@ -40,6 +40,14 @@ worktree-isolation sweep. Configuring a goal store
 without its runtime or inbox consumer fails recovery with
 `ErrGoalConsumerUnavailable` instead of silently accumulating work.
 
+A provider-accepted Goal operation has crossed the delivery boundary. The
+steady-state worker waits for applied evidence and never resubmits that
+mutation; the accepted convergence deadline terminates a lost-evidence case.
+Startup recovery may replay an accepted mutation only according to the
+adapter's recovery policy. In particular, a query-incapable adapter may replay
+an idempotent clear once to resolve a crash window, while unsafe set replay
+remains rejected.
+
 `GetSession` reads canonical session truth plus an optional live runtime
 observation without starting a provider. `GetTurn`, `ListSessionMessages`,
 `FindTurnByClientSubmitID`, and `GetSessionInteractionSnapshot` expose
