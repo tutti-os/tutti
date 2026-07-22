@@ -852,6 +852,7 @@ function createDependenciesStub(): {
       deleteAutomationRule: fail,
       getAgentSessionAutomationRuleOverride: fail,
       setAgentSessionAutomationRuleOverride: fail,
+      listModelPlans: fail,
       listWorkspaceAgents: fail,
       createWorkspaceAgent: fail,
       updateWorkspaceAgent: fail,
