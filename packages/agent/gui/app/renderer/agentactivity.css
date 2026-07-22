@@ -8430,11 +8430,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   white-space: nowrap;
 }
 
-/* Media, tables, rules, and explicit line breaks cannot collapse into one
-   text line — drop them from the preview entirely. */
+/* Standalone media, tables, rules, and explicit line breaks cannot collapse
+   into one text line — drop them from the preview entirely. MentionPill owns
+   its nested image icon, which remains part of the inline mention preview. */
 .agent-gui-node__composer-queued-prompt-text
   .agent-gui-node__composer-queued-prompt-markdown
-  :is(img, video, table, hr, br, input) {
+  :is(img, video, table, hr, br, input):not([data-slot="mention-pill"] *) {
   display: none;
 }
 
