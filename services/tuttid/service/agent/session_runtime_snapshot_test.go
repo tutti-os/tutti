@@ -392,6 +392,8 @@ func TestUpdateSettingsValidatesModelAgainstSnapshottedPlanRevision(t *testing.T
 		RuntimeContext: runtimeContext,
 	}
 	service := NewService(runtime)
+	seedPersistedLiveSettingsSession(service, runtime.sessions["ws:session-1"])
+	configureTestApplicationHost(service)
 	service.ConfigureModelPlanBinding(staticBindingSource{}, revisionPlanSource{
 		current:   currentPlan,
 		revisions: map[uint64]modelplanbiz.Plan{1: oldPlan, 2: currentPlan},
