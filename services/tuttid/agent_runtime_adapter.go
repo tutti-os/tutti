@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
@@ -163,6 +164,7 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		InitialTitleBase: input.InitialTitleBase,
 		Guidance:         input.Guidance,
 		Metadata:         cloneRuntimeContext(input.Metadata),
+		TurnMetadata:     mapTurnMetadataFromService(input.TurnMetadata),
 	})
 	if err != nil {
 		agentservice.LogSubmitTrace("runtime_adapter.exec.failed", input.WorkspaceID, input.AgentSessionID, input.Metadata, map[string]any{
@@ -190,6 +192,16 @@ func serviceSubmitAvailabilityFromRuntime(value agentruntime.SubmitAvailability)
 	return agentservice.SubmitAvailability{
 		State:  value.State,
 		Reason: value.Reason,
+	}
+}
+
+func mapTurnMetadataFromService(value *agenthost.TurnMetadata) *agentruntime.TurnMetadata {
+	if value == nil {
+		return nil
+	}
+	return &agentruntime.TurnMetadata{
+		ParentTurnID: strings.TrimSpace(value.ParentTurnID),
+		Relation:     strings.TrimSpace(value.Relation),
 	}
 }
 

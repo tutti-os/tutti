@@ -410,6 +410,8 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 			StartedAtUnixMS:         patch.Turn.StartedAtUnixMS,
 			CompletedAtUnixMS:       patch.Turn.CompletedAtUnixMS,
 			FinalAssistantMessageID: strings.TrimSpace(patch.Turn.FinalAssistantMessageID),
+			ParentTurnID:            strings.TrimSpace(patch.Turn.ParentTurnID),
+			Relation:                strings.TrimSpace(patch.Turn.Relation),
 		}
 	}
 	return out

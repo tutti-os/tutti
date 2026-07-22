@@ -69,6 +69,8 @@ func statePatchFromSessionEvent(source canonical.EventSource, event activityshar
 			SourceGoalRepairEpoch: payloadInt64(event.Payload.Metadata, "sourceGoalRepairEpoch"),
 			Phase:                 strings.TrimSpace(event.Payload.TurnPhase),
 			Outcome:               strings.TrimSpace(event.Payload.TurnOutcome),
+			ParentTurnID:          stringFromPayload(event.Payload.Metadata, "parentTurnId"),
+			Relation:              stringFromPayload(event.Payload.Metadata, "turnRelation"),
 		}
 	}
 	applyProviderInitiatedInteractionTurnToPatch(&patch, event)

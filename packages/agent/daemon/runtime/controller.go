@@ -52,6 +52,7 @@ type activeTurn struct {
 	cancel                context.CancelFunc
 	openCallIDs           map[string]struct{}
 	pendingTerminalEvents []activityshared.Event
+	metadata              TurnMetadata
 }
 
 type reportRequest struct {

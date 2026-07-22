@@ -67,6 +67,7 @@ const schemaMigrationWorkspaceAgentGoalProvenanceLedgerV1 = "workspace_agent_goa
 const schemaMigrationWorkspaceAgentMessageSemanticsV1 = "workspace_agent_message_semantics_v1"
 const schemaMigrationWorkspaceAgentDeletedPurgeIndexV1 = "workspace_agent_deleted_purge_index_v1"
 const schemaMigrationWorkspaceAgentSessionTurnPageIndexV1 = "workspace_agent_session_turn_page_index_v1"
+const schemaMigrationWorkspaceAgentTurnLineageV1 = "workspace_agent_turn_lineage_v1"
 
 // claimableMigrationIDs are the migration IDs that may already be recorded
 // in the legacy tuttid ledger; the claim copies exactly these.
@@ -240,7 +241,10 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyWorkspaceAgentDeletedPurgeIndexV1(ctx); err != nil {
 		return err
 	}
-	return s.applyWorkspaceAgentSessionTurnPageIndexV1(ctx)
+	if err := s.applyWorkspaceAgentSessionTurnPageIndexV1(ctx); err != nil {
+		return err
+	}
+	return s.applyWorkspaceAgentTurnLineageV1(ctx)
 }
 
 // claimLegacyMigrations copies agent-store migration records that were
