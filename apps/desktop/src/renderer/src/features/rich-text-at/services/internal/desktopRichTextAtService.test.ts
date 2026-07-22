@@ -1612,3 +1612,83 @@ test("desktop rich text @ service skips provider caching when metadata is presen
   assert.notEqual(secondProviders, firstProviders);
   assert.notEqual(secondProviders[0], firstProviders[0]);
 });
+
+test("desktop rich text @ service lists enabled plan models for workspace-model mentions", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listModelPlans(workspaceId: string) {
+        assert.equal(workspaceId, "workspace-1");
+        return {
+          plans: [
+            {
+              enabled: true,
+              id: "plan-relay",
+              models: [
+                { id: "grok-4.5", name: "xAI: Grok 4.5" },
+                { id: "glm-5.2", name: "Z.Ai: GLM 5.2" }
+              ],
+              name: "Relay endpoint"
+            },
+            {
+              enabled: false,
+              id: "plan-disabled",
+              models: [{ id: "hidden-model", name: "Hidden" }],
+              name: "Disabled plan"
+            }
+          ]
+        };
+      }
+    } as unknown as TuttidClient
+  });
+
+  const providers = service.getProviders({
+    capabilities: ["workspace-model"],
+    surface: "composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(providers.length, 1);
+  const provider = providers[0];
+  assert.ok(provider);
+  assert.equal(provider.id, "workspace-model");
+
+  const items = await provider.query({
+    context: {},
+    keyword: "grok",
+    maxResults: 5,
+    trigger: "@"
+  });
+  assert.equal(items.length, 1);
+  assert.equal(provider.getItemLabel(items[0]), "xAI: Grok 4.5");
+  assert.equal(provider.getItemSubtitle?.(items[0]), "Relay endpoint");
+
+  const insert = provider.toInsertResult(items[0]);
+  assert.deepEqual(insert, {
+    kind: "mention",
+    mention: {
+      entityId: "grok-4.5",
+      label: "xAI: Grok 4.5",
+      presentation: { subtitle: "Relay endpoint" },
+      scope: { modelPlanId: "plan-relay", workspaceId: "workspace-1" }
+    }
+  });
+
+  const resolved = await provider.resolveMention?.({
+    entityId: "grok-4.5",
+    label: "xAI: Grok 4.5",
+    providerId: "workspace-model",
+    scope: { modelPlanId: "plan-relay", workspaceId: "workspace-1" }
+  });
+  assert.deepEqual(resolved, {
+    label: "xAI: Grok 4.5",
+    presentation: { subtitle: "Relay endpoint" }
+  });
+
+  const disabledPlanItems = await provider.query({
+    context: {},
+    keyword: "hidden",
+    maxResults: 5,
+    trigger: "@"
+  });
+  assert.equal(disabledPlanItems.length, 0);
+});

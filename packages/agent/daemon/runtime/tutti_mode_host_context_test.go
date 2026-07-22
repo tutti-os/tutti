@@ -55,7 +55,15 @@ func TestRenderTuttiModeHostContextCarriesWorkedWorkflowExamples(t *testing.T) {
 		"dependsOn: [task-1]",
 		"permissionModeId: bypassPermissions",
 		"parallelizable: true",
-		"set `parallelizable: true` on a task that can safely run alongside",
+		"Identify independent workstreams and shape them as parallel groups",
+		"each runs in an isolated git worktree branched from the shared checkout",
+		"follow every parallel group with an integration task",
+		"autoAccept: true",
+		"Set `autoAccept: true` on every task by default",
+		"Omit autoAccept only on a task whose outcome the user personally must inspect",
+		"the first task must initialize one (`git init` plus an initial commit)",
+		"this conversation becomes the plan's orchestrator",
+		"stopping this conversation stops every running task",
 		"end the turn as soon as propose returns a workflowId",
 		"`tutti plan revise --workflow-id <workflowId> --file <absolute path> --request-id <new id>`",
 		"`tutti issue topic list --json`",
@@ -203,9 +211,6 @@ func TestAppServerTurnStartKeepsTuttiContextOutOfUserInput(t *testing.T) {
 	if len(input) != 1 || asString(payloadObject(input[0])["text"]) != "what mode is active?" {
 		t.Fatalf("turn input = %#v", params["input"])
 	}
-	if _, ok := params["responsesapiClientMetadata"]; ok {
-		t.Fatalf("responsesapiClientMetadata = %#v, want omitted", params["responsesapiClientMetadata"])
-	}
 	collaboration := payloadObject(params["collaborationMode"])
 	settings := payloadObject(collaboration["settings"])
 	developerInstructions := asString(settings["developer_instructions"])
@@ -237,9 +242,6 @@ func TestAppServerTurnStartUsesProviderOnlyTuttiFallbackWithoutCollaborationMask
 	}
 	if params["collaborationMode"] != nil {
 		t.Fatalf("collaboration mode = %#v, want omitted without negotiated masks", params["collaborationMode"])
-	}
-	if _, ok := params["responsesapiClientMetadata"]; ok {
-		t.Fatalf("responsesapiClientMetadata = %#v, want omitted", params["responsesapiClientMetadata"])
 	}
 }
 

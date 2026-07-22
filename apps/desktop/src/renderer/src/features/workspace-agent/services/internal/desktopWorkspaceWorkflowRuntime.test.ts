@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
+  AgentActivityUpdatedEventV1,
   TuttidEventStreamClient,
   WorkspaceWorkflowSnapshot,
   WorkspaceWorkflowUpdatedEventV1
@@ -61,7 +62,8 @@ const snapshot: WorkspaceWorkflowSnapshot = {
             reasoningEffort: null,
             executionDirectory: null,
             dependsOn: [],
-            parallelizable: true
+            parallelizable: true,
+            autoAccept: true
           }
         ]
       }
@@ -410,23 +412,26 @@ test("desktop workflow runtime builds agent-scoped assignment option catalogs", 
   });
 });
 
-test("desktop workflow runtime scopes workflow events to the workspace", async () => {
+function createRecordingEventStreamClient(): {
+  eventStreamClient: Pick<
+    TuttidEventStreamClient,
+    "connect" | "subscribe" | "subscribeConnectionState"
+  >;
+  connectCount: () => number;
+  subscribedScopes: ReadonlyMap<string, unknown>;
+  emitWorkflowEvent: (event: WorkspaceWorkflowUpdatedEventV1) => void;
+  emitActivityEvent: (event: AgentActivityUpdatedEventV1) => void;
+} {
   let connectCount = 0;
-  let subscribedTopic = "";
-  let subscribedScope: unknown;
-  let eventListener:
-    | ((event: WorkspaceWorkflowUpdatedEventV1) => void)
-    | undefined;
+  const subscribedScopes = new Map<string, unknown>();
+  const listenersByTopic = new Map<string, (event: never) => void>();
   const eventStreamClient = {
     async connect() {
       connectCount += 1;
     },
     subscribe(topic, listener, options) {
-      subscribedTopic = topic;
-      eventListener = listener as (
-        event: WorkspaceWorkflowUpdatedEventV1
-      ) => void;
-      subscribedScope = options?.scope;
+      listenersByTopic.set(topic, listener as (event: never) => void);
+      subscribedScopes.set(topic, options?.scope);
       return () => undefined;
     },
     subscribeConnectionState() {
@@ -436,9 +441,33 @@ test("desktop workflow runtime scopes workflow events to the workspace", async (
     TuttidEventStreamClient,
     "connect" | "subscribe" | "subscribeConnectionState"
   >;
+  return {
+    eventStreamClient,
+    connectCount: () => connectCount,
+    subscribedScopes,
+    emitWorkflowEvent: (event) => {
+      (
+        listenersByTopic.get("workspace.workflow.updated") as
+          | ((event: WorkspaceWorkflowUpdatedEventV1) => void)
+          | undefined
+      )?.(event);
+    },
+    emitActivityEvent: (event) => {
+      (
+        listenersByTopic.get("agent.activity.updated") as
+          | ((event: AgentActivityUpdatedEventV1) => void)
+          | undefined
+      )?.(event);
+    }
+  };
+}
+
+test("desktop workflow runtime scopes workflow events to the workspace", async () => {
+  const stream = createRecordingEventStreamClient();
+  const eventListener = stream.emitWorkflowEvent;
   const runtime = createDesktopTuttiModePlanReviewRuntime({
     tuttidClient: {} as never,
-    eventStreamClient
+    eventStreamClient: stream.eventStreamClient
   });
   const updates: unknown[] = [];
 
@@ -470,9 +499,13 @@ test("desktop workflow runtime scopes workflow events to the workspace", async (
     }
   });
 
-  assert.equal(connectCount, 1);
-  assert.equal(subscribedTopic, "workspace.workflow.updated");
-  assert.deepEqual(subscribedScope, { workspaceId: "workspace-1" });
+  assert.equal(stream.connectCount(), 1);
+  assert.deepEqual(stream.subscribedScopes.get("workspace.workflow.updated"), {
+    workspaceId: "workspace-1"
+  });
+  assert.deepEqual(stream.subscribedScopes.get("agent.activity.updated"), {
+    workspaceId: "workspace-1"
+  });
   assert.deepEqual(updates, [
     {
       kind: "workflow_updated",
@@ -483,6 +516,202 @@ test("desktop workflow runtime scopes workflow events to the workspace", async (
       changeKind: "proposal_created"
     }
   ]);
+});
+
+test("desktop workflow runtime relays only settled turn updates as session_settled", async () => {
+  const stream = createRecordingEventStreamClient();
+  const runtime = createDesktopTuttiModePlanReviewRuntime({
+    tuttidClient: {} as never,
+    eventStreamClient: stream.eventStreamClient
+  });
+  const updates: unknown[] = [];
+
+  runtime.subscribe("workspace-1", (update) => updates.push(update));
+  await Promise.resolve();
+  const activityEvent = (
+    phase: "running" | "settled",
+    scopeWorkspaceId: string
+  ): AgentActivityUpdatedEventV1 => ({
+    id: `event-${phase}-${scopeWorkspaceId}`,
+    version: 2,
+    topic: "agent.activity.updated",
+    emittedAt: "2026-07-16T00:00:00.000Z",
+    scope: { workspaceId: scopeWorkspaceId },
+    payload: {
+      workspaceId: scopeWorkspaceId,
+      agentSessionId: "session-1",
+      eventType: "turn_update",
+      data: {
+        workspaceId: scopeWorkspaceId,
+        agentSessionId: "session-1",
+        eventType: "turn_update",
+        occurredAtUnixMs: 1,
+        activeTurnId: phase === "settled" ? null : "turn-1",
+        turn: {
+          turnId: "turn-1",
+          agentSessionId: "session-1",
+          phase,
+          outcome: phase === "settled" ? "completed" : null,
+          origin: "user_prompt",
+          error: null,
+          fileChanges: null,
+          completedCommand: null,
+          startedAtUnixMs: 1,
+          settledAtUnixMs: phase === "settled" ? 2 : null,
+          updatedAtUnixMs: 2
+        }
+      }
+    }
+  });
+
+  // Mid-turn updates and other workspaces' settles must not fire read-repair.
+  stream.emitActivityEvent(activityEvent("running", "workspace-1"));
+  stream.emitActivityEvent(activityEvent("settled", "workspace-2"));
+  stream.emitActivityEvent(activityEvent("settled", "workspace-1"));
+
+  assert.deepEqual(updates, [
+    {
+      kind: "session_settled",
+      workspaceId: "workspace-1",
+      sourceSessionId: "session-1"
+    }
+  ]);
+});
+
+test("plan issue source tolerates the daemon omitting empty dependency arrays", async () => {
+  // The daemon omits empty arrays, so a task with no dependencies arrives with
+  // dependencyTaskIds undefined even though the generated type declares it
+  // required. Spreading undefined used to throw here, reject getSessionPlanIssue,
+  // and leave the embedded panel permanently empty (the first task of every
+  // plan has no dependencies, so this fired on every plan).
+  const runtime = createDesktopTuttiModePlanReviewRuntime({
+    tuttidClient: {
+      async listWorkspaceWorkflows() {
+        return [
+          {
+            ...snapshot,
+            workflow: {
+              ...snapshot.workflow,
+              status: "accepted",
+              updatedAtUnixMs: 100
+            },
+            operations: [
+              {
+                id: "operation-1",
+                workflowId: "workflow-1",
+                kind: "create_issue",
+                status: "succeeded",
+                revisionId: "revision-1",
+                issueId: "tutti-mode-plan-1",
+                errorCode: null,
+                errorMessage: null,
+                createdAtUnixMs: 90,
+                updatedAtUnixMs: 100,
+                startedAtUnixMs: 90,
+                completedAtUnixMs: 100
+              }
+            ]
+          }
+        ];
+      },
+      async getWorkspaceIssueDetail() {
+        return {
+          issue: {
+            issueId: "tutti-mode-plan-1",
+            topicId: "default",
+            title: "Plan issue"
+          },
+          tasks: [
+            // No dependencyTaskIds field at all — the exact daemon shape.
+            {
+              taskId: "task-1",
+              title: "First",
+              content: "",
+              status: "running",
+              sortIndex: 1,
+              parallelizable: true,
+              autoAccept: true
+            },
+            {
+              taskId: "task-2",
+              title: "Second",
+              content: "",
+              status: "not_started",
+              sortIndex: 2,
+              parallelizable: false,
+              autoAccept: false,
+              dependencyTaskIds: ["task-1"]
+            }
+          ]
+        };
+      }
+    } as never,
+    eventStreamClient: null
+  });
+
+  const result = await runtime.planIssues!.getSessionPlanIssue({
+    workspaceId: "workspace-1",
+    sourceSessionId: "session-1"
+  });
+  assert.ok(result, "expected the plan issue to resolve, not reject");
+  assert.equal(result.kind, "issue");
+  const issue = result.kind === "issue" ? result.issue : null;
+  assert.ok(issue);
+  assert.equal(issue.workflowId, "workflow-1");
+  assert.equal(issue.sourceTurnId, "turn-1");
+  assert.equal(issue.issueId, "tutti-mode-plan-1");
+  assert.deepEqual(
+    issue.tasks.map((task) => task.dependencyTaskIds),
+    [[], ["task-1"]]
+  );
+});
+
+test("plan issue source surfaces a durably failed create_issue operation", async () => {
+  // An accepted workflow whose create_issue failed has no pending checkpoint
+  // and no Issue; the conversation must render the failure instead of nothing.
+  const runtime = createDesktopTuttiModePlanReviewRuntime({
+    tuttidClient: {
+      async listWorkspaceWorkflows() {
+        return [
+          {
+            ...snapshot,
+            workflow: {
+              ...snapshot.workflow,
+              status: "accepted",
+              updatedAtUnixMs: 100
+            },
+            operations: [
+              {
+                id: "operation-1",
+                workflowId: "workflow-1",
+                kind: "create_issue",
+                status: "failed",
+                revisionId: "revision-1",
+                errorCode: "issue_materialization_failed",
+                errorMessage: "issue manager argument is invalid",
+                createdAtUnixMs: 90,
+                updatedAtUnixMs: 100,
+                startedAtUnixMs: 90,
+                completedAtUnixMs: 100
+              }
+            ]
+          }
+        ];
+      }
+    } as never,
+    eventStreamClient: null
+  });
+
+  const result = await runtime.planIssues!.getSessionPlanIssue({
+    workspaceId: "workspace-1",
+    sourceSessionId: "session-1"
+  });
+  assert.deepEqual(result, {
+    kind: "materialization_failed",
+    workflowId: "workflow-1",
+    sourceTurnId: "turn-1",
+    errorMessage: "issue manager argument is invalid"
+  });
 });
 
 test("desktop workflow runtime invalidates current scopes on every connected state", async () => {

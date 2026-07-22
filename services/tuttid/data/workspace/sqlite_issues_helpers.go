@@ -250,10 +250,11 @@ func scanWorkspaceIssue(scanner issueScanner) (workspaceissues.Issue, error) {
 	var hasRemainingQuota int
 	var sequentialExecution int
 	var parallelExecution int
+	var dispatchPaused int
 	err := scanner.Scan(
 		&id, &item.IssueID, &item.TopicID, &item.WorkspaceID, &item.Title, &item.Content,
 		&item.SearchText, &status, &planningSource, &item.SourceSessionID, &sequentialExecution,
-		&parallelExecution,
+		&parallelExecution, &dispatchPaused,
 		&item.ExecutionProfile.ReasoningIntensity, &item.ExecutionProfile.OrchestrationIntensity,
 		&budgetMode, &item.Budget.TokenLimit, &item.Budget.ConsumedTokens,
 		&item.Budget.QuotaWaterlinePercent, &item.Budget.RemainingQuotaPercent,
@@ -268,6 +269,7 @@ func scanWorkspaceIssue(scanner issueScanner) (workspaceissues.Issue, error) {
 	item.PlanningSource = workspaceissues.PlanningSource(planningSource)
 	item.SequentialExecution = sequentialExecution != 0
 	item.ParallelExecution = parallelExecution != 0
+	item.DispatchPaused = dispatchPaused != 0
 	item.Budget.Mode = workspaceissues.BudgetMode(budgetMode)
 	item.Budget.HasRemainingQuota = hasRemainingQuota != 0
 	item.Budget.Status = workspaceissues.BudgetStatus(budgetStatus)
@@ -309,18 +311,21 @@ func scanWorkspaceIssueTask(scanner issueScanner) (workspaceissues.Task, error) 
 	var status string
 	var priority string
 	var dependencyTaskIDsJSON string
+	var acceptanceState string
 	err := scanner.Scan(
 		&id, &item.TaskID, &item.IssueID, &item.WorkspaceID, &item.Title, &item.Content,
 		&item.SearchText, &status, &priority, &item.SortIndex, &item.DueAtUnixMS,
 		&item.AgentTargetID, &item.ModelPlanID, &item.Model,
 		&item.PermissionModeID, &item.ReasoningEffort,
 		&item.ExecutionDirectory, &dependencyTaskIDsJSON, &item.Parallelizable,
+		&item.AutoAccept, &acceptanceState, &item.AcceptanceSummary,
 		&item.CreatorUserID, &item.CreatorDisplayName, &item.CreatorAvatarURL,
 		&item.LatestRunID, &item.CreatedAtUnixMS, &item.UpdatedAtUnixMS,
 	)
 	item.ID = uint64(id)
 	item.Status = workspaceissues.Status(status)
 	item.Priority = workspaceissues.Priority(priority)
+	item.AcceptanceState = workspaceissues.AcceptanceState(acceptanceState)
 	if err == nil {
 		err = json.Unmarshal([]byte(dependencyTaskIDsJSON), &item.DependencyTaskIDs)
 	}
@@ -350,7 +355,10 @@ func scanWorkspaceIssueRun(scanner issueScanner) (workspaceissues.Run, error) {
 	err := scanner.Scan(
 		&id, &item.RunID, &item.TaskID, &item.IssueID, &item.WorkspaceID,
 		&item.RequesterUserID, &item.AgentUserID, &item.AgentTargetID,
-		&item.AgentSessionID, &item.AgentProvider, &status, &item.Summary,
+		&item.AgentSessionID, &item.AgentProvider, &item.ModelPlanID, &item.Model,
+		&item.ReasoningIntensity, &status, &item.Usage.InputTokens,
+		&item.Usage.OutputTokens, &item.Usage.CacheReadTokens, &item.Usage.CacheWriteTokens,
+		&item.Summary,
 		&item.ErrorMessage, &item.OutputDir, &item.ExecutionDirectory,
 		&item.CreatedAtUnixMS, &item.StartedAtUnixMS, &item.CompletedAtUnixMS,
 		&item.UpdatedAtUnixMS,

@@ -309,6 +309,8 @@ export interface WorkspaceSettingsModelPlansMutableState {
   draftSaveImpact: WorkspaceModelPlanSaveImpact | null;
   duplicatingPlanID: string | null;
   fetchingDraftModels: boolean;
+  firstUseLaunchFailedPlanID: string | null;
+  firstUseLaunchingPlanID: string | null;
   loading: boolean;
   planFeedback: Record<string, WorkspaceModelPlanFeedback>;
   plans: WorkspaceModelPlan[];
@@ -338,6 +340,8 @@ export interface WorkspaceSettingsModelPlansSnapshotState {
   readonly draftSaveImpact: Readonly<WorkspaceModelPlanSaveImpact> | null;
   readonly duplicatingPlanID: string | null;
   readonly fetchingDraftModels: boolean;
+  readonly firstUseLaunchFailedPlanID: string | null;
+  readonly firstUseLaunchingPlanID: string | null;
   readonly loading: boolean;
   readonly planFeedback: Readonly<
     Record<string, Readonly<WorkspaceModelPlanFeedback>>

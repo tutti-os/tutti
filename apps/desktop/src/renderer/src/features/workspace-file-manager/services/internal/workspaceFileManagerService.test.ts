@@ -1007,7 +1007,8 @@ function createDependenciesStub(): {
       useUserProject: fail,
       listPendingWorkspaceWorkflows: fail,
       listWorkspaceWorkflows: fail,
-      decideWorkspaceWorkflowCheckpoint: fail
+      decideWorkspaceWorkflowCheckpoint: fail,
+      cancelWorkspaceIssueExecution: fail
     },
     platformApi: {
       homeDirectory: "/Users/local",

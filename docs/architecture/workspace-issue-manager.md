@@ -141,6 +141,51 @@ timeline. Tutti Mode Plan additionally keeps its durable workflow, immutable
 revisions, checkpoints, and the operation's `issueId`; those records represent
 review provenance and do not compete with the Issue as the execution entity.
 
+Completion uses a three-step acceptance ladder:
+
+```text
+agent_claimed -> auto_checked -> user_accepted
+```
+
+Issue runs settle live from the canonical root-turn settlement fan-out: the
+Issue-run observer sits on the opt-in settle list (root-provider-lifecycle
+adapters report no settled state patch, so the general session-state observers
+never see live settles) and matches the settled turn against the run's
+initiating `issue-run:<runID>` submit, so an unrelated turn settling in the
+delegate conversation can never complete the run. The fallback reconciler only
+declares a run dead when the session has been event-silent past the grace
+window — a streaming session with a lagging (empty) persisted active-turn id
+is alive, not abandoned.
+
+A successful Run moves its task to `pending_acceptance`/`agent_claimed`; it is
+only the executor's completion claim. Only an explicit user acceptance reaches
+`user_accepted` and closes the Task as `completed`. Failed Runs leave the task
+retryable and do not satisfy dependencies. Repeated terminal completion and
+review settlement are idempotent.
+
+Parallelism stays honest at two boundaries. Materializing a plan normalizes
+the durable `parallelizable` flag against dependencies: a task that depends on
+a member of its own consecutive parallelizable group can never run alongside
+it, so the misleading flag is stripped (dependencies are never touched — they
+are the safe side of the contradiction). At dispatch, a successor whose direct
+dependencies ran in isolated per-run worktrees receives their exact branch
+names in its launch prompt ("Dependency outputs"), so parallel results are
+merged forward instead of stranding on `tutti/task/*` branches; the planning
+guide pairs this with the convention of an integration task after every
+parallel group.
+
+Two adjacent flows reuse this ladder without weakening it. A task whose
+durable `autoAccept` flag is set (proposed by the planning agent, adjustable
+in plan review) skips the human gate: run completion is accepted
+programmatically through the same `UpdateTask` path a manual acceptance takes,
+so dispatch advance and the whole-issue completion check stay identical.
+Sending a `pending_acceptance` task back to `not_started` (rework) resets its
+acceptance to `agent_claimed` and immediately re-opens the dispatch frontier —
+the daemon re-dispatches without waiting for an unrelated event. When every
+non-canceled task of a `tutti_mode_plan` Issue is `completed`/`user_accepted`,
+the daemon notifies the source conversation once (deduped per Issue) so the
+planning agent resumes with a verification/summary turn.
+
 The npm package name should be `@tutti-os/workspace-issue-manager`.
 It participates in the shared public npm release group documented in
 [npm Package Release](../conventions/npm-package-release.md).

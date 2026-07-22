@@ -563,6 +563,70 @@ func TestServiceCompleteRunDoesNotOverwriteTerminalRun(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateTaskRejectsPendingAcceptanceOnAcceptedTask(t *testing.T) {
+	store := newFakeStore()
+	service := testService(store)
+	ctx := context.Background()
+
+	issue, err := service.CreateIssue(ctx, CreateIssueInput{
+		WorkspaceID: "workspace-1",
+		TopicID:     DefaultTopicID,
+		ActorUserID: "user-1",
+		Title:       "Guard acceptance",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	task, err := service.CreateTask(ctx, CreateTaskInput{
+		WorkspaceID: "workspace-1",
+		IssueID:     issue.IssueID,
+		ActorUserID: "user-1",
+		Title:       "Accept once",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	accepted, err := service.UpdateTask(ctx, UpdateTaskInput{
+		WorkspaceID: "workspace-1",
+		IssueID:     issue.IssueID,
+		TaskID:      task.TaskID,
+		ActorUserID: "user-1",
+		Status:      string(StatusCompleted),
+		HasStatus:   true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateTask(accept) error = %v", err)
+	}
+	if accepted.AcceptanceState != AcceptanceUserAccepted {
+		t.Fatalf("accepted task acceptance = %q, want user_accepted", accepted.AcceptanceState)
+	}
+	if _, err := service.UpdateTask(ctx, UpdateTaskInput{
+		WorkspaceID: "workspace-1",
+		IssueID:     issue.IssueID,
+		TaskID:      task.TaskID,
+		ActorUserID: "user-1",
+		Status:      string(StatusPendingAcceptance),
+		HasStatus:   true,
+	}); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("UpdateTask(pending_acceptance on accepted) error = %v, want ErrInvalidArgument", err)
+	}
+	// Rework stays the explicit path back into execution.
+	reworked, err := service.UpdateTask(ctx, UpdateTaskInput{
+		WorkspaceID: "workspace-1",
+		IssueID:     issue.IssueID,
+		TaskID:      task.TaskID,
+		ActorUserID: "user-1",
+		Status:      string(StatusNotStarted),
+		HasStatus:   true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateTask(rework) error = %v", err)
+	}
+	if reworked.AcceptanceState != AcceptanceAgentClaimed {
+		t.Fatalf("reworked task acceptance = %q, want agent_claimed", reworked.AcceptanceState)
+	}
+}
+
 func TestServiceRunLifecycleTransitionsIssueWithoutTasks(t *testing.T) {
 	store := newFakeStore()
 	service := testService(store)

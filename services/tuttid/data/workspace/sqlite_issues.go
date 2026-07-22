@@ -15,7 +15,7 @@ var _ workspaceissues.Store = (*SQLiteStore)(nil)
 
 const issueSelectColumns = `
 id, issue_id, topic_id, workspace_id, title, content, search_text, status,
-planning_source, source_session_id, sequential_execution, parallel_execution, reasoning_intensity, orchestration_intensity,
+planning_source, source_session_id, sequential_execution, parallel_execution, dispatch_paused, reasoning_intensity, orchestration_intensity,
 budget_mode, budget_token_limit, budget_consumed_tokens,
 budget_quota_waterline_percent, budget_remaining_quota_percent,
 budget_has_remaining_quota, budget_status,
@@ -31,8 +31,8 @@ const taskSelectColumns = `
 id, task_id, issue_id, workspace_id, title, content, search_text, status,
 priority, sort_index, due_at_unix_ms, agent_target_id, model_plan_id, model,
 permission_mode_id, reasoning_effort,
-execution_directory, dependency_task_ids_json, parallelizable,
-creator_user_id, creator_display_name,
+execution_directory, dependency_task_ids_json, parallelizable, auto_accept,
+acceptance_state, acceptance_summary, creator_user_id, creator_display_name,
 creator_avatar_url, latest_run_id, created_at_unix_ms, updated_at_unix_ms`
 
 // workspaceIssueExecer abstracts the write handle (direct connection or
@@ -43,7 +43,9 @@ type workspaceIssueExecer interface {
 
 const runSelectColumns = `
 id, run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
-agent_target_id, agent_session_id, agent_provider, status, summary,
+agent_target_id, agent_session_id, agent_provider, model_plan_id, model,
+reasoning_intensity, status, input_tokens, output_tokens, cache_read_tokens,
+cache_write_tokens, summary,
 error_message, output_dir, execution_directory, created_at_unix_ms,
 started_at_unix_ms, completed_at_unix_ms, updated_at_unix_ms`
 
@@ -265,16 +267,16 @@ func insertWorkspaceIssue(ctx context.Context, execer workspaceIssueExecer, issu
 	result, err := execer.ExecContext(ctx, `
 INSERT INTO workspace_issues (
   issue_id, topic_id, workspace_id, title, content, search_text, status,
-  planning_source, source_session_id, sequential_execution, parallel_execution, reasoning_intensity, orchestration_intensity,
+  planning_source, source_session_id, sequential_execution, parallel_execution, dispatch_paused, reasoning_intensity, orchestration_intensity,
   budget_mode, budget_token_limit, budget_consumed_tokens,
   budget_quota_waterline_percent, budget_remaining_quota_percent,
   budget_has_remaining_quota, budget_status,
   task_count, not_started_count, running_count, pending_acceptance_count,
   completed_count, failed_count, canceled_count, creator_user_id,
   creator_display_name, creator_avatar_url, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, issue.IssueID, issue.TopicID, issue.WorkspaceID, issue.Title, issue.Content, issue.SearchText, string(issue.Status),
-		string(issue.PlanningSource), issue.SourceSessionID, boolToInt(issue.SequentialExecution), boolToInt(issue.ParallelExecution), issue.ExecutionProfile.ReasoningIntensity,
+		string(issue.PlanningSource), issue.SourceSessionID, boolToInt(issue.SequentialExecution), boolToInt(issue.ParallelExecution), boolToInt(issue.DispatchPaused), issue.ExecutionProfile.ReasoningIntensity,
 		issue.ExecutionProfile.OrchestrationIntensity, string(issue.Budget.Mode), issue.Budget.TokenLimit,
 		issue.Budget.ConsumedTokens, issue.Budget.QuotaWaterlinePercent, issue.Budget.RemainingQuotaPercent,
 		boolToInt(issue.Budget.HasRemainingQuota), string(issue.Budget.Status),
@@ -323,12 +325,12 @@ func (s *SQLiteStore) UpdateIssue(ctx context.Context, issue workspaceissues.Iss
 	result, err := s.writeDB.ExecContext(ctx, `
 UPDATE workspace_issues
 SET title = ?, content = ?, search_text = ?, status = ?,
-    reasoning_intensity = ?, orchestration_intensity = ?, budget_mode = ?,
+    dispatch_paused = ?, reasoning_intensity = ?, orchestration_intensity = ?, budget_mode = ?,
     budget_token_limit = ?, budget_consumed_tokens = ?,
     budget_quota_waterline_percent = ?, budget_remaining_quota_percent = ?,
     budget_has_remaining_quota = ?, budget_status = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND issue_id = ?
-`, issue.Title, issue.Content, issue.SearchText, string(issue.Status), issue.ExecutionProfile.ReasoningIntensity,
+`, issue.Title, issue.Content, issue.SearchText, string(issue.Status), boolToInt(issue.DispatchPaused), issue.ExecutionProfile.ReasoningIntensity,
 		issue.ExecutionProfile.OrchestrationIntensity, string(issue.Budget.Mode), issue.Budget.TokenLimit,
 		issue.Budget.ConsumedTokens, issue.Budget.QuotaWaterlinePercent, issue.Budget.RemainingQuotaPercent,
 		boolToInt(issue.Budget.HasRemainingQuota), string(issue.Budget.Status), issue.UpdatedAtUnixMS,
@@ -506,12 +508,16 @@ func (s *SQLiteStore) CreateRun(ctx context.Context, run workspaceissues.Run) (w
 	_, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO workspace_issue_runs (
   run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
-  agent_target_id, agent_session_id, agent_provider, status, summary,
+  agent_target_id, agent_session_id, agent_provider, model_plan_id, model,
+  reasoning_intensity, status, input_tokens, output_tokens, cache_read_tokens,
+  cache_write_tokens, summary,
   error_message, output_dir, execution_directory, created_at_unix_ms,
   started_at_unix_ms, completed_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, run.RunID, run.TaskID, run.IssueID, run.WorkspaceID, run.RequesterUserID, run.AgentUserID,
-		run.AgentTargetID, run.AgentSessionID, run.AgentProvider, string(run.Status), run.Summary,
+		run.AgentTargetID, run.AgentSessionID, run.AgentProvider, run.ModelPlanID, run.Model,
+		run.ReasoningIntensity, string(run.Status), run.Usage.InputTokens, run.Usage.OutputTokens,
+		run.Usage.CacheReadTokens, run.Usage.CacheWriteTokens, run.Summary,
 		run.ErrorMessage, run.OutputDir, run.ExecutionDirectory, run.CreatedAtUnixMS,
 		run.StartedAtUnixMS, run.CompletedAtUnixMS, run.UpdatedAtUnixMS)
 	if err != nil {
@@ -538,9 +544,12 @@ func (s *SQLiteStore) CompleteRun(ctx context.Context, run workspaceissues.Run, 
 
 	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_issue_runs
-SET status = ?, summary = ?, error_message = ?, completed_at_unix_ms = ?, updated_at_unix_ms = ?
+SET status = ?, input_tokens = ?, output_tokens = ?, cache_read_tokens = ?,
+    cache_write_tokens = ?, summary = ?, error_message = ?,
+    completed_at_unix_ms = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND issue_id = ? AND task_id = ? AND run_id = ?
-`, string(run.Status), run.Summary, run.ErrorMessage, run.CompletedAtUnixMS, run.UpdatedAtUnixMS,
+`, string(run.Status), run.Usage.InputTokens, run.Usage.OutputTokens, run.Usage.CacheReadTokens,
+		run.Usage.CacheWriteTokens, run.Summary, run.ErrorMessage, run.CompletedAtUnixMS, run.UpdatedAtUnixMS,
 		run.WorkspaceID, run.IssueID, run.TaskID, run.RunID)
 	if err != nil {
 		return workspaceissues.Run{}, nil, fmt.Errorf("complete workspace issue run: %w", err)
@@ -597,8 +606,12 @@ SELECT %s
 FROM workspace_issue_runs
 ORDER BY created_at_unix_ms DESC, id DESC
 `, runSelectColumns)
-	args := []any{workspaceID, issueID}
-	where := "WHERE workspace_id = ? AND issue_id = ?"
+	args := []any{workspaceID}
+	where := "WHERE workspace_id = ?"
+	if issueID != "" {
+		where += " AND issue_id = ?"
+		args = append(args, issueID)
+	}
 	if taskID != "" {
 		where += " AND task_id = ?"
 		args = append(args, taskID)

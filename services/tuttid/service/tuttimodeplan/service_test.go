@@ -79,6 +79,100 @@ func TestServiceProposeRejectsConfigurationOnlyDocument(t *testing.T) {
 	}
 }
 
+func TestServiceProposeRejectsParallelPlanWithoutIsolatedDirectories(t *testing.T) {
+	t.Parallel()
+
+	store := newMemoryWorkflowStore()
+	service := newTestService(t, store, time.Now().UTC(), "workflow-1", "revision-1", "checkpoint-1")
+	markdown := []byte("---\nschema: tutti-mode-plan/v1\ntitle: Parallel plan\ntopicId: topic-1\n" +
+		"execution:\n  mode: parallel\n  reasoningIntensity: 50\n  orchestrationIntensity: 50\n" +
+		"tasks:\n  - id: task-1\n    title: First\n  - id: task-2\n    title: Second\n---\nBody\n")
+	_, err := service.Propose(context.Background(), ProposeInput{
+		WorkspaceID:     "workspace-1",
+		SourceSessionID: "session-1",
+		RequestID:       "request-1",
+		Markdown:        markdown,
+	})
+	// The Issue Manager's honest-parallelism gate would reject this at
+	// materialization — after acceptance, where the failure strands an accepted
+	// workflow with no Issue. Propose must reject it while the agent can fix it.
+	if !errors.Is(err, ErrInvalidTaskGraph) || !strings.Contains(err.Error(), "executionDirectory") {
+		t.Fatalf("Propose() error = %v, want ErrInvalidTaskGraph naming executionDirectory", err)
+	}
+	if len(store.snapshots) != 0 {
+		t.Fatalf("proposal persisted after invalid parallel plan: %#v", store.snapshots)
+	}
+}
+
+func TestValidatePlanExecutionIsolation(t *testing.T) {
+	t.Parallel()
+
+	task := func(id string, directory string) PlanTask {
+		return PlanTask{ID: id, Title: id, ExecutionDirectory: directory}
+	}
+	for name, testCase := range map[string]struct {
+		document PlanDocument
+		wantErr  bool
+	}{
+		"sequential plans need no directories": {
+			document: PlanDocument{
+				Execution: PlanExecution{Mode: "sequential"},
+				Tasks:     []PlanTask{task("task-1", "")},
+			},
+		},
+		"parallel with unique absolute directories passes": {
+			document: PlanDocument{
+				Execution: PlanExecution{Mode: "parallel"},
+				Tasks: []PlanTask{
+					task("task-1", "/tmp/worktrees/a"),
+					task("task-2", "/tmp/worktrees/b"),
+				},
+			},
+		},
+		"parallel with a missing directory is rejected": {
+			document: PlanDocument{
+				Execution: PlanExecution{Mode: "parallel"},
+				Tasks: []PlanTask{
+					task("task-1", "/tmp/worktrees/a"),
+					task("task-2", ""),
+				},
+			},
+			wantErr: true,
+		},
+		"parallel with a relative directory is rejected": {
+			document: PlanDocument{
+				Execution: PlanExecution{Mode: "parallel"},
+				Tasks:     []PlanTask{task("task-1", "worktrees/a")},
+			},
+			wantErr: true,
+		},
+		"parallel with a shared directory is rejected": {
+			document: PlanDocument{
+				Execution: PlanExecution{Mode: "parallel"},
+				Tasks: []PlanTask{
+					task("task-1", "/tmp/worktrees/a"),
+					task("task-2", "/tmp/worktrees/a/"),
+				},
+			},
+			wantErr: true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := ValidatePlanExecutionIsolation(testCase.document)
+			if testCase.wantErr {
+				if !errors.Is(err, ErrInvalidTaskGraph) {
+					t.Fatalf("error = %v, want ErrInvalidTaskGraph", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("error = %v, want nil", err)
+			}
+		})
+	}
+}
+
 func TestServiceProposeDefaultsOmittedPhaseToTaskGraph(t *testing.T) {
 	t.Parallel()
 

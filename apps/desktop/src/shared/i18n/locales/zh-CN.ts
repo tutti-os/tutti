@@ -955,7 +955,14 @@ export const zhCN = {
           namePlaceholder: "我的模型方案",
           neverDetected: "尚未检测",
           pendingFirstUseGuide:
-            "在下方「Agent 绑定」中选择兼容的 Agent 发起第一次真实调用后，方案才算可用",
+            "选择兼容的 Agent 并完成一次真实调用后，方案才算可用",
+          firstUseAction: "用此 Agent 试用",
+          firstUseAgentLabel: "兼容 Agent",
+          firstUseLaunchFailed: "无法打开首次使用会话",
+          firstUseLaunching: "正在打开...",
+          firstUsePrompt:
+            "请使用 {{plan}} 模型方案完成这次真实首次调用，简要介绍所选模型并确认它能在当前工作区正常响应",
+          noCompatibleFirstUseAgent: "当前没有启用与此方案协议兼容的 Agent",
           presetLabel: "服务商预设",
           presets: {
             agnes: "Agnes",

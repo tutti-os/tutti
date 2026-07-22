@@ -17,16 +17,33 @@ func TestHostContextExamplePlanDocumentParses(t *testing.T) {
 		"  orchestrationIntensity: 80\n" +
 		"tasks:\n" +
 		"  - id: task-1\n" +
-		"    title: Draft the FAQ section\n" +
-		"    content: Write three Q&A entries covering install, login, and updates.\n" +
+		"    title: Outline the FAQ structure\n" +
+		"    content: Decide the section layout and the three question areas to cover.\n" +
 		"    agentTargetId: local:codex\n" +
 		"    model: gpt-5.4-codex\n" +
 		"    permissionModeId: full-access\n" +
-		"    parallelizable: true\n" +
 		"  - id: task-2\n" +
-		"    title: Link the FAQ from the introduction\n" +
-		"    content: Add a table-of-contents entry pointing at the new section.\n" +
+		"    title: Draft the install and login answers\n" +
+		"    content: Write the install and login Q&A entries following the outline.\n" +
 		"    dependsOn: [task-1]\n" +
+		"    parallelizable: true\n" +
+		"    agentTargetId: local:codex\n" +
+		"    model: gpt-5.4-codex\n" +
+		"    permissionModeId: full-access\n" +
+		"    autoAccept: true\n" +
+		"  - id: task-3\n" +
+		"    title: Draft the updates answer and FAQ styling\n" +
+		"    content: Write the updates Q&A entry and normalize heading levels.\n" +
+		"    dependsOn: [task-1]\n" +
+		"    parallelizable: true\n" +
+		"    agentTargetId: local:claude-code\n" +
+		"    model: claude-opus-4-8\n" +
+		"    permissionModeId: bypassPermissions\n" +
+		"    autoAccept: true\n" +
+		"  - id: task-4\n" +
+		"    title: Integrate the FAQ and link it from the introduction\n" +
+		"    content: Merge the parallel branches, resolve overlaps, add the table-of-contents entry, and verify the section end to end.\n" +
+		"    dependsOn: [task-2, task-3]\n" +
 		"    agentTargetId: local:claude-code\n" +
 		"    model: claude-opus-4-8\n" +
 		"    permissionModeId: bypassPermissions\n" +
@@ -44,17 +61,28 @@ func TestHostContextExamplePlanDocumentParses(t *testing.T) {
 		document.Execution.OrchestrationIntensity != 80 {
 		t.Fatalf("execution = %#v", document.Execution)
 	}
-	if len(document.Tasks) != 2 || document.Tasks[1].DependsOn[0] != "task-1" {
+	if len(document.Tasks) != 4 {
 		t.Fatalf("tasks = %#v", document.Tasks)
 	}
-	first, second := document.Tasks[0], document.Tasks[1]
-	if first.AgentTargetID != "local:codex" || first.Model != "gpt-5.4-codex" || first.PermissionModeID != "full-access" {
-		t.Fatalf("task-1 launch configuration = %#v", first)
+	outline, draftA, draftB, integrate := document.Tasks[0], document.Tasks[1], document.Tasks[2], document.Tasks[3]
+	if outline.AgentTargetID != "local:codex" || outline.Model != "gpt-5.4-codex" || outline.PermissionModeID != "full-access" {
+		t.Fatalf("task-1 launch configuration = %#v", outline)
 	}
-	if !first.Parallelizable || second.Parallelizable {
-		t.Fatalf("parallelizable flags = %v/%v, want true/false", first.Parallelizable, second.Parallelizable)
+	// The example must demonstrate a real parallel group: two tasks that share
+	// the same dependency, never depend on each other, and both carry the flag.
+	if outline.Parallelizable || !draftA.Parallelizable || !draftB.Parallelizable || integrate.Parallelizable {
+		t.Fatalf("parallelizable flags = %v/%v/%v/%v", outline.Parallelizable, draftA.Parallelizable, draftB.Parallelizable, integrate.Parallelizable)
 	}
-	if second.AgentTargetID != "local:claude-code" || second.Model != "claude-opus-4-8" || second.PermissionModeID != "bypassPermissions" {
-		t.Fatalf("task-2 launch configuration = %#v", second)
+	if draftA.DependsOn[0] != "task-1" || draftB.DependsOn[0] != "task-1" {
+		t.Fatalf("parallel group dependencies = %#v/%#v, want shared task-1", draftA.DependsOn, draftB.DependsOn)
+	}
+	if len(integrate.DependsOn) != 2 || integrate.DependsOn[0] != "task-2" || integrate.DependsOn[1] != "task-3" {
+		t.Fatalf("integration dependencies = %#v, want [task-2 task-3]", integrate.DependsOn)
+	}
+	if outline.AutoAccept || !draftA.AutoAccept || !draftB.AutoAccept || integrate.AutoAccept {
+		t.Fatalf("autoAccept flags = %v/%v/%v/%v", outline.AutoAccept, draftA.AutoAccept, draftB.AutoAccept, integrate.AutoAccept)
+	}
+	if integrate.AgentTargetID != "local:claude-code" || integrate.Model != "claude-opus-4-8" || integrate.PermissionModeID != "bypassPermissions" {
+		t.Fatalf("task-4 launch configuration = %#v", integrate)
 	}
 }

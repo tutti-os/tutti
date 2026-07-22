@@ -22,7 +22,12 @@ export type {
   TuttiModePlanAssignmentOptionsSource,
   TuttiModePlanReviewSnapshot,
   TuttiModePlanReviewRuntime,
-  TuttiModePlanTaskAssignmentInput
+  TuttiModePlanTaskAssignmentInput,
+  TuttiPlanIssueMaterializationFailure,
+  TuttiPlanIssueQueryResult,
+  TuttiPlanIssueSnapshot,
+  TuttiPlanIssueSource,
+  TuttiPlanIssueTaskSnapshot
 } from "./workspaceWorkflow";
 export type { AgentGUIComposerAppendRequest } from "./agent-gui/agentGuiNode/controller/useAgentGUIComposerAppendRequest";
 export {

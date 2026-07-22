@@ -14,6 +14,11 @@ import {
   TuttiPlanReviewBanner,
   type TuttiPlanReviewBannerLabels
 } from "../TuttiPlanReviewBanner";
+import {
+  TuttiPlanIssueStatusStrip,
+  type TuttiPlanIssueStatusStripCounts,
+  type TuttiPlanIssueStatusStripLabels
+} from "../TuttiPlanIssueStatusStrip";
 import type {
   AgentGUINodeViewModel,
   AgentGUISessionChrome
@@ -66,6 +71,12 @@ interface AgentGUIBottomDockPaneProps {
   tuttiPlanReviewLabels: TuttiPlanReviewBannerLabels;
   onCancelTuttiPlanReview: () => void;
   onTuttiPlanReviewIntensityChange: (value: number) => void;
+  /** Live subtask counts for the accepted plan Issue; anchors to the panel. */
+  tuttiPlanIssueStatus:
+    | (TuttiPlanIssueStatusStripCounts & { title: string })
+    | null;
+  tuttiPlanIssueStripLabels: TuttiPlanIssueStatusStripLabels;
+  onJumpToTuttiPlanIssue: () => void;
 }
 
 export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
@@ -94,7 +105,10 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   tuttiPlanReview,
   tuttiPlanReviewLabels,
   onCancelTuttiPlanReview,
-  onTuttiPlanReviewIntensityChange
+  onTuttiPlanReviewIntensityChange,
+  tuttiPlanIssueStatus,
+  tuttiPlanIssueStripLabels,
+  onJumpToTuttiPlanIssue
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
   const previewMode = composerProps.previewMode === true;
@@ -204,6 +218,14 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           }}
           onIntensityChange={onTuttiPlanReviewIntensityChange}
           onCancel={onCancelTuttiPlanReview}
+        />
+      ) : null}
+      {tuttiPlanIssueStatus ? (
+        <TuttiPlanIssueStatusStrip
+          counts={tuttiPlanIssueStatus}
+          labels={tuttiPlanIssueStripLabels}
+          title={tuttiPlanIssueStatus.title}
+          onJump={onJumpToTuttiPlanIssue}
         />
       ) : null}
       {bottomDockReplacementPrompt ? (

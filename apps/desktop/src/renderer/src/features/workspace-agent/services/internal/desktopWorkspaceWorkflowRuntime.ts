@@ -12,7 +12,9 @@ import type {
   TuttiModePlanAssignmentOptionsSource,
   TuttiModePlanReviewSnapshot,
   TuttiModePlanReviewRuntime,
-  TuttiModePlanTaskAssignmentInput
+  TuttiModePlanTaskAssignmentInput,
+  TuttiPlanIssueQueryResult,
+  TuttiPlanIssueSource
 } from "@tutti-os/agent-gui";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 
@@ -20,11 +22,16 @@ export interface DesktopTuttiModePlanReviewRuntimeInput {
   tuttidClient: Pick<
     TuttidClient,
     | "listPendingWorkspaceWorkflows"
+    | "listWorkspaceWorkflows"
     | "decideWorkspaceWorkflowCheckpoint"
     | "listAgentTargets"
     | "listWorkspaceAgents"
     | "getAgentProviderComposerOptions"
     | "listModelPlans"
+    | "getWorkspaceIssueDetail"
+    | "getWorkspaceIssueTaskDetail"
+    | "updateWorkspaceIssueTask"
+    | "cancelWorkspaceIssueExecution"
   >;
   eventStreamClient?: Pick<
     TuttidEventStreamClient,
@@ -78,8 +85,11 @@ function toReviewSnapshot(
           permissionModeId: task.permissionModeId,
           reasoningEffort: task.reasoningEffort,
           executionDirectory: task.executionDirectory,
-          dependsOn: [...task.dependsOn],
-          parallelizable: task.parallelizable
+          // Same daemon omit-empty hazard as issue task dependencyTaskIds:
+          // spreading an omitted array throws and would reject the review load.
+          dependsOn: task.dependsOn ? [...task.dependsOn] : [],
+          parallelizable: task.parallelizable,
+          autoAccept: task.autoAccept
         }))
       }
     })),
@@ -127,6 +137,9 @@ function toTaskAssignmentRequest(
     ...(assignment.parallelizable !== undefined &&
     assignment.parallelizable !== null
       ? { parallelizable: assignment.parallelizable }
+      : {}),
+    ...(assignment.autoAccept !== undefined && assignment.autoAccept !== null
+      ? { autoAccept: assignment.autoAccept }
       : {})
   }));
 }
@@ -308,6 +321,26 @@ export function createDesktopTuttiModePlanReviewRuntime(
         },
         { scope: { workspaceId } }
       );
+      // The daemon's canonical turn fan-out reports every root-turn
+      // settlement on the activity stream. Relay it as the plan read-repair
+      // trigger: a plan proposed mid-turn announces itself through one
+      // workflow event, and if that single event is dropped no later
+      // workflow signal re-reads review state.
+      const unsubscribeActivity = eventStreamClient.subscribe(
+        "agent.activity.updated",
+        (event) => {
+          const payload = event.payload;
+          if (payload.workspaceId.trim() !== workspaceId) return;
+          if (payload.eventType !== "turn_update") return;
+          if (payload.data.turn.phase !== "settled") return;
+          listener({
+            kind: "session_settled",
+            workspaceId,
+            sourceSessionId: payload.agentSessionId
+          });
+        },
+        { scope: { workspaceId } }
+      );
       const unsubscribeConnection = eventStreamClient.subscribeConnectionState(
         (state) => {
           if (state === "connected") {
@@ -325,10 +358,184 @@ export function createDesktopTuttiModePlanReviewRuntime(
 
       return () => {
         unsubscribe();
+        unsubscribeActivity();
         unsubscribeConnection();
       };
     },
 
-    assignmentOptions: createAssignmentOptionsSource(input.tuttidClient)
+    assignmentOptions: createAssignmentOptionsSource(input.tuttidClient),
+    planIssues: createPlanIssueSource(input)
+  };
+}
+
+type IssueMaterializationCandidate =
+  | {
+      outcome: "succeeded";
+      issueId: string;
+      snapshot: WorkspaceWorkflowSnapshot;
+    }
+  | {
+      outcome: "failed";
+      errorMessage: string | null;
+      snapshot: WorkspaceWorkflowSnapshot;
+    };
+
+// The newest create_issue outcome across the session's workflows decides what
+// the conversation shows: the materialized Issue, or the durable failure that
+// would otherwise leave an accepted plan with no panel at all.
+function latestIssueMaterialization(
+  snapshots: readonly WorkspaceWorkflowSnapshot[]
+): IssueMaterializationCandidate | null {
+  const candidates = snapshots.flatMap((snapshot) =>
+    snapshot.operations
+      .filter((operation) => operation.kind === "create_issue")
+      .flatMap(
+        (
+          operation
+        ): {
+          candidate: IssueMaterializationCandidate;
+          timestamp: number;
+        }[] => {
+          const timestamp =
+            operation.completedAtUnixMs ?? operation.updatedAtUnixMs ?? 0;
+          if (operation.status === "succeeded" && operation.issueId?.trim()) {
+            return [
+              {
+                candidate: {
+                  outcome: "succeeded" as const,
+                  issueId: operation.issueId.trim(),
+                  snapshot
+                },
+                timestamp
+              }
+            ];
+          }
+          if (operation.status === "failed") {
+            return [
+              {
+                candidate: {
+                  outcome: "failed" as const,
+                  errorMessage: operation.errorMessage?.trim() || null,
+                  snapshot
+                },
+                timestamp
+              }
+            ];
+          }
+          return [];
+        }
+      )
+  );
+  candidates.sort(
+    (left, right) =>
+      right.timestamp - left.timestamp ||
+      right.candidate.snapshot.workflow.updatedAtUnixMs -
+        left.candidate.snapshot.workflow.updatedAtUnixMs
+  );
+  return candidates[0]?.candidate ?? null;
+}
+
+// Read-only source for the conversation's embedded plan-issue panel: resolve
+// the materialized Issue through the authoritative workspace workflow
+// operation and relay live issue updates. Mutations stay in the Issue Manager.
+function createPlanIssueSource(
+  input: DesktopTuttiModePlanReviewRuntimeInput
+): TuttiPlanIssueSource {
+  return {
+    async getSessionPlanIssue({
+      workspaceId,
+      sourceSessionId
+    }): Promise<TuttiPlanIssueQueryResult> {
+      const workflows = await input.tuttidClient.listWorkspaceWorkflows(
+        workspaceId,
+        sourceSessionId
+      );
+      const match = latestIssueMaterialization(workflows);
+      if (!match) return null;
+      if (match.outcome === "failed") {
+        return {
+          kind: "materialization_failed",
+          workflowId: match.snapshot.workflow.id,
+          sourceTurnId: match.snapshot.workflow.sourceTurnId ?? null,
+          errorMessage: match.errorMessage
+        };
+      }
+      const detail = await input.tuttidClient.getWorkspaceIssueDetail(
+        workspaceId,
+        match.issueId
+      );
+      return {
+        kind: "issue",
+        issue: {
+          workflowId: match.snapshot.workflow.id,
+          sourceTurnId: match.snapshot.workflow.sourceTurnId ?? null,
+          issueId: detail.issue.issueId,
+          topicId: detail.issue.topicId,
+          title: detail.issue.title,
+          tasks: detail.tasks.map((task) => ({
+            taskId: task.taskId,
+            title: task.title,
+            content: task.content,
+            status: task.status,
+            sortIndex: task.sortIndex,
+            parallelizable: task.parallelizable === true,
+            autoAccept: task.autoAccept === true,
+            // The daemon omits empty arrays, so dependencyTaskIds arrives
+            // undefined for any task with no dependencies (e.g. the first task
+            // of every plan) despite the generated type declaring it required.
+            // Spreading undefined throws, which rejected getSessionPlanIssue
+            // and left the embedded panel permanently empty. Coalesce before
+            // spread.
+            dependencyTaskIds: task.dependencyTaskIds
+              ? [...task.dependencyTaskIds]
+              : []
+          }))
+        }
+      };
+    },
+    subscribeIssueUpdates(workspaceId, listener) {
+      const eventStreamClient = input.eventStreamClient;
+      if (!eventStreamClient) return () => undefined;
+      return eventStreamClient.subscribe(
+        "workspace.issue.updated",
+        (event) => {
+          listener({ issueId: event.payload.issueId });
+        },
+        { scope: { workspaceId } }
+      );
+    },
+    // Acceptance decisions are thin status transitions; tuttid owns the
+    // acceptance-state machine, dispatch advance, and completion notification.
+    async acceptTask({ workspaceId, issueId, taskId }): Promise<void> {
+      await input.tuttidClient.updateWorkspaceIssueTask(
+        workspaceId,
+        issueId,
+        taskId,
+        { status: "completed" }
+      );
+    },
+    async rejectTask({ workspaceId, issueId, taskId }): Promise<void> {
+      await input.tuttidClient.updateWorkspaceIssueTask(
+        workspaceId,
+        issueId,
+        taskId,
+        { status: "not_started" }
+      );
+    },
+    async cancelExecution({ workspaceId, issueId }): Promise<void> {
+      await input.tuttidClient.cancelWorkspaceIssueExecution(
+        workspaceId,
+        issueId
+      );
+    },
+    async resolveTaskSession({ workspaceId, issueId, taskId }) {
+      const detail = await input.tuttidClient.getWorkspaceIssueTaskDetail(
+        workspaceId,
+        issueId,
+        taskId
+      );
+      const agentSessionId = detail.latestRun?.agentSessionId?.trim() ?? "";
+      return agentSessionId ? { agentSessionId } : null;
+    }
   };
 }

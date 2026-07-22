@@ -19,6 +19,22 @@ func registerIssueRoutes(mux *http.ServeMux, wrapper *tuttigenerated.ServerInter
 		}
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/from-plan", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.CreateWorkspaceIssueFromPlan(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/auto-token-budget-estimate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.EstimateWorkspaceIssueAutoTokenBudget(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/issue-references/search", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)
@@ -76,6 +92,14 @@ func registerIssueRoutes(mux *http.ServeMux, wrapper *tuttigenerated.ServerInter
 			return
 		}
 		wrapper.RemoveWorkspaceIssueContextRef(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/cancel-execution", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.CancelWorkspaceIssueExecution(w, r)
 	})
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/runs", func(w http.ResponseWriter, r *http.Request) {

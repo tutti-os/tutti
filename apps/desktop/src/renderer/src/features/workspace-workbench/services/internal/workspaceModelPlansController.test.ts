@@ -61,6 +61,73 @@ test("WorkspaceModelPlansController keeps default refresh Plan-only", async () =
   assert.equal(bindingLoads, 1);
 });
 
+test("WorkspaceModelPlansController owns first-use launch assembly and state", async () => {
+  const launches: Parameters<
+    NonNullable<WorkspaceModelPlansControllerDependencies["launchAgentGui"]>
+  >[0][] = [];
+  const { controller, store } = createController(
+    {
+      listModelPlans: async () => [
+        {
+          ...createPlan("plan-1", "openai"),
+          defaultModel: "gpt-5.5",
+          name: "OpenAI Plan"
+        }
+      ],
+      listAgentTargets: async () => [
+        createAgentTarget("local:codex", "codex", true, 1),
+        createAgentTarget("local:claude", "claude_code", true, 2)
+      ]
+    },
+    async (input) => {
+      launches.push(input);
+      assert.equal(store.modelPlans.firstUseLaunchingPlanID, "plan-1");
+      return true;
+    }
+  );
+
+  await controller.refreshPlans();
+  store.agents.harnessTargets = [
+    {
+      enabled: true,
+      id: "local:codex",
+      name: "Codex",
+      provider: "codex"
+    },
+    {
+      enabled: true,
+      id: "local:claude",
+      name: "Claude Code",
+      provider: "claude_code"
+    }
+  ];
+  await controller.launchFirstUse("plan-1", "local:codex");
+
+  assert.equal(launches.length, 1);
+  assert.deepEqual(
+    {
+      ...launches[0],
+      draftPrompt: undefined
+    },
+    {
+      agentTargetId: "local:codex",
+      draftPrompt: undefined,
+      model: "gpt-5.5",
+      modelPlanId: "plan-1",
+      openInNewWindow: true,
+      provider: "codex",
+      workspaceId: "workspace-1"
+    }
+  );
+  assert.match(launches[0]?.draftPrompt ?? "", /OpenAI Plan/);
+  assert.equal(store.modelPlans.firstUseLaunchingPlanID, null);
+  assert.equal(store.modelPlans.firstUseLaunchFailedPlanID, null);
+
+  await controller.launchFirstUse("plan-1", "local:claude");
+  assert.equal(launches.length, 1);
+  assert.equal(store.modelPlans.firstUseLaunchFailedPlanID, "plan-1");
+});
+
 test("WorkspaceModelPlansController saves a new plan draft", async () => {
   const created: unknown[] = [];
   const detectRequests: unknown[] = [];
@@ -870,7 +937,10 @@ test("WorkspaceModelPlansController records a failed enable toggle inline", asyn
   assert.equal(store.modelPlans.plans[0]?.enabled, true);
 });
 
-function createController(overrides: Partial<ModelPlansClient>): {
+function createController(
+  overrides: Partial<ModelPlansClient>,
+  launchAgentGui?: WorkspaceModelPlansControllerDependencies["launchAgentGui"]
+): {
   controller: WorkspaceModelPlansController;
   notifications: string[];
   store: ReturnType<typeof createWorkspaceSettingsStore>;
@@ -880,6 +950,7 @@ function createController(overrides: Partial<ModelPlansClient>): {
   const notifications: string[] = [];
   const controller = new WorkspaceModelPlansController({
     client: createModelPlansClient(overrides),
+    launchAgentGui,
     notifications: createNotificationRecorder(notifications),
     store
   });

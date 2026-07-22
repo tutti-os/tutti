@@ -22,6 +22,7 @@ const labels: TuttiModePlanPanelLabels = {
   permissionMode: "Permission mode",
   reasoningEffort: "Reasoning effort",
   parallelizable: "Parallel",
+  autoAccept: "Auto-accept",
   notSpecified: "Not specified",
   assignmentOptionsLoading: "Loading options..."
 };
@@ -81,7 +82,8 @@ const panel: TuttiModePlanPanelViewModel = {
       reasoningEffort: "high",
       executionDirectory: "/workspace/implement",
       dependsOn: ["foundation", "contract-tests"],
-      parallelizable: true
+      parallelizable: true,
+      autoAccept: true
     }
   ]
 };

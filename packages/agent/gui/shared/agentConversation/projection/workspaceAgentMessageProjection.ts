@@ -32,12 +32,33 @@ export function projectWorkspaceAgentMessagesToConversationVM(
   return projectAgentConversationVM(detail, options);
 }
 
+const tuttiPlanIssueDispatchTriggerPrefix = "issue:tutti-mode-plan-";
+
+/**
+ * Per-run delegate cards for tutti-plan Issue dispatch stay out of the
+ * timeline: the embedded plan-issue panel carries that state per task, and a
+ * duplicate card per run reads as unrelated noise. Collaboration records from
+ * any other source keep their cards.
+ */
+function isTuttiPlanIssueDispatchCollaboration(
+  message: AgentActivityMessage
+): boolean {
+  if (message.kind?.trim() !== "collaboration") {
+    return false;
+  }
+  const triggerReason = message.payload?.triggerReason;
+  return (
+    typeof triggerReason === "string" &&
+    triggerReason.startsWith(tuttiPlanIssueDispatchTriggerPrefix)
+  );
+}
+
 export function projectWorkspaceAgentMessagesToTimelineItems(
   messages: readonly AgentActivityMessage[]
 ): WorkspaceAgentActivityTimelineItem[] {
-  const sortedMessages = latestMessageSnapshots(messages).sort(
-    compareMessagesByDisplayOrder
-  );
+  const sortedMessages = latestMessageSnapshots(messages)
+    .filter((message) => !isTuttiPlanIssueDispatchCollaboration(message))
+    .sort(compareMessagesByDisplayOrder);
   const mergedToolPayloadByKey = new Map<string, Record<string, unknown>>();
 
   return sortedMessages.map((message, index) => {

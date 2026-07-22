@@ -324,6 +324,7 @@ test("controller actions save edited issues without reporting created", async ()
   assert.deepEqual(updateIssueCalls, [
     {
       content: "Updated issue body",
+      dispatchPaused: false,
       issueId: "issue-1",
       title: "Updated issue",
       workspaceId: "workspace-1"

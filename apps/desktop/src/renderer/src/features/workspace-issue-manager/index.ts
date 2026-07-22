@@ -4,7 +4,8 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import type {
   IssueManagerAgentTargetOptionsAdapter,
-  IssueManagerFileReference
+  IssueManagerFileReference,
+  IssueManagerModelPlanOptionsAdapter
 } from "@tutti-os/workspace-issue-manager/contracts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import {
@@ -42,6 +43,7 @@ export { createDesktopIssueManagerIdentityAdapter };
 
 export function createDesktopIssueManagerFeature(input: {
   agentTargetOptions?: IssueManagerAgentTargetOptionsAdapter;
+  modelPlanOptions?: IssueManagerModelPlanOptionsAdapter;
   agentSessionCreator?: DesktopIssueManagerAgentSessionCreator;
   hostFilesApi: DesktopHostFilesApi;
   i18n: I18nRuntime<string>;
@@ -108,6 +110,7 @@ export function createDesktopIssueManagerFeature(input: {
       reporterService: input.reporterService
     }),
     agentTargetOptions: input.agentTargetOptions,
+    modelPlanOptions: input.modelPlanOptions,
     agentRunner: createDesktopIssueManagerAgentRunner({
       agentSessionCreator: input.agentSessionCreator,
       i18n: input.i18n,

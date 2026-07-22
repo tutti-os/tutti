@@ -17,16 +17,37 @@ type ModelEndpointConfig struct {
 	Protocol string
 	BaseURL  string
 	APIKey   string
-	// Model is the default model id for the session.
-	Model               string
+	// Model is the default model id for the session; providers may still
+	// switch models within the plan on later calls.
+	Model string
+	// Models lists every model the plan authorizes (redaction-safe ids and
+	// display names). Providers that materialize a session-scoped catalog
+	// (OpenCode's provider block) need the full list, not just the default.
+	Models              []ModelEndpointModel
 	PlanUpdatedAtUnixMS int64
 }
 
+// ModelEndpointModel is one selectable model exposed by the bound plan.
+type ModelEndpointModel struct {
+	ID   string
+	Name string
+}
+
+// ModelPlanProviderID names the provider entry injected into a session-scoped
+// provider config (Codex `[model_providers.*]` table, OpenCode `provider`
+// block). The service layer namespaces OpenCode composer model values with the
+// same id, so the two sides must never drift.
+const ModelPlanProviderID = "tutti-model-plan"
+
 // codexModelPlanProviderID names the injected Codex model provider entry.
-const codexModelPlanProviderID = "tutti-model-plan"
+const codexModelPlanProviderID = ModelPlanProviderID
+
+// ModelPlanAPIKeyEnv carries the plan credential into the provider process;
+// session-scoped configs reference it instead of embedding the key.
+const ModelPlanAPIKeyEnv = "TUTTI_MODEL_PLAN_API_KEY"
 
 // codexModelPlanAPIKeyEnv carries the plan credential into the Codex process.
-const codexModelPlanAPIKeyEnv = "TUTTI_MODEL_PLAN_API_KEY"
+const codexModelPlanAPIKeyEnv = ModelPlanAPIKeyEnv
 
 func (c *ModelEndpointConfig) valid() bool {
 	return c != nil && strings.TrimSpace(c.BaseURL) != "" && strings.TrimSpace(c.APIKey) != ""
@@ -38,6 +59,27 @@ func (c *ModelEndpointConfig) supportsCodex() bool {
 
 func (c *ModelEndpointConfig) supportsClaudeCode() bool {
 	return c.valid() && strings.TrimSpace(c.Protocol) == "anthropic"
+}
+
+func (c *ModelEndpointConfig) supportsOpenCode() bool {
+	return c.valid() && strings.TrimSpace(c.Protocol) == "openai"
+}
+
+// OpenCodePlanModelValue renders a plan model id in OpenCode's
+// "<provider>/<model>" addressing, rooted at the injected provider entry.
+// Already-namespaced values pass through unchanged.
+func OpenCodePlanModelValue(modelID string) string {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" || strings.HasPrefix(modelID, ModelPlanProviderID+"/") {
+		return modelID
+	}
+	return ModelPlanProviderID + "/" + modelID
+}
+
+// OpenCodePlanModelID strips the injected-provider namespace from an OpenCode
+// composer model value, returning the plan-domain model id.
+func OpenCodePlanModelID(value string) string {
+	return strings.TrimPrefix(strings.TrimSpace(value), ModelPlanProviderID+"/")
 }
 
 // modelEndpointClaudeEnv maps an anthropic-protocol plan endpoint onto the

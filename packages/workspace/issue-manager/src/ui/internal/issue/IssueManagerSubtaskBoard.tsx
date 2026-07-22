@@ -19,6 +19,7 @@ import {
 import type { IssueManagerI18nRuntime } from "../../../i18n/issueManagerI18n.ts";
 import { IssueManagerTitleTooltip } from "../content/IssueManagerTitleTooltip.tsx";
 import { summarizeIssueManagerContent } from "../panel/IssueManagerPanelText.ts";
+import { IssueManagerTaskStructureChips } from "./IssueManagerTaskStructure.tsx";
 
 type IssueManagerSubtaskBoardStatus =
   | "not_started"
@@ -734,6 +735,9 @@ function IssueManagerSubtaskBoardColumn({
                     {task.title}
                   </span>
                 </IssueManagerTitleTooltip>
+                <span className="mt-1.5 block empty:hidden">
+                  <IssueManagerTaskStructureChips copy={copy} task={task} />
+                </span>
                 <p className="mt-2 line-clamp-3 text-[11px] font-normal leading-[1.5] text-[var(--text-secondary)] [overflow-wrap:anywhere]">
                   {summarizeIssueManagerContent(
                     task.content,

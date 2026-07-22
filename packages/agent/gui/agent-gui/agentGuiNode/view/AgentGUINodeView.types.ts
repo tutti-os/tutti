@@ -19,6 +19,7 @@ import type {
   AgentGUIAgentTarget
 } from "../../../types";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
+import type { PlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type { AgentGUIAccountMenuState } from "../accountMenuState";
 import type {
@@ -36,8 +37,12 @@ import type {
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIEngagementEventSink } from "../engagement/agentGUIEngagement.types";
 import type { OpenAgentEnvPanelInput } from "../../../shared/agentEnv";
-import type { TuttiModePlanPanelLabels } from "../../../workspaceWorkflow";
+import type {
+  TuttiModePlanPanelLabels,
+  TuttiPlanIssuePanelLabels
+} from "../../../workspaceWorkflow";
 import type { TuttiPlanReviewBannerLabels } from "../TuttiPlanReviewBanner";
+import type { TuttiPlanIssueStatusStripLabels } from "../TuttiPlanIssueStatusStrip";
 
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
@@ -136,6 +141,8 @@ export interface AgentGUIViewLabels {
   tuttiModeUpdateUncertain: string;
   tuttiModePlanPanel: TuttiModePlanPanelLabels;
   tuttiModePlanBanner: TuttiPlanReviewBannerLabels;
+  tuttiModePlanIssuePanel: TuttiPlanIssuePanelLabels;
+  tuttiModePlanIssueStrip: TuttiPlanIssueStatusStripLabels;
   tuttiModePlanSendAccept: string;
   tuttiModePlanSendRequestChanges: string;
   /** Auto feedback for an empty send after the intensity diverged. */
@@ -144,6 +151,8 @@ export interface AgentGUIViewLabels {
   tuttiModePlanReplanFeedbackSuffix: (to: string) => string;
   tuttiModePlanLoadFailed: string;
   tuttiModePlanRetry: string;
+  /** Accepted plan whose Issue creation durably failed; message is the cause. */
+  tuttiModePlanIssueCreateFailed: (message: string) => string;
   planModeDescription?: string;
   planModeOnLabel: string;
   planModeOffLabel: string;
@@ -528,6 +537,7 @@ export interface AgentGUINodeViewProps {
     agentTargetId?: string | null;
     draftPrompt: string;
     provider: AgentGUIProvider;
+    sourceAgentSessionId: string;
     userProjectPath?: string | null;
   }) => void | Promise<void>;
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
@@ -615,9 +625,12 @@ export interface AgentGUINodeViewProps {
       planMode?: boolean;
       permissionMode?: string;
     }) => void;
+    /** Re-issues the composer-options load after a terminal error state. */
+    retryComposerOptions: () => void;
     setTuttiModeActive: (active: boolean) => void;
     setTuttiModeOrchestrationIntensity: (value: number) => void;
     retryTuttiModeActivation: () => void;
+    updatePlanIssueBudgetPreset: (preset: PlanIssueBudgetPreset) => void;
     selectHomeComposerAgentTarget: (input: {
       provider: AgentGUIProvider;
       agentTargetId?: string | null;

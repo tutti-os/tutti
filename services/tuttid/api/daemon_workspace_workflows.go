@@ -281,6 +281,7 @@ func workflowTaskAssignmentsFromGenerated(values *[]tuttigenerated.WorkspaceWork
 			PermissionModeID: value.PermissionModeId,
 			ReasoningEffort:  value.ReasoningEffort,
 			Parallelizable:   value.Parallelizable,
+			AutoAccept:       value.AutoAccept,
 		})
 	}
 	return result
@@ -340,6 +341,7 @@ func generatedTuttiModePlanTask(task tuttimodeplanservice.PlanTask) tuttigenerat
 		ExecutionDirectory: stringPointerIfNotBlank(task.ExecutionDirectory),
 		DependsOn:          append([]string{}, task.DependsOn...),
 		Parallelizable:     task.Parallelizable,
+		AutoAccept:         task.AutoAccept,
 	}
 }
 

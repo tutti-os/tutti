@@ -394,9 +394,17 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		PreferencesStore: preferencesStore,
 	}
 	issueService := workspaceservice.IssueManagerService{
-		AgentSessionReader: agentActivityProjection,
-		Publisher:          eventstreamservice.WorkspaceIssuePublisher{Service: events},
-		Store:              issueStore,
+		AgentSessionCreator: agentSessionService,
+		AgentSessionReader:  agentActivityProjection,
+		Publisher:           eventstreamservice.WorkspaceIssuePublisher{Service: events},
+		Store:               issueStore,
+		AgentTargetReader:   agentTargetStore,
+		PlanningTimeline:    agentservice.IssuePlanningTimelineReporter{Projection: agentActivityProjection},
+		CompletionNotifier: &tuttiPlanIssueCompletionDispatcher{
+			Agents: agentSessionService,
+		},
+		RunTurnResolver: agentActivityRepo,
+		MutationLocks:   workspaceservice.NewIssueMutationLocks(),
 	}
 	tuttiModePlans := &tuttimodeplanservice.Service{
 		Store:                  workflowStore,
@@ -433,6 +441,10 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 			return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover Tutti Mode plan operations: %w", err)
 		}
 	}
+	issueService.RunSessionCanceller = agentCollaborationSessionCanceller{Service: agentSessionService}
+	// A user's stop on a planning conversation cascades to every running task
+	// run its accepted plan dispatched.
+	agentSessionService.TurnCancelObserver = &issueService
 	issueService.RunReconcileQueue = workspaceservice.NewIssueRunReconcileQueue(workspaceservice.IssueRunReconcileQueueOptions{
 		Delay:     3 * time.Second,
 		Interval:  15 * time.Second,
@@ -499,15 +511,17 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Publisher:             eventstreamservice.WorkspaceAppFactoryPublisher{Service: events},
 	}
 	agentActivityProjection.SetSessionMessageObserver(appFactoryService)
-	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, agentSessionService, modelPolicies, automationRules})
+	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, agentSessionService, modelPolicies, automationRules, &issueService})
 	// Canonical root-turn settlements (root-provider aggregation, child-drain
 	// reconcile, cancel) fan out at-least-once to this dedicated opt-in list
-	// only. Automation rules are the only consumer cleared for it today: the
-	// general session-state observers historically never received live turn
-	// settles, and each needs its own semantic ruling before opting in
-	// (W4③-11 — the Issue-run observer, for example, would complete
-	// multi-turn runs on their first settled turn).
-	agentActivityProjection.SetRootTurnSettleStateObserver(agentservice.SessionStateObservers{automationRules})
+	// only. Automation rules and the Issue-run observer are the consumers
+	// cleared for it today: the general session-state observers historically
+	// never received live turn settles, and each needs its own semantic ruling
+	// before opting in (W4③-11). The Issue-run observer matches the settled
+	// turn against the run's initiating "issue-run:<runID>" submit, so an
+	// unrelated turn settling in a delegate session can never complete the
+	// run, and repeated terminal completion is idempotent.
+	agentActivityProjection.SetRootTurnSettleStateObserver(agentservice.SessionStateObservers{automationRules, &issueService})
 	if _, err := appFactoryService.ReconcileInterruptedJobs(ctx); err != nil {
 		agentRuntime.Close()
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("reconcile interrupted app factory jobs: %w", err)

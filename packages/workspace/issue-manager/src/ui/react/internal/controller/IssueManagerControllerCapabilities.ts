@@ -1,6 +1,7 @@
 import type {
   IssueManagerAgentTargetOption,
-  IssueManagerFileAdapter
+  IssueManagerFileAdapter,
+  IssueManagerModelPlanOption
 } from "../../../../contracts/index.ts";
 import type { IssueManagerFeature } from "../../../../core/index.ts";
 
@@ -31,6 +32,39 @@ export function resolveIssueManagerAgentTargetOptions(
   }
 
   return normalizedOptions;
+}
+
+export function normalizeIssueManagerModelPlanOptions(
+  options: readonly IssueManagerModelPlanOption[]
+): readonly IssueManagerModelPlanOption[] {
+  return options.flatMap((option) => {
+    const id = option.id.trim();
+    const name = option.name.trim();
+    const protocol = option.protocol.trim();
+    if (!id || !protocol) return [];
+    const models = option.models.flatMap((model) => {
+      const modelId = model.id.trim();
+      if (!modelId) return [];
+      return [
+        {
+          id: modelId,
+          name: model.name.trim() || modelId,
+          ...(model.tier?.trim() ? { tier: model.tier.trim() } : {})
+        }
+      ];
+    });
+    return [
+      {
+        id,
+        name: name || id,
+        protocol,
+        ...(option.defaultModel?.trim()
+          ? { defaultModel: option.defaultModel.trim() }
+          : {}),
+        models
+      }
+    ];
+  });
 }
 
 export interface IssueManagerControllerCapabilities {

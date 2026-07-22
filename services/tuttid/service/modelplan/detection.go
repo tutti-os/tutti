@@ -257,7 +257,6 @@ func (s *Service) checkAuthAndDiscovery(ctx context.Context, protocol modelplanb
 			discovery.Status = modelplanbiz.StageSkipped
 			return auth, discovery, nil
 		case response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusMethodNotAllowed:
-			lastStatus = response.StatusCode
 			response.Body.Close()
 			continue
 		case response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices:

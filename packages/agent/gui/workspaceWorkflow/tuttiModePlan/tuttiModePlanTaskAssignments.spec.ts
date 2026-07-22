@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   effectiveTaskAssignmentValue,
-  effectiveTaskParallelizable,
+  effectiveTaskFlag,
   mergeTaskAssignmentDraft,
   taskAssignmentInputsFromDrafts
 } from "./tuttiModePlanTaskAssignments";
@@ -23,6 +23,7 @@ function taskViewModel(
     executionDirectory: null,
     dependsOn: [],
     parallelizable: false,
+    autoAccept: false,
     ...overrides
   };
 }
@@ -52,10 +53,11 @@ describe("mergeTaskAssignmentDraft", () => {
     });
   });
 
-  it("keeps the agent-independent parallel opt-in across agent changes", () => {
+  it("keeps the agent-independent toggles across agent changes", () => {
     let drafts = mergeTaskAssignmentDraft({}, "task-1", {
       parallelizable: true
     });
+    drafts = mergeTaskAssignmentDraft(drafts, "task-1", { autoAccept: true });
     drafts = mergeTaskAssignmentDraft(drafts, "task-1", {
       agentTargetId: "agent-2"
     });
@@ -65,10 +67,11 @@ describe("mergeTaskAssignmentDraft", () => {
       model: "",
       permissionModeId: "",
       reasoningEffort: "",
-      parallelizable: true
+      parallelizable: true,
+      autoAccept: true
     });
-    expect(effectiveTaskParallelizable(undefined, true)).toBe(true);
-    expect(effectiveTaskParallelizable(false, true)).toBe(false);
+    expect(effectiveTaskFlag(undefined, true)).toBe(true);
+    expect(effectiveTaskFlag(false, true)).toBe(false);
     const inputs = taskAssignmentInputsFromDrafts(drafts, [
       taskViewModel({ id: "task-1" })
     ]);
@@ -80,7 +83,8 @@ describe("mergeTaskAssignmentDraft", () => {
         model: "",
         permissionModeId: "",
         reasoningEffort: "",
-        parallelizable: true
+        parallelizable: true,
+        autoAccept: true
       }
     ]);
   });

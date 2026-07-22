@@ -44,10 +44,16 @@ type issueCreateFromPlanInput struct {
 }
 
 type issueUpdateInput struct {
-	IssueID string  `cli:"issue-id" validate:"required" description:"Issue to update."`
-	Title   *string `cli:"title" description:"Replace the issue title."`
-	Content *string `cli:"content" description:"Replace the issue content."`
-	Status  *string `cli:"status" description:"Issue status." enum:"not_started,running,pending_acceptance,completed,failed,canceled"`
+	IssueID                string   `cli:"issue-id" validate:"required" description:"Issue to update."`
+	Title                  *string  `cli:"title" description:"Replace the issue title."`
+	Content                *string  `cli:"content" description:"Replace the issue content."`
+	Status                 *string  `cli:"status" description:"Issue status." enum:"not_started,running,pending_acceptance,completed,failed,canceled"`
+	DispatchPaused         *bool    `cli:"dispatch-paused" description:"Pause or resume automatic task dispatch. Pausing never interrupts runs already in flight; resuming immediately re-evaluates eligible tasks."`
+	ReasoningIntensity     *int     `cli:"reasoning-intensity" validate:"min=0,max=100" description:"Default task reasoning intensity from 0 to 100."`
+	OrchestrationIntensity *int     `cli:"orchestration-intensity" validate:"min=0,max=100" description:"Planning and collaboration intensity from 0 to 100."`
+	BudgetMode             *string  `cli:"budget-mode" enum:"auto,fixed" description:"Automatic or fixed token budget."`
+	TokenBudget            *int64   `cli:"token-budget" validate:"min=1" description:"Fixed token limit."`
+	QuotaWaterlinePercent  *float64 `cli:"quota-waterline-percent" validate:"min=0,max=100" description:"Subscription quota soft-limit waterline."`
 }
 
 func (p Provider) newIssueListCommand() cliservice.Command {
@@ -315,13 +321,39 @@ func (p Provider) runIssueUpdate(ctx context.Context, invoke framework.InvokeCon
 	if err := p.requireIssueManager(); err != nil {
 		return nil, err
 	}
-	if input.Title == nil && input.Content == nil && input.Status == nil {
+	if input.Title == nil && input.Content == nil && input.Status == nil && input.DispatchPaused == nil && input.ReasoningIntensity == nil && input.OrchestrationIntensity == nil && input.BudgetMode == nil && input.TokenBudget == nil && input.QuotaWaterlinePercent == nil {
 		return nil, workspaceissues.ErrInvalidArgument
 	}
 	update := workspaceservice.UpdateIssueManagerIssueInput{
-		HasTitle:   input.Title != nil,
-		HasContent: input.Content != nil,
-		HasStatus:  input.Status != nil,
+		HasTitle:          input.Title != nil,
+		HasContent:        input.Content != nil,
+		HasStatus:         input.Status != nil,
+		HasDispatchPaused: input.DispatchPaused != nil,
+	}
+	if input.ReasoningIntensity != nil || input.OrchestrationIntensity != nil {
+		profile := workspaceissues.DefaultExecutionProfile()
+		if input.ReasoningIntensity != nil {
+			profile.ReasoningIntensity = *input.ReasoningIntensity
+		}
+		if input.OrchestrationIntensity != nil {
+			profile.OrchestrationIntensity = *input.OrchestrationIntensity
+		}
+		update.ExecutionProfile = profile
+		update.HasExecutionProfile = true
+	}
+	if input.BudgetMode != nil || input.TokenBudget != nil || input.QuotaWaterlinePercent != nil {
+		budget := workspaceissues.DefaultBudget()
+		if input.BudgetMode != nil {
+			budget.Mode = workspaceissues.BudgetMode(*input.BudgetMode)
+		}
+		if input.TokenBudget != nil {
+			budget.TokenLimit = *input.TokenBudget
+		}
+		if input.QuotaWaterlinePercent != nil {
+			budget.QuotaWaterlinePercent = *input.QuotaWaterlinePercent
+		}
+		update.Budget = budget
+		update.HasBudget = true
 	}
 	if input.Title != nil {
 		update.Title = *input.Title
@@ -331,6 +363,9 @@ func (p Provider) runIssueUpdate(ctx context.Context, invoke framework.InvokeCon
 	}
 	if input.Status != nil {
 		update.Status = *input.Status
+	}
+	if input.DispatchPaused != nil {
+		update.DispatchPaused = *input.DispatchPaused
 	}
 	return p.issues.UpdateIssue(ctx, invoke.WorkspaceID, input.IssueID, update)
 }

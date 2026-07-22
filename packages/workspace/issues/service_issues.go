@@ -146,6 +146,41 @@ func (s Service) UpdateIssue(ctx context.Context, input UpdateIssueInput) (Issue
 		}
 		issue.Status = status
 	}
+	if input.HasDispatchPaused {
+		issue.DispatchPaused = input.DispatchPaused
+	}
+	if input.HasExecutionProfile {
+		profile, ok := NormalizeExecutionProfile(input.ExecutionProfile)
+		if !ok {
+			return Issue{}, ErrInvalidArgument
+		}
+		issue.ExecutionProfile = profile
+		if issue.Budget.Mode == BudgetModeAuto {
+			issue.Budget.TokenLimit = CompileAutoTokenBudget(maxInt(issue.TaskCount, 1), profile)
+		}
+	}
+	if input.HasBudget {
+		budget, ok := NormalizeBudget(input.Budget)
+		if !ok {
+			return Issue{}, ErrInvalidArgument
+		}
+		budget.ConsumedTokens = issue.Budget.ConsumedTokens
+		if !budget.HasRemainingQuota {
+			budget.RemainingQuotaPercent = issue.Budget.RemainingQuotaPercent
+			budget.HasRemainingQuota = issue.Budget.HasRemainingQuota
+		}
+		if budget.Mode == BudgetModeAuto {
+			budget.TokenLimit = CompileAutoTokenBudget(maxInt(issue.TaskCount, 1), issue.ExecutionProfile)
+		}
+		budget.Status = BudgetStatusActive
+		if budget.TokenLimit > 0 && budget.ConsumedTokens >= budget.TokenLimit {
+			budget.Status = BudgetStatusSoftLimited
+		}
+		if budget.HasRemainingQuota && budget.RemainingQuotaPercent <= budget.QuotaWaterlinePercent {
+			budget.Status = BudgetStatusSoftLimited
+		}
+		issue.Budget = budget
+	}
 	issue.UpdatedAtUnixMS = s.nowUnixMS()
 	updated, err := store.UpdateIssue(ctx, issue)
 	if err != nil {

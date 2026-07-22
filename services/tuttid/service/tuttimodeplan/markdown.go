@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
@@ -68,6 +69,11 @@ type PlanTask struct {
 	// may propose it, the reviewer may override it, and it persists onto the
 	// materialized Issue task. Omitted means false (strictly sequential).
 	Parallelizable bool `yaml:"parallelizable"`
+	// AutoAccept lets the planning agent mark a task whose completed result
+	// needs no human review gate: on successful completion the daemon accepts
+	// it automatically and dispatch advances. Omitted means false (the user
+	// accepts each task by hand).
+	AutoAccept bool `yaml:"autoAccept"`
 }
 
 func ParsePlanMarkdown(raw []byte) (PlanDocument, error) {
@@ -115,6 +121,37 @@ func ParsePlanMarkdown(raw []byte) (PlanDocument, error) {
 		return PlanDocument{}, err
 	}
 	return document, nil
+}
+
+// ValidatePlanExecutionIsolation mirrors the Issue Manager's honest-parallelism
+// gate at the agent-facing ingress: an issue-level parallel plan can only
+// materialize when every task runs in its own absolute executionDirectory.
+// Propose/revise must reject the document while the agent can still fix it —
+// after acceptance the failed create_issue operation would strand an accepted
+// workflow with no Issue and nothing to render. Read paths for stored
+// revisions must NOT run this check: documents that predate it stay loadable.
+func ValidatePlanExecutionIsolation(document PlanDocument) error {
+	if document.Execution.Mode != "parallel" {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(document.Tasks))
+	for _, task := range document.Tasks {
+		directory := filepath.Clean(task.ExecutionDirectory)
+		if task.ExecutionDirectory == "" || directory == "." || !filepath.IsAbs(directory) {
+			return fmt.Errorf(
+				"%w: execution.mode \"parallel\" requires every task to set an absolute executionDirectory (task %q). Give each task its own isolated directory, or use execution.mode \"sequential\" and mark independent tasks with parallelizable: true",
+				ErrInvalidTaskGraph, task.ID,
+			)
+		}
+		if _, exists := seen[directory]; exists {
+			return fmt.Errorf(
+				"%w: execution.mode \"parallel\" requires a unique executionDirectory per task; %q is shared by more than one task",
+				ErrInvalidTaskGraph, directory,
+			)
+		}
+		seen[directory] = struct{}{}
+	}
+	return nil
 }
 
 func normalizeAndValidatePlanDocument(document *PlanDocument) error {

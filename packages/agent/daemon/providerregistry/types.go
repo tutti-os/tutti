@@ -42,10 +42,26 @@ const (
 	ModelPlanProtocolOpenAI    ModelPlanProtocol = "openai"
 )
 
+// ModelPlanModelAddressing identifies how a runtime addresses a bound plan's
+// models in composer and settings values. Consumers switch on this strategy,
+// never on provider identity.
+type ModelPlanModelAddressing string
+
+const (
+	// ModelPlanModelAddressingProviderPrefixed namespaces plan model ids as
+	// "<injected-provider>/<model>" — the addressing OpenCode resolves against
+	// the session-scoped provider config injected by runtimeprep. The empty
+	// value means the runtime consumes raw plan model ids.
+	ModelPlanModelAddressingProviderPrefixed ModelPlanModelAddressing = "provider_prefixed"
+)
+
 type RuntimeEndpointDescriptor struct {
 	BaseURLEnvVars    []string
 	ConfigKind        EndpointConfigKind
 	ModelPlanProtocol ModelPlanProtocol
+	// ModelPlanModelAddressing declares the composer/settings addressing for
+	// bound plan models; empty means raw plan model ids.
+	ModelPlanModelAddressing ModelPlanModelAddressing
 }
 
 // InstallerKind is a transport-neutral installer identifier. tuttid converts

@@ -14,6 +14,12 @@ import type {
 } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData } from "../../../types";
 import {
+  normalizePlanIssueBudgetPreset,
+  planIssueBudgetPresetsEqual,
+  type PlanIssueBudgetPreset
+} from "../../../shared/agentConversation/planImplementationPresentation";
+import { useStableControllerEventCallback } from "./agentGuiController.stableHelpers";
+import {
   cloneComposerSettings,
   nodeDefaultDraftKey,
   normalizePermissionModeId,
@@ -105,6 +111,7 @@ export function useAgentGUIComposerSettingsActions(
     isMountedRef,
     loadDraftComposerOptions,
     onComposerDefaultsAuthorityReloadedRef,
+    onDataChangeRef,
     onRememberComposerDefaultsRef,
     onShowMessageRef,
     reloadComposerOptionsForTarget,
@@ -422,7 +429,30 @@ export function useAgentGUIComposerSettingsActions(
   );
   updateComposerSettingsRef.current = updateComposerSettings;
 
-  return { updateComposerSettings };
+  const updatePlanIssueBudgetPreset = useStableControllerEventCallback(
+    (preset: PlanIssueBudgetPreset) => {
+      const normalized = normalizePlanIssueBudgetPreset(preset);
+      if (!normalized) return;
+      onDataChangeRef.current((current) =>
+        planIssueBudgetPresetsEqual(current.planIssueBudgetPreset, normalized)
+          ? current
+          : { ...current, planIssueBudgetPreset: normalized }
+      );
+    }
+  );
+
+  // Recovery entry for the composer-options terminal error state: re-issues
+  // the draft options load (the engine grants a fresh retry budget per
+  // user-driven request).
+  const retryComposerOptions = useStableControllerEventCallback(() => {
+    loadDraftComposerOptions({ force: true });
+  });
+
+  return {
+    retryComposerOptions,
+    updateComposerSettings,
+    updatePlanIssueBudgetPreset
+  };
 }
 
 function invokeRememberComposerDefaults(

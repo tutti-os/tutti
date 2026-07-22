@@ -189,6 +189,76 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/issues/from-plan:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    post:
+      operationId: createWorkspaceIssueFromPlan
+      tags:
+        - issue
+      summary: Create one executable Issue and its tasks from an Ultra or traditional Plan
+      description: The returned Issue remains durable even when execution is started later. Task assignments and dependencies are validated as one graph before task execution can start.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIssueManagerIssueFromPlanRequest"
+      responses:
+        "201":
+          description: Workspace issue and tasks created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueManagerIssueDetailResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/WorkspaceIssueResourceExistsError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/issues/auto-token-budget-estimate:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    post:
+      operationId: estimateWorkspaceIssueAutoTokenBudget
+      tags:
+        - issue
+      summary: Estimate the authoritative automatic token budget for a proposed Issue graph
+      description: Uses the same scale, intensity, and comparable completed-run history compiler as Issue creation. No Issue or task is persisted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EstimateIssueManagerAutoTokenBudgetRequest"
+      responses:
+        "200":
+          description: Automatic token budget estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueManagerAutoTokenBudgetEstimate"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/issue-references/search:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -363,6 +433,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeleteIssueManagerContextRefResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/issues/{issueID}/cancel-execution:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/IssueManagerIssueID"
+    post:
+      operationId: cancelWorkspaceIssueExecution
+      tags:
+        - issue
+      summary: Stop one issue-manager issue's execution
+      description: Durably pauses future task dispatch, cancels the live agent turn of every running run's session, and settles those runs as canceled. Idempotent.
+      responses:
+        "200":
+          description: Workspace issue execution canceled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancelIssueManagerExecutionResponse"
         "400":
           $ref: "#/components/responses/InvalidRequestError"
         "401":
@@ -1019,6 +1118,17 @@ components:
       enum:
         - active
         - soft_limited
+    IssueManagerAcceptanceState:
+      type: string
+      description: Three-step completion ladder. Only user_accepted closes a successful task.
+      enum:
+        - agent_claimed
+        - auto_checked
+        - user_accepted
+      x-enum-varnames:
+        - IssueManagerAcceptanceStateAgentClaimed
+        - IssueManagerAcceptanceStateAutoChecked
+        - IssueManagerAcceptanceStateUserAccepted
     IssueManagerExecutionProfile:
       type: object
       additionalProperties: false
@@ -1298,6 +1408,9 @@ components:
         - executionDirectory
         - dependencyTaskIds
         - parallelizable
+        - autoAccept
+        - acceptanceState
+        - acceptanceSummary
         - creatorUserId
         - creatorDisplayName
         - creatorAvatarUrl
@@ -1348,6 +1461,15 @@ components:
             Opts this task out of the Issue's sequential default so it may run
             alongside other dependency-ready tasks. False keeps strict
             sequential ordering.
+        autoAccept:
+          type: boolean
+          description: >-
+            Bypasses the human acceptance gate: a successful completion is
+            accepted automatically and dispatch advances.
+        acceptanceState:
+          $ref: "#/components/schemas/IssueManagerAcceptanceState"
+        acceptanceSummary:
+          type: string
         creatorUserId:
           type: string
         creatorDisplayName:
@@ -1656,6 +1778,71 @@ components:
           minimum: 0
         statusCounts:
           $ref: "#/components/schemas/IssueManagerStatusCounts"
+    CreateIssueManagerIssueFromPlanRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - issue
+        - tasks
+      properties:
+        issue:
+          $ref: "#/components/schemas/CreateIssueManagerIssueRequest"
+        tasks:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CreateIssueManagerTaskRequest"
+    EstimateIssueManagerAutoTokenBudgetRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - executionProfile
+        - tasks
+      properties:
+        executionProfile:
+          $ref: "#/components/schemas/IssueManagerExecutionProfile"
+        tasks:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/IssueManagerAutoTokenBudgetTaskInput"
+    IssueManagerAutoTokenBudgetTaskInput:
+      type: object
+      additionalProperties: false
+      properties:
+        agentTargetId:
+          type: string
+        modelPlanId:
+          type: string
+        model:
+          type: string
+    IssueManagerAutoTokenBudgetEstimate:
+      type: object
+      additionalProperties: false
+      required:
+        - tokenLimit
+        - deterministicTokenLimit
+        - historicalTokenEstimate
+        - matchedTaskCount
+      properties:
+        tokenLimit:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Effective auto budget that Issue creation will compile for the same input.
+        deterministicTokenLimit:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Scale and intensity estimate before historical calibration.
+        historicalTokenEstimate:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Sum of comparable completed-run averages before headroom and blending.
+        matchedTaskCount:
+          type: integer
+          minimum: 0
     IssueManagerIssueDetailResponse:
       type: object
       additionalProperties: false
@@ -1893,6 +2080,8 @@ components:
             minLength: 1
         parallelizable:
           type: boolean
+        autoAccept:
+          type: boolean
     CreateIssueManagerTasksRequest:
       type: object
       additionalProperties: false
@@ -1925,6 +2114,12 @@ components:
           minimum: 0
         parallelizable:
           type: boolean
+        autoAccept:
+          type: boolean
+        acceptanceState:
+          $ref: "#/components/schemas/IssueManagerAcceptanceState"
+        acceptanceSummary:
+          type: string
     AddIssueManagerContextRefItem:
       type: object
       additionalProperties: false
@@ -2003,6 +2198,12 @@ components:
           type: string
         errorMessage:
           type: string
+        usage:
+          $ref: "#/components/schemas/IssueManagerTokenUsage"
+        remainingQuotaPercent:
+          type: number
+          format: double
+          minimum: 0
         outputs:
           type: array
           items:
@@ -2039,3 +2240,13 @@ components:
       properties:
         removed:
           type: boolean
+    CancelIssueManagerExecutionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - canceledRunCount
+      properties:
+        canceledRunCount:
+          type: integer
+          minimum: 0
+          description: Number of running runs this call settled as canceled.

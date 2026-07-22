@@ -2,6 +2,7 @@ import {
   authenticateAgentTargetRuntime,
   addWorkspaceIssueContextRefs,
   addWorkspaceIssueTaskContextRefs,
+  cancelWorkspaceIssueExecution,
   checkUserProjectPath,
   completeWorkspaceIssueRun,
   completeWorkspaceIssueTaskRun,
@@ -94,6 +95,7 @@ import { createWorkspaceAppsClient } from "./workspaceAppsClient.ts";
 import { createWorkspaceAgentClient } from "./workspaceAgentClient.ts";
 import { createWorkspaceAgentConfigurationClient } from "./workspaceAgentConfigurationClient.ts";
 import { createTuttiModeActivationClient } from "./tuttiModeActivationClient.ts";
+import { createWorkspaceIssueOrchestrationClient } from "./workspaceIssueOrchestrationClient.ts";
 import { createWorkspaceWorkflowClient } from "./workspaceWorkflowClient.ts";
 import type {
   CreateTuttidClientInput,
@@ -121,6 +123,7 @@ export function createTuttidClient(
 
   return {
     ...createWorkspaceAgentConfigurationClient(client),
+    ...createWorkspaceIssueOrchestrationClient(client),
     async listAgentQuickPrompts() {
       return unwrapData(
         await listAgentQuickPrompts({ client }),
@@ -771,6 +774,16 @@ export function createTuttidClient(
       });
       return unwrapData(response, "Update workspace issue task request failed.")
         .task;
+    },
+    async cancelWorkspaceIssueExecution(workspaceID, issueID) {
+      const response = await cancelWorkspaceIssueExecution({
+        client,
+        path: { issueID, workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Cancel workspace issue execution request failed."
+      );
     },
     async putWorkspaceWorkbench(workspaceID, snapshot) {
       const response = await putWorkspaceWorkbench({

@@ -220,7 +220,11 @@ immutable revision.
 The frontmatter owns:
 
 - title and workspace topic ID;
-- sequential or parallel execution mode;
+- sequential or parallel execution mode — parallel mirrors the Issue Manager's
+  honest-parallelism gate at propose/revise ingress: every task must carry its
+  own unique absolute execution directory, or the document is rejected while
+  the agent can still fix it (never after acceptance, where the failed
+  `create_issue` operation would strand an accepted workflow);
 - Issue-level reasoning and orchestration intensity;
 - auto or fixed token budget and quota waterline (the token limit is dormant
   and no longer surfaced in UI);
@@ -435,6 +439,18 @@ Issue tasks and are honored at launch: an explicit reasoning effort wins over
 the Issue-inherited intensity, and an explicit permission mode launches
 strictly—an unsupported or stale mode fails the run instead of silently
 broadening to the provider default.
+
+After acceptance the source conversation embeds a live "issue panel view"
+(board/list) of the materialized Issue, fed by the same workspace issue events
+the Issue Manager consumes. The embed surfaces per-task structure
+(parallelizable, auto-accept, dependencies) and settles the acceptance gate
+inline: a `pending_acceptance` task offers accept/rework, which the desktop
+adapter posts as the thin `UpdateTask` status transitions the Issue Manager
+already owns. Everything else stays a jump into the full Issue surface. Tasks
+flagged `autoAccept` (a durable Issue task field the planning agent proposes
+and the review can toggle) bypass that gate, and once every non-canceled task
+is completed and accepted the daemon sends one completion message back to the
+source session so control returns to the main conversation.
 
 The workflow remains the review and provenance record; the Issue becomes the
 execution record. No renderer or Agent turn recreates the graph, and no Agent

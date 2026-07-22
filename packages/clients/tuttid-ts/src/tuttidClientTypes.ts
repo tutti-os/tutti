@@ -34,6 +34,7 @@ import type {
   CreateIssueManagerRunRequest,
   CreateIssueManagerTaskRequest,
   CreateIssueManagerTasksRequest,
+  CancelIssueManagerExecutionResponse,
   CreateIssueManagerTopicRequest,
   CreateAgentQuickPromptRequest,
   CreateWorkspaceAgentSessionRequest,
@@ -157,6 +158,7 @@ import type {
   UserProjectPathCheckResponse
 } from "./generated/index.ts";
 import type { WorkspaceAgentConfigurationClient } from "./workspaceAgentConfigurationClient.ts";
+import type { WorkspaceIssueOrchestrationClient } from "./workspaceIssueOrchestrationClient.ts";
 
 export type TuttidRequestOptions = Omit<
   RequestInit,
@@ -166,7 +168,8 @@ export type TuttidRequestOptions = Omit<
 export type TuttidTrackEvent = TrackEvent;
 export type TuttidTrackEventsRequest = TrackEventsRequest;
 
-export interface TuttidClient extends WorkspaceAgentConfigurationClient {
+export interface TuttidClient
+  extends WorkspaceAgentConfigurationClient, WorkspaceIssueOrchestrationClient {
   listAgentQuickPrompts(): Promise<AgentQuickPromptListResponse>;
   createAgentQuickPrompt(
     request: CreateAgentQuickPromptRequest
@@ -732,6 +735,10 @@ export interface TuttidClient extends WorkspaceAgentConfigurationClient {
     taskID: string,
     request: UpdateIssueManagerTaskRequest
   ): Promise<IssueManagerTask>;
+  cancelWorkspaceIssueExecution(
+    workspaceID: string,
+    issueID: string
+  ): Promise<CancelIssueManagerExecutionResponse>;
   putWorkspaceWorkbench(
     workspaceID: string,
     snapshot: WorkbenchSnapshot

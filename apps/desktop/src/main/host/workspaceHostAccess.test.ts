@@ -523,6 +523,9 @@ function createTransportClient(
     },
     async decideWorkspaceWorkflowCheckpoint() {
       throw new Error("not used");
+    },
+    async cancelWorkspaceIssueExecution() {
+      throw new Error("not used");
     }
   };
   return Object.assign(client, overrides);

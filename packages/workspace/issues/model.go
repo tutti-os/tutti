@@ -41,6 +41,14 @@ const (
 	BudgetStatusSoftLimited BudgetStatus = "soft_limited"
 )
 
+type AcceptanceState string
+
+const (
+	AcceptanceAgentClaimed AcceptanceState = "agent_claimed"
+	AcceptanceAutoChecked  AcceptanceState = "auto_checked"
+	AcceptanceUserAccepted AcceptanceState = "user_accepted"
+)
+
 type ExecutionProfile struct {
 	ReasoningIntensity     int
 	OrchestrationIntensity int
@@ -118,6 +126,7 @@ type Issue struct {
 	SourceSessionID        string
 	SequentialExecution    bool
 	ParallelExecution      bool
+	DispatchPaused         bool
 	ExecutionProfile       ExecutionProfile
 	Budget                 Budget
 	CreatedAtUnixMS        int64
@@ -154,9 +163,15 @@ type Task struct {
 	// Parallelizable marks a task that may run alongside other ready tasks
 	// even when the Issue executes sequentially. False keeps the sequential
 	// default: the task waits for its predecessors in sort order.
-	Parallelizable  bool
-	CreatedAtUnixMS int64
-	UpdatedAtUnixMS int64
+	Parallelizable bool
+	// AutoAccept bypasses the human acceptance gate: a successful run
+	// completion is accepted automatically and dispatch advances. False keeps
+	// the default pending-acceptance stop.
+	AutoAccept        bool
+	AcceptanceState   AcceptanceState
+	AcceptanceSummary string
+	CreatedAtUnixMS   int64
+	UpdatedAtUnixMS   int64
 }
 
 type Run struct {
@@ -170,7 +185,11 @@ type Run struct {
 	AgentTargetID      string
 	AgentSessionID     string
 	AgentProvider      string
+	ModelPlanID        string
+	Model              string
+	ReasoningIntensity int
 	Status             Status
+	Usage              TokenUsage
 	Summary            string
 	ErrorMessage       string
 	OutputDir          string

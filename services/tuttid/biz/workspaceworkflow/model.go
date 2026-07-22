@@ -168,6 +168,9 @@ type TaskAssignment struct {
 	// Parallelizable overrides the plan document's per-task parallel opt-in.
 	// Nil keeps the document value.
 	Parallelizable *bool
+	// AutoAccept overrides the plan document's per-task acceptance bypass.
+	// Nil keeps the document value.
+	AutoAccept *bool
 }
 
 type WorkflowCheckpoint struct {

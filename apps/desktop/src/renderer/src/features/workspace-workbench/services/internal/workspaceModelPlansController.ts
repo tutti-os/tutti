@@ -7,11 +7,13 @@ import type {
 } from "../workspaceSettingsService.interface";
 import type {
   WorkspaceModelPlan,
+  WorkspaceModelPlanBindingTarget,
   WorkspaceModelPlanDraft,
   WorkspaceModelPlanDraftSeed,
   WorkspaceModelPlanFeedbackKind,
   WorkspaceSettingsStoreState
 } from "../workspaceSettingsTypes.ts";
+import { compatibleWorkspaceModelPlanFirstUseTargets } from "../workspaceModelPlanFirstUse.ts";
 import {
   createEmptyWorkspaceModelPlanDraftModel,
   repairWorkspaceModelPlanDraftDefault
@@ -46,6 +48,15 @@ export interface WorkspaceModelPlansControllerDependencies {
     | "setModelPlanEnabled"
     | "updateModelPlan"
   >;
+  launchAgentGui?: (input: {
+    agentTargetId: string;
+    draftPrompt: string;
+    model: string | null;
+    modelPlanId: string;
+    openInNewWindow: true;
+    provider: WorkspaceModelPlanBindingTarget["provider"];
+    workspaceId: string;
+  }) => Promise<boolean>;
   notifications: NotificationService;
   store: WorkspaceSettingsStoreState;
 }
@@ -469,6 +480,61 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
       this.setPlanFeedback(planID, "duplicateFailed");
     } finally {
       this.state.duplicatingPlanID = null;
+    }
+  }
+
+  async launchFirstUse(planID: string, agentTargetID: string): Promise<void> {
+    const workspaceID = this.store.workspaceID;
+    if (!workspaceID || this.state.firstUseLaunchingPlanID) {
+      return;
+    }
+    const plan = this.state.plans.find((candidate) => candidate.id === planID);
+    const target = plan
+      ? compatibleWorkspaceModelPlanFirstUseTargets({
+          plan,
+          targets: this.store.agents.harnessTargets
+        }).find((candidate) => candidate.id === agentTargetID)
+      : undefined;
+    if (!plan || !target || !this.dependencies.launchAgentGui) {
+      this.state.firstUseLaunchFailedPlanID = planID;
+      return;
+    }
+
+    this.state.firstUseLaunchFailedPlanID = null;
+    this.state.firstUseLaunchingPlanID = planID;
+    try {
+      const launched = await this.dependencies.launchAgentGui({
+        agentTargetId: target.id,
+        draftPrompt: createActiveTranslator().t(
+          "workspace.settings.apps.modelPlans.firstUsePrompt",
+          { plan: plan.name }
+        ),
+        model: plan.defaultModel ?? null,
+        modelPlanId: plan.id,
+        openInNewWindow: true,
+        provider: target.provider,
+        workspaceId: workspaceID
+      });
+      if (
+        this.store.workspaceID === workspaceID &&
+        this.state.firstUseLaunchingPlanID === planID
+      ) {
+        this.state.firstUseLaunchFailedPlanID = launched ? null : planID;
+      }
+    } catch {
+      if (
+        this.store.workspaceID === workspaceID &&
+        this.state.firstUseLaunchingPlanID === planID
+      ) {
+        this.state.firstUseLaunchFailedPlanID = planID;
+      }
+    } finally {
+      if (
+        this.store.workspaceID === workspaceID &&
+        this.state.firstUseLaunchingPlanID === planID
+      ) {
+        this.state.firstUseLaunchingPlanID = null;
+      }
     }
   }
 

@@ -51,6 +51,7 @@ func (s Service) CreateTask(ctx context.Context, input CreateTaskInput) (Task, e
 			ExecutionDirectory: input.ExecutionDirectory,
 			DependencyTaskIDs:  input.DependencyTaskIDs,
 			Parallelizable:     input.Parallelizable,
+			AutoAccept:         input.AutoAccept,
 		}},
 	})
 	if err != nil {
@@ -141,6 +142,8 @@ func (s Service) buildTasks(issue Issue, actorUserID string, items []CreateTaskI
 			ExecutionDirectory: strings.TrimSpace(item.ExecutionDirectory),
 			DependencyTaskIDs:  NormalizeDependencyTaskIDs(item.DependencyTaskIDs),
 			Parallelizable:     item.Parallelizable,
+			AutoAccept:         item.AutoAccept,
+			AcceptanceState:    AcceptanceAgentClaimed,
 			CreatorUserID:      actorUserID,
 			CreatedAtUnixMS:    now,
 			UpdatedAtUnixMS:    now,
@@ -202,8 +205,67 @@ func (s Service) UpdateTask(ctx context.Context, input UpdateTaskInput) (Task, e
 		}
 		task.SortIndex = input.SortIndex
 	}
+	if input.HasAgentTargetID {
+		task.AgentTargetID = strings.TrimSpace(input.AgentTargetID)
+	}
+	if input.HasModelPlanID {
+		task.ModelPlanID = strings.TrimSpace(input.ModelPlanID)
+	}
+	if input.HasModel {
+		task.Model = strings.TrimSpace(input.Model)
+	}
+	if task.AgentTargetID == "" && (task.ModelPlanID != "" || task.Model != "") {
+		return Task{}, ErrInvalidArgument
+	}
+	if input.HasExecutionDirectory {
+		task.ExecutionDirectory = strings.TrimSpace(input.ExecutionDirectory)
+	}
+	if input.HasDependencyTaskIDs {
+		task.DependencyTaskIDs = NormalizeDependencyTaskIDs(input.DependencyTaskIDs)
+	}
 	if input.HasParallelizable {
 		task.Parallelizable = input.Parallelizable
+	}
+	if input.HasAutoAccept {
+		task.AutoAccept = input.AutoAccept
+	}
+	if task.AcceptanceState == "" {
+		if task.Status == StatusCompleted || task.Status == StatusPendingAcceptance {
+			task.AcceptanceState = AcceptanceAutoChecked
+		} else {
+			task.AcceptanceState = AcceptanceAgentClaimed
+		}
+	}
+	if input.HasAcceptanceState {
+		next, ok := NormalizeAcceptanceState(input.AcceptanceState)
+		if !ok || !CanTransitionAcceptance(task.AcceptanceState, next) {
+			return Task{}, ErrInvalidArgument
+		}
+		task.AcceptanceState = next
+	}
+	if input.HasAcceptanceSummary {
+		task.AcceptanceSummary = strings.TrimSpace(input.AcceptanceSummary)
+	}
+	if input.HasStatus {
+		switch task.Status {
+		case StatusCompleted:
+			if !input.HasAcceptanceState && CanTransitionAcceptance(task.AcceptanceState, AcceptanceUserAccepted) {
+				task.AcceptanceState = AcceptanceUserAccepted
+			}
+			if task.AcceptanceState != AcceptanceUserAccepted {
+				return Task{}, ErrInvalidArgument
+			}
+		case StatusNotStarted:
+			task.AcceptanceState = AcceptanceAgentClaimed
+			task.AcceptanceSummary = ""
+		case StatusPendingAcceptance:
+			// An accepted task cannot be pushed back to pending acceptance:
+			// that write would keep user_accepted on a non-completed task and
+			// wedge the dispatch frontier. Rework goes through not_started.
+			if task.AcceptanceState == AcceptanceUserAccepted {
+				return Task{}, ErrInvalidArgument
+			}
+		}
 	}
 	task.UpdatedAtUnixMS = s.nowUnixMS()
 	updated, err := store.UpdateTask(ctx, task)

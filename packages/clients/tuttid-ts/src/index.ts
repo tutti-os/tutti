@@ -36,6 +36,10 @@ export {
   type WorkspaceAgentConfigurationClient,
   type WorkspaceModelRecommendation
 } from "./workspaceAgentConfigurationClient.ts";
+export {
+  createWorkspaceIssueOrchestrationClient,
+  type WorkspaceIssueOrchestrationClient
+} from "./workspaceIssueOrchestrationClient.ts";
 export type {
   AgentSessionAutomationRuleOverride,
   AutomationRule,

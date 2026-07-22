@@ -85,8 +85,8 @@ func (blockingGoalReconcileReporter) Report(ctx context.Context, _ agentsessions
 	return ctx.Err()
 }
 
-func (blockingGoalReconcileReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
-	return blockingGoalReconcileReporter{}.Report(ctx, report)
+func (r blockingGoalReconcileReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	return r.Report(ctx, report)
 }
 
 func (r *goalPrepareBarrierReporter) Report(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
@@ -160,8 +160,8 @@ func (r *recordingReporter) Report(_ context.Context, report agentsessionstore.R
 	return nil
 }
 
-func (r *recordingReporter) ReportSubmitProvenance(_ context.Context, report agentsessionstore.ReportActivityInput) error {
-	return r.Report(context.Background(), report)
+func (r *recordingReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	return r.Report(ctx, report)
 }
 
 func (r *recordingReporter) snapshot() []reportCall {

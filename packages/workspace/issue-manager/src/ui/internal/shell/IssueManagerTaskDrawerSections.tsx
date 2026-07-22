@@ -44,6 +44,7 @@ import {
   issueManagerEditorRiseInDelay1ClassName,
   issueManagerEditorRiseInDelay2ClassName
 } from "./IssueManagerEditorMotion.ts";
+import { IssueManagerTaskAssignmentFields } from "../orchestration/IssueManagerOrchestrationFields.tsx";
 
 export function IssueManagerTaskDrawerHeader({
   controller,
@@ -267,6 +268,7 @@ export function IssueManagerTaskDrawerEditBody({
             onChange={controller.setTaskContent}
           />
         </div>
+        <IssueManagerTaskAssignmentFields controller={controller} />
       </div>
     </div>
   );

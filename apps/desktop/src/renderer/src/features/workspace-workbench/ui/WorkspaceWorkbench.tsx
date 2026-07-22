@@ -416,6 +416,8 @@ function ReadyWorkspaceWorkbenchWithSession({
             agentTargetId,
             autoSubmit,
             draftPrompt,
+            model,
+            modelPlanId,
             openInNewWindow,
             provider,
             userProjectPath
@@ -427,6 +429,8 @@ function ReadyWorkspaceWorkbenchWithSession({
                     agentTargetId,
                     autoSubmit,
                     draftPrompt: normalizedDraftPrompt,
+                    model,
+                    modelPlanId,
                     openInNewWindow,
                     provider,
                     userProjectPath

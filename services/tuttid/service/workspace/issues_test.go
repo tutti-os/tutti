@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -374,6 +375,48 @@ func TestIssueRunReconcileCompletionWaitsGraceBeforeFailedSessionCompletion(t *t
 	if !ok || status != workspaceissues.StatusFailed || message != "Agent session ended without reporting run completion." {
 		t.Fatalf("completion after grace = %q %q %v", status, message, ok)
 	}
+}
+
+func TestIssueRunReconcileCompletionSparesStreamingSessions(t *testing.T) {
+	now := time.Now().UnixMilli()
+	grace := defaultIssueRunReconcileGrace.Milliseconds()
+	run := workspaceissues.Run{
+		RunID:           "run-1",
+		Status:          workspaceissues.StatusRunning,
+		AgentSessionID:  "session-1",
+		CreatedAtUnixMS: now,
+		StartedAtUnixMS: now,
+		UpdatedAtUnixMS: now,
+	}
+	// The persisted active turn id can stay empty while a turn streams (async
+	// stamping), so recent session events must veto the failure verdict: this
+	// exact shape — six-minute-old run, event seven seconds ago — was killed
+	// as "ended without reporting" while the delegate was still working.
+	streaming := agentservice.PersistedSession{
+		ID:              "session-1",
+		LastEventUnixMS: now + 6*60*1000 - 7*1000,
+	}
+	if _, _, ok := issueRunReconcileCompletion(run, streaming, now+6*60*1000); ok {
+		t.Fatal("completion with a recent session event = true, want false")
+	}
+	quiet := agentservice.PersistedSession{
+		ID:              "session-1",
+		LastEventUnixMS: now,
+	}
+	status, _, ok := issueRunReconcileCompletion(run, quiet, now+grace)
+	if !ok || status != workspaceissues.StatusFailed {
+		t.Fatalf("completion after quiet grace = %q %v, want failed", status, ok)
+	}
+}
+
+type issueRunTurnResolverStub struct {
+	initiatingTurnByRunID map[string]string
+}
+
+func (r issueRunTurnResolverStub) FindTurnByClientSubmitID(_ context.Context, _ string, _ string, clientSubmitID string) (string, bool, error) {
+	runID := strings.TrimPrefix(clientSubmitID, "issue-run:")
+	turnID, ok := r.initiatingTurnByRunID[runID]
+	return turnID, ok, nil
 }
 
 func openIssueServiceStore(t *testing.T) *workspacedata.SQLiteStore {

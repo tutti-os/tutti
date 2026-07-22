@@ -266,6 +266,9 @@ func (s *Service) Propose(ctx context.Context, input ProposeInput) (ProposalResu
 	if document.Phase != PhaseTaskGraph {
 		return ProposalResult{}, fmt.Errorf("%w: the proposal must contain the complete plan narrative and task graph in one document", ErrInvalidTransition)
 	}
+	if err := ValidatePlanExecutionIsolation(document); err != nil {
+		return ProposalResult{}, err
+	}
 
 	now := s.now()
 	workflowID := s.newID()
@@ -396,6 +399,9 @@ func (s *Service) revise(ctx context.Context, input ReviseInput, expectedSourceS
 	}
 	document, err := ParsePlanMarkdown(input.Markdown)
 	if err != nil {
+		return RevisionResult{}, err
+	}
+	if err := ValidatePlanExecutionIsolation(document); err != nil {
 		return RevisionResult{}, err
 	}
 	if isTerminalWorkflow(snapshot.Workflow.Status) {

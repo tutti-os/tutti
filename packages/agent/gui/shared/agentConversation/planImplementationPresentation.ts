@@ -53,3 +53,128 @@ export function latestPlanTurnId(
     ? latestTurnId
     : null;
 }
+
+export const MINIMUM_AUTO_TOKEN_BUDGET = 32_000;
+export const MAXIMUM_AUTO_TOKEN_BUDGET = 2_000_000;
+
+export interface PlanIssueExecutionProfile {
+  reasoningIntensity: number;
+  orchestrationIntensity: number;
+}
+
+export interface PlanIssueBudget {
+  mode: "auto" | "fixed";
+  tokenLimit: number;
+  quotaWaterlinePercent: number;
+}
+
+/**
+ * Remembered planning defaults chosen before a Plan turn is submitted. The
+ * generated plan can still provide explicit values; otherwise these values
+ * seed the mandatory Issue-decomposition review.
+ */
+export interface PlanIssueBudgetPreset {
+  executionProfile: PlanIssueExecutionProfile;
+  budget: PlanIssueBudget;
+}
+
+export function autoTokenBudget(
+  taskCount: number,
+  profile: PlanIssueExecutionProfile
+): number {
+  const count = Number.isSafeInteger(taskCount) ? Math.max(1, taskCount) : 1;
+  const compiled =
+    16_000 +
+    count *
+      (24_000 +
+        Math.round(profile.reasoningIntensity) * 320 +
+        Math.round(profile.orchestrationIntensity) * 160);
+  return Math.min(
+    MAXIMUM_AUTO_TOKEN_BUDGET,
+    Math.max(MINIMUM_AUTO_TOKEN_BUDGET, compiled)
+  );
+}
+
+export function defaultPlanIssueBudgetPreset(): PlanIssueBudgetPreset {
+  const executionProfile: PlanIssueExecutionProfile = {
+    reasoningIntensity: 50,
+    orchestrationIntensity: 50
+  };
+  return {
+    executionProfile,
+    budget: {
+      mode: "auto",
+      tokenLimit: autoTokenBudget(1, executionProfile),
+      quotaWaterlinePercent: 10
+    }
+  };
+}
+
+/** Strict persisted-state reader; malformed values are dropped safely. */
+export function normalizePlanIssueBudgetPreset(
+  value: unknown
+): PlanIssueBudgetPreset | null {
+  if (!isRecord(value)) return null;
+  const executionProfileValue = isRecord(value.executionProfile)
+    ? value.executionProfile
+    : null;
+  const budgetValue = isRecord(value.budget) ? value.budget : null;
+  if (!executionProfileValue || !budgetValue) return null;
+  const reasoningIntensity = percentValue(
+    executionProfileValue.reasoningIntensity
+  );
+  const orchestrationIntensity = percentValue(
+    executionProfileValue.orchestrationIntensity
+  );
+  const mode = budgetValue.mode === "fixed" ? "fixed" : "auto";
+  const tokenLimit = positiveInteger(budgetValue.tokenLimit);
+  const quotaWaterlinePercent = percentValue(budgetValue.quotaWaterlinePercent);
+  if (
+    reasoningIntensity === undefined ||
+    orchestrationIntensity === undefined ||
+    tokenLimit === undefined ||
+    quotaWaterlinePercent === undefined
+  ) {
+    return null;
+  }
+  return {
+    executionProfile: { reasoningIntensity, orchestrationIntensity },
+    budget: { mode, tokenLimit, quotaWaterlinePercent }
+  };
+}
+
+export function planIssueBudgetPresetsEqual(
+  left: PlanIssueBudgetPreset | null | undefined,
+  right: PlanIssueBudgetPreset | null | undefined
+): boolean {
+  return (
+    (left?.executionProfile.reasoningIntensity ?? null) ===
+      (right?.executionProfile.reasoningIntensity ?? null) &&
+    (left?.executionProfile.orchestrationIntensity ?? null) ===
+      (right?.executionProfile.orchestrationIntensity ?? null) &&
+    (left?.budget.mode ?? null) === (right?.budget.mode ?? null) &&
+    (left?.budget.tokenLimit ?? null) === (right?.budget.tokenLimit ?? null) &&
+    (left?.budget.quotaWaterlinePercent ?? null) ===
+      (right?.budget.quotaWaterlinePercent ?? null)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function percentValue(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 100
+    ? value
+    : undefined;
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : undefined;
+}

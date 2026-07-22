@@ -56,6 +56,14 @@ func ModelPlanProtocol(provider string) (string, bool) {
 	return string(protocol), ok
 }
 
+// ModelPlanModelAddressingProviderPrefixed reports whether the provider's
+// runtime strategy addresses bound plan models with the injected provider
+// namespace ("<provider>/<model>") in composer and settings values.
+func ModelPlanModelAddressingProviderPrefixed(provider string) bool {
+	addressing, ok := providerregistry.ResolveModelPlanModelAddressing(provider)
+	return ok && addressing == providerregistry.ModelPlanModelAddressingProviderPrefixed
+}
+
 func IsSupported(provider string) bool {
 	return Normalize(provider) != ""
 }

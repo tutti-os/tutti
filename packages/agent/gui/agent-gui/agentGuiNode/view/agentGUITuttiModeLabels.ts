@@ -6,6 +6,9 @@ type AgentGUITuttiModeLabels = Pick<
   | "tuttiModeDescription"
   | "tuttiModeLabel"
   | "tuttiModePlanBanner"
+  | "tuttiModePlanIssueCreateFailed"
+  | "tuttiModePlanIssuePanel"
+  | "tuttiModePlanIssueStrip"
   | "tuttiModePlanLoadFailed"
   | "tuttiModePlanPanel"
   | "tuttiModePlanRetry"
@@ -39,6 +42,7 @@ export function agentGUITuttiModeLabels(
       permissionMode: t("agentHost.agentGui.tuttiModePlan.permissionMode"),
       reasoningEffort: t("agentHost.agentGui.tuttiModePlan.reasoningEffort"),
       parallelizable: t("agentHost.agentGui.tuttiModePlan.parallelizable"),
+      autoAccept: t("agentHost.agentGui.tuttiModePlan.autoAccept"),
       assignmentOptionsLoading: t(
         "agentHost.agentGui.tuttiModePlan.assignmentOptionsLoading"
       ),
@@ -58,7 +62,56 @@ export function agentGUITuttiModeLabels(
       t("agentHost.agentGui.tuttiModePlan.replanFeedback", { from, to }),
     tuttiModePlanReplanFeedbackSuffix: (to) =>
       t("agentHost.agentGui.tuttiModePlan.replanFeedbackSuffix", { to }),
+    tuttiModePlanIssuePanel: {
+      openIssue: t("agentHost.agentGui.tuttiModePlan.issueOpen"),
+      stopExecution: t("agentHost.agentGui.tuttiModePlan.issueStopExecution"),
+      listView: t("agentHost.agentGui.tuttiModePlan.issueListView"),
+      boardView: t("agentHost.agentGui.tuttiModePlan.issueBoardView"),
+      parallelizable: t("agentHost.agentGui.tuttiModePlan.parallelizable"),
+      autoAccept: t("agentHost.agentGui.tuttiModePlan.autoAccept"),
+      accept: t("agentHost.agentGui.tuttiModePlan.issueAccept"),
+      rework: t("agentHost.agentGui.tuttiModePlan.issueRework"),
+      dependencies: t("agentHost.agentGui.tuttiModePlan.issueDependencies"),
+      stageParallel: (index, count) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStageParallel", {
+          count,
+          index
+        }),
+      stageSequential: (index) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStageSequential", { index }),
+      summary: (done, total, running) =>
+        t("agentHost.agentGui.tuttiModePlan.issueSummary", {
+          done,
+          running,
+          total
+        }),
+      statusNotStarted: t(
+        "agentHost.agentGui.tuttiModePlan.issueStatusNotStarted"
+      ),
+      statusRunning: t("agentHost.agentGui.tuttiModePlan.issueStatusRunning"),
+      statusPendingAcceptance: t(
+        "agentHost.agentGui.tuttiModePlan.issueStatusPendingAcceptance"
+      ),
+      statusCompleted: t(
+        "agentHost.agentGui.tuttiModePlan.issueStatusCompleted"
+      ),
+      statusFailed: t("agentHost.agentGui.tuttiModePlan.issueStatusFailed"),
+      statusCanceled: t("agentHost.agentGui.tuttiModePlan.issueStatusCanceled")
+    },
+    tuttiModePlanIssueStrip: {
+      running: (count) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStripRunning", { count }),
+      pendingAcceptance: (count) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStripPending", { count }),
+      failed: (count) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStripFailed", { count }),
+      done: (done, total) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStripDone", { done, total }),
+      jump: t("agentHost.agentGui.tuttiModePlan.issueStripJump")
+    },
     tuttiModePlanLoadFailed: t("agentHost.agentGui.tuttiModePlan.loadFailed"),
-    tuttiModePlanRetry: t("agentHost.agentGui.tuttiModePlan.retry")
+    tuttiModePlanRetry: t("agentHost.agentGui.tuttiModePlan.retry"),
+    tuttiModePlanIssueCreateFailed: (message) =>
+      t("agentHost.agentGui.tuttiModePlan.issueCreateFailed", { message })
   };
 }
