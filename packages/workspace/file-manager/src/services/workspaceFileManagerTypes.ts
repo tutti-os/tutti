@@ -43,7 +43,6 @@ export type WorkspaceFilePreviewState =
   | { entry: WorkspaceFileEntry; status: "directory" }
   | { entry: WorkspaceFileActivationTarget; status: "loading" }
   | { content: string; entry: WorkspaceFileActivationTarget; status: "text" }
-  | { content: string; entry: WorkspaceFileActivationTarget; status: "html" }
   | { entry: WorkspaceFileActivationTarget; objectUrl: string; status: "image" }
   | { entry: WorkspaceFileActivationTarget; objectUrl: string; status: "video" }
   | { entry: WorkspaceFileEntry; message: string; status: "unsupported" }

@@ -23,7 +23,8 @@ import {
   type WorkspaceFileManagerArrangeMode
 } from "@tutti-os/workspace-file-manager/services";
 import {
-  createWorkspaceFilePreviewLoadedState,
+  createWorkspaceFilePreviewController,
+  type WorkspaceFilePreviewControllerState,
   type WorkspaceFilePreviewReadonlyReason
 } from "@tutti-os/workspace-file-preview";
 import {
@@ -49,9 +50,8 @@ function referenceNodeToOpenWithCacheEntry(
 }
 
 /**
- * 焦点节点的预览态(node-keyed)。复用 file-manager / file-preview 的分类逻辑
- * (createWorkspaceFilePreviewLoadedState),但只携带状态、不含已本地化文案 ——
- * 文案由 UI 层(ReferenceSourcePicker)按 status/reason 映射,保持 hook 与 i18n 解耦。
+ * 焦点节点的预览态(node-keyed)。共享 file-preview controller 负责读取生命周期和
+ * 规范状态,这里仅保留 picker 所需的节点投影;文案由 UI 层按 status/reason 映射。
  */
 export type ReferenceNodePreviewState =
   | { status: "empty" }
@@ -62,12 +62,6 @@ export type ReferenceNodePreviewState =
       node: ReferenceNode;
       previewSizeBytes?: number;
       status: "text";
-    }
-  | {
-      content: string;
-      node: ReferenceNode;
-      previewSizeBytes?: number;
-      status: "html";
     }
   | {
       node: ReferenceNode;
@@ -791,146 +785,60 @@ export function useReferenceSourcePickerView({
     }
   }, [controller, onClose, onConfirm, onConfirmBundles, selectableSelection]);
 
-  // 焦点节点预览:文件夹→directory;文件→走源 readPreview,字节经 file-preview 分类
-  // 成 image/text/readonly。image 用 object URL,切换/卸载时回收避免泄漏。
-  const [previewState, setPreviewState] = useState<ReferenceNodePreviewState>({
-    status: "empty"
-  });
-  const previewObjectUrlRef = useRef<string | null>(null);
-  const revokePreviewObjectUrl = useCallback(() => {
-    if (previewObjectUrlRef.current) {
-      URL.revokeObjectURL(previewObjectUrlRef.current);
-      previewObjectUrlRef.current = null;
-    }
-  }, []);
+  const previewController = useMemo(
+    () =>
+      createWorkspaceFilePreviewController<ReferenceNode>({
+        canReadEntry: (node) =>
+          aggregator.getLoadedSource(node.ref.sourceId)?.capabilities
+            .previewable === true,
+        getEntryKey: (node) =>
+          [
+            nodeRefKey(node.ref),
+            node.displayName,
+            node.sizeBytes ?? "",
+            node.mtimeMs ?? ""
+          ].join("\0"),
+        read: async ({ entry }) => {
+          const preview = await aggregator.readPreview(scope, entry);
+          return preview
+            ? {
+                bytes: preview.bytes,
+                contentType: preview.contentType,
+                kind: preview.kind
+              }
+            : null;
+        },
+        toPreviewEntry: (node) => ({
+          kind: node.kind,
+          mtimeMs: node.mtimeMs ?? null,
+          name: node.displayName,
+          path: node.ref.nodeId,
+          sizeBytes: node.sizeBytes ?? null
+        })
+      }),
+    [aggregator, scope]
+  );
+  const [previewControllerState, setPreviewControllerState] = useState(() =>
+    previewController.getSnapshot()
+  );
 
   useEffect(() => {
-    const node = focusedNode;
-    if (!node) {
-      revokePreviewObjectUrl();
-      setPreviewState({ status: "empty" });
-      return;
-    }
-    if (node.kind === "folder") {
-      revokePreviewObjectUrl();
-      setPreviewState({ node, status: "directory" });
-      return;
-    }
-    const previewable =
-      aggregator.getLoadedSource(node.ref.sourceId)?.capabilities.previewable ??
-      false;
-    if (!previewable) {
-      revokePreviewObjectUrl();
-      setPreviewState({ node, status: "unsupported" });
-      return;
-    }
-
-    let cancelled = false;
-    revokePreviewObjectUrl();
-    setPreviewState({ node, status: "loading" });
-    void (async () => {
-      try {
-        const preview = await aggregator.readPreview(scope, node);
-        if (cancelled) {
-          return;
-        }
-        if (!preview) {
-          setPreviewState({ node, status: "unsupported" });
-          return;
-        }
-        const previewSizeBytes = preview.bytes.byteLength;
-        const loadedSizeBytes =
-          node.sizeBytes != null && node.sizeBytes > 0
-            ? node.sizeBytes
-            : previewSizeBytes;
-        const loaded = createWorkspaceFilePreviewLoadedState({
-          bytes: preview.bytes,
-          contentType: preview.contentType,
-          entry: {
-            kind: node.kind,
-            name: node.displayName,
-            path: node.ref.nodeId,
-            mtimeMs: node.mtimeMs ?? null,
-            sizeBytes: loadedSizeBytes
-          },
-          target: {
-            fileKind: preview.kind,
-            name: node.displayName,
-            path: node.ref.nodeId,
-            mtimeMs: node.mtimeMs ?? null,
-            sizeBytes: loadedSizeBytes
-          }
-        });
-        if (cancelled) {
-          return;
-        }
-        if (loaded.status === "image") {
-          const objectUrl = URL.createObjectURL(
-            new Blob([loaded.bytes], { type: loaded.contentType })
-          );
-          previewObjectUrlRef.current = objectUrl;
-          setPreviewState({
-            node,
-            objectUrl,
-            previewSizeBytes,
-            status: "image"
-          });
-          return;
-        }
-        if (loaded.status === "video") {
-          const objectUrl = URL.createObjectURL(
-            new Blob([loaded.bytes], { type: loaded.contentType })
-          );
-          previewObjectUrlRef.current = objectUrl;
-          setPreviewState({
-            node,
-            objectUrl,
-            previewSizeBytes,
-            status: "video"
-          });
-          return;
-        }
-        if (loaded.status === "text") {
-          setPreviewState({
-            content: loaded.content,
-            node,
-            previewSizeBytes,
-            status: "text"
-          });
-          return;
-        }
-        if (loaded.status === "html") {
-          setPreviewState({
-            content: loaded.content,
-            node,
-            previewSizeBytes,
-            status: "html"
-          });
-          return;
-        }
-        setPreviewState({
-          node,
-          previewSizeBytes,
-          reason: loaded.reason,
-          ...(loaded.maxSizeBytes == null
-            ? {}
-            : { maxSizeBytes: loaded.maxSizeBytes }),
-          status: "readonly"
-        });
-      } catch {
-        if (!cancelled) {
-          setPreviewState({ node, status: "error" });
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
+    const syncPreviewState = () => {
+      setPreviewControllerState(previewController.getSnapshot());
     };
-  }, [aggregator, focusedNode, revokePreviewObjectUrl, scope]);
+    const unsubscribe = previewController.subscribe(syncPreviewState);
+    syncPreviewState();
+    return () => {
+      unsubscribe();
+      void previewController.setEntry(null);
+    };
+  }, [previewController]);
 
-  // 卸载时回收最后一个 image object URL。
-  useEffect(() => revokePreviewObjectUrl, [revokePreviewObjectUrl]);
+  useEffect(() => {
+    void previewController.setEntry(focusedNode);
+  }, [focusedNode, previewController]);
+
+  const previewState = projectReferenceNodePreviewState(previewControllerState);
 
   return {
     tabs: snapshot.tabs,
@@ -1064,4 +972,44 @@ export function useReferenceSourcePickerView({
     confirmError,
     isConfirming
   };
+}
+
+function projectReferenceNodePreviewState(
+  state: WorkspaceFilePreviewControllerState<ReferenceNode>
+): ReferenceNodePreviewState {
+  switch (state.status) {
+    case "empty":
+      return state;
+    case "directory":
+      return { node: state.entry, status: "directory" };
+    case "loading":
+      return { node: state.entry, status: "loading" };
+    case "text":
+      return {
+        content: state.content,
+        node: state.entry,
+        previewSizeBytes: state.previewSizeBytes,
+        status: "text"
+      };
+    case "image":
+    case "video":
+      return {
+        node: state.entry,
+        objectUrl: state.objectUrl,
+        previewSizeBytes: state.previewSizeBytes,
+        status: state.status
+      };
+    case "readonly":
+      return {
+        maxSizeBytes: state.maxSizeBytes,
+        node: state.entry,
+        previewSizeBytes: state.previewSizeBytes,
+        reason: state.reason,
+        status: "readonly"
+      };
+    case "unsupported":
+      return { node: state.entry, status: "unsupported" };
+    case "error":
+      return { node: state.entry, status: "error" };
+  }
 }

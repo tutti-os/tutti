@@ -1603,16 +1603,13 @@ function PreviewSurface({
     >
       directoryMessage={copy.t("previewDirectoryLabel")}
       emptyMessage={copy.t("previewEmptyLabel")}
-      frameClassName="flex h-60 min-h-60 max-h-60 items-center justify-center overflow-hidden rounded-lg bg-[var(--transparency-block)]"
       imageAlt={(entry) => entry.name}
-      imageFrameClassName="p-4"
       loadingIndicator={
         <span className="mx-auto grid size-11 place-items-center rounded-lg bg-[var(--transparency-block)]">
           <LoadingIcon className="size-4 animate-spin" />
         </span>
       }
       loadingMessage={copy.t("previewLoadingLabel")}
-      messageClassName="max-w-[24ch] [overflow-wrap:anywhere]"
       renderIcon={(entry) => (
         <EntryIcon
           className="mx-auto size-7"
@@ -1620,7 +1617,7 @@ function PreviewSurface({
         />
       )}
       state={previewState}
-      textFrameClassName="items-stretch justify-stretch"
+      variant="detail"
     />
   );
 }

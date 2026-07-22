@@ -14,15 +14,12 @@ import type {
 } from "../../workspaceFileManagerTypes.ts";
 
 export {
-  copyWorkspaceFilePreviewBytes,
-  createWorkspaceFilePreviewLoadedState,
   decodeWorkspaceTextFile,
   formatWorkspacePreviewByteLimit,
   isWorkspaceFileBrowserOpenable,
   isWorkspacePreviewFileTooLarge,
   isWorkspaceTextFileTooLarge,
   looksLikeBinaryText,
-  normalizeWorkspaceFilePreviewBytes,
   resolveWorkspaceFileExtension,
   resolveWorkspaceFileVisualKind,
   resolveWorkspaceImageMimeType,

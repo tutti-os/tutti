@@ -1629,8 +1629,6 @@ function toPreviewSurfaceState(
       };
     case "text":
       return { content: previewState.content, entry: node, status: "text" };
-    case "html":
-      return { content: previewState.content, entry: node, status: "html" };
     case "readonly":
       return {
         entry: node,
@@ -1736,14 +1734,9 @@ function PreviewInfoPane({
           <WorkspaceFilePreviewSurface<ReferenceNode>
             directoryMessage={copy.t("referencePicker.previewFolder")}
             emptyMessage={copy.t("referencePicker.emptyPreview")}
-            frameClassName="flex aspect-[3/2] w-full flex-col items-center justify-center overflow-hidden rounded-[8px] border border-[var(--line-2,var(--border-2))] bg-[var(--transparency-block)] p-0 text-center"
             imageAlt={(entry) => entry.displayName}
-            htmlFrameClassName="items-stretch justify-stretch bg-white"
-            htmlTitle={(entry) => entry.displayName}
-            imageFrameClassName="p-3"
             loadingIndicator={<Spinner size={16} />}
             loadingMessage={copy.t("referencePicker.previewLoading")}
-            messageClassName="mx-auto max-w-[24ch] text-[13px] leading-5 text-[var(--text-secondary)] [overflow-wrap:anywhere]"
             renderIcon={(entry) => (
               <ReferenceNodeIcon
                 frameClassName="size-10"
@@ -1753,8 +1746,7 @@ function PreviewInfoPane({
               />
             )}
             state={toPreviewSurfaceState(node, previewState, copy)}
-            textClassName="h-full w-full overflow-auto p-3 text-left text-[11px] leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]"
-            textFrameClassName="items-stretch justify-stretch"
+            variant="compact"
           />
           <div className="space-y-1">
             <p className="truncate text-[15px] font-semibold">

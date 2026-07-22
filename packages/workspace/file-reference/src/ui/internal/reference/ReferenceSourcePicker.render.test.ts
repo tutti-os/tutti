@@ -463,8 +463,6 @@ function buildReferenceSourcePickerRenderModule(tempDir: string): string {
           defaultLayout,
           defaultSize,
           disableDoubleClick,
-          htmlFrameClassName,
-          htmlTitle,
           imageAlt,
           imageFrameClassName,
           loadingIndicator,

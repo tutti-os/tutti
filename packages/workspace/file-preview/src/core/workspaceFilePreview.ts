@@ -62,7 +62,6 @@ export type WorkspaceFilePreviewLoadedState<
   TTarget extends WorkspaceFilePreviewActivationTarget
 > =
   | { content: string; entry: TTarget; status: "text" }
-  | { content: string; entry: TTarget; status: "html" }
   | {
       bytes: Uint8Array<ArrayBuffer>;
       contentType: string;
@@ -438,7 +437,6 @@ export function createWorkspaceFilePreviewLoadedState<
   bytes: Uint8Array | ArrayBuffer;
   contentType?: string | null;
   entry: TEntry;
-  renderHtml?: boolean;
   target: TTarget;
 }): WorkspaceFilePreviewLoadedState<TEntry, TTarget> {
   if (input.target.fileKind === "image") {
@@ -473,13 +471,6 @@ export function createWorkspaceFilePreviewLoadedState<
         status: "readonly"
       };
     }
-    if (input.renderHtml && isWorkspaceHtmlFileName(input.target.name)) {
-      return {
-        content,
-        entry: input.target,
-        status: "html"
-      };
-    }
     return {
       content,
       entry: input.target,
@@ -492,12 +483,6 @@ export function createWorkspaceFilePreviewLoadedState<
       status: "readonly"
     };
   }
-}
-
-function isWorkspaceHtmlFileName(pathOrName: string): boolean {
-  return browserOpenableHtmlExtensions.has(
-    resolveWorkspaceFileExtension(pathOrName)
-  );
 }
 
 export function resolveWorkspaceFilePreviewName(

@@ -82,6 +82,14 @@ their host path and kind, do not become prompt assets, and preserve their
 position relative to prepared entries. Hosts that cannot expose a live local
 reference omit that capability or classify the entry for preparation.
 
+Reference sources own whether preview bytes are available and how those bytes
+are read. The host-neutral `@tutti-os/workspace-file-preview` controller owns
+the frontend preview lifecycle after a node is focused: readiness and size
+checks, stale-request fencing, cancellation, decoding, canonical status, and
+media object-URL cleanup. Picker controllers project that language-neutral
+status into source metadata and localized presentation; they must not start a
+second preview request state machine.
+
 ### Project Directory Selection
 
 AgentGUI lets each host explicitly own project-directory selection. TSH injects
