@@ -40,7 +40,6 @@ export {
   shouldUseWorkspaceFileArchiveIcon,
   shouldUseWorkspaceFileExtensionDocumentIcon
 } from "./workspaceFileEntryIconPolicy.ts";
-export { resolveWorkspaceFileActivationTarget } from "./workspaceFileManagerModel.ts";
 export {
   findWorkspaceFileLocationById,
   flattenWorkspaceFileLocations,

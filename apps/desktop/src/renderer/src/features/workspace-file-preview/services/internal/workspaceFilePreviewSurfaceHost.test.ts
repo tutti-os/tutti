@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
 import { WorkspaceFilePreviewSurfaceHost } from "./workspaceFilePreviewSurfaceHost.ts";
 
-const target: WorkspaceFileActivationTarget = {
+const target: WorkspaceFilePreviewActivationTarget = {
   fileKind: "text",
   mtimeMs: null,
   name: "notes.txt",

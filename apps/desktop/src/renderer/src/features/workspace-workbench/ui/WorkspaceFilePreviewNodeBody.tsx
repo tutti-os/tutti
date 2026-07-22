@@ -12,7 +12,7 @@ import {
   LoadingIcon,
   VideoFileIcon
 } from "@tutti-os/ui-system";
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
 import { WorkspaceFilePreviewSurface } from "@tutti-os/workspace-file-preview/react";
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
@@ -209,7 +209,7 @@ function WorkspaceTextFileEditor({
 
 function resolveActivationTarget(
   context: WorkbenchHostNodeBodyContext
-): WorkspaceFileActivationTarget | null {
+): WorkspaceFilePreviewActivationTarget | null {
   if (
     context.activation?.type !== workspaceFilePreviewActivationType ||
     !isWorkspaceFilePreviewActivationTarget(context.activation.payload)

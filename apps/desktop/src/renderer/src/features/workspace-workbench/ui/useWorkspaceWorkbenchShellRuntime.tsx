@@ -32,7 +32,7 @@ import { IReporterService } from "@renderer/features/analytics";
 import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { useWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager/ui/useWorkspaceFileManagerService";
-import { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-manager";
+import { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import { useTranslation } from "@renderer/i18n";
 import { createWorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import type {

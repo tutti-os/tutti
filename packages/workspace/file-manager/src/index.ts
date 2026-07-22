@@ -16,7 +16,6 @@ export type {
   WorkspaceFileManagerHost,
   WorkspaceFileManagerMutationErrorMessage
 } from "./services/workspaceFileManagerHost.interface.ts";
-export { resolveWorkspaceFileActivationTarget } from "./services/workspaceFileManagerModel.ts";
 export {
   findWorkspaceFileLocationById,
   flattenWorkspaceFileLocations,

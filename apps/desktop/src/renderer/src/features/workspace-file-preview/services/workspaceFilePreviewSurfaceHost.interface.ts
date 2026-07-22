@@ -1,9 +1,11 @@
 import { createDecorator } from "@tutti-os/infra/di";
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
 
 export interface WorkspaceFilePreviewSurfacePresenter {
   readonly unsupportedFallbackNotification: "show" | "suppress";
-  present(target: WorkspaceFileActivationTarget): Promise<boolean> | boolean;
+  present(
+    target: WorkspaceFilePreviewActivationTarget
+  ): Promise<boolean> | boolean;
 }
 
 export interface WorkspaceFilePreviewPresentationResult {
@@ -18,7 +20,7 @@ export interface IWorkspaceFilePreviewSurfaceHost {
   ): WorkspaceFilePreviewPresentationResult["unsupportedFallbackNotification"];
   present(
     workspaceID: string,
-    target: WorkspaceFileActivationTarget
+    target: WorkspaceFilePreviewActivationTarget
   ): Promise<WorkspaceFilePreviewPresentationResult>;
   registerPresenter(
     workspaceID: string,

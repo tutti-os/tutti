@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
 import { createStandaloneAgentWorkspaceFilePreviewPresenter } from "./standaloneAgentWorkspaceFilePreviewPresenter.ts";
 
 test("standalone Agent file preview presenter opens the file with the system host", async () => {
@@ -13,7 +13,7 @@ test("standalone Agent file preview presenter opens the file with the system hos
     },
     workspaceId: "workspace-1"
   });
-  const target: WorkspaceFileActivationTarget = {
+  const target: WorkspaceFilePreviewActivationTarget = {
     fileKind: "text",
     mtimeMs: null,
     name: "notes.txt",

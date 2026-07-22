@@ -1,4 +1,4 @@
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
 import type { WorkbenchHostNodeData } from "@tutti-os/workbench-surface";
 import { isWorkspaceFilePreviewActivationTarget } from "../services/workspaceFilePreviewLaunch";
 
@@ -17,16 +17,16 @@ export interface WorkspaceFilePreviewTextHeaderState {
 }
 
 export interface WorkspaceFilePreviewNodeRuntimeState {
-  file: WorkspaceFileActivationTarget;
+  file: WorkspaceFilePreviewActivationTarget;
   textHeader?: WorkspaceFilePreviewTextHeaderState;
 }
 
 export interface WorkspaceFilePreviewNodeSnapshotState {
-  file: WorkspaceFileActivationTarget;
+  file: WorkspaceFilePreviewActivationTarget;
 }
 
 export function createWorkspaceFilePreviewNodeRuntimeState(input: {
-  file: WorkspaceFileActivationTarget;
+  file: WorkspaceFilePreviewActivationTarget;
   textHeader?: WorkspaceFilePreviewTextHeaderState;
 }): WorkspaceFilePreviewNodeRuntimeState {
   return input.textHeader
@@ -35,14 +35,14 @@ export function createWorkspaceFilePreviewNodeRuntimeState(input: {
 }
 
 export function createWorkspaceFilePreviewNodeSnapshotState(input: {
-  file: WorkspaceFileActivationTarget;
+  file: WorkspaceFilePreviewActivationTarget;
 }): WorkspaceFilePreviewNodeSnapshotState {
   return { file: input.file };
 }
 
 export function resolveWorkspaceFilePreviewNodeFile(
   data: Pick<WorkbenchHostNodeData, "runtimeNodeState" | "snapshotNodeState">
-): WorkspaceFileActivationTarget | null {
+): WorkspaceFilePreviewActivationTarget | null {
   for (const value of [data.runtimeNodeState, data.snapshotNodeState]) {
     if (!value || typeof value !== "object") {
       continue;
@@ -96,7 +96,7 @@ export function resolveWorkspaceFilePreviewTextHeaderState(
 }
 
 export function workspaceFilePreviewNodeFileKey(
-  file: WorkspaceFileActivationTarget
+  file: WorkspaceFilePreviewActivationTarget
 ): string {
   return [
     file.fileKind,

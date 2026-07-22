@@ -1,4 +1,4 @@
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
 import {
   isWorkspaceFilePreviewActivationTarget,
   isWorkspaceFilePreviewNodeTypeID,
@@ -77,7 +77,7 @@ export function resolveWorkbenchDockFileMentionItems(input: {
 
 function resolveWorkbenchDockFileTarget(
   nodeData: WorkbenchHostNodeData
-): WorkspaceFileActivationTarget | null {
+): WorkspaceFilePreviewActivationTarget | null {
   for (const value of [nodeData.runtimeNodeState, nodeData.snapshotNodeState]) {
     if (!value || typeof value !== "object") {
       continue;

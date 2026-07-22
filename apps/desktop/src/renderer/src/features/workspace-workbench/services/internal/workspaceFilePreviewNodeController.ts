@@ -1,10 +1,10 @@
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
 import {
   createWorkspaceFilePreviewController,
   formatWorkspacePreviewByteLimit,
   workspaceFilePreviewMaxBytes,
   type WorkspaceFilePreviewController,
   type WorkspaceFilePreviewControllerState,
+  type WorkspaceFilePreviewActivationTarget,
   type WorkspaceFilePreviewReadonlyReason
 } from "@tutti-os/workspace-file-preview";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
@@ -28,33 +28,37 @@ export type WorkspaceFilePreviewTextSaveStatus =
 
 export type WorkspaceFilePreviewNodeControllerState =
   | { status: "empty" }
-  | { entry: WorkspaceFileActivationTarget; status: "loading" }
+  | { entry: WorkspaceFilePreviewActivationTarget; status: "loading" }
   | {
       content: string;
       draft: string;
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewActivationTarget;
       message?: string;
       saveStatus: WorkspaceFilePreviewTextSaveStatus;
       status: "text";
     }
   | {
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewActivationTarget;
       objectUrl: string;
       status: "image";
     }
   | {
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewActivationTarget;
       objectUrl: string;
       status: "video";
     }
-  | { entry: WorkspaceFileActivationTarget; message: string; status: "error" }
   | {
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewActivationTarget;
+      message: string;
+      status: "error";
+    }
+  | {
+      entry: WorkspaceFilePreviewActivationTarget;
       message: string;
       status: "readonly";
     }
   | {
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewActivationTarget;
       message: string;
       status: "unsupported";
     };
@@ -64,7 +68,7 @@ export interface WorkspaceFilePreviewNodeController {
   dispose(): void;
   getSnapshot(): WorkspaceFilePreviewNodeControllerState;
   saveTextFile(): Promise<void>;
-  setActiveFile(file: WorkspaceFileActivationTarget | null): void;
+  setActiveFile(file: WorkspaceFilePreviewActivationTarget | null): void;
   subscribe(listener: () => void): () => void;
 }
 
@@ -72,7 +76,7 @@ export function createWorkspaceFilePreviewNodeController(input: {
   appI18n: I18nRuntime<string>;
   hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-  initialFile: WorkspaceFileActivationTarget | null;
+  initialFile: WorkspaceFilePreviewActivationTarget | null;
   tuttidClient: Pick<
     TuttidClient,
     "readWorkspaceFilePreview" | "writeWorkspaceFileText"
@@ -91,7 +95,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     appI18n: I18nRuntime<string>;
     hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
     i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-    initialFile: WorkspaceFileActivationTarget | null;
+    initialFile: WorkspaceFilePreviewActivationTarget | null;
     tuttidClient: Pick<
       TuttidClient,
       "readWorkspaceFilePreview" | "writeWorkspaceFileText"
@@ -100,7 +104,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     onSnapshotStateChange(state: unknown): void;
     workspaceID: string;
   };
-  private readonly previewController: WorkspaceFilePreviewController<WorkspaceFileActivationTarget>;
+  private readonly previewController: WorkspaceFilePreviewController<WorkspaceFilePreviewActivationTarget>;
   private readonly unsubscribePreview: () => void;
   private runtimeStateKey: string | null = null;
   private snapshotStateKey: string | null = null;
@@ -110,7 +114,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     appI18n: I18nRuntime<string>;
     hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
     i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-    initialFile: WorkspaceFileActivationTarget | null;
+    initialFile: WorkspaceFilePreviewActivationTarget | null;
     tuttidClient: Pick<
       TuttidClient,
       "readWorkspaceFilePreview" | "writeWorkspaceFileText"
@@ -139,7 +143,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
             ),
         kind: entry.fileKind
       }),
-      toPreviewEntry: (entry: WorkspaceFileActivationTarget) => ({
+      toPreviewEntry: (entry: WorkspaceFilePreviewActivationTarget) => ({
         ...entry,
         kind: "file"
       })
@@ -224,7 +228,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     }
   }
 
-  setActiveFile(file: WorkspaceFileActivationTarget | null): void {
+  setActiveFile(file: WorkspaceFilePreviewActivationTarget | null): void {
     if (this.disposed) {
       return;
     }
@@ -239,7 +243,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
   }
 
   private applyPreviewState(
-    state: WorkspaceFilePreviewControllerState<WorkspaceFileActivationTarget>
+    state: WorkspaceFilePreviewControllerState<WorkspaceFilePreviewActivationTarget>
   ): void {
     switch (state.status) {
       case "empty":

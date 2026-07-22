@@ -5,9 +5,7 @@ import type { IReporterService } from "../../analytics/services/reporterService.
 import type { IDesktopPreferencesService } from "../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 import { WorkspaceFileManagerService } from "./internal/workspaceFileManagerService";
-import { WorkspaceFilePreviewSurfaceHost } from "./internal/workspaceFilePreviewSurfaceHost.ts";
 import { IWorkspaceFileManagerService } from "./workspaceFileManagerService.interface";
-import { IWorkspaceFilePreviewSurfaceHost } from "./workspaceFilePreviewSurfaceHost.interface.ts";
 
 export interface WorkspaceFileManagerServiceRegistrationInput {
   hostFilesApi: DesktopHostFilesApi;
@@ -25,10 +23,6 @@ export function registerWorkspaceFileManagerServices(
   registry: ServiceRegistry,
   input: WorkspaceFileManagerServiceRegistrationInput
 ): void {
-  registry.registerInstance(
-    IWorkspaceFilePreviewSurfaceHost,
-    new WorkspaceFilePreviewSurfaceHost()
-  );
   registry.register(
     IWorkspaceFileManagerService,
     new SyncDescriptor(WorkspaceFileManagerService, [input])

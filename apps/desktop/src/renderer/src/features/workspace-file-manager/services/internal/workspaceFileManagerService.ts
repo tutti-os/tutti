@@ -27,9 +27,8 @@ import type {
 } from "../workspaceFileManagerService.interface";
 import {
   IWorkspaceFilePreviewSurfaceHost,
-  type IWorkspaceFilePreviewSurfaceHost as WorkspaceFilePreviewSurfaceHost
-} from "../workspaceFilePreviewSurfaceHost.interface.ts";
-import { WorkspaceFilePreviewSurfaceHost as DefaultWorkspaceFilePreviewSurfaceHost } from "./workspaceFilePreviewSurfaceHost.ts";
+  type IWorkspaceFilePreviewSurfaceHost as WorkspaceFilePreviewSurfaceHostService
+} from "../../../workspace-file-preview/index.ts";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { DesktopLocale } from "@shared/i18n";
 import {
@@ -94,7 +93,7 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
   constructor(
     dependencies: WorkspaceFileManagerServiceDependencies,
     notifications: NotificationService = noopNotifications,
-    filePreviewSurfaceHost: WorkspaceFilePreviewSurfaceHost = new DefaultWorkspaceFilePreviewSurfaceHost()
+    filePreviewSurfaceHost: WorkspaceFilePreviewSurfaceHost = unavailableWorkspaceFilePreviewSurfaceHost
   ) {
     this.dependencies = dependencies;
     this.filePreviewSurfaceHost = filePreviewSurfaceHost;
@@ -556,6 +555,22 @@ function referenceNodeToLocation(
 // Avoid decorator syntax so the renderer Babel pass can parse this file.
 INotificationService(WorkspaceFileManagerService, undefined, 1);
 IWorkspaceFilePreviewSurfaceHost(WorkspaceFileManagerService, undefined, 2);
+
+type WorkspaceFilePreviewSurfaceHost = Pick<
+  WorkspaceFilePreviewSurfaceHostService,
+  "getUnsupportedFallbackNotification" | "present"
+>;
+
+const unavailableWorkspaceFilePreviewSurfaceHost: WorkspaceFilePreviewSurfaceHost =
+  {
+    getUnsupportedFallbackNotification: () => "show",
+    async present() {
+      return {
+        presented: false,
+        unsupportedFallbackNotification: "show"
+      };
+    }
+  };
 
 const noopNotifications: NotificationService = {
   _serviceBrand: undefined,

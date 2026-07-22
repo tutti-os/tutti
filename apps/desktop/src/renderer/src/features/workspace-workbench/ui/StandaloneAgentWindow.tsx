@@ -50,10 +50,8 @@ import {
   type IWorkspaceAppCenterService
 } from "@renderer/features/workspace-app-center";
 import { useService } from "@tutti-os/infra/di";
-import {
-  IWorkspaceFileManagerService,
-  IWorkspaceFilePreviewSurfaceHost
-} from "@renderer/features/workspace-file-manager";
+import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
+import { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import type {
   DesktopApi,
   DesktopHostWindowApi,

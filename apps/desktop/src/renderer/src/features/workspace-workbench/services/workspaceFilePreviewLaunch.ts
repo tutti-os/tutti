@@ -1,4 +1,4 @@
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
 import type { WorkbenchHostLaunchInput } from "@tutti-os/workbench-surface";
 
 export const workspaceImageFileNodeTypeID = "workspace-image-file";
@@ -6,7 +6,7 @@ export const workspaceTextFileNodeTypeID = "workspace-text-file";
 export const workspaceFilePreviewActivationType = "workspace-file-preview";
 
 export function createWorkspaceFilePreviewLaunchRequest(
-  target: WorkspaceFileActivationTarget
+  target: WorkspaceFilePreviewActivationTarget
 ): WorkbenchHostLaunchInput {
   return {
     launchSource: "file_manager",
@@ -17,13 +17,13 @@ export function createWorkspaceFilePreviewLaunchRequest(
 }
 
 export function createWorkspaceFilePreviewInstanceID(
-  target: WorkspaceFileActivationTarget
+  target: WorkspaceFilePreviewActivationTarget
 ): string {
   return `path:${hashWorkspaceFilePreviewPath(target.path)}`;
 }
 
 export function resolveWorkspaceFilePreviewNodeTypeID(
-  fileKind: WorkspaceFileActivationTarget["fileKind"]
+  fileKind: WorkspaceFilePreviewActivationTarget["fileKind"]
 ): string {
   return fileKind === "image"
     ? workspaceImageFileNodeTypeID
@@ -39,12 +39,12 @@ export function isWorkspaceFilePreviewNodeTypeID(typeID: string): boolean {
 
 export function isWorkspaceFilePreviewActivationTarget(
   value: unknown
-): value is WorkspaceFileActivationTarget {
+): value is WorkspaceFilePreviewActivationTarget {
   if (!value || typeof value !== "object") {
     return false;
   }
 
-  const candidate = value as Partial<WorkspaceFileActivationTarget>;
+  const candidate = value as Partial<WorkspaceFilePreviewActivationTarget>;
   return (
     (candidate.fileKind === "image" ||
       candidate.fileKind === "text" ||
@@ -53,8 +53,12 @@ export function isWorkspaceFilePreviewActivationTarget(
     candidate.name.trim().length > 0 &&
     typeof candidate.path === "string" &&
     candidate.path.trim().length > 0 &&
-    (candidate.mtimeMs === null || typeof candidate.mtimeMs === "number") &&
-    (candidate.sizeBytes === null || typeof candidate.sizeBytes === "number")
+    (candidate.mtimeMs === undefined ||
+      candidate.mtimeMs === null ||
+      typeof candidate.mtimeMs === "number") &&
+    (candidate.sizeBytes === undefined ||
+      candidate.sizeBytes === null ||
+      typeof candidate.sizeBytes === "number")
   );
 }
 

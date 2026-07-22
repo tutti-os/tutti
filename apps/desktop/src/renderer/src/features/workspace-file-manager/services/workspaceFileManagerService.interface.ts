@@ -2,12 +2,12 @@ import { createDecorator } from "@tutti-os/infra/di";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
-  WorkspaceFileActivationTarget,
   WorkspaceFileEntry,
   WorkspaceFileManagerI18nRuntime,
   WorkspaceFileManagerPersistedState,
   WorkspaceFileManagerSession as SharedWorkspaceFileManagerSession
 } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
 export type WorkspaceFileManagerSession = SharedWorkspaceFileManagerSession;
 
 export interface IWorkspaceFileManagerService {
@@ -29,7 +29,7 @@ export interface IWorkspaceFileManagerService {
   ): WorkspaceFileManagerPersistedState | null;
   openCanvasFilePreview(
     workspaceID: string,
-    target: WorkspaceFileActivationTarget
+    target: WorkspaceFilePreviewActivationTarget
   ): Promise<boolean>;
   resolveEntryIconUrl(
     workspaceID: string,
