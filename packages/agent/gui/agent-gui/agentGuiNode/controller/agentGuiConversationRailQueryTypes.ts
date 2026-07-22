@@ -32,6 +32,7 @@ export interface ConversationRailQueryControllerInput {
   diagnosticSlowThresholdMs?: number;
   engine: AgentSessionEngine;
   getActiveConversationId(): string | null;
+  nodeId?: string | null;
   runtime: ConversationRailQueryRuntime;
   sessionSectionsQueryCache?: WorkspaceQueryCache<CachedConversationRailQuery>;
   scheduler?: AgentGuiScheduler;

@@ -9,6 +9,7 @@ export function useAgentGUIViewModel(
     [
       candidate.shell.currentUserId,
       candidate.shell.data,
+      candidate.shell.nodeId,
       candidate.shell.workspaceId,
       candidate.shell.workspacePath
     ]

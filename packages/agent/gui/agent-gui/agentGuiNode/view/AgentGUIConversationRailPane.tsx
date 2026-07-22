@@ -61,6 +61,7 @@ function useDelayedBoolean(value: boolean, delayMs: number): boolean {
 
 export interface AgentGUIConversationRailControllerProps {
   conversations: AgentGUINodeViewModel["rail"]["conversations"];
+  nodeId?: string | null;
   footer?: React.ReactNode;
   workspaceId: string;
   userProjects: AgentGUINodeViewModel["rail"]["userProjects"];

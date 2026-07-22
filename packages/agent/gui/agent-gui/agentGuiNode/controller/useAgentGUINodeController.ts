@@ -152,6 +152,7 @@ export type {
 } from "./agentGuiController.providerHelpers";
 
 export function useAgentGUINodeController({
+  nodeId,
   workspaceId,
   currentUserId,
   workspacePath,
@@ -762,6 +763,7 @@ export function useAgentGUINodeController({
     isLoadingConversations,
     isLoadingMessages,
     normalizedComingSoonProviders,
+    nodeId,
     operationActions,
     persistActiveConversation,
     planImplementationTurnIdRef,

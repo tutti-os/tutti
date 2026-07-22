@@ -1,4 +1,7 @@
-import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
+import {
+  AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
+  normalizeAgentActivitySession
+} from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import { createTestAgentSessionEngine } from "../../../shared/testing/createTestAgentSessionEngine";
 import { createWorkspaceQueryCache } from "../../../shared/query/workspaceQueryCache";
@@ -693,10 +696,13 @@ describe("AgentGUIConversationRailQueryController", () => {
         controllerApplyMs: 25,
         durationMs: 325,
         event: "agent_gui.conversation_rail.first_pages_slow",
+        nodeId: null,
         requestId: 2,
         requestMs: 300,
         refreshReason: "attach",
         returnedSessionCount: 0,
+        returnedSessionIds: [],
+        runtimeOrigin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
         sectionCount: 2,
         status: "ready",
         workspaceId: "test-workspace"
@@ -762,10 +768,13 @@ describe("AgentGUIConversationRailQueryController", () => {
       durationMs: 20,
       errorKind: "TypeError",
       event: "agent_gui.conversation_rail.first_pages_failed",
+      nodeId: null,
       requestId: 4,
       requestMs: 20,
       refreshReason: "attach",
       returnedSessionCount: 0,
+      returnedSessionIds: [],
+      runtimeOrigin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
       sectionCount: 0,
       status: "error",
       workspaceId: "test-workspace"
@@ -935,6 +944,144 @@ describe("AgentGUIConversationRailQueryController", () => {
         status: "ready",
         toAgentTargetId: "local:codex"
       })
+    );
+
+    detach();
+    engine.dispose();
+  });
+
+  it("logs retained sessions when switching from a target filter to all", async () => {
+    const engine = createTestAgentSessionEngine();
+    const diagnosticLogger = vi.fn();
+    const previousSession = normalizeAgentActivitySession({
+      activeTurnId: null,
+      agentSessionId: "session-previous",
+      agentTargetId: "shared:one",
+      cwd: "/workspace",
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "codex",
+      railSectionKey: "conversations",
+      title: "Previous conversation",
+      updatedAtUnixMs: 1,
+      workspaceId: "test-workspace"
+    });
+    const allSession = normalizeAgentActivitySession({
+      ...previousSession,
+      agentSessionId: "session-from-all",
+      title: "Conversation returned by all"
+    });
+    let resolveAllSections!: () => void;
+    let requestCount = 0;
+    const listSessionSections = vi.fn<
+      NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
+    >((input) => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return Promise.resolve({
+          sections: [
+            {
+              hasMore: false,
+              kind: "conversations" as const,
+              sectionKey: "conversations",
+              sessions: [previousSession],
+              totalCount: 1
+            }
+          ],
+          workspaceId: input.workspaceId
+        });
+      }
+      return new Promise<void>((resolve) => {
+        resolveAllSections = resolve;
+      }).then(() => ({
+        sections: [
+          {
+            hasMore: false,
+            kind: "conversations" as const,
+            sectionKey: "conversations",
+            sessions: [previousSession, allSession],
+            totalCount: 2
+          }
+        ],
+        workspaceId: input.workspaceId
+      }));
+    });
+    const controller = new AgentGUIConversationRailQueryController({
+      diagnosticLogger,
+      engine,
+      getActiveConversationId: () => "session-previous",
+      nodeId: "shared-node-1",
+      runtime: {
+        listSessionSections,
+        listSessionSectionPage: async (input) => ({
+          hasMore: false,
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          totalCount: 0
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+    controller.configure({
+      conversationFilter: {
+        agentTargetId: "shared:one",
+        kind: "agentTarget"
+      },
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    });
+    const detach = controller.attach();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    diagnosticLogger.mockClear();
+
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      previewMode: false,
+      sectionAgentTargetFallbackId: "shared:one",
+      userProjects: []
+    });
+
+    expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(true);
+    expect(controller.getSnapshot().runtimeRailMemberships).toEqual([
+      expect.objectContaining({ sessionIds: ["session-previous"] })
+    ]);
+    expect(diagnosticLogger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeConversationId: "session-previous",
+        event: "agent_gui.conversation_rail.scope_change.started",
+        fromAgentTargetId: "shared:one",
+        fromFilterKind: "agentTarget",
+        nodeId: "shared-node-1",
+        preservedSectionCount: 1,
+        preservedSessionIds: ["session-previous"],
+        retainedPreviousSections: true,
+        runtimeOrigin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
+        status: "pending",
+        toAgentTargetId: "shared:one",
+        toFilterKind: "all"
+      })
+    );
+
+    resolveAllSections();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    expect(diagnosticLogger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cacheStatus: "miss",
+        event: "agent_gui.conversation_rail.scope_change.completed",
+        nodeId: "shared-node-1",
+        returnedSessionCount: 2,
+        returnedSessionIds: ["session-previous", "session-from-all"],
+        status: "ready"
+      })
+    );
+    expect(diagnosticLogger).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: "agent_gui.provider_switch.completed" })
     );
 
     detach();

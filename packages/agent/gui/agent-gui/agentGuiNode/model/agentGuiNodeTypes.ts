@@ -318,6 +318,7 @@ export interface AgentGUIQueuedPromptVM {
 export type AgentGUIQueueStatus = "active" | "paused_by_user";
 
 export interface AgentGUIShellViewModel {
+  nodeId?: string | null;
   workspaceId: string;
   workspacePath?: string | null;
   currentUserId?: string | null;

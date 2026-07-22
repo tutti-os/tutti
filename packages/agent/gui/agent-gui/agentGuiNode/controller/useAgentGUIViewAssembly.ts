@@ -59,6 +59,7 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
   ComposerCapabilities &
   SessionDetailTransport &
   OperationActions & {
+    nodeId?: string | null;
     operationActions: OperationActions;
     detailAvailability: AgentGUIDetailViewModel["availability"];
     updateSelectedProjectPath: Parameters<
@@ -131,6 +132,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   });
   const viewModel = useAgentGUIViewModel({
     shell: {
+      nodeId: input.nodeId?.trim() || null,
       workspaceId: input.workspaceId,
       workspacePath: input.workspacePath,
       currentUserId: input.currentUserId,

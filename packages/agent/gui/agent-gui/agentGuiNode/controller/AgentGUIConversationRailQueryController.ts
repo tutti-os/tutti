@@ -15,8 +15,8 @@ import {
 } from "../agentGuiScheduler";
 import {
   CONVERSATION_RAIL_SLOW_DIAGNOSTIC_THRESHOLD_MS,
+  conversationRailQuerySessionIds,
   createConversationRailDiagnosticLogger,
-  emitConversationRailFirstPagesDiagnostic,
   ConversationRailProviderSwitchDiagnosticTracker,
   type ConversationRailDiagnosticLogger,
   type ConversationRailRefreshReason
@@ -77,6 +77,7 @@ export class AgentGUIConversationRailQueryController {
   private readonly diagnosticNow: () => number;
   private readonly diagnosticSlowThresholdMs: number;
   private readonly getActiveConversationId: () => string | null;
+  private readonly nodeId: string | null;
   private readonly listeners = new Set<Listener>();
   private readonly runtime: ConversationRailQueryRuntime;
   private readonly scheduler: AgentGuiScheduler;
@@ -119,12 +120,18 @@ export class AgentGUIConversationRailQueryController {
       CONVERSATION_RAIL_SLOW_DIAGNOSTIC_THRESHOLD_MS;
     this.engine = input.engine;
     this.getActiveConversationId = input.getActiveConversationId;
+    this.nodeId = input.nodeId?.trim() || null;
     this.runtime = input.runtime;
     this.providerSwitchDiagnostics =
       new ConversationRailProviderSwitchDiagnosticTracker(
         this.diagnosticLogger,
         this.diagnosticNow,
-        input.workspaceId
+        {
+          nodeId: this.nodeId,
+          runtimeOrigin: input.engine.identity.origin,
+          workspaceId: input.workspaceId
+        },
+        this.diagnosticSlowThresholdMs
       );
     this.sessionSectionsQueryCache =
       input.sessionSectionsQueryCache ??
@@ -179,15 +186,27 @@ export class AgentGUIConversationRailQueryController {
   configure(scope: ConversationRailQueryScope): void {
     const previousScopeKey = this.railSectionQueryKey;
     const previousAgentTargetId = this.sectionAgentTargetId;
+    const previousFilterKind = this.scope?.conversationFilter.kind ?? null;
+    const preservedSessionIds = conversationRailQuerySessionIds(
+      this.queryState
+    );
     const { agentTargetId: sectionAgentTargetId, scopeKey: nextScopeKey } =
       resolveConversationRailQueryScope(this.workspaceId, scope);
     const scopeChanged = nextScopeKey !== this.railSectionQueryKey;
     this.providerSwitchDiagnostics.configure({
+      activeConversationId: this.getActiveConversationId(),
       attached: this.attached,
+      nextFilterKind: scope.conversationFilter.kind,
       nextAgentTargetId: sectionAgentTargetId,
       nextScopeKey,
+      preservedSectionCount: this.queryState.sections?.length ?? 0,
+      preservedSessionIds,
+      previousFilterKind,
       previousAgentTargetId,
-      previousScopeKey
+      previousScopeKey,
+      retainedPreviousSections:
+        this.queryState.sections !== null &&
+        this.queryState.resolvedScopeKey === previousScopeKey
     });
     this.scope = scope;
     this.sectionAgentTargetId = sectionAgentTargetId;
@@ -446,16 +465,12 @@ export class AgentGUIConversationRailQueryController {
       !cached.stale &&
       this.cacheNow() - cached.resolvedAtUnixMs <= this.cacheFreshMs
     ) {
-      this.providerSwitchDiagnostics.complete(scopeKey, {
-        cacheStatus: "fresh",
+      this.providerSwitchDiagnostics.completeCachedFirstPages(scopeKey, {
         controllerApplyMs:
           cacheApplyStartedAt === null
             ? 0
             : Math.max(0, this.diagnosticNow() - cacheApplyStartedAt),
-        requestMs: 0,
-        returnedSessionCount: cached.value.returnedSessionCount,
-        sectionCount: cached.value.sectionCount,
-        status: "ready"
+        query: cached.value
       });
       this.sectionPublicationState = "idle";
       this.publishIfReady(undefined, true);
@@ -500,27 +515,15 @@ export class AgentGUIConversationRailQueryController {
         this.sectionPublicationState = "idle";
         this.publishIfReady(undefined, true);
         const completedAt = this.diagnosticNow();
-        this.providerSwitchDiagnostics.complete(scopeKey, {
-          cacheStatus,
-          controllerApplyMs: Math.max(0, completedAt - requestResolvedAt),
-          requestMs: Math.max(0, requestResolvedAt - requestStartedAt),
-          returnedSessionCount: entry.value.returnedSessionCount,
-          sectionCount: entry.value.sectionCount,
-          status: "ready"
-        });
-        emitConversationRailFirstPagesDiagnostic({
+        this.providerSwitchDiagnostics.completeFirstPages(scopeKey, {
           agentTargetId: this.sectionAgentTargetId || null,
-          controllerApplyMs: Math.max(0, completedAt - requestResolvedAt),
-          diagnosticLogger: this.diagnosticLogger,
-          diagnosticSlowThresholdMs: this.diagnosticSlowThresholdMs,
-          durationMs: Math.max(0, completedAt - requestStartedAt),
-          requestId: requestSequence,
-          requestMs: Math.max(0, requestResolvedAt - requestStartedAt),
+          cacheStatus,
+          completedAt,
+          query: entry.value,
           refreshReason,
-          returnedSessionCount: entry.value.returnedSessionCount,
-          sectionCount: entry.value.sectionCount,
-          status: "ready",
-          workspaceId: this.workspaceId
+          requestId: requestSequence,
+          requestResolvedAt,
+          requestStartedAt
         });
       })
       .catch((error: unknown) => {
@@ -531,29 +534,14 @@ export class AgentGUIConversationRailQueryController {
           return;
         }
         const failedAt = this.diagnosticNow();
-        this.providerSwitchDiagnostics.complete(scopeKey, {
-          cacheStatus,
-          controllerApplyMs: 0,
-          error,
-          requestMs: Math.max(0, failedAt - requestStartedAt),
-          returnedSessionCount: 0,
-          sectionCount: 0,
-          status: "error"
-        });
-        emitConversationRailFirstPagesDiagnostic({
+        this.providerSwitchDiagnostics.failFirstPages(scopeKey, {
           agentTargetId: this.sectionAgentTargetId || null,
-          controllerApplyMs: 0,
-          diagnosticLogger: this.diagnosticLogger,
-          diagnosticSlowThresholdMs: this.diagnosticSlowThresholdMs,
-          durationMs: Math.max(0, failedAt - requestStartedAt),
+          cacheStatus,
           error,
-          requestId: requestSequence,
-          requestMs: Math.max(0, failedAt - requestStartedAt),
+          failedAt,
           refreshReason,
-          returnedSessionCount: 0,
-          sectionCount: 0,
-          status: "error",
-          workspaceId: this.workspaceId
+          requestId: requestSequence,
+          requestStartedAt
         });
         this.queryState = wasResolvedForScope
           ? {

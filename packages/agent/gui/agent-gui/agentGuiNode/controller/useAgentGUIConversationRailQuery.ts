@@ -14,6 +14,7 @@ export interface AgentGUIConversationRailInput {
   activeConversationId: string | null;
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
   conversationQuery: string;
+  nodeId?: string | null;
   previewMode: boolean;
   /**
    * Lets the host subtree observe this controller's interaction lock (e.g.
@@ -29,6 +30,7 @@ export function useAgentGUIConversationRailQuery({
   activeConversationId,
   conversationFilter,
   conversationQuery,
+  nodeId,
   previewMode,
   registerInteractionLockProbe,
   sectionAgentTargetFallbackId,
@@ -51,10 +53,11 @@ export function useAgentGUIConversationRailQuery({
       new AgentGUIConversationRailQueryController({
         engine,
         getActiveConversationId: () => activeConversationIdRef.current,
+        nodeId,
         runtime,
         workspaceId
       }),
-    [engine, runtime, workspaceId]
+    [engine, nodeId, runtime, workspaceId]
   );
 
   useEffect(() => {
