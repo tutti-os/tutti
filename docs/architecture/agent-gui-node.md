@@ -532,6 +532,12 @@ home composer submit
 ```
 
 Initial-content create is one transaction. Failure compensates the provisional runtime/canonical shell; it must not leave a Turn-less Session.
+An activation may instead carry `initialGoalControl`. In that branch the engine
+and runtime adapter preserve the structured `{action, objective}` command, the
+host integration creates a non-provisional Session without initial content,
+and Goal control completes without manufacturing a Turn. The structured field
+is authoritative; integrations must not reparse the display prompt to recover
+Goal semantics.
 The pending activation carries the same resolved project section key as the
 create command. Exact rail projection therefore shows the conversation as soon
 as the intent is accepted; it does not wait for provider startup or invent a

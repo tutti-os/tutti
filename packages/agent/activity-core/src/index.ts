@@ -250,6 +250,7 @@ export type {
   AgentActivityDisplayStatus,
   AgentActivityCancelTurnInput,
   AgentActivityGoalControlAction,
+  AgentActivityInitialGoalControl,
   AgentActivityGoalControlInput,
   AgentActivityGoalControlResult,
   AgentActivityComposerCapabilityOption,

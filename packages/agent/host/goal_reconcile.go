@@ -28,24 +28,7 @@ func (h *Host) GetGoalState(ctx context.Context, ref SessionRef) (GoalStateResul
 		return GoalStateResult{}, err
 	}
 	if !found {
-		// Observation reconciliation bootstraps the projection without changing
-		// desired revision. An absent provider observation remains unknown.
-		state, err = h.goals.ReconcileSessionGoalObservation(ctx, storesqlite.GoalObservationReconcile{
-			WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
-			Evidence:         map[string]any{"source": "upper_read_bootstrap", "confidence": "unknown"},
-			OccurredAtUnixMS: h.goalOperationNow().UnixMilli(),
-			Expected:         &storesqlite.GoalObservationFence{Exists: false},
-			ForceSyncUnknown: true,
-		})
-		if errors.Is(err, storesqlite.ErrGoalReconcileConflict) {
-			state, found, err = h.goals.GetSessionGoalState(ctx, workspaceID, agentSessionID)
-			if err == nil && !found {
-				err = storesqlite.ErrGoalReconcileConflict
-			}
-		}
-		if err != nil {
-			return GoalStateResult{}, err
-		}
+		return GoalStateResult{Canonical: canonical}, nil
 	}
 	return GoalStateResult{Canonical: canonical, State: state}, nil
 }

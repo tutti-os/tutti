@@ -1,4 +1,5 @@
 import {
+  type AgentActivityInitialGoalControl,
   isPendingActivationViable,
   selectLatestActivationForSession
 } from "@tutti-os/agent-activity-core";
@@ -79,7 +80,8 @@ export function useAgentGUINewConversationActivation(
       initialContentInput?: unknown,
       displayPrompt?: string,
       submitOptions?: AgentComposerSubmitOptions,
-      initialTurnExpected?: boolean
+      initialTurnExpected?: boolean,
+      initialGoalControl?: AgentActivityInitialGoalControl
     ): AgentGUINewConversationActivationResult | null => {
       const target = selectedAgentTargetRef.current;
       const targetData = selectedComposerTargetDataRef.current;
@@ -185,6 +187,7 @@ export function useAgentGUINewConversationActivation(
         ...(railSectionKey ? { railSectionKey } : {}),
         initialContent: normalizedInitialContent,
         ...(initialTurnExpected !== undefined ? { initialTurnExpected } : {}),
+        ...(initialGoalControl ? { initialGoalControl } : {}),
         initialDisplayPrompt,
         runtimeContent: toRuntimeSendContent(normalizedInitialContent),
         submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),
