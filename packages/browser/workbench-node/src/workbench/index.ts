@@ -166,7 +166,9 @@ export function createBrowserDockEntry(
   input: CreateBrowserDockEntryInput
 ): WorkbenchHostDockEntry {
   return {
-    ...createMultiInstanceDockEntryOptions(),
+    ...createMultiInstanceDockEntryOptions(undefined, {
+      allowNewWindowInDockPopup: false
+    }),
     capturePopupItemPreview: ({ node }) =>
       input.feature.hostApi.capturePreview?.({
         nodeId: input.feature.tabsStore.getActiveNodeId(node.id)
