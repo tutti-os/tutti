@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/app-release-tools",
-  "version": "0.1.1",
+  "version": "0.0.188",
   "private": false,
   "type": "module",
   "bin": {
