@@ -1,6 +1,7 @@
 import {
   selectSessionActivationPresentations,
   sessionActivationPresentationMapsEqual,
+  type AgentActivityInitialGoalControl,
   type AgentActivitySubmitDiagnostics,
   type PendingActivationIntentRecord,
   type AgentSessionEngine
@@ -20,6 +21,7 @@ interface AgentGUIActivateInputBase {
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
   initialTurnExpected?: boolean;
+  initialGoalControl?: AgentActivityInitialGoalControl;
   railSectionKey?: string;
   initialDisplayPrompt?: string;
   runtimeContent?: AgentPromptContentBlock[];
@@ -122,6 +124,9 @@ export function useAgentGUIActivation({
         expiresAtUnixMs: requestedAtUnixMs + ACTIVATION_EXPIRY_MS,
         ...(input.initialTurnExpected !== undefined
           ? { initialTurnExpected: input.initialTurnExpected }
+          : {}),
+        ...(input.initialGoalControl
+          ? { initialGoalControl: { ...input.initialGoalControl } }
           : {}),
         ...(input.railSectionKey?.trim()
           ? { railSectionKey: input.railSectionKey.trim() }

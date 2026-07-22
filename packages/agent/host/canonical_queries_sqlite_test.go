@@ -88,6 +88,44 @@ func TestSessionInteractionSnapshotReadsOnlyLatestTurnFromSQLite(t *testing.T) {
 	}
 }
 
+func TestGetGoalStateDoesNotBootstrapMissingProjection(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "agent-host-goal-read.db"))
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	store := storesqlite.New(db, storesqlite.Options{})
+	if err := store.Migrate(t.Context()); err != nil {
+		t.Fatalf("migrate SQLite: %v", err)
+	}
+	if _, err := store.ReportSessionState(t.Context(), storesqlite.SessionStateReport{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-goal-read", Provider: "codex", OccurredAtUnixMS: 1,
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	if _, found, err := store.GetSessionGoalState(t.Context(), "workspace-1", "session-goal-read"); err != nil || found {
+		t.Fatalf("goal before read: found=%v err=%v", found, err)
+	}
+
+	host := agenthost.New(agenthost.Config{
+		CanonicalStore: sqliteCanonicalStore{Store: store},
+		GoalStore:      store,
+	})
+	result, err := host.GetGoalState(t.Context(), agenthost.SessionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-goal-read",
+	})
+	if err != nil {
+		t.Fatalf("GetGoalState() error = %v", err)
+	}
+	if result.State.Revision != 0 || result.State.WorkspaceID != "" {
+		t.Fatalf("GetGoalState() state = %#v, want zero value", result.State)
+	}
+	if _, found, err := store.GetSessionGoalState(t.Context(), "workspace-1", "session-goal-read"); err != nil || found {
+		t.Fatalf("goal after read: found=%v err=%v", found, err)
+	}
+}
+
 func TestListSessionMessagesReadsOneCanonicalTurnPageFromSQLite(t *testing.T) {
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "agent-host-messages.db"))
 	if err != nil {

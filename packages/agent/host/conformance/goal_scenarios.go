@@ -76,6 +76,29 @@ func runGoalActionLifecycle(ctx context.Context, driver Driver) error {
 	return nil
 }
 
+func runDuplicateGoalClientSubmitID(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, liveSessionFixture("session-goal-idempotent", "")); err != nil {
+		return err
+	}
+	input := agenthost.GoalControlInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-goal-idempotent",
+		Action: "set", Objective: "ship exactly once", ClientSubmitID: "goal-idempotent-1",
+		SubmissionMetadata: map[string]any{"clientSubmitId": "ignored-legacy-id"},
+	}
+	first, err := driver.GoalControl(ctx, input)
+	if err != nil {
+		return fmt.Errorf("first goal control: %w", err)
+	}
+	second, err := driver.GoalControl(ctx, input)
+	if err != nil {
+		return fmt.Errorf("duplicate goal control: %w", err)
+	}
+	if first.Revision != 1 || second.Revision != first.Revision || driver.Metrics().GoalControlCalls != 1 {
+		return fmt.Errorf("duplicate goal control was not idempotent: first=%#v second=%#v metrics=%#v", first, second, driver.Metrics())
+	}
+	return nil
+}
+
 func runGoalReconcileObservation(ctx context.Context, driver Driver) error {
 	if err := driver.Reset(ctx, liveSessionFixture("session-goal-reconcile", "")); err != nil {
 		return err

@@ -118,7 +118,11 @@ interface UseAgentGUISubmitInteractionActionsInput {
     content: AgentPromptContentBlock[],
     displayPrompt?: string,
     options?: AgentComposerSubmitOptions,
-    initialTurnExpected?: boolean
+    initialTurnExpected?: boolean,
+    initialGoalControl?: {
+      action: AgentActivityGoalControlAction;
+      objective?: string;
+    }
   ): AgentGUINewConversationActivationResult | null;
   submitPromptRef: RefObject<
     (
@@ -528,7 +532,8 @@ export function useAgentGUISubmitInteractionActions(
           normalizedContent,
           displayPromptText,
           options,
-          typedGoal ? false : undefined
+          typedGoal ? false : undefined,
+          typedGoal ?? undefined
         );
         if (activationResult) {
           if (typedGoal) {

@@ -84,6 +84,7 @@ func GoalScenarios() []Scenario {
 	return []Scenario{
 		{Name: "direct and typed goal equivalence", run: runDirectAndTypedGoalEquivalence},
 		{Name: "goal action lifecycle", run: runGoalActionLifecycle},
+		{Name: "duplicate goal client submit id", run: runDuplicateGoalClientSubmitID},
 		{Name: "goal reconcile observation", run: runGoalReconcileObservation},
 		{Name: "goal revision actor fence", run: runGoalRevisionActorFence},
 		{Name: "goal inbox consumer preflight", run: runGoalInboxConsumerPreflight},

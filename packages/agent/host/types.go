@@ -475,10 +475,14 @@ type RuntimeGoalRecoveryPolicy struct {
 }
 
 type GoalControlInput struct {
-	WorkspaceID        string
-	AgentSessionID     string
-	Action             string
-	Objective          string
+	WorkspaceID    string
+	AgentSessionID string
+	Action         string
+	Objective      string
+	// ClientSubmitID is the caller-stable identity for one semantic mutation.
+	// It overrides the legacy SubmissionMetadata["clientSubmitId"] value and
+	// makes retries idempotent across Host process restarts.
+	ClientSubmitID     string
 	SubmissionMetadata map[string]any
 }
 

@@ -1,4 +1,5 @@
 import type {
+  AgentActivityInitialGoalControl,
   AgentActivityMessage,
   AgentActivitySessionSettings,
   AgentActivitySubmitDiagnostics,
@@ -34,6 +35,7 @@ interface PendingActivationIntentRecordBase {
   errorMessage: string | null;
   expiresAtUnixMs: number;
   initialTurnExpected: boolean;
+  initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   railSectionKey?: string;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   pendingSettingsPatch?: Readonly<Record<string, unknown>>;
@@ -98,6 +100,7 @@ interface SessionActivationRequestedIntentBase {
   cwd?: string;
   expiresAtUnixMs: number;
   initialTurnExpected?: boolean;
+  initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   railSectionKey?: string;
   initialDisplayPrompt?: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
@@ -165,6 +168,7 @@ interface SessionActivateCommandBase {
   cwd?: string;
   initialContent?: readonly AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
+  initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   settings?: AgentActivitySessionSettings;
   timeoutMs?: number;

@@ -29,7 +29,11 @@ empty; only an explicit title or the first eligible prompt establishes one.
 Cancellation exposes durable intent acceptance, provider confirmation, and
 canonical settlement as separate facts. `GoalControl`, `GetGoalState`, and
 `ReconcileGoal` are provider-neutral Host APIs; typed `/goal` commands enter the
-same durable saga without opening a turn. `Recover` first requeues and recovers
+same durable saga without opening a turn. A caller-stable `ClientSubmitID`
+makes one goal mutation idempotent across retries and Host restarts (and takes
+precedence over the legacy metadata field). `GetGoalState` is a pure canonical
+read: only `GoalControl`, `ReconcileGoal`, and recovery workers may create or
+change the durable goal projection. `Recover` first requeues and recovers
 durable runtime operations, then goal operations and the goal reconcile inbox,
 then settles unrecoverable stale turns, and finally invokes the adapter's
 worktree-isolation sweep. Configuring a goal store

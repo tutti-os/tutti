@@ -243,6 +243,7 @@ test("control activation can carry content without expecting a Turn", () => {
   const intent = {
     ...activation(),
     content: [{ type: "text" as const, text: "/goal ship it" }],
+    initialGoalControl: { action: "set" as const, objective: "ship it" },
     initialTurnExpected: false,
     runtimeContent: [{ type: "text" as const, text: "/goal ship it" }]
   };
@@ -260,6 +261,7 @@ test("control activation can carry content without expecting a Turn", () => {
       cwd: "/workspace",
       initialContent: [{ type: "text", text: "/goal ship it" }],
       initialDisplayPrompt: "/browser",
+      initialGoalControl: { action: "set", objective: "ship it" },
       submitDiagnostics: { submittedAtUnixMs: 1 },
       mode: "new",
       settings: { model: "model-1" },
