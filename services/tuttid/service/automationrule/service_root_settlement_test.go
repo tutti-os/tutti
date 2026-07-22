@@ -7,6 +7,7 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
@@ -74,20 +75,20 @@ func TestAutomationRuleFiresFromLiveRootProviderTurnSettlement(t *testing.T) {
 	activeTurnID := turnID
 
 	// Live shape 1: adapter-stamped turn start (running Turn + TurnLifecycle).
-	if _, err := projection.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	if _, err := projection.ReportSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: sessionID,
 		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			Provider:     "codex",
 			CurrentPhase: "working",
-			Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+			Turn: &canonical.WorkspaceAgentTurnStateUpdate{
 				TurnID:          turnID,
 				ActiveTurnID:    &activeTurnID,
 				Phase:           "running",
 				StartedAtUnixMS: 1_700_000_000_000,
 			},
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{
 				ActiveTurnID: &activeTurnID,
 				Phase:        "running",
 			},
@@ -100,16 +101,16 @@ func TestAutomationRuleFiresFromLiveRootProviderTurnSettlement(t *testing.T) {
 	// Live shape 2: the codex terminal patch — RootProviderTurn only. The
 	// settled Turn/TurnLifecycle never appears in any reported state; the
 	// canonical settlement is the store's own root-provider aggregation.
-	if _, err := projection.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	if _, err := projection.ReportSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: sessionID,
 		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			Provider: "codex",
-			RootProviderTurn: &agentsessionstore.WorkspaceAgentRootProviderTurnTransition{
+			RootProviderTurn: &canonical.WorkspaceAgentRootProviderTurnTransition{
 				RootTurnID:     turnID,
 				ProviderTurnID: "provider-turn-1",
-				Phase:          agentsessionstore.RootProviderTurnPhaseCompleted,
+				Phase:          canonical.RootProviderTurnPhaseCompleted,
 				Outcome:        "completed",
 			},
 			OccurredAtUnixMS: 1_700_000_010_000,
@@ -170,20 +171,20 @@ func TestAutomationRuleFiresOnceFromCancelRuntimeOperationSettlement(t *testing.
 		turnID      = "turn-canceled-1"
 	)
 	activeTurnID := turnID
-	if _, err := projection.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	if _, err := projection.ReportSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: sessionID,
 		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			Provider:     "codex",
 			CurrentPhase: "working",
-			Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+			Turn: &canonical.WorkspaceAgentTurnStateUpdate{
 				TurnID:          turnID,
 				ActiveTurnID:    &activeTurnID,
 				Phase:           "running",
 				StartedAtUnixMS: 1_700_000_000_000,
 			},
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{
 				ActiveTurnID: &activeTurnID,
 				Phase:        "running",
 			},
@@ -255,20 +256,20 @@ func TestObserveAgentSessionStateIgnoresChildSessionSettledState(t *testing.T) {
 	calls := make(chan ExecutionInput, 1)
 	service := &Service{Store: store, Executor: recordingExecutor{calls: calls}, Usage: staticUsage{}}
 	outcome, turnID := "completed", "child-turn-1"
-	service.ObserveAgentSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+	service.ObserveAgentSessionState(context.Background(), canonical.ReportSessionStateInput{
 		WorkspaceID:    "ws",
 		AgentSessionID: "child-session-1",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			Kind:                 "child",
 			ParentAgentSessionID: "session-root",
-			TurnLifecycle:        &agentsessionstore.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &outcome},
-			Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+			TurnLifecycle:        &canonical.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &outcome},
+			Turn: &canonical.WorkspaceAgentTurnStateUpdate{
 				TurnID:  turnID,
 				Phase:   "settled",
 				Outcome: outcome,
 			},
 		},
-	}, agentsessionstore.ReportSessionStateReply{})
+	}, canonical.ReportSessionStateReply{})
 	select {
 	case call := <-calls:
 		t.Fatalf("child session settled state fired automation rule: %#v", call)

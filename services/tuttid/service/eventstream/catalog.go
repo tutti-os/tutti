@@ -140,6 +140,7 @@ func DefaultCatalog() StaticCatalog {
 	}
 	definitions = append(definitions, preferencesTopicDefinitions()...)
 	definitions = append(definitions, modelGovernanceTopicDefinitions()...)
+	definitions = append(definitions, collaborationTopicDefinitions()...)
 	definitions = append(definitions, []TopicDefinition{
 		{
 			Name:               TopicUserProjectUpdated,

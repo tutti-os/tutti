@@ -54,9 +54,8 @@ func (s staticPlanSource) GetModelPlan(context.Context, string, string) (modelpl
 }
 
 type recordingFirstUse struct {
-	calls        []string
-	failureCalls []string
-	candidates   map[string]modelplanbiz.FirstUseCandidate
+	calls      []string
+	candidates map[string]modelplanbiz.FirstUseCandidate
 }
 
 type recordingModelCatalog struct {
@@ -376,7 +375,6 @@ func TestObserveAgentSessionStateMarksFirstUseOnCompletedTurn(t *testing.T) {
 		t.Fatalf("first use should mark once: %v", firstUse.calls)
 	}
 }
-
 
 func TestApplyModelPlanComposerOverlayReplacesModelOptions(t *testing.T) {
 	t.Parallel()

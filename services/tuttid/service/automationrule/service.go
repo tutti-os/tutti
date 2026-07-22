@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
@@ -342,7 +342,7 @@ const maxAutomationRescueDepth = 3
 // settles the recorded token usage of automation-origin target sessions.
 // Concrete launches run asynchronously so activity persistence is never
 // blocked by automation.
-func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessionstore.ReportSessionStateInput, _ agentsessionstore.ReportSessionStateReply) {
+func (s *Service) ObserveAgentSessionState(ctx context.Context, input canonical.ReportSessionStateInput, _ canonical.ReportSessionStateReply) {
 	if s == nil || s.Store == nil || s.Executor == nil {
 		return
 	}
@@ -581,14 +581,14 @@ func (s *Service) runRule(key string, workspaceID string, sessionID string, sour
 	}
 }
 
-func automationStateIsChildSession(state agentsessionstore.WorkspaceAgentSessionStateUpdate) bool {
+func automationStateIsChildSession(state canonical.WorkspaceAgentSessionStateUpdate) bool {
 	if strings.EqualFold(strings.TrimSpace(state.Kind), "child") {
 		return true
 	}
 	return strings.TrimSpace(state.ParentAgentSessionID) != ""
 }
 
-func automationTriggerFromState(state agentsessionstore.WorkspaceAgentSessionStateUpdate) (automationrulebiz.Trigger, bool) {
+func automationTriggerFromState(state canonical.WorkspaceAgentSessionStateUpdate) (automationrulebiz.Trigger, bool) {
 	outcome := ""
 	if state.TurnLifecycle != nil && strings.TrimSpace(state.TurnLifecycle.Phase) == "settled" && state.TurnLifecycle.Outcome != nil {
 		outcome = strings.TrimSpace(*state.TurnLifecycle.Outcome)
@@ -606,7 +606,7 @@ func automationTriggerFromState(state agentsessionstore.WorkspaceAgentSessionSta
 	}
 }
 
-func settledTurnID(state agentsessionstore.WorkspaceAgentSessionStateUpdate) string {
+func settledTurnID(state canonical.WorkspaceAgentSessionStateUpdate) string {
 	if state.Turn != nil && strings.TrimSpace(state.Turn.TurnID) != "" {
 		return strings.TrimSpace(state.Turn.TurnID)
 	}

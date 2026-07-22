@@ -297,6 +297,9 @@ func (s *Service) checkAuthAndDiscovery(ctx context.Context, protocol modelplanb
 		discovery.Status = modelplanbiz.StageFailed
 		discovery.FailureReason = FailureCatalogNotFound
 		discovery.Remedy = RemedyAddModelsManually
+		if lastStatus != 0 {
+			discovery.Detail = fmt.Sprintf("status %d", lastStatus)
+		}
 	}
 	return auth, discovery, nil
 }

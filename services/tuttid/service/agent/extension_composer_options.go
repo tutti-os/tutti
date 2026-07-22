@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -281,41 +280,4 @@ func logExtensionPermissionProjectionDiagnostics(
 			"runtimeId":     diagnostic.RuntimeID,
 		})
 	}
-}
-
-func (s *Service) extensionComposerPermissionConfig(
-	ctx context.Context,
-	providerTargetRef map[string]any,
-	selected string,
-) (PermissionConfig, error) {
-	resolver := s.ExtensionComposerProfiles
-	installationID := strings.TrimSpace(stringFromAny(providerTargetRef["extensionInstallationId"]))
-	if resolver == nil || installationID == "" {
-		return PermissionConfig{}, nil
-	}
-	profile, err := resolver.ResolveExtensionComposerProfile(ctx, installationID)
-	if err != nil {
-		return PermissionConfig{}, err
-	}
-	modes := make([]PermissionModeOption, 0, len(profile.PermissionModes))
-	for _, declaration := range profile.PermissionModes {
-		runtimeID := strings.TrimSpace(declaration.RuntimeID)
-		if runtimeID == "" {
-			continue
-		}
-		semantic, ok := normalizeExtensionPermissionModeSemantic(declaration.Semantic)
-		if !ok {
-			semantic = PermissionModeSemanticAuto
-		}
-		modes = append(modes, PermissionModeOption{
-			ID:       runtimeID,
-			Label:    runtimeID,
-			Semantic: semantic,
-		})
-	}
-	return PermissionConfig{
-		Configurable: len(modes) > 0,
-		DefaultValue: strings.TrimSpace(selected),
-		Modes:        modes,
-	}, nil
 }

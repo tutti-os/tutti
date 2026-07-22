@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 )
 
@@ -84,7 +85,7 @@ func (r CollaborationTimelineReporter) ReportCollaborationTimeline(ctx context.C
 	// records are updated in place by MessageID and belong to no agent turn; a
 	// synthetic turn id would either be rejected while a real turn is live or
 	// wedge the session's active-turn slot when none is.
-	update := agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+	update := canonical.WorkspaceAgentSessionMessageUpdate{
 		MessageID:        "collab:" + run.ID,
 		Role:             "assistant",
 		Kind:             "collaboration",
@@ -98,11 +99,11 @@ func (r CollaborationTimelineReporter) ReportCollaborationTimeline(ctx context.C
 	if !run.CompletedAt.IsZero() {
 		update.CompletedAtUnixMS = run.CompletedAt.UnixMilli()
 	}
-	if _, err := r.Projection.ReportSessionMessages(ctx, agentsessionstore.ReportSessionMessagesInput{
+	if _, err := r.Projection.ReportSessionMessages(ctx, canonical.ReportSessionMessagesInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: sourceSessionID,
 		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		Updates:        []agentsessionstore.WorkspaceAgentSessionMessageUpdate{update},
+		Updates:        []canonical.WorkspaceAgentSessionMessageUpdate{update},
 	}); err != nil {
 		slog.Warn("report collaboration timeline failed",
 			"event", "agent.collaboration.timeline_report_failed",

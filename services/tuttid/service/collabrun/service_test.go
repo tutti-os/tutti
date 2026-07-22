@@ -27,7 +27,7 @@ func newMemoryRunStore() *memoryRunStore {
 	return &memoryRunStore{runs: map[string]collabrunbiz.Run{}}
 }
 
-func (s *memoryRunStore) key(workspaceID string, runID string) string {
+func (*memoryRunStore) key(workspaceID string, runID string) string {
 	return workspaceID + "/" + runID
 }
 
@@ -82,7 +82,7 @@ func newMemoryPlanStore() *memoryPlanStore {
 	return &memoryPlanStore{plans: map[string]modelplanbiz.Plan{}}
 }
 
-func (s *memoryPlanStore) key(workspaceID string, planID string) string {
+func (*memoryPlanStore) key(workspaceID string, planID string) string {
 	return workspaceID + "/" + planID
 }
 
