@@ -32,6 +32,48 @@ import type { AgentGUIViewLabels } from "../view/AgentGUINodeView.types";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 
 describe("useAgentGUIConversationRailQuery search", () => {
+  it("fails batch deletion closed and reports a partial runtime contract", async () => {
+    const engine = createTestAgentSessionEngine("workspace-1");
+    const reportDiagnostic = vi.fn();
+    const runtime = {
+      deleteSessionsBatch: vi.fn(),
+      getSessionEngine: () => engine,
+      reportDiagnostic
+    } as unknown as AgentActivityRuntime;
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <AgentActivityRuntimeProvider runtime={runtime}>
+        {children}
+      </AgentActivityRuntimeProvider>
+    );
+
+    const { result } = renderHook(
+      () =>
+        useAgentGUIConversationRailQuery({
+          activeConversationId: null,
+          conversationFilter: { kind: "all" },
+          conversationQuery: "",
+          previewMode: false,
+          sectionAgentTargetFallbackId: null,
+          userProjects: [],
+          workspaceId: "workspace-1"
+        }),
+      { wrapper }
+    );
+
+    expect(result.current.batchDeletionAvailable).toBe(false);
+    await waitFor(() =>
+      expect(reportDiagnostic).toHaveBeenCalledWith({
+        details: {
+          missingMethods: ["listSessionSectionDeletionCandidates"]
+        },
+        event: "agent.gui.conversation_batch_delete.capability_incomplete",
+        level: "warn",
+        source: "agent-gui",
+        workspaceId: "workspace-1"
+      })
+    );
+  });
+
   it("commits the latest dragover target even before React renders it", async () => {
     const projects = ["Alpha", "Beta", "Gamma"].map((label) => ({
       id: label.toLowerCase(),

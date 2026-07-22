@@ -298,6 +298,14 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 
 The Rail query cache stores section metadata, ordered Session IDs, cursors, and totals only. Session entities always come from the engine.
 
+Hosts install the complete query/mutation cohort from
+`@tutti-os/agent-gui/conversation-rail-runtime`; the shared factory owns the
+workspace-scoped cache lifetime while transport adapters own only protocol
+mapping and authorization. Batch deletion requires both authoritative section
+candidate lookup and the batch mutation. AgentGUI fails that paired capability
+closed when either method is absent, so the view cannot expose an action that
+will resolve to an empty optional-method path.
+
 Presentation-invisible Sessions remain canonical engine entities and stay
 available through exact Session selectors for trusted open, reconcile, and
 command flows. Plural consumer selectors exclude them before Rail and Message

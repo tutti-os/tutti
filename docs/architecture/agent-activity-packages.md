@@ -254,6 +254,18 @@ Hosts must pass those calls through to the daemon section endpoints so project
 sections come from current user projects and session membership comes from
 persisted `rail_section_key`, not frontend cwd grouping or project-root
 filters.
+The published `@tutti-os/agent-gui/conversation-rail-runtime` entrypoint owns
+the complete host-neutral rail capability cohort and its workspace-scoped query
+caches. Product hosts provide one source implementing the six canonical rail
+queries and mutations, then install the result of
+`createAgentConversationRailRuntime` on `AgentActivityRuntime`; they must not
+copy the forwarding methods or cache lifetime into renderer composition code.
+Transport adapters still own HTTP/IPC DTO mapping, authorization, and protocol
+errors. In particular, `listSessionSectionDeletionCandidates` and
+`deleteSessionsBatch` are one atomic batch-deletion capability. AgentGUI disables
+the action and reports
+`agent.gui.conversation_batch_delete.capability_incomplete` when a host exposes
+only one half, instead of accepting a click that cannot complete.
 Every daemon `WorkspaceAgentSession` response carries the persisted membership
 as required `railSectionKey`. The desktop adapter rejects a missing or blank
 value as a protocol contract error; it must not manufacture `conversations` or

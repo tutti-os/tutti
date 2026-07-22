@@ -705,6 +705,41 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [sessionEntities.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionEntities.reducer.ts)
   [AgentGUIConversationRailQueryController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/AgentGUIConversationRailQueryController.ts)
 
+### AgentGUI Batch delete sessions does nothing
+
+- Symptom:
+  The project or Chats overflow menu opens, but choosing **Batch delete
+  sessions** neither opens the confirmation dialog nor sends a delete request.
+- Quick checks:
+  Look for
+  `agent.gui.conversation_batch_delete.capability_incomplete` in the host's
+  AgentGUI diagnostics. Its `missingMethods` field identifies whether the host
+  omitted `listSessionSectionDeletionCandidates` or `deleteSessionsBatch`. If
+  the event is absent and the action is enabled, correlate the candidate-list
+  and batch-delete transport requests before investigating the view.
+- Root cause:
+  Batch deletion is a two-stage runtime capability: AgentGUI first resolves the
+  authoritative session ids for the rail section and only then submits the
+  selected ids. A host that manually assembled `AgentActivityRuntime` could
+  expose the mutation but omit the candidate query. The old optional-method
+  checks then returned an empty candidate list, making a valid click look like
+  a no-op.
+- Fix:
+  Install the complete runtime cohort from
+  `@tutti-os/agent-gui/conversation-rail-runtime` and keep only transport DTO
+  mapping in the host adapter. Do not add view-local candidate discovery or
+  infer membership from loaded rows. AgentGUI treats a partial two-method
+  contract as unavailable, disables the action, and reports the missing method.
+- Validation:
+  Cover the host composition with both batch-deletion methods, verify the shared
+  factory forwards the exact candidate and delete inputs, and cover a partial
+  runtime contract as disabled with one diagnostic. Run the Agent GUI package
+  tests and the host activity-runtime composition tests.
+- References:
+  [agentConversationRailRuntime.ts](../../../packages/agent/gui/agentConversationRailRuntime.ts)
+  [useAgentGUIConversationRailQuery.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.ts)
+  [createDesktopAgentActivityRuntime.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
+
 ### AgentGUI model switch changes defaults but not the active session
 
 - Symptom:

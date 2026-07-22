@@ -210,6 +210,7 @@ export const AgentGUIConversationRailPane = memo(
     >([]);
     const groupedConversationsRef = useRef<ConversationSection[] | null>(null);
     const {
+      batchDeletionAvailable,
       loadMoreSectionConversations,
       isInteractionLocked,
       runtimeSectionsEnabled,
@@ -442,6 +443,7 @@ export const AgentGUIConversationRailPane = memo(
     const requestSectionBatchDeletion = useStableEventCallback(
       (section: ConversationSection) => {
         if (
+          !batchDeletionAvailable ||
           isInteractionLocked() ||
           isDeletingProjectConversations ||
           isRequestingBatchDeletion
@@ -649,6 +651,7 @@ export const AgentGUIConversationRailPane = memo(
                   (!conversationQuery.trim() &&
                     sectionPageState?.hasMore === true);
                 const batchDeletionDisabled =
+                  !batchDeletionAvailable ||
                   hasConversationQuery ||
                   (section.items.length === 0 && !sectionHasMore) ||
                   isDeletingProjectConversations ||

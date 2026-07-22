@@ -58,6 +58,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI shows the selected settings but a new session does not inherit them](./agent-session-lifecycle.md#agentgui-shows-the-selected-settings-but-a-new-session-does-not-inherit-them)
 - [Historical AgentGUI permission changes time out or stop responding](./agent-session-lifecycle.md#historical-agentgui-permission-changes-time-out-or-stop-responding)
 - [AgentGUI pin or unpin appears stuck for a live session](./agent-session-lifecycle.md#agentgui-pin-or-unpin-appears-stuck-for-a-live-session)
+- [AgentGUI Batch delete sessions does nothing](./agent-session-lifecycle.md#agentgui-batch-delete-sessions-does-nothing)
 - [Agent GUI provider tab shows fused or stale conversations](./agent-session-lifecycle.md#agent-gui-provider-tab-shows-fused-or-stale-conversations)
 - [Agent GUI sessions appear under the wrong user project](./agent-session-lifecycle.md#agent-gui-sessions-appear-under-the-wrong-user-project)
 - [Agent GUI context usage is absent or has the wrong total](./agent-session-lifecycle.md#agent-gui-context-usage-is-absent-or-has-the-wrong-total)

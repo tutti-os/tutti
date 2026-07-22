@@ -36,4 +36,16 @@ describe("Agent GUI declaration build groups", () => {
       import: "./dist/workspace-settings-panel.js"
     });
   });
+
+  it("builds and publishes the conversation rail runtime contract", () => {
+    expect(agentGUIBuildEntries["conversation-rail-runtime"]).toBe(
+      "agentConversationRailRuntime.ts"
+    );
+    expect(
+      packageManifest.publishConfig.exports["./conversation-rail-runtime"]
+    ).toEqual({
+      types: "./dist/conversation-rail-runtime.d.ts",
+      import: "./dist/conversation-rail-runtime.js"
+    });
+  });
 });

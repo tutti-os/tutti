@@ -26,6 +26,7 @@
     "./provider-icons": "./provider-icons.ts",
     "./agentGuiSessionProviderIconUrls": "./agentGuiSessionProviderIconUrls.ts",
     "./workspace-agent-generated-files": "./shared/workspaceAgentGeneratedFiles.ts",
+    "./conversation-rail-runtime": "./agentConversationRailRuntime.ts",
     "./workspace-query-cache": "./shared/query/workspaceQueryCache.ts",
     "./i18n": "./i18n/index.ts",
     "./workbench": "./workbench/index.ts",
@@ -197,6 +198,10 @@
         "types": "./dist/workspace-agent-generated-files.d.ts",
         "import": "./dist/workspace-agent-generated-files.js"
       },
+      "./conversation-rail-runtime": {
+        "types": "./dist/conversation-rail-runtime.d.ts",
+        "import": "./dist/conversation-rail-runtime.js"
+      },
       "./workspace-query-cache": {
         "types": "./dist/workspace-query-cache.d.ts",
         "import": "./dist/workspace-query-cache.js"
@@ -296,6 +301,9 @@
         ],
         "workspace-agent-generated-files": [
           "./dist/workspace-agent-generated-files.d.ts"
+        ],
+        "conversation-rail-runtime": [
+          "./dist/conversation-rail-runtime.d.ts"
         ],
         "workspace-query-cache": [
           "./dist/workspace-query-cache.d.ts"
