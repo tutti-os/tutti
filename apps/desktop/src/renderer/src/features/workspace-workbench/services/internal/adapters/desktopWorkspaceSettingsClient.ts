@@ -95,6 +95,12 @@ export class DesktopWorkspaceSettingsDaemonError extends Error {
 }
 
 export function isModelPlanReferencedError(error: unknown): boolean {
+  if (
+    error instanceof DesktopWorkspaceSettingsDaemonError &&
+    error.code === "model_plan_referenced"
+  ) {
+    return true;
+  }
   return getTuttidProtocolErrorCode(error) === "model_plan_referenced";
 }
 

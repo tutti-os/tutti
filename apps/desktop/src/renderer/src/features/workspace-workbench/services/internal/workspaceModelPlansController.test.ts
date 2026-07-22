@@ -9,6 +9,7 @@ import type {
   WorkspaceModelPlan,
   WorkspaceModelPlanProtocol
 } from "../workspaceSettingsTypes.ts";
+import { DesktopWorkspaceSettingsDaemonError } from "./adapters/desktopWorkspaceSettingsClient.ts";
 import {
   WorkspaceModelPlansController,
   type WorkspaceModelPlansControllerDependencies
@@ -771,10 +772,12 @@ test("WorkspaceModelPlansController surfaces a 409 referenced delete as a block"
   const { controller, store } = createController({
     listModelPlans: async () => [createPlan("plan-1", "openai")],
     deleteModelPlan: async () => {
-      throw new TuttidProtocolError({
-        code: "model_plan_referenced",
-        statusCode: 409
-      });
+      // Match the real desktop settings client: daemon 409s are wrapped as
+      // DesktopWorkspaceSettingsDaemonError, not TuttidProtocolError.
+      throw new DesktopWorkspaceSettingsDaemonError(
+        409,
+        "model_plan_referenced"
+      );
     },
     listModelPlanReferences: async () => [
       { id: "local:codex", kind: "agent_target", name: "Codex" }
@@ -788,6 +791,26 @@ test("WorkspaceModelPlansController surfaces a 409 referenced delete as a block"
     store.modelPlans.plans.map((plan) => plan.id),
     ["plan-1"]
   );
+  assert.equal(store.modelPlans.deleteBlock?.planID, "plan-1");
+});
+
+test("WorkspaceModelPlansController still recognizes TuttidProtocolError referenced deletes", async () => {
+  const { controller, store } = createController({
+    listModelPlans: async () => [createPlan("plan-1", "openai")],
+    deleteModelPlan: async () => {
+      throw new TuttidProtocolError({
+        code: "model_plan_referenced",
+        statusCode: 409
+      });
+    },
+    listModelPlanReferences: async () => [
+      { id: "local:codex", kind: "agent_target", name: "Codex" }
+    ]
+  });
+
+  await controller.refreshPlans();
+  await controller.confirmDeletePlan("plan-1");
+
   assert.equal(store.modelPlans.deleteBlock?.planID, "plan-1");
 });
 
