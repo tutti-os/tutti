@@ -1026,6 +1026,10 @@ components:
         - agent_claimed
         - auto_checked
         - user_accepted
+      x-enum-varnames:
+        - IssueManagerAcceptanceStateAgentClaimed
+        - IssueManagerAcceptanceStateAutoChecked
+        - IssueManagerAcceptanceStateUserAccepted
     IssueManagerExecutionProfile:
       type: object
       additionalProperties: false

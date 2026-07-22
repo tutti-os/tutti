@@ -1392,19 +1392,19 @@ func (e HealthStatusResponseStatus) Valid() bool {
 
 // Defines values for IssueManagerAcceptanceState.
 const (
-	AgentClaimed IssueManagerAcceptanceState = "agent_claimed"
-	AutoChecked  IssueManagerAcceptanceState = "auto_checked"
-	UserAccepted IssueManagerAcceptanceState = "user_accepted"
+	IssueManagerAcceptanceStateAgentClaimed IssueManagerAcceptanceState = "agent_claimed"
+	IssueManagerAcceptanceStateAutoChecked  IssueManagerAcceptanceState = "auto_checked"
+	IssueManagerAcceptanceStateUserAccepted IssueManagerAcceptanceState = "user_accepted"
 )
 
 // Valid indicates whether the value is a known member of the IssueManagerAcceptanceState enum.
 func (e IssueManagerAcceptanceState) Valid() bool {
 	switch e {
-	case AgentClaimed:
+	case IssueManagerAcceptanceStateAgentClaimed:
 		return true
-	case AutoChecked:
+	case IssueManagerAcceptanceStateAutoChecked:
 		return true
-	case UserAccepted:
+	case IssueManagerAcceptanceStateUserAccepted:
 		return true
 	default:
 		return false

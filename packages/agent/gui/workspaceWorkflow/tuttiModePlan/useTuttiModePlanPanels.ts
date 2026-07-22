@@ -5,6 +5,8 @@ import type {
   TuttiModePlanAssignmentAgentOption,
   TuttiModePlanTaskAssignmentInput
 } from "../workspaceWorkflowRuntime";
+import type { TuttiPlanIssueSnapshot } from "../workspaceWorkflowRuntime";
+import type { TuttiPlanIssueTaskDecision } from "./TuttiPlanIssuePanel";
 import {
   projectTuttiModePlanPanel,
   type TuttiModePlanPanelViewModel,
@@ -17,6 +19,11 @@ interface PanelState {
   scopeKey: string;
   snapshots: readonly TuttiModePlanReviewSnapshot[];
   submittingCheckpointId: string | null;
+}
+
+interface PlanIssueState {
+  issue: TuttiPlanIssueSnapshot | null;
+  scopeKey: string;
 }
 
 interface AssignmentCatalogState {
@@ -75,6 +82,12 @@ export function useTuttiModePlanPanels(input: {
   error: unknown;
   loading: boolean;
   panels: readonly TuttiModePlanPanelViewModel[];
+  /** Live snapshot of the Issue this session's accepted plan materialized. */
+  planIssue: TuttiPlanIssueSnapshot | null;
+  /** Accept/rework a pending task from the embedded panel; null until loaded. */
+  decidePlanIssueTask:
+    | ((taskId: string, decision: TuttiPlanIssueTaskDecision) => Promise<void>)
+    | null;
   retry(): void;
   submittingCheckpointId: string | null;
 } {
@@ -82,6 +95,10 @@ export function useTuttiModePlanPanels(input: {
   const [state, setState] = useState<PanelState>(() => emptyState(""));
   const [assignmentState, setAssignmentState] =
     useState<AssignmentCatalogState>(() => emptyAssignmentState(""));
+  const [planIssueState, setPlanIssueState] = useState<PlanIssueState>({
+    issue: null,
+    scopeKey: ""
+  });
   const requestSequenceRef = useRef(0);
   const [retrySequence, setRetrySequence] = useState(0);
   const enabled = input.enabled ?? true;
@@ -247,12 +264,50 @@ export function useTuttiModePlanPanels(input: {
     workspaceId
   ]);
 
+  const planIssueSource = runtime?.planIssues ?? null;
+
   useEffect(() => {
     requestSequenceRef.current += 1;
     activeScopeRef.current = scopeKey;
     assignmentRequestsRef.current = new Set<string>();
     setAssignmentState(emptyAssignmentState(scopeKey));
+    setPlanIssueState({ issue: null, scopeKey });
     void refresh();
+    const capturedScope = scopeKey;
+    // The materialized plan Issue shares this scope's lifecycle: load with the
+    // review snapshots and refresh on workspace issue events, with a trailing
+    // re-read so the view never settles on a snapshot older than the last one.
+    let planIssueInFlight = false;
+    let planIssueTrailing = false;
+    const refreshPlanIssue = (): void => {
+      if (!capturedScope || !planIssueSource) return;
+      if (planIssueInFlight) {
+        planIssueTrailing = true;
+        return;
+      }
+      planIssueInFlight = true;
+      void planIssueSource
+        .getSessionPlanIssue({ workspaceId, sourceSessionId })
+        .then((issue) => {
+          if (activeScopeRef.current !== capturedScope) return;
+          setPlanIssueState((current) =>
+            current.scopeKey === capturedScope
+              ? { issue, scopeKey: capturedScope }
+              : current
+          );
+        })
+        .catch(() => {
+          // Best-effort read model; a later update event retries.
+        })
+        .finally(() => {
+          planIssueInFlight = false;
+          if (planIssueTrailing && activeScopeRef.current === capturedScope) {
+            planIssueTrailing = false;
+            refreshPlanIssue();
+          }
+        });
+    };
+    refreshPlanIssue();
     const unsubscribe =
       enabled && runtime && workspaceId && sourceSessionId
         ? runtime.subscribe(workspaceId, (update) => {
@@ -264,8 +319,15 @@ export function useTuttiModePlanPanels(input: {
             }
           })
         : undefined;
+    const unsubscribePlanIssue =
+      capturedScope && planIssueSource
+        ? planIssueSource.subscribeIssueUpdates(workspaceId, () => {
+            refreshPlanIssue();
+          })
+        : undefined;
     return () => {
       unsubscribe?.();
+      unsubscribePlanIssue?.();
       if (activeScopeRef.current === scopeKey) {
         activeScopeRef.current = "";
       }
@@ -273,6 +335,7 @@ export function useTuttiModePlanPanels(input: {
     };
   }, [
     enabled,
+    planIssueSource,
     refresh,
     retrySequence,
     runtime,
@@ -347,6 +410,33 @@ export function useTuttiModePlanPanels(input: {
     [visibleState.snapshots]
   );
 
+  const visiblePlanIssue =
+    planIssueState.scopeKey === scopeKey ? planIssueState.issue : null;
+  const planIssueId = visiblePlanIssue?.issueId ?? "";
+  const decidePlanIssueTask =
+    planIssueSource && planIssueId
+      ? async (
+          taskId: string,
+          decision: TuttiPlanIssueTaskDecision
+        ): Promise<void> => {
+          // The daemon publishes workspace.issue.updated for the transition,
+          // so the subscription above refreshes without a manual poke.
+          if (decision === "accept") {
+            await planIssueSource.acceptTask({
+              workspaceId,
+              issueId: planIssueId,
+              taskId
+            });
+            return;
+          }
+          await planIssueSource.rejectTask({
+            workspaceId,
+            issueId: planIssueId,
+            taskId
+          });
+        }
+      : null;
+
   const visibleAssignmentState =
     assignmentState.scopeKey === scopeKey
       ? assignmentState
@@ -362,6 +452,8 @@ export function useTuttiModePlanPanels(input: {
     error: visibleState.error,
     loading: visibleState.loading,
     panels,
+    planIssue: visiblePlanIssue,
+    decidePlanIssueTask,
     retry: () => setRetrySequence((current) => current + 1),
     submittingCheckpointId: visibleState.submittingCheckpointId
   };
