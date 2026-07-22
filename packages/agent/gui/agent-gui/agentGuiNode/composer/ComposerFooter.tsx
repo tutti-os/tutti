@@ -18,7 +18,6 @@ import {
   AgentModelReasoningDropdown,
   AgentPermissionModeDropdown
 } from "../AgentComposerSettingsMenus";
-import { AgentModelConsultControl } from "../AgentModelConsultControl";
 import { textPromptContent } from "../model/agentComposerDraft";
 import type { AgentGUIAgentTarget } from "../../../types";
 import type {
@@ -73,12 +72,11 @@ interface Props {
   onSettingsChange: AgentComposerProps["onSettingsChange"];
   onSubmit: AgentComposerProps["onSubmit"];
   onClearGoalMode: () => void;
-  modelConsult: AgentComposerProps["modelConsult"];
   draftPrompt: string;
 }
 
 export function ComposerFooter({
-  workspaceId,
+  workspaceId: _workspaceId,
   labels,
   provider,
   composerSettings,
@@ -115,8 +113,7 @@ export function ComposerFooter({
   onSettingsChange,
   onSubmit,
   onClearGoalMode: clearGoalModeBadge,
-  modelConsult,
-  draftPrompt
+  draftPrompt: _draftPrompt
 }: Props) {
   const showSettingsLoadingPlaceholders = composerSettings.isSettingsLoading;
   return (
@@ -236,6 +233,7 @@ export function ComposerFooter({
               disabled={handoffDisabled}
               labels={{
                 action: effectiveHandoffLabel,
+                deviceSource: labels.handoffTargetDeviceSource,
                 menu: effectiveHandoffMenuLabel,
                 self: labels.handoffTargetSelf,
                 shared: labels.handoffTargetShared,
@@ -471,13 +469,6 @@ export function ComposerFooter({
               onSettingsChange={onSettingsChange}
             />
           ) : null}
-          <AgentModelConsultControl
-            workspaceId={workspaceId}
-            consultContext={modelConsult ?? null}
-            draftPrompt={draftPrompt}
-            disabled={settingsControlsDisabled}
-            previewMode={previewMode}
-          />
           {isHeroLayout ? composerActionButton : null}
         </div>
       </div>

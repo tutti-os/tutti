@@ -41,21 +41,6 @@ export {
   shouldUseWorkspaceFileExtensionDocumentIcon
 } from "./workspaceFileEntryIconPolicy.ts";
 export {
-  classifyWorkspaceFilePreviewKind,
-  decodeWorkspaceTextFile,
-  isWorkspaceFileBrowserOpenable,
-  isWorkspaceTextFileTooLarge,
-  looksLikeBinaryText,
-  resolveWorkspaceFileActivationTarget,
-  resolveWorkspaceFileExtension,
-  resolveWorkspaceFileVisualKind,
-  resolveWorkspaceImageMimeType,
-  resolveWorkspaceVideoMimeType,
-  workspaceFilePreviewMaxBytes,
-  workspaceFileTextMaxBytes,
-  type WorkspaceFileVisualKind
-} from "./workspaceFileManagerModel.ts";
-export {
   findWorkspaceFileLocationById,
   flattenWorkspaceFileLocations,
   isWorkspaceFileExternalLocation,

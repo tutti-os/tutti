@@ -89,33 +89,6 @@ function createPerfMonitorPlugin(): PluginOption {
   });
 }
 
-const webkitBackdropFilterPattern =
-  /^([ \t]*)-webkit-backdrop-filter:\s*([^;]+);(?!\n[ \t]*backdrop-filter:)/gm;
-
-function preserveUnprefixedBackdropFilter(css: string): string {
-  return css.replace(webkitBackdropFilterPattern, "$&\n$1backdrop-filter: $2;");
-}
-
-function preserveUnprefixedBackdropFilterPlugin(): PluginOption {
-  return {
-    name: "preserve-unprefixed-backdrop-filter",
-    enforce: "post",
-    generateBundle(_options, bundle): void {
-      for (const asset of Object.values(bundle)) {
-        if (asset.type !== "asset" || !asset.fileName.endsWith(".css")) {
-          continue;
-        }
-
-        const source =
-          typeof asset.source === "string"
-            ? asset.source
-            : Buffer.from(asset.source).toString("utf8");
-        asset.source = preserveUnprefixedBackdropFilter(source);
-      }
-    }
-  };
-}
-
 const guestPreloadEntryFileNames = new Set([
   "browser-node-guest.cjs",
   "workspace-app.cjs"
@@ -196,7 +169,6 @@ export default defineConfig({
         }
       }),
       tailwindcss(),
-      preserveUnprefixedBackdropFilterPlugin(),
       ...(perfMonitorEnabled ? [createPerfMonitorPlugin()] : [])
     ],
     resolve: {

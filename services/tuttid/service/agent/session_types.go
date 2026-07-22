@@ -80,6 +80,7 @@ type Service struct {
 	sessionSettingsLocks           map[string]*serviceSessionSettingsLock
 	applicationHostMu              sync.Mutex
 	applicationHost                *agenthost.Host
+	applicationHostProvider        func() *agenthost.Host
 	worktreeIsolationMu            sync.RWMutex
 	generatedFilesCacheMu          sync.Mutex
 	generatedFilesCache            map[string]generatedFilesCacheEntry
@@ -279,10 +280,16 @@ type DeleteSessionsBatchInput struct {
 	SessionIDs []string
 }
 
+type DeleteSessionResult struct {
+	Removed       bool
+	CleanupFailed bool
+}
+
 type DeleteSessionsBatchResult struct {
-	RemovedMessages   int
-	RemovedSessions   int
-	RemovedSessionIDs []string
+	RemovedMessages         int
+	RemovedSessions         int
+	RemovedSessionIDs       []string
+	CleanupFailedSessionIDs []string
 }
 
 type ListPinnedSessionPageInput struct {
@@ -367,6 +374,16 @@ type SessionReader interface {
 	SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error)
 }
 
+type PersistedSessionListPage struct {
+	Sessions   []PersistedSession
+	HasMore    bool
+	NextCursor string
+}
+
+type SessionPageReader interface {
+	ListSessionsPage(context.Context, agentactivitybiz.ListSessionsPageInput) (PersistedSessionListPage, bool, error)
+}
+
 // SessionInitializer synchronously persists the canonical session shell that
 // every successful Create response must expose. In particular, it assigns the
 // immutable railSectionKey before the response leaves the daemon.
@@ -397,6 +414,8 @@ type SessionSectionDeletionCandidateReader interface {
 }
 
 type SessionBatchDeleter interface {
+	PlanClearSessions(context.Context, string) (agentactivitybiz.DeleteSessionsPlan, error)
+	PlanDeleteSessions(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error)
 	DeleteSessionsBatch(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error)
 }
 
@@ -405,21 +424,14 @@ type UserProjectReader interface {
 }
 
 type ClearSessionsResult struct {
-	RemovedMessages   int
-	RemovedSessions   int
-	RemovedSessionIDs []string
-}
-
-type SessionClearer interface {
-	ClearSessions(context.Context, string) (ClearSessionsResult, error)
+	RemovedMessages         int
+	RemovedSessions         int
+	RemovedSessionIDs       []string
+	CleanupFailedSessionIDs []string
 }
 
 type AgentSessionResourceReleaser interface {
 	ReleaseAgent(context.Context, string) error
-}
-
-type SessionDeleter interface {
-	DeleteSession(context.Context, string, string) (bool, error)
 }
 
 type SessionPinUpdater interface {

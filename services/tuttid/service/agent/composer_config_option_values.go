@@ -9,11 +9,6 @@ func stringFromAny(input any) string {
 	return ""
 }
 
-func boolFromAny(input any) (bool, bool) {
-	value, ok := input.(bool)
-	return value, ok
-}
-
 func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOptionValue) []map[string]any {
 	if len(options) == 0 {
 		return []map[string]any{}
@@ -66,6 +61,11 @@ func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOpt
 				efforts = append(efforts, item)
 			}
 			entry["reasoningEfforts"] = efforts
+		}
+		// Provenance for requested-origin entries (warm-catalog append,
+		// bootstrap echo): clients must not count them as catalog testimony.
+		if option.Requested {
+			entry["requested"] = true
 		}
 		result = append(result, entry)
 	}

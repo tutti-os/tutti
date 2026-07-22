@@ -312,7 +312,7 @@ export function selectWorkspaceAgentConsumerSessions(
   state: AgentSessionEngineState
 ): readonly WorkspaceAgentConsumerSession[] {
   return selectAllWorkspaceAgentConsumerSessions(state).filter(
-    (item) => item.session.kind === "root"
+    (item) => item.session.kind === "root" && item.session.visible !== false
   );
 }
 

@@ -1,9 +1,9 @@
 import { proxy } from "valtio";
 import type {
-  WorkspaceSettingsAutomationRulesMutableState,
   WorkspaceSettingsModelPlansMutableState,
   WorkspaceSettingsStoreState,
-  WorkspaceSettingsWorkspaceAgentsMutableState
+  WorkspaceSettingsWorkspaceAgentsMutableState,
+  WorkspaceSettingsAutomationRulesMutableState
 } from "../workspaceSettingsTypes";
 import { readDeveloperPanelVisible } from "./developerPanelVisibility.ts";
 
@@ -21,10 +21,6 @@ export function createWorkspaceSettingsAgentsState(): WorkspaceSettingsWorkspace
   };
 }
 
-export function createWorkspaceSettingsModelPlansState(): WorkspaceSettingsModelPlansMutableState {
-  return { plans: [] };
-}
-
 export function createWorkspaceSettingsAutomationRulesState(): WorkspaceSettingsAutomationRulesMutableState {
   return {
     confirmingDeleteRuleID: null,
@@ -37,6 +33,35 @@ export function createWorkspaceSettingsAutomationRulesState(): WorkspaceSettings
     saving: false,
     targetCatalog: null,
     targetOptions: []
+  };
+}
+
+export function createWorkspaceSettingsModelPlansState(): WorkspaceSettingsModelPlansMutableState {
+  return {
+    bindings: {
+      agentTargets: [],
+      bindings: [],
+      loadFailed: false,
+      loading: false,
+      saveFailedTargetID: null,
+      savingTargetID: null
+    },
+    confirmingDeletePlanID: null,
+    deleteBlock: null,
+    deletingPlanID: null,
+    detecting: false,
+    draft: null,
+    draftDetection: null,
+    draftDiscoveredModels: [],
+    draftFeedback: null,
+    draftSaveImpact: null,
+    duplicatingPlanID: null,
+    fetchingDraftModels: false,
+    loading: false,
+    planFeedback: {},
+    plans: [],
+    saving: false,
+    togglingPlanID: null
   };
 }
 
@@ -58,18 +83,6 @@ export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
     },
     generalFocusAnchor: null,
     generalFocusRequestID: 0,
-    managedModels: {
-      deletingProvider: null,
-      detectingProvider: null,
-      draft: null,
-      feedback: {},
-      focusedProvider: null,
-      focusRequestID: 0,
-      loading: false,
-      providers: [],
-      savingProvider: null,
-      testingProvider: null
-    },
     modelPlans: createWorkspaceSettingsModelPlansState(),
     open: false,
     purgingDeletedConversations: false,

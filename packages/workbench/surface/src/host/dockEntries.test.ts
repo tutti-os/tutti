@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { WorkbenchNode } from "../core/types.ts";
 import {
+  canCreateNewWindow,
+  canCreateNewWindowInDockPopup,
+  createMultiInstanceDockEntryOptions,
   matchWorkbenchDockEntryNode,
+  resolveWorkbenchDockCountBadge,
   resolveWorkbenchDockEntries,
   resolveWorkbenchDockEntryClick
 } from "./dockEntries.ts";
@@ -320,6 +324,68 @@ test("dock action entries respect blocked entry state", () => {
     }),
     { kind: "blocked" }
   );
+});
+
+test("dock new window commands stay available for explicit new-window payloads", () => {
+  const agentEntry: WorkbenchHostDockEntry = {
+    allowNewWindowInDockPopup: false,
+    icon: null,
+    id: "agent-gui:unified",
+    instanceMode: "single",
+    label: "Agent",
+    newWindowLaunchPayload: {
+      openInNewWindow: true,
+      provider: "codex"
+    },
+    typeId: "agent-gui"
+  };
+  const browserEntry: WorkbenchHostDockEntry = {
+    icon: null,
+    id: "browser",
+    instanceMode: "single",
+    label: "Browser",
+    launchBehavior: "enabled",
+    newWindowLaunchPayload: {
+      openInNewWindow: true
+    },
+    typeId: "browser"
+  };
+
+  assert.equal(canCreateNewWindow(agentEntry, agentEntry.instanceMode), true);
+  assert.equal(
+    canCreateNewWindowInDockPopup(agentEntry, agentEntry.instanceMode),
+    false
+  );
+  assert.equal(
+    canCreateNewWindow(browserEntry, browserEntry.instanceMode),
+    true
+  );
+});
+
+test("multi-instance dock helpers centralize focus-first click behavior", () => {
+  assert.deepEqual(createMultiInstanceDockEntryOptions(undefined), {
+    instanceMode: "single",
+    launchBehavior: "enabled",
+    newWindowLaunchPayload: { openInNewWindow: true }
+  });
+  assert.deepEqual(
+    createMultiInstanceDockEntryOptions(
+      { provider: "codex" },
+      { allowNewWindowInDockPopup: false }
+    ),
+    {
+      allowNewWindowInDockPopup: false,
+      instanceMode: "single",
+      launchBehavior: "enabled",
+      launchPayload: { provider: "codex" },
+      newWindowLaunchPayload: { provider: "codex", openInNewWindow: true }
+    }
+  );
+  assert.equal(resolveWorkbenchDockCountBadge(1), undefined);
+  assert.deepEqual(resolveWorkbenchDockCountBadge(2), {
+    kind: "count",
+    value: 2
+  });
 });
 
 function makeNode(

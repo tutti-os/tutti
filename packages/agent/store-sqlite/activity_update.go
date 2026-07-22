@@ -183,12 +183,21 @@ func (s *Store) UpdateSessionSettings(
 UPDATE workspace_agent_sessions
 SET model = ?,
     settings_json = ?,
+    session_metadata_json = CASE
+      WHEN trim(model) <> trim(?) THEN
+        CASE
+          WHEN json_array_length(json_extract(session_metadata_json, '$.usage.quotas')) > 0
+            THEN json_remove(session_metadata_json, '$.usage.contextWindow')
+          ELSE json_remove(session_metadata_json, '$.usage')
+        END
+      ELSE session_metadata_json
+    END,
     updated_at_unix_ms = CASE
       WHEN ? > updated_at_unix_ms THEN ?
       ELSE updated_at_unix_ms + 1
     END
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-`, strings.TrimSpace(model), settingsJSON, now, now, workspaceID, agentSessionID)
+`, strings.TrimSpace(model), settingsJSON, strings.TrimSpace(model), now, now, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, fmt.Errorf("update workspace agent session settings: %w", err)
 	}

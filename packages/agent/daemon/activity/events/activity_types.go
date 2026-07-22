@@ -284,7 +284,7 @@ func NewSessionAudit(ctx EventContext, role MessageRole, content string, metadat
 }
 
 // NewGoalReconcileRequired carries internal, session-scoped evidence from a
-// provider adapter to the durable GoalActor. It is neither transcript content
+// provider adapter to the durable Host goal mutation lane. It is neither transcript content
 // nor a Turn lifecycle event.
 func NewGoalReconcileRequired(ctx EventContext, metadata map[string]any) Event {
 	event := eventFromContext(ctx, EventGoalReconcileRequired, EventPayload{Metadata: cloneMap(metadata)})

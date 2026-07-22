@@ -78,6 +78,8 @@ func claudeCodeDescriptor() ProviderDescriptor {
 			ReasoningEffortOptions: ReasoningEffortOptionsStatic,
 			DefaultReasoningEffort: "high",
 			Speed:                  true,
+			SpeedValues:            []string{"standard", "fast"},
+			DefaultSpeed:           "standard",
 			Capabilities: []string{
 				"imageInput",
 				"skills",
@@ -87,6 +89,7 @@ func claudeCodeDescriptor() ProviderDescriptor {
 				"planMode",
 				CapabilityInterrupt,
 				CapabilityActiveTurnGuidance,
+				CapabilityModelSwitch,
 				CapabilityModelPlanBinding,
 				"permissionModeChangeDuringTurn",
 			},

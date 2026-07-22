@@ -9,6 +9,7 @@ import (
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
+	modelpolicybiz "github.com/tutti-os/tutti/services/tuttid/biz/modelpolicy"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
@@ -270,6 +271,50 @@ WHERE workspace_id = 'ws-retry' AND provider_id = 'openai'
 	}
 	if _, err := store.GetModelPlan(ctx, "ws-retry", "mp-migrated-openai"); err != nil {
 		t.Fatalf("GetModelPlan(retried migration) error = %v", err)
+	}
+}
+
+func TestListAgentModelBindingsByModelPolicy(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	createModelPlanTestWorkspace(t, store, "ws-pol")
+	now := time.UnixMilli(1700000000000).UTC()
+	plan := modelplanbiz.Plan{
+		ID: "mp-1", WorkspaceID: "ws-pol", Name: "Plan", TemplateKind: modelplanbiz.TemplateCustom,
+		Protocol: modelplanbiz.ProtocolOpenAI, Models: []modelplanbiz.Model{{ID: "m", Name: "M"}},
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := store.PutModelPlan(ctx, plan); err != nil {
+		t.Fatalf("PutModelPlan() error = %v", err)
+	}
+	if err := store.PutModelPolicy(ctx, modelpolicybiz.Policy{
+		ID: "pol-1", WorkspaceID: "ws-pol", Name: "Careful", CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("PutModelPolicy() error = %v", err)
+	}
+	if err := store.PutAgentModelBinding(ctx, modelbindingbiz.Binding{
+		WorkspaceID: "ws-pol", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		ModelPlanID: "mp-1", ModelPolicyID: "pol-1", UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("PutAgentModelBinding() error = %v", err)
+	}
+
+	refs, err := store.ListAgentModelBindingsByModelPolicy(ctx, "ws-pol", "pol-1")
+	if err != nil {
+		t.Fatalf("ListAgentModelBindingsByModelPolicy() error = %v", err)
+	}
+	if len(refs) != 1 || refs[0].AgentTargetID != agenttargetbiz.IDLocalCodex || refs[0].ModelPolicyID != "pol-1" {
+		t.Fatalf("refs = %#v, want the codex binding referencing pol-1", refs)
+	}
+
+	other, err := store.ListAgentModelBindingsByModelPolicy(ctx, "ws-pol", "pol-none")
+	if err != nil {
+		t.Fatalf("ListAgentModelBindingsByModelPolicy(unreferenced) error = %v", err)
+	}
+	if len(other) != 0 {
+		t.Fatalf("refs for unreferenced policy = %#v, want none", other)
 	}
 }
 

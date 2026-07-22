@@ -10,6 +10,7 @@ import {
   createDesktopDeveloperLogsService,
   exportDesktopDeveloperLogsAndNotify
 } from "../developerLogsDesktop.ts";
+import { normalizeDeveloperLogsExportInput } from "../developerLogsExportOptions.ts";
 import type { DesktopHostPreferencesState } from "../desktopHostPreferences";
 import { resolveDesktopDefaultsFromEnv } from "../defaults";
 import { toDesktopIpcResult } from "./result";
@@ -41,7 +42,7 @@ export function registerDeveloperIpc(
         exportDesktopDeveloperLogsAndNotify(
           preferences,
           tuttidClient,
-          input?.scope === "recent-10-minutes" ? input : { scope: "all" }
+          normalizeDeveloperLogsExportInput(input)
         )
       )
   );

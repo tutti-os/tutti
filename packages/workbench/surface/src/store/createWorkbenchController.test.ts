@@ -19,6 +19,27 @@ test("notifies subscribers when commands change state", () => {
   assert.equal(notifications, 1);
 });
 
+test("does not notify subscribers when focusing the focused visible node", () => {
+  const controller = createWorkbenchController();
+  controller.commands.openNode(makeNode("a"));
+  const focusedSnapshot = controller.getSnapshot();
+  let notifications = 0;
+  const unsubscribe = controller.subscribe(() => {
+    notifications += 1;
+  });
+
+  controller.commands.focusNode("a");
+
+  assert.equal(controller.getSnapshot(), focusedSnapshot);
+  assert.equal(notifications, 0);
+
+  controller.commands.minimizeNode("a");
+  controller.commands.focusNode("a");
+  assert.equal(controller.getSnapshot().nodes[0]?.isMinimized, false);
+  assert.equal(notifications, 2);
+  unsubscribe();
+});
+
 test("commands match dispatch paths", () => {
   const viaCommand = createWorkbenchController();
   const viaDispatch = createWorkbenchController();

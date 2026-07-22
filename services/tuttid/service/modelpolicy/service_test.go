@@ -117,7 +117,13 @@ func (s *memoryPolicyStore) GetAgentSessionAcceptance(_ context.Context, workspa
 func (s *memoryPolicyStore) PutAgentSessionAcceptance(_ context.Context, acceptance modelpolicybiz.Acceptance) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.acceptances[s.key(acceptance.WorkspaceID, acceptance.AgentSessionID)] = acceptance
+	key := s.key(acceptance.WorkspaceID, acceptance.AgentSessionID)
+	// Mirror the SQLite write boundary: user_accepted is terminal and never
+	// downgraded by concurrent automation writes.
+	if existing, ok := s.acceptances[key]; ok && existing.State == modelpolicybiz.AcceptanceUserAccepted {
+		return nil
+	}
+	s.acceptances[key] = acceptance
 	return nil
 }
 
@@ -152,6 +158,12 @@ type staticBudget struct {
 
 func (s staticBudget) SumPolicyReviewUsage(context.Context, string, string) (int, int64, error) {
 	return s.runs, s.tokens, nil
+}
+
+type erroringBudget struct{ err error }
+
+func (b erroringBudget) SumPolicyReviewUsage(context.Context, string, string) (int, int64, error) {
+	return 0, 0, b.err
 }
 
 func newPolicyTestService(store *memoryPolicyStore) *Service {
@@ -291,6 +303,33 @@ func TestReviewBudgetExhaustedSkipsRun(t *testing.T) {
 	}
 }
 
+func TestReviewBudgetReadErrorFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	service := newPolicyTestService(newMemoryPolicyStore())
+	policy := seedReviewPolicy(t, service)
+	runner := &recordingRunner{result: ReviewConsultResult{RunID: "run-x", ResultText: "VERDICT: PASS"}}
+	service.ConfigureReviewAutomation(
+		staticBindings{binding: modelbindingbiz.Binding{ModelPolicyID: policy.ID}},
+		nil,
+		runner,
+		erroringBudget{err: errors.New("usage store down")},
+	)
+
+	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-budget-err"), canonical.ReportSessionStateReply{})
+	time.Sleep(100 * time.Millisecond)
+	if len(runner.inputs) != 0 {
+		t.Fatalf("budget read error must fail closed and skip the billable review: %#v", runner.inputs)
+	}
+	// The agent's completion claim is still recorded even though the review was
+	// skipped.
+	acceptance, ok, err := service.GetAcceptance(ctx, "ws", "session-1")
+	if err != nil || !ok || acceptance.State != modelpolicybiz.AcceptanceAgentClaimed {
+		t.Fatalf("acceptance = %#v ok=%v err=%v, want agent_claimed", acceptance, ok, err)
+	}
+}
+
 func TestSessionOverrideDisablesAutomation(t *testing.T) {
 	t.Parallel()
 
@@ -335,6 +374,46 @@ func TestUserAcceptanceIsSticky(t *testing.T) {
 	}
 }
 
+func TestUserAcceptanceStaysStickyUnderConcurrentAutomation(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newMemoryPolicyStore()
+	service := newPolicyTestService(store)
+	if _, err := service.MarkUserAccepted(ctx, "ws", "session-1"); err != nil {
+		t.Fatalf("MarkUserAccepted() error = %v", err)
+	}
+
+	// Concurrent automation writes (claim + auto-check) must never downgrade
+	// the user_accepted rung once it has been reached.
+	var wg sync.WaitGroup
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = store.PutAgentSessionAcceptance(ctx, modelpolicybiz.Acceptance{
+				WorkspaceID:    "ws",
+				AgentSessionID: "session-1",
+				State:          modelpolicybiz.AcceptanceAgentClaimed,
+				UpdatedAt:      service.now(),
+			})
+			_ = store.PutAgentSessionAcceptance(ctx, modelpolicybiz.Acceptance{
+				WorkspaceID:    "ws",
+				AgentSessionID: "session-1",
+				State:          modelpolicybiz.AcceptanceAutoChecked,
+				ReviewRunID:    "run-x",
+				UpdatedAt:      service.now(),
+			})
+		}()
+	}
+	wg.Wait()
+
+	acceptance, ok, err := service.GetAcceptance(ctx, "ws", "session-1")
+	if err != nil || !ok || acceptance.State != modelpolicybiz.AcceptanceUserAccepted {
+		t.Fatalf("acceptance = %#v ok=%v err=%v, want sticky user_accepted", acceptance, ok, err)
+	}
+}
+
 func TestPolicyPlanReferences(t *testing.T) {
 	t.Parallel()
 
@@ -347,6 +426,69 @@ func TestPolicyPlanReferences(t *testing.T) {
 	}
 	if len(references) != 1 || references[0].Kind != "model_policy" || references[0].Name != "Careful" {
 		t.Fatalf("references = %#v", references)
+	}
+}
+
+type staticBindingReferences struct {
+	bindings []modelbindingbiz.Binding
+	err      error
+}
+
+func (s staticBindingReferences) ListAgentModelBindingsByModelPolicy(context.Context, string, string) ([]modelbindingbiz.Binding, error) {
+	return s.bindings, s.err
+}
+
+func TestDeletePolicyFailsClosedWithoutReferenceReader(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	service := newPolicyTestService(newMemoryPolicyStore())
+	policy := seedReviewPolicy(t, service)
+	// BindingReferences intentionally left nil: deletion must refuse rather than
+	// proceed without being able to check references.
+	if err := service.DeletePolicy(ctx, "ws", policy.ID); !errors.Is(err, ErrPolicyReferenceCheckUnavailable) {
+		t.Fatalf("DeletePolicy(no reference reader) error = %v, want ErrPolicyReferenceCheckUnavailable", err)
+	}
+	if _, err := service.GetPolicy(ctx, "ws", policy.ID); err != nil {
+		t.Fatalf("policy must survive a fail-closed deletion: %v", err)
+	}
+}
+
+func TestDeletePolicyBlockedWhileBindingReferences(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	service := newPolicyTestService(newMemoryPolicyStore())
+	policy := seedReviewPolicy(t, service)
+
+	// A live binding reference blocks deletion so it cannot recreate a dangling
+	// binding link.
+	service.BindingReferences = staticBindingReferences{bindings: []modelbindingbiz.Binding{
+		{WorkspaceID: "ws", AgentTargetID: "local:codex", ModelPolicyID: policy.ID},
+	}}
+	if err := service.DeletePolicy(ctx, "ws", policy.ID); !errors.Is(err, ErrPolicyReferenced) {
+		t.Fatalf("DeletePolicy(referenced) error = %v, want ErrPolicyReferenced", err)
+	}
+	if _, err := service.GetPolicy(ctx, "ws", policy.ID); err != nil {
+		t.Fatalf("policy must survive a blocked deletion: %v", err)
+	}
+
+	// A reference-check error is propagated (deletion does not proceed).
+	service.BindingReferences = staticBindingReferences{err: errors.New("binding store down")}
+	if err := service.DeletePolicy(ctx, "ws", policy.ID); err == nil {
+		t.Fatalf("DeletePolicy must propagate the reference-check error")
+	}
+	if _, err := service.GetPolicy(ctx, "ws", policy.ID); err != nil {
+		t.Fatalf("policy must survive a failed reference check: %v", err)
+	}
+
+	// With no references, deletion proceeds.
+	service.BindingReferences = staticBindingReferences{}
+	if err := service.DeletePolicy(ctx, "ws", policy.ID); err != nil {
+		t.Fatalf("DeletePolicy(unreferenced) error = %v", err)
+	}
+	if _, err := service.GetPolicy(ctx, "ws", policy.ID); !errors.Is(err, workspacedata.ErrModelPolicyNotFound) {
+		t.Fatalf("policy should be deleted: %v", err)
 	}
 }
 

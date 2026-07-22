@@ -3,6 +3,7 @@ package modelplan
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -421,6 +422,70 @@ func TestDetectStagesAgainstFakeOpenAIProvider(t *testing.T) {
 	authStage, _ := badResult.Detection.StageOutcome(modelplanbiz.StageAuth)
 	if authStage.FailureReason != FailureUnauthorized || authStage.Remedy != RemedyCheckAPIKey {
 		t.Fatalf("auth stage = %#v, want unauthorized/check_api_key", authStage)
+	}
+}
+
+func TestDetectUsesFirstDiscoveredModelForInferenceWithoutSelectingIt(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	inferenceBodies := make(chan string, 1)
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"discovered-first"},{"id":"discovered-second"}]}`))
+		case "/v1/chat/completions":
+			raw, _ := io.ReadAll(r.Body)
+			inferenceBodies <- string(raw)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer fake.Close()
+
+	store := newMemoryPlanStore()
+	service := newTestService(store)
+	service.HTTPClient = fake.Client()
+
+	apiKey := "sk-good"
+	created, err := service.CreatePlan(ctx, PutPlanInput{
+		WorkspaceID: "ws",
+		Name:        "Unselected",
+		Protocol:    "openai",
+		APIKey:      &apiKey,
+		BaseURL:     fake.URL + "/v1",
+		Enabled:     true,
+	})
+	if err != nil {
+		t.Fatalf("CreatePlan() error = %v", err)
+	}
+
+	result, err := service.Detect(ctx, DetectInput{WorkspaceID: "ws", PlanID: created.ID})
+	if err != nil {
+		t.Fatalf("Detect() error = %v", err)
+	}
+	assertStage(t, result.Detection, modelplanbiz.StageModelDiscovery, modelplanbiz.StagePassed)
+	assertStage(t, result.Detection, modelplanbiz.StageInference, modelplanbiz.StagePassed)
+	inferenceBody := <-inferenceBodies
+	if !strings.Contains(inferenceBody, `"model":"discovered-first"`) {
+		t.Fatalf("inference body = %s, want first discovered model", inferenceBody)
+	}
+	if result.Detection.Model != "discovered-first" {
+		t.Fatalf("detection model = %q, want actual inference target", result.Detection.Model)
+	}
+	if len(result.DiscoveredModels) != 2 {
+		t.Fatalf("discovered models = %#v, want separate two-model catalog", result.DiscoveredModels)
+	}
+
+	persisted, err := service.GetPlan(ctx, "ws", created.ID)
+	if err != nil {
+		t.Fatalf("GetPlan() error = %v", err)
+	}
+	if len(persisted.Models) != 0 || persisted.DefaultModel != "" {
+		t.Fatalf("persisted selection = models %#v, default %q; discovery must not select a model", persisted.Models, persisted.DefaultModel)
 	}
 }
 

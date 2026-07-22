@@ -131,12 +131,12 @@ export interface ReferenceSourcePickerController {
   loadMoreSourceRoot(sourceId: string): void;
   /**
    * 设置搜索关键词。scopeNodeId 指定把搜索限定在 active 源内某个二级分组(左栏选中分组)
-   * 的节点 nodeId;缺省/null = 跨整源搜索。query 与 filters 任一非空即进入查询(平铺)态。
+   * 的节点 nodeId;缺省/null = 跨整源搜索。只有关键词或 provenance 约束进入扁平查询态。
    */
   setSearchQuery(query: string, scopeNodeId?: string | null): void;
   /**
-   * 设置已选文件类型筛选分类(全局统一口径)。与 setSearchQuery 同构:
-   * 与现有关键词一起构成查询并(去抖)重搜;query 与 filters 同时为空才回浏览态。
+   * 设置已选文件类型筛选分类(全局统一口径)。无关键词时保持可导航的浏览树;
+   * 有关键词时作为搜索参数下钻到 source。
    */
   setSearchFilters(filters: string[], scopeNodeId?: string | null): void;
   setProvenanceFilter(
@@ -178,6 +178,8 @@ export interface CreateReferenceSourcePickerControllerInput {
   aggregator: ReferenceSourceAggregator;
   scope: ReferenceScope;
   selectionMode?: ReferencePickerSelectionMode;
+  /** 关键词搜索允许返回的节点类型。 */
+  searchResultKind?: ReferenceNode["kind"];
   searchDebounceMs?: number;
 }
 
@@ -233,6 +235,7 @@ export function createReferenceSourcePickerController(
   let provenanceFilterKey = "disabled";
   const { aggregator, scope } = input;
   const selectionMode = input.selectionMode ?? "multiple";
+  const searchResultKind = input.searchResultKind;
   const searchDebounceMs = input.searchDebounceMs ?? defaultSearchDebounceMs;
 
   let retained = false;
@@ -471,6 +474,7 @@ export function createReferenceSourcePickerController(
         limit,
         provenanceFilter,
         signal: abortController.signal,
+        ...(searchResultKind ? { kinds: [searchResultKind] } : {}),
         ...(filters.length > 0 ? { filters } : {}),
         ...(scopeNodeId == null ? {} : { withinNodeId: scopeNodeId })
       });
@@ -551,12 +555,10 @@ export function createReferenceSourcePickerController(
     scopeNodeId: string | null
   ) => {
     clearSearchTimer();
-    // query 与 filters 同时为空才跳过 —— 仅选了筛选(query 空)也要发起查询。
+    // 类型筛选自身属于浏览树投影,不触发递归搜索。
     if (
       !retained ||
-      (!query &&
-        filters.length === 0 &&
-        !referenceProvenanceFilterIsActive(provenanceFilter))
+      (!query && !referenceProvenanceFilterIsActive(provenanceFilter))
     ) {
       return;
     }
@@ -640,20 +642,21 @@ export function createReferenceSourcePickerController(
       setSnapshot({ activeSourceId: sourceId });
       if (
         trimmed === "" &&
-        carriedFilters.length === 0 &&
         !referenceProvenanceFilterIsActive(provenanceFilter)
       ) {
-        // 全局查询为空:目标源回浏览态(清掉其可能残留的旧查询/结果),加载源根。
+        // 没有关键词/来源查询时,目标源保持浏览态。文件类型筛选由视图层递归投影
+        // 浏览树,不能把它误判为扁平搜索；切源/回源根时也必须继续保留。
         updateTab(sourceId, (tab) =>
           tab.mode === "browse" &&
           tab.searchQuery === "" &&
-          tab.searchFilters.length === 0
+          tab.searchFilters === carriedFilters &&
+          tab.searchScopeNodeId === nextScopeNodeId
             ? tab
             : {
                 ...tab,
                 mode: "browse",
                 searchQuery: "",
-                searchFilters: [],
+                searchFilters: carriedFilters,
                 searchScopeNodeId: nextScopeNodeId,
                 searchEntries: [],
                 searchHasMore: false,
@@ -822,11 +825,9 @@ export function createReferenceSourcePickerController(
       }
       const filters = snapshot.bySource[sourceId]?.searchFilters ?? [];
       const trimmed = query.trim();
-      // 查询态 = 关键词或筛选任一非空。
+      // 类型筛选不改变浏览/查询模式;只在已有关键词时参与搜索。
       const nextMode: ReferenceSourcePickerMode =
-        trimmed ||
-        filters.length > 0 ||
-        referenceProvenanceFilterIsActive(provenanceFilter)
+        trimmed || referenceProvenanceFilterIsActive(provenanceFilter)
           ? "search"
           : "browse";
       updateTab(sourceId, (tab) => ({
@@ -856,9 +857,7 @@ export function createReferenceSourcePickerController(
       const trimmed = tab?.searchQuery.trim() ?? "";
       const scopeId = scopeNodeId ?? tab?.searchScopeNodeId ?? null;
       const nextMode: ReferenceSourcePickerMode =
-        trimmed ||
-        filters.length > 0 ||
-        referenceProvenanceFilterIsActive(provenanceFilter)
+        trimmed || referenceProvenanceFilterIsActive(provenanceFilter)
           ? "search"
           : "browse";
       updateTab(sourceId, (current) => ({
@@ -902,12 +901,12 @@ export function createReferenceSourcePickerController(
       updateTab(sourceId, (current) => ({
         ...current,
         searchScopeNodeId: scopeId,
-        mode: query || filters.length > 0 || active ? "search" : "browse",
-        ...(query || filters.length > 0 || active
+        mode: query || active ? "search" : "browse",
+        ...(query || active
           ? { isSearchLoading: true, searchError: null }
           : { isSearchLoading: false, searchEntries: [], searchError: null })
       }));
-      if (query || filters.length > 0 || active) {
+      if (query || active) {
         scheduleSearch(sourceId, query, filters, scopeId);
       } else {
         cancelSearch();
@@ -932,9 +931,7 @@ export function createReferenceSourcePickerController(
       const filters = tab.searchFilters;
       if (
         tab.mode === "search" &&
-        (trimmed ||
-          filters.length > 0 ||
-          referenceProvenanceFilterIsActive(provenanceFilter))
+        (trimmed || referenceProvenanceFilterIsActive(provenanceFilter))
       ) {
         scheduleSearch(sourceId, trimmed, filters, scopeNodeId);
       }
@@ -954,11 +951,7 @@ export function createReferenceSourcePickerController(
         return;
       }
       const trimmed = tab.searchQuery.trim();
-      if (
-        !trimmed &&
-        tab.searchFilters.length === 0 &&
-        !referenceProvenanceFilterIsActive(provenanceFilter)
-      ) {
+      if (!trimmed && !referenceProvenanceFilterIsActive(provenanceFilter)) {
         return;
       }
       const nextLimit = Math.min(
@@ -1077,7 +1070,7 @@ export function createReferenceSourcePickerController(
       };
       for (const node of selection) {
         if (node.kind !== "folder") {
-          push(aggregator.resolveSelection(node));
+          push(await aggregator.prepareSelection(scope, node));
           continue;
         }
         const navigable =
@@ -1085,13 +1078,13 @@ export function createReferenceSourcePickerController(
             .navigable ?? false;
         if (!navigable) {
           // 本地源:文件夹保持单条引用(目录路径在 filesystem 里有效)。
-          push(aggregator.resolveSelection(node));
+          push(await aggregator.prepareSelection(scope, node));
           continue;
         }
         // app/issue 源:文件夹下文件不一定落在该目录路径,递归枚举展开成逐个文件引用。
         const files = await collectFolderFiles(node);
         for (const fileNode of files) {
-          push(aggregator.resolveSelection(fileNode));
+          push(await aggregator.prepareSelection(scope, fileNode));
         }
       }
       return resolved;
@@ -1113,7 +1106,7 @@ export function createReferenceSourcePickerController(
           node.kind === "folder" && (source?.capabilities.navigable ?? false);
         if (!navigable) {
           // 文件、或非 navigable 源的文件夹:保持单条引用。
-          pushFile(aggregator.resolveSelection(node));
+          pushFile(await aggregator.prepareSelection(scope, node));
           continue;
         }
         // navigable 源文件夹:折叠成一个 bundle。句柄由源解码,供 agent 经

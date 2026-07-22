@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { AGENT_CONVERSATION_RAIL_RUNTIME_METHODS } from "@tutti-os/agent-gui/conversation-rail-runtime";
 import { createDesktopAgentActivityRuntime } from "./createDesktopAgentActivityRuntime.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface.ts";
+
+test("desktop agent activity runtime installs the complete conversation rail capability", () => {
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService()
+  );
+
+  for (const method of AGENT_CONVERSATION_RAIL_RUNTIME_METHODS) {
+    assert.equal(typeof runtime[method], "function", method);
+  }
+});
 
 test("desktop agent activity runtime scopes section query caches by workspace", () => {
   const runtime = createDesktopAgentActivityRuntime(
@@ -459,6 +470,7 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       workspaceId: input.workspaceId
     }),
     deleteSessionsBatch: async () => ({
+      cleanupFailedSessionIds: [],
       removedMessages: 0,
       removedSessionIds: [],
       removedSessions: 0

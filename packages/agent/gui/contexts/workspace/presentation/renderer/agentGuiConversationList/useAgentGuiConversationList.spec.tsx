@@ -126,6 +126,7 @@ describe("useAgentGuiConversationList", () => {
         initialDisplayPrompt: displayPrompt,
         mode: "new",
         optimisticTitle: "@Task 看看",
+        railSectionKey: "project:/workspace",
         requestedAtUnixMs: 1,
         requestId: "activation-1",
         workspaceId: "workspace-1"
@@ -134,6 +135,7 @@ describe("useAgentGuiConversationList", () => {
 
     expect(result.current?.conversations[0]).toEqual(
       expect.objectContaining({
+        railSectionKey: "project:/workspace",
         title: "@Task 看看",
         titleLeadingMentionKind: "task"
       })

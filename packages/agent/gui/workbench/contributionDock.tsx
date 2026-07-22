@@ -1,5 +1,6 @@
 import { createElement, type ReactNode } from "react";
 import {
+  createMultiInstanceDockEntryOptions,
   getWorkbenchLayoutFrame,
   type WorkbenchDockPreviewContent,
   type WorkbenchFrame,
@@ -87,8 +88,10 @@ export type AgentGuiWorkbenchProviderAvailability = Partial<
 export interface BuildAgentGuiDockEntriesInput {
   agentDirectory: AgentGUIAgentDirectoryPort;
   defaultProvider?: AgentGuiWorkbenchProvider | null;
+  dockEntryId?: string;
   dockIconUrls?: Partial<Record<AgentGuiWorkbenchProvider, string>>;
   label?: string;
+  order?: number;
   providerAvailability?: AgentGuiWorkbenchProviderAvailability;
   renderPreview?: CreateAgentGuiWorkbenchContributionInput["renderPreview"];
   resolveDockPopupIdentity?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupIdentity"];
@@ -109,6 +112,7 @@ export function buildAgentGuiDockEntries(
   return [
     createAgentGuiWorkbenchDockEntry({
       agentDirectory: input.agentDirectory,
+      dockEntryId: input.dockEntryId ?? agentGuiWorkbenchUnifiedDockEntryId(),
       icon: input.unifiedDockIconUrl
         ? createAgentGuiWorkbenchUnifiedDockIcon({
             iconUrl: input.unifiedDockIconUrl
@@ -118,7 +122,7 @@ export function buildAgentGuiDockEntries(
           }),
       label: input.label ?? agentGuiWorkbenchDefaultCopy.nodeTitle,
       launchPayload,
-      order: 0,
+      order: input.order ?? 0,
       provider,
       renderPreview: input.renderPreview,
       resolveDockPopupIdentity: input.resolveDockPopupIdentity,
@@ -195,6 +199,7 @@ export function resolveAgentGuiWorkbenchContributionCopy(
 
 function createAgentGuiWorkbenchDockEntry(input: {
   agentDirectory: AgentGUIAgentDirectoryPort;
+  dockEntryId: string;
   icon: ReactNode;
   label: string;
   launchPayload?: Record<string, unknown>;
@@ -206,17 +211,15 @@ function createAgentGuiWorkbenchDockEntry(input: {
   sectionId: string;
   visibility: WorkbenchHostDockEntry["visibility"];
 }): WorkbenchHostDockEntry {
+  const launchPayload = input.launchPayload ?? { provider: input.provider };
   return {
+    ...createMultiInstanceDockEntryOptions(launchPayload, {
+      allowNewWindowInDockPopup: false
+    }),
     icon: input.icon,
     iconSize: "large",
-    id: agentGuiWorkbenchUnifiedDockEntryId(),
+    id: input.dockEntryId,
     label: input.label,
-    launchBehavior: "enabled",
-    launchPayload: input.launchPayload ?? { provider: input.provider },
-    newWindowLaunchPayload: {
-      ...(input.launchPayload ?? { provider: input.provider }),
-      openInNewWindow: true
-    },
     order: input.order,
     providePopupItemPreview: (item) =>
       input.renderPreview

@@ -54,16 +54,6 @@ export interface AgentActivityCollaborationRun {
   completedAtUnixMs?: number | null;
 }
 
-export interface AgentActivityStartModelConsultInput {
-  workspaceId: string;
-  agentSessionId: string;
-  modelPlanId: string;
-  model: string;
-  question: string;
-  contextText?: string | null;
-  signal?: AbortSignal;
-}
-
 export interface AgentActivitySetCollaborationAdoptionInput {
   workspaceId: string;
   agentSessionId: string;
@@ -86,13 +76,4 @@ export interface AgentActivityModelPlanSummary {
   status: string;
   models: AgentActivityModelPlanModel[];
   defaultModel?: string | null;
-}
-
-export interface AgentActivityListModelPlansInput {
-  workspaceId: string;
-  signal?: AbortSignal;
-}
-
-export interface AgentActivityListModelPlansResult {
-  plans: AgentActivityModelPlanSummary[];
 }

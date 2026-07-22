@@ -22,7 +22,7 @@ import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-s
  */
 export interface EngineStateStore<TState> {
   getSnapshot(): TState;
-  subscribe(listener: (state: TState) => void): () => void;
+  subscribe(listener: () => void): () => void;
 }
 
 export function useEngineSelector<TState, TSelected>(

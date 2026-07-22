@@ -93,7 +93,7 @@ interface Props {
   isSlashStatusPanelOpen: boolean;
   isReviewPickerOpen: boolean;
   isSelectedProjectMissing: boolean;
-  setIsSelectedProjectMissing: Dispatch<SetStateAction<boolean>>;
+  setIsSelectedProjectMissing: (value: boolean) => void;
   setIsPaletteOpen: Dispatch<SetStateAction<boolean>>;
   setHighlightedIndex: Dispatch<SetStateAction<number>>;
   isGoalModeActive: boolean;
@@ -135,9 +135,9 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     onSubmit,
     onProviderSelect,
     onHandoffConversation,
+    onSlashStatusRefresh,
     compactSupported = null,
-    hasCompactableContext = true,
-    modelConsult = null
+    hasCompactableContext = true
   } = input.props;
   const draftImages = agentComposerDraftImages(draftContent);
   const slashStatusAgentSessionId = slashStatus?.agentSessionId ?? null;
@@ -547,9 +547,20 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                   slashStatusContextUnavailable:
                     labels.slashStatusContextUnavailable,
                   slashStatusLimitsUnavailable:
-                    labels.slashStatusLimitsUnavailable
+                    labels.slashStatusLimitsUnavailable,
+                  slashStatusEmptyValue: labels.slashStatusEmptyValue,
+                  slashStatusUsageJustUpdated:
+                    labels.slashStatusUsageJustUpdated,
+                  slashStatusUsageMinutesAgo: labels.slashStatusUsageMinutesAgo,
+                  slashStatusUsageHoursAgo: labels.slashStatusUsageHoursAgo,
+                  slashStatusUsageUpdating: labels.slashStatusUsageUpdating,
+                  slashStatusUsageRefreshFailed:
+                    labels.slashStatusUsageRefreshFailed,
+                  slashStatusUsageRefreshAria:
+                    labels.slashStatusUsageRefreshAria
                 }}
                 onClose={closeSlashStatusPanel}
+                onRefresh={onSlashStatusRefresh}
               />
             </ComposerFloatingMenuSurface>
             <ComposerFloatingMenuSurface
@@ -614,7 +625,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             onSettingsChange={onSettingsChange}
             onSubmit={onSubmit}
             onClearGoalMode={clearGoalModeBadge}
-            modelConsult={modelConsult}
             draftPrompt={draftPrompt}
           />
         </div>

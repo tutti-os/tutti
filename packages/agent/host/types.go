@@ -27,6 +27,18 @@ type SessionInteractionSnapshot struct {
 	PendingInteractions []storesqlite.Interaction
 }
 
+// SessionMessageQuery selects one page of canonical message snapshots. Session
+// identity comes from SessionRef so transport adapters cannot accidentally
+// query a different session through duplicated identity fields.
+type SessionMessageQuery struct {
+	MessageID     string
+	TurnID        string
+	AfterVersion  uint64
+	BeforeVersion uint64
+	Limit         int
+	Order         storesqlite.MessageOrder
+}
+
 type ComposerSettings struct {
 	Model            string
 	ModelPlanID      string
@@ -413,7 +425,23 @@ type DeleteSessionResult struct {
 	Deleted          bool
 	RuntimeClosed    bool
 	CanonicalRemoved bool
+	CleanupFailed    bool
 }
+
+type DeleteSessionsInput struct {
+	WorkspaceID string
+	SessionIDs  []string
+}
+
+type DeleteSessionsResult struct {
+	RemovedSessionIDs []string
+	RemovedSessions   int
+	RemovedMessages   int
+	RuntimeClosedIDs  []string
+	CleanupFailedIDs  []string
+}
+
+type ClearSessionsResult = DeleteSessionsResult
 
 type PurgeDeletedSessionsInput struct {
 	CutoffUnixMS    int64
@@ -458,10 +486,14 @@ type RuntimeGoalRecoveryPolicy struct {
 }
 
 type GoalControlInput struct {
-	WorkspaceID        string
-	AgentSessionID     string
-	Action             string
-	Objective          string
+	WorkspaceID    string
+	AgentSessionID string
+	Action         string
+	Objective      string
+	// ClientSubmitID is the caller-stable identity for one semantic mutation.
+	// It overrides the legacy SubmissionMetadata["clientSubmitId"] value and
+	// makes retries idempotent across Host process restarts.
+	ClientSubmitID     string
 	SubmissionMetadata map[string]any
 }
 

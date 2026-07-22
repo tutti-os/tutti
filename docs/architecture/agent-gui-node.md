@@ -134,6 +134,41 @@ provider runtime observation
 
 `services/tuttid/api/openapi/tuttid.v1.yaml` is authoritative for HTTP request/response contracts. It projects the canonical domain; it does not replace `store-sqlite/canonical`.
 
+### 2.4 On-demand status
+
+AgentGUI owns one provider-neutral `AgentStatusController` for `/status`, Agent
+Info, and Agent Config. These surfaces are explicit bounded reads; mounting an
+AgentGUI node must not start background status polling.
+
+The host injects an `AgentStatusSource`. AgentGUI treats `scopeKey` as opaque
+and never resolves provider, account, local-vs-remote transport, or owner
+identity. The controller owns only loading/ready/error presentation,
+30-second request cancellation, a one-hour retained UI snapshot, 5-second
+manual-refresh debounce, and fencing callbacks from closed or replaced
+requests. Opening any status surface uses the same controller snapshot so the
+three views cannot drift into separate state machines.
+
+Every production host, including Tutti Desktop, injects this controller. A
+host adapter resolves the exact Agent Target to its provider, verifies an
+optional Session belongs to the same workspace/target/provider, and performs
+the bounded status read. AgentGUI has no legacy probe-backed status state or
+provider-derived fallback. The active conversation id is the request Session
+identity because it exists before detail hydration; raw Session chrome remains
+presentation data.
+
+A source emits at most one cached `snapshot` followed by at most one
+`refreshed` value, then completes. Backend probing may continue independently
+to fill a host-owned cache after the presentation request is canceled; late
+frames from the canceled request must not mutate AgentGUI. Errors crossing the
+port are structured codes, never provider stderr, account material, endpoints,
+or transport diagnostics.
+
+Closing `/status`, Agent Info, or Agent Config cancels only the request owned
+by that surface. Replaced requests remain fenced. A stream that completes
+without a frame is a failed refresh: a retained value may remain visible, but
+the UI must show the refresh failure rather than treating the old value as a
+new success.
+
 ## 3. Domain model
 
 ### 3.1 Session
@@ -181,7 +216,12 @@ A child Interaction may appear in the root conversation, but submission carries 
 
 Goal is a Session-level durable entity, not a Turn command. It owns desired/observed state, revision, and an independent operation.
 
-A Goal operation may produce zero or more provider Turns, but it cannot reserve or fabricate Turn IDs. Goal control bypasses the prompt pipeline and does not create a user transcript message.
+A Goal operation may produce zero or more provider Turns, but it cannot reserve or fabricate Turn IDs. Goal control bypasses the prompt pipeline and does not create a user transcript Turn message. AgentGUI may project its durable session audit as a dedicated `goal-control` timeline row; that row has no Turn ID and does not participate in Turn counts, processing ownership, cancellation, or settlement.
+
+When a session-level timeline row occurs chronologically between two rows from
+the same Turn, transcript presentation keeps one Turn group and renders the
+session-level row as an interstitial item. This presentation grouping does not
+assign the row a Turn ID or make it lifecycle-owned by that Turn.
 
 Host owns recovery for runtime operations, Goal operations, and the reconcile inbox. An adapter must not start a second worker or state machine.
 
@@ -255,7 +295,10 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 - a provider with native guidance capability may guide the active Turn
 - otherwise send-now performs exact cancel-then-send
 - user Stop pauses the queue; cancellation must not leak the next prompt
+- a visible failed queue entry continues to own its submitted content for retry;
+  draft settlement must not duplicate that content back into the composer
 - uncertain delivery reconciles by `clientSubmitId` and exact `turnId`; it never resends merely because the Session appears idle
+- editing a queued prompt restores its stable attachment references, then rehydrates missing image previews through `AgentActivityRuntime` with the exact workspace and Session identity; renderer-inaccessible paths never become image URLs, and late reads may update only the matching restored draft image
 - the delivery barrier serializes new-Turn sends only; a guidance head steering the running barrier Turn is exempt and may steer it repeatedly, while in-flight, uncertain-delivery, suspension, and failed-head blockers still gate guidance sends
 - drain readiness is one pure decision over the queue record and canonical availability; a new blocker joins that single decision with an explicit priority against every existing blocker, never as another independent pre-check in the drain path
 
@@ -263,9 +306,25 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 
 The Rail query cache stores section metadata, ordered Session IDs, cursors, and totals only. Session entities always come from the engine.
 
+Hosts install the complete query/mutation cohort from
+`@tutti-os/agent-gui/conversation-rail-runtime`; the shared factory owns the
+workspace-scoped cache lifetime while transport adapters own only protocol
+mapping and authorization. Batch deletion requires both authoritative section
+candidate lookup and the batch mutation. AgentGUI fails that paired capability
+closed when either method is absent, so the view cannot expose an action that
+will resolve to an empty optional-method path.
+
+Presentation-invisible Sessions remain canonical engine entities and stay
+available through exact Session selectors for trusted open, reconcile, and
+command flows. Plural consumer selectors exclude them before Rail and Message
+Center collection projection; a hidden Session must not become a list row just
+because it is resumable or receives later canonical updates.
+
 When runtime sections are enabled, projection unions IDs from the current section, search, and reconciliation, then joins canonical Sessions. Unchanged summaries preserve structural sharing so unrelated engine updates do not rebuild the whole Rail snapshot.
 
 Scroll, section collapse, visible limits, and search query belong to mounted view scope. Non-search state is isolated by `workspaceId + agentTargetId/all`; search creates a temporary navigation scope. `activeConversationId` expresses selection only. Scrolling requires an explicit reveal intent.
+
+Rail scroll memory is captured by scroll events and explicit navigation. Effect cleanup must not synchronously read `scrollTop`: React may already have dirtied the document, turning that read into a full layout inside the interaction task.
 
 Contain selection and presentation identity at the Rail boundary. Each section receives the active ID only when it owns the canonical or overlay row; unrelated sections receive `null` so their memoized props remain equal. Rail pane, section, and row receive a dedicated Rail-label projection whose identity changes for locale changes, not provider-specific detail copy. Event handlers shared by every section keep stable identities and read the current scope and lock state when invoked.
 
@@ -282,6 +341,15 @@ A focused controller may own detail paging/loading/error. Canonical messages, Tu
 Timeline projection is pure, deterministic, and provider-neutral. React views render rows/cards and dispatch actions.
 
 High-frequency transcript updates must not pair DOM mutation with unconditional synchronous reads of the timeline's full scroll geometry. Conversation switches, explicit submit-to-bottom requests, skeleton transitions, and older-page prepend restoration may perform pre-paint scroll correction; ordinary content growth preserves bottom lock and user scroll-away state from observed content and viewport geometry after layout.
+
+A virtualized transcript derives message-locator selection from the virtualizer's measured turn positions and explicit transcript identity. The currently mounted DOM window is rendering output, not a selection source; range changes must not make the locator temporarily select a neighboring message.
+
+Historical rich text renders from the canonical Tiptap document through a static schema renderer. Only interactive composer surfaces own a Tiptap Editor/ProseMirror EditorView; read-only transcript and title surfaces reuse the same mention/token presentation without mounting editor lifecycle.
+
+Attachment-only fallback labels such as `[Image]` may provide title or summary
+text, but they are not an additional transcript text block when the canonical
+structured content already renders the same image. Explicit display prompts
+remain transcript content and continue to replace expanded rich prompt text.
 
 ## 5. Agent identity and provider architecture
 
@@ -334,10 +402,12 @@ already-inline extension icons retain their authoritative URL.
 
 Handoff target menus are an AgentGUI presentation contract. The shared
 `AgentHandoffMenu` renders exact `agentTargetId` rows, ownership metadata, and
-temporary disclosure/icon-motion state; a host supplies its authoritative
-ready target projection and retains launch orchestration in `onSelect`. Host
-surfaces must not reconstruct a second handoff row model or infer target
-identity from provider.
+optional host-resolved `ownerDeviceLabel` metadata directly from the same
+target, plus temporary disclosure/icon-motion state; a host supplies its
+authoritative ready target projection and retains launch orchestration in
+`onSelect`. Host surfaces must not reconstruct a second handoff row model,
+observe the portaled menu DOM, or infer target identity from provider or
+visible text.
 
 For a signed Agent Extension, package `icon` is the primary identity and
 optional package `maskIcon` is the conversation-row glyph. All assets remain
@@ -374,9 +444,32 @@ A controller may compose flows but cannot become a second lifecycle state machin
 
 Activation and existing-Session submit share a canonical prompt envelope. Submit eligibility includes text and renderable structured content; an individual composer does not redefine it.
 
+Home-composer project state distinguishes an unresolved durable default from an
+explicit selection whose path may be null. The project selector may apply the
+durable default only while that intent is unresolved. Entering the unscoped
+conversation section resolves the intent to no project, so remounting the hero
+composer or refreshing the project list cannot restore a previous project.
+
+A locked Session cwd existence check is UI-local observation, not Session
+truth. AgentGUI starts it only after pending creation has resolved, scopes its
+result to the exact Session composer identity, and discards callbacks from a
+previous selection. A host probe failure leaves existence unknown; only a
+successful check that confirms absence may render missing-project chrome.
+
+The empty-home carousel may measure its placeholder synchronously when live
+alignment first activates. Later React updates coalesce alignment into the next
+animation frame; ResizeObserver and MutationObserver keep layout roots current.
+
+Composer text transactions may publish the current draft, but the draft value
+must not drive synchronous pre-paint geometry reads. The dock observes the
+actual editor, input area, and attachment containers; its initial and
+subsequent `ResizeObserver` deliveries own height measurement after layout.
+Viewport resizing is covered by those element observations and must not add a
+duplicate global resize measurement source.
+
 External OS file paste and drop enter one host-injected classification boundary before draft attachment creation. The synchronous `resolveExternalPromptEntries` port classifies each source index as a live `WorkspaceFileReference` or a snapshot requiring preparation. AgentGUI owns ordered mention insertion and draft reconciliation: references become ordinary file/folder mentions and never consume prompt-asset slots, while only `prepare` entries create pending attachment state and enter `prepareExternalPromptFiles`. A host without the resolver prepares every external entry. The preparer owns native-path or byte lookup, size enforcement, persistence, and remote transport; each prepared input has one `sourceIndex` result, one failure must not fail siblings, successful results include a provider-readable `path` or `url`, and failures carry typed error codes. Hosts that classify path-backed entries as references must reject any such entry that unexpectedly reaches preparation, so classification failure cannot silently create a duplicate snapshot.
 
-Workspace picker results and internal workspace-reference drags remain live references. They enter the rich-text document as mentions and never pass through external-file preparation. Removing an inline external-file mention removes its draft intent; a later async result must not revive it or lose its error reason when the draft is in another scope.
+Workspace picker results and internal workspace-reference drags remain live references. They enter the rich-text document as mentions and never pass through external-file preparation. A picker source whose selected locator is not yet consumer-readable may perform source-owned confirmation preparation before the mention is inserted; the picker waits in a loading state, publishes no partial result on failure, and remains open for retry. This confirmation transaction belongs to the reference source contract and is distinct from the external OS file preparation pipeline. Removing an inline external-file mention removes its draft intent; a later async result must not revive it or lose its error reason when the draft is in another scope.
 
 ### 6.2 Public node contract
 
@@ -394,6 +487,12 @@ Workspace picker results and internal workspace-reference drags remain live refe
 | `renderSlots`      | narrow product-neutral presentation slots |
 
 Do not restore flat compatibility props or hide workflow inside a render slot.
+Hosts that render capabilities owned by another device set
+`hostCapabilities.capabilityControlsReadOnly`; AgentGUI keeps owner-supported
+Browser/Computer entries visible but disables their mutation and setup actions.
+Unsupported capabilities remain absent according to the authoritative composer
+capability descriptor. A caller host must not open its local device settings as
+a fallback for a remote owner.
 Host chrome that aligns to AgentGUI's internal layout must consume explicit
 package signals such as `hostActions.onConversationRailLayoutChange`; it must
 not observe package DOM, CSS variables, or class names with
@@ -425,6 +524,10 @@ AgentGUI, Message Center, dock/header, workspace window, and standalone Agent wi
 
 Opening a panel/window creates presentation state only. It does not clone a Session, copy engine entities, or start another event stream. Standalone tools are Desktop chrome, not AgentGUI lifecycle.
 
+The shared Workbench Header owns conversation-identity visibility. When no
+Conversation exists, it ignores conversation titles, Agent titles, primary
+icons, and fallback icons even if a host supplies them.
+
 The reusable standalone-tool sidebar contract lives in `packages/agent/gui/workbench/tool-sidebar`. Hosts provide the supported panel catalog and render adapters; the shared component owns tab selection, picker, sizing, toolbar mechanics, and the boundary between draggable header space and interactive controls. Native Electron hosts keep the default native-window drag mode, while embedded Workbench hosts select host drag mode and provide their pointer and double-click handlers. The shared component disables native app-region handling in host mode so one header never has two competing drag owners.
 
 ## 7. Key flows
@@ -434,6 +537,7 @@ The reusable standalone-tool sidebar contract lives in `packages/agent/gui/workb
 ```text
 home composer submit
   -> engine pending activation + optimistic Session/message
+     (including the resolved immutable railSectionKey)
   -> Host CreateSession(initial content, clientSubmitId)
   -> provisional runtime + canonical transaction
   -> first Turn accepted
@@ -441,6 +545,18 @@ home composer submit
 ```
 
 Initial-content create is one transaction. Failure compensates the provisional runtime/canonical shell; it must not leave a Turn-less Session.
+An activation may instead carry `initialGoalControl`. In that branch the engine
+and runtime adapter preserve the structured `{action, objective}` command, the
+host integration creates a non-provisional Session without initial content,
+and Goal control completes without manufacturing a Turn. The structured field
+is authoritative; integrations must not reparse the display prompt to recover
+Goal semantics. AgentGUI represents the pending control and its durable audit
+with the same client-submit presentation identity, so canonical replacement
+does not remove and recreate the visible `goal-control` row.
+The pending activation carries the same resolved project section key as the
+create command. Exact rail projection therefore shows the conversation as soon
+as the intent is accepted; it does not wait for provider startup or invent a
+temporary catch-all section.
 
 ### 7.2 Existing conversation submit
 

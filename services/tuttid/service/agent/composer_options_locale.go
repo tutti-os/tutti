@@ -58,11 +58,6 @@ func speedDisplay(value string, locale string) (string, string) {
 	return value, ""
 }
 
-func speedLabel(value string, locale string) string {
-	label, _ := speedDisplay(value, locale)
-	return label
-}
-
 func permissionModeDisplay(provider string, id string, semantic PermissionModeSemantic, locale string) (string, string) {
 	provider = agentprovider.Normalize(provider)
 	id = strings.TrimSpace(id)

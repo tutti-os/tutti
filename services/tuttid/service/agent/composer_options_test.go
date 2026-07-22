@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/modelcatalog"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
@@ -331,10 +332,10 @@ func TestComposerModelReasoningOptionsByModelPreservesCatalogOptions(t *testing.
 			profiles := composerModelReasoningOptionsByModel(
 				provider,
 				"en",
-				map[string]composerModelReasoningProfile{
+				map[string]modelcatalog.ReasoningProfile{
 					"model-1": {
-						DefaultReasoningEffort: "ultra",
-						ReasoningEfforts: []AgentModelReasoningEffortOption{
+						DefaultValue: "ultra",
+						Options: []AgentModelReasoningEffortOption{
 							{Value: "high"},
 							{Value: "ultra"},
 						},

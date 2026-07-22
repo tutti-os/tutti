@@ -167,6 +167,7 @@ func TestClaudeExportArchiveImportIsIdempotentNoProjectAndNonResumable(t *testin
 		),
 	})
 	service := NewService(newFakeRuntime())
+	configureTestApplicationHost(service)
 	projection := NewActivityProjection(store)
 	service.SessionReader = projection
 	service.MessageReader = projection
@@ -287,6 +288,7 @@ func TestClaudeExportArchiveKeepsChangedRetryBranchesInSeparateSessions(t *testi
 		),
 	})
 	service := NewService(newFakeRuntime())
+	configureTestApplicationHost(service)
 	projection := NewActivityProjection(store)
 	service.SessionReader = projection
 	service.MessageReader = projection

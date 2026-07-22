@@ -2,6 +2,7 @@ import { enAgentGuiProviderIdentity } from "./en.agentGuiProviderIdentity.ts";
 import { enAgentGuiQuickPrompts } from "./en.agentGuiQuickPrompts.ts";
 import { enAgentGuiReferencePicker } from "./en.agentGuiReferencePicker.ts";
 import { enAgentGuiRuntimeNotices } from "./en.agentGuiRuntimeNotices.ts";
+import { enAgentGuiModelPlans } from "./en.agentGuiModelPlans.ts";
 import { enAgentGuiSlashPalette } from "./en.agentGuiSlashPalette.ts";
 import { enAgentGuiSessionActions } from "./en.agentGuiSessionActions.ts";
 import { enAgentGuiCollaboration } from "./en.agentGuiCollaboration.ts";
@@ -290,8 +291,9 @@ export const enAgentGui = {
   slashStatusLimitReset: "resets {{reset}}",
   slashStatusContextValue:
     "{{percentLeft}}% left ({{usedTokens}} used / {{totalTokens}})",
-  slashStatusContextUnavailable: "Context usage unavailable",
+  slashStatusContextUnavailable: "—",
   slashStatusLimitsUnavailable: "Rate limits unavailable from this agent",
+  slashStatusEmptyValue: "—",
   slashStatusUsageJustUpdated: "Updated just now",
   slashStatusUsageMinutesAgo: "Updated {{count}}m ago",
   slashStatusUsageHoursAgo: "Updated {{count}}h ago",
@@ -434,6 +436,7 @@ export const enAgentGui = {
   handoffConversation: "Handoff",
   handoffConversationTooltip: "Hand off to another agent",
   handoffConversationMenu: "Choose an agent for handoff",
+  handoffTargetDeviceSource: "From {{device}}",
   handoffTargetSelf: "My Agent",
   handoffTargetShared: "Shared Agent",
   startConversation: "Start session",
@@ -553,9 +556,7 @@ export const enAgentGui = {
   contextCompactionInProgress: "Compacting context",
   contextCompactionCompleted: "Context compacted.",
   contextCompactionInterrupted: "Context compaction interrupted.",
-  consultLoadPlansFailed: "Failed to load model plans.",
-  consultNoPlans: "No enabled model plans",
-  consultFailed: "Model consult failed.",
+  ...enAgentGuiModelPlans,
   turnSummary: "Changed files",
   userMessageLocator: "User messages",
   turnSummaryFilesChanged: "{{count}} files changed",

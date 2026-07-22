@@ -2104,7 +2104,6 @@ body[data-desktop-dock-minimized-stack-open="true"] .desktop-dock {
   overflow: visible;
   border-width: 2px;
   border-radius: 12px;
-  -webkit-backdrop-filter: blur(40px);
   backdrop-filter: blur(40px);
   box-shadow: none;
   pointer-events: auto;

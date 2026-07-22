@@ -76,7 +76,7 @@
     }
   },
   "scripts": {
-    "build": "electron-vite build",
+    "build": "electron-vite build && node ../../tools/scripts/verify-renderer-css-contracts.mjs out/renderer/assets",
     "build:linux": "bash ../../tools/scripts/build-desktop-package.sh linux",
     "build:mac": "bash ../../tools/scripts/build-desktop-package.sh mac-unsigned",
     "build:mac:signed": "bash ../../tools/scripts/build-desktop-package.sh mac-signed",

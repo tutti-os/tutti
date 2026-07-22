@@ -11,6 +11,7 @@ import {
   selectRootAgentSessionIdsWithPendingInteractions,
   selectWorkspaceAgentConsumerCounts,
   selectWorkspaceAgentConsumerSession,
+  selectWorkspaceAgentConsumerSessions,
   selectWorkspaceAgentRootConversationSessions
 } from "./sessionLifecycle.selectors.ts";
 
@@ -62,6 +63,48 @@ test("deleted session selector normalizes ids and hides tombstone storage", () =
   assert.equal(selectEngineSessionDeleted(state, " session-1 "), true);
   assert.equal(selectEngineSessionDeleted(state, "missing"), false);
   assert.equal(selectEngineSessionDeleted(state, null), false);
+});
+
+test("consumer collections hide presentation-invisible sessions without removing exact lookup", () => {
+  const state = rootEngineReducer(createInitialAgentSessionEngineState(), {
+    sessions: [
+      {
+        activeTurnId: null,
+        agentSessionId: "visible-session",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "Visible session",
+        visible: true,
+        workspaceId: "workspace-1"
+      },
+      {
+        activeTurnId: null,
+        agentSessionId: "hidden-session",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "Hidden session",
+        visible: false,
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  assert.deepEqual(
+    selectWorkspaceAgentConsumerSessions(state).map(
+      (item) => item.session.agentSessionId
+    ),
+    ["visible-session"]
+  );
+  assert.equal(
+    selectWorkspaceAgentConsumerSession(state, "hidden-session")?.session
+      .agentSessionId,
+    "hidden-session"
+  );
 });
 
 test("consumer status is derived from canonical entities and engine-owned initial activation", () => {

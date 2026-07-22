@@ -19,6 +19,10 @@ import {
   prepareDeveloperLogFilesForExport,
   type DeveloperLogFileArtifact
 } from "./developerLogsRecentWindow.ts";
+import {
+  createDefaultDeveloperLogsExportFileName,
+  resolveDeveloperLogsTimeWindow
+} from "./developerLogsExportOptions.ts";
 import { buildDeveloperLogsRuntimeContext } from "./developerLogsRuntimeContext.ts";
 import yazl from "yazl";
 
@@ -37,11 +41,10 @@ export interface DeveloperLogsDependencies {
 }
 
 export interface DeveloperLogsExportOptions {
+  includeAgentSessions?: boolean;
   savePath?: string;
   scope?: DesktopDeveloperLogsExportScope;
 }
-
-const recentDeveloperLogsWindowMs = 10 * 60 * 1_000;
 
 export interface DeveloperLogsAppCenterSnapshot {
   workspaces: Array<{
@@ -109,7 +112,10 @@ export class DeveloperLogsService {
   }
 
   async clearLogs(): Promise<ClearDeveloperLogsResult> {
-    const artifacts = await discoverDeveloperDiagnosticsArtifacts(this.deps);
+    const artifacts = await discoverDeveloperDiagnosticsArtifacts(
+      this.deps,
+      false
+    );
     let clearedFiles = 0;
     let clearedSizeBytes = 0;
     const clearedPaths: string[] = [];
@@ -140,13 +146,15 @@ export class DeveloperLogsService {
     options: DeveloperLogsExportOptions = {}
   ): Promise<ExportDeveloperLogsResult> {
     await this.deps.flushLogs?.();
-    const artifacts = await discoverDeveloperDiagnosticsArtifacts(this.deps);
     const exportedAt = this.deps.now?.() ?? new Date();
-    const scope = options.scope ?? "all";
-    const windowStart =
-      scope === "recent-10-minutes"
-        ? new Date(exportedAt.getTime() - recentDeveloperLogsWindowMs)
-        : null;
+    const includeAgentSessions = options.includeAgentSessions ?? true;
+    const scope = options.scope ?? "recent-3-days";
+    const timeWindow = resolveDeveloperLogsTimeWindow(scope, exportedAt);
+    const windowStart = new Date(timeWindow.startTimeUnixMs);
+    const artifacts = await discoverDeveloperDiagnosticsArtifacts(
+      this.deps,
+      includeAgentSessions
+    );
     const discoveredFileArtifacts = artifacts.filter(
       (
         artifact
@@ -155,12 +163,7 @@ export class DeveloperLogsService {
     );
     const fileArtifacts = await prepareDeveloperLogFilesForExport(
       discoveredFileArtifacts,
-      windowStart
-        ? {
-            endTimeUnixMs: exportedAt.getTime(),
-            startTimeUnixMs: windowStart.getTime()
-          }
-        : null
+      timeWindow
     );
     const discoveredGeneratedArtifacts = artifacts.filter(
       (
@@ -173,7 +176,6 @@ export class DeveloperLogsService {
     const generatedArtifacts = discoveredGeneratedArtifacts.filter(
       (artifact) =>
         artifact.category !== "agent-session" ||
-        !windowStart ||
         (artifact.updatedAtUnixMS >= windowStart.getTime() &&
           artifact.updatedAtUnixMS <= exportedAt.getTime())
     );
@@ -195,6 +197,7 @@ export class DeveloperLogsService {
         fileCount: 0,
         filePath: await this.writeEmptyExport({
           exportedAt,
+          includeAgentSessions,
           savePath: options.savePath,
           scope,
           windowStart
@@ -207,7 +210,11 @@ export class DeveloperLogsService {
       : ensureZipFilePath(
           join(
             this.deps.getDownloadsPath?.() ?? this.deps.defaults.state.logsDir,
-            createDefaultDeveloperLogsExportFileName(exportedAt, scope)
+            createDefaultDeveloperLogsExportFileName({
+              exportedAt,
+              includeAgentSessions,
+              scope
+            })
           )
         );
 
@@ -265,8 +272,9 @@ export class DeveloperLogsService {
             schemaVersion: 1,
             desktopVersion: this.deps.desktopVersion,
             exportedAt: exportedAt.toISOString(),
+            includeAgentSessions,
             scope,
-            windowStart: windowStart?.toISOString() ?? null,
+            windowStart: windowStart.toISOString(),
             logsDir: this.deps.defaults.state.logsDir,
             agentSessionFileCount: agentSessionArtifacts.length,
             appCenterSnapshotIncluded,
@@ -305,6 +313,7 @@ export class DeveloperLogsService {
 
   private async writeEmptyExport(input: {
     exportedAt: Date;
+    includeAgentSessions: boolean;
     savePath?: string;
     scope: DesktopDeveloperLogsExportScope;
     windowStart: Date | null;
@@ -313,10 +322,11 @@ export class DeveloperLogsService {
       input.savePath ??
         join(
           this.deps.getDownloadsPath?.() ?? this.deps.defaults.state.logsDir,
-          createDefaultDeveloperLogsExportFileName(
-            input.exportedAt,
-            input.scope
-          )
+          createDefaultDeveloperLogsExportFileName({
+            exportedAt: input.exportedAt,
+            includeAgentSessions: input.includeAgentSessions,
+            scope: input.scope
+          })
         )
     );
     await mkdir(dirname(targetPath), { recursive: true });
@@ -349,6 +359,7 @@ export class DeveloperLogsService {
             schemaVersion: 1,
             desktopVersion: this.deps.desktopVersion,
             exportedAt: input.exportedAt.toISOString(),
+            includeAgentSessions: input.includeAgentSessions,
             scope: input.scope,
             windowStart: input.windowStart?.toISOString() ?? null,
             logsDir: this.deps.defaults.state.logsDir,
@@ -380,7 +391,8 @@ interface DiscoveredLogFile extends ManagedLogFile {
 }
 
 async function discoverDeveloperDiagnosticsArtifacts(
-  deps: DeveloperLogsDependencies
+  deps: DeveloperLogsDependencies,
+  includeAgentSessions = true
 ): Promise<DeveloperDiagnosticsArtifact[]> {
   const activeManagedLogPaths = new Set([
     deps.defaults.state.tuttidLogPath,
@@ -393,7 +405,9 @@ async function discoverDeveloperDiagnosticsArtifacts(
   const appFactoryLogFiles = await listAppFactoryLogFiles(
     deps.defaults.state.rootDir
   );
-  const agentSessions = await deps.agentSessionsProvider?.().catch(() => []);
+  const agentSessions = includeAgentSessions
+    ? await deps.agentSessionsProvider?.().catch(() => [])
+    : [];
   const agentSessionFiles = buildProviderAgentSessionRecordFiles(
     agentSessions ?? []
   );
@@ -478,18 +492,6 @@ async function discoverDeveloperDiagnosticsArtifacts(
   }
 
   return artifacts;
-}
-
-function createDefaultDeveloperLogsExportFileName(
-  now = new Date(),
-  scope: DesktopDeveloperLogsExportScope = "all"
-): string {
-  const pad = (value: number): string => String(value).padStart(2, "0");
-  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(
-    now.getHours()
-  )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  const rangeSegment = scope === "recent-10-minutes" ? "-last-10-minutes" : "";
-  return `tutti-logs${rangeSegment}-${stamp}.zip`;
 }
 
 async function summarizeLogFile(

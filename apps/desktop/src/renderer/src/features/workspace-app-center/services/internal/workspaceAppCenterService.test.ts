@@ -991,14 +991,15 @@ test("WorkspaceAppCenterService tracks import failure and catalog refresh result
 
 test("WorkspaceAppCenterService tracks factory job lifecycle events", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
-  let createFactoryJobInput: {
+  const createFactoryJobInputs: Array<{
     agentTargetId: string;
+    clientSubmitId: string;
     displayName: string;
     model?: string;
     permissionModeId?: string;
     prompt: string;
     reasoningEffort?: string;
-  } | null = null;
+  }> = [];
   const createdJob = createFactoryJob({
     jobId: "job-1",
     model: "gpt-5",
@@ -1013,7 +1014,7 @@ test("WorkspaceAppCenterService tracks factory job lifecycle events", async () =
           jobs: [createFactoryJob({ jobId: "job-1", status: "canceled" })]
         }),
       createWorkspaceAppFactoryJob: async (_workspaceId, input) => {
-        createFactoryJobInput = input;
+        createFactoryJobInputs.push(input);
         return createFactorySnapshot({
           jobs: [createdJob]
         });
@@ -1057,8 +1058,15 @@ test("WorkspaceAppCenterService tracks factory job lifecycle events", async () =
     workspaceId: "workspace-1"
   });
 
+  const createFactoryJobInput = createFactoryJobInputs[0];
+  assert.ok(createFactoryJobInput);
+  assert.match(
+    createFactoryJobInput.clientSubmitId,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  );
   assert.deepEqual(createFactoryJobInput, {
     agentTargetId: "local:codex",
+    clientSubmitId: createFactoryJobInput.clientSubmitId,
     displayName: "Dashboard App",
     model: "gpt-5",
     permissionModeId: "auto",

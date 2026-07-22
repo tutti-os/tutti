@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { MessageBoxOptions } from "electron";
+import type { ExportDeveloperLogsInput } from "../shared/contracts/ipc.ts";
 import { createApplicationMenuTemplate } from "./applicationMenu.ts";
 
 test("application menu exposes developer log export from Help", async () => {
-  const exportedScopes: string[] = [];
+  const exportedInputs: ExportDeveloperLogsInput[] = [];
   const menu = createApplicationMenuTemplate({
     exportDeveloperLogs(input) {
-      exportedScopes.push(input.scope);
+      exportedInputs.push(input);
     },
     platform: "darwin"
   });
@@ -20,29 +21,44 @@ test("application menu exposes developer log export from Help", async () => {
   );
   assert.ok(exportItem);
   assert.ok(Array.isArray(exportItem.submenu));
-  const allLogsItem = exportItem.submenu.find(
-    (item) => item.label === "All Logs"
-  );
-  const recentLogsItem = exportItem.submenu.find(
+  const recentTenMinutesItem = exportItem.submenu.find(
     (item) => item.label === "Last 10 Minutes"
   );
-  assert.ok(allLogsItem);
-  assert.ok(recentLogsItem);
-
-  allLogsItem.click?.(
-    {} as Parameters<NonNullable<typeof allLogsItem.click>>[0],
-    undefined as Parameters<NonNullable<typeof allLogsItem.click>>[1],
-    undefined as unknown as Parameters<NonNullable<typeof allLogsItem.click>>[2]
+  const recentThreeDaysItem = exportItem.submenu.find(
+    (item) => item.label === "Last 3 Days"
   );
-  recentLogsItem.click?.(
-    {} as Parameters<NonNullable<typeof recentLogsItem.click>>[0],
-    undefined as Parameters<NonNullable<typeof recentLogsItem.click>>[1],
-    undefined as unknown as Parameters<
-      NonNullable<typeof recentLogsItem.click>
-    >[2]
-  );
+  assert.ok(recentTenMinutesItem);
+  assert.ok(Array.isArray(recentTenMinutesItem.submenu));
+  assert.ok(recentThreeDaysItem);
+  assert.ok(Array.isArray(recentThreeDaysItem.submenu));
 
-  assert.deepEqual(exportedScopes, ["all", "recent-10-minutes"]);
+  const exportActions = [
+    ...recentTenMinutesItem.submenu,
+    ...recentThreeDaysItem.submenu
+  ];
+  assert.deepEqual(
+    exportActions.map((item) => item.label),
+    [
+      "Logs Only",
+      "Logs + Session Records",
+      "Logs Only",
+      "Logs + Session Records"
+    ]
+  );
+  for (const action of exportActions) {
+    action.click?.(
+      {} as Parameters<NonNullable<typeof action.click>>[0],
+      undefined as Parameters<NonNullable<typeof action.click>>[1],
+      undefined as unknown as Parameters<NonNullable<typeof action.click>>[2]
+    );
+  }
+
+  assert.deepEqual(exportedInputs, [
+    { includeAgentSessions: false, scope: "recent-10-minutes" },
+    { includeAgentSessions: true, scope: "recent-10-minutes" },
+    { includeAgentSessions: false, scope: "recent-3-days" },
+    { includeAgentSessions: true, scope: "recent-3-days" }
+  ]);
 });
 
 test("application menu exposes developer log clearing from Help", async () => {

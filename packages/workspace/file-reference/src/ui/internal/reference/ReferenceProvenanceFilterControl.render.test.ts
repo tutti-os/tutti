@@ -21,6 +21,7 @@ const { JSDOM } = require("jsdom") as JsdomModule;
 const ts = require("typescript") as TypeScriptModule;
 
 test("provenance filter handles row clicks and disabled option visibility", async () => {
+  const longMemberLabel = "Alice with a very long display name";
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const tempDir = mkdtempSync(join(moduleDir, ".filter-render-test-"));
   const previousWindow = globalThis.window;
@@ -58,10 +59,14 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
 
     const props: ReferenceProvenanceFilterControlProps = {
       agentOptions: [
-        { id: "codex", label: "Codex" },
+        {
+          id: "codex",
+          label: `${longMemberLabel} · Codex`,
+          parentMemberId: "member-1"
+        },
         { disabled: true, id: "cursor", label: "Cursor" }
       ],
-      enabledDimensions: ["agent"],
+      enabledDimensions: ["agent", "member"],
       labels: {
         agents: "Agents",
         allAgents: "All agents",
@@ -71,7 +76,7 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
         filteredSources: "Filtered sources",
         reset: "Reset"
       },
-      memberOptions: [],
+      memberOptions: [{ id: "member-1", label: longMemberLabel }],
       popoverElevation: "panel",
       onReset() {},
       onToggle(_dimension, id) {
@@ -80,7 +85,7 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
       onToggleAll(dimension) {
         calls.push(`all:${dimension}`);
       },
-      value: { agentTargetIds: null, memberIds: null }
+      value: { agentTargetIds: ["codex"], memberIds: null }
     };
     const renderControl = (nextProps: ReferenceProvenanceFilterControlProps) =>
       createElement(
@@ -104,27 +109,110 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
     });
 
     assert.doesNotMatch(dom.window.document.body.textContent ?? "", /Cursor/);
+    const resetButton = [
+      ...dom.window.document.querySelectorAll<HTMLButtonElement>("button")
+    ].find((element) => element.textContent === "Reset");
+    const filterTrigger = dom.window.document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Filtered sources"]'
+    );
+    assert.ok(resetButton);
+    assert.ok(filterTrigger);
+    assert.match(filterTrigger.className, /(?:^|\s)border-0(?:\s|$)/);
+    assert.doesNotMatch(
+      filterTrigger.className,
+      /border-\[var\(--border-focus\)\]/
+    );
+    assert.ok(
+      resetButton.compareDocumentPosition(filterTrigger) &
+        dom.window.Node.DOCUMENT_POSITION_FOLLOWING
+    );
     const popover = dom.window.document.querySelector<HTMLElement>(".nodrag");
     assert.ok(popover);
     assert.equal(popover.style.zIndex, "var(--z-panel-popover)");
 
     const allAgentsRow = [
-      ...dom.window.document.querySelectorAll<HTMLElement>('[role="checkbox"]')
+      ...dom.window.document.querySelectorAll<HTMLElement>(
+        '[role="menuitemcheckbox"]'
+      )
     ].find((element) => element.textContent === "All agents");
     assert.ok(allAgentsRow);
+    assert.equal(allAgentsRow.getAttribute("aria-checked"), "mixed");
     await act(async () => {
       allAgentsRow.click();
     });
 
     const codexRow = [
-      ...dom.window.document.querySelectorAll<HTMLElement>('[role="checkbox"]')
-    ].find((element) => element.textContent === "Codex");
+      ...dom.window.document.querySelectorAll<HTMLElement>(
+        '[role="menuitemcheckbox"]'
+      )
+    ].find((element) => element.textContent === `${longMemberLabel} · Codex`);
     assert.ok(codexRow);
+    const agentOwner = codexRow.querySelector<HTMLElement>(
+      '[data-slot="reference-provenance-option-owner"]'
+    );
+    const agentSuffix = codexRow.querySelector<HTMLElement>(
+      '[data-slot="reference-provenance-option-agent"]'
+    );
+    const agentLabel = codexRow.querySelector<HTMLElement>(
+      '[data-slot="reference-provenance-option-label"]'
+    );
+    assert.ok(agentOwner);
+    assert.ok(agentSuffix);
+    assert.ok(agentLabel);
+    assert.match(agentOwner.className, /(?:^|\s)shrink(?:\s|$)/);
+    assert.doesNotMatch(agentOwner.className, /(?:^|\s)flex-1(?:\s|$)/);
+    assert.match(agentOwner.className, /(?:^|\s)truncate(?:\s|$)/);
+    assert.match(agentSuffix.className, /(?:^|\s)shrink-0(?:\s|$)/);
+    assert.match(agentSuffix.className, /(?:^|\s)whitespace-pre(?:\s|$)/);
+    assert.equal(agentSuffix.textContent, " · Codex");
+    assert.equal(agentLabel.title, `${longMemberLabel} · Codex`);
     await act(async () => {
       codexRow.click();
     });
 
-    assert.deepEqual(calls, ["all:agent", "codex"]);
+    const membersTab = [
+      ...dom.window.document.querySelectorAll<HTMLElement>('[role="tab"]')
+    ].find((element) => element.textContent === "Members");
+    assert.ok(membersTab);
+    await act(async () => {
+      membersTab.click();
+    });
+
+    const allMembersRow = [
+      ...dom.window.document.querySelectorAll<HTMLElement>(
+        '[role="menuitemcheckbox"]'
+      )
+    ].find((element) => element.textContent === "All members");
+    assert.ok(allMembersRow);
+    await act(async () => {
+      allMembersRow.click();
+    });
+
+    const memberRow = [
+      ...dom.window.document.querySelectorAll<HTMLElement>(
+        '[role="menuitemcheckbox"]'
+      )
+    ].find((element) => element.textContent === longMemberLabel);
+    assert.ok(memberRow);
+    const memberLabel = memberRow.querySelector<HTMLElement>(
+      '[data-slot="reference-provenance-option-text"]'
+    );
+    assert.ok(memberLabel);
+    assert.match(memberLabel.className, /(?:^|\s)block(?:\s|$)/);
+    assert.match(memberLabel.className, /(?:^|\s)truncate(?:\s|$)/);
+    await act(async () => {
+      memberRow.click();
+    });
+
+    assert.deepEqual(calls, ["all:agent", "codex", "all:member", "member-1"]);
+
+    const agentsTab = [
+      ...dom.window.document.querySelectorAll<HTMLElement>('[role="tab"]')
+    ].find((element) => element.textContent === "Agents");
+    assert.ok(agentsTab);
+    await act(async () => {
+      agentsTab.click();
+    });
 
     await act(async () => {
       root?.render(
@@ -136,7 +224,9 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
     });
 
     const cursorRow = [
-      ...dom.window.document.querySelectorAll<HTMLElement>('[role="checkbox"]')
+      ...dom.window.document.querySelectorAll<HTMLElement>(
+        '[role="menuitemcheckbox"]'
+      )
     ].find((element) => element.textContent === "Cursor");
     assert.ok(cursorRow);
     assert.equal(cursorRow.getAttribute("aria-disabled"), "true");
@@ -171,8 +261,17 @@ function buildFilterControlRenderModule(tempDir: string): string {
           asChild,
           checked,
           children,
+          disabled,
+          modal,
+          onCheckedChange,
+          onSelect,
+          onValueChange,
+          preventMouseDownDefault,
           side,
+          sideOffset,
           size,
+          tabs,
+          value,
           variant,
           ...rest
         } = props;
@@ -187,21 +286,37 @@ function buildFilterControlRenderModule(tempDir: string): string {
         return values.flat().filter(Boolean).join(" ");
       }
       export const Button = passthrough("button");
-      export function Checkbox(props = {}) {
-        return h("button", {
-          ...cleanProps(props),
-          "data-checked": String(props.checked)
-        });
-      }
       export function ChevronDownIcon(props = {}) {
         return h("svg", cleanProps(props));
       }
-      export const Popover = passthrough("div");
-      export const PopoverContent = passthrough("div");
-      export function PopoverTrigger(props = {}) {
+      export const DropdownMenu = passthrough("div");
+      export const DropdownMenuContent = passthrough("div");
+      export const DropdownMenuGroup = passthrough("div");
+      export function DropdownMenuTrigger(props = {}) {
         return props.asChild && isValidElement(props.children)
           ? props.children
           : h("span", cleanProps(props), props.children);
+      }
+      export function DropdownMenuCheckboxItem(props = {}) {
+        const { checked, disabled, onCheckedChange } = props;
+        return h("div", {
+          ...cleanProps(props),
+          "aria-checked": checked === "indeterminate" ? "mixed" : checked,
+          "aria-disabled": disabled || undefined,
+          role: "menuitemcheckbox",
+          onClick: disabled ? undefined : () => onCheckedChange?.(!checked)
+        }, props.children);
+      }
+      export function UnderlineTabs(props = {}) {
+        return h("div", { role: "tablist" }, props.tabs.map((tab) =>
+          h("button", {
+            key: tab.value,
+            "aria-selected": props.value === tab.value,
+            role: "tab",
+            type: "button",
+            onClick: () => props.onValueChange(tab.value)
+          }, tab.label)
+        ));
       }
     `
   );
@@ -226,11 +341,13 @@ function buildFilterControlRenderModule(tempDir: string): string {
       /import \{\s*Button,[\s\S]*?\} from "@tutti-os\/ui-system";/,
       `import {
         Button,
-        Checkbox,
         ChevronDownIcon,
-        Popover,
-        PopoverContent,
-        PopoverTrigger,
+        DropdownMenu,
+        DropdownMenuCheckboxItem,
+        DropdownMenuContent,
+        DropdownMenuGroup,
+        DropdownMenuTrigger,
+        UnderlineTabs,
         cn
       } from "${uiSystemUrl}";`
     )

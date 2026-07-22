@@ -85,6 +85,18 @@ func TestClaudeCodeSDKAdapterMapsModelUsageContextWindowMap(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKContextWindowDoesNotBorrowAnotherModel(t *testing.T) {
+	total := claudeSDKContextWindowTokens(map[string]any{
+		"modelUsage": map[string]any{
+			"claude-haiku-4-5":  map[string]any{"contextWindow": 200_000},
+			"claude-sonnet-4-6": map[string]any{"contextWindow": 1_000_000},
+		},
+	}, "opus")
+	if total != 0 {
+		t.Fatalf("context window=%d, want no value for unmatched active model", total)
+	}
+}
+
 // TestClaudeCodeSDKAdapterAssumes1MWindowForOneMillionModelAliasBeforeResult
 // reproduces the context-usage popover bug reported after PR #749: on a
 // "[1m]" (1M-context) model alias, every usage_updated delta streamed before
@@ -229,6 +241,30 @@ func TestClaudeCodeSDKAdapterDoesNotCarryContextWindowAcrossModelChange(t *testi
 	}
 	if got, ok := int64Value(contextWindow["totalTokens"]); !ok || got != 200_000 {
 		t.Fatalf("totalTokens = %#v, want default context window after model switch", contextWindow["totalTokens"])
+	}
+}
+
+func TestClaudeCodeSDKAdapterInvalidatesContextWindowWhenSettingsChangeModel(t *testing.T) {
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	adapterSession.applyConfigOption("model", "haiku")
+	adapterSession.liveState.usage = claudeSDKUsageState{
+		contextUsedTokens:   20_000,
+		contextWindowTokens: 200_000,
+		contextKnown:        true,
+		contextModel:        "haiku",
+		quotas: []map[string]any{{
+			"quotaType": "weekly", "percentRemaining": 75.5,
+		}},
+	}
+
+	if !adapterSession.applySettingsPayload(map[string]any{"model": "opus"}) {
+		t.Fatal("applySettingsPayload() changed=false, want model change")
+	}
+	if adapterSession.liveState.usage.contextKnown {
+		t.Fatalf("context usage=%#v, want invalidated after model change", adapterSession.liveState.usage)
+	}
+	if len(adapterSession.liveState.usage.quotas) != 1 {
+		t.Fatalf("quotas=%#v, want preserved quotas", adapterSession.liveState.usage.quotas)
 	}
 }
 

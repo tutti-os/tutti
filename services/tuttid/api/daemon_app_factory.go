@@ -72,6 +72,12 @@ func (api DaemonAPI) CreateWorkspaceAppFactoryJob(ctx context.Context, request t
 			apierrors.WithParams(map[string]any{"field": "agentTargetId"}),
 		))}, nil
 	}
+	if strings.TrimSpace(request.Body.ClientSubmitId) == "" {
+		return tuttigenerated.CreateWorkspaceAppFactoryJob400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(
+			apierrors.WithDeveloperMessage("client submit id is required"),
+			apierrors.WithParams(map[string]any{"field": "clientSubmitId"}),
+		))}, nil
+	}
 	job, err := api.AppFactoryService.Create(ctx, workspaceID, workspaceservice.CreateAppFactoryJobInput{
 		Prompt:        request.Body.Prompt,
 		DisplayName:   request.Body.DisplayName,

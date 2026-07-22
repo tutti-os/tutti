@@ -11,6 +11,10 @@ import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
 
 const virtualizerMockState = vi.hoisted(() => ({
+  centerIndex: 10,
+  getVirtualItemForOffset: vi.fn(),
+  scrollOffset: 1_000,
+  scrollRect: { height: 480, width: 800 },
   virtualIndexes: [100, 101, 102, 103, 104],
   scrollToIndex: vi.fn(),
   instance: {
@@ -39,7 +43,10 @@ vi.mock("@tanstack/react-virtual", () => ({
           start: index * 100,
           size: 100
         })),
+      getVirtualItemForOffset: virtualizerMockState.getVirtualItemForOffset,
       measureElement: vi.fn(),
+      scrollOffset: virtualizerMockState.scrollOffset,
+      scrollRect: virtualizerMockState.scrollRect,
       scrollToIndex: virtualizerMockState.scrollToIndex
     })
   )
@@ -50,6 +57,18 @@ import { AgentTranscriptView } from "./AgentTranscriptView";
 
 describe("AgentTranscriptView virtual rendering", () => {
   beforeEach(() => {
+    virtualizerMockState.centerIndex = 10;
+    virtualizerMockState.getVirtualItemForOffset.mockReset();
+    virtualizerMockState.getVirtualItemForOffset.mockImplementation(() => ({
+      end: (virtualizerMockState.centerIndex + 1) * 100,
+      index: virtualizerMockState.centerIndex,
+      key: `virtual-${virtualizerMockState.centerIndex}`,
+      lane: 0,
+      size: 100,
+      start: virtualizerMockState.centerIndex * 100
+    }));
+    virtualizerMockState.scrollOffset = 1_000;
+    virtualizerMockState.scrollRect = { height: 480, width: 800 };
     virtualizerMockState.scrollToIndex.mockClear();
     virtualizerMockState.instance.shouldAdjustScrollPositionOnItemSizeChange =
       undefined;
@@ -381,6 +400,97 @@ describe("AgentTranscriptView virtual rendering", () => {
 
     expect(virtualizerMockState.scrollToIndex).toHaveBeenCalledWith(0, {
       align: "center"
+    });
+  });
+
+  it("selects an unmounted locator item from virtual measurements", async () => {
+    virtualizerMockState.centerIndex = 18;
+    virtualizerMockState.virtualIndexes = [10];
+
+    render(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={conversationWithMultiRowTurns(40)}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files",
+            userMessageLocator: "User messages"
+          }}
+        />
+      </div>
+    );
+
+    const timeline = screen.getByTestId("agent-gui-timeline");
+    timeline.scrollTop = 1_000;
+    const timelineQuerySelector = vi.spyOn(timeline, "querySelector");
+    fireEvent.scroll(timeline);
+
+    await waitFor(() => {
+      const ticks = screen
+        .getByTestId("agent-message-locator")
+        .querySelectorAll(".agent-gui-message-locator__tick");
+      expect(ticks[18]).toHaveAttribute("data-selected", "true");
+      expect(ticks[10]).not.toHaveAttribute("data-selected");
+    });
+    expect(screen.queryByText("turn 18 user row")).toBeNull();
+    expect(virtualizerMockState.getVirtualItemForOffset).toHaveBeenCalledWith(
+      1_240
+    );
+    expect(
+      timelineQuerySelector.mock.calls.some(([selector]) =>
+        String(selector).includes("data-agent-transcript-row")
+      )
+    ).toBe(false);
+  });
+
+  it("selects the preceding user message when the centered turn has no user row", async () => {
+    virtualizerMockState.centerIndex = 18;
+    virtualizerMockState.virtualIndexes = [18];
+    const conversation = conversationWithMultiRowTurns(40);
+    const sparseUserConversation: AgentConversationVM = {
+      ...conversation,
+      rows: conversation.rows.map((row) =>
+        row.kind === "message" &&
+        row.speaker === "user" &&
+        Number(row.turnId?.replace("turn-", "")) > 9
+          ? { ...row, speaker: "assistant" as const }
+          : row
+      )
+    };
+
+    render(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={sparseUserConversation}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files",
+            userMessageLocator: "User messages"
+          }}
+        />
+      </div>
+    );
+
+    const timeline = screen.getByTestId("agent-gui-timeline");
+    timeline.scrollTop = 1_000;
+    fireEvent.scroll(timeline);
+
+    await waitFor(() => {
+      const ticks = screen
+        .getByTestId("agent-message-locator")
+        .querySelectorAll(".agent-gui-message-locator__tick");
+      expect(ticks).toHaveLength(10);
+      expect(ticks[9]).toHaveAttribute("data-selected", "true");
     });
   });
 

@@ -2,7 +2,7 @@ import { defaultUrlTransform } from "react-markdown";
 import {
   resolveWorkspaceImageMimeType,
   resolveWorkspaceVideoMimeType
-} from "@tutti-os/workspace-file-manager/services";
+} from "@tutti-os/workspace-file-preview";
 import {
   isRichTextMentionHref,
   parseRichTextMentionHref

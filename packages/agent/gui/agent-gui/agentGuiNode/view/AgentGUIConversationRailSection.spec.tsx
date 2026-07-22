@@ -6,6 +6,23 @@ import { AgentGUIConversationRailSection } from "./AgentGUIConversationRailSecti
 import { AgentGUIConversationRailSectionPresentationProvider } from "./agentGUIConversationRailSectionPresentationContext";
 
 describe("AgentGUIConversationRailSection project pin presentation", () => {
+  it("requests an explicit no-project scope from the conversations section", () => {
+    const onCreateConversation = vi.fn();
+    renderProjectSection({
+      onCreateConversation,
+      pinnedAtUnixMs: 0,
+      sectionKind: "conversations",
+      onToggleProjectPinned: vi.fn(() => Promise.resolve())
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+
+    expect(onCreateConversation).toHaveBeenCalledWith({
+      projectPath: null,
+      source: "unscoped_section"
+    });
+  });
+
   it("renders pinned accessibility, empty state, ordered menu, and unpin action", async () => {
     const onToggleProjectPinned = vi.fn(() => Promise.resolve());
     renderProjectSection({
@@ -157,8 +174,13 @@ function renderProjectSection(input: {
   hasMore?: boolean;
   pinnedAtUnixMs: number;
   searchActive?: boolean;
+  sectionKind?: "conversations" | "project";
   projectActionLocked?: boolean;
   projectDragDisabled?: boolean;
+  onCreateConversation?: (options?: {
+    projectPath?: string | null;
+    source?: string;
+  }) => void;
   onProjectDragStart?: (event: React.DragEvent<HTMLElement>) => void;
   onProjectMenuOpenChange?: (open: boolean) => void;
   onToggleProjectPinned: (projectId: string, pinned: boolean) => Promise<void>;
@@ -170,8 +192,13 @@ function renderProjectSectionElement(input: {
   hasMore?: boolean;
   pinnedAtUnixMs: number;
   searchActive?: boolean;
+  sectionKind?: "conversations" | "project";
   projectActionLocked?: boolean;
   projectDragDisabled?: boolean;
+  onCreateConversation?: (options?: {
+    projectPath?: string | null;
+    source?: string;
+  }) => void;
   onProjectDragStart?: (event: React.DragEvent<HTMLElement>) => void;
   onProjectMenuOpenChange?: (open: boolean) => void;
   onToggleProjectPinned: (projectId: string, pinned: boolean) => Promise<void>;
@@ -200,21 +227,28 @@ function renderProjectSectionElement(input: {
           previewMode={false}
           projectDragging={false}
           projectDropIndicator={null}
-          projectLabel="Alpha"
-          projectPath="/alpha"
+          projectLabel={input.sectionKind === "conversations" ? "" : "Alpha"}
+          projectPath={input.sectionKind === "conversations" ? "" : "/alpha"}
           registerItemElement={() => {}}
           section={{
-            id: "project:/alpha",
+            id:
+              input.sectionKind === "conversations"
+                ? "conversations"
+                : "project:/alpha",
             items: [],
-            kind: "project",
-            label: "Alpha",
-            project: {
-              id: "alpha",
-              label: "Alpha",
-              path: "/alpha",
-              pinnedAtUnixMs: input.pinnedAtUnixMs,
-              sectionKey: "project:/alpha"
-            }
+            kind: input.sectionKind ?? "project",
+            label:
+              input.sectionKind === "conversations" ? "Conversations" : "Alpha",
+            project:
+              input.sectionKind === "conversations"
+                ? null
+                : {
+                    id: "alpha",
+                    label: "Alpha",
+                    path: "/alpha",
+                    pinnedAtUnixMs: input.pinnedAtUnixMs,
+                    sectionKey: "project:/alpha"
+                  }
           }}
           sectionHasMore={input.hasMore ?? false}
           sectionTotalCount={input.hasMore ? 1 : 0}
@@ -223,7 +257,7 @@ function renderProjectSectionElement(input: {
           workspaceId="workspace-1"
           onCancelDeleteConversation={() => {}}
           onConfirmDeleteConversation={() => {}}
-          onCreateConversation={() => {}}
+          onCreateConversation={input.onCreateConversation ?? (() => {})}
           onLoadMoreConversations={() => {}}
           onMarkConversationUnread={() => {}}
           onOpenProjectFiles={() => {}}

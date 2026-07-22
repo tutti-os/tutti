@@ -145,6 +145,38 @@ func TestReportableActivityEventsIncludesRootProviderTurnLifecycle(t *testing.T)
 	if completed == nil || completed.RootTurnID != "root-turn-1" || completed.ProviderTurnID != "provider-turn-1" || completed.Phase != agentsessionstore.RootProviderTurnPhaseCompleted || completed.Outcome != string(activityshared.TurnOutcomeCompleted) {
 		t.Fatalf("completed root provider turn = %#v, want completed transition", completed)
 	}
+	if completed.ErrorCode != "" {
+		t.Fatalf("completed root provider turn error code = %q, want empty", completed.ErrorCode)
+	}
+}
+
+func TestRootProviderTurnFailurePersistsVisibleErrorCode(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	session.Provider = ProviderTuttiAgent
+	ctx, ok := activityEventContext(session, "root-provider-turn-failed", "root-turn-1")
+	if !ok {
+		t.Fatal("activityEventContext() returned !ok")
+	}
+	const errorMessage = "You've hit your usage limit. Insufficient credits. View Tutti plans at https://tutti.sh/profile/plan, or try again later."
+	failed := activityshared.NewRootProviderTurnCompleted(ctx, "root-turn-1", "provider-turn-1", activityshared.TurnOutcomeFailed)
+	failed.Payload.Metadata = map[string]any{"error": errorMessage}
+
+	report := reportActivityInput(session, []activityshared.Event{failed})
+	if len(report.StatePatches) != 1 {
+		t.Fatalf("state patches = %#v, want one root provider failure", report.StatePatches)
+	}
+	completed := report.StatePatches[0].RootProviderTurn
+	if completed == nil {
+		t.Fatal("root provider turn transition is nil")
+	}
+	if completed.ErrorMessage != errorMessage {
+		t.Fatalf("root provider turn error message = %q, want %q", completed.ErrorMessage, errorMessage)
+	}
+	if completed.ErrorCode != "insufficient_credits" {
+		t.Fatalf("root provider turn error code = %q, want insufficient_credits", completed.ErrorCode)
+	}
 }
 
 func TestSessionStatusFromActivityPreservesWaiting(t *testing.T) {

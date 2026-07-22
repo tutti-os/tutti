@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -10,170 +9,6 @@ import (
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
-
-type serviceHostStore struct{ service *Service }
-
-func (a serviceHostStore) GetSession(ctx context.Context, workspaceID, sessionID string) (storesqlite.Session, bool, error) {
-	if a.service == nil {
-		return storesqlite.Session{}, false, nil
-	}
-	if a.service.SessionReader != nil {
-		if session, ok := a.service.SessionReader.GetSession(workspaceID, sessionID); ok {
-			return activitySessionFromPersisted(session), true, nil
-		}
-	}
-	if a.service.TurnStore != nil {
-		if session, ok, err := a.service.TurnStore.GetSession(ctx, workspaceID, sessionID); err != nil || ok {
-			return session, ok, err
-		}
-	}
-	// Service configurations without the legacy SessionReader have always
-	// allowed a live provider session to supply the session observation. A
-	// TurnStore may still be present for turn lifecycle operations, so its
-	// absence must not suppress that established fallback.
-	if a.service.SessionReader == nil {
-		if session, ok := a.service.controller().Session(workspaceID, sessionID); ok {
-			activeTurnID := ""
-			if session.TurnLifecycle != nil && session.TurnLifecycle.ActiveTurnID != nil {
-				activeTurnID = strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID)
-			}
-			return storesqlite.Session{
-				ID: session.ID, WorkspaceID: session.WorkspaceID, Provider: session.Provider,
-				ProviderSessionID: session.ProviderSessionID, Cwd: session.Cwd, Title: session.Title,
-				Kind: storesqlite.SessionKindRoot, ActiveTurnID: activeTurnID,
-			}, true, nil
-		}
-	}
-	return storesqlite.Session{}, false, nil
-}
-
-func (a serviceHostStore) SessionDeleted(ctx context.Context, workspaceID, sessionID string) (bool, error) {
-	if a.service == nil || a.service.SessionReader == nil {
-		return false, nil
-	}
-	return a.service.SessionReader.SessionDeleted(ctx, workspaceID, sessionID)
-}
-
-func (a serviceHostStore) RollbackRuntimeSessionInitialization(ctx context.Context, workspaceID, sessionID string) (bool, error) {
-	if a.service == nil {
-		return false, nil
-	}
-	rollbacker, ok := a.service.SessionReader.(interface {
-		RollbackRuntimeSessionInitialization(context.Context, string, string) (bool, error)
-	})
-	if !ok {
-		return false, nil
-	}
-	return rollbacker.RollbackRuntimeSessionInitialization(ctx, workspaceID, sessionID)
-}
-
-func (a serviceHostStore) InitializeRuntimeSession(ctx context.Context, session ProviderRuntimeSession) (storesqlite.Session, error) {
-	persisted, err := a.service.initializeRuntimeSession(ctx, session)
-	if err != nil {
-		return storesqlite.Session{}, err
-	}
-	return activitySessionFromPersisted(persisted), nil
-}
-
-func (a serviceHostStore) UpdateSessionTitle(ctx context.Context, workspaceID, sessionID, title string) (storesqlite.Session, bool, error) {
-	updater, ok := a.service.SessionReader.(SessionTitleUpdater)
-	if !ok {
-		return storesqlite.Session{}, false, nil
-	}
-	persisted, updated, err := updater.UpdateSessionTitle(ctx, workspaceID, sessionID, title)
-	return activitySessionFromPersisted(persisted), updated, err
-}
-
-func (a serviceHostStore) UpdateSessionSettings(ctx context.Context, workspaceID, sessionID string, settings agenthost.ComposerSettings) (storesqlite.Session, bool, error) {
-	updater, ok := a.service.SessionReader.(SessionSettingsUpdater)
-	if !ok {
-		return storesqlite.Session{}, false, nil
-	}
-	persisted, updated, err := updater.UpdateSessionSettings(ctx, workspaceID, sessionID, settings)
-	return activitySessionFromPersisted(persisted), updated, err
-}
-
-func (a serviceHostStore) UpdateSessionPinned(ctx context.Context, workspaceID, sessionID string, pinned bool) (storesqlite.Session, bool, error) {
-	updater, ok := a.service.SessionReader.(SessionPinUpdater)
-	if !ok {
-		return storesqlite.Session{}, false, nil
-	}
-	persisted, updated, err := updater.UpdateSessionPinned(ctx, workspaceID, sessionID, pinned)
-	return activitySessionFromPersisted(persisted), updated, err
-}
-
-func (a serviceHostStore) DeleteSession(ctx context.Context, workspaceID, sessionID string) (bool, error) {
-	deleter, ok := a.service.SessionReader.(SessionDeleter)
-	if !ok {
-		return false, nil
-	}
-	return deleter.DeleteSession(ctx, workspaceID, sessionID)
-}
-
-func (a serviceHostStore) ListChildSessions(ctx context.Context, workspaceID, sessionID string) ([]storesqlite.Session, error) {
-	reader, ok := a.service.SessionReader.(ChildSessionReader)
-	if !ok {
-		return nil, nil
-	}
-	children, err := reader.ListChildSessions(ctx, workspaceID, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]storesqlite.Session, 0, len(children))
-	for _, child := range children {
-		result = append(result, activitySessionFromPersisted(child))
-	}
-	return result, nil
-}
-
-func (a serviceHostStore) GetTurn(ctx context.Context, workspaceID, sessionID, turnID string) (storesqlite.Turn, bool, error) {
-	if a.service.TurnStore == nil {
-		return storesqlite.Turn{}, false, nil
-	}
-	return a.service.TurnStore.GetTurn(ctx, workspaceID, sessionID, turnID)
-}
-
-func (a serviceHostStore) FindTurnByClientSubmitID(ctx context.Context, workspaceID, sessionID, clientSubmitID string) (string, bool, error) {
-	if a.service.RuntimeOperationStore == nil {
-		return "", false, nil
-	}
-	return a.service.RuntimeOperationStore.FindTurnByClientSubmitID(ctx, workspaceID, sessionID, clientSubmitID)
-}
-
-func (a serviceHostStore) ListSessionInteractions(ctx context.Context, input storesqlite.ListSessionInteractionsInput) ([]storesqlite.Interaction, error) {
-	if a.service.TurnStore == nil {
-		return nil, nil
-	}
-	return a.service.TurnStore.ListSessionInteractions(ctx, input)
-}
-
-func (a serviceHostStore) ListLatestTurnInteractions(ctx context.Context, workspaceID string, sessionIDs []string) (map[string][]storesqlite.Interaction, error) {
-	if a.service.TurnStore == nil {
-		return nil, nil
-	}
-	return a.service.TurnStore.ListLatestTurnInteractions(ctx, workspaceID, sessionIDs)
-}
-
-func (a serviceHostStore) PrepareSubmitClaim(ctx context.Context, input storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error) {
-	if a.service.SubmitClaimStore == nil {
-		return storesqlite.SubmitClaim{}, false, nil
-	}
-	return a.service.SubmitClaimStore.PrepareSubmitClaim(ctx, input)
-}
-
-func (a serviceHostStore) AcceptSubmitClaim(ctx context.Context, workspaceID, sessionID, clientSubmitID, turnID string, now int64) (storesqlite.SubmitClaim, bool, error) {
-	if a.service.SubmitClaimStore == nil {
-		return storesqlite.SubmitClaim{}, false, nil
-	}
-	return a.service.SubmitClaimStore.AcceptSubmitClaim(ctx, workspaceID, sessionID, clientSubmitID, turnID, now)
-}
-
-func (a serviceHostStore) DeleteSubmitClaim(ctx context.Context, workspaceID, sessionID, clientSubmitID string) (bool, error) {
-	if a.service.SubmitClaimStore == nil {
-		return false, nil
-	}
-	return a.service.SubmitClaimStore.DeleteSubmitClaim(ctx, workspaceID, sessionID, clientSubmitID)
-}
 
 type serviceHostPreparation struct {
 	service *Service
@@ -284,7 +119,7 @@ func (a serviceHostPreparation) Prepare(ctx context.Context, input agenthost.Run
 }
 
 func (a serviceHostPreparation) Cleanup(ctx context.Context, input agenthost.RuntimeCleanupInput) error {
-	return a.service.cleanupRuntime(ctx, input.WorkspaceID, input.AgentSessionID)
+	return a.service.cleanupSessionResources(ctx, input.WorkspaceID, input.AgentSessionID)
 }
 
 type serviceHostLocker struct{ service *Service }
@@ -441,20 +276,43 @@ func (p serviceHostRuntimeOperationEventPublisher) PublishRuntimeOperationEvent(
 	return p.service.RuntimeOperationEventPublisher.PublishRuntimeOperationEvent(ctx, event)
 }
 
-// NewApplicationHost composes the provider-neutral Host with tuttid-owned
-// adapters. Production wiring constructs exactly one Host and installs it on
-// Service; isolated package consumers may use ApplicationHost for lazy setup.
-func NewApplicationHost(s *Service) *agenthost.Host {
-	return newApplicationHost(s, s)
+type ApplicationHostRuntime interface {
+	agenthost.RuntimeController
+	agenthost.GoalRuntimeController
 }
 
-func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollector) *agenthost.Host {
-	if s == nil {
+// ApplicationHostCanonicalPorts groups the shared canonical store roles that
+// must advance together in production.
+type ApplicationHostCanonicalPorts interface {
+	agenthost.CanonicalStore
+	agenthost.SessionManagementStore
+	agenthost.SessionBatchManagementStore
+}
+
+func NewApplicationHostWithPorts(
+	s *Service,
+	canonical ApplicationHostCanonicalPorts,
+	runtime ApplicationHostRuntime,
+) *agenthost.Host {
+	if s == nil || canonical == nil || runtime == nil {
 		return nil
 	}
+	return composeApplicationHost(s, s, canonical, canonical, canonical, runtime, runtime)
+}
+
+func composeApplicationHost(
+	s *Service,
+	worktreeGC agenthost.WorktreeGarbageCollector,
+	canonical agenthost.CanonicalStore,
+	sessionManagement agenthost.SessionManagementStore,
+	sessionBatchManagement agenthost.SessionBatchManagementStore,
+	runtime agenthost.RuntimeController,
+	goalRuntime agenthost.GoalRuntimeController,
+) *agenthost.Host {
 	return agenthost.New(agenthost.Config{
-		CanonicalStore: serviceHostStore{service: s}, SessionManagement: serviceHostStore{service: s}, SessionPurge: s.SessionPurgeStore,
-		Runtime:            serviceHostRuntime{service: s},
+		CanonicalStore: canonical, SessionManagement: sessionManagement,
+		SessionBatchManagement: sessionBatchManagement, SessionPurge: s.SessionPurgeStore,
+		Runtime:            runtime,
 		RuntimePreparation: serviceHostPreparation{service: s}, Attachments: s.PromptAttachmentStore,
 		SettingsPolicy: serviceHostSettingsPolicy{service: s},
 		Clock:          serviceHostClock{service: s}, SessionLocker: serviceHostLocker{service: s},
@@ -464,11 +322,11 @@ func newApplicationHost(s *Service, worktreeGC agenthost.WorktreeGarbageCollecto
 		RuntimeOperations: s.RuntimeOperationStore, OperationEvents: serviceHostRuntimeOperationEventPublisher{service: s},
 		OperationOwner: s.RuntimeOperationOwner, StaleTurnSettler: s.StaleTurnSettler,
 		WorktreeGC: worktreeGC,
-		GoalStore:  s.GoalStateStore, GoalRuntime: serviceHostGoalRuntime{service: s}, GoalInbox: s.GoalReconcileInboxStore,
+		GoalStore:  s.GoalStateStore, GoalRuntime: goalRuntime, GoalInbox: s.GoalReconcileInboxStore,
 		GoalOwner: s.GoalOperationOwner, GoalClock: serviceHostGoalClock{service: s},
 		GoalAttemptTimeout: s.GoalOperationAttemptTimeout, GoalRecoveryBudget: s.GoalOperationRecoveryBudget,
 		GoalMaxAttempts: s.GoalOperationMaxAttempts, GoalDispatchDeadline: s.GoalOperationDispatchDeadline,
-		GoalActor: agenthost.NewGoalActor(),
+		GoalActor: agenthost.NewSessionActor(),
 	})
 }
 
@@ -479,40 +337,34 @@ func (s *Service) SetApplicationHost(host *agenthost.Host) {
 	}
 	s.applicationHostMu.Lock()
 	defer s.applicationHostMu.Unlock()
-	if s.applicationHost != nil && s.applicationHost != host {
+	if s.applicationHostProvider != nil {
+		if s.applicationHost == host {
+			return
+		}
 		panic("agent service application host is already configured")
 	}
 	s.applicationHost = host
+	s.applicationHostProvider = func() *agenthost.Host { return host }
 }
 
-// ApplicationHost returns the configured Host. Lazy construction keeps
-// isolated service consumers and tests hermetic; production wiring always
-// installs its explicitly composed singleton before recovery or API serving.
+// ApplicationHost returns the Host installed by the process composition root.
+// Missing wiring is a startup invariant violation; this adapter never creates
+// a second lifecycle stack from service-local store/runtime copies.
 func (s *Service) ApplicationHost() *agenthost.Host {
 	if s == nil {
 		return nil
 	}
 	s.applicationHostMu.Lock()
-	defer s.applicationHostMu.Unlock()
-	if s.applicationHost == nil {
-		s.applicationHost = NewApplicationHost(s)
+	provider := s.applicationHostProvider
+	s.applicationHostMu.Unlock()
+	if provider == nil {
+		panic("agent service application host is not configured")
 	}
-	return s.applicationHost
-}
-
-func activitySessionFromPersisted(session PersistedSession) storesqlite.Session {
-	return storesqlite.Session{
-		ID: session.ID, WorkspaceID: session.WorkspaceID, Kind: session.Kind,
-		RootAgentSessionID: session.RootAgentSessionID, RootTurnID: session.RootTurnID,
-		ParentAgentSessionID: session.ParentAgentSessionID, ParentTurnID: session.ParentTurnID,
-		ParentToolCallID: session.ParentToolCallID, Origin: session.Origin, UserID: session.UserID,
-		AgentTargetID: session.AgentTargetID, Provider: session.Provider, ProviderSessionID: session.ProviderSessionID,
-		Cwd: session.Cwd, RailSectionKey: session.RailSectionKey, Settings: ComposerSettingsToMap(session.Settings),
-		Metadata: session.Metadata, InternalRuntimeContext: clonePayload(session.InternalRuntimeContext), Title: session.Title,
-		PinnedAtUnixMS: session.PinnedAtUnixMS, LastEventUnixMS: session.LastEventUnixMS,
-		StartedAtUnixMS: session.StartedAtUnixMS, EndedAtUnixMS: session.EndedAtUnixMS,
-		CreatedAtUnixMS: session.CreatedAtUnixMS, UpdatedAtUnixMS: session.UpdatedAtUnixMS, ActiveTurnID: session.ActiveTurnID,
+	host := provider()
+	if host == nil {
+		panic("agent service application host provider returned nil")
 	}
+	return host
 }
 
 func persistedSessionFromHost(session storesqlite.Session) PersistedSession {

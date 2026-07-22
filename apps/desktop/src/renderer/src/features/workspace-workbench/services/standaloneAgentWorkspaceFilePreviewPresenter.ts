@@ -1,5 +1,5 @@
 import type { DesktopHostFilesApi } from "@preload/types";
-import type { WorkspaceFilePreviewSurfacePresenter } from "../../workspace-file-manager/services/workspaceFilePreviewSurfaceHost.interface.ts";
+import type { WorkspaceFilePreviewSurfacePresenter } from "@renderer/features/workspace-file-preview";
 
 export function createStandaloneAgentWorkspaceFilePreviewPresenter(input: {
   hostFilesApi: Pick<DesktopHostFilesApi, "openFile">;

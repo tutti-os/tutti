@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import { mergeWorkspaceAgentMessages } from "../../../host/workspaceAgentSessionMessages";
 import { createPendingOptimisticTurnId } from "./agentGuiController.draftMessageHelpers";
 import {
+  createOptimisticGoalControlMessage,
   createOptimisticPromptMessage,
   projectAgentGUIMessagesToTimelineItems
 } from "./agentGuiController.promptHelpers";
@@ -66,18 +67,32 @@ export function useAgentGUIActiveMessages(input: {
       isPendingActivationViable(activePendingActivation) &&
       activePendingActivation.clientSubmitId &&
       activePendingActivation.content.length > 0
-        ? createOptimisticPromptMessage({
-            agentSessionId: activePendingActivation.agentSessionId,
-            clientSubmitId: activePendingActivation.clientSubmitId,
-            content: [...activePendingActivation.content],
-            displayPrompt: activePendingActivation.displayPrompt,
-            occurredAtUnixMs: activePendingActivation.requestedAtUnixMs,
-            turnId: createPendingOptimisticTurnId(
-              activePendingActivation.clientSubmitId
-            ),
-            userId: currentUserId?.trim() || "user",
-            workspaceId
-          })
+        ? activePendingActivation.initialGoalControl
+          ? createOptimisticGoalControlMessage({
+              agentSessionId: activePendingActivation.agentSessionId,
+              clientSubmitId: activePendingActivation.clientSubmitId,
+              content: [...activePendingActivation.content],
+              displayPrompt: activePendingActivation.displayPrompt,
+              goalControl: activePendingActivation.initialGoalControl,
+              occurredAtUnixMs: activePendingActivation.requestedAtUnixMs,
+              turnId: createPendingOptimisticTurnId(
+                activePendingActivation.clientSubmitId
+              ),
+              userId: currentUserId?.trim() || "user",
+              workspaceId
+            })
+          : createOptimisticPromptMessage({
+              agentSessionId: activePendingActivation.agentSessionId,
+              clientSubmitId: activePendingActivation.clientSubmitId,
+              content: [...activePendingActivation.content],
+              displayPrompt: activePendingActivation.displayPrompt,
+              occurredAtUnixMs: activePendingActivation.requestedAtUnixMs,
+              turnId: createPendingOptimisticTurnId(
+                activePendingActivation.clientSubmitId
+              ),
+              userId: currentUserId?.trim() || "user",
+              workspaceId
+            })
         : null;
     const optimisticMessages = pendingActivationMessage
       ? [...pendingMessages, pendingActivationMessage]

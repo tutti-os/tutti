@@ -48,7 +48,9 @@ export function AgentProjectDropdown({
 }: {
   composerSettings: Pick<
     AgentGUIComposerSettingsVM,
-    "selectedProjectPath" | "projectLocked"
+    | "selectedProjectPath"
+    | "projectLocked"
+    | "shouldApplyPreparedProjectSelection"
   >;
   i18n: WorkspaceUserProjectI18nRuntime;
   labels: AgentProjectDropdownLabels;
@@ -144,6 +146,9 @@ export function AgentProjectDropdown({
       )}
       selectedProjectPath={composerSettings.selectedProjectPath}
       service={agentHostApi.userProjects?.service ?? null}
+      shouldApplyPreparedSelection={
+        composerSettings.shouldApplyPreparedProjectSelection === true
+      }
       onDismissAutoFocus={onDismissAutoFocus}
       onProjectMissingChange={onProjectMissingChange}
       onProjectPathChange={onProjectPathChange}

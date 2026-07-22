@@ -2205,6 +2205,7 @@ test("WorkspaceAgentActivityService deletes one exact session batch", async () =
       ) => {
         calls.push({ request, workspaceId });
         return {
+          cleanupFailedSessionIds: [],
           removedMessages: 3,
           removedSessionIds: ["session-1", "child-1"],
           removedSessions: 2
@@ -2232,6 +2233,7 @@ test("WorkspaceAgentActivityService deletes one exact session batch", async () =
     }
   ]);
   assert.deepEqual(result, {
+    cleanupFailedSessionIds: [],
     removedMessages: 3,
     removedSessionIds: ["session-1", "child-1"],
     removedSessions: 2
@@ -2305,6 +2307,7 @@ test("WorkspaceAgentActivityService single delete uses the authoritative batch r
       ) => {
         calls.push({ request, workspaceId });
         return {
+          cleanupFailedSessionIds: [],
           removedMessages: 2,
           removedSessionIds: ["session-1", "child-1"],
           removedSessions: 2
@@ -2325,7 +2328,7 @@ test("WorkspaceAgentActivityService single delete uses the authoritative batch r
     workspaceId: "ws-1"
   });
 
-  assert.deepEqual(result, { removed: true });
+  assert.deepEqual(result, { cleanupFailed: false, removed: true });
   assert.deepEqual(calls, [
     {
       request: { sessionIds: ["session-1"] },
@@ -2731,64 +2734,6 @@ function collaborationRunResponseBody(
   };
 }
 
-test("WorkspaceAgentActivityService.startModelConsult posts a user-triggered consult run", async () => {
-  const observedRequests: Array<{
-    auth: string | null;
-    body: unknown;
-    method: string;
-    url: string;
-  }> = [];
-  const service = createCollaborationService((async (
-    input: RequestInfo | URL,
-    init?: RequestInit
-  ) => {
-    const request = new Request(input, init);
-    observedRequests.push({
-      auth: request.headers.get("authorization"),
-      body: await request.json(),
-      method: request.method,
-      url: request.url
-    });
-    return new Response(JSON.stringify(collaborationRunResponseBody()), {
-      headers: { "Content-Type": "application/json" },
-      status: 200
-    });
-  }) as typeof fetch);
-
-  const run = await service.startModelConsult({
-    agentSessionId: "session-1",
-    contextText: "last assistant reply",
-    model: "kimi-k2",
-    modelPlanId: "plan-1",
-    question: "Double-check this plan",
-    workspaceId: "ws-1"
-  });
-
-  assert.equal(observedRequests.length, 1);
-  assert.equal(observedRequests[0]?.method, "POST");
-  assert.equal(
-    observedRequests[0]?.url,
-    "http://127.0.0.1:7777/v1/workspaces/ws-1/collaboration-runs"
-  );
-  assert.equal(observedRequests[0]?.auth, "Bearer token-1");
-  assert.deepEqual(observedRequests[0]?.body, {
-    contextText: "last assistant reply",
-    mode: "consult",
-    model: "kimi-k2",
-    modelPlanId: "plan-1",
-    question: "Double-check this plan",
-    sourceSessionId: "session-1",
-    triggerReason: "composer_consult",
-    triggerSource: "user"
-  });
-  assert.equal(run.id, "run-1");
-  assert.equal(run.status, "completed");
-  assert.equal(run.adoption, "pending");
-  assert.deepEqual(run.usage, { inputTokens: 812, outputTokens: 96 });
-  assert.equal(run.durationMs, 5200);
-  assert.equal(run.startedAtUnixMs, Date.parse("2026-07-12T00:00:00.000Z"));
-});
-
 test("WorkspaceAgentActivityService.setCollaborationAdoption posts the adoption decision", async () => {
   const observedRequests: Array<{ body: unknown; url: string }> = [];
   const service = createCollaborationService((async (
@@ -2819,74 +2764,4 @@ test("WorkspaceAgentActivityService.setCollaborationAdoption posts the adoption 
   );
   assert.deepEqual(observedRequests[0]?.body, { adoption: "adopted" });
   assert.equal(run.adoption, "adopted");
-});
-
-test("WorkspaceAgentActivityService.listModelPlans maps credential-free plan summaries", async () => {
-  const service = createCollaborationService((async () => {
-    return new Response(
-      JSON.stringify({
-        plans: [
-          {
-            id: "plan-1",
-            workspaceId: "ws-1",
-            name: "Volc Coding Plan",
-            templateKind: "coding_plan",
-            protocol: "openai",
-            hasApiKey: true,
-            models: [
-              { id: "kimi-k2", name: "Kimi K2" },
-              { id: "glm-5", name: "GLM 5" }
-            ],
-            defaultModel: "kimi-k2",
-            enabled: true,
-            status: "ready",
-            detection: { stages: [] },
-            firstUse: { status: "completed" },
-            createdAt: "2026-07-01T00:00:00.000Z",
-            updatedAt: "2026-07-10T00:00:00.000Z"
-          }
-        ]
-      }),
-      {
-        headers: { "Content-Type": "application/json" },
-        status: 200
-      }
-    );
-  }) as typeof fetch);
-
-  const result = await service.listModelPlans({ workspaceId: "ws-1" });
-
-  assert.deepEqual(result, {
-    plans: [
-      {
-        defaultModel: "kimi-k2",
-        enabled: true,
-        id: "plan-1",
-        models: [
-          { id: "kimi-k2", name: "Kimi K2" },
-          { id: "glm-5", name: "GLM 5" }
-        ],
-        name: "Volc Coding Plan",
-        protocol: "openai",
-        status: "ready"
-      }
-    ]
-  });
-});
-
-test("WorkspaceAgentActivityService.startModelConsult fails clearly without a backend config resolver", async () => {
-  const service = new WorkspaceAgentActivityService({
-    tuttidClient: {} as TuttidClient,
-    runtimeApi: { logTerminalDiagnostic: async () => {} }
-  });
-  await assert.rejects(
-    service.startModelConsult({
-      agentSessionId: "session-1",
-      model: "kimi-k2",
-      modelPlanId: "plan-1",
-      question: "q",
-      workspaceId: "ws-1"
-    }),
-    /backend config resolver is missing/
-  );
 });

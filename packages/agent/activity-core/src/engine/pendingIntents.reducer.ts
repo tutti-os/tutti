@@ -223,6 +223,12 @@ function requestActivation(
     expiresAtUnixMs: intent.expiresAtUnixMs,
     initialTurnExpected:
       intent.initialTurnExpected ?? runtimeContent.length > 0,
+    ...(intent.initialGoalControl
+      ? { initialGoalControl: { ...intent.initialGoalControl } }
+      : {}),
+    ...(intent.railSectionKey?.trim()
+      ? { railSectionKey: intent.railSectionKey.trim() }
+      : {}),
     ...(intent.submitDiagnostics
       ? { submitDiagnostics: { ...intent.submitDiagnostics } }
       : {}),
@@ -271,6 +277,9 @@ function requestActivation(
               ? { initialContent: runtimeContent }
               : {}),
             ...(displayPrompt ? { initialDisplayPrompt: displayPrompt } : {}),
+            ...(intent.initialGoalControl
+              ? { initialGoalControl: { ...intent.initialGoalControl } }
+              : {}),
             ...(intent.submitDiagnostics
               ? { submitDiagnostics: { ...intent.submitDiagnostics } }
               : {}),

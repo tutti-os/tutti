@@ -6,8 +6,8 @@ import {
   useState,
   useSyncExternalStore
 } from "react";
-import { agentGuiDockIconUrls } from "@tutti-os/agent-gui/dock-icons";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
+import { resolveProviderIconAsset } from "@tutti-os/agent-gui/provider-icons";
 import { useService } from "@tutti-os/infra/di";
 import { INotificationService } from "@tutti-os/ui-notifications";
 import { ArrowRightIcon, Button, StatusDot, Switch } from "@tutti-os/ui-system";
@@ -70,6 +70,22 @@ const emptyAgentsSnapshot: AgentsSnapshot = {
 };
 
 const managedAgentProviders = [...desktopAgentProviderManageDialogProviders];
+
+// Settings > Agents resolves icons with the same priority as AgentGUI's
+// composer (resolveComposerProviderTargetIconUrl): the agent target's own
+// iconUrl first, then the shared rounded/manage provider icon assets.
+// Icons render with a uniform 6px corner radius.
+function resolveAgentSettingsIconUrl(
+  provider: string,
+  agentTarget: { iconUrl?: string | null } | null | undefined
+): string | null {
+  const identity = resolveAgentGUIProviderCatalogIdentity(provider);
+  return (
+    agentTarget?.iconUrl?.trim() ||
+    resolveProviderIconAsset(identity?.iconKey, "rounded") ||
+    resolveProviderIconAsset(identity?.iconKey, "manage")
+  );
+}
 
 // Shared column template so the header row and every data row line up as one
 // grid. Mirrors the DesktopAgentProviderManageDialog table, adapted for the
@@ -441,9 +457,9 @@ export function WorkspaceAgentsSettingsTab({
           const row = rowByProvider.get(provider);
           const status = row?.status ?? "unknown";
           const label = resolveWorkspaceAgentGuiLabel(provider);
-          const iconUrl = agentGuiDockIconUrls[provider];
           const targetID = agentTargetId(provider);
           const agentTarget = targetID ? agentTargetByID.get(targetID) : null;
+          const iconUrl = resolveAgentSettingsIconUrl(provider, agentTarget);
           const agentEnabled = agentTarget?.enabled ?? false;
           const agentEnabledPending = targetID
             ? pendingAgentTargetIDs.has(targetID)
@@ -490,11 +506,11 @@ export function WorkspaceAgentsSettingsTab({
                   <img
                     alt=""
                     aria-hidden="true"
-                    className="size-7 shrink-0 rounded-lg"
+                    className="size-7 shrink-0 rounded-[6px]"
                     src={iconUrl}
                   />
                 ) : (
-                  <span className="size-7 shrink-0 rounded-lg bg-[var(--transparency-block)]" />
+                  <span className="size-7 shrink-0 rounded-[6px] bg-[var(--transparency-block)]" />
                 )}
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="flex min-w-0 items-center gap-2">
@@ -586,11 +602,11 @@ export function WorkspaceAgentsSettingsTab({
                   <img
                     alt=""
                     aria-hidden="true"
-                    className="size-7 shrink-0 rounded-lg"
+                    className="size-7 shrink-0 rounded-[6px]"
                     src={row.iconUrl}
                   />
                 ) : (
-                  <span className="size-7 shrink-0 rounded-lg bg-[var(--transparency-block)]" />
+                  <span className="size-7 shrink-0 rounded-[6px] bg-[var(--transparency-block)]" />
                 )}
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="flex min-w-0 items-center gap-2">

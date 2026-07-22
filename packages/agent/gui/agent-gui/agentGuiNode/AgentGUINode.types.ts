@@ -20,18 +20,14 @@ import type {
   NodeFrame,
   Point
 } from "../../types";
-import type {
-  DesktopSize,
-  WorkspaceDesktopAgentProbeDemandChange,
-  WorkspaceDesktopAgentProbeRefreshRequest,
-  WorkspaceDesktopAgentProbesState
-} from "../workspaceDesktop/types";
+import type { DesktopSize } from "../workspaceDesktop/types";
 import type {
   AgentGUIOpenSessionRequest,
   AgentGUIPrefillPromptRequest,
   AgentGUIRememberComposerDefaultsInput,
   AgentGUIRememberComposerDefaultsResult
 } from "./controller/useAgentGUINodeController";
+import type { AgentStatusController } from "./controller/AgentStatusController";
 import type {
   AgentGUISidebarFooterContext,
   AgentGUIConversationRailLayout,
@@ -111,9 +107,8 @@ export interface AgentGUINodeRuntimeRequests {
   sessionAction?: AgentGUISessionActionRequest | null;
   openSession?: AgentGUIOpenSessionRequest | null;
   prefillPrompt?: AgentGUIPrefillPromptRequest | null;
-  agentProbes?: WorkspaceDesktopAgentProbesState | null;
-  onProbeDemandChange?: WorkspaceDesktopAgentProbeDemandChange;
-  onProbeRefreshRequest?: WorkspaceDesktopAgentProbeRefreshRequest;
+  /** On-demand status capability. Transport and owner resolution stay host-owned. */
+  agentStatusController?: AgentStatusController | null;
 }
 
 export interface AgentGUINodeHostCapabilities {
@@ -127,6 +122,11 @@ export interface AgentGUINodeHostCapabilities {
   /** Legacy Tutti Agent-only opt-in. Prefer an explicit catalog in new hosts. */
   referenceProvenanceFilterEnabled?: boolean;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
+  /**
+   * Keeps owner-supported Browser/Computer capability entries visible while
+   * preventing this host from mutating device-owned capability settings.
+   */
+  capabilityControlsReadOnly?: boolean;
   accountMenuState?: AgentGUIAccountMenuState | null;
   agentTargets?: readonly AgentGUIAgentTarget[];
   agentTargetsLoading?: boolean;
@@ -367,10 +367,9 @@ export function areAgentGUINodePropsEqual(
     pr.sessionAction === nr.sessionAction &&
     pr.openSession === nr.openSession &&
     pr.prefillPrompt === nr.prefillPrompt &&
-    pr.agentProbes === nr.agentProbes &&
-    pr.onProbeDemandChange === nr.onProbeDemandChange &&
-    pr.onProbeRefreshRequest === nr.onProbeRefreshRequest &&
+    pr.agentStatusController === nr.agentStatusController &&
     pc.capabilityMenuState === nc.capabilityMenuState &&
+    pc.capabilityControlsReadOnly === nc.capabilityControlsReadOnly &&
     pc.accountMenuState === nc.accountMenuState &&
     pc.agentTargets === nc.agentTargets &&
     pc.agentTargetsLoading === nc.agentTargetsLoading &&

@@ -1,4 +1,10 @@
-import { useCallback, useRef, useState } from "react";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction
+} from "react";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData } from "../../../types";
@@ -24,6 +30,10 @@ interface UseAgentGUILocalStateInput {
   userProjectsApi: Parameters<typeof readAgentGUIUserProjectSnapshot>[0];
 }
 
+type AgentGUIHomeProjectSelection =
+  | { kind: "unresolved_default" }
+  | { kind: "resolved"; projectPath: string | null };
+
 export function useAgentGUILocalState({
   data,
   userProjectsApi
@@ -41,9 +51,25 @@ export function useAgentGUILocalState({
       ? { tag: "requested", id: data.lastActiveAgentSessionId }
       : { tag: "home" }
   );
-  const [selectedProjectPath, setSelectedProjectPath] = useState<string | null>(
-    null
-  );
+  const [homeProjectSelection, setHomeProjectSelection] =
+    useState<AgentGUIHomeProjectSelection>({ kind: "unresolved_default" });
+  const selectedProjectPath =
+    homeProjectSelection.kind === "resolved"
+      ? homeProjectSelection.projectPath
+      : null;
+  const setSelectedProjectPath = useCallback<
+    Dispatch<SetStateAction<string | null>>
+  >((nextProjectPath) => {
+    setHomeProjectSelection((current) => {
+      const currentProjectPath =
+        current.kind === "resolved" ? current.projectPath : null;
+      const projectPath =
+        typeof nextProjectPath === "function"
+          ? nextProjectPath(currentProjectPath)
+          : nextProjectPath;
+      return { kind: "resolved", projectPath };
+    });
+  }, []);
   const [isComposerHome, setIsComposerHome] = useState(
     data.lastActiveAgentSessionId === null
   );
@@ -110,6 +136,8 @@ export function useAgentGUILocalState({
     railRevealRequest,
     requestRailReveal,
     selectedProjectPath,
+    shouldApplyPreparedProjectSelection:
+      homeProjectSelection.kind === "unresolved_default",
     setActiveConversationId,
     setDetailError,
     setDraftByScopeKey,

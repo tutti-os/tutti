@@ -2,10 +2,11 @@ package agent
 
 import (
 	"context"
-	"errors"
-	"sort"
+	"fmt"
 	"strconv"
 	"strings"
+
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 func (s *Service) List(ctx context.Context, workspaceID string) ([]Session, error) {
@@ -21,128 +22,67 @@ func (s *Service) ListFiltered(ctx context.Context, workspaceID string, input Li
 }
 
 func (s *Service) ListPage(ctx context.Context, workspaceID string, input ListSessionsInput) (SessionListPage, error) {
-	result, err := s.listFilteredSortedSessions(ctx, workspaceID, input)
-	if err != nil {
-		return SessionListPage{}, err
+	workspaceID = strings.TrimSpace(workspaceID)
+	reader, ok := s.SessionReader.(SessionPageReader)
+	if workspaceID == "" || !ok {
+		return SessionListPage{}, fmt.Errorf("%w: canonical session page reader is unavailable", ErrInvalidArgument)
 	}
+	cursor := sessionPageCursor{}
 	if strings.TrimSpace(input.Cursor) != "" {
-		cursor, err := parseSessionListCursor(input.Cursor)
+		parsed, err := parseSessionListCursor(input.Cursor)
 		if err != nil {
 			return SessionListPage{}, err
 		}
-		result = sessionsAfterCursor(result, cursor)
+		cursor = parsed
 	}
-	hasMore := false
-	if input.Limit > 0 && len(result) > input.Limit {
-		hasMore = true
-		result = result[:input.Limit]
+	page, ok, err := reader.ListSessionsPage(ctx, agentactivitybiz.ListSessionsPageInput{
+		WorkspaceID:          workspaceID,
+		AgentTargetID:        strings.TrimSpace(input.AgentTargetID),
+		SearchQuery:          input.SearchQuery,
+		CursorSortTimeUnixMS: cursor.SortTimeUnixMS,
+		CursorSessionID:      cursor.ID,
+		Limit:                input.Limit,
+	})
+	if err != nil {
+		return SessionListPage{}, err
 	}
-	nextCursor := ""
-	if hasMore && len(result) > 0 {
-		nextCursor = sessionListCursor(result[len(result)-1]).String()
+	if !ok {
+		return SessionListPage{Sessions: []Session{}}, nil
 	}
-	result, err = s.withProtocolV2TurnStates(ctx, strings.TrimSpace(workspaceID), result)
+	liveByID := make(map[string]ProviderRuntimeSession)
+	for _, session := range s.controller().Sessions(workspaceID) {
+		liveByID[strings.TrimSpace(session.ID)] = session
+	}
+	result := make([]Session, 0, len(page.Sessions))
+	for _, persisted := range page.Sessions {
+		if err := validatePersistedRailSectionKey(persisted); err != nil {
+			return SessionListPage{}, err
+		}
+		resumable := s.persistedSessionCanResume(ctx, persisted)
+		projected := sessionFromPersisted(persisted, resumable)
+		if live, found := liveByID[strings.TrimSpace(persisted.ID)]; found {
+			projected = serviceSessionWithPersistedFreshness(
+				live,
+				persisted,
+				s.controller().CanResume(runtimeResumeInputFromRuntimeSession(live)),
+			)
+		}
+		result = append(result, cloneSession(projected))
+	}
+	result, err = s.withProtocolV2TurnStates(ctx, workspaceID, result)
 	if err != nil {
 		return SessionListPage{}, err
 	}
 	return SessionListPage{
 		Sessions:   result,
-		HasMore:    hasMore,
-		NextCursor: nextCursor,
+		HasMore:    page.HasMore,
+		NextCursor: page.NextCursor,
 	}, nil
-}
-
-func (s *Service) listFilteredSortedSessions(ctx context.Context, workspaceID string, input ListSessionsInput) ([]Session, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID == "" {
-		return nil, ErrInvalidArgument
-	}
-	sessionByID := make(map[string]Session)
-	if s.SessionReader != nil {
-		if persisted, ok := s.SessionReader.ListSessions(workspaceID); ok {
-			for _, session := range persisted {
-				if err := validatePersistedRailSectionKey(session); err != nil {
-					return nil, err
-				}
-				sessionID := strings.TrimSpace(session.ID)
-				if isStaleHiddenLiveModelDiscoverySession(session) {
-					if _, ok := s.controller().Session(workspaceID, sessionID); !ok {
-						if _, err := s.Delete(ctx, workspaceID, sessionID); err != nil && !errors.Is(err, ErrSessionNotFound) {
-							return nil, err
-						}
-					}
-					continue
-				}
-				sessionByID[strings.TrimSpace(session.ID)] = sessionFromPersisted(
-					session,
-					s.persistedSessionCanResume(ctx, session),
-				)
-			}
-		}
-	}
-	sessions := s.controller().Sessions(workspaceID)
-	for _, session := range sessions {
-		if s.SessionReader != nil {
-			deleted, err := s.SessionReader.SessionDeleted(ctx, workspaceID, session.ID)
-			if err != nil {
-				return nil, err
-			}
-			if deleted {
-				continue
-			}
-		}
-		resumable := s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session))
-		service := serviceSession(session, resumable)
-		if s.SessionReader != nil {
-			persisted, ok := s.SessionReader.GetSession(workspaceID, session.ID)
-			if !ok {
-				return nil, errors.New("live workspace agent session has no persisted session")
-			}
-			if err := validatePersistedRailSectionKey(persisted); err != nil {
-				return nil, err
-			}
-			service = serviceSessionWithPersistedFreshness(session, persisted, resumable)
-		}
-		sessionByID[strings.TrimSpace(session.ID)] = service
-	}
-	result := make([]Session, 0, len(sessionByID))
-	for _, session := range sessionByID {
-		result = append(result, cloneSession(session))
-	}
-
-	result = filterSessions(result, input)
-	result, err := s.withLatestTurnsForConversationOrder(ctx, workspaceID, result)
-	if err != nil {
-		return nil, err
-	}
-	sort.SliceStable(result, func(left, right int) bool {
-		leftSortTimeUnixMS := sessionConversationSortTimeUnixMS(result[left])
-		rightSortTimeUnixMS := sessionConversationSortTimeUnixMS(result[right])
-		if leftSortTimeUnixMS == rightSortTimeUnixMS {
-			return strings.TrimSpace(result[left].ID) < strings.TrimSpace(result[right].ID)
-		}
-		return leftSortTimeUnixMS > rightSortTimeUnixMS
-	})
-	return result, nil
 }
 
 type sessionPageCursor struct {
 	ID             string
 	SortTimeUnixMS int64
-}
-
-func sessionListCursor(session Session) sessionPageCursor {
-	return sessionPageCursor{
-		ID:             strings.TrimSpace(session.ID),
-		SortTimeUnixMS: sessionConversationSortTimeUnixMS(session),
-	}
-}
-
-func (cursor sessionPageCursor) String() string {
-	if strings.TrimSpace(cursor.ID) == "" {
-		return ""
-	}
-	return strconv.FormatInt(cursor.SortTimeUnixMS, 10) + "|" + strings.TrimSpace(cursor.ID)
 }
 
 func parseSessionListCursor(raw string) (sessionPageCursor, error) {
@@ -158,56 +98,4 @@ func parseSessionListCursor(raw string) (sessionPageCursor, error) {
 		ID:             strings.TrimSpace(parts[1]),
 		SortTimeUnixMS: sortTimeUnixMS,
 	}, nil
-}
-
-func sessionsAfterCursor(
-	sessions []Session,
-	cursor sessionPageCursor,
-) []Session {
-	for index, session := range sessions {
-		sortTimeUnixMS := sessionConversationSortTimeUnixMS(session)
-		sessionID := strings.TrimSpace(session.ID)
-		if sortTimeUnixMS < cursor.SortTimeUnixMS ||
-			(sortTimeUnixMS == cursor.SortTimeUnixMS && sessionID > cursor.ID) {
-			return sessions[index:]
-		}
-	}
-	return nil
-}
-
-func (s *Service) withLatestTurnsForConversationOrder(
-	ctx context.Context,
-	workspaceID string,
-	sessions []Session,
-) ([]Session, error) {
-	if s == nil || s.TurnStore == nil || len(sessions) == 0 {
-		return sessions, nil
-	}
-	ids := make([]string, 0, len(sessions))
-	for _, session := range sessions {
-		ids = append(ids, strings.TrimSpace(session.ID))
-	}
-	latestBySessionID, err := s.TurnStore.ListLatestTurns(ctx, workspaceID, ids)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]Session, len(sessions))
-	for index, session := range sessions {
-		if latest, ok := latestBySessionID[strings.TrimSpace(session.ID)]; ok {
-			value := latest
-			session.LatestTurn = &value
-		}
-		result[index] = session
-	}
-	return result, nil
-}
-
-func sessionConversationSortTimeUnixMS(session Session) int64 {
-	if session.LatestTurn != nil && session.LatestTurn.StartedAtUnixMS > 0 {
-		return session.LatestTurn.StartedAtUnixMS
-	}
-	if !session.CreatedAt.IsZero() {
-		return session.CreatedAt.UnixMilli()
-	}
-	return 0
 }

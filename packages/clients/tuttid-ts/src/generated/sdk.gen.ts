@@ -1691,6 +1691,8 @@ export const createModelPolicy = <ThrowOnError extends boolean = false>(
 /**
  * Delete one legacy role-based model policy
  *
+ * Deletion is blocked with a 409 while any agent binding still references the policy. Callers rebind or clear those bindings first.
+ *
  * @deprecated
  */
 export const deleteModelPolicy = <ThrowOnError extends boolean = false>(

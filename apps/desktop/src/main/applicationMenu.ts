@@ -47,7 +47,10 @@ async function runExportDeveloperLogsFromMenu(
 
   try {
     await options.exportDeveloperLogs(input);
-    options.logger?.info("menu export logs completed", { scope: input.scope });
+    options.logger?.info("menu export logs completed", {
+      includeAgentSessions: input.includeAgentSessions,
+      scope: input.scope
+    });
   } catch (error) {
     const detail = formatErrorDetail(error);
     const translator = createTranslator(options.getLocale?.() ?? "en");
@@ -60,6 +63,19 @@ async function runExportDeveloperLogsFromMenu(
       detail
     });
   }
+}
+
+function createDeveloperLogsExportMenuItem(
+  options: ApplicationMenuOptions,
+  label: string,
+  input: ExportDeveloperLogsInput
+): MenuItemConstructorOptions {
+  return {
+    label,
+    click: () => {
+      void runExportDeveloperLogsFromMenu(options, input);
+    }
+  };
 }
 
 async function runClearDeveloperLogsFromMenu(
@@ -295,9 +311,9 @@ export function createApplicationMenuTemplate({
           label: translator.t("desktop.menu.exportServiceLogs"),
           submenu: [
             {
-              label: translator.t("desktop.menu.exportAllLogs"),
-              click: () => {
-                void runExportDeveloperLogsFromMenu(
+              label: translator.t("desktop.menu.exportRecentTenMinutesLogs"),
+              submenu: [
+                createDeveloperLogsExportMenuItem(
                   {
                     allowDeveloperTools,
                     exportDeveloperLogs,
@@ -305,14 +321,32 @@ export function createApplicationMenuTemplate({
                     logger,
                     platform
                   },
-                  { scope: "all" }
-                );
-              }
+                  translator.t("desktop.menu.logsOnly"),
+                  {
+                    includeAgentSessions: false,
+                    scope: "recent-10-minutes"
+                  }
+                ),
+                createDeveloperLogsExportMenuItem(
+                  {
+                    allowDeveloperTools,
+                    exportDeveloperLogs,
+                    getLocale,
+                    logger,
+                    platform
+                  },
+                  translator.t("desktop.menu.logsWithAgentSessions"),
+                  {
+                    includeAgentSessions: true,
+                    scope: "recent-10-minutes"
+                  }
+                )
+              ]
             },
             {
-              label: translator.t("desktop.menu.exportRecentTenMinutesLogs"),
-              click: () => {
-                void runExportDeveloperLogsFromMenu(
+              label: translator.t("desktop.menu.exportRecentThreeDaysLogs"),
+              submenu: [
+                createDeveloperLogsExportMenuItem(
                   {
                     allowDeveloperTools,
                     exportDeveloperLogs,
@@ -320,9 +354,27 @@ export function createApplicationMenuTemplate({
                     logger,
                     platform
                   },
-                  { scope: "recent-10-minutes" }
-                );
-              }
+                  translator.t("desktop.menu.logsOnly"),
+                  {
+                    includeAgentSessions: false,
+                    scope: "recent-3-days"
+                  }
+                ),
+                createDeveloperLogsExportMenuItem(
+                  {
+                    allowDeveloperTools,
+                    exportDeveloperLogs,
+                    getLocale,
+                    logger,
+                    platform
+                  },
+                  translator.t("desktop.menu.logsWithAgentSessions"),
+                  {
+                    includeAgentSessions: true,
+                    scope: "recent-3-days"
+                  }
+                )
+              ]
             }
           ]
         },

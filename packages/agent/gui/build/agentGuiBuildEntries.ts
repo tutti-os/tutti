@@ -31,6 +31,7 @@ export const agentGUIBuildEntries = {
   "workbench/tool-sidebar/index": "workbench/tool-sidebar/index.ts",
   "workbench/types": "workbench/types.ts",
   "workspace-agent-generated-files": "shared/workspaceAgentGeneratedFiles.ts",
+  "conversation-rail-runtime": "agentConversationRailRuntime.ts",
   "workspace-query-cache": "shared/query/workspaceQueryCache.ts"
 } as const;
 
@@ -59,6 +60,7 @@ export const agentGUIDtsEntryGroups = [
     "mention-file-presentation",
     "agent-title-text",
     "workspace-agent-generated-files",
+    "conversation-rail-runtime",
     "workspace-query-cache"
   ],
   [

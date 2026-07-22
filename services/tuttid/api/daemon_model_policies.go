@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"net/http"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
@@ -129,8 +130,15 @@ func (api DaemonAPI) DeleteModelPolicy(ctx context.Context, request tuttigenerat
 		return tuttigenerated.DeleteModelPolicy503JSONResponse{ServiceUnavailableErrorJSONResponse: modelPolicyServiceUnavailable()}, nil
 	}
 	if err := api.ModelPolicyService.DeletePolicy(ctx, request.WorkspaceID, request.ModelPolicyID); err != nil {
-		if errors.Is(err, workspacedata.ErrModelPolicyNotFound) {
+		switch {
+		case errors.Is(err, workspacedata.ErrModelPolicyNotFound):
 			return tuttigenerated.DeleteModelPolicy404JSONResponse{WorkspaceNotFoundErrorJSONResponse: modelPolicyNotFoundError()}, nil
+		case errors.Is(err, modelpolicyservice.ErrPolicyReferenced):
+			return tuttigenerated.DeleteModelPolicy409JSONResponse{
+				ModelPolicyReferencedErrorJSONResponse: tuttigenerated.ModelPolicyReferencedErrorJSONResponse(protocolErrorResponse(
+					apierrors.New(http.StatusConflict, tuttigenerated.ModelPolicyReferenced, "model_policy_referenced", apierrors.WithDeveloperMessage(err.Error())),
+				)),
+			}, nil
 		}
 		return tuttigenerated.DeleteModelPolicy502JSONResponse{
 			WorkspaceOperationErrorJSONResponse: workspaceOperationError(apierrors.WorkspaceOperationFailed(apierrors.WithCause(err))),
@@ -359,7 +367,10 @@ func modelPolicyServiceUnavailable() tuttigenerated.ServiceUnavailableErrorJSONR
 }
 
 func modelPolicyNotFoundError() tuttigenerated.WorkspaceNotFoundErrorJSONResponse {
-	return tuttigenerated.WorkspaceNotFoundErrorJSONResponse(protocolErrorResponse(
-		apierrors.InvalidRequest("model_policy_not_found", apierrors.WithDeveloperMessage("model usage policy not found")),
+	return workspaceNotFoundError(apierrors.New(
+		http.StatusNotFound,
+		tuttigenerated.WorkspaceNotFound,
+		"model_policy_not_found",
+		apierrors.WithDeveloperMessage("model usage policy not found"),
 	))
 }

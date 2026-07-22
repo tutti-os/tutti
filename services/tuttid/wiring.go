@@ -13,8 +13,10 @@ import (
 
 	"github.com/google/uuid"
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
+	agenthostadapter "github.com/tutti-os/tutti/packages/agent/daemon/hostadapter"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
+	agentstoresqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
@@ -286,7 +288,6 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 
 	events := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
 	preferencesPublisher := eventstreamservice.DesktopPreferencesPublisher{Service: events}
-	modelConfigurationPublisher := eventstreamservice.AgentModelConfigurationPublisher{Service: events}
 	preferences := &preferencesservice.Service{
 		Store:                          preferencesStore,
 		Publisher:                      preferencesPublisher,
@@ -332,11 +333,23 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Store: managedCredentialsStore,
 	}
 	modelBindingsStore, _ := store.(workspacedata.AgentModelBindingsStore)
+	modelPolicyStore, _ := store.(modelpolicyservice.Store)
+	// Narrow cross-domain reads over biz types keep referential integrity
+	// bidirectional without any modelbinding <-> modelpolicy service cycle:
+	// bindings validate their policy link, and policy deletion checks bindings.
+	bindingPolicyLookup, _ := store.(modelbindingservice.PolicyLookup)
+	policyBindingReferences, _ := store.(modelpolicyservice.BindingReferenceReader)
 	modelBindings := &modelbindingservice.Service{
-		Store:   modelBindingsStore,
-		Plans:   modelPlansStore,
-		Targets: agentTargetStore,
+		Store:    modelBindingsStore,
+		Plans:    modelPlansStore,
+		Targets:  agentTargetStore,
+		Policies: bindingPolicyLookup,
 	}
+	modelPolicies := &modelpolicyservice.Service{
+		Store:             modelPolicyStore,
+		BindingReferences: policyBindingReferences,
+	}
+	modelConfigurationPublisher := eventstreamservice.AgentModelConfigurationPublisher{Service: events}
 	workspaceAgentsStore, _ := store.(workspacedata.WorkspaceAgentsStore)
 	workspaceAgents := &workspaceagentservice.Service{
 		Store:      workspaceAgentsStore,
@@ -353,14 +366,12 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Usage:     automationRulesStore,
 		Publisher: eventstreamservice.AgentAutomationRulesPublisher{Service: events},
 	}
-	modelPolicyStore, _ := store.(modelpolicyservice.Store)
-	modelPolicies := &modelpolicyservice.Service{
-		Store: modelPolicyStore,
-	}
 	modelPlans := &modelplanservice.Service{
 		Store:         modelPlansStore,
 		FirstUseStore: modelPlanFirstUseStore,
-		References:    modelplanservice.CompositeReferenceResolver{modelBindings, workspaceAgents, modelPolicies},
+		// Plan deletion stays blocked while any consumer domain still points at
+		// the plan: agent model bindings, model usage policies, and workspace agents.
+		References: modelplanservice.CompositeReferenceResolver{modelBindings, modelPolicies, workspaceAgents},
 	}
 	collabRunsStore, _ := store.(workspacedata.CollaborationRunsStore)
 	collabRuns := &collabrunservice.Service{
@@ -532,7 +543,22 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	automationRules.Executor = automationExecutor
 	automationRules.Sources = automationExecutor
 
-	agentHost := agentservice.NewApplicationHost(agentSessionService)
+	canonicalStoreProvider, ok := store.(interface {
+		AgentCanonicalStore() *agentstoresqlite.Store
+	})
+	if !ok || canonicalStoreProvider.AgentCanonicalStore() == nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("canonical agent store is unavailable")
+	}
+	canonicalHostStore := &agenthost.SQLiteWorkspaceStore{
+		StoreForWorkspace: func(string) *agentstoresqlite.Store {
+			return canonicalStoreProvider.AgentCanonicalStore()
+		},
+		Observer:             agentActivityProjection,
+		InitializationPolicy: agentActivityProjection,
+	}
+	agentHost := agentservice.NewApplicationHostWithPorts(agentSessionService, canonicalHostStore, &agenthostadapter.RuntimeController{
+		Backend: agentRuntime.Controller(),
+	})
 	agentSessionService.SetApplicationHost(agentHost)
 	// Host fixes startup order: durable runtime operations first, then goal
 	// operations and reconcile inbox work, and only then stale turns.

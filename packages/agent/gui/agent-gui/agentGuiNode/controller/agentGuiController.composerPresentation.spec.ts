@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
+import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
 import type { AgentGUINodeData } from "../../../types";
 import {
   composerTargetDataForConversation,
   effectiveComposerSettingsFromOptions,
+  enforceComposerModelBindingForCreate,
+  enforceComposerModelBindingForHomeDefaults,
   isForegroundModelOptionsLoading,
   nodeDataMatchesComposerTarget,
   reconcileOptimisticComposerTarget,
   resolvePresentedComposerSettings,
-  sanitizeComposerSettingsForOptions
+  sanitizeComposerSettingsForOptions,
+  verifyComposerModelAgainstNativeOptions
 } from "./agentGuiController.composerPresentation";
 
 describe("composer target presentation", () => {
@@ -327,5 +331,149 @@ describe("composer target presentation", () => {
 
     expect(cleared.model).toBe("gpt-5.2");
     expect(cleared.reasoningEffort).toBeNull();
+  });
+});
+
+describe("composer model binding enforcement", () => {
+  const options = (
+    models: string[],
+    overrides: Partial<AgentActivityComposerOptions> = {}
+  ): AgentActivityComposerOptions => ({
+    provider: "codex",
+    capabilities: null,
+    models: models.map((value) => ({ value, label: value })),
+    reasoningEfforts: [],
+    speeds: [],
+    skills: [],
+    behavior: {
+      collapseModelOptionsToLatest: false,
+      modelOptionsAuthoritative: false,
+      refreshModelOptionsAfterSettings: false,
+      prewarmDraftSession: false,
+      planModeExclusiveWithPermissionMode: false
+    },
+    loadedAtUnixMs: 1,
+    ...overrides
+  });
+
+  it("classifies bare model ids against the native list", () => {
+    expect(verifyComposerModelAgainstNativeOptions("m", null)).toBe(
+      "unverifiable"
+    );
+    expect(verifyComposerModelAgainstNativeOptions("m", options([]))).toBe(
+      "unverifiable"
+    );
+    expect(
+      verifyComposerModelAgainstNativeOptions(
+        "m",
+        options(["m", "other"], { modelOptionsLoading: true })
+      )
+    ).toBe("unverifiable");
+    expect(
+      verifyComposerModelAgainstNativeOptions("m", options(["m", "other"]))
+    ).toBe("verified");
+    expect(
+      verifyComposerModelAgainstNativeOptions("m", options(["other"]))
+    ).toBe("rejected");
+  });
+
+  it("excludes requested-origin entries from catalog testimony", () => {
+    // Warm-catalog append: the daemon adds the requested model to a settled
+    // multi-entry list with a provenance marker. The marked entry must not
+    // verify the model — only the raw catalog counts.
+    const warm = options(["gpt-5.3-codex", "gpt-5.6-sol"], {
+      effectiveSettings: { model: "x-ai/grok-4.5" }
+    });
+    warm.models.push({
+      value: "x-ai/grok-4.5",
+      label: "x-ai/grok-4.5",
+      requested: true
+    });
+    expect(verifyComposerModelAgainstNativeOptions("x-ai/grok-4.5", warm)).toBe(
+      "rejected"
+    );
+    expect(verifyComposerModelAgainstNativeOptions("gpt-5.6-sol", warm)).toBe(
+      "verified"
+    );
+    // A list made solely of requested-origin entries has no catalog at all.
+    const requestedOnly = options([]);
+    requestedOnly.models.push({
+      value: "x-ai/grok-4.5",
+      label: "x-ai/grok-4.5",
+      requested: true
+    });
+    expect(
+      verifyComposerModelAgainstNativeOptions("x-ai/grok-4.5", requestedOnly)
+    ).toBe("unverifiable");
+  });
+
+  it("treats a selected-model-only echo of the effective settings as unverifiable", () => {
+    // The daemon's bootstrap composer options mirror the requested settings
+    // as the sole model option (composerSelectedModelOptions); the list is
+    // seeded from the very value under verification and proves nothing.
+    const echo = options(["x-ai/grok-4.5"], {
+      effectiveSettings: { model: "x-ai/grok-4.5" }
+    });
+    expect(verifyComposerModelAgainstNativeOptions("x-ai/grok-4.5", echo)).toBe(
+      "unverifiable"
+    );
+    // A genuine single-entry catalog (no effective-settings mirror) still
+    // counts as testimony.
+    expect(
+      verifyComposerModelAgainstNativeOptions(
+        "x-ai/grok-4.5",
+        options(["x-ai/grok-4.5"])
+      )
+    ).toBe("verified");
+  });
+
+  it("create gate only sends positively verified bare models", () => {
+    const bare = { model: "x-ai/grok-4.5", modelPlanId: null };
+    expect(
+      enforceComposerModelBindingForCreate(
+        bare,
+        options(["x-ai/grok-4.5"], {
+          effectiveSettings: { model: "x-ai/grok-4.5" }
+        })
+      )
+    ).toMatchObject({ model: null, modelPlanId: null });
+    expect(
+      enforceComposerModelBindingForCreate(bare, options([]))
+    ).toMatchObject({ model: null, modelPlanId: null });
+    expect(
+      enforceComposerModelBindingForCreate(
+        bare,
+        options(["x-ai/grok-4.5", "gpt-5.3-codex"])
+      )
+    ).toMatchObject({ model: "x-ai/grok-4.5" });
+    // A full pair travels untouched — the daemon validates plan membership.
+    expect(
+      enforceComposerModelBindingForCreate(
+        { model: "x-ai/grok-4.5", modelPlanId: "mp-relay" },
+        options([])
+      )
+    ).toMatchObject({ model: "x-ai/grok-4.5", modelPlanId: "mp-relay" });
+  });
+
+  it("home defaults drop only positively rejected bare models", () => {
+    const bare = { model: "x-ai/grok-4.5", modelPlanId: null };
+    expect(
+      enforceComposerModelBindingForHomeDefaults(
+        bare,
+        options(["gpt-5.3-codex"])
+      )
+    ).toMatchObject({ model: null, modelPlanId: null });
+    // Unverifiable windows must not destroy a stored default; the create
+    // gate is the one that refuses to send it.
+    expect(enforceComposerModelBindingForHomeDefaults(bare, null)).toBe(bare);
+    expect(enforceComposerModelBindingForHomeDefaults(bare, options([]))).toBe(
+      bare
+    );
+    expect(
+      enforceComposerModelBindingForHomeDefaults(
+        { model: "x-ai/grok-4.5", modelPlanId: "mp-relay" },
+        options(["gpt-5.3-codex"])
+      )
+    ).toMatchObject({ model: "x-ai/grok-4.5", modelPlanId: "mp-relay" });
   });
 });

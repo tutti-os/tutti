@@ -49,6 +49,11 @@ process/session lifecycle and normalization behind that selection. They must not
 raw SDK envelopes to services or GUI packages. Service-layer provider catalogs,
 composer profiles, targets, status probes, and identity projections consume the
 same `ProviderDescriptor` instead of re-registering Claude Code locally.
+Provider preparation may inject system-prompt and plugin paths that exist only
+in the sidecar runtime filesystem. The Go adapter treats those environment
+values as opaque and forwards them unchanged; `options.ts` reads and validates
+the referenced files after the sidecar starts. Daemon code must not inspect
+those paths because remote transports do not share its filesystem.
 Claude modules do not call ACP _protocol_ helpers (session-update decoding,
 standard ACP tool-call envelopes, and similar). Open tool-call bookkeeping and
 turn `Finish*` settlement reuse the shared adapter turn lifecycle

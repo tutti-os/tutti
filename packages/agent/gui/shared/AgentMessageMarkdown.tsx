@@ -16,10 +16,8 @@ import rehypeSanitize, {
   type Options as RehypeSanitizeOptions
 } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import {
-  resolveWorkspaceFileExtension,
-  workspaceFileName as basenameWorkspacePath
-} from "@tutti-os/workspace-file-manager/services";
+import { workspaceFileName as basenameWorkspacePath } from "@tutti-os/workspace-file-manager/services";
+import { resolveWorkspaceFileExtension } from "@tutti-os/workspace-file-preview";
 import { MentionPill } from "@tutti-os/ui-system/components";
 import { useResolvedRichTextMention } from "@tutti-os/ui-rich-text/editor";
 import {

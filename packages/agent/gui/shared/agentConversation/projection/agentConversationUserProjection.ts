@@ -127,6 +127,12 @@ function userPromptContentBlocks(
         : ""
     ) ?? []
   );
+  const visibleDisplayPrompt = isSyntheticImageOnlyDisplayPrompt(
+    displayPrompt,
+    content
+  )
+    ? ""
+    : displayPrompt;
   const blocks = content.flatMap((raw): UserPromptContentBlock[] => {
     const block =
       raw && typeof raw === "object" && !Array.isArray(raw)
@@ -134,7 +140,7 @@ function userPromptContentBlocks(
         : null;
     if (!block) return [];
     if (block.type === "text" && typeof block.text === "string") {
-      return displayPrompt
+      return visibleDisplayPrompt
         ? []
         : [{ type: "text", text: linkifyPastedTextReferences(block.text) }];
     }
@@ -156,9 +162,37 @@ function userPromptContentBlocks(
       }
     ];
   });
-  return displayPrompt
-    ? [{ type: "text", text: displayPrompt }, ...blocks]
+  return visibleDisplayPrompt
+    ? [{ type: "text", text: visibleDisplayPrompt }, ...blocks]
     : blocks;
+}
+
+function isSyntheticImageOnlyDisplayPrompt(
+  displayPrompt: string,
+  content: readonly unknown[]
+): boolean {
+  if (displayPrompt !== "[Image]" && displayPrompt !== "[Images]") {
+    return false;
+  }
+  let imageCount = 0;
+  for (const raw of content) {
+    const block =
+      raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : null;
+    if (!block) continue;
+    if (
+      block.type === "text" &&
+      typeof block.text === "string" &&
+      block.text.trim()
+    ) {
+      return false;
+    }
+    if (block.type === "image") {
+      imageCount += 1;
+    }
+  }
+  return displayPrompt === "[Image]" ? imageCount === 1 : imageCount > 1;
 }
 
 function optionalString(value: unknown): string | null {

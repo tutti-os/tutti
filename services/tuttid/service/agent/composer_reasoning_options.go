@@ -3,19 +3,15 @@ package agent
 import (
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/modelcatalog"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
-type composerModelReasoningProfile struct {
-	DefaultReasoningEffort string
-	ReasoningEfforts       []AgentModelReasoningEffortOption
-}
-
 func composerModelReasoningOptionsByModel(
 	provider string,
 	locale string,
-	profiles map[string]composerModelReasoningProfile,
+	profiles map[string]modelcatalog.ReasoningProfile,
 ) map[string]ComposerReasoningProfile {
 	result := make(map[string]ComposerReasoningProfile, len(profiles))
 	for model, profile := range profiles {
@@ -23,17 +19,12 @@ func composerModelReasoningOptionsByModel(
 		if model == "" {
 			continue
 		}
-		defaultValue := resolveAdvertisedReasoningEffort(
-			provider,
-			"",
-			profile.DefaultReasoningEffort,
-			profile.ReasoningEfforts,
-		)
+		defaultValue := profile.DefaultValue
 		options := composerAdvertisedReasoningOptionValues(
 			provider,
 			"",
 			locale,
-			profile.ReasoningEfforts,
+			profile.Options,
 		)
 		result[model] = ComposerReasoningProfile{
 			DefaultValue: defaultValue,
@@ -172,7 +163,7 @@ func resolveAdvertisedReasoningEffort(
 	return firstValue
 }
 
-func composerReasoningOptionValuesToRuntimeOptions(
+func composerConfigOptionValuesToRuntimeOptions(
 	options []ComposerConfigOptionValue,
 ) []map[string]string {
 	result := make([]map[string]string, 0, len(options))

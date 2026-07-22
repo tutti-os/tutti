@@ -110,13 +110,15 @@ export const zhCN = {
       clearLogsTitle: "清除日志",
       clearServiceLogs: "清除服务日志...",
       edit: "编辑",
-      exportAllLogs: "全部日志",
       exportLogsFailed: "无法导出日志",
       exportLogsTitle: "导出日志",
       exportRecentTenMinutesLogs: "最近 10 分钟",
+      exportRecentThreeDaysLogs: "最近 3 天",
       exportServiceLogs: "导出服务日志",
       file: "文件",
       help: "帮助",
+      logsOnly: "仅日志",
+      logsWithAgentSessions: "日志 + Session 记录",
       openPerfMonitor: "打开 Perf Monitor DevTools",
       quit: "退出 Tutti",
       upToDateDetail: "Tutti {{version}} 是当前的最新版本。",
@@ -874,61 +876,176 @@ export const zhCN = {
             onTaskFailed: "任务失败或中断时"
           }
         },
-        managedModels: {
+        modelPlans: {
+          addModel: "添加模型",
+          addPlan: "添加方案",
+          agentRuntimePendingHint:
+            "保存方案后，在下方选择兼容的 Agent 完成第一次真实调用，即可完成验证",
           apiKey: "API 密钥",
-          addModel: "添加",
-          addProvider: "添加",
           baseUrl: "Base URL",
-          collapse: "收起",
-          customProvider: "自定义",
+          bindings: {
+            description:
+              "为每个 Agent 选择默认使用的模型方案，Agent 的第一次真实调用会完成方案验证",
+            empty: "暂无可绑定的 Agent",
+            loadFailed: "暂时无法加载 Agent 绑定",
+            modelLabel: "默认模型",
+            planDefault: "方案默认",
+            planLabel: "模型方案",
+            planNone: "不绑定（使用 Agent 自带模型）",
+            saveFailed: "绑定保存失败，请重试",
+            title: "Agent 绑定",
+            unsupported: "暂不支持绑定"
+          },
+          defaultMarker: "默认",
           delete: "删除",
-          deleteConfirm: "删除此配置？",
+          deleteBlockedDescription: "改绑或停用以下引用后才能删除",
+          deleteBlockedTitle: "该方案仍被引用，无法删除",
+          deleteConfirm: "删除此方案？",
           deleteFailed: "删除失败，请重试",
           deleting: "删除中...",
           description:
-            "用你自己的 API 密钥接入模型，供工作区的应用和 Agent 使用",
-          detectModels: "获取可用模型",
-          detectingModels: "获取中...",
-          detectModelsEmpty: "没有找到可用模型",
-          detectModelsFailed: "获取模型失败，请重试",
+            "配置具名的模型接入方案——官方订阅、Coding Plan、国内模型、中转服务或自定义接口，供工作区的 Agent 和应用使用",
+          confirmModelRangeImpact: "确认影响并保存",
+          detect: "检测连接",
+          detectFailed: "连接检测失败，请重试",
+          detecting: "检测中...",
+          detectionRequired: "保存方案前，请先完成并通过连接检测",
+          detectionTitle: "连接检测",
+          duplicate: "复制",
+          duplicateFailed: "复制失败，请重试",
+          edit: "编辑",
+          editTitle: "编辑 {{plan}}",
           emptyDescription:
-            "点「添加」用你的 API 密钥接入 Agnes、OpenAI 或 Anthropic",
-          emptyTitle: "还没有接入模型供应商",
-          enabled: "启用 {{provider}}",
-          expand: "展开",
+            "点「添加方案」用你的 API 密钥接入订阅、中转或自定义接口",
+          emptyTitle: "还没有模型方案",
+          enabled: "启用 {{plan}}",
+          failureReasons: {
+            connectionFailed: "无法连接到接入点",
+            inferenceFailed: "测试调用失败",
+            modelCatalogDecodeFailed: "模型列表响应无法解析",
+            modelCatalogUnavailable: "模型列表不可用",
+            modelRejected: "接入点拒绝了该模型",
+            noModelSelected: "没有可用于测试调用的模型",
+            unauthorized: "接入点拒绝了凭证",
+            unknown: "检测失败"
+          },
+          fetchModels: "拉取模型",
+          fetchModelsEmpty: "接口未返回可选模型，你仍可手动输入模型 ID",
+          fetchModelsFailed: "拉取模型失败，请检查凭证与 Base URL 后重试",
+          fetchModelsResult: "已拉取 {{count}} 个可选模型",
+          fetchingModels: "拉取中...",
           getApiKey: "获取 {{provider}} API 密钥",
           hideApiKey: "隐藏密钥",
-          keyConfigured: "密钥已保存",
-          keyMissing: "还没填密钥",
           keepExistingKey: "留空则继续使用已保存的密钥",
-          loadFailed: "暂时无法加载模型供应商",
+          lastDetectedAt: "上次检测 {{time}}",
+          loadFailed: "暂时无法加载模型方案",
+          modelCount: "{{count}} 个模型",
           modelId: "模型 ID",
-          modelIdPlaceholder: "model-id",
-          models: "{{provider}} 模型",
-          presetLabels: {
+          modelPickerEmpty: "没有匹配的模型",
+          modelPickerPlaceholder: "选择或输入模型 ID",
+          modelPickerSearchPlaceholder: "搜索模型 ID 或名称",
+          modelPickerUseCustom: "使用自定义 ID“{{model}}”",
+          nativeLoginHint:
+            "此方案使用本机 Codex 或 Claude Code 已有的登录状态。如尚未登录，请先前往 Agent 设置完成登录，再运行连接检测；方案不会保存 API 密钥或 Base URL",
+          modelRangeImpactDescription:
+            "以下引用会在下一次调用时使用变更后的模型范围。请确认影响后再次保存；运行中的调用不会改变",
+          modelRangeImpactTitle: "确认受影响的引用",
+          models: "模型",
+          nameLabel: "名称",
+          namePlaceholder: "我的模型方案",
+          neverDetected: "尚未检测",
+          pendingFirstUseGuide:
+            "在下方「Agent 绑定」中选择兼容的 Agent 发起第一次真实调用后，方案才算可用",
+          presetLabel: "服务商预设",
+          presets: {
             agnes: "Agnes",
-            anthropicClaude: "Anthropic (Claude)",
+            anthropicOfficial: "Anthropic (Claude)",
+            codingPlanAnthropic: "Claude Coding Plan",
+            codingPlanCustom: "其他 Coding Plan",
+            customAnthropic: "自定义 Anthropic 兼容接口",
+            customOpenai: "自定义 OpenAI 兼容接口",
             deepseekAnthropic: "DeepSeek - Anthropic",
             deepseekOpenai: "DeepSeek - OpenAI",
             mimoAnthropic: "MiMo (Xiaomi) - Anthropic",
             mimoOpenai: "MiMo (Xiaomi) - OpenAI",
             minimaxAnthropic: "MiniMax - Anthropic",
             minimaxOpenai: "MiniMax - OpenAI",
-            openaiOfficial: "OpenAI official"
+            openaiOfficial: "OpenAI 官方",
+            relayCustom: "中转接入点"
+          },
+          protocolLabel: "接口协议",
+          protocols: {
+            anthropic: "Anthropic 兼容",
+            openai: "OpenAI 兼容"
+          },
+          referenceKinds: {
+            agentTarget: "Agent",
+            modelPolicy: "模型策略",
+            workspaceAgent: "工作区 Agent",
+            workspaceApp: "应用"
+          },
+          remedies: {
+            addModelsManually: "请手动添加模型",
+            checkApiKey: "请检查 API 密钥",
+            checkModelId: "请检查模型 ID",
+            checkNetworkOrBaseUrl: "请检查网络或 Base URL",
+            selectModel: "请先选择模型"
           },
           removeModel: "移除模型",
-          requiredFieldsMissing: "请先填写 API 密钥和 Base URL",
-          quickFillProvider: "选择服务商预设",
+          setDefaultModel: "将 {{model}} 设为默认模型",
+          requiredFieldsMissing:
+            "请填写名称和模型列表；接口方案还需要 API 密钥与 Base URL",
           save: "保存",
           saveFailed: "保存失败，请重试",
           saving: "保存中...",
           showApiKey: "显示密钥",
-          test: "测试连接",
-          testFailed: "连接失败，请检查密钥或地址",
-          testSucceeded: "连接正常",
-          testing: "测试中...",
-          modelCount: "{{count}} 个模型",
-          title: "模型供应商"
+          stageLatency: "{{ms}} ms",
+          stageStatus: {
+            failed: "失败",
+            passed: "通过",
+            pending: "待检测",
+            skipped: "已跳过"
+          },
+          stages: {
+            agentRuntime: "Agent 首次调用",
+            auth: "认证",
+            inference: "真实调用",
+            modelDiscovery: "模型列表",
+            network: "网络"
+          },
+          statusLabels: {
+            detectionFailed: "检测失败",
+            disabled: "已停用",
+            pendingFirstUse: "待首次使用",
+            ready: "可用",
+            undetected: "待检测"
+          },
+          templateGroups: {
+            codingPlan: {
+              guidance:
+                "使用编程套餐（如 Claude Coding Plan）提供的接入点和密钥",
+              label: "Coding Plan"
+            },
+            custom: {
+              guidance: "使用你自己的密钥接入任意 OpenAI 或 Anthropic 兼容接口",
+              label: "自定义兼容接口"
+            },
+            domestic: {
+              guidance: "接入 DeepSeek、MiniMax、MiMo 等国内模型服务",
+              label: "国内模型"
+            },
+            officialSubscription: {
+              guidance: "使用服务商官方 API 密钥直连官方订阅",
+              label: "官方订阅"
+            },
+            relay: {
+              guidance: "使用聚合一个或多个服务商的中转/代理服务接入点",
+              label: "中转服务"
+            }
+          },
+          templatePickerTitle: "选择接入方式",
+          title: "模型方案",
+          toggleFailed: "状态更新失败，请重试"
         }
       },
       developer: {
@@ -946,8 +1063,12 @@ export const zhCN = {
         daemonLogLabel: "Daemon 日志",
         desktopLogLabel: "Desktop 日志",
         exportLogs: "导出日志",
-        exportAllLogs: "导出全部日志",
-        exportRecentTenMinutesLogs: "导出最近 10 分钟",
+        exportRecentTenMinutesLogsOnly: "最近 10 分钟 · 仅日志",
+        exportRecentTenMinutesLogsWithSessions:
+          "最近 10 分钟 · 日志 + Session 记录",
+        exportRecentThreeDaysLogsOnly: "最近 3 天 · 仅日志",
+        exportRecentThreeDaysLogsWithSessions:
+          "最近 3 天 · 日志 + Session 记录",
         exportLogsDialogTitle: "导出日志",
         exportLogsFileType: "Zip 压缩包",
         exportingLogs: "导出中...",

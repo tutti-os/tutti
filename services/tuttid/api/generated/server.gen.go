@@ -8857,6 +8857,8 @@ type ModelPlanNotFoundErrorJSONResponse ApiErrorResponse
 
 type ModelPlanReferencedErrorJSONResponse ApiErrorResponse
 
+type ModelPolicyReferencedErrorJSONResponse ApiErrorResponse
+
 type PreferencesOperationErrorJSONResponse ApiErrorResponse
 
 type ServiceUnavailableErrorJSONResponse ApiErrorResponse
@@ -29107,6 +29109,22 @@ func (response DeleteModelPolicy405JSONResponse) VisitDeleteModelPolicyResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteModelPolicy409JSONResponse struct {
+	ModelPolicyReferencedErrorJSONResponse
+}
+
+func (response DeleteModelPolicy409JSONResponse) VisitDeleteModelPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

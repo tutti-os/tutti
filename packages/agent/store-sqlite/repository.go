@@ -16,7 +16,8 @@ import (
 // All methods are scoped by a host-defined workspace ID.
 type Repository interface {
 	ClearSessions(context.Context, string) (ClearSessionsResult, error)
-	DeleteSessionWithCommit(context.Context, string, string) (DeleteSessionResult, error)
+	PlanClearSessions(context.Context, string) (DeleteSessionsPlan, error)
+	PlanDeleteSessions(context.Context, DeleteSessionsBatchInput) (DeleteSessionsPlan, error)
 	DeleteSessionsBatch(context.Context, DeleteSessionsBatchInput) (DeleteSessionsBatchResult, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
 	ListChildSessions(context.Context, string, string) ([]Session, error)
@@ -31,6 +32,7 @@ type Repository interface {
 	ListSessionSection(context.Context, ListSessionSectionInput) (SessionSectionPage, bool, error)
 	ListSessionSections(context.Context, ListSessionSectionsInput) (SessionSectionsPage, bool, error)
 	ListSessionSectionDeletionCandidates(context.Context, ListSessionSectionDeletionCandidatesInput) (SessionSectionDeletionCandidates, bool, error)
+	ListSessionsPage(context.Context, ListSessionsPageInput) (SessionListPage, bool, error)
 	ListSessionTurns(context.Context, string, string) ([]Turn, error)
 	ListSessions(context.Context, string) ([]Session, bool, error)
 	ListWorkspaceGeneratedFileTurns(context.Context, ListWorkspaceGeneratedFileTurnsInput) (GeneratedFileTurnList, bool, error)
@@ -181,6 +183,7 @@ type ListSessionSectionInput struct {
 	WorkspaceID          string
 	SectionKey           string
 	AgentTargetID        string
+	IncludedSessionIDs   []string
 	CursorSortTimeUnixMS int64
 	CursorSessionID      string
 	Limit                int
@@ -190,17 +193,36 @@ type ListSessionSectionInput struct {
 // section in one workspace query. SectionKeys includes the synthetic pinned
 // page key when the caller needs pinned conversations.
 type ListSessionSectionsInput struct {
-	WorkspaceID     string
-	SectionKeys     []string
-	AgentTargetID   string
-	LimitPerSection int
+	WorkspaceID        string
+	SectionKeys        []string
+	AgentTargetID      string
+	IncludedSessionIDs []string
+	LimitPerSection    int
 }
 
 type ListSessionSectionDeletionCandidatesInput struct {
-	WorkspaceID   string
-	SectionKey    string
-	AgentTargetID string
-	ExcludePinned bool
+	WorkspaceID        string
+	SectionKey         string
+	AgentTargetID      string
+	IncludedSessionIDs []string
+	ExcludePinned      bool
+}
+
+type ListSessionsPageInput struct {
+	WorkspaceID          string
+	AgentTargetID        string
+	SearchQuery          string
+	IncludedSessionIDs   []string
+	CursorSortTimeUnixMS int64
+	CursorSessionID      string
+	Limit                int
+}
+
+type SessionListPage struct {
+	WorkspaceID string
+	Sessions    []Session
+	HasMore     bool
+	NextCursor  string
 }
 
 type SessionSectionDeletionCandidates struct {
@@ -212,6 +234,12 @@ type SessionSectionDeletionCandidates struct {
 }
 
 type DeleteSessionsBatchInput struct {
+	WorkspaceID        string
+	SessionIDs         []string
+	ExpectedSessionIDs []string
+}
+
+type DeleteSessionsPlan struct {
 	WorkspaceID string
 	SessionIDs  []string
 }

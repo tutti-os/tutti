@@ -209,6 +209,7 @@ test("activation intent owns the transport command and confirmation deadline", (
   assert.equal(pendingActivation?.status, "requested");
   assert.equal(pendingActivation?.displayPrompt, "/browser");
   assert.equal(pendingActivation?.optimisticTitle, "Review browser flow");
+  assert.equal(pendingActivation?.railSectionKey, "project:/workspace");
   assert.deepEqual(pendingActivation?.content, [
     { type: "text", text: "hello" }
   ]);
@@ -242,6 +243,7 @@ test("control activation can carry content without expecting a Turn", () => {
   const intent = {
     ...activation(),
     content: [{ type: "text" as const, text: "/goal ship it" }],
+    initialGoalControl: { action: "set" as const, objective: "ship it" },
     initialTurnExpected: false,
     runtimeContent: [{ type: "text" as const, text: "/goal ship it" }]
   };
@@ -259,6 +261,7 @@ test("control activation can carry content without expecting a Turn", () => {
       cwd: "/workspace",
       initialContent: [{ type: "text", text: "/goal ship it" }],
       initialDisplayPrompt: "/browser",
+      initialGoalControl: { action: "set", objective: "ship it" },
       submitDiagnostics: { submittedAtUnixMs: 1 },
       mode: "new",
       settings: { model: "model-1" },
@@ -636,6 +639,7 @@ function activation() {
     expiresAtUnixMs: 120_000,
     initialDisplayPrompt: "/browser",
     optimisticTitle: "Review browser flow",
+    railSectionKey: "project:/workspace",
     runtimeContent: [{ type: "text" as const, text: "runtime instructions" }],
     submitDiagnostics: { submittedAtUnixMs: 1 },
     mode: "new" as const,

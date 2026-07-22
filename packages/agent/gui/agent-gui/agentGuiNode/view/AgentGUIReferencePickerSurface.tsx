@@ -8,8 +8,6 @@ import type {
   WorkspaceFileReferenceCopy
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
-import type { AgentComposerReferenceProvenanceFilter } from "../composer/AgentComposer.types";
-import { AgentReferenceProvenanceFilterControl } from "../AgentReferenceProvenanceFilterControl";
 
 export interface AgentGUIReferencePickerSurfaceProps {
   aggregator: ReferenceSourcePickerProps["aggregator"] | null;
@@ -21,7 +19,6 @@ export interface AgentGUIReferencePickerSurfaceProps {
   isNodeSelectable: ReferenceSourcePickerProps["isNodeSelectable"];
   open: boolean;
   purpose: "directory" | "reference";
-  provenanceFilter: AgentComposerReferenceProvenanceFilter | null;
   resolveEntryIconUrl: ReferenceSourcePickerProps["resolveEntryIconUrl"];
   workspaceId: string;
   onClose: ReferenceSourcePickerProps["onClose"];
@@ -39,7 +36,6 @@ export function AgentGUIReferencePickerSurface({
   isNodeSelectable,
   open,
   purpose,
-  provenanceFilter,
   resolveEntryIconUrl,
   workspaceId,
   onClose,
@@ -55,15 +51,6 @@ export function AgentGUIReferencePickerSurface({
       fileManagerCopy={fileManagerCopy ?? undefined}
       open={open}
       purpose={purpose}
-      provenanceFilter={provenanceFilter?.snapshot.value}
-      provenanceFilterControl={
-        provenanceFilter ? (
-          <AgentReferenceProvenanceFilterControl
-            filter={provenanceFilter}
-            popoverElevation="panel"
-          />
-        ) : undefined
-      }
       resolveEntryIconUrl={resolveEntryIconUrl}
       workspaceId={workspaceId}
       onClose={onClose}

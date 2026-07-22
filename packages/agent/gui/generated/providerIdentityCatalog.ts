@@ -6,8 +6,8 @@ export const generatedProviderIdentityCatalog = [
     displayName: "Codex",
     iconKey: "codex",
     localeKey: "agentHost.agentGui.conversationFilterCodex",
-    modelPlanProtocol: "openai",
     aliases: [],
+    modelPlanProtocol: "openai",
     target: {
       id: "local:codex",
       launchRefType: "local_cli",
@@ -34,8 +34,8 @@ export const generatedProviderIdentityCatalog = [
     displayName: "Claude Code",
     iconKey: "claude-code",
     localeKey: "agentHost.agentGui.conversationFilterClaudeCode",
-    modelPlanProtocol: "anthropic",
     aliases: ["claude", "claude code"],
+    modelPlanProtocol: "anthropic",
     target: {
       id: "local:claude-code",
       launchRefType: "local_cli",
@@ -62,8 +62,8 @@ export const generatedProviderIdentityCatalog = [
     displayName: "Cursor",
     iconKey: "cursor",
     localeKey: "agentHost.agentGui.conversationFilterCursor",
-    modelPlanProtocol: "",
     aliases: ["cursor-agent", "cursor agent", "cursor-cli"],
+    modelPlanProtocol: "",
     target: {
       id: "local:cursor",
       launchRefType: "local_cli",
@@ -90,8 +90,8 @@ export const generatedProviderIdentityCatalog = [
     displayName: "Tutti Agent",
     iconKey: "tutti",
     localeKey: "agentHost.agentGui.conversationFilterTutti",
-    modelPlanProtocol: "openai",
     aliases: ["tutti agent"],
+    modelPlanProtocol: "openai",
     target: {
       id: "local:tutti-agent",
       launchRefType: "local_cli",
@@ -118,8 +118,8 @@ export const generatedProviderIdentityCatalog = [
     displayName: "OpenCode",
     iconKey: "opencode",
     localeKey: "agentHost.agentGui.conversationFilterOpenCode",
-    modelPlanProtocol: "",
     aliases: ["open-code", "open code", "opencode-ai", "opencode_ai"],
+    modelPlanProtocol: "",
     target: {
       id: "local:opencode",
       launchRefType: "local_cli",
@@ -146,8 +146,8 @@ export const generatedProviderIdentityCatalog = [
     displayName: "Nexight",
     iconKey: "tutti",
     localeKey: "agentHost.agentGui.conversationFilterNexight",
-    modelPlanProtocol: "",
     aliases: ["tutti"],
+    modelPlanProtocol: "",
     target: {
       id: "local:nexight",
       launchRefType: "local_cli",
@@ -174,8 +174,8 @@ export const generatedProviderIdentityCatalog = [
     displayName: "OpenClaw",
     iconKey: "openclaw",
     localeKey: "agentHost.agentGui.conversationFilterOpenClaw",
-    modelPlanProtocol: "",
     aliases: ["open-claw"],
+    modelPlanProtocol: "",
     target: {
       id: "local:openclaw",
       launchRefType: "local_cli",

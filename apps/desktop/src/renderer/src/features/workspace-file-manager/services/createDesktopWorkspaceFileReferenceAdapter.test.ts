@@ -136,6 +136,37 @@ test("desktop workspace file reference adapter passes search abort signals to tu
   assert.equal(observedSignal, abortController.signal);
 });
 
+test("desktop workspace file reference adapter maps reference kinds before search", async () => {
+  let observedRequest:
+    | Parameters<TuttidClient["searchWorkspaceFiles"]>[1]
+    | undefined;
+  const adapter = createDesktopWorkspaceFileReferenceAdapter({
+    hostFilesApi: {} as DesktopHostFilesApi,
+    tuttidClient: {
+      async searchWorkspaceFiles(
+        _workspaceId: string,
+        request: Parameters<TuttidClient["searchWorkspaceFiles"]>[1]
+      ) {
+        observedRequest = request;
+        return {
+          entries: [],
+          root: "/Users/test/project/tutti",
+          workspaceId: "workspace-1"
+        };
+      }
+    } as unknown as TuttidClient,
+    workspaceId: "workspace-1"
+  });
+
+  await adapter.searchReferences?.({
+    query: "notes",
+    kinds: ["file"],
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(observedRequest?.includeKinds, ["file"]);
+});
+
 test("desktop workspace file reference adapter preserves file creation times from search", async () => {
   const adapter = createDesktopWorkspaceFileReferenceAdapter({
     hostFilesApi: {} as DesktopHostFilesApi,
@@ -169,7 +200,7 @@ test("desktop workspace file reference adapter preserves file creation times fro
   assert.equal(refs?.[0]?.createdTimeMs, 1_800_000_000_000);
 });
 
-test("desktop workspace file reference adapter opens previewable files with the canvas preview first", async () => {
+test("desktop workspace file reference adapter opens previewable files with the preview presenter first", async () => {
   const calls: string[] = [];
   const adapter = createDesktopWorkspaceFileReferenceAdapter({
     hostFilesApi: {
@@ -177,7 +208,7 @@ test("desktop workspace file reference adapter opens previewable files with the 
         calls.push("open-file");
       }
     } as unknown as DesktopHostFilesApi,
-    openCanvasFilePreview(target, workspaceId) {
+    presentFilePreview(target, workspaceId) {
       calls.push(`preview:${workspaceId}:${target.path}:${target.fileKind}`);
       return true;
     },
@@ -193,7 +224,7 @@ test("desktop workspace file reference adapter opens previewable files with the 
   assert.deepEqual(calls, ["preview:workspace-1:/workspace/image.png:image"]);
 });
 
-test("desktop workspace file reference adapter falls back to system open when canvas preview cannot handle the file", async () => {
+test("desktop workspace file reference adapter falls back to system open when the preview presenter cannot handle the file", async () => {
   const calls: string[] = [];
   const adapter = createDesktopWorkspaceFileReferenceAdapter({
     hostFilesApi: {
@@ -201,7 +232,7 @@ test("desktop workspace file reference adapter falls back to system open when ca
         calls.push(`open-file:${workspaceId}:${path}`);
       }
     } as unknown as DesktopHostFilesApi,
-    openCanvasFilePreview(target, workspaceId) {
+    presentFilePreview(target, workspaceId) {
       calls.push(`preview:${workspaceId}:${target.path}:${target.fileKind}`);
       return false;
     },
@@ -228,7 +259,7 @@ test("desktop workspace file reference adapter opens unsupported preview formats
         calls.push(`open-file:${workspaceId}:${path}`);
       }
     } as unknown as DesktopHostFilesApi,
-    openCanvasFilePreview() {
+    presentFilePreview() {
       calls.push("preview");
       return true;
     },

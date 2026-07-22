@@ -170,6 +170,7 @@ describe("agent gui provider targets", () => {
           label: " Alice avatar "
         },
         ownerLabel: " Alice ",
+        ownerDeviceLabel: " Alice's MacBook Pro ",
         iconUrl: " app://alice.png ",
         maskIconUrl: " app://alice-mask.png ",
         unavailableReason: " owner_offline ",
@@ -194,6 +195,7 @@ describe("agent gui provider targets", () => {
         label: "Alice avatar"
       },
       ownerLabel: "Alice",
+      ownerDeviceLabel: "Alice's MacBook Pro",
       iconUrl: "app://alice.png",
       maskIconUrl: "app://alice-mask.png",
       unavailableReason: "owner_offline",
@@ -219,6 +221,7 @@ describe("agent gui provider targets", () => {
           },
           description: " ",
           ownerLabel: " ",
+          ownerDeviceLabel: " ",
           iconUrl: " ",
           maskIconUrl: " ",
           unavailableReason: " "

@@ -1,4 +1,5 @@
 import {
+  type AgentActivityInitialGoalControl,
   isPendingActivationViable,
   selectLatestActivationForSession
 } from "@tutti-os/agent-activity-core";
@@ -30,6 +31,7 @@ import {
   type UseAgentGUINewConversationActivationInput
 } from "./agentGuiNewConversationActivation.types";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import { resolveAgentGUIConversationProject } from "../model/agentGuiConversationProjectResolver";
 import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
 
 export function useAgentGUINewConversationActivation(
@@ -45,6 +47,7 @@ export function useAgentGUINewConversationActivation(
     isCreatingConversationRef,
     onDataChangeRef,
     selectedProjectPathRef,
+    userProjectsRef,
     draftByScopeKeyRef,
     submittedDraftSnapshotsRef,
     draftSettingsBySessionIdRef,
@@ -77,7 +80,8 @@ export function useAgentGUINewConversationActivation(
       initialContentInput?: unknown,
       displayPrompt?: string,
       submitOptions?: AgentComposerSubmitOptions,
-      initialTurnExpected?: boolean
+      initialTurnExpected?: boolean,
+      initialGoalControl?: AgentActivityInitialGoalControl
     ): AgentGUINewConversationActivationResult | null => {
       const target = selectedAgentTargetRef.current;
       const targetData = selectedComposerTargetDataRef.current;
@@ -118,6 +122,13 @@ export function useAgentGUINewConversationActivation(
             }
       );
       const selectedProjectPath = selectedProjectPathRef.current;
+      const selectedProject = resolveAgentGUIConversationProject(
+        selectedProjectPath,
+        userProjectsRef.current
+      );
+      const railSectionKey = !selectedProjectPath?.trim()
+        ? "conversations"
+        : selectedProject?.sectionKey?.trim() || undefined;
       const initialNodeSettings = readNodeDefaultDraftSettings({
         data: targetData.data,
         defaultReasoningEffort,
@@ -173,8 +184,10 @@ export function useAgentGUINewConversationActivation(
         agentTargetId,
         clientSubmitId: submitTrace.clientSubmitId,
         cwd: selectedProjectPath ?? "",
+        ...(railSectionKey ? { railSectionKey } : {}),
         initialContent: normalizedInitialContent,
         ...(initialTurnExpected !== undefined ? { initialTurnExpected } : {}),
+        ...(initialGoalControl ? { initialGoalControl } : {}),
         initialDisplayPrompt,
         runtimeContent: toRuntimeSendContent(normalizedInitialContent),
         submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),

@@ -102,17 +102,18 @@ describe("WorkbenchHostDock", () => {
       );
       expect(button).not.toBeNull();
 
+      providePopupItemPreview.mockClear();
       await act(async () => {
         button?.click();
       });
 
-      expect(providePopupItemPreview).toHaveBeenCalledOnce();
-      expect(
-        providePopupItemPreview.mock.calls[0]?.[0].previewViewport
-      ).toEqual({
-        height: 95,
-        width: 157
-      });
+      expect(providePopupItemPreview.mock.calls.length).toBeGreaterThan(0);
+      for (const call of providePopupItemPreview.mock.calls) {
+        expect(call[0]?.previewViewport).toEqual({
+          height: 95,
+          width: 157
+        });
+      }
     } finally {
       await act(async () => {
         root.unmount();

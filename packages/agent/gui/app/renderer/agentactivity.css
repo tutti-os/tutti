@@ -325,7 +325,6 @@
   backdrop-filter: none;
   transform-origin: bottom left;
   -webkit-app-region: no-drag;
-  -webkit-backdrop-filter: none;
 }
 
 .workspace-agents-status-panel[data-layer="raised"] {
@@ -5284,6 +5283,13 @@ aside.workspace-agents-status-panel
   background: transparent !important;
   color: var(--agent-gui-workbench-header-muted) !important;
   cursor: pointer;
+  /* Header chrome icon buttons must not animate: no hover fade, no
+     press-down motion inherited from the ui-system Button base. */
+  transition: none !important;
+}
+
+.agent-gui-workbench-header__icon-button:active {
+  transform: none !important;
 }
 
 .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
@@ -6367,6 +6373,8 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__conversation-item {
   --agent-gui-conversation-actions-width: 72px;
+  --agent-gui-conversation-actions-inset: 4px;
+  --agent-gui-conversation-actions-gap: 8px;
 
   position: relative;
   display: block;
@@ -6411,7 +6419,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   display: grid;
   box-sizing: border-box;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: var(--agent-gui-conversation-actions-gap);
   align-items: center;
   width: 100%;
   max-width: 100%;
@@ -6453,7 +6461,10 @@ button.agent-gui-node__conversation-section-toggle:hover
   )
   .agent-gui-node__conversation-select {
   grid-template-columns: minmax(0, 1fr) 0;
-  padding-right: calc(var(--agent-gui-conversation-actions-width) + 24px);
+  padding-right: calc(
+    var(--agent-gui-conversation-actions-width) +
+      var(--agent-gui-conversation-actions-inset)
+  );
 }
 
 .agent-gui-node__conversation-item[data-pending-delete="true"]
@@ -6487,7 +6498,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__conversation-actions {
   position: absolute;
   top: 50%;
-  right: 4px;
+  right: var(--agent-gui-conversation-actions-inset);
   z-index: 1;
   display: inline-flex;
   align-items: center;
@@ -8419,11 +8430,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   white-space: nowrap;
 }
 
-/* Media, tables, rules, and explicit line breaks cannot collapse into one
-   text line — drop them from the preview entirely. */
+/* Standalone media, tables, rules, and explicit line breaks cannot collapse
+   into one text line — drop them from the preview entirely. MentionPill owns
+   its nested image icon, which remains part of the inline mention preview. */
 .agent-gui-node__composer-queued-prompt-text
   .agent-gui-node__composer-queued-prompt-markdown
-  :is(img, video, table, hr, br, input) {
+  :is(img, video, table, hr, br, input):not([data-slot="mention-pill"] *) {
   display: none;
 }
 
@@ -8432,20 +8444,34 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   width: max-content;
   max-width: min(100%, var(--agent-mention-max-width, 16rem));
   color: inherit;
-  vertical-align: baseline;
+  vertical-align: middle;
 }
 
+/* Entity mentions wrap the shared MentionPill in an interactive link. Keep
+   that link layout-only so the pill remains the single owner of its visual
+   box; otherwise the wrapper's padding and offset create a second pill around
+   it and push adjacent queued mentions apart. */
 .agent-gui-node__composer-queued-prompt-markdown
   [data-agent-file-mention="true"].tsh-agent-object-token--entity {
   color: inherit;
-  top: 3px;
+  top: 0;
+  gap: 0;
   max-width: min(100%, var(--agent-mention-max-width, 16rem));
-  min-height: 24px;
-  padding: 2px 4px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  line-height: 20px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  line-height: inherit;
   transition: none;
+}
+
+.agent-gui-node__composer-queued-prompt-markdown
+  [data-agent-file-mention="true"].tsh-agent-object-token--file,
+.agent-gui-node__composer-queued-prompt-markdown
+  [data-agent-file-mention="true"].tsh-agent-object-token--entity
+  > [data-slot="mention-pill"] {
+  top: 0;
+  vertical-align: middle;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
@@ -9494,6 +9520,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--text-tertiary);
   transition:
     border-color 140ms ease,
+    outline-color 140ms ease,
     background-color 140ms ease,
     color 140ms ease,
     opacity 140ms ease,
@@ -9502,14 +9529,15 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__provider-rail-tile:not([data-selected="true"])
   .agent-gui-node__provider-rail-avatar {
-  opacity: 0.38;
+  opacity: 1;
 }
 
-/* "Beta" tag straddling the selected icon's bottom border: its centerline sits
-   on the selected-state stroke, horizontally centered on the icon. */
+/* "Beta" tag straddling the selected icon's stroke: its centerline sits on
+   the avatar's outer edge (the stroke is centered there with a -1px
+   outline offset), horizontally centered on the icon. */
 .agent-gui-node__provider-rail-beta-badge {
   position: absolute;
-  top: calc(100% - 1px);
+  top: 100%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 2;
@@ -9528,11 +9556,15 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--text-primary);
 }
 
+/* Selected stroke floats 1px outside the 28px icon container: a 2px outline
+   centered on the avatar's outer edge (-1px offset) leaves exactly 1px of
+   transparent gap between the container and the stroke's inner edge. */
 .agent-gui-node__provider-rail-tile[data-selected="true"]
   .agent-gui-node__provider-rail-avatar {
-  border-color: var(--brand-primary, var(--tutti-purple));
+  border-color: transparent;
   background: color-mix(in srgb, var(--background-fronted) 80%, white);
-  box-shadow: 0 0 0 1px color-mix(in srgb, white 45%, transparent);
+  outline: 2px solid var(--brand-primary, var(--tutti-purple));
+  outline-offset: -1px;
   color: var(--brand-primary, var(--tutti-purple));
 }
 

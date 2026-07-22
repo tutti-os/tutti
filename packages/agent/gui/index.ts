@@ -18,6 +18,23 @@ export type {
 } from "./AgentGUI";
 export type { AgentGUIComposerAppendRequest } from "./agent-gui/agentGuiNode/controller/useAgentGUIComposerAppendRequest";
 export {
+  createAgentStatusController,
+  selectAgentStatusControllerSnapshot,
+  type AgentStatusController,
+  type AgentStatusControllerOptions,
+  type AgentStatusControllerSnapshot,
+  type AgentStatusFrame,
+  type AgentStatusQuery,
+  type AgentStatusRequestPhase,
+  type AgentStatusRequestReason,
+  type AgentStatusSelectionKey,
+  type AgentStatusSectionState,
+  type AgentStatusSource,
+  type AgentStatusSourceError,
+  type AgentStatusStreamObserver,
+  type AgentStatusValue
+} from "./agent-gui/agentGuiNode/controller/AgentStatusController";
+export {
   AgentHandoffMenu,
   type AgentHandoffMenuLabels,
   type AgentHandoffMenuProps
@@ -146,6 +163,16 @@ export type {
   AgentActivityRuntimeUpdateSessionSettingsInput,
   AgentActivityRuntimeUpdateSessionSettingsResult
 } from "./agentActivityRuntime";
+export {
+  AGENT_CONVERSATION_RAIL_RUNTIME_METHODS,
+  createAgentConversationRailRuntime,
+  inspectAgentConversationBatchDeletionCapability
+} from "./agentConversationRailRuntime";
+export type {
+  AgentConversationBatchDeletionCapability,
+  AgentConversationRailRuntime,
+  AgentConversationRailRuntimeSource
+} from "./agentConversationRailRuntime";
 export type {
   AgentHostApi,
   AgentHostAgentTargetAuthenticatedAccount,

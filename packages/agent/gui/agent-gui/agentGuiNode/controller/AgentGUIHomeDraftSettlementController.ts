@@ -1,4 +1,5 @@
 import {
+  selectEngineHasVisibleQueuedSubmit,
   selectPendingActivations,
   selectPendingSubmitsForSession,
   type AgentSessionEngine,
@@ -64,10 +65,9 @@ export class AgentGUIHomeDraftSettlementController {
           activation.status === "confirmed"
             ? clearSubmittedDraftIfUnchanged({ drafts, snapshot })
             : restoreFailedAgentGUIHomeDraft({
-                agentSessionId: activation.agentSessionId,
-                content: activation.content,
                 draftKey: snapshot.sourceScopeKey,
-                drafts
+                drafts,
+                submittedDraft: snapshot.content
               })
         );
         delete this.snapshots[clientSubmitId];
@@ -91,13 +91,22 @@ export class AgentGUIHomeDraftSettlementController {
       ) {
         continue;
       }
+      if (
+        submit.status === "failed" &&
+        selectEngineHasVisibleQueuedSubmit(
+          state,
+          submit.agentSessionId,
+          clientSubmitId
+        )
+      ) {
+        continue;
+      }
       this.applyDraftUpdate((drafts) =>
         submit.status === "failed"
           ? restoreFailedAgentGUIHomeDraft({
-              agentSessionId: submit.agentSessionId,
-              content: submit.content,
               draftKey: snapshot.sourceScopeKey,
-              drafts
+              drafts,
+              submittedDraft: snapshot.content
             })
           : clearSubmittedDraftIfUnchanged({ drafts, snapshot })
       );

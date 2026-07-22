@@ -161,12 +161,25 @@ export class WorkspaceAppCenterController extends WorkspaceAppCenterControllerSt
     const previousJobIds = new Set(
       this.store.factoryJobs.map((job) => job.jobId)
     );
+    const clientSubmitId = (
+      this.dependencies.createClientSubmitId?.() ??
+      globalThis.crypto.randomUUID()
+    ).trim();
+    if (!clientSubmitId) {
+      this.setOperationError(new Error("client submit id is required"), {
+        operation: "app_factory.create",
+        uiAction: "create_factory_job",
+        workspaceId: input.workspaceId
+      });
+      return;
+    }
     try {
       const snapshot =
         await this.dependencies.gateway.createWorkspaceAppFactoryJob(
           input.workspaceId,
           {
             agentTargetId: input.agentTargetId,
+            clientSubmitId,
             displayName: input.displayName,
             ...(input.model?.trim() ? { model: input.model.trim() } : {}),
             ...(input.permissionModeId?.trim()

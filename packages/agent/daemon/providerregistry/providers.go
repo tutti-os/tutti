@@ -39,7 +39,7 @@ func cursorDescriptor() ProviderDescriptor {
 			// Cursor exposes its account-scoped model catalog from ACP session/new,
 			// so an empty composer needs a no-prompt hidden session before the first
 			// visible conversation can choose a non-default model.
-			ModelSelection: true, LiveModelDiscovery: LiveModelDiscoveryDescriptor{Kind: LiveModelDiscoveryKindRuntimeSession, HiddenProbe: true, AccountScoped: true}, Capabilities: []string{CapabilityImageInput, CapabilityModelImageInputRequired, CapabilityInterrupt, CapabilityPlanMode}, PermissionConfigurable: true, DefaultPermissionModeID: "agent",
+			ModelSelection: true, LiveModelDiscovery: LiveModelDiscoveryDescriptor{Kind: LiveModelDiscoveryKindRuntimeSession, HiddenProbe: true, AccountScoped: true}, Capabilities: []string{CapabilityImageInput, CapabilityModelImageInputRequired, CapabilityInterrupt, CapabilityPlanMode, CapabilityModelSwitch}, PermissionConfigurable: true, DefaultPermissionModeID: "agent",
 			PermissionModes: []PermissionModeDescriptor{{ID: "read-only", Semantic: "ask-before-write"}, {ID: "agent", Semantic: "auto"}, {ID: "full-access", Semantic: "full-access"}}, ConfigOptionIDs: ComposerConfigOptionIDs{Model: "model"},
 			SlashCommandPolicy: SlashCommandPolicyDescriptor{
 				FallbackCommands:            []string{"plan"},
@@ -70,7 +70,8 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 		},
 		ComposerProfile: ComposerProfileDescriptor{
 			ModelSelection: true, ModelCatalog: ModelCatalogKindTuttiCLI, ReasoningEffort: true, ReasoningEffortOptions: ReasoningEffortOptionsModelCatalog, DefaultReasoningEffort: "high", Speed: true,
-			Capabilities: []string{CapabilityImageInput, CapabilitySkills, CapabilityCompact, CapabilityTokenUsage, CapabilityRateLimits, CapabilityPlanMode, CapabilityInterrupt, CapabilityActiveTurnGuidance, CapabilityModelPlanBinding}, PermissionConfigurable: true, DefaultPermissionModeID: "auto",
+			SpeedValues: []string{"standard", "fast"}, DefaultSpeed: "standard",
+			Capabilities: []string{CapabilityImageInput, CapabilitySkills, CapabilityCompact, CapabilityTokenUsage, CapabilityRateLimits, CapabilityPlanMode, CapabilityInterrupt, CapabilityActiveTurnGuidance, CapabilityModelSwitch, CapabilityModelPlanBinding}, PermissionConfigurable: true, DefaultPermissionModeID: "auto",
 			PermissionModes: []PermissionModeDescriptor{{ID: "read-only", Semantic: "ask-before-write"}, {ID: "auto", Semantic: "auto"}, {ID: "full-access", Semantic: "full-access"}}, ConfigOptionIDs: ComposerConfigOptionIDs{Model: "model", Reasoning: "reasoning_effort", Speed: "service_tier", Permission: "mode"},
 		},
 		Target:  TargetDescriptor{ID: TuttiAgentTargetID, LaunchRefType: TargetLaunchRefTypeLocalCLI, Enabled: false, SortOrder: 40},

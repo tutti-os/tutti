@@ -173,7 +173,6 @@ button {
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
-  -webkit-backdrop-filter: none;
   backdrop-filter: none;
   box-shadow: none;
   transition:
@@ -237,7 +236,6 @@ button {
   background: var(--background-fronted);
   color: var(--text-primary);
   box-shadow: none;
-  -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 .nav.stuck .nav-btn.on::after,

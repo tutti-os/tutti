@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/modelcatalog"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
 
@@ -225,29 +226,7 @@ func readCodexModelListResponse(scanner *bufio.Scanner) ([]AgentModelOption, err
 }
 
 func parseCodexModelListLine(line []byte) ([]AgentModelOption, bool, error) {
-	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(line, &payload); err != nil {
-		return nil, false, nil
-	}
-	if !codexRPCIDMatches(payload["id"], "2") {
-		return nil, false, nil
-	}
-	if rawError, ok := payload["error"]; ok && string(rawError) != "null" {
-		return nil, true, errors.New(extractCodexRPCError(rawError))
-	}
-	var result struct {
-		Data []json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(payload["result"], &result); err != nil {
-		return nil, true, fmt.Errorf("parse codex model/list result: %w", err)
-	}
-	models := make([]AgentModelOption, 0, len(result.Data))
-	for _, rawModel := range result.Data {
-		if model, ok := normalizeCodexModel(rawModel); ok {
-			models = append(models, model)
-		}
-	}
-	return models, true, nil
+	return modelcatalog.ParseCodexModelListLine(line, "2")
 }
 
 func codexRPCIDMatches(raw json.RawMessage, want string) bool {
@@ -274,83 +253,4 @@ func extractCodexRPCError(raw json.RawMessage) string {
 		return strings.TrimSpace(object.Message)
 	}
 	return "unknown codex app-server RPC error"
-}
-
-func normalizeCodexModel(raw json.RawMessage) (AgentModelOption, bool) {
-	var object map[string]any
-	if err := json.Unmarshal(raw, &object); err != nil {
-		return AgentModelOption{}, false
-	}
-	id := stringMapValue(object, "model")
-	if id == "" {
-		id = stringMapValue(object, "id")
-	}
-	if id == "" {
-		return AgentModelOption{}, false
-	}
-	displayName := stringMapValue(object, "displayName")
-	if displayName == "" {
-		displayName = stringMapValue(object, "display_name")
-	}
-	if displayName == "" {
-		displayName = id
-	}
-	reasoningEffortsValue, reasoningEffortsAdvertised := object["supportedReasoningEfforts"]
-	if !reasoningEffortsAdvertised {
-		reasoningEffortsValue, reasoningEffortsAdvertised = object["supported_reasoning_efforts"]
-	}
-	return AgentModelOption{
-		ID:                         id,
-		DisplayName:                displayName,
-		Description:                stringMapValue(object, "description"),
-		DefaultReasoningEffort:     firstNonEmptyString(stringMapValue(object, "defaultReasoningEffort"), stringMapValue(object, "default_reasoning_effort")),
-		IsDefault:                  boolMapValue(object, "isDefault") || boolMapValue(object, "is_default"),
-		ReasoningEffortsAdvertised: reasoningEffortsAdvertised,
-		SupportedReasoningEfforts:  normalizeCodexReasoningEfforts(reasoningEffortsValue),
-	}, true
-}
-
-func normalizeCodexReasoningEfforts(value any) []AgentModelReasoningEffortOption {
-	rawOptions, ok := value.([]any)
-	if !ok {
-		return nil
-	}
-	options := make([]AgentModelReasoningEffortOption, 0, len(rawOptions))
-	seen := make(map[string]struct{}, len(rawOptions))
-	for _, rawOption := range rawOptions {
-		var option AgentModelReasoningEffortOption
-		switch typed := rawOption.(type) {
-		case string:
-			option.Value = strings.TrimSpace(typed)
-		case map[string]any:
-			option.Value = firstNonEmptyString(
-				stringMapValue(typed, "reasoningEffort"),
-				stringMapValue(typed, "effort"),
-				stringMapValue(typed, "value"),
-			)
-			option.Description = stringMapValue(typed, "description")
-		}
-		if option.Value == "" {
-			continue
-		}
-		if _, exists := seen[option.Value]; exists {
-			continue
-		}
-		seen[option.Value] = struct{}{}
-		options = append(options, option)
-	}
-	return options
-}
-
-func stringMapValue(object map[string]any, key string) string {
-	value, ok := object[key].(string)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(value)
-}
-
-func boolMapValue(object map[string]any, key string) bool {
-	value, ok := object[key].(bool)
-	return ok && value
 }

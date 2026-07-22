@@ -17,11 +17,23 @@ describe("AgentGUIConversationRailItem CSS composition", () => {
     expect(railItemStyles).toContain(
       "--agent-gui-conversation-actions-width: 72px;"
     );
+    expect(railItemStyles).toContain(
+      "--agent-gui-conversation-actions-inset: 4px;"
+    );
+    expect(railItemStyles).toContain(
+      "--agent-gui-conversation-actions-gap: 8px;"
+    );
+    expect(railItemStyles).toContain(
+      "gap: var(--agent-gui-conversation-actions-gap);"
+    );
     expect(railItemStyles).toMatch(
       /conversation-item:has\([\s\S]*?conversation-open-window-button[\s\S]*?--agent-gui-conversation-actions-width: 96px;/
     );
+    expect(railItemStyles).toMatch(
+      /padding-right:\s*calc\(\s*var\(--agent-gui-conversation-actions-width\)\s*\+\s*var\(--agent-gui-conversation-actions-inset\)\s*\);/
+    );
     expect(railItemStyles).toContain(
-      "padding-right: calc(var(--agent-gui-conversation-actions-width) + 24px);"
+      "right: var(--agent-gui-conversation-actions-inset);"
     );
     expect(railItemStyles).toContain(
       "min-width: var(--agent-gui-conversation-actions-width);"

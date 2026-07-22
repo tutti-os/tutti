@@ -247,6 +247,7 @@ export interface WorkspaceAppCenterGateway {
     workspaceId: string,
     input: {
       agentTargetId: string;
+      clientSubmitId: string;
       displayName: string;
       model?: string;
       permissionModeId?: string;

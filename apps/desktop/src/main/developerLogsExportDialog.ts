@@ -146,6 +146,7 @@ export async function exportDeveloperLogsToDefaultDownloadsPathAndNotify(
   deps: DeveloperLogsExportNotifyDependencies
 ): Promise<ExportDeveloperLogsResult> {
   const result = await deps.service.exportLogs({
+    includeAgentSessions: deps.exportInput.includeAgentSessions,
     scope: deps.exportInput.scope
   });
 

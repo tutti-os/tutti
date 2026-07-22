@@ -47,6 +47,7 @@ import {
 import { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center/services/workspaceAppCenterService.interface.ts";
 import { createDesktopAgentGeneratedFileMentionProvider } from "@renderer/features/workspace-agent/services/createDesktopAgentGeneratedFileMentionProvider.ts";
 import { IWorkspaceFileManagerService } from "../../../workspace-file-manager/services/workspaceFileManagerService.interface.ts";
+import { IWorkspaceFilePreviewSurfaceHost } from "../../../workspace-file-preview/services/workspaceFilePreviewSurfaceHost.interface.ts";
 import { createDesktopWorkspaceFileReferenceAdapter } from "../../../workspace-file-manager/services/createDesktopWorkspaceFileReferenceAdapter.ts";
 import { IWorkspaceUserProjectService } from "../../../workspace-user-project/services/workspaceUserProjectService.interface.ts";
 import { confirmWorkspaceWindowClose } from "./workspaceWindowCloseCoordinator.ts";
@@ -184,6 +185,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     workspaceAgentPromptSessionService: WorkspaceAgentPromptSessionService,
     appCenterService: IWorkspaceAppCenterService,
     workspaceFileManagerService: IWorkspaceFileManagerService,
+    workspaceFilePreviewSurfaceHost: IWorkspaceFilePreviewSurfaceHost,
     workspaceUserProjectService: IWorkspaceUserProjectService
   ) {
     const repository = externalDependencies.snapshotRepository;
@@ -205,6 +207,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       hostWindowApi: externalDependencies.hostWindowApi,
       hostWorkspaceApi: externalDependencies.hostWorkspaceApi,
       workspaceFileManagerService,
+      workspaceFilePreviewSurfaceHost,
       workspaceUserProjectService,
       workspaceAgentActivityService,
       workspaceAgentPromptSessionService,
@@ -773,7 +776,8 @@ IWorkspaceAgentPromptSessionService(
 );
 IWorkspaceAppCenterService(WorkspaceWorkbenchHostService, undefined, 7);
 IWorkspaceFileManagerService(WorkspaceWorkbenchHostService, undefined, 8);
-IWorkspaceUserProjectService(WorkspaceWorkbenchHostService, undefined, 9);
+IWorkspaceFilePreviewSurfaceHost(WorkspaceWorkbenchHostService, undefined, 9);
+IWorkspaceUserProjectService(WorkspaceWorkbenchHostService, undefined, 10);
 
 function createWorkspaceWorkbenchPartition(
   workspaceId: string

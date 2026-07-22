@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -58,7 +59,6 @@ import type {
   ReferenceLocateTarget,
   ReferenceNode
 } from "../../../contracts/referenceSource.ts";
-import type { ReferenceProvenanceFilter } from "../../../contracts/referenceProvenance.ts";
 import type {
   WorkspaceFileReference,
   WorkspaceFileReferenceCopy
@@ -103,8 +103,6 @@ export interface ReferenceSourcePickerProps {
    */
   onConfirmBundles?: (result: ReferenceGroupedSelection) => void;
   open: boolean;
-  provenanceFilter?: ReferenceProvenanceFilter | null;
-  provenanceFilterControl?: ReactNode;
   purpose?: "directory" | "reference";
   workspaceId: string;
 }
@@ -177,8 +175,6 @@ export function ReferenceSourcePicker({
   onConfirm,
   onConfirmBundles,
   open,
-  provenanceFilter = null,
-  provenanceFilterControl,
   purpose = "reference",
   resolveEntryIconUrl,
   resolveOpenWithApplicationIcon,
@@ -189,15 +185,19 @@ export function ReferenceSourcePicker({
     aggregator,
     workspaceId,
     open,
-    workspaceRootGroupLabel: copy.t("referencePicker.workspaceRootGroup"),
     initialTarget,
     isNodeSelectable,
     onClose,
     onConfirm,
     onConfirmBundles,
-    provenanceFilter: purpose === "directory" ? null : provenanceFilter,
+    searchResultKind: purpose === "directory" ? "folder" : "file",
     selectionMode: purpose === "directory" ? "single" : "multiple"
   });
+  const requestClose = useCallback(() => {
+    if (!view.isConfirming) {
+      onClose();
+    }
+  }, [onClose, view.isConfirming]);
   const [createDirectoryDialog, setCreateDirectoryDialog] = useState<{
     errorMessage: string | null;
     name: string;
@@ -235,7 +235,7 @@ export function ReferenceSourcePicker({
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
-      onClose();
+      requestClose();
     };
     document.addEventListener("keydown", handleEscapeKeyDown, {
       capture: true
@@ -245,7 +245,7 @@ export function ReferenceSourcePicker({
         capture: true
       });
     };
-  }, [onClose, open]);
+  }, [open, requestClose]);
 
   useEffect(() => {
     if (!open) {
@@ -491,14 +491,14 @@ export function ReferenceSourcePicker({
     }
     event.preventDefault();
     event.stopPropagation();
-    onClose();
+    requestClose();
   };
 
   const pickerDialog = (
     <div
       className="nodrag fixed inset-0 grid place-items-center bg-[var(--backdrop)] px-3 py-4 backdrop-blur-md [-webkit-app-region:no-drag] sm:px-6 sm:py-8"
       style={{ zIndex: "var(--z-panel)" }}
-      onClick={onClose}
+      onClick={requestClose}
       onKeyDownCapture={handleReferencePickerKeyDownCapture}
     >
       <Card
@@ -519,10 +519,11 @@ export function ReferenceSourcePicker({
             </CardTitle>
             <Button
               aria-label={copy.t("actions.cancel")}
+              disabled={view.isConfirming}
               size="icon-sm"
               type="button"
               variant="ghost"
-              onClick={onClose}
+              onClick={requestClose}
             >
               <CloseIcon size={16} />
             </Button>
@@ -608,7 +609,6 @@ export function ReferenceSourcePicker({
                         onToggle={toggleFilter}
                       />
                     ) : null}
-                    {purpose === "reference" ? provenanceFilterControl : null}
                     {purpose === "directory" &&
                     view.canCreateDirectory &&
                     fileManagerCopy ? (
@@ -850,9 +850,15 @@ export function ReferenceSourcePicker({
             count: view.selectionCount
           })}
           disabled={view.selectionCount === 0}
+          errorMessage={
+            view.confirmError
+              ? (fileManagerCopy?.t("unknownErrorMessage") ??
+                copy.t("referencePicker.loadError"))
+              : null
+          }
           loading={view.isConfirming}
           selection={view.selection}
-          onClose={onClose}
+          onClose={requestClose}
           onConfirm={() => void view.confirm()}
         />
       </Card>
@@ -929,11 +935,11 @@ export function ReferenceSourceContentPane({
     aggregator,
     workspaceId,
     open: true,
-    workspaceRootGroupLabel: copy.t("referencePicker.workspaceRootGroup"),
     initialTarget,
     isNodeSelectable: () => false,
     onClose: noopVoid,
-    onConfirm: noopVoid
+    onConfirm: noopVoid,
+    searchResultKind: "file"
   });
   const hasVisibleContent = view.isQuery
     ? view.searchResults.length > 0
@@ -1389,13 +1395,26 @@ function SourceSidebar({
             (view.sidebarHasMoreBySource[tab.sourceId] ?? false);
           return (
             <div key={tab.sourceId} className="flex flex-col gap-0.5">
-              {/* 一级源:Finder 风格分区标题,无箭头、不可折叠。 */}
-              <p
-                className="px-2 pt-1.5 pb-0.5 text-[11px] font-semibold text-[var(--text-tertiary)]"
+              {/* 一级源:Finder 风格分区标题,同时作为源根入口。 */}
+              <button
+                aria-current={
+                  view.activeSourceId === tab.sourceId &&
+                  view.selectedGroupKey == null
+                    ? "true"
+                    : undefined
+                }
+                className={cn(
+                  "px-2 pt-1.5 pb-0.5 text-left text-[11px] font-semibold text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]",
+                  view.activeSourceId === tab.sourceId &&
+                    view.selectedGroupKey == null &&
+                    "text-[var(--text-primary)]"
+                )}
                 data-autofit-label
+                type="button"
+                onClick={() => view.selectSourceRoot(tab.sourceId)}
               >
                 {tab.label}
-              </p>
+              </button>
               {groups.length === 0 ? (
                 view.isLoadingTabs ? (
                   <p className="px-2 py-1 text-[12px] text-[var(--text-tertiary)]">
@@ -1501,7 +1520,7 @@ function SearchResultRow({
   onSingleSelect: (node: ReferenceNode) => void;
   onToggle: (node: ReferenceNode) => void;
 }): JSX.Element {
-  const contextLabel = node.contextLabel ?? node.ref.nodeId;
+  const contextLabel = node.contextLabel?.trim() || null;
   const active = selected || (focused && selectable);
   return (
     <div
@@ -1540,11 +1559,13 @@ function SearchResultRow({
               {node.displayName}
             </span>
           </FullTextTooltip>
-          <FullTextTooltip content={contextLabel}>
-            <span className="block truncate text-[11px] text-[var(--text-secondary)]">
-              {contextLabel}
-            </span>
-          </FullTextTooltip>
+          {contextLabel ? (
+            <FullTextTooltip content={contextLabel}>
+              <span className="block truncate text-[11px] text-[var(--text-secondary)]">
+                {contextLabel}
+              </span>
+            </FullTextTooltip>
+          ) : null}
         </span>
       </div>
       {selectable ? (
@@ -1608,8 +1629,6 @@ function toPreviewSurfaceState(
       };
     case "text":
       return { content: previewState.content, entry: node, status: "text" };
-    case "html":
-      return { content: previewState.content, entry: node, status: "html" };
     case "readonly":
       return {
         entry: node,
@@ -1715,14 +1734,9 @@ function PreviewInfoPane({
           <WorkspaceFilePreviewSurface<ReferenceNode>
             directoryMessage={copy.t("referencePicker.previewFolder")}
             emptyMessage={copy.t("referencePicker.emptyPreview")}
-            frameClassName="flex aspect-[3/2] w-full flex-col items-center justify-center overflow-hidden rounded-[8px] border border-[var(--line-2,var(--border-2))] bg-[var(--transparency-block)] p-0 text-center"
             imageAlt={(entry) => entry.displayName}
-            htmlFrameClassName="items-stretch justify-stretch bg-white"
-            htmlTitle={(entry) => entry.displayName}
-            imageFrameClassName="p-3"
             loadingIndicator={<Spinner size={16} />}
             loadingMessage={copy.t("referencePicker.previewLoading")}
-            messageClassName="mx-auto max-w-[24ch] text-[13px] leading-5 text-[var(--text-secondary)] [overflow-wrap:anywhere]"
             renderIcon={(entry) => (
               <ReferenceNodeIcon
                 frameClassName="size-10"
@@ -1732,8 +1746,7 @@ function PreviewInfoPane({
               />
             )}
             state={toPreviewSurfaceState(node, previewState, copy)}
-            textClassName="h-full w-full overflow-auto p-3 text-left text-[11px] leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]"
-            textFrameClassName="items-stretch justify-stretch"
+            variant="compact"
           />
           <div className="space-y-1">
             <p className="truncate text-[15px] font-semibold">
@@ -1833,6 +1846,7 @@ function Footer({
   confirmLabel,
   countLabel,
   disabled,
+  errorMessage = null,
   loading = false,
   selection,
   onClose,
@@ -1842,6 +1856,7 @@ function Footer({
   confirmLabel: string;
   countLabel: string;
   disabled: boolean;
+  errorMessage?: string | null;
   loading?: boolean;
   selection: readonly ReferenceNode[];
   onClose: () => void;
@@ -1856,21 +1871,32 @@ function Footer({
   return (
     <div className="flex items-center justify-between gap-3 border-t border-[var(--line-1)] px-4 py-3 sm:px-6">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="shrink-0 text-[13px] text-[var(--text-secondary)]">
-          {countLabel}
-        </span>
-        {selection.slice(0, 2).map((node) => (
-          <Badge
-            key={nodeRefKey(node.ref)}
-            className="min-w-0 max-w-[12rem]"
-            variant="secondary"
+        {errorMessage ? (
+          <span
+            className="truncate text-[13px] text-[var(--state-danger)]"
+            role="alert"
           >
-            <FullTextTooltip content={node.displayName}>
-              <span className="truncate">{node.displayName}</span>
-            </FullTextTooltip>
-          </Badge>
-        ))}
-        {selection.length > 2 ? (
+            {errorMessage}
+          </span>
+        ) : (
+          <>
+            <span className="shrink-0 text-[13px] text-[var(--text-secondary)]">
+              {countLabel}
+            </span>
+            {selection.slice(0, 2).map((node) => (
+              <Badge
+                key={nodeRefKey(node.ref)}
+                className="min-w-0 max-w-[12rem]"
+                variant="secondary"
+              >
+                <FullTextTooltip content={node.displayName}>
+                  <span className="truncate">{node.displayName}</span>
+                </FullTextTooltip>
+              </Badge>
+            ))}
+          </>
+        )}
+        {!errorMessage && selection.length > 2 ? (
           <span
             className="relative inline-flex shrink-0"
             onBlur={() => setSelectionTooltipOpen(false)}
@@ -1907,7 +1933,12 @@ function Footer({
         ) : null}
       </div>
       <div className="flex items-center gap-2">
-        <Button type="button" variant="secondary" onClick={onClose}>
+        <Button
+          disabled={loading}
+          type="button"
+          variant="secondary"
+          onClick={onClose}
+        >
           {cancelLabel}
         </Button>
         <Button

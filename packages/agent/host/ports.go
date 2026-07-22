@@ -23,6 +23,10 @@ type CanonicalTurnStore interface {
 	ListSessionInteractions(context.Context, storesqlite.ListSessionInteractionsInput) ([]storesqlite.Interaction, error)
 }
 
+type CanonicalMessageStore interface {
+	ListSessionMessages(context.Context, storesqlite.ListSessionMessagesInput) (storesqlite.MessagePage, bool, error)
+}
+
 type CanonicalSubmitClaimStore interface {
 	PrepareSubmitClaim(context.Context, storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error)
 	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (storesqlite.SubmitClaim, bool, error)
@@ -35,6 +39,7 @@ type CanonicalSubmitClaimStore interface {
 type CanonicalStore interface {
 	CanonicalSessionStore
 	CanonicalTurnStore
+	CanonicalMessageStore
 	CanonicalSubmitClaimStore
 }
 
@@ -44,7 +49,16 @@ type CanonicalStore interface {
 type SessionManagementStore interface {
 	UpdateSessionSettings(context.Context, string, string, ComposerSettings) (storesqlite.Session, bool, error)
 	UpdateSessionPinned(context.Context, string, string, bool) (storesqlite.Session, bool, error)
-	DeleteSession(context.Context, string, string) (bool, error)
+}
+
+// SessionBatchManagementStore is the atomic canonical mutation boundary for
+// project/section deletion. It is separate from single-session management so
+// runtimes can advertise batch support only when the backing store implements
+// one transaction rather than a renderer-side request loop.
+type SessionBatchManagementStore interface {
+	PlanClearSessions(context.Context, string) (storesqlite.DeleteSessionsPlan, error)
+	PlanDeleteSessions(context.Context, storesqlite.DeleteSessionsBatchInput) (storesqlite.DeleteSessionsPlan, error)
+	DeleteSessionsBatch(context.Context, storesqlite.DeleteSessionsBatchInput) (storesqlite.DeleteSessionsBatchResult, error)
 }
 
 // SessionPurgeStore is the narrow permanent-removal boundary. Retention and

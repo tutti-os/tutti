@@ -29,7 +29,11 @@ test("host header window actions expose quick layout and resize", () => {
       onPointerDown: () => {}
     },
     genie: { minimizeNodeToAnchor: (_nodeID, minimize) => minimize?.() },
+    isDragging: false,
+    isFocused: false,
+    isResizing: false,
     node,
+    renderRevision: {},
     surfaceSize: controller.getSnapshot().surfaceSize
   });
 
@@ -43,6 +47,12 @@ test("host header window actions expose quick layout and resize", () => {
 
   actions.resize({ x: 360, y: 80, width: 640, height: 420 });
   assert.deepEqual(controller.getSnapshot().nodes[0]?.frame, {
+    x: 360,
+    y: 80,
+    width: 640,
+    height: 420
+  });
+  assert.deepEqual(actions.getFrame(), {
     x: 360,
     y: 80,
     width: 640,

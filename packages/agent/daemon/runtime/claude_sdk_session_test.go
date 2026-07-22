@@ -203,6 +203,17 @@ func TestClaudeCodeSDKAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(
 	if !containsString(transport.spec.Env, "SESSION_ENV=1") || !containsString(transport.spec.Env, "HOOK_ENV=1") {
 		t.Fatalf("Env = %#v, want session and hook env", transport.spec.Env)
 	}
+	requests := conn.sentRequests()
+	if len(requests) != 1 || requests[0].Type != "start" {
+		t.Fatalf("sidecar requests = %#v, want start", requests)
+	}
+	if requests[0].Payload["cwd"] != "/prepared/claude-sdk" {
+		t.Fatalf("start payload cwd = %#v, want prepared cwd", requests[0].Payload["cwd"])
+	}
+	startEnv := payloadMap(requests[0].Payload, "env")
+	if startEnv["SESSION_ENV"] != "1" || startEnv["HOOK_ENV"] != "1" {
+		t.Fatalf("start payload env = %#v, want session and hook env", startEnv)
+	}
 
 	if err := adapter.Close(context.Background(), session); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -210,7 +221,7 @@ func TestClaudeCodeSDKAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(
 	if cleanupCalls != 1 {
 		t.Fatalf("cleanup calls after close = %d, want 1", cleanupCalls)
 	}
-	requests := conn.sentRequests()
+	requests = conn.sentRequests()
 	if len(requests) == 0 || requests[len(requests)-1].Type != "close" {
 		t.Fatalf("last sidecar request = %#v, want close handshake", requests)
 	}
@@ -284,26 +295,26 @@ func TestClaudeCodeSDKAdapterStartEnablesSandboxBypassEnv(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeSDKAdapterStartSendsClaudeProviderMeta(t *testing.T) {
-	systemPromptPath := filepath.Join(t.TempDir(), "claude-system-prompt.md")
-	if err := os.WriteFile(systemPromptPath, []byte("Use Tutti CLI for issue context."), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	pluginDir := filepath.Join(t.TempDir(), "tutti-cli-plugin")
-	if err := os.MkdirAll(pluginDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
+func TestClaudeCodeSDKAdapterStartPassesPreparedClaudeMetaPathsToSidecar(t *testing.T) {
+	systemPromptPath := "/run/tsh/managed-agent/session/claude-system-prompt.md"
+	pluginDir := "/run/tsh/managed-agent/session/claude-plugin/tutti-cli"
 	conn := &scriptedClaudeSDKConnection{
 		frames: []ProcessFrame{{
 			Stdout: []byte(`{"type":"session_started","payload":{"providerSessionId":"provider-session-meta"}}` + "\n"),
 		}},
 	}
 	adapter := NewClaudeCodeSDKAdapter(&recordingClaudeSDKTransport{conn: conn})
+	adapter.SetProviderLaunchPreparer(func(_ context.Context, input ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
+		return ProviderLaunchPrepareResult{
+			Command: input.Command,
+			Env: append(append([]string(nil), input.Env...),
+				"TUTTI_CLAUDE_SYSTEM_PROMPT_FILE="+systemPromptPath,
+				"TUTTI_CLAUDE_PLUGIN_DIR="+pluginDir,
+			),
+			CWD: input.CWD,
+		}, nil
+	})
 	session := standardTestSession(ProviderClaudeCode)
-	session.Env = []string{
-		claudeSystemPromptFileEnv + "=" + systemPromptPath,
-		claudePluginDirEnv + "=" + pluginDir,
-	}
 	session.Settings = &SessionSettings{
 		Model:            "MiniMax-M2.7",
 		PermissionModeID: "default",
@@ -319,8 +330,12 @@ func TestClaudeCodeSDKAdapterStartSendsClaudeProviderMeta(t *testing.T) {
 		t.Fatalf("sent requests = %#v, want start", sent)
 	}
 	payload := sent[0].Payload
-	if got, _ := payload["systemPromptAppend"].(string); got != "Use Tutti CLI for issue context." {
-		t.Fatalf("systemPromptAppend = %q, want prompt file content", got)
+	if _, ok := payload["systemPromptAppend"]; ok {
+		t.Fatalf("systemPromptAppend = %#v, want sidecar to read the prepared file", payload["systemPromptAppend"])
+	}
+	env := payloadMap(payload, "env")
+	if env["TUTTI_CLAUDE_SYSTEM_PROMPT_FILE"] != systemPromptPath || env["TUTTI_CLAUDE_PLUGIN_DIR"] != pluginDir {
+		t.Fatalf("env = %#v, want prepared Claude metadata paths", env)
 	}
 	if got, _ := payload["planModeInstructions"].(string); !strings.Contains(got, "do not edit files") || !strings.Contains(got, "implementation plan") {
 		t.Fatalf("planModeInstructions = %#v, want Tutti plan workflow instructions", payload["planModeInstructions"])
@@ -347,43 +362,15 @@ func TestClaudeCodeSDKAdapterStartSendsClaudeProviderMeta(t *testing.T) {
 	if !ok || tools["type"] != "preset" || tools["preset"] != "claude_code" {
 		t.Fatalf("tools = %#v, want claude_code preset", payload["tools"])
 	}
-	plugins, ok := payload["plugins"].([]any)
-	if !ok || len(plugins) != 1 {
-		t.Fatalf("plugins = %#v, want local plugin dir", payload["plugins"])
-	}
-	plugin, _ := plugins[0].(map[string]any)
-	if plugin["type"] != "local" || plugin["path"] != pluginDir {
-		t.Fatalf("plugins = %#v, want local plugin dir", payload["plugins"])
+	if _, ok := payload["plugins"]; ok {
+		t.Fatalf("plugins = %#v, want sidecar to resolve the prepared plugin dir", payload["plugins"])
 	}
 	extraArgs, ok := payload["extraArgs"].(map[string]any)
-	if !ok || extraArgs["plugin-dir"] != pluginDir || extraArgs["model"] != "MiniMax-M2.7" {
-		t.Fatalf("extraArgs = %#v, want plugin-dir and custom model", payload["extraArgs"])
+	if !ok || extraArgs["model"] != "MiniMax-M2.7" {
+		t.Fatalf("extraArgs = %#v, want custom model", payload["extraArgs"])
 	}
-}
-
-func TestClaudeCodeSDKAdapterStartFailsBeforeProcessForMissingClaudeMetaFiles(t *testing.T) {
-	transport := &recordingClaudeSDKTransport{conn: &scriptedClaudeSDKConnection{}}
-	adapter := NewClaudeCodeSDKAdapter(transport)
-	session := standardTestSession(ProviderClaudeCode)
-	session.Env = []string{claudeSystemPromptFileEnv + "=" + filepath.Join(t.TempDir(), "missing.md")}
-
-	if _, err := adapter.Start(context.Background(), session); err == nil {
-		t.Fatal("Start error = nil, want missing system prompt error")
-	}
-	if transport.spec.Command != nil {
-		t.Fatalf("process spec = %#v, want no sidecar process start on invalid meta", transport.spec)
-	}
-
-	pluginTransport := &recordingClaudeSDKTransport{conn: &scriptedClaudeSDKConnection{}}
-	pluginAdapter := NewClaudeCodeSDKAdapter(pluginTransport)
-	pluginSession := standardTestSession(ProviderClaudeCode)
-	pluginSession.Env = []string{claudePluginDirEnv + "=" + filepath.Join(t.TempDir(), "missing-plugin")}
-
-	if _, err := pluginAdapter.Start(context.Background(), pluginSession); err == nil {
-		t.Fatal("Start error = nil, want missing plugin dir error")
-	}
-	if pluginTransport.spec.Command != nil {
-		t.Fatalf("process spec = %#v, want no sidecar process start on invalid plugin dir", pluginTransport.spec)
+	if _, ok := extraArgs["plugin-dir"]; ok {
+		t.Fatalf("extraArgs = %#v, want sidecar to resolve plugin-dir", extraArgs)
 	}
 }
 

@@ -114,11 +114,16 @@ export interface WorkbenchWindowHeaderContext<TData = unknown> {
   node: WorkbenchNode<TData>;
   controller: WorkbenchController<TData>;
   surfaceSize: WorkbenchSize;
+  isDragging: boolean;
+  isFocused: boolean;
+  isResizing: boolean;
   genie: {
     minimizeNodeToAnchor(nodeID: string, minimize?: () => void): void;
   };
   defaultActions: ReactNode;
   dragHandleProps: WorkbenchWindowHeaderDragHandleProps;
+  /** Stable while the non-node inputs used to build header chrome are unchanged. */
+  renderRevision: object;
 }
 
 export type WorkbenchRenderNode<TData = unknown> = (

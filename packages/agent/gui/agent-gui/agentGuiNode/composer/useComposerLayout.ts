@@ -37,7 +37,7 @@ function hasInlineOverflow(element: HTMLElement | null): boolean {
 interface UseComposerLayoutInput {
   isHeroLayout: boolean;
   inputDisabled: boolean;
-  paletteDraftPrompt: string;
+  projectMissingProbeEnabled: boolean;
   showFileMentionPalette: boolean;
   showFloatingCommandMenu: boolean;
   previewMode: boolean;
@@ -63,7 +63,7 @@ interface UseComposerLayoutInput {
 export function useComposerLayout({
   isHeroLayout,
   inputDisabled,
-  paletteDraftPrompt,
+  projectMissingProbeEnabled,
   showFileMentionPalette,
   showFloatingCommandMenu,
   previewMode,
@@ -92,6 +92,7 @@ export function useComposerLayout({
   const showHeroProjectSelector = isHeroLayout;
   const showProjectRow = isHeroLayout;
   const showProjectMissingProbe =
+    projectMissingProbeEnabled &&
     !showProjectRow &&
     Boolean(composerSettings.projectLocked) &&
     selectedProjectPath !== "" &&
@@ -267,27 +268,23 @@ export function useComposerLayout({
       );
     };
 
-    measure();
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(measure);
     resizeObserver?.observe(inputArea);
     resizeObserver?.observe(editor);
-    for (const child of Array.from(inputArea.querySelectorAll("*"))) {
-      resizeObserver?.observe(child);
+    for (const attachmentArea of Array.from(
+      inputArea.querySelectorAll(
+        '[data-testid="agent-gui-composer-image-drafts"], [data-testid="agent-gui-composer-file-drafts"]'
+      )
+    )) {
+      resizeObserver?.observe(attachmentArea);
     }
-    window.addEventListener("resize", measure);
     return () => {
       resizeObserver?.disconnect();
-      window.removeEventListener("resize", measure);
     };
-  }, [
-    draftImages.length,
-    draftLargeTexts.length,
-    isHeroLayout,
-    paletteDraftPrompt
-  ]);
+  }, [draftImages.length, draftLargeTexts.length, isHeroLayout]);
   const composerStyle = useMemo<CSSProperties | undefined>(
     () =>
       isHeroLayout

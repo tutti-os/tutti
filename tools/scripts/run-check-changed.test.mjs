@@ -16,6 +16,9 @@ import {
   isAgentActivityRuntimeBoundaryRelevant,
   isRendererBoundaryRelevant
 } from "./repository-checks.mjs";
+import { createIsolatedGitEnvironment } from "./git-environment.mjs";
+
+isolateProcessGitEnvironment(createIsolatedGitEnvironment(tmpdir()));
 
 test("parseCliArgs rejects unknown and invalid options", () => {
   assert.throws(() => parseCliArgs(["--push-reddy"]), /unknown option/u);
@@ -251,7 +254,17 @@ test("printSummary includes rerun hint for failures", () => {
 function runFixtureGit(workspaceRoot, args) {
   const result = spawnSync("git", args, {
     cwd: workspaceRoot,
-    encoding: "utf8"
+    encoding: "utf8",
+    env: createIsolatedGitEnvironment(workspaceRoot)
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
+}
+
+function isolateProcessGitEnvironment(nextEnvironment) {
+  for (const name of Object.keys(process.env)) {
+    if (!Object.hasOwn(nextEnvironment, name)) {
+      delete process.env[name];
+    }
+  }
+  Object.assign(process.env, nextEnvironment);
 }

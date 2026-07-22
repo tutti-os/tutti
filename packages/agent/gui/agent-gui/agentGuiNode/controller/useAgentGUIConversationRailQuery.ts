@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useAgentActivityRuntime } from "../../../agentActivityRuntime";
+import { inspectAgentConversationBatchDeletionCapability } from "../../../agentConversationRailRuntime";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import {
@@ -7,6 +8,7 @@ import {
   type AgentGUIConversationRailQuerySnapshot
 } from "./AgentGUIConversationRailQueryController";
 import { resolveConversationRailQueryScope } from "./agentGuiConversationRailQueryTypes";
+import { reportAgentGUIConversationBatchDeletionCapabilityIncomplete } from "./agentGuiController.reporting";
 
 export interface AgentGUIConversationRailInput {
   activeConversationId: string | null;
@@ -34,6 +36,10 @@ export function useAgentGUIConversationRailQuery({
   workspaceId
 }: AgentGUIConversationRailInput) {
   const runtime = useAgentActivityRuntime();
+  const batchDeletionCapability = useMemo(
+    () => inspectAgentConversationBatchDeletionCapability(runtime),
+    [runtime]
+  );
   const engine = useMemo(
     () => runtime.getSessionEngine(workspaceId),
     [runtime, workspaceId]
@@ -52,13 +58,26 @@ export function useAgentGUIConversationRailQuery({
   );
 
   useEffect(() => {
+    if (batchDeletionCapability.partial) {
+      reportAgentGUIConversationBatchDeletionCapabilityIncomplete({
+        missingMethods: batchDeletionCapability.missingMethods,
+        runtime,
+        workspaceId
+      });
+    }
     const detach = controller.attach();
     registerInteractionLockProbe?.(controller.isInteractionLocked);
     return () => {
       registerInteractionLockProbe?.(null);
       detach();
     };
-  }, [controller, registerInteractionLockProbe]);
+  }, [
+    batchDeletionCapability,
+    controller,
+    registerInteractionLockProbe,
+    runtime,
+    workspaceId
+  ]);
   useEffect(() => {
     controller.configure({
       conversationFilter,
@@ -100,6 +119,7 @@ export function useAgentGUIConversationRailQuery({
   return useMemo(
     () => ({
       ...querySnapshot,
+      batchDeletionAvailable: !previewMode && batchDeletionCapability.available,
       isInteractionLocked: controller.isInteractionLocked,
       loadMoreSectionConversations: controller.loadMoreSectionConversations,
       railSearch: {
@@ -112,7 +132,13 @@ export function useAgentGUIConversationRailQuery({
         querySnapshot.runtimeRailResolvedScopeKey === requestedRailScopeKey,
       runtimeRailConversations: querySnapshot.runtimeRailConversations
     }),
-    [controller, querySnapshot, requestedRailScopeKey]
+    [
+      batchDeletionCapability.available,
+      controller,
+      previewMode,
+      querySnapshot,
+      requestedRailScopeKey
+    ]
   );
 }
 

@@ -5,9 +5,65 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
+
+var ErrDeleteSessionsPlanChanged = errors.New("workspace agent session deletion plan changed")
+
+// PlanClearSessions resolves the exact canonical session set owned by one
+// workspace. Host uses this snapshot to close live runtimes before issuing the
+// same atomic batch deletion command used by scoped deletes.
+func (s *Store) PlanClearSessions(
+	ctx context.Context,
+	workspaceID string,
+) (DeleteSessionsPlan, error) {
+	if s == nil || s.db == nil {
+		return DeleteSessionsPlan{}, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return DeleteSessionsPlan{}, nil
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return DeleteSessionsPlan{}, fmt.Errorf("begin plan workspace agent sessions clear: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	sessionIDs, err := listAgentSessionIDsTx(ctx, tx, workspaceID)
+	if err != nil {
+		return DeleteSessionsPlan{}, err
+	}
+	return DeleteSessionsPlan{
+		WorkspaceID: workspaceID,
+		SessionIDs:  normalizedSessionIDs(sessionIDs),
+	}, nil
+}
+
+func (s *Store) PlanDeleteSessions(
+	ctx context.Context,
+	input DeleteSessionsBatchInput,
+) (DeleteSessionsPlan, error) {
+	if s == nil || s.db == nil {
+		return DeleteSessionsPlan{}, errors.New("workspace database is not initialized")
+	}
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	sessionIDs := normalizedSessionIDs(input.SessionIDs)
+	if workspaceID == "" || len(sessionIDs) == 0 {
+		return DeleteSessionsPlan{}, nil
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return DeleteSessionsPlan{}, fmt.Errorf("begin plan workspace agent sessions delete: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	resolved, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, sessionIDs)
+	if err != nil {
+		return DeleteSessionsPlan{}, err
+	}
+	return DeleteSessionsPlan{WorkspaceID: workspaceID, SessionIDs: normalizedSessionIDs(resolved)}, nil
+}
 
 func (s *Store) DeleteSession(
 	ctx context.Context,
@@ -85,19 +141,7 @@ func (s *Store) DeleteSessionsBatch(
 		return DeleteSessionsBatchResult{}, errors.New("workspace database is not initialized")
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
-	sessionIDs := make([]string, 0, len(input.SessionIDs))
-	seenSessionIDs := make(map[string]struct{}, len(input.SessionIDs))
-	for _, value := range input.SessionIDs {
-		sessionID := strings.TrimSpace(value)
-		if sessionID == "" {
-			continue
-		}
-		if _, exists := seenSessionIDs[sessionID]; exists {
-			continue
-		}
-		seenSessionIDs[sessionID] = struct{}{}
-		sessionIDs = append(sessionIDs, sessionID)
-	}
+	sessionIDs := normalizedSessionIDs(input.SessionIDs)
 	if workspaceID == "" || len(sessionIDs) == 0 {
 		return DeleteSessionsBatchResult{}, nil
 	}
@@ -116,6 +160,9 @@ func (s *Store) DeleteSessionsBatch(
 	removedSessionIDs, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, sessionIDs)
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
+	}
+	if expected := normalizedSessionIDs(input.ExpectedSessionIDs); len(expected) > 0 && !equalStrings(expected, normalizedSessionIDs(removedSessionIDs)) {
+		return DeleteSessionsBatchResult{}, ErrDeleteSessionsPlanChanged
 	}
 	now := unixMs(time.Now().UTC())
 	for _, agentSessionID := range sessionIDs {
@@ -147,6 +194,36 @@ func (s *Store) DeleteSessionsBatch(
 		RemovedSessions:   removedSessions,
 		RemovedSessionIDs: removedSessionIDs,
 	}, nil
+}
+
+func normalizedSessionIDs(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func deleteGoalRecordsForSessionTx(ctx context.Context, tx *sql.Tx, workspaceID string, agentSessionID string) error {

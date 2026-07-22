@@ -240,9 +240,10 @@ installation that the user confirmed. Every install action recomputes the plan
 and compares its digest before creating files or processes.
 
 The signed release is authoritative for runtime commands. Tutti persists both
-the complete signed release record and the exact signed ZIP beside the extracted
-package. Every remote-package load reverifies the Ed25519 signature against the
-configured source key, checks the ZIP's signed SHA-256 and size, derives a
+the complete signed release record (preserving its signed JSON shape) and the
+exact signed ZIP beside the extracted package. Every remote-package load
+reverifies the Ed25519 signature against the configured source key, checks the
+ZIP's signed SHA-256 and size, derives a
 canonical content identity directly from those signed ZIP bytes, and compares
 that identity and complete manifest with the active package. The copied manifest
 and digest in `installation.json` are metadata and cannot redefine authority. A

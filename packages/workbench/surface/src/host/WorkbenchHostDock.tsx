@@ -27,6 +27,8 @@ import {
   writeCachedWorkbenchNodePreviewImage
 } from "../react/useWorkbenchGenieAnimation.tsx";
 import {
+  canCreateNewWindow,
+  canCreateNewWindowInDockPopup,
   resolveWorkbenchDockEntries,
   resolveWorkbenchDockEntryClick,
   type ResolvedWorkbenchHostDockEntry
@@ -2403,7 +2405,11 @@ export function WorkbenchHostDock({
             closePopup();
           }}
           quitLabel={i18n.t("dockContextMenu.quit")}
-          showCreateNew={canCreateNewWindow(
+          showCreateNew={canCreateNewWindowInDockPopup(
+            popupEntry.entry,
+            dockContextMenuInstanceMode
+          )}
+          showCreateNewInContextMenu={canCreateNewWindow(
             popupEntry.entry,
             dockContextMenuInstanceMode
           )}
@@ -3088,20 +3094,6 @@ function resolveDockEntryInstanceMode(
 ): WorkbenchHostNodeInstanceStrategy["mode"] | undefined {
   return (
     entry.instanceMode ?? nodeDefinitions.get(entry.typeId)?.instance?.mode
-  );
-}
-
-function canCreateNewWindow(
-  entry: WorkbenchHostDockEntry,
-  instanceMode: WorkbenchHostNodeInstanceStrategy["mode"] | undefined
-): boolean {
-  const stateKind = entry.state?.kind ?? "enabled";
-  return (
-    instanceMode === "multi" &&
-    (entry.launchBehavior ?? "enabled") === "enabled" &&
-    stateKind !== "disabled" &&
-    stateKind !== "loading" &&
-    stateKind !== "unavailable"
   );
 }
 

@@ -3,6 +3,7 @@ export * from "./bare-icon-button";
 export * from "./button";
 export * from "./card";
 export * from "./checkbox";
+export * from "./combobox";
 export * from "./confirmation-dialog";
 export * from "./context-menu/context-menu";
 export * from "./date-picker";

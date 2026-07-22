@@ -2,7 +2,6 @@ import { createDecorator } from "@tutti-os/infra/di";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
-  WorkspaceFileActivationTarget,
   WorkspaceFileEntry,
   WorkspaceFileManagerI18nRuntime,
   WorkspaceFileManagerPersistedState,
@@ -27,10 +26,6 @@ export interface IWorkspaceFileManagerService {
   getSnapshotState(
     workspaceID: string
   ): WorkspaceFileManagerPersistedState | null;
-  openCanvasFilePreview(
-    workspaceID: string,
-    target: WorkspaceFileActivationTarget
-  ): Promise<boolean>;
   resolveEntryIconUrl(
     workspaceID: string,
     entry: WorkspaceFileEntry

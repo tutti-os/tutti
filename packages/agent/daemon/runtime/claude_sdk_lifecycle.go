@@ -18,10 +18,6 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	restore := strings.TrimSpace(session.ProviderSessionID) != ""
 	providerSessionID := firstNonEmpty(strings.TrimSpace(session.ProviderSessionID), newID())
 	session.ProviderSessionID = providerSessionID
-	claudeMeta, err := buildClaudeCodeSessionMeta(session)
-	if err != nil {
-		return nil, err
-	}
 	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
 		Provider:       ProviderClaudeCode,
 		AgentSessionID: session.AgentSessionID,
@@ -34,6 +30,9 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	if err != nil {
 		return nil, err
 	}
+	launchSession := session
+	launchSession.CWD = spec.CWD
+	launchSession.Env = append([]string(nil), spec.Env...)
 	conn, err := a.transport.Start(ctx, spec)
 	if err != nil {
 		cleanupPreparedLaunch(cleanup)
@@ -59,14 +58,14 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	startPayload := map[string]any{
 		"agentSessionId":    session.AgentSessionID,
 		"providerSessionId": providerSessionID,
-		"cwd":               session.CWD,
-		"env":               envListToMap(session.Env),
+		"cwd":               launchSession.CWD,
+		"env":               envListToMap(launchSession.Env),
 		"restore":           restore,
 		"permissionModeId":  session.PermissionModeID,
 		"settings":          claudeSDKSessionSettingsPayload(session),
 		"resumeCursor":      claudeSDKResumeCursorFromSession(session),
 	}
-	for key, value := range claudeMeta.sdkPayload() {
+	for key, value := range claudeCodeSDKStartOptions(session) {
 		startPayload[key] = value
 	}
 	if err := adapterSession.send(claudeSDKSidecarRequest{

@@ -369,7 +369,12 @@ func (s *claudeSDKAdapterSession) applySettingsPayload(payload map[string]any) b
 	}
 	changed := false
 	if model, ok := payload["model"].(string); ok {
-		changed = s.applyConfigOption("model", strings.TrimSpace(model)) || changed
+		previousModel := s.currentUsageModel(nil)
+		modelChanged := s.applyConfigOption("model", strings.TrimSpace(model))
+		if modelChanged {
+			s.invalidateContextUsageForModelChange(previousModel, s.currentUsageModel(nil))
+		}
+		changed = modelChanged || changed
 	}
 	if effort, ok := payload["effort"].(string); ok {
 		changed = s.applyConfigOption("effort", strings.TrimSpace(effort)) || changed
@@ -381,6 +386,16 @@ func (s *claudeSDKAdapterSession) applySettingsPayload(payload map[string]any) b
 		changed = s.applyPermissionMode(mode) || changed
 	}
 	return changed
+}
+
+func (s *claudeSDKAdapterSession) invalidateContextUsageForModelChange(previousModel string, currentModel string) {
+	if s == nil || claudeSDKCanonicalModel(previousModel) == claudeSDKCanonicalModel(currentModel) {
+		return
+	}
+	s.liveState.usage.contextUsedTokens = 0
+	s.liveState.usage.contextWindowTokens = 0
+	s.liveState.usage.contextKnown = false
+	s.liveState.usage.contextModel = ""
 }
 
 func (s *claudeSDKAdapterSession) applyPermissionMode(mode string) bool {
@@ -555,19 +570,19 @@ func claudeSDKContextWindowTokensFromValue(value any, contextModel string) int64
 		}
 		normalizedModel := strings.ToLower(strings.TrimSpace(claudeSDKCanonicalModel(contextModel)))
 		keys := sortedPayloadKeys(typed)
-		for _, key := range keys {
-			if normalizedModel != "" && claudeSDKModelKeyMatchesNormalized(key, normalizedModel) {
+		if normalizedModel != "" {
+			for _, key := range keys {
+				if !claudeSDKModelKeyMatchesNormalized(key, normalizedModel) {
+					continue
+				}
 				if total := claudeSDKContextWindowTokensFromValue(typed[key], contextModel); total > 0 {
 					return total
 				}
 			}
+			return 0
 		}
-		for _, key := range keys {
-			if normalizedModel == "" || !claudeSDKModelKeyMatchesNormalized(key, normalizedModel) {
-				if total := claudeSDKContextWindowTokensFromValue(typed[key], contextModel); total > 0 {
-					return total
-				}
-			}
+		if len(keys) == 1 {
+			return claudeSDKContextWindowTokensFromValue(typed[keys[0]], contextModel)
 		}
 	}
 	return 0
@@ -575,5 +590,13 @@ func claudeSDKContextWindowTokensFromValue(value any, contextModel string) int64
 
 func claudeSDKModelKeyMatchesNormalized(key string, normalizedModel string) bool {
 	key = strings.ToLower(strings.TrimSpace(key))
-	return key != "" && (key == normalizedModel || strings.Contains(key, normalizedModel))
+	if key == "" || normalizedModel == "" {
+		return false
+	}
+	if key == normalizedModel {
+		return true
+	}
+	key = strings.ReplaceAll(key, "[1m]", "")
+	normalizedModel = strings.ReplaceAll(normalizedModel, "[1m]", "")
+	return normalizedModel != "" && strings.Contains(key, normalizedModel)
 }

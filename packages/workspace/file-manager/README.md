@@ -18,11 +18,12 @@ only a transport-agnostic data kernel. Shared session orchestration, preview
 flow, upload flow, activation flow, and React-facing interaction state may live
 here when they are part of the reusable file-manager experience across hosts.
 
-The shared surface owns host-neutral file preview classification,
-activation-target shaping, shared view-model derivation, and the host contract
-needed to drive those flows so different hosts can integrate primarily by
-implementing `WorkspaceFileManagerHost` instead of rebuilding workflow around
-the shared UI.
+The shared surface consumes host-neutral classification and loading lifecycle
+from `@tutti-os/workspace-file-preview`. This package owns file-manager-specific
+activation-target shaping, localized state projection, shared view-model
+derivation, and the host contract needed to drive those flows so different
+hosts can integrate primarily by implementing `WorkspaceFileManagerHost`
+instead of rebuilding workflow around the shared UI.
 
 The optional React surface persists the adjustable locations-sidebar and
 details-panel widths on the current device. Restored widths are clamped to the

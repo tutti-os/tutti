@@ -27,6 +27,7 @@ func (s *Store) ListSessionSection(
 		workspaceID,
 		sectionKey,
 		agentTargetID,
+		input.IncludedSessionIDs,
 		true,
 	)
 	if err != nil {
@@ -56,6 +57,11 @@ func (s *Store) ListSessionSection(
 		targetPredicate = "AND agent_target_id = ?"
 		args = append(args, agentTargetID)
 	}
+	includedPredicate, includedArgs, err := includedSessionIDsPredicate("agent_session_id", input.IncludedSessionIDs)
+	if err != nil {
+		return SessionSectionPage{}, false, err
+	}
+	args = append(args, includedArgs...)
 	query := `
 WITH section_sessions AS (
   SELECT workspace_agent_sessions.*,
@@ -69,6 +75,7 @@ WITH section_sessions AS (
                       latest.started_at_unix_ms DESC, latest.turn_id DESC
              LIMIT 1
            ), 0),
+           NULLIF(workspace_agent_sessions.started_at_unix_ms, 0),
            workspace_agent_sessions.created_at_unix_ms
          ) AS conversation_sort_time_unix_ms
   FROM workspace_agent_sessions INDEXED BY ` + indexName + `
@@ -77,6 +84,7 @@ WITH section_sessions AS (
     AND rail_section_key = ?
     AND pinned_at_unix_ms = 0
     ` + targetPredicate + `
+    ` + includedPredicate + `
     AND deleted_at_unix_ms = 0
     AND json_extract(session_metadata_json, '$.visible') IS NOT 0
 )
@@ -159,10 +167,11 @@ func (s *Store) ListSessionSections(
 		return SessionSectionsPage{}, false, nil
 	}
 	query, args, err := buildListSessionSectionsQuery(ListSessionSectionsInput{
-		WorkspaceID:     workspaceID,
-		SectionKeys:     sectionKeys,
-		AgentTargetID:   strings.TrimSpace(input.AgentTargetID),
-		LimitPerSection: input.LimitPerSection,
+		WorkspaceID:        workspaceID,
+		SectionKeys:        sectionKeys,
+		AgentTargetID:      strings.TrimSpace(input.AgentTargetID),
+		IncludedSessionIDs: input.IncludedSessionIDs,
+		LimitPerSection:    input.LimitPerSection,
 	})
 	if err != nil {
 		return SessionSectionsPage{}, false, err
@@ -240,6 +249,10 @@ func buildListSessionSectionsQuery(input ListSessionSectionsInput) (string, []an
 		ordinaryIndex = "idx_workspace_agent_sessions_rail_section_target_page"
 		targetPredicate = "AND sessions.agent_target_id = ?"
 	}
+	includedPredicate, includedArgs, err := includedSessionIDsPredicate("sessions.agent_session_id", input.IncludedSessionIDs)
+	if err != nil {
+		return "", nil, err
+	}
 	query := `
 WITH requested_sections(section_key) AS MATERIALIZED (
   SELECT TRIM(CAST(value AS TEXT))
@@ -254,6 +267,7 @@ WITH requested_sections(section_key) AS MATERIALIZED (
                AND sessions.session_kind = 'root'
                AND sessions.pinned_at_unix_ms > 0
                {{TARGET_PREDICATE}}
+               {{INCLUDED_PREDICATE}}
                AND sessions.deleted_at_unix_ms = 0
                AND json_extract(sessions.session_metadata_json, '$.visible') IS NOT 0
            )
@@ -265,6 +279,7 @@ WITH requested_sections(section_key) AS MATERIALIZED (
                AND sessions.rail_section_key = requested_sections.section_key
                AND sessions.pinned_at_unix_ms = 0
                {{TARGET_PREDICATE}}
+               {{INCLUDED_PREDICATE}}
                AND sessions.deleted_at_unix_ms = 0
                AND json_extract(sessions.session_metadata_json, '$.visible') IS NOT 0
            )
@@ -283,6 +298,7 @@ WITH requested_sections(section_key) AS MATERIALIZED (
                  AND sessions.session_kind = 'root'
                  AND sessions.pinned_at_unix_ms > 0
                  {{TARGET_PREDICATE}}
+                 {{INCLUDED_PREDICATE}}
                  AND sessions.deleted_at_unix_ms = 0
                  AND json_extract(sessions.session_metadata_json, '$.visible') IS NOT 0
                ORDER BY sessions.pinned_at_unix_ms DESC, sessions.agent_session_id ASC
@@ -306,6 +322,7 @@ WITH requested_sections(section_key) AS MATERIALIZED (
                                    latest.started_at_unix_ms DESC, latest.turn_id DESC
                           LIMIT 1
                         ), 0),
+                        NULLIF(sessions.started_at_unix_ms, 0),
                         sessions.created_at_unix_ms
                       ) AS conversation_sort_time_unix_ms
                FROM workspace_agent_sessions AS sessions INDEXED BY {{ORDINARY_INDEX}}
@@ -314,6 +331,7 @@ WITH requested_sections(section_key) AS MATERIALIZED (
                  AND sessions.rail_section_key = requested_sections.section_key
                  AND sessions.pinned_at_unix_ms = 0
                  {{TARGET_PREDICATE}}
+                 {{INCLUDED_PREDICATE}}
                  AND sessions.deleted_at_unix_ms = 0
                  AND json_extract(sessions.session_metadata_json, '$.visible') IS NOT 0
                ORDER BY conversation_sort_time_unix_ms DESC, sessions.agent_session_id ASC
@@ -355,22 +373,27 @@ ORDER BY page_session_ids.requested_section_key ASC,
 	query = strings.ReplaceAll(query, "{{PINNED_INDEX}}", pinnedIndex)
 	query = strings.ReplaceAll(query, "{{ORDINARY_INDEX}}", ordinaryIndex)
 	query = strings.ReplaceAll(query, "{{TARGET_PREDICATE}}", targetPredicate)
+	query = strings.ReplaceAll(query, "{{INCLUDED_PREDICATE}}", includedPredicate)
 	args := []any{string(sectionKeysJSON), input.WorkspaceID}
 	if input.AgentTargetID != "" {
 		args = append(args, input.AgentTargetID)
 	}
+	args = append(args, includedArgs...)
 	args = append(args, input.WorkspaceID)
 	if input.AgentTargetID != "" {
 		args = append(args, input.AgentTargetID)
 	}
+	args = append(args, includedArgs...)
 	args = append(args, input.WorkspaceID)
 	if input.AgentTargetID != "" {
 		args = append(args, input.AgentTargetID)
 	}
+	args = append(args, includedArgs...)
 	args = append(args, input.LimitPerSection, input.WorkspaceID)
 	if input.AgentTargetID != "" {
 		args = append(args, input.AgentTargetID)
 	}
+	args = append(args, includedArgs...)
 	args = append(args, input.LimitPerSection, input.WorkspaceID)
 	return query, args, nil
 }
@@ -405,7 +428,11 @@ func (s *Store) ListSessionSectionDeletionCandidates(
 	if workspaceID == "" || sectionKey == "" || sectionKey == PinnedSessionPageKey {
 		return SessionSectionDeletionCandidates{}, false, nil
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	includedPredicate, includedArgs, err := includedSessionIDsPredicate("agent_session_id", input.IncludedSessionIDs)
+	if err != nil {
+		return SessionSectionDeletionCandidates{}, false, err
+	}
+	query := `
 SELECT agent_session_id
 FROM workspace_agent_sessions INDEXED BY idx_workspace_agent_sessions_rail_section_page
 WHERE workspace_id = ?
@@ -413,10 +440,14 @@ WHERE workspace_id = ?
   AND rail_section_key = ?
   AND (? = '' OR agent_target_id = ?)
   AND (? = 0 OR pinned_at_unix_ms = 0)
+  ` + includedPredicate + `
   AND deleted_at_unix_ms = 0
   AND json_extract(session_metadata_json, '$.visible') IS NOT 0
 ORDER BY updated_at_unix_ms DESC, agent_session_id ASC
-`, workspaceID, sectionKey, agentTargetID, agentTargetID, input.ExcludePinned)
+`
+	args := []any{workspaceID, sectionKey, agentTargetID, agentTargetID, input.ExcludePinned}
+	args = append(args, includedArgs...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return SessionSectionDeletionCandidates{}, false, fmt.Errorf("list workspace agent session section deletion candidates: %w", err)
 	}
@@ -461,6 +492,11 @@ func (s *Store) listPinnedSessionPage(
 		targetPredicate = "AND agent_target_id = ?"
 		args = append(args, agentTargetID)
 	}
+	includedPredicate, includedArgs, err := includedSessionIDsPredicate("agent_session_id", input.IncludedSessionIDs)
+	if err != nil {
+		return SessionSectionPage{}, false, err
+	}
+	args = append(args, includedArgs...)
 	query := `
 SELECT workspace_id, agent_session_id, session_kind, root_agent_session_id, root_turn_id,
        parent_agent_session_id, parent_turn_id, parent_tool_call_id,
@@ -475,6 +511,7 @@ WHERE workspace_id = ?
   AND session_kind = 'root'
   AND pinned_at_unix_ms > 0
   ` + targetPredicate + `
+  ` + includedPredicate + `
   AND deleted_at_unix_ms = 0
   AND json_extract(session_metadata_json, '$.visible') IS NOT 0
   AND (? = '' OR pinned_at_unix_ms < ? OR (pinned_at_unix_ms = ? AND agent_session_id > ?))
@@ -532,6 +569,7 @@ func (s *Store) countVisibleSessionSectionRows(
 	workspaceID string,
 	sectionKey string,
 	agentTargetID string,
+	includedSessionIDs []string,
 	excludePinned bool,
 ) (int, error) {
 	sectionPredicate := "rail_section_key = ?"
@@ -551,6 +589,10 @@ func (s *Store) countVisibleSessionSectionRows(
 			indexName = "idx_workspace_agent_sessions_rail_section_target_page"
 		}
 	}
+	includedPredicate, includedArgs, err := includedSessionIDsPredicate("agent_session_id", includedSessionIDs)
+	if err != nil {
+		return 0, err
+	}
 	query := `
 SELECT COUNT(1)
 FROM workspace_agent_sessions INDEXED BY ` + indexName + `
@@ -558,6 +600,7 @@ WHERE workspace_id = ?
   AND session_kind = 'root'
   AND ` + sectionPredicate + `
   ` + targetPredicate + `
+  ` + includedPredicate + `
   AND deleted_at_unix_ms = 0
   AND json_extract(session_metadata_json, '$.visible') IS NOT 0`
 	args := []any{workspaceID}
@@ -567,6 +610,7 @@ WHERE workspace_id = ?
 	if agentTargetID != "" {
 		args = append(args, agentTargetID)
 	}
+	args = append(args, includedArgs...)
 	var count int
 	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
 		return 0, fmt.Errorf("count workspace agent session section rows: %w", err)

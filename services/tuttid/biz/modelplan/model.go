@@ -306,7 +306,9 @@ type Reference struct {
 	Kind ReferenceKind `json:"kind"`
 	ID   string        `json:"id"`
 	Name string        `json:"name,omitempty"`
-	// Role describes how the agent target uses the plan (currently "default").
+	// Role describes how the consumer uses the plan. Agent target bindings
+	// report "default"; model usage policies report the bound role
+	// ("execution", "planning", or "review").
 	Role string `json:"role,omitempty"`
 }
 

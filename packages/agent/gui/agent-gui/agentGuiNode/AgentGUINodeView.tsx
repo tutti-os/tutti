@@ -90,6 +90,7 @@ export function AgentGUINodeView({
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
+  capabilityControlsReadOnly = false,
   onCapabilitySettingsRequest,
   isActive = true,
   isVisible = true,
@@ -100,15 +101,20 @@ export function AgentGUINodeView({
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
   slashStatusLimitsUnavailable = false,
+  slashStatusOverride = null,
   providerAuthAccountLabels,
   railConfigProvider,
   railSlashStatusLimits,
+  slashStatusLimitsResolvedEmpty = false,
   slashStatusUsageCapturedAtUnixMs = null,
   slashStatusUsageDidFail = false,
   slashStatusUsageAttempted = false,
+  onAgentConfigMenuClose,
   onAgentConfigMenuOpen,
   onAgentUsageRefresh,
   onSlashStatusOpen,
+  onSlashStatusClose,
+  onSlashStatusRefresh,
   accountMenuState = null,
   previewMode = false,
   onAgentProviderLogin,
@@ -637,6 +643,9 @@ export function AgentGUINodeView({
                   }
                   slashStatusLimits={effectiveRailSlashStatusLimits}
                   slashStatusLimitsLoading={slashStatusLimitsLoading}
+                  slashStatusLimitsResolvedEmpty={
+                    slashStatusLimitsResolvedEmpty
+                  }
                   slashStatusUsageCapturedAtUnixMs={
                     slashStatusUsageCapturedAtUnixMs
                   }
@@ -644,6 +653,7 @@ export function AgentGUINodeView({
                   slashStatusUsageAttempted={slashStatusUsageAttempted}
                   provider={effectiveRailConfigProvider}
                   providerAuthAccountLabel={effectiveProviderAuthAccountLabel}
+                  onAgentConfigMenuClose={onAgentConfigMenuClose}
                   onAgentConfigMenuOpen={onAgentConfigMenuOpen}
                   onAgentUsageRefresh={onAgentUsageRefresh}
                   onOpenAgentEnvSetup={openAgentEnvSetup}
@@ -721,10 +731,14 @@ export function AgentGUINodeView({
               slashStatusLimits={slashStatusLimits}
               slashStatusLimitsLoading={slashStatusLimitsLoading}
               slashStatusLimitsUnavailable={slashStatusLimitsUnavailable}
+              slashStatusOverride={slashStatusOverride}
               onSlashStatusOpen={onSlashStatusOpen}
+              onSlashStatusClose={onSlashStatusClose}
+              onSlashStatusRefresh={onSlashStatusRefresh}
               onLinkAction={onLinkAction}
               onHandoffConversation={onHandoffConversation}
               capabilityMenuState={capabilityMenuState}
+              capabilityControlsReadOnly={capabilityControlsReadOnly}
               onCapabilitySettingsRequest={onCapabilitySettingsRequest}
               onAgentProviderLogin={onAgentProviderLogin}
               onRequestWorkspaceReferences={requestWorkspaceReferences}
@@ -753,7 +767,6 @@ export function AgentGUINodeView({
           isNodeSelectable={isWorkspaceReferencePickerNodeSelectable}
           open={workspaceReferencePickerOpen}
           purpose={workspaceReferencePickerPurpose}
-          provenanceFilter={referenceProvenanceFilter}
           resolveEntryIconUrl={resolveWorkspaceReferenceEntryIconUrl}
           workspaceId={viewModel.shell.workspaceId}
           onClose={closeWorkspaceReferencePicker}

@@ -299,6 +299,9 @@ importers:
       "@tutti-os/workspace-file-manager":
         specifier: workspace:*
         version: link:../../workspace/file-manager
+      "@tutti-os/workspace-file-preview":
+        specifier: workspace:*
+        version: link:../../workspace/file-preview
       "@tutti-os/workspace-file-reference":
         specifier: workspace:*
         version: link:../../workspace/file-reference
@@ -369,6 +372,9 @@ importers:
       "@tiptap/starter-kit":
         specifier: ^3.11.1
         version: 3.23.6
+      "@tiptap/static-renderer":
+        specifier: 3.23.6
+        version: 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       "@tiptap/suggestion":
         specifier: ^3.11.1
         version: 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)
@@ -4830,6 +4836,17 @@ packages:
       {
         integrity: sha512-gykwtGWrnWCmtql1hid3opac/KV8zQvOAnu3bTqIqcHrn1FusbUwKmNzavSbfGvcktHM3hFjb35W48JyVLyu/A==
       }
+
+  "@tiptap/static-renderer@3.23.6":
+    resolution:
+      {
+        integrity: sha512-idQJNXkgLkX0z51wY5bSXGgyRAP7Vs70qWH+SSGpYBvro4QA/b5w199wDI7oIP/w2QEfxz4IP5DrIl1PQN5BIw==
+      }
+    peerDependencies:
+      "@tiptap/core": 3.23.6
+      "@tiptap/pm": 3.23.6
+      react: ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^17.0.0 || ^18.0.0 || ^19.0.0
 
   "@tiptap/suggestion@3.23.6":
     resolution:
@@ -13494,6 +13511,13 @@ snapshots:
       "@tiptap/extension-underline": 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))
       "@tiptap/extensions": 3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)
       "@tiptap/pm": 3.23.6
+
+  "@tiptap/static-renderer@3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)":
+    dependencies:
+      "@tiptap/core": 3.23.6(@tiptap/pm@3.23.6)
+      "@tiptap/pm": 3.23.6
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
 
   "@tiptap/suggestion@3.23.6(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)":
     dependencies:

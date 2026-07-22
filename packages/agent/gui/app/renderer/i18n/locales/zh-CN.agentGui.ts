@@ -1,6 +1,7 @@
 import { zhCNAgentGuiProviderIdentity } from "./zh-CN.agentGuiProviderIdentity.ts";
 import { zhCNAgentGuiQuickPrompts } from "./zh-CN.agentGuiQuickPrompts.ts";
 import { zhCNAgentGuiReferencePicker } from "./zh-CN.agentGuiReferencePicker.ts";
+import { zhCNAgentGuiModelPlans } from "./zh-CN.agentGuiModelPlans.ts";
 import { zhCNAgentGuiRuntimeNotices } from "./zh-CN.agentGuiRuntimeNotices.ts";
 import { zhCNAgentGuiSlashPalette } from "./zh-CN.agentGuiSlashPalette.ts";
 import { zhCNAgentGuiSessionActions } from "./zh-CN.agentGuiSessionActions.ts";
@@ -265,8 +266,9 @@ export const zhCNAgentGui = {
   slashStatusLimitReset: "resets {{reset}}",
   slashStatusContextValue:
     "{{percentLeft}}% 剩余（已用 {{usedTokens}} / {{totalTokens}}）",
-  slashStatusContextUnavailable: "上下文用量不可用",
+  slashStatusContextUnavailable: "—",
   slashStatusLimitsUnavailable: "当前 Agent 未提供额度限制",
+  slashStatusEmptyValue: "—",
   slashStatusUsageJustUpdated: "刚刚更新",
   slashStatusUsageMinutesAgo: "{{count}} 分钟前更新",
   slashStatusUsageHoursAgo: "{{count}} 小时前更新",
@@ -401,6 +403,7 @@ export const zhCNAgentGui = {
   handoffConversation: "Handoff",
   handoffConversationTooltip: "交接给其他 Agent",
   handoffConversationMenu: "选择要交接的 Agent",
+  handoffTargetDeviceSource: "来自 {{device}}",
   handoffTargetSelf: "我的 Agent",
   handoffTargetShared: "共享 Agent",
   startConversation: "开始会话",
@@ -513,9 +516,7 @@ export const zhCNAgentGui = {
   contextCompactionInProgress: "正在压缩上下文",
   contextCompactionCompleted: "已压缩上下文",
   contextCompactionInterrupted: "上下文压缩已中断",
-  consultLoadPlansFailed: "加载模型方案失败。",
-  consultNoPlans: "暂无已启用的模型方案",
-  consultFailed: "模型咨询失败。",
+  ...zhCNAgentGuiModelPlans,
   turnSummary: "已变更文件",
   userMessageLocator: "用户消息",
   turnSummaryFilesChanged: "变更了 {{count}} 个文件",

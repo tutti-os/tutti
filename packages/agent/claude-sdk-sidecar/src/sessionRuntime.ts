@@ -145,6 +145,7 @@ export class SessionRuntime {
       },
       clearPendingOrphans: () => this.turns.clearPendingOrphans(),
       getQuery: () => this.query,
+      getModel: () => settings.model,
       emit
     });
     this.projection = new MessageProjection({

@@ -75,10 +75,6 @@ function createPlan(
     workspaceId: "workspace-1",
     name: id,
     templateKind,
-    billingMode:
-      templateKind === "official_subscription" || templateKind === "coding_plan"
-        ? "subscription_quota"
-        : "api_metered",
     protocol,
     hasApiKey: templateKind !== "official_subscription",
     models: [],

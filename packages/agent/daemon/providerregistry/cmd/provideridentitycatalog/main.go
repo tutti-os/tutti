@@ -15,8 +15,8 @@ type catalogEntry struct {
 	DisplayName       string   `json:"displayName"`
 	IconKey           string   `json:"iconKey"`
 	LocaleKey         string   `json:"localeKey"`
-	ModelPlanProtocol string   `json:"modelPlanProtocol"`
 	Aliases           []string `json:"aliases"`
+	ModelPlanProtocol string   `json:"modelPlanProtocol"`
 	Target            target   `json:"target"`
 	Desktop           desktop  `json:"desktop"`
 }
@@ -56,8 +56,8 @@ func main() {
 			DisplayName:       descriptor.Identity.DisplayName,
 			IconKey:           descriptor.Identity.IconKey,
 			LocaleKey:         descriptor.Identity.LocaleKey,
-			ModelPlanProtocol: string(descriptor.Runtime.Endpoint.ModelPlanProtocol),
 			Aliases:           append([]string{}, descriptor.Identity.Aliases...),
+			ModelPlanProtocol: string(descriptor.Runtime.Endpoint.ModelPlanProtocol),
 			Target: target{
 				ID:            descriptor.Target.ID,
 				LaunchRefType: descriptor.Target.LaunchRefType,

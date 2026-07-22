@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { AgentProbeUsageFreshness } from "./AgentProbeUsageFreshness";
 
 export interface AgentSlashStatusPanelStatus {
   agentSessionId?: string | null;
@@ -10,6 +11,10 @@ export interface AgentSlashStatusPanelStatus {
   limits?: readonly AgentSlashStatusPanelLimit[];
   limitsLoading?: boolean;
   limitsUnavailable?: boolean;
+  limitsResolvedEmpty?: boolean;
+  limitsCapturedAtUnixMs?: number | null;
+  refreshFailed?: boolean;
+  isRefreshing?: boolean;
 }
 
 export interface AgentSlashStatusPanelLimit {
@@ -34,6 +39,13 @@ export interface AgentSlashStatusPanelLabels {
   }) => string;
   slashStatusContextUnavailable: string;
   slashStatusLimitsUnavailable: string;
+  slashStatusEmptyValue: string;
+  slashStatusUsageJustUpdated: string;
+  slashStatusUsageMinutesAgo: (count: number) => string;
+  slashStatusUsageHoursAgo: (count: number) => string;
+  slashStatusUsageUpdating: string;
+  slashStatusUsageRefreshFailed: string;
+  slashStatusUsageRefreshAria: string;
 }
 
 export function formatSlashStatusTokenCount(
@@ -79,15 +91,16 @@ function slashStatusContextText(
 export function AgentSlashStatusPanel({
   status,
   labels,
-  onClose
+  onClose,
+  onRefresh
 }: {
   status: AgentSlashStatusPanelStatus | null | undefined;
   labels: AgentSlashStatusPanelLabels;
   onClose: () => void;
+  onRefresh?: () => void;
 }): React.JSX.Element {
   const limits = status?.limits ?? [];
   const agentSessionId = status?.agentSessionId?.trim() ?? "";
-  const baseUrl = status?.baseUrl?.trim() ?? "";
   const showSessionDetails = agentSessionId.length > 0;
   return (
     <section
@@ -99,13 +112,32 @@ export function AgentSlashStatusPanel({
         <h3 className="truncate text-[11px] font-semibold leading-4">
           {labels.slashStatusTitle}
         </h3>
-        <button
-          className="nodrag shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground transition-colors hover:bg-background-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [-webkit-app-region:no-drag]"
-          type="button"
-          onClick={onClose}
-        >
-          {labels.slashStatusClose}
-        </button>
+        <div className="flex min-w-0 items-center gap-1">
+          {onRefresh ? (
+            <AgentProbeUsageFreshness
+              capturedAtUnixMs={status?.limitsCapturedAtUnixMs ?? null}
+              isLoading={status?.isRefreshing === true}
+              didFail={status?.refreshFailed === true}
+              onRefresh={onRefresh}
+              labels={{
+                justUpdated: labels.slashStatusUsageJustUpdated,
+                minutesAgo: labels.slashStatusUsageMinutesAgo,
+                hoursAgo: labels.slashStatusUsageHoursAgo,
+                updating: labels.slashStatusUsageUpdating,
+                refreshFailed: labels.slashStatusUsageRefreshFailed,
+                refreshAria: labels.slashStatusUsageRefreshAria
+              }}
+              testId="agent-gui-slash-status-refresh"
+            />
+          ) : null}
+          <button
+            className="nodrag shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground transition-colors hover:bg-background-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [-webkit-app-region:no-drag]"
+            type="button"
+            onClick={onClose}
+          >
+            {labels.slashStatusClose}
+          </button>
+        </div>
       </div>
       <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-[11px] leading-4">
         {showSessionDetails ? (
@@ -114,22 +146,10 @@ export function AgentSlashStatusPanel({
               {labels.slashStatusSession}:
             </dt>
             <dd className="min-w-0 truncate">{agentSessionId}</dd>
-            {baseUrl ? (
-              <>
-                <dt className="text-muted-foreground">
-                  {labels.slashStatusBaseUrl}:
-                </dt>
-                <dd className="min-w-0 truncate">{baseUrl}</dd>
-              </>
-            ) : null}
-            <dt className="text-muted-foreground">
-              {labels.slashStatusContext}:
-            </dt>
-            <dd className="min-w-0">
-              {slashStatusContextText(status, labels)}
-            </dd>
           </>
         ) : null}
+        <dt className="text-muted-foreground">{labels.slashStatusContext}:</dt>
+        <dd className="min-w-0">{slashStatusContextText(status, labels)}</dd>
         {limits.map((limit) => (
           <Fragment key={limit.id}>
             <dt className="text-muted-foreground">{limit.label}:</dt>
@@ -165,13 +185,20 @@ export function AgentSlashStatusPanel({
             </dd>
           </Fragment>
         ))}
-        {limits.length === 0 && status?.limitsUnavailable ? (
+        {limits.length === 0 &&
+        (status?.limitsUnavailable ||
+          status?.limitsResolvedEmpty ||
+          status?.limitsLoading) ? (
           <>
             <dt className="text-muted-foreground">
               {labels.slashStatusLimits}:
             </dt>
             <dd className="min-w-0 text-muted-foreground">
-              {labels.slashStatusLimitsUnavailable}
+              {status?.limitsLoading
+                ? labels.slashStatusUsageUpdating
+                : status?.limitsResolvedEmpty
+                  ? labels.slashStatusEmptyValue
+                  : labels.slashStatusLimitsUnavailable}
             </dd>
           </>
         ) : null}

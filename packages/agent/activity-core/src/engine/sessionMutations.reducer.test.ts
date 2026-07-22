@@ -134,6 +134,7 @@ test("delete result emits removals for requested and cascaded sessions", () => {
       outcome: "succeeded",
       type: "engine/commandResult",
       value: {
+        cleanupFailedSessionIds: [],
         removedMessages: 2,
         removedSessionIds: ["session-1", "child-1"],
         removedSessions: 2
@@ -172,6 +173,7 @@ test("settled mutation history stays bounded across unique sessions", () => {
         outcome: "succeeded",
         type: "engine/commandResult",
         value: {
+          cleanupFailedSessionIds: [],
           removedMessages: 0,
           removedSessionIds: [agentSessionId],
           removedSessions: 1

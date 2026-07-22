@@ -27,7 +27,7 @@ import {
   DropdownMenuTrigger
 } from "@tutti-os/ui-system";
 import { BareIconButton } from "@tutti-os/ui-system/components";
-import { resolveWorkspaceImageMimeType } from "@tutti-os/workspace-file-manager/services";
+import { resolveWorkspaceImageMimeType } from "@tutti-os/workspace-file-preview";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
 import { useOptionalAgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";

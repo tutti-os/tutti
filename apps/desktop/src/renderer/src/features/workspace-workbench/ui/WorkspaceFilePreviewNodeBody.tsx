@@ -12,7 +12,7 @@ import {
   LoadingIcon,
   VideoFileIcon
 } from "@tutti-os/ui-system";
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
 import { WorkspaceFilePreviewSurface } from "@tutti-os/workspace-file-preview/react";
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
@@ -157,10 +157,7 @@ export function WorkspaceFilePreviewNodeBody({
     <WorkspaceFilePreviewSurface
       directoryMessage=""
       emptyMessage={appI18n.t("workspaceFileManager.previewUnsupported")}
-      frameClassName="flex h-full min-h-0 min-w-0 w-full items-center justify-center overflow-hidden bg-[var(--background-fronted)] text-[var(--text-tertiary)]"
       imageAlt={(entry) => entry.name}
-      imageClassName="block max-h-full max-w-full object-contain"
-      imageFrameClassName="overflow-auto p-3"
       loadingIndicator={
         <LoadingIcon className="mx-auto h-5 w-5 animate-spin" aria-hidden />
       }
@@ -175,8 +172,7 @@ export function WorkspaceFilePreviewNodeBody({
         )
       }
       state={state}
-      textClassName="m-0 h-full min-h-0 min-w-0 w-full overflow-auto whitespace-pre-wrap break-words p-3 font-[var(--tsh-font-mono)] text-[11px] leading-[18px] text-[var(--text-secondary)]"
-      textFrameClassName="items-stretch justify-stretch"
+      variant="canvas"
     />
   );
 }
@@ -213,7 +209,7 @@ function WorkspaceTextFileEditor({
 
 function resolveActivationTarget(
   context: WorkbenchHostNodeBodyContext
-): WorkspaceFileActivationTarget | null {
+): WorkspaceFilePreviewActivationTarget | null {
   if (
     context.activation?.type !== workspaceFilePreviewActivationType ||
     !isWorkspaceFilePreviewActivationTarget(context.activation.payload)

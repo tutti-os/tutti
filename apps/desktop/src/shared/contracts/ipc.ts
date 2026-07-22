@@ -723,14 +723,15 @@ export interface ClearDeveloperLogsResult {
 }
 
 export const desktopDeveloperLogsExportScopes = [
-  "all",
-  "recent-10-minutes"
+  "recent-10-minutes",
+  "recent-3-days"
 ] as const;
 
 export type DesktopDeveloperLogsExportScope =
   (typeof desktopDeveloperLogsExportScopes)[number];
 
 export interface ExportDeveloperLogsInput {
+  includeAgentSessions: boolean;
   scope: DesktopDeveloperLogsExportScope;
 }
 

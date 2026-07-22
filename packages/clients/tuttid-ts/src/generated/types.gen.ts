@@ -317,6 +317,7 @@ export type ApiErrorDetails = {
     | "agent_target_not_found"
     | "model_plan_not_found"
     | "model_plan_referenced"
+    | "model_policy_referenced"
     | "workspace_agent_not_found"
     | "collaboration_run_not_found"
     | "automation_rule_not_found";
@@ -686,6 +687,11 @@ export type AutomationRuleBudget = {
 };
 
 /**
+ * Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+ */
+export type AutomationRuleTrigger = "on_task_complete" | "on_task_failed";
+
+/**
  * One workspace automation rule. A triggered rule launches a new target-Agent session whose first message carries the rule prompt, a source-session mention, and a short event note.
  */
 export type AutomationRule = {
@@ -880,11 +886,11 @@ export type DetectModelPlanResponse = {
 };
 
 export type ModelPlanReference = {
-  kind: "agent_target";
+  kind: "agent_target" | "model_policy" | "workspace_agent";
   id: string;
   name?: string | null;
   /**
-   * How the agent target uses the plan, currently default.
+   * How the consumer uses the plan. Agent target bindings report "default"; model usage policies report the bound role (execution, planning, or review).
    */
   role?: string | null;
 };
@@ -1430,6 +1436,7 @@ export type CreateWorkspaceAppFactoryJobRequest = {
   displayName: string;
   description?: string;
   agentTargetId: string;
+  clientSubmitId: string;
   /**
    * @deprecated
    */
@@ -1547,6 +1554,101 @@ export type WorkspaceTerminalCloseGuardResponse = {
   guard: WorkspaceTerminalCloseGuard;
 };
 
+export type DeleteWorkspaceAgentResponse = {
+  workspaceAgentId: string;
+};
+
+export type ListWorkspaceAgentsResponse = {
+  agents: Array<WorkspaceAgent>;
+};
+
+export type PutWorkspaceAgentRequest = {
+  name: string;
+  /**
+   * Short human-readable description shown with the Agent in directories and cards.
+   */
+  description: string;
+  harnessAgentTargetId: string;
+  modelPlanId?: string | null;
+  defaultModel?: string | null;
+  /**
+   * Ordered fallback Plan/model references. Omit or pass an empty array to disable failover.
+   */
+  modelFallbacks?: Array<WorkspaceAgentModelRef>;
+  instructions: string;
+  callConditions: Array<string>;
+  /**
+   * When true, Skills and tools are an explicit allowlist, including the ability to select none. Omit on update to preserve the stored mode; new Agents default to automatic compatible capabilities.
+   */
+  capabilitiesExplicit?: boolean;
+  skills: Array<string>;
+  tools: Array<string>;
+};
+
+/**
+ * A selectable, workspace-scoped Agent made from one Harness target plus an optional model access plan and Agent-specific behavior configuration.
+ */
+export type WorkspaceAgent = {
+  /**
+   * Opaque Agent option id. New ids use the workspace-agent prefix and may be passed to workspace Agent session APIs.
+   */
+  id: string;
+  /**
+   * Compatibility alias of id for AgentGUI and session creation surfaces.
+   */
+  agentTargetId: string;
+  workspaceId: string;
+  name: string;
+  /**
+   * Short human-readable description shown with the Agent in directories and cards.
+   */
+  description: string;
+  harness: WorkspaceAgentHarness;
+  modelPlanId?: string | null;
+  defaultModel?: string | null;
+  /**
+   * Dormant contract field without an editor surface. Ordered, explicit fallback chain used only when starting a new session and the primary Plan/model is not usable. Credentials remain daemon-owned.
+   */
+  modelFallbacks: Array<WorkspaceAgentModelRef>;
+  instructions: string;
+  /**
+   * Explicit, user-editable conditions that explain when another Agent or user should invoke this Agent.
+   */
+  callConditions: Array<string>;
+  /**
+   * Dormant contract field without an editor surface. False keeps Skills and tools synchronized with all capabilities compatible with the selected Harness. True makes the Skills and tools arrays an explicit allowlist; empty arrays then mean none.
+   */
+  capabilitiesExplicit: boolean;
+  skills: Array<string>;
+  tools: Array<string>;
+  source: WorkspaceAgentSource;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkspaceAgentHarness = {
+  agentTargetId: string;
+  /**
+   * False when the referenced Harness target no longer exists. The Agent remains listable so it can be repaired or deleted.
+   */
+  available: boolean;
+  provider?: AgentTargetProvider | null;
+  name?: string | null;
+  iconKey?: string | null;
+  enabled?: boolean | null;
+};
+
+export type WorkspaceAgentModelRef = {
+  modelPlanId: string;
+  model?: string | null;
+};
+
+/**
+ * Origin of the workspace Agent configuration. legacy_binding rows were migrated from the former fixed-target binding model.
+ */
+export type WorkspaceAgentSource = "user" | "legacy_binding";
+
 export type WorkspaceAgentProvider = string;
 
 export type AgentSessionComposerSettings = {
@@ -1585,6 +1687,10 @@ export type AgentProviderComposerConfigOptionValue = {
   label: string;
   description?: string;
   supportsImageInput?: boolean;
+  /**
+   * True when the entry mirrors the requested/current selection instead of the provider catalog (warm-catalog append of the requested model, selected-model bootstrap echo). Clients keep such entries selectable but must not treat them as proof the provider can run the model; create validation runs against the raw catalog only.
+   */
+  requested?: boolean;
 };
 
 export type AgentProviderComposerConfig = {
@@ -2146,6 +2252,10 @@ export type WorkspaceAgentCapabilities = {
   imageInput: boolean;
   modelImageInputRequired: boolean;
   /**
+   * The provider can apply a model change to the next call in the current session.
+   */
+  modelSwitch: boolean;
+  /**
    * The provider runtime accepts a session-scoped model access plan endpoint and credential.
    */
   modelPlanBinding: boolean;
@@ -2410,6 +2520,7 @@ export type ExternalAgentImportResultResponse = {
 
 export type DeleteWorkspaceAgentSessionResponse = {
   removed: boolean;
+  cleanupFailed: boolean;
 };
 
 export type WorkspaceAgentSessionSectionDeletionCandidatesResponse = {
@@ -2428,11 +2539,13 @@ export type DeleteWorkspaceAgentSessionsBatchResponse = {
   removedMessages: number;
   removedSessions: number;
   removedSessionIds: Array<string>;
+  cleanupFailedSessionIds: Array<string>;
 };
 
 export type ClearWorkspaceAgentSessionsResponse = {
   removedMessages: number;
   removedSessions: number;
+  cleanupFailedSessionIds: Array<string>;
 };
 
 export type UpdateWorkspaceAgentSessionPinRequest = {
@@ -2963,106 +3076,6 @@ export type UpdateWorkspaceRequest = {
   name: string;
 };
 
-/**
- * Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
- */
-export type AutomationRuleTrigger = "on_task_complete" | "on_task_failed";
-
-export type DeleteWorkspaceAgentResponse = {
-  workspaceAgentId: string;
-};
-
-export type ListWorkspaceAgentsResponse = {
-  agents: Array<WorkspaceAgent>;
-};
-
-export type PutWorkspaceAgentRequest = {
-  name: string;
-  /**
-   * Short human-readable description shown with the Agent in directories and cards.
-   */
-  description: string;
-  harnessAgentTargetId: string;
-  modelPlanId?: string | null;
-  defaultModel?: string | null;
-  /**
-   * Ordered fallback Plan/model references. Omit or pass an empty array to disable failover.
-   */
-  modelFallbacks?: Array<WorkspaceAgentModelRef>;
-  instructions: string;
-  callConditions: Array<string>;
-  /**
-   * When true, Skills and tools are an explicit allowlist, including the ability to select none. Omit on update to preserve the stored mode; new Agents default to automatic compatible capabilities.
-   */
-  capabilitiesExplicit?: boolean;
-  skills: Array<string>;
-  tools: Array<string>;
-};
-
-/**
- * A selectable, workspace-scoped Agent made from one Harness target plus an optional model access plan and Agent-specific behavior configuration.
- */
-export type WorkspaceAgent = {
-  /**
-   * Opaque Agent option id. New ids use the workspace-agent prefix and may be passed to workspace Agent session APIs.
-   */
-  id: string;
-  /**
-   * Compatibility alias of id for AgentGUI and session creation surfaces.
-   */
-  agentTargetId: string;
-  workspaceId: string;
-  name: string;
-  /**
-   * Short human-readable description shown with the Agent in directories and cards.
-   */
-  description: string;
-  harness: WorkspaceAgentHarness;
-  modelPlanId?: string | null;
-  defaultModel?: string | null;
-  /**
-   * Dormant contract field without an editor surface. Ordered, explicit fallback chain used only when starting a new session and the primary Plan/model is not usable. Credentials remain daemon-owned.
-   */
-  modelFallbacks: Array<WorkspaceAgentModelRef>;
-  instructions: string;
-  /**
-   * Explicit, user-editable conditions that explain when another Agent or user should invoke this Agent.
-   */
-  callConditions: Array<string>;
-  /**
-   * Dormant contract field without an editor surface. False keeps Skills and tools synchronized with all capabilities compatible with the selected Harness. True makes the Skills and tools arrays an explicit allowlist; empty arrays then mean none.
-   */
-  capabilitiesExplicit: boolean;
-  skills: Array<string>;
-  tools: Array<string>;
-  source: WorkspaceAgentSource;
-  revision: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type WorkspaceAgentHarness = {
-  agentTargetId: string;
-  /**
-   * False when the referenced Harness target no longer exists. The Agent remains listable so it can be repaired or deleted.
-   */
-  available: boolean;
-  provider?: AgentTargetProvider | null;
-  name?: string | null;
-  iconKey?: string | null;
-  enabled?: boolean | null;
-};
-
-export type WorkspaceAgentModelRef = {
-  modelPlanId: string;
-  model?: string | null;
-};
-
-/**
- * Origin of the workspace Agent configuration. legacy_binding rows were migrated from the former fixed-target binding model.
- */
-export type WorkspaceAgentSource = "user" | "legacy_binding";
-
 export type IssueManagerStatus =
   | "not_started"
   | "running"
@@ -3427,6 +3440,8 @@ export type WorkspaceAppFactoryJobId = string;
 
 export type ModelPlanId = string;
 
+export type WorkspaceAgentId = string;
+
 export type ModelPolicyId = string;
 
 export type CollaborationRunId = string;
@@ -3471,8 +3486,6 @@ export type AgentPermissionRequestId = string;
 export type AgentTurnId = string;
 
 export type TerminalAfterSeq = number;
-
-export type WorkspaceAgentId = string;
 
 export type AutomationRuleId = string;
 
@@ -6031,6 +6044,10 @@ export type DeleteModelPolicyErrors = {
    * HTTP method is not supported on this route
    */
   405: ApiErrorResponse;
+  /**
+   * Model usage policy is still referenced by agent bindings
+   */
+  409: ApiErrorResponse;
   /**
    * Workspace operation failed in an upstream adapter or command
    */

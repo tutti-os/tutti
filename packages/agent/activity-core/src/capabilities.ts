@@ -1,9 +1,15 @@
-import type { AgentActivityComposerOptions } from "./types.ts";
+import type {
+  AgentActivityComposerOptions,
+  AgentActivitySessionCapabilities
+} from "./types.ts";
 export {
   AGENT_CAPABILITY_KEYS,
   type AgentCapabilityKey
 } from "./generated/agentCapabilityKeys.ts";
-import type { AgentCapabilityKey } from "./generated/agentCapabilityKeys.ts";
+import {
+  AGENT_CAPABILITY_KEYS,
+  type AgentCapabilityKey
+} from "./generated/agentCapabilityKeys.ts";
 
 export interface AgentActivityCapabilityInput {
   composerOptions?: AgentActivityComposerOptions | null;
@@ -25,4 +31,20 @@ export function hasAgentCapability(
   key: AgentCapabilityKey
 ): boolean {
   return capabilities?.[key] === true;
+}
+
+/**
+ * Projects the canonical capability id list carried by session metadata into
+ * the closed AgentActivity capability record consumed by AgentGUI.
+ */
+export function agentActivitySessionCapabilitiesFromIds(
+  capabilities: readonly string[]
+): AgentActivitySessionCapabilities {
+  const capabilitySet = new Set(capabilities);
+  return Object.fromEntries(
+    AGENT_CAPABILITY_KEYS.map((capability) => [
+      capability,
+      capabilitySet.has(capability)
+    ])
+  ) as unknown as AgentActivitySessionCapabilities;
 }

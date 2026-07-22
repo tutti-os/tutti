@@ -1,10 +1,12 @@
 export type { AgentActivityAdapter } from "./adapter.ts";
+export type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
 export {
   normalizeAgentActivitySession,
   type AgentActivitySessionInput
 } from "./sessionNormalization.ts";
 export {
   AGENT_CAPABILITY_KEYS,
+  agentActivitySessionCapabilitiesFromIds,
   hasAgentCapability,
   resolveAgentActivityCapability,
   type AgentActivityCapabilityInput,
@@ -249,6 +251,7 @@ export type {
   AgentActivityDisplayStatus,
   AgentActivityCancelTurnInput,
   AgentActivityGoalControlAction,
+  AgentActivityInitialGoalControl,
   AgentActivityGoalControlInput,
   AgentActivityGoalControlResult,
   AgentActivityComposerCapabilityOption,
@@ -273,12 +276,9 @@ export type {
   AgentActivityDeleteSessionResult,
   AgentActivityDeleteSessionsInput,
   AgentActivityDeleteSessionsResult,
-  AgentActivityListModelPlansInput,
-  AgentActivityListModelPlansResult,
   AgentActivityModelPlanModel,
   AgentActivityModelPlanSummary,
   AgentActivitySetCollaborationAdoptionInput,
-  AgentActivityStartModelConsultInput,
   AgentActivityCompletedCommand,
   AgentActivityMessage,
   AgentActivityMessageSemantics,
@@ -297,6 +297,7 @@ export type {
   AgentActivitySessionCapabilities,
   AgentActivitySessionGoal,
   AgentActivitySessionPermissionConfig,
+  AgentActivitySessionUsage,
   AgentActivitySessionSettings,
   AgentActivitySessionKind,
   AgentActivitySessionEventEnvelope,

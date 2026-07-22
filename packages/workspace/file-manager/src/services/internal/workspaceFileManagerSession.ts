@@ -133,7 +133,6 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     this.previewController = new WorkspaceFileManagerPreviewController({
       copy: () => this.copy,
       host: input.host,
-      isDisposed: () => this.isDisposed,
       resolveErrorMessage: (error, overrides) =>
         this.resolveErrorMessage(error, overrides),
       store: this.store

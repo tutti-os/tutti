@@ -42,6 +42,7 @@ describe("normalizeAgentGUIAgents", () => {
         maskIconUrl: " app://agents/alice-mask.png ",
         heroImageUrl: " app://agents/alice-hero.jpg ",
         description: " Shared agent ",
+        ownerDeviceLabel: " Owner MacBook Pro ",
         owner: { name: " Owner ", avatarUrl: " app://owner.png " },
         ownership: "shared",
         availability: { status: "unavailable", reason: " Offline " }
@@ -60,6 +61,7 @@ describe("normalizeAgentGUIAgents", () => {
         maskIconUrl: "app://agents/alice-mask.png",
         heroImageUrl: "app://agents/alice-hero.jpg",
         description: "Shared agent",
+        ownerDeviceLabel: "Owner MacBook Pro",
         owner: { name: "Owner", avatarUrl: "app://owner.png" },
         ownership: "shared",
         availability: { status: "unavailable", reason: "Offline" },
@@ -74,6 +76,7 @@ describe("projectAgentGUIAgentsToTargets", () => {
     const [target] = projectAgentGUIAgentsToTargets([
       createAgent("agent-a", {
         owner: { name: "Current User", avatarUrl: "app://owner.png" },
+        ownerDeviceLabel: "Current User Mac mini",
         ownership: "self"
       })
     ]);
@@ -81,6 +84,7 @@ describe("projectAgentGUIAgentsToTargets", () => {
     expect(target).toMatchObject({
       ownership: "self",
       ownerLabel: "Current User",
+      ownerDeviceLabel: "Current User Mac mini",
       badge: { iconUrl: "app://owner.png" }
     });
   });

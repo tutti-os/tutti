@@ -4,16 +4,14 @@ import type {
   DesktopRuntimeApi
 } from "@preload/types";
 import type {
-  AgentProviderComposerOptionsResponse,
   AgentTarget,
   AutomationRule,
   DeletedAgentConversationPurgeResult,
   PutAutomationRuleRequest,
   PutWorkspaceAgentRequest,
-  TuttidClient,
-  WorkspaceAgentProvider,
-  WorkspaceModelRecommendation
+  TuttidClient
 } from "@tutti-os/client-tuttid-ts";
+import { getTuttidProtocolErrorCode } from "@tutti-os/client-tuttid-ts";
 import type {
   ClearDeveloperLogsResult,
   DesktopComputerUseActionResult,
@@ -24,39 +22,35 @@ import type {
   DesktopComputerUseStatus,
   DesktopDeveloperLogKind,
   DesktopDeveloperLogsState,
-  DesktopDeveloperLogsExportScope,
+  ExportDeveloperLogsInput,
   ExportDeveloperLogsResult
 } from "@shared/contracts/ipc";
 import type {
   WorkspaceAgentDefinition,
-  WorkspaceManagedModelProviderConfig,
-  WorkspaceManagedModelProviderID,
-  WorkspaceModelPlan
+  WorkspaceAgentModelBinding,
+  WorkspaceModelPlan,
+  WorkspaceModelPlanDetection,
+  WorkspaceModelPlanModel,
+  WorkspaceModelPlanProtocol,
+  WorkspaceModelPlanReference,
+  WorkspaceModelPlanTemplateKind
 } from "../../workspaceSettingsTypes.ts";
-
-interface ManagedProviderListResponse {
-  providers: WorkspaceManagedModelProviderConfig[];
-}
-
-interface ManagedProviderResponse {
-  provider: WorkspaceManagedModelProviderConfig;
-}
-
-interface ManagedProviderModelsResponse {
-  models: WorkspaceManagedModelProviderConfig["models"];
-}
-
-interface ClearWorkspaceAgentSessionsResponse {
-  removedMessages: number;
-  removedSessions: number;
-}
 
 interface ModelPlanListResponse {
   plans: WorkspaceModelPlan[];
 }
 
-interface ModelRecommendationListResponse {
-  recommendations: WorkspaceModelRecommendation[];
+interface ModelPlanReferencesResponse {
+  references: WorkspaceModelPlanReference[];
+}
+
+interface AgentModelBindingListResponse {
+  bindings: WorkspaceAgentModelBinding[];
+}
+
+interface ClearWorkspaceAgentSessionsResponse {
+  removedMessages: number;
+  removedSessions: number;
 }
 
 export type PutWorkspaceAgentInput = PutWorkspaceAgentRequest;
@@ -71,26 +65,59 @@ export interface AutomationTargetCatalogResult {
   tools: { id: string; label: string }[];
 }
 
-export interface RecommendWorkspaceModelsInput {
-  limit?: number;
-  preferredPlanId?: string;
-  requiredCapabilities?: string[];
-}
-
-export interface PutManagedModelProviderInput {
+export interface PutModelPlanInput {
+  /** Omitted keeps the stored credential on update. */
   apiKey?: string;
-  baseUrl?: string;
+  baseUrl: string;
+  defaultModel?: string;
   enabled: boolean;
-  models: Array<{
-    id: string;
-    name: string;
-    provider: WorkspaceManagedModelProviderID;
-  }>;
+  models: Array<{ id: string; name: string }>;
+  name: string;
+  protocol: WorkspaceModelPlanProtocol;
+  templateKind: WorkspaceModelPlanTemplateKind;
 }
 
-export interface ListManagedModelProviderModelsInput {
+export interface DetectModelPlanInput {
   apiKey?: string;
   baseUrl?: string;
+  model?: string;
+  models?: Array<{ id: string; name: string }>;
+  /** When set, omitted fields fall back to the stored plan. */
+  planId?: string;
+  protocol?: WorkspaceModelPlanProtocol;
+}
+
+export interface DetectModelPlanResult {
+  detection: WorkspaceModelPlanDetection;
+  discoveredModels: WorkspaceModelPlanModel[];
+}
+
+export interface SetAgentModelBindingInput {
+  defaultModel?: string | null;
+  modelPlanId?: string | null;
+  modelPolicyId?: string | null;
+}
+
+export class DesktopWorkspaceSettingsDaemonError extends Error {
+  readonly code: string | null;
+  readonly status: number;
+
+  constructor(status: number, code: string | null) {
+    super(`Daemon request failed (${status}${code ? `: ${code}` : ""}).`);
+    this.name = "DesktopWorkspaceSettingsDaemonError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
+export function isModelPlanReferencedError(error: unknown): boolean {
+  if (
+    error instanceof DesktopWorkspaceSettingsDaemonError &&
+    error.code === "model_plan_referenced"
+  ) {
+    return true;
+  }
+  return getTuttidProtocolErrorCode(error) === "model_plan_referenced";
 }
 
 export interface DesktopWorkspaceSettingsClient {
@@ -113,26 +140,21 @@ export interface DesktopWorkspaceSettingsClient {
     input?: DesktopComputerUseRestartDriverInput
   ): Promise<DesktopComputerUseRestartDriverResult>;
   listAgentTargets(): Promise<AgentTarget[]>;
-  getAgentProviderComposerOptions(
-    workspaceID: string,
-    provider: WorkspaceAgentProvider,
-    agentTargetID: string
-  ): Promise<AgentProviderComposerOptionsResponse>;
-  listAutomationRules(workspaceID: string): Promise<AutomationRule[]>;
-  getAutomationTargetCatalog(
-    workspaceID: string,
-    provider: string,
-    agentTargetID: string
-  ): Promise<AutomationTargetCatalogResult>;
-  updateAutomationRule(
-    workspaceID: string,
-    automationRuleID: string,
-    input: PutAutomationRuleInput
-  ): Promise<AutomationRule>;
-  deleteAutomationRule(
-    workspaceID: string,
-    automationRuleID: string
-  ): Promise<void>;
+  setSystemAgentTargetEnabled(
+    agentTargetID: string,
+    enabled: boolean
+  ): Promise<AgentTarget>;
+  clearLogs(): Promise<ClearDeveloperLogsResult>;
+  clearWorkspaceAgentSessions(
+    workspaceID: string
+  ): Promise<ClearWorkspaceAgentSessionsResponse>;
+  purgeDeletedAgentConversations(): Promise<DeletedAgentConversationPurgeResult>;
+  exportLogs(
+    input: ExportDeveloperLogsInput
+  ): Promise<ExportDeveloperLogsResult>;
+  getLogsState(): Promise<DesktopDeveloperLogsState>;
+  openLogDirectory(): Promise<void>;
+  openLogFile(kind: DesktopDeveloperLogKind): Promise<void>;
   listWorkspaceAgents(workspaceID: string): Promise<WorkspaceAgentDefinition[]>;
   createWorkspaceAgent(
     workspaceID: string,
@@ -147,51 +169,61 @@ export interface DesktopWorkspaceSettingsClient {
     workspaceID: string,
     workspaceAgentID: string
   ): Promise<void>;
+  listAutomationRules(workspaceID: string): Promise<AutomationRule[]>;
+  getAutomationTargetCatalog(
+    workspaceID: string,
+    provider: string,
+    agentTargetID: string
+  ): Promise<AutomationTargetCatalogResult>;
+  updateAutomationRule(
+    workspaceID: string,
+    automationRuleID: string,
+    input: PutAutomationRuleInput
+  ): Promise<AutomationRule>;
   createAutomationRule(
     workspaceID: string,
     input: PutAutomationRuleInput
   ): Promise<AutomationRule>;
+  deleteAutomationRule(
+    workspaceID: string,
+    automationRuleID: string
+  ): Promise<void>;
   listModelPlans(workspaceID: string): Promise<WorkspaceModelPlan[]>;
-  recommendWorkspaceModels(
+  createModelPlan(
     workspaceID: string,
-    input: RecommendWorkspaceModelsInput
-  ): Promise<WorkspaceModelRecommendation[]>;
-  setSystemAgentTargetEnabled(
-    agentTargetID: string,
+    input: PutModelPlanInput
+  ): Promise<WorkspaceModelPlan>;
+  updateModelPlan(
+    workspaceID: string,
+    modelPlanID: string,
+    input: PutModelPlanInput
+  ): Promise<WorkspaceModelPlan>;
+  deleteModelPlan(workspaceID: string, modelPlanID: string): Promise<void>;
+  duplicateModelPlan(
+    workspaceID: string,
+    modelPlanID: string
+  ): Promise<WorkspaceModelPlan>;
+  setModelPlanEnabled(
+    workspaceID: string,
+    modelPlanID: string,
     enabled: boolean
-  ): Promise<AgentTarget>;
-  clearLogs(): Promise<ClearDeveloperLogsResult>;
-  clearWorkspaceAgentSessions(
+  ): Promise<WorkspaceModelPlan>;
+  listModelPlanReferences(
+    workspaceID: string,
+    modelPlanID: string
+  ): Promise<WorkspaceModelPlanReference[]>;
+  detectModelPlan(
+    workspaceID: string,
+    input: DetectModelPlanInput
+  ): Promise<DetectModelPlanResult>;
+  listAgentModelBindings(
     workspaceID: string
-  ): Promise<ClearWorkspaceAgentSessionsResponse>;
-  purgeDeletedAgentConversations(): Promise<DeletedAgentConversationPurgeResult>;
-  deleteManagedModelProvider(
+  ): Promise<WorkspaceAgentModelBinding[]>;
+  setAgentModelBinding(
     workspaceID: string,
-    providerID: WorkspaceManagedModelProviderID
-  ): Promise<void>;
-  exportLogs(
-    scope: DesktopDeveloperLogsExportScope
-  ): Promise<ExportDeveloperLogsResult>;
-  getLogsState(): Promise<DesktopDeveloperLogsState>;
-  listManagedModelProviders(
-    workspaceID: string
-  ): Promise<WorkspaceManagedModelProviderConfig[]>;
-  listManagedModelProviderModels(
-    workspaceID: string,
-    providerID: WorkspaceManagedModelProviderID,
-    input?: ListManagedModelProviderModelsInput
-  ): Promise<WorkspaceManagedModelProviderConfig["models"]>;
-  openLogDirectory(): Promise<void>;
-  openLogFile(kind: DesktopDeveloperLogKind): Promise<void>;
-  putManagedModelProvider(
-    workspaceID: string,
-    providerID: WorkspaceManagedModelProviderID,
-    input: PutManagedModelProviderInput
-  ): Promise<WorkspaceManagedModelProviderConfig>;
-  testManagedModelProvider(
-    workspaceID: string,
-    providerID: WorkspaceManagedModelProviderID
-  ): Promise<void>;
+    agentTargetID: string,
+    input: SetAgentModelBindingInput
+  ): Promise<WorkspaceAgentModelBinding>;
 }
 
 export function createDesktopWorkspaceSettingsClient(input: {
@@ -251,37 +283,6 @@ export function createDesktopWorkspaceSettingsClient(input: {
     async listAgentTargets() {
       return (await input.tuttidClient.listAgentTargets()).targets;
     },
-    async getAgentProviderComposerOptions(
-      workspaceID,
-      provider,
-      agentTargetID
-    ) {
-      return await input.tuttidClient.getAgentProviderComposerOptions(
-        provider,
-        {
-          agentTargetId: agentTargetID,
-          workspaceId: workspaceID
-        }
-      );
-    },
-    async getAutomationTargetCatalog(workspaceID, provider, agentTargetID) {
-      const options = await input.tuttidClient.getAgentProviderComposerOptions(
-        provider as AgentTarget["provider"],
-        { agentTargetId: agentTargetID, workspaceId: workspaceID }
-      );
-      return {
-        permissionModes: options.permissionConfig.modes.map((mode) => ({
-          id: mode.id,
-          label: mode.label
-        })),
-        tools: options.capabilityCatalog
-          .filter(
-            (option) =>
-              option.kind !== "skill" && option.status !== "unsupported"
-          )
-          .map((option) => ({ id: option.id, label: option.label }))
-      };
-    },
     async listWorkspaceAgents(workspaceID) {
       return (await input.tuttidClient.listWorkspaceAgents(workspaceID)).agents;
     },
@@ -304,6 +305,24 @@ export function createDesktopWorkspaceSettingsClient(input: {
     async listAutomationRules(workspaceID) {
       return (await input.tuttidClient.listAutomationRules(workspaceID)).rules;
     },
+    async getAutomationTargetCatalog(workspaceID, provider, agentTargetID) {
+      const options = await input.tuttidClient.getAgentProviderComposerOptions(
+        provider as AgentTarget["provider"],
+        { agentTargetId: agentTargetID, workspaceId: workspaceID }
+      );
+      return {
+        permissionModes: options.permissionConfig.modes.map((mode) => ({
+          id: mode.id,
+          label: mode.label
+        })),
+        tools: options.capabilityCatalog
+          .filter(
+            (option) =>
+              option.kind !== "skill" && option.status !== "unsupported"
+          )
+          .map((option) => ({ id: option.id, label: option.label }))
+      };
+    },
     async createAutomationRule(workspaceID, body) {
       return await input.tuttidClient.createAutomationRule(workspaceID, body);
     },
@@ -320,26 +339,6 @@ export function createDesktopWorkspaceSettingsClient(input: {
         automationRuleID
       );
     },
-    async listModelPlans(workspaceID) {
-      const response = await requestDaemon<ModelPlanListResponse>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans`
-      );
-      return response.plans;
-    },
-    async recommendWorkspaceModels(workspaceID, body) {
-      // The curated daemon does not expose the recommend endpoint yet; this
-      // targets the upstream contract so recommendations light up once it lands.
-      const response = await requestDaemon<ModelRecommendationListResponse>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/recommend`,
-        {
-          body,
-          method: "POST"
-        }
-      );
-      return response.recommendations;
-    },
     setSystemAgentTargetEnabled(agentTargetID, enabled) {
       return input.tuttidClient.setSystemAgentTargetEnabled(
         agentTargetID,
@@ -352,8 +351,8 @@ export function createDesktopWorkspaceSettingsClient(input: {
     clearLogs() {
       return input.developerApi.clearLogs();
     },
-    exportLogs(scope) {
-      return input.developerApi.exportLogs({ scope });
+    exportLogs(exportInput) {
+      return input.developerApi.exportLogs(exportInput);
     },
     getLogsState() {
       return input.developerApi.getLogsState();
@@ -364,24 +363,6 @@ export function createDesktopWorkspaceSettingsClient(input: {
     openLogFile(kind) {
       return input.developerApi.openLogFile(kind);
     },
-    async listManagedModelProviders(workspaceID) {
-      const response = await requestDaemon<ManagedProviderListResponse>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/managed-model-providers`
-      );
-      return response.providers;
-    },
-    async listManagedModelProviderModels(workspaceID, providerID, body) {
-      const response = await requestDaemon<ManagedProviderModelsResponse>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/managed-model-providers/${encodeURIComponent(providerID)}/models`,
-        {
-          body,
-          method: "POST"
-        }
-      );
-      return response.models;
-    },
     async clearWorkspaceAgentSessions(workspaceID) {
       return await requestDaemon<ClearWorkspaceAgentSessionsResponse>(
         input.runtimeApi,
@@ -391,32 +372,93 @@ export function createDesktopWorkspaceSettingsClient(input: {
         }
       );
     },
-    async putManagedModelProvider(workspaceID, providerID, body) {
-      const response = await requestDaemon<ManagedProviderResponse>(
+    async listModelPlans(workspaceID) {
+      const response = await requestDaemon<ModelPlanListResponse>(
         input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/managed-model-providers/${encodeURIComponent(providerID)}`,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans`
+      );
+      return response.plans;
+    },
+    async createModelPlan(workspaceID, body) {
+      return await requestDaemon<WorkspaceModelPlan>(
+        input.runtimeApi,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans`,
+        {
+          body,
+          method: "POST"
+        }
+      );
+    },
+    async updateModelPlan(workspaceID, modelPlanID, body) {
+      return await requestDaemon<WorkspaceModelPlan>(
+        input.runtimeApi,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/${encodeURIComponent(modelPlanID)}`,
         {
           body,
           method: "PUT"
         }
       );
-      return response.provider;
     },
-    async deleteManagedModelProvider(workspaceID, providerID) {
+    async deleteModelPlan(workspaceID, modelPlanID) {
       await requestDaemon(
         input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/managed-model-providers/${encodeURIComponent(providerID)}`,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/${encodeURIComponent(modelPlanID)}`,
         {
           method: "DELETE"
         }
       );
     },
-    async testManagedModelProvider(workspaceID, providerID) {
-      await requestDaemon(
+    async duplicateModelPlan(workspaceID, modelPlanID) {
+      return await requestDaemon<WorkspaceModelPlan>(
         input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/managed-model-providers/${encodeURIComponent(providerID)}/test`,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/${encodeURIComponent(modelPlanID)}/duplicate`,
         {
+          body: {},
           method: "POST"
+        }
+      );
+    },
+    async setModelPlanEnabled(workspaceID, modelPlanID, enabled) {
+      return await requestDaemon<WorkspaceModelPlan>(
+        input.runtimeApi,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/${encodeURIComponent(modelPlanID)}/enabled`,
+        {
+          body: { enabled },
+          method: "PATCH"
+        }
+      );
+    },
+    async listModelPlanReferences(workspaceID, modelPlanID) {
+      const response = await requestDaemon<ModelPlanReferencesResponse>(
+        input.runtimeApi,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/${encodeURIComponent(modelPlanID)}/references`
+      );
+      return response.references;
+    },
+    async detectModelPlan(workspaceID, body) {
+      return await requestDaemon<DetectModelPlanResult>(
+        input.runtimeApi,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/detect`,
+        {
+          body,
+          method: "POST"
+        }
+      );
+    },
+    async listAgentModelBindings(workspaceID) {
+      const response = await requestDaemon<AgentModelBindingListResponse>(
+        input.runtimeApi,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/agent-model-bindings`
+      );
+      return response.bindings;
+    },
+    async setAgentModelBinding(workspaceID, agentTargetID, body) {
+      return await requestDaemon<WorkspaceAgentModelBinding>(
+        input.runtimeApi,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/agent-model-bindings/${encodeURIComponent(agentTargetID)}`,
+        {
+          body,
+          method: "PUT"
         }
       );
     }
@@ -438,7 +480,22 @@ async function requestDaemon<TResult = unknown>(
     method: init.method ?? "GET"
   });
   if (!response.ok) {
-    throw new Error(`Daemon request failed (${response.status}).`);
+    throw new DesktopWorkspaceSettingsDaemonError(
+      response.status,
+      await readDaemonErrorCode(response)
+    );
   }
   return (await response.json()) as TResult;
+}
+
+async function readDaemonErrorCode(response: Response): Promise<string | null> {
+  try {
+    const payload = (await response.json()) as {
+      error?: { code?: unknown };
+    } | null;
+    const code = payload?.error?.code;
+    return typeof code === "string" ? code : null;
+  } catch {
+    return null;
+  }
 }

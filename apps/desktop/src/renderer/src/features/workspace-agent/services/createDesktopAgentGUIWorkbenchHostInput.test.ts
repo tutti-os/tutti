@@ -16,7 +16,6 @@ import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project/cont
 import type { ReporterEventInput } from "@renderer/features/analytics/services/reporterService.interface.ts";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
-import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import {
   USER_PROJECT_REFERENCE_SOURCE_ID,
   WORKSPACE_FILE_SOURCE_ID
@@ -265,7 +264,7 @@ test("desktop agent GUI workbench host input creates the default agent host api"
   );
 });
 
-test("desktop agent GUI workbench host input opens workspace references through the file manager canvas preview first", async () => {
+test("desktop agent GUI workbench host input opens workspace references through the preview surface host first", async () => {
   const calls: string[] = [];
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({
     hostFilesApi: {
@@ -279,12 +278,15 @@ test("desktop agent GUI workbench host input opens workspace references through 
     richTextAtService: createRichTextAtService(),
     runtimeApi: createRuntimeApi(),
     workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
-    workspaceFileManagerService: createWorkspaceFileManagerService({
-      async openCanvasFilePreview(workspaceId, target) {
+    workspaceFilePreviewSurfaceHost: {
+      async present(workspaceId, target) {
         calls.push(`preview:${workspaceId}:${target.path}:${target.fileKind}`);
-        return true;
+        return {
+          presented: true,
+          unsupportedFallbackNotification: "show"
+        };
       }
-    }),
+    },
     workspaceId
   });
 
@@ -296,7 +298,7 @@ test("desktop agent GUI workbench host input opens workspace references through 
   assert.deepEqual(calls, ["preview:workspace-1:/workspace/image.png:image"]);
 });
 
-test("desktop agent GUI workbench host input opens references in the system default application when configured", async () => {
+test("desktop agent GUI workbench host input opens references in the system default application without a preview presenter", async () => {
   const calls: string[] = [];
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({
     hostFilesApi: {
@@ -310,13 +312,6 @@ test("desktop agent GUI workbench host input opens references in the system defa
     richTextAtService: createRichTextAtService(),
     runtimeApi: createRuntimeApi(),
     workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
-    workspaceFileManagerService: createWorkspaceFileManagerService({
-      async openCanvasFilePreview() {
-        calls.push("preview");
-        return true;
-      }
-    }),
-    workspaceFilePreviewMode: "system-default",
     workspaceId
   });
 
@@ -1451,18 +1446,6 @@ function createPlatformApi(
   };
 }
 
-function createWorkspaceFileManagerService(input: {
-  openCanvasFilePreview: IWorkspaceFileManagerService["openCanvasFilePreview"];
-}): Pick<
-  IWorkspaceFileManagerService,
-  "openCanvasFilePreview" | "resolveEntryIconUrl"
-> {
-  return {
-    openCanvasFilePreview: input.openCanvasFilePreview,
-    resolveEntryIconUrl: async () => null
-  };
-}
-
 function createRuntimeApi(
   input: {
     terminalDiagnostics?: Array<
@@ -1671,7 +1654,7 @@ function createWorkspaceAgentActivityService(
       };
     },
     async deleteSession() {
-      return { removed: true };
+      return { cleanupFailed: false, removed: true };
     },
     async renameSession(input) {
       return {
@@ -1747,6 +1730,7 @@ function createWorkspaceAgentActivityService(
     },
     async deleteSessionsBatch() {
       return {
+        cleanupFailedSessionIds: [],
         removedMessages: 0,
         removedSessionIds: [],
         removedSessions: 0

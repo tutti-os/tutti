@@ -200,6 +200,7 @@ export function createTerminalDockEntry({
   typeId = defaultTerminalWorkbenchTypeId
 }: CreateTerminalDockEntryInput): WorkbenchHostDockEntry {
   return {
+    allowNewWindowInDockPopup: false,
     icon: dockIcon ?? createElement(DefaultTerminalDockIcon),
     id: id ?? typeId,
     label: feature.i18n.t("dockLabel"),

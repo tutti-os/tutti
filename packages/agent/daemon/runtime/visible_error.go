@@ -310,18 +310,10 @@ func detailIsMcpToolServerAuth(detail string) bool {
 // binary that could not be located/executed (as opposed to a binary that ran and
 // exited non-zero).
 func codexErrorLooksLikeMissingBinary(lower string) bool {
-	for _, marker := range []string{
-		"no such file or directory",
-		"fork/exec",
-		"command not found",
-		"executable file not found",
-		"enoent",
-	} {
-		if strings.Contains(lower, marker) {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(lower, "command not found") ||
+		strings.Contains(lower, "executable file not found") ||
+		strings.Contains(lower, "fork/exec") && strings.Contains(lower, "no such file or directory") ||
+		strings.Contains(lower, "spawn ") && strings.Contains(lower, "enoent")
 }
 
 // codexExitCodeFromDetail extracts the numeric process exit code from a

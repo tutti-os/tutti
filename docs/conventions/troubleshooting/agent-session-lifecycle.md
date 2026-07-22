@@ -551,10 +551,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
 
 - Symptom:
   Clearing a goal while its current turn is still running leaves the composer
-  on a non-clickable send spinner. The transcript shows `/goal clear` followed
-  by a new processing row even though no new user turn started. Claude Code may
-  instead append a native `Goal cleared: …` assistant message at the bottom of
-  the transcript after the interrupted turn.
+  on a non-clickable send spinner. The transcript treats `/goal clear` as a
+  user Turn followed by a new processing row even though no new user work
+  started. Claude Code may instead append a native `Goal cleared: …` assistant
+  message at the bottom of the transcript after the interrupted turn.
 - Quick checks:
   Inspect the AgentGUI clear handler and the engine pending-submit records. If
   clear calls `executePrompt` with an immediate `/goal clear`, the control has
@@ -573,7 +573,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   row at the bottom.
 - Fix:
   Route every goal action, including clear, through the dedicated runtime
-  goal-control API. Do not create a user message, pending submit, or pseudo turn.
+  goal-control API. Do not create a user Turn message, pending submit, or pseudo
+  turn. A surface may project the durable session audit as a dedicated
+  `goal-control` row, but that row must carry no Turn ID and must not affect
+  processing ownership or Turn counts.
   If the provider needs an internal clear-command turn, register its generated
   turn ID and suppress only that turn's assistant/thinking acknowledgement at
   the runtime-adapter boundary before persistence. Do not filter by localized
@@ -588,11 +591,12 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   active light or dark theme instead of using the inverted neutral toast style.
 - Validation:
   Clear a goal while a turn is running and verify the goal-control API is called
-  without an engine submit dispatch. The clear command must not appear in the
-  transcript, the original processing row must remain in place, and Stop must
-  remain clickable until the active turn settles or is interrupted. For Claude
-  Code, verify the native acknowledgement is absent both live and after reload,
-  while identical text from an ordinary assistant turn remains visible.
+  without an engine submit dispatch. If the clear control is visible, it must
+  be a `goal-control` row with no Turn ID; the original processing row must
+  remain in place, and Stop must remain clickable until the active turn settles
+  or is interrupted. For Claude Code, verify the native acknowledgement is
+  absent both live and after reload, while identical text from an ordinary
+  assistant turn remains visible.
 - References:
   [useAgentGUISubmitInteractionActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISubmitInteractionActions.ts)
   [claude_sdk_goal.go](../../../packages/agent/daemon/runtime/claude_sdk_goal.go)
@@ -704,6 +708,41 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
   [sessionEntities.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionEntities.reducer.ts)
   [AgentGUIConversationRailQueryController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/AgentGUIConversationRailQueryController.ts)
+
+### AgentGUI Batch delete sessions does nothing
+
+- Symptom:
+  The project or Chats overflow menu opens, but choosing **Batch delete
+  sessions** neither opens the confirmation dialog nor sends a delete request.
+- Quick checks:
+  Look for
+  `agent.gui.conversation_batch_delete.capability_incomplete` in the host's
+  AgentGUI diagnostics. Its `missingMethods` field identifies whether the host
+  omitted `listSessionSectionDeletionCandidates` or `deleteSessionsBatch`. If
+  the event is absent and the action is enabled, correlate the candidate-list
+  and batch-delete transport requests before investigating the view.
+- Root cause:
+  Batch deletion is a two-stage runtime capability: AgentGUI first resolves the
+  authoritative session ids for the rail section and only then submits the
+  selected ids. A host that manually assembled `AgentActivityRuntime` could
+  expose the mutation but omit the candidate query. The old optional-method
+  checks then returned an empty candidate list, making a valid click look like
+  a no-op.
+- Fix:
+  Install the complete runtime cohort from
+  `@tutti-os/agent-gui/conversation-rail-runtime` and keep only transport DTO
+  mapping in the host adapter. Do not add view-local candidate discovery or
+  infer membership from loaded rows. AgentGUI treats a partial two-method
+  contract as unavailable, disables the action, and reports the missing method.
+- Validation:
+  Cover the host composition with both batch-deletion methods, verify the shared
+  factory forwards the exact candidate and delete inputs, and cover a partial
+  runtime contract as disabled with one diagnostic. Run the Agent GUI package
+  tests and the host activity-runtime composition tests.
+- References:
+  [agentConversationRailRuntime.ts](../../../packages/agent/gui/agentConversationRailRuntime.ts)
+  [useAgentGUIConversationRailQuery.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.ts)
+  [createDesktopAgentActivityRuntime.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
 
 ### AgentGUI model switch changes defaults but not the active session
 
@@ -2146,3 +2185,101 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [Agent Goal Control Design](../../specs/2026-07-15-agent-goal-control-design.md)
   [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
   [goal_state.go](../../../packages/agent/store-sqlite/goal_state.go)
+
+### Accepted Goal clear is sent repeatedly until convergence times out
+
+- Symptom:
+  One `/goal clear` produces repeated provider control requests at the Goal
+  worker interval. Each request is accepted, but the durable operation remains
+  `dispatched` with provider phase `accepted`, its attempt count keeps rising,
+  and it eventually fails with `accepted goal operation exceeded its
+convergence deadline`.
+- Quick checks:
+  Correlate logs by `agent_session_id`, operation ID, and Goal revision. Verify
+  there is one user control audit but multiple provider `action=clear` calls.
+  Inspect `workspace_agent_goal_control_operations`: an accepted operation with
+  increasing attempts and unchanged accepted evidence identifies Host replay,
+  not repeated user input.
+- Root cause:
+  The steady-state Goal worker treated clear's provider idempotence as
+  permission to resubmit an already accepted command. Acceptance had already
+  crossed the delivery boundary, so every later worker claim queued another
+  native clear command while the Host was supposed to wait for applied
+  lifecycle evidence.
+- Fix:
+  For every accepted Goal mutation, make the steady-state worker defer without
+  calling the provider again. Keep the convergence deadline so missing applied
+  evidence still terminates. Reserve replay for startup crash recovery and
+  gate it with the adapter recovery policy; query-incapable adapters may replay
+  an idempotent clear once, while unsafe set replay remains rejected.
+- Validation:
+  Return `accepted` from a clear, advance the worker clock past its next claim,
+  and step the steady-state worker. The provider call count must remain one,
+  while the operation stays pending and `applying`. Existing deadline coverage
+  must still fail a lost-evidence operation without another provider call.
+- References:
+  [goal_operation_worker.go](../../../packages/agent/host/goal_operation_worker.go)
+  [goal_scenarios.go](../../../packages/agent/host/conformance/goal_scenarios.go)
+
+### Initial Goal prompt disappears when the Agent starts responding
+
+- Symptom:
+  A new conversation opened with `/goal <objective>` first shows the submitted
+  command, then removes it as soon as the durable session or the first provider
+  response arrives. The response and processing state remain visible.
+- Quick checks:
+  Compare the optimistic activation message with the durable
+  `session_audit`. Verify both carry the same `clientSubmitId` and inspect the
+  transcript projection after the overlay removes the optimistic twin. If the
+  durable Goal audit is filtered from all presentation output, the replacement
+  leaves no visible row.
+- Root cause:
+  The optimistic activation was projected as an ordinary user message while
+  the canonical Goal control was correctly persisted as a session-level audit.
+  Overlay reconciliation removed the optimistic message by `clientSubmitId`,
+  then the message projector discarded the durable audit, so two individually
+  correct policies composed into a disappearing row.
+- Fix:
+  Mark the optimistic activation as Goal control when
+  `initialGoalControl` is present. Project both optimistic and durable forms as
+  a dedicated `goal-control` row outside the Turn model. Derive the row identity
+  from the audit payload's client-submit message identity before falling back
+  to the durable operation ID, so replacement preserves the renderer key.
+- Validation:
+  Project the optimistic-only state and the durable-after-overlay state. Both
+  must contain one `goal-control` row with the same ID and zero Turns. Also
+  verify the dedicated row renders, the first real provider Turn remains the
+  sole Turn, and reload produces the same control row.
+- References:
+  [workspaceAgentMessageOverlay.ts](../../../packages/agent/gui/shared/workspaceAgentMessageOverlay.ts)
+  [workspaceAgentMessageProjection.ts](../../../packages/agent/gui/shared/agentConversation/projection/workspaceAgentMessageProjection.ts)
+  [workspaceAgentTimelineCanonical.ts](../../../packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts)
+
+### Goal clear duplicates the live Agent work section
+
+- Symptom:
+  While a Goal Turn is still streaming, clicking clear inserts `/goal clear`
+  between two identical Agent work sections. Both sections continue updating
+  together even though the daemon executed only one Turn.
+- Quick checks:
+  Inspect canonical Turns and message ownership. If Agent messages on both
+  sides of the turnless Goal audit carry the same Turn ID, compare transcript
+  group keys before inspecting provider retries or duplicate persistence.
+- Root cause:
+  Chronological insertion produced `Turn T -> goal-control -> Turn T`. A
+  grouping pass treated the turnless row as a hard boundary and created two
+  groups with key `T`; the work-section map retained the later model for that
+  shared key, so both Turn positions rendered the same rows.
+- Fix:
+  Keep a turnless session row inside the current presentation group only when
+  the next lifecycle-owned row proves that the surrounding Turn ID is
+  unchanged. Preserve the session row's null Turn ID; presentation continuity
+  must not manufacture lifecycle ownership.
+- Validation:
+  Cover `T -> goal-control -> T` and assert one Turn group, one processed-time
+  section, one Goal control row, and one copy of each Agent row. Also cover
+  `T1 -> goal-control -> T2` and verify the Goal control remains an independent
+  orphan between different Turns.
+- References:
+  [agentTranscriptModel.ts](../../../packages/agent/gui/shared/agentConversation/components/agentTranscriptModel.ts)
+  [AgentTranscriptView.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx)

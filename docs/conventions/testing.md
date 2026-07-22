@@ -94,9 +94,10 @@ application; CDP-injected scenario input remains available.
 
 Reports and traces are written under
 `.tmp/perf/agent-gui/<scenario>/<timestamp>/`. Metric values are
-report-only and do not fail the command; startup, scenario, capture, or analysis
-failures return a non-zero exit code. This command is local diagnostics, not a
-CI performance gate or a stable benchmark fixture.
+report-only by default; startup, scenario, capture, or analysis failures return
+a non-zero exit code. `virtualized-scroll-locator` is the narrow exception: its
+documented scenario thresholds fail the command. The command remains local
+diagnostics, not a CI performance gate or a stable cross-device benchmark.
 
 The report separates semantic scenario assertions from performance metrics. It
 shows start-to-selection, selection-to-stable, and settling phases; restricts
@@ -107,24 +108,41 @@ declaration when static symbol matching succeeds. Those links identify source
 ownership, not a runtime call stack or proof of causation.
 
 The capture runner ships `provider-switch`, `session-switch`,
-`provider-session-cycle`, `virtualized-streaming`, `rail-scope-reveal`,
+`provider-session-cycle`, `virtualized-streaming`,
+`virtualized-scroll-locator`, `rail-scope-reveal`, `composer-input`,
 `composer-overflow-resize`, `workbench-window-lifecycle`, and
 `desktop-window-state`. List them with `--list-scenarios`; select one with
 `--scenario <id>`. Scenario modules own preparation, completion conditions,
 semantic assertions, milestones, and metadata; runtime startup, trace capture,
 renderer analysis, and report rendering stay scenario-neutral.
 
-`virtualized-streaming` requires one root Session with at least thirty settled
-Turns in the source snapshot. It changes only the isolated copy to route that
-Session through the repository's deterministic fake Cursor ACP executable,
-then asserts that the transcript is virtualized while real daemon events drive
-repeated React DOM mutations. It never launches or sends input to a developer's
-installed Agent provider. `rail-scope-reveal` asserts the exact active-row
+`virtualized-streaming` and `virtualized-scroll-locator` require one root
+Session with at least thirty settled Turns. They change only the isolated copy
+to route that Session through the repository's deterministic fake Cursor ACP
+executable. Streaming asserts that real daemon events drive repeated React DOM
+mutations. Scroll-locator additionally requires four user text messages and
+replaces their bodies with a fixed eight-paragraph, three-mention rich-text
+fixture. It performs a ten-second monotonic upward scroll over at least eight
+viewports, rejects reversed or returning locator selection, and asserts that
+historical rows never gain `contenteditable="true"` or `role="textbox"`. Its trace gate
+requires at least 300 scroll dispatches, a maximum 50 ms scroll dispatch,
+at most 1200 ms total scroll-dispatch time, at most 500 ms `Layout`, at most
+1000 ms `UpdateLayoutTree`, and zero inclusive CPU samples for `EditorView`,
+`hasSelection`, `selectionToDOM`, and `updateStateInner`. CPU sample counts use
+marker-bounded renderer-process `ProfileChunk` stacks; the gate also requires
+at least one CPU sample so missing profiler data cannot pass as zero.
+`captureScrollAnchor` is reported for diagnosis but is not itself a threshold.
+Neither scenario launches or sends input to a developer's installed Agent provider.
+`rail-scope-reveal` asserts the exact active-row
 `scrollIntoView` call during a fresh Agent scope restore.
 `composer-overflow-resize` maximizes the AgentGUI Workbench node, narrows the
 renderer viewport, asserts the hero prompt-tip's native `scrollWidth` and
 `clientWidth` getters were read after resize, then restores the original
 viewport metrics.
+`composer-input` restores a settled Session so the dock composer is active,
+injects text one character at a time, drives a real CDP IME composition
+lifecycle, then opens the `@` panel and verifies ArrowDown, Tab, and Escape
+navigation without submitting the draft.
 
 `workbench-window-lifecycle` measures the internal AgentGUI Workbench node's
 minimize, restore, maximize, unmaximize, close, and reopen mechanics.

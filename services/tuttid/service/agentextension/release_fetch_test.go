@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -164,5 +165,17 @@ func TestVerifyReleasePreservesSignedOptionalManifestFields(t *testing.T) {
 	}
 	if err := verifyRelease(release, source); err != nil {
 		t.Fatalf("verifyRelease() error = %v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "release.json")
+	if err := writeJSONAtomic(path, release); err != nil {
+		t.Fatal(err)
+	}
+	var persisted Release
+	if err := readJSON(path, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyRelease(persisted, source); err != nil {
+		t.Fatalf("verifyRelease() after persistence error = %v", err)
 	}
 }

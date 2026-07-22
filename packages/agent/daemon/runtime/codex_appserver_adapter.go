@@ -214,7 +214,7 @@ type codexAppServerSession struct {
 	// session. Once bounded evidence can no longer preserve ambiguity, no later
 	// notification may rebuild a partial cache and become adoptable.
 	provenanceDegraded bool
-	// goalMutationMu is the provider-side half of GoalActor. It serializes
+	// goalMutationMu is the provider-side half of the Host goal mutation lane. It serializes
 	// direct control, reconcile and delayed continuation nudges for this thread.
 	goalMutationMu         sync.Mutex
 	models                 []map[string]any

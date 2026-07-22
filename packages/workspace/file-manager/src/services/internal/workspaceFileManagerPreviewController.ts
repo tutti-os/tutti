@@ -1,20 +1,23 @@
-import type { WorkspaceFilePreviewReadonlyReason } from "@tutti-os/workspace-file-preview";
 import {
-  createWorkspaceFilePreviewLoadedState,
+  createWorkspaceFilePreviewController,
   formatWorkspacePreviewByteLimit,
-  normalizeWorkspaceFilePreviewBytes,
-  resolveWorkspaceFilePreviewReadiness,
-  workspaceFilePreviewMaxBytes
-} from "../workspaceFileManagerModel.ts";
+  workspaceFilePreviewMaxBytes,
+  type WorkspaceFilePreviewController,
+  type WorkspaceFilePreviewControllerState,
+  type WorkspaceFilePreviewReadonlyReason
+} from "@tutti-os/workspace-file-preview";
+import { resolveWorkspaceFileActivationTarget } from "../workspaceFileManagerModel.ts";
 import type { WorkspaceFileManagerI18nRuntime } from "../../i18n/workspaceFileManagerI18n.ts";
 import type { WorkspaceFileManagerHost } from "../workspaceFileManagerHost.interface.ts";
-import type { WorkspaceFileManagerState } from "../workspaceFileManagerTypes.ts";
+import type {
+  WorkspaceFileEntry,
+  WorkspaceFileManagerState
+} from "../workspaceFileManagerTypes.ts";
 import { findWorkspaceFileEntry } from "./model/entryLookup.ts";
 
 export interface WorkspaceFileManagerPreviewControllerInput {
   copy: () => WorkspaceFileManagerI18nRuntime;
   host: WorkspaceFileManagerHost;
-  isDisposed: () => boolean;
   resolveErrorMessage: (
     error: unknown,
     overrides?: Record<string, string | undefined>
@@ -24,172 +27,112 @@ export interface WorkspaceFileManagerPreviewControllerInput {
 
 export class WorkspaceFileManagerPreviewController {
   private readonly copy: () => WorkspaceFileManagerI18nRuntime;
-  private readonly host: WorkspaceFileManagerHost;
-  private readonly isDisposed: () => boolean;
   private readonly resolveErrorMessage: (
     error: unknown,
     overrides?: Record<string, string | undefined>
   ) => string;
   private readonly store: WorkspaceFileManagerState;
-  private previewObjectUrl: string | null = null;
-  private previewRequestSeq = 0;
+  private readonly previewController: WorkspaceFilePreviewController<WorkspaceFileEntry>;
+  private readonly unsubscribePreview: () => void;
 
   constructor(input: WorkspaceFileManagerPreviewControllerInput) {
     this.copy = input.copy;
-    this.host = input.host;
-    this.isDisposed = input.isDisposed;
     this.resolveErrorMessage = input.resolveErrorMessage;
     this.store = input.store;
+    this.previewController = createWorkspaceFilePreviewController({
+      read: input.host.readPreviewFile
+        ? ({ entry }) =>
+            input.host.readPreviewFile!(input.store.workspaceID, entry.path)
+        : undefined,
+      toPreviewEntry: (entry: WorkspaceFileEntry) => entry
+    });
+    this.unsubscribePreview = this.previewController.subscribe(() => {
+      this.applyPreviewState(this.previewController.getSnapshot());
+    });
   }
 
   dispose(): void {
-    this.previewRequestSeq += 1;
-    this.revokePreviewObjectUrl();
+    this.unsubscribePreview();
+    this.previewController.dispose();
   }
 
   async syncPreviewState(): Promise<void> {
-    const requestID = this.previewRequestSeq + 1;
-    this.previewRequestSeq = requestID;
-    this.revokePreviewObjectUrl();
-
     const selectedEntry = findWorkspaceFileEntry(
       this.store,
       this.store.selectedPath
     );
+    const settled = this.previewController.setEntry(selectedEntry);
+    await settled;
+    this.applyPreviewState(this.previewController.getSnapshot());
+  }
+
+  private applyPreviewState(
+    state: WorkspaceFilePreviewControllerState<WorkspaceFileEntry>
+  ): void {
     const copy = this.copy();
-
-    if (!selectedEntry) {
-      this.store.previewState = { status: "empty" };
-      return;
-    }
-
-    const readiness = resolveWorkspaceFilePreviewReadiness(selectedEntry);
-    if (readiness.status === "directory") {
-      this.store.previewState = {
-        entry: selectedEntry,
-        status: "directory"
-      };
-      return;
-    }
-    if (readiness.status === "unsupported") {
-      this.store.previewState = {
-        entry: selectedEntry,
-        message: copy.t("previewUnsupported"),
-        status: "unsupported"
-      };
-      return;
-    }
-    if (readiness.status === "readonly") {
-      this.store.previewState = {
-        entry: selectedEntry,
-        message: resolveWorkspaceFileManagerPreviewReadonlyMessage(
-          copy,
-          readiness.reason,
-          readiness.maxSizeBytes
-        ),
-        status: "readonly"
-      };
-      return;
-    }
-
-    const activationTarget = readiness.target;
-
-    this.store.previewState = {
-      entry: activationTarget,
-      status: "loading"
-    };
-
-    if (!this.host.readPreviewFile) {
-      this.store.previewState = {
-        entry: selectedEntry,
-        message: copy.t("previewUnsupported"),
-        status: "unsupported"
-      };
-      return;
-    }
-
-    try {
-      const bytes = normalizeWorkspaceFilePreviewBytes(
-        await this.host.readPreviewFile(
-          this.store.workspaceID,
-          selectedEntry.path
-        )
-      );
-      if (this.isDisposed() || requestID !== this.previewRequestSeq) {
+    switch (state.status) {
+      case "empty":
+        this.store.previewState = state;
         return;
-      }
-
-      const loadedState = createWorkspaceFilePreviewLoadedState({
-        bytes,
-        entry: selectedEntry,
-        target: activationTarget
-      });
-      if (loadedState.status === "image" || loadedState.status === "video") {
-        const objectUrl = URL.createObjectURL(
-          new Blob([loadedState.bytes], {
-            type: loadedState.contentType
-          })
-        );
-        if (this.isDisposed() || requestID !== this.previewRequestSeq) {
-          URL.revokeObjectURL(objectUrl);
+      case "directory":
+        this.store.previewState = state;
+        return;
+      case "loading":
+      case "text":
+      case "image":
+      case "video": {
+        const target = resolveWorkspaceFileActivationTarget(state.entry);
+        if (!target) {
+          this.store.previewState = {
+            entry: state.entry,
+            message: copy.t("previewUnsupported"),
+            status: "unsupported"
+          };
           return;
         }
-
-        this.previewObjectUrl = objectUrl;
+        this.store.previewState =
+          state.status === "loading"
+            ? { entry: target, status: "loading" }
+            : state.status === "text"
+              ? { content: state.content, entry: target, status: "text" }
+              : {
+                  entry: target,
+                  objectUrl: state.objectUrl,
+                  status: state.status
+                };
+        return;
+      }
+      case "readonly":
         this.store.previewState = {
-          entry: activationTarget,
-          objectUrl,
-          status: loadedState.status
-        };
-        return;
-      }
-
-      if (loadedState.status === "text") {
-        this.store.previewState = loadedState;
-        return;
-      }
-
-      if (loadedState.status === "html") {
-        this.store.previewState = loadedState;
-        return;
-      }
-
-      if (loadedState.status === "readonly") {
-        this.store.previewState = {
-          entry: selectedEntry,
+          entry: state.entry,
           message: resolveWorkspaceFileManagerPreviewReadonlyMessage(
             copy,
-            loadedState.reason,
-            loadedState.maxSizeBytes
+            state.reason,
+            state.maxSizeBytes
           ),
           status: "readonly"
         };
-      }
-    } catch (error) {
-      if (this.isDisposed() || requestID !== this.previewRequestSeq) {
         return;
-      }
-
-      this.store.previewState = {
-        entry: selectedEntry,
-        message: this.resolveErrorMessage(error, {
-          preview_file_too_large: copy.t("previewFileTooLarge", {
-            maxSize: formatWorkspacePreviewByteLimit(
-              workspaceFilePreviewMaxBytes
-            )
-          })
-        }),
-        status: "error"
-      };
+      case "unsupported":
+        this.store.previewState = {
+          entry: state.entry,
+          message: copy.t("previewUnsupported"),
+          status: "unsupported"
+        };
+        return;
+      case "error":
+        this.store.previewState = {
+          entry: state.entry,
+          message: this.resolveErrorMessage(state.error, {
+            preview_file_too_large: copy.t("previewFileTooLarge", {
+              maxSize: formatWorkspacePreviewByteLimit(
+                workspaceFilePreviewMaxBytes
+              )
+            })
+          }),
+          status: "error"
+        };
     }
-  }
-
-  private revokePreviewObjectUrl(): void {
-    if (!this.previewObjectUrl) {
-      return;
-    }
-    URL.revokeObjectURL(this.previewObjectUrl);
-    this.previewObjectUrl = null;
   }
 }
 

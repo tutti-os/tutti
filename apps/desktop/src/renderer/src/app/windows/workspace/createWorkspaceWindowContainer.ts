@@ -19,6 +19,7 @@ import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } 
 import { registerWorkspaceAppCenterServices } from "@renderer/features/workspace-app-center/services/registerWorkspaceAppCenterServices";
 import { registerWorkspaceCatalogServices } from "@renderer/features/workspace-catalog/services/registerWorkspaceCatalogServices";
 import { registerWorkspaceFileManagerServices } from "@renderer/features/workspace-file-manager/services/registerWorkspaceFileManagerServices";
+import { registerWorkspaceFilePreviewServices } from "@renderer/features/workspace-file-preview";
 import { registerWorkspaceUserProjectServices } from "@renderer/features/workspace-user-project/services/registerWorkspaceUserProjectServices.ts";
 import { createAgentProviderTerminalCommandRunner } from "@renderer/features/workspace-workbench/services/createAgentProviderTerminalCommandRunner";
 import { createWorkspaceAgentOutcomeNotificationController } from "@renderer/features/workspace-workbench/services/workspaceAgentOutcomeNotification";
@@ -186,6 +187,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       workspaceId: activeWorkspaceID
     }
   );
+  registerWorkspaceFilePreviewServices(registry);
   registerWorkspaceFileManagerServices(registry, {
     desktopPreferencesService,
     hostFilesApi: desktopApi.host.files,

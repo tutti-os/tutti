@@ -54,13 +54,16 @@
   after initialization, and pass fixture author identity through commit-local
   `-c` arguments instead of `git config`.
 - Validation:
-  Run the fixture tests with poisoned `GIT_DIR`, `GIT_WORK_TREE`, and
-  `GIT_CONFIG_*` inputs that point only at disposable paths. Confirm the fixture
-  initializes its own `.git`, then verify the caller's config, index, branch,
-  and worktree remain unchanged.
+  Run `git-environment.test.mjs`, which launches the temporary-repository test
+  suites with a poisoned linked-worktree `GIT_DIR` that points only at a
+  disposable repository. Confirm each fixture initializes its own `.git`, then
+  verify the caller's config and branch remain unchanged. Keep the lower-level
+  environment test coverage for `GIT_WORK_TREE` and `GIT_CONFIG_*` inputs.
 - References:
   [git-environment.mjs](../../../tools/scripts/git-environment.mjs)
   [check-agent-gui-degradation.test.mjs](../../../tools/scripts/check-agent-gui-degradation.test.mjs)
+  [push-checked.test.mjs](../../../tools/scripts/push-checked.test.mjs)
+  [run-check-changed.test.mjs](../../../tools/scripts/run-check-changed.test.mjs)
   [static-analysis.md](../static-analysis.md)
 
 ### Dynamic CLI input rejects plausible flags

@@ -65,6 +65,7 @@ describe("useAgentGUIConversationDeletion", () => {
     const deleteSession = vi.fn(async () => {
       activeConversationIdObservedByDelete = committedActiveConversationId;
       return {
+        cleanupFailed: false,
         removed: true,
         removedMessages: 0
       };

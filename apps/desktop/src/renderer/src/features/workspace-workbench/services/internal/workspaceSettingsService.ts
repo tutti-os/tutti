@@ -2,7 +2,7 @@ import type {
   DesktopComputerUsePermissionPane,
   DesktopComputerUseRestartDriverInput,
   DesktopDeveloperLogKind,
-  DesktopDeveloperLogsExportScope
+  ExportDeveloperLogsInput
 } from "@shared/contracts/ipc";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
@@ -73,25 +73,13 @@ import {
   markTuttiAgentSwitchDaemonMigrationComplete,
   readLegacyTuttiAgentSwitchEnabled
 } from "../tuttiAgentSwitchPreference.ts";
-import type {
-  WorkspaceManagedModel,
-  WorkspaceManagedModelProviderConfig,
-  WorkspaceManagedModelProviderDraft,
-  WorkspaceManagedModelProviderFeedbackKind,
-  WorkspaceManagedModelProviderID
-} from "../workspaceSettingsTypes.ts";
 import {
   createWorkspaceFeatureFlagSettings,
   type WorkspaceFeatureFlagSettings
 } from "./workspaceFeatureFlagSettings.ts";
+import { WorkspaceModelPlansController } from "./workspaceModelPlansController.ts";
 import { WorkspaceAgentsController } from "./workspaceAgentsController.ts";
 import { WorkspaceAutomationRulesController } from "./workspaceAutomationRulesController.ts";
-
-const managedModelProviderIDs: WorkspaceManagedModelProviderID[] = [
-  "agnes",
-  "openai",
-  "anthropic"
-];
 
 export interface WorkspaceSettingsServiceDependencies {
   client: DesktopWorkspaceSettingsClient;
@@ -115,6 +103,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   readonly store = createWorkspaceSettingsStore();
   readonly agents: WorkspaceAgentsController;
   readonly automationRules: WorkspaceAutomationRulesController;
+  readonly modelPlans: WorkspaceModelPlansController;
 
   private readonly dependencies: WorkspaceSettingsServiceDependencies;
   private readonly desktopPreferences: DesktopPreferencesService;
@@ -153,6 +142,11 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.reporterService = reporterService;
     this.appCenterService = appCenterService;
     this.reporterNow = reporterNow;
+    this.modelPlans = new WorkspaceModelPlansController({
+      client: dependencies.client,
+      notifications,
+      store: this.store
+    });
     this.agents = new WorkspaceAgentsController({
       client: dependencies.client,
       onWorkspaceAgentsChanged: dependencies.onAgentTargetsChanged,
@@ -171,8 +165,10 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   ): void {
     this.scheduleTuttiAgentSwitchInitialization();
     this.syncWorkspace(workspace);
-    const managedModelsRequested = options?.pane === "managed-models";
-    if (managedModelsRequested) {
+    // "managed-models" remains the external open-request alias for the pane
+    // that now hosts model plans.
+    const modelPlansRequested = options?.pane === "managed-models";
+    if (modelPlansRequested) {
       this.store.activeSection = "apps";
     } else if (options?.section) {
       this.store.activeSection = options.section;
@@ -194,22 +190,21 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
           : null;
       this.store.agentFocusRequestID += 1;
     }
-    if (managedModelsRequested && isManagedModelProviderID(options.provider)) {
-      this.store.managedModels.focusedProvider = options.provider;
-      this.store.managedModels.focusRequestID += 1;
-    }
     const wasOpen = this.store.open;
     this.store.open = true;
 
     if (!wasOpen) {
       this.reportSettingsOpened();
       void this.refreshDeveloperLogs();
-      void this.refreshManagedModelProviders();
-      void this.refreshAgentSettings();
+      if (
+        this.store.activeSection === "agent" ||
+        this.store.agentTab === "agents"
+      ) {
+        this.refreshAgentSettings();
+      } else {
+        this.refreshModelPlansSurface();
+      }
     } else if (this.store.activeSection === "apps") {
-      void this.refreshManagedModelProviders();
-    } else if (this.store.activeSection === "agent") {
-      void this.refreshAgentSettings();
     }
   }
 
@@ -275,13 +270,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.store.agentFocusRequestID = 0;
       this.store.generalFocusAnchor = null;
       this.store.generalFocusRequestID = 0;
-      this.store.managedModels.providers = [];
-      this.store.managedModels.draft = null;
-      this.store.managedModels.feedback = {};
-      this.store.managedModels.detectingProvider = null;
-      this.store.managedModels.focusedProvider = null;
-      this.store.managedModels.focusRequestID = 0;
-      this.store.modelPlans.plans = [];
+      this.modelPlans.reset();
       this.agents.reset();
       this.automationRules.reset();
     }
@@ -295,42 +284,18 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.store.activeSection = sectionID;
     this.reportSettingsSectionSwitched(sectionID);
     if (sectionID === "apps") {
-      void this.refreshManagedModelProviders();
+      this.refreshModelPlansSurface();
     }
     if (sectionID === "agent") {
-      void this.refreshAgentSettings();
-    }
-  }
-
-  // The Agent tab hosts the workspace Agent directory; its editor reads the
-  // daemon-backed model plan list, so entering the tab refreshes both.
-  private async refreshAgentSettings(): Promise<void> {
-    await Promise.all([
-      this.refreshWorkspaceModelPlans(),
-      this.agents.refresh(),
-      this.automationRules.refresh()
-    ]);
-  }
-
-  private async refreshWorkspaceModelPlans(): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    if (!workspaceID) {
-      return;
-    }
-    try {
-      this.store.modelPlans.plans =
-        await this.dependencies.client.listModelPlans(workspaceID);
-    } catch {
-      // The Agents editor surfaces plan-dependent affordances as disabled;
-      // the next section entry retries the load.
+      this.refreshAgentSettings();
     }
   }
 
   selectAgentTab(tab: WorkspaceSettingsAgentTab): void {
-    if (this.store.agentTab === tab) {
-      return;
-    }
     this.store.agentTab = tab;
+    if (tab === "agents") {
+      this.refreshAgentSettings();
+    }
   }
 
   setDeveloperPanelVisible(visible: boolean): void {
@@ -933,9 +898,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
-  async exportDeveloperLogs(
-    scope: DesktopDeveloperLogsExportScope
-  ): Promise<void> {
+  async exportDeveloperLogs(input: ExportDeveloperLogsInput): Promise<void> {
     if (this.store.developerLogs.exporting) {
       return;
     }
@@ -943,7 +906,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.store.developerLogs.exporting = true;
 
     try {
-      const result = await this.dependencies.client.exportLogs(scope);
+      const result = await this.dependencies.client.exportLogs(input);
       if (!result.canceled) {
         this.notifications.success({
           title: createActiveTranslator().t(
@@ -993,300 +956,6 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
-  async refreshManagedModelProviders(): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    if (!workspaceID || this.store.managedModels.loading) {
-      return;
-    }
-
-    this.store.managedModels.loading = true;
-    try {
-      const providers =
-        await this.dependencies.client.listManagedModelProviders(workspaceID);
-      this.store.managedModels.providers = providers.map(
-        toManagedModelProviderDraft
-      );
-    } catch {
-      this.notifications.error({
-        title: createActiveTranslator().t(
-          "workspace.settings.apps.managedModels.loadFailed"
-        )
-      });
-    } finally {
-      this.store.managedModels.loading = false;
-    }
-  }
-
-  updateManagedModelProviderDraft(
-    providerID: WorkspaceManagedModelProviderID,
-    patch: Partial<WorkspaceManagedModelProviderDraft>
-  ): void {
-    this.store.managedModels.providers = this.store.managedModels.providers.map(
-      (provider) =>
-        provider.provider === providerID ? { ...provider, ...patch } : provider
-    );
-    this.clearManagedModelFeedback(providerID);
-  }
-
-  beginManagedModelProviderDraft(
-    provider: WorkspaceManagedModelProviderID
-  ): void {
-    const alreadyConfigured = this.store.managedModels.providers.some(
-      (candidate) => candidate.provider === provider
-    );
-    if (alreadyConfigured) {
-      return;
-    }
-    this.clearManagedModelFeedback(provider);
-    this.store.managedModels.draft = createManagedModelProviderDraft(provider);
-  }
-
-  updateManagedModelDraft(
-    patch: Partial<WorkspaceManagedModelProviderDraft>
-  ): void {
-    const draft = this.store.managedModels.draft;
-    if (!draft) {
-      return;
-    }
-    this.store.managedModels.draft = { ...draft, ...patch };
-    this.clearManagedModelFeedback(draft.provider);
-  }
-
-  cancelManagedModelProviderDraft(): void {
-    this.store.managedModels.draft = null;
-  }
-
-  async saveManagedModelDraft(): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    const draft = this.store.managedModels.draft;
-    if (!workspaceID || !draft || this.store.managedModels.savingProvider) {
-      return;
-    }
-    if (!hasRequiredManagedModelProviderFields(draft)) {
-      this.setManagedModelFeedback(draft.provider, "requiredFields");
-      return;
-    }
-    this.store.managedModels.savingProvider = draft.provider;
-    try {
-      const saved = await this.dependencies.client.putManagedModelProvider(
-        workspaceID,
-        draft.provider,
-        {
-          ...(draft.apiKey.trim() ? { apiKey: draft.apiKey } : {}),
-          baseUrl: draft.baseUrl,
-          enabled: draft.enabled,
-          models: normalizeManagedModels(draft.provider, draft.models)
-        }
-      );
-      this.replaceManagedModelProviderDraft(saved);
-      this.store.managedModels.draft = null;
-      this.clearManagedModelFeedback(draft.provider);
-    } catch {
-      this.setManagedModelFeedback(draft.provider, "saveFailed");
-    } finally {
-      this.store.managedModels.savingProvider = null;
-    }
-  }
-
-  async setManagedModelProviderEnabled(
-    providerID: WorkspaceManagedModelProviderID,
-    enabled: boolean
-  ): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    const target = this.store.managedModels.providers.find(
-      (provider) => provider.provider === providerID
-    );
-    if (!workspaceID || !target || this.store.managedModels.savingProvider) {
-      return;
-    }
-    const previousEnabled = target.enabled;
-    const baseUrl = target.baseUrl;
-    const apiKey = target.apiKey;
-    const models = normalizeManagedModels(providerID, target.models);
-    this.store.managedModels.savingProvider = providerID;
-    this.updateManagedModelProviderDraft(providerID, { enabled });
-    try {
-      const saved = await this.dependencies.client.putManagedModelProvider(
-        workspaceID,
-        providerID,
-        {
-          ...(apiKey.trim() ? { apiKey } : {}),
-          baseUrl,
-          enabled,
-          models
-        }
-      );
-      this.replaceManagedModelProviderDraft(saved);
-    } catch {
-      this.updateManagedModelProviderDraft(providerID, {
-        enabled: previousEnabled
-      });
-      this.notifications.error({
-        title: createActiveTranslator().t(
-          "workspace.settings.apps.managedModels.saveFailed"
-        )
-      });
-    } finally {
-      this.store.managedModels.savingProvider = null;
-    }
-  }
-
-  async saveManagedModelProvider(
-    provider: WorkspaceManagedModelProviderDraft
-  ): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    if (!workspaceID || this.store.managedModels.savingProvider) {
-      return;
-    }
-    if (!hasRequiredManagedModelProviderFields(provider)) {
-      this.setManagedModelFeedback(provider.provider, "requiredFields");
-      return;
-    }
-    this.store.managedModels.savingProvider = provider.provider;
-    try {
-      const saved = await this.dependencies.client.putManagedModelProvider(
-        workspaceID,
-        provider.provider,
-        {
-          ...(provider.apiKey.trim() ? { apiKey: provider.apiKey } : {}),
-          baseUrl: provider.baseUrl,
-          enabled: provider.enabled,
-          models: normalizeManagedModels(provider.provider, provider.models)
-        }
-      );
-      this.replaceManagedModelProviderDraft(saved);
-      this.clearManagedModelFeedback(provider.provider);
-    } catch {
-      this.setManagedModelFeedback(provider.provider, "saveFailed");
-    } finally {
-      this.store.managedModels.savingProvider = null;
-    }
-  }
-
-  async removeManagedModelProvider(
-    providerID: WorkspaceManagedModelProviderID
-  ): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    if (!workspaceID || this.store.managedModels.deletingProvider) {
-      return;
-    }
-    this.store.managedModels.deletingProvider = providerID;
-    try {
-      await this.dependencies.client.deleteManagedModelProvider(
-        workspaceID,
-        providerID
-      );
-      this.store.managedModels.providers =
-        this.store.managedModels.providers.filter(
-          (provider) => provider.provider !== providerID
-        );
-      this.clearManagedModelFeedback(providerID);
-    } catch {
-      this.setManagedModelFeedback(providerID, "deleteFailed");
-    } finally {
-      this.store.managedModels.deletingProvider = null;
-    }
-  }
-
-  async testManagedModelProvider(
-    providerID: WorkspaceManagedModelProviderID
-  ): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    if (!workspaceID || this.store.managedModels.testingProvider) {
-      return;
-    }
-    this.clearManagedModelFeedback(providerID);
-    this.store.managedModels.testingProvider = providerID;
-    try {
-      await this.dependencies.client.testManagedModelProvider(
-        workspaceID,
-        providerID
-      );
-      this.setManagedModelFeedback(providerID, "testOk");
-    } catch {
-      this.setManagedModelFeedback(providerID, "testFailed");
-    } finally {
-      this.store.managedModels.testingProvider = null;
-    }
-  }
-
-  async detectManagedModelProviderModels(
-    providerID: WorkspaceManagedModelProviderID
-  ): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    if (!workspaceID || this.store.managedModels.detectingProvider) {
-      return;
-    }
-    const provider = this.store.managedModels.providers.find(
-      (item) => item.provider === providerID
-    );
-    if (!provider) {
-      return;
-    }
-    this.clearManagedModelFeedback(providerID);
-    if (!hasRequiredManagedModelProviderFields(provider)) {
-      this.setManagedModelFeedback(providerID, "requiredFields");
-      return;
-    }
-    this.store.managedModels.detectingProvider = providerID;
-    try {
-      const models =
-        await this.dependencies.client.listManagedModelProviderModels(
-          workspaceID,
-          providerID,
-          {
-            ...(provider.apiKey.trim() ? { apiKey: provider.apiKey } : {}),
-            baseUrl: provider.baseUrl
-          }
-        );
-      this.updateManagedModelProviderDraft(providerID, {
-        models: normalizeManagedModels(providerID, models)
-      });
-      if (models.length === 0) {
-        this.setManagedModelFeedback(providerID, "detectEmpty");
-      }
-    } catch {
-      this.setManagedModelFeedback(providerID, "detectFailed");
-    } finally {
-      this.store.managedModels.detectingProvider = null;
-    }
-  }
-
-  private replaceManagedModelProviderDraft(
-    config: WorkspaceManagedModelProviderConfig
-  ): void {
-    const draft = toManagedModelProviderDraft(config);
-    const exists = this.store.managedModels.providers.some(
-      (provider) => provider.provider === draft.provider
-    );
-    this.store.managedModels.providers = exists
-      ? this.store.managedModels.providers.map((provider) =>
-          provider.provider === draft.provider ? draft : provider
-        )
-      : [...this.store.managedModels.providers, draft];
-  }
-
-  private setManagedModelFeedback(
-    providerID: WorkspaceManagedModelProviderID,
-    kind: WorkspaceManagedModelProviderFeedbackKind
-  ): void {
-    this.store.managedModels.feedback = {
-      ...this.store.managedModels.feedback,
-      [providerID]: { kind }
-    };
-  }
-
-  private clearManagedModelFeedback(
-    providerID: WorkspaceManagedModelProviderID
-  ): void {
-    if (!this.store.managedModels.feedback[providerID]) {
-      return;
-    }
-    const next = { ...this.store.managedModels.feedback };
-    delete next[providerID];
-    this.store.managedModels.feedback = next;
-  }
-
   private startDeveloperLogsLoad(): number {
     this.logsLoadSequence += 1;
     this.store.developerLogs.loading = true;
@@ -1305,6 +974,19 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 
     this.store.developerLogs.logs = logs;
     this.store.developerLogs.loading = false;
+  }
+
+  // Plans stay Plan-only via controller.refresh(); bindings are a separate
+  // load so the Agent binding section can render enabled targets.
+  private refreshAgentSettings(): void {
+    this.refreshModelPlansSurface();
+    void this.agents.refresh();
+    void this.automationRules.refresh();
+  }
+
+  private refreshModelPlansSurface(): void {
+    void this.modelPlans.refresh();
+    void this.modelPlans.refreshBindings();
   }
 
   private reportSettingsOpened(): void {
@@ -1377,105 +1059,6 @@ const defaultTuttiAgentSwitchMigration = {
 
 function createActiveTranslator() {
   return createTranslator(getActiveLocale());
-}
-
-function createManagedModelProviderDraft(
-  provider: WorkspaceManagedModelProviderID
-): WorkspaceManagedModelProviderDraft {
-  return toManagedModelProviderDraft({
-    ...createDefaultManagedModelProviderConfig(provider),
-    enabled: true
-  });
-}
-
-function isManagedModelProviderID(
-  value: string | undefined
-): value is WorkspaceManagedModelProviderID {
-  return managedModelProviderIDs.includes(
-    value as WorkspaceManagedModelProviderID
-  );
-}
-
-function createDefaultManagedModelProviderConfig(
-  provider: WorkspaceManagedModelProviderID
-): WorkspaceManagedModelProviderConfig {
-  const officialDefaults: Record<
-    WorkspaceManagedModelProviderID,
-    { baseUrl: string; models: readonly string[] }
-  > = {
-    agnes: {
-      baseUrl: "https://apihub.agnes-ai.com/v1",
-      models: ["agnes-2.0-flash", "agnes-1.5-flash"]
-    },
-    anthropic: {
-      baseUrl: "https://api.anthropic.com/v1",
-      models: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"]
-    },
-    openai: {
-      baseUrl: "https://api.openai.com/v1",
-      models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
-    }
-  };
-  const defaults = officialDefaults[provider];
-
-  return {
-    baseUrl: defaults.baseUrl,
-    enabled: false,
-    hasApiKey: false,
-    models: defaults.models.map((id) => ({
-      id,
-      name: id,
-      provider
-    })),
-    provider
-  };
-}
-
-function toManagedModelProviderDraft(
-  provider: WorkspaceManagedModelProviderConfig
-): WorkspaceManagedModelProviderDraft {
-  const providerModels = (
-    provider as Omit<WorkspaceManagedModelProviderConfig, "models"> & {
-      models: readonly WorkspaceManagedModel[] | null;
-    }
-  ).models;
-  const models = providerModels ?? [];
-  return {
-    ...provider,
-    apiKey: provider.apiKey ?? "",
-    baseUrl: provider.baseUrl ?? "",
-    models: normalizeManagedModels(provider.provider, models)
-  };
-}
-
-function hasRequiredManagedModelProviderFields(
-  provider: WorkspaceManagedModelProviderDraft
-): boolean {
-  return (
-    (provider.hasApiKey || provider.apiKey.trim().length > 0) &&
-    (provider.baseUrl?.trim().length ?? 0) > 0
-  );
-}
-
-function normalizeManagedModels(
-  provider: WorkspaceManagedModelProviderID,
-  models: readonly WorkspaceManagedModel[]
-) {
-  const seen = new Set<string>();
-  return models
-    .map((model) => ({
-      id: model.id.trim(),
-      name: model.name.trim() || model.id.trim(),
-      provider
-    }))
-    .filter((model) => {
-      const id = model.id;
-      if (!id || seen.has(id)) {
-        return false;
-      }
-      seen.add(id);
-      return true;
-    });
 }
 
 // Avoid decorator syntax so the renderer Babel pass can parse this file.

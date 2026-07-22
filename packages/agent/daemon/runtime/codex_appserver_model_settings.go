@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/modelcatalog"
 )
 
 // codexAppServerExecState owns the mutable model/config snapshot used to build
@@ -165,10 +167,11 @@ func codexAppServerConfigOptionDescriptors(
 		if hidden, _ := model["hidden"].(bool); hidden {
 			continue
 		}
-		modelOptions = append(modelOptions, map[string]any{
-			"value": value,
-			"name":  firstNonEmpty(asString(model["displayName"]), value),
-		})
+		modelOption, ok := codexAppServerRuntimeModelOption(model)
+		if !ok {
+			continue
+		}
+		modelOptions = append(modelOptions, modelOption)
 		modelOptionValues[value] = struct{}{}
 	}
 	if currentModel != "" {
@@ -228,6 +231,18 @@ func codexAppServerConfigOptionDescriptors(
 		},
 	})
 	return descriptors
+}
+
+func codexAppServerRuntimeModelOption(model map[string]any) (map[string]any, bool) {
+	raw, err := json.Marshal(model)
+	if err != nil {
+		return nil, false
+	}
+	normalized, ok := modelcatalog.NormalizeCodexModel(raw)
+	if !ok {
+		return nil, false
+	}
+	return modelcatalog.ProjectRuntimeConfigOptionModel(normalized), true
 }
 
 func codexAppServerEffectiveSettings(

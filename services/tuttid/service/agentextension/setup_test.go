@@ -17,6 +17,7 @@ import (
 	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
+	runtimecmd "github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	agentextensiondata "github.com/tutti-os/tutti/services/tuttid/data/agentextension"
@@ -610,8 +611,9 @@ func setupFixture(
 	store := &targetStoreStub{targets: map[string]agenttargetbiz.Target{}}
 	manager := &Manager{
 		RuntimeInstallDir: runtimeInstallDir, RuntimeBinDir: runtimeBinDir, Store: store,
-		Installations: agentextensiondata.NewFileInstallationStore(stateDir),
-		Discovery:     agentextensiondata.NewFileSetupDiscoveryDirectory(stateDir),
+		Installations:   agentextensiondata.NewFileInstallationStore(stateDir),
+		Discovery:       agentextensiondata.NewFileSetupDiscoveryDirectory(stateDir),
+		RuntimeResolver: setupFixtureRuntimeResolver(t),
 	}
 	installation, err := installTestPackage(t, manager, Release{AgentKey: key, Version: "1.0.0"}, testPackageZIPFor(t, manifest, discovery))
 	if err != nil {
@@ -639,6 +641,29 @@ func setupFixture(
 	service.Runner = runner
 	t.Cleanup(func() { _ = service.Close() })
 	return service, targetID
+}
+
+func setupFixtureRuntimeResolver(t *testing.T) runtimecmd.Resolver {
+	t.Helper()
+	allowedRoots := filepath.SplitList(os.Getenv("PATH"))
+	runtimeHome := t.TempDir()
+	return runtimecmd.Resolver{
+		HomeDir: func() (string, error) { return runtimeHome, nil },
+		IsExecutableFile: func(path string) bool {
+			allowed := false
+			for _, root := range allowedRoots {
+				if strings.TrimSpace(root) != "" && pathWithin(path, root) {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				return false
+			}
+			stat, err := os.Stat(path)
+			return err == nil && !stat.IsDir() && stat.Mode().Perm()&0o111 != 0
+		},
+	}
 }
 
 func setupBinaryFixture(

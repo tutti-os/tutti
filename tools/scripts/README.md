@@ -81,6 +81,7 @@ pnpm perf:agent-gui
 pnpm perf:agent-gui -- --list-scenarios
 pnpm perf:agent-gui -- --scenario session-switch
 pnpm perf:agent-gui -- --scenario virtualized-streaming
+pnpm perf:agent-gui -- --scenario composer-input
 ```
 
 The command reads `~/.tutti-dev/tuttid.db` by default and uses SQLite online
@@ -100,11 +101,13 @@ Outputs are stored under
 only infrastructure, scenario, trace, or analysis failures return a non-zero
 exit code. Available scenarios also cover deterministic streaming into an
 already virtualized transcript, fresh-scope Rail reveal, hero composer
-prompt-tip layout measurement during resize, internal Workbench window lifecycle, and
-native Electron window state changes. The streaming scenario rewrites only the
-isolated snapshot and shadows `cursor-agent` only inside the isolated Desktop
-process, so it cannot send input to an installed Agent provider. The native
-window scenarios are currently macOS-only. Use `--source-db`,
+prompt-tip layout measurement during resize, per-character composer input,
+IME composition, `@` panel keyboard navigation in a restored dock composer,
+internal Workbench window lifecycle, and native Electron window state changes.
+The streaming scenario rewrites only the isolated snapshot and shadows
+`cursor-agent` only inside the isolated Desktop process, so it cannot send input
+to an installed Agent provider. The native window scenarios are currently
+macOS-only. Use `--source-db`,
 `--from-target-id`, or `--to-target-id` to override the defaults.
 
 The Markdown report contains scenario assertions, observed milestone phases,

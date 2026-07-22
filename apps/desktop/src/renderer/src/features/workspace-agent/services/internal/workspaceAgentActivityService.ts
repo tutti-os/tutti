@@ -11,14 +11,11 @@ import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import type {
   Client,
   CollaborationRun,
-  ModelPlan,
   TuttidClient,
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
 import {
   createClient,
-  createCollaborationRun,
-  listModelPlans as listModelPlansRequest,
   normalizeTuttidError,
   setCollaborationRunAdoption
 } from "@tutti-os/client-tuttid-ts";
@@ -334,6 +331,9 @@ export class WorkspaceAgentActivityService
       throw new Error("workspace_agent_delete_result_missing");
     }
     return {
+      cleanupFailedSessionIds: [
+        ...mutation.deleteResult.cleanupFailedSessionIds
+      ],
       removedMessages: mutation.deleteResult.removedMessages,
       removedSessionIds: [...mutation.deleteResult.removedSessionIds],
       removedSessions: mutation.deleteResult.removedSessions
@@ -613,35 +613,6 @@ export class WorkspaceAgentActivityService
     );
   }
 
-  async startModelConsult(
-    input: Parameters<
-      NonNullable<IWorkspaceAgentActivityService["startModelConsult"]>
-    >[0]
-  ): ReturnType<
-    NonNullable<IWorkspaceAgentActivityService["startModelConsult"]>
-  > {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const client = await this.resolveCollaborationClient();
-    const response = await createCollaborationRun({
-      body: {
-        contextText: input.contextText?.trim() || undefined,
-        mode: "consult",
-        model: input.model,
-        modelPlanId: input.modelPlanId,
-        question: input.question,
-        sourceSessionId: input.agentSessionId,
-        triggerReason: "composer_consult",
-        triggerSource: "user"
-      },
-      client,
-      path: { workspaceID: workspaceId },
-      signal: input.signal
-    });
-    return agentActivityCollaborationRunFromTuttid(
-      unwrapCollaborationData(response, "Model consult request failed.")
-    );
-  }
-
   async setCollaborationAdoption(
     input: Parameters<
       NonNullable<IWorkspaceAgentActivityService["setCollaborationAdoption"]>
@@ -666,25 +637,6 @@ export class WorkspaceAgentActivityService
         "Collaboration adoption request failed."
       )
     );
-  }
-
-  async listModelPlans(
-    input: Parameters<
-      NonNullable<IWorkspaceAgentActivityService["listModelPlans"]>
-    >[0]
-  ): ReturnType<NonNullable<IWorkspaceAgentActivityService["listModelPlans"]>> {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const client = await this.resolveCollaborationClient();
-    const response = await listModelPlansRequest({
-      client,
-      path: { workspaceID: workspaceId },
-      signal: input.signal
-    });
-    const plans = unwrapCollaborationData(
-      response,
-      "Model plans request failed."
-    ).plans;
-    return { plans: plans.map(agentActivityModelPlanSummaryFromTuttid) };
   }
 
   private async resolveCollaborationClient(): Promise<Client> {
@@ -837,7 +789,10 @@ export class WorkspaceAgentActivityService
       signal: input.signal,
       workspaceId
     });
-    return { removed: result.removedSessionIds.includes(agentSessionId) };
+    return {
+      cleanupFailed: result.cleanupFailedSessionIds.includes(agentSessionId),
+      removed: result.removedSessionIds.includes(agentSessionId)
+    };
   }
 
   async renameSession(
@@ -1048,26 +1003,6 @@ function agentActivityCollaborationRunFromTuttid(run: CollaborationRun): {
         }
       : null,
     workspaceId: run.workspaceId
-  };
-}
-
-function agentActivityModelPlanSummaryFromTuttid(plan: ModelPlan): {
-  defaultModel: string | null;
-  enabled: boolean;
-  id: string;
-  models: Array<{ id: string; name: string }>;
-  name: string;
-  protocol: string;
-  status: string;
-} {
-  return {
-    defaultModel: plan.defaultModel ?? null,
-    enabled: plan.enabled,
-    id: plan.id,
-    models: plan.models.map((model) => ({ id: model.id, name: model.name })),
-    name: plan.name,
-    protocol: plan.protocol,
-    status: plan.status
   };
 }
 

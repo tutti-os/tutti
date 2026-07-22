@@ -19,6 +19,12 @@ func (h *Host) ReconcileGoalFromEvidence(ctx context.Context, input GoalReconcil
 	if h == nil || strings.TrimSpace(input.WorkspaceID) == "" || strings.TrimSpace(input.AgentSessionID) == "" {
 		return ErrInvalidArgument
 	}
+	return h.withSessionMutationActor(ctx, input.WorkspaceID, input.AgentSessionID, func(actorCtx context.Context) error {
+		return h.reconcileGoalFromEvidenceSerialized(actorCtx, input)
+	})
+}
+
+func (h *Host) reconcileGoalFromEvidenceSerialized(ctx context.Context, input GoalReconcileRequiredInput) error {
 	timeout := 2 * h.goalOperationAttemptTimeout()
 	if timeout < 30*time.Second {
 		timeout = 30 * time.Second

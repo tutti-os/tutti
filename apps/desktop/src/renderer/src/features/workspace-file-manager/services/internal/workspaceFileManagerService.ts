@@ -1,6 +1,5 @@
 import {
   createWorkspaceFileManagerService,
-  resolveWorkspaceFileExtension,
   type WorkspaceFileExternalLocation,
   type WorkspaceFileEntry,
   type WorkspaceFileLocationSection,
@@ -9,6 +8,7 @@ import {
   type WorkspaceFileManagerMutationErrorMessage,
   type WorkspaceFileManagerPersistedState
 } from "@tutti-os/workspace-file-manager/services";
+import { resolveWorkspaceFileExtension } from "@tutti-os/workspace-file-preview";
 import {
   createReferenceSourceAggregator,
   createStaticReferenceSourceRegistry,
@@ -27,9 +27,8 @@ import type {
 } from "../workspaceFileManagerService.interface";
 import {
   IWorkspaceFilePreviewSurfaceHost,
-  type IWorkspaceFilePreviewSurfaceHost as WorkspaceFilePreviewSurfaceHost
-} from "../workspaceFilePreviewSurfaceHost.interface.ts";
-import { WorkspaceFilePreviewSurfaceHost as DefaultWorkspaceFilePreviewSurfaceHost } from "./workspaceFilePreviewSurfaceHost.ts";
+  type IWorkspaceFilePreviewSurfaceHost as WorkspaceFilePreviewSurfaceHostService
+} from "../../../workspace-file-preview/index.ts";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { DesktopLocale } from "@shared/i18n";
 import {
@@ -94,7 +93,7 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
   constructor(
     dependencies: WorkspaceFileManagerServiceDependencies,
     notifications: NotificationService = noopNotifications,
-    filePreviewSurfaceHost: WorkspaceFilePreviewSurfaceHost = new DefaultWorkspaceFilePreviewSurfaceHost()
+    filePreviewSurfaceHost: WorkspaceFilePreviewSurfaceHost = unavailableWorkspaceFilePreviewSurfaceHost
   ) {
     this.dependencies = dependencies;
     this.filePreviewSurfaceHost = filePreviewSurfaceHost;
@@ -134,8 +133,9 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     const workspaceFileReferenceAdapter =
       createDesktopWorkspaceFileReferenceAdapter({
         hostFilesApi: this.dependencies.hostFilesApi,
-        openCanvasFilePreview: (target, workspaceId) =>
-          this.openCanvasFilePreview(workspaceId, target),
+        presentFilePreview: async (target, workspaceId) =>
+          (await this.filePreviewSurfaceHost.present(workspaceId, target))
+            .presented,
         tuttidClient: this.dependencies.tuttidClient,
         workspaceId: workspaceID
       });
@@ -296,14 +296,6 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
       name: entry.name,
       path: entry.path
     });
-  }
-
-  async openCanvasFilePreview(
-    workspaceID: string,
-    target: Parameters<WorkspaceFilePreviewSurfaceHost["present"]>[1]
-  ): Promise<boolean> {
-    return (await this.filePreviewSurfaceHost.present(workspaceID, target))
-      .presented;
   }
 
   subscribe(workspaceID: string, listener: () => void): () => void {
@@ -556,6 +548,22 @@ function referenceNodeToLocation(
 // Avoid decorator syntax so the renderer Babel pass can parse this file.
 INotificationService(WorkspaceFileManagerService, undefined, 1);
 IWorkspaceFilePreviewSurfaceHost(WorkspaceFileManagerService, undefined, 2);
+
+type WorkspaceFilePreviewSurfaceHost = Pick<
+  WorkspaceFilePreviewSurfaceHostService,
+  "getUnsupportedFallbackNotification" | "present"
+>;
+
+const unavailableWorkspaceFilePreviewSurfaceHost: WorkspaceFilePreviewSurfaceHost =
+  {
+    getUnsupportedFallbackNotification: () => "show",
+    async present() {
+      return {
+        presented: false,
+        unsupportedFallbackNotification: "show"
+      };
+    }
+  };
 
 const noopNotifications: NotificationService = {
   _serviceBrand: undefined,

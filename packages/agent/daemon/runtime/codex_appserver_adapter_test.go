@@ -6266,6 +6266,22 @@ func TestCodexAppServerAdapterApplySessionSettingsRefreshesModelReasoningOptions
 	}
 	state := adapter.SessionState(session)
 	options, _ := state.RuntimeContext["configOptions"].([]map[string]any)
+	modelConfig := configOptionByID(options, "model")
+	modelOptions := configOptionEntries(modelConfig["options"])
+	if len(modelOptions) != 2 {
+		t.Fatalf("model options = %#v, want two capability-bearing models", modelOptions)
+	}
+	firstModelEfforts := configOptionEntries(modelOptions[0]["reasoningEfforts"])
+	gotModelEfforts := make([]string, 0, len(firstModelEfforts))
+	for _, effort := range firstModelEfforts {
+		gotModelEfforts = append(gotModelEfforts, asString(effort["value"]))
+	}
+	if !slices.Equal(gotModelEfforts, []string{"low", "medium", "high", "xhigh", "max", "ultra"}) {
+		t.Fatalf("first model reasoning options = %#v, want full Sol profile; raw=%#v", gotModelEfforts, firstModelEfforts)
+	}
+	if modelOptions[0]["supportsReasoningEffort"] != true || asString(modelOptions[0]["reasoningEffort"]) != "low" {
+		t.Fatalf("first model reasoning metadata = %#v", modelOptions[0])
+	}
 	reasoning := configOptionByID(options, "reasoning_effort")
 	if got := configOptionValues(reasoning); !slices.Equal(got, []string{"low", "medium", "high", "xhigh", "max"}) {
 		t.Fatalf("reasoning options = %#v, want Luna efforts without ultra", got)

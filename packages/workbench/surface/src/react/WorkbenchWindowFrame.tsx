@@ -1,4 +1,10 @@
-import { type ReactNode } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef
+} from "react";
 import { createI18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { Checkbox } from "@tutti-os/ui-system";
 import {
@@ -126,11 +132,31 @@ export function WorkbenchWindowFrame<TData>({
     controller.commands.focusNode(node.id);
     controller.commands.applySnapTarget(node.id, "top");
   };
-  const genieControls = {
-    minimizeNodeToAnchor: (nodeID: string, minimize?: () => void) => {
-      genie.minimizeNodeToAnchor(nodeID, minimize);
-    }
-  } as const;
+  const minimizeNodeToAnchorRef = useRef(genie.minimizeNodeToAnchor);
+  useLayoutEffect(() => {
+    minimizeNodeToAnchorRef.current = genie.minimizeNodeToAnchor;
+  }, [genie.minimizeNodeToAnchor]);
+  const minimizeNodeToAnchor = useCallback(
+    (nodeID: string, minimize?: () => void) => {
+      minimizeNodeToAnchorRef.current(nodeID, minimize);
+    },
+    []
+  );
+  const genieControls = useMemo(
+    () => ({ minimizeNodeToAnchor }),
+    [minimizeNodeToAnchor]
+  );
+  const headerRenderRevision = useMemo(
+    () => ({}),
+    [
+      controller,
+      edgeSnapEnabled,
+      interactive,
+      renderActions,
+      renderHeader,
+      windowChromeI18n
+    ]
+  );
   const defaultActions = interactive ? (
     <div
       className="workbench-window__traffic-light-actions"
@@ -159,10 +185,14 @@ export function WorkbenchWindowFrame<TData>({
     controller,
     defaultActions,
     genie: genieControls,
+    isDragging,
+    isFocused,
+    isResizing,
     node,
     onDoubleClick: onHeaderDoubleClick,
     onDragStart,
     renderHeader: interactive ? renderHeader : undefined,
+    renderRevision: headerRenderRevision,
     windowChromeMode
   });
   const shouldRenderCustomHeader =

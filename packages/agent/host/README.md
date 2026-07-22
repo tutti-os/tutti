@@ -29,17 +29,30 @@ empty; only an explicit title or the first eligible prompt establishes one.
 Cancellation exposes durable intent acceptance, provider confirmation, and
 canonical settlement as separate facts. `GoalControl`, `GetGoalState`, and
 `ReconcileGoal` are provider-neutral Host APIs; typed `/goal` commands enter the
-same durable saga without opening a turn. `Recover` first requeues and recovers
+same durable saga without opening a turn. A caller-stable `ClientSubmitID`
+makes one goal mutation idempotent across retries and Host restarts (and takes
+precedence over the legacy metadata field). `GetGoalState` is a pure canonical
+read: only `GoalControl`, `ReconcileGoal`, and recovery workers may create or
+change the durable goal projection. `Recover` first requeues and recovers
 durable runtime operations, then goal operations and the goal reconcile inbox,
 then settles unrecoverable stale turns, and finally invokes the adapter's
 worktree-isolation sweep. Configuring a goal store
 without its runtime or inbox consumer fails recovery with
 `ErrGoalConsumerUnavailable` instead of silently accumulating work.
 
+A provider-accepted Goal operation has crossed the delivery boundary. The
+steady-state worker waits for applied evidence and never resubmits that
+mutation; the accepted convergence deadline terminates a lost-evidence case.
+Startup recovery may replay an accepted mutation only according to the
+adapter's recovery policy. In particular, a query-incapable adapter may replay
+an idempotent clear once to resolve a crash window, while unsafe set replay
+remains rejected.
+
 `GetSession` reads canonical session truth plus an optional live runtime
-observation without starting a provider. `GetTurn`,
+observation without starting a provider. `GetTurn`, `ListSessionMessages`,
 `FindTurnByClientSubmitID`, and `GetSessionInteractionSnapshot` expose
-canonical queries without leaking an adapter's concrete store. The interaction
+canonical queries without leaking an adapter's concrete store. Message pages
+use per-session version cursors and may be narrowed to one turn. The interaction
 snapshot contains every interaction on the latest turn and derives its pending
 subset from that same read; older-turn pending rows can never become current
 actionable state. `CreateSessionInput.ClientSubmitID` and
@@ -57,10 +70,23 @@ is unknown and must remain recoverable.
 historical sessions persist settings only, while live sessions update the
 runtime first and persist the resulting settings only after the runtime
 accepts the change. Provider-specific model, reasoning, and speed normalization
-stays behind `SettingsPolicy`. `UpdatePin` mutates canonical metadata only.
-`DeleteSession` closes a live runtime before writing the canonical tombstone;
-authorization, shared bindings, transport DTOs, and local view cleanup remain
-adapter responsibilities.
+stays behind `SettingsPolicy`. A model change invalidates the previous model's
+context-window usage in both the live observation and canonical metadata;
+provider quotas remain valid and are preserved. `UpdatePin` mutates canonical
+metadata only.
+`DeleteSession` and `DeleteSessions` enter one deletion coordinator. The
+canonical store first resolves the complete root/child closure; Host acquires
+the shared session-mutation actor and session locks in stable order, closes
+every live runtime in that closure, and commits only if the store resolves the
+same closure inside the write transaction. A changed child tree is replanned
+before any tombstone is written. A requested runtime that is live before its
+first canonical report is still closed and cleaned up by the same coordinator;
+the empty canonical plan simply skips the tombstone transaction. Goal provider
+mutations use the same outer session-mutation actor, so clear/set/reconcile work
+cannot race session deletion. Post-commit runtime cleanup failures are reported
+separately from the committed delete result. Authorization, shared bindings,
+transport DTOs,
+and local view cleanup remain adapter responsibilities.
 
 `PurgeDeletedSessions` is the separate permanent-removal command for bounded
 batches of canonical tombstones. Host owns the command boundary and delegates

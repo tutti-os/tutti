@@ -76,18 +76,13 @@ function WorkspaceFileReferencePreviewSurface({
     <SharedWorkspaceFilePreviewSurface
       directoryMessage={copy.t("referencePicker.previewFolder")}
       emptyMessage={copy.t("referencePicker.previewUnavailable")}
-      frameClassName="flex aspect-[3/2] w-full flex-col items-center justify-center overflow-hidden rounded-[8px] border border-[var(--line-2,var(--border-2))] bg-[var(--transparency-block)] p-0 text-center"
-      htmlFrameClassName="items-stretch justify-stretch bg-white"
-      htmlTitle={resolveWorkspaceFileReferenceLabel}
       imageAlt={resolveWorkspaceFileReferenceLabel}
-      imageFrameClassName="p-3"
       loadingIndicator={
         <span className="mx-auto grid size-11 place-items-center rounded-[6px] bg-[var(--transparency-block)]">
           <LoadingIcon className="size-4 animate-spin" />
         </span>
       }
       loadingMessage={copy.t("referencePicker.previewLoading")}
-      messageClassName="mx-auto max-w-[24ch] text-[13px] leading-5 text-[var(--text-secondary)] [overflow-wrap:anywhere]"
       renderIcon={(entry) =>
         entry.kind === "folder" ? (
           <FolderFilledIcon className="mx-auto size-9 text-[var(--rich-text-folder)]" />
@@ -100,8 +95,7 @@ function WorkspaceFileReferencePreviewSurface({
         focusedEntry,
         previewState
       )}
-      textClassName="h-full overflow-auto p-3 text-left text-[11px] leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]"
-      textFrameClassName="items-stretch justify-stretch"
+      variant="compact"
     />
   );
 }
@@ -134,7 +128,6 @@ function resolveWorkspaceFileReferenceSurfaceState(
     case "image":
     case "video":
     case "text":
-    case "html":
       return {
         ...previewState,
         entry: focusedEntry

@@ -1332,6 +1332,7 @@ function capabilities(
     interrupt: false,
     modelImageInputRequired: false,
     modelPlanBinding: false,
+    modelSwitch: false,
     permissionModeChangeDeferred: false,
     permissionModeChangeDuringTurn: false,
     planImplementation: false,

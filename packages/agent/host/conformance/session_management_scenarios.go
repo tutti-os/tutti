@@ -173,3 +173,24 @@ func runDeleteSession(ctx context.Context, driver Driver) error {
 	}
 	return nil
 }
+
+func runDeleteLiveSessionBeforeCanonicalReport(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, Fixture{LiveOnlySession: &SessionSeed{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-delete-live-only", Provider: "codex",
+		ProviderSessionID: "provider-session-delete-live-only", Cwd: "/workspace", Live: true,
+	}}); err != nil {
+		return err
+	}
+	ref := agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-delete-live-only"}
+	result, err := driver.DeleteSession(ctx, ref)
+	if err != nil {
+		return fmt.Errorf("delete live-only session: %w", err)
+	}
+	if !result.Deleted || !result.RuntimeClosed || result.CanonicalRemoved || driver.Metrics().CloseCalls != 1 {
+		return fmt.Errorf("delete live-only result=%#v metrics=%#v", result, driver.Metrics())
+	}
+	if _, err := driver.GetSession(ctx, ref); !errors.Is(err, agenthost.ErrSessionNotFound) {
+		return fmt.Errorf("get deleted live-only session error=%v", err)
+	}
+	return nil
+}

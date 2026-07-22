@@ -42,8 +42,10 @@ func (h *Host) StepGoalOperationWorker(ctx context.Context, recovering bool) err
 		}
 		op := operation
 		opCtx, cancel := context.WithTimeout(ctx, h.goalOperationAttemptTimeout())
-		err := h.withGoalActor(opCtx, op.WorkspaceID, op.AgentSessionID, func(actorCtx context.Context) error {
-			return h.recoverGoalOperation(actorCtx, op, recovering)
+		err := h.withSessionMutationActor(opCtx, op.WorkspaceID, op.AgentSessionID, func(commandCtx context.Context) error {
+			return h.withGoalActor(commandCtx, op.WorkspaceID, op.AgentSessionID, func(actorCtx context.Context) error {
+				return h.recoverGoalOperation(actorCtx, op, recovering)
+			})
 		})
 		cancel()
 		if err != nil && !errors.Is(err, ErrRuntimeOperationInProgress) {
@@ -160,14 +162,22 @@ func (h *Host) recoverGoalOperation(ctx context.Context, operation storesqlite.G
 		}
 	}
 
-	// An adapter may report that replaying set after restart can create duplicate
-	// long-running work. In that policy only a fresh dispatch is safe; clear is
-	// idempotent and remains repairable.
+	// Provider acceptance proves delivery, so the steady-state worker must wait
+	// for applied evidence instead of submitting the same mutation again. The
+	// accepted deadline above still bounds a lost lifecycle event. Startup
+	// recovery is different: a query-incapable adapter may need one replay to
+	// resolve the crash window, subject to its recovery policy below.
 	if leased.ProviderPhase == storesqlite.GoalProviderPhaseAccepted && leased.AcceptedAtUnixMS > 0 &&
 		(h.goalOperationNow().UnixMilli()-leased.AcceptedAtUnixMS >= goalAcceptedWaitDeadline.Milliseconds() ||
 			leased.Attempt-leased.AcceptedAttempt >= goalAcceptedMaxAttempts) {
 		return h.failRecoveredGoalOperation(ctx, leased, "accepted goal operation exceeded its convergence deadline")
 	}
+	if leased.ProviderPhase == storesqlite.GoalProviderPhaseAccepted && !freshDispatch && !recovering {
+		return h.deferGoalOperation(ctx, leased, 5*time.Second)
+	}
+	// An adapter may report that replaying set after restart can create duplicate
+	// long-running work. In that policy only a fresh dispatch is safe; clear is
+	// idempotent and remains repairable during startup recovery.
 	if !policy.ReplaySetAfterRestart && leased.Action != "clear" &&
 		leased.ProviderPhase != storesqlite.GoalProviderPhasePrepared && !freshDispatch {
 		if !recovering {

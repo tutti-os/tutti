@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import { Spinner } from "@tutti-os/ui-system";
-import { X } from "lucide-react";
+import { ImageIcon, X } from "lucide-react";
 import { ZoomableImage } from "../../../app/renderer/components/ZoomableImage";
 import { cn } from "../../../app/renderer/lib/utils";
 import type { AgentComposerDraftImage } from "../model/agentGuiNodeTypes";
@@ -50,26 +50,35 @@ export function AgentComposerDraftImagePreview({
       data-upload-error={image.uploadError ? "true" : undefined}
       style={previewStyle}
     >
-      <ZoomableImage
-        src={image.previewUrl}
-        alt={image.name}
-        className="size-full object-contain"
-        draggable={false}
-        downloadName={image.name || "image.png"}
-        onLoad={(event) => {
-          const element = event.currentTarget;
-          const width = element.naturalWidth;
-          const height = element.naturalHeight;
-          if (width <= 0 || height <= 0) {
-            return;
-          }
-          const nextRatio = Math.min(
-            DRAFT_IMAGE_PREVIEW_MAX_RATIO,
-            Math.max(DRAFT_IMAGE_PREVIEW_MIN_RATIO, width / height)
-          );
-          setAspectRatio(nextRatio);
-        }}
-      />
+      {image.previewUrl ? (
+        <ZoomableImage
+          src={image.previewUrl}
+          alt={image.name}
+          className="size-full object-contain"
+          draggable={false}
+          downloadName={image.name || "image.png"}
+          onLoad={(event) => {
+            const element = event.currentTarget;
+            const width = element.naturalWidth;
+            const height = element.naturalHeight;
+            if (width <= 0 || height <= 0) {
+              return;
+            }
+            const nextRatio = Math.min(
+              DRAFT_IMAGE_PREVIEW_MAX_RATIO,
+              Math.max(DRAFT_IMAGE_PREVIEW_MIN_RATIO, width / height)
+            );
+            setAspectRatio(nextRatio);
+          }}
+        />
+      ) : (
+        <div
+          className="grid size-full place-items-center text-[var(--text-tertiary)]"
+          data-testid="agent-gui-composer-image-preview-pending"
+        >
+          <ImageIcon aria-hidden size={22} strokeWidth={1.8} />
+        </div>
+      )}
       {image.uploading ? (
         <div
           className="absolute inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--background-fronted)_62%,transparent)]"

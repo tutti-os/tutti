@@ -122,6 +122,7 @@ test("desktop agent activity adapter maps typed canonical session control fields
         interrupt: false,
         modelImageInputRequired: false,
         modelPlanBinding: false,
+        modelSwitch: false,
         permissionModeChangeDeferred: false,
         permissionModeChangeDuringTurn: false,
         planImplementation: false,
@@ -713,6 +714,7 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
             interrupt: true,
             modelImageInputRequired: true,
             modelPlanBinding: true,
+            modelSwitch: false,
             permissionModeChangeDeferred: false,
             permissionModeChangeDuringTurn: false,
             planImplementation: false,
@@ -1060,7 +1062,13 @@ test("desktop agent activity adapter ignores legacy runtime model and reasoning 
     provider: "codex"
   });
 
-  assert.deepEqual(options.models, [{ value: "gpt-5.4", label: "gpt-5.4" }]);
+  // This branch's daemon contract emits the legacy modelConfig shape; the
+  // runtimeContext.configOptions list stays ignored. The current value is not
+  // in the advertised list; the projection keeps it selectable but marks it
+  // requested-origin (not catalog testimony).
+  assert.deepEqual(options.models, [
+    { value: "gpt-5.4", label: "gpt-5.4", requested: true }
+  ]);
   assert.deepEqual(options.reasoningEfforts, [
     { value: "low", label: "Low" },
     { value: "ultra", label: "Ultra" }
@@ -1575,7 +1583,7 @@ test("desktop agent activity adapter loads Claude options without mutating draft
       },
       async deleteWorkspaceAgentSession(_workspaceId, agentSessionId) {
         calls.push(`delete:${agentSessionId}`);
-        return { removed: true };
+        return { cleanupFailed: false, removed: true };
       }
     }),
     runtimeApi: createRuntimeApi()

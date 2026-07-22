@@ -221,3 +221,64 @@ test("agent composer options preserve effective pre-session settings", () => {
     permissionModeId: "full-access"
   });
 });
+
+test("agent composer options keep requested-origin provenance on model entries", () => {
+  // Warm-catalog window: the daemon appends the requested model with a
+  // provenance marker; the projection must preserve it so the composer can
+  // exclude the entry from catalog testimony. The projection-side
+  // current-value append carries the same marker for the same reason.
+  const options = agentActivityComposerOptionsFromTuttidResult("codex", {
+    effectiveSettings: { model: "x-ai/grok-4.5" },
+    modelConfig: {
+      configurable: true,
+      currentValue: "x-ai/grok-4.5",
+      options: [
+        { name: "GPT-5.3 Codex", value: "gpt-5.3-codex" },
+        { name: "GPT-5.6 Sol", value: "gpt-5.6-sol" },
+        { name: "x-ai/grok-4.5", value: "x-ai/grok-4.5", requested: true }
+      ]
+    }
+  });
+
+  assert.deepEqual(options.models, [
+    { label: "GPT-5.3 Codex", value: "gpt-5.3-codex" },
+    { label: "GPT-5.6 Sol", value: "gpt-5.6-sol" },
+    { label: "x-ai/grok-4.5", value: "x-ai/grok-4.5", requested: true }
+  ]);
+});
+
+test("agent composer options mark the projection-side current-value append as requested", () => {
+  const options = agentActivityComposerOptionsFromTuttidResult("codex", {
+    modelConfig: {
+      configurable: true,
+      currentValue: "x-ai/grok-4.5",
+      options: [{ label: "GPT-5.6 Sol", value: "gpt-5.6-sol" }]
+    }
+  });
+
+  assert.deepEqual(options.models, [
+    { label: "GPT-5.6 Sol", value: "gpt-5.6-sol" },
+    { label: "x-ai/grok-4.5", value: "x-ai/grok-4.5", requested: true }
+  ]);
+});
+
+test("agent composer options project model configuration without exposing runtime context", () => {
+  const options = agentActivityComposerOptionsFromTuttidResult("codex", {
+    runtimeContext: {
+      modelConfiguration: {
+        agentTargetId: "local:codex",
+        defaultModel: "gpt-5.5-codex",
+        fingerprint: "plan-1:7",
+        source: "model-plan"
+      }
+    }
+  });
+
+  assert.deepEqual(options.modelConfiguration, {
+    agentTargetId: "local:codex",
+    defaultModel: "gpt-5.5-codex",
+    fingerprint: "plan-1:7",
+    source: "model-plan"
+  });
+  assert.equal("runtimeContext" in options, false);
+});

@@ -191,6 +191,102 @@ export function sanitizeComposerSettingsForTarget(input: {
   return sanitizeComposerSettingsForOptions(input.settings, input.options);
 }
 
+export type ComposerNativeModelVerdict =
+  | "verified"
+  | "rejected"
+  | "unverifiable";
+
+/**
+ * Verdict of a bare model id against the provider-native options list. Only
+ * settled catalog entries are testimony:
+ * - options missing or the model catalog still loading have no opinion
+ *   ("unverifiable");
+ * - requested-origin entries (daemon warm-catalog append of the requested
+ *   model, selected-model bootstrap echo, GUI current-value append) mirror
+ *   the request rather than the catalog and are excluded — a list with no
+ *   catalog entries left proves nothing;
+ * - as a fallback for options produced before provenance marking, a
+ *   single-entry list mirroring the effective selection is recognized as the
+ *   daemon's selected-model bootstrap echo (composerSelectedModelOptions)
+ *   and proves nothing either;
+ * - otherwise the catalog either contains the model ("verified") or
+ *   positively rejects it ("rejected").
+ */
+export function verifyComposerModelAgainstNativeOptions(
+  model: string,
+  options: AgentActivityComposerOptions | null
+): ComposerNativeModelVerdict {
+  if (options === null || options.modelOptionsLoading === true) {
+    return "unverifiable";
+  }
+  const catalogEntries = options.models.filter(
+    (option) => option.requested !== true
+  );
+  if (catalogEntries.length === 0) {
+    return "unverifiable";
+  }
+  const isSelectedModelEcho =
+    catalogEntries.length === 1 &&
+    catalogEntries[0]!.value === model &&
+    normalizeOptionalText(options.effectiveSettings?.model) === model;
+  if (isSelectedModelEcho) {
+    return "unverifiable";
+  }
+  return catalogEntries.some((option) => option.value === model)
+    ? "verified"
+    : "rejected";
+}
+
+/**
+ * Last gate before a session create leaves the GUI. A model may only travel
+ * either as a {model, modelPlanId} pair (the daemon resolves the requested
+ * plan and validates membership and protocol) or as a bare id positively
+ * verified against the provider-native options list. Anything unverifiable —
+ * options missing/failed, catalog still loading, an empty list, or the
+ * daemon's selected-model bootstrap echo — is dropped together with rejected
+ * ids so the daemon falls back to its default instead of rejecting the
+ * create (fail-safe: better no model than a wrong one). A plan model leaked
+ * bare into a provider bucket previously rode the echo/empty-list windows
+ * into a daemon 400.
+ */
+export function enforceComposerModelBindingForCreate(
+  settings: AgentSessionComposerSettings,
+  options: AgentActivityComposerOptions | null
+): AgentSessionComposerSettings {
+  const model = normalizeOptionalText(settings.model);
+  const modelPlanId = normalizeOptionalText(settings.modelPlanId);
+  if (!model || modelPlanId) {
+    return settings;
+  }
+  return verifyComposerModelAgainstNativeOptions(model, options) === "verified"
+    ? settings
+    : { ...settings, model: null, modelPlanId: null };
+}
+
+/**
+ * Home-composer default policy: a pure provider target must never adopt a
+ * bare model that the settled provider-native list rejects — it falls back
+ * to the provider default instead of presenting (and later submitting) a
+ * model the provider cannot run. Unlike the create gate this only acts on a
+ * positive rejection: while options are missing or the catalog is loading
+ * the stored default is left alone so a transient load state cannot destroy
+ * a legitimate remembered model (the create gate still refuses to send
+ * anything unverifiable).
+ */
+export function enforceComposerModelBindingForHomeDefaults(
+  settings: AgentSessionComposerSettings,
+  options: AgentActivityComposerOptions | null
+): AgentSessionComposerSettings {
+  const model = normalizeOptionalText(settings.model);
+  const modelPlanId = normalizeOptionalText(settings.modelPlanId);
+  if (!model || modelPlanId) {
+    return settings;
+  }
+  return verifyComposerModelAgainstNativeOptions(model, options) === "rejected"
+    ? { ...settings, model: null, modelPlanId: null }
+    : settings;
+}
+
 export function resolvePresentedComposerSettings(input: {
   homeSettings: AgentSessionComposerSettings;
   optimisticSettings: AgentSessionComposerSettings | null;

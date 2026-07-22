@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
-import { workspaceFilePreviewMaxBytes } from "@tutti-os/workspace-file-manager/services";
+import { workspaceFilePreviewMaxBytes } from "@tutti-os/workspace-file-preview";
 import { desktopErrorCodes } from "../../shared/errors/desktopErrors.ts";
 import { createWorkspaceFileHostAccess } from "./workspaceFileHostAccess.ts";
 

@@ -187,12 +187,11 @@ test("workspace file preview creates loaded image, video, text, and readonly sta
   );
 });
 
-test("workspace file preview can create rendered html preview states", () => {
+test("workspace file preview treats html as source text", () => {
   assert.deepEqual(
     createWorkspaceFilePreviewLoadedState({
       bytes: new TextEncoder().encode("<!doctype html><h1>Hello</h1>"),
       entry: { kind: "file", path: "/workspace/index.html" },
-      renderHtml: true,
       target: {
         fileKind: "text",
         name: "index.html",
@@ -206,7 +205,7 @@ test("workspace file preview can create rendered html preview states", () => {
         name: "index.html",
         path: "/workspace/index.html"
       },
-      status: "html"
+      status: "text"
     }
   );
 });

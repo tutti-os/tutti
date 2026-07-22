@@ -36,6 +36,8 @@ export {
   type AgentProjectDropdownLabels,
   type AgentProjectPathChangeMetadata
 } from "./AgentComposerProjectMenu";
+export { AgentModelReasoningDropdown } from "./AgentComposerModelReasoningDropdown";
+import { ComposerOptionInfoTooltip } from "./AgentComposerModelReasoningDropdown";
 export function AgentPermissionModeDropdown({
   composerSettings,
   disabled = false,

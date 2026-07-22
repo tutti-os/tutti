@@ -124,8 +124,14 @@ export function reduceWorkbenchState<TData>(
         lockedLayout: pruneLockedLayout(state.lockedLayout, action.nodeID)
       };
 
-    case "focusNode":
-      if (!state.nodes.some((node) => node.id === action.nodeID)) {
+    case "focusNode": {
+      const targetNode = state.nodes.find((node) => node.id === action.nodeID);
+      if (!targetNode) {
+        return state;
+      }
+      const isAlreadyFocused =
+        state.nodeStack[state.nodeStack.length - 1] === action.nodeID;
+      if (isAlreadyFocused && !targetNode.isMinimized) {
         return state;
       }
       return {
@@ -137,6 +143,7 @@ export function reduceWorkbenchState<TData>(
         ),
         nodeStack: focusWorkbenchStack(state.nodeStack, action.nodeID)
       };
+    }
 
     case "minimizeNode":
       return updateNode(state, action.nodeID, (node) =>

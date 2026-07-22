@@ -356,6 +356,52 @@ describe("AgentSlashCommandPalette", () => {
     });
   });
 
+  it("keeps a read-only capability visible without dispatching mutations", () => {
+    const onSelectCapability = vi.fn();
+    const onSelectCapabilitySettings = vi.fn();
+
+    render(
+      <AgentSlashCommandPalette
+        label="Slash commands"
+        commandsGroupLabel="Commands"
+        capabilitiesGroupLabel="Capabilities"
+        skillsGroupLabel="Skills"
+        pluginsGroupLabel="Plugins"
+        connectorsGroupLabel="Connectors"
+        mcpGroupLabel="MCP"
+        highlightedIndex={0}
+        entries={[
+          {
+            type: "capability",
+            key: "capability:computerUse",
+            label: "Computer",
+            disabled: true,
+            settingsAriaLabel: "Computer use setup",
+            settingsLabel: "Settings",
+            capability: {
+              kind: "capability",
+              capability: "computerUse",
+              name: "computer"
+            }
+          }
+        ]}
+        onHighlightChange={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectCapability={onSelectCapability}
+        onSelectCapabilitySettings={onSelectCapabilitySettings}
+        onSelectSkill={vi.fn()}
+      />
+    );
+
+    const capability = screen.getByRole("option", { name: /computer/i });
+    expect(capability).toHaveAttribute("aria-disabled", "true");
+    capability.click();
+    screen.getByRole("button", { name: "Computer use setup" }).click();
+
+    expect(onSelectCapability).not.toHaveBeenCalled();
+    expect(onSelectCapabilitySettings).not.toHaveBeenCalled();
+  });
+
   it("separates plugin and connector skill entries into source groups", () => {
     render(
       <AgentSlashCommandPalette

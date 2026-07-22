@@ -165,6 +165,44 @@ describe("useAgentGUIConversationRailViewState", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
+  it("does not read scroll geometry while replacing a settled navigation effect", () => {
+    const view = render(
+      <Harness
+        activeConversationId={null}
+        contentReady
+        identity="list-1"
+        itemIds={[]}
+        scopeKey="codex"
+      />
+    );
+    const viewport = screen.getByTestId("viewport");
+    let scrollTop = 240;
+    const readScrollTop = vi.fn(() => scrollTop);
+    Object.defineProperty(viewport, "scrollTop", {
+      configurable: true,
+      get: readScrollTop,
+      set: (value: number) => {
+        scrollTop = value;
+      }
+    });
+
+    fireEvent.scroll(viewport);
+    expect(readScrollTop).toHaveBeenCalledTimes(1);
+    readScrollTop.mockClear();
+
+    view.rerender(
+      <Harness
+        activeConversationId="session-1"
+        contentReady
+        identity="list-1"
+        itemIds={["session-1"]}
+        scopeKey="codex"
+      />
+    );
+
+    expect(readScrollTop).not.toHaveBeenCalled();
+  });
+
   it("reveals only an explicit navigation request within a settled target", () => {
     const view = render(
       <Harness

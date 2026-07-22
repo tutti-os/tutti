@@ -41,6 +41,22 @@ type SessionGoal struct {
 	Tokens     int64  `json:"tokens,omitempty"`
 }
 
+// DecodeSessionGoal validates and decodes the canonical goal payload shared by
+// goal state and session metadata into the public typed session contract.
+func DecodeSessionGoal(raw any) (*SessionGoal, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	var value SessionGoal
+	if err := remarshalJSON(raw, &value); err != nil {
+		return nil, err
+	}
+	if err := validateSessionGoal(value); err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
 var sessionMetadataRuntimeContextKeys = []string{"visible", "imported", "capabilities", "usage", "goal"}
 
 func splitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata, map[string]any, error) {
@@ -76,14 +92,11 @@ func splitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata,
 		metadata.Usage = &value
 	}
 	if raw := runtimeContext["goal"]; raw != nil {
-		var value SessionGoal
-		if err := remarshalJSON(raw, &value); err != nil {
+		value, err := DecodeSessionGoal(raw)
+		if err != nil {
 			return SessionMetadata{}, nil, err
 		}
-		if err := validateSessionGoal(value); err != nil {
-			return SessionMetadata{}, nil, err
-		}
-		metadata.Goal = &value
+		metadata.Goal = value
 	}
 	internal := cloneJSONMap(runtimeContext)
 	for _, key := range sessionMetadataRuntimeContextKeys {

@@ -18,6 +18,7 @@ export class CompactionTracker {
   private readonly ensureActive: (messageType: string) => void;
   private readonly clearPendingOrphans: () => void;
   private readonly getQuery: () => ContextUsageQuery | undefined;
+  private readonly getModel: () => string;
   private readonly emit: ClaudeSDKSidecarEventEmitter;
   private contextUsageRequestGeneration = 0;
 
@@ -26,12 +27,14 @@ export class CompactionTracker {
     ensureActive: (messageType: string) => void;
     clearPendingOrphans: () => void;
     getQuery: () => ContextUsageQuery | undefined;
+    getModel: () => string;
     emit: ClaudeSDKSidecarEventEmitter;
   }) {
     this.activeTurnId = options.activeTurnId;
     this.ensureActive = options.ensureActive;
     this.clearPendingOrphans = options.clearPendingOrphans;
     this.getQuery = options.getQuery;
+    this.getModel = options.getModel;
     this.emit = options.emit;
   }
 
@@ -77,9 +80,12 @@ export class CompactionTracker {
         return "unavailable";
       }
       const usedTokens = numberValue(contextUsage.totalTokens);
-      const contextWindowTokens =
-        contextWindowTokensFromModelUsage(options.modelUsage) ||
-        numberValue(contextUsage.maxTokens);
+      const contextWindowTokens = options.modelUsage
+        ? contextWindowTokensFromModelUsage(options.modelUsage, this.getModel())
+        : numberValue(contextUsage.maxTokens);
+      if (options.modelUsage && contextWindowTokens <= 0) {
+        return "stale";
+      }
       if (usedTokens <= 0 && contextWindowTokens <= 0) {
         return "unavailable";
       }

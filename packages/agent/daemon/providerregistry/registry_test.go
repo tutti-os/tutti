@@ -115,6 +115,9 @@ func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	if descriptor.ComposerProfile.ConfigOptionIDs.Speed != "service_tier" {
 		t.Fatalf("Speed config option = %q", descriptor.ComposerProfile.ConfigOptionIDs.Speed)
 	}
+	if !slices.Equal(descriptor.ComposerProfile.SpeedValues, []string{"standard", "fast"}) || descriptor.ComposerProfile.DefaultSpeed != "standard" {
+		t.Fatalf("Speed profile = %#v, default %q", descriptor.ComposerProfile.SpeedValues, descriptor.ComposerProfile.DefaultSpeed)
+	}
 	if descriptor.Status.MinVersion != CodexMinVersion {
 		t.Fatalf("Status.MinVersion = %q", descriptor.Status.MinVersion)
 	}
@@ -125,6 +128,9 @@ func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	}
 	if descriptor.ComposerProfile.CapabilityCatalog.Kind != CapabilityCatalogKindCodexAppServer {
 		t.Fatalf("CapabilityCatalog = %#v", descriptor.ComposerProfile.CapabilityCatalog)
+	}
+	if !slices.Contains(descriptor.ComposerProfile.Capabilities, CapabilityGoalPause) {
+		t.Fatalf("Composer capabilities missing Codex goal pause: %#v", descriptor.ComposerProfile.Capabilities)
 	}
 	effects := descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects
 	if len(effects) != 7 {

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useMemo, useRef } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { createWorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
 import { useReferenceProvenanceFilterCatalog } from "@tutti-os/workspace-file-reference/react";
@@ -7,7 +7,6 @@ import type {
   WorkspaceFileReference
 } from "@tutti-os/workspace-file-reference/contracts";
 import { useTranslation } from "../../i18n/index";
-import type { AgentProvider } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type { AgentGUINodeData } from "../../types";
 import { resolveCanonicalNodeMinSize } from "../../utils/workspaceNodeSizing";
@@ -15,15 +14,12 @@ import { WorkspaceNodeWindow } from "../shared/WorkspaceNodeWindow";
 import { CanvasNodeGhostIconButton } from "../shared/CanvasNodeGhostIconButton";
 import { CanvasNodePanelLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { useAgentGUINodeController } from "./controller/useAgentGUINodeController";
+import { useAgentGUIStatus } from "./controller/useAgentGUIStatus";
 import { AgentGUINodeView } from "./AgentGUINodeView";
 import {
   normalizeAgentGUIProviderIdentity,
   resolveAgentGUIProviderDisplayLabel
 } from "./model/agentGuiProviderIdentity";
-import {
-  buildDockAgentProbeTooltipLines,
-  findWorkspaceAgentProbeForDockProvider
-} from "../workspaceDesktop/view/desktopDockAgentProbeTooltipModel";
 import { AgentProbeInfoPopover } from "../workspaceDesktop/view/AgentProbeInfoPopover";
 import styles from "./AgentGUINode.styles";
 import {
@@ -45,14 +41,9 @@ import {
   useAgentGUIConversationRailLabels,
   useAgentGUIWorkspaceFileReferenceCopy
 } from "./AgentGUINode.labels";
-import {
-  resolveAgentGUIRailStatusProvider,
-  slashStatusLimitsFromQuotas
-} from "./AgentGUINode.usage";
 
 export type { AgentGUINodeProps } from "./AgentGUINode.types";
 
-const EMPTY_SLASH_STATUS_QUOTAS = [] as const;
 const DISABLED_REFERENCE_PROVENANCE_CATALOG: ReferenceProvenanceCatalog = {
   enabledDimensions: [],
   agentOptions: [],
@@ -111,12 +102,11 @@ export const AgentGUINode = memo(function AgentGUINode({
     sessionAction: sessionActionRequest = null,
     openSession: openSessionRequest = null,
     prefillPrompt: prefillPromptRequest = null,
-    agentProbes: workspaceAgentProbes,
-    onProbeDemandChange: onAgentProbeDemandChange,
-    onProbeRefreshRequest: onAgentProbeRefreshRequest
+    agentStatusController
   } = runtimeRequests;
   const {
     capabilityMenuState,
+    capabilityControlsReadOnly = false,
     accountMenuState = null,
     agentTargets,
     agentTargetsLoading = false,
@@ -367,187 +357,28 @@ export const AgentGUINode = memo(function AgentGUINode({
   });
   const workspaceFileReferenceCopy = useAgentGUIWorkspaceFileReferenceCopy(t);
   const windowTitle = title;
-  const activeProbeProvider = activeProvider as AgentProvider;
-  const railStatusProvider = useMemo(
-    () =>
-      resolveAgentGUIRailStatusProvider({
-        conversationFilter: viewModel.rail.conversationFilter,
-        agentTargets: viewModel.rail.agentTargets
-      }),
-    [viewModel.rail.conversationFilter, viewModel.rail.agentTargets]
-  );
-  const activeAgentProbe = useMemo(
-    () =>
-      findWorkspaceAgentProbeForDockProvider(
-        workspaceAgentProbes?.snapshot ?? null,
-        activeProbeProvider
-      ),
-    [activeProbeProvider, workspaceAgentProbes?.snapshot]
-  );
-  const railAgentProbe = useMemo(
-    () =>
-      railStatusProvider
-        ? findWorkspaceAgentProbeForDockProvider(
-            workspaceAgentProbes?.snapshot ?? null,
-            railStatusProvider
-          )
-        : null,
-    [railStatusProvider, workspaceAgentProbes?.snapshot]
-  );
-  const canonicalSlashStatusQuotas =
-    viewModel.detail.usage?.quotas ?? EMPTY_SLASH_STATUS_QUOTAS;
-  const slashStatusQuotaSource =
-    canonicalSlashStatusQuotas.length > 0
-      ? canonicalSlashStatusQuotas
-      : activeAgentProbe?.usage?.quotas &&
-          activeAgentProbe.usage.quotas.length > 0
-        ? activeAgentProbe.usage.quotas
-        : EMPTY_SLASH_STATUS_QUOTAS;
-  const slashStatusLimits = useMemo(
-    () =>
-      slashStatusLimitsFromQuotas(
-        slashStatusQuotaSource,
-        viewModel.composer.composerSettings.selectedModelValue ??
-          viewModel.composer.composerSettings.draftSettings.model,
-        t
-      ),
-    [
-      slashStatusQuotaSource,
-      t,
-      viewModel.composer.composerSettings.draftSettings.model,
-      viewModel.composer.composerSettings.selectedModelValue
-    ]
-  );
-  const slashStatusLimitsUnavailable =
-    slashStatusLimits.length === 0 &&
-    canonicalSlashStatusQuotas.length === 0 &&
-    !(workspaceAgentProbes?.isLoadingUsage ?? false) &&
-    (Boolean(activeAgentProbe?.usage) || Boolean(activeAgentProbe?.lastError));
-  const railSlashStatusQuotaSource =
-    railStatusProvider &&
-    railAgentProbe?.usage?.quotas &&
-    railAgentProbe.usage.quotas.length > 0
-      ? railAgentProbe.usage.quotas
-      : EMPTY_SLASH_STATUS_QUOTAS;
-  const railSlashStatusLimits = useMemo(
-    () => slashStatusLimitsFromQuotas(railSlashStatusQuotaSource, null, t),
-    [railSlashStatusQuotaSource, t]
-  );
-  // The provider whose limits the rail config menu renders: the rail filter
-  // provider when one is active, otherwise the active window provider. Read
-  // freshness + attempt state from this same probe so an empty or failed usage
-  // result stays coherent with the meters (or absence of them).
-  const slashStatusUsageProbe = railStatusProvider
-    ? railAgentProbe
-    : activeAgentProbe;
-  const slashStatusUsageCapturedAtUnixMs =
-    slashStatusUsageProbe?.usage?.capturedAtUnixMs ?? null;
-  const slashStatusUsageDidFail =
-    workspaceAgentProbes?.usageLoadFailed ?? false;
-  // True once a usage probe has actually run for this provider — it came back
-  // with a usage snapshot (possibly zero quotas) or a usage error. Lets the
-  // config menu show an explicit "no limits / retry" row instead of hiding the
-  // whole section when the numbers resolve empty (e.g. a Claude OAuth usage
-  // response with no 5h/7d windows, or a usage fetch the probe caught into
-  // `lastError`), which previously made the limits look like they vanished.
-  const slashStatusUsageAttempted =
-    Boolean(slashStatusUsageProbe?.usage) ||
-    Boolean(slashStatusUsageProbe?.lastError);
-  const agentProbeLines = useMemo(() => {
-    return buildDockAgentProbeTooltipLines(
-      activeAgentProbe,
-      workspaceAgentProbes?.isLoadingAvailability ?? false,
-      t,
-      {
-        includeUsageLines: true,
-        isLoadingUsage: workspaceAgentProbes?.isLoadingUsage ?? false
-      }
-    );
-  }, [
-    activeAgentProbe,
-    workspaceAgentProbes?.isLoadingAvailability,
-    workspaceAgentProbes?.isLoadingUsage,
-    t
-  ]);
-
-  useEffect(() => {
-    if (previewMode || !onAgentProbeDemandChange) {
-      return;
-    }
-    const probeSourceId = `agent-gui:${nodeId}`;
-    onAgentProbeDemandChange(activeProbeProvider, probeSourceId);
-    return () => {
-      onAgentProbeDemandChange(null, probeSourceId);
-    };
-  }, [activeProbeProvider, nodeId, onAgentProbeDemandChange, previewMode]);
-  useEffect(() => {
-    if (
-      previewMode ||
-      !onAgentProbeDemandChange ||
-      !railStatusProvider ||
-      railStatusProvider === activeProbeProvider
-    ) {
-      return;
-    }
-    const probeSourceId = `agent-gui:${nodeId}:rail`;
-    onAgentProbeDemandChange(railStatusProvider, probeSourceId);
-    return () => {
-      onAgentProbeDemandChange(null, probeSourceId);
-    };
-  }, [
-    activeProbeProvider,
-    nodeId,
-    onAgentProbeDemandChange,
+  const {
+    agentProbeLines,
+    controllerRailStatus,
+    handleAgentConfigMenuClose,
+    handleAgentConfigMenuOpen,
+    handleAgentProbeInfoClose,
+    handleAgentProbeInfoOpen,
+    handleAgentUsageRefresh,
+    handleSlashStatusClose,
+    handleSlashStatusOpen,
+    handleSlashStatusRefresh,
+    railStatusProvider,
+    slashStatusLimits,
+    slashStatusLimitsUnavailable,
+    slashStatusOverride
+  } = useAgentGUIStatus({
+    activeProvider,
+    agentStatusController,
     previewMode,
-    railStatusProvider
-  ]);
-  const handleAgentProbeInfoOpen = useCallback(() => {
-    if (previewMode || !onAgentProbeRefreshRequest) {
-      return;
-    }
-    onAgentProbeRefreshRequest(activeProbeProvider, `agent-gui:${nodeId}`);
-  }, [activeProbeProvider, nodeId, onAgentProbeRefreshRequest, previewMode]);
-  // The rail's "usage & environment check" menu (AgentGUINodeView's
-  // agent-gui-config-menu popover) shows the same quota data as the window
-  // title's info tooltip above, but through a click rather than a hover. It
-  // needs the same on-open refresh (see handleAgentProbeInfoOpen) — otherwise
-  // a stale/empty probe fetched before a provider finished installing never
-  // gets a chance to refresh here, and the usage meters stay blank until some
-  // unrelated event happens to touch the info tooltip instead.
-  const handleAgentConfigMenuOpen = useCallback(() => {
-    if (previewMode || !onAgentProbeRefreshRequest) {
-      return;
-    }
-    onAgentProbeRefreshRequest(
-      railStatusProvider ?? activeProbeProvider,
-      `agent-gui:${nodeId}:config`
-    );
-  }, [
-    activeProbeProvider,
-    nodeId,
-    onAgentProbeRefreshRequest,
-    previewMode,
-    railStatusProvider
-  ]);
-  // Manual "refresh now" from the config menu's freshness control. Same probe
-  // fetch as opening the menu, but callable while the menu stays open (open-only
-  // handlers fire once on the open transition). The control disables itself
-  // while a fetch is in flight, so this cannot hammer the vendor usage API.
-  const handleAgentUsageRefresh = useCallback(() => {
-    if (previewMode || !onAgentProbeRefreshRequest) {
-      return;
-    }
-    onAgentProbeRefreshRequest(
-      railStatusProvider ?? activeProbeProvider,
-      `agent-gui:${nodeId}:usage-refresh`
-    );
-  }, [
-    activeProbeProvider,
-    nodeId,
-    onAgentProbeRefreshRequest,
-    previewMode,
-    railStatusProvider
-  ]);
+    t,
+    viewModel
+  });
 
   return (
     <AgentGUIMentionServiceBoundary service={mentionService}>
@@ -572,6 +403,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               testId="agent-gui-window-agent-info"
               className={styles.windowAgentInfo}
               onOpen={handleAgentProbeInfoOpen}
+              onClose={handleAgentProbeInfoClose}
             />
             <CanvasNodeGhostIconButton
               aria-label={
@@ -636,25 +468,33 @@ export const AgentGUINode = memo(function AgentGUINode({
               newConversationRequestSequence={newConversationRequestSequence}
               sessionActionRequest={sessionActionRequest}
               slashStatusLimits={slashStatusLimits}
-              slashStatusLimitsLoading={
-                workspaceAgentProbes?.isLoadingUsage ?? false
-              }
+              slashStatusLimitsLoading={controllerRailStatus?.loading ?? false}
               slashStatusLimitsUnavailable={slashStatusLimitsUnavailable}
+              slashStatusOverride={slashStatusOverride}
               railConfigProvider={railStatusProvider}
-              railSlashStatusLimits={railSlashStatusLimits}
+              railSlashStatusLimits={controllerRailStatus?.limits ?? []}
               slashStatusUsageCapturedAtUnixMs={
-                slashStatusUsageCapturedAtUnixMs
+                controllerRailStatus?.capturedAtUnixMs ?? null
               }
-              slashStatusUsageDidFail={slashStatusUsageDidFail}
-              slashStatusUsageAttempted={slashStatusUsageAttempted}
+              slashStatusUsageDidFail={controllerRailStatus?.didFail ?? false}
+              slashStatusUsageAttempted={
+                controllerRailStatus?.attempted ?? false
+              }
+              slashStatusLimitsResolvedEmpty={
+                controllerRailStatus?.resolvedEmpty ?? false
+              }
               providerAuthAccountLabels={providerAuthAccountLabels}
+              onAgentConfigMenuClose={handleAgentConfigMenuClose}
               onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
               onAgentUsageRefresh={handleAgentUsageRefresh}
-              onSlashStatusOpen={handleAgentProbeInfoOpen}
+              onSlashStatusOpen={handleSlashStatusOpen}
+              onSlashStatusClose={handleSlashStatusClose}
+              onSlashStatusRefresh={handleSlashStatusRefresh}
               previewMode={previewMode}
               onLinkAction={handleLinkAction}
               onHandoffConversation={onHandoffConversation}
               capabilityMenuState={capabilityMenuState}
+              capabilityControlsReadOnly={capabilityControlsReadOnly}
               onCapabilitySettingsRequest={onCapabilitySettingsRequest}
               onAgentProviderLogin={
                 onAgentProviderLogin ? handleAgentProviderLogin : undefined

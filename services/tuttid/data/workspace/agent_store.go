@@ -59,6 +59,12 @@ func (s *SQLiteStore) agentStore() *agentstore.Store {
 	return s.agentWriter
 }
 
+// AgentCanonicalStore exposes the official canonical agent store for Host
+// composition. Product services must not wrap its lifecycle mutations.
+func (s *SQLiteStore) AgentCanonicalStore() *agentstore.Store {
+	return s.agentStore()
+}
+
 func (s *SQLiteStore) agentReadStore() *agentstore.Store {
 	if s == nil {
 		return nil
@@ -167,6 +173,10 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]a
 	return s.agentReadStore().ListSessions(ctx, workspaceID)
 }
 
+func (s *SQLiteStore) ListSessionsPage(ctx context.Context, input agentactivitybiz.ListSessionsPageInput) (agentactivitybiz.SessionListPage, bool, error) {
+	return s.agentReadStore().ListSessionsPage(ctx, input)
+}
+
 func (s *SQLiteStore) ListSessionSection(ctx context.Context, input agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error) {
 	return s.agentReadStore().ListSessionSection(ctx, input)
 }
@@ -187,16 +197,16 @@ func (s *SQLiteStore) ListWorkspaceGeneratedFileTurns(ctx context.Context, input
 	return s.agentReadStore().ListWorkspaceGeneratedFileTurns(ctx, input)
 }
 
-func (s *SQLiteStore) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
-	return s.agentStore().DeleteSession(ctx, workspaceID, agentSessionID)
-}
-
-func (s *SQLiteStore) DeleteSessionWithCommit(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.DeleteSessionResult, error) {
-	return s.agentStore().DeleteSessionWithCommit(ctx, workspaceID, agentSessionID)
-}
-
 func (s *SQLiteStore) DeleteSessionsBatch(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
 	return s.agentStore().DeleteSessionsBatch(ctx, input)
+}
+
+func (s *SQLiteStore) PlanDeleteSessions(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error) {
+	return s.agentReadStore().PlanDeleteSessions(ctx, input)
+}
+
+func (s *SQLiteStore) PlanClearSessions(ctx context.Context, workspaceID string) (agentactivitybiz.DeleteSessionsPlan, error) {
+	return s.agentReadStore().PlanClearSessions(ctx, workspaceID)
 }
 
 func (s *SQLiteStore) ClearSessions(ctx context.Context, workspaceID string) (agentactivitybiz.ClearSessionsResult, error) {

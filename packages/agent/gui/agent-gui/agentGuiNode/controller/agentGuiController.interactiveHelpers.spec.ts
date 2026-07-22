@@ -131,6 +131,34 @@ describe("AgentGUI user-project snapshot projection", () => {
     ).toBe(false);
   });
 
+  it.each(["createdAtUnixMs", "updatedAtUnixMs", "lastUsedAtUnixMs"] as const)(
+    "treats a %s-only change as a new AgentGUI snapshot",
+    (field) => {
+      expect(
+        areAgentGUIUserProjectsEqual(
+          [
+            {
+              id: "alpha",
+              label: "Alpha",
+              path: "/alpha",
+              pinnedAtUnixMs: 0,
+              [field]: 10
+            }
+          ],
+          [
+            {
+              id: "alpha",
+              label: "Alpha",
+              path: "/alpha",
+              pinnedAtUnixMs: 0,
+              [field]: 20
+            }
+          ]
+        )
+      ).toBe(false);
+    }
+  );
+
   it("keeps sectionKey when a use result is upserted", () => {
     expect(
       upsertAgentGUIUserProject([], {

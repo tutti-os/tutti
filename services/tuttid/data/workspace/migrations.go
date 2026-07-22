@@ -56,6 +56,7 @@ const schemaMigrationManagedCredentialsV1 = "managed_credentials_v1"
 const schemaMigrationModelPlansV1 = "model_plans_v1"
 const schemaMigrationAgentModelBindingsV1 = "agent_model_bindings_v1"
 const schemaMigrationAgentModelBindingsV2 = "agent_model_bindings_v2"
+const schemaMigrationAgentModelBindingsV3 = "agent_model_bindings_v3"
 const schemaMigrationWorkspaceAgentsV5 = "workspace_agents_contract_cleanup_v1"
 const schemaMigrationCollabRunsV1 = "collab_runs_v1"
 const schemaMigrationModelPlanRevisionsV1 = "model_plan_revisions_v1"
@@ -238,6 +239,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyAgentModelBindingsV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyAgentModelBindingsV2(ctx); err != nil {
+		return err
+	}
 	if err := s.applyWorkspaceAgentsV1(ctx); err != nil {
 		return err
 	}
@@ -250,13 +254,6 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyWorkspaceAgentsV4(ctx); err != nil {
 		return err
 	}
-
-	if err := s.applyAgentModelBindingsV1(ctx); err != nil {
-		return err
-	}
-	if err := s.applyAgentModelBindingsV2(ctx); err != nil {
-		return err
-	}
 	if err := s.applyWorkspaceAgentsV5(ctx); err != nil {
 		return err
 	}
@@ -264,7 +261,6 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyCollabRunsV1(ctx); err != nil {
 		return err
 	}
-
 	if err := s.applyModelPoliciesV1(ctx); err != nil {
 		return err
 	}
@@ -272,6 +268,11 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyAutomationRulesV2(ctx); err != nil {
+		return err
+	}
+	// Runs after model_usage_policies exists so the bindings table can gain a
+	// foreign key referencing it.
+	if err := s.applyAgentModelBindingsV3(ctx); err != nil {
 		return err
 	}
 	if err := s.applyAppFactoryJobsV1(ctx); err != nil {

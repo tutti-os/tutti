@@ -147,6 +147,23 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
+  it("preserves new-window behavior for a host-defined dock entry id", () => {
+    const [entry] = buildAgentGuiDockEntries({
+      agentDirectory: createTestAgentDirectory([createAgent("codex")]),
+      defaultProvider: "codex",
+      dockEntryId: "agentGui:shared",
+      order: 7
+    });
+
+    expect(entry).toMatchObject({
+      id: "agentGui:shared",
+      newWindowLaunchPayload: {
+        openInNewWindow: true
+      },
+      order: 7
+    });
+  });
+
   it("uses the unified icon URL for unified dock entries", () => {
     const entries = buildAgentGuiDockEntries({
       agentDirectory: createTestAgentDirectory([createAgent("codex")]),
@@ -236,6 +253,11 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(entry?.id).toBe(agentGuiWorkbenchUnifiedDockEntryId());
     expect(entry?.matchNode).toBeUndefined();
+    expect(entry?.instanceMode).toBe("single");
+    expect(entry?.newWindowLaunchPayload).toMatchObject({
+      openInNewWindow: true
+    });
+    expect(entry?.allowNewWindowInDockPopup).toBe(false);
   });
 
   it("keeps unified launch payload provider priority when opening a session", () => {
@@ -588,6 +610,7 @@ describe("agent GUI workbench contribution copy", () => {
 
     // The regular launch can reuse the contribution's opaque target binding...
     expect(dockEntry?.launchPayload).not.toHaveProperty("openInNewWindow");
+    expect(dockEntry?.allowNewWindowInDockPopup).toBe(false);
     // ...while the "New window" payload forces a fresh window.
     expect(dockEntry?.newWindowLaunchPayload).toMatchObject({
       openInNewWindow: true
@@ -1693,6 +1716,33 @@ describe("agent GUI workbench contribution copy", () => {
       screen.queryByTestId("agent-gui-window-detail-title-icon")
     ).toBeNull();
     expect(screen.queryByTestId("agent-gui-window-detail-title")).toBeNull();
+  });
+
+  it("keys direct-manipulation header renders by visible rail layout", () => {
+    const definition = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    }).nodes?.[0];
+    const getKey = definition?.getHeaderFrameRenderKey;
+    const createContext = (input: { isDragging?: boolean; width: number }) =>
+      ({
+        externalNodeState: {
+          conversationRailCollapsed: false,
+          conversationRailWidthPx: 520
+        },
+        isDragging: input.isDragging === true,
+        node: {
+          data: { runtimeNodeState: null },
+          frame: { height: 560, width: input.width, x: 0, y: 0 }
+        }
+      }) as never;
+
+    expect(getKey?.(createContext({ isDragging: true, width: 700 }))).toBe(
+      "dragging"
+    );
+    expect(getKey?.(createContext({ width: 600 }))).toBe("collapsed");
+    expect(getKey?.(createContext({ width: 650 }))).toBe("expanded:420");
+    expect(getKey?.(createContext({ width: 700 }))).toBe("expanded:470");
   });
 
   it("renders the expanded workbench header as a rail titlebar plus detail title", () => {

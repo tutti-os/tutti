@@ -1,5 +1,6 @@
 export {
   WorkspaceFilePreviewSurface,
   type WorkspaceFilePreviewSurfaceProps,
-  type WorkspaceFilePreviewSurfaceState
+  type WorkspaceFilePreviewSurfaceState,
+  type WorkspaceFilePreviewSurfaceVariant
 } from "./workspaceFilePreviewSurface.tsx";

@@ -20,6 +20,7 @@ func cloneDescriptor(value ProviderDescriptor) ProviderDescriptor {
 	value.Status.Install.FailureReasonMarkers = cloneStringSliceMap(value.Status.Install.FailureReasonMarkers)
 	value.Status.AuthWatch.Sources = cloneAuthWatchSources(value.Status.AuthWatch.Sources)
 	value.ComposerProfile.ReasoningEffortValues = append([]string(nil), value.ComposerProfile.ReasoningEffortValues...)
+	value.ComposerProfile.SpeedValues = append([]string(nil), value.ComposerProfile.SpeedValues...)
 	value.ComposerProfile.Capabilities = append([]string(nil), value.ComposerProfile.Capabilities...)
 	value.ComposerProfile.PermissionModes = append([]PermissionModeDescriptor(nil), value.ComposerProfile.PermissionModes...)
 	value.ComposerProfile.SlashCommandPolicy.FallbackCommands = append([]string(nil), value.ComposerProfile.SlashCommandPolicy.FallbackCommands...)

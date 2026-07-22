@@ -371,6 +371,7 @@ export function createDesktopAgentActivityAdapter({
         { signal: input.signal }
       );
       return {
+        cleanupFailedSessionIds: response.cleanupFailedSessionIds,
         removedMessages: response.removedMessages,
         removedSessionIds: response.removedSessionIds,
         removedSessions: response.removedSessions

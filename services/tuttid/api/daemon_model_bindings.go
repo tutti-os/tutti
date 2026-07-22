@@ -66,7 +66,9 @@ func (api DaemonAPI) SetAgentModelBinding(ctx context.Context, request tuttigene
 			}, nil
 		case errors.Is(err, modelbindingservice.ErrInvalidBindingInput),
 			errors.Is(err, modelbindingservice.ErrPlanNotUsable),
-			errors.Is(err, modelbindingservice.ErrModelNotInPlan):
+			errors.Is(err, modelbindingservice.ErrModelNotInPlan),
+			errors.Is(err, modelbindingservice.ErrPolicyNotUsable),
+			errors.Is(err, modelbindingservice.ErrBindingReferenceUnusable):
 			return tuttigenerated.SetAgentModelBinding400JSONResponse{
 				InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.InvalidRequest("invalid_agent_model_binding", apierrors.WithDeveloperMessage(err.Error()))),
 			}, nil

@@ -40,7 +40,12 @@ test("mission control adapter caches snapshots until controller state changes", 
   controller.commands.focusNode("node-a");
 
   const thirdSnapshot = adapter.getSnapshot();
-  assert.notEqual(thirdSnapshot, firstSnapshot);
+  assert.equal(thirdSnapshot, firstSnapshot);
+
+  controller.commands.minimizeNode("node-a");
+
+  const fourthSnapshot = adapter.getSnapshot();
+  assert.notEqual(fourthSnapshot, firstSnapshot);
 });
 
 function makeNode(id: string): WorkbenchNode<WorkbenchHostNodeData> {

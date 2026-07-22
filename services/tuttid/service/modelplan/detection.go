@@ -121,6 +121,13 @@ func (s *Service) Detect(ctx context.Context, input DetectInput) (DetectResult, 
 	if networkResult.Status == modelplanbiz.StagePassed {
 		authResult, discoveryResult, discovered = s.checkAuthAndDiscovery(ctx, protocol, baseURL, apiKey, models, now)
 		if authResult.Status != modelplanbiz.StageFailed {
+			// Discovery candidates are not user selections. When the draft has
+			// no selected model, use the first candidate only for this run's
+			// connectivity check and record the model that was actually tested.
+			if inferenceModel == "" && len(discovered) > 0 {
+				inferenceModel = discovered[0].ID
+				snapshot.Model = inferenceModel
+			}
 			inferenceResult = s.checkInference(ctx, protocol, baseURL, apiKey, inferenceModel, now)
 			if inferenceResult.Status == modelplanbiz.StageFailed && inferenceResult.FailureReason == FailureUnauthorized {
 				// Inference is the authoritative credential check when the

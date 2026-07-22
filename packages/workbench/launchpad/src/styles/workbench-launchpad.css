@@ -77,7 +77,6 @@
   animation: workspace-launchpad-backdrop-enter 160ms ease-out both;
   opacity: 1;
   transition: opacity 180ms ease;
-  -webkit-backdrop-filter: blur(24px) saturate(1.18);
 }
 
 .workspace-launchpad-overlay--closing .workspace-launchpad-overlay__dismiss {

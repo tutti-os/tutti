@@ -47,6 +47,7 @@ interface UseComposerPaletteCatalogInput {
   compactSupported: boolean | null;
   composerSettings: AgentGUIComposerSettingsVM;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
+  capabilityControlsReadOnly: boolean;
   labels: AgentComposerProps["labels"];
   uiLanguage: UiLanguage;
   editorHandleRef: RefObject<AgentRichTextEditorHandle | null>;
@@ -69,6 +70,7 @@ export function useComposerPaletteCatalog({
   compactSupported,
   composerSettings,
   capabilityMenuState,
+  capabilityControlsReadOnly,
   labels,
   uiLanguage,
   editorHandleRef
@@ -127,6 +129,9 @@ export function useComposerPaletteCatalog({
     [availableSkills, skillQueryMatch]
   );
   const availableCapabilities = useMemo<AgentCapabilityTokenOption[]>(() => {
+    if (capabilityControlsReadOnly) {
+      return [];
+    }
     const entries: AgentCapabilityTokenOption[] = [];
     if (composerSettings.supportsBrowser) {
       entries.push({
@@ -146,6 +151,7 @@ export function useComposerPaletteCatalog({
     }
     return entries;
   }, [
+    capabilityControlsReadOnly,
     composerSettings.supportsBrowser,
     composerSettings.supportsComputerUse,
     labels.browserUseCapabilityLabel,
@@ -190,6 +196,7 @@ export function useComposerPaletteCatalog({
             description: capDescription,
             settingsAriaLabel: capSettingsLabel,
             settingsLabel: labels.capabilityInlineSettingsLabel,
+            disabled: capabilityControlsReadOnly,
             selectAction:
               command.capability === "computerUse" &&
               (computerUseInstalled === false ||
@@ -235,6 +242,7 @@ export function useComposerPaletteCatalog({
     capabilityMenuState?.browserUse?.connectionMode,
     capabilityMenuState?.computerUse?.authorization,
     capabilityMenuState?.computerUse?.installed,
+    capabilityControlsReadOnly,
     filteredCommands,
     filteredSkills,
     labels.browserUseCapabilityDescription,

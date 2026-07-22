@@ -103,24 +103,12 @@ describe("AgentGUINode memoization", () => {
     agentGuiNodeViewSpy.mockReset();
   });
 
-  it("rerenders when its own provider probe changes", () => {
+  it("rerenders when its host status controller changes", () => {
     mockViewModel = createViewModel();
+    const firstController = createStatusControllerStub();
     const props = createProps({
       runtimeRequests: {
-        agentProbes: {
-          snapshot: {
-            workspaceId: "workspace-1",
-            capturedAtUnixMs: 1,
-            providers: [
-              {
-                provider: "codex",
-                availability: { status: "available", detailsVisible: false }
-              }
-            ]
-          },
-          isLoadingAvailability: false,
-          isLoadingUsage: false
-        }
+        agentStatusController: firstController
       }
     });
     const { rerender } = render(<AgentGUINode {...props} />);
@@ -133,24 +121,7 @@ describe("AgentGUINode memoization", () => {
         {...props}
         runtimeRequests={{
           ...props.runtimeRequests,
-          agentProbes: {
-            snapshot: {
-              workspaceId: "workspace-1",
-              capturedAtUnixMs: 2,
-              providers: [
-                {
-                  provider: "codex",
-                  availability: {
-                    status: "unavailable",
-                    detailsVisible: false
-                  },
-                  lastError: { code: "auth_required", message: "Sign in again" }
-                }
-              ]
-            },
-            isLoadingAvailability: false,
-            isLoadingUsage: false
-          }
+          agentStatusController: createStatusControllerStub()
         }}
       />
     );
@@ -343,6 +314,23 @@ describe("AgentGUINode memoization", () => {
     );
   });
 });
+
+function createStatusControllerStub() {
+  const snapshot = {
+    query: null,
+    value: null,
+    phase: "idle" as const,
+    isRefreshing: false,
+    errorCode: null
+  };
+  return {
+    close: vi.fn(),
+    getSnapshot: () => snapshot,
+    invalidate: vi.fn(),
+    open: vi.fn(),
+    subscribe: () => () => {}
+  };
+}
 
 function createProps(
   overrides: Partial<Parameters<typeof AgentGUINode>[0]> = {}

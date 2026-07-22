@@ -76,6 +76,29 @@ func runGoalActionLifecycle(ctx context.Context, driver Driver) error {
 	return nil
 }
 
+func runDuplicateGoalClientSubmitID(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, liveSessionFixture("session-goal-idempotent", "")); err != nil {
+		return err
+	}
+	input := agenthost.GoalControlInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-goal-idempotent",
+		Action: "set", Objective: "ship exactly once", ClientSubmitID: "goal-idempotent-1",
+		SubmissionMetadata: map[string]any{"clientSubmitId": "ignored-legacy-id"},
+	}
+	first, err := driver.GoalControl(ctx, input)
+	if err != nil {
+		return fmt.Errorf("first goal control: %w", err)
+	}
+	second, err := driver.GoalControl(ctx, input)
+	if err != nil {
+		return fmt.Errorf("duplicate goal control: %w", err)
+	}
+	if first.Revision != 1 || second.Revision != first.Revision || driver.Metrics().GoalControlCalls != 1 {
+		return fmt.Errorf("duplicate goal control was not idempotent: first=%#v second=%#v metrics=%#v", first, second, driver.Metrics())
+	}
+	return nil
+}
+
 func runGoalReconcileObservation(ctx context.Context, driver Driver) error {
 	if err := driver.Reset(ctx, liveSessionFixture("session-goal-reconcile", "")); err != nil {
 		return err
@@ -117,6 +140,41 @@ func runGoalRevisionActorFence(ctx context.Context, driver Driver) error {
 	}
 	if state.Revision != 2 || driver.Metrics().GoalControlCalls != 2 {
 		return fmt.Errorf("goal fence state=%#v", state)
+	}
+	return nil
+}
+
+func runAcceptedGoalControlWaitsWithoutReplay(ctx context.Context, driver Driver) error {
+	fixture := liveSessionFixture("session-goal-accepted", "")
+	fixture.AcceptGoalControlsOnly = true
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	result, err := driver.GoalControl(ctx, agenthost.GoalControlInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-goal-accepted",
+		Action: "clear", ClientSubmitID: "goal-clear-accepted",
+	})
+	if err != nil {
+		return fmt.Errorf("accepted goal clear: %w", err)
+	}
+	if result.PendingOperationID == "" || result.SyncStatus != storesqlite.GoalSyncStatusApplying {
+		return fmt.Errorf("accepted goal clear state=%#v", result)
+	}
+	if calls := driver.Metrics().GoalControlCalls; calls != 1 {
+		return fmt.Errorf("initial goal control calls=%d", calls)
+	}
+	if err := driver.StepGoalOperations(ctx, 7_000); err != nil {
+		return fmt.Errorf("step accepted goal worker: %w", err)
+	}
+	if calls := driver.Metrics().GoalControlCalls; calls != 1 {
+		return fmt.Errorf("accepted goal control replayed: calls=%d", calls)
+	}
+	state, err := driver.GetGoalState(ctx, agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-goal-accepted"})
+	if err != nil {
+		return err
+	}
+	if state.PendingOperationID != result.PendingOperationID || state.SyncStatus != storesqlite.GoalSyncStatusApplying {
+		return fmt.Errorf("accepted goal state after worker=%#v", state)
 	}
 	return nil
 }

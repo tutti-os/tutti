@@ -73,6 +73,15 @@ runtime mutation; provider normalization stays in an adapter policy. Pin and
 canonical delete are Host commands, while authorization, transport DTOs,
 shared bindings, and local view cleanup remain adapter-owned.
 
+Single and batch canonical delete are the same Host command shape. The store
+plans the complete descendant closure, Host quiesces that exact closure under
+the shared session-mutation lane, and the write transaction rejects a stale
+plan. Renderer-side request loops are not an atomic batch-delete
+implementation. `daemon/hostadapter` is the official daemon-runtime-to-Host
+adapter, `host.SQLiteWorkspaceStore` is the workspace-routed canonical store,
+and `daemon/modelcatalog` owns provider model/reasoning/speed normalization;
+product daemons compose these modules instead of copying their mappings.
+
 Permanent deletion is intentionally distinct from the normal canonical delete
 command. `Host.PurgeDeletedSessions` accepts a cutoff and bounded batch limits,
 while `store-sqlite` selects tombstones globally by deletion time, fences every
@@ -245,6 +254,18 @@ Hosts must pass those calls through to the daemon section endpoints so project
 sections come from current user projects and session membership comes from
 persisted `rail_section_key`, not frontend cwd grouping or project-root
 filters.
+The published `@tutti-os/agent-gui/conversation-rail-runtime` entrypoint owns
+the complete host-neutral rail capability cohort and its workspace-scoped query
+caches. Product hosts provide one source implementing the six canonical rail
+queries and mutations, then install the result of
+`createAgentConversationRailRuntime` on `AgentActivityRuntime`; they must not
+copy the forwarding methods or cache lifetime into renderer composition code.
+Transport adapters still own HTTP/IPC DTO mapping, authorization, and protocol
+errors. In particular, `listSessionSectionDeletionCandidates` and
+`deleteSessionsBatch` are one atomic batch-deletion capability. AgentGUI disables
+the action and reports
+`agent.gui.conversation_batch_delete.capability_incomplete` when a host exposes
+only one half, instead of accepting a click that cannot complete.
 Every daemon `WorkspaceAgentSession` response carries the persisted membership
 as required `railSectionKey`. The desktop adapter rejects a missing or blank
 value as a protocol contract error; it must not manufacture `conversations` or
@@ -290,6 +311,13 @@ invalid desktop protocol data, not a signal to infer membership from cwd or a
 resolved project. Hosts without this optional query may keep a
 loaded-row-only local title filter for previews, but desktop hosts must pass the
 backend query and pagination fields through unchanged.
+The canonical SQLite repository owns the shared root-session query semantics
+for conversation search, target filtering, visibility, stable ordering, and
+cursor pagination. A composing host may pass an explicit authorized Session-id
+set into that repository query; the repository applies it before pagination,
+section totals, and batch-deletion candidate selection. Service and host
+adapters may hydrate or authorize the returned entities, but must not copy the
+filter/sort/page algorithm into transport-specific code.
 Activating a conversation must not by itself call `listSessionSections` again.
 Likewise, active detail provider changes should not reload section first pages.
 Page sessions must be upserted into the workspace engine, while the rail query

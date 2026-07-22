@@ -346,6 +346,55 @@ test("WorkspaceAppCenterController reports a create-factory-job failure instead 
   );
 });
 
+test("WorkspaceAppCenterController creates one client submit id per factory action", async () => {
+  const calls: Array<{
+    clientSubmitId: string;
+    displayName: string;
+    workspaceId: string;
+  }> = [];
+  let idSequence = 0;
+  const controller = createWorkspaceAppCenterController({
+    createClientSubmitId: () => `factory-submit-${++idSequence}`,
+    formatError,
+    gateway: createGateway({
+      async createWorkspaceAppFactoryJob(workspaceId, input) {
+        calls.push({
+          clientSubmitId: input.clientSubmitId,
+          displayName: input.displayName,
+          workspaceId
+        });
+        return createFactorySnapshot();
+      }
+    })
+  });
+
+  await controller.createFactoryJob({
+    agentTargetId: "local:codex",
+    displayName: "First App",
+    prompt: "build the first app",
+    workspaceId: "workspace-1"
+  });
+  await controller.createFactoryJob({
+    agentTargetId: "local:codex",
+    displayName: "Second App",
+    prompt: "build the second app",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(calls, [
+    {
+      clientSubmitId: "factory-submit-1",
+      displayName: "First App",
+      workspaceId: "workspace-1"
+    },
+    {
+      clientSubmitId: "factory-submit-2",
+      displayName: "Second App",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("WorkspaceAppCenterController prepares app launch through launch gateway", async () => {
   const launchCalls: Array<{ appId: string; workspaceId: string }> = [];
   const controller = createWorkspaceAppCenterController({

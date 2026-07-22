@@ -39,7 +39,7 @@ type AgentSessionService interface {
 	ResolveGitPatchSupportForPath(context.Context, string, string) (agentservice.GitPatchSupport, error)
 	ApplyGitPatchForPath(context.Context, string, agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error)
 	Clear(context.Context, string) (agentservice.ClearSessionsResult, error)
-	Delete(context.Context, string, string) (bool, error)
+	Delete(context.Context, string, string) (agentservice.DeleteSessionResult, error)
 	CancelTurn(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
 	GoalControl(ctx context.Context, workspaceID string, agentSessionID string, action string, objective string) (agentservice.GoalControlSessionResult, error)
 	GetGoalState(context.Context, string, string) (agentservice.GoalStateSessionResult, error)
@@ -63,8 +63,9 @@ func (api DaemonAPI) ClearWorkspaceAgentSessions(ctx context.Context, request tu
 		return writeClearWorkspaceAgentSessionsError(err), nil
 	}
 	return tuttigenerated.ClearWorkspaceAgentSessions200JSONResponse{
-		RemovedMessages: result.RemovedMessages,
-		RemovedSessions: result.RemovedSessions,
+		RemovedMessages:         result.RemovedMessages,
+		RemovedSessions:         result.RemovedSessions,
+		CleanupFailedSessionIds: append([]string(nil), result.CleanupFailedSessionIDs...),
 	}, nil
 }
 
@@ -130,12 +131,12 @@ func (api DaemonAPI) DeleteWorkspaceAgentSession(ctx context.Context, request tu
 			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
 		}, nil
 	}
-	removed, err := api.AgentSessionService.Delete(ctx, string(request.WorkspaceID), string(request.AgentSessionID))
+	result, err := api.AgentSessionService.Delete(ctx, string(request.WorkspaceID), string(request.AgentSessionID))
 	if err != nil {
 		return writeDeleteWorkspaceAgentSessionError(err), nil
 	}
 	return tuttigenerated.DeleteWorkspaceAgentSession200JSONResponse{
-		Removed: removed,
+		Removed: result.Removed, CleanupFailed: result.CleanupFailed,
 	}, nil
 }
 

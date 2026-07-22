@@ -1,16 +1,12 @@
 import { proxy } from "valtio/vanilla";
 import {
-  createWorkspaceFilePreviewLoadedState,
-  resolveWorkspaceFilePreviewReadiness
-} from "@tutti-os/workspace-file-preview";
-import type {
-  WorkspaceFilePreviewActivationTarget,
-  WorkspaceFilePreviewReadonlyReason
+  createWorkspaceFilePreviewController,
+  type WorkspaceFilePreviewControllerState,
+  type WorkspaceFilePreviewReadonlyReason
 } from "@tutti-os/workspace-file-preview";
 import type {
   WorkspaceFileReference,
-  WorkspaceFileReferenceAdapter,
-  WorkspaceFileReferencePreview
+  WorkspaceFileReferenceAdapter
 } from "../../../contracts/index.ts";
 import { uniqueWorkspaceFileReferences } from "../../../core/index.ts";
 import {
@@ -25,7 +21,6 @@ export type WorkspaceFileReferencePreviewState =
   | { status: "directory"; reference: WorkspaceFileReference }
   | { status: "empty" }
   | { status: "error"; reference: WorkspaceFileReference }
-  | { status: "html"; content: string; reference: WorkspaceFileReference }
   | { status: "image"; objectUrl: string; reference: WorkspaceFileReference }
   | { status: "loading"; reference: WorkspaceFileReference }
   | { status: "video"; objectUrl: string; reference: WorkspaceFileReference }
@@ -96,8 +91,6 @@ export function createWorkspaceFileReferencePickerController(
     !retained || latestBrowseSeqByKey.get(seqKey) !== sequence;
   /** reveal 批量加载用的固定 seq key(不与单目录 key 冲突)。 */
   const REVEAL_SEQ_KEY = "\0reveal";
-  let previewObjectUrl: string | null = null;
-  let previewSequence = 0;
   let retained = false;
   let searchAbortController: AbortController | null = null;
   let searchSequence = 0;
@@ -135,6 +128,31 @@ export function createWorkspaceFileReferencePickerController(
     snapshot = next;
     Object.assign(store, next);
   };
+
+  const previewController = createWorkspaceFilePreviewController({
+    read: input.fileAdapter?.readReferencePreview
+      ? async ({ entry }) => {
+          const preview = await input.fileAdapter!.readReferencePreview!({
+            reference: entry,
+            workspaceId: input.workspaceId
+          });
+          return preview
+            ? {
+                bytes: preview.bytes,
+                contentType: preview.contentType
+              }
+            : null;
+        }
+      : undefined,
+    toPreviewEntry: (reference: WorkspaceFileReference) => reference
+  });
+  previewController.subscribe(() => {
+    setSnapshot({
+      previewState: projectReferencePreviewState(
+        previewController.getSnapshot()
+      )
+    });
+  });
 
   const loadDirectoryListing = async (path?: string | null) => {
     if (!input.fileAdapter?.listDirectory) {
@@ -178,15 +196,6 @@ export function createWorkspaceFileReferencePickerController(
   const cancelCurrentBrowse = () => {
     // 清空 ticket 表:在途取数 resolve 时其 key 已无最新 ticket(get→undefined),被丢弃。
     latestBrowseSeqByKey.clear();
-  };
-
-  const cancelCurrentPreview = () => {
-    previewSequence += 1;
-    if (!previewObjectUrl) {
-      return;
-    }
-    URL.revokeObjectURL(previewObjectUrl);
-    previewObjectUrl = null;
   };
 
   const clearSearchResults = () => {
@@ -410,102 +419,19 @@ export function createWorkspaceFileReferencePickerController(
     }
   };
 
-  const loadReferencePreview = async (
-    reference: WorkspaceFileReference,
-    target: WorkspaceFilePreviewActivationTarget,
-    sequence: number
-  ) => {
-    try {
-      const preview = await input.fileAdapter?.readReferencePreview?.({
-        reference,
-        workspaceId: input.workspaceId
-      });
-      if (!retained || sequence !== previewSequence) {
-        return;
-      }
-      if (!preview) {
-        setSnapshot({
-          previewState: { reference, status: "unsupported" }
-        });
-        return;
-      }
-
-      const nextState = createReferencePreviewState(reference, target, preview);
-      if (!retained || sequence !== previewSequence) {
-        if (nextState.status === "image" || nextState.status === "video") {
-          URL.revokeObjectURL(nextState.objectUrl);
-        }
-        return;
-      }
-      if (nextState.status === "image" || nextState.status === "video") {
-        previewObjectUrl = nextState.objectUrl;
-      }
-      setSnapshot({
-        previewState: nextState
-      });
-    } catch {
-      if (!retained || sequence !== previewSequence) {
-        return;
-      }
-      setSnapshot({
-        previewState: { reference, status: "error" }
-      });
-    }
-  };
-
   const setPreviewReference = (reference: WorkspaceFileReference | null) => {
-    cancelCurrentPreview();
     if (!retained || !reference) {
-      setSnapshot({
-        previewState: { status: "empty" }
-      });
+      void previewController.setEntry(null);
       return;
     }
-
-    const readiness = resolveWorkspaceFilePreviewReadiness(reference);
-    if (readiness.status === "directory") {
-      setSnapshot({
-        previewState: { reference, status: "directory" }
-      });
-      return;
-    }
-    if (readiness.status === "unsupported") {
-      setSnapshot({
-        previewState: { reference, status: "unsupported" }
-      });
-      return;
-    }
-    if (readiness.status === "readonly") {
-      setSnapshot({
-        previewState: {
-          maxSizeBytes: readiness.maxSizeBytes,
-          reason: readiness.reason,
-          reference,
-          status: "readonly"
-        }
-      });
-      return;
-    }
-
-    if (!input.fileAdapter?.readReferencePreview) {
-      setSnapshot({
-        previewState: { reference, status: "unavailable" }
-      });
-      return;
-    }
-
-    const sequence = ++previewSequence;
-    setSnapshot({
-      previewState: { reference, status: "loading" }
-    });
-    void loadReferencePreview(reference, readiness.target, sequence);
+    void previewController.setEntry(reference);
   };
 
   return {
     close() {
       retained = false;
       cancelCurrentBrowse();
-      cancelCurrentPreview();
+      void previewController.setEntry(null);
       cancelCurrentSearch();
       setSnapshot({
         isBrowseLoading: false,
@@ -608,7 +534,7 @@ export function createWorkspaceFileReferencePickerController(
     },
     reset() {
       cancelCurrentBrowse();
-      cancelCurrentPreview();
+      void previewController.setEntry(null);
       cancelCurrentSearch();
       setSnapshot({
         browseError: null,
@@ -679,65 +605,43 @@ function normalizeControllerError(
   return error instanceof Error ? error : new Error(fallbackMessage);
 }
 
-function createReferencePreviewState(
-  reference: WorkspaceFileReference,
-  target: WorkspaceFilePreviewActivationTarget,
-  preview: WorkspaceFileReferencePreview
+function projectReferencePreviewState(
+  state: WorkspaceFilePreviewControllerState<WorkspaceFileReference>
 ): WorkspaceFileReferencePreviewState {
-  const loadedState = createWorkspaceFilePreviewLoadedState({
-    bytes: preview.bytes,
-    contentType: preview.contentType,
-    entry: reference,
-    target: {
-      ...target,
-      fileKind: preview.kind
-    }
-  });
-
-  if (loadedState.status === "image") {
-    return {
-      objectUrl: URL.createObjectURL(
-        new Blob([loadedState.bytes], {
-          type: loadedState.contentType
-        })
-      ),
-      reference,
-      status: "image"
-    };
+  switch (state.status) {
+    case "empty":
+      return state;
+    case "directory":
+      return { reference: state.entry, status: "directory" };
+    case "loading":
+      return { reference: state.entry, status: "loading" };
+    case "text":
+      return {
+        content: state.content,
+        reference: state.entry,
+        status: "text"
+      };
+    case "image":
+    case "video":
+      return {
+        objectUrl: state.objectUrl,
+        reference: state.entry,
+        status: state.status
+      };
+    case "readonly":
+      return {
+        maxSizeBytes: state.maxSizeBytes,
+        reason: state.reason,
+        reference: state.entry,
+        status: "readonly"
+      };
+    case "unsupported":
+      return state.reason === "reader_unavailable"
+        ? { reference: state.entry, status: "unavailable" }
+        : { reference: state.entry, status: "unsupported" };
+    case "error":
+      return { reference: state.entry, status: "error" };
   }
-  if (loadedState.status === "video") {
-    return {
-      objectUrl: URL.createObjectURL(
-        new Blob([loadedState.bytes], {
-          type: loadedState.contentType
-        })
-      ),
-      reference,
-      status: "video"
-    };
-  }
-
-  if (loadedState.status === "text") {
-    return {
-      content: loadedState.content,
-      reference,
-      status: "text"
-    };
-  }
-  if (loadedState.status === "html") {
-    return {
-      content: loadedState.content,
-      reference,
-      status: "html"
-    };
-  }
-
-  return {
-    maxSizeBytes: loadedState.maxSizeBytes,
-    reason: loadedState.reason,
-    reference,
-    status: "readonly"
-  };
 }
 
 function isPathInsideOrEqual(path: string, root: string): boolean {

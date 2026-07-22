@@ -88,6 +88,7 @@ describe("useAgentGUIComposerPresentation", () => {
           providerComposerOptions: currentOptions,
           selectedComposerTargetData: target,
           selectedProjectPath: null,
+          shouldApplyPreparedProjectSelection: true,
           userProjects: [],
           setDraftSettingsBySessionId: vi.fn()
         }),
@@ -233,6 +234,7 @@ describe("useAgentGUIComposerPresentation", () => {
           providerComposerOptions: options,
           selectedComposerTargetData: target,
           selectedProjectPath: null,
+          shouldApplyPreparedProjectSelection: false,
           userProjects: [],
           setDraftSettingsBySessionId: vi.fn()
         });

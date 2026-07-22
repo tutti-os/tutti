@@ -59,11 +59,15 @@ export async function exportDesktopDeveloperLogsAndNotify(
     | "listWorkspaceApps"
     | "listWorkspaces"
   >,
-  exportInput: ExportDeveloperLogsInput = { scope: "all" }
+  exportInput: ExportDeveloperLogsInput = {
+    includeAgentSessions: true,
+    scope: "recent-3-days"
+  }
 ): Promise<ExportDeveloperLogsResult> {
   const defaults = resolveDesktopDefaultsFromEnv();
   getDesktopLogger().info("developer logs export requested", {
     logsDir: defaults.state.logsDir,
+    includeAgentSessions: exportInput.includeAgentSessions,
     scope: exportInput.scope
   });
   await flushDesktopLogger();

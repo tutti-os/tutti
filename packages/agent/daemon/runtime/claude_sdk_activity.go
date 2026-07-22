@@ -19,12 +19,14 @@ func (s *claudeSDKAdapterSession) applySessionPayload(session *Session, payload 
 	if resumeCursor := payloadMap(payload, "resumeCursor"); len(resumeCursor) > 0 {
 		s.resumeCursor = clonePayload(resumeCursor)
 	}
+	previousModel := s.currentUsageModel(nil)
 	if descriptors := configOptionDescriptors(payload["configOptions"]); len(descriptors) > 0 {
 		applyClaudeSDKConfigOptionDescriptors(&s.liveState, descriptors)
 	}
 	if model := payloadString(payload, "model"); model != "" {
 		_ = s.applyConfigOption("model", model)
 	}
+	s.invalidateContextUsageForModelChange(previousModel, s.currentUsageModel(nil))
 }
 
 func (s *claudeSDKAdapterSession) assistantMessageID(turnID string) string {

@@ -105,6 +105,7 @@ Reading rules:
 - `renderer/src/app/windows/*` are renderer window composition shells such as `dashboard` and `workspace`
 - `renderer/src/features/*` are reusable renderer feature modules
 - `renderer/src/features/*/services/internal/**` is private implementation for the owning feature
+- `renderer/src/features/workspace-file-preview` owns the workspace-scoped preview presenter registry and fallback policy; file-manager, Workbench, and Agent surfaces consume its public service contract directly instead of owning parallel routing or adding preview-open proxy methods to another feature service
 - desktop business-facing capabilities should usually surface through `ipc/*` and `preload/api/*`
 - `shared/contracts/*` is for stable desktop-local bridge contracts, not a general utility bucket
 - `shared/errors/*` owns desktop-local error codes and non-Electron error classification shared across desktop layers

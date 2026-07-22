@@ -20,7 +20,7 @@ import { useAnalyticsDebugPreferenceService } from "@renderer/features/analytics
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
-import type { DesktopDeveloperLogsExportScope } from "@shared/contracts/ipc";
+import type { ExportDeveloperLogsInput } from "@shared/contracts/ipc";
 import type { DesktopI18nKey } from "@shared/i18n";
 import {
   desktopAppCatalogChannels,
@@ -115,8 +115,8 @@ export function WorkspaceDeveloperSettingsSection() {
   const onDeveloperPanelVisibleChange = (visible: boolean) => {
     settingsService.setDeveloperPanelVisible(visible);
   };
-  const onExportLogs = (scope: DesktopDeveloperLogsExportScope) => {
-    void settingsService.exportDeveloperLogs(scope);
+  const onExportLogs = (input: ExportDeveloperLogsInput) => {
+    void settingsService.exportDeveloperLogs(input);
   };
   const onFileDefaultOpenersChange = (
     openersByExtension: DesktopFileDefaultOpenersByExtension
@@ -532,8 +532,8 @@ export function WorkspaceDeveloperSettingsSection() {
               </div>
             ))}
             <Button
-              className="w-fit"
-              variant="ghost"
+              className="w-fit px-0 text-[var(--tutti-purple)] hover:no-underline"
+              variant="link"
               type="button"
               onClick={addFileDefaultOpener}
             >
@@ -570,14 +570,54 @@ export function WorkspaceDeveloperSettingsSection() {
                 <ChevronDownIcon className="size-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onSelect={() => onExportLogs("all")}>
-                {t("workspace.settings.developer.exportAllLogs")}
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem
+                onSelect={() =>
+                  onExportLogs({
+                    includeAgentSessions: false,
+                    scope: "recent-10-minutes"
+                  })
+                }
+              >
+                {t(
+                  "workspace.settings.developer.exportRecentTenMinutesLogsOnly"
+                )}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onSelect={() => onExportLogs("recent-10-minutes")}
+                onSelect={() =>
+                  onExportLogs({
+                    includeAgentSessions: true,
+                    scope: "recent-10-minutes"
+                  })
+                }
               >
-                {t("workspace.settings.developer.exportRecentTenMinutesLogs")}
+                {t(
+                  "workspace.settings.developer.exportRecentTenMinutesLogsWithSessions"
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() =>
+                  onExportLogs({
+                    includeAgentSessions: false,
+                    scope: "recent-3-days"
+                  })
+                }
+              >
+                {t(
+                  "workspace.settings.developer.exportRecentThreeDaysLogsOnly"
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() =>
+                  onExportLogs({
+                    includeAgentSessions: true,
+                    scope: "recent-3-days"
+                  })
+                }
+              >
+                {t(
+                  "workspace.settings.developer.exportRecentThreeDaysLogsWithSessions"
+                )}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

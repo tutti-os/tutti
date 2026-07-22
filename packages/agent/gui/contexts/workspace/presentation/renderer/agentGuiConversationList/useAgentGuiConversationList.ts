@@ -185,6 +185,7 @@ export function useAgentGuiConversationList(
           sortTimeUnixMs: activation.requestedAtUnixMs,
           status: "working",
           projectionSource: "pending_activation",
+          railSectionKey: activation.railSectionKey,
           title,
           titleLeadingMentionKind,
           titleFallback,

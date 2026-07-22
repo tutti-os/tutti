@@ -6,22 +6,27 @@ import (
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 )
 
-// CompositeReferenceResolver aggregates plan references from several
-// consumer domains (WorkspaceAgents, automation rules, legacy bindings and
-// policies, and workspace apps).
+// CompositeReferenceResolver fans a plan-reference lookup out to each
+// underlying resolver and concatenates the results. A plan stays referenced
+// (and therefore protected from deletion) while any single consumer domain —
+// agent model bindings or model usage policies — still points at it. Nil
+// resolvers are skipped so wiring can compose optional consumers.
 type CompositeReferenceResolver []ReferenceResolver
 
+// ListModelPlanReferences returns every consumer reported by every resolver.
+// The first resolver error aborts the lookup so plan deletion never proceeds
+// on a partial reference view.
 func (resolvers CompositeReferenceResolver) ListModelPlanReferences(ctx context.Context, workspaceID string, planID string) ([]modelplanbiz.Reference, error) {
-	merged := make([]modelplanbiz.Reference, 0)
+	references := make([]modelplanbiz.Reference, 0)
 	for _, resolver := range resolvers {
 		if resolver == nil {
 			continue
 		}
-		references, err := resolver.ListModelPlanReferences(ctx, workspaceID, planID)
+		found, err := resolver.ListModelPlanReferences(ctx, workspaceID, planID)
 		if err != nil {
 			return nil, err
 		}
-		merged = append(merged, references...)
+		references = append(references, found...)
 	}
-	return merged, nil
+	return references, nil
 }

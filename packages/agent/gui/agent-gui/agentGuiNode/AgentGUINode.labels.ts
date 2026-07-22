@@ -91,8 +91,6 @@ const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
     "agentHost.agentGui.referencePicker.selectGroupHint",
   "referencePicker.selectedCount":
     "agentHost.agentGui.referencePicker.selectedCount",
-  "referencePicker.workspaceRootGroup":
-    "agentHost.agentGui.referencePicker.workspaceRootGroup",
   "referencePicker.sourceColumn":
     "agentHost.agentGui.referencePicker.sourceColumn",
   "referencePicker.title": "agentHost.agentGui.referencePicker.title"
@@ -286,6 +284,7 @@ export function useAgentGUIViewLabels(input: {
       slashStatusLimitsUnavailable: t(
         "agentHost.agentGui.slashStatusLimitsUnavailable"
       ),
+      slashStatusEmptyValue: t("agentHost.agentGui.slashStatusEmptyValue"),
       slashStatusUsageJustUpdated: t(
         "agentHost.agentGui.slashStatusUsageJustUpdated"
       ),
@@ -754,6 +753,10 @@ export function useAgentGUIViewLabels(input: {
         "agentHost.agentGui.handoffConversationTooltip"
       ),
       handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu"),
+      handoffTargetDeviceSource: (deviceLabel: string) =>
+        t("agentHost.agentGui.handoffTargetDeviceSource", {
+          device: deviceLabel
+        }),
       handoffTargetSelf: t("agentHost.agentGui.handoffTargetSelf"),
       handoffTargetShared: t("agentHost.agentGui.handoffTargetShared")
     }),

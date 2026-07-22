@@ -774,7 +774,9 @@ function agentPromptImageBlockToDraftImage(
     ...(image.path ? { path: image.path } : {}),
     previewUrl:
       typeof image.data === "string" && image.data
-        ? `data:${image.mimeType};base64,${image.data}`
-        : (image.url ?? image.path ?? "")
+        ? image.data.startsWith("data:")
+          ? image.data
+          : `data:${image.mimeType};base64,${image.data}`
+        : (image.url ?? "")
   };
 }

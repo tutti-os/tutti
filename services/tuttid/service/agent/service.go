@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -560,14 +559,11 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 	return s.projectHostSessionResult(ctx, result.Canonical, result.Session, result.Live, true)
 }
 
-func (s *Service) Delete(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
+func (s *Service) Delete(ctx context.Context, workspaceID string, agentSessionID string) (DeleteSessionResult, error) {
 	result, err := s.ApplicationHost().DeleteSession(ctx, agenthost.SessionRef{
 		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
 	})
-	if err == nil && result.Deleted {
-		s.releaseAgentResources(ctx, agentSessionID)
-	}
-	return result.Deleted, err
+	return DeleteSessionResult{Removed: result.Deleted, CleanupFailed: result.CleanupFailed}, err
 }
 
 func (s *Service) Clear(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {
@@ -575,42 +571,16 @@ func (s *Service) Clear(ctx context.Context, workspaceID string) (ClearSessionsR
 	if workspaceID == "" {
 		return ClearSessionsResult{}, ErrInvalidArgument
 	}
-	for _, session := range s.controller().Sessions(workspaceID) {
-		if err := s.controller().Close(ctx, RuntimeCloseInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: session.ID,
-		}); err != nil {
-			return ClearSessionsResult{}, normalizeRuntimeError(err)
-		}
-		if err := s.cleanupRuntime(ctx, workspaceID, session.ID); err != nil {
-			return ClearSessionsResult{}, err
-		}
-	}
-	clearer, ok := s.SessionReader.(SessionClearer)
-	if !ok {
-		return ClearSessionsResult{}, ErrSessionNotFound
-	}
-	result, err := clearer.ClearSessions(ctx, workspaceID)
+	result, err := s.ApplicationHost().ClearSessions(ctx, workspaceID)
 	if err != nil {
 		return ClearSessionsResult{}, err
 	}
-	for _, agentSessionID := range result.RemovedSessionIDs {
-		s.releaseAgentResources(ctx, agentSessionID)
-	}
-	return result, nil
-}
-
-func (s *Service) releaseAgentResources(ctx context.Context, agentSessionID string) {
-	if s.AgentSessionResourceReleaser == nil {
-		return
-	}
-	if err := s.AgentSessionResourceReleaser.ReleaseAgent(ctx, agentSessionID); err != nil {
-		slog.WarnContext(ctx, "release Agent session resources failed",
-			"agentSessionId", strings.TrimSpace(agentSessionID),
-			"error", err,
-			"event", "agent.session.resource_release_failed",
-		)
-	}
+	return ClearSessionsResult{
+		RemovedMessages:         result.RemovedMessages,
+		RemovedSessions:         result.RemovedSessions,
+		RemovedSessionIDs:       result.RemovedSessionIDs,
+		CleanupFailedSessionIDs: result.CleanupFailedIDs,
+	}, nil
 }
 
 func (s *Service) UpdatePin(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (Session, error) {
@@ -648,6 +618,18 @@ func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentS
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 	})
+}
+
+func (s *Service) cleanupSessionResources(ctx context.Context, workspaceID string, agentSessionID string) error {
+	var runtimeErr error
+	if s.RuntimePreparer != nil {
+		runtimeErr = s.cleanupRuntime(ctx, workspaceID, agentSessionID)
+	}
+	var agentResourceErr error
+	if s.AgentSessionResourceReleaser != nil {
+		agentResourceErr = s.AgentSessionResourceReleaser.ReleaseAgent(ctx, strings.TrimSpace(agentSessionID))
+	}
+	return errors.Join(runtimeErr, agentResourceErr)
 }
 
 func (s *Service) SubmitInteractive(ctx context.Context, ref agenthost.InteractionRef, input agenthost.SubmitInteractiveInput) (Session, error) {

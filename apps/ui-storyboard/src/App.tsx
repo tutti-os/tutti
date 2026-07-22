@@ -3,6 +3,7 @@ import {
   BareIconButton,
   Button,
   Checkbox,
+  Combobox,
   ConfirmationDialog,
   Dialog,
   DialogClose,
@@ -311,6 +312,7 @@ const sections = [
     layer: "base",
     summary: "多选项、文件选择与布尔配置"
   },
+  ...componentSection("combobox", "Combobox", "可搜索选项选择与自定义值输入"),
   ...componentSection("dialog", "Dialog", "弹层、确认与焦点流程"),
   ...componentSection("drawer", "Drawer", "边缘抽屉与 sheet 面板"),
   ...iconSection,
@@ -463,6 +465,7 @@ const sectionCopy: Record<
     badge: { label: "Badge", summary: "状态标签与紧凑元信息" },
     button: { label: "Button", summary: "按钮层级、尺寸与状态" },
     checkbox: { label: "Checkbox", summary: "多选项、文件选择与布尔配置" },
+    combobox: { label: "Combobox", summary: "可搜索选项选择与自定义值输入" },
     dialog: { label: "Dialog", summary: "弹层、确认与焦点流程" },
     drawer: { label: "Drawer", summary: "边缘抽屉与 sheet 面板" },
     icons: { label: "Icons", summary: "系统图标与品牌图标" },
@@ -530,6 +533,10 @@ const sectionCopy: Record<
     checkbox: {
       label: "Checkbox",
       summary: "Multi-select choices, file selection, and boolean settings."
+    },
+    combobox: {
+      label: "Combobox",
+      summary: "Searchable option selection with custom typed values."
     },
     dialog: {
       label: "Dialog",
@@ -3385,6 +3392,104 @@ function SelectStoryboard() {
   );
 }
 
+const comboboxStoryOptions = [
+  {
+    description: "Flagship tier · long-context reasoning",
+    label: "Claude Fable 5",
+    value: "claude-fable-5"
+  },
+  {
+    description: "Standard tier · balanced default",
+    label: "Claude Sonnet 5",
+    value: "claude-sonnet-5"
+  },
+  {
+    description: "Economy tier · fast and inexpensive",
+    label: "Claude Haiku 4.5",
+    value: "claude-haiku-4-5"
+  },
+  { label: "GPT-5.2", value: "gpt-5.2" },
+  { label: "GPT-5.2 mini", value: "gpt-5.2-mini" }
+];
+
+function ComboboxStoryboard() {
+  const [catalogValue, setCatalogValue] = useState("claude-sonnet-5");
+  const [customValue, setCustomValue] = useState("");
+
+  if (!hasStoryboard("Combobox")) {
+    return null;
+  }
+
+  return (
+    <DocsSection
+      id="combobox"
+      title="Combobox"
+      description="用于从较大目录中搜索并选择单个值；列表高度固定，可选支持输入目录外的自定义值"
+      componentId={metadataFor("Combobox")?.id}
+    >
+      <div className="grid gap-1 lg:grid-cols-2">
+        <ExampleCard
+          title="Catalog Selection"
+          description="搜索过滤、键盘导航与选中态"
+        >
+          <div className="grid max-w-[320px] gap-4">
+            <label className="space-y-1.5">
+              <span className={standardFieldLabelClass}>Model</span>
+              <Combobox
+                aria-label="Model"
+                emptyMessage="No matching models"
+                options={comboboxStoryOptions}
+                placeholder="Select model"
+                searchPlaceholder="Search models..."
+                value={catalogValue}
+                onValueChange={setCatalogValue}
+              />
+            </label>
+            <label className="space-y-1.5">
+              <span className={standardFieldLabelClass}>Disabled</span>
+              <Combobox
+                aria-label="Disabled model"
+                disabled
+                options={comboboxStoryOptions}
+                placeholder="Select model"
+                value=""
+                onValueChange={() => undefined}
+              />
+            </label>
+          </div>
+        </ExampleCard>
+        <ExampleCard
+          title="Custom Value"
+          description="目录没有匹配项时，允许把输入内容作为自定义值提交"
+        >
+          <div className="grid max-w-[320px] gap-4">
+            <label className="space-y-1.5">
+              <span className={standardFieldLabelClass}>Model id</span>
+              <Combobox
+                allowCustomValue
+                aria-label="Model id"
+                customValueLabel={(query) => `Use "${query}"`}
+                emptyMessage="No matching models"
+                options={comboboxStoryOptions}
+                placeholder="Select or type a model id"
+                searchPlaceholder="Search or type..."
+                value={customValue}
+                onValueChange={setCustomValue}
+              />
+            </label>
+            <p className="m-0 text-[11px] leading-5 text-[var(--text-tertiary)]">
+              Selected value:{" "}
+              <code className="font-mono text-[11px] text-[var(--text-primary)]">
+                {customValue || "—"}
+              </code>
+            </p>
+          </div>
+        </ExampleCard>
+      </div>
+    </DocsSection>
+  );
+}
+
 function DialogStoryboard() {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -3851,6 +3956,7 @@ export function App() {
           <BadgeStoryboard />
           <ButtonStoryboard />
           <CheckboxStoryboard />
+          <ComboboxStoryboard />
           <DialogStoryboard />
           <DrawerStoryboard />
           <IconsStoryboard />

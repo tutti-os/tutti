@@ -83,6 +83,8 @@ func codexDescriptor() ProviderDescriptor {
 			DefaultReasoningEffort:  "high",
 			ConfiguredModelOverride: ConfiguredModelOverrideCodexCustomProvider,
 			Speed:                   true,
+			SpeedValues:             []string{"standard", "fast"},
+			DefaultSpeed:            "standard",
 			Capabilities: []string{
 				CapabilityImageInput,
 				CapabilitySkills,
@@ -92,6 +94,8 @@ func codexDescriptor() ProviderDescriptor {
 				CapabilityPlanMode,
 				CapabilityInterrupt,
 				CapabilityActiveTurnGuidance,
+				CapabilityGoalPause,
+				CapabilityModelSwitch,
 				CapabilityModelPlanBinding,
 				CapabilityPlanImplementation,
 				CapabilityPermissionModeChangeDuringTurn,

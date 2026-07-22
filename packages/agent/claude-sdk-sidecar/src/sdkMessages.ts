@@ -122,47 +122,50 @@ export function isAbortError(error: unknown): boolean {
   );
 }
 
-export function contextWindowTokensFromModelUsage(value: unknown): number {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const tokens = contextWindowTokensFromModelUsage(item);
-      if (tokens > 0) {
-        return tokens;
-      }
-    }
+export function contextWindowTokensFromModelUsage(
+  value: unknown,
+  currentModel: string
+): number {
+  const modelUsage = recordValue(value);
+  if (!modelUsage) {
     return 0;
   }
-  const record = recordValue(value);
-  if (!record) {
-    return 0;
+  const direct = numberValue(modelUsage.contextWindow);
+  if (direct > 0) {
+    return direct;
   }
-  for (const key of [
-    "maxTokens",
-    "max_tokens",
-    "contextWindowTokens",
-    "context_window_tokens",
-    "contextWindow",
-    "modelContextWindow",
-    "model_context_window",
-    "size",
-    "limit",
-    "max"
-  ]) {
-    const tokens = numberValue(record[key]);
-    if (tokens > 0) {
-      return tokens;
-    }
+
+  const modelEntries = Object.entries(modelUsage).filter(
+    ([, usage]) => numberValue(recordValue(usage)?.contextWindow) > 0
+  );
+  const normalizedModel = normalizedModelForMatch(currentModel);
+  if (!normalizedModel) {
+    return modelEntries.length === 1
+      ? numberValue(recordValue(modelEntries[0]?.[1])?.contextWindow)
+      : 0;
   }
-  for (const nested of Object.values(record)) {
-    if (typeof nested !== "object" || nested === null) {
-      continue;
-    }
-    const tokens = contextWindowTokensFromModelUsage(nested);
-    if (tokens > 0) {
-      return tokens;
-    }
+  const match = modelEntries.find(([model]) =>
+    modelKeyMatches(model, normalizedModel)
+  );
+  return numberValue(recordValue(match?.[1])?.contextWindow);
+}
+
+function normalizedModelForMatch(model: string): string {
+  const normalized = model.trim().toLowerCase();
+  return normalized === "default" ? "" : normalized;
+}
+
+function modelKeyMatches(modelKey: string, normalizedModel: string): boolean {
+  const normalizedKey = modelKey.trim().toLowerCase();
+  if (!normalizedKey) {
+    return false;
   }
-  return 0;
+  if (normalizedKey === normalizedModel) {
+    return true;
+  }
+  const baseKey = normalizedKey.replaceAll("[1m]", "");
+  const baseModel = normalizedModel.replaceAll("[1m]", "");
+  return baseModel !== "" && baseKey.includes(baseModel);
 }
 
 export function isCompactCommandPrompt(value: string): boolean {

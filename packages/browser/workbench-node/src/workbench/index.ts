@@ -10,6 +10,7 @@ import type {
   WorkbenchHostNodeHeaderContext,
   WorkbenchHostNodeDefinition
 } from "@tutti-os/workbench-surface";
+import { createMultiInstanceDockEntryOptions } from "@tutti-os/workbench-surface";
 import type { BrowserNodeFeature } from "../core/feature.ts";
 import type { BrowserNodeAutomationTargetMetadata } from "../core/types.ts";
 import { BrowserNode } from "../react/BrowserNode.tsx";
@@ -165,6 +166,9 @@ export function createBrowserDockEntry(
   input: CreateBrowserDockEntryInput
 ): WorkbenchHostDockEntry {
   return {
+    ...createMultiInstanceDockEntryOptions(undefined, {
+      allowNewWindowInDockPopup: false
+    }),
     capturePopupItemPreview: ({ node }) =>
       input.feature.hostApi.capturePreview?.({
         nodeId: input.feature.tabsStore.getActiveNodeId(node.id)
@@ -172,7 +176,6 @@ export function createBrowserDockEntry(
     icon: input.dockIcon ?? null,
     id: input.id ?? defaultBrowserNodeTypeId,
     label: input.feature.i18n.t("dockLabel"),
-    launchBehavior: "enabled",
     matchNode: (node) =>
       node.data.typeId === (input.typeId ?? defaultBrowserNodeTypeId),
     order: input.order,

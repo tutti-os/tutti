@@ -48,6 +48,7 @@ desktop source registry
   -> ReferenceSourceAggregator
   -> ReferenceSourcePicker controller/state
   -> shared picker UI
+  -> optional source-owned confirm preparation
   -> selected file or ReferenceHandle
   -> composer mention
   -> workspace-reference runtime resolution when required
@@ -58,6 +59,21 @@ shared `ReferenceListBackend` / `createReferenceListSource` protocol. Local
 files wrap `WorkspaceFileReferenceAdapter` directly. Open, reveal, open-with,
 and preview operations remain source-owned and are delegated back to the host.
 
+A source may implement `prepareSelection()` when `resolveSelection()` returns a
+source-owned locator that the final consumer cannot read directly. Confirmation
+is then an asynchronous transaction: the picker keeps its confirm action in a
+loading state, waits for every selected node to prepare, and publishes the
+prepared references only after all preparations succeed. A failure publishes no
+partial selection, leaves the picker open for retry, and surfaces an error. The
+source owns transport, materialization, and the resulting consumer-readable
+locator; the shared picker must not interpret a host path or capability handle.
+
+The picker source heading is the source-root navigation target. When a source
+does not provide explicit sidebar groups, its root folders may appear as
+shortcuts below that heading, but the picker must not synthesize another
+same-named root folder. This keeps root-level files reachable without producing
+duplicated structures such as `Workspace / Workspace`.
+
 OS clipboard and drop entries may enter the same ordinary file/folder mention
 model without going through a picker. AgentGUI asks the synchronous host
 `resolveExternalPromptEntries` port whether each browser `File` is a live
@@ -65,6 +81,14 @@ model without going through a picker. AgentGUI asks the synchronous host
 their host path and kind, do not become prompt assets, and preserve their
 position relative to prepared entries. Hosts that cannot expose a live local
 reference omit that capability or classify the entry for preparation.
+
+Reference sources own whether preview bytes are available and how those bytes
+are read. The host-neutral `@tutti-os/workspace-file-preview` controller owns
+the frontend preview lifecycle after a node is focused: readiness and size
+checks, stale-request fencing, cancellation, decoding, canonical status, and
+media object-URL cleanup. Picker controllers project that language-neutral
+status into source metadata and localized presentation; they must not start a
+second preview request state machine.
 
 ### Project Directory Selection
 
@@ -89,7 +113,7 @@ The directory purpose is a constrained use of the same source architecture:
   roots, so host-local file sections do not appear implicitly;
 - sources return and search folders only, and enforce workspace boundaries
   before pagination;
-- the picker uses single selection, disables file-type and provenance controls,
+- the picker uses single selection, omits file-type and provenance controls,
   and supplies directory-specific title, search, empty, and confirmation copy;
 - a source that declares `directoryCreatable` implements `createDirectory()`;
   it owns path-segment validation, parent-boundary checks, persistence, and the
@@ -135,6 +159,16 @@ re-sort it by node kind or label. Host-only collections such as open Dock files
 may provide the empty-query browse list and presentation metadata, but must not
 be prepended to ranked query results.
 
+Picker purpose constrains result kinds before pagination: the reference picker
+searches files only, while the project-directory picker searches folders only.
+A file-type filter by itself remains in browse mode, filters files in the
+recursively loaded source tree, and keeps only folders with matching descendant
+files. The traversal is cancellable and the picker remains loading until the
+filtered projection is complete. When a keyword is present, the same category
+ids are passed to the source for pre-pagination filtering. Search rows render a
+source-provided `contextLabel` when available and otherwise omit the subtitle;
+opaque `nodeId` values are never presentation copy.
+
 Local-file queries are field-aware:
 
 - A query without path separators ranks exact basename, exact stem, name
@@ -153,10 +187,17 @@ ranking implementation.
 ## Source Provenance Filtering
 
 `@tutti-os/workspace-file-reference` owns the host-neutral provenance model and
-controlled filter UI. The model has independent `agent` and `member`
+its reusable filter control. The model has independent `agent` and `member`
 dimensions so collaboration products can reuse the package, but a host decides
 which dimensions and options are enabled. Tutti personal edition injects only
 Agent options; member and group-chat behavior are outside its product surface.
+
+The full `ReferenceSourcePicker` does not accept, render, or apply a provenance
+filter. AgentGUI may use the provenance control in its compact mention/search
+surface, whose query controller owns that filter state. Project-directory
+selection likewise has no provenance entry. This prevents picker navigation
+and ordinary filesystem search from being silently constrained by a hidden
+host value.
 
 The controller owns only ephemeral selection state. The host injects the
 catalog, and concrete providers or `ReferenceSourceService.search()` own the
@@ -231,6 +272,8 @@ cache expires; they do not claim exhaustive history.
   do not present a failed request as an empty artifact set.
 - Keep source-specific transport and absolute host paths outside the shared UI
   package.
+- Never submit a source-owned staging locator as a consumer-readable reference;
+  sources that require materialization must complete it during confirmation.
 - Use `ReferenceHandle` for app/issue groups that should resolve lazily at agent
   execution time; do not expand an entire artifact bundle into prompt text.
 

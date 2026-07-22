@@ -1,8 +1,5 @@
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
-import {
-  resolveWorkspaceFileActivationTarget,
-  type WorkspaceFileEntry
-} from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
 import type {
   WorkspaceFileReference,
   WorkspaceFileReferenceAdapter,
@@ -12,25 +9,24 @@ import type {
 } from "@tutti-os/workspace-file-reference/contracts";
 import {
   classifyWorkspaceFilePreviewKind,
+  resolveWorkspaceFileActivationTarget,
   resolveWorkspaceFilePreviewName,
   resolveWorkspaceImageMimeType,
-  resolveWorkspaceVideoMimeType
+  resolveWorkspaceVideoMimeType,
+  type WorkspaceFilePreviewActivationTarget
 } from "@tutti-os/workspace-file-preview";
 import type { DesktopHostFilesApi } from "@preload/types";
 
 export function createDesktopWorkspaceFileReferenceAdapter(input: {
   hostFilesApi: DesktopHostFilesApi;
-  openCanvasFilePreview?: (
-    target: NonNullable<
-      ReturnType<typeof resolveWorkspaceFileActivationTarget>
-    >,
+  presentFilePreview?: (
+    target: WorkspaceFilePreviewActivationTarget,
     workspaceId: string
   ) => Promise<boolean> | boolean;
   tuttidClient: TuttidClient;
   workspaceId: string;
 }): WorkspaceFileReferenceAdapter {
-  const { hostFilesApi, openCanvasFilePreview, tuttidClient, workspaceId } =
-    input;
+  const { hostFilesApi, presentFilePreview, tuttidClient, workspaceId } = input;
 
   return {
     async loadReferenceTree({
@@ -93,7 +89,7 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
           : null;
       if (
         target &&
-        (await openCanvasFilePreview?.(target, workspaceId)) === true
+        (await presentFilePreview?.(target, workspaceId)) === true
       ) {
         return;
       }
@@ -153,6 +149,7 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
       limit = 30,
       query,
       filters,
+      kinds,
       within,
       signal,
       workspaceId
@@ -162,6 +159,13 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
         {
           limit,
           query,
+          ...(kinds && kinds.length > 0
+            ? {
+                includeKinds: kinds.map((kind) =>
+                  kind === "folder" ? "directory" : "file"
+                )
+              }
+            : {}),
           ...(filters && filters.length > 0 ? { filters } : {}),
           ...(within ? { within } : {})
         },

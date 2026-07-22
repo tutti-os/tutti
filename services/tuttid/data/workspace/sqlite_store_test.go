@@ -2170,12 +2170,14 @@ func TestSQLiteStoreDeleteAgentActivitySessionSoftDeletesMessages(t *testing.T) 
 		t.Fatalf("ReportSessionMessages() error = %v", err)
 	}
 
-	removed, err := store.DeleteSession(ctx, "ws-agent-delete", "session-1")
+	deleteResult, err := store.DeleteSessionsBatch(ctx, agentactivitybiz.DeleteSessionsBatchInput{
+		WorkspaceID: "ws-agent-delete", SessionIDs: []string{"session-1"},
+	})
 	if err != nil {
-		t.Fatalf("DeleteSession() error = %v", err)
+		t.Fatalf("DeleteSessionsBatch() error = %v", err)
 	}
-	if !removed {
-		t.Fatal("DeleteSession() removed = false, want true")
+	if deleteResult.RemovedSessions != 1 {
+		t.Fatalf("DeleteSessionsBatch() = %#v, want one removed session", deleteResult)
 	}
 	if _, ok, err := store.GetSession(ctx, "ws-agent-delete", "session-1"); err != nil || ok {
 		t.Fatalf("GetSession() after delete ok=%v error=%v, want ok=false", ok, err)
@@ -2251,8 +2253,8 @@ func TestSQLiteStoreClearAgentActivitySessionsHardDeletesTombstones(t *testing.T
 			t.Fatalf("ReportSessionMessages(%s) error = %v", sessionID, err)
 		}
 	}
-	if removed, err := store.DeleteSession(ctx, workspaceID, "session-1"); err != nil || !removed {
-		t.Fatalf("DeleteSession() removed=%v error=%v, want removed=true", removed, err)
+	if removed, err := store.DeleteSessionsBatch(ctx, agentactivitybiz.DeleteSessionsBatchInput{WorkspaceID: workspaceID, SessionIDs: []string{"session-1"}}); err != nil || removed.RemovedSessions != 1 {
+		t.Fatalf("DeleteSessionsBatch() result=%#v error=%v, want one removed session", removed, err)
 	}
 
 	result, err := store.ClearSessions(ctx, workspaceID)
@@ -2363,8 +2365,8 @@ func TestSQLiteStoreUpdateAgentActivitySessionPinned(t *testing.T) {
 		t.Fatalf("pinnedAtUnixMS after unpin = %d, want 0", unpinned.PinnedAtUnixMS)
 	}
 
-	if removed, err := store.DeleteSession(ctx, "ws-agent-pin", "session-1"); err != nil || !removed {
-		t.Fatalf("DeleteSession() removed=%v error=%v, want removed=true", removed, err)
+	if removed, err := store.DeleteSessionsBatch(ctx, agentactivitybiz.DeleteSessionsBatchInput{WorkspaceID: "ws-agent-pin", SessionIDs: []string{"session-1"}}); err != nil || removed.RemovedSessions != 1 {
+		t.Fatalf("DeleteSessionsBatch() result=%#v error=%v, want one removed session", removed, err)
 	}
 	if _, ok, err := store.UpdateSessionPinned(ctx, "ws-agent-pin", "session-1", true); err != nil || ok {
 		t.Fatalf("UpdateSessionPinned(deleted) ok=%v error=%v, want ok=false", ok, err)
@@ -2438,8 +2440,8 @@ func TestSQLiteStoreDeleteAgentActivitySessionIgnoresLateReports(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ReportSessionState() error = %v", err)
 	}
-	if removed, err := store.DeleteSession(ctx, "ws-agent-delete-late", "session-1"); err != nil || !removed {
-		t.Fatalf("DeleteSession() removed=%v error=%v, want removed=true", removed, err)
+	if removed, err := store.DeleteSessionsBatch(ctx, agentactivitybiz.DeleteSessionsBatchInput{WorkspaceID: "ws-agent-delete-late", SessionIDs: []string{"session-1"}}); err != nil || removed.RemovedSessions != 1 {
+		t.Fatalf("DeleteSessionsBatch() result=%#v error=%v, want one removed session", removed, err)
 	}
 
 	lateState, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{

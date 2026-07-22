@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
 import {
   createWorkspaceFilePreviewInstanceID,
   createWorkspaceFilePreviewLaunchRequest,
@@ -8,7 +8,7 @@ import {
   workspaceTextFileNodeTypeID
 } from "./workspaceFilePreviewLaunch.ts";
 
-function textTarget(path: string): WorkspaceFileActivationTarget {
+function textTarget(path: string): WorkspaceFilePreviewActivationTarget {
   return {
     fileKind: "text",
     mtimeMs: null,
@@ -52,6 +52,17 @@ test("workspace file preview activation accepts video targets", () => {
       name: "demo.mp4",
       path: "/workspace/demo.mp4",
       sizeBytes: null
+    }),
+    true
+  );
+});
+
+test("workspace file preview activation accepts shared targets without optional metadata", () => {
+  assert.equal(
+    isWorkspaceFilePreviewActivationTarget({
+      fileKind: "image",
+      name: "cover.png",
+      path: "/workspace/cover.png"
     }),
     true
   );

@@ -5,12 +5,13 @@ import {
   screen,
   waitFor
 } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentEnvPanelActionProvider } from "../../agentEnv";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { AgentMessageBlock } from "./AgentMessageBlock";
 import { AgentTranscriptItemView } from "./AgentTranscriptItemView";
 import type { AgentGeneratedImageRowVM } from "../contracts/agentGeneratedImageRowVM";
+import type { AgentGoalControlRowVM } from "../contracts/agentGoalControlRowVM";
 import type { AgentMessageContentVM } from "../contracts/agentMessageRowVM";
 import type { AgentMessageRowVM } from "../contracts/agentMessageRowVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
@@ -72,7 +73,38 @@ vi.mock("./AgentToolGroupRow", () => ({
   }
 }));
 
+beforeEach(() => {
+  mockState.markdownOnLinkClicks.length = 0;
+  mockState.markdownStreamingFlags.length = 0;
+  mockState.toolGroupOnLinkClicks.length = 0;
+});
+
 describe("AgentTranscriptItemView render stability", () => {
+  it("renders a goal control as a dedicated transcript row", () => {
+    const row: AgentGoalControlRowVM = {
+      kind: "goal-control",
+      id: "goal-control:client-submit:user:submit-goal-1",
+      turnId: null,
+      action: "set",
+      body: "/goal ship it",
+      occurredAtUnixMs: 1
+    };
+
+    const { container } = render(
+      <AgentTranscriptItemView
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={row}
+        labels={transcriptLabels()}
+      />
+    );
+
+    expect(screen.getByText("/goal ship it")).toBeInTheDocument();
+    expect(
+      container.querySelector('[data-agent-goal-control-action="set"]')
+    ).toBeInTheDocument();
+  });
+
   it("renders a generated image artifact independently from tool-call expansion", () => {
     const row: AgentGeneratedImageRowVM = {
       kind: "generated-image",

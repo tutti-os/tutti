@@ -86,6 +86,7 @@ test("selectedReferenceToWorkspaceFileReference 形状兼容", () => {
       path: "/a",
       kind: "folder",
       displayName: "A",
+      sizeBytes: 12,
       hostPath: "/Users/test/A",
       sourceId: "host-local-file"
     }),
@@ -93,6 +94,7 @@ test("selectedReferenceToWorkspaceFileReference 形状兼容", () => {
       path: "/a",
       kind: "folder",
       displayName: "A",
+      sizeBytes: 12,
       hostPath: "/Users/test/A",
       sourceId: "host-local-file"
     }
@@ -183,6 +185,50 @@ test("aggregator 委派 resolveSelection 到对应源", async () => {
     path: "/workspace/a.md",
     kind: "file",
     sourceId: "workspace-file"
+  });
+});
+
+test("aggregator 在确认阶段委派 source preparation 并保留 source identity", async () => {
+  let receivedScope: ReferenceScope | null = null;
+  let receivedSelection: unknown = null;
+  const registry = createStaticReferenceSourceRegistry([
+    fakeSource({
+      id: "host-local-file",
+      resolveSelection: (node) => ({
+        path: node.ref.nodeId,
+        hostPath: node.ref.nodeId,
+        kind: node.kind
+      }),
+      prepareSelection: async (selectionScope, _node, selection) => {
+        receivedScope = selectionScope;
+        receivedSelection = selection;
+        return {
+          ...selection,
+          path: "/var/cache/tsh/local-assets/ws-1/photo.png",
+          hostPath: undefined
+        };
+      }
+    })
+  ]);
+  const aggregator = createReferenceSourceAggregator(registry);
+  await aggregator.listRoot(scope);
+
+  const selected = await aggregator.prepareSelection(
+    scope,
+    fileNode("host-local-file", "opaque-handle", "photo.png")
+  );
+
+  assert.deepEqual(receivedScope, scope);
+  assert.deepEqual(receivedSelection, {
+    path: "opaque-handle",
+    hostPath: "opaque-handle",
+    kind: "file"
+  });
+  assert.deepEqual(selected, {
+    path: "/var/cache/tsh/local-assets/ws-1/photo.png",
+    hostPath: undefined,
+    kind: "file",
+    sourceId: "host-local-file"
   });
 });
 

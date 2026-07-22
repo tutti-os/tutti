@@ -39,12 +39,13 @@ func RunVerifiedExecutable(ctx context.Context, path string, args []string, iden
 }
 
 type localProcessConnection struct {
-	cancel  context.CancelFunc
-	cmd     *exec.Cmd
-	done    chan struct{}
-	closing chan struct{}
-	frames  chan ProcessFrame
-	stdin   io.WriteCloser
+	cancel             context.CancelFunc
+	cmd                *exec.Cmd
+	preparedExecutable *preparedProcessExecutable
+	done               chan struct{}
+	closing            chan struct{}
+	frames             chan ProcessFrame
+	stdin              io.WriteCloser
 
 	closeOnce sync.Once
 	sendMu    sync.Mutex
@@ -75,7 +76,12 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 		cancel()
 		return nil, err
 	}
-	defer func() { _ = preparedExecutable.Close() }()
+	started := false
+	defer func() {
+		if !started {
+			_ = preparedExecutable.Close()
+		}
+	}()
 	cmd := exec.CommandContext(processCtx, preparedExecutable.path, spec.Command[1:]...)
 	if preparedExecutable.file != nil {
 		cmd.ExtraFiles = []*os.File{preparedExecutable.file}
@@ -110,6 +116,8 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 		cancel()
 		return nil, err
 	}
+	conn.preparedExecutable = &preparedExecutable
+	started = true
 
 	go conn.wait()
 	return conn, nil
@@ -389,6 +397,10 @@ func (w processFrameWriter) Write(data []byte) (int, error) {
 
 func (c *localProcessConnection) wait() {
 	err := c.cmd.Wait()
+	if c.preparedExecutable != nil {
+		_ = c.preparedExecutable.Close()
+		c.preparedExecutable = nil
+	}
 	exitCode := 0
 	if err != nil {
 		exitCode = 1

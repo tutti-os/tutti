@@ -7,9 +7,27 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
+
+func (p *ActivityProjection) NormalizeRuntimeSessionInitialization(
+	ctx context.Context,
+	session agenthost.ProviderRuntimeSession,
+) (agenthost.ProviderRuntimeSession, error) {
+	if p == nil {
+		return agenthost.ProviderRuntimeSession{}, fmt.Errorf("agent activity projection is unavailable")
+	}
+	canonicalTargetID, runtimeContext := p.canonicalizeAgentTargetID(
+		ctx,
+		session.AgentTargetID,
+		session.RuntimeContext,
+	)
+	session.AgentTargetID = canonicalTargetID
+	session.RuntimeContext = runtimeContext
+	return session, nil
+}
 
 // InitializeRuntimeSession is the synchronous Create boundary. Runtime
 // reporting remains asynchronous for subsequent observations, but a successful

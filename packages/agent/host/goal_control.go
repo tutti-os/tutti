@@ -3,6 +3,7 @@ package agenthost
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"unicode"
@@ -43,6 +44,24 @@ func durableGoalForResponse(state storesqlite.SessionGoalState) map[string]any {
 		return nil
 	}
 	return clonePayload(state.Desired)
+}
+
+func goalControlOperationID(workspaceID, agentSessionID, clientSubmitID string) string {
+	clientSubmitID = strings.TrimSpace(clientSubmitID)
+	if clientSubmitID == "" {
+		return uuid.NewString()
+	}
+	name := strings.Join([]string{
+		strings.TrimSpace(workspaceID), strings.TrimSpace(agentSessionID), clientSubmitID,
+	}, "\x00")
+	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(name)).String()
+}
+
+func goalControlClientSubmitID(input GoalControlInput, submissionMetadata map[string]any) string {
+	if clientSubmitID := strings.TrimSpace(input.ClientSubmitID); clientSubmitID != "" {
+		return clientSubmitID
+	}
+	return metadataString(submissionMetadata, "clientSubmitId")
 }
 
 // ParseTypedGoalControl recognizes the text-only slash surface at the Host
@@ -91,6 +110,31 @@ func (h *Host) goalControl(
 	ctx context.Context,
 	input GoalControlInput,
 ) (GoalControlResult, error) {
+	if h == nil {
+		return GoalControlResult{}, ErrInvalidArgument
+	}
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return GoalControlResult{}, ErrInvalidArgument
+	}
+	var result GoalControlResult
+	err := h.withSessionMutationActor(ctx, workspaceID, agentSessionID, func(actorCtx context.Context) error {
+		var commandErr error
+		result, commandErr = h.goalControlSerialized(actorCtx, input)
+		return commandErr
+	})
+	return result, err
+}
+
+// goalControlSerialized keeps the provider mutation and its durable revision
+// transition in one per-session command lane. A clear submitted immediately
+// after set must reach the provider after set; revision repair alone cannot
+// prevent the older provider call from temporarily resurrecting a goal.
+func (h *Host) goalControlSerialized(
+	ctx context.Context,
+	input GoalControlInput,
+) (GoalControlResult, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 	action := strings.TrimSpace(input.Action)
@@ -105,24 +149,16 @@ func (h *Host) goalControl(
 		"agentSessionId", agentSessionID,
 		"action", action,
 	)
-	if _, err := h.EnsureRuntimeSession(ctx, SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID}); err != nil {
-		slog.Warn("workspace agent session goal control prepare failed",
-			"event", "workspace_agent_session.goal_control.prepare_failed",
-			"workspaceId", workspaceID,
-			"agentSessionId", agentSessionID,
-			"error", err.Error(),
-		)
-		return GoalControlResult{}, err
-	}
 	operationID := ""
 	goalRevision := int64(0)
-	clientSubmitID := metadataString(submissionMetadata, "clientSubmitId")
+	clientSubmitID := goalControlClientSubmitID(input, submissionMetadata)
 	var persistedState *storesqlite.SessionGoalState
+	replayed := false
 	if h.goals != nil {
-		operationID = uuid.NewString()
+		operationID = goalControlOperationID(workspaceID, agentSessionID, clientSubmitID)
 		err := h.withGoalActor(ctx, workspaceID, agentSessionID, func(actorCtx context.Context) error {
 			now := h.goalOperationNow()
-			op, state, _, err := h.goals.PrepareGoalControlOperation(actorCtx, storesqlite.GoalControlOperationPrepare{
+			op, state, created, err := h.goals.PrepareGoalControlOperation(actorCtx, storesqlite.GoalControlOperationPrepare{
 				OperationID: operationID, WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
 				Action: strings.TrimSpace(action), Objective: strings.TrimSpace(objective), ClientSubmitID: clientSubmitID,
 				OccurredAtUnixMS: now.UnixMilli(),
@@ -132,6 +168,48 @@ func (h *Host) goalControl(
 			}
 			goalRevision = op.GoalRevision
 			persistedState = &state
+			if !created {
+				switch op.Status {
+				case storesqlite.GoalOperationStatusCompleted, storesqlite.GoalOperationStatusSuperseded:
+					replayed = true
+					return nil
+				case storesqlite.GoalOperationStatusFailed:
+					return fmt.Errorf("%w: %s", ErrRuntimeOperationFailed, strings.TrimSpace(op.LastError))
+				default:
+					return ErrRuntimeOperationInProgress
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return GoalControlResult{}, err
+		}
+	}
+	if replayed {
+		canonical, found, err := h.store.GetSession(ctx, workspaceID, agentSessionID)
+		if err != nil {
+			return GoalControlResult{}, err
+		}
+		if !found {
+			return GoalControlResult{}, ErrSessionNotFound
+		}
+		return GoalControlResult{
+			Canonical: canonical, Goal: durableGoalForResponse(*persistedState),
+			OperationID: operationID, GoalState: persistedState,
+		}, nil
+	}
+	if _, err := h.EnsureRuntimeSession(ctx, SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID}); err != nil {
+		slog.Warn("workspace agent session goal control prepare failed",
+			"event", "workspace_agent_session.goal_control.prepare_failed",
+			"workspaceId", workspaceID,
+			"agentSessionId", agentSessionID,
+			"error", err.Error(),
+		)
+		return GoalControlResult{}, err
+	}
+	if h.goals != nil {
+		err := h.withGoalActor(ctx, workspaceID, agentSessionID, func(actorCtx context.Context) error {
+			now := h.goalOperationNow()
 			owner := h.goalOperationOwner()
 			if _, claimed, err := h.goals.ClaimGoalControlOperation(actorCtx, storesqlite.ClaimGoalControlOperationInput{
 				WorkspaceID: workspaceID, OperationID: operationID, LeaseOwner: owner,

@@ -21,6 +21,7 @@ It should not:
 Repository entrypoints:
 
 - `pnpm setup:dev`
+- `pnpm check:backdrop-filter-authoring`
 - `pnpm check:golangci-version`
 - `pnpm lint`
 - `pnpm lint:ts`
@@ -151,6 +152,22 @@ TypeScript package `tsconfig.json` files must not use `baseUrl`; use explicit re
 
 The repository-specific UI boundary policy remains in `pnpm check:ui-boundaries`.
 
+## Backdrop Filter Build Contract
+
+Production CSS and Tailwind arbitrary-property authoring under `apps/`,
+`packages/`, and `services/` must use the standard `backdrop-filter` property.
+Do not handwrite `-webkit-backdrop-filter`: Tailwind/Lightning CSS owns
+target-aware prefix generation, and duplicate declarations can be folded into a
+prefix-only result during production optimization.
+
+`pnpm check:backdrop-filter-authoring` enforces the source rule. Desktop builds
+also run `tools/scripts/verify-renderer-css-contracts.mjs` against final renderer
+assets. The artifact gate permits standard-only output or a generated prefix
+followed by the standard property; it rejects prefix-only output, reversed
+ordering, and a launchpad dismiss layer without a non-`none` standard filter.
+The React `WebkitBackdropFilter` inline-style property is outside this stylesheet
+optimization boundary and is not rejected by the authoring check.
+
 Renderer feature implementation boundaries are checked by `pnpm check:renderer-boundaries`.
 That check also enforces the Workbench-specific rule that
 `workspace-workbench/ui/**` imports public service or controller seams instead
@@ -220,6 +237,15 @@ change touches `services/tuttid/service/agent` or the checker/fixture itself,
 and in the PR `go-lint` job. The boundary rationale and adapter rules live in
 the root `AGENTS.md` `Agent Host Boundary` section and
 `services/tuttid/service/agent/AGENTS.md`.
+
+The same check also verifies production reachability: `services/tuttid/wiring.go`
+must compose Host with `daemon/hostadapter.RuntimeController`,
+`host.SQLiteWorkspaceStore`, and `NewApplicationHostWithPorts`. This prevents
+shared lifecycle adapters from existing only in tests while production keeps a
+parallel service implementation. Production agent service files also reject
+service-local `serviceHostStore` / `serviceHostRuntime` composition and lazy
+`NewApplicationHost` factories; isolated in-memory adapters may exist only in
+`_test.go` fixtures.
 
 ## Agent GUI Degradation Ratchet
 

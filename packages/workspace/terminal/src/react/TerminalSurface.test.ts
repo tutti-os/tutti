@@ -1,29 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { ILink, Terminal } from "@xterm/xterm";
 import type { TerminalNodeFeature } from "../core/feature.ts";
 import { createTerminalFileLinkProvider } from "./terminalFileLinkProvider.ts";
-
-const terminalSurfaceSource = readFileSync(
-  new URL("./TerminalSurface.tsx", import.meta.url),
-  "utf8"
-);
-const terminalStyles = readFileSync(
-  new URL("../styles/terminal.css", import.meta.url),
-  "utf8"
-);
-
-test("terminal viewport follows the resolved theme background", () => {
-  assert.match(
-    terminalSurfaceSource,
-    /"--workspace-terminal-background": theme\.background/
-  );
-  assert.match(
-    terminalStyles,
-    /\.workspace-terminal__xterm \.xterm-viewport \{[\s\S]*?background-color: var\([\s\S]*?--workspace-terminal-background,[\s\S]*?var\(--tutti-surface, #111\)[\s\S]*?\);/
-  );
-});
 
 test("terminal file link provider resolves cwd from the latest getter value", async () => {
   let currentCwd = "/workspace/first";

@@ -2,13 +2,17 @@ import type {
   WorkspaceFileManagerHostFallbackAction,
   WorkspaceFileManagerHostImportConflict
 } from "./workspaceFileManagerHostTypes.ts";
+import type {
+  WorkspaceFilePreviewActivationTarget,
+  WorkspaceFilePreviewKind as SharedWorkspaceFilePreviewKind
+} from "@tutti-os/workspace-file-preview";
 
 export const workspaceFileManagerLogicalRoot = "/" as const;
 
 export type WorkspaceFileEntryKind = "file" | "directory" | "unknown";
 export type WorkspaceFileSearchMatchTarget = "basename" | "path";
 export type WorkspaceFileImportConflictKind = "replaceable" | "type_mismatch";
-export type WorkspaceFilePreviewKind = "image" | "text" | "video";
+export type WorkspaceFilePreviewKind = SharedWorkspaceFilePreviewKind;
 export type WorkspaceFileLocationKind = "directory" | "external" | "recent";
 export type WorkspaceFileManagerFileDefaultOpener =
   | "appBrowser"
@@ -30,11 +34,8 @@ export interface WorkspaceFileEntry {
   sizeBytes: number | null;
 }
 
-export interface WorkspaceFileActivationTarget {
-  fileKind: WorkspaceFilePreviewKind;
+export interface WorkspaceFileActivationTarget extends WorkspaceFilePreviewActivationTarget {
   mtimeMs: number | null;
-  name: string;
-  path: string;
   sizeBytes: number | null;
 }
 
@@ -43,7 +44,6 @@ export type WorkspaceFilePreviewState =
   | { entry: WorkspaceFileEntry; status: "directory" }
   | { entry: WorkspaceFileActivationTarget; status: "loading" }
   | { content: string; entry: WorkspaceFileActivationTarget; status: "text" }
-  | { content: string; entry: WorkspaceFileActivationTarget; status: "html" }
   | { entry: WorkspaceFileActivationTarget; objectUrl: string; status: "image" }
   | { entry: WorkspaceFileActivationTarget; objectUrl: string; status: "video" }
   | { entry: WorkspaceFileEntry; message: string; status: "unsupported" }

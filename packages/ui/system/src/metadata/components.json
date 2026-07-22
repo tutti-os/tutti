@@ -1188,6 +1188,26 @@
       ]
     },
     {
+      "id": "combobox",
+      "layer": "base",
+      "name": "Combobox",
+      "export": "Combobox",
+      "from": "@tutti-os/ui-system/components",
+      "category": "composition",
+      "status": "stable",
+      "source": "src/components/combobox/index.tsx",
+      "description": "Searchable single-value picker with a fixed-height option list and optional custom typed values.",
+      "useCases": [
+        "Large option catalogs",
+        "Model or identifier selection",
+        "Free-form value entry with suggestions"
+      ],
+      "migrationHints": [
+        "Replace local Popover+Input search dropdowns with the shared Combobox so filtering, keyboard navigation, and tokens stay aligned."
+      ],
+      "storyboard": true
+    },
+    {
       "id": "checkbox",
       "layer": "base",
       "name": "Checkbox",

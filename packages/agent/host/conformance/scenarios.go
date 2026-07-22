@@ -17,8 +17,12 @@ var (
 		Name: "historical and live settings",
 		run:  runHistoricalAndLiveSettings,
 	}
-	pinSessionScenario           = Scenario{Name: "pin session", run: runPinSession}
-	deleteSessionScenario        = Scenario{Name: "delete session", run: runDeleteSession}
+	pinSessionScenario            = Scenario{Name: "pin session", run: runPinSession}
+	deleteSessionScenario         = Scenario{Name: "delete session", run: runDeleteSession}
+	deleteLiveOnlySessionScenario = Scenario{
+		Name: "delete live session before canonical report",
+		run:  runDeleteLiveSessionBeforeCanonicalReport,
+	}
 	purgeDeletedSessionsScenario = Scenario{Name: "purge deleted sessions", run: runPurgeDeletedSessions}
 )
 
@@ -40,6 +44,7 @@ func Scenarios() []Scenario {
 		historicalAndLiveSettingsScenario,
 		pinSessionScenario,
 		deleteSessionScenario,
+		deleteLiveOnlySessionScenario,
 		purgeDeletedSessionsScenario,
 	}
 }
@@ -79,8 +84,10 @@ func GoalScenarios() []Scenario {
 	return []Scenario{
 		{Name: "direct and typed goal equivalence", run: runDirectAndTypedGoalEquivalence},
 		{Name: "goal action lifecycle", run: runGoalActionLifecycle},
+		{Name: "duplicate goal client submit id", run: runDuplicateGoalClientSubmitID},
 		{Name: "goal reconcile observation", run: runGoalReconcileObservation},
 		{Name: "goal revision actor fence", run: runGoalRevisionActorFence},
+		{Name: "accepted goal control waits without replay", run: runAcceptedGoalControlWaitsWithoutReplay},
 		{Name: "goal inbox consumer preflight", run: runGoalInboxConsumerPreflight},
 	}
 }
@@ -109,6 +116,7 @@ func ApplicationCoreScenarios() []Scenario {
 		historicalAndLiveSettingsScenario,
 		pinSessionScenario,
 		deleteSessionScenario,
+		deleteLiveOnlySessionScenario,
 		purgeDeletedSessionsScenario,
 	}
 }

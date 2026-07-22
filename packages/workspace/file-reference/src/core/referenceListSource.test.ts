@@ -6,7 +6,8 @@ import {
   createReferenceListSource,
   type ReferenceListBackend,
   type ReferenceListRequest,
-  type ReferenceListResult
+  type ReferenceListResult,
+  type ReferenceListSearchRequest
 } from "./referenceListSource.ts";
 import { SOURCE_ROOT_NODE_ID } from "./referenceSourceAggregator.ts";
 
@@ -126,8 +127,51 @@ test("reference.parentLabel 透传为节点 contextLabel,缺省时不带", async
   });
   const result = await source.listChildren(scope, { node: null });
   assert.equal(result.entries[0]?.contextLabel, "Prototype Design");
-  // 没填 parentLabel 的项不应带 contextLabel(UI 回退展示 nodeId)。
+  // 没填 parentLabel 的项不应带 contextLabel(UI 不展示不透明 nodeId)。
   assert.equal(result.entries[1]?.contextLabel, undefined);
+});
+
+test("search 把结果类型约束下推给 backend", async () => {
+  let observedRequest: ReferenceListSearchRequest | undefined;
+  const source = createReferenceListSource({
+    sourceId: "workspace-file",
+    label: "Workspace",
+    capabilities: {
+      searchable: true,
+      previewable: true,
+      paginated: false,
+      navigable: true,
+      filterable: true
+    },
+    isAvailable: () => true,
+    adapter: fakeAdapter,
+    backend: {
+      async list() {
+        return { items: [], nextCursor: null };
+      },
+      async search(_scope, request) {
+        observedRequest = request;
+        return {
+          items: [{ type: "reference", reference: { path: "/ws/notes.md" } }],
+          nextCursor: null
+        };
+      }
+    }
+  });
+
+  const result = await source.search?.(scope, {
+    query: "notes",
+    kinds: ["file"],
+    limit: 20
+  });
+
+  assert.deepEqual(observedRequest, {
+    query: "notes",
+    cursor: null,
+    kinds: ["file"],
+    limit: 20
+  });
+  assert.equal(result?.entries[0]?.kind, "file");
 });
 
 test("group.parentLabel 透传为节点 contextLabel,避免 UI 展示不透明 nodeId", async () => {

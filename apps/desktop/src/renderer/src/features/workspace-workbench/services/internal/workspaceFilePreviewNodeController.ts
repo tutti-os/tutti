@@ -1,9 +1,10 @@
-import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
 import {
-  createWorkspaceFilePreviewLoadedState,
+  createWorkspaceFilePreviewController,
   formatWorkspacePreviewByteLimit,
-  normalizeWorkspaceFilePreviewBytes,
   workspaceFilePreviewMaxBytes,
+  type WorkspaceFilePreviewController,
+  type WorkspaceFilePreviewControllerState,
+  type WorkspaceFilePreviewActivationTarget,
   type WorkspaceFilePreviewReadonlyReason
 } from "@tutti-os/workspace-file-preview";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
@@ -27,33 +28,37 @@ export type WorkspaceFilePreviewTextSaveStatus =
 
 export type WorkspaceFilePreviewNodeControllerState =
   | { status: "empty" }
-  | { entry: WorkspaceFileActivationTarget; status: "loading" }
+  | { entry: WorkspaceFilePreviewActivationTarget; status: "loading" }
   | {
       content: string;
       draft: string;
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewActivationTarget;
       message?: string;
       saveStatus: WorkspaceFilePreviewTextSaveStatus;
       status: "text";
     }
   | {
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewActivationTarget;
       objectUrl: string;
       status: "image";
     }
   | {
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewActivationTarget;
       objectUrl: string;
       status: "video";
     }
-  | { entry: WorkspaceFileActivationTarget; message: string; status: "error" }
   | {
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewActivationTarget;
+      message: string;
+      status: "error";
+    }
+  | {
+      entry: WorkspaceFilePreviewActivationTarget;
       message: string;
       status: "readonly";
     }
   | {
-      entry: WorkspaceFileActivationTarget;
+      entry: WorkspaceFilePreviewActivationTarget;
       message: string;
       status: "unsupported";
     };
@@ -63,7 +68,7 @@ export interface WorkspaceFilePreviewNodeController {
   dispose(): void;
   getSnapshot(): WorkspaceFilePreviewNodeControllerState;
   saveTextFile(): Promise<void>;
-  setActiveFile(file: WorkspaceFileActivationTarget | null): void;
+  setActiveFile(file: WorkspaceFilePreviewActivationTarget | null): void;
   subscribe(listener: () => void): () => void;
 }
 
@@ -71,7 +76,7 @@ export function createWorkspaceFilePreviewNodeController(input: {
   appI18n: I18nRuntime<string>;
   hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-  initialFile: WorkspaceFileActivationTarget | null;
+  initialFile: WorkspaceFilePreviewActivationTarget | null;
   tuttidClient: Pick<
     TuttidClient,
     "readWorkspaceFilePreview" | "writeWorkspaceFileText"
@@ -84,16 +89,13 @@ export function createWorkspaceFilePreviewNodeController(input: {
 }
 
 class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNodeController {
-  private activeFileKey: string | null = null;
   private disposed = false;
-  private loadGeneration = 0;
-  private objectUrl: string | null = null;
   private readonly listeners = new Set<() => void>();
   private readonly input: {
     appI18n: I18nRuntime<string>;
     hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
     i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-    initialFile: WorkspaceFileActivationTarget | null;
+    initialFile: WorkspaceFilePreviewActivationTarget | null;
     tuttidClient: Pick<
       TuttidClient,
       "readWorkspaceFilePreview" | "writeWorkspaceFileText"
@@ -102,6 +104,8 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     onSnapshotStateChange(state: unknown): void;
     workspaceID: string;
   };
+  private readonly previewController: WorkspaceFilePreviewController<WorkspaceFilePreviewActivationTarget>;
+  private readonly unsubscribePreview: () => void;
   private runtimeStateKey: string | null = null;
   private snapshotStateKey: string | null = null;
   private state: WorkspaceFilePreviewNodeControllerState;
@@ -110,7 +114,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     appI18n: I18nRuntime<string>;
     hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
     i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-    initialFile: WorkspaceFileActivationTarget | null;
+    initialFile: WorkspaceFilePreviewActivationTarget | null;
     tuttidClient: Pick<
       TuttidClient,
       "readWorkspaceFilePreview" | "writeWorkspaceFileText"
@@ -123,6 +127,30 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     this.state = input.initialFile
       ? { entry: input.initialFile, status: "loading" }
       : { status: "empty" };
+    this.previewController = createWorkspaceFilePreviewController({
+      canReadEntry: () => true,
+      getEntryKey: workspaceFilePreviewNodeFileKey,
+      read: async ({ entry }) => ({
+        bytes: isAbsoluteFilesystemPath(entry.path)
+          ? await input.hostFilesApi.readLocalPreviewFile(entry.path)
+          : decodeBase64Bytes(
+              (
+                await input.tuttidClient.readWorkspaceFilePreview(
+                  input.workspaceID,
+                  entry.path
+                )
+              ).bytesBase64
+            ),
+        kind: entry.fileKind
+      }),
+      toPreviewEntry: (entry: WorkspaceFilePreviewActivationTarget) => ({
+        ...entry,
+        kind: "file"
+      })
+    });
+    this.unsubscribePreview = this.previewController.subscribe(() => {
+      this.applyPreviewState(this.previewController.getSnapshot());
+    });
   }
 
   changeDraft(draft: string): void {
@@ -140,8 +168,8 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
 
   dispose(): void {
     this.disposed = true;
-    this.loadGeneration += 1;
-    this.revokeObjectUrl();
+    this.unsubscribePreview();
+    this.previewController.dispose();
     this.listeners.clear();
   }
 
@@ -200,28 +228,11 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     }
   }
 
-  setActiveFile(file: WorkspaceFileActivationTarget | null): void {
+  setActiveFile(file: WorkspaceFilePreviewActivationTarget | null): void {
     if (this.disposed) {
       return;
     }
-
-    const nextKey = file ? workspaceFilePreviewNodeFileKey(file) : null;
-    if (this.activeFileKey === nextKey) {
-      return;
-    }
-
-    this.activeFileKey = nextKey;
-    this.loadGeneration += 1;
-    this.revokeObjectUrl();
-
-    if (!file) {
-      this.updateState(() => ({ status: "empty" }));
-      return;
-    }
-
-    const generation = this.loadGeneration;
-    this.updateState(() => ({ entry: file, status: "loading" }));
-    void this.loadPreview(file, generation);
+    void this.previewController.setEntry(file);
   }
 
   subscribe(listener: () => void): () => void {
@@ -231,100 +242,62 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     };
   }
 
-  private async loadPreview(
-    target: WorkspaceFileActivationTarget,
-    generation: number
-  ): Promise<void> {
-    try {
-      const bytes = isAbsoluteFilesystemPath(target.path)
-        ? normalizeWorkspaceFilePreviewBytes(
-            await this.input.hostFilesApi.readLocalPreviewFile(target.path)
-          )
-        : normalizeWorkspaceFilePreviewBytes(
-            decodeBase64Bytes(
-              (
-                await this.input.tuttidClient.readWorkspaceFilePreview(
-                  this.input.workspaceID,
-                  target.path
-                )
-              ).bytesBase64
-            )
-          );
-      if (this.isStale(generation)) {
+  private applyPreviewState(
+    state: WorkspaceFilePreviewControllerState<WorkspaceFilePreviewActivationTarget>
+  ): void {
+    switch (state.status) {
+      case "empty":
+        this.updateState(() => state);
         return;
-      }
-
-      const loadedState = createWorkspaceFilePreviewLoadedState({
-        bytes,
-        entry: {
-          ...target,
-          kind: "file"
-        },
-        target
-      });
-
-      if (loadedState.status === "image" || loadedState.status === "video") {
-        const objectUrl = URL.createObjectURL(
-          new Blob([loadedState.bytes], {
-            type: loadedState.contentType
-          })
-        );
-        if (this.isStale(generation)) {
-          URL.revokeObjectURL(objectUrl);
-          return;
-        }
-        this.revokeObjectUrl();
-        this.objectUrl = objectUrl;
-        this.updateState(() => ({
-          entry: target,
-          objectUrl,
-          status: loadedState.status
-        }));
+      case "loading":
+        this.updateState(() => state);
         return;
-      }
-
-      if (loadedState.status === "text") {
+      case "text":
         this.updateState(() => ({
-          content: loadedState.content,
-          draft: loadedState.content,
-          entry: target,
+          content: state.content,
+          draft: state.content,
+          entry: state.entry,
           saveStatus: "idle",
           status: "text"
         }));
         return;
-      }
-
-      if (loadedState.status === "html") {
+      case "image":
+      case "video":
         this.updateState(() => ({
-          entry: target,
+          entry: state.entry,
+          objectUrl: state.objectUrl,
+          status: state.status
+        }));
+        return;
+      case "readonly":
+        this.updateState(() => ({
+          entry: state.entry,
+          message: resolveReadonlyMessage(
+            this.input.appI18n,
+            state.reason,
+            state.maxSizeBytes
+          ),
+          status: "readonly"
+        }));
+        return;
+      case "directory":
+      case "unsupported":
+        this.updateState(() => ({
+          entry: state.entry,
           message: this.input.appI18n.t(
             "workspaceFileManager.previewUnsupported"
           ),
           status: "unsupported"
         }));
         return;
-      }
-
-      this.updateState(() => ({
-        entry: target,
-        message: resolveReadonlyMessage(
-          this.input.appI18n,
-          loadedState.reason,
-          loadedState.maxSizeBytes
-        ),
-        status: "readonly"
-      }));
-    } catch {
-      if (this.isStale(generation)) {
-        return;
-      }
-      this.updateState(() => ({
-        entry: target,
-        message: this.input.appI18n.t(
-          "workspaceFileManager.unknownErrorMessage"
-        ),
-        status: "error"
-      }));
+      case "error":
+        this.updateState(() => ({
+          entry: state.entry,
+          message: this.input.appI18n.t(
+            "workspaceFileManager.unknownErrorMessage"
+          ),
+          status: "error"
+        }));
     }
   }
 
@@ -332,10 +305,6 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     for (const listener of this.listeners) {
       listener();
     }
-  }
-
-  private isStale(generation: number): boolean {
-    return this.disposed || generation !== this.loadGeneration;
   }
 
   private publishNodeState(): void {
@@ -352,14 +321,6 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
       this.snapshotStateKey = snapshotStateKey;
       this.input.onSnapshotStateChange(snapshotState);
     }
-  }
-
-  private revokeObjectUrl(): void {
-    if (!this.objectUrl) {
-      return;
-    }
-    URL.revokeObjectURL(this.objectUrl);
-    this.objectUrl = null;
   }
 
   private updateState(

@@ -40,10 +40,6 @@ export type WorkspaceModelPlanTemplateKind =
   | "relay"
   | "custom";
 
-export type WorkspaceModelPlanBillingMode =
-  | "api_metered"
-  | "subscription_quota";
-
 export type WorkspaceModelPlanStatus =
   | "disabled"
   | "undetected"
@@ -64,13 +60,25 @@ export type WorkspaceModelPlanStageStatus =
   | "skipped"
   | "pending";
 
-export type WorkspaceModelPlanTier = "flagship" | "standard" | "economy";
+/**
+ * Billing metadata is optional: daemon plan contracts on this branch do not
+ * expose tier/pricing yet, but editor and draft-model helpers already treat
+ * them as pass-through metadata for when the contract adds them.
+ */
+export interface WorkspaceModelPlanPricing {
+  readonly currency: string;
+  readonly inputMicrosPerMillion: number;
+  readonly outputMicrosPerMillion: number;
+  readonly cacheReadMicrosPerMillion?: number;
+  readonly cacheWriteMicrosPerMillion?: number;
+}
 
 export interface WorkspaceModelPlanModel {
   readonly id: string;
   readonly name: string;
-  readonly tier?: WorkspaceModelPlanTier | null;
   readonly capabilities?: readonly string[] | null;
+  readonly pricing?: WorkspaceModelPlanPricing | null;
+  readonly tier?: string | null;
 }
 
 export interface WorkspaceModelPlanStageResult {
@@ -97,17 +105,11 @@ export interface WorkspaceModelPlanFirstUse {
   readonly completedAt?: string | null;
 }
 
-/**
- * Renderer view of a daemon model access plan. Only the fields the workspace
- * Agents directory needs are modeled here; credential fields never leave the
- * daemon.
- */
 export interface WorkspaceModelPlan {
   readonly id: string;
   readonly workspaceId: string;
   readonly name: string;
   readonly templateKind: WorkspaceModelPlanTemplateKind;
-  readonly billingMode: WorkspaceModelPlanBillingMode;
   readonly protocol: WorkspaceModelPlanProtocol;
   readonly hasApiKey: boolean;
   readonly baseUrl?: string | null;
@@ -121,12 +123,17 @@ export interface WorkspaceModelPlan {
   readonly updatedAt: string;
 }
 
-export interface WorkspaceAgentModelBinding {
-  readonly agentTargetId: string;
-  readonly modelPlanId?: string | null;
-  readonly defaultModel?: string | null;
-  readonly modelPolicyId?: string | null;
-  readonly updatedAt?: string | null;
+export type WorkspaceModelPlanReferenceKind =
+  | "agent_target"
+  | "model_policy"
+  | "workspace_agent"
+  | "workspace_app";
+
+export interface WorkspaceModelPlanReference {
+  readonly kind: WorkspaceModelPlanReferenceKind;
+  readonly id: string;
+  readonly name?: string | null;
+  readonly role?: string | null;
 }
 
 export type WorkspaceAgentHarness = WorkspaceSettingsReadonly<
@@ -210,6 +217,156 @@ export interface WorkspaceSettingsWorkspaceAgentsSnapshotState {
   readonly loadFailed: boolean;
   readonly loading: boolean;
   readonly saving: boolean;
+}
+
+export interface WorkspaceAgentModelBinding {
+  readonly agentTargetId: string;
+  readonly modelPlanId?: string | null;
+  readonly defaultModel?: string | null;
+  readonly modelPolicyId?: string | null;
+  readonly updatedAt?: string | null;
+}
+
+export interface WorkspaceModelPlanBindingTarget {
+  readonly enabled: boolean;
+  readonly id: string;
+  readonly name: string;
+  readonly provider: string;
+}
+
+/**
+ * Local edit buffer for a plan being created (planId null) or edited.
+ * The apiKey field only ever holds a value the user typed in this session;
+ * stored credentials never come back from the daemon.
+ */
+export interface WorkspaceModelPlanDraft {
+  planId: string | null;
+  name: string;
+  templateId: string | null;
+  templateKind: WorkspaceModelPlanTemplateKind;
+  protocol: WorkspaceModelPlanProtocol;
+  apiKey: string;
+  hasApiKey: boolean;
+  baseUrl: string;
+  models: readonly WorkspaceModelPlanModel[];
+  defaultModel: string;
+  enabled: boolean;
+}
+
+export interface WorkspaceModelPlanDraftSeed {
+  baseUrl?: string;
+  name?: string;
+  protocol: WorkspaceModelPlanProtocol;
+  templateId?: string | null;
+  templateKind: WorkspaceModelPlanTemplateKind;
+}
+
+export type WorkspaceModelPlanFeedbackKind =
+  | "detectFailed"
+  | "deleteFailed"
+  | "detectionRequired"
+  | "duplicateFailed"
+  | "fetchModelsEmpty"
+  | "fetchModelsFailed"
+  | "requiredFields"
+  | "saveFailed"
+  | "toggleFailed";
+
+export interface WorkspaceModelPlanFeedback {
+  kind: WorkspaceModelPlanFeedbackKind;
+}
+
+export interface WorkspaceModelPlanDeleteBlock {
+  readonly planID: string;
+  readonly references: readonly WorkspaceModelPlanReference[];
+}
+
+/** All current consumers shown before committing a model-range edit. */
+export interface WorkspaceModelPlanSaveImpact {
+  readonly planID: string;
+  readonly references: readonly WorkspaceModelPlanReference[];
+}
+
+export interface WorkspaceSettingsAgentModelBindingsMutableState {
+  agentTargets: WorkspaceModelPlanBindingTarget[];
+  bindings: WorkspaceAgentModelBinding[];
+  loadFailed: boolean;
+  loading: boolean;
+  saveFailedTargetID: string | null;
+  savingTargetID: string | null;
+}
+
+export interface WorkspaceSettingsModelPlansMutableState {
+  bindings: WorkspaceSettingsAgentModelBindingsMutableState;
+  confirmingDeletePlanID: string | null;
+  deleteBlock: WorkspaceModelPlanDeleteBlock | null;
+  deletingPlanID: string | null;
+  detecting: boolean;
+  draft: WorkspaceModelPlanDraft | null;
+  draftDetection: WorkspaceModelPlanDetection | null;
+  draftDiscoveredModels: readonly WorkspaceModelPlanModel[];
+  draftFeedback: WorkspaceModelPlanFeedback | null;
+  draftSaveImpact: WorkspaceModelPlanSaveImpact | null;
+  duplicatingPlanID: string | null;
+  fetchingDraftModels: boolean;
+  loading: boolean;
+  planFeedback: Record<string, WorkspaceModelPlanFeedback>;
+  plans: WorkspaceModelPlan[];
+  saving: boolean;
+  togglingPlanID: string | null;
+}
+
+export interface WorkspaceSettingsAgentModelBindingsSnapshotState {
+  readonly agentTargets: readonly WorkspaceModelPlanBindingTarget[];
+  readonly bindings: readonly WorkspaceAgentModelBinding[];
+  readonly loadFailed: boolean;
+  readonly loading: boolean;
+  readonly saveFailedTargetID: string | null;
+  readonly savingTargetID: string | null;
+}
+
+export interface WorkspaceSettingsModelPlansSnapshotState {
+  readonly bindings: WorkspaceSettingsAgentModelBindingsSnapshotState;
+  readonly confirmingDeletePlanID: string | null;
+  readonly deleteBlock: WorkspaceModelPlanDeleteBlock | null;
+  readonly deletingPlanID: string | null;
+  readonly detecting: boolean;
+  readonly draft: Readonly<WorkspaceModelPlanDraft> | null;
+  readonly draftDetection: WorkspaceModelPlanDetection | null;
+  readonly draftDiscoveredModels: readonly WorkspaceModelPlanModel[];
+  readonly draftFeedback: Readonly<WorkspaceModelPlanFeedback> | null;
+  readonly draftSaveImpact: Readonly<WorkspaceModelPlanSaveImpact> | null;
+  readonly duplicatingPlanID: string | null;
+  readonly fetchingDraftModels: boolean;
+  readonly loading: boolean;
+  readonly planFeedback: Readonly<
+    Record<string, Readonly<WorkspaceModelPlanFeedback>>
+  >;
+  readonly plans: readonly WorkspaceModelPlan[];
+  readonly saving: boolean;
+  readonly togglingPlanID: string | null;
+}
+
+export interface WorkspaceSettingsDeveloperLogsMutableState {
+  clearing: boolean;
+  clearingConversationHistory: boolean;
+  exporting: boolean;
+  loading: boolean;
+  logs: DesktopDeveloperLogsState | null;
+}
+
+export interface WorkspaceSettingsDeveloperLogsSnapshotState {
+  readonly clearing: boolean;
+  readonly clearingConversationHistory: boolean;
+  readonly exporting: boolean;
+  readonly loading: boolean;
+  readonly logs: {
+    readonly desktopVersion: string;
+    readonly files: readonly DesktopDeveloperLogFileSummary[];
+    readonly logsDir: string;
+    readonly totalFiles: number;
+    readonly totalSizeBytes: number;
+  } | null;
 }
 
 export type WorkspaceAutomationRuleTrigger = AutomationRuleTrigger;
@@ -296,106 +453,6 @@ export interface WorkspaceSettingsAutomationRulesSnapshotState {
   readonly targetCatalog: Readonly<WorkspaceAutomationTargetCatalog> | null;
 }
 
-/**
- * Minimal ModelPlan slice backing the workspace Agents editor's plan picker.
- * The full model-plan settings state lands with the model-plan feature.
- */
-export interface WorkspaceSettingsModelPlansMutableState {
-  plans: WorkspaceModelPlan[];
-}
-
-export interface WorkspaceSettingsModelPlansSnapshotState {
-  readonly plans: readonly WorkspaceModelPlan[];
-}
-
-export type WorkspaceManagedModelProviderID = "agnes" | "openai" | "anthropic";
-
-export interface WorkspaceManagedModel {
-  id: string;
-  name: string;
-  provider: WorkspaceManagedModelProviderID;
-}
-
-export interface WorkspaceManagedModelProviderConfig {
-  apiKey?: string;
-  baseUrl?: string;
-  enabled: boolean;
-  hasApiKey: boolean;
-  models: readonly WorkspaceManagedModel[];
-  provider: WorkspaceManagedModelProviderID;
-  updatedAt?: string;
-  workspaceId?: string;
-}
-
-export interface WorkspaceManagedModelProviderDraft extends WorkspaceManagedModelProviderConfig {
-  apiKey: string;
-}
-
-export type WorkspaceManagedModelProviderFeedbackKind =
-  | "testOk"
-  | "testFailed"
-  | "detectEmpty"
-  | "detectFailed"
-  | "saveFailed"
-  | "deleteFailed"
-  | "requiredFields";
-
-export interface WorkspaceManagedModelProviderFeedback {
-  kind: WorkspaceManagedModelProviderFeedbackKind;
-}
-
-export type WorkspaceManagedModelFeedbackMap = Partial<
-  Record<WorkspaceManagedModelProviderID, WorkspaceManagedModelProviderFeedback>
->;
-
-export interface WorkspaceSettingsManagedModelsMutableState {
-  deletingProvider: WorkspaceManagedModelProviderID | null;
-  detectingProvider: WorkspaceManagedModelProviderID | null;
-  draft: WorkspaceManagedModelProviderDraft | null;
-  feedback: WorkspaceManagedModelFeedbackMap;
-  focusedProvider: WorkspaceManagedModelProviderID | null;
-  focusRequestID: number;
-  loading: boolean;
-  providers: WorkspaceManagedModelProviderDraft[];
-  savingProvider: WorkspaceManagedModelProviderID | null;
-  testingProvider: WorkspaceManagedModelProviderID | null;
-}
-
-export interface WorkspaceSettingsManagedModelsSnapshotState {
-  readonly deletingProvider: WorkspaceManagedModelProviderID | null;
-  readonly detectingProvider: WorkspaceManagedModelProviderID | null;
-  readonly draft: WorkspaceManagedModelProviderDraft | null;
-  readonly feedback: WorkspaceManagedModelFeedbackMap;
-  readonly focusedProvider: WorkspaceManagedModelProviderID | null;
-  readonly focusRequestID: number;
-  readonly loading: boolean;
-  readonly providers: readonly WorkspaceManagedModelProviderDraft[];
-  readonly savingProvider: WorkspaceManagedModelProviderID | null;
-  readonly testingProvider: WorkspaceManagedModelProviderID | null;
-}
-
-export interface WorkspaceSettingsDeveloperLogsMutableState {
-  clearing: boolean;
-  clearingConversationHistory: boolean;
-  exporting: boolean;
-  loading: boolean;
-  logs: DesktopDeveloperLogsState | null;
-}
-
-export interface WorkspaceSettingsDeveloperLogsSnapshotState {
-  readonly clearing: boolean;
-  readonly clearingConversationHistory: boolean;
-  readonly exporting: boolean;
-  readonly loading: boolean;
-  readonly logs: {
-    readonly desktopVersion: string;
-    readonly files: readonly DesktopDeveloperLogFileSummary[];
-    readonly logsDir: string;
-    readonly totalFiles: number;
-    readonly totalSizeBytes: number;
-  } | null;
-}
-
 export interface WorkspaceSettingsStoreState {
   activeSection: WorkspaceSettingsSectionID;
   agentTab: WorkspaceSettingsAgentTab;
@@ -407,7 +464,6 @@ export interface WorkspaceSettingsStoreState {
   developerLogs: WorkspaceSettingsDeveloperLogsMutableState;
   generalFocusAnchor: WorkspaceSettingsGeneralFocusAnchor | null;
   generalFocusRequestID: number;
-  managedModels: WorkspaceSettingsManagedModelsMutableState;
   modelPlans: WorkspaceSettingsModelPlansMutableState;
   open: boolean;
   purgingDeletedConversations: boolean;
@@ -426,7 +482,6 @@ export interface WorkspaceSettingsReadableStoreState {
   readonly developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   readonly generalFocusAnchor: WorkspaceSettingsGeneralFocusAnchor | null;
   readonly generalFocusRequestID: number;
-  readonly managedModels: WorkspaceSettingsManagedModelsSnapshotState;
   readonly modelPlans: WorkspaceSettingsModelPlansSnapshotState;
   readonly open: boolean;
   readonly purgingDeletedConversations: boolean;

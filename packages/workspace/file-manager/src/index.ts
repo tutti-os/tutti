@@ -17,18 +17,6 @@ export type {
   WorkspaceFileManagerMutationErrorMessage
 } from "./services/workspaceFileManagerHost.interface.ts";
 export {
-  classifyWorkspaceFilePreviewKind,
-  decodeWorkspaceTextFile,
-  isWorkspaceTextFileTooLarge,
-  looksLikeBinaryText,
-  resolveWorkspaceFileActivationTarget,
-  resolveWorkspaceFileExtension,
-  resolveWorkspaceImageMimeType,
-  resolveWorkspaceVideoMimeType,
-  workspaceFilePreviewMaxBytes,
-  workspaceFileTextMaxBytes
-} from "./services/workspaceFileManagerModel.ts";
-export {
   findWorkspaceFileLocationById,
   flattenWorkspaceFileLocations,
   isWorkspaceFileExternalLocation,

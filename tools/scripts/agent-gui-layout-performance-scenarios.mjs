@@ -63,7 +63,7 @@ export const virtualizedStreamingScenario = {
       marker: virtualizedStreamingMarkers.settled
     }
   ],
-  prepareSnapshot: prepareVirtualizedStreamingSnapshot,
+  prepareSnapshot: prepareVirtualizedTranscriptSnapshot,
   prepare: prepareVirtualizedStreaming,
   execute: executeVirtualizedStreaming,
   describe(prepared) {
@@ -102,7 +102,10 @@ export const virtualizedStreamingScenario = {
   }
 };
 
-async function prepareVirtualizedStreamingSnapshot(context) {
+export async function prepareVirtualizedTranscriptSnapshot(
+  context,
+  options = {}
+) {
   const fixtureBinDirectory = join(context.runtimeDirectory, "state", "bin");
   await mkdir(fixtureBinDirectory, { recursive: true });
   const fixtureBinaryPath = join(fixtureBinDirectory, "cursor-agent");
@@ -112,11 +115,23 @@ async function prepareVirtualizedStreamingSnapshot(context) {
   );
   await chmod(fixtureBinaryPath, 0o755);
   const workspaceID = await startupWorkspaceID(context);
+  const richTextCandidateRequirement = options.richTextFixture
+    ? "AND userTextMessageCount >= 4"
+    : "";
   const candidates = await context.sqliteJSON(
     context.databasePath,
     `
 SELECT s.agent_session_id AS sessionID,
-       COUNT(t.turn_id) AS turnCount
+       COUNT(t.turn_id) AS turnCount,
+       (
+         SELECT COUNT(*)
+         FROM workspace_agent_messages m
+         WHERE m.workspace_id = s.workspace_id
+           AND m.agent_session_id = s.agent_session_id
+           AND m.deleted_at_unix_ms = 0
+           AND m.role = 'user'
+           AND m.kind = 'text'
+       ) AS userTextMessageCount
 FROM workspace_agent_sessions s
 JOIN workspace_agent_turns t
   ON t.workspace_id = s.workspace_id
@@ -127,6 +142,7 @@ WHERE s.workspace_id = '${sqlString(workspaceID)}'
   AND s.active_turn_id IS NULL
 GROUP BY s.agent_session_id
 HAVING COUNT(t.turn_id) >= 30
+  ${richTextCandidateRequirement}
 ORDER BY COUNT(t.turn_id) ASC, s.agent_session_id ASC
 LIMIT 1;
 `
@@ -134,10 +150,37 @@ LIMIT 1;
   const candidate = candidates[0];
   if (!candidate?.sessionID) {
     throw new Error(
-      "virtualized-streaming requires one root session with at least 30 settled turns in the source snapshot"
+      options.richTextFixture
+        ? "virtualized-scroll-locator requires one root session with at least 30 settled turns and four user text messages in the source snapshot"
+        : "virtualized-streaming requires one root session with at least 30 settled turns in the source snapshot"
     );
   }
   const now = Date.now();
+  const fixtureMention = `[@Cursor](mention://agent-target/local%3Acursor?workspaceId=${encodeURIComponent(workspaceID)})`;
+  const richTextFixture = [
+    "Virtualized transcript performance fixture",
+    `${fixtureMention} inspect the historical scroll anchor and preserve the visible turn`,
+    "Paragraph three contains enough deterministic text to produce stable wrapping across narrow and wide transcript viewports",
+    "Paragraph four exercises static rich-text document creation without mounting an editable ProseMirror view",
+    `${fixtureMention} compare the current viewport with the message locator while older turns enter the virtual window`,
+    "Paragraph six keeps each historical user message tall enough to sustain a long monotonic upward scroll",
+    "Paragraph seven verifies that repeated line boundaries remain static while the virtualizer replaces mounted turns",
+    `${fixtureMention} finish the fixture with a third mention chip and a final wrapped paragraph`
+  ].join("\n");
+  const richTextFixtureUpdate = options.richTextFixture
+    ? `UPDATE workspace_agent_messages
+SET payload_json = json_set(
+      payload_json,
+      '$.text',
+      '${sqlString(richTextFixture)}'
+    ),
+    updated_at_unix_ms = ${now}
+WHERE workspace_id = '${sqlString(workspaceID)}'
+  AND agent_session_id = '${sqlString(candidate.sessionID)}'
+  AND deleted_at_unix_ms = 0
+  AND role = 'user'
+  AND kind = 'text';`
+    : "";
   await context.sqliteExec(
     context.databasePath,
     `
@@ -164,12 +207,16 @@ SET agent_target_id = 'local:cursor',
     updated_at_unix_ms = ${now}
 WHERE workspace_id = '${sqlString(workspaceID)}'
   AND agent_session_id = '${sqlString(candidate.sessionID)}';
+${richTextFixtureUpdate}
 `
   );
   return {
     data: {
       sessionID: candidate.sessionID,
       turnCount: Number(candidate.turnCount),
+      richTextMessageCount: Number(candidate.userTextMessageCount),
+      richTextMentionsPerMessage: options.richTextFixture ? 3 : 0,
+      richTextParagraphsPerMessage: options.richTextFixture ? 8 : 0,
       workspaceID
     },
     environment: {
@@ -180,7 +227,19 @@ WHERE workspace_id = '${sqlString(workspaceID)}'
 }
 
 async function prepareVirtualizedStreaming(context, options) {
-  const fixture = requiredScenarioData(context, "virtualized-streaming");
+  return prepareVirtualizedTranscript(
+    context,
+    options,
+    "virtualized-streaming"
+  );
+}
+
+export async function prepareVirtualizedTranscript(
+  context,
+  options,
+  scenarioID
+) {
+  const fixture = requiredScenarioData(context, scenarioID);
   const providers = await waitForProviderTiles(
     context.pageClient,
     options.timeoutMs

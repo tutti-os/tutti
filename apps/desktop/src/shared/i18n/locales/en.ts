@@ -112,13 +112,15 @@ export const en = {
       clearLogsTitle: "Clear Logs",
       clearServiceLogs: "Clear Service Logs...",
       edit: "Edit",
-      exportAllLogs: "All Logs",
       exportLogsFailed: "Unable to export logs",
       exportLogsTitle: "Export Logs",
       exportRecentTenMinutesLogs: "Last 10 Minutes",
+      exportRecentThreeDaysLogs: "Last 3 Days",
       exportServiceLogs: "Export Service Logs",
       file: "File",
       help: "Help",
+      logsOnly: "Logs Only",
+      logsWithAgentSessions: "Logs + Session Records",
       openPerfMonitor: "Open Perf Monitor DevTools",
       quit: "Quit Tutti",
       upToDateDetail: "Tutti {{version}} is currently the latest version.",
@@ -932,61 +934,186 @@ export const en = {
             onTaskFailed: "When a task fails or is interrupted"
           }
         },
-        managedModels: {
+        modelPlans: {
+          addModel: "Add model",
+          addPlan: "Add plan",
+          agentRuntimePendingHint:
+            "Save the plan, then pick a compatible agent below and finish one real call to complete verification.",
           apiKey: "API key",
-          addModel: "Add",
-          addProvider: "Add provider",
           baseUrl: "Base URL",
-          collapse: "Collapse",
-          customProvider: "Custom",
+          bindings: {
+            description:
+              "Choose which model plan each agent uses by default. An agent's first real call completes the plan's verification.",
+            empty: "No enabled agents to bind yet.",
+            loadFailed: "We couldn't load agent bindings.",
+            modelLabel: "Default model",
+            planDefault: "Plan default",
+            planLabel: "Model plan",
+            planNone: "No plan (agent's own models)",
+            saveFailed: "Couldn't save the binding — try again.",
+            title: "Agent bindings",
+            unsupported: "Binding not supported yet"
+          },
+          defaultMarker: "Default",
           delete: "Delete",
-          deleteConfirm: "Delete this provider?",
+          deleteBlockedDescription:
+            "Rebind or disable the consumers below before deleting this plan.",
+          deleteBlockedTitle:
+            "This plan is still referenced and can't be deleted",
+          deleteConfirm: "Delete this plan?",
           deleteFailed: "Couldn't delete — try again.",
           deleting: "Deleting...",
           description:
-            "Bring your own model API keys for your workspace apps and agents to use",
-          detectModels: "Fetch available models",
-          detectingModels: "Fetching...",
-          detectModelsEmpty: "No models found.",
-          detectModelsFailed: "Couldn't fetch models — try again.",
+            "Set up named model access plans — official subscriptions, coding plans, domestic providers, relays, or custom endpoints — for your workspace agents and apps",
+          confirmModelRangeImpact: "Confirm impact and save",
+          detect: "Test connection",
+          detectFailed: "Couldn't run the connection check — try again.",
+          detecting: "Checking...",
+          detectionRequired:
+            "Complete a successful connection check before saving this plan.",
+          detectionTitle: "Connection check",
+          duplicate: "Duplicate",
+          duplicateFailed: "Couldn't duplicate — try again.",
+          edit: "Edit",
+          editTitle: "Edit {{plan}}",
           emptyDescription:
-            "Click “Add provider” to connect Agnes, OpenAI, or Anthropic with your API key",
-          emptyTitle: "No model providers yet",
-          enabled: "Enable {{provider}}",
-          expand: "Expand",
+            "Click \u201cAdd plan\u201d to connect a subscription, relay, or custom endpoint with your API key",
+          emptyTitle: "No model plans yet",
+          enabled: "Enable {{plan}}",
+          failureReasons: {
+            connectionFailed: "Couldn't reach the endpoint.",
+            inferenceFailed: "The test call failed.",
+            modelCatalogDecodeFailed:
+              "The model list response couldn't be read.",
+            modelCatalogUnavailable: "The model list isn't available.",
+            modelRejected: "The endpoint rejected the model.",
+            noModelSelected: "No model selected for the test call.",
+            unauthorized: "The endpoint rejected the credentials.",
+            unknown: "The check failed."
+          },
+          fetchModels: "Fetch models",
+          fetchModelsEmpty:
+            "The endpoint returned no models. You can still type a model ID manually.",
+          fetchModelsFailed:
+            "Couldn't fetch the model list — check the credentials and Base URL, then try again.",
+          fetchModelsResult: "Fetched {{count}} selectable models",
+          fetchingModels: "Fetching...",
           getApiKey: "Get {{provider}} API key",
           hideApiKey: "Hide key",
-          keyConfigured: "Key saved",
-          keyMissing: "API key not set",
           keepExistingKey: "Leave blank to keep the saved key",
-          loadFailed: "We couldn't load model providers.",
+          lastDetectedAt: "Checked {{time}}",
+          loadFailed: "We couldn't load model plans.",
+          modelCount: "{{count}} models",
           modelId: "Model ID",
-          modelIdPlaceholder: "model-id",
-          models: "{{provider}} models",
-          presetLabels: {
+          modelPickerEmpty: "No matching models.",
+          modelPickerPlaceholder: "Select or type a model ID",
+          modelPickerSearchPlaceholder: "Search model IDs or names",
+          modelPickerUseCustom: "Use “{{model}}”",
+          nativeLoginHint:
+            "This plan uses the existing Codex or Claude Code login on this device. Sign in from Agent settings if needed, then run the connection check; no API key or Base URL is stored in this plan.",
+          modelRangeImpactDescription:
+            "These consumers may use the changed model range on their next call. Review the impact, then confirm to save; running calls are unchanged.",
+          modelRangeImpactTitle: "Review affected consumers",
+          models: "Models",
+          nameLabel: "Name",
+          namePlaceholder: "My model plan",
+          neverDetected: "Not checked yet",
+          pendingFirstUseGuide:
+            "Pick a compatible agent under Agent bindings below and finish one real call to make this plan fully usable.",
+          presetLabel: "Provider preset",
+          presets: {
             agnes: "Agnes",
-            anthropicClaude: "Anthropic (Claude)",
+            anthropicOfficial: "Anthropic (Claude)",
+            codingPlanAnthropic: "Claude coding plan",
+            codingPlanCustom: "Other coding plan",
+            customAnthropic: "Custom Anthropic-compatible",
+            customOpenai: "Custom OpenAI-compatible",
             deepseekAnthropic: "DeepSeek - Anthropic",
             deepseekOpenai: "DeepSeek - OpenAI",
             mimoAnthropic: "MiMo (Xiaomi) - Anthropic",
             mimoOpenai: "MiMo (Xiaomi) - OpenAI",
             minimaxAnthropic: "MiniMax - Anthropic",
             minimaxOpenai: "MiniMax - OpenAI",
-            openaiOfficial: "OpenAI official"
+            openaiOfficial: "OpenAI official",
+            relayCustom: "Relay endpoint"
+          },
+          protocolLabel: "API protocol",
+          protocols: {
+            anthropic: "Anthropic-compatible",
+            openai: "OpenAI-compatible"
+          },
+          referenceKinds: {
+            agentTarget: "Agent",
+            modelPolicy: "Model policy",
+            workspaceAgent: "Workspace agent",
+            workspaceApp: "App"
+          },
+          remedies: {
+            addModelsManually: "Add models manually.",
+            checkApiKey: "Check the API key.",
+            checkModelId: "Check the model ID.",
+            checkNetworkOrBaseUrl: "Check the network or Base URL.",
+            selectModel: "Select a model first."
           },
           removeModel: "Remove model",
-          requiredFieldsMissing: "Fill in the API key and Base URL first.",
-          quickFillProvider: "Choose a preset",
+          setDefaultModel: "Set {{model}} as the default model",
+          requiredFieldsMissing:
+            "Fill in the name, API key, and Base URL first.",
           save: "Save",
           saveFailed: "Couldn't save — try again.",
           saving: "Saving...",
           showApiKey: "Show key",
-          test: "Test connection",
-          testFailed: "Connection failed — check the key or URL.",
-          testSucceeded: "Connection OK.",
-          testing: "Testing...",
-          modelCount: "{{count}} models",
-          title: "Model providers"
+          stageLatency: "{{ms}} ms",
+          stageStatus: {
+            failed: "Failed",
+            passed: "Passed",
+            pending: "Pending",
+            skipped: "Skipped"
+          },
+          stages: {
+            agentRuntime: "Agent first call",
+            auth: "Authentication",
+            inference: "Real call",
+            modelDiscovery: "Model list",
+            network: "Network"
+          },
+          statusLabels: {
+            detectionFailed: "Check failed",
+            disabled: "Disabled",
+            pendingFirstUse: "Awaiting first use",
+            ready: "Ready",
+            undetected: "Not checked"
+          },
+          templateGroups: {
+            codingPlan: {
+              guidance:
+                "Use the endpoint and key from a coding plan subscription, such as a Claude coding plan.",
+              label: "Coding plan"
+            },
+            custom: {
+              guidance:
+                "Connect any OpenAI- or Anthropic-compatible endpoint with your own key.",
+              label: "Custom compatible endpoint"
+            },
+            domestic: {
+              guidance:
+                "Connect domestic model providers such as DeepSeek, MiniMax, or MiMo.",
+              label: "Domestic models"
+            },
+            officialSubscription: {
+              guidance:
+                "Connect an official API subscription directly with the provider's key.",
+              label: "Official subscription"
+            },
+            relay: {
+              guidance:
+                "Use a relay or proxy service endpoint that fronts one or more providers.",
+              label: "Relay service"
+            }
+          },
+          templatePickerTitle: "Choose an access scheme",
+          title: "Model plans",
+          toggleFailed: "Couldn't update the plan state — try again."
         }
       },
       developer: {
@@ -1006,8 +1133,12 @@ export const en = {
         daemonLogLabel: "Daemon log",
         desktopLogLabel: "Desktop log",
         exportLogs: "Export logs",
-        exportAllLogs: "Export all logs",
-        exportRecentTenMinutesLogs: "Export last 10 minutes",
+        exportRecentTenMinutesLogsOnly: "Last 10 minutes · Logs only",
+        exportRecentTenMinutesLogsWithSessions:
+          "Last 10 minutes · Logs + session records",
+        exportRecentThreeDaysLogsOnly: "Last 3 days · Logs only",
+        exportRecentThreeDaysLogsWithSessions:
+          "Last 3 days · Logs + session records",
         exportLogsDialogTitle: "Export Logs",
         exportLogsFileType: "Zip Archive",
         exportingLogs: "Exporting...",

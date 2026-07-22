@@ -74,6 +74,7 @@ export type {
   WorkbenchHostNodeBodyContext,
   WorkbenchHostNodeData,
   WorkbenchHostNodeDefinition,
+  WorkbenchHostNodeHeaderFrameRenderKey,
   WorkbenchHostNodeHeaderContext,
   WorkbenchHostNodeHeaderWindowActions,
   WorkbenchHostNodeInstanceStrategy,
@@ -100,6 +101,19 @@ export {
 export { useWorkbenchSelector } from "./react/hooks/useWorkbenchSelector.ts";
 export { getWorkbenchLayoutFrame } from "./core/geometry.ts";
 export { selectFocusedWorkbenchNode } from "./core/selectors.ts";
+export {
+  canCreateNewWindow,
+  canCreateNewWindowInDockPopup,
+  createDockNewWindowLaunchPayload,
+  createMultiInstanceDockEntryOptions,
+  matchWorkbenchDockEntryNode,
+  resolveWorkbenchDockCountBadge,
+  resolveWorkbenchDockEntries,
+  resolveWorkbenchDockEntryClick,
+  type ResolvedWorkbenchHostDockEntry,
+  type WorkbenchHostDockClickResolution,
+  type WorkbenchHostDockNodeState
+} from "./host/dockEntries.ts";
 export { isEditableShortcutTarget } from "./react/hooks/workbenchShortcutIntent.ts";
 export {
   createWorkbenchWindowChromeI18nRuntime,

@@ -59,6 +59,18 @@ export function findBoundaryViolations(path, source) {
 
   const violations = [];
 
+  for (const forbidden of [
+    "type serviceHostStore struct",
+    "type serviceHostRuntime struct",
+    "func NewApplicationHost("
+  ]) {
+    if (source.includes(forbidden)) {
+      violations.push(
+        `${path}: production adapter must not reintroduce ${forbidden}; use shared Host composition ports`
+      );
+    }
+  }
+
   if (ORCHESTRATION_FILENAME.test(path)) {
     violations.push(
       `${path}: filename declares an agent application-core orchestration surface ` +
@@ -134,6 +146,26 @@ export function findStaleAllowlistEntries(fileExists = existsSync) {
   return stale;
 }
 
+export function findProductionCompositionViolations(source) {
+  const required = [
+    [
+      "agenthostadapter.RuntimeController",
+      "production wiring must consume the shared daemon-to-Host runtime adapter"
+    ],
+    [
+      "agenthost.SQLiteWorkspaceStore",
+      "production wiring must consume the shared Host canonical SQLite store"
+    ],
+    [
+      "agentservice.NewApplicationHostWithPorts",
+      "production wiring must compose Host from the shared runtime and canonical ports"
+    ]
+  ];
+  return required.flatMap(([token, message]) =>
+    source.includes(token) ? [] : [`services/tuttid/wiring.go: ${message}`]
+  );
+}
+
 function scanWorkspace() {
   const violations = [];
   for (const file of goFiles(join(workspaceRoot, scanRoot))) {
@@ -174,6 +206,11 @@ if (isMainModule()) {
   }
 
   const violations = scanWorkspace();
+  violations.push(
+    ...findProductionCompositionViolations(
+      readFileSync(join(workspaceRoot, "services/tuttid/wiring.go"), "utf8")
+    )
+  );
   if (violations.length > 0) {
     console.error(
       "Agent application lifecycle semantics must live in packages/agent/host, " +

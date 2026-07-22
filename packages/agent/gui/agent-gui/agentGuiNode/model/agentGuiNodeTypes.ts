@@ -87,6 +87,12 @@ export interface AgentGUIComposerSettingOption {
   label: string;
   description?: string;
   supportsImageInput?: boolean;
+  /** Bound plan identity for options aggregated from model access plans. */
+  modelPlanId?: string | null;
+  /** Display name of the plan (or provider) the option originates from. */
+  sourceName?: string;
+  /** When the option takes effect after selection. */
+  effect?: "new_session" | "next_call";
 }
 
 export interface AgentGUIProviderSkillOption {
@@ -295,6 +301,8 @@ export interface AgentGUIComposerSettingsVM {
   selectedProjectPath?: string | null;
   /** Persisted rail membership used to scope Agent-generated file mentions. */
   selectedProjectSectionKey?: string | null;
+  /** Resolve the durable default only before the home project intent is known. */
+  shouldApplyPreparedProjectSelection?: boolean;
   projectLocked?: boolean;
   // Mirrors the injected runtime's `projectPathIsRemote`. When true the session
   // cwd is not on the local filesystem (e.g. a shared/cloud sandbox), so the

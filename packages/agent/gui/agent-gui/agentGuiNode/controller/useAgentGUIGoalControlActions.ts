@@ -121,6 +121,7 @@ export function useAgentGUIGoalControlActions(
           workspaceId: input.workspaceId,
           agentSessionId,
           action,
+          clientSubmitId: optimisticRequestId,
           ...(objective !== undefined ? { objective } : {})
         })
         .then(() => {

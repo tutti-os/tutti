@@ -196,7 +196,7 @@ test("WorkspaceSettingsService retries failed daemon initialization when setting
   service.openPanel({ id: "workspace-1" });
   await waitFor(() => service.store.tuttiAgentSwitchEnabled);
 
-  // The Agents refresh triggered by openPanel also lists agent targets, so
+  // The bindings refresh triggered by openPanel also lists agent targets, so
   // only require that the switch initialization retried at least once.
   assert.ok(attempts >= 2);
 });
@@ -309,7 +309,7 @@ test("WorkspaceSettingsService keeps the active section when hiding from elsewhe
   assert.equal(service.store.activeSection, "appearance");
 });
 
-test("WorkspaceSettingsService opens the managed models pane with a focused provider", () => {
+test("WorkspaceSettingsService opens the model plans pane for managed-models requests", () => {
   const service = new WorkspaceSettingsService({
     client: createWorkspaceSettingsClient({})
   });
@@ -318,25 +318,11 @@ test("WorkspaceSettingsService opens the managed models pane with a focused prov
     { id: "workspace-1" },
     {
       pane: "managed-models",
-      provider: "anthropic",
       section: "general"
     }
   );
 
   assert.equal(service.store.activeSection, "apps");
-  assert.equal(service.store.managedModels.focusedProvider, "anthropic");
-  assert.equal(service.store.managedModels.focusRequestID, 1);
-
-  service.openPanel(
-    { id: "workspace-1" },
-    {
-      pane: "managed-models",
-      provider: "anthropic"
-    }
-  );
-
-  assert.equal(service.store.managedModels.focusedProvider, "anthropic");
-  assert.equal(service.store.managedModels.focusRequestID, 2);
 });
 
 test("WorkspaceSettingsService opens agent settings with a focused anchor", () => {
@@ -367,474 +353,6 @@ test("WorkspaceSettingsService opens agent settings with a focused anchor", () =
   assert.equal(service.store.activeSection, "agent");
   assert.equal(service.store.generalFocusAnchor, "computer-use");
   assert.equal(service.store.generalFocusRequestID, 2);
-});
-
-test("WorkspaceSettingsService tolerates provider configs with null models", async () => {
-  const notifications = createNotificationRecorder();
-  const service = new WorkspaceSettingsService(
-    {
-      client: createWorkspaceSettingsClient({
-        listManagedModelProviders: async () => [
-          {
-            enabled: true,
-            hasApiKey: true,
-            models: null,
-            provider: "agnes"
-          } as unknown as Awaited<
-            ReturnType<
-              DesktopWorkspaceSettingsClient["listManagedModelProviders"]
-            >
-          >[number]
-        ]
-      })
-    },
-    createDesktopPreferencesService({
-      state: createPreferencesState({})
-    }),
-    notifications.service
-  );
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-
-  const agnesProvider = service.store.managedModels.providers.find(
-    (provider) => provider.provider === "agnes"
-  );
-  assert.deepEqual(agnesProvider?.models, []);
-  assert.deepEqual(notifications.items, []);
-});
-
-test("WorkspaceSettingsService keeps saved managed provider API keys redacted", async () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({
-      listManagedModelProviders: async () => [
-        {
-          baseUrl: "https://apihub.agnes-ai.com/v1",
-          enabled: true,
-          hasApiKey: true,
-          models: [],
-          provider: "agnes"
-        }
-      ]
-    })
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-
-  const agnesProvider = service.store.managedModels.providers.find(
-    (provider) => provider.provider === "agnes"
-  );
-  assert.equal(agnesProvider?.apiKey, "");
-  assert.equal(agnesProvider?.hasApiKey, true);
-});
-
-test("WorkspaceSettingsService fills detected managed provider models", async () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({
-      listManagedModelProviders: async () => [
-        {
-          baseUrl: "https://apihub.agnes-ai.com/v1",
-          enabled: true,
-          hasApiKey: true,
-          models: [],
-          provider: "agnes"
-        }
-      ],
-      listManagedModelProviderModels: async () => [
-        {
-          id: "agnes-2.0-flash",
-          name: "Agnes 2.0 Flash",
-          provider: "agnes"
-        }
-      ]
-    })
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-  await service.detectManagedModelProviderModels("agnes");
-
-  const agnesProvider = service.store.managedModels.providers.find(
-    (provider) => provider.provider === "agnes"
-  );
-  assert.deepEqual(agnesProvider?.models, [
-    {
-      id: "agnes-2.0-flash",
-      name: "Agnes 2.0 Flash",
-      provider: "agnes"
-    }
-  ]);
-});
-
-test("WorkspaceSettingsService lists only saved managed providers", async () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({
-      listManagedModelProviders: async () => [
-        {
-          enabled: true,
-          hasApiKey: true,
-          models: [],
-          provider: "openai"
-        }
-      ]
-    })
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-
-  assert.deepEqual(
-    service.store.managedModels.providers.map((provider) => provider.provider),
-    ["openai"]
-  );
-});
-
-test("WorkspaceSettingsService starts a draft for an unconfigured provider", () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({})
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  service.beginManagedModelProviderDraft("openai");
-
-  assert.equal(service.store.managedModels.draft?.provider, "openai");
-  assert.equal(service.store.managedModels.draft?.enabled, true);
-});
-
-test("WorkspaceSettingsService refuses a draft for a configured provider", async () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({
-      listManagedModelProviders: async () => [
-        {
-          enabled: true,
-          hasApiKey: true,
-          models: [],
-          provider: "openai"
-        }
-      ]
-    })
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-  service.beginManagedModelProviderDraft("openai");
-
-  assert.equal(service.store.managedModels.draft, null);
-});
-
-test("WorkspaceSettingsService edits and cancels a draft", () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({})
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  service.beginManagedModelProviderDraft("openai");
-  service.updateManagedModelDraft({ apiKey: "sk-test" });
-
-  assert.equal(service.store.managedModels.draft?.apiKey, "sk-test");
-
-  service.cancelManagedModelProviderDraft();
-
-  assert.equal(service.store.managedModels.draft, null);
-});
-
-test("WorkspaceSettingsService saves a draft into the provider list", async () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({})
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-  service.beginManagedModelProviderDraft("openai");
-  service.updateManagedModelDraft({
-    apiKey: "sk-test",
-    models: [{ id: "gpt-5.5", name: "gpt-5.5", provider: "openai" }]
-  });
-  await service.saveManagedModelDraft();
-
-  assert.equal(service.store.managedModels.draft, null);
-  assert.deepEqual(
-    service.store.managedModels.providers.map((provider) => provider.provider),
-    ["openai"]
-  );
-  assert.equal(
-    service.store.managedModels.providers.find(
-      (provider) => provider.provider === "openai"
-    )?.hasApiKey,
-    true
-  );
-});
-
-test("WorkspaceSettingsService persists a provider toggle immediately", async () => {
-  const puts: Array<{ enabled: boolean; hasApiKey: boolean }> = [];
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({
-      listManagedModelProviders: async () => [
-        {
-          enabled: true,
-          hasApiKey: true,
-          models: [],
-          provider: "openai"
-        }
-      ],
-      putManagedModelProvider: async (_workspaceID, providerID, input) => {
-        puts.push({
-          enabled: input.enabled,
-          hasApiKey: Boolean(input.apiKey)
-        });
-        return {
-          baseUrl: input.baseUrl,
-          enabled: input.enabled,
-          hasApiKey: true,
-          models: input.models,
-          provider: providerID
-        };
-      }
-    })
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-  await service.setManagedModelProviderEnabled("openai", false);
-
-  assert.equal(
-    service.store.managedModels.providers.find(
-      (provider) => provider.provider === "openai"
-    )?.enabled,
-    false
-  );
-  assert.deepEqual(puts, [{ enabled: false, hasApiKey: false }]);
-});
-
-test("WorkspaceSettingsService records an inline test result without a toast", async () => {
-  const notifications = createNotificationRecorder();
-  const service = new WorkspaceSettingsService(
-    {
-      client: createWorkspaceSettingsClient({
-        listManagedModelProviders: async () => [
-          {
-            baseUrl: "https://api.openai.com/v1",
-            enabled: true,
-            hasApiKey: true,
-            models: [],
-            provider: "openai"
-          }
-        ]
-      })
-    },
-    createDesktopPreferencesService({ state: createPreferencesState({}) }),
-    notifications.service
-  );
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-  await service.testManagedModelProvider("openai");
-
-  assert.equal(service.store.managedModels.feedback.openai?.kind, "testOk");
-  assert.deepEqual(notifications.items, []);
-});
-
-test("WorkspaceSettingsService records an inline test failure", async () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({
-      listManagedModelProviders: async () => [
-        {
-          baseUrl: "https://api.openai.com/v1",
-          enabled: true,
-          hasApiKey: true,
-          models: [],
-          provider: "openai"
-        }
-      ],
-      testManagedModelProvider: async () => {
-        throw new Error("nope");
-      }
-    })
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-  await service.testManagedModelProvider("openai");
-
-  assert.equal(service.store.managedModels.feedback.openai?.kind, "testFailed");
-});
-
-test("WorkspaceSettingsService flags an empty model detection inline", async () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({
-      listManagedModelProviders: async () => [
-        {
-          baseUrl: "https://api.openai.com/v1",
-          enabled: true,
-          hasApiKey: true,
-          models: [],
-          provider: "openai"
-        }
-      ],
-      listManagedModelProviderModels: async () => []
-    })
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-  await service.detectManagedModelProviderModels("openai");
-
-  assert.equal(
-    service.store.managedModels.feedback.openai?.kind,
-    "detectEmpty"
-  );
-});
-
-test("WorkspaceSettingsService clears feedback when a provider is edited", async () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({
-      listManagedModelProviders: async () => [
-        {
-          baseUrl: "https://api.openai.com/v1",
-          enabled: true,
-          hasApiKey: true,
-          models: [],
-          provider: "openai"
-        }
-      ],
-      testManagedModelProvider: async () => {
-        throw new Error("nope");
-      }
-    })
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-  await service.testManagedModelProvider("openai");
-  assert.equal(service.store.managedModels.feedback.openai?.kind, "testFailed");
-
-  service.updateManagedModelProviderDraft("openai", { apiKey: "sk-new" });
-
-  assert.equal(service.store.managedModels.feedback.openai, undefined);
-});
-
-test("WorkspaceSettingsService blocks a draft save without required fields", async () => {
-  let putCalls = 0;
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({
-      putManagedModelProvider: async (_workspaceID, providerID, input) => {
-        putCalls += 1;
-        return {
-          baseUrl: input.baseUrl,
-          enabled: input.enabled,
-          hasApiKey: Boolean(input.apiKey),
-          models: input.models,
-          provider: providerID
-        };
-      }
-    })
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-  service.beginManagedModelProviderDraft("openai");
-  service.updateManagedModelDraft({ baseUrl: "" });
-  await service.saveManagedModelDraft();
-
-  assert.equal(putCalls, 0);
-  assert.equal(
-    service.store.managedModels.feedback.openai?.kind,
-    "requiredFields"
-  );
-  assert.notEqual(service.store.managedModels.draft, null);
-});
-
-test("WorkspaceSettingsService records a save failure inline without a toast", async () => {
-  const notifications = createNotificationRecorder();
-  const service = new WorkspaceSettingsService(
-    {
-      client: createWorkspaceSettingsClient({
-        listManagedModelProviders: async () => [
-          {
-            baseUrl: "https://api.openai.com/v1",
-            enabled: true,
-            hasApiKey: true,
-            models: [],
-            provider: "openai"
-          }
-        ],
-        putManagedModelProvider: async () => {
-          throw new Error("nope");
-        }
-      })
-    },
-    createDesktopPreferencesService({ state: createPreferencesState({}) }),
-    notifications.service
-  );
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-  const provider = service.store.managedModels.providers.find(
-    (candidate) => candidate.provider === "openai"
-  );
-  assert.ok(provider);
-  await service.saveManagedModelProvider(provider);
-
-  assert.equal(service.store.managedModels.feedback.openai?.kind, "saveFailed");
-  assert.deepEqual(notifications.items, []);
-});
-
-test("WorkspaceSettingsService still toasts when a provider toggle fails", async () => {
-  const notifications = createNotificationRecorder();
-  const service = new WorkspaceSettingsService(
-    {
-      client: createWorkspaceSettingsClient({
-        listManagedModelProviders: async () => [
-          {
-            baseUrl: "https://api.openai.com/v1",
-            enabled: true,
-            hasApiKey: true,
-            models: [],
-            provider: "openai"
-          }
-        ],
-        putManagedModelProvider: async () => {
-          throw new Error("nope");
-        }
-      })
-    },
-    createDesktopPreferencesService({ state: createPreferencesState({}) }),
-    notifications.service
-  );
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-  await service.setManagedModelProviderEnabled("openai", false);
-
-  assert.equal(
-    service.store.managedModels.providers.find(
-      (candidate) => candidate.provider === "openai"
-    )?.enabled,
-    true
-  );
-  assert.equal(notifications.items.length, 1);
-});
-
-test("WorkspaceSettingsService drops a removed provider from the list", async () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({
-      listManagedModelProviders: async () => [
-        {
-          enabled: true,
-          hasApiKey: true,
-          models: [],
-          provider: "openai"
-        }
-      ]
-    })
-  });
-
-  service.openPanel({ id: "workspace-1" });
-  await waitFor(() => service.store.managedModels.loading === false);
-  await service.removeManagedModelProvider("openai");
-
-  assert.deepEqual(service.store.managedModels.providers, []);
 });
 
 test("WorkspaceSettingsService refreshes developer logs when opening the panel", async () => {
@@ -1225,12 +743,15 @@ test("WorkspaceSettingsService tracks theme changes without developer log clear 
   ]);
 });
 
-test("WorkspaceSettingsService forwards the selected developer log export scope", async () => {
-  const scopes: string[] = [];
+test("WorkspaceSettingsService forwards the selected developer log export options", async () => {
+  const inputs: Array<{
+    includeAgentSessions: boolean;
+    scope: string;
+  }> = [];
   const service = new WorkspaceSettingsService({
     client: createWorkspaceSettingsClient({
-      exportLogs: async (scope) => {
-        scopes.push(scope);
+      exportLogs: async (input) => {
+        inputs.push(input);
         return {
           canceled: true,
           fileCount: 0,
@@ -1240,9 +761,14 @@ test("WorkspaceSettingsService forwards the selected developer log export scope"
     })
   });
 
-  await service.exportDeveloperLogs("recent-10-minutes");
+  await service.exportDeveloperLogs({
+    includeAgentSessions: true,
+    scope: "recent-3-days"
+  });
 
-  assert.deepEqual(scopes, ["recent-10-minutes"]);
+  assert.deepEqual(inputs, [
+    { includeAgentSessions: true, scope: "recent-3-days" }
+  ]);
 });
 
 test("WorkspaceSettingsService clears workspace conversation history", async () => {
@@ -1437,18 +963,6 @@ function createWorkspaceSettingsClient(
       }
     }),
     listAgentTargets: async () => [],
-    getAgentProviderComposerOptions: async () => {
-      throw new Error("not used");
-    },
-    listAutomationRules: async () => [],
-    updateAutomationRule: async () => {
-      throw new Error("not used");
-    },
-    deleteAutomationRule: async () => {},
-    getAutomationTargetCatalog: async () => ({
-      permissionModes: [],
-      tools: []
-    }),
     listWorkspaceAgents: async () => [],
     createWorkspaceAgent: async () => {
       throw new Error("not used");
@@ -1457,11 +971,18 @@ function createWorkspaceSettingsClient(
       throw new Error("not used");
     },
     deleteWorkspaceAgent: async () => {},
+    listAutomationRules: async () => [],
+    getAutomationTargetCatalog: async () => ({
+      permissionModes: [],
+      tools: []
+    }),
     createAutomationRule: async () => {
       throw new Error("not used");
     },
-    listModelPlans: async () => [],
-    recommendWorkspaceModels: async () => [],
+    updateAutomationRule: async () => {
+      throw new Error("not used");
+    },
+    deleteAutomationRule: async () => {},
     setSystemAgentTargetEnabled: async () => {
       throw new Error("not used");
     },
@@ -1484,7 +1005,6 @@ function createWorkspaceSettingsClient(
       fileCount: 0,
       filePath: null
     }),
-    deleteManagedModelProvider: async () => {},
     getLogsState: async () => ({
       desktopVersion: "0.0.0",
       files: [],
@@ -1492,18 +1012,31 @@ function createWorkspaceSettingsClient(
       totalFiles: 0,
       totalSizeBytes: 0
     }),
-    listManagedModelProviders: async () => [],
-    listManagedModelProviderModels: async () => [],
     openLogDirectory: async () => {},
     openLogFile: async () => {},
-    putManagedModelProvider: async (_workspaceID, providerID, input) => ({
-      baseUrl: input.baseUrl,
-      enabled: input.enabled,
-      hasApiKey: Boolean(input.apiKey),
-      models: input.models,
-      provider: providerID
+    listModelPlans: async () => [],
+    createModelPlan: async () => {
+      throw new Error("not used");
+    },
+    updateModelPlan: async () => {
+      throw new Error("not used");
+    },
+    deleteModelPlan: async () => {},
+    duplicateModelPlan: async () => {
+      throw new Error("not used");
+    },
+    setModelPlanEnabled: async () => {
+      throw new Error("not used");
+    },
+    listModelPlanReferences: async () => [],
+    detectModelPlan: async () => ({
+      detection: { stages: [] },
+      discoveredModels: []
     }),
-    testManagedModelProvider: async () => {},
+    listAgentModelBindings: async () => [],
+    setAgentModelBinding: async () => {
+      throw new Error("not used");
+    },
     ...overrides
   };
 }
@@ -1746,4 +1279,75 @@ test("WorkspaceSettingsService Agents deep-link works without a provider (blank 
   assert.equal(service.store.activeSection, "agent");
   assert.equal(service.store.agentTab, "agents");
   assert.equal(service.store.agentFocusProvider, null);
+});
+
+test("WorkspaceSettingsService loads agent bindings when the model-plans surface opens", async () => {
+  let listPlansCalls = 0;
+  let listBindingsCalls = 0;
+  let listTargetsCalls = 0;
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listAgentTargets: async () => {
+        listTargetsCalls += 1;
+        return [
+          createTuttiAgentTarget(true),
+          {
+            ...createTuttiAgentTarget(true),
+            enabled: false,
+            id: "local:codex-disabled",
+            name: "Codex Disabled",
+            provider: "codex",
+            sortOrder: 10
+          },
+          {
+            ...createTuttiAgentTarget(true),
+            id: "local:codex",
+            name: "Codex",
+            provider: "codex",
+            sortOrder: 5
+          }
+        ];
+      },
+      listModelPlans: async () => {
+        listPlansCalls += 1;
+        return [];
+      },
+      listAgentModelBindings: async () => {
+        listBindingsCalls += 1;
+        return [
+          {
+            workspaceId: "workspace-1",
+            agentTargetId: "local:codex",
+            defaultModel: "gpt-5.5",
+            modelPlanId: "plan-1"
+          }
+        ];
+      }
+    })
+  });
+
+  service.openPanel({ id: "workspace-1" });
+  await waitFor(
+    () =>
+      service.store.modelPlans.bindings.agentTargets.length > 0 &&
+      !service.store.modelPlans.bindings.loading
+  );
+
+  assert.ok(listPlansCalls >= 1);
+  assert.ok(listBindingsCalls >= 1);
+  assert.ok(listTargetsCalls >= 1);
+  assert.deepEqual(
+    service.store.modelPlans.bindings.agentTargets.map((target) => target.id),
+    ["local:codex", "local:tutti-agent"]
+  );
+  assert.equal(
+    service.store.modelPlans.bindings.bindings[0]?.agentTargetId,
+    "local:codex"
+  );
+
+  // Selecting apps again after opening another section must reload bindings.
+  service.selectSection("appearance");
+  const bindingsBeforeApps = listBindingsCalls;
+  service.selectSection("apps");
+  await waitFor(() => listBindingsCalls > bindingsBeforeApps);
 });

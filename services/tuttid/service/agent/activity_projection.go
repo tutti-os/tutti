@@ -37,6 +37,7 @@ type ActivityProjection struct {
 
 var (
 	_ SessionReader         = (*ActivityProjection)(nil)
+	_ SessionPageReader     = (*ActivityProjection)(nil)
 	_ SessionSectionsReader = (*ActivityProjection)(nil)
 )
 
@@ -519,6 +520,28 @@ func (p *ActivityProjection) ListSessions(workspaceID string) ([]PersistedSessio
 	return out, true
 }
 
+func (p *ActivityProjection) ListSessionsPage(
+	ctx context.Context,
+	input agentactivitybiz.ListSessionsPageInput,
+) (PersistedSessionListPage, bool, error) {
+	if p == nil || p.repo == nil {
+		return PersistedSessionListPage{}, false, nil
+	}
+	page, ok, err := p.repo.ListSessionsPage(ctx, input)
+	if err != nil || !ok {
+		return PersistedSessionListPage{}, ok, err
+	}
+	sessions := make([]PersistedSession, 0, len(page.Sessions))
+	for _, session := range page.Sessions {
+		sessions = append(sessions, p.projectPersistedSession(ctx, persistedSessionFromActivity(session)))
+	}
+	return PersistedSessionListPage{
+		Sessions:   sessions,
+		HasMore:    page.HasMore,
+		NextCursor: page.NextCursor,
+	}, true, nil
+}
+
 func (p *ActivityProjection) ListChildSessions(
 	ctx context.Context,
 	workspaceID string,
@@ -556,22 +579,6 @@ func (p *ActivityProjection) ListSessionSections(
 		return agentactivitybiz.SessionSectionsPage{}, false, nil
 	}
 	return p.repo.ListSessionSections(ctx, input)
-}
-
-func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
-	if p == nil || p.repo == nil {
-		return false, nil
-	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	agentSessionID = strings.TrimSpace(agentSessionID)
-	result, err := p.repo.DeleteSessionWithCommit(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		return false, err
-	}
-	if result.RemovedSessions > 0 {
-		agenthost.NotifyCommitted(ctx, p, agenthost.CanonicalDelta(result.CommitDelta))
-	}
-	return result.RemovedSessions > 0, nil
 }
 
 func (p *ActivityProjection) RollbackRuntimeSessionInitialization(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
@@ -629,23 +636,21 @@ func (p *ActivityProjection) DeleteSessionsBatch(
 	return result, nil
 }
 
-func (p *ActivityProjection) ClearSessions(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {
+func (p *ActivityProjection) PlanDeleteSessions(
+	ctx context.Context,
+	input agentactivitybiz.DeleteSessionsBatchInput,
+) (agentactivitybiz.DeleteSessionsPlan, error) {
 	if p == nil || p.repo == nil {
-		return ClearSessionsResult{}, nil
+		return agentactivitybiz.DeleteSessionsPlan{}, nil
 	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	result, err := p.repo.ClearSessions(ctx, workspaceID)
-	if err != nil {
-		return ClearSessionsResult{}, err
+	return p.repo.PlanDeleteSessions(ctx, input)
+}
+
+func (p *ActivityProjection) PlanClearSessions(ctx context.Context, workspaceID string) (agentactivitybiz.DeleteSessionsPlan, error) {
+	if p == nil || p.repo == nil {
+		return agentactivitybiz.DeleteSessionsPlan{}, nil
 	}
-	if result.RemovedSessions > 0 {
-		agenthost.NotifyCommitted(ctx, p, agenthost.CanonicalDelta(result.CommitDelta))
-	}
-	return ClearSessionsResult{
-		RemovedMessages:   result.RemovedMessages,
-		RemovedSessions:   result.RemovedSessions,
-		RemovedSessionIDs: result.RemovedSessionIDs,
-	}, nil
+	return p.repo.PlanClearSessions(ctx, strings.TrimSpace(workspaceID))
 }
 
 func (p *ActivityProjection) UpdateSessionPinned(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (PersistedSession, bool, error) {

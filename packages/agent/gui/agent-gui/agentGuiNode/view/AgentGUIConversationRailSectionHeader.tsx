@@ -162,6 +162,7 @@ const CreateAction = memo(function CreateAction({
       className={styles.conversationSectionMoreButton}
       aria-label={createConversationLabel}
       size="sm"
+      title=""
       disabled={createConversationDisabled}
       onClick={onCreateConversation}
     >
@@ -222,6 +223,7 @@ const ProjectMenuButton = forwardRef<HTMLButtonElement, ProjectMenuButtonProps>(
         className={styles.conversationSectionMoreButton}
         aria-label={accessibleName}
         size="sm"
+        title=""
         disabled={projectActionLocked || disabled}
       >
         <MoreHorizontalIcon aria-hidden="true" />
@@ -385,6 +387,7 @@ function ConversationMenuTrigger({
             className={styles.conversationSectionMoreButton}
             aria-label={accessibleName}
             size="sm"
+            title=""
           >
             <MoreHorizontalIcon aria-hidden="true" />
           </BareIconButton>
@@ -402,6 +405,7 @@ function ConversationMenuTrigger({
               className={styles.conversationSectionMoreButton}
               aria-label={accessibleName}
               size="sm"
+              title=""
             >
               <MoreHorizontalIcon aria-hidden="true" />
             </BareIconButton>

@@ -39,6 +39,7 @@ export interface AgentHostAgentSessionPermissionConfig {
 
 export interface AgentHostAgentSessionComposerSettings {
   model?: string | null;
+  modelPlanId?: string | null;
   reasoningEffort?: AgentHostAgentSessionReasoningEffort | null;
   speed?: AgentHostAgentSessionSpeed | null;
   planMode?: boolean;

@@ -8,12 +8,10 @@ import type {
   SelectedReference,
   WorkspaceFileReference
 } from "../../../contracts/index.ts";
-import type { ReferenceProvenanceFilter } from "../../../contracts/referenceProvenance.ts";
 import {
   REFERENCE_FILTER_CATEGORIES,
   WORKSPACE_ROOT_GROUP_NODE_ID,
   nodeRefKey,
-  referenceProvenanceFilterIsActive,
   selectedReferenceToWorkspaceFileReference
 } from "../../../core/index.ts";
 import type { ReferenceSourceAggregator } from "../../../core/referenceSourceAggregator.ts";
@@ -25,14 +23,17 @@ import {
   type WorkspaceFileManagerArrangeMode
 } from "@tutti-os/workspace-file-manager/services";
 import {
-  createWorkspaceFilePreviewLoadedState,
+  createWorkspaceFilePreviewController,
+  type WorkspaceFilePreviewControllerState,
   type WorkspaceFilePreviewReadonlyReason
 } from "@tutti-os/workspace-file-preview";
 import {
   ROOT_CHILDREN_KEY,
   createReferenceSourcePickerController,
-  type ReferencePickerSelectionMode
+  type ReferencePickerSelectionMode,
+  type ReferenceSourceNodeChildrenState
 } from "./referenceSourcePickerController.ts";
+import { buildReferenceSourcePickerFilteredTree } from "./referenceSourcePickerFilterTree.ts";
 
 export type { WorkspaceFileManagerArrangeMode };
 
@@ -49,9 +50,8 @@ function referenceNodeToOpenWithCacheEntry(
 }
 
 /**
- * 焦点节点的预览态(node-keyed)。复用 file-manager / file-preview 的分类逻辑
- * (createWorkspaceFilePreviewLoadedState),但只携带状态、不含已本地化文案 ——
- * 文案由 UI 层(ReferenceSourcePicker)按 status/reason 映射,保持 hook 与 i18n 解耦。
+ * 焦点节点的预览态(node-keyed)。共享 file-preview controller 负责读取生命周期和
+ * 规范状态,这里仅保留 picker 所需的节点投影;文案由 UI 层按 status/reason 映射。
  */
 export type ReferenceNodePreviewState =
   | { status: "empty" }
@@ -62,12 +62,6 @@ export type ReferenceNodePreviewState =
       node: ReferenceNode;
       previewSizeBytes?: number;
       status: "text";
-    }
-  | {
-      content: string;
-      node: ReferenceNode;
-      previewSizeBytes?: number;
-      status: "html";
     }
   | {
       node: ReferenceNode;
@@ -115,11 +109,6 @@ export interface UseReferenceSourcePickerViewInput {
   aggregator: ReferenceSourceAggregator;
   workspaceId: string;
   open: boolean;
-  /**
-   * 本地源「工作区根」二级节点展示名(仅源未自带分组时的回退用)。
-   * 由 UI 层注入已本地化文案,保持 hook 与 i18n 解耦。
-   */
-  workspaceRootGroupLabel: string;
   /** 可选:打开时直达某事项/应用分组(展开并聚焦)。 */
   initialTarget?: ReferenceLocateTarget | null;
   onClose: () => void;
@@ -130,8 +119,15 @@ export interface UseReferenceSourcePickerViewInput {
    * navigable 源的选中文件夹折叠成一个 bundle,其余仍作为单条文件。
    */
   onConfirmBundles?: (result: ReferenceGroupedSelection) => void;
-  provenanceFilter?: ReferenceProvenanceFilter | null;
+  searchResultKind?: ReferenceNode["kind"];
   selectionMode?: ReferencePickerSelectionMode;
+}
+
+interface FilteredTreeState {
+  childrenByKey: Record<string, ReferenceSourceNodeChildrenState>;
+  error: Error | null;
+  key: string | null;
+  loading: boolean;
 }
 
 /**
@@ -142,13 +138,12 @@ export function useReferenceSourcePickerView({
   aggregator,
   workspaceId,
   open,
-  workspaceRootGroupLabel,
   initialTarget = null,
   onClose,
   onConfirm,
   isNodeSelectable,
   onConfirmBundles,
-  provenanceFilter = null,
+  searchResultKind,
   selectionMode = "multiple"
 }: UseReferenceSourcePickerViewInput) {
   const readSnapshot = useSnapshot as <T extends object>(store: T) => T;
@@ -159,9 +154,10 @@ export function useReferenceSourcePickerView({
       createReferenceSourcePickerController({
         aggregator,
         scope,
-        selectionMode
+        selectionMode,
+        searchResultKind
       }),
-    [aggregator, scope, selectionMode]
+    [aggregator, scope, searchResultKind, selectionMode]
   );
   const snapshot = readSnapshot(controller.store);
 
@@ -172,6 +168,14 @@ export function useReferenceSourcePickerView({
   const [focusedNode, setFocusedNode] = useState<ReferenceNode | null>(null);
   const [arrangeMode, setArrangeMode] =
     useState<WorkspaceFileManagerArrangeMode>("none");
+  const [filteredTreeState, setFilteredTreeState] = useState<FilteredTreeState>(
+    {
+      childrenByKey: {},
+      error: null,
+      key: null,
+      loading: false
+    }
+  );
   const openWithApplicationsCache = useRef(
     new WorkspaceFileOpenWithApplicationsCache()
   );
@@ -284,19 +288,98 @@ export function useReferenceSourcePickerView({
   const activeTabState = activeSourceId
     ? snapshot.bySource[activeSourceId]
     : undefined;
-  // 已选文件类型筛选分类(与 searchQuery 一起构成「查询」)。
+  // 已选文件类型筛选分类。无关键词时它只投影当前浏览树,不切成扁平查询态。
   const activeFilters = activeTabState?.searchFilters ?? [];
-  // 查询态 = 关键词或筛选任一非空(controller 已据此置 mode)。命中即平铺结果。
-  const isQuery =
-    activeTabState?.mode === "search" &&
-    (activeTabState.searchQuery.trim() !== "" ||
-      activeFilters.length > 0 ||
-      referenceProvenanceFilterIsActive(provenanceFilter));
+  const activeFiltersSerialized = JSON.stringify(activeFilters);
+  const recursiveFilters = useMemo(
+    () => JSON.parse(activeFiltersSerialized) as string[],
+    [activeFiltersSerialized]
+  );
+  const isQuery = activeTabState?.mode === "search";
+  const recursiveFilterKey =
+    activeSourceId && recursiveFilters.length > 0 && !isQuery
+      ? JSON.stringify([activeSourceId, recursiveFilters])
+      : null;
+  const recursiveFilterActive = recursiveFilterKey !== null;
 
-  const currentChildren = activeTabState?.childrenByKey[currentKey];
+  useEffect(() => {
+    if (!open || !activeSourceId || !recursiveFilterKey) {
+      setFilteredTreeState({
+        childrenByKey: {},
+        error: null,
+        key: null,
+        loading: false
+      });
+      return;
+    }
+
+    const abortController = new AbortController();
+    setFilteredTreeState({
+      childrenByKey: {},
+      error: null,
+      key: recursiveFilterKey,
+      loading: true
+    });
+    void buildReferenceSourcePickerFilteredTree({
+      aggregator,
+      filters: recursiveFilters,
+      scope,
+      signal: abortController.signal,
+      sourceId: activeSourceId
+    }).then(
+      (tree) => {
+        if (!abortController.signal.aborted) {
+          setFilteredTreeState({
+            childrenByKey: tree.childrenByKey,
+            error: null,
+            key: recursiveFilterKey,
+            loading: false
+          });
+        }
+      },
+      (error: unknown) => {
+        if (!abortController.signal.aborted) {
+          setFilteredTreeState({
+            childrenByKey: {},
+            error: error instanceof Error ? error : new Error(String(error)),
+            key: recursiveFilterKey,
+            loading: false
+          });
+        }
+      }
+    );
+    return () => abortController.abort();
+  }, [
+    activeSourceId,
+    aggregator,
+    open,
+    recursiveFilterKey,
+    recursiveFilters,
+    scope
+  ]);
+
+  const childrenByKey = useMemo(() => {
+    const sourceChildren = activeTabState?.childrenByKey ?? {};
+    if (!recursiveFilterActive) {
+      return sourceChildren;
+    }
+    return filteredTreeState.key === recursiveFilterKey
+      ? filteredTreeState.childrenByKey
+      : {};
+  }, [
+    activeTabState?.childrenByKey,
+    filteredTreeState.childrenByKey,
+    filteredTreeState.key,
+    recursiveFilterActive,
+    recursiveFilterKey
+  ]);
+
+  const currentChildren = childrenByKey[currentKey];
   const contentError = isQuery
     ? (activeTabState?.searchError ?? null)
-    : (currentChildren?.error ?? null);
+    : recursiveFilterActive && filteredTreeState.key === recursiveFilterKey
+      ? filteredTreeState.error
+      : (currentChildren?.error ?? null);
 
   // 浏览态内容区:当前选中二级节点(currentNode,本地根时为 null → 源根)的子节点,
   // 递归就地展开成文件树。搜索态:扁平搜索结果。
@@ -313,12 +396,19 @@ export function useReferenceSourcePickerView({
 
   // 每个源的左栏二级分组(左栏可多源同时展开,故按源全量计算):
   //  - 源自带分组(listSidebarGroups,如本地源的 最近访问/下载/文稿/桌面/个人)优先;
-  //  - 否则取该源根下的 folder;非 navigable 源额外合成「工作区根」入口保住根级散文件可达。
+  //  - 否则取该源根下的 folder。源标题自身就是根入口,不再重复合成同名根目录。
   // 依赖 snapshot.tabs(getLoadedSource 在 tabs 加载后才有值)与 snapshot.bySource(根加载)。
   const sidebarGroupsBySource = useMemo<Record<string, ReferenceNode[]>>(() => {
     const result: Record<string, ReferenceNode[]> = {};
     for (const tab of snapshot.tabs) {
       const sourceId = tab.sourceId;
+      if (sourceId === activeSourceId && recursiveFilterActive) {
+        const root = childrenByKey[ROOT_CHILDREN_KEY];
+        result[sourceId] = (root?.entries ?? []).filter(
+          (node) => node.kind === "folder"
+        );
+        continue;
+      }
       const provided = aggregator
         .getLoadedSource(sourceId)
         ?.listSidebarGroups?.(scope);
@@ -331,24 +421,17 @@ export function useReferenceSourcePickerView({
       const folders = (root?.entries ?? []).filter(
         (node) => node.kind === "folder"
       );
-      if (tab.capabilities.navigable) {
-        result[sourceId] = folders;
-      } else {
-        const workspaceRoot: ReferenceNode = {
-          ref: { sourceId, nodeId: WORKSPACE_ROOT_GROUP_NODE_ID },
-          kind: "folder",
-          displayName: workspaceRootGroupLabel
-        };
-        result[sourceId] = [workspaceRoot, ...folders];
-      }
+      result[sourceId] = folders;
     }
     return result;
   }, [
-    snapshot.tabs,
-    snapshot.bySource,
+    activeSourceId,
     aggregator,
+    childrenByKey,
+    recursiveFilterActive,
     scope,
-    workspaceRootGroupLabel
+    snapshot.bySource,
+    snapshot.tabs
   ]);
 
   // 左栏二级分组「是否还能继续拉取」(分页用)。
@@ -390,27 +473,18 @@ export function useReferenceSourcePickerView({
 
   // 左栏二级分组高亮 = 当前所在的「根 most 分组」(面包屑首项),而非最深叶子节点。
   // 这样下钻进事项(topic → 事项 → 产物)时,左栏仍高亮其所属 topic;进 app 子目录时仍高亮该 app。
-  // 本地根(无面包屑、非 navigable)回退到合成「工作区根」节点。
   const rootGroupNode = breadcrumb[0] ?? null;
   // 搜索限定范围 = 左栏选中的二级分组(面包屑根项)的源内 nodeId;无选中分组(本地根)→ null,
   // 退回跨整源搜索。供「只搜选中应用」而非所有应用。
   const searchScopeNodeId = rootGroupNode ? rootGroupNode.ref.nodeId : null;
-  const selectedGroupKey = rootGroupNode
-    ? nodeRefKey(rootGroupNode.ref)
-    : activeSourceId && !capabilities?.navigable
-      ? nodeRefKey({
-          sourceId: activeSourceId,
-          nodeId: WORKSPACE_ROOT_GROUP_NODE_ID
-        })
-      : null;
+  const selectedGroupKey = rootGroupNode ? nodeRefKey(rootGroupNode.ref) : null;
 
   // 搜索进行中切换左栏分组(选中应用变化)时,把搜索限定范围同步给 controller 并重搜。
   // controller 内部仅在范围实际变化且处于搜索态时才重搜,浏览态/范围未变为 no-op。
   useEffect(() => {
     if (!open) return;
-    controller.setProvenanceFilter(provenanceFilter, searchScopeNodeId);
     controller.setSearchScope(searchScopeNodeId);
-  }, [activeSourceId, controller, open, provenanceFilter, searchScopeNodeId]);
+  }, [activeSourceId, controller, open, searchScopeNodeId]);
 
   const setActiveSource = useCallback(
     (sourceId: string) => {
@@ -458,11 +532,9 @@ export function useReferenceSourcePickerView({
 
   // 进入某源时默认选中它的第一个二级分组,而非停在根列表:
   //  - 可逐层进入的源(如「应用」/「议题」):进入第一个分组(首个 app / topic);
-  //  - 本地等非 navigable 源:进入第一个固定「位置」分组(本地源即「最近访问」),
+  //  - 非 navigable 源仅在显式提供固定「位置」分组时进入首组(本地源即「最近访问」),
   //    使从 agent GUI「+」按钮打开时默认落在「本地 - 最近访问」。
   // 每个源每次打开只自动选一次,用户回到根/手动导航后不再覆盖。
-  // 非 navigable 源若无自带分组,sidebarGroups[0] 为合成「工作区根」,
-  // enterFolder 对其 no-op,仍停在源根 —— 与原行为一致,无回归。
   useEffect(() => {
     if (!open || !activeSourceId) {
       return;
@@ -476,6 +548,15 @@ export function useReferenceSourcePickerView({
       autoEnteredSourcesRef.current.add(activeSourceId);
       return;
     }
+    const hasProvidedSidebarGroups = Boolean(
+      aggregator.getLoadedSource(activeSourceId)?.listSidebarGroups?.(scope)
+        .length
+    );
+    if (!capabilities?.navigable && !hasProvidedSidebarGroups) {
+      // 根目录派生出的 folder 只是快捷入口。默认停在源根,避免误入第一个目录。
+      autoEnteredSourcesRef.current.add(activeSourceId);
+      return;
+    }
     const firstGroup = sidebarGroups[0];
     if (!firstGroup) {
       // 根分组尚未加载完,等加载后再触发。
@@ -483,7 +564,16 @@ export function useReferenceSourcePickerView({
     }
     autoEnteredSourcesRef.current.add(activeSourceId);
     enterFolder(firstGroup);
-  }, [open, activeSourceId, sidebarGroups, breadcrumbBySource, enterFolder]);
+  }, [
+    open,
+    activeSourceId,
+    aggregator,
+    breadcrumbBySource,
+    capabilities?.navigable,
+    enterFolder,
+    scope,
+    sidebarGroups
+  ]);
 
   // 左栏一级源默认全部展开(Finder 风格,无折叠):tabs 就绪后预载每个源的根,
   // 使非自带分组的源(应用/任务,二级分组取根下 folder)其分组也立即就绪。
@@ -534,8 +624,19 @@ export function useReferenceSourcePickerView({
     [activeSourceId, controller]
   );
 
+  const selectSourceRoot = useCallback(
+    (sourceId: string) => {
+      controller.setActiveSource(sourceId, null);
+      controller.setSearchScope(null);
+      setBreadcrumbBySource((current) => ({ ...current, [sourceId]: [] }));
+      controller.ensureSourceRoot(sourceId);
+      setFocusedNode(null);
+    },
+    [controller]
+  );
+
   // 选中左栏二级分组:先切到该分组所属源(右侧内容随之切换),
-  // 再:合成「工作区根」→ 回源根;其余 → 把面包屑重置为该分组。
+  // 再:源显式提供的根哨兵 → 回源根;其余 → 把面包屑重置为该分组。
   // 二级分组之间是同级关系(并非彼此嵌套),因此选中一个新分组时必须把面包屑
   // 重置为 [node],而非走 enterFolder 的「下钻入栈」逻辑 —— 否则点击同级分组会被
   // 当作子节点追加成 [A, B],而高亮取 breadcrumb[0] 仍停在 A,导致新分组「选不中」。
@@ -594,6 +695,25 @@ export function useReferenceSourcePickerView({
 
   // app/issue 源的文件夹引用需异步递归枚举展开,故 confirm 异步;期间置 isConfirming 防重复提交。
   const [isConfirming, setIsConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<Error | null>(null);
+  const confirmingRef = useRef(false);
+  const confirmationGenerationRef = useRef(0);
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+    confirmationGenerationRef.current += 1;
+    confirmingRef.current = false;
+    setIsConfirming(false);
+    setConfirmError(null);
+  }, [open]);
+  useEffect(
+    () => () => {
+      confirmationGenerationRef.current += 1;
+      confirmingRef.current = false;
+    },
+    []
+  );
   const [isOpeningReference, setIsOpeningReference] = useState(false);
   const runReferenceAction = useCallback(
     async (action: () => Promise<void>): Promise<void> => {
@@ -610,17 +730,23 @@ export function useReferenceSourcePickerView({
     [isOpeningReference]
   );
   const confirm = useCallback(async () => {
-    if (isConfirming) {
+    if (confirmingRef.current) {
       return;
     }
     if (selectableSelection.length === 0) {
       controller.clearSelection();
       return;
     }
+    const confirmationGeneration = ++confirmationGenerationRef.current;
+    confirmingRef.current = true;
     setIsConfirming(true);
+    setConfirmError(null);
     try {
       if (onConfirmBundles) {
         const grouped = await controller.confirmGrouped(selectableSelection);
+        if (confirmationGeneration !== confirmationGenerationRef.current) {
+          return;
+        }
         onConfirmBundles({
           files: grouped.files.map(selectedReferenceToWorkspaceFileReference),
           bundles: grouped.bundles.map((bundle) => ({
@@ -636,161 +762,83 @@ export function useReferenceSourcePickerView({
       } else {
         const selected: SelectedReference[] =
           await controller.confirm(selectableSelection);
+        if (confirmationGeneration !== confirmationGenerationRef.current) {
+          return;
+        }
         onConfirm(selected.map(selectedReferenceToWorkspaceFileReference));
       }
       onClose();
+    } catch (error) {
+      if (confirmationGeneration !== confirmationGenerationRef.current) {
+        return;
+      }
+      setConfirmError(
+        error instanceof Error
+          ? error
+          : new Error("reference confirmation failed")
+      );
     } finally {
-      setIsConfirming(false);
+      if (confirmationGeneration === confirmationGenerationRef.current) {
+        confirmingRef.current = false;
+        setIsConfirming(false);
+      }
     }
-  }, [
-    controller,
-    isConfirming,
-    onClose,
-    onConfirm,
-    onConfirmBundles,
-    selectableSelection
-  ]);
+  }, [controller, onClose, onConfirm, onConfirmBundles, selectableSelection]);
 
-  // 焦点节点预览:文件夹→directory;文件→走源 readPreview,字节经 file-preview 分类
-  // 成 image/text/readonly。image 用 object URL,切换/卸载时回收避免泄漏。
-  const [previewState, setPreviewState] = useState<ReferenceNodePreviewState>({
-    status: "empty"
-  });
-  const previewObjectUrlRef = useRef<string | null>(null);
-  const revokePreviewObjectUrl = useCallback(() => {
-    if (previewObjectUrlRef.current) {
-      URL.revokeObjectURL(previewObjectUrlRef.current);
-      previewObjectUrlRef.current = null;
-    }
-  }, []);
+  const previewController = useMemo(
+    () =>
+      createWorkspaceFilePreviewController<ReferenceNode>({
+        canReadEntry: (node) =>
+          aggregator.getLoadedSource(node.ref.sourceId)?.capabilities
+            .previewable === true,
+        getEntryKey: (node) =>
+          [
+            nodeRefKey(node.ref),
+            node.displayName,
+            node.sizeBytes ?? "",
+            node.mtimeMs ?? ""
+          ].join("\0"),
+        read: async ({ entry }) => {
+          const preview = await aggregator.readPreview(scope, entry);
+          return preview
+            ? {
+                bytes: preview.bytes,
+                contentType: preview.contentType,
+                kind: preview.kind
+              }
+            : null;
+        },
+        toPreviewEntry: (node) => ({
+          kind: node.kind,
+          mtimeMs: node.mtimeMs ?? null,
+          name: node.displayName,
+          path: node.ref.nodeId,
+          sizeBytes: node.sizeBytes ?? null
+        })
+      }),
+    [aggregator, scope]
+  );
+  const [previewControllerState, setPreviewControllerState] = useState(() =>
+    previewController.getSnapshot()
+  );
 
   useEffect(() => {
-    const node = focusedNode;
-    if (!node) {
-      revokePreviewObjectUrl();
-      setPreviewState({ status: "empty" });
-      return;
-    }
-    if (node.kind === "folder") {
-      revokePreviewObjectUrl();
-      setPreviewState({ node, status: "directory" });
-      return;
-    }
-    const previewable =
-      aggregator.getLoadedSource(node.ref.sourceId)?.capabilities.previewable ??
-      false;
-    if (!previewable) {
-      revokePreviewObjectUrl();
-      setPreviewState({ node, status: "unsupported" });
-      return;
-    }
-
-    let cancelled = false;
-    revokePreviewObjectUrl();
-    setPreviewState({ node, status: "loading" });
-    void (async () => {
-      try {
-        const preview = await aggregator.readPreview(scope, node);
-        if (cancelled) {
-          return;
-        }
-        if (!preview) {
-          setPreviewState({ node, status: "unsupported" });
-          return;
-        }
-        const previewSizeBytes = preview.bytes.byteLength;
-        const loadedSizeBytes =
-          node.sizeBytes != null && node.sizeBytes > 0
-            ? node.sizeBytes
-            : previewSizeBytes;
-        const loaded = createWorkspaceFilePreviewLoadedState({
-          bytes: preview.bytes,
-          contentType: preview.contentType,
-          entry: {
-            kind: node.kind,
-            name: node.displayName,
-            path: node.ref.nodeId,
-            mtimeMs: node.mtimeMs ?? null,
-            sizeBytes: loadedSizeBytes
-          },
-          target: {
-            fileKind: preview.kind,
-            name: node.displayName,
-            path: node.ref.nodeId,
-            mtimeMs: node.mtimeMs ?? null,
-            sizeBytes: loadedSizeBytes
-          }
-        });
-        if (cancelled) {
-          return;
-        }
-        if (loaded.status === "image") {
-          const objectUrl = URL.createObjectURL(
-            new Blob([loaded.bytes], { type: loaded.contentType })
-          );
-          previewObjectUrlRef.current = objectUrl;
-          setPreviewState({
-            node,
-            objectUrl,
-            previewSizeBytes,
-            status: "image"
-          });
-          return;
-        }
-        if (loaded.status === "video") {
-          const objectUrl = URL.createObjectURL(
-            new Blob([loaded.bytes], { type: loaded.contentType })
-          );
-          previewObjectUrlRef.current = objectUrl;
-          setPreviewState({
-            node,
-            objectUrl,
-            previewSizeBytes,
-            status: "video"
-          });
-          return;
-        }
-        if (loaded.status === "text") {
-          setPreviewState({
-            content: loaded.content,
-            node,
-            previewSizeBytes,
-            status: "text"
-          });
-          return;
-        }
-        if (loaded.status === "html") {
-          setPreviewState({
-            content: loaded.content,
-            node,
-            previewSizeBytes,
-            status: "html"
-          });
-          return;
-        }
-        setPreviewState({
-          node,
-          previewSizeBytes,
-          reason: loaded.reason,
-          ...(loaded.maxSizeBytes == null
-            ? {}
-            : { maxSizeBytes: loaded.maxSizeBytes }),
-          status: "readonly"
-        });
-      } catch {
-        if (!cancelled) {
-          setPreviewState({ node, status: "error" });
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
+    const syncPreviewState = () => {
+      setPreviewControllerState(previewController.getSnapshot());
     };
-  }, [aggregator, focusedNode, revokePreviewObjectUrl, scope]);
+    const unsubscribe = previewController.subscribe(syncPreviewState);
+    syncPreviewState();
+    return () => {
+      unsubscribe();
+      void previewController.setEntry(null);
+    };
+  }, [previewController]);
 
-  // 卸载时回收最后一个 image object URL。
-  useEffect(() => revokePreviewObjectUrl, [revokePreviewObjectUrl]);
+  useEffect(() => {
+    void previewController.setEntry(focusedNode);
+  }, [focusedNode, previewController]);
+
+  const previewState = projectReferenceNodePreviewState(previewControllerState);
 
   return {
     tabs: snapshot.tabs,
@@ -804,7 +852,7 @@ export function useReferenceSourcePickerView({
     searchResults,
     contentError,
     expandedKeys: activeTabState?.expandedKeys ?? {},
-    childrenByKey: activeTabState?.childrenByKey ?? {},
+    childrenByKey,
     toggleNode: (node: ReferenceNode) => controller.toggleNode(node),
     sortNodes,
     isLoadingTabs: snapshot.isLoadingTabs,
@@ -819,7 +867,7 @@ export function useReferenceSourcePickerView({
     selectedGroupKey,
     arrangeMode,
     setArrangeMode,
-    // 查询态(关键词或筛选任一非空)→ 平铺结果;否则浏览树。
+    // 关键词搜索态 → 平铺结果;类型筛选自身仍展示浏览树。
     isQuery,
     searchQuery: activeTabState?.searchQuery ?? "",
     // 当前源支持的文件类型筛选分类(不支持则空数组,picker 据此决定是否展示筛选下拉)。
@@ -832,20 +880,28 @@ export function useReferenceSourcePickerView({
     isLoading: isQuery
       ? (activeTabState?.isSearchLoading ?? false) &&
         (activeTabState?.searchEntries.length ?? 0) === 0
-      : (currentChildren?.loading ?? false),
+      : recursiveFilterActive
+        ? filteredTreeState.key !== recursiveFilterKey ||
+          filteredTreeState.loading
+        : (currentChildren?.loading ?? false),
     // 查询态:增长式分页是否还有更多;浏览态:cursor 是否有下一页。
     hasMore: isQuery
       ? (activeTabState?.searchHasMore ?? false)
-      : Boolean(currentChildren?.nextCursor),
+      : recursiveFilterActive
+        ? false
+        : Boolean(currentChildren?.nextCursor),
     // 底部「加载更多」在途(查询态 = 增长重查;浏览态 = cursor append)。
     isLoadingMore: isQuery
       ? (activeTabState?.isSearchLoadingMore ?? false)
-      : (currentChildren?.loading ?? false),
+      : recursiveFilterActive
+        ? false
+        : (currentChildren?.loading ?? false),
     focusedNode,
     selection: selectableSelection,
     selectionCount: selectableSelection.length,
     canCreateDirectory: capabilities?.directoryCreatable === true,
     setActiveSource,
+    selectSourceRoot,
     enterFolder,
     selectGroup,
     navigateToBreadcrumb,
@@ -913,6 +969,47 @@ export function useReferenceSourcePickerView({
     revealNode: (node: ReferenceNode) =>
       runReferenceAction(() => aggregator.reveal(scope, node)),
     confirm,
+    confirmError,
     isConfirming
   };
+}
+
+function projectReferenceNodePreviewState(
+  state: WorkspaceFilePreviewControllerState<ReferenceNode>
+): ReferenceNodePreviewState {
+  switch (state.status) {
+    case "empty":
+      return state;
+    case "directory":
+      return { node: state.entry, status: "directory" };
+    case "loading":
+      return { node: state.entry, status: "loading" };
+    case "text":
+      return {
+        content: state.content,
+        node: state.entry,
+        previewSizeBytes: state.previewSizeBytes,
+        status: "text"
+      };
+    case "image":
+    case "video":
+      return {
+        node: state.entry,
+        objectUrl: state.objectUrl,
+        previewSizeBytes: state.previewSizeBytes,
+        status: state.status
+      };
+    case "readonly":
+      return {
+        maxSizeBytes: state.maxSizeBytes,
+        node: state.entry,
+        previewSizeBytes: state.previewSizeBytes,
+        reason: state.reason,
+        status: "readonly"
+      };
+    case "unsupported":
+      return { node: state.entry, status: "unsupported" };
+    case "error":
+      return { node: state.entry, status: "error" };
+  }
 }

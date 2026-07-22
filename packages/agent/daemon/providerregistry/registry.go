@@ -457,6 +457,20 @@ func Validate(descriptor ProviderDescriptor) error {
 	} else if descriptor.ComposerProfile.ReasoningEffortOptions != "" {
 		return fmt.Errorf("provider %q reasoning option source requires reasoning support", providerID)
 	}
+	if descriptor.ComposerProfile.Speed {
+		if err := validateUniqueNonBlankStrings(descriptor.ComposerProfile.SpeedValues); err != nil {
+			return fmt.Errorf("provider %q speed values: %w", providerID, err)
+		}
+		if len(descriptor.ComposerProfile.SpeedValues) == 0 {
+			return fmt.Errorf("provider %q speed support requires values", providerID)
+		}
+		defaultSpeed := strings.TrimSpace(descriptor.ComposerProfile.DefaultSpeed)
+		if !containsNormalized(descriptor.ComposerProfile.SpeedValues, defaultSpeed) {
+			return fmt.Errorf("provider %q default speed %q is not declared", providerID, defaultSpeed)
+		}
+	} else if len(descriptor.ComposerProfile.SpeedValues) != 0 || strings.TrimSpace(descriptor.ComposerProfile.DefaultSpeed) != "" {
+		return fmt.Errorf("provider %q speed values require speed support", providerID)
+	}
 	if err := validateUniqueNonBlankStrings(descriptor.ComposerProfile.Capabilities); err != nil {
 		return fmt.Errorf("provider %q capabilities: %w", providerID, err)
 	}

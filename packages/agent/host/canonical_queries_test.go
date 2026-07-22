@@ -11,12 +11,15 @@ import (
 
 type canonicalQueryStore struct {
 	CanonicalStore
-	wantWorkspaceID string
-	wantSessionID   string
-	wantTurnID      string
-	turn            storesqlite.Turn
-	err             error
-	interactions    map[string][]storesqlite.Interaction
+	wantWorkspaceID  string
+	wantSessionID    string
+	wantTurnID       string
+	wantMessageQuery storesqlite.ListSessionMessagesInput
+	turn             storesqlite.Turn
+	messagePage      storesqlite.MessagePage
+	messageFound     bool
+	err              error
+	interactions     map[string][]storesqlite.Interaction
 }
 
 func (s canonicalQueryStore) GetTurn(_ context.Context, workspaceID, sessionID, turnID string) (storesqlite.Turn, bool, error) {
@@ -45,6 +48,13 @@ func (s canonicalQueryStore) ListLatestTurnInteractions(_ context.Context, works
 		return nil, errors.New("unexpected latest-turn interaction key")
 	}
 	return s.interactions, s.err
+}
+
+func (s canonicalQueryStore) ListSessionMessages(_ context.Context, input storesqlite.ListSessionMessagesInput) (storesqlite.MessagePage, bool, error) {
+	if !reflect.DeepEqual(input, s.wantMessageQuery) {
+		return storesqlite.MessagePage{}, false, errors.New("unexpected canonical message query")
+	}
+	return s.messagePage, s.messageFound, s.err
 }
 
 func TestGetTurnDelegatesCanonicalQueryWithNormalizedIdentity(t *testing.T) {
@@ -80,6 +90,41 @@ func TestGetTurnRejectsIncompleteIdentity(t *testing.T) {
 				t.Fatalf("GetTurn() error = %v, want %v", err, ErrInvalidArgument)
 			}
 		})
+	}
+}
+
+func TestListSessionMessagesDelegatesCanonicalQueryWithNormalizedIdentity(t *testing.T) {
+	wantQuery := storesqlite.ListSessionMessagesInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", MessageID: "message-1", TurnID: "turn-1",
+		AfterVersion: 7, BeforeVersion: 20, Limit: 25, Order: storesqlite.MessageOrderAsc,
+	}
+	wantPage := storesqlite.MessagePage{
+		AgentSessionID: "session-1", LatestVersion: 9,
+		Messages: []storesqlite.Message{{AgentSessionID: "session-1", MessageID: "message-1", TurnID: "turn-1", Version: 9}},
+	}
+	host := New(Config{CanonicalStore: canonicalQueryStore{
+		wantMessageQuery: wantQuery,
+		messagePage:      wantPage,
+		messageFound:     true,
+	}})
+
+	got, found, err := host.ListSessionMessages(t.Context(), SessionRef{
+		WorkspaceID: " workspace-1 ", AgentSessionID: " session-1 ",
+	}, SessionMessageQuery{
+		MessageID: " message-1 ", TurnID: " turn-1 ", AfterVersion: 7, BeforeVersion: 20,
+		Limit: 25, Order: storesqlite.MessageOrderAsc,
+	})
+	if err != nil || !found || !reflect.DeepEqual(got, wantPage) {
+		t.Fatalf("ListSessionMessages() = (%#v, %v, %v), want (%#v, true, nil)", got, found, err, wantPage)
+	}
+}
+
+func TestListSessionMessagesRejectsIncompleteIdentity(t *testing.T) {
+	host := New(Config{CanonicalStore: canonicalQueryStore{}})
+	for _, ref := range []SessionRef{{WorkspaceID: "workspace-1"}, {AgentSessionID: "session-1"}, {}} {
+		if _, _, err := host.ListSessionMessages(t.Context(), ref, SessionMessageQuery{}); !errors.Is(err, ErrInvalidArgument) {
+			t.Fatalf("ListSessionMessages(%#v) error = %v, want %v", ref, err, ErrInvalidArgument)
+		}
 	}
 }
 

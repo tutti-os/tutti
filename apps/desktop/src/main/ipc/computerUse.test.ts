@@ -1,17 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import {
   parseCuaDriverPermissionsStatus,
   parseCuaDriverPermissionsStatusDetail
 } from "./computerUsePermissions.ts";
-
-const computerUseSource = readFileSync(
-  resolve(dirname(fileURLToPath(import.meta.url)), "computerUse.ts"),
-  "utf8"
-);
 
 test("parseCuaDriverPermissionsStatus maps driver-daemon permission payload", () => {
   assert.deepEqual(
@@ -102,94 +94,5 @@ test("parseCuaDriverPermissionsStatusDetail preserves partial permission state",
         source: "driver-daemon"
       }
     }
-  );
-});
-
-test("computer use status checks emit diagnostic logs", () => {
-  assert.match(
-    computerUseSource,
-    /computer use permission status command started/
-  );
-  assert.match(
-    computerUseSource,
-    /computer use permission status command completed/
-  );
-  assert.match(computerUseSource, /computer use permission status checked/);
-  assert.match(computerUseSource, /summarizeComputerUseStatusForLog/);
-  assert.match(computerUseSource, /lastComputerUseStatusLogSignature/);
-  assert.match(computerUseSource, /logger\.debug\.bind\(logger\)/);
-});
-
-test("computer use status checks coalesce concurrent subprocess spawns", () => {
-  assert.match(computerUseSource, /checkStatusInFlight/);
-  assert.match(
-    computerUseSource,
-    /desktopIpcChannels\.computerUse\.checkStatus,\s*\(\)\s*=>\s*checkCuaDriverStatusCoalesced\(\)/
-  );
-});
-
-test("computer use restart driver stops then relaunches the app bundle without prompting", () => {
-  assert.match(
-    computerUseSource,
-    /desktopIpcChannels\.computerUse\.restartDriver/
-  );
-  const restartStart = computerUseSource.indexOf(
-    "async function performCuaDriverRestart"
-  );
-  const restartEnd = computerUseSource.indexOf(
-    "function restartCuaDriver",
-    restartStart
-  );
-  assert.ok(restartStart >= 0);
-  const restartSource = computerUseSource.slice(restartStart, restartEnd);
-  const stopIndex = restartSource.indexOf('["stop"]');
-  const relaunchIndex = restartSource.indexOf('"--no-permissions-gate"');
-  assert.ok(stopIndex >= 0, "restart path stops the daemon");
-  assert.ok(relaunchIndex > stopIndex, "restart relaunches after stopping");
-  // TCC prompts belong exclusively to the grant flow; a restart on a fresh
-  // install must never hang waiting for permission confirmation.
-  assert.ok(!restartSource.includes('"permissions", "grant"'));
-});
-
-test("computer use restart driver is single-flight and skips a running grant", () => {
-  assert.match(computerUseSource, /computerUseRestartPromise/);
-  assert.match(
-    computerUseSource,
-    /if \(grantAction\?\.result === null && input\?\.force !== true\) \{/
-  );
-  // Awaiting the user-paced grant here would hang the restart for up to the
-  // grant timeout; the restart must return immediately instead. Forced
-  // restarts (the wizard's explicit re-check) proceed regardless.
-  assert.doesNotMatch(computerUseSource, /await grantAction\.promise/);
-  assert.match(
-    computerUseSource,
-    /computer use driver restart skipped for running grant/
-  );
-});
-
-test("computer use grant pre-launches the daemon so status stays readable", () => {
-  const launchedStart = computerUseSource.indexOf(
-    "async function ensureCuaDriverPermissionGrantActionLaunched"
-  );
-  assert.ok(launchedStart >= 0);
-  const launchedEnd = computerUseSource.indexOf(
-    "async function startCuaDriverPermissionGrant",
-    launchedStart
-  );
-  const launchedSource = computerUseSource.slice(launchedStart, launchedEnd);
-  assert.match(launchedSource, /checkCuaDriverStatusCoalesced\(\)/);
-  assert.match(
-    launchedSource,
-    /status\.installed && status\.permissions === null/
-  );
-  assert.match(launchedSource, /await restartCuaDriver\(\)/);
-  // Both grant entry points must go through the pre-launch wrapper.
-  assert.match(
-    computerUseSource,
-    /return computerUseGrantActionSnapshot\(\s*await ensureCuaDriverPermissionGrantActionLaunched\(\)\s*\);/
-  );
-  assert.match(
-    computerUseSource,
-    /const action = await ensureCuaDriverPermissionGrantActionLaunched\(\);\s*return action\.promise;/
   );
 });

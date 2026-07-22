@@ -7,13 +7,11 @@ import {
   Gift,
   LogIn,
   LogOut,
-  ListTree,
   Settings,
   Wrench,
   X
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@tutti-os/ui-system";
-import { openWorkspaceSettingsPanel } from "../../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
 import { AccountMembershipBadge } from "../AccountMembershipBadge";
 import { AgentProbeUsageFreshness } from "../AgentProbeUsageFreshness";
 import { AgentUsageMeter } from "../AgentUsageMeter";
@@ -327,12 +325,14 @@ interface AgentGUIConfigMenuProps {
   providerScopedActionsVisible: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
+  slashStatusLimitsResolvedEmpty: boolean;
   slashStatusUsageCapturedAtUnixMs: number | null;
   slashStatusUsageDidFail: boolean;
   slashStatusUsageAttempted: boolean;
   provider?: string | null;
   providerAuthAccountLabel?: string | null;
   onAgentConfigMenuOpen?: () => void;
+  onAgentConfigMenuClose?: () => void;
   onAgentUsageRefresh?: () => void;
   onOpenAgentEnvSetup: () => void;
   onOpenAgentSettings: () => void;
@@ -345,12 +345,14 @@ export function AgentGUIConfigMenu({
   providerScopedActionsVisible,
   slashStatusLimits,
   slashStatusLimitsLoading,
+  slashStatusLimitsResolvedEmpty,
   slashStatusUsageCapturedAtUnixMs,
   slashStatusUsageDidFail,
   slashStatusUsageAttempted,
   provider,
   providerAuthAccountLabel,
   onAgentConfigMenuOpen,
+  onAgentConfigMenuClose,
   onAgentUsageRefresh,
   onOpenAgentEnvSetup,
   onOpenAgentSettings
@@ -369,6 +371,8 @@ export function AgentGUIConfigMenu({
         // something unrelated refreshes it.
         if (nextOpen) {
           onAgentConfigMenuOpen?.();
+        } else {
+          onAgentConfigMenuClose?.();
         }
       }}
     >
@@ -444,7 +448,9 @@ export function AgentGUIConfigMenu({
                         className="min-w-0 truncate text-[var(--text-tertiary)]"
                         data-testid="agent-gui-config-usage-unavailable"
                       >
-                        {labels.slashStatusLimitsUnavailable}
+                        {slashStatusLimitsResolvedEmpty
+                          ? labels.slashStatusEmptyValue
+                          : labels.slashStatusLimitsUnavailable}
                       </span>
                     ) : null}
                   </div>
@@ -487,27 +493,6 @@ export function AgentGUIConfigMenu({
             </>
           ) : null}
           <div className="flex min-w-0 flex-col gap-1">
-            <button
-              type="button"
-              data-testid="agent-gui-config-manage-agents"
-              className="nodrag flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
-              disabled={previewMode}
-              onClick={() => {
-                setOpen(false);
-                // Single management surface: the old sidebar-display dialog is
-                // superseded by the Agents settings tab (single source of truth
-                // for sidebar visibility + provider status). Carry the current
-                // provider so its row scrolls into view and highlights.
-                openWorkspaceSettingsPanel({
-                  section: "agent",
-                  pane: "agents",
-                  provider: provider ?? undefined
-                });
-              }}
-            >
-              <ListTree aria-hidden="true" size={16} strokeWidth={1.8} />
-              <span>{labels.manageAgents}</span>
-            </button>
             {providerScopedActionsVisible && environmentSetupVisible ? (
               <button
                 type="button"

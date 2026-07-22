@@ -53,6 +53,12 @@ type ComposerConfigOptionValue struct {
 	ReasoningEffort            string
 	ReasoningEfforts           []AgentModelReasoningEffortOption
 	ReasoningEffortsAdvertised bool
+	// Requested marks an entry that mirrors the requested/current selection
+	// instead of the provider catalog (warm-catalog append of the requested
+	// model, selected-model bootstrap echo). Clients keep such entries
+	// selectable but must not treat them as proof the provider can run the
+	// model — create validation runs against the raw catalog only.
+	Requested bool
 }
 
 type ComposerSettings = agenthost.ComposerSettings
@@ -249,11 +255,9 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		)
 	}
 	defaultModel := composerConfiguredDefaultModel(provider)
-	if planEndpoint != nil {
-		defaultModel = planEndpoint.Model
-	}
-	if catalogProjectionOK && catalogProjection.DefaultModel != "" {
-		defaultModel = catalogProjection.DefaultModel
+	if catalogProjectionOK && catalogProjection.Selection.Found {
+		settings.Model = strings.TrimSpace(catalogProjection.Selection.Model.ID)
+		defaultModel = settings.Model
 	}
 	effectiveSettings := resolveComposerEffectiveSettings(
 		provider,
@@ -283,13 +287,14 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		modelOptions = []ComposerConfigOptionValue{}
 	}
 	reasoningOptions := composerReasoningOptionValues(provider, effectiveSettings.ReasoningEffort, locale)
+	speedOptions := composerSpeedOptionValues(provider, locale)
 	capabilities := composerProviderCapabilities(provider, s.computerUseAvailable())
 	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
 		capabilities = nil
 	}
 	runtimeContext := map[string]any{
 		"capabilities":       capabilities,
-		"configOptions":      composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions),
+		"configOptions":      composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions, speedOptions),
 		"model":              nullableString(effectiveSettings.Model),
 		"modelConfiguration": modelPlanResolution.ModelConfiguration.runtimeContext(),
 		"permissionModeId":   nullableString(effectiveSettings.PermissionModeID),
@@ -360,22 +365,32 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 				catalogProjection.ReasoningProfiles,
 			)
 		}
-		if profile, advertised := catalogProjection.ReasoningProfiles[effectiveSettings.Model]; advertised {
+		selection := catalogProjection.Selection
+		if selection.ReasoningEffortsAdvertised {
 			effectiveSettings.ReasoningEffort = resolveAdvertisedReasoningEffort(
 				provider,
-				effectiveSettings.ReasoningEffort,
-				profile.DefaultReasoningEffort,
-				profile.ReasoningEfforts,
+				settings.ReasoningEffort,
+				selection.DefaultReasoningEffort,
+				selection.ReasoningEfforts,
 			)
 			reasoningOptions = composerAdvertisedReasoningOptionValues(
 				provider,
 				effectiveSettings.ReasoningEffort,
 				locale,
-				profile.ReasoningEfforts,
+				selection.ReasoningEfforts,
 			)
 			runtimeContext["reasoningEffort"] = nullableString(effectiveSettings.ReasoningEffort)
 		}
-		runtimeContext["configOptions"] = composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions)
+		if selection.SpeedsAdvertised {
+			effectiveSettings.Speed = resolveAdvertisedSpeed(
+				settings.Speed,
+				selection.DefaultSpeed,
+				selection.Speeds,
+			)
+			speedOptions = composerAdvertisedSpeedOptionValues(locale, selection.Speeds)
+			runtimeContext["speed"] = nullableString(effectiveSettings.Speed)
+		}
+		runtimeContext["configOptions"] = composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions, speedOptions)
 	}
 	options := ComposerOptions{
 		Provider:                provider,
@@ -385,7 +400,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		PermissionConfig:        permissionConfig,
 		ReasoningConfig:         composerReasoningConfigFromOptions(provider, effectiveSettings.ReasoningEffort, reasoningOptions),
 		ReasoningOptionsByModel: reasoningOptionsByModel,
-		SpeedConfig:             composerSpeedConfig(provider, effectiveSettings.Speed, locale),
+		SpeedConfig:             composerSpeedConfigFromOptions(provider, effectiveSettings.Speed, speedOptions),
 		EffectiveSettings:       effectiveSettings,
 		RuntimeContext:          runtimeContext,
 		Skills:                  skills,
@@ -483,10 +498,7 @@ func resolveComposerEffectiveSettings(
 // composerDefaultSpeed returns the default speed tier for providers that expose
 // the speed dimension; an empty string for providers that do not.
 func composerDefaultSpeed(provider string) string {
-	if speedProviderSupportsSpeed(provider) {
-		return speedTierStandard
-	}
-	return ""
+	return strings.TrimSpace(composerProfileFor(provider).DefaultSpeed)
 }
 
 func composerDefaultReasoningEffort(provider string) string {
@@ -543,6 +555,7 @@ func composerConfigOptions(
 	settings ComposerSettings,
 	modelOptions []ComposerConfigOptionValue,
 	reasoningOptions []ComposerConfigOptionValue,
+	speedOptions []ComposerConfigOptionValue,
 ) []map[string]any {
 	profile := composerProfileFor(provider)
 	if !profile.ModelSelection && !profile.ReasoningEffort && !profile.Speed {
@@ -568,7 +581,7 @@ func composerConfigOptions(
 			options = append(options, map[string]any{
 				"currentValue": nullableString(settings.ReasoningEffort),
 				"id":           reasoningConfigOptionID(provider),
-				"options":      composerReasoningOptionValuesToRuntimeOptions(reasoningOptions),
+				"options":      composerConfigOptionValuesToRuntimeOptions(reasoningOptions),
 			})
 		}
 	}
@@ -576,7 +589,7 @@ func composerConfigOptions(
 		options = append(options, map[string]any{
 			"currentValue": nullableString(settings.Speed),
 			"id":           speedConfigOptionID(provider),
-			"options":      speedTierOptions(provider),
+			"options":      composerConfigOptionValuesToRuntimeOptions(speedOptions),
 		})
 	}
 	return options
@@ -744,6 +757,7 @@ func composerModelConfig(provider string, selected string, options []ComposerCon
 			Value:              value,
 			Description:        strings.TrimSpace(option.Description),
 			SupportsImageInput: option.SupportsImageInput,
+			Requested:          option.Requested,
 		})
 	}
 	selected = strings.TrimSpace(selected)
@@ -760,17 +774,14 @@ func composerSelectedModelOptions(model string) []ComposerConfigOptionValue {
 	if model == "" {
 		return []ComposerConfigOptionValue{}
 	}
-	return []ComposerConfigOptionValue{{ID: model, Label: model, Value: model}}
+	// Bootstrap echo: the sole entry mirrors the requested/effective settings,
+	// so it carries the requested provenance marker.
+	return []ComposerConfigOptionValue{{ID: model, Label: model, Value: model, Requested: true}}
 }
 
 func reasoningConfigOptionID(provider string) string {
 	return strings.TrimSpace(composerProfileFor(provider).ReasoningConfigOptionID)
 }
-
-const (
-	speedTierStandard = "standard"
-	speedTierFast     = "fast"
-)
 
 // speedProviderSupportsSpeed reports whether the provider exposes the speed
 // dimension. Speed combines orthogonally with model and reasoning effort.
@@ -790,10 +801,7 @@ func speedConfigOptionID(provider string) string {
 }
 
 func speedTierValuesForProvider(provider string) []string {
-	if speedProviderSupportsSpeed(provider) {
-		return []string{speedTierStandard, speedTierFast}
-	}
-	return nil
+	return append([]string(nil), composerProfileFor(provider).SpeedValues...)
 }
 
 func normalizeSpeedForProvider(provider string, value string) string {
@@ -806,22 +814,10 @@ func normalizeSpeedForProvider(provider string, value string) string {
 			return normalized
 		}
 	}
-	return speedTierStandard
+	return strings.TrimSpace(composerProfileFor(provider).DefaultSpeed)
 }
 
-func speedTierOptions(provider string) []map[string]string {
-	values := speedTierValuesForProvider(provider)
-	options := make([]map[string]string, 0, len(values))
-	for _, value := range values {
-		options = append(options, map[string]string{
-			"name":  speedLabel(value, preferencesbiz.DefaultDesktopLocale),
-			"value": value,
-		})
-	}
-	return options
-}
-
-func composerSpeedConfig(provider string, selected string, locale string) ComposerConfigOption {
+func composerSpeedOptionValues(provider string, locale string) []ComposerConfigOptionValue {
 	values := speedTierValuesForProvider(provider)
 	options := make([]ComposerConfigOptionValue, 0, len(values))
 	for _, value := range values {
@@ -833,11 +829,62 @@ func composerSpeedConfig(provider string, selected string, locale string) Compos
 			Description: description,
 		})
 	}
-	selected = normalizeSpeedForProvider(provider, selected)
+	return options
+}
+
+func composerSpeedConfigFromOptions(provider string, selected string, options []ComposerConfigOptionValue) ComposerConfigOption {
+	selected = strings.TrimSpace(selected)
 	return ComposerConfigOption{
-		Configurable: speedProviderSupportsSpeed(provider),
+		Configurable: speedProviderSupportsSpeed(provider) && len(options) > 0,
 		CurrentValue: selected,
 		DefaultValue: selected,
-		Options:      options,
+		Options:      cloneComposerConfigOptionValues(options),
 	}
+}
+
+func composerAdvertisedSpeedOptionValues(locale string, advertised []AgentModelSpeedOption) []ComposerConfigOptionValue {
+	options := make([]ComposerConfigOptionValue, 0, len(advertised))
+	for _, advertisedOption := range advertised {
+		value := strings.TrimSpace(advertisedOption.Value)
+		if value == "" {
+			continue
+		}
+		label, description := speedDisplay(value, locale)
+		if advertisedLabel := strings.TrimSpace(advertisedOption.Label); advertisedLabel != "" {
+			label = advertisedLabel
+		}
+		if advertisedDescription := strings.TrimSpace(advertisedOption.Description); advertisedDescription != "" {
+			description = advertisedDescription
+		}
+		options = append(options, ComposerConfigOptionValue{
+			ID: value, Label: label, Value: value, Description: description,
+		})
+	}
+	return options
+}
+
+func resolveAdvertisedSpeed(selected string, advertisedDefault string, advertised []AgentModelSpeedOption) string {
+	selected = strings.TrimSpace(selected)
+	advertisedDefault = strings.TrimSpace(advertisedDefault)
+	firstValue := ""
+	defaultSupported := false
+	for _, option := range advertised {
+		value := strings.TrimSpace(option.Value)
+		if value == "" {
+			continue
+		}
+		if firstValue == "" {
+			firstValue = value
+		}
+		if value == selected {
+			return selected
+		}
+		if value == advertisedDefault {
+			defaultSupported = true
+		}
+	}
+	if defaultSupported {
+		return advertisedDefault
+	}
+	return firstValue
 }

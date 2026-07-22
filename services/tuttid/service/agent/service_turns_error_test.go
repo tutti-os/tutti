@@ -13,6 +13,7 @@ func TestCancelTurnPropagatesPersistedTurnReadFailure(t *testing.T) {
 	t.Parallel()
 	want := errors.New("turn store unavailable")
 	service := &Service{TurnStore: failingTurnStore{getTurnErr: want}}
+	configureTestApplicationHost(service)
 
 	_, err := service.CancelTurn(context.Background(), "workspace-1", "session-1", "turn-1")
 	if !errors.Is(err, want) {
@@ -112,6 +113,7 @@ func TestGetTurnReadsCanonicalTurnThroughHost(t *testing.T) {
 	t.Parallel()
 	want := agentactivitybiz.Turn{WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1"}
 	service := &Service{TurnStore: failingTurnStore{turn: want}}
+	configureTestApplicationHost(service)
 
 	got, found, err := service.GetTurn(context.Background(), "workspace-1", "session-1", "turn-1")
 	if err != nil || !found || got.TurnID != want.TurnID {
