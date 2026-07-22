@@ -142,7 +142,6 @@ export function useAgentGUIConversationRailViewState(
       recordScrollTop();
     }
     return () => {
-      recordScrollTop();
       viewport.removeEventListener("scroll", recordScrollTop);
     };
   }, [

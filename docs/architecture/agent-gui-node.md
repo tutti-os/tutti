@@ -308,6 +308,8 @@ When runtime sections are enabled, projection unions IDs from the current sectio
 
 Scroll, section collapse, visible limits, and search query belong to mounted view scope. Non-search state is isolated by `workspaceId + agentTargetId/all`; search creates a temporary navigation scope. `activeConversationId` expresses selection only. Scrolling requires an explicit reveal intent.
 
+Rail scroll memory is captured by scroll events and explicit navigation. Effect cleanup must not synchronously read `scrollTop`: React may already have dirtied the document, turning that read into a full layout inside the interaction task.
+
 Contain selection and presentation identity at the Rail boundary. Each section receives the active ID only when it owns the canonical or overlay row; unrelated sections receive `null` so their memoized props remain equal. Rail pane, section, and row receive a dedicated Rail-label projection whose identity changes for locale changes, not provider-specific detail copy. Event handlers shared by every section keep stable identities and read the current scope and lock state when invoked.
 
 Keep section header/action chrome independent from changing item collections. A memoized header receives scalar presentation fields and stable event-time actions; it must not receive the section object or rebuild project/session semantics. Split the header into narrow render islands. Frequently changing derived booleans such as project drag disabled, project action locked, and batch deletion disabled may cross the Section presentation boundary through separate primitive Context projections. The Rail pane owns those providers outside the memoized Section so a projection-only update does not execute item projection; only the frame, forwarded-ref button leaf, or open menu content that renders the value may consume it. Do not combine those values into one Context object or copy them into persistent state. Menu disclosure is view-local state: keep each Radix root and trigger mounted for focus and keyboard behavior, but instantiate portaled content only while that menu is open. A closed menu has no availability-state consumer. The project header remains the native drag source, each project section updates the insertion position across its full area, and the Rail scroll viewport owns the final drop so section gaps cannot discard an already visible insertion target. This is a presentation boundary, not a second Rail or lifecycle store; stable event-time guards remain authoritative for action delivery.
@@ -427,6 +429,10 @@ durable default only while that intent is unresolved. Entering the unscoped
 conversation section resolves the intent to no project, so remounting the hero
 composer or refreshing the project list cannot restore a previous project.
 
+The empty-home carousel may measure its placeholder synchronously when live
+alignment first activates. Later React updates coalesce alignment into the next
+animation frame; ResizeObserver and MutationObserver keep layout roots current.
+
 Composer text transactions may publish the current draft, but the draft value
 must not drive synchronous pre-paint geometry reads. The dock observes the
 actual editor, input area, and attachment containers; its initial and
@@ -490,6 +496,10 @@ client-local until the user explicitly saves them through the CRUD capability.
 AgentGUI, Message Center, dock/header, workspace window, and standalone Agent window consume the same workspace engine.
 
 Opening a panel/window creates presentation state only. It does not clone a Session, copy engine entities, or start another event stream. Standalone tools are Desktop chrome, not AgentGUI lifecycle.
+
+The shared Workbench Header owns conversation-identity visibility. When no
+Conversation exists, it ignores conversation titles, Agent titles, primary
+icons, and fallback icons even if a host supplies them.
 
 The reusable standalone-tool sidebar contract lives in `packages/agent/gui/workbench/tool-sidebar`. Hosts provide the supported panel catalog and render adapters; the shared component owns tab selection, picker, sizing, toolbar mechanics, and the boundary between draggable header space and interactive controls. Native Electron hosts keep the default native-window drag mode, while embedded Workbench hosts select host drag mode and provide their pointer and double-click handlers. The shared component disables native app-region handling in host mode so one header never has two competing drag owners.
 

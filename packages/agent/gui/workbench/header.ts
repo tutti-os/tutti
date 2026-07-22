@@ -130,17 +130,26 @@ export function AgentGuiWorkbenchHeader({
     ? copy.expandConversationRail
     : copy.collapseConversationRail;
   const appTitle = _title?.trim() || copy.fallbackAgentLabel;
-  const sessionTitle = hasBodyRenderError
-    ? ""
-    : conversationTitle?.trim() ||
-      (hasConversation ? copy.untitledConversation?.trim() : "") ||
-      "";
-  const sessionTitleDisplayPrompt = hasBodyRenderError
-    ? ""
-    : conversationTitleDisplayPrompt?.trim() || "";
-  const collapsedTitle = sessionTitle || agentTitle?.trim() || "";
-  const sessionIconUrl = conversationIconUrl?.trim() || "";
-  const sessionIconFallbackUrl = conversationIconFallbackUrl?.trim() || "";
+  // Conversation identity belongs to an actual or pending Session. Keep this
+  // invariant at the shared Header boundary so hosts may pass fallback
+  // presentation without recreating the empty-home visibility rule.
+  const sessionTitle =
+    !hasConversation || hasBodyRenderError
+      ? ""
+      : conversationTitle?.trim() || copy.untitledConversation?.trim() || "";
+  const sessionTitleDisplayPrompt =
+    !hasConversation || hasBodyRenderError
+      ? ""
+      : conversationTitleDisplayPrompt?.trim() || "";
+  const collapsedTitle = hasConversation
+    ? sessionTitle || agentTitle?.trim() || ""
+    : "";
+  const sessionIconUrl = hasConversation
+    ? conversationIconUrl?.trim() || ""
+    : "";
+  const sessionIconFallbackUrl = hasConversation
+    ? conversationIconFallbackUrl?.trim() || ""
+    : "";
   const hasExpandedIdentity = Boolean(
     collapsedTitle || sessionIconUrl || sessionIconFallbackUrl
   );

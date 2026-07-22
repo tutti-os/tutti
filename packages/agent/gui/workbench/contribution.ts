@@ -294,15 +294,10 @@ export function createAgentGuiWorkbenchContribution(
             : (conversationIdentity?.title ??
               input.resolveDockPopupTitle?.(workbenchState) ??
               null);
-          // The empty new-conversation home has no session identity, so it
-          // must not inherit the provider icon from the workbench instance.
-          // Once a local session id exists, keep the provider icon available
-          // while the canonical conversation title is still being persisted.
           const hasConversation = Boolean(
             workbenchState.lastActiveAgentSessionId?.trim()
           );
-          const conversationIconFallbackUrl =
-            hasConversation && selectedAgent ? selectedAgent.iconUrl : null;
+          const conversationIconFallbackUrl = selectedAgent?.iconUrl ?? null;
           const conversationIconUrl =
             conversationIdentity?.iconUrl ?? conversationIconFallbackUrl;
           const persistConversationRailCollapsed = (collapsed: boolean) => {
