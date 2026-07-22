@@ -345,7 +345,7 @@ test("desktop issue-manager file adapter reads image and text previews", async (
   assert.deepEqual(textPreview, {
     bytes: new TextEncoder().encode("hello"),
     contentType: "text/plain;charset=utf-8",
-    kind: "text"
+    kind: "markdown"
   });
   assert.equal(unsupportedPreview, null);
   assert.equal(terminalPreview, null);

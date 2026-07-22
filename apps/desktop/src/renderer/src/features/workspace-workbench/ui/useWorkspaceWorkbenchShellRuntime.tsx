@@ -44,7 +44,10 @@ import type {
 import type { DesktopThemeAppearance } from "@shared/theme";
 import { createWorkspaceFilePreviewLaunchRequest } from "../services/workspaceFilePreviewLaunch";
 import { requestWorkspaceFilesLaunch } from "../services/workspaceFilesLaunchCoordinator";
-import { classifyWorkspaceFilePreviewKind } from "@tutti-os/workspace-file-preview";
+import {
+  classifyWorkspaceFilePreviewKind,
+  resolveWorkspaceFileBuiltinRenderKind
+} from "@tutti-os/workspace-file-preview";
 import type { WorkbenchSurfaceWallpaperFit } from "@tutti-os/workbench-surface";
 import type { DesktopWorkbenchWindowSnapping } from "@shared/preferences";
 import type {
@@ -280,12 +283,15 @@ export function useWorkspaceWorkbenchShellRuntime({
         return;
       }
 
-      const fileKind = classifyWorkspaceFilePreviewKind({
+      const previewKind = classifyWorkspaceFilePreviewKind({
         kind: "file",
         name: request.name,
         path: request.absolutePath
       });
-      if (!fileKind || request.mode === "auto") {
+      if (
+        resolveWorkspaceFileBuiltinRenderKind(previewKind) === null ||
+        request.mode === "auto"
+      ) {
         void requestWorkspaceFilesLaunch({
           homeDirectory: workbenchHostService.getHomeDirectory(),
           path: request.absolutePath,
@@ -296,7 +302,7 @@ export function useWorkspaceWorkbenchShellRuntime({
 
       void host.launchNode(
         createWorkspaceFilePreviewLaunchRequest({
-          fileKind,
+          previewKind,
           mtimeMs: request.mtimeMs,
           name: request.name,
           path: request.absolutePath,

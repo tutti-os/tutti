@@ -1,20 +1,96 @@
+/**
+ * Thin built-in preview surface (image / video / text) plus host renderer hooks.
+ *
+ * Resolve order: host renderer for previewKind → built-in text degradation →
+ * unsupported/fallback messaging already present in state.
+ *
+ * Ownership rules: packages/workspace/file-preview/CONTRACT.md
+ */
+
 import type { ReactElement, ReactNode } from "react";
+import type { WorkspaceFilePreviewKind } from "../core/workspaceFilePreviewKinds.ts";
 
 export type WorkspaceFilePreviewSurfaceState<TEntry> =
   | { status: "empty" }
   | { entry: TEntry; status: "directory" }
-  | { entry: TEntry; status: "loading" }
-  | { content: string; entry: TEntry; status: "text" }
-  | { entry: TEntry; objectUrl: string; status: "image" }
-  | { entry: TEntry; objectUrl: string; status: "video" }
-  | { entry: TEntry; message: string; status: "readonly" }
-  | { entry: TEntry; message: string; status: "unsupported" }
-  | { entry: TEntry; message: string; status: "error" };
+  | {
+      entry: TEntry;
+      previewKind?: WorkspaceFilePreviewKind;
+      status: "loading";
+    }
+  | {
+      content: string;
+      entry: TEntry;
+      previewKind: WorkspaceFilePreviewKind;
+      status: "text";
+    }
+  | {
+      entry: TEntry;
+      objectUrl: string;
+      previewKind: "image";
+      status: "image";
+    }
+  | {
+      entry: TEntry;
+      objectUrl: string;
+      previewKind: "video";
+      status: "video";
+    }
+  | {
+      bytes: Uint8Array<ArrayBuffer>;
+      contentType: string | null;
+      entry: TEntry;
+      previewKind: WorkspaceFilePreviewKind;
+      status: "bytes";
+    }
+  | {
+      entry: TEntry;
+      message: string;
+      previewKind?: WorkspaceFilePreviewKind;
+      status: "readonly";
+    }
+  | {
+      entry: TEntry;
+      message: string;
+      previewKind?: WorkspaceFilePreviewKind;
+      status: "unsupported";
+    }
+  | {
+      entry: TEntry;
+      message: string;
+      previewKind?: WorkspaceFilePreviewKind;
+      status: "error";
+    };
 
 export type WorkspaceFilePreviewSurfaceVariant =
   | "canvas"
   | "compact"
   | "detail";
+
+export interface WorkspaceFilePreviewHostRendererProps<TEntry> {
+  entry: TEntry;
+  previewKind: WorkspaceFilePreviewKind;
+  variant: WorkspaceFilePreviewSurfaceVariant;
+  /** Present when the controller decoded text (including text-degradable kinds). */
+  content?: string;
+  /** Present for hook-only kinds loaded as raw bytes. */
+  bytes?: Uint8Array<ArrayBuffer>;
+  contentType?: string | null;
+  /** Present for built-in media kinds when a host still overrides rendering. */
+  objectUrl?: string;
+}
+
+export type WorkspaceFilePreviewHostRenderer<TEntry> = (
+  props: WorkspaceFilePreviewHostRendererProps<TEntry>
+) => ReactNode;
+
+/**
+ * Host renderer registry keyed by previewKind. `variant` is passed as props;
+ * optional (kind, variant) specificity may be added later.
+ */
+export type WorkspaceFilePreviewHostRenderers<TEntry> = Partial<
+  Record<WorkspaceFilePreviewKind, WorkspaceFilePreviewHostRenderer<TEntry>>
+>;
 
 export interface WorkspaceFilePreviewSurfaceProps<TEntry> {
   directoryMessage: string;
@@ -22,6 +98,11 @@ export interface WorkspaceFilePreviewSurfaceProps<TEntry> {
   imageAlt: (entry: TEntry) => string;
   loadingIndicator: ReactNode;
   loadingMessage: string;
+  /**
+   * Optional host renderers registered by previewKind. When present for the
+   * current kind, they win over built-in image / video / text shells.
+   */
+  renderers?: WorkspaceFilePreviewHostRenderers<TEntry>;
   renderIcon: (entry: TEntry) => ReactNode;
   state: WorkspaceFilePreviewSurfaceState<TEntry>;
   variant: WorkspaceFilePreviewSurfaceVariant;
@@ -33,11 +114,25 @@ export function WorkspaceFilePreviewSurface<TEntry>({
   imageAlt,
   loadingIndicator,
   loadingMessage,
+  renderers,
   renderIcon,
   state,
   variant
 }: WorkspaceFilePreviewSurfaceProps<TEntry>): ReactElement {
   const styles = workspaceFilePreviewSurfaceStyles[variant];
+  const hostRendered = renderHostPreview({
+    renderers,
+    state,
+    variant
+  });
+  if (hostRendered !== null) {
+    return (
+      <WorkspaceFilePreviewFrame className={styles.frame}>
+        {hostRendered}
+      </WorkspaceFilePreviewFrame>
+    );
+  }
+
   switch (state.status) {
     case "directory":
       return (
@@ -98,6 +193,18 @@ export function WorkspaceFilePreviewSurface<TEntry>({
           />
         </WorkspaceFilePreviewFrame>
       );
+    case "bytes":
+      // Hook-only kinds without a registered renderer fall through to the
+      // unsupported messaging path via host-projected state; if bytes somehow
+      // arrive without a hook, show the generic unsupported shell.
+      return (
+        <WorkspaceFilePreviewFrame className={styles.frame}>
+          <div className="flex flex-col items-center justify-center gap-3 px-4 text-center text-[13px] text-[var(--text-tertiary)]">
+            {renderIcon(state.entry)}
+            <span className={styles.message}>{emptyMessage}</span>
+          </div>
+        </WorkspaceFilePreviewFrame>
+      );
     case "readonly":
     case "unsupported":
     case "error":
@@ -115,6 +222,57 @@ export function WorkspaceFilePreviewSurface<TEntry>({
           <span className={styles.message}>{emptyMessage}</span>
         </WorkspaceFilePreviewFrame>
       );
+  }
+}
+
+function renderHostPreview<TEntry>(input: {
+  renderers: WorkspaceFilePreviewHostRenderers<TEntry> | undefined;
+  state: WorkspaceFilePreviewSurfaceState<TEntry>;
+  variant: WorkspaceFilePreviewSurfaceVariant;
+}): ReactNode | null {
+  const { renderers, state, variant } = input;
+  if (!renderers) {
+    return null;
+  }
+
+  switch (state.status) {
+    case "text": {
+      const renderer = renderers[state.previewKind];
+      return renderer
+        ? renderer({
+            content: state.content,
+            entry: state.entry,
+            previewKind: state.previewKind,
+            variant
+          })
+        : null;
+    }
+    case "image":
+    case "video": {
+      const renderer = renderers[state.previewKind];
+      return renderer
+        ? renderer({
+            entry: state.entry,
+            objectUrl: state.objectUrl,
+            previewKind: state.previewKind,
+            variant
+          })
+        : null;
+    }
+    case "bytes": {
+      const renderer = renderers[state.previewKind];
+      return renderer
+        ? renderer({
+            bytes: state.bytes,
+            contentType: state.contentType,
+            entry: state.entry,
+            previewKind: state.previewKind,
+            variant
+          })
+        : null;
+    }
+    default:
+      return null;
   }
 }
 

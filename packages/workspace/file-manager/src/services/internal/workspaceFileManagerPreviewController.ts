@@ -41,8 +41,13 @@ export class WorkspaceFileManagerPreviewController {
     this.store = input.store;
     this.previewController = createWorkspaceFilePreviewController({
       read: input.host.readPreviewFile
-        ? ({ entry }) =>
-            input.host.readPreviewFile!(input.store.workspaceID, entry.path)
+        ? async ({ entry }) => {
+            const bytes = await input.host.readPreviewFile!(
+              input.store.workspaceID,
+              entry.path
+            );
+            return bytes == null ? null : { bytes };
+          }
         : undefined,
       toPreviewEntry: (entry: WorkspaceFileEntry) => entry
     });
@@ -90,18 +95,47 @@ export class WorkspaceFileManagerPreviewController {
           };
           return;
         }
-        this.store.previewState =
-          state.status === "loading"
-            ? { entry: target, status: "loading" }
-            : state.status === "text"
-              ? { content: state.content, entry: target, status: "text" }
-              : {
-                  entry: target,
-                  objectUrl: state.objectUrl,
-                  status: state.status
-                };
+        if (state.status === "loading") {
+          this.store.previewState = {
+            entry: target,
+            previewKind: state.previewKind,
+            status: "loading"
+          };
+          return;
+        }
+        if (state.status === "text") {
+          this.store.previewState = {
+            content: state.content,
+            entry: target,
+            previewKind: state.previewKind,
+            status: "text"
+          };
+          return;
+        }
+        if (state.status === "image") {
+          this.store.previewState = {
+            entry: target,
+            objectUrl: state.objectUrl,
+            previewKind: "image",
+            status: "image"
+          };
+          return;
+        }
+        this.store.previewState = {
+          entry: target,
+          objectUrl: state.objectUrl,
+          previewKind: "video",
+          status: "video"
+        };
         return;
       }
+      case "bytes":
+        this.store.previewState = {
+          entry: state.entry,
+          message: copy.t("previewUnsupported"),
+          status: "unsupported"
+        };
+        return;
       case "readonly":
         this.store.previewState = {
           entry: state.entry,

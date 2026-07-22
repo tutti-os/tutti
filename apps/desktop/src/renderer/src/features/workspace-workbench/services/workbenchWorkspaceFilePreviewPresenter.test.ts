@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { WorkbenchHostHandle } from "@tutti-os/workbench-surface";
-import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
+import type { WorkspaceFilePreviewTarget } from "@tutti-os/workspace-file-preview";
 import { createWorkspaceFilePreviewLaunchRequest } from "./workspaceFilePreviewLaunch.ts";
 import { createWorkbenchWorkspaceFilePreviewPresenter } from "./workbenchWorkspaceFilePreviewPresenter.ts";
 
-const target: WorkspaceFilePreviewActivationTarget = {
-  fileKind: "image",
+const target: WorkspaceFilePreviewTarget = {
+  previewKind: "image",
   mtimeMs: 1,
   name: "cover.png",
   path: "/workspace/cover.png",

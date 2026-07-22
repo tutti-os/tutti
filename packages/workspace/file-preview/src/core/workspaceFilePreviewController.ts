@@ -1,10 +1,17 @@
+/**
+ * Shared preview loading lifecycle.
+ *
+ * Ownership rules: packages/workspace/file-preview/CONTRACT.md
+ */
+
 import {
   createWorkspaceFilePreviewLoadedState,
+  resolveWorkspaceFileBuiltinRenderKind,
   resolveWorkspaceFilePreviewReadiness,
-  type WorkspaceFilePreviewActivationTarget,
   type WorkspaceFilePreviewEntry,
   type WorkspaceFilePreviewKind,
-  type WorkspaceFilePreviewReadonlyReason
+  type WorkspaceFilePreviewReadonlyReason,
+  type WorkspaceFilePreviewTarget
 } from "./workspaceFilePreview.ts";
 
 export type WorkspaceFilePreviewUnsupportedReason =
@@ -14,55 +21,77 @@ export type WorkspaceFilePreviewUnsupportedReason =
 export type WorkspaceFilePreviewControllerState<TEntry> =
   | { status: "empty" }
   | { entry: TEntry; status: "directory" }
-  | { entry: TEntry; status: "loading" }
+  | {
+      entry: TEntry;
+      previewKind: WorkspaceFilePreviewKind;
+      status: "loading";
+    }
   | {
       content: string;
       entry: TEntry;
+      previewKind: WorkspaceFilePreviewKind;
       previewSizeBytes: number;
       status: "text";
     }
   | {
       entry: TEntry;
       objectUrl: string;
+      previewKind: "image";
       previewSizeBytes: number;
       status: "image";
     }
   | {
       entry: TEntry;
       objectUrl: string;
+      previewKind: "video";
       previewSizeBytes: number;
       status: "video";
     }
   | {
+      bytes: Uint8Array<ArrayBuffer>;
+      contentType: string | null;
+      entry: TEntry;
+      previewKind: WorkspaceFilePreviewKind;
+      previewSizeBytes: number;
+      status: "bytes";
+    }
+  | {
       entry: TEntry;
       maxSizeBytes?: number;
+      previewKind?: WorkspaceFilePreviewKind;
       previewSizeBytes?: number;
       reason: WorkspaceFilePreviewReadonlyReason;
       status: "readonly";
     }
   | {
       entry: TEntry;
+      previewKind?: WorkspaceFilePreviewKind;
       reason: WorkspaceFilePreviewUnsupportedReason;
       status: "unsupported";
     }
-  | { entry: TEntry; error: unknown; status: "error" };
+  | {
+      entry: TEntry;
+      error: unknown;
+      previewKind?: WorkspaceFilePreviewKind;
+      status: "error";
+    };
 
 export interface WorkspaceFilePreviewReadInput<TEntry> {
   entry: TEntry;
   signal: AbortSignal;
-  target: WorkspaceFilePreviewActivationTarget;
+  target: WorkspaceFilePreviewTarget;
 }
 
+/**
+ * Host read result. Bare Uint8Array / ArrayBuffer are intentionally not
+ * accepted; wrap bytes in this object shape.
+ */
 export interface WorkspaceFilePreviewReadResult {
   bytes: Uint8Array | ArrayBuffer;
   contentType?: string | null;
+  /** Optional host override of the classified preview kind. */
   kind?: WorkspaceFilePreviewKind;
 }
-
-export type WorkspaceFilePreviewReadOutput =
-  | WorkspaceFilePreviewReadResult
-  | Uint8Array
-  | ArrayBuffer;
 
 export interface WorkspaceFilePreviewObjectUrlFactory {
   create(bytes: Uint8Array<ArrayBuffer>, contentType: string): string;
@@ -77,10 +106,16 @@ export interface CreateWorkspaceFilePreviewControllerInput<TEntry> {
    */
   canReadEntry?: (entry: TEntry) => boolean;
   getEntryKey?: (entry: TEntry) => string;
+  /**
+   * Host renderer registry probe used by readiness / load planning. Returning
+   * true for a kind keeps hook-only kinds presentable and can prefer raw bytes
+   * for text-degradable kinds that the host wants to render itself.
+   */
+  hasHostRenderer?: (kind: WorkspaceFilePreviewKind) => boolean;
   objectUrls?: WorkspaceFilePreviewObjectUrlFactory;
   read?: (
     input: WorkspaceFilePreviewReadInput<TEntry>
-  ) => Promise<WorkspaceFilePreviewReadOutput | null>;
+  ) => Promise<WorkspaceFilePreviewReadResult | null>;
   toPreviewEntry: (entry: TEntry) => WorkspaceFilePreviewEntry;
 }
 
@@ -186,7 +221,7 @@ class WorkspaceFilePreviewControllerImpl<
   private async load(
     entry: TEntry,
     previewEntry: WorkspaceFilePreviewEntry,
-    target: WorkspaceFilePreviewActivationTarget,
+    target: WorkspaceFilePreviewTarget,
     generation: number,
     abortController: AbortController
   ): Promise<void> {
@@ -202,32 +237,35 @@ class WorkspaceFilePreviewControllerImpl<
       if (!result) {
         this.updateState({
           entry,
+          previewKind: target.previewKind,
           reason: "file_type",
           status: "unsupported"
         });
         return;
       }
 
+      const resolvedKind = result.kind ?? target.previewKind;
+      const resolvedTarget: WorkspaceFilePreviewTarget = {
+        ...target,
+        previewKind: resolvedKind
+      };
+      // Hook-only kinds keep raw bytes for the host renderer. Text-degradable
+      // kinds still decode to text; the surface may then prefer a host hook.
+      const preferHostBytes =
+        resolveWorkspaceFileBuiltinRenderKind(resolvedKind) === null;
+
       const loaded = createWorkspaceFilePreviewLoadedState({
-        bytes:
-          result instanceof Uint8Array || result instanceof ArrayBuffer
-            ? result
-            : result.bytes,
-        contentType:
-          result instanceof Uint8Array || result instanceof ArrayBuffer
-            ? undefined
-            : result.contentType,
+        bytes: result.bytes,
+        contentType: result.contentType,
         entry: previewEntry,
-        target:
-          result instanceof Uint8Array || result instanceof ArrayBuffer
-            ? target
-            : { ...target, fileKind: result.kind ?? target.fileKind }
+        preferHostBytes,
+        target: resolvedTarget
       });
       if (this.isStale(generation)) {
         return;
       }
 
-      if (loaded.status === "image" || loaded.status === "video") {
+      if (loaded.status === "image") {
         const previewSizeBytes = loaded.bytes.byteLength;
         const objectUrl = this.objectUrls.create(
           loaded.bytes,
@@ -241,8 +279,29 @@ class WorkspaceFilePreviewControllerImpl<
         this.updateState({
           entry,
           objectUrl,
+          previewKind: "image",
           previewSizeBytes,
-          status: loaded.status
+          status: "image"
+        });
+        return;
+      }
+      if (loaded.status === "video") {
+        const previewSizeBytes = loaded.bytes.byteLength;
+        const objectUrl = this.objectUrls.create(
+          loaded.bytes,
+          loaded.contentType
+        );
+        if (this.isStale(generation)) {
+          this.objectUrls.revoke(objectUrl);
+          return;
+        }
+        this.objectUrl = objectUrl;
+        this.updateState({
+          entry,
+          objectUrl,
+          previewKind: "video",
+          previewSizeBytes,
+          status: "video"
         });
         return;
       }
@@ -250,14 +309,27 @@ class WorkspaceFilePreviewControllerImpl<
         this.updateState({
           content: loaded.content,
           entry,
-          previewSizeBytes: byteLengthOfPreviewReadResult(result),
+          previewKind: loaded.previewKind,
+          previewSizeBytes: result.bytes.byteLength,
           status: "text"
+        });
+        return;
+      }
+      if (loaded.status === "bytes") {
+        this.updateState({
+          bytes: loaded.bytes,
+          contentType: loaded.contentType,
+          entry,
+          previewKind: loaded.previewKind,
+          previewSizeBytes: loaded.bytes.byteLength,
+          status: "bytes"
         });
         return;
       }
       this.updateState({
         entry,
-        previewSizeBytes: byteLengthOfPreviewReadResult(result),
+        previewKind: target.previewKind,
+        previewSizeBytes: result.bytes.byteLength,
         reason: loaded.reason,
         ...(loaded.maxSizeBytes === undefined
           ? {}
@@ -268,7 +340,12 @@ class WorkspaceFilePreviewControllerImpl<
       if (this.isStale(generation)) {
         return;
       }
-      this.updateState({ entry, error, status: "error" });
+      this.updateState({
+        entry,
+        error,
+        previewKind: target.previewKind,
+        status: "error"
+      });
     } finally {
       if (!this.isStale(generation)) {
         this.abortController = null;
@@ -285,7 +362,6 @@ class WorkspaceFilePreviewControllerImpl<
       previewEntry.kind,
       previewEntry.path,
       previewEntry.name ?? "",
-      previewEntry.displayName ?? "",
       previewEntry.sizeBytes ?? "",
       previewEntry.mtimeMs ?? ""
     ].join("\0");
@@ -304,7 +380,9 @@ class WorkspaceFilePreviewControllerImpl<
     this.revokeObjectUrl();
 
     const previewEntry = this.input.toPreviewEntry(entry);
-    const readiness = resolveWorkspaceFilePreviewReadiness(previewEntry);
+    const readiness = resolveWorkspaceFilePreviewReadiness(previewEntry, {
+      hasHostRenderer: this.input.hasHostRenderer
+    });
 
     if (readiness.status === "directory") {
       this.updateState({ entry, status: "directory" });
@@ -327,6 +405,7 @@ class WorkspaceFilePreviewControllerImpl<
       if (canRead !== true) {
         this.updateState({
           entry,
+          previewKind: readiness.previewKind,
           reason: "file_type",
           status: "unsupported"
         });
@@ -336,17 +415,18 @@ class WorkspaceFilePreviewControllerImpl<
       if (!this.input.read) {
         this.updateState({
           entry,
+          previewKind: readiness.previewKind,
           reason: "reader_unavailable",
           status: "unsupported"
         });
         this.loadPromise = Promise.resolve();
         return this.loadPromise;
       }
-      const target: WorkspaceFilePreviewActivationTarget = {
-        fileKind: "text",
+      // Source claimed it can classify/read locally unsupported files as text.
+      const target: WorkspaceFilePreviewTarget = {
+        previewKind: "text",
         name:
           previewEntry.name ??
-          previewEntry.displayName ??
           previewEntry.path.split("/").pop() ??
           previewEntry.path,
         path: previewEntry.path,
@@ -357,18 +437,7 @@ class WorkspaceFilePreviewControllerImpl<
           ? {}
           : { sizeBytes: previewEntry.sizeBytes })
       };
-      const abortController = new AbortController();
-      this.abortController = abortController;
-      const generation = this.generation;
-      this.updateState({ entry, status: "loading" });
-      this.loadPromise = this.load(
-        entry,
-        previewEntry,
-        target,
-        generation,
-        abortController
-      );
-      return this.loadPromise;
+      return this.beginLoad(entry, previewEntry, target);
     }
 
     if (readiness.status === "readonly") {
@@ -385,6 +454,7 @@ class WorkspaceFilePreviewControllerImpl<
     if (!this.input.read) {
       this.updateState({
         entry,
+        previewKind: readiness.target.previewKind,
         reason: "reader_unavailable",
         status: "unsupported"
       });
@@ -392,14 +462,26 @@ class WorkspaceFilePreviewControllerImpl<
       return this.loadPromise;
     }
 
+    return this.beginLoad(entry, previewEntry, readiness.target);
+  }
+
+  private beginLoad(
+    entry: TEntry,
+    previewEntry: WorkspaceFilePreviewEntry,
+    target: WorkspaceFilePreviewTarget
+  ): Promise<void> {
     const abortController = new AbortController();
     this.abortController = abortController;
     const generation = this.generation;
-    this.updateState({ entry, status: "loading" });
+    this.updateState({
+      entry,
+      previewKind: target.previewKind,
+      status: "loading"
+    });
     this.loadPromise = this.load(
       entry,
       previewEntry,
-      readiness.target,
+      target,
       generation,
       abortController
     );
@@ -428,13 +510,3 @@ const browserWorkspaceFilePreviewObjectUrls: WorkspaceFilePreviewObjectUrlFactor
       URL.revokeObjectURL(objectUrl);
     }
   };
-
-function byteLengthOfPreviewReadResult(
-  result: WorkspaceFilePreviewReadOutput
-): number {
-  const bytes =
-    result instanceof Uint8Array || result instanceof ArrayBuffer
-      ? result
-      : result.bytes;
-  return bytes.byteLength;
-}

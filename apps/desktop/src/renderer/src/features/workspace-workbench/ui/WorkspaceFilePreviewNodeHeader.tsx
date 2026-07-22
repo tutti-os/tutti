@@ -1,4 +1,5 @@
 import type { PointerEvent } from "react";
+import { isTextDegradablePreviewKind } from "@tutti-os/workspace-file-preview";
 import { Button, LoadingIcon, StatusDot } from "@tutti-os/ui-system";
 import type { WorkbenchHostNodeHeaderContext } from "@tutti-os/workbench-surface";
 import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
@@ -23,9 +24,12 @@ export function WorkspaceFilePreviewNodeHeader({
   const textHeaderState = resolveWorkspaceFilePreviewTextHeaderState(
     context.node.data
   );
+  // Video shares the text workbench node typeId; only text-degradable kinds
+  // publish textHeader / save chrome.
   const shouldShowTextAccessory =
     context.node.data.typeId === workspaceTextFileNodeTypeID &&
-    file?.fileKind === "text";
+    file !== null &&
+    isTextDegradablePreviewKind(file.previewKind);
 
   const onDragPointerDown = (event: PointerEvent<HTMLElement>): void => {
     context.dragHandleProps.onPointerDown?.(event);

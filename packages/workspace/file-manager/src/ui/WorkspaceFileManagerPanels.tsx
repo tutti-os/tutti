@@ -1628,9 +1628,9 @@ function resolveWorkspaceFilePreviewIconKind(
   if ("kind" in entry) {
     return resolveWorkspaceFileVisualKind(entry);
   }
-  return entry.fileKind === "image"
+  return entry.previewKind === "image"
     ? "image"
-    : entry.fileKind === "video"
+    : entry.previewKind === "video"
       ? "video"
       : "document";
 }

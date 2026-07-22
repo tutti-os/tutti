@@ -6,15 +6,14 @@ import {
   decodeWorkspaceTextFile,
   formatWorkspacePreviewByteLimit,
   looksLikeBinaryText,
-  isWorkspaceFileBrowserOpenable,
-  shouldFilterVideoPlayersForOpenWith,
-  resolveWorkspaceFileActivationTarget,
+  resolveWorkspaceFileBuiltinRenderKind,
+  resolveWorkspaceFilePreviewTarget,
   resolveWorkspaceFilePreviewReadiness,
   resolveWorkspaceFileVisualKind,
   resolveWorkspaceImageMimeType
 } from "./workspaceFilePreview.ts";
 
-test("workspace file preview classifies previewable files", () => {
+test("workspace file preview classifies the flat previewKind taxonomy", () => {
   assert.equal(
     classifyWorkspaceFilePreviewKind({
       kind: "file",
@@ -40,29 +39,71 @@ test("workspace file preview classifies previewable files", () => {
   assert.equal(
     classifyWorkspaceFilePreviewKind({
       kind: "file",
-      path: "/workspace/demo.webm"
+      path: "/workspace/guide.md"
     }),
-    "video"
+    "markdown"
+  );
+  assert.equal(
+    classifyWorkspaceFilePreviewKind({
+      kind: "file",
+      path: "/workspace/app.ts"
+    }),
+    "code"
+  );
+  assert.equal(
+    classifyWorkspaceFilePreviewKind({
+      kind: "file",
+      path: "/workspace/data.json"
+    }),
+    "json"
+  );
+  assert.equal(
+    classifyWorkspaceFilePreviewKind({
+      kind: "file",
+      path: "/workspace/index.html"
+    }),
+    "html"
+  );
+  assert.equal(
+    classifyWorkspaceFilePreviewKind({
+      kind: "file",
+      path: "/workspace/track.mp3"
+    }),
+    "audio"
+  );
+  assert.equal(
+    classifyWorkspaceFilePreviewKind({
+      kind: "file",
+      path: "/workspace/report.pdf"
+    }),
+    "pdf"
+  );
+  assert.equal(
+    classifyWorkspaceFilePreviewKind({
+      kind: "directory",
+      path: "/workspace/docs"
+    }),
+    "directory"
   );
   assert.equal(
     classifyWorkspaceFilePreviewKind({
       kind: "folder",
       path: "/workspace/docs"
     }),
-    null
+    "directory"
   );
   assert.equal(
     classifyWorkspaceFilePreviewKind({
       kind: "file",
       path: "/workspace/archive.zip"
     }),
-    null
+    "unsupported"
   );
 });
 
-test("workspace file preview resolves activation targets and display kinds", () => {
+test("workspace file preview resolves builtin-presentable targets", () => {
   assert.deepEqual(
-    resolveWorkspaceFileActivationTarget({
+    resolveWorkspaceFilePreviewTarget({
       kind: "file",
       mtimeMs: 1,
       name: "guide.md",
@@ -70,13 +111,22 @@ test("workspace file preview resolves activation targets and display kinds", () 
       sizeBytes: 32
     }),
     {
-      fileKind: "text",
+      previewKind: "markdown",
       mtimeMs: 1,
       name: "guide.md",
       path: "/workspace/guide.md",
       sizeBytes: 32
     }
   );
+  assert.equal(
+    resolveWorkspaceFilePreviewTarget({
+      kind: "file",
+      path: "/workspace/report.pdf"
+    }),
+    null
+  );
+  assert.equal(resolveWorkspaceFileBuiltinRenderKind("markdown"), "text");
+  assert.equal(resolveWorkspaceFileBuiltinRenderKind("pdf"), null);
   assert.equal(
     resolveWorkspaceFileVisualKind({
       kind: "directory",
@@ -109,7 +159,7 @@ test("workspace file preview creates loaded image, video, text, and readonly sta
       bytes: new Uint8Array([0x89, 0x50]),
       entry: { kind: "file", path: "/workspace/image.png" },
       target: {
-        fileKind: "image",
+        previewKind: "image",
         name: "image.png",
         path: "/workspace/image.png"
       }
@@ -118,10 +168,11 @@ test("workspace file preview creates loaded image, video, text, and readonly sta
       bytes: new Uint8Array([0x89, 0x50]),
       contentType: "image/png",
       entry: {
-        fileKind: "image",
+        previewKind: "image",
         name: "image.png",
         path: "/workspace/image.png"
       },
+      previewKind: "image",
       status: "image"
     }
   );
@@ -132,7 +183,7 @@ test("workspace file preview creates loaded image, video, text, and readonly sta
       contentType: "video/mp4",
       entry: { kind: "file", path: "/workspace/demo.mp4" },
       target: {
-        fileKind: "video",
+        previewKind: "video",
         name: "demo.mp4",
         path: "/workspace/demo.mp4"
       }
@@ -141,10 +192,11 @@ test("workspace file preview creates loaded image, video, text, and readonly sta
       bytes: new Uint8Array([0x00, 0x00, 0x00, 0x18]),
       contentType: "video/mp4",
       entry: {
-        fileKind: "video",
+        previewKind: "video",
         name: "demo.mp4",
         path: "/workspace/demo.mp4"
       },
+      previewKind: "video",
       status: "video"
     }
   );
@@ -154,7 +206,7 @@ test("workspace file preview creates loaded image, video, text, and readonly sta
       bytes: new TextEncoder().encode("hello"),
       entry: { kind: "file", path: "/workspace/readme.md" },
       target: {
-        fileKind: "text",
+        previewKind: "markdown",
         name: "readme.md",
         path: "/workspace/readme.md"
       }
@@ -162,10 +214,11 @@ test("workspace file preview creates loaded image, video, text, and readonly sta
     {
       content: "hello",
       entry: {
-        fileKind: "text",
+        previewKind: "markdown",
         name: "readme.md",
         path: "/workspace/readme.md"
       },
+      previewKind: "markdown",
       status: "text"
     }
   );
@@ -174,7 +227,7 @@ test("workspace file preview creates loaded image, video, text, and readonly sta
       bytes: new Uint8Array([0xff]),
       entry: { kind: "file", path: "/workspace/readme.md" },
       target: {
-        fileKind: "text",
+        previewKind: "markdown",
         name: "readme.md",
         path: "/workspace/readme.md"
       }
@@ -185,15 +238,39 @@ test("workspace file preview creates loaded image, video, text, and readonly sta
       status: "readonly"
     }
   );
+  assert.deepEqual(
+    createWorkspaceFilePreviewLoadedState({
+      bytes: new Uint8Array([1, 2, 3]),
+      contentType: "application/pdf",
+      preferHostBytes: true,
+      entry: { kind: "file", path: "/workspace/report.pdf" },
+      target: {
+        previewKind: "pdf",
+        name: "report.pdf",
+        path: "/workspace/report.pdf"
+      }
+    }),
+    {
+      bytes: new Uint8Array([1, 2, 3]),
+      contentType: "application/pdf",
+      entry: {
+        previewKind: "pdf",
+        name: "report.pdf",
+        path: "/workspace/report.pdf"
+      },
+      previewKind: "pdf",
+      status: "bytes"
+    }
+  );
 });
 
-test("workspace file preview treats html as source text", () => {
+test("workspace file preview treats html as source text by default", () => {
   assert.deepEqual(
     createWorkspaceFilePreviewLoadedState({
       bytes: new TextEncoder().encode("<!doctype html><h1>Hello</h1>"),
       entry: { kind: "file", path: "/workspace/index.html" },
       target: {
-        fileKind: "text",
+        previewKind: "html",
         name: "index.html",
         path: "/workspace/index.html"
       }
@@ -201,10 +278,11 @@ test("workspace file preview treats html as source text", () => {
     {
       content: "<!doctype html><h1>Hello</h1>",
       entry: {
-        fileKind: "text",
+        previewKind: "html",
         name: "index.html",
         path: "/workspace/index.html"
       },
+      previewKind: "html",
       status: "text"
     }
   );
@@ -234,7 +312,43 @@ test("workspace file preview resolves readiness before reading bytes", () => {
         kind: "file",
         path: "/workspace/archive.zip"
       },
+      previewKind: "unsupported",
       status: "unsupported"
+    }
+  );
+  assert.deepEqual(
+    resolveWorkspaceFilePreviewReadiness({
+      kind: "file",
+      path: "/workspace/report.pdf"
+    }),
+    {
+      entry: {
+        kind: "file",
+        path: "/workspace/report.pdf"
+      },
+      previewKind: "pdf",
+      status: "unsupported"
+    }
+  );
+  assert.deepEqual(
+    resolveWorkspaceFilePreviewReadiness(
+      {
+        kind: "file",
+        path: "/workspace/report.pdf"
+      },
+      { hasHostRenderer: (kind) => kind === "pdf" }
+    ),
+    {
+      entry: {
+        kind: "file",
+        path: "/workspace/report.pdf"
+      },
+      status: "ready",
+      target: {
+        previewKind: "pdf",
+        name: "report.pdf",
+        path: "/workspace/report.pdf"
+      }
     }
   );
   assert.deepEqual(
@@ -268,122 +382,11 @@ test("workspace file preview resolves readiness before reading bytes", () => {
       },
       status: "ready",
       target: {
-        fileKind: "image",
+        previewKind: "image",
         name: "image.png",
         path: "/workspace/image.png",
         sizeBytes: 12
       }
     }
-  );
-});
-
-test("workspace file preview filters video players for code and text open-with targets", () => {
-  assert.equal(
-    shouldFilterVideoPlayersForOpenWith({
-      kind: "file",
-      path: "/workspace/src/App.tsx"
-    }),
-    true
-  );
-  assert.equal(
-    shouldFilterVideoPlayersForOpenWith({
-      kind: "file",
-      path: "/workspace/config.json"
-    }),
-    true
-  );
-  assert.equal(
-    shouldFilterVideoPlayersForOpenWith({
-      kind: "file",
-      path: "/workspace/transport.ts"
-    }),
-    true
-  );
-  assert.equal(
-    shouldFilterVideoPlayersForOpenWith({
-      kind: "file",
-      path: "/workspace/README.md"
-    }),
-    true
-  );
-  assert.equal(
-    shouldFilterVideoPlayersForOpenWith({
-      kind: "file",
-      path: "/workspace/clip.mp4"
-    }),
-    false
-  );
-  assert.equal(
-    shouldFilterVideoPlayersForOpenWith({
-      kind: "file",
-      path: "/workspace/clip.mts"
-    }),
-    false
-  );
-  assert.equal(
-    shouldFilterVideoPlayersForOpenWith({
-      kind: "file",
-      path: "/workspace/archive.zip"
-    }),
-    false
-  );
-});
-
-test("workspace file preview identifies browser-openable files", () => {
-  assert.equal(
-    isWorkspaceFileBrowserOpenable({
-      kind: "file",
-      path: "/workspace/index.html"
-    }),
-    true
-  );
-  assert.equal(
-    isWorkspaceFileBrowserOpenable({
-      kind: "file",
-      path: "/workspace/report.pdf"
-    }),
-    true
-  );
-  assert.equal(
-    isWorkspaceFileBrowserOpenable({
-      kind: "file",
-      path: "/workspace/logo.png"
-    }),
-    true
-  );
-  assert.equal(
-    isWorkspaceFileBrowserOpenable({
-      kind: "file",
-      path: "/workspace/demo.mp4"
-    }),
-    true
-  );
-  assert.equal(
-    isWorkspaceFileBrowserOpenable({
-      kind: "file",
-      path: "/workspace/config.json"
-    }),
-    true
-  );
-  assert.equal(
-    isWorkspaceFileBrowserOpenable({
-      kind: "file",
-      path: "/workspace/README"
-    }),
-    true
-  );
-  assert.equal(
-    isWorkspaceFileBrowserOpenable({
-      kind: "directory",
-      path: "/workspace/docs"
-    }),
-    false
-  );
-  assert.equal(
-    isWorkspaceFileBrowserOpenable({
-      kind: "file",
-      path: "/workspace/archive.zip"
-    }),
-    false
   );
 });

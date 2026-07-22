@@ -12,15 +12,18 @@ import {
   LoadingIcon,
   VideoFileIcon
 } from "@tutti-os/ui-system";
-import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
-import { WorkspaceFilePreviewSurface } from "@tutti-os/workspace-file-preview/react";
+import type { WorkspaceFilePreviewTarget } from "@tutti-os/workspace-file-preview";
+import {
+  WorkspaceFilePreviewSurface,
+  type WorkspaceFilePreviewSurfaceState
+} from "@tutti-os/workspace-file-preview/react";
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { DesktopHostFilesApi } from "@preload/types";
 import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import {
-  isWorkspaceFilePreviewActivationTarget,
+  coerceWorkspaceFilePreviewTarget,
   workspaceFilePreviewActivationType
 } from "../services/workspaceFilePreviewLaunch";
 import type { WorkspaceFilePreviewSaveRequestSource } from "../services/workspaceFilePreviewSaveRequests";
@@ -163,18 +166,77 @@ export function WorkspaceFilePreviewNodeBody({
       }
       loadingMessage={appI18n.t("workspaceFileManager.previewLoadingLabel")}
       renderIcon={(entry) =>
-        entry.fileKind === "image" ? (
+        entry.previewKind === "image" ? (
           <ImageFileIcon className="h-8 w-8" aria-hidden />
-        ) : entry.fileKind === "video" ? (
+        ) : entry.previewKind === "video" ? (
           <VideoFileIcon className="h-8 w-8" aria-hidden />
         ) : (
           <FileTextIcon className="h-8 w-8" aria-hidden />
         )
       }
-      state={state}
+      state={toWorkspaceFilePreviewSurfaceState(state)}
       variant="canvas"
     />
   );
+}
+
+function toWorkspaceFilePreviewSurfaceState(
+  state: WorkspaceFilePreviewNodeControllerState
+): WorkspaceFilePreviewSurfaceState<WorkspaceFilePreviewTarget> {
+  switch (state.status) {
+    case "empty":
+      return { status: "empty" };
+    case "loading":
+      return {
+        entry: state.entry,
+        previewKind: state.entry.previewKind,
+        status: "loading"
+      };
+    case "image":
+      return {
+        entry: state.entry,
+        objectUrl: state.objectUrl,
+        previewKind: "image",
+        status: "image"
+      };
+    case "video":
+      return {
+        entry: state.entry,
+        objectUrl: state.objectUrl,
+        previewKind: "video",
+        status: "video"
+      };
+    case "readonly":
+      return {
+        entry: state.entry,
+        message: state.message,
+        previewKind: state.entry.previewKind,
+        status: "readonly"
+      };
+    case "unsupported":
+      return {
+        entry: state.entry,
+        message: state.message,
+        previewKind: state.entry.previewKind,
+        status: "unsupported"
+      };
+    case "error":
+      return {
+        entry: state.entry,
+        message: state.message,
+        previewKind: state.entry.previewKind,
+        status: "error"
+      };
+    case "text":
+      // Text editing uses WorkspaceTextFileEditor; this branch is unreachable
+      // for the shared surface path above.
+      return {
+        content: state.content,
+        entry: state.entry,
+        previewKind: state.entry.previewKind,
+        status: "text"
+      };
+  }
 }
 
 function WorkspaceTextFileEditor({
@@ -209,12 +271,9 @@ function WorkspaceTextFileEditor({
 
 function resolveActivationTarget(
   context: WorkbenchHostNodeBodyContext
-): WorkspaceFilePreviewActivationTarget | null {
-  if (
-    context.activation?.type !== workspaceFilePreviewActivationType ||
-    !isWorkspaceFilePreviewActivationTarget(context.activation.payload)
-  ) {
+): WorkspaceFilePreviewTarget | null {
+  if (context.activation?.type !== workspaceFilePreviewActivationType) {
     return null;
   }
-  return context.activation.payload;
+  return coerceWorkspaceFilePreviewTarget(context.activation.payload);
 }

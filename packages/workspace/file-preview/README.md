@@ -1,26 +1,36 @@
 # @tutti-os/workspace-file-preview
 
-Shared, host-neutral file preview helpers for workspace features.
+Shared, host-neutral workspace file preview helpers.
 
-This package owns file preview classification, safe byte handling, text
-decoding, image mime resolution, and byte-limit helpers. Host adapters remain
-responsible for reading bytes from the local workspace.
+**Authority for ownership and boundary decisions:**
+[CONTRACT.md](./CONTRACT.md). Read that file before changing classification,
+loading lifecycle, renderer hooks, or fallback behavior.
 
-It also exposes a small React preview surface for consumers that want the shared
-image, text, loading, and readonly rendering shell while keeping host-specific
-icons and localized copy outside this package.
+## Package surface
 
-`createWorkspaceFilePreviewController` owns the shared frontend loading
-lifecycle. Consumers inject a byte reader and entry projection; the controller
-owns readiness checks, stale-request fencing, cancellation, decoding, canonical
-language-neutral state, and media object-URL cleanup. Product controllers keep
-selection, editing, persistence, transport, and localized error presentation.
+This package ships:
+
+- Flat `previewKind` classification (`directory` / media / text-family /
+  Office / `unsupported`), plus a separate coarser `visualKind` for icons
+- `createWorkspaceFilePreviewController` for shared frontend loading lifecycle
+  (readiness, cancellation, stale-request fencing, decoding, object-URL cleanup)
+- Built-in React preview shells for `image` / `video` / `text`
+- Host renderer registry (by `previewKind`) and a resolve chain:
+  host hook → text degradation → unsupported state
+- `toSurfaceState(controllerState, copy)` to project controller state into the
+  React surface
+
+Hosts inject read/projection capabilities. Product controllers keep selection,
+editing, persistence, transport wiring, and localized error presentation.
+
+Open / reveal / open-with / browser activation are **not** owned here. Those
+helpers live on the host edge (for Tutti:
+`@tutti-os/workspace-file-manager/services`).
 
 Sources may provide `canReadEntry` as a capability gate. Returning `false`
 blocks reads for every non-directory entry, while returning `true` also allows
 the injected reader to classify file types that local extension detection does
 not recognize. Omitting the callback keeps the default local classification.
 
-HTML files are shown as source text. Opening or executing an HTML document
-belongs to a separate browser activation flow rather than the ordinary file
-preview surface.
+HTML files degrade to source text in the built-in surface. Opening or executing
+an HTML document belongs to a separate browser activation flow.

@@ -1,5 +1,6 @@
 import {
   classifyWorkspaceFilePreviewKind,
+  isTextDegradablePreviewKind,
   resolveWorkspaceFileExtension,
   resolveWorkspaceFileVisualKind
 } from "@tutti-os/workspace-file-preview";
@@ -71,7 +72,7 @@ export function shouldUseWorkspaceFileExtensionDocumentIcon(
     visualKind === "code" ||
     visualKind === "markdown" ||
     extensionDocumentIconExtensions.has(extension) ||
-    classifyWorkspaceFilePreviewKind(entry) === "text"
+    isTextDegradablePreviewKind(classifyWorkspaceFilePreviewKind(entry))
   );
 }
 

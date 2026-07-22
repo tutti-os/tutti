@@ -1,4 +1,8 @@
-import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
+import {
+  resolveWorkspaceFileBuiltinRenderKind,
+  type WorkspaceFilePreviewKind,
+  type WorkspaceFilePreviewTarget
+} from "@tutti-os/workspace-file-preview";
 import type { WorkbenchHostLaunchInput } from "@tutti-os/workbench-surface";
 
 export const workspaceImageFileNodeTypeID = "workspace-image-file";
@@ -6,26 +10,26 @@ export const workspaceTextFileNodeTypeID = "workspace-text-file";
 export const workspaceFilePreviewActivationType = "workspace-file-preview";
 
 export function createWorkspaceFilePreviewLaunchRequest(
-  target: WorkspaceFilePreviewActivationTarget
+  target: WorkspaceFilePreviewTarget
 ): WorkbenchHostLaunchInput {
   return {
     launchSource: "file_manager",
     payload: target,
     reason: "host",
-    typeId: resolveWorkspaceFilePreviewNodeTypeID(target.fileKind)
+    typeId: resolveWorkspaceFilePreviewNodeTypeID(target.previewKind)
   };
 }
 
 export function createWorkspaceFilePreviewInstanceID(
-  target: WorkspaceFilePreviewActivationTarget
+  target: WorkspaceFilePreviewTarget
 ): string {
   return `path:${hashWorkspaceFilePreviewPath(target.path)}`;
 }
 
 export function resolveWorkspaceFilePreviewNodeTypeID(
-  fileKind: WorkspaceFilePreviewActivationTarget["fileKind"]
+  previewKind: WorkspaceFilePreviewKind
 ): string {
-  return fileKind === "image"
+  return resolveWorkspaceFileBuiltinRenderKind(previewKind) === "image"
     ? workspaceImageFileNodeTypeID
     : workspaceTextFileNodeTypeID;
 }
@@ -37,29 +41,84 @@ export function isWorkspaceFilePreviewNodeTypeID(typeID: string): boolean {
   );
 }
 
-export function isWorkspaceFilePreviewActivationTarget(
+/**
+ * Coerce unknown activation/snapshot payloads into a canonical preview target.
+ * Accepts legacy `fileKind` (`image` | `text` | `video`) from pre-rename
+ * snapshots and normalizes it to `previewKind`.
+ */
+export function coerceWorkspaceFilePreviewTarget(
   value: unknown
-): value is WorkspaceFilePreviewActivationTarget {
+): WorkspaceFilePreviewTarget | null {
   if (!value || typeof value !== "object") {
-    return false;
+    return null;
   }
 
-  const candidate = value as Partial<WorkspaceFilePreviewActivationTarget>;
+  const candidate = value as Partial<WorkspaceFilePreviewTarget> & {
+    fileKind?: unknown;
+  };
+  const previewKind = resolveCoercedPreviewKind(candidate);
+  if (
+    previewKind === null ||
+    typeof candidate.name !== "string" ||
+    candidate.name.trim().length === 0 ||
+    typeof candidate.path !== "string" ||
+    candidate.path.trim().length === 0 ||
+    (candidate.mtimeMs !== undefined &&
+      candidate.mtimeMs !== null &&
+      typeof candidate.mtimeMs !== "number") ||
+    (candidate.sizeBytes !== undefined &&
+      candidate.sizeBytes !== null &&
+      typeof candidate.sizeBytes !== "number")
+  ) {
+    return null;
+  }
+
+  return {
+    previewKind,
+    name: candidate.name,
+    path: candidate.path,
+    ...(candidate.mtimeMs === undefined ? {} : { mtimeMs: candidate.mtimeMs }),
+    ...(candidate.sizeBytes === undefined
+      ? {}
+      : { sizeBytes: candidate.sizeBytes })
+  };
+}
+
+/**
+ * Type guard for canonical preview targets (`previewKind` present).
+ * Prefer {@link coerceWorkspaceFilePreviewTarget} when reading unknown
+ * activation/snapshot payloads that may still use legacy `fileKind`.
+ */
+export function isWorkspaceFilePreviewTarget(
+  value: unknown
+): value is WorkspaceFilePreviewTarget {
   return (
-    (candidate.fileKind === "image" ||
-      candidate.fileKind === "text" ||
-      candidate.fileKind === "video") &&
-    typeof candidate.name === "string" &&
-    candidate.name.trim().length > 0 &&
-    typeof candidate.path === "string" &&
-    candidate.path.trim().length > 0 &&
-    (candidate.mtimeMs === undefined ||
-      candidate.mtimeMs === null ||
-      typeof candidate.mtimeMs === "number") &&
-    (candidate.sizeBytes === undefined ||
-      candidate.sizeBytes === null ||
-      typeof candidate.sizeBytes === "number")
+    !!value &&
+    typeof value === "object" &&
+    "previewKind" in value &&
+    coerceWorkspaceFilePreviewTarget(value) !== null
   );
+}
+
+function resolveCoercedPreviewKind(
+  candidate: Partial<WorkspaceFilePreviewTarget> & { fileKind?: unknown }
+): WorkspaceFilePreviewKind | null {
+  if (candidate.previewKind !== undefined) {
+    return resolveWorkspaceFileBuiltinRenderKind(candidate.previewKind) === null
+      ? null
+      : candidate.previewKind;
+  }
+
+  // Legacy activation / snapshot field before previewKind rename.
+  if (
+    candidate.fileKind === "image" ||
+    candidate.fileKind === "text" ||
+    candidate.fileKind === "video"
+  ) {
+    return candidate.fileKind;
+  }
+
+  return null;
 }
 
 function hashWorkspaceFilePreviewPath(path: string): string {

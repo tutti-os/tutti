@@ -1,37 +1,23 @@
-export type WorkspaceFilePreviewEntryKind =
-  | "file"
-  | "directory"
-  | "folder"
-  | "unknown"
-  | (string & {});
+/**
+ * Preview readiness, byte decoding, and loaded-state construction.
+ *
+ * Ownership rules: packages/workspace/file-preview/CONTRACT.md
+ */
 
-export type WorkspaceFilePreviewKind = "image" | "text" | "video";
+import {
+  classifyWorkspaceFilePreviewKind,
+  isTextDegradablePreviewKind,
+  resolveWorkspaceFileBuiltinRenderKind,
+  resolveWorkspaceFilePreviewName,
+  resolveWorkspaceFilePreviewTarget,
+  resolveWorkspaceImageMimeType,
+  resolveWorkspaceVideoMimeType,
+  type WorkspaceFilePreviewEntry,
+  type WorkspaceFilePreviewKind,
+  type WorkspaceFilePreviewTarget
+} from "./workspaceFilePreviewKinds.ts";
 
-export type WorkspaceFileVisualKind =
-  | "binary"
-  | "code"
-  | "directory"
-  | "document"
-  | "image"
-  | "markdown"
-  | "video";
-
-export interface WorkspaceFilePreviewEntry {
-  displayName?: string;
-  kind: WorkspaceFilePreviewEntryKind;
-  mtimeMs?: number | null;
-  name?: string;
-  path: string;
-  sizeBytes?: number | null;
-}
-
-export interface WorkspaceFilePreviewActivationTarget {
-  fileKind: WorkspaceFilePreviewKind;
-  mtimeMs?: number | null;
-  name: string;
-  path: string;
-  sizeBytes?: number | null;
-}
+export * from "./workspaceFilePreviewKinds.ts";
 
 export type WorkspaceFilePreviewReadonlyReason =
   | "binary"
@@ -41,8 +27,7 @@ export type WorkspaceFilePreviewReadonlyReason =
 
 export type WorkspaceFilePreviewReadiness<
   TEntry extends WorkspaceFilePreviewEntry,
-  TTarget extends WorkspaceFilePreviewActivationTarget =
-    WorkspaceFilePreviewActivationTarget
+  TTarget extends WorkspaceFilePreviewTarget = WorkspaceFilePreviewTarget
 > =
   | { entry: TEntry; status: "directory" }
   | {
@@ -54,25 +39,43 @@ export type WorkspaceFilePreviewReadiness<
       >;
       status: "readonly";
     }
-  | { entry: TEntry; status: "unsupported" }
+  | {
+      entry: TEntry;
+      previewKind: WorkspaceFilePreviewKind;
+      status: "unsupported";
+    }
   | { entry: TEntry; status: "ready"; target: TTarget };
 
 export type WorkspaceFilePreviewLoadedState<
   TEntry extends WorkspaceFilePreviewEntry,
-  TTarget extends WorkspaceFilePreviewActivationTarget
+  TTarget extends WorkspaceFilePreviewTarget
 > =
-  | { content: string; entry: TTarget; status: "text" }
+  | {
+      content: string;
+      entry: TTarget;
+      previewKind: WorkspaceFilePreviewKind;
+      status: "text";
+    }
   | {
       bytes: Uint8Array<ArrayBuffer>;
       contentType: string;
       entry: TTarget;
+      previewKind: "image";
       status: "image";
     }
   | {
       bytes: Uint8Array<ArrayBuffer>;
       contentType: string;
       entry: TTarget;
+      previewKind: "video";
       status: "video";
+    }
+  | {
+      bytes: Uint8Array<ArrayBuffer>;
+      contentType: string | null;
+      entry: TTarget;
+      previewKind: WorkspaceFilePreviewKind;
+      status: "bytes";
     }
   | {
       entry: TEntry;
@@ -81,329 +84,51 @@ export type WorkspaceFilePreviewLoadedState<
       status: "readonly";
     };
 
-const imageExtensions = new Set([
-  "avif",
-  "gif",
-  "jpeg",
-  "jpg",
-  "png",
-  "svg",
-  "webp"
-]);
-const browserOpenableHtmlExtensions = new Set([
-  "htm",
-  "html",
-  "shtml",
-  "xhtml"
-]);
-const browserOpenableVideoExtensions = new Set(["mp4", "webm"]);
-
-const videoExtensions = new Set([
-  "avi",
-  "m2ts",
-  "mkv",
-  "mov",
-  "mp4",
-  "mpeg",
-  "mpg",
-  "mts",
-  "webm",
-  "wmv"
-]);
-/**
- * Extensions where macOS Launch Services may register video handlers even when
- * the workspace file is source code (UTI / uniform type collisions).
- */
-export const workspaceFileVideoHandlerCollisionExtensions = new Set(["ts"]);
-const markdownExtensions = new Set(["md", "mdx"]);
-const codeExtensions = new Set([
-  "bash",
-  "c",
-  "cc",
-  "conf",
-  "cpp",
-  "cs",
-  "css",
-  "go",
-  "h",
-  "hpp",
-  "html",
-  "java",
-  "js",
-  "jsx",
-  "json",
-  "lua",
-  "m",
-  "mm",
-  "php",
-  "plist",
-  "proto",
-  "py",
-  "rb",
-  "rs",
-  "sh",
-  "sql",
-  "swift",
-  "toml",
-  "ts",
-  "tsx",
-  "xml",
-  "yaml",
-  "yml",
-  "zsh"
-]);
-const documentExtensions = new Set([
-  "csv",
-  "doc",
-  "docx",
-  "log",
-  "pdf",
-  "rtf",
-  "txt",
-  "xls",
-  "xlsx"
-]);
-const textExtensions = new Set([
-  "bash",
-  "c",
-  "cc",
-  "conf",
-  "cpp",
-  "cs",
-  "css",
-  "csv",
-  "env",
-  "go",
-  "h",
-  "hpp",
-  "html",
-  "ini",
-  "java",
-  "js",
-  "json",
-  "jsx",
-  "log",
-  "lua",
-  "m",
-  "md",
-  "mdx",
-  "mm",
-  "php",
-  "plist",
-  "proto",
-  "py",
-  "rb",
-  "rs",
-  "sh",
-  "sql",
-  "swift",
-  "toml",
-  "ts",
-  "tsx",
-  "txt",
-  "xml",
-  "yaml",
-  "yml",
-  "zsh"
-]);
-const textFileNames = new Set([
-  ".gitignore",
-  ".npmrc",
-  ".nvmrc",
-  "dockerfile",
-  "makefile",
-  "readme"
-]);
+export interface ResolveWorkspaceFilePreviewReadinessOptions {
+  /**
+   * When true for a classified kind, readiness treats the entry as presentable
+   * even if it is hook-only (pdf / audio / Office). Built-in presentable kinds
+   * do not require this callback.
+   */
+  hasHostRenderer?: (kind: WorkspaceFilePreviewKind) => boolean;
+}
 
 export const workspaceFileTextMaxBytes = 1024 * 1024;
 export const workspaceFilePreviewMaxBytes = 20 * 1024 * 1024;
 
-export function resolveWorkspaceFileVisualKind(
-  entry: Pick<WorkspaceFilePreviewEntry, "kind" | "name" | "path">
-): WorkspaceFileVisualKind {
-  if (entry.kind === "directory" || entry.kind === "folder") {
-    return "directory";
-  }
-
-  const extension = resolveWorkspaceFileExtension(
-    entry.path || entry.name || ""
-  );
-  if (imageExtensions.has(extension)) {
-    return "image";
-  }
-  if (videoExtensions.has(extension)) {
-    return "video";
-  }
-  if (markdownExtensions.has(extension)) {
-    return "markdown";
-  }
-  if (codeExtensions.has(extension)) {
-    return "code";
-  }
-  if (documentExtensions.has(extension)) {
-    return "document";
-  }
-  return "binary";
-}
-
-export function resolveWorkspaceFileExtension(pathOrName: string): string {
-  const name = pathOrName.split("/").pop()?.trim().toLowerCase() ?? "";
-  const dotIndex = name.lastIndexOf(".");
-  return dotIndex > 0 ? name.slice(dotIndex + 1) : "";
-}
-
-export function isWorkspaceFileBrowserOpenable(
-  entry: Pick<WorkspaceFilePreviewEntry, "kind" | "name" | "path">
-): boolean {
-  if (entry.kind !== "file") {
-    return false;
-  }
-
-  const extension = resolveWorkspaceFileExtension(
-    entry.path || entry.name || ""
-  );
-  if (
-    extension === "pdf" ||
-    browserOpenableHtmlExtensions.has(extension) ||
-    imageExtensions.has(extension) ||
-    browserOpenableVideoExtensions.has(extension)
-  ) {
-    return true;
-  }
-
-  return classifyWorkspaceFilePreviewKind(entry) === "text";
-}
-
-export function shouldFilterVideoPlayersForOpenWith(
-  entry: Pick<WorkspaceFilePreviewEntry, "kind" | "name" | "path">
-): boolean {
-  if (entry.kind !== "file") {
-    return false;
-  }
-
-  const visualKind = resolveWorkspaceFileVisualKind(entry);
-  if (visualKind === "video") {
-    return false;
-  }
-
-  const extension = resolveWorkspaceFileExtension(
-    entry.path || entry.name || ""
-  );
-  if (workspaceFileVideoHandlerCollisionExtensions.has(extension)) {
-    return true;
-  }
-
-  if (visualKind === "code" || visualKind === "markdown") {
-    return true;
-  }
-
-  return classifyWorkspaceFilePreviewKind(entry) === "text";
-}
-
-export function resolveWorkspaceImageMimeType(
-  pathOrName: string
-): string | null {
-  switch (resolveWorkspaceFileExtension(pathOrName)) {
-    case "avif":
-      return "image/avif";
-    case "gif":
-      return "image/gif";
-    case "jpeg":
-    case "jpg":
-      return "image/jpeg";
-    case "png":
-      return "image/png";
-    case "svg":
-      return "image/svg+xml";
-    case "webp":
-      return "image/webp";
-    default:
-      return null;
-  }
-}
-
-export function resolveWorkspaceVideoMimeType(
-  pathOrName: string
-): string | null {
-  switch (resolveWorkspaceFileExtension(pathOrName)) {
-    case "mp4":
-      return "video/mp4";
-    case "webm":
-      return "video/webm";
-    default:
-      return null;
-  }
-}
-
-export function classifyWorkspaceFilePreviewKind(
-  entry: Pick<
-    WorkspaceFilePreviewEntry,
-    "displayName" | "kind" | "name" | "path"
-  >
-): WorkspaceFilePreviewKind | null {
-  if (entry.kind !== "file") {
-    return null;
-  }
-
-  const name = resolveWorkspaceFilePreviewName(entry);
-  if (resolveWorkspaceImageMimeType(name) !== null) {
-    return "image";
-  }
-  if (resolveWorkspaceVideoMimeType(name) !== null) {
-    return "video";
-  }
-
-  const normalizedName = name.trim().toLowerCase();
-  const extension = resolveWorkspaceFileExtension(name);
-  if (textExtensions.has(extension) || textFileNames.has(normalizedName)) {
-    return "text";
-  }
-
-  return null;
-}
-
-export function resolveWorkspaceFileActivationTarget(
-  entry: WorkspaceFilePreviewEntry
-): WorkspaceFilePreviewActivationTarget | null {
-  const fileKind = classifyWorkspaceFilePreviewKind(entry);
-  if (!fileKind) {
-    return null;
-  }
-
-  const target: WorkspaceFilePreviewActivationTarget = {
-    fileKind,
-    name: resolveWorkspaceFilePreviewName(entry),
-    path: entry.path
-  };
-  if (entry.mtimeMs !== undefined) {
-    target.mtimeMs = entry.mtimeMs;
-  }
-  if (entry.sizeBytes !== undefined) {
-    target.sizeBytes = entry.sizeBytes;
-  }
-  return target;
-}
-
 export function resolveWorkspaceFilePreviewReadiness<
   TEntry extends WorkspaceFilePreviewEntry
->(entry: TEntry): WorkspaceFilePreviewReadiness<TEntry> {
-  if (entry.kind === "directory" || entry.kind === "folder") {
+>(
+  entry: TEntry,
+  options?: ResolveWorkspaceFilePreviewReadinessOptions
+): WorkspaceFilePreviewReadiness<TEntry> {
+  const previewKind = classifyWorkspaceFilePreviewKind(entry);
+  if (previewKind === "directory") {
     return {
       entry,
       status: "directory"
     };
   }
 
-  const target = resolveWorkspaceFileActivationTarget(entry);
-  if (!target) {
+  const builtin = resolveWorkspaceFileBuiltinRenderKind(previewKind);
+  const hostRenderable =
+    options?.hasHostRenderer?.(previewKind) === true &&
+    previewKind !== "unsupported";
+
+  if (!builtin && !hostRenderable) {
     return {
       entry,
+      previewKind,
       status: "unsupported"
     };
   }
 
+  const target =
+    resolveWorkspaceFilePreviewTarget(entry) ??
+    createWorkspaceFilePreviewTarget(entry, previewKind);
+
   if (
-    target.fileKind === "text" &&
+    (builtin === "text" || isTextDegradablePreviewKind(previewKind)) &&
     isWorkspaceTextFileTooLarge(entry.sizeBytes)
   ) {
     return {
@@ -432,14 +157,22 @@ export function resolveWorkspaceFilePreviewReadiness<
 
 export function createWorkspaceFilePreviewLoadedState<
   TEntry extends WorkspaceFilePreviewEntry,
-  TTarget extends WorkspaceFilePreviewActivationTarget
+  TTarget extends WorkspaceFilePreviewTarget
 >(input: {
   bytes: Uint8Array | ArrayBuffer;
   contentType?: string | null;
   entry: TEntry;
+  /**
+   * When true, skip built-in text degradation and keep raw bytes for a host
+   * renderer (hook-only kinds, or text-degradable kinds with a host hook).
+   */
+  preferHostBytes?: boolean;
   target: TTarget;
 }): WorkspaceFilePreviewLoadedState<TEntry, TTarget> {
-  if (input.target.fileKind === "image") {
+  const previewKind = input.target.previewKind;
+  const builtin = resolveWorkspaceFileBuiltinRenderKind(previewKind);
+
+  if (builtin === "image") {
     return {
       bytes: copyWorkspaceFilePreviewBytes(input.bytes),
       contentType:
@@ -447,10 +180,11 @@ export function createWorkspaceFilePreviewLoadedState<
         resolveWorkspaceImageMimeType(input.target.name) ??
         "application/octet-stream",
       entry: input.target,
+      previewKind: "image",
       status: "image"
     };
   }
-  if (input.target.fileKind === "video") {
+  if (builtin === "video") {
     return {
       bytes: copyWorkspaceFilePreviewBytes(input.bytes),
       contentType:
@@ -458,7 +192,18 @@ export function createWorkspaceFilePreviewLoadedState<
         resolveWorkspaceVideoMimeType(input.target.name) ??
         "application/octet-stream",
       entry: input.target,
+      previewKind: "video",
       status: "video"
+    };
+  }
+
+  if (input.preferHostBytes || builtin === null) {
+    return {
+      bytes: copyWorkspaceFilePreviewBytes(input.bytes),
+      contentType: input.contentType ?? null,
+      entry: input.target,
+      previewKind,
+      status: "bytes"
     };
   }
 
@@ -474,6 +219,7 @@ export function createWorkspaceFilePreviewLoadedState<
     return {
       content,
       entry: input.target,
+      previewKind,
       status: "text"
     };
   } catch {
@@ -483,17 +229,6 @@ export function createWorkspaceFilePreviewLoadedState<
       status: "readonly"
     };
   }
-}
-
-export function resolveWorkspaceFilePreviewName(
-  entry: Pick<WorkspaceFilePreviewEntry, "displayName" | "name" | "path">
-): string {
-  return (
-    entry.name?.trim() ||
-    entry.displayName?.trim() ||
-    entry.path.split("/").pop()?.trim() ||
-    entry.path
-  );
 }
 
 export function isWorkspaceTextFileTooLarge(
@@ -576,4 +311,22 @@ export function formatWorkspacePreviewByteLimit(sizeBytes: number): string {
     return `${mebibytes} MiB`;
   }
   return `${mebibytes.toFixed(1)} MiB`;
+}
+
+function createWorkspaceFilePreviewTarget(
+  entry: WorkspaceFilePreviewEntry,
+  previewKind: WorkspaceFilePreviewKind
+): WorkspaceFilePreviewTarget {
+  const target: WorkspaceFilePreviewTarget = {
+    previewKind,
+    name: resolveWorkspaceFilePreviewName(entry),
+    path: entry.path
+  };
+  if (entry.mtimeMs !== undefined) {
+    target.mtimeMs = entry.mtimeMs;
+  }
+  if (entry.sizeBytes !== undefined) {
+    target.sizeBytes = entry.sizeBytes;
+  }
+  return target;
 }

@@ -17,7 +17,7 @@ import { WorkspaceFilePreviewNodeBody } from "../../ui/WorkspaceFilePreviewNodeB
 import { WorkspaceFilePreviewNodeHeader } from "../../ui/WorkspaceFilePreviewNodeHeader.tsx";
 import {
   createWorkspaceFilePreviewInstanceID,
-  isWorkspaceFilePreviewActivationTarget,
+  coerceWorkspaceFilePreviewTarget,
   isWorkspaceFilePreviewNodeTypeID,
   resolveWorkspaceFilePreviewNodeTypeID,
   workspaceFilePreviewActivationType,
@@ -56,17 +56,14 @@ export function createWorkspaceFilePreviewContribution(input: {
       })
     ],
     onLaunchRequest: (request) => {
-      if (
-        !isWorkspaceFilePreviewNodeTypeID(request.typeId) ||
-        !isWorkspaceFilePreviewActivationTarget(request.payload)
-      ) {
+      const target = coerceWorkspaceFilePreviewTarget(request.payload);
+      if (!isWorkspaceFilePreviewNodeTypeID(request.typeId) || !target) {
         return null;
       }
 
-      const target = request.payload;
       if (
         request.typeId !==
-        resolveWorkspaceFilePreviewNodeTypeID(target.fileKind)
+        resolveWorkspaceFilePreviewNodeTypeID(target.previewKind)
       ) {
         return null;
       }
@@ -155,11 +152,12 @@ function createWorkspaceFilePreviewNodeDefinition(input: {
 }
 
 function resolvePreviewFileExtension(payload: unknown): string | null {
-  if (!isWorkspaceFilePreviewActivationTarget(payload)) {
+  const target = coerceWorkspaceFilePreviewTarget(payload);
+  if (!target) {
     return null;
   }
 
-  const source = payload.name || payload.path;
+  const source = target.name || target.path;
   const slashIndex = Math.max(
     source.lastIndexOf("/"),
     source.lastIndexOf("\\")

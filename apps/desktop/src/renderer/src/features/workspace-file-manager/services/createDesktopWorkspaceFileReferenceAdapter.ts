@@ -9,18 +9,19 @@ import type {
 } from "@tutti-os/workspace-file-reference/contracts";
 import {
   classifyWorkspaceFilePreviewKind,
-  resolveWorkspaceFileActivationTarget,
+  resolveWorkspaceFileBuiltinRenderKind,
   resolveWorkspaceFilePreviewName,
+  resolveWorkspaceFilePreviewTarget,
   resolveWorkspaceImageMimeType,
   resolveWorkspaceVideoMimeType,
-  type WorkspaceFilePreviewActivationTarget
+  type WorkspaceFilePreviewTarget
 } from "@tutti-os/workspace-file-preview";
 import type { DesktopHostFilesApi } from "@preload/types";
 
 export function createDesktopWorkspaceFileReferenceAdapter(input: {
   hostFilesApi: DesktopHostFilesApi;
   presentFilePreview?: (
-    target: WorkspaceFilePreviewActivationTarget,
+    target: WorkspaceFilePreviewTarget,
     workspaceId: string
   ) => Promise<boolean> | boolean;
   tuttidClient: TuttidClient;
@@ -84,9 +85,7 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
         path: trimmedPath
       });
       const target =
-        entry.kind === "file"
-          ? resolveWorkspaceFileActivationTarget(entry)
-          : null;
+        entry.kind === "file" ? resolveWorkspaceFilePreviewTarget(entry) : null;
       if (
         target &&
         (await presentFilePreview?.(target, workspaceId)) === true
@@ -125,11 +124,23 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
       );
     },
     async readReferencePreview({ reference, workspaceId }) {
-      const previewKind = classifyWorkspaceFilePreviewKind(reference);
-      if (!previewKind || isTerminalReferencePath(reference.path)) {
+      // References use displayName; map to preview entry.name so classification
+      // matches openReference → referenceToWorkspaceFileEntry.
+      const name = resolveWorkspaceFilePreviewName({
+        name: reference.displayName,
+        path: reference.path
+      });
+      const previewKind = classifyWorkspaceFilePreviewKind({
+        kind: reference.kind === "folder" ? "directory" : reference.kind,
+        name,
+        path: reference.path
+      });
+      if (
+        resolveWorkspaceFileBuiltinRenderKind(previewKind) === null ||
+        isTerminalReferencePath(reference.path)
+      ) {
         return null;
       }
-      const name = resolveWorkspaceFilePreviewName(reference);
       const path = reference.path.trim();
       return {
         bytes: await hostFilesApi.readPreviewFile(workspaceId, path),

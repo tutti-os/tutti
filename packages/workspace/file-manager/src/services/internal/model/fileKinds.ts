@@ -1,19 +1,23 @@
-import { resolveWorkspaceFileActivationTarget as resolveSharedWorkspaceFileActivationTarget } from "@tutti-os/workspace-file-preview";
+import { resolveWorkspaceFilePreviewTarget } from "@tutti-os/workspace-file-preview";
 import type {
   WorkspaceFileActivationTarget,
   WorkspaceFileEntry
 } from "../../workspaceFileManagerTypes.ts";
 
+/**
+ * Host activation adapter over the shared preview target vocabulary.
+ * Open / reveal / open-with remain file-manager / desktop concerns.
+ */
 export function resolveWorkspaceFileActivationTarget(
   entry: WorkspaceFileEntry
 ): WorkspaceFileActivationTarget | null {
-  const target = resolveSharedWorkspaceFileActivationTarget(entry);
+  const target = resolveWorkspaceFilePreviewTarget(entry);
   if (!target) {
     return null;
   }
 
   return {
-    fileKind: target.fileKind,
+    previewKind: target.previewKind,
     mtimeMs: target.mtimeMs ?? null,
     name: target.name,
     path: target.path,

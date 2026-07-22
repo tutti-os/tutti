@@ -280,7 +280,9 @@ test("desktop agent GUI workbench host input opens workspace references through 
     workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
     workspaceFilePreviewSurfaceHost: {
       async present(workspaceId, target) {
-        calls.push(`preview:${workspaceId}:${target.path}:${target.fileKind}`);
+        calls.push(
+          `preview:${workspaceId}:${target.path}:${target.previewKind}`
+        );
         return {
           presented: true,
           unsupportedFallbackNotification: "show"

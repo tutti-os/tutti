@@ -50,6 +50,7 @@ function createDeferredRead() {
 }
 
 function createController(input?: {
+  hasHostRenderer?: (kind: string) => boolean;
   objectUrls?: WorkspaceFilePreviewObjectUrlFactory;
   read?: (input: {
     entry: TestEntry;
@@ -57,6 +58,7 @@ function createController(input?: {
   }) => Promise<WorkspaceFilePreviewReadResult | null>;
 }) {
   return createWorkspaceFilePreviewController<TestEntry>({
+    hasHostRenderer: input?.hasHostRenderer,
     objectUrls: input?.objectUrls,
     read: input?.read,
     toPreviewEntry: (entry) => entry
@@ -77,6 +79,7 @@ test("preview controller resolves empty, directory, unsupported, and readonly en
   controller.setEntry({ kind: "file", path: "/workspace/archive.zip" });
   assert.deepEqual(controller.getSnapshot(), {
     entry: { kind: "file", path: "/workspace/archive.zip" },
+    previewKind: "unsupported",
     reason: "file_type",
     status: "unsupported"
   });
@@ -103,11 +106,16 @@ test("preview controller loads text and reports reader errors without localizing
   });
 
   controller.setEntry({ kind: "file", path: "/workspace/readme.md" });
-  assert.equal(controller.getSnapshot().status, "loading");
+  assert.deepEqual(controller.getSnapshot(), {
+    entry: { kind: "file", path: "/workspace/readme.md" },
+    previewKind: "markdown",
+    status: "loading"
+  });
   await flush();
   assert.deepEqual(controller.getSnapshot(), {
     content: "hello",
     entry: { kind: "file", path: "/workspace/readme.md" },
+    previewKind: "markdown",
     previewSizeBytes: 5,
     status: "text"
   });
@@ -117,7 +125,29 @@ test("preview controller loads text and reports reader errors without localizing
   assert.deepEqual(controller.getSnapshot(), {
     entry: { kind: "file", path: "/workspace/fail.md" },
     error: failure,
+    previewKind: "markdown",
     status: "error"
+  });
+});
+
+test("preview controller loads hook-only kinds as bytes when a host renderer exists", async () => {
+  const controller = createController({
+    hasHostRenderer: (kind) => kind === "pdf",
+    read: async () => ({
+      bytes: new Uint8Array([1, 2, 3]),
+      contentType: "application/pdf"
+    })
+  });
+
+  controller.setEntry({ kind: "file", path: "/workspace/report.pdf" });
+  await flush();
+  assert.deepEqual(controller.getSnapshot(), {
+    bytes: new Uint8Array([1, 2, 3]),
+    contentType: "application/pdf",
+    entry: { kind: "file", path: "/workspace/report.pdf" },
+    previewKind: "pdf",
+    previewSizeBytes: 3,
+    status: "bytes"
   });
 });
 
@@ -199,6 +229,7 @@ test("preview controller reports an unavailable reader explicitly", () => {
   controller.setEntry({ kind: "file", path: "/workspace/readme.md" });
   assert.deepEqual(controller.getSnapshot(), {
     entry: { kind: "file", path: "/workspace/readme.md" },
+    previewKind: "markdown",
     reason: "reader_unavailable",
     status: "unsupported"
   });
@@ -215,7 +246,6 @@ test("preview controller skips reading when canReadEntry explicitly returns fals
     toPreviewEntry: (entry) => entry
   });
 
-  // .md is a recognized text file, but canReadEntry=false should skip reading
   controller.setEntry({ kind: "file", path: "/workspace/readme.md" });
   const snapshot = controller.getSnapshot();
   assert.equal(snapshot.status, "unsupported");
@@ -225,7 +255,6 @@ test("preview controller skips reading when canReadEntry explicitly returns fals
   );
   assert.equal(reads, 0);
 
-  // .json is also recognized text, same behavior
   controller.setEntry({ kind: "file", path: "/workspace/data.json" });
   assert.equal(controller.getSnapshot().status, "unsupported");
   assert.equal(reads, 0);
@@ -262,7 +291,6 @@ test("preview controller attempts reading for unknown extension when canReadEntr
     canReadEntry: () => true,
     read: async () => {
       reads += 1;
-      // Source provides kind from server response
       return {
         bytes: new TextEncoder().encode("server content"),
         kind: "text"
@@ -271,12 +299,10 @@ test("preview controller attempts reading for unknown extension when canReadEntr
     toPreviewEntry: (entry) => entry
   });
 
-  // .xyz is not a recognized extension locally
   controller.setEntry({ kind: "file", path: "/workspace/file.xyz" });
   assert.equal(controller.getSnapshot().status, "loading");
   await flush();
 
-  // Should have attempted to read because canReadEntry=true
   assert.equal(reads, 1);
   assert.equal(controller.getSnapshot().status, "text");
 
@@ -297,6 +323,7 @@ test("preview controller reports an unavailable reader for an explicitly readabl
 
   assert.deepEqual(controller.getSnapshot(), {
     entry,
+    previewKind: "unsupported",
     reason: "reader_unavailable",
     status: "unsupported"
   });
@@ -309,7 +336,6 @@ test("preview controller allows source-provided kind to override local classific
     canReadEntry: () => true,
     read: async () => {
       reads += 1;
-      // Source says this unknown file is actually an image
       return {
         bytes: new Uint8Array([0, 1, 2, 3]),
         contentType: "image/png",
@@ -319,7 +345,6 @@ test("preview controller allows source-provided kind to override local classific
     toPreviewEntry: (entry) => entry
   });
 
-  // .data is unrecognized, but source provides kind="image"
   controller.setEntry({ kind: "file", path: "/workspace/unknown.data" });
   await flush();
 
