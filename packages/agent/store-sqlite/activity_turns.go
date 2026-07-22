@@ -115,8 +115,9 @@ INSERT INTO workspace_agent_turns (
   workspace_id, agent_session_id, turn_id, phase, outcome, error_json,
   file_changes_json, completed_command_json, backfilled,
   started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
-  turn_origin, source_goal_operation_id, source_goal_revision, source_goal_repair_epoch
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+  turn_origin, source_goal_operation_id, source_goal_revision, source_goal_repair_epoch,
+  parent_turn_id, relation
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
   phase = excluded.phase,
   outcome = excluded.outcome,
@@ -135,7 +136,8 @@ ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
 		}),
 		merged.StartedAtUnixMS, nullInt64(merged.SettledAtUnixMS),
 		merged.CreatedAtUnixMS, merged.UpdatedAtUnixMS, merged.Origin,
-		nullString(merged.SourceGoalOperationID), nullInt64(merged.SourceGoalRevision), nullInt64WhenAbsent(merged.SourceGoalRepairEpoch, merged.SourceGoalOperationID != "")); err != nil {
+		nullString(merged.SourceGoalOperationID), nullInt64(merged.SourceGoalRevision), nullInt64WhenAbsent(merged.SourceGoalRepairEpoch, merged.SourceGoalOperationID != ""),
+		nullString(merged.ParentTurnID), nullString(merged.Relation)); err != nil {
 		return Turn{}, false, fmt.Errorf("upsert workspace agent turn: %w", err)
 	}
 	if merged.Phase == TurnPhaseSettled {
@@ -242,6 +244,8 @@ func mergeTurnTransition(existing Turn, hasExisting bool, transition TurnTransit
 		merged.SourceGoalOperationID = strings.TrimSpace(transition.SourceGoalOperationID)
 		merged.SourceGoalRevision = transition.SourceGoalRevision
 		merged.SourceGoalRepairEpoch = transition.SourceGoalRepairEpoch
+		merged.ParentTurnID = strings.TrimSpace(transition.ParentTurnID)
+		merged.Relation = strings.TrimSpace(transition.Relation)
 	}
 	merged.Phase = phase
 	merged.Backfilled = false

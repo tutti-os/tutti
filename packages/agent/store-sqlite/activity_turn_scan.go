@@ -8,13 +8,14 @@ import (
 
 const agentTurnSelectSQL = `
 SELECT workspace_id, agent_session_id, turn_id, phase, outcome, error_json,
-	       file_changes_json, completed_command_json, backfilled,
-	       started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
-	       turn_origin, COALESCE(source_goal_operation_id, ''), COALESCE(source_goal_revision, 0),
-	       COALESCE(source_goal_repair_epoch, 0),
-	       root_provider_turn_id, root_provider_turn_phase, root_provider_turn_outcome,
+       file_changes_json, completed_command_json, backfilled,
+       started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
+       turn_origin, COALESCE(source_goal_operation_id, ''), COALESCE(source_goal_revision, 0),
+       COALESCE(source_goal_repair_epoch, 0),
+       root_provider_turn_id, root_provider_turn_phase, root_provider_turn_outcome,
        root_provider_turn_error_json, root_provider_turn_completed_command_json,
-       root_provider_turn_updated_at_unix_ms
+       root_provider_turn_updated_at_unix_ms,
+       COALESCE(parent_turn_id, ''), COALESCE(relation, '')
 FROM workspace_agent_turns`
 
 func scanAgentTurn(scanner rowScanner) (Turn, error) {
@@ -51,6 +52,8 @@ func scanAgentTurn(scanner rowScanner) (Turn, error) {
 		&rootProviderTurnErrorJSON,
 		&rootProviderTurnCompletedCommandJSON,
 		&turn.RootProviderTurnUpdatedAtUnixMS,
+		&turn.ParentTurnID,
+		&turn.Relation,
 	)
 	if err != nil {
 		return Turn{}, err

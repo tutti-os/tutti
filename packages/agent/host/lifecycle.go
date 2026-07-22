@@ -340,6 +340,7 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, Content: content,
 			DisplayPrompt: displayPrompt, InitialTitle: initialTitle, InitialTitleBase: session.Title,
 			Guidance: input.Guidance, Metadata: cloneMap(metadata),
+			TurnMetadata: input.TurnMetadata,
 		})
 	}()
 	if err != nil {
