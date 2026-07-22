@@ -85,7 +85,7 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
       onToggleAll(dimension) {
         calls.push(`all:${dimension}`);
       },
-      value: { agentTargetIds: [], memberIds: null }
+      value: { agentTargetIds: ["codex"], memberIds: null }
     };
     const renderControl = (nextProps: ReferenceProvenanceFilterControlProps) =>
       createElement(
@@ -136,6 +136,7 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
       )
     ].find((element) => element.textContent === "All agents");
     assert.ok(allAgentsRow);
+    assert.equal(allAgentsRow.getAttribute("aria-checked"), "mixed");
     await act(async () => {
       allAgentsRow.click();
     });
