@@ -119,7 +119,7 @@ export const generatedProviderIdentityCatalog = [
     iconKey: "opencode",
     localeKey: "agentHost.agentGui.conversationFilterOpenCode",
     aliases: ["open-code", "open code", "opencode-ai", "opencode_ai"],
-    modelPlanProtocol: "",
+    modelPlanProtocol: "openai",
     target: {
       id: "local:opencode",
       launchRefType: "local_cli",

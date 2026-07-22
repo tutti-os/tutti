@@ -390,6 +390,7 @@ func TestResolveModelPlanProtocolOnlyForPreparedProviders(t *testing.T) {
 		{provider: CodexProviderID, want: ModelPlanProtocolOpenAI},
 		{provider: ClaudeCodeProviderID, want: ModelPlanProtocolAnthropic},
 		{provider: TuttiAgentProviderID, want: ModelPlanProtocolOpenAI},
+		{provider: OpenCodeProviderID, want: ModelPlanProtocolOpenAI},
 	}
 	for _, test := range tests {
 		protocol, ok := ResolveModelPlanProtocol(test.provider)
@@ -397,10 +398,14 @@ func TestResolveModelPlanProtocolOnlyForPreparedProviders(t *testing.T) {
 			t.Fatalf("ResolveModelPlanProtocol(%q) = %q, %v; want %q, true", test.provider, protocol, ok, test.want)
 		}
 	}
-	for _, provider := range []string{OpenCodeProviderID, CursorProviderID, "unknown"} {
+	for _, provider := range []string{CursorProviderID, "unknown"} {
 		if protocol, ok := ResolveModelPlanProtocol(provider); ok {
 			t.Fatalf("ResolveModelPlanProtocol(%q) = %q, true; want unresolved", provider, protocol)
 		}
+	}
+	addressing, ok := ResolveModelPlanModelAddressing(OpenCodeProviderID)
+	if !ok || addressing != ModelPlanModelAddressingProviderPrefixed {
+		t.Fatalf("ResolveModelPlanModelAddressing(opencode) = %q, %v; want provider_prefixed", addressing, ok)
 	}
 }
 

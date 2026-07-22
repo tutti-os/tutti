@@ -131,6 +131,7 @@ func newBindingTestService(store *memoryBindingStore) *Service {
 		Targets: staticTargets{targets: map[string]agenttargetbiz.Target{
 			"local:codex":    {ID: "local:codex", Provider: "codex", Name: "Codex"},
 			"local:claude":   {ID: "local:claude", Provider: "claude-code", Name: "Claude Code"},
+			"local:cursor":   {ID: "local:cursor", Provider: "cursor", Name: "Cursor"},
 			"local:opencode": {ID: "local:opencode", Provider: "opencode", Name: "OpenCode"},
 		}},
 		Now: func() time.Time { return time.UnixMilli(1700000000000).UTC() },
@@ -295,10 +296,29 @@ func TestSetBindingValidatesPlanAndModel(t *testing.T) {
 
 	if _, err := service.SetBinding(ctx, SetBindingInput{
 		WorkspaceID:   "ws",
-		AgentTargetID: "local:opencode",
+		AgentTargetID: "local:cursor",
 		ModelPlanID:   "mp-1",
 	}); !errors.Is(err, ErrPlanNotUsable) {
 		t.Fatalf("SetBinding(unsupported provider) error = %v, want ErrPlanNotUsable", err)
+	}
+
+	opencodeBinding, err := service.SetBinding(ctx, SetBindingInput{
+		WorkspaceID:   "ws",
+		AgentTargetID: "local:opencode",
+		ModelPlanID:   "mp-1",
+		DefaultModel:  "model-a",
+	})
+	if err != nil {
+		t.Fatalf("SetBinding(opencode) error = %v", err)
+	}
+	if opencodeBinding.ModelPlanID != "mp-1" || opencodeBinding.DefaultModel != "model-a" {
+		t.Fatalf("SetBinding(opencode) = %#v", opencodeBinding)
+	}
+	if _, err := service.SetBinding(ctx, SetBindingInput{
+		WorkspaceID:   "ws",
+		AgentTargetID: "local:opencode",
+	}); err != nil {
+		t.Fatalf("SetBinding(opencode clear) error = %v", err)
 	}
 
 	binding, err := service.SetBinding(ctx, SetBindingInput{

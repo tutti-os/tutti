@@ -174,9 +174,6 @@ func TestResolveModelPlanEndpointMatchesProviderProtocol(t *testing.T) {
 	if endpoint, _ := service.resolveModelPlanEndpoint(ctx, "ws", "local:cursor", "cursor", ""); endpoint != nil {
 		t.Fatalf("cursor should not receive a plan endpoint yet: %#v", endpoint)
 	}
-	if endpoint, _ := service.resolveModelPlanEndpoint(ctx, "ws", "local:opencode", "opencode", ""); endpoint != nil {
-		t.Fatalf("opencode should not receive a plan endpoint: %#v", endpoint)
-	}
 }
 
 func TestResolveModelPlanReportsAuthoritativeConfiguration(t *testing.T) {
@@ -542,5 +539,64 @@ func TestGetComposerOptionsAlwaysReportsProviderNativeModelConfiguration(t *test
 	}
 	if configuration["defaultModel"] != nil || configuration["fingerprint"] == "" {
 		t.Fatalf("runtime model configuration = %#v, want null default and fingerprint", configuration)
+	}
+}
+
+func TestResolveModelPlanNamespacesOpenCodeModelValues(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	service, _ := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
+
+	// OpenCode consumes openai plans; composer/settings values carry the
+	// injected provider namespace while the endpoint catalog stays raw.
+	endpoint, models := service.resolveModelPlanEndpoint(ctx, "ws", "local:opencode", "opencode", "")
+	if endpoint == nil {
+		t.Fatalf("resolveModelPlanEndpoint() = nil, want endpoint for opencode")
+	}
+	if endpoint.Model != "tutti-model-plan/plan-default" {
+		t.Fatalf("endpoint model = %q, want namespaced plan default", endpoint.Model)
+	}
+	if len(models) != 2 || len(endpoint.Models) != 2 {
+		t.Fatalf("plan models = %#v, endpoint models = %#v", models, endpoint.Models)
+	}
+	if endpoint.Models[0].ID != "plan-default" || endpoint.Models[1].ID != "plan-alt" {
+		t.Fatalf("endpoint models must keep raw plan ids: %#v", endpoint.Models)
+	}
+
+	// Namespaced and raw requested values both resolve inside the plan.
+	for _, requested := range []string{"tutti-model-plan/plan-alt", "plan-alt"} {
+		endpoint, _ := service.resolveModelPlanEndpoint(ctx, "ws", "local:opencode", "opencode", requested)
+		if endpoint == nil || endpoint.Model != "tutti-model-plan/plan-alt" {
+			t.Fatalf("requested %q resolved endpoint = %#v", requested, endpoint)
+		}
+	}
+
+	// Plan validation accepts namespaced values and still rejects unknown models.
+	if err := validateModelAgainstPlan("opencode", "tutti-model-plan/plan-alt", modelplanbiz.CloneModels([]modelplanbiz.Model{{ID: "plan-alt"}})); err != nil {
+		t.Fatalf("validateModelAgainstPlan(namespaced) = %v", err)
+	}
+	if err := validateModelAgainstPlan("opencode", "tutti-model-plan/unknown", modelplanbiz.CloneModels([]modelplanbiz.Model{{ID: "plan-alt"}})); err == nil {
+		t.Fatalf("validateModelAgainstPlan(unknown) = nil, want error")
+	}
+
+	// The composer overlay surfaces namespaced option values for opencode.
+	resolution := service.resolveModelPlan(ctx, "ws", "local:opencode", "opencode", "")
+	options := applyResolvedModelPlanComposerOverlay(ComposerOptions{Provider: "opencode"}, resolution)
+	if options.ModelConfig.CurrentValue != "tutti-model-plan/plan-default" {
+		t.Fatalf("overlay current value = %q", options.ModelConfig.CurrentValue)
+	}
+	if len(options.ModelConfig.Options) != 2 ||
+		options.ModelConfig.Options[0].Value != "tutti-model-plan/plan-default" ||
+		options.ModelConfig.Options[1].Value != "tutti-model-plan/plan-alt" {
+		t.Fatalf("overlay options = %#v", options.ModelConfig.Options)
+	}
+
+	// Codex keeps raw plan model values.
+	codexResolution := service.resolveModelPlan(ctx, "ws", "local:codex", "codex", "")
+	codexOptions := applyResolvedModelPlanComposerOverlay(ComposerOptions{Provider: "codex"}, codexResolution)
+	if codexOptions.ModelConfig.CurrentValue != "plan-default" ||
+		codexOptions.ModelConfig.Options[0].Value != "plan-default" {
+		t.Fatalf("codex overlay = %#v", codexOptions.ModelConfig)
 	}
 }
