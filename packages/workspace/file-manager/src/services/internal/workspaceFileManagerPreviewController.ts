@@ -1,14 +1,12 @@
 import {
   createWorkspaceFilePreviewController,
+  formatWorkspacePreviewByteLimit,
+  workspaceFilePreviewMaxBytes,
   type WorkspaceFilePreviewController,
   type WorkspaceFilePreviewControllerState,
   type WorkspaceFilePreviewReadonlyReason
 } from "@tutti-os/workspace-file-preview";
-import {
-  formatWorkspacePreviewByteLimit,
-  resolveWorkspaceFileActivationTarget,
-  workspaceFilePreviewMaxBytes
-} from "../workspaceFileManagerModel.ts";
+import { resolveWorkspaceFileActivationTarget } from "../workspaceFileManagerModel.ts";
 import type { WorkspaceFileManagerI18nRuntime } from "../../i18n/workspaceFileManagerI18n.ts";
 import type { WorkspaceFileManagerHost } from "../workspaceFileManagerHost.interface.ts";
 import type {

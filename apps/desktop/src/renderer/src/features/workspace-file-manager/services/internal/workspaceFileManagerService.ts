@@ -1,6 +1,5 @@
 import {
   createWorkspaceFileManagerService,
-  resolveWorkspaceFileExtension,
   type WorkspaceFileExternalLocation,
   type WorkspaceFileEntry,
   type WorkspaceFileLocationSection,
@@ -9,6 +8,7 @@ import {
   type WorkspaceFileManagerMutationErrorMessage,
   type WorkspaceFileManagerPersistedState
 } from "@tutti-os/workspace-file-manager/services";
+import { resolveWorkspaceFileExtension } from "@tutti-os/workspace-file-preview";
 import {
   createReferenceSourceAggregator,
   createStaticReferenceSourceRegistry,

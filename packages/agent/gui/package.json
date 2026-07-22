@@ -67,6 +67,7 @@
     "@tutti-os/workbench-surface": "workspace:*",
     "@tutti-os/workspace-external-core": "workspace:*",
     "@tutti-os/workspace-file-manager": "workspace:*",
+    "@tutti-os/workspace-file-preview": "workspace:*",
     "@tutti-os/workspace-file-reference": "workspace:*",
     "@tutti-os/workspace-issue-manager": "workspace:*",
     "@tutti-os/workspace-user-project": "workspace:*",

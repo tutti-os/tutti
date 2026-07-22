@@ -8,6 +8,7 @@ import {
   cn
 } from "@tutti-os/ui-system";
 import type { TuttiDateLocale } from "@tutti-os/ui-system/date-format";
+import { resolveWorkspaceFileVisualKind } from "@tutti-os/workspace-file-preview";
 import { WorkspaceFilePreviewSurface as SharedWorkspaceFilePreviewSurface } from "@tutti-os/workspace-file-preview/react";
 import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
 import type {
@@ -30,7 +31,6 @@ import {
 import {
   formatWorkspaceFileBytes,
   formatWorkspaceFileModifiedTime,
-  resolveWorkspaceFileVisualKind,
   splitWorkspaceFileName
 } from "../services/workspaceFileManagerModel.ts";
 import type {

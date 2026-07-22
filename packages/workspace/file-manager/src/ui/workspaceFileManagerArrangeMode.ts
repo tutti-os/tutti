@@ -1,7 +1,7 @@
 import {
   resolveWorkspaceFileExtension,
   resolveWorkspaceFileVisualKind
-} from "../services/workspaceFileManagerModel.ts";
+} from "@tutti-os/workspace-file-preview";
 import type { WorkspaceFileEntry } from "../services/workspaceFileManagerTypes.ts";
 
 export type WorkspaceFileManagerArrangeMode =

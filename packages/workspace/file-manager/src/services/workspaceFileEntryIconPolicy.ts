@@ -2,7 +2,7 @@ import {
   classifyWorkspaceFilePreviewKind,
   resolveWorkspaceFileExtension,
   resolveWorkspaceFileVisualKind
-} from "./workspaceFileManagerModel.ts";
+} from "@tutti-os/workspace-file-preview";
 import type { WorkspaceFileEntry } from "./workspaceFileManagerTypes.ts";
 
 const defaultApplicationIconExtensions = new Set([

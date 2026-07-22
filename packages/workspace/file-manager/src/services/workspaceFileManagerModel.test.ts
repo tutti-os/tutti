@@ -1,20 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  classifyWorkspaceFilePreviewKind,
-  decodeWorkspaceTextFile,
   filterVisibleWorkspaceEntries,
   formatWorkspaceFileModifiedTime,
-  isWorkspaceTextFileTooLarge,
-  looksLikeBinaryText,
   normalizeWorkspaceFilePath,
   resolveWorkspaceFileActivationTarget,
-  resolveWorkspaceImageMimeType,
   sortWorkspaceEntries,
   validateWorkspaceFileEntryName,
   workspaceFileDirectory,
-  workspaceFilePathHasHiddenSegment,
-  workspaceFileTextMaxBytes
+  workspaceFilePathHasHiddenSegment
 } from "./workspaceFileManagerModel.ts";
 import type { WorkspaceFileEntry } from "./workspaceFileManagerTypes.ts";
 
@@ -150,7 +144,6 @@ test("resolves previewable files into activation targets", () => {
   const markdownEntry = entry("README.md", "file");
   markdownEntry.sizeBytes = 128;
 
-  assert.equal(classifyWorkspaceFilePreviewKind(markdownEntry), "text");
   assert.deepEqual(resolveWorkspaceFileActivationTarget(markdownEntry), {
     fileKind: "text",
     mtimeMs: null,
@@ -159,24 +152,8 @@ test("resolves previewable files into activation targets", () => {
     sizeBytes: 128
   });
 
-  const imageEntry = entry("hero.png", "file");
-  assert.equal(classifyWorkspaceFilePreviewKind(imageEntry), "image");
-  assert.equal(resolveWorkspaceImageMimeType(imageEntry.name), "image/png");
-
   const archiveEntry = entry("archive.zip", "file");
-  assert.equal(classifyWorkspaceFilePreviewKind(archiveEntry), null);
   assert.equal(resolveWorkspaceFileActivationTarget(archiveEntry), null);
-});
-
-test("exposes conservative text preview safety helpers", () => {
-  assert.equal(isWorkspaceTextFileTooLarge(workspaceFileTextMaxBytes), false);
-  assert.equal(
-    isWorkspaceTextFileTooLarge(workspaceFileTextMaxBytes + 1),
-    true
-  );
-  assert.equal(decodeWorkspaceTextFile(new Uint8Array([0x68, 0x69])), "hi");
-  assert.equal(looksLikeBinaryText("plain text"), false);
-  assert.equal(looksLikeBinaryText("a\u0000b"), true);
 });
 
 function entry(
