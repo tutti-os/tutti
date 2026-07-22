@@ -384,42 +384,52 @@ function WorkspaceAppCenterWorkbenchHeader({
         i18n={appCenterI18n}
         windowActions={context.windowActions}
       />
-      <div
-        aria-label={i18n.t("workspace.appCenter.tabs.label")}
-        className="nodrag flex min-w-0 max-w-[70%] items-center gap-1 overflow-x-auto"
-        role="tablist"
-      >
-        <WorkspaceAppCenterTab
-          active={!openAppId}
-          icon={<NavApplicationsLinedIcon aria-hidden className="size-3.5" />}
-          tabId="catalog"
-          title={context.node.title}
-          onSelect={() => updateSelectedTab(null)}
-        />
-        {openApps.map((app) => (
-          <WorkspaceAppCenterTab
-            active={openAppId === app.appId}
-            closeLabel={i18n.t("workspace.appCenter.tabs.close")}
-            icon={<WorkspaceAppCenterTabIcon app={app} />}
-            key={app.appId}
-            tabId={app.appId}
-            title={resolveWorkspaceAppDisplayName(app)}
-            onClose={() => closeAppTab(app.appId)}
-            onSelect={() => updateSelectedTab(app.appId)}
-          />
-        ))}
-      </div>
-      <Button
-        aria-label={i18n.t("workspace.appCenter.tabs.new")}
-        className="nodrag shrink-0 rounded-md"
-        size="icon-sm"
-        title={i18n.t("workspace.appCenter.tabs.new")}
-        type="button"
-        variant="chrome"
-        onClick={() => updateSelectedTab(null)}
-      >
-        <AddIcon className="size-4" />
-      </Button>
+      {openApps.length > 0 ? (
+        <>
+          <div
+            aria-label={i18n.t("workspace.appCenter.tabs.label")}
+            className="nodrag flex min-w-0 max-w-[70%] items-center gap-1 overflow-x-auto"
+            role="tablist"
+          >
+            <WorkspaceAppCenterTab
+              active={!openAppId}
+              icon={
+                <NavApplicationsLinedIcon aria-hidden className="size-3.5" />
+              }
+              tabId="catalog"
+              title={context.node.title}
+              onSelect={() => updateSelectedTab(null)}
+            />
+            {openApps.map((app) => (
+              <WorkspaceAppCenterTab
+                active={openAppId === app.appId}
+                closeLabel={i18n.t("workspace.appCenter.tabs.close")}
+                icon={<WorkspaceAppCenterTabIcon app={app} />}
+                key={app.appId}
+                tabId={app.appId}
+                title={resolveWorkspaceAppDisplayName(app)}
+                onClose={() => closeAppTab(app.appId)}
+                onSelect={() => updateSelectedTab(app.appId)}
+              />
+            ))}
+          </div>
+          <Button
+            aria-label={i18n.t("workspace.appCenter.tabs.new")}
+            className="nodrag shrink-0 rounded-md"
+            size="icon-sm"
+            title={i18n.t("workspace.appCenter.tabs.new")}
+            type="button"
+            variant="chrome"
+            onClick={() => updateSelectedTab(null)}
+          >
+            <AddIcon className="size-4" />
+          </Button>
+        </>
+      ) : (
+        <div className="min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
+          {context.node.title}
+        </div>
+      )}
       <div className="min-w-8 flex-1 self-stretch" aria-hidden="true" />
     </div>
   );

@@ -532,8 +532,8 @@ export function WorkspaceDeveloperSettingsSection() {
               </div>
             ))}
             <Button
-              className="w-fit"
-              variant="ghost"
+              className="w-fit px-0 text-[var(--tutti-purple)] hover:no-underline"
+              variant="link"
               type="button"
               onClick={addFileDefaultOpener}
             >
