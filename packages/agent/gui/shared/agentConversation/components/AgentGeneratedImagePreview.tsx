@@ -1,5 +1,5 @@
 import { useEffect, useState, type JSX } from "react";
-import { resolveWorkspaceImageMimeType } from "@tutti-os/workspace-file-manager/services";
+import { resolveWorkspaceImageMimeType } from "@tutti-os/workspace-file-preview";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
 import { ZoomableImage } from "../../../app/renderer/components/ZoomableImage";
 import {

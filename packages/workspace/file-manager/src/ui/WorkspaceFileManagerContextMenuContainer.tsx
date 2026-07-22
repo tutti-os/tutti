@@ -6,7 +6,7 @@ import {
   type WorkspaceFileManagerI18nRuntime
 } from "../i18n/workspaceFileManagerI18n.ts";
 import type { WorkspaceFileOpenWithApplication } from "../services/workspaceFileManagerTypes.ts";
-import { isWorkspaceFileBrowserOpenable } from "../services/index.ts";
+import { isWorkspaceFileBrowserOpenable } from "@tutti-os/workspace-file-preview";
 import { WorkspaceFileManagerContextMenu } from "./WorkspaceFileManagerContextMenu.tsx";
 import { useWorkspaceFileManagerContextMenuView } from "./useWorkspaceFileManagerService.ts";
 

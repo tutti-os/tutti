@@ -299,6 +299,9 @@ importers:
       "@tutti-os/workspace-file-manager":
         specifier: workspace:*
         version: link:../../workspace/file-manager
+      "@tutti-os/workspace-file-preview":
+        specifier: workspace:*
+        version: link:../../workspace/file-preview
       "@tutti-os/workspace-file-reference":
         specifier: workspace:*
         version: link:../../workspace/file-reference
