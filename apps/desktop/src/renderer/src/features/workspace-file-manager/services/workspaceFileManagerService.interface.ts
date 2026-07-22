@@ -7,7 +7,6 @@ import type {
   WorkspaceFileManagerPersistedState,
   WorkspaceFileManagerSession as SharedWorkspaceFileManagerSession
 } from "@tutti-os/workspace-file-manager/services";
-import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
 export type WorkspaceFileManagerSession = SharedWorkspaceFileManagerSession;
 
 export interface IWorkspaceFileManagerService {
@@ -27,10 +26,6 @@ export interface IWorkspaceFileManagerService {
   getSnapshotState(
     workspaceID: string
   ): WorkspaceFileManagerPersistedState | null;
-  openCanvasFilePreview(
-    workspaceID: string,
-    target: WorkspaceFilePreviewActivationTarget
-  ): Promise<boolean>;
   resolveEntryIconUrl(
     workspaceID: string,
     entry: WorkspaceFileEntry

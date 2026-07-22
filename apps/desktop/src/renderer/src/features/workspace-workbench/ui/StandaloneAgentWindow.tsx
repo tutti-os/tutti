@@ -473,7 +473,7 @@ export function StandaloneAgentWindow({
         runtimeApi: desktopApi.runtime,
         workspaceAgentActivityService,
         workspaceFileManagerService,
-        workspaceFilePreviewMode: "canvas",
+        workspaceFilePreviewSurfaceHost,
         workspaceUserProjectService,
         workspaceId
       }),
@@ -487,6 +487,7 @@ export function StandaloneAgentWindow({
       tuttidClient,
       workspaceAgentActivityService,
       workspaceFileManagerService,
+      workspaceFilePreviewSurfaceHost,
       workspaceId,
       workspaceUserProjectService
     ]

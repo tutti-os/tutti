@@ -290,9 +290,6 @@ function createFileManagerServiceStub(
         navigationForwardStack: [...snapshotState.navigationForwardStack]
       };
     },
-    async openCanvasFilePreview() {
-      return false;
-    },
     async resolveEntryIconUrl() {
       return null;
     },

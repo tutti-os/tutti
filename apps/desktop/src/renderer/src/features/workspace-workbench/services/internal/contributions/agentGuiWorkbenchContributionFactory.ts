@@ -27,6 +27,7 @@ type AgentGuiWorkbenchContributionContext = Pick<
   | "tuttidClient"
   | "workspaceAgentActivityService"
   | "workspaceFileManagerService"
+  | "workspaceFilePreviewSurfaceHost"
   | "workspaceId"
   | "workspaceUserProjectService"
 >;
@@ -59,6 +60,8 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
         runtimeApi: context.runtimeApi,
         workspaceAgentActivityService: context.workspaceAgentActivityService,
         workspaceFileManagerService: context.workspaceFileManagerService,
+        workspaceFilePreviewSurfaceHost:
+          context.workspaceFilePreviewSurfaceHost,
         workspaceUserProjectService: context.workspaceUserProjectService,
         workspaceId: context.workspaceId
       });

@@ -39,6 +39,7 @@ import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-ap
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type { IDesktopRichTextAtService } from "../../../rich-text-at/services/richTextAtService.interface.ts";
 import type { IWorkspaceFileManagerService } from "../../../workspace-file-manager/services/workspaceFileManagerService.interface.ts";
+import type { IWorkspaceFilePreviewSurfaceHost } from "../../../workspace-file-preview/services/workspaceFilePreviewSurfaceHost.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../../workspace-user-project/services/workspaceUserProjectService.interface.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "../../../workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { IAgentQuickPromptService as AgentQuickPromptService } from "../../../workspace-agent/services/agentQuickPromptService.interface.ts";
@@ -82,6 +83,7 @@ export interface WorkspaceWorkbenchHostInputResolverDependencies {
   hostFilesApi: DesktopHostFilesApi;
   hostWindowApi: DesktopHostWindowApi;
   workspaceFileManagerService: IWorkspaceFileManagerService;
+  workspaceFilePreviewSurfaceHost: IWorkspaceFilePreviewSurfaceHost;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceAgentActivityService: WorkspaceAgentActivityService;
   workspaceAgentPromptSessionService: WorkspaceAgentPromptSessionService;
@@ -185,6 +187,8 @@ export class WorkspaceWorkbenchHostInputResolver {
         eventStreamClient: this.dependencies.eventStreamClient,
         workspaceFileManagerService:
           this.dependencies.workspaceFileManagerService,
+        workspaceFilePreviewSurfaceHost:
+          this.dependencies.workspaceFilePreviewSurfaceHost,
         workspaceUserProjectService:
           this.dependencies.workspaceUserProjectService,
         workspaceAgentActivityService:

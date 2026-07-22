@@ -38,6 +38,7 @@ import type {
 } from "@renderer/features/workspace-agent";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
+import type { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import type { IReporterService } from "@renderer/features/analytics";
 import { createDesktopAgentGUIWorkbenchHostInput } from "@renderer/features/workspace-agent/services/createDesktopAgentGUIWorkbenchHostInput.ts";
 import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
@@ -88,6 +89,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   runtimeApi: DesktopRuntimeApi;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceFileManagerService: IWorkspaceFileManagerService;
+  workspaceFilePreviewSurfaceHost: IWorkspaceFilePreviewSurfaceHost;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceId: string;
 }): WorkbenchContribution {
@@ -108,6 +110,7 @@ export function createWorkspaceAgentGuiContribution(input: {
     runtimeApi: input.runtimeApi,
     workspaceAgentActivityService: input.workspaceAgentActivityService,
     workspaceFileManagerService: input.workspaceFileManagerService,
+    workspaceFilePreviewSurfaceHost: input.workspaceFilePreviewSurfaceHost,
     workspaceUserProjectService: input.workspaceUserProjectService,
     workspaceId: input.workspaceId
   });
