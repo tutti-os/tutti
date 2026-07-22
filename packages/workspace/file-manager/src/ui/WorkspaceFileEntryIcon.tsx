@@ -1,6 +1,7 @@
 import {
   FileCodeIcon,
   FileTextIcon,
+  ImageFileIcon,
   LoadingIcon,
   VideoFileIcon,
   cn
@@ -14,8 +15,7 @@ import {
 import type { WorkspaceFileEntry } from "../services/workspaceFileManagerTypes.ts";
 import {
   workspaceArchiveFallbackIconUrl,
-  workspaceFolderFallbackIconUrl,
-  workspaceImageFallbackIconUrl
+  workspaceFolderFallbackIconUrl
 } from "../workspaceFileFallbackAssets.ts";
 import {
   resolveWorkspaceFileEntryIconCacheKey,
@@ -270,16 +270,7 @@ export function WorkspaceImageFallbackIcon({
 }: {
   className: string;
 }): ReactElement {
-  return (
-    <img
-      alt=""
-      aria-hidden="true"
-      className={cn("object-contain", className)}
-      decoding="async"
-      draggable={false}
-      src={workspaceImageFallbackIconUrl}
-    />
-  );
+  return <ImageFileIcon className={vectorFallbackIconClassName(className)} />;
 }
 
 function ExtensionDocumentIcon({

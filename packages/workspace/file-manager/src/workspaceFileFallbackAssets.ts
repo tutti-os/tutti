@@ -7,8 +7,3 @@ export const workspaceFolderFallbackIconUrl = new URL(
   "./assets/workspace-folder-fallback.png",
   import.meta.url
 ).toString();
-
-export const workspaceImageFallbackIconUrl = new URL(
-  "./assets/workspace-image-fallback.png",
-  import.meta.url
-).toString();
