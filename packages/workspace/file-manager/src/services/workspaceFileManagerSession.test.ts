@@ -164,6 +164,9 @@ test("preview mode transitions follow selection changes", async () => {
   await flushMicrotasks();
   assert.equal(previewStatus(session), "loading");
   deferred.resolve(new TextEncoder().encode("hello"));
+  // Host returns bare bytes; preview controller wraps them in `{ bytes }`,
+  // which adds one extra async turn after the deferred resolves.
+  await flushMicrotasks();
   await flushMicrotasks();
   assert.equal(previewStatus(session), "text");
 
@@ -195,12 +198,13 @@ test("html files are previewed as source text", async () => {
   assert.deepEqual(session.store.previewState, {
     content,
     entry: {
-      fileKind: "text",
+      previewKind: "html",
       mtimeMs: null,
       name: "login.html",
       path: "/Users/demo/project/login.html",
       sizeBytes: content.length
     },
+    previewKind: "html",
     status: "text"
   });
 

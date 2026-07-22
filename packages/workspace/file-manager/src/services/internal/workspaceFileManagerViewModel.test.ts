@@ -90,12 +90,13 @@ test("splits panels and dialog view state from the shared store", () => {
   store.previewState = {
     content: "export {};",
     entry: {
-      fileKind: "text",
+      previewKind: "code",
       mtimeMs: null,
       name: fileEntry.name,
       path: fileEntry.path,
       sizeBytes: fileEntry.sizeBytes
     },
+    previewKind: "code",
     status: "text"
   };
   store.dragDepth = 1;

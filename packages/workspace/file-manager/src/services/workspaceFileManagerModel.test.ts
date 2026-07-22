@@ -145,7 +145,7 @@ test("resolves previewable files into activation targets", () => {
   markdownEntry.sizeBytes = 128;
 
   assert.deepEqual(resolveWorkspaceFileActivationTarget(markdownEntry), {
-    fileKind: "text",
+    previewKind: "markdown",
     mtimeMs: null,
     name: "README.md",
     path: "/Users/demo/project/README.md",

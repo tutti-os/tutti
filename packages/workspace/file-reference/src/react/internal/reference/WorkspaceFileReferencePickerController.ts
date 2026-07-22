@@ -2,6 +2,7 @@ import { proxy } from "valtio/vanilla";
 import {
   createWorkspaceFilePreviewController,
   type WorkspaceFilePreviewControllerState,
+  type WorkspaceFilePreviewKind,
   type WorkspaceFilePreviewReadonlyReason
 } from "@tutti-os/workspace-file-preview";
 import type {
@@ -21,16 +22,35 @@ export type WorkspaceFileReferencePreviewState =
   | { status: "directory"; reference: WorkspaceFileReference }
   | { status: "empty" }
   | { status: "error"; reference: WorkspaceFileReference }
-  | { status: "image"; objectUrl: string; reference: WorkspaceFileReference }
-  | { status: "loading"; reference: WorkspaceFileReference }
-  | { status: "video"; objectUrl: string; reference: WorkspaceFileReference }
+  | {
+      status: "image";
+      objectUrl: string;
+      previewKind: "image";
+      reference: WorkspaceFileReference;
+    }
+  | {
+      previewKind?: WorkspaceFilePreviewKind;
+      reference: WorkspaceFileReference;
+      status: "loading";
+    }
+  | {
+      status: "video";
+      objectUrl: string;
+      previewKind: "video";
+      reference: WorkspaceFileReference;
+    }
   | {
       maxSizeBytes?: number;
       reason: WorkspaceFilePreviewReadonlyReason;
       reference: WorkspaceFileReference;
       status: "readonly";
     }
-  | { status: "text"; content: string; reference: WorkspaceFileReference }
+  | {
+      status: "text";
+      content: string;
+      previewKind: WorkspaceFilePreviewKind;
+      reference: WorkspaceFileReference;
+    }
   | { status: "unsupported"; reference: WorkspaceFileReference }
   | { status: "unavailable"; reference: WorkspaceFileReference };
 
@@ -139,7 +159,8 @@ export function createWorkspaceFileReferencePickerController(
           return preview
             ? {
                 bytes: preview.bytes,
-                contentType: preview.contentType
+                contentType: preview.contentType,
+                kind: preview.kind
               }
             : null;
         }
@@ -614,20 +635,34 @@ function projectReferencePreviewState(
     case "directory":
       return { reference: state.entry, status: "directory" };
     case "loading":
-      return { reference: state.entry, status: "loading" };
+      return {
+        previewKind: state.previewKind,
+        reference: state.entry,
+        status: "loading"
+      };
     case "text":
       return {
         content: state.content,
+        previewKind: state.previewKind,
         reference: state.entry,
         status: "text"
       };
     case "image":
+      return {
+        objectUrl: state.objectUrl,
+        previewKind: "image",
+        reference: state.entry,
+        status: "image"
+      };
     case "video":
       return {
         objectUrl: state.objectUrl,
+        previewKind: "video",
         reference: state.entry,
-        status: state.status
+        status: "video"
       };
+    case "bytes":
+      return { reference: state.entry, status: "unsupported" };
     case "readonly":
       return {
         maxSizeBytes: state.maxSizeBytes,

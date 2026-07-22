@@ -209,7 +209,7 @@ test("desktop workspace file reference adapter opens previewable files with the 
       }
     } as unknown as DesktopHostFilesApi,
     presentFilePreview(target, workspaceId) {
-      calls.push(`preview:${workspaceId}:${target.path}:${target.fileKind}`);
+      calls.push(`preview:${workspaceId}:${target.path}:${target.previewKind}`);
       return true;
     },
     tuttidClient: {} as TuttidClient,
@@ -233,7 +233,7 @@ test("desktop workspace file reference adapter falls back to system open when th
       }
     } as unknown as DesktopHostFilesApi,
     presentFilePreview(target, workspaceId) {
-      calls.push(`preview:${workspaceId}:${target.path}:${target.fileKind}`);
+      calls.push(`preview:${workspaceId}:${target.path}:${target.previewKind}`);
       return false;
     },
     tuttidClient: {} as TuttidClient,
@@ -333,4 +333,28 @@ test("desktop workspace file reference adapter reads video previews", async () =
     kind: "video"
   });
   assert.deepEqual(previewReads, [["workspace-2", "/workspace/demo.mp4"]]);
+});
+
+test("desktop workspace file reference adapter classifies preview reads from displayName", async () => {
+  const adapter = createDesktopWorkspaceFileReferenceAdapter({
+    hostFilesApi: {
+      async readPreviewFile() {
+        return new Uint8Array([0x23, 0x20]);
+      }
+    } as unknown as DesktopHostFilesApi,
+    tuttidClient: {} as TuttidClient,
+    workspaceId: "workspace-1"
+  });
+
+  const preview = await adapter.readReferencePreview?.({
+    reference: {
+      displayName: "notes.md",
+      kind: "file",
+      path: "/workspace/objects/abc123"
+    },
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(preview?.kind, "markdown");
+  assert.equal(preview?.contentType, "text/plain;charset=utf-8");
 });

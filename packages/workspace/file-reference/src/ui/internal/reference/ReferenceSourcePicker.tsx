@@ -1614,21 +1614,32 @@ function toPreviewSurfaceState(
     case "directory":
       return { entry: node, status: "directory" };
     case "loading":
-      return { entry: node, status: "loading" };
+      return {
+        entry: node,
+        previewKind: previewState.previewKind,
+        status: "loading"
+      };
     case "image":
       return {
         entry: node,
         objectUrl: previewState.objectUrl,
+        previewKind: "image",
         status: "image"
       };
     case "video":
       return {
         entry: node,
         objectUrl: previewState.objectUrl,
+        previewKind: "video",
         status: "video"
       };
     case "text":
-      return { content: previewState.content, entry: node, status: "text" };
+      return {
+        content: previewState.content,
+        entry: node,
+        previewKind: previewState.previewKind,
+        status: "text"
+      };
     case "readonly":
       return {
         entry: node,

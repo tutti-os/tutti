@@ -33,6 +33,11 @@ export {
   WorkspaceFileOpenWithApplicationsCache
 } from "./internal/model/openWithApplicationsCache.ts";
 export {
+  isWorkspaceFileBrowserOpenable,
+  shouldFilterVideoPlayersForOpenWith,
+  workspaceFileVideoHandlerCollisionExtensions
+} from "./internal/model/openWithPolicy.ts";
+export {
   isWorkspaceApplicationBundle,
   resolveWorkspaceFileDefaultApplicationIconExtension,
   resolveWorkspaceFileEntryIconCacheKey,

@@ -7,7 +7,7 @@ import type {
   WorkspaceFileManagerHostFileActivationResult,
   WorkspaceFileSearchResult
 } from "@tutti-os/workspace-file-manager/services";
-import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
+import type { WorkspaceFilePreviewTarget } from "@tutti-os/workspace-file-preview";
 import { requestWorkspaceBrowserHostFileLaunch } from "../../../workspace-workbench/services/workspaceBrowserLaunchCoordinator.ts";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import { resolveDesktopErrorMessage } from "../../../../lib/desktopErrors.ts";
@@ -31,7 +31,7 @@ export function createDesktopWorkspaceFileManagerAdapter(
       workspaceID: string
     ): WorkspaceFilePreviewPresentationResult["unsupportedFallbackNotification"];
     openCanvasPreview(
-      target: WorkspaceFilePreviewActivationTarget,
+      target: WorkspaceFilePreviewTarget,
       workspaceID: string
     ): Promise<WorkspaceFilePreviewPresentationResult>;
   }

@@ -1,6 +1,6 @@
-import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
+import type { WorkspaceFilePreviewTarget } from "@tutti-os/workspace-file-preview";
 import type { WorkbenchHostNodeData } from "@tutti-os/workbench-surface";
-import { isWorkspaceFilePreviewActivationTarget } from "../services/workspaceFilePreviewLaunch";
+import { coerceWorkspaceFilePreviewTarget } from "../services/workspaceFilePreviewLaunch";
 
 export type WorkspaceFilePreviewTextHeaderStatus =
   | "error"
@@ -17,16 +17,16 @@ export interface WorkspaceFilePreviewTextHeaderState {
 }
 
 export interface WorkspaceFilePreviewNodeRuntimeState {
-  file: WorkspaceFilePreviewActivationTarget;
+  file: WorkspaceFilePreviewTarget;
   textHeader?: WorkspaceFilePreviewTextHeaderState;
 }
 
 export interface WorkspaceFilePreviewNodeSnapshotState {
-  file: WorkspaceFilePreviewActivationTarget;
+  file: WorkspaceFilePreviewTarget;
 }
 
 export function createWorkspaceFilePreviewNodeRuntimeState(input: {
-  file: WorkspaceFilePreviewActivationTarget;
+  file: WorkspaceFilePreviewTarget;
   textHeader?: WorkspaceFilePreviewTextHeaderState;
 }): WorkspaceFilePreviewNodeRuntimeState {
   return input.textHeader
@@ -35,22 +35,23 @@ export function createWorkspaceFilePreviewNodeRuntimeState(input: {
 }
 
 export function createWorkspaceFilePreviewNodeSnapshotState(input: {
-  file: WorkspaceFilePreviewActivationTarget;
+  file: WorkspaceFilePreviewTarget;
 }): WorkspaceFilePreviewNodeSnapshotState {
   return { file: input.file };
 }
 
 export function resolveWorkspaceFilePreviewNodeFile(
   data: Pick<WorkbenchHostNodeData, "runtimeNodeState" | "snapshotNodeState">
-): WorkspaceFilePreviewActivationTarget | null {
+): WorkspaceFilePreviewTarget | null {
   for (const value of [data.runtimeNodeState, data.snapshotNodeState]) {
     if (!value || typeof value !== "object") {
       continue;
     }
 
     const candidate = value as Partial<WorkspaceFilePreviewNodeSnapshotState>;
-    if (isWorkspaceFilePreviewActivationTarget(candidate.file)) {
-      return candidate.file;
+    const file = coerceWorkspaceFilePreviewTarget(candidate.file);
+    if (file) {
+      return file;
     }
   }
 
@@ -66,7 +67,7 @@ export function resolveWorkspaceFilePreviewTextHeaderState(
 
   const candidate =
     data.runtimeNodeState as Partial<WorkspaceFilePreviewNodeRuntimeState>;
-  if (!isWorkspaceFilePreviewActivationTarget(candidate.file)) {
+  if (!coerceWorkspaceFilePreviewTarget(candidate.file)) {
     return null;
   }
 
@@ -96,10 +97,10 @@ export function resolveWorkspaceFilePreviewTextHeaderState(
 }
 
 export function workspaceFilePreviewNodeFileKey(
-  file: WorkspaceFilePreviewActivationTarget
+  file: WorkspaceFilePreviewTarget
 ): string {
   return [
-    file.fileKind,
+    file.previewKind,
     file.path,
     file.name,
     file.sizeBytes ?? "",

@@ -1,10 +1,11 @@
 import {
   createWorkspaceFilePreviewController,
   formatWorkspacePreviewByteLimit,
+  isTextDegradablePreviewKind,
   workspaceFilePreviewMaxBytes,
   type WorkspaceFilePreviewController,
   type WorkspaceFilePreviewControllerState,
-  type WorkspaceFilePreviewActivationTarget,
+  type WorkspaceFilePreviewTarget,
   type WorkspaceFilePreviewReadonlyReason
 } from "@tutti-os/workspace-file-preview";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
@@ -28,37 +29,37 @@ export type WorkspaceFilePreviewTextSaveStatus =
 
 export type WorkspaceFilePreviewNodeControllerState =
   | { status: "empty" }
-  | { entry: WorkspaceFilePreviewActivationTarget; status: "loading" }
+  | { entry: WorkspaceFilePreviewTarget; status: "loading" }
   | {
       content: string;
       draft: string;
-      entry: WorkspaceFilePreviewActivationTarget;
+      entry: WorkspaceFilePreviewTarget;
       message?: string;
       saveStatus: WorkspaceFilePreviewTextSaveStatus;
       status: "text";
     }
   | {
-      entry: WorkspaceFilePreviewActivationTarget;
+      entry: WorkspaceFilePreviewTarget;
       objectUrl: string;
       status: "image";
     }
   | {
-      entry: WorkspaceFilePreviewActivationTarget;
+      entry: WorkspaceFilePreviewTarget;
       objectUrl: string;
       status: "video";
     }
   | {
-      entry: WorkspaceFilePreviewActivationTarget;
+      entry: WorkspaceFilePreviewTarget;
       message: string;
       status: "error";
     }
   | {
-      entry: WorkspaceFilePreviewActivationTarget;
+      entry: WorkspaceFilePreviewTarget;
       message: string;
       status: "readonly";
     }
   | {
-      entry: WorkspaceFilePreviewActivationTarget;
+      entry: WorkspaceFilePreviewTarget;
       message: string;
       status: "unsupported";
     };
@@ -68,7 +69,7 @@ export interface WorkspaceFilePreviewNodeController {
   dispose(): void;
   getSnapshot(): WorkspaceFilePreviewNodeControllerState;
   saveTextFile(): Promise<void>;
-  setActiveFile(file: WorkspaceFilePreviewActivationTarget | null): void;
+  setActiveFile(file: WorkspaceFilePreviewTarget | null): void;
   subscribe(listener: () => void): () => void;
 }
 
@@ -76,7 +77,7 @@ export function createWorkspaceFilePreviewNodeController(input: {
   appI18n: I18nRuntime<string>;
   hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-  initialFile: WorkspaceFilePreviewActivationTarget | null;
+  initialFile: WorkspaceFilePreviewTarget | null;
   tuttidClient: Pick<
     TuttidClient,
     "readWorkspaceFilePreview" | "writeWorkspaceFileText"
@@ -95,7 +96,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     appI18n: I18nRuntime<string>;
     hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
     i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-    initialFile: WorkspaceFilePreviewActivationTarget | null;
+    initialFile: WorkspaceFilePreviewTarget | null;
     tuttidClient: Pick<
       TuttidClient,
       "readWorkspaceFilePreview" | "writeWorkspaceFileText"
@@ -104,7 +105,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     onSnapshotStateChange(state: unknown): void;
     workspaceID: string;
   };
-  private readonly previewController: WorkspaceFilePreviewController<WorkspaceFilePreviewActivationTarget>;
+  private readonly previewController: WorkspaceFilePreviewController<WorkspaceFilePreviewTarget>;
   private readonly unsubscribePreview: () => void;
   private runtimeStateKey: string | null = null;
   private snapshotStateKey: string | null = null;
@@ -114,7 +115,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     appI18n: I18nRuntime<string>;
     hostFilesApi: Pick<DesktopHostFilesApi, "readLocalPreviewFile">;
     i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-    initialFile: WorkspaceFilePreviewActivationTarget | null;
+    initialFile: WorkspaceFilePreviewTarget | null;
     tuttidClient: Pick<
       TuttidClient,
       "readWorkspaceFilePreview" | "writeWorkspaceFileText"
@@ -141,9 +142,9 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
                 )
               ).bytesBase64
             ),
-        kind: entry.fileKind
+        kind: entry.previewKind
       }),
-      toPreviewEntry: (entry: WorkspaceFilePreviewActivationTarget) => ({
+      toPreviewEntry: (entry: WorkspaceFilePreviewTarget) => ({
         ...entry,
         kind: "file"
       })
@@ -228,7 +229,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
     }
   }
 
-  setActiveFile(file: WorkspaceFilePreviewActivationTarget | null): void {
+  setActiveFile(file: WorkspaceFilePreviewTarget | null): void {
     if (this.disposed) {
       return;
     }
@@ -243,7 +244,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
   }
 
   private applyPreviewState(
-    state: WorkspaceFilePreviewControllerState<WorkspaceFilePreviewActivationTarget>
+    state: WorkspaceFilePreviewControllerState<WorkspaceFilePreviewTarget>
   ): void {
     switch (state.status) {
       case "empty":
@@ -267,6 +268,17 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
           entry: state.entry,
           objectUrl: state.objectUrl,
           status: state.status
+        }));
+        return;
+      case "bytes":
+        // Desktop workbench does not register host renderers yet; hook-only
+        // payloads are treated as unsupported in this surface.
+        this.updateState(() => ({
+          entry: state.entry,
+          message: this.input.appI18n.t(
+            "workspaceFileManager.previewUnsupported"
+          ),
+          status: "unsupported"
         }));
         return;
       case "readonly":
@@ -355,10 +367,9 @@ function resolveRuntimeStateFromPreviewState(
 
   return createWorkspaceFilePreviewNodeRuntimeState({
     file: state.entry,
-    textHeader:
-      state.entry.fileKind === "text"
-        ? resolveTextHeaderStateFromPreviewState(state)
-        : undefined
+    textHeader: isTextDegradablePreviewKind(state.entry.previewKind)
+      ? resolveTextHeaderStateFromPreviewState(state)
+      : undefined
   });
 }
 

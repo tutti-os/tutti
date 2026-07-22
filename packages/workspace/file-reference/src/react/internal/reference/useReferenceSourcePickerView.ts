@@ -25,6 +25,7 @@ import {
 import {
   createWorkspaceFilePreviewController,
   type WorkspaceFilePreviewControllerState,
+  type WorkspaceFilePreviewKind,
   type WorkspaceFilePreviewReadonlyReason
 } from "@tutti-os/workspace-file-preview";
 import {
@@ -56,22 +57,29 @@ function referenceNodeToOpenWithCacheEntry(
 export type ReferenceNodePreviewState =
   | { status: "empty" }
   | { node: ReferenceNode; status: "directory" }
-  | { node: ReferenceNode; status: "loading" }
+  | {
+      node: ReferenceNode;
+      previewKind?: WorkspaceFilePreviewKind;
+      status: "loading";
+    }
   | {
       content: string;
       node: ReferenceNode;
+      previewKind: WorkspaceFilePreviewKind;
       previewSizeBytes?: number;
       status: "text";
     }
   | {
       node: ReferenceNode;
       objectUrl: string;
+      previewKind: "image";
       previewSizeBytes?: number;
       status: "image";
     }
   | {
       node: ReferenceNode;
       objectUrl: string;
+      previewKind: "video";
       previewSizeBytes?: number;
       status: "video";
     }
@@ -983,22 +991,37 @@ function projectReferenceNodePreviewState(
     case "directory":
       return { node: state.entry, status: "directory" };
     case "loading":
-      return { node: state.entry, status: "loading" };
+      return {
+        node: state.entry,
+        previewKind: state.previewKind,
+        status: "loading"
+      };
     case "text":
       return {
         content: state.content,
         node: state.entry,
+        previewKind: state.previewKind,
         previewSizeBytes: state.previewSizeBytes,
         status: "text"
       };
     case "image":
+      return {
+        node: state.entry,
+        objectUrl: state.objectUrl,
+        previewKind: "image",
+        previewSizeBytes: state.previewSizeBytes,
+        status: "image"
+      };
     case "video":
       return {
         node: state.entry,
         objectUrl: state.objectUrl,
+        previewKind: "video",
         previewSizeBytes: state.previewSizeBytes,
-        status: state.status
+        status: "video"
       };
+    case "bytes":
+      return { node: state.entry, status: "unsupported" };
     case "readonly":
       return {
         maxSizeBytes: state.maxSizeBytes,

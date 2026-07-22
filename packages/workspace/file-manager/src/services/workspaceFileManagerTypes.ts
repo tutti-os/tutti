@@ -3,8 +3,8 @@ import type {
   WorkspaceFileManagerHostImportConflict
 } from "./workspaceFileManagerHostTypes.ts";
 import type {
-  WorkspaceFilePreviewActivationTarget,
-  WorkspaceFilePreviewKind as SharedWorkspaceFilePreviewKind
+  WorkspaceFilePreviewKind as SharedWorkspaceFilePreviewKind,
+  WorkspaceFilePreviewTarget
 } from "@tutti-os/workspace-file-preview";
 
 export const workspaceFileManagerLogicalRoot = "/" as const;
@@ -34,7 +34,12 @@ export interface WorkspaceFileEntry {
   sizeBytes: number | null;
 }
 
-export interface WorkspaceFileActivationTarget extends WorkspaceFilePreviewActivationTarget {
+/**
+ * File-manager activation payload. Reuses the shared preview target shape
+ * (`previewKind`) so hosts can decide whether to open an in-app preview, while
+ * open / reveal / open-with stay outside `@tutti-os/workspace-file-preview`.
+ */
+export interface WorkspaceFileActivationTarget extends WorkspaceFilePreviewTarget {
   mtimeMs: number | null;
   sizeBytes: number | null;
 }
@@ -42,10 +47,29 @@ export interface WorkspaceFileActivationTarget extends WorkspaceFilePreviewActiv
 export type WorkspaceFilePreviewState =
   | { status: "empty" }
   | { entry: WorkspaceFileEntry; status: "directory" }
-  | { entry: WorkspaceFileActivationTarget; status: "loading" }
-  | { content: string; entry: WorkspaceFileActivationTarget; status: "text" }
-  | { entry: WorkspaceFileActivationTarget; objectUrl: string; status: "image" }
-  | { entry: WorkspaceFileActivationTarget; objectUrl: string; status: "video" }
+  | {
+      entry: WorkspaceFileActivationTarget;
+      previewKind: WorkspaceFilePreviewKind;
+      status: "loading";
+    }
+  | {
+      content: string;
+      entry: WorkspaceFileActivationTarget;
+      previewKind: WorkspaceFilePreviewKind;
+      status: "text";
+    }
+  | {
+      entry: WorkspaceFileActivationTarget;
+      objectUrl: string;
+      previewKind: "image";
+      status: "image";
+    }
+  | {
+      entry: WorkspaceFileActivationTarget;
+      objectUrl: string;
+      previewKind: "video";
+      status: "video";
+    }
   | { entry: WorkspaceFileEntry; message: string; status: "unsupported" }
   | { entry: WorkspaceFileEntry; message: string; status: "readonly" }
   | { entry: WorkspaceFileEntry; message: string; status: "error" };

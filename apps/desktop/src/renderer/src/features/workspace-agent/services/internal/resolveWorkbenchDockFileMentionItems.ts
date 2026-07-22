@@ -1,6 +1,6 @@
-import type { WorkspaceFilePreviewActivationTarget } from "@tutti-os/workspace-file-preview";
+import type { WorkspaceFilePreviewTarget } from "@tutti-os/workspace-file-preview";
 import {
-  isWorkspaceFilePreviewActivationTarget,
+  coerceWorkspaceFilePreviewTarget,
   isWorkspaceFilePreviewNodeTypeID,
   workspaceFilePreviewActivationType
 } from "../../../workspace-workbench/services/workspaceFilePreviewLaunch.ts";
@@ -77,24 +77,22 @@ export function resolveWorkbenchDockFileMentionItems(input: {
 
 function resolveWorkbenchDockFileTarget(
   nodeData: WorkbenchHostNodeData
-): WorkspaceFilePreviewActivationTarget | null {
+): WorkspaceFilePreviewTarget | null {
   for (const value of [nodeData.runtimeNodeState, nodeData.snapshotNodeState]) {
     if (!value || typeof value !== "object") {
       continue;
     }
 
     const candidate = value as { file?: unknown };
-    if (isWorkspaceFilePreviewActivationTarget(candidate.file)) {
-      return candidate.file;
+    const file = coerceWorkspaceFilePreviewTarget(candidate.file);
+    if (file) {
+      return file;
     }
   }
 
   const activation = nodeData.activation;
-  if (
-    activation?.type === workspaceFilePreviewActivationType &&
-    isWorkspaceFilePreviewActivationTarget(activation.payload)
-  ) {
-    return activation.payload;
+  if (activation?.type === workspaceFilePreviewActivationType) {
+    return coerceWorkspaceFilePreviewTarget(activation.payload);
   }
 
   return null;

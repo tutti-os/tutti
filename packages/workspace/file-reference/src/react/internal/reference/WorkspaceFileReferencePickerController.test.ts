@@ -265,6 +265,7 @@ test("workspace file reference picker controller ignores stale preview results",
 
   assert.deepEqual(controller.getSnapshot().previewState, {
     content: "fresh",
+    previewKind: "text",
     reference: {
       kind: "file",
       path: "/workspace/fresh.txt"
@@ -335,6 +336,7 @@ test("workspace file reference picker controller shows html source as text", asy
 
   assert.deepEqual(controller.getSnapshot().previewState, {
     content,
+    previewKind: "text",
     reference: {
       kind: "file",
       path: "/workspace/login.html"
