@@ -206,11 +206,13 @@ if (isMainModule()) {
   }
 
   const violations = scanWorkspace();
-  violations.push(
-    ...findProductionCompositionViolations(
-      readFileSync(join(workspaceRoot, "services/tuttid/wiring.go"), "utf8")
-    )
-  );
+  const wiringSource = [
+    "services/tuttid/wiring.go",
+    "services/tuttid/wiring_daemon_api.go"
+  ]
+    .map((file) => readFileSync(join(workspaceRoot, file), "utf8"))
+    .join("\n");
+  violations.push(...findProductionCompositionViolations(wiringSource));
   if (violations.length > 0) {
     console.error(
       "Agent application lifecycle semantics must live in packages/agent/host, " +

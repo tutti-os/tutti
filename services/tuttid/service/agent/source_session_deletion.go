@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
@@ -60,7 +61,15 @@ func (s *Service) Delete(ctx context.Context, workspaceID string, agentSessionID
 	result, err := s.ApplicationHost().DeleteSession(ctx, agenthost.SessionRef{
 		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
 	})
-	return DeleteSessionResult{Removed: result.Deleted, CleanupFailed: result.CleanupFailed}, err
+	if err != nil {
+		if errors.Is(err, agenthost.ErrSessionNotFound) || errors.Is(err, ErrSessionNotFound) {
+			if tuttiErr := s.deleteTuttiModeActivationSessionState(ctx, workspaceID, agentSessionID); tuttiErr != nil {
+				return DeleteSessionResult{}, tuttiErr
+			}
+		}
+		return DeleteSessionResult{}, err
+	}
+	return DeleteSessionResult{Removed: result.Deleted, CleanupFailed: result.CleanupFailed}, nil
 }
 
 func (s *Service) Clear(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {

@@ -153,12 +153,7 @@ export interface AgentActivityComposerSettingOption {
   label: string;
   description?: string;
   supportsImageInput?: boolean;
-  /**
-   * True when the entry mirrors the requested/current selection instead of
-   * the provider catalog (daemon warm-catalog append, selected-model
-   * bootstrap echo, GUI current-value append). Requested-origin entries stay
-   * selectable but are not testimony that the provider can run the model.
-   */
+  /** True when the entry mirrors the requested/current selection, not the provider catalog. */
   requested?: boolean;
 }
 
@@ -565,25 +560,11 @@ export interface AgentPromptContentBlock {
   sizeBytes?: number;
 }
 
-export type AgentActivityGoalControlAction =
-  | "pause"
-  | "resume"
-  | "clear"
-  | "set";
-
-export interface AgentActivityInitialGoalControl {
-  action: AgentActivityGoalControlAction;
-  objective?: string;
-}
-
-export interface AgentActivityGoalControlInput {
-  workspaceId: string;
-  agentSessionId: string;
-  action: AgentActivityGoalControlAction;
-  clientSubmitId?: string;
-  objective?: string;
-  signal?: AbortSignal;
-}
+export type {
+  AgentActivityGoalControlAction,
+  AgentActivityGoalControlInput,
+  AgentActivityInitialGoalControl
+} from "./goalControl.types.ts";
 
 export interface AgentActivityGoalControlResult {
   session: AgentActivitySession;

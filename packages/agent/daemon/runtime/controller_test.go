@@ -65,6 +65,10 @@ func (r *submittedTurnBarrierReporter) Report(ctx context.Context, _ agentsessio
 	}
 }
 
+func (r *submittedTurnBarrierReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	return r.Report(ctx, report)
+}
+
 type executionSignalAdapter struct {
 	recordingStartAdapter
 	executed chan struct{}
@@ -79,6 +83,10 @@ func (a *executionSignalAdapter) Exec(context.Context, Session, []PromptContentB
 func (blockingGoalReconcileReporter) Report(ctx context.Context, _ agentsessionstore.ReportActivityInput) error {
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+func (blockingGoalReconcileReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	return blockingGoalReconcileReporter{}.Report(ctx, report)
 }
 
 func (r *goalPrepareBarrierReporter) Report(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
@@ -96,6 +104,10 @@ func (r *goalPrepareBarrierReporter) Report(ctx context.Context, report agentses
 		}
 	}
 	return nil
+}
+
+func (r *goalPrepareBarrierReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	return r.Report(ctx, report)
 }
 
 func (r *goalPrepareBarrierReporter) phaseSnapshot() []string {
@@ -146,6 +158,10 @@ func (r *recordingReporter) Report(_ context.Context, report agentsessionstore.R
 		}
 	}
 	return nil
+}
+
+func (r *recordingReporter) ReportSubmitProvenance(_ context.Context, report agentsessionstore.ReportActivityInput) error {
+	return r.Report(context.Background(), report)
 }
 
 func (r *recordingReporter) snapshot() []reportCall {
@@ -1539,9 +1555,7 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("guide current turn"),
 		Guidance:       true,
-		Metadata: map[string]any{
-			"clientSubmitId": "guidance-submit-1",
-		},
+		ClientSubmitID: "guidance-submit-1",
 	})
 	if err != nil {
 		t.Fatalf("guidance Exec: %v", err)

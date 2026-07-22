@@ -203,6 +203,9 @@ type RuntimeCleanupInput struct {
 	WorkspaceID    string
 	AgentSessionID string
 	Provider       string
+	// OrphanActivationCleanup requests Tutti Mode activation cleanup for
+	// runtime-only session state that never received a canonical tombstone.
+	OrphanActivationCleanup bool
 }
 
 type RuntimePreparationPort interface {

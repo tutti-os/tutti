@@ -104,12 +104,17 @@ func TestProcessExists(t *testing.T) {
 }
 
 func TestWiringUsesSupervisedAgentHostRun(t *testing.T) {
-	raw, err := os.ReadFile("wiring.go")
-	if err != nil {
-		t.Fatalf("read wiring.go: %v", err)
+	var source strings.Builder
+	for _, file := range []string{"wiring.go", "wiring_daemon_api.go"} {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		source.Write(raw)
+		source.WriteByte('\n')
 	}
-	source := string(raw)
-	if !strings.Contains(source, "agentHost.Run(ctx)") {
+	combined := source.String()
+	if !strings.Contains(combined, "agentHost.Run(ctx)") {
 		t.Fatal("production wiring does not start the supervised Agent Host lifecycle")
 	}
 	for _, legacy := range []string{
@@ -118,7 +123,7 @@ func TestWiringUsesSupervisedAgentHostRun(t *testing.T) {
 		"agentHost.RunGoalReconcileInboxWorker(ctx)",
 		"agentHost.RunWorktreeGarbageCollectionWorker(ctx)",
 	} {
-		if strings.Contains(source, legacy) {
+		if strings.Contains(combined, legacy) {
 			t.Fatalf("production wiring still starts an unsupervised Host worker: %s", legacy)
 		}
 	}

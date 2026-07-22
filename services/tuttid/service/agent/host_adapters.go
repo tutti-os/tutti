@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -119,7 +120,11 @@ func (a serviceHostPreparation) Prepare(ctx context.Context, input agenthost.Run
 }
 
 func (a serviceHostPreparation) Cleanup(ctx context.Context, input agenthost.RuntimeCleanupInput) error {
-	return a.service.cleanupSessionResources(ctx, input.WorkspaceID, input.AgentSessionID)
+	var activationErr error
+	if input.OrphanActivationCleanup {
+		activationErr = a.service.deleteTuttiModeActivationSessionState(ctx, input.WorkspaceID, input.AgentSessionID)
+	}
+	return errors.Join(a.service.cleanupSessionResources(ctx, input.WorkspaceID, input.AgentSessionID), activationErr)
 }
 
 type serviceHostLocker struct{ service *Service }

@@ -9,6 +9,16 @@ import {
   type SessionActivationRequestedIntent
 } from "./pendingIntents.types.ts";
 import {
+  pendingActivationGoalControlFields,
+  pendingActivationRailSectionKeyFields
+} from "./pendingIntents.activationExtras.ts";
+import {
+  markSessionActive,
+  markSessionInactive,
+  removeInactiveSession,
+  unchanged
+} from "./pendingIntents.inactiveSessions.ts";
+import {
   confirmFromMessages,
   confirmFromSessions,
   deleteSubmit,
@@ -228,12 +238,8 @@ function requestActivation(
     expiresAtUnixMs: intent.expiresAtUnixMs,
     initialTurnExpected:
       intent.initialTurnExpected ?? runtimeContent.length > 0,
-    ...(intent.initialGoalControl
-      ? { initialGoalControl: { ...intent.initialGoalControl } }
-      : {}),
-    ...(intent.railSectionKey?.trim()
-      ? { railSectionKey: intent.railSectionKey.trim() }
-      : {}),
+    ...pendingActivationGoalControlFields(intent),
+    ...pendingActivationRailSectionKeyFields(intent),
     ...(intent.submitDiagnostics
       ? { submitDiagnostics: { ...intent.submitDiagnostics } }
       : {}),
@@ -293,9 +299,7 @@ function requestActivation(
               ? { initialContent: runtimeContent }
               : {}),
             ...(displayPrompt ? { initialDisplayPrompt: displayPrompt } : {}),
-            ...(intent.initialGoalControl
-              ? { initialGoalControl: { ...intent.initialGoalControl } }
-              : {}),
+            ...pendingActivationGoalControlFields(intent),
             ...(intent.submitDiagnostics
               ? { submitDiagnostics: { ...intent.submitDiagnostics } }
               : {}),
@@ -767,43 +771,4 @@ function deleteActivation(
   const activations = { ...state.activationsByRequestId };
   delete activations[requestId];
   return { ...state, activationsByRequestId: activations };
-}
-
-function markSessionActive(
-  state: PendingIntentsState,
-  agentSessionId: string
-): PendingIntentsState {
-  return removeInactiveSession(state, agentSessionId);
-}
-
-function markSessionInactive(
-  state: PendingIntentsState,
-  agentSessionId: string
-): PendingIntentsState {
-  const id = agentSessionId.trim();
-  return state.inactiveSessionIds[id]
-    ? state
-    : {
-        ...state,
-        inactiveSessionIds: { ...state.inactiveSessionIds, [id]: true }
-      };
-}
-
-function removeInactiveSession(
-  state: PendingIntentsState,
-  agentSessionId: string
-): PendingIntentsState {
-  const id = agentSessionId.trim();
-  if (!state.inactiveSessionIds[id]) {
-    return state;
-  }
-  const inactiveSessionIds = { ...state.inactiveSessionIds };
-  delete inactiveSessionIds[id];
-  return { ...state, inactiveSessionIds };
-}
-
-function unchanged(
-  state: PendingIntentsState
-): EngineReducerResult<PendingIntentsState> {
-  return { commands: NO_COMMANDS, state };
 }

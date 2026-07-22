@@ -228,11 +228,20 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 	runtimeClosedIDs = normalizedUniqueSessionIDs(runtimeClosedIDs)
 	cleanupSessionIDs := normalizedUniqueSessionIDs(append(append([]string(nil), deleted.RemovedSessionIDs...), runtimeClosedIDs...))
 	cleanupFailedIDs := make([]string, 0)
+	removedSessionIDSet := make(map[string]struct{}, len(deleted.RemovedSessionIDs))
+	for _, sessionID := range deleted.RemovedSessionIDs {
+		removedSessionIDSet[sessionID] = struct{}{}
+	}
 	for _, sessionID := range cleanupSessionIDs {
 		if h.preparation == nil {
 			continue
 		}
-		if err := h.preparation.Cleanup(ctx, RuntimeCleanupInput{WorkspaceID: workspaceID, AgentSessionID: sessionID}); err != nil {
+		_, canonicalRemoved := removedSessionIDSet[sessionID]
+		if err := h.preparation.Cleanup(ctx, RuntimeCleanupInput{
+			WorkspaceID:             workspaceID,
+			AgentSessionID:          sessionID,
+			OrphanActivationCleanup: !canonicalRemoved,
+		}); err != nil {
 			cleanupFailedIDs = append(cleanupFailedIDs, sessionID)
 		}
 	}

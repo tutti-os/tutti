@@ -17,6 +17,7 @@ func TestDeleteRetryConvergesTuttiModeCleanupForOrphanState(t *testing.T) {
 	service := NewService(&fakeRuntime{sessions: map[string]ProviderRuntimeSession{}})
 	service.SessionReader = reader
 	service.TuttiModeActivations = coordinator
+	configureTestApplicationHost(service)
 
 	if _, err := service.Delete(context.Background(), "workspace-1", "session-1"); !errors.Is(err, wantErr) {
 		t.Fatalf("first Delete() error = %v", err)
@@ -39,6 +40,7 @@ func TestDeleteDoesNotRepeatTuttiModeCleanupAfterSessionStoreRemovedState(t *tes
 	service := NewService(&fakeRuntime{sessions: map[string]ProviderRuntimeSession{}})
 	service.SessionReader = reader
 	service.TuttiModeActivations = coordinator
+	configureTestApplicationHost(service)
 
 	deleteResult, err := service.Delete(context.Background(), "workspace-1", "session-1")
 	if err != nil || !deleteResult.Removed {
@@ -62,6 +64,7 @@ func TestDeleteSessionsBatchDoesNotRepeatCleanupForExpandedChildTree(t *testing.
 	service := NewService(&fakeRuntime{sessions: map[string]ProviderRuntimeSession{}})
 	service.SessionReader = reader
 	service.TuttiModeActivations = coordinator
+	configureTestApplicationHost(service)
 
 	if _, err := service.DeleteSessionsBatch(context.Background(), "workspace-1", DeleteSessionsBatchInput{SessionIDs: []string{"root-1"}}); err != nil {
 		t.Fatalf("DeleteSessionsBatch() error = %v", err)
@@ -81,6 +84,7 @@ func TestDeleteSessionsBatchCleansRuntimeOnlyOrphanState(t *testing.T) {
 	service := NewService(runtime)
 	service.SessionReader = reader
 	service.TuttiModeActivations = coordinator
+	configureTestApplicationHost(service)
 
 	if _, err := service.DeleteSessionsBatch(context.Background(), "workspace-1", DeleteSessionsBatchInput{SessionIDs: []string{"orphan-1"}}); err != nil {
 		t.Fatalf("DeleteSessionsBatch() error = %v", err)
@@ -100,6 +104,7 @@ func TestClearDoesNotRepeatTuttiModeCleanupAfterSessionStoreClearedState(t *test
 	service := NewService(&fakeRuntime{sessions: map[string]ProviderRuntimeSession{}})
 	service.SessionReader = reader
 	service.TuttiModeActivations = coordinator
+	configureTestApplicationHost(service)
 
 	result, err := service.Clear(context.Background(), "workspace-1")
 	if err != nil || result.RemovedSessions != 1 {
