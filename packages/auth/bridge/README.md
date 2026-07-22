@@ -21,11 +21,16 @@ import { createTuttiNodeAuthClient } from "@tutti-os/auth-bridge/node";
 
 const auth = createTuttiNodeAuthClient({
   authJsonPath,
-  appCallbackUrl
+  appCallbackUrl,
+  accountHeaders: { "x-environment-lane": "example" }
 });
 
 const { session, user } = await auth.login();
 ```
+
+`accountHeaders` adds host-owned headers to Account API requests. The bridge
+always owns and overwrites its JSON content negotiation and Desktop session
+cookie headers.
 
 ## Local Desktop Callback
 

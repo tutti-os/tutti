@@ -53,7 +53,7 @@ func TestCallbackCompletesWritesAuthJSONAndRedirectsToWebResult(t *testing.T) {
 	if got := resultURL.Query().Get("desktopBridgeStatus"); got != "success" {
 		t.Fatalf("desktopBridgeStatus = %q", got)
 	}
-	if strings.Contains(location, "transfer-1") || strings.Contains(location, "session-1") {
+	if strings.Contains(location, "transfer-1") || strings.Contains(location, "desktop-session-1") {
 		t.Fatalf("redirect leaked sensitive value: %s", location)
 	}
 	openAppURL := resultURL.Query().Get("openAppUrl")
@@ -73,7 +73,7 @@ func TestCallbackCompletesWritesAuthJSONAndRedirectsToWebResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session == nil || session.SessionID != "session-1" || session.UserID != "user-1" {
+	if session == nil || session.SessionID != "desktop-session-1" || session.UserID != "user-1" {
 		t.Fatalf("session = %#v", session)
 	}
 }
@@ -125,7 +125,7 @@ func TestStartLoginCompletesAndWritesAuthJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session == nil || session.SessionID != "session-1" || session.UserID != "user-1" {
+	if session == nil || session.SessionID != "desktop-session-1" || session.UserID != "user-1" {
 		t.Fatalf("session = %#v", session)
 	}
 }
@@ -273,7 +273,7 @@ func TestGetUserInfoAndLogout(t *testing.T) {
 	defer account.Close()
 
 	client := newTestClient(t, account.URL)
-	err := client.writeAuthJSON(sessionFromUser("session-1", UserInfo{UserID: "old"}))
+	err := client.writeAuthJSON(sessionFromUser("desktop-session-1", UserInfo{UserID: "old"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,9 +321,12 @@ func newAccountServer(t *testing.T) *httptest.Server {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"code": 0,
-				"data": map[string]string{"sessionId": "session-1"},
+				"data": map[string]string{"sessionId": "desktop-session-1"},
 			})
 		case "/user/v1/user_info":
+			if got := r.Header.Get("Cookie"); got != "session_id=desktop-session-1" {
+				t.Errorf("user_info cookie = %q, want redeemed desktop session", got)
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"code": 0,
 				"data": map[string]string{
@@ -334,6 +337,16 @@ func newAccountServer(t *testing.T) *httptest.Server {
 				},
 			})
 		case "/auth/v1/logout-web-session":
+			if got := r.Header.Get("Cookie"); got != "session_id=desktop-session-1" {
+				t.Errorf("logout cookie = %q, want redeemed desktop session", got)
+			}
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode logout body: %v", err)
+			}
+			if strings.TrimSpace(body["app_id"]) == "" {
+				t.Errorf("logout app_id is empty in body %#v", body)
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{}})
 		default:
 			t.Fatalf("unexpected account path %s", r.URL.Path)

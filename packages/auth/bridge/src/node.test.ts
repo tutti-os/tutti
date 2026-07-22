@@ -51,6 +51,12 @@ test("node login completes bridge, redeems transfer code, writes auth json", asy
       authJsonPath: file,
       appCallbackUrl: "tutti://auth/login",
       accountBaseUrl: authBase,
+      accountHeaders: {
+        "x-zk-ppe-lane": "lane-1",
+        accept: "text/plain",
+        "Content-TYPE": "text/plain",
+        cookie: "session_id=attacker"
+      },
       authLoginUrl: `${authBase}/auth/login`,
       openUrl: async (loginUrl) => {
         const state = new URL(loginUrl).searchParams.get("state") ?? "";
@@ -80,14 +86,17 @@ test("node login completes bridge, redeems transfer code, writes auth json", asy
     });
 
     const result = await auth.login();
-    assert.equal(result.session.sessionId, "session-1");
+    assert.equal(result.session.sessionId, "desktop-session-1");
     assert.deepEqual(result.user, {
       userId: "user-1",
       name: "Alice",
       email: "alice@example.com",
       avatar: undefined
     });
-    assert.equal((await readAuthJson(file))?.cookie, "session_id=session-1");
+    assert.equal(
+      (await readAuthJson(file))?.cookie,
+      "session_id=desktop-session-1"
+    );
     assert.deepEqual(accountServer.requests.redeem, {
       transfer_code: "transfer-1",
       attempt_id: accountServer.requests.redeem?.attempt_id,
@@ -95,6 +104,8 @@ test("node login completes bridge, redeems transfer code, writes auth json", asy
       app_id: DEFAULT_APP_ID,
       device_id: accountServer.requests.redeem?.device_id
     });
+    assert.equal(accountServer.requests.headers.redeem, "lane-1");
+    assert.equal(accountServer.requests.headers.userInfo, "lane-1");
   } finally {
     await accountServer.close();
     await rm(dir, { recursive: true, force: true });
@@ -139,8 +150,11 @@ test("node login callback redirects to web result after writing auth json", asyn
     });
 
     const result = await auth.login();
-    assert.equal(result.session.sessionId, "session-1");
-    assert.equal((await readAuthJson(file))?.cookie, "session_id=session-1");
+    assert.equal(result.session.sessionId, "desktop-session-1");
+    assert.equal(
+      (await readAuthJson(file))?.cookie,
+      "session_id=desktop-session-1"
+    );
     assert.deepEqual(accountServer.requests.redeem, {
       transfer_code: "transfer-1",
       attempt_id: accountServer.requests.redeem?.attempt_id,
@@ -200,8 +214,8 @@ test("node getUserInfo refreshes auth json and logout clears it", async () => {
   const accountServer = await startAccountStub();
   try {
     await writeAuthJson(file, {
-      sessionId: "session-1",
-      cookie: "session_id=session-1",
+      sessionId: "desktop-session-1",
+      cookie: "session_id=desktop-session-1",
       userId: "old-user",
       name: "",
       avatar: "",
@@ -211,7 +225,13 @@ test("node getUserInfo refreshes auth json and logout clears it", async () => {
     const auth = createTuttiNodeAuthClient({
       authJsonPath: file,
       appCallbackUrl: "tutti://auth/login",
-      accountBaseUrl: `http://127.0.0.1:${accountServer.port}`
+      accountBaseUrl: `http://127.0.0.1:${accountServer.port}`,
+      accountHeaders: {
+        "x-zk-ppe-lane": "lane-1",
+        accept: "text/plain",
+        "Content-TYPE": "text/plain",
+        cookie: "session_id=attacker"
+      }
     });
     assert.deepEqual(await auth.getUserInfo(), {
       userId: "user-1",
@@ -222,7 +242,9 @@ test("node getUserInfo refreshes auth json and logout clears it", async () => {
     assert.equal((await readAuthJson(file))?.userId, "user-1");
     await auth.logout();
     assert.equal(await readAuthJson(file), null);
-    assert.equal(accountServer.requests.logout?.appId, DEFAULT_APP_ID);
+    assert.equal(accountServer.requests.logout?.app_id, DEFAULT_APP_ID);
+    assert.equal(accountServer.requests.headers.userInfo, "lane-1");
+    assert.equal(accountServer.requests.headers.logout, "lane-1");
   } finally {
     await accountServer.close();
     await rm(dir, { recursive: true, force: true });
@@ -247,21 +269,42 @@ async function startAccountStub(): Promise<{
   requests: {
     redeem?: Record<string, string>;
     logout?: Record<string, string>;
+    headers: {
+      redeem?: string;
+      userInfo?: string;
+      logout?: string;
+    };
   };
   close: () => Promise<void>;
 }> {
   const requests: {
     redeem?: Record<string, string>;
     logout?: Record<string, string>;
-  } = {};
+    headers: {
+      redeem?: string;
+      userInfo?: string;
+      logout?: string;
+    };
+  } = { headers: {} };
   const server = createServer(async (req, res) => {
     if (req.url === "/auth/v1/redeem_desktop_transfer_code") {
+      assert.equal(req.headers.accept, "application/json");
+      assert.equal(req.headers["content-type"], "application/json");
+      assert.equal(req.headers.cookie, undefined);
+      requests.headers.redeem = req.headers["x-zk-ppe-lane"] as
+        | string
+        | undefined;
       requests.redeem = (await readBody(req)) as Record<string, string>;
-      sendJson(res, { code: 0, data: { session_id: "session-1" } });
+      sendJson(res, { code: 0, data: { session_id: "desktop-session-1" } });
       return;
     }
     if (req.url === "/user/v1/user_info") {
-      assert.equal(req.headers.cookie, "session_id=session-1");
+      assert.equal(req.headers.accept, "application/json");
+      assert.equal(req.headers["content-type"], "application/json");
+      requests.headers.userInfo = req.headers["x-zk-ppe-lane"] as
+        | string
+        | undefined;
+      assert.equal(req.headers.cookie, "session_id=desktop-session-1");
       sendJson(res, {
         code: 0,
         data: { user_id: "user-1", name: "Alice", email: "alice@example.com" }
@@ -269,8 +312,13 @@ async function startAccountStub(): Promise<{
       return;
     }
     if (req.url === "/auth/v1/logout-web-session") {
+      assert.equal(req.headers.accept, "application/json");
+      assert.equal(req.headers["content-type"], "application/json");
+      requests.headers.logout = req.headers["x-zk-ppe-lane"] as
+        | string
+        | undefined;
       requests.logout = (await readBody(req)) as Record<string, string>;
-      assert.equal(req.headers.cookie, "session_id=session-1");
+      assert.equal(req.headers.cookie, "session_id=desktop-session-1");
       sendJson(res, { code: 0 });
       return;
     }

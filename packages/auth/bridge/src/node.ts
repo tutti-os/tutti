@@ -42,6 +42,7 @@ export interface TuttiNodeAuthClientOptions {
   hostname?: string;
   loginIdleTimeoutMs?: number;
   loginMaxTimeoutMs?: number;
+  accountHeaders?: Readonly<Record<string, string>>;
 }
 
 export interface TuttiNodeAuthClient {
@@ -69,6 +70,7 @@ type BridgeState = {
 };
 
 type PendingLogin = {
+  accountHeaders: Readonly<Record<string, string>>;
   accountBaseUrl: string;
   appId: string;
   appCallbackUrl: string;
@@ -117,6 +119,7 @@ export function createTuttiNodeAuthClient(
     idleTimeoutMs,
     positiveMs(options.loginMaxTimeoutMs, DEFAULT_LOGIN_MAX_TIMEOUT_MS)
   );
+  const accountHeaders = { ...options.accountHeaders };
 
   async function readSession(): Promise<TuttiAuthSession | null> {
     return await readAuthJson(authJsonPath);
@@ -131,7 +134,11 @@ export function createTuttiNodeAuthClient(
     if (!session) {
       return null;
     }
-    const user = await fetchUserInfo(accountBaseUrl, session.cookie);
+    const user = await fetchUserInfo(
+      accountBaseUrl,
+      session.cookie,
+      accountHeaders
+    );
     if (!user) {
       return null;
     }
@@ -161,6 +168,7 @@ export function createTuttiNodeAuthClient(
         hostname: options.hostname?.trim() || hostname()
       });
       const pending: PendingLogin = {
+        accountHeaders,
         accountBaseUrl,
         appId,
         appCallbackUrl,
@@ -196,7 +204,12 @@ export function createTuttiNodeAuthClient(
     logout: async (): Promise<void> => {
       const session = await readSession();
       if (session) {
-        await logoutSession(accountBaseUrl, appId, session.cookie);
+        await logoutSession(
+          accountBaseUrl,
+          appId,
+          session.cookie,
+          accountHeaders
+        );
       }
       await clearSession();
     },
@@ -496,7 +509,8 @@ async function completePendingLogin(
   const sessionId = await redeemDesktopTransferCode(input, transferCode);
   const user = await fetchUserInfo(
     input.accountBaseUrl,
-    buildSessionCookie(sessionId)
+    buildSessionCookie(sessionId),
+    input.accountHeaders
   );
   if (!user) {
     throw new Error("Failed to load user info after login");
@@ -528,17 +542,14 @@ async function waitForCompletion(
 
 async function fetchUserInfo(
   accountBaseUrl: string,
-  cookie: string
+  cookie: string,
+  accountHeaders: Readonly<Record<string, string>>
 ): Promise<TuttiUserInfo | null> {
   const response = await fetch(
     buildAccountUrl(accountBaseUrl, "/user/v1/user_info"),
     {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Cookie: cookie
-      },
+      headers: buildAccountHeaders(accountHeaders, cookie),
       body: JSON.stringify({})
     }
   );
@@ -565,10 +576,7 @@ async function redeemDesktopTransferCode(
     ),
     {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json"
-      },
+      headers: buildAccountHeaders(input.accountHeaders),
       body: JSON.stringify({
         transfer_code: transferCode,
         attempt_id: input.attemptId,
@@ -594,18 +602,15 @@ async function redeemDesktopTransferCode(
 async function logoutSession(
   accountBaseUrl: string,
   appId: string,
-  cookie: string
+  cookie: string,
+  accountHeaders: Readonly<Record<string, string>>
 ): Promise<void> {
   const response = await fetch(
     buildAccountUrl(accountBaseUrl, "/auth/v1/logout-web-session"),
     {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Cookie: cookie
-      },
-      body: JSON.stringify({ appId })
+      headers: buildAccountHeaders(accountHeaders, cookie),
+      body: JSON.stringify({ app_id: appId })
     }
   );
   const payload = (await response.json().catch(() => null)) as AccountEnvelope<
@@ -614,6 +619,21 @@ async function logoutSession(
   if (!response.ok || (payload?.code ?? 0) !== 0) {
     throw readEnvelopeError(response, payload);
   }
+}
+
+function buildAccountHeaders(
+  accountHeaders: Readonly<Record<string, string>>,
+  cookie?: string
+): Headers {
+  const headers = new Headers(accountHeaders);
+  headers.set("Accept", "application/json");
+  headers.set("Content-Type", "application/json");
+  if (cookie) {
+    headers.set("Cookie", cookie);
+  } else {
+    headers.delete("Cookie");
+  }
+  return headers;
 }
 
 async function findAvailablePort(): Promise<number> {
