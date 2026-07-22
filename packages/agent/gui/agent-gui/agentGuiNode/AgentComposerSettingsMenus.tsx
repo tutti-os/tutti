@@ -3,7 +3,6 @@ import { ChevronDown } from "lucide-react";
 import { prepareWorkspaceUserProjectSelection } from "@tutti-os/workspace-user-project/core";
 import { useAgentHostApi } from "../../agentActivityHost";
 import {
-  RoomsHintIcon,
   Select,
   SelectContent,
   SelectItem,
@@ -28,6 +27,7 @@ import { requiresFullAccessSafetyConfirmation } from "./model/agentPermissionMod
 import { acknowledgeCodexFullAccessWarning } from "./view/agentFullAccessWarningPreference";
 import type { AgentComposerSettingsMenuLabels } from "./model/composerSettingsMenuModel";
 import styles from "./AgentGUINode.styles";
+import { ComposerOptionInfoTooltip } from "./AgentComposerModelReasoningDropdown";
 
 export type { AgentComposerSettingsMenuLabels } from "./model/composerSettingsMenuModel";
 
@@ -37,7 +37,6 @@ export {
   type AgentProjectPathChangeMetadata
 } from "./AgentComposerProjectMenu";
 export { AgentModelReasoningDropdown } from "./AgentComposerModelReasoningDropdown";
-import { ComposerOptionInfoTooltip } from "./AgentComposerModelReasoningDropdown";
 export function AgentPermissionModeDropdown({
   composerSettings,
   disabled = false,
@@ -323,43 +322,6 @@ export function AgentProjectMissingStatusProbe({
   ]);
 
   return null;
-}
-
-export function ComposerOptionInfoTooltip({
-  description,
-  tooltipsEnabled = true
-}: {
-  description: string;
-  tooltipsEnabled?: boolean;
-}): React.JSX.Element {
-  const stopSelect = (event: React.SyntheticEvent): void => {
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const trigger = (
-    <span
-      className="pointer-events-none inline-flex shrink-0 cursor-help text-[var(--agent-gui-text-tertiary)] opacity-0 transition-opacity group-hover/composer-option:pointer-events-auto group-hover/composer-option:opacity-100 group-data-[highlighted]/composer-option:pointer-events-auto group-data-[highlighted]/composer-option:opacity-100"
-      data-agent-composer-option-info-trigger="true"
-      onClick={stopSelect}
-      onPointerDown={stopSelect}
-    >
-      <RoomsHintIcon aria-hidden className="size-3" />
-    </span>
-  );
-
-  if (!tooltipsEnabled) {
-    return trigger;
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-      <TooltipContent side="right" className="max-w-[240px] whitespace-normal">
-        {description}
-      </TooltipContent>
-    </Tooltip>
-  );
 }
 
 function resolvePermissionModeTriggerTone(
