@@ -95,6 +95,7 @@ import { createWorkspaceAppsClient } from "./workspaceAppsClient.ts";
 import { createWorkspaceAgentClient } from "./workspaceAgentClient.ts";
 import { createWorkspaceAgentConfigurationClient } from "./workspaceAgentConfigurationClient.ts";
 import { createTuttiModeActivationClient } from "./tuttiModeActivationClient.ts";
+import { createWorkspaceIssueOrchestrationClient } from "./workspaceIssueOrchestrationClient.ts";
 import { createWorkspaceWorkflowClient } from "./workspaceWorkflowClient.ts";
 import type {
   CreateTuttidClientInput,
@@ -122,6 +123,7 @@ export function createTuttidClient(
 
   return {
     ...createWorkspaceAgentConfigurationClient(client),
+    ...createWorkspaceIssueOrchestrationClient(client),
     async listAgentQuickPrompts() {
       return unwrapData(
         await listAgentQuickPrompts({ client }),

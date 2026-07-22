@@ -76,6 +76,9 @@ export interface IssueManagerIssueSummary {
   status: IssueManagerStatus;
   planningSource?: IssueManagerPlanningSource;
   sourceSessionId?: string;
+  dispatchPaused?: boolean;
+  executionProfile?: IssueManagerExecutionProfile;
+  budget?: IssueManagerBudget;
   taskCount?: number;
   notStartedCount?: number;
   runningCount?: number;
@@ -222,14 +225,19 @@ export interface IssueManagerListTasksResult {
 }
 
 export interface IssueManagerCreateIssueInput extends IssueManagerScope {
+  budget?: IssueManagerBudget;
   content?: string;
+  executionProfile?: IssueManagerExecutionProfile;
   issueId?: string;
   title: string;
   topicId: string;
 }
 
 export interface IssueManagerUpdateIssueInput extends IssueManagerScope {
+  budget?: IssueManagerBudget;
   content?: string;
+  dispatchPaused?: boolean;
+  executionProfile?: IssueManagerExecutionProfile;
   issueId: string;
   title?: string;
 }
@@ -252,18 +260,28 @@ export interface IssueManagerUpdateTopicInput extends IssueManagerScope {
 }
 
 export interface IssueManagerCreateTaskInput extends IssueManagerScope {
+  agentTargetId?: string;
   content?: string;
+  dependencyTaskIds?: string[];
   dueAtUnix?: number;
+  executionDirectory?: string;
   issueId: string;
+  model?: string;
+  modelPlanId?: string;
   priority?: IssueManagerPriority;
   taskId?: string;
   title: string;
 }
 
 export interface IssueManagerUpdateTaskInput extends IssueManagerScope {
+  agentTargetId?: string;
   content?: string;
+  dependencyTaskIds?: string[];
   dueAtUnix?: number;
+  executionDirectory?: string;
   issueId: string;
+  model?: string;
+  modelPlanId?: string;
   priority?: IssueManagerPriority;
   sortIndex?: number;
   status?: IssueManagerStatus;

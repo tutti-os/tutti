@@ -37,6 +37,7 @@ import {
   issueManagerEditorRiseInDelay1ClassName,
   issueManagerEditorRiseInDelay2ClassName
 } from "./IssueManagerEditorMotion.ts";
+import { IssueManagerExecutionProfileFields } from "../orchestration/IssueManagerOrchestrationFields.tsx";
 
 export { IssueManagerEmptyIllustration } from "../panel/IssueManagerPanelSurface.tsx";
 
@@ -123,6 +124,7 @@ export function IssueManagerIssuePane({
                     onChange={controller.setIssueContent}
                   />
                 </div>
+                <IssueManagerExecutionProfileFields controller={controller} />
               </div>
             </div>
           </div>
