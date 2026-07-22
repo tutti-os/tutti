@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS workspace_agent_turns (
   root_provider_turn_error_json TEXT,
   root_provider_turn_completed_command_json TEXT,
   root_provider_turn_updated_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  parent_turn_id TEXT,
+  relation TEXT CHECK (relation IS NULL OR relation IN ('retry', 'edit')),
   PRIMARY KEY (workspace_id, agent_session_id, turn_id),
   FOREIGN KEY (workspace_id, agent_session_id)
     REFERENCES workspace_agent_sessions(workspace_id, agent_session_id)

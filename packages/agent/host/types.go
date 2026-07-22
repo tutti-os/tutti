@@ -151,6 +151,7 @@ type RuntimeExecInput struct {
 	Metadata          map[string]any
 	Guidance          bool
 	TuttiModeSnapshot *TuttiModeTurnSnapshot
+	TurnMetadata      *TurnMetadata
 }
 
 type CapabilityReference struct {
@@ -323,6 +324,19 @@ type CreateSessionInput struct {
 	Visible                *bool
 }
 
+// TurnMetadata carries turn lineage for Retry/Edit. When non-nil, the runtime
+// persists parent_turn_id and relation on the new Turn.
+type TurnMetadata struct {
+	ParentTurnID string
+	Relation     string
+}
+
+// Turn relation constants.
+const (
+	TurnRelationRetry = "retry"
+	TurnRelationEdit  = "edit"
+)
+
 type SendInput struct {
 	CapabilityRefs    []CapabilityReference
 	TurnID            string
@@ -334,6 +348,7 @@ type SendInput struct {
 	// overrides any legacy clientSubmitId value carried in Metadata.
 	ClientSubmitID string
 	Guidance       bool
+	TurnMetadata   *TurnMetadata
 }
 
 type SubmitInteractiveInput struct {

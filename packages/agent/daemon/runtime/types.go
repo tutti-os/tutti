@@ -104,6 +104,14 @@ type CloseInput struct {
 	AgentSessionID string
 }
 
+// TurnMetadata carries turn lineage for Retry/Edit. When non-nil, the runtime
+// injects ParentTurnID and Relation into the submitted turn event so the Store
+// persists the relationship alongside the new turn.
+type TurnMetadata struct {
+	ParentTurnID string
+	Relation     string
+}
+
 type ExecInput struct {
 	RoomID         string
 	AgentSessionID string
@@ -119,6 +127,7 @@ type ExecInput struct {
 	InitialTitleBase  string
 	Metadata          map[string]any
 	Guidance          bool
+	TurnMetadata      *TurnMetadata
 }
 
 // SubmitProvenanceInput describes the canonical user submit that an adapter
