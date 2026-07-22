@@ -147,6 +147,35 @@ func TestReportableActivityEventsIncludesRootProviderTurnLifecycle(t *testing.T)
 	}
 }
 
+func TestReportableActivityEventsPreservesStructuredRootProviderAuthError(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	ctx, ok := activityEventContext(session, "root-provider-turn", "root-turn-1")
+	if !ok {
+		t.Fatal("activityEventContext() returned !ok")
+	}
+	event := activityshared.NewRootProviderTurnCompleted(
+		ctx,
+		"root-turn-1",
+		"provider-turn-1",
+		activityshared.TurnOutcomeFailed,
+	)
+	event.Payload.Metadata = map[string]any{
+		"codexErrorInfo": "unauthorized",
+		"errorMessage":   "authentication failed",
+	}
+
+	report := reportActivityInput(session, ReportableActivityEvents([]activityshared.Event{event}))
+	if len(report.StatePatches) != 1 || report.StatePatches[0].RootProviderTurn == nil {
+		t.Fatalf("state patches = %#v, want failed root provider transition", report.StatePatches)
+	}
+	transition := report.StatePatches[0].RootProviderTurn
+	if transition.ErrorCode != "unauthorized" || transition.ErrorMessage != "authentication failed" {
+		t.Fatalf("root provider error = %#v, want structured auth error", transition)
+	}
+}
+
 func TestSessionStatusFromActivityPreservesWaiting(t *testing.T) {
 	t.Parallel()
 

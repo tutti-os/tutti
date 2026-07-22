@@ -147,7 +147,7 @@ func TestBootstrapTuttiAgentUserAuthIssuesTokenWhenExistingAccessTokenExpired(t 
 	t.Setenv("TUTTI_AGENT_LOGIN_CAPTURE", capturePath)
 	installFakeTuttiAgentBinary(t)
 
-	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{})
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, nil)
 
 	select {
 	case <-issueRequests:
@@ -160,6 +160,105 @@ func TestBootstrapTuttiAgentUserAuthIssuesTokenWhenExistingAccessTokenExpired(t 
 	}
 	if !strings.Contains(string(loginJSON), `"access_token":"lat_new"`) {
 		t.Fatalf("login payload = %s, want issued access token", string(loginJSON))
+	}
+	var loginBundle tuttiAgentLLMTokenBundle
+	if err := json.Unmarshal(loginJSON, &loginBundle); err != nil {
+		t.Fatalf("decode login payload: %v", err)
+	}
+	if strings.TrimSpace(loginBundle.CredentialGeneration) == "" {
+		t.Fatal("login payload credential_generation is empty")
+	}
+}
+
+func TestBootstrapTuttiAgentUserAuthForcesFreshGenerationAfterAuthInvalidation(t *testing.T) {
+	home := t.TempDir()
+	expiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	writeTuttiAgentUserAuth(t, home, `{"tutti_llm":{"access_token":"lat_old","access_token_expires_at":`+strconv.Quote(expiresAt)+`,"refresh_token":"lrt_old"}}`)
+	stateDir := t.TempDir()
+	accountAuthDir := filepath.Join(stateDir, "account")
+	if err := os.MkdirAll(accountAuthDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(accountAuthDir, "auth.json"), []byte(`{"cookie":"session_id=session_test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TUTTI_STATE_DIR", stateDir)
+	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case tuttiAgentLLMTokenIssueRoute:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"code":0,"data":{"accessToken":"lat_new","accessTokenExpiresAt":"1780000000","refreshToken":"lrt_new","refreshTokenExpiresAt":"1790000000","tokenType":"Bearer","appId":"tutti","scopes":["llm:models","llm:chat"]}}`))
+		case "/auth/v1/llm-token/revoke":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"code":0}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer account.Close()
+	t.Setenv("TUTTI_ACCOUNT_BASE_URL", account.URL)
+	capturePath := filepath.Join(t.TempDir(), "login.json")
+	t.Setenv("TUTTI_AGENT_LOGIN_CAPTURE", capturePath)
+	installFakeTuttiAgentBinary(t)
+	invalidation := &fakeAuthInvalidation{invalid: true}
+
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, invalidation)
+
+	if invalidation.invalid {
+		t.Fatal("auth invalidation was not cleared after successful bootstrap")
+	}
+	loginJSON, err := os.ReadFile(capturePath)
+	if err != nil {
+		t.Fatalf("read fake tutti-agent login capture: %v", err)
+	}
+	if !strings.Contains(string(loginJSON), `"access_token":"lat_new"`) {
+		t.Fatalf("login payload = %s, want forced fresh access token", string(loginJSON))
+	}
+}
+
+func TestBootstrapTuttiAgentUserAuthRevokesIssuedTokenWhenLoginFails(t *testing.T) {
+	home := t.TempDir()
+	writeTuttiAgentUserAuth(t, home, `{}`)
+	stateDir := t.TempDir()
+	accountAuthDir := filepath.Join(stateDir, "account")
+	if err := os.MkdirAll(accountAuthDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(accountAuthDir, "auth.json"), []byte(`{"cookie":"session_id=session_test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TUTTI_STATE_DIR", stateDir)
+	revokeBody := make(chan map[string]string, 1)
+	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case tuttiAgentLLMTokenIssueRoute:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"code":0,"data":{"accessToken":"lat_new","accessTokenExpiresAt":"1780000000","refreshToken":"lrt_new","refreshTokenExpiresAt":"1790000000","tokenType":"Bearer","appId":"tutti","scopes":["llm:models","llm:chat"]}}`))
+		case "/auth/v1/llm-token/revoke":
+			var payload map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode revoke body: %v", err)
+			}
+			revokeBody <- payload
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"code":0}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer account.Close()
+	t.Setenv("TUTTI_ACCOUNT_BASE_URL", account.URL)
+	installFailingTuttiAgentBinary(t)
+
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, nil)
+
+	select {
+	case body := <-revokeBody:
+		if body["refresh_token"] != "lrt_new" || body["reason"] != "login_failed" {
+			t.Fatalf("revoke body = %#v, want issued token cleanup", body)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("issued token was not revoked after login failure")
 	}
 }
 
@@ -183,7 +282,7 @@ func TestBootstrapTuttiAgentUserAuthClearsAuthWithoutHostSession(t *testing.T) {
 	)
 	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
 
-	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{})
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, nil)
 
 	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
 	if _, err := os.Stat(authPath); !os.IsNotExist(err) {
@@ -221,7 +320,7 @@ func TestBootstrapTuttiAgentUserAuthClearsAuthAfterUnauthorizedTokenIssue(t *tes
 	defer account.Close()
 	t.Setenv("TUTTI_ACCOUNT_BASE_URL", account.URL)
 
-	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{})
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, nil)
 
 	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
 	if _, err := os.Stat(authPath); !os.IsNotExist(err) {
@@ -294,7 +393,7 @@ func installFakeTuttiAgentBinary(t *testing.T) {
 	binDir := t.TempDir()
 	binaryPath := filepath.Join(binDir, "tutti-agent")
 	script := "#!/bin/sh\n" +
-		"if [ \"$1\" != \"login\" ] || [ \"$2\" != \"--with-tutti-llm-tokens\" ]; then\n" +
+		"if [ \"$1\" != \"-c\" ] || [ \"$2\" != 'cli_auth_credentials_store=\"file\"' ] || [ \"$3\" != \"login\" ] || [ \"$4\" != \"--with-tutti-llm-tokens\" ]; then\n" +
 		"  echo unexpected arguments: \"$@\" >&2\n" +
 		"  exit 2\n" +
 		"fi\n" +
@@ -303,4 +402,30 @@ func installFakeTuttiAgentBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func installFailingTuttiAgentBinary(t *testing.T) {
+	t.Helper()
+	binDir := t.TempDir()
+	binaryPath := filepath.Join(binDir, "tutti-agent")
+	script := "#!/bin/sh\n" +
+		"cat >/dev/null\n" +
+		"echo login failed >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(binaryPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+type fakeAuthInvalidation struct {
+	invalid bool
+}
+
+func (f *fakeAuthInvalidation) AuthInvalidated(_ string) bool {
+	return f.invalid
+}
+
+func (f *fakeAuthInvalidation) ClearAuthInvalidated(_ string) {
+	f.invalid = false
 }

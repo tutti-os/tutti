@@ -7,6 +7,7 @@ toolchain go1.24.5
 require (
 	github.com/coder/websocket v1.8.14
 	github.com/creack/pty v1.1.24
+	github.com/gofrs/flock v0.13.0
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.17.7
 	github.com/oapi-codegen/runtime v1.4.1

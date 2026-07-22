@@ -78,6 +78,15 @@ func reportRunOutcome(input agentsessionstore.ReportActivityInput) runOutcome {
 	for _, item := range input.TimelineItems {
 		consider(item.Status, item.Payload)
 	}
+	for _, patch := range input.StatePatches {
+		if patch.RootProviderTurn == nil {
+			continue
+		}
+		consider(patch.RootProviderTurn.Outcome, map[string]any{
+			"code": patch.RootProviderTurn.ErrorCode,
+			"text": patch.RootProviderTurn.ErrorMessage,
+		})
+	}
 	return outcome
 }
 
@@ -85,9 +94,11 @@ func messageLooksLikeAuthFailure(status string, payload map[string]any) bool {
 	if status != "failed" {
 		return false
 	}
-	if code, ok := payload["code"].(string); ok &&
-		strings.EqualFold(code, "auth_required") {
-		return true
+	if code, ok := payload["code"].(string); ok {
+		switch strings.ToLower(strings.TrimSpace(code)) {
+		case "auth_required", "unauthorized":
+			return true
+		}
 	}
 	var text strings.Builder
 	for _, key := range []string{"content", "text", "detail"} {

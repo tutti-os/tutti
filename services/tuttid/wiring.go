@@ -417,7 +417,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
 	}
 	agentRuntimePreparer := runtimeprep.NewDefaultPreparer(tuttitypes.DefaultStateDir())
-	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer())
+	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer(runOutcomes))
 	agentRuntimePreparer.ComputerUseAvailable = func() bool {
 		return runtimeprep.ComputerUseDefaultEnabled() && computersvc.CheckReady() == nil
 	}
@@ -667,12 +667,12 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 
 	terminalService := &workspaceservice.TerminalService{}
 	accountService.OnLoginCompleted = func(ctx context.Context) {
-		tuttiagentservice.BootstrapTuttiAgentUserAuth(ctx)
+		tuttiagentservice.BootstrapTuttiAgentUserAuth(ctx, runOutcomes)
 	}
 	accountService.OnLogoutCompleted = func(ctx context.Context) {
 		tuttiagentservice.LogoutTuttiAgentUserAuth(ctx)
 	}
-	go tuttiagentservice.BootstrapTuttiAgentUserAuth(context.Background())
+	go tuttiagentservice.BootstrapTuttiAgentUserAuth(context.Background(), runOutcomes)
 
 	// External credential switchers (for example cc-switch) rewrite provider
 	// auth/config files without notifying tuttid. Watch those files so cached

@@ -116,9 +116,20 @@ type RuntimeDescriptor struct {
 	Command             []string
 	ClientInfoName      string
 	AuthRequiredMessage string
+	AuthRefreshOwner    RuntimeAuthRefreshOwner
 	Endpoint            RuntimeEndpointDescriptor
 	StandardACP         StandardACPRuntimeDescriptor
 }
+
+// RuntimeAuthRefreshOwner declares where expiring runtime credentials are
+// refreshed. Shared app-server handling uses this contract instead of provider
+// identity when diagnosing an unexpected host refresh request.
+type RuntimeAuthRefreshOwner string
+
+const (
+	RuntimeAuthRefreshOwnerHost    RuntimeAuthRefreshOwner = "host"
+	RuntimeAuthRefreshOwnerRuntime RuntimeAuthRefreshOwner = "runtime"
+)
 
 type RuntimePermissionModeDescriptor struct {
 	InputID   string

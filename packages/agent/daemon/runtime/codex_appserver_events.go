@@ -6,8 +6,11 @@ import (
 	"log/slog"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtime/codexproto"
 )
+
+const appServerMethodChatgptAuthTokensRefresh = "account/chatgptAuthTokens/refresh"
 
 // handleAppServerMessage routes codex app-server server->client traffic.
 // Server requests (approvals, user-input questions) register pending resolver
@@ -43,11 +46,20 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 				// declines (auth token refresh, attestation, sandbox setup)
 				// get a silent -32601; a transcript failure card would show
 				// users spurious red cards for background operations.
-				slog.Debug(
-					"agent session app-server declined known server request",
-					"agent_session_id", session.AgentSessionID,
-					"method", message.Method,
-				)
+				if unexpectedExternalAuthRefresh(session.Provider, message.Method) {
+					slog.Warn(
+						"tutti-agent requested unexpected external auth refresh",
+						"event", "tutti.agent_auth.unexpected_external_refresh",
+						"agent_session_id", session.AgentSessionID,
+						"method", message.Method,
+					)
+				} else {
+					slog.Debug(
+						"agent session app-server declined known server request",
+						"agent_session_id", session.AgentSessionID,
+						"method", message.Method,
+					)
+				}
 			} else if emit != nil {
 				emit(appServerUnsupportedServerRequestEvents(session, turnID, message, err))
 			}
@@ -65,6 +77,13 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 	}
 	reduction := newCodexAppServerReducer(a).ReduceNotification(client, session, turnID, message, normalizer, emitCommands)
 	return reduction.Events, nil
+}
+
+func unexpectedExternalAuthRefresh(provider string, method string) bool {
+	descriptor, ok := providerregistry.Find(provider)
+	return ok &&
+		descriptor.Runtime.AuthRefreshOwner == providerregistry.RuntimeAuthRefreshOwnerRuntime &&
+		method == appServerMethodChatgptAuthTokensRefresh
 }
 
 func appServerNotificationUsesNormalizer(method string) bool {

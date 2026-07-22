@@ -69,3 +69,19 @@ func TestReportRunOutcomeSuccessClears(t *testing.T) {
 		t.Fatalf("reportRunOutcome = %v, want success", got)
 	}
 }
+
+func TestReportRunOutcomeUsesRootProviderStructuredAuthFailure(t *testing.T) {
+	input := agentsessionstore.ReportActivityInput{
+		Source: canonical.EventSource{Provider: "tutti-agent"},
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			RootProviderTurn: &canonical.WorkspaceAgentRootProviderTurnTransition{
+				Outcome:      "failed",
+				ErrorCode:    "unauthorized",
+				ErrorMessage: "authentication failed",
+			},
+		}},
+	}
+	if got := reportRunOutcome(input); got != runOutcomeAuthFailed {
+		t.Fatalf("reportRunOutcome = %v, want authFailed", got)
+	}
+}

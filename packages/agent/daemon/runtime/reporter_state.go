@@ -143,12 +143,33 @@ func statePatchFromSessionEvent(source canonical.EventSource, event activityshar
 			Phase:          phase,
 			Outcome:        strings.TrimSpace(event.Payload.TurnOutcome),
 			ErrorMessage:   activityshared.BestEffortErrorMessage(event.Payload),
+			ErrorCode:      structuredProviderErrorCode(event.Payload.Metadata["codexErrorInfo"]),
 		}
 		if event.Type == activityshared.EventRootProviderTurnStarted {
 			applyProviderCreatedGoalTurnToPatch(&patch, event, timestamp)
 		}
 	}
 	return patch, true
+}
+
+func structuredProviderErrorCode(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case map[string]any:
+		if code := strings.TrimSpace(stringFromPayload(typed, "code")); code != "" {
+			return code
+		}
+		if kind := strings.TrimSpace(stringFromPayload(typed, "type")); kind != "" {
+			return kind
+		}
+		if len(typed) == 1 {
+			for key := range typed {
+				return strings.TrimSpace(key)
+			}
+		}
+	}
+	return ""
 }
 
 // applyProviderCreatedGoalTurnToPatch turns the provider's first authoritative

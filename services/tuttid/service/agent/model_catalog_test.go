@@ -504,7 +504,7 @@ func installFakeTuttiAgentModelListBinary(t *testing.T) {
 	binDir := t.TempDir()
 	binaryPath := filepath.Join(binDir, "tutti-agent")
 	script := "#!/bin/sh\n" +
-		"if [ \"$1\" != \"login\" ] || [ \"$2\" != \"--with-tutti-llm-tokens\" ]; then\n" +
+		"if [ \"$1\" != \"-c\" ] || [ \"$2\" != 'cli_auth_credentials_store=\"file\"' ] || [ \"$3\" != \"login\" ] || [ \"$4\" != \"--with-tutti-llm-tokens\" ]; then\n" +
 		"  echo unexpected arguments: \"$@\" >&2\n" +
 		"  exit 2\n" +
 		"fi\n" +

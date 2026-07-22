@@ -604,6 +604,20 @@ func TestCodexAppServerUnhandledServerRequestCardOnlyForUnknownMethods(t *testin
 	}
 }
 
+func TestUnexpectedExternalAuthRefreshUsesRegistryOwnership(t *testing.T) {
+	t.Parallel()
+
+	if !unexpectedExternalAuthRefresh(ProviderTuttiAgent, appServerMethodChatgptAuthTokensRefresh) {
+		t.Fatal("runtime-owned auth should diagnose an external refresh request")
+	}
+	if unexpectedExternalAuthRefresh(ProviderCodex, appServerMethodChatgptAuthTokensRefresh) {
+		t.Fatal("host-owned auth should keep the normal background request path")
+	}
+	if unexpectedExternalAuthRefresh(ProviderTuttiAgent, "account/other") {
+		t.Fatal("unrelated requests must not be diagnosed as auth refresh")
+	}
+}
+
 // ADR 0003 open question: can child-thread events arrive before the parent
 // collabAgentToolCall announces receiverThreadIds? This detector makes real
 // deployments answer it permanently: unknown-thread drops are remembered, and

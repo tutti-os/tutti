@@ -113,6 +113,10 @@ func ensureTuttiAgentSessionConfig(configPath string, input PrepareInput) error 
 		next = providerNext
 		changed = true
 	}
+	if storageNext, storageChanged := tuttiAgentConfigWithRootValue(next, "cli_auth_credentials_store", "file", false); storageChanged {
+		next = storageNext
+		changed = true
+	}
 	if planNext, planChanged := codexConfigWithModelPlanEndpoint(next, input.ModelEndpoint); planChanged {
 		next = planNext
 		changed = true

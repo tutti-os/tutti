@@ -1354,6 +1354,24 @@ func TestTuttiAgentConfigWithLLMProviderPinsExistingRootProvider(t *testing.T) {
 	}
 }
 
+func TestEnsureTuttiAgentSessionConfigPinsFileCredentialStore(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(configPath, []byte(`cli_auth_credentials_store = "keyring"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ensureTuttiAgentSessionConfig(configPath, PrepareInput{}); err != nil {
+		t.Fatalf("ensureTuttiAgentSessionConfig() error = %v", err)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), `cli_auth_credentials_store = "file"`) {
+		t.Fatalf("config did not pin file credential store: %s", content)
+	}
+}
+
 func TestDefaultPreparerCleanupRemovesClaudeSystemPromptRuntimeRoot(t *testing.T) {
 	stateDir := t.TempDir()
 	cwd := t.TempDir()

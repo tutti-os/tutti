@@ -229,11 +229,26 @@ func Validate(descriptor ProviderDescriptor) error {
 		if strings.TrimSpace(descriptor.Runtime.ClientInfoName) == "" {
 			return fmt.Errorf("provider %q runtime client info name is required", providerID)
 		}
+		switch descriptor.Runtime.AuthRefreshOwner {
+		case RuntimeAuthRefreshOwnerHost, RuntimeAuthRefreshOwnerRuntime:
+		default:
+			return fmt.Errorf(
+				"provider %q app-server auth refresh owner %q is unsupported",
+				providerID,
+				descriptor.Runtime.AuthRefreshOwner,
+			)
+		}
 	case RuntimeKindStandardACP:
+		if descriptor.Runtime.AuthRefreshOwner != "" {
+			return fmt.Errorf("provider %q non-app-server runtime cannot declare auth refresh owner", providerID)
+		}
 		if err := validateStandardACPRuntime(descriptor.Runtime.StandardACP); err != nil {
 			return fmt.Errorf("provider %q standard ACP runtime: %w", providerID, err)
 		}
 	case RuntimeKindClaudeSDK:
+		if descriptor.Runtime.AuthRefreshOwner != "" {
+			return fmt.Errorf("provider %q non-app-server runtime cannot declare auth refresh owner", providerID)
+		}
 	case "":
 		return fmt.Errorf("provider %q runtime kind is required", providerID)
 	default:

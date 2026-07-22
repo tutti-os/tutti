@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
@@ -28,10 +29,18 @@ const (
 
 var tuttiAgentDefaultLLMAppID = "nex" + "top"
 
+type AuthInvalidation interface {
+	AuthInvalidated(provider string) bool
+	ClearAuthInvalidated(provider string)
+}
+
 // NewPreparer returns the shared runtime preparer with Tutti account bootstrap
 // injected at the product boundary.
-func NewPreparer() runtimeprep.TuttiAgentPreparer {
-	return runtimeprep.TuttiAgentPreparer{BeforePrepare: bootstrapTuttiAgentUserAuth}
+func NewPreparer(invalidations ...AuthInvalidation) runtimeprep.TuttiAgentPreparer {
+	invalidation := firstAuthInvalidation(invalidations)
+	return runtimeprep.TuttiAgentPreparer{BeforePrepare: func(ctx context.Context, input runtimeprep.PrepareInput) {
+		bootstrapTuttiAgentUserAuth(ctx, input, invalidation)
+	}}
 }
 
 func PrepareHome(home string) error {
@@ -57,8 +66,15 @@ func tuttiAgentAccountBase() string {
 // so the durable user home gains a usable `tutti_llm` auth entry. Best-effort:
 // failures leave the session in the auth-required state that the provider
 // status service already reports.
-func BootstrapTuttiAgentUserAuth(ctx context.Context) {
-	bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareInput{})
+func BootstrapTuttiAgentUserAuth(ctx context.Context, invalidations ...AuthInvalidation) {
+	bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareInput{}, firstAuthInvalidation(invalidations))
+}
+
+func firstAuthInvalidation(invalidations []AuthInvalidation) AuthInvalidation {
+	if len(invalidations) == 0 {
+		return nil
+	}
+	return invalidations[0]
 }
 
 // LogoutTuttiAgentUserAuth removes the local auth marker synchronously so
@@ -75,6 +91,12 @@ func logoutTuttiAgentUserAuth(ctx context.Context) error {
 	if !ok {
 		return nil
 	}
+	return withTuttiAgentCredentialLock(ctx, authPath, func() error {
+		return logoutTuttiAgentUserAuthUnlocked(ctx, authPath)
+	})
+}
+
+func logoutTuttiAgentUserAuthUnlocked(ctx context.Context, authPath string) error {
 	if _, err := os.Stat(authPath); errors.Is(err, os.ErrNotExist) {
 		return nil
 	} else if err != nil {
@@ -91,7 +113,7 @@ func logoutTuttiAgentUserAuth(ctx context.Context) error {
 	if refreshToken, accountBaseURL, ok := parseTuttiAgentLLMRevokeTarget(raw); ok {
 		revokeCtx := context.WithoutCancel(ctx)
 		go func() {
-			if err := revokeTuttiAgentLLMToken(revokeCtx, accountBaseURL, refreshToken); err != nil {
+			if err := revokeTuttiAgentLLMToken(revokeCtx, accountBaseURL, refreshToken, "logout"); err != nil {
 				slog.Warn("tutti-agent llm token revoke failed", "error", err)
 			}
 		}()
@@ -101,23 +123,44 @@ func logoutTuttiAgentUserAuth(ctx context.Context) error {
 
 // bootstrapTuttiAgentUserAuth is the provider-prepare variant that preserves
 // runtime prepare trace context when a real Tutti Agent session is starting.
-func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareInput) {
+func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareInput, invalidation AuthInvalidation) {
+	authPath, ok := userTuttiAgentAuthPath()
+	if !ok {
+		return
+	}
+	if err := withTuttiAgentCredentialLock(ctx, authPath, func() error {
+		bootstrapTuttiAgentUserAuthLocked(ctx, input, invalidation, authPath)
+		return nil
+	}); err != nil {
+		slog.Warn("tutti-agent auth bootstrap lock failed", "error", err, "agent_session_id", input.AgentSessionID)
+	}
+}
+
+func bootstrapTuttiAgentUserAuthLocked(ctx context.Context, input runtimeprep.PrepareInput, invalidation AuthInvalidation, authPath string) {
 	cookie, ok := tuttiAgentAccountSessionCookie()
 	if !ok {
-		if err := logoutTuttiAgentUserAuth(ctx); err != nil {
+		if err := logoutTuttiAgentUserAuthUnlocked(ctx, authPath); err != nil {
 			slog.Warn("tutti-agent auth cleanup without host session failed", "error", err)
 		}
 		slog.Debug("tutti-agent auth bootstrap skipped", "reason", "no_host_account_session", "agent_session_id", input.AgentSessionID)
 		return
 	}
-	if tuttiAgentUserAuthReady() {
+	provider := (runtimeprep.TuttiAgentPreparer{}).Provider()
+	forceBootstrap := invalidation != nil && invalidation.AuthInvalidated(provider)
+	if !forceBootstrap && tuttiAgentUserAuthReady() {
 		return
+	}
+	if forceBootstrap {
+		if err := logoutTuttiAgentUserAuthUnlocked(ctx, authPath); err != nil {
+			slog.Warn("tutti-agent invalid auth cleanup failed", "error", err)
+			return
+		}
 	}
 	bundle, err := issueTuttiAgentLLMToken(ctx, cookie)
 	if err != nil {
 		slog.Warn("tutti-agent llm token issue failed", "error", err)
 		if tuttiAgentLLMTokenIssueRejectedWithCode(err, http.StatusUnauthorized) {
-			if cleanupErr := logoutTuttiAgentUserAuth(ctx); cleanupErr != nil {
+			if cleanupErr := logoutTuttiAgentUserAuthUnlocked(ctx, authPath); cleanupErr != nil {
 				slog.Warn("tutti-agent auth cleanup after token rejection failed", "error", cleanupErr)
 			}
 		}
@@ -125,9 +168,28 @@ func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareI
 	}
 	if err := runTuttiAgentTokenLogin(ctx, bundle); err != nil {
 		slog.Warn("tutti-agent token login failed", "error", err)
+		if revokeErr := revokeTuttiAgentLLMToken(
+			context.WithoutCancel(ctx),
+			bundle.AccountBaseURL,
+			bundle.RefreshToken,
+			"login_failed",
+		); revokeErr != nil {
+			slog.Warn("tutti-agent token cleanup after login failure failed", "error", revokeErr)
+		}
 		return
 	}
-	slog.Debug("tutti-agent auth bootstrap resolved", "agent_session_id", input.AgentSessionID)
+	if invalidation != nil {
+		invalidation.ClearAuthInvalidated(provider)
+	}
+	slog.Debug(
+		"tutti-agent auth bootstrap resolved",
+		"agent_session_id", input.AgentSessionID,
+		"app_id", bundle.AppID,
+		"access_expires_at", bundle.AccessTokenExpiresAt,
+		"refresh_expires_at", bundle.RefreshTokenExpiresAt,
+		"scope_count", len(bundle.Scopes),
+		"forced", forceBootstrap,
+	)
 }
 
 func tuttiAgentUserAuthReady() bool {
@@ -225,6 +287,7 @@ type tuttiAgentLLMTokenBundle struct {
 	RefreshTokenExpiresAt int64    `json:"refresh_token_expires_at"`
 	TokenType             string   `json:"token_type"`
 	Scopes                []string `json:"scopes"`
+	CredentialGeneration  string   `json:"credential_generation"`
 }
 
 type tuttiAgentLLMTokenIssueRejectedError struct {
@@ -299,6 +362,7 @@ func issueTuttiAgentLLMToken(ctx context.Context, cookie string) (tuttiAgentLLMT
 		RefreshTokenExpiresAt: refreshExpires,
 		TokenType:             payload.Data.TokenType,
 		Scopes:                payload.Data.Scopes,
+		CredentialGeneration:  uuid.NewString(),
 	}, nil
 }
 
@@ -323,10 +387,10 @@ func parseTuttiAgentLLMRevokeTarget(raw []byte) (string, string, bool) {
 	return refreshToken, accountBaseURL, true
 }
 
-func revokeTuttiAgentLLMToken(ctx context.Context, accountBaseURL string, refreshToken string) error {
+func revokeTuttiAgentLLMToken(ctx context.Context, accountBaseURL string, refreshToken string, reason string) error {
 	requestBody, err := json.Marshal(map[string]string{
 		"refresh_token": refreshToken,
-		"reason":        "logout",
+		"reason":        reason,
 	})
 	if err != nil {
 		return err
@@ -353,7 +417,7 @@ func revokeTuttiAgentLLMToken(ctx context.Context, accountBaseURL string, refres
 		return err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("llm token revoke failed: status=%d body=%s", response.StatusCode, truncateForLog(string(body)))
+		return fmt.Errorf("llm token revoke failed: status=%d", response.StatusCode)
 	}
 	var payload struct {
 		Code   int    `json:"code"`
@@ -379,11 +443,17 @@ func runTuttiAgentTokenLogin(ctx context.Context, bundle tuttiAgentLLMTokenBundl
 	}
 	loginCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(loginCtx, binary, "login", "--with-tutti-llm-tokens")
+	cmd := exec.CommandContext(
+		loginCtx,
+		binary,
+		"-c",
+		`cli_auth_credentials_store="file"`,
+		"login",
+		"--with-tutti-llm-tokens",
+	)
 	cmd.Stdin = bytes.NewReader(stdin)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("tutti-agent login failed: %w: %s", err, strings.TrimSpace(string(output)))
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("tutti-agent login failed: %w", err)
 	}
 	return nil
 }
@@ -404,13 +474,4 @@ func resolveTuttiAgentBinary() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("tutti-agent binary not found")
-}
-
-func truncateForLog(value string) string {
-	trimmed := strings.TrimSpace(value)
-	const limit = 4000
-	if len(trimmed) <= limit {
-		return trimmed
-	}
-	return trimmed[:limit]
 }

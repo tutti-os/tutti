@@ -107,6 +107,57 @@ before callback wiring, a transient token failure, or a stale provider auth
 home. When no host account session exists, preparation removes stale Tutti Agent
 auth instead of reporting the provider ready.
 
+After bootstrap, Tutti Agent owns normal `tutti_llm` access-token refresh. It
+calls the Account LLM refresh endpoint directly and never delegates this token
+family to the app-server `account/chatgptAuthTokens/refresh` request. The daemon
+pins the provider credential store to `file` so user and per-session homes share
+the same durable credential source.
+
+Credential mutation is coordinated by an OS file lock next to the durable auth
+file (`auth.json.refresh.lock`). The daemon holds this lock while it removes or
+reissues credentials; Tutti Agent holds the same lock while it reloads,
+refreshes, and atomically replaces `auth.json`. Each daemon-issued bundle also
+contains a `credential_generation`. Tutti Agent preserves that value across
+refreshes and refuses to overwrite a newer generation installed by the daemon.
+Older bundles without the field remain readable and use the previous app-id
+comparison until the next bootstrap writes a generation.
+
+Before submitting the one-time refresh token, Tutti Agent also writes a
+non-secret fingerprint to `auth.json.refresh.pending`. It removes the marker
+only after a deterministic rejection or after the rotated credentials are
+durably stored. If a response or write outcome is ambiguous, the matching old
+token is never replayed; the next preparation uses the daemon's invalidation
+path to issue a fresh credential family. A marker for an older credential
+generation is discarded when the shared auth file contains a different refresh
+token.
+
+The normal request path is therefore:
+
+```text
+Tutti LLM request or model-list request returns 401
+  -> reload shared auth.json under the refresh lock
+  -> retry if another process already replaced the token
+  -> otherwise call Account /auth/v1/llm-token/refresh
+  -> atomically persist the rotated bundle
+  -> retry the original request with bounded recovery attempts
+```
+
+If structured runtime events show `account/chatgptAuthTokens/refresh` for the
+`tutti-agent` provider, the daemon records an
+`tutti.agent_auth.unexpected_external_refresh` warning. The method still returns
+the app-server method-not-found response because it belongs to ChatGPT external
+auth, not Tutti LLM auth. A structured auth failure also invalidates readiness;
+the next preparation forces a host-side bootstrap instead of accepting a stale
+auth marker.
+
+This contract requires a paired Tutti desktop/tuttid and Tutti Agent rollout.
+An old Tutti Agent still asks the host for ChatGPT token refresh, while an old
+host does not participate in the shared credential lock or consume the new
+structured invalidation signal. Upgrade both components and restart existing
+Tutti Agent app-server sessions so they reload the managed-auth behavior. Roll
+back both components together; rolling back only one side reintroduces the
+mixed-version gap.
+
 `TUTTI_ACCOUNT_BASE_URL` overrides the account service used for token issue and
 revoke. `TUTTI_AGENT_LLM_APP_ID` overrides the LLM application id for controlled
 development and test environments.
@@ -144,6 +195,10 @@ The durable test surface covers:
   probing;
 - proactive install gating, coalescing, success refresh, and failure backoff;
 - account token issue, provider login, stale-auth cleanup, and logout revocation;
+- process-level lock release, same-file writer serialization, atomic writes,
+  credential generation isolation, and Tutti LLM refresh-token rotation;
+- 401 recovery for both model-list and normal managed-auth request paths;
+- diagnostics for unexpected ChatGPT external-auth refresh requests;
 - desktop routing of Tutti Agent login actions to the account service.
 
 Related documents:
