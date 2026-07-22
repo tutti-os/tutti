@@ -13,7 +13,10 @@ const (
 	OfficialRegistryURL = "https://registry.npmjs.org"
 	HuaweiRegistryURL   = "https://repo.huaweicloud.com/repository/npm/"
 	TencentRegistryURL  = "https://mirrors.cloud.tencent.com/npm/"
-	DefaultProbeTimeout = 5 * time.Second
+	// Registry probes can perform two cold npm metadata requests (the root
+	// package and its platform package) inside a newly started VM. Keep the
+	// candidates concurrent, but allow enough time for first DNS/TLS/cache use.
+	DefaultProbeTimeout = 20 * time.Second
 	MinimumRankDelta    = 25 * time.Millisecond
 )
 
