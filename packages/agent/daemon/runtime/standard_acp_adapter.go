@@ -220,16 +220,6 @@ func mergeACPParamsMeta(params map[string]any, meta map[string]any) {
 	}
 }
 
-func joinPromptSections(sections ...string) string {
-	nonEmpty := make([]string, 0, len(sections))
-	for _, section := range sections {
-		if trimmed := strings.TrimSpace(section); trimmed != "" {
-			nonEmpty = append(nonEmpty, trimmed)
-		}
-	}
-	return strings.Join(nonEmpty, "\n\n")
-}
-
 func sessionEnvValue(env []string, key string) string {
 	prefix := key + "="
 	for _, item := range env {

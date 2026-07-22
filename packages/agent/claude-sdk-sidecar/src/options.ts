@@ -1,7 +1,11 @@
+import { readFileSync, statSync } from "node:fs";
 import type {
   Options as ClaudeQueryOptions,
   SdkPluginConfig
 } from "@anthropic-ai/claude-agent-sdk";
+
+const claudeSystemPromptFileEnv = "TUTTI_CLAUDE_SYSTEM_PROMPT_FILE";
+const claudePluginDirEnv = "TUTTI_CLAUDE_PLUGIN_DIR";
 
 export type ClaudeToolsOption = NonNullable<ClaudeQueryOptions["tools"]>;
 
@@ -18,18 +22,61 @@ export type SidecarClaudeOptions = {
 export function sidecarClaudeOptionsFromPayload(
   payload: Record<string, unknown>
 ): SidecarClaudeOptions {
+  const env = stringRecordValue(payload.env);
+  const explicitSystemPrompt = stringValue(payload.systemPromptAppend);
+  const explicitPlugins = pluginListValue(payload.plugins);
+  const extraArgs = stringRecordValue(payload.extraArgs);
+  const pluginDir = explicitPlugins.length > 0 ? "" : env[claudePluginDirEnv];
+
+  if (pluginDir) {
+    let info;
+    try {
+      info = statSync(pluginDir);
+    } catch (error) {
+      throw new Error(`stat claude plugin dir: ${errorMessage(error)}`);
+    }
+    if (!info.isDirectory()) {
+      throw new Error(`claude plugin dir is not a directory: ${pluginDir}`);
+    }
+    if (!("plugin-dir" in extraArgs)) {
+      extraArgs["plugin-dir"] = pluginDir;
+    }
+  }
+
   return {
-    systemPromptAppend: stringValue(payload.systemPromptAppend),
+    systemPromptAppend:
+      explicitSystemPrompt ||
+      claudeSystemPromptAppend(env[claudeSystemPromptFileEnv]),
     planModeInstructions: stringValue(payload.planModeInstructions),
     allowedTools: stringArrayValue(payload.allowedTools),
     disallowedTools: stringArrayValue(payload.disallowedTools),
-    plugins: pluginListValue(payload.plugins),
-    extraArgs: stringRecordValue(payload.extraArgs),
+    plugins:
+      explicitPlugins.length > 0
+        ? explicitPlugins
+        : pluginDir
+          ? [{ type: "local", path: pluginDir }]
+          : [],
+    extraArgs,
     tools: toolsValue(payload.tools) ?? {
       type: "preset",
       preset: "claude_code"
     }
   };
+}
+
+function claudeSystemPromptAppend(path: string | null | undefined): string {
+  if (!path) {
+    return "";
+  }
+  try {
+    return readFileSync(path, "utf8").trim();
+  } catch (error) {
+    throw new Error(`read claude system prompt: ${errorMessage(error)}`);
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function claudeQueryOptionOverrides(

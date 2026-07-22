@@ -33,11 +33,6 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	launchSession := session
 	launchSession.CWD = spec.CWD
 	launchSession.Env = append([]string(nil), spec.Env...)
-	claudeMeta, err := buildClaudeCodeSessionMeta(launchSession)
-	if err != nil {
-		cleanupPreparedLaunch(cleanup)
-		return nil, err
-	}
 	conn, err := a.transport.Start(ctx, spec)
 	if err != nil {
 		cleanupPreparedLaunch(cleanup)
@@ -70,7 +65,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		"settings":          claudeSDKSessionSettingsPayload(session),
 		"resumeCursor":      claudeSDKResumeCursorFromSession(session),
 	}
-	for key, value := range claudeMeta.sdkPayload() {
+	for key, value := range claudeCodeSDKStartOptions(session) {
 		startPayload[key] = value
 	}
 	if err := adapterSession.send(claudeSDKSidecarRequest{

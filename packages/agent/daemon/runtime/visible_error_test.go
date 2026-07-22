@@ -204,6 +204,13 @@ func TestVisibleFailureCodeClassifiesMissingBinaryAsCliNotFound(t *testing.T) {
 	}
 }
 
+func TestVisibleFailureCodeDoesNotClassifyMetadataReadAsMissingCLI(t *testing.T) {
+	detail := `read claude system prompt: open /run/tsh/managed-agent/session/claude-system-prompt.md: no such file or directory`
+	if got := visibleFailureCode(detail); got != "provider_error" {
+		t.Fatalf("visibleFailureCode(%q) = %q, want provider_error", detail, got)
+	}
+}
+
 func TestVisibleFailureCodeClassifiesGenuineExitAsProcessExited(t *testing.T) {
 	// A non-zero exit that is NOT a missing binary stays process_exited.
 	if got := visibleFailureCode("codex process exited with code 1"); got != "process_exited" {
