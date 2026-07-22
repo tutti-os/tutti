@@ -801,8 +801,7 @@ describe("agentComposerDraft", () => {
             name: "panel.png",
             mimeType: "image/png",
             path: "/var/cache/tsh/local-assets/workspace-1/user-1/panel.png",
-            previewUrl:
-              "/var/cache/tsh/local-assets/workspace-1/user-1/panel.png"
+            previewUrl: ""
           }
         ]
       })

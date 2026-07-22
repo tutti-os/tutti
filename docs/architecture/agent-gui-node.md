@@ -298,6 +298,7 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 - a visible failed queue entry continues to own its submitted content for retry;
   draft settlement must not duplicate that content back into the composer
 - uncertain delivery reconciles by `clientSubmitId` and exact `turnId`; it never resends merely because the Session appears idle
+- editing a queued prompt restores its stable attachment references, then rehydrates missing image previews through `AgentActivityRuntime` with the exact workspace and Session identity; renderer-inaccessible paths never become image URLs, and late reads may update only the matching restored draft image
 - the delivery barrier serializes new-Turn sends only; a guidance head steering the running barrier Turn is exempt and may steer it repeatedly, while in-flight, uncertain-delivery, suspension, and failed-head blockers still gate guidance sends
 - drain readiness is one pure decision over the queue record and canonical availability; a new blocker joins that single decision with an explicit priority against every existing blocker, never as another independent pre-check in the drain path
 
