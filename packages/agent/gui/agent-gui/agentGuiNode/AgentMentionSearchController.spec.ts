@@ -1019,19 +1019,20 @@ describe("AgentMentionSearchController", () => {
     });
   });
 
-  it("reuses fresh browse results when the mention palette reopens", async () => {
+  it("shows fresh cached browse results immediately and revalidates when the mention palette reopens", async () => {
     let now = 1_000;
-    const queryFiles = vi.fn().mockResolvedValue({
+    let entries = [
+      {
+        path: "/workspace/README.md",
+        name: "README.md",
+        kind: "file"
+      }
+    ];
+    const queryFiles = vi.fn(async () => ({
       workspaceId: "room-1",
       root: "/workspace",
-      entries: [
-        {
-          path: "/workspace/README.md",
-          name: "README.md",
-          kind: "file"
-        }
-      ]
-    });
+      entries
+    }));
     const controller = new AgentMentionSearchController({
       queryFiles,
       queryIssues: vi.fn().mockResolvedValue({
@@ -1050,8 +1051,8 @@ describe("AgentMentionSearchController", () => {
     const states: any[] = [];
     controller.subscribe((state) => states.push(state));
 
-    controller.setFilter("file");
     controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("file");
     await vi.waitFor(() =>
       expect(states.at(-1)).toMatchObject({
         status: "ready",
@@ -1073,9 +1074,17 @@ describe("AgentMentionSearchController", () => {
 
     controller.close();
     now += 1_000;
-    controller.setFilter("file");
+    entries = [
+      {
+        path: "/workspace/package.json",
+        name: "package.json",
+        kind: "file"
+      }
+    ];
     controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("file");
 
+    // Cache is presentation-only: it paints synchronously on reopen.
     expect(states.at(-1)).toMatchObject({
       status: "ready",
       mode: "browse",
@@ -1091,10 +1100,71 @@ describe("AgentMentionSearchController", () => {
         })
       ])
     });
-    expect(queryFiles).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(queryFiles).toHaveBeenCalledTimes(2);
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "browse",
+        groups: expect.arrayContaining([
+          expect.objectContaining({
+            id: "opened_files",
+            items: [
+              expect.objectContaining({
+                kind: "file",
+                path: "/workspace/package.json"
+              })
+            ]
+          })
+        ])
+      });
+    });
   });
 
-  it("reuses fresh browse results after the agent GUI controller is recreated", async () => {
+  it("revalidates cached Agent availability when the Agent tab reopens", async () => {
+    let status = "available";
+    const queryAgentTargets = vi.fn(async () => ({
+      targets: [
+        {
+          name: "Claude Code",
+          provider: "claude-code",
+          status,
+          targetId: "local:claude-code",
+          workspaceId: "room-1"
+        }
+      ]
+    }));
+    const controller = new AgentMentionSearchController({ queryAgentTargets });
+    const states: any[] = [];
+    controller.subscribe((state) => states.push(state));
+    const latestClaudeAvailability = () =>
+      states
+        .at(-1)
+        ?.groups.flatMap((group: { items: any[] }) => group.items)
+        .find(
+          (item: { targetId?: string }) => item.targetId === "local:claude-code"
+        )?.availabilityStatus;
+
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("agent");
+    await vi.waitFor(() => {
+      expect(queryAgentTargets).toHaveBeenCalledTimes(1);
+      expect(latestClaudeAvailability()).toBe("available");
+    });
+
+    controller.close();
+    status = "unavailable";
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("agent");
+
+    expect(latestClaudeAvailability()).toBe("available");
+    await vi.waitFor(() => {
+      expect(queryAgentTargets).toHaveBeenCalledTimes(2);
+      expect(latestClaudeAvailability()).toBe("unavailable");
+    });
+    controller.dispose();
+  });
+
+  it("shows fresh cached browse results and revalidates after the controller is recreated", async () => {
     let now = 2_000;
     const queryFiles = vi.fn().mockResolvedValue({
       workspaceId: "room-1",
@@ -1177,6 +1247,7 @@ describe("AgentMentionSearchController", () => {
       ])
     });
     expect(queryFiles).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(2));
   });
 
   it("evicts the oldest browse cache entry once the shared cap is exceeded", async () => {
@@ -1206,7 +1277,8 @@ describe("AgentMentionSearchController", () => {
       contextMentionProviders:
         createTestContextMentionProviders(providerOptions)
     });
-    controller.subscribe(() => {});
+    const states: any[] = [];
+    controller.subscribe((state) => states.push(state));
     controller.setFilter("file");
 
     // Warm one more distinct workspace than the cache can hold. Each distinct
@@ -1221,18 +1293,23 @@ describe("AgentMentionSearchController", () => {
       );
     }
 
-    // The most recently warmed workspace is still cached -> no extra fetch.
+    // The most recently warmed workspace paints from cache synchronously, then
+    // still revalidates because this is a user-opened browse.
     controller.updateQuery({
       workspaceId: `room-${warmCount - 1}`,
       query: ""
     });
-    await Promise.resolve();
-    expect(queryFiles).toHaveBeenCalledTimes(warmCount);
-
-    // The oldest workspace was evicted by the cap -> reopening must re-fetch.
-    controller.updateQuery({ workspaceId: "room-0", query: "" });
+    expect(states.at(-1)).toMatchObject({ status: "ready", mode: "browse" });
     await vi.waitFor(() =>
       expect(queryFiles).toHaveBeenCalledTimes(warmCount + 1)
+    );
+
+    // The oldest workspace was evicted by the cap, so it has no synchronous
+    // cached presentation before its required realtime fetch.
+    controller.updateQuery({ workspaceId: "room-0", query: "" });
+    expect(states.at(-1)).toMatchObject({ status: "loading", mode: "browse" });
+    await vi.waitFor(() =>
+      expect(queryFiles).toHaveBeenCalledTimes(warmCount + 2)
     );
 
     controller.dispose();
@@ -1274,7 +1351,7 @@ describe("AgentMentionSearchController", () => {
     });
     await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(1));
 
-    // A later controller built with the same providers hits the warmed cache.
+    // A later controller built with the same providers paints the warmed cache.
     const controller = new AgentMentionSearchController({
       contextMentionProviders:
         createTestContextMentionProviders(providerOptions)
@@ -1300,6 +1377,7 @@ describe("AgentMentionSearchController", () => {
       ])
     });
     expect(queryFiles).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(2));
     controller.dispose();
   });
 
@@ -1398,6 +1476,7 @@ describe("AgentMentionSearchController", () => {
       ])
     });
     expect(queryFiles).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(2));
   });
 
   it("reuses preloaded app results when the app category first opens", async () => {
@@ -1465,6 +1544,7 @@ describe("AgentMentionSearchController", () => {
       ]
     });
     expect(queryWorkspaceApps).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(queryWorkspaceApps).toHaveBeenCalledTimes(2));
   });
 
   it("cancels an orphaned browse load and refetches after reopen", async () => {

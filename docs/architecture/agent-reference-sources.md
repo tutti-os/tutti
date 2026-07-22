@@ -151,6 +151,15 @@ separator, cached tree depth, or already loaded rows. Search results remain
 ordinary insertable mentions unless the provider explicitly marks them as
 navigable directories.
 
+The compact palette browse cache is presentation-only. Every user-opened `@`
+browse paints a matching cached entry synchronously when one exists and always
+starts a provider query in parallel, even while the cached entry is within its
+freshness TTL. The successful query replaces the visible groups and writes the
+same result back to the shared cache. Freshness may suppress a speculative
+startup or focus preload, but it must never suppress a user-opened query.
+Closing or replacing the browse aborts its consumer and advances the controller
+request fence, so an older response cannot overwrite a later open.
+
 ## Search Relevance
 
 The daemon-backed source owns the ranked order for a non-empty local-file

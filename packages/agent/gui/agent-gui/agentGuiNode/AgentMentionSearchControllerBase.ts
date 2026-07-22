@@ -180,9 +180,9 @@ export class AgentMentionSearchControllerBase {
         groups: this.groupsFromRawGroups(),
         error: null
       });
-      if (cached.isFresh) {
-        return;
-      }
+      // A user-opened palette always revalidates. Cache freshness is used only
+      // to suppress redundant speculative preloads; here the cached entry is a
+      // zero-latency presentation while the provider query refreshes it.
     } else {
       this.rawGroups = emptyAgentMentionRawGroups();
       this.resetTotalCounts();
