@@ -60,7 +60,14 @@ test("runTuttiAgentInstallBootstrap upgrades tutti-agent below its minimum versi
 
 test("runTuttiAgentInstallBootstrap skips ready tutti-agent", async () => {
   const calls: string[] = [];
-  const service = createService(createStatus("ready"), {
+  const status = createStatus("ready");
+  status.cli = {
+    binaryPath: "/bin/tutti-agent",
+    installed: true,
+    minVersion: "0.0.4",
+    version: "0.0.5"
+  };
+  const service = createService(status, {
     ensureLoaded: () => calls.push("ensureLoaded"),
     runAction: () => calls.push("runAction")
   });

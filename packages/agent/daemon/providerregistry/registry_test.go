@@ -62,13 +62,15 @@ func TestMigratedTuttiAgentDescriptorRequiresRefreshCapableVersion(t *testing.T)
 }
 
 func TestValidateRejectsInvalidMinimumVersionFloor(t *testing.T) {
-	t.Run("invalid semantic version", func(t *testing.T) {
-		descriptor := tuttiAgentDescriptor()
-		descriptor.Status.MinVersion = "latest"
-		if err := Validate(descriptor); err == nil {
-			t.Fatal("Validate() error = nil")
-		}
-	})
+	for _, version := range []string{"latest", "1.0.0-beta.1", "1.0.0+build.1"} {
+		t.Run("invalid floor "+version, func(t *testing.T) {
+			descriptor := tuttiAgentDescriptor()
+			descriptor.Status.MinVersion = version
+			if err := Validate(descriptor); err == nil {
+				t.Fatal("Validate() error = nil")
+			}
+		})
+	}
 	t.Run("missing repair installer", func(t *testing.T) {
 		descriptor := tuttiAgentDescriptor()
 		descriptor.Status.Install = InstallerDescriptor{}

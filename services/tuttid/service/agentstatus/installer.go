@@ -349,7 +349,7 @@ func (s Service) providerCLIRequiresInstall(spec ProviderSpec, runtime providerR
 	if strings.TrimSpace(spec.MinVersion) == "" {
 		return false
 	}
-	return !cliVersionMeetsMinimum(s.cliVersion(context.Background(), runtime.CLIPath, runtime.Env), spec.MinVersion)
+	return !providerCLIVersionMeetsMinimum(spec, s.cliVersion(context.Background(), runtime.CLIPath, runtime.Env))
 }
 
 func adapterPackageRequirementSatisfied(requirement AdapterPackageRequirement, version string) bool {
@@ -361,7 +361,7 @@ func adapterPackageRequirementSatisfied(requirement AdapterPackageRequirement, v
 	if version == requiredVersion {
 		return true
 	}
-	cmp, ok := compareCodexVersions(version, requiredVersion)
+	cmp, ok := compareCLIVersions(version, requiredVersion)
 	if !ok {
 		return false
 	}

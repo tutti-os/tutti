@@ -521,7 +521,7 @@ func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, erro
 		result.Message = status.LastError.Message
 		return result, nil
 	}
-	if !cliVersionMeetsMinimum(status.CLI.Version, spec.MinVersion) {
+	if !providerCLIVersionMeetsMinimum(spec, status.CLI.Version) {
 		result.Status = ProbeFailed
 		result.ReasonCode = providerCLIVersionUnsupportedReasonCode(spec)
 		result.Message = "CLI version is below " + spec.MinVersion

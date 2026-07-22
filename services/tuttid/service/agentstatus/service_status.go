@@ -100,10 +100,18 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		Status:    AvailabilityReady,
 	}
 	actions := []Action{}
+	cliBelowFloor := installed && !providerCLIVersionMeetsMinimum(spec, cliVersion)
 
 	if !installed {
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = "cli_not_found"
+		actions = append(actions, daemonAction(ActionInstall))
+	} else if !isCodexStatusSpec(spec) && cliBelowFloor {
+		// Descriptor-owned version floors are a CLI capability gate. Surface
+		// that repair before any downstream adapter failure so callers retain
+		// the current/minimum version evidence and run the CLI installer first.
+		availability.Status = AvailabilityNotInstalled
+		availability.ReasonCode = providerCLIVersionUnsupportedReasonCode(spec)
 		actions = append(actions, daemonAction(ActionInstall))
 	} else if !adapterInstalled {
 		availability.Status = AvailabilityNotInstalled
@@ -121,7 +129,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrPlatformPkgIncomplete))
 		actions = append(actions, daemonAction(ActionInstall))
-	} else if !cliVersionMeetsMinimum(cliVersion, spec.MinVersion) {
+	} else if cliBelowFloor {
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = providerCLIVersionUnsupportedReasonCode(spec)
 		actions = append(actions, daemonAction(ActionInstall))

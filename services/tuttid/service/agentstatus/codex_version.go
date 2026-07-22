@@ -22,15 +22,15 @@ import (
 // nothing else needs to change.
 const MinSupportedCodexVersion = providerregistry.CodexMinVersion
 
-// compareCodexVersions compares two semver-ish version strings.
+// compareCLIVersions compares two semver-ish CLI version strings.
 //
 // It returns -1, 0, or 1 (a<b, a==b, a>b) and ok=true when both parse. A
 // leading "v" is tolerated and missing components default to 0. A pre-release
 // suffix (after "-") sorts below the same release core. ok is false when either
 // version cannot be parsed into a numeric core.
-func compareCodexVersions(a, b string) (int, bool) {
-	coreA, preA, okA := parseCodexVersion(a)
-	coreB, preB, okB := parseCodexVersion(b)
+func compareCLIVersions(a, b string) (int, bool) {
+	coreA, preA, okA := parseCLIVersionForComparison(a)
+	coreB, preB, okB := parseCLIVersionForComparison(b)
 	if !okA || !okB {
 		return 0, false
 	}
@@ -58,24 +58,41 @@ func compareCodexVersions(a, b string) (int, bool) {
 // "unknown" and is NOT flagged as too old here — binary/CLI presence checks
 // cover the missing case, and the server-side error is the backstop.
 func codexVersionMeetsMinimum(version string) bool {
-	return cliVersionMeetsMinimum(version, MinSupportedCodexVersion)
+	return cliVersionMeetsMinimumAllowUnknown(version, MinSupportedCodexVersion)
 }
 
-func cliVersionMeetsMinimum(version string, minimum string) bool {
+// cliVersionMeetsMinimumAllowUnknown preserves the historical Codex behavior:
+// an unavailable version is left to the app-server compatibility backstop.
+func cliVersionMeetsMinimumAllowUnknown(version string, minimum string) bool {
 	minimum = strings.TrimSpace(minimum)
 	if minimum == "" {
 		return true
 	}
-	cmp, ok := compareCodexVersions(version, minimum)
+	cmp, ok := compareCLIVersions(version, minimum)
 	if !ok {
 		return true
 	}
 	return cmp >= 0
 }
 
-// parseCodexVersion returns the [major, minor, patch] core, whether a
+// providerCLIVersionMeetsMinimum applies the descriptor-owned floor. Generic
+// providers fail closed when their version is unavailable; Codex retains its
+// established unknown-version compatibility behavior above.
+func providerCLIVersionMeetsMinimum(spec ProviderSpec, version string) bool {
+	minimum := strings.TrimSpace(spec.MinVersion)
+	if minimum == "" {
+		return true
+	}
+	cmp, ok := compareCLIVersions(version, minimum)
+	if !ok {
+		return isCodexStatusSpec(spec)
+	}
+	return cmp >= 0
+}
+
+// parseCLIVersionForComparison returns the [major, minor, patch] core, whether a
 // pre-release suffix is present, and ok when the core parsed.
-func parseCodexVersion(version string) ([3]int, bool, bool) {
+func parseCLIVersionForComparison(version string) ([3]int, bool, bool) {
 	v := strings.TrimSpace(version)
 	v = strings.TrimPrefix(v, "v")
 	if v == "" {

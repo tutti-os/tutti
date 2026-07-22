@@ -63,7 +63,7 @@ func (s Service) updateStatusForSpec(
 	if entry.reasonCode != "" || entry.latestVersion == "" {
 		return status
 	}
-	comparison, ok := compareCodexVersions(status.CurrentVersion, entry.latestVersion)
+	comparison, ok := compareCLIVersions(status.CurrentVersion, entry.latestVersion)
 	if !ok {
 		status.ReasonCode = "version_comparison_unavailable"
 		return status

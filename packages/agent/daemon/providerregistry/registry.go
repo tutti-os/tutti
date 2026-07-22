@@ -22,7 +22,11 @@ var providerDescriptorIndex = buildProviderDescriptorIndex(migratedDescriptors)
 
 var eventProviderIndex = buildEventProviderIndex(migratedDescriptors)
 
-var minimumVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$`)
+// Descriptor-owned compatibility floors intentionally accept stable releases
+// only. The daemon's lightweight comparator does not implement full SemVer
+// pre-release precedence, so allowing a pre-release floor would make the gate
+// ambiguous.
+var minimumVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 
 func canonicalProviderIdentity(providerID string) IdentityDescriptor {
 	identity, ok := canonical.FindProviderIdentity(providerID)
