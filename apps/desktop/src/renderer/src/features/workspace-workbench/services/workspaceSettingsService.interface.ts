@@ -95,6 +95,7 @@ export interface IWorkspaceModelPlansController {
   detectDraft(): Promise<void>;
   duplicatePlan(planID: string): Promise<void>;
   fetchDraftModels(): Promise<void>;
+  launchFirstUse(planID: string, agentTargetID: string): Promise<void>;
   refresh(): Promise<void>;
   refreshBindings(): Promise<void>;
   refreshPlans(): Promise<void>;

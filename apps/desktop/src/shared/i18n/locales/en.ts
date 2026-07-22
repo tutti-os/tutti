@@ -1019,7 +1019,15 @@ export const en = {
           namePlaceholder: "My model plan",
           neverDetected: "Not checked yet",
           pendingFirstUseGuide:
-            "Pick a compatible agent under Agent bindings below and finish one real call to make this plan fully usable.",
+            "Choose a compatible Agent and finish one real call to make this plan fully usable.",
+          firstUseAction: "Try with this Agent",
+          firstUseAgentLabel: "Compatible Agent",
+          firstUseLaunchFailed: "Couldn't open the first-use session.",
+          firstUseLaunching: "Opening...",
+          firstUsePrompt:
+            "Use the {{plan}} model plan for this real first call. Briefly introduce the selected model and confirm it can respond in this workspace.",
+          noCompatibleFirstUseAgent:
+            "No compatible Agent is enabled for this plan's protocol.",
           presetLabel: "Provider preset",
           presets: {
             agnes: "Agnes",

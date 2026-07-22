@@ -11,12 +11,15 @@ export interface AgentGuiWorkbenchPrefillPromptPayload {
   agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  model?: string | null;
+  modelPlanId?: string | null;
   provider?: AgentGuiWorkbenchProvider;
   userProjectPath?: string | null;
 }
 
 export interface AgentGuiWorkbenchComposerOverrides {
   model?: string | null;
+  modelPlanId?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean;
   reasoningEffort?: string | null;

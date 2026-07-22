@@ -77,12 +77,16 @@ import {
   createWorkspaceFeatureFlagSettings,
   type WorkspaceFeatureFlagSettings
 } from "./workspaceFeatureFlagSettings.ts";
-import { WorkspaceModelPlansController } from "./workspaceModelPlansController.ts";
+import {
+  WorkspaceModelPlansController,
+  type WorkspaceModelPlansControllerDependencies
+} from "./workspaceModelPlansController.ts";
 import { WorkspaceAgentsController } from "./workspaceAgentsController.ts";
 import { WorkspaceAutomationRulesController } from "./workspaceAutomationRulesController.ts";
 
 export interface WorkspaceSettingsServiceDependencies {
   client: DesktopWorkspaceSettingsClient;
+  launchAgentGui?: WorkspaceModelPlansControllerDependencies["launchAgentGui"];
   onAgentTargetsChanged?: () => void | Promise<void>;
   replaceWorkspaceWindow?: (input: {
     mode: "agent" | "os";
@@ -144,6 +148,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.reporterNow = reporterNow;
     this.modelPlans = new WorkspaceModelPlansController({
       client: dependencies.client,
+      launchAgentGui: dependencies.launchAgentGui,
       notifications,
       store: this.store
     });
@@ -976,17 +981,17 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.store.developerLogs.loading = false;
   }
 
-  // Plans stay Plan-only via controller.refresh(); bindings are a separate
-  // load so the Agent binding section can render enabled targets.
   private refreshAgentSettings(): void {
     this.refreshModelPlansSurface();
-    void this.agents.refresh();
     void this.automationRules.refresh();
   }
 
+  // Plans stay Plan-only via controller.refresh(); bindings and harness targets
+  // load separately so model-plan first-use can list compatible Agents.
   private refreshModelPlansSurface(): void {
     void this.modelPlans.refresh();
     void this.modelPlans.refreshBindings();
+    void this.agents.refresh();
   }
 
   private reportSettingsOpened(): void {

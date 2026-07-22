@@ -122,6 +122,7 @@ test("keeps the default provider set explicit", () => {
     "workspace-app",
     "agent-target",
     "agent-session",
+    "workspace-model",
     "agent-generated-file"
   ]);
 });
