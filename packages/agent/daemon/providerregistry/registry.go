@@ -2,6 +2,7 @@ package providerregistry
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
@@ -20,6 +21,12 @@ var migratedDescriptors = []ProviderDescriptor{
 var providerDescriptorIndex = buildProviderDescriptorIndex(migratedDescriptors)
 
 var eventProviderIndex = buildEventProviderIndex(migratedDescriptors)
+
+// Descriptor-owned compatibility floors intentionally accept stable releases
+// only. The daemon's lightweight comparator does not implement full SemVer
+// pre-release precedence, so allowing a pre-release floor would make the gate
+// ambiguous.
+var minimumVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 
 func canonicalProviderIdentity(providerID string) IdentityDescriptor {
 	identity, ok := canonical.FindProviderIdentity(providerID)
@@ -325,8 +332,17 @@ func Validate(descriptor ProviderDescriptor) error {
 	default:
 		return fmt.Errorf("provider %q static spec resolver kind %q is unsupported", providerID, descriptor.Status.StaticSpecResolverKind)
 	}
-	if descriptor.Status.Kind == StatusKindCodexCLI && strings.TrimSpace(descriptor.Status.MinVersion) == "" {
+	minimumVersion := strings.TrimSpace(descriptor.Status.MinVersion)
+	if descriptor.Status.Kind == StatusKindCodexCLI && minimumVersion == "" {
 		return fmt.Errorf("provider %q minimum version is required", providerID)
+	}
+	if minimumVersion != "" {
+		if !minimumVersionPattern.MatchString(minimumVersion) {
+			return fmt.Errorf("provider %q minimum version %q is invalid", providerID, descriptor.Status.MinVersion)
+		}
+		if descriptor.Status.Install.Kind == "" {
+			return fmt.Errorf("provider %q minimum version requires an installer", providerID)
+		}
 	}
 	if descriptor.Status.AuthStatusCommandTimeoutSeconds < 0 {
 		return fmt.Errorf("provider %q auth status timeout must be non-negative", providerID)

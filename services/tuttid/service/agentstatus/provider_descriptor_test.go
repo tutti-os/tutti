@@ -57,6 +57,16 @@ func TestClaudeCodeStatusSpecComesFromProviderDescriptor(t *testing.T) {
 	}
 }
 
+func TestTuttiAgentStatusSpecComesFromProviderDescriptor(t *testing.T) {
+	specs, err := DefaultRegistry().Select([]string{agentprovider.TuttiAgent})
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("Select(tutti-agent) = %#v, %v", specs, err)
+	}
+	if specs[0].MinVersion != providerregistry.TuttiAgentMinVersion {
+		t.Fatalf("MinVersion = %q, want %q", specs[0].MinVersion, providerregistry.TuttiAgentMinVersion)
+	}
+}
+
 func TestProviderStatusAdapterConsumesDescriptorInstallerData(t *testing.T) {
 	descriptor, ok := providerregistry.Find(providerregistry.CodexProviderID)
 	if !ok {

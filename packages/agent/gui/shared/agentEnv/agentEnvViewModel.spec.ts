@@ -127,6 +127,33 @@ describe("buildAgentEnvWizardViewModel", () => {
     expect(install?.status).toBe("error");
   });
 
+  it("shows the version-floor token for a generic provider version gate", () => {
+    const vm = buildAgentEnvWizardViewModel(
+      input({
+        status: status({
+          availability: {
+            status: "not_installed",
+            reasonCode: "cli_version_unsupported"
+          },
+          cli: {
+            installed: true,
+            version: "0.0.2",
+            minVersion: "0.0.4",
+            binaryPath: "/usr/bin/tutti-agent"
+          }
+        }),
+        revealIndex: Number.MAX_SAFE_INTEGER
+      })
+    );
+    const install = vm.displayStages.find((s) => s.id === "install");
+    expect(install?.detail).toEqual({
+      kind: "version-floor",
+      current: "0.0.2",
+      required: "0.0.4"
+    });
+    expect(install?.status).toBe("error");
+  });
+
   it("does NOT red the install (CLI) stage on an adapter version mismatch", () => {
     const vm = buildAgentEnvWizardViewModel(
       input({

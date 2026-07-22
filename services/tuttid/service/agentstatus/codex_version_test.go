@@ -1,8 +1,12 @@
 package agentstatus
 
-import "testing"
+import (
+	"testing"
 
-func TestCompareCodexVersions(t *testing.T) {
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+)
+
+func TestCompareCLIVersions(t *testing.T) {
 	cases := []struct {
 		name string
 		a    string
@@ -23,14 +27,25 @@ func TestCompareCodexVersions(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, ok := compareCodexVersions(tc.a, tc.b)
+			got, ok := compareCLIVersions(tc.a, tc.b)
 			if ok != tc.ok {
-				t.Fatalf("compareCodexVersions(%q,%q) ok=%v, want %v", tc.a, tc.b, ok, tc.ok)
+				t.Fatalf("compareCLIVersions(%q,%q) ok=%v, want %v", tc.a, tc.b, ok, tc.ok)
 			}
 			if ok && got != tc.want {
-				t.Fatalf("compareCodexVersions(%q,%q)=%d, want %d", tc.a, tc.b, got, tc.want)
+				t.Fatalf("compareCLIVersions(%q,%q)=%d, want %d", tc.a, tc.b, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestProviderCLIVersionFloorFailsClosedExceptForCodexCompatibility(t *testing.T) {
+	tutti := ProviderSpec{MinVersion: "0.0.4"}
+	if providerCLIVersionMeetsMinimum(tutti, "") || providerCLIVersionMeetsMinimum(tutti, "garbage") {
+		t.Fatal("generic provider accepted an unknown version")
+	}
+	codex := ProviderSpec{Kind: providerregistry.StatusKindCodexCLI, MinVersion: MinSupportedCodexVersion}
+	if !providerCLIVersionMeetsMinimum(codex, "") || !providerCLIVersionMeetsMinimum(codex, "garbage") {
+		t.Fatal("Codex unknown-version compatibility changed")
 	}
 }
 

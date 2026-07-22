@@ -122,7 +122,7 @@ export function buildAgentEnvWizardViewModel(
 
   const reasonCode = (status?.availability.reasonCode ?? "").toLowerCase();
   const versionTooOld = reasonCodeIndicatesCliVersionUnsupported(reasonCode);
-  const cliBelowFloor = reasonCode.includes("codex_version_too_old");
+  const cliBelowFloor = versionTooOld;
   // The codex launcher is present but its platform subpackage is missing — the
   // CLI spawns ENOENT. The daemon repairs this in place via the install action;
   // the wizard must NOT mark the install stage ok just because the launcher

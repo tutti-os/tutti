@@ -100,10 +100,18 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		Status:    AvailabilityReady,
 	}
 	actions := []Action{}
+	cliBelowFloor := installed && !providerCLIVersionMeetsMinimum(spec, cliVersion)
 
 	if !installed {
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = "cli_not_found"
+		actions = append(actions, daemonAction(ActionInstall))
+	} else if !isCodexStatusSpec(spec) && cliBelowFloor {
+		// Descriptor-owned version floors are a CLI capability gate. Surface
+		// that repair before any downstream adapter failure so callers retain
+		// the current/minimum version evidence and run the CLI installer first.
+		availability.Status = AvailabilityNotInstalled
+		availability.ReasonCode = providerCLIVersionUnsupportedReasonCode(spec)
 		actions = append(actions, daemonAction(ActionInstall))
 	} else if !adapterInstalled {
 		availability.Status = AvailabilityNotInstalled
@@ -121,9 +129,9 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrPlatformPkgIncomplete))
 		actions = append(actions, daemonAction(ActionInstall))
-	} else if isCodexStatusSpec(spec) && !cliVersionMeetsMinimum(cliVersion, spec.MinVersion) {
+	} else if cliBelowFloor {
 		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrVersionTooOld))
+		availability.ReasonCode = providerCLIVersionUnsupportedReasonCode(spec)
 		actions = append(actions, daemonAction(ActionInstall))
 	} else {
 		if spec.LoginActionKind == ActionKindDaemonAction {
@@ -168,6 +176,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 			Installed:  installed,
 			BinaryPath: runtimeResolution.CLIPath,
 			Version:    cliVersion,
+			MinVersion: spec.MinVersion,
 		},
 		Adapter: AdapterStatus{
 			Installed:       adapterReady,
@@ -209,7 +218,6 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		)
 	}
 	if isCodexStatusSpec(spec) {
-		status.CLI.MinVersion = spec.MinVersion
 		status.Checks = codexProviderChecks(status, codexPlatformOK, s.codexNodeRuntimeCheck(spec))
 		status.LastError = codexProviderLastError(status)
 		slog.Info(
@@ -223,6 +231,13 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 	}
 	postChecksDuration = time.Since(postChecksStartedAt)
 	return status
+}
+
+func providerCLIVersionUnsupportedReasonCode(spec ProviderSpec) string {
+	if isCodexStatusSpec(spec) {
+		return codexReasonCodeFromErrorCode(string(CodexErrVersionTooOld))
+	}
+	return "cli_version_unsupported"
 }
 
 func (s Service) shouldProbeAdapterCommandForStatus(spec ProviderSpec, runtimeResolution providerRuntimeResolution) bool {

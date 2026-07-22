@@ -151,9 +151,7 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 }
 
 func TestServiceListUsesDescriptorOwnedDaemonLoginAction(t *testing.T) {
-	service := testService(func(name string) (string, error) {
-		return "/usr/local/bin/" + name, nil
-	}, map[string]bool{})
+	service, _ := updateTestService(t, "0.0.4")
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
 	if err != nil {

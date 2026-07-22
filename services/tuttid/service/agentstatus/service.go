@@ -192,7 +192,7 @@ type CLIStatus struct {
 	BinaryPath string
 	Version    string
 	// MinVersion is the lowest CLI version this provider supports, when it
-	// enforces a floor (codex). Empty for providers with no version gate. Lets
+	// enforces a floor. Empty for providers with no version gate. Lets
 	// the UI surface "current X, requires Y" from the same constant the gate uses.
 	MinVersion string
 }
@@ -519,6 +519,12 @@ func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, erro
 		result.Status = ProbeFailed
 		result.ReasonCode = codexReasonCodeFromErrorCode(status.LastError.Code)
 		result.Message = status.LastError.Message
+		return result, nil
+	}
+	if !providerCLIVersionMeetsMinimum(spec, status.CLI.Version) {
+		result.Status = ProbeFailed
+		result.ReasonCode = providerCLIVersionUnsupportedReasonCode(spec)
+		result.Message = "CLI version is below " + spec.MinVersion
 		return result, nil
 	}
 

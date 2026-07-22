@@ -58,6 +58,190 @@ func TestProviderStatusUpdateDiscoveryIsExplicitAndCached(t *testing.T) {
 	}
 }
 
+func TestTuttiAgentBelowMinimumRequiresManagedInstall(t *testing.T) {
+	service, _ := updateTestService(t, "0.0.2")
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityNotInstalled || status.Availability.ReasonCode != "cli_version_unsupported" {
+		t.Fatalf("Availability = %#v, want minimum-version repair", status.Availability)
+	}
+	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.4" {
+		t.Fatalf("CLI = %#v, want current 0.0.2 and minimum 0.0.4", status.CLI)
+	}
+	if !hasProviderAction(status.Actions, ActionInstall) {
+		t.Fatalf("Actions = %#v, want install", status.Actions)
+	}
+	probe, err := service.Probe(context.Background(), ProbeInput{Provider: "tutti-agent"})
+	if err != nil {
+		t.Fatalf("Probe() error = %v", err)
+	}
+	if probe.Status != ProbeFailed || probe.ReasonCode != "cli_version_unsupported" {
+		t.Fatalf("Probe = %#v, want minimum-version failure", probe)
+	}
+
+	specs, err := service.selectProviderSpecs(context.Background(), []string{"tutti-agent"}, false)
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("selectProviderSpecs() = %#v, %v", specs, err)
+	}
+	runtime := service.resolveProviderRuntime(context.Background(), specs[0])
+	installer, required, target := service.nextMissingInstaller(specs[0], runtime)
+	if !required || target != "cli" || installer.Kind != InstallerKindManagedNPMPackage {
+		t.Fatalf("nextMissingInstaller() = %#v, %v, %q", installer, required, target)
+	}
+}
+
+func TestTuttiAgentUnknownVersionFailsClosed(t *testing.T) {
+	tests := []struct {
+		name   string
+		script string
+	}{
+		{name: "version command exits nonzero", script: "#!/bin/sh\nexit 1\n"},
+		{name: "version command prints nothing", script: "#!/bin/sh\nexit 0\n"},
+		{name: "version command prints garbage", script: "#!/bin/sh\necho not-a-version\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service, binaryPath := updateTestService(t, "0.0.2")
+			writeExecutable(t, binaryPath, test.script)
+
+			snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
+			if err != nil {
+				t.Fatalf("List() error = %v", err)
+			}
+			status := onlyStatus(t, snapshot)
+			if status.Availability.Status != AvailabilityNotInstalled || status.Availability.ReasonCode != "cli_version_unsupported" {
+				t.Fatalf("Availability = %#v, want unknown-version repair", status.Availability)
+			}
+			if status.CLI.Version != "" || status.CLI.MinVersion != "0.0.4" || !hasProviderAction(status.Actions, ActionInstall) {
+				t.Fatalf("CLI/actions = %#v/%#v, want unknown current version and managed install", status.CLI, status.Actions)
+			}
+
+			probe, err := service.Probe(context.Background(), ProbeInput{Provider: "tutti-agent"})
+			if err != nil {
+				t.Fatalf("Probe() error = %v", err)
+			}
+			if probe.Status != ProbeFailed || probe.ReasonCode != "cli_version_unsupported" {
+				t.Fatalf("Probe = %#v, want unknown-version failure", probe)
+			}
+		})
+	}
+}
+
+func TestTuttiAgentVersionFloorPrecedesAdapterFailure(t *testing.T) {
+	service, _ := updateTestService(t, "0.0.2")
+	specs, err := service.selectProviderSpecs(context.Background(), []string{"tutti-agent"}, false)
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("selectProviderSpecs() = %#v, %v", specs, err)
+	}
+	spec := specs[0]
+	spec.AdapterBinaryNames = []string{"missing-adapter"}
+
+	status := service.statusForSpec(context.Background(), spec, service.now())
+	if status.Availability.ReasonCode != "cli_version_unsupported" {
+		t.Fatalf("Availability = %#v, want CLI floor before adapter failure", status.Availability)
+	}
+	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.4" {
+		t.Fatalf("CLI = %#v, want version evidence retained", status.CLI)
+	}
+}
+
+func TestCompatibleTuttiAgentDoesNotRequireManagedInstall(t *testing.T) {
+	for _, version := range []string{"0.0.4", "0.0.5"} {
+		t.Run(version, func(t *testing.T) {
+			service, _ := updateTestService(t, version)
+			snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
+			if err != nil {
+				t.Fatalf("List() error = %v", err)
+			}
+			status := onlyStatus(t, snapshot)
+			if status.Availability.Status != AvailabilityReady || hasProviderAction(status.Actions, ActionInstall) {
+				t.Fatalf("status = %#v, want compatible runtime without install", status)
+			}
+
+			specs, err := service.selectProviderSpecs(context.Background(), []string{"tutti-agent"}, false)
+			if err != nil || len(specs) != 1 {
+				t.Fatalf("selectProviderSpecs() = %#v, %v", specs, err)
+			}
+			runtime := service.resolveProviderRuntime(context.Background(), specs[0])
+			if installer, required, target := service.nextMissingInstaller(specs[0], runtime); required {
+				t.Fatalf("nextMissingInstaller() = %#v, %v, %q; compatible versions must not auto-update", installer, required, target)
+			}
+		})
+	}
+}
+
+func TestProviderCLIRequiresInstallSkipsVersionProbeWithoutFloor(t *testing.T) {
+	home := t.TempDir()
+	marker := filepath.Join(home, "version-probed")
+	binary := filepath.Join(home, "provider-cli")
+	writeExecutable(t, binary, "#!/bin/sh\ntouch '"+marker+"'\necho 'provider 1.0.0'\n")
+
+	service := Service{}
+	if service.providerCLIRequiresInstall(ProviderSpec{}, providerRuntimeResolution{CLIPath: binary}) {
+		t.Fatal("providerCLIRequiresInstall() = true without a minimum version")
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("version command ran without a minimum version: %v", err)
+	}
+}
+
+func TestRunInstallActionUpgradesTuttiAgentBelowMinimumAndReprobes(t *testing.T) {
+	service, binaryPath := updateTestService(t, "0.0.2")
+	service.ProbeReadyAfter = 20 * time.Millisecond
+	service.ProbeTimeout = 200 * time.Millisecond
+	var commands atomic.Int32
+	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
+		commands.Add(1)
+		if !strings.Contains(input.Command, "@tutti-os/tutti-agent") {
+			t.Fatalf("install command = %q, want managed Tutti Agent package", input.Command)
+		}
+		writeUpdateTestCLI(t, binaryPath, "0.0.4")
+		return InstallCommandResult{ExitCode: 0, Stdout: "updated"}, nil
+	}
+
+	result, err := service.RunAction(context.Background(), RunActionInput{Provider: "tutti-agent", ActionID: ActionInstall})
+	if err != nil {
+		t.Fatalf("RunAction() error = %v", err)
+	}
+	if commands.Load() != 1 || result.Status != RunActionCompleted || result.Probe == nil || result.Probe.Status != ProbeReady {
+		t.Fatalf("install result = %#v, commands = %d", result, commands.Load())
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}, ForceRefresh: true})
+	if err != nil {
+		t.Fatalf("post-install List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityReady || status.CLI.Version != "0.0.4" {
+		t.Fatalf("post-install status = %#v", status)
+	}
+}
+
+func TestRunInstallActionFailsWhenInstalledVersionRemainsUnknown(t *testing.T) {
+	service, binaryPath := updateTestService(t, "0.0.2")
+	var commands atomic.Int32
+	service.InstallCommand = func(context.Context, InstallCommandInput) (InstallCommandResult, error) {
+		commands.Add(1)
+		writeExecutable(t, binaryPath, "#!/bin/sh\necho not-a-version\n")
+		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
+	}
+
+	result, err := service.RunAction(context.Background(), RunActionInput{Provider: "tutti-agent", ActionID: ActionInstall})
+	if err != nil {
+		t.Fatalf("RunAction() error = %v", err)
+	}
+	if commands.Load() != 1 || result.Status != RunActionFailed {
+		t.Fatalf("result = %#v, commands = %d; unknown installed version must fail", result, commands.Load())
+	}
+	if !strings.Contains(result.Message, "still unavailable after install") {
+		t.Fatalf("result message = %q, want unavailable-after-install evidence", result.Message)
+	}
+}
+
 func TestProviderStatusUpdateDiscoveryFailureIsNonFatal(t *testing.T) {
 	service, _ := updateTestService(t, "1.0.0")
 	service.UpdateCache = NewProviderUpdateCache()

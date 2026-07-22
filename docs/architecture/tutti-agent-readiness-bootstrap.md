@@ -18,13 +18,15 @@ account credentials.
 
 ## Provider Registration
 
-`services/tuttid/service/agentstatus/registry.go` registers `tutti-agent` with:
+`packages/agent/daemon/providerregistry/providers.go` registers `tutti-agent`
+with:
 
 - binary: `tutti-agent`;
 - adapter command: `tutti-agent app-server`;
-- minimum package version: the daemon's `minTuttiAgentVersion`;
+- minimum CLI version: the registry's `TuttiAgentMinVersion`;
 - auth marker: `~/.tutti-agent/auth.json`;
-- installer: `InstallerKindManagedNPMPackage` for
+- installer: registry kind `InstallerKindManagedNPM` (mapped to agentstatus
+  `InstallerKindManagedNPMPackage`) for
   `@tutti-os/tutti-agent`, including optional dependencies.
 
 Provider status is the source of truth for readiness. A successful npm command
@@ -37,11 +39,13 @@ The managed installer places the package in a global prefix searched by the
 daemon binary resolver. It also repairs an existing npm-owned installation in
 place when the launcher or a platform package is broken.
 
-The effective command has this shape:
+New installs and minimum-version repairs install the current published package;
+the minimum is a compatibility floor, not an exact-version pin. The effective
+command has this shape:
 
 ```text
 npm install -g --prefix <managed-or-existing-prefix> \
-  @tutti-os/tutti-agent@<minimum-version> --include=optional
+  @tutti-os/tutti-agent --include=optional
 ```
 
 `--include=optional` is required because the CLI depends on platform-specific
@@ -60,15 +64,16 @@ success followed by an unusable launcher.
 
 ## Desktop Proactive Install
 
-`registerWorkspaceAgentServices` starts
-`startTuttiAgentInstallBootstrap` once the desktop provider-status service is
-available. The bootstrap:
+`registerWorkspaceAgentServices` starts `startManagedAgentInstallBootstraps`
+once the desktop provider-status service is available. The bootstrap:
 
 1. loads only the `tutti-agent` provider status;
-2. stops when the provider is already ready, is not `not_installed`, has no
+2. treats a missing CLI and a CLI below `TuttiAgentMinVersion` as installable
+   `not_installed` states;
+3. stops when the provider is already ready, is not `not_installed`, has no
    install action, or already has an install action pending;
-3. runs the normal provider `install` action;
-4. refreshes provider status after the action.
+4. runs the normal provider `install` action;
+5. refreshes provider status after the action.
 
 This path is best-effort and non-modal. It never auto-installs third-party
 providers and it reuses the same daemon action exposed by manual setup UI.
@@ -128,6 +133,8 @@ refresh so setup UI can move between `not_installed`, `auth_required`, and
 - Rendering an AgentGUI item never installs a provider.
 - Only `tutti-agent` uses proactive installation.
 - Installation completion is determined by a fresh provider probe.
+- A Tutti Agent below `TuttiAgentMinVersion` is not ready and is repaired by
+  the same proactive install path as a missing CLI.
 - Desktop account credentials and Tutti LLM tokens never pass through renderer
   component state.
 - Logout removes the local provider auth marker before the renderer observes the
