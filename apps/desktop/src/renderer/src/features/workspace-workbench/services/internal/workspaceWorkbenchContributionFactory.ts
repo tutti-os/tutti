@@ -31,6 +31,7 @@ import type {
 } from "@renderer/features/workspace-agent";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
+import type { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
 import type { IReporterService } from "@renderer/features/analytics";
 import type {
@@ -77,6 +78,7 @@ export interface DesktopWorkbenchContributionContext {
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   agentProviderStatusService: AgentProviderStatusService;
   workspaceFileManagerService: IWorkspaceFileManagerService;
+  workspaceFilePreviewSurfaceHost: IWorkspaceFilePreviewSurfaceHost;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceAgentPromptSessionService: WorkspaceAgentPromptSessionService;

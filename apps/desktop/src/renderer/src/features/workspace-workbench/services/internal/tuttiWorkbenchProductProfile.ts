@@ -90,6 +90,7 @@ export function createTuttiWorkbenchProductProfile(
           "tuttidClient",
           "workspaceAgentActivityService",
           "workspaceFileManagerService",
+          "workspaceFilePreviewSurfaceHost",
           "workspaceId",
           "workspaceUserProjectService"
         ])

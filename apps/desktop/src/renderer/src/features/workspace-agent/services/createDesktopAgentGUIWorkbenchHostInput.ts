@@ -15,6 +15,7 @@ import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/servic
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IReporterService } from "@renderer/features/analytics";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
+import type { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import {
   createReferenceSourceAggregator,
@@ -103,9 +104,12 @@ export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceFileManagerService?: Pick<
     IWorkspaceFileManagerService,
-    "openCanvasFilePreview" | "resolveEntryIconUrl"
+    "resolveEntryIconUrl"
   >;
-  workspaceFilePreviewMode?: "canvas" | "system-default";
+  workspaceFilePreviewSurfaceHost?: Pick<
+    IWorkspaceFilePreviewSurfaceHost,
+    "present"
+  >;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
   workspaceId: string;
 }
@@ -122,7 +126,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   runtimeApi,
   workspaceAgentActivityService,
   workspaceFileManagerService,
-  workspaceFilePreviewMode = "canvas",
+  workspaceFilePreviewSurfaceHost,
   workspaceUserProjectService,
   workspaceId
 }: CreateDesktopAgentGUIWorkbenchHostInputInput): DesktopAgentGUIWorkbenchHostInput {
@@ -159,14 +163,11 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   const workspaceFileReferenceAdapter =
     createDesktopWorkspaceFileReferenceAdapter({
       hostFilesApi,
-      openCanvasFilePreview:
-        workspaceFilePreviewMode === "canvas" && workspaceFileManagerService
-          ? (target, workspaceId) =>
-              workspaceFileManagerService.openCanvasFilePreview(
-                workspaceId,
-                target
-              )
-          : undefined,
+      presentFilePreview: workspaceFilePreviewSurfaceHost
+        ? async (target, workspaceId) =>
+            (await workspaceFilePreviewSurfaceHost.present(workspaceId, target))
+              .presented
+        : undefined,
       tuttidClient,
       workspaceId
     });

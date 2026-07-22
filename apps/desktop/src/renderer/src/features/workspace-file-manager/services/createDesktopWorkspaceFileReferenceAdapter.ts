@@ -19,15 +19,14 @@ import type { DesktopHostFilesApi } from "@preload/types";
 
 export function createDesktopWorkspaceFileReferenceAdapter(input: {
   hostFilesApi: DesktopHostFilesApi;
-  openCanvasFilePreview?: (
+  presentFilePreview?: (
     target: WorkspaceFilePreviewActivationTarget,
     workspaceId: string
   ) => Promise<boolean> | boolean;
   tuttidClient: TuttidClient;
   workspaceId: string;
 }): WorkspaceFileReferenceAdapter {
-  const { hostFilesApi, openCanvasFilePreview, tuttidClient, workspaceId } =
-    input;
+  const { hostFilesApi, presentFilePreview, tuttidClient, workspaceId } = input;
 
   return {
     async loadReferenceTree({
@@ -90,7 +89,7 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
           : null;
       if (
         target &&
-        (await openCanvasFilePreview?.(target, workspaceId)) === true
+        (await presentFilePreview?.(target, workspaceId)) === true
       ) {
         return;
       }

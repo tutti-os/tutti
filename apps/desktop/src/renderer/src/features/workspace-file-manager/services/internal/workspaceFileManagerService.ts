@@ -133,8 +133,9 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     const workspaceFileReferenceAdapter =
       createDesktopWorkspaceFileReferenceAdapter({
         hostFilesApi: this.dependencies.hostFilesApi,
-        openCanvasFilePreview: (target, workspaceId) =>
-          this.openCanvasFilePreview(workspaceId, target),
+        presentFilePreview: async (target, workspaceId) =>
+          (await this.filePreviewSurfaceHost.present(workspaceId, target))
+            .presented,
         tuttidClient: this.dependencies.tuttidClient,
         workspaceId: workspaceID
       });
@@ -295,14 +296,6 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
       name: entry.name,
       path: entry.path
     });
-  }
-
-  async openCanvasFilePreview(
-    workspaceID: string,
-    target: Parameters<WorkspaceFilePreviewSurfaceHost["present"]>[1]
-  ): Promise<boolean> {
-    return (await this.filePreviewSurfaceHost.present(workspaceID, target))
-      .presented;
   }
 
   subscribe(workspaceID: string, listener: () => void): () => void {
