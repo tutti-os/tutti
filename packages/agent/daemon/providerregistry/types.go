@@ -1,6 +1,9 @@
 package providerregistry
 
-import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+import (
+	"github.com/tutti-os/tutti/packages/agent/daemon/managednpm"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+)
 
 // RuntimeKind identifies the adapter family used to execute a provider. The
 // runtime package maps each kind to an adapter constructor; provider identity
@@ -181,11 +184,25 @@ type InstallerDescriptor struct {
 	DisplayCommand       string
 	PackageName          string
 	BinaryName           string
+	RecommendedVersion   string
 	IncludeOptional      bool
 	ScriptURL            string
 	ScriptShell          string
 	ShellCommand         string
 	FailureReasonMarkers map[string][]string
+}
+
+func (d ProviderDescriptor) ManagedNPMDescriptor() (managednpm.Descriptor, bool) {
+	if d.Status.Install.Kind != InstallerKindManagedNPM {
+		return managednpm.Descriptor{}, false
+	}
+	return managednpm.Descriptor{
+		PackageName:        d.Status.Install.PackageName,
+		BinaryName:         d.Status.Install.BinaryName,
+		MinimumVersion:     d.Status.MinVersion,
+		RecommendedVersion: d.Status.Install.RecommendedVersion,
+		IncludeOptional:    d.Status.Install.IncludeOptional,
+	}, true
 }
 
 // UpdateCapability declares whether tuttid may safely discover and apply CLI

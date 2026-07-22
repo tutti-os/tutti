@@ -56,6 +56,7 @@ func TestMigratedTuttiAgentDescriptorRequiresRefreshCapableVersion(t *testing.T)
 	}
 	if descriptor.Status.Install.PackageName != "@tutti-os/tutti-agent" ||
 		descriptor.Status.Install.BinaryName != "tutti-agent" ||
+		descriptor.Status.Install.RecommendedVersion != TuttiAgentRecommendedVersion ||
 		!descriptor.Status.Install.IncludeOptional {
 		t.Fatalf("Status.Install = %#v", descriptor.Status.Install)
 	}
@@ -74,6 +75,13 @@ func TestValidateRejectsInvalidMinimumVersionFloor(t *testing.T) {
 	t.Run("missing repair installer", func(t *testing.T) {
 		descriptor := tuttiAgentDescriptor()
 		descriptor.Status.Install = InstallerDescriptor{}
+		if err := Validate(descriptor); err == nil {
+			t.Fatal("Validate() error = nil")
+		}
+	})
+	t.Run("missing recommended version", func(t *testing.T) {
+		descriptor := tuttiAgentDescriptor()
+		descriptor.Status.Install.RecommendedVersion = ""
 		if err := Validate(descriptor); err == nil {
 			t.Fatal("Validate() error = nil")
 		}

@@ -127,7 +127,7 @@ func (s Service) DiscoverManagedProviderUpdates(ctx context.Context) error {
 		runtimeResolution := s.resolveProviderRuntime(ctx, spec)
 		currentVersion := ""
 		if strings.TrimSpace(runtimeResolution.CLIPath) != "" {
-			currentVersion = s.cliVersion(ctx, runtimeResolution.CLIPath, runtimeResolution.Env)
+			currentVersion = s.providerCLIVersion(ctx, spec, runtimeResolution.CLIPath, runtimeResolution.Env)
 		}
 		status := baseProviderUpdateStatus(spec, currentVersion, runtimeResolution.CLIPath)
 		if status.Capability != UpdateCapabilitySupported || status.CurrentVersion == "" {
@@ -274,7 +274,7 @@ func (s Service) runUpdateAction(ctx context.Context, spec ProviderSpec, result 
 		result.Message = "Provider CLI installation source is not managed npm"
 		return result, nil
 	}
-	currentVersion := s.cliVersion(ctx, runtimeResolution.CLIPath, runtimeResolution.Env)
+	currentVersion := s.providerCLIVersion(ctx, spec, runtimeResolution.CLIPath, runtimeResolution.Env)
 	update := s.updateStatusForSpec(ctx, spec, currentVersion, runtimeResolution.CLIPath, true)
 	if update.ReasonCode != "" {
 		result.Status = RunActionFailed

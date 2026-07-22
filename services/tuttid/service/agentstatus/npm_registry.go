@@ -2,32 +2,35 @@ package agentstatus
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
-	"sort"
+	"runtime"
 	"strings"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/managednpm"
 )
 
 const (
 	// agentNPMRegistryEnv pins a single npm registry for agent-adapter installs
 	// (an enterprise proxy, or one specific mirror). When set, no fallback chain
 	// is used — the operator's choice is trusted as-is.
-	agentNPMRegistryEnv = "TUTTI_AGENT_NPM_REGISTRY"
+	agentNPMRegistryEnv = managednpm.RegistryOverrideEnv
 
 	// officialNPMRegistry is the authoritative default source. Installers may
 	// rank it behind a mirror when the user's current network makes a mirror
 	// measurably faster.
-	officialNPMRegistry = "https://registry.npmjs.org"
+	officialNPMRegistry = managednpm.OfficialRegistryURL
 
 	// CN-available fallback mirrors, used when public npm is slow or blocked.
 	// These mirrors were verified to host large platform optional-dependency
 	// packages end-to-end. They serve identical tarballs, so npm integrity
 	// verification is unaffected.
-	huaweiNPMRegistry  = "https://repo.huaweicloud.com/repository/npm/" // Huawei Cloud
-	tencentNPMRegistry = "https://mirrors.cloud.tencent.com/npm/"       // Tencent Cloud
+	huaweiNPMRegistry  = managednpm.HuaweiRegistryURL  // Huawei Cloud
+	tencentNPMRegistry = managednpm.TencentRegistryURL // Tencent Cloud
 
 	// agentNPMCacheDirName is the dedicated npm cache directory agent installs use
 	// instead of npm's global ~/.npm. It lives inside the install prefix so it is
@@ -42,17 +45,6 @@ const (
 	// otherwise-succeeding installs, so it is set comfortably above the proxied
 	// case while staying below the overall install timeout.
 	perRegistryInstallTimeout = 150 * time.Second
-
-	// agentNPMRegistryRankTimeout bounds the lightweight package metadata probe
-	// used to order registries before a large npm install. It is intentionally
-	// much shorter than an install attempt: a registry that cannot return metadata
-	// quickly should not get the first shot at a 100MB+ optional platform binary.
-	agentNPMRegistryRankTimeout = 5 * time.Second
-
-	// Avoid reshuffling registries on tiny timing noise from goroutine scheduling,
-	// DNS cache warmth, or localhost test transports. Meaningful network
-	// differences are much larger than this.
-	agentNPMRegistryRankMinDifference = 25 * time.Millisecond
 )
 
 // agentNPMRegistries returns the ordered list of npm registries to try for
@@ -61,14 +53,12 @@ const (
 // access. An explicit TUTTI_AGENT_NPM_REGISTRY pins a single registry with no
 // fallback.
 func (s Service) agentNPMRegistries() []string {
-	if override := strings.TrimSpace(s.lookupEnv(agentNPMRegistryEnv)); override != "" {
-		return []string{override}
+	registries := managednpm.DefaultRegistries(s.lookupEnv(agentNPMRegistryEnv))
+	result := make([]string, len(registries))
+	for index := range registries {
+		result[index] = registries[index].URL
 	}
-	return []string{
-		officialNPMRegistry,
-		huaweiNPMRegistry,
-		tencentNPMRegistry,
-	}
+	return result
 }
 
 // primaryAgentNPMRegistry is the first registry to try (the override, or
@@ -87,70 +77,102 @@ func (s Service) preferredAgentNPMRegistry(ctx context.Context, packageName stri
 }
 
 func (s Service) rankedAgentNPMRegistries(ctx context.Context, packageName string) []string {
+	return s.rankAgentNPMRegistries(ctx, managednpm.Descriptor{PackageName: packageName})
+}
+
+func (s Service) rankedManagedNPMRegistries(ctx context.Context, spec ManagedNPMPackageInstallerSpec) []string {
+	return s.rankAgentNPMRegistries(ctx, managednpm.Descriptor{
+		PackageName:        spec.PackageName,
+		BinaryName:         spec.BinaryName,
+		RecommendedVersion: spec.PackageVersion,
+		IncludeOptional:    spec.IncludeOptional,
+	})
+}
+
+func (s Service) rankAgentNPMRegistries(ctx context.Context, descriptor managednpm.Descriptor) []string {
 	registries := s.agentNPMRegistries()
 	if len(registries) <= 1 {
 		return registries
 	}
-	if ctx == nil {
-		ctx = context.Background()
+	candidates := make([]managednpm.Registry, len(registries))
+	for index := range registries {
+		candidates[index] = managednpm.Registry{ID: displayNPMRegistry(registries[index]), URL: registries[index]}
 	}
-
-	type probeResult struct {
-		index     int
-		registry  string
-		reachable bool
-		duration  time.Duration
-	}
-	results := make(chan probeResult, len(registries))
-	for index, registry := range registries {
-		go func(index int, registry string) {
-			startedAt := time.Now()
-			probeCtx, cancel := context.WithTimeout(ctx, agentNPMRegistryRankTimeout)
-			defer cancel()
-			reachable := s.probeNPMRegistryPackage(probeCtx, registry, packageName)
-			results <- probeResult{
-				index:     index,
-				registry:  registry,
-				reachable: reachable,
-				duration:  time.Since(startedAt),
-			}
-		}(index, registry)
-	}
-
-	probed := make([]probeResult, 0, len(registries))
-	for range registries {
-		probed = append(probed, <-results)
-	}
-	sort.SliceStable(probed, func(i, j int) bool {
-		left := probed[i]
-		right := probed[j]
-		if left.reachable != right.reachable {
-			return left.reachable
-		}
-		if left.reachable && right.reachable {
-			diff := left.duration - right.duration
-			if diff < 0 {
-				diff = -diff
-			}
-			if diff > agentNPMRegistryRankMinDifference {
-				return left.duration < right.duration
-			}
-		}
-		return left.index < right.index
-	})
-
-	ranked := make([]string, 0, len(probed))
-	displayRanked := make([]string, 0, len(probed))
-	for _, result := range probed {
-		ranked = append(ranked, result.registry)
-		displayRanked = append(displayRanked, displayNPMRegistry(result.registry))
+	probed := managednpm.RankRegistries(ctx, descriptor, candidates, runtime.GOOS, runtime.GOARCH, agentNPMRegistryProber{service: s})
+	ranked := make([]string, len(probed))
+	displayRanked := make([]string, len(probed))
+	for index := range probed {
+		ranked[index] = probed[index].Registry.URL
+		displayRanked[index] = displayNPMRegistry(probed[index].Registry.URL)
 	}
 	slog.Info(
 		"agent npm registries ranked",
-		"package", strings.TrimSpace(packageName),
+		"package", strings.TrimSpace(descriptor.PackageName),
+		"version", strings.TrimSpace(descriptor.RecommendedVersion),
 		"registries", displayRanked,
 	)
 	return ranked
+}
+
+type agentNPMRegistryProber struct {
+	service Service
+}
+
+func (p agentNPMRegistryProber) ProbeRegistry(ctx context.Context, request managednpm.RegistryProbeRequest) managednpm.RegistryProbeResult {
+	if strings.TrimSpace(request.Version) != "" {
+		return p.service.probeNPMRegistryPackageVersion(ctx, request)
+	}
+	reachable := p.service.probeNPMRegistryPackage(ctx, request.Registry.URL, request.PackageName)
+	return managednpm.RegistryProbeResult{Reachable: reachable, Complete: reachable}
+}
+
+func (s Service) probeNPMRegistryPackageVersion(ctx context.Context, request managednpm.RegistryProbeRequest) managednpm.RegistryProbeResult {
+	metadata, ok := s.readNPMRegistryPackageVersion(ctx, request.Registry.URL, request.PackageName, request.Version)
+	if !ok {
+		return managednpm.RegistryProbeResult{}
+	}
+	if !request.IncludeOptional {
+		return managednpm.RegistryProbeResult{Reachable: true, Complete: true}
+	}
+	platformPackage, platformVersion, ok := managednpm.ResolveOptionalPlatformPackage(
+		request.PackageName,
+		metadata.OptionalDependencies,
+		request.OperatingSystem,
+		request.Architecture,
+	)
+	if !ok {
+		return managednpm.RegistryProbeResult{Reachable: true}
+	}
+	_, platformReady := s.readNPMRegistryPackageVersion(ctx, request.Registry.URL, platformPackage, platformVersion)
+	return managednpm.RegistryProbeResult{Reachable: true, Complete: platformReady}
+}
+
+type npmPackageVersionMetadata struct {
+	Version              string            `json:"version"`
+	OptionalDependencies map[string]string `json:"optionalDependencies"`
+}
+
+func (s Service) readNPMRegistryPackageVersion(ctx context.Context, registry string, packageName string, version string) (npmPackageVersionMetadata, bool) {
+	endpoint := managednpm.PackageEndpoint(registry, packageName, version)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return npmPackageVersionMetadata{}, false
+	}
+	response, err := s.httpClient().Do(request)
+	if err != nil {
+		return npmPackageVersionMetadata{}, false
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64*1024))
+		return npmPackageVersionMetadata{}, false
+	}
+	var metadata npmPackageVersionMetadata
+	decoder := json.NewDecoder(io.LimitReader(response.Body, 512*1024))
+	if err := decoder.Decode(&metadata); err != nil || strings.TrimSpace(metadata.Version) != strings.TrimSpace(version) {
+		return npmPackageVersionMetadata{}, false
+	}
+	return metadata, true
 }
 
 func (s Service) probeNPMRegistryPackage(ctx context.Context, registry string, packageName string) bool {
@@ -169,13 +191,7 @@ func (s Service) probeNPMRegistryPackage(ctx context.Context, registry string, p
 }
 
 func npmRegistryPackageEndpoint(registry string, packageName string) string {
-	registry = strings.TrimRight(strings.TrimSpace(registry), "/")
-	packageName = strings.TrimSpace(packageName)
-	if registry == "" || packageName == "" {
-		return registry
-	}
-	escapedPackage := strings.ReplaceAll(packageName, "/", "%2f")
-	return registry + "/" + escapedPackage
+	return managednpm.PackageEndpoint(registry, packageName, "")
 }
 
 // withAgentNPMRegistry returns env with exactly one npm_config_registry entry.

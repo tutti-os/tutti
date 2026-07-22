@@ -69,8 +69,8 @@ func TestTuttiAgentBelowMinimumRequiresManagedInstall(t *testing.T) {
 	if status.Availability.Status != AvailabilityNotInstalled || status.Availability.ReasonCode != "cli_version_unsupported" {
 		t.Fatalf("Availability = %#v, want minimum-version repair", status.Availability)
 	}
-	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.4" {
-		t.Fatalf("CLI = %#v, want current 0.0.2 and minimum 0.0.4", status.CLI)
+	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.5" {
+		t.Fatalf("CLI = %#v, want current 0.0.2 and minimum 0.0.5", status.CLI)
 	}
 	if !hasProviderAction(status.Actions, ActionInstall) {
 		t.Fatalf("Actions = %#v, want install", status.Actions)
@@ -116,7 +116,7 @@ func TestTuttiAgentUnknownVersionFailsClosed(t *testing.T) {
 			if status.Availability.Status != AvailabilityNotInstalled || status.Availability.ReasonCode != "cli_version_unsupported" {
 				t.Fatalf("Availability = %#v, want unknown-version repair", status.Availability)
 			}
-			if status.CLI.Version != "" || status.CLI.MinVersion != "0.0.4" || !hasProviderAction(status.Actions, ActionInstall) {
+			if status.CLI.Version != "" || status.CLI.MinVersion != "0.0.5" || !hasProviderAction(status.Actions, ActionInstall) {
 				t.Fatalf("CLI/actions = %#v/%#v, want unknown current version and managed install", status.CLI, status.Actions)
 			}
 
@@ -128,6 +128,22 @@ func TestTuttiAgentUnknownVersionFailsClosed(t *testing.T) {
 				t.Fatalf("Probe = %#v, want unknown-version failure", probe)
 			}
 		})
+	}
+}
+
+func TestTuttiAgentNonCanonicalVersionUsesManagedNPMContract(t *testing.T) {
+	service, _ := updateTestService(t, "0.0.5.1")
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.CLI.Version != "" || status.Availability.Status != AvailabilityNotInstalled || status.Availability.ReasonCode != "cli_version_unsupported" {
+		t.Fatalf("status = %#v, want non-canonical managed-npm version to fail closed", status)
+	}
+	if !hasProviderAction(status.Actions, ActionInstall) {
+		t.Fatalf("Actions = %#v, want repair install", status.Actions)
 	}
 }
 
@@ -144,13 +160,13 @@ func TestTuttiAgentVersionFloorPrecedesAdapterFailure(t *testing.T) {
 	if status.Availability.ReasonCode != "cli_version_unsupported" {
 		t.Fatalf("Availability = %#v, want CLI floor before adapter failure", status.Availability)
 	}
-	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.4" {
+	if status.CLI.Version != "0.0.2" || status.CLI.MinVersion != "0.0.5" {
 		t.Fatalf("CLI = %#v, want version evidence retained", status.CLI)
 	}
 }
 
 func TestCompatibleTuttiAgentDoesNotRequireManagedInstall(t *testing.T) {
-	for _, version := range []string{"0.0.4", "0.0.5"} {
+	for _, version := range []string{"0.0.5", "0.0.6"} {
 		t.Run(version, func(t *testing.T) {
 			service, _ := updateTestService(t, version)
 			snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
@@ -196,10 +212,10 @@ func TestRunInstallActionUpgradesTuttiAgentBelowMinimumAndReprobes(t *testing.T)
 	var commands atomic.Int32
 	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
 		commands.Add(1)
-		if !strings.Contains(input.Command, "@tutti-os/tutti-agent") {
-			t.Fatalf("install command = %q, want managed Tutti Agent package", input.Command)
+		if !strings.Contains(input.Command, "@tutti-os/tutti-agent@0.0.5") {
+			t.Fatalf("install command = %q, want exact managed Tutti Agent 0.0.5 package", input.Command)
 		}
-		writeUpdateTestCLI(t, binaryPath, "0.0.4")
+		writeUpdateTestCLI(t, binaryPath, "0.0.5")
 		return InstallCommandResult{ExitCode: 0, Stdout: "updated"}, nil
 	}
 
@@ -216,7 +232,7 @@ func TestRunInstallActionUpgradesTuttiAgentBelowMinimumAndReprobes(t *testing.T)
 		t.Fatalf("post-install List() error = %v", err)
 	}
 	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady || status.CLI.Version != "0.0.4" {
+	if status.Availability.Status != AvailabilityReady || status.CLI.Version != "0.0.5" {
 		t.Fatalf("post-install status = %#v", status)
 	}
 }

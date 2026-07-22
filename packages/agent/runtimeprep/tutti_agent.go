@@ -19,7 +19,8 @@ const (
 // tutti-agent provider. Account-token bootstrap remains a host responsibility
 // and can be injected through BeforePrepare.
 type TuttiAgentPreparer struct {
-	BeforePrepare func(context.Context, PrepareInput)
+	BeforePrepare     func(context.Context, PrepareInput)
+	ResolveAuthSource func(context.Context, PrepareInput) (string, error)
 }
 
 func (TuttiAgentPreparer) Provider() string {
@@ -32,7 +33,16 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 	if p.BeforePrepare != nil {
 		p.BeforePrepare(ctx, input.PrepareInput)
 	}
-	if err := PrepareTuttiAgentHome(home, input.PrepareInput); err != nil {
+	authSource := ""
+	authSourceConfigured := p.ResolveAuthSource != nil
+	if authSourceConfigured {
+		resolved, err := p.ResolveAuthSource(ctx, input.PrepareInput)
+		if err != nil {
+			return ProviderPrepareResult{}, fmt.Errorf("resolve tutti-agent auth source: %w", err)
+		}
+		authSource = strings.TrimSpace(resolved)
+	}
+	if err := prepareTuttiAgentHome(home, input.PrepareInput, authSource, authSourceConfigured); err != nil {
 		return ProviderPrepareResult{}, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.tutti_agent.home_prepared", input.PrepareInput, nil)
@@ -59,29 +69,43 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 // PrepareTuttiAgentHome materializes a TUTTI_AGENT_HOME with the user's auth
 // exposed and a session-safe config pinned to the Tutti LLM gateway.
 func PrepareTuttiAgentHome(home string, input PrepareInput) error {
+	return prepareTuttiAgentHome(home, input, "", false)
+}
+
+func prepareTuttiAgentHome(home string, input PrepareInput, authSource string, authSourceConfigured bool) error {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return fmt.Errorf("create tutti-agent home: %w", err)
 	}
-	if err := exposeUserTuttiAgentFiles(home); err != nil {
+	if err := exposeUserTuttiAgentFiles(home, authSource, authSourceConfigured); err != nil {
 		return err
 	}
-	return ensureTuttiAgentSessionConfig(filepath.Join(home, "config.toml"), input)
+	if err := ensureTuttiAgentSessionConfig(filepath.Join(home, "config.toml"), input); err != nil {
+		return err
+	}
+	if _, err := installProviderNativeSkills(filepath.Join(home, "skills"), input); err != nil {
+		return fmt.Errorf("install tutti-agent native skills: %w", err)
+	}
+	return nil
 }
 
-func exposeUserTuttiAgentFiles(home string) error {
+func exposeUserTuttiAgentFiles(home string, explicitAuthSource string, explicitAuthSourceConfigured bool) error {
+	if explicitAuthSourceConfigured {
+		if explicitAuthSource == "" {
+			return nil
+		}
+		if !filepath.IsAbs(explicitAuthSource) {
+			return fmt.Errorf("tutti-agent auth source must be absolute")
+		}
+		return exposeTuttiAgentAuth(home, filepath.Clean(explicitAuthSource), true)
+	}
 	userHome, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(userHome) == "" {
 		return nil
 	}
 	userAgentHome := filepath.Join(userHome, ".tutti-agent")
 	source := filepath.Join(userAgentHome, "auth.json")
-	if _, err := os.Stat(source); err == nil {
-		target := filepath.Join(home, "auth.json")
-		if _, err := os.Lstat(target); os.IsNotExist(err) {
-			if err := os.Symlink(source, target); err != nil {
-				return fmt.Errorf("expose tutti-agent auth.json: %w", err)
-			}
-		}
+	if err := exposeTuttiAgentAuth(home, source, false); err != nil {
+		return err
 	}
 	target := filepath.Join(home, "config.toml")
 	if _, err := os.Lstat(target); os.IsNotExist(err) {
@@ -91,6 +115,30 @@ func exposeUserTuttiAgentFiles(home string) error {
 				return fmt.Errorf("copy tutti-agent config: %w", err)
 			}
 		}
+	}
+	return nil
+}
+
+func exposeTuttiAgentAuth(home string, source string, allowMissingSource bool) error {
+	if !allowMissingSource {
+		if _, err := os.Stat(source); err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return fmt.Errorf("stat tutti-agent auth source: %w", err)
+		}
+	}
+	target := filepath.Join(home, "auth.json")
+	if current, err := os.Readlink(target); err == nil {
+		if current == source {
+			return nil
+		}
+		return fmt.Errorf("tutti-agent auth target already links to a different source")
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect tutti-agent auth target: %w", err)
+	}
+	if err := os.Symlink(source, target); err != nil {
+		return fmt.Errorf("expose tutti-agent auth.json: %w", err)
 	}
 	return nil
 }

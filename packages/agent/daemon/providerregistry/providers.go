@@ -5,15 +5,16 @@ import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonica
 // This file owns the descriptors shared by the remaining provider families.
 
 const (
-	CursorProviderID     = canonical.CursorProviderID
-	CursorTargetID       = "local:cursor"
-	TuttiAgentProviderID = canonical.TuttiAgentProviderID
-	TuttiAgentTargetID   = "local:tutti-agent"
-	TuttiAgentMinVersion = "0.0.4"
-	NexightProviderID    = canonical.NexightProviderID
-	NexightTargetID      = "local:nexight"
-	OpenClawProviderID   = canonical.OpenClawProviderID
-	OpenClawTargetID     = "local:openclaw"
+	CursorProviderID             = canonical.CursorProviderID
+	CursorTargetID               = "local:cursor"
+	TuttiAgentProviderID         = canonical.TuttiAgentProviderID
+	TuttiAgentTargetID           = "local:tutti-agent"
+	TuttiAgentMinVersion         = "0.0.5"
+	TuttiAgentRecommendedVersion = "0.0.5"
+	NexightProviderID            = canonical.NexightProviderID
+	NexightTargetID              = "local:nexight"
+	OpenClawProviderID           = canonical.OpenClawProviderID
+	OpenClawTargetID             = "local:openclaw"
 )
 
 const temporarilyUnsupportedReason = "provider_temporarily_unsupported"
@@ -66,7 +67,7 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 		Runtime:  RuntimeDescriptor{Kind: RuntimeKindCodexAppServer, Name: "tutti-agent-app-server", Command: []string{"tutti-agent", "app-server"}, ClientInfoName: "tutti_agent", AuthRequiredMessage: "Tutti Agent requires authentication. Sign in to Tutti on this device (or run `tutti-agent login`), then retry this session.", Endpoint: RuntimeEndpointDescriptor{ModelPlanProtocol: ModelPlanProtocolOpenAI}},
 		Status: StatusDescriptor{
 			Kind: StatusKindGenericCLI, AuthOutputParserKind: AuthOutputParserKindCodex, AuthMarkerParserKind: AuthMarkerParserKindTuttiToken, AuthCommandRunnerKind: AuthCommandRunnerKindGeneric, StaticSpecResolverKind: StaticSpecResolverKindGeneric, MinVersion: TuttiAgentMinVersion, BinaryNames: []string{"tutti-agent"}, AdapterBinaryNames: []string{"tutti-agent"}, AuthStatusCommand: []string{"login", "status"}, AuthMarkerPaths: []string{"~/.tutti-agent/auth.json"}, LoginArgs: []string{"login"}, LoginActionKind: StatusActionKindDaemon,
-			Install: InstallerDescriptor{Kind: InstallerKindManagedNPM, DisplayCommand: "npm install -g @tutti-os/tutti-agent --include=optional", PackageName: "@tutti-os/tutti-agent", BinaryName: "tutti-agent", IncludeOptional: true},
+			Install: InstallerDescriptor{Kind: InstallerKindManagedNPM, DisplayCommand: "npm install -g @tutti-os/tutti-agent@" + TuttiAgentRecommendedVersion + " --include=optional", PackageName: "@tutti-os/tutti-agent", BinaryName: "tutti-agent", RecommendedVersion: TuttiAgentRecommendedVersion, IncludeOptional: true},
 			Update:  UpdateDescriptor{Capability: UpdateCapabilitySupported, Source: UpdateSourceNPM, Strategy: UpdateStrategyManagedNPM, PackageName: "@tutti-os/tutti-agent", BinaryName: "tutti-agent", IncludeOptional: true},
 		},
 		ComposerProfile: ComposerProfileDescriptor{

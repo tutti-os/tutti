@@ -83,7 +83,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		cliVersionRan = true
 		checks.Go(func() error {
 			cliVersionStartedAt := time.Now()
-			cliVersion = s.cliVersion(ctx, runtimeResolution.CLIPath, runtimeResolution.Env)
+			cliVersion = s.providerCLIVersion(ctx, spec, runtimeResolution.CLIPath, runtimeResolution.Env)
 			cliVersionDuration = time.Since(cliVersionStartedAt)
 			return nil
 		})

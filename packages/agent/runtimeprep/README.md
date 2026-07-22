@@ -42,6 +42,16 @@ and later sessions reuse it. Hosts must therefore run preparation with `HOME`
 set to the provider user's stable local Home, never a session runtime directory
 or a remote filesystem projection.
 
+`TuttiAgentPreparer.ResolveAuthSource` lets a host expose one explicit absolute
+credential authority into the session-scoped `TUTTI_AGENT_HOME`. When omitted,
+the Tutti desktop keeps its existing `~/.tutti-agent/auth.json` behavior. An
+explicit source may be a dangling symlink target so a host-controlled login can
+materialize it atomically later; runtimeprep never follows or deletes that
+target during session cleanup. If a configured resolver returns no path,
+runtimeprep leaves auth unprojected and does not fall back to the VM user's
+`~/.tutti-agent`. Tutti Agent preparation also materializes the same resolved
+native Skills used by the other supported providers.
+
 ## Capability Packs
 
 A deployment capability resolves once into its policy, skills, and environment
@@ -115,8 +125,10 @@ the skill-bundle API cannot drift.
 
 The module must not import `services/tuttid/*`. Product adapters translate
 their command catalog and readiness types into the narrow interfaces here.
-Tutti account token issue/revoke remains in `services/tuttid/service/tuttiagent`;
-only the provider home/config preparation is shared.
+Tutti Account HTTP and local credential paths remain in
+`services/tuttid/service/tuttiagent`. The host-neutral issue/login/verify and
+cleanup ordering lives in `packages/agent/daemon/tuttiagentauth`; only provider
+home/config/Skills preparation lives in this module.
 
 Provider-specific runtime protocol and session control belong to
 `packages/agent/daemon`, not this module.

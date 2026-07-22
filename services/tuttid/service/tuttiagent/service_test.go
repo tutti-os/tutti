@@ -79,8 +79,8 @@ func TestTuttiAgentUserAuthReadyRejectsExpiredAccessToken(t *testing.T) {
 	expiresAt := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	writeTuttiAgentUserAuth(t, t.TempDir(), `{"tutti_llm":{"access_token":"lat_test","access_token_expires_at":`+strconv.Quote(expiresAt)+`,"refresh_token":"lrt_test"}}`)
 
-	if tuttiAgentUserAuthReady() {
-		t.Fatal("tuttiAgentUserAuthReady() = true, want false for expired access token")
+	if tuttiAgentUserAuthMaterialReady() {
+		t.Fatal("tuttiAgentUserAuthMaterialReady() = true, want false for expired access token")
 	}
 }
 
@@ -88,8 +88,8 @@ func TestTuttiAgentUserAuthReadyAcceptsFutureAccessTokenExpiry(t *testing.T) {
 	expiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	writeTuttiAgentUserAuth(t, t.TempDir(), `{"tutti_llm":{"access_token":"lat_test","access_token_expires_at":`+strconv.Quote(expiresAt)+`,"refresh_token":"lrt_test"}}`)
 
-	if !tuttiAgentUserAuthReady() {
-		t.Fatal("tuttiAgentUserAuthReady() = false, want true for unexpired access token")
+	if !tuttiAgentUserAuthMaterialReady() {
+		t.Fatal("tuttiAgentUserAuthMaterialReady() = false, want true for unexpired access token")
 	}
 }
 
@@ -97,16 +97,16 @@ func TestTuttiAgentUserAuthReadyAcceptsUnixAccessTokenExpiry(t *testing.T) {
 	expiresAt := strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10)
 	writeTuttiAgentUserAuth(t, t.TempDir(), `{"tutti_llm":{"access_token":"lat_test","access_token_expires_at":`+expiresAt+`,"refresh_token":"lrt_test"}}`)
 
-	if !tuttiAgentUserAuthReady() {
-		t.Fatal("tuttiAgentUserAuthReady() = false, want true for numeric access token expiry")
+	if !tuttiAgentUserAuthMaterialReady() {
+		t.Fatal("tuttiAgentUserAuthMaterialReady() = false, want true for numeric access token expiry")
 	}
 }
 
 func TestTuttiAgentUserAuthReadyRejectsMissingAccessTokenExpiry(t *testing.T) {
 	writeTuttiAgentUserAuth(t, t.TempDir(), `{"tutti_llm":{"access_token":"lat_test","refresh_token":"lrt_test"}}`)
 
-	if tuttiAgentUserAuthReady() {
-		t.Fatal("tuttiAgentUserAuthReady() = true, want false without access token expiry")
+	if tuttiAgentUserAuthMaterialReady() {
+		t.Fatal("tuttiAgentUserAuthMaterialReady() = true, want false without access token expiry")
 	}
 }
 
@@ -160,6 +160,9 @@ func TestBootstrapTuttiAgentUserAuthIssuesTokenWhenExistingAccessTokenExpired(t 
 	}
 	if !strings.Contains(string(loginJSON), `"access_token":"lat_new"`) {
 		t.Fatalf("login payload = %s, want issued access token", string(loginJSON))
+	}
+	if !tuttiAgentUserAuthMaterialReady() {
+		t.Fatal("tutti-agent credential material is not usable after successful reconcile")
 	}
 }
 
@@ -298,7 +301,9 @@ func installFakeTuttiAgentBinary(t *testing.T) {
 		"  echo unexpected arguments: \"$@\" >&2\n" +
 		"  exit 2\n" +
 		"fi\n" +
-		"cat > \"$TUTTI_AGENT_LOGIN_CAPTURE\"\n"
+		"cat > \"$TUTTI_AGENT_LOGIN_CAPTURE\"\n" +
+		"mkdir -p \"$HOME/.tutti-agent\"\n" +
+		"printf '%s' '{\"tutti_llm\":{\"access_token\":\"lat_new\",\"access_token_expires_at\":4102444800,\"refresh_token\":\"lrt_new\"}}' > \"$HOME/.tutti-agent/auth.json\"\n"
 	if err := os.WriteFile(binaryPath, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}

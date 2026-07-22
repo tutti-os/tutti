@@ -232,7 +232,7 @@ func installerSpecFromProviderDescriptor(descriptor providerregistry.InstallerDe
 			DisplayCommand:       descriptor.DisplayCommand,
 			FailureReasonMarkers: failureReasonMarkers,
 			ManagedNPM: &ManagedNPMPackageInstallerSpec{
-				PackageName: descriptor.PackageName, BinaryName: descriptor.BinaryName, IncludeOptional: descriptor.IncludeOptional,
+				PackageName: descriptor.PackageName, PackageVersion: descriptor.RecommendedVersion, BinaryName: descriptor.BinaryName, IncludeOptional: descriptor.IncludeOptional,
 			},
 		}, nil
 	case providerregistry.InstallerKindShellCommand:

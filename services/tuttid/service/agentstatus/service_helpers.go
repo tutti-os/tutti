@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/managednpm"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
@@ -373,6 +374,22 @@ func parseCLIVersion(output string) string {
 // every supported provider (not just codex) so the config panel can show the
 // installed CLI version.
 func (Service) cliVersion(ctx context.Context, binaryPath string, env []string) string {
+	return parseCLIVersion(cliVersionOutput(ctx, binaryPath, env))
+}
+
+// providerCLIVersion applies the public managed-npm version contract to
+// managed package providers. Other providers retain their historical
+// semver-ish output compatibility.
+func (Service) providerCLIVersion(ctx context.Context, spec ProviderSpec, binaryPath string, env []string) string {
+	output := cliVersionOutput(ctx, binaryPath, env)
+	if providerUsesManagedNPMVersionContract(spec) {
+		version, _ := managednpm.ExtractVersion(output)
+		return version
+	}
+	return parseCLIVersion(output)
+}
+
+func cliVersionOutput(ctx context.Context, binaryPath string, env []string) string {
 	binaryPath = strings.TrimSpace(binaryPath)
 	if binaryPath == "" {
 		return ""
@@ -390,7 +407,7 @@ func (Service) cliVersion(ctx context.Context, binaryPath string, env []string) 
 	if err != nil {
 		return ""
 	}
-	return parseCLIVersion(string(output))
+	return string(output)
 }
 
 func cloneProviderChecks(input []ProviderCheck) []ProviderCheck {

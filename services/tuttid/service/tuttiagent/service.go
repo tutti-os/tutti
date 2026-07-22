@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
+	"github.com/tutti-os/tutti/packages/agent/daemon/tuttiagentauth"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
@@ -26,7 +27,10 @@ const (
 	tuttiAgentLLMTokenIssueRoute = "/auth/v1/llm-token"
 )
 
-var tuttiAgentDefaultLLMAppID = "nex" + "top"
+var (
+	tuttiAgentDefaultLLMAppID = "nex" + "top"
+	tuttiAgentAuthReconciler  tuttiagentauth.Reconciler
+)
 
 // NewPreparer returns the shared runtime preparer with Tutti account bootstrap
 // injected at the product boundary.
@@ -71,27 +75,14 @@ func LogoutTuttiAgentUserAuth(ctx context.Context) {
 }
 
 func logoutTuttiAgentUserAuth(ctx context.Context) error {
-	authPath, ok := userTuttiAgentAuthPath()
-	if !ok {
-		return nil
+	target, err := tuttiAgentAuthReconciler.RemoveLocal(ctx, tuttiAgentUserCredentialStore{})
+	if err != nil {
+		return err
 	}
-	if _, err := os.Stat(authPath); errors.Is(err, os.ErrNotExist) {
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("stat tutti-agent auth.json: %w", err)
-	}
-	raw, readErr := os.ReadFile(authPath)
-	if readErr != nil {
-		slog.Warn("read tutti-agent auth before cleanup failed", "error", readErr)
-	}
-	removeErr := os.Remove(authPath)
-	if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-		return fmt.Errorf("remove tutti-agent auth.json: %w", removeErr)
-	}
-	if refreshToken, accountBaseURL, ok := parseTuttiAgentLLMRevokeTarget(raw); ok {
+	if target.Valid() {
 		revokeCtx := context.WithoutCancel(ctx)
 		go func() {
-			if err := revokeTuttiAgentLLMToken(revokeCtx, accountBaseURL, refreshToken); err != nil {
+			if err := (tuttiAgentSessionAuthorizer{}).Revoke(revokeCtx, target, "logout"); err != nil {
 				slog.Warn("tutti-agent llm token revoke failed", "error", err)
 			}
 		}()
@@ -110,12 +101,18 @@ func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareI
 		slog.Debug("tutti-agent auth bootstrap skipped", "reason", "no_host_account_session", "agent_session_id", input.AgentSessionID)
 		return
 	}
-	if tuttiAgentUserAuthReady() {
+	if tuttiAgentUserAuthMaterialReady() {
 		return
 	}
-	bundle, err := issueTuttiAgentLLMToken(ctx, cookie)
+	_, err := tuttiAgentAuthReconciler.Reconcile(
+		ctx,
+		tuttiAgentSessionAuthorizer{cookie: cookie},
+		tuttiAgentUserCredentialStore{},
+		tuttiAgentLoginRunner{},
+		time.Now().UTC(),
+	)
 	if err != nil {
-		slog.Warn("tutti-agent llm token issue failed", "error", err)
+		slog.Warn("tutti-agent auth reconcile failed", "error", err)
 		if tuttiAgentLLMTokenIssueRejectedWithCode(err, http.StatusUnauthorized) {
 			if cleanupErr := logoutTuttiAgentUserAuth(ctx); cleanupErr != nil {
 				slog.Warn("tutti-agent auth cleanup after token rejection failed", "error", cleanupErr)
@@ -123,42 +120,44 @@ func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareI
 		}
 		return
 	}
-	if err := runTuttiAgentTokenLogin(ctx, bundle); err != nil {
-		slog.Warn("tutti-agent token login failed", "error", err)
-		return
-	}
 	slog.Debug("tutti-agent auth bootstrap resolved", "agent_session_id", input.AgentSessionID)
 }
 
-func tuttiAgentUserAuthReady() bool {
-	authPath, ok := userTuttiAgentAuthPath()
-	if !ok {
-		return false
-	}
-	raw, err := os.ReadFile(authPath)
-	if err != nil {
-		return false
-	}
+func tuttiAgentUserAuthMaterialReady() bool {
+	state, err := (tuttiAgentUserCredentialStore{}).Inspect(context.Background())
+	return err == nil && state.MaterialReady
+}
+
+func inspectTuttiAgentCredential(raw []byte) tuttiagentauth.CredentialState {
 	var payload struct {
 		TuttiLLM *struct {
+			AccountBaseURL       string          `json:"account_base_url"`
 			AccessToken          string          `json:"access_token"`
 			AccessTokenExpiresAt json.RawMessage `json:"access_token_expires_at"`
 			RefreshToken         string          `json:"refresh_token"`
 		} `json:"tutti_llm"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return false
+		return tuttiagentauth.CredentialState{}
 	}
 	if payload.TuttiLLM == nil ||
 		strings.TrimSpace(payload.TuttiLLM.AccessToken) == "" ||
 		strings.TrimSpace(payload.TuttiLLM.RefreshToken) == "" {
-		return false
+		return tuttiagentauth.CredentialState{}
+	}
+	state := tuttiagentauth.CredentialState{RevokeTarget: tuttiagentauth.RevokeTarget{
+		AccountBaseURL: payload.TuttiLLM.AccountBaseURL,
+		RefreshToken:   payload.TuttiLLM.RefreshToken,
+	}}
+	if strings.TrimSpace(state.RevokeTarget.AccountBaseURL) == "" {
+		state.RevokeTarget.AccountBaseURL = tuttiAgentAccountBase()
 	}
 	expiresAt, ok := parseTuttiAgentTokenExpiresAt(payload.TuttiLLM.AccessTokenExpiresAt)
 	if !ok {
-		return false
+		return state
 	}
-	return time.Now().UTC().Before(expiresAt)
+	state.MaterialReady = time.Now().UTC().Before(expiresAt)
+	return state
 }
 
 func parseTuttiAgentTokenExpiresAt(raw json.RawMessage) (time.Time, bool) {
@@ -216,15 +215,52 @@ func tuttiAgentAccountSessionCookie() (string, bool) {
 	return "", false
 }
 
-type tuttiAgentLLMTokenBundle struct {
-	AppID                 string   `json:"app_id"`
-	AccountBaseURL        string   `json:"account_base_url"`
-	AccessToken           string   `json:"access_token"`
-	AccessTokenExpiresAt  int64    `json:"access_token_expires_at"`
-	RefreshToken          string   `json:"refresh_token"`
-	RefreshTokenExpiresAt int64    `json:"refresh_token_expires_at"`
-	TokenType             string   `json:"token_type"`
-	Scopes                []string `json:"scopes"`
+type tuttiAgentLLMTokenBundle = tuttiagentauth.TokenBundle
+
+type tuttiAgentSessionAuthorizer struct {
+	cookie string
+}
+
+func (a tuttiAgentSessionAuthorizer) Issue(ctx context.Context) (tuttiagentauth.TokenBundle, error) {
+	return issueTuttiAgentLLMToken(ctx, a.cookie)
+}
+
+func (tuttiAgentSessionAuthorizer) Revoke(ctx context.Context, target tuttiagentauth.RevokeTarget, reason string) error {
+	return revokeTuttiAgentLLMToken(ctx, target.AccountBaseURL, target.RefreshToken, reason)
+}
+
+type tuttiAgentUserCredentialStore struct{}
+
+func (tuttiAgentUserCredentialStore) Inspect(context.Context) (tuttiagentauth.CredentialState, error) {
+	authPath, ok := userTuttiAgentAuthPath()
+	if !ok {
+		return tuttiagentauth.CredentialState{}, nil
+	}
+	raw, err := os.ReadFile(authPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return tuttiagentauth.CredentialState{}, nil
+	}
+	if err != nil {
+		return tuttiagentauth.CredentialState{}, fmt.Errorf("read tutti-agent auth state: %w", err)
+	}
+	return inspectTuttiAgentCredential(raw), nil
+}
+
+func (tuttiAgentUserCredentialStore) Remove(context.Context) error {
+	authPath, ok := userTuttiAgentAuthPath()
+	if !ok {
+		return nil
+	}
+	if err := os.Remove(authPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove tutti-agent auth state: %w", err)
+	}
+	return nil
+}
+
+type tuttiAgentLoginRunner struct{}
+
+func (tuttiAgentLoginRunner) Login(ctx context.Context, bundle tuttiagentauth.TokenBundle) error {
+	return runTuttiAgentTokenLogin(ctx, bundle)
 }
 
 type tuttiAgentLLMTokenIssueRejectedError struct {
@@ -302,31 +338,10 @@ func issueTuttiAgentLLMToken(ctx context.Context, cookie string) (tuttiAgentLLMT
 	}, nil
 }
 
-func parseTuttiAgentLLMRevokeTarget(raw []byte) (string, string, bool) {
-	var payload struct {
-		TuttiLLM *struct {
-			AccountBaseURL string `json:"account_base_url"`
-			RefreshToken   string `json:"refresh_token"`
-		} `json:"tutti_llm"`
-	}
-	if err := json.Unmarshal(raw, &payload); err != nil || payload.TuttiLLM == nil {
-		return "", "", false
-	}
-	refreshToken := strings.TrimSpace(payload.TuttiLLM.RefreshToken)
-	if refreshToken == "" {
-		return "", "", false
-	}
-	accountBaseURL := strings.TrimSpace(payload.TuttiLLM.AccountBaseURL)
-	if accountBaseURL == "" {
-		accountBaseURL = tuttiAgentAccountBase()
-	}
-	return refreshToken, accountBaseURL, true
-}
-
-func revokeTuttiAgentLLMToken(ctx context.Context, accountBaseURL string, refreshToken string) error {
+func revokeTuttiAgentLLMToken(ctx context.Context, accountBaseURL string, refreshToken string, reason string) error {
 	requestBody, err := json.Marshal(map[string]string{
 		"refresh_token": refreshToken,
-		"reason":        "logout",
+		"reason":        strings.TrimSpace(reason),
 	})
 	if err != nil {
 		return err

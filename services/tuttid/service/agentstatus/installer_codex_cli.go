@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/managednpm"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
@@ -125,7 +126,7 @@ func (s Service) runManagedNPMPackageAction(
 	// which on some machines holds root-owned files that make every user-mode npm
 	// install fail with EACCES before any registry is hit.
 	baseEnv = withAgentNPMCache(baseEnv, filepath.Join(installPrefix, agentNPMCacheDirName))
-	registries := s.rankedAgentNPMRegistries(ctx, packageName)
+	registries := s.rankedManagedNPMRegistries(ctx, spec)
 	var result InstallCommandResult
 	binConflictRepaired := false
 	for i, registry := range registries {
@@ -202,7 +203,7 @@ func (s Service) runManagedNPMPackageAction(
 	return result, err
 }
 
-func (s Service) repairManagedNPMBinEEXIST(
+func (Service) repairManagedNPMBinEEXIST(
 	ctx context.Context,
 	result InstallCommandResult,
 	installPrefix string,
@@ -214,7 +215,7 @@ func (s Service) repairManagedNPMBinEEXIST(
 	if !ok || !managedNPMBinConflictMatchesInstallTarget(conflictPath, installPrefix, binaryName) {
 		return false
 	}
-	installedVersion := s.cliVersion(ctx, conflictPath, env)
+	installedVersion, _ := managednpm.ExtractVersion(cliVersionOutput(ctx, conflictPath, env))
 	if required := strings.TrimSpace(requiredVersion); required != "" && installedVersion == required {
 		return false
 	}

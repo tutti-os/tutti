@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
@@ -142,6 +143,9 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 	if install.ManagedNPM.BinaryName != "tutti-agent" {
 		t.Fatalf("BinaryName = %q, want tutti-agent", install.ManagedNPM.BinaryName)
 	}
+	if install.ManagedNPM.PackageVersion != providerregistry.TuttiAgentRecommendedVersion {
+		t.Fatalf("PackageVersion = %q, want %q", install.ManagedNPM.PackageVersion, providerregistry.TuttiAgentRecommendedVersion)
+	}
 	if !install.ManagedNPM.IncludeOptional {
 		t.Fatalf("IncludeOptional = false, want true")
 	}
@@ -151,7 +155,7 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 }
 
 func TestServiceListUsesDescriptorOwnedDaemonLoginAction(t *testing.T) {
-	service, _ := updateTestService(t, "0.0.4")
+	service, _ := updateTestService(t, "0.0.5")
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
 	if err != nil {

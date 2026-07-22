@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/managednpm"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
@@ -83,11 +84,18 @@ func providerCLIVersionMeetsMinimum(spec ProviderSpec, version string) bool {
 	if minimum == "" {
 		return true
 	}
+	if providerUsesManagedNPMVersionContract(spec) {
+		return managednpm.DecideVersion(version, minimum) == managednpm.VersionDecisionReady
+	}
 	cmp, ok := compareCLIVersions(version, minimum)
 	if !ok {
 		return isCodexStatusSpec(spec)
 	}
 	return cmp >= 0
+}
+
+func providerUsesManagedNPMVersionContract(spec ProviderSpec) bool {
+	return !isCodexStatusSpec(spec) && spec.Install.Kind == InstallerKindManagedNPMPackage
 }
 
 // parseCLIVersionForComparison returns the [major, minor, patch] core, whether a

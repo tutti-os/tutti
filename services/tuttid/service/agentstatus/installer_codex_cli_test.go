@@ -279,7 +279,7 @@ func TestRunManagedNPMPackageInstallerRepairsManagedBinEEXIST(t *testing.T) {
 	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
 	managedNodeBinDir := filepath.Dir(managedNode)
 	conflictPath := filepath.Join(home, ".local", "bin", "tutti-agent")
-	writeExecutable(t, conflictPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'tutti-agent 0.0.1'; exit 0; fi\nexit 0\n")
+	writeExecutable(t, conflictPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'tutti-agent 0.0.5.1'; exit 0; fi\nexit 0\n")
 
 	service := probeTestService(home)
 	service.HTTPClient = agentNPMRegistryProbeHTTPClient(nil)
@@ -319,7 +319,7 @@ func TestRunManagedNPMPackageInstallerRepairsManagedBinEEXIST(t *testing.T) {
 
 	if _, err := service.runManagedNPMPackageInstaller(context.Background(), "tutti-agent", ManagedNPMPackageInstallerSpec{
 		PackageName:     "@tutti-os/tutti-agent",
-		PackageVersion:  "0.0.2",
+		PackageVersion:  "0.0.5",
 		BinaryName:      "tutti-agent",
 		IncludeOptional: true,
 	}, conflictPath); err != nil {

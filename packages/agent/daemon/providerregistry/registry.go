@@ -410,6 +410,10 @@ func Validate(descriptor ProviderDescriptor) error {
 		if strings.TrimSpace(descriptor.Status.Install.PackageName) == "" || strings.TrimSpace(descriptor.Status.Install.BinaryName) == "" {
 			return fmt.Errorf("provider %q managed npm installer package and binary are required", providerID)
 		}
+		managedDescriptor, _ := descriptor.ManagedNPMDescriptor()
+		if err := managedDescriptor.Validate(); err != nil {
+			return fmt.Errorf("provider %q managed npm installer: %w", providerID, err)
+		}
 	case InstallerKindShellCommand:
 		if strings.TrimSpace(descriptor.Status.Install.ShellCommand) == "" {
 			return fmt.Errorf("provider %q shell installer command is required", providerID)
