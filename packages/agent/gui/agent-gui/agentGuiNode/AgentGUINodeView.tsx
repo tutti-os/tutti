@@ -90,6 +90,7 @@ export function AgentGUINodeView({
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
+  capabilityControlsReadOnly = false,
   onCapabilitySettingsRequest,
   isActive = true,
   isVisible = true,
@@ -737,6 +738,7 @@ export function AgentGUINodeView({
               onLinkAction={onLinkAction}
               onHandoffConversation={onHandoffConversation}
               capabilityMenuState={capabilityMenuState}
+              capabilityControlsReadOnly={capabilityControlsReadOnly}
               onCapabilitySettingsRequest={onCapabilitySettingsRequest}
               onAgentProviderLogin={onAgentProviderLogin}
               onRequestWorkspaceReferences={requestWorkspaceReferences}

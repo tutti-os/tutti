@@ -62,6 +62,7 @@ type Props = Pick<
   | "promptImagesSupported"
   | "availableSkills"
   | "composerSettings"
+  | "capabilityControlsReadOnly"
   | "onDraftContentChange"
   | "onSettingsChange"
   | "onSubmit"
@@ -121,6 +122,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     promptImagesSupported,
     availableSkills = [],
     composerSettings,
+    capabilityControlsReadOnly = false,
     onDraftContentChange,
     onSettingsChange,
     onSubmit,
@@ -368,6 +370,9 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
 
   const selectCapability = useCallback(
     (capability: AgentSlashCommandCapability): void => {
+      if (capabilityControlsReadOnly) {
+        return;
+      }
       const selectionEffect = resolveSlashCommandSelectionEffect({
         provider,
         policy: slashCommandPolicy,
@@ -378,15 +383,23 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         executeSlashCommandEffect(selectionEffect);
       }
     },
-    [executeSlashCommandEffect, provider, slashCommandPolicy]
+    [
+      capabilityControlsReadOnly,
+      executeSlashCommandEffect,
+      provider,
+      slashCommandPolicy
+    ]
   );
 
   const selectCapabilitySettings = useCallback(
     (capability: AgentSlashCommandCapability): void => {
+      if (capabilityControlsReadOnly) {
+        return;
+      }
       onCapabilitySettingsRequest?.(capability.capability);
       setIsPaletteOpen(false);
     },
-    [onCapabilitySettingsRequest]
+    [capabilityControlsReadOnly, onCapabilitySettingsRequest]
   );
 
   const selectSkill = useCallback(
@@ -476,6 +489,16 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
           policy: slashCommandPolicy
         });
         if (slashCommandEffect) {
+          if (
+            capabilityControlsReadOnly &&
+            slashCommandEffect.kind === "submitPrompt" &&
+            (slashCommandEffect.requiredSettingsPatch?.browserUse !==
+              undefined ||
+              slashCommandEffect.requiredSettingsPatch?.computerUse !==
+                undefined)
+          ) {
+            return;
+          }
           executeSlashCommandEffect(slashCommandEffect);
           return;
         }
@@ -570,6 +593,9 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       if (event.key === "Tab" || event.key === "Enter") {
         event.preventDefault();
         const activeEntry = slashPaletteEntries[activeHighlight];
+        if (activeEntry?.type === "capability" && activeEntry.disabled) {
+          return true;
+        }
         if (activeEntry?.type === "command") {
           selectCommand(activeEntry.command);
         } else if (activeEntry?.type === "capability") {

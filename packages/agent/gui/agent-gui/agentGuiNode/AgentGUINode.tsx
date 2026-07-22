@@ -106,6 +106,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   } = runtimeRequests;
   const {
     capabilityMenuState,
+    capabilityControlsReadOnly = false,
     accountMenuState = null,
     agentTargets,
     agentTargetsLoading = false,
@@ -493,6 +494,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               onLinkAction={handleLinkAction}
               onHandoffConversation={onHandoffConversation}
               capabilityMenuState={capabilityMenuState}
+              capabilityControlsReadOnly={capabilityControlsReadOnly}
               onCapabilitySettingsRequest={onCapabilitySettingsRequest}
               onAgentProviderLogin={
                 onAgentProviderLogin ? handleAgentProviderLogin : undefined

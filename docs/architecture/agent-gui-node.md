@@ -454,6 +454,12 @@ Workspace picker results and internal workspace-reference drags remain live refe
 | `renderSlots`      | narrow product-neutral presentation slots |
 
 Do not restore flat compatibility props or hide workflow inside a render slot.
+Hosts that render capabilities owned by another device set
+`hostCapabilities.capabilityControlsReadOnly`; AgentGUI keeps owner-supported
+Browser/Computer entries visible but disables their mutation and setup actions.
+Unsupported capabilities remain absent according to the authoritative composer
+capability descriptor. A caller host must not open its local device settings as
+a fallback for a remote owner.
 Host chrome that aligns to AgentGUI's internal layout must consume explicit
 package signals such as `hostActions.onConversationRailLayoutChange`; it must
 not observe package DOM, CSS variables, or class names with

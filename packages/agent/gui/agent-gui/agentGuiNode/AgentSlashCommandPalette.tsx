@@ -32,6 +32,7 @@ export type AgentSlashPaletteEntry =
       description?: string;
       settingsAriaLabel?: string;
       settingsLabel?: string;
+      disabled?: boolean;
       selectAction?: "capability" | "settings";
       capability: AgentSlashCommandCapability;
     }
@@ -166,6 +167,8 @@ export function AgentSlashCommandPalette({
     <div className={paletteStyles.palette} role="listbox" aria-label={label}>
       {entries.map((entry, index) => {
         const isHighlighted = index === highlightedIndex;
+        const isDisabled =
+          entry.type === "capability" && entry.disabled === true;
         const groupType = entryGroupType(entry);
         const entryIcon = slashPaletteEntryIcon(entry);
         const groupHeader =
@@ -199,14 +202,20 @@ export function AgentSlashCommandPalette({
               ref={isHighlighted ? highlightedOptionRef : null}
               className={cn(
                 paletteStyles.option,
-                isHighlighted && "bg-[var(--transparency-block)]"
+                isHighlighted && "bg-[var(--transparency-block)]",
+                isDisabled &&
+                  "cursor-not-allowed text-[var(--agent-gui-text-tertiary)] opacity-60 hover:bg-transparent active:bg-transparent"
               )}
               role="option"
               aria-selected={isHighlighted}
+              aria-disabled={isDisabled || undefined}
               data-highlighted={isHighlighted ? "" : undefined}
               onMouseEnter={() => onHighlightChange(index)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
+                if (isDisabled) {
+                  return;
+                }
                 if (entry.type === "command") {
                   onSelect(entry.command);
                   return;
@@ -252,6 +261,7 @@ export function AgentSlashCommandPalette({
                 <button
                   aria-label={entry.settingsAriaLabel ?? entry.settingsLabel}
                   className={paletteStyles.settingsButton}
+                  disabled={isDisabled}
                   title={entry.settingsAriaLabel ?? entry.settingsLabel}
                   type="button"
                   onClick={(event) => {

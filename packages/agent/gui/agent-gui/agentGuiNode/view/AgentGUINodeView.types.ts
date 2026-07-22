@@ -506,6 +506,7 @@ export interface AgentGUINodeViewProps {
     userProjectPath?: string | null;
   }) => void | Promise<void>;
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
+  capabilityControlsReadOnly?: AgentComposerProps["capabilityControlsReadOnly"];
   onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
   isActive?: boolean;
   isVisible?: boolean;

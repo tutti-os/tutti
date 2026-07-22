@@ -122,6 +122,11 @@ export interface AgentGUINodeHostCapabilities {
   /** Legacy Tutti Agent-only opt-in. Prefer an explicit catalog in new hosts. */
   referenceProvenanceFilterEnabled?: boolean;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
+  /**
+   * Keeps owner-supported Browser/Computer capability entries visible while
+   * preventing this host from mutating device-owned capability settings.
+   */
+  capabilityControlsReadOnly?: boolean;
   accountMenuState?: AgentGUIAccountMenuState | null;
   agentTargets?: readonly AgentGUIAgentTarget[];
   agentTargetsLoading?: boolean;
@@ -364,6 +369,7 @@ export function areAgentGUINodePropsEqual(
     pr.prefillPrompt === nr.prefillPrompt &&
     pr.agentStatusController === nr.agentStatusController &&
     pc.capabilityMenuState === nc.capabilityMenuState &&
+    pc.capabilityControlsReadOnly === nc.capabilityControlsReadOnly &&
     pc.accountMenuState === nc.accountMenuState &&
     pc.agentTargets === nc.agentTargets &&
     pc.agentTargetsLoading === nc.agentTargetsLoading &&
