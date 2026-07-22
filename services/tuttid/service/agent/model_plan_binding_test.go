@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 )
@@ -345,32 +345,32 @@ func TestObserveAgentSessionStateMarksFirstUseOnCompletedTurn(t *testing.T) {
 
 	completed := "completed"
 	failed := "failed"
-	settledFailed := agentsessionstore.ReportSessionStateInput{
+	settledFailed := canonical.ReportSessionStateInput{
 		WorkspaceID:    "ws",
 		AgentSessionID: "session-1",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &failed},
+		State: canonical.WorkspaceAgentSessionStateUpdate{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &failed},
 		},
 	}
-	service.ObserveAgentSessionState(ctx, settledFailed, agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(ctx, settledFailed, canonical.ReportSessionStateReply{})
 	if len(firstUse.calls) != 0 {
 		t.Fatalf("failed turn must not mark first use: %v", firstUse.calls)
 	}
 
-	settledCompleted := agentsessionstore.ReportSessionStateInput{
+	settledCompleted := canonical.ReportSessionStateInput{
 		WorkspaceID:    "ws",
 		AgentSessionID: "session-1",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &completed},
+		State: canonical.WorkspaceAgentSessionStateUpdate{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &completed},
 		},
 	}
-	service.ObserveAgentSessionState(ctx, settledCompleted, agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(ctx, settledCompleted, canonical.ReportSessionStateReply{})
 	if len(firstUse.calls) != 1 || firstUse.calls[0] != "ws/mp-1/local:codex/session-1/plan-default" {
 		t.Fatalf("first use calls = %v", firstUse.calls)
 	}
 
 	// A second completed turn does not re-mark.
-	service.ObserveAgentSessionState(ctx, settledCompleted, agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(ctx, settledCompleted, canonical.ReportSessionStateReply{})
 	if len(firstUse.calls) != 1 {
 		t.Fatalf("first use should mark once: %v", firstUse.calls)
 	}

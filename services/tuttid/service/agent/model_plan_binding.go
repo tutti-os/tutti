@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -349,7 +348,7 @@ func (s *Service) preparePlanFirstUse(ctx context.Context, workspaceID string, a
 // ObserveAgentSessionState completes pending plan first uses when a session's
 // turn settles with a completed outcome: that is the first verified real
 // agent-runtime call through the bound plan.
-func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessionstore.ReportSessionStateInput, _ agentsessionstore.ReportSessionStateReply) {
+func (s *Service) ObserveAgentSessionState(ctx context.Context, input canonical.ReportSessionStateInput, _ canonical.ReportSessionStateReply) {
 	if s == nil {
 		return
 	}
@@ -464,7 +463,7 @@ func applyResolvedModelPlanComposerOverlay(options ComposerOptions, resolution m
 // observers.
 type SessionStateObservers []SessionStateObserver
 
-func (observers SessionStateObservers) ObserveAgentSessionState(ctx context.Context, input agentsessionstore.ReportSessionStateInput, reply agentsessionstore.ReportSessionStateReply) {
+func (observers SessionStateObservers) ObserveAgentSessionState(ctx context.Context, input canonical.ReportSessionStateInput, reply canonical.ReportSessionStateReply) {
 	for _, observer := range observers {
 		if observer != nil {
 			observer.ObserveAgentSessionState(ctx, input, reply)
