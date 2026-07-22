@@ -88,6 +88,7 @@ export interface AgentGUIDetailPaneProps {
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: AgentGUINodeViewProps["onHandoffConversation"];
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
+  capabilityControlsReadOnly?: AgentComposerProps["capabilityControlsReadOnly"];
   onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
   onAgentProviderLogin?: (provider?: string | null) => void;
   onRequestWorkspaceReferences?:
@@ -128,6 +129,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
+  capabilityControlsReadOnly = false,
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
@@ -458,6 +460,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels: composerLabels,
       workspaceUserProjectI18n,
       capabilityMenuState,
+      capabilityControlsReadOnly,
       onDraftContentChange: updateDraftContent,
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
@@ -494,6 +497,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [
       canQueueWhileBusy,
       capabilityMenuState,
+      capabilityControlsReadOnly,
       canSwitchComposerProvider,
       composerDisabled,
       composerDisabledReason,

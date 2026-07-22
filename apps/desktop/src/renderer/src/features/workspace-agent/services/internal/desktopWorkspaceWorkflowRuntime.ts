@@ -27,7 +27,7 @@ export interface DesktopTuttiModePlanReviewRuntimeInput {
     | "listAgentTargets"
     | "listWorkspaceAgents"
     | "getAgentProviderComposerOptions"
-    | "listWorkspaceModelPlans"
+    | "listModelPlans"
     | "getWorkspaceIssueDetail"
     | "getWorkspaceIssueTaskDetail"
     | "updateWorkspaceIssueTask"
@@ -244,7 +244,7 @@ function createAssignmentOptionsSource(
           entry.provider as AgentTarget["provider"],
           { agentTargetId }
         ),
-        tuttidClient.listWorkspaceModelPlans(workspaceId).catch(() => null)
+        tuttidClient.listModelPlans(workspaceId).catch(() => null)
       ]);
       const planProtocol =
         resolveAgentGUIProviderCatalogIdentity(entry.provider)

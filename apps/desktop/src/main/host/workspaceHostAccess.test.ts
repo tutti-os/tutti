@@ -64,7 +64,7 @@ function createTransportClient(
     async setAgentSessionAutomationRuleOverride() {
       throw new Error("not used");
     },
-    async listWorkspaceModelPlans() {
+    async listModelPlans() {
       throw new Error("not used");
     },
     async listWorkspaceAgents() {
@@ -497,9 +497,6 @@ function createTransportClient(
       throw new Error("not used");
     },
     async updateWorkspaceIssueTask() {
-      throw new Error("not used");
-    },
-    async cancelWorkspaceIssueExecution() {
       throw new Error("not used");
     },
     async updateWorkspaceIssueTopic() {
