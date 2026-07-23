@@ -6,7 +6,8 @@ import type {
   AgentGUINodeData,
   AgentGUIProvider,
   AgentGUIProviderRailMode,
-  AgentGUIProviderReadinessGate
+  AgentGUIProviderReadinessGate,
+  AgentGUITargetConnectionSource
 } from "../../../types";
 import type { AgentGUIComposerSettingOption } from "../model/agentGuiNodeTypes";
 import type {
@@ -60,6 +61,7 @@ export interface UseAgentGUINodeControllerInput {
   providerReadinessGates?: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
+  targetConnectionSource?: AgentGUITargetConnectionSource | null;
   defaultAgentTargetId?: string | null;
   composerAppendRequest?: AgentGUIComposerAppendRequest | null;
   openSessionRequest?: AgentGUIOpenSessionRequest | null;

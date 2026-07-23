@@ -20,6 +20,7 @@ import {
 } from "../../../shared/agentConversation/planImplementationPresentation";
 import type { AgentSessionState } from "../../../shared/agentSessionTypes";
 import type { AppErrorCode } from "../../../shared/contracts/dto";
+import type { AgentGUITargetConnectionSource } from "../../../types";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 import type {
   AgentGUIConversationSummary,
@@ -39,6 +40,7 @@ import { isNonRetryableResumeErrorCode } from "./agentGuiController.errors";
 import { projectAgentGUIMessagesToTimelineItems } from "./agentGuiController.promptHelpers";
 import { promptRequestId } from "./agentGuiController.diagnostics";
 import { reportAgentGUIRenderStateDiagnostic } from "./agentGuiController.reporting";
+import { useAgentGUITargetConnectionState } from "./useAgentGUITargetConnectionState";
 
 interface CurrentValue<T> {
   current: T;
@@ -78,8 +80,11 @@ interface UseAgentGUISessionPresentationInput {
   planImplementationTurnIdRef: CurrentValue<string | null>;
   optimisticGoalControl: AgentGUIOptimisticGoalControl | null;
   agentTargetsLoading: boolean;
+  ownerDeviceLabel?: string | null;
   serverInteractivePrompt: AgentGUIInteractivePrompt | null;
   sessionEngine: AgentSessionEngine;
+  targetConnectionAgentTargetId?: string | null;
+  targetConnectionSource?: AgentGUITargetConnectionSource | null;
   workspaceId: string;
 }
 
@@ -135,6 +140,10 @@ export function useAgentGUISessionPresentation(
   const activeSubmitBlocked = input.activeEngineAvailability === "blocked";
   const sessionRuntimeBlocked =
     input.activeEngineRuntimeAvailability?.state === "blocked";
+  const targetConnection = useAgentGUITargetConnectionState({
+    agentTargetId: input.targetConnectionAgentTargetId,
+    source: input.targetConnectionSource
+  });
   const activeConversationBusy = input.activeEngineSession
     ? input.activeEngineAvailability === "blocked"
     : agentActivityDisplayStatusBusy(input.activityDisplayStatus) ||
@@ -177,6 +186,36 @@ export function useAgentGUISessionPresentation(
     input.optimisticGoalControl
   ]);
   const sessionChrome = useMemo<AgentGUISessionChrome>(() => {
+    if (
+      targetConnection.visibleState?.status === "connecting" ||
+      targetConnection.visibleState?.status === "unavailable"
+    ) {
+      const device =
+        input.ownerDeviceLabel?.trim() ||
+        translate("agentHost.agentGui.sharedDeviceLabel");
+      const reconnecting =
+        targetConnection.visibleState.status === "connecting";
+      const retryAttempt = targetConnection.visibleState.retryAttempt;
+      return {
+        auth: null,
+        approval: null,
+        recovery: {
+          kind: reconnecting ? "transport-connecting" : "transport-unavailable",
+          message: translate(
+            reconnecting
+              ? retryAttempt > 0
+                ? "agentHost.agentGui.runtimeReconnectingAttempt"
+                : "agentHost.agentGui.runtimeConnecting"
+              : input.activeEngineActiveTurn !== null
+                ? "agentHost.agentGui.runtimeUnavailableActive"
+                : "agentHost.agentGui.runtimeUnavailable",
+            { attempt: retryAttempt, device }
+          ),
+          canRetry: false
+        },
+        rawState: sessionChromeRawState
+      };
+    }
     const normalizedError = input.activationError?.trim() ?? "";
     const authState = input.activeSessionState?.authState?.trim() ?? "";
     const providerSessionMissing = isNonRetryableResumeErrorCode(
@@ -235,14 +274,18 @@ export function useAgentGUISessionPresentation(
     input.activationError,
     input.activationErrorCode,
     input.activeConversationId,
+    input.activeEngineActiveTurn,
     input.activeLiveState,
     input.activeSessionState,
     input.activePendingActivation?.mode,
     input.pendingApproval,
+    input.ownerDeviceLabel,
+    targetConnection.visibleState,
     sessionChromeRawState
   ]);
   const canSubmit =
     !input.agentTargetsLoading &&
+    !targetConnection.blocked &&
     input.activeLiveState !== "activating" &&
     input.activeLiveState !== "failed" &&
     !activeConversationResumeUnavailable &&
@@ -256,6 +299,7 @@ export function useAgentGUISessionPresentation(
   const canQueueWhileBusy =
     input.activeConversationId !== null &&
     !sessionRuntimeBlocked &&
+    !targetConnection.blocked &&
     (activeConversationBusy ||
       input.isSubmitting ||
       input.activeEngineHasPendingInteractions);
@@ -346,6 +390,7 @@ export function useAgentGUISessionPresentation(
     isRespondingApproval,
     pendingInteractivePrompt,
     sessionRuntimeBlocked,
+    targetConnectionBlocked: targetConnection.blocked,
     sessionChrome
   };
 }

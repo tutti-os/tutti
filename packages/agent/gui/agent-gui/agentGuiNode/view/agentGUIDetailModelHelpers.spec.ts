@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildAgentConversationHandoffPrompt,
   handoffProjectPathForConversation,
+  isAgentGUITransportNoticeVisible,
+  resolveAgentGUIHomeNoticeChrome,
+  resolveAgentGUIStopControl,
   shouldShowAgentGUIStopButton
 } from "./agentGUIDetailModelHelpers.ts";
 
@@ -78,6 +81,101 @@ describe("shouldShowAgentGUIStopButton", () => {
         isCreatingConversation: true
       })
     ).toBe(false);
+  });
+});
+
+describe("transport availability presentation", () => {
+  it.each(["transport-connecting", "transport-unavailable"] as const)(
+    "gives %s recovery chrome priority over other bottom-dock notices",
+    (kind) => {
+      expect(
+        isAgentGUITransportNoticeVisible({
+          kind,
+          message: "Connection unavailable",
+          canRetry: false
+        })
+      ).toBe(true);
+    }
+  );
+
+  it("does not hide existing chrome while reconnecting is still delayed", () => {
+    expect(isAgentGUITransportNoticeVisible(null)).toBe(false);
+    expect(
+      isAgentGUITransportNoticeVisible({
+        kind: "failed",
+        message: "Existing failure",
+        canRetry: false
+      })
+    ).toBe(false);
+  });
+
+  it("projects target connection chrome onto the empty Home composer", () => {
+    const inlineNoticeChrome = {
+      auth: null,
+      approval: null,
+      recovery: {
+        kind: "failed" as const,
+        message: "Existing failure"
+      },
+      rawState: null
+    };
+    const sessionChrome = {
+      auth: null,
+      approval: null,
+      recovery: {
+        kind: "transport-connecting" as const,
+        message: "Connecting to device..."
+      },
+      rawState: null
+    };
+
+    expect(
+      resolveAgentGUIHomeNoticeChrome({
+        inlineNoticeChrome,
+        sessionChrome
+      })
+    ).toBe(sessionChrome);
+  });
+
+  it("keeps ordinary Home notices when target connection chrome is absent", () => {
+    const inlineNoticeChrome = {
+      auth: null,
+      approval: null,
+      recovery: {
+        kind: "failed" as const,
+        message: "Existing failure"
+      },
+      rawState: null
+    };
+
+    expect(
+      resolveAgentGUIHomeNoticeChrome({
+        inlineNoticeChrome,
+        sessionChrome: {
+          auth: null,
+          approval: null,
+          recovery: null,
+          rawState: null
+        }
+      })
+    ).toBe(inlineNoticeChrome);
+  });
+
+  it("keeps Stop visible but disables it while active work is disconnected", () => {
+    expect(
+      resolveAgentGUIStopControl({
+        hasPendingApproval: false,
+        hasPendingInteractivePrompt: false,
+        isAuthBlocked: false,
+        isCancelPending: false,
+        isConversationBusy: true,
+        isCreatingConversation: false,
+        isInterrupting: false,
+        isSubmitting: false,
+        isUnavailable: false,
+        sessionRuntimeBlocked: true
+      })
+    ).toEqual({ disabled: true, visible: true });
   });
 });
 

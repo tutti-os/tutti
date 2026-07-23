@@ -178,12 +178,14 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     emptyProviderReadinessGate,
     goalBannerLabels,
     hasActiveConversation,
+    homeNoticeChrome,
     inlineNoticeChrome,
     interactivePromptLabels,
     isComposerSending,
     selectedAgentTargetComingSoon,
     sessionChrome,
     showStopButton,
+    stopDisabled,
     showTimelineSkeleton,
     showUnavailableChatEmpty,
     slashStatus: derivedSlashStatus,
@@ -432,6 +434,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         ? labels.followupPlaceholder
         : labels.initialPlaceholder,
       showStopButton,
+      stopDisabled: stopDisabled || timelineInteractionLocked,
       previewMode,
       workspaceReferencePickerOpen,
       referenceProvenanceFilter,
@@ -536,6 +539,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
       showStopButton,
+      stopDisabled,
       slashStatus,
       submitDisabled,
       setTuttiModeActive,
@@ -704,7 +708,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
                   ? selectHomeComposerAgentTargetAndFocus
                   : undefined
               }
-              inlineNoticeChrome={inlineNoticeChrome}
+              noticeChrome={homeNoticeChrome}
               isRespondingApproval={isInteractionPending}
               previewMode={previewMode}
               onSubmitApprovalOption={submitApprovalOption}

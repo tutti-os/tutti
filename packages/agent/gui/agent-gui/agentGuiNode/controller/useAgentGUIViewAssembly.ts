@@ -15,6 +15,7 @@ import type { useAgentGUIComposerCapabilities } from "./useAgentGUIComposerCapab
 import type { useAgentGUISessionDetailTransport } from "./useAgentGUISessionDetailTransport";
 import { resolveAgentGUIProviderReadinessGateForView } from "../model/agentGuiProviderReadiness";
 import type { useAgentGUITuttiModeActivation } from "./useAgentGUITuttiModeActivation";
+import { targetConnectionForAgentGUIView } from "./agentGuiController.providerHelpers";
 
 type ConversationPresentationInput = Parameters<
   typeof useAgentGUIConversationPresentation
@@ -76,6 +77,19 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
 export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   const { activeConversation, visibleConversations } =
     useAgentGUIConversationPresentation(input);
+  const targetConnection = useMemo(
+    () =>
+      targetConnectionForAgentGUIView({
+        activeConversation,
+        selectedTarget: input.effectiveSelectedProviderTarget,
+        targets: input.normalizedProviderTargets
+      }),
+    [
+      activeConversation,
+      input.effectiveSelectedProviderTarget,
+      input.normalizedProviderTargets
+    ]
+  );
   const stableActiveSessionViewProjection =
     useMemo<ActiveSessionViewProjection>(
       () =>
@@ -107,6 +121,8 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   const session = useAgentGUISessionPresentation({
     ...input,
     activeConversation,
+    ownerDeviceLabel: targetConnection.ownerDeviceLabel,
+    targetConnectionAgentTargetId: targetConnection.agentTargetId,
     activeLiveState: detail.activeLiveState,
     activationError: detail.activationError,
     activationErrorCode: detail.activationErrorCode,
@@ -216,6 +232,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       activationError: detail.activationError,
       activeConversationBusy: session.activeConversationBusy,
       sessionRuntimeBlocked: session.sessionRuntimeBlocked,
+      targetConnectionBlocked: session.targetConnectionBlocked,
       providerReadinessGate
     },
     operations: {

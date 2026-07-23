@@ -256,6 +256,42 @@ export function shouldShowAgentGUIStopButton(input: {
   );
 }
 
+export function isAgentGUITransportNoticeVisible(
+  recovery: AgentGUISessionChrome["recovery"]
+): boolean {
+  return (
+    recovery?.kind === "transport-connecting" ||
+    recovery?.kind === "transport-unavailable"
+  );
+}
+
+export function resolveAgentGUIHomeNoticeChrome(input: {
+  inlineNoticeChrome: AgentGUISessionChrome | null;
+  sessionChrome: AgentGUISessionChrome;
+}): AgentGUISessionChrome | null {
+  return isAgentGUITransportNoticeVisible(input.sessionChrome.recovery)
+    ? input.sessionChrome
+    : input.inlineNoticeChrome;
+}
+
+export function resolveAgentGUIStopControl(input: {
+  hasPendingApproval: boolean;
+  hasPendingInteractivePrompt: boolean;
+  isAuthBlocked: boolean;
+  isCancelPending: boolean;
+  isConversationBusy: boolean;
+  isCreatingConversation: boolean;
+  isInterrupting: boolean;
+  isSubmitting: boolean;
+  isUnavailable: boolean;
+  sessionRuntimeBlocked: boolean;
+}): { disabled: boolean; visible: boolean } {
+  return {
+    disabled: input.sessionRuntimeBlocked,
+    visible: shouldShowAgentGUIStopButton(input)
+  };
+}
+
 export function buildAgentConversationHandoffPrompt(input: {
   activeConversation: AgentGUINodeViewModel["rail"]["activeConversation"];
   currentUserId?: string | null;
