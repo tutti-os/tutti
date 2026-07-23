@@ -33,40 +33,40 @@ func (s *retryMockStore) ListSessionMessages(_ context.Context, input storesqlit
 }
 
 // Stubs for the rest of CanonicalStore — not called in validation paths.
-func (s retryMockStore) GetSession(context.Context, string, string) (storesqlite.Session, bool, error) {
+func (_ retryMockStore) GetSession(context.Context, string, string) (storesqlite.Session, bool, error) {
 	return storesqlite.Session{}, false, nil
 }
-func (s retryMockStore) SessionDeleted(context.Context, string, string) (bool, error) {
+func (_ retryMockStore) SessionDeleted(context.Context, string, string) (bool, error) {
 	return false, nil
 }
-func (s retryMockStore) RollbackRuntimeSessionInitialization(context.Context, string, string) (bool, error) {
+func (_ retryMockStore) RollbackRuntimeSessionInitialization(context.Context, string, string) (bool, error) {
 	return false, nil
 }
-func (s retryMockStore) InitializeRuntimeSession(context.Context, ProviderRuntimeSession) (storesqlite.Session, error) {
+func (_ retryMockStore) InitializeRuntimeSession(context.Context, ProviderRuntimeSession) (storesqlite.Session, error) {
 	return storesqlite.Session{}, nil
 }
-func (s retryMockStore) UpdateSessionTitle(context.Context, string, string, string) (storesqlite.Session, bool, error) {
+func (_ retryMockStore) UpdateSessionTitle(context.Context, string, string, string) (storesqlite.Session, bool, error) {
 	return storesqlite.Session{}, false, nil
 }
-func (s retryMockStore) ListChildSessions(context.Context, string, string) ([]storesqlite.Session, error) {
+func (_ retryMockStore) ListChildSessions(context.Context, string, string) ([]storesqlite.Session, error) {
 	return nil, nil
 }
-func (s retryMockStore) FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error) {
+func (_ retryMockStore) FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error) {
 	return "", false, nil
 }
-func (s retryMockStore) ListLatestTurnInteractions(context.Context, string, []string) (map[string][]storesqlite.Interaction, error) {
+func (_ retryMockStore) ListLatestTurnInteractions(context.Context, string, []string) (map[string][]storesqlite.Interaction, error) {
 	return nil, nil
 }
-func (s retryMockStore) ListSessionInteractions(context.Context, storesqlite.ListSessionInteractionsInput) ([]storesqlite.Interaction, error) {
+func (_ retryMockStore) ListSessionInteractions(context.Context, storesqlite.ListSessionInteractionsInput) ([]storesqlite.Interaction, error) {
 	return nil, nil
 }
-func (s retryMockStore) PrepareSubmitClaim(context.Context, storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error) {
+func (_ retryMockStore) PrepareSubmitClaim(context.Context, storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error) {
 	return storesqlite.SubmitClaim{}, false, nil
 }
-func (s retryMockStore) AcceptSubmitClaim(context.Context, string, string, string, string, int64) (storesqlite.SubmitClaim, bool, error) {
+func (_ retryMockStore) AcceptSubmitClaim(context.Context, string, string, string, string, int64) (storesqlite.SubmitClaim, bool, error) {
 	return storesqlite.SubmitClaim{}, false, nil
 }
-func (s retryMockStore) DeleteSubmitClaim(context.Context, string, string, string) (bool, error) {
+func (_ retryMockStore) DeleteSubmitClaim(context.Context, string, string, string) (bool, error) {
 	return false, nil
 }
 
