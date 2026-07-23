@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/ui-notifications",
-  "version": "0.1.0",
+  "version": "0.0.206",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
