@@ -359,6 +359,9 @@ export function createDesktopAgentActivityAdapter({
             ...(input.expectedRevision === undefined
               ? {}
               : { expectedRevision: input.expectedRevision }),
+            ...(input.orchestrationIntensity === undefined
+              ? {}
+              : { orchestrationIntensity: input.orchestrationIntensity }),
             source: input.source,
             status: input.status
           },

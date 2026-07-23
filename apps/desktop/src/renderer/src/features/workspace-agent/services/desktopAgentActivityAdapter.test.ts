@@ -582,6 +582,7 @@ test("desktop agent activity adapter creates, projects, and revision-updates the
   const updated = await adapter.updateTuttiModeActivation({
     agentSessionId: "agent-session-1",
     expectedRevision: 1,
+    orchestrationIntensity: 25,
     signal: controller.signal,
     source: "badge_remove",
     status: "inactive",
@@ -591,6 +592,7 @@ test("desktop agent activity adapter creates, projects, and revision-updates the
     agentSessionId: "agent-session-1",
     request: {
       expectedRevision: 1,
+      orchestrationIntensity: 25,
       source: "badge_remove",
       status: "inactive"
     },

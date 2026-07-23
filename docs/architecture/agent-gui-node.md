@@ -472,6 +472,9 @@ from the engine-projected orchestration intensity. Cancel discards the draft;
 Confirm sends the selected intensity through the existing Tutti Mode activation
 command. Turning Tutti Mode off remains a separate adjacent action, and both
 controls stay disabled while an activation update is unresolved.
+The Desktop command host and HTTP adapter must preserve both the optimistic
+CAS revision and the optional orchestration intensity; dropping either field
+turns a valid UI intent into a stale or semantically mismatched response.
 
 The intensity popup uses one interactive Cost-to-Balance-to-Powerful gradient
 slider and projects its local draft into equal tendency bands while it moves.

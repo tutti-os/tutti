@@ -57,7 +57,7 @@ test("prompt command does not send when its required settings fail", async () =>
   assert.equal(sent, false);
 });
 
-test("Tutti mode update command preserves the canonical CAS revision", async () => {
+test("Tutti mode update command preserves CAS revision and zero intensity", async () => {
   const controller = new AbortController();
   let received: unknown;
   await executeWorkspaceAgentTuttiModeUpdateCommand(
@@ -71,8 +71,9 @@ test("Tutti mode update command preserves the canonical CAS revision", async () 
       agentSessionId: "session-1",
       commandId: "tutti-1",
       expectedRevision: 3,
-      source: "badge_remove",
-      status: "inactive",
+      orchestrationIntensity: 0,
+      source: "slash_command",
+      status: "active",
       type: "tuttiMode/update",
       workspaceId: "workspace-1"
     } satisfies TuttiModeActivationUpdateCommand,
@@ -82,9 +83,10 @@ test("Tutti mode update command preserves the canonical CAS revision", async () 
   assert.deepEqual(received, {
     agentSessionId: "session-1",
     expectedRevision: 3,
+    orchestrationIntensity: 0,
     signal: controller.signal,
-    source: "badge_remove",
-    status: "inactive",
+    source: "slash_command",
+    status: "active",
     workspaceId: "workspace-1"
   });
 });
