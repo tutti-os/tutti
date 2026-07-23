@@ -3184,6 +3184,10 @@ aside.workspace-agents-status-panel
   box-sizing: border-box;
   max-height: min(52vh, 520px);
   overflow: auto;
+  /* The translateY below fuses the panel with its own banner by painting
+     over the banner's top edge; the matching negative margin keeps the
+     panel flush with any card stacked above it instead of leaving a gap. */
+  margin-top: -12px;
   border: 1px solid var(--agent-gui-border-subtle, var(--line-2));
   border-bottom: 0;
   border-radius: 12px 12px 0 0;
