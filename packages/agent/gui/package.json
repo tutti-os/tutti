@@ -51,7 +51,7 @@
     "directory": "packages/agent/gui"
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && tsup --config tsup.dts.config.ts && node ../../../tools/scripts/copy-package-assets.mjs app/renderer/agentactivity.css dist/app/renderer/agentactivity.css app/renderer/assets/icons dist/app/renderer/assets/icons",
+    "build": "tsup --config tsup.config.ts && tsup --config tsup.dts.config.ts && node ../../../tools/scripts/copy-package-assets.mjs app/renderer/agentactivity.css dist/app/renderer/agentactivity.css app/renderer/assets/icons dist/app/renderer/assets/icons app/renderer/assets/commercial dist/app/renderer/assets/commercial",
     "test": "vitest run --environment jsdom --maxWorkers=3",
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
