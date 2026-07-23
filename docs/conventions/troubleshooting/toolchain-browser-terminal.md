@@ -30,6 +30,65 @@
   [change-classification.mjs](../../../tools/scripts/change-classification.mjs)
   [testing.md](../testing.md)
 
+### gomobile Android AAR fails after Go compilation succeeds
+
+- Symptom:
+  `GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build ./...` succeeds, but
+  `gomobile bind` either reports `gobind was not found` after `gomobile init`,
+  or fails while linking `libgojni.so` with
+  `github.com/wlynxg/anet: invalid reference to net.zoneCache`.
+- Quick checks:
+  Confirm the module pins `golang.org/x/mobile` at a version compatible with the
+  repository Go baseline. Run `go mod why -m github.com/wlynxg/anet`; Pion ICE
+  reaches it through the Android network enumeration path. Check whether
+  `gobind` is actually present on `PATH` during the bind subprocess rather than
+  assuming `gomobile init` installed it globally.
+- Root cause:
+  `go tool gomobile` runs the pinned tool without installing its sibling
+  `gobind` executable. Separately, `anet` uses `go:linkname` for the Go network
+  zone cache, and Go 1.23 or newer rejects that internal reference unless the
+  linker compatibility flag is explicit. A no-CGO package compile does not
+  exercise the same shared-library link step as an AAR build.
+- Fix:
+  Build the module-selected `golang.org/x/mobile/cmd/gobind` into an isolated
+  temporary `GOBIN`, prepend that directory to `PATH` only for `gomobile bind`,
+  and pass `-ldflags=-checklinkname=0` only to that gomobile build. Pin the NDK
+  version through `ANDROID_NDK_HOME`; do not add a local `anet` fork or disable
+  linker checks for ordinary host builds.
+- Validation:
+  Run `make android-crosscompile`, `make android-bindings-check`, and
+  `make android-aar`. The final check must validate the Java binding and
+  `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64` `libgojni.so` entries. A real
+  Android device or emulator is still required to execute the loopback probe.
+- References:
+  [DeviceLink Makefile](../../../packages/device-link/Makefile)
+  [DeviceLink README](../../../packages/device-link/README.md)
+
+### Android ICE probe gathers no candidates
+
+- Symptom:
+  A gomobile DeviceLink probe loads its JNI library and enters Go successfully,
+  but `LocalParams` reports that the ICE agent gathered no candidates even
+  when loopback candidates are enabled.
+- Quick checks:
+  Confirm the test or host app declares
+  `android.permission.INTERNET` in its manifest before changing ICE filters or
+  Android interface-enumeration code.
+- Root cause:
+  Android applies the `INTERNET` manifest permission to network sockets. A
+  minimal hand-built probe APK can omit it even though normal application
+  templates usually include it, leaving Pion unable to bind a UDP candidate.
+- Fix:
+  Add the `INTERNET` permission to the probe or product manifest. Do not add an
+  Android-only candidate fallback to the shared transport core for this case.
+- Validation:
+  Run the signed probe on an Android device or emulator and require a
+  `TuttiDeviceLinkProbe` log entry containing `PASS epoch=1` and the expected
+  echoed payload.
+- References:
+  [Probe manifest](../../../packages/device-link/mobile/androidprobe/AndroidManifest.xml)
+  [DeviceLink README](../../../packages/device-link/README.md)
+
 ### Temporary Git fixture turns a linked worktree bare
 
 - Symptom:

@@ -82,6 +82,7 @@ App Center, workspace-app lifecycle, App Factory, file references, and File Mana
 CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 
 - [Go-only PR skips a repository contract that later fails](./toolchain-browser-terminal.md#go-only-pr-skips-a-repository-contract-that-later-fails)
+- [gomobile Android AAR fails after Go compilation succeeds](./toolchain-browser-terminal.md#gomobile-android-aar-fails-after-go-compilation-succeeds)
 - [Dynamic CLI input rejects plausible flags](./toolchain-browser-terminal.md#dynamic-cli-input-rejects-plausible-flags)
 - [GitHub Actions pnpm setup fails with ERR_PNPM_BAD_PM_VERSION](./toolchain-browser-terminal.md#github-actions-pnpm-setup-fails-with-errpnpmbadpmversion)
 - [Multi-entry tsup declaration build exhausts its worker heap](./toolchain-browser-terminal.md#multi-entry-tsup-declaration-build-exhausts-its-worker-heap)

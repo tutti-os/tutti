@@ -375,6 +375,7 @@ The current root entrypoint runs the linter from:
 - `packages/agent/host`
 - `packages/agent/store-sqlite/canonical`
 - `packages/appcli/core`
+- `packages/device-link`
 - `packages/agent/runtimeprep`
 - `packages/workspace/files`
 - `packages/workbench/service`
@@ -393,10 +394,17 @@ Changed-aware Go validation includes the nested
 `packages/agent/activity-replication`, `packages/agent/daemon`,
 `packages/agent/host`,
 `packages/agent/runtimeprep`, `packages/agent/store-sqlite`, and
-`packages/agent/store-sqlite/canonical` modules.
+`packages/agent/store-sqlite/canonical`, and `packages/device-link` modules.
 Codex app-server protocol changes should also run
 `pnpm check:codexproto-generated` when schema, generator, or generated protocol
 files are touched.
+
+Every change under `packages/device-link/**`, including Makefiles, Java probe
+sources, and Android manifests, also selects
+`pnpm check:device-link-android`. That contract runs the Go suite, Android
+arm64 cross-compile, and Java gomobile binding generation. AAR assembly remains
+an explicit Android-SDK validation until the release workflow publishes this
+currently provisional module.
 
 Local runs resolve `golangci-lint` from `$(go env GOPATH)/bin` first and fall
 back to `PATH`. This matches the repository install command without requiring a

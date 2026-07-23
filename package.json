@@ -34,6 +34,7 @@
     "check:agent-provider-strategy-boundaries": "node ./tools/scripts/check-agent-provider-strategy-boundaries.mjs",
     "check:codexproto-generated": "node ./tools/scripts/check-codexproto-generated.mjs",
     "check:defaults-generated": "node ./tools/scripts/generate-defaults.mjs --check",
+    "check:device-link-android": "make -C packages/device-link test android-crosscompile android-bindings-check",
     "check:changed": "node ./tools/scripts/run-check-changed.mjs",
     "check:electron-runtime-boundaries": "node ./tools/scripts/check-electron-runtime-boundaries.mjs",
     "check:electron-runtime-boundaries:staged": "node ./tools/scripts/check-electron-runtime-boundaries.mjs --staged",

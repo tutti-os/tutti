@@ -71,6 +71,7 @@ packages/
   browser/
   clients/
   configs/
+  device-link/
   events/
   ui/
   workbench/
@@ -81,6 +82,7 @@ Rules:
 
 - organize packages by responsibility, not by language alone
 - use `clients/*` for domain-specific client access
+- use `device-link` for the shared ICE/QUIC peer transport and gomobile boundary consumed by Tutti, TSH, and mobile clients
 - use `events/*` for schema-first shared business event protocol contracts, validators, and generated transport metadata that multiple hosts consume
 - use `browser/*` for reusable browser/workbench node mechanics that are shared by desktop hosts without carrying product-specific bridge methods
 - use `configs/*` for shared engineering configuration
@@ -184,6 +186,18 @@ It owns:
 Client packages provide domain-specific access helpers for consumers.
 
 They should remain focused, named by responsibility, and free of hidden business rules.
+
+### `packages/device-link`
+
+DeviceLink is the shared Go peer-transport boundary for Tutti Desktop, TSH
+Desktop, and mobile clients. It owns ICE candidate negotiation, QUIC over the
+selected packet path, mutual ephemeral certificate pinning, categorical path
+classification, and the gomobile build surface.
+
+It exposes authenticated bidirectional streams and must remain independent of
+Agent, Session, Workspace, account, pairing, rendezvous, and Relay product
+policy. Host services and apps own those adapters. Raw addresses, candidates,
+credentials, and payloads must not enter ordinary logs or metrics.
 
 ### `packages/events/*`
 

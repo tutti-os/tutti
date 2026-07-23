@@ -124,6 +124,11 @@ package release tag sequence. Do not add package Go modules that require an
 independent release cadence unless this convention and the release automation
 are updated together.
 
+`packages/device-link` is temporarily excluded while the Personal
+Android/Desktop path is still an unreleased transport spike. Remove the
+exclusion and add its stable Go tag only after that product path validates the
+authenticated connection lifecycle and AAR consumer build.
+
 ## Local Beta Releases
 
 Use local beta releases for temporary cross-repository or external integration

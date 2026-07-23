@@ -50,6 +50,10 @@ describe("resolveGoModuleRoot", () => {
       "packages/auth/bridge-go"
     );
     assert.equal(
+      resolveGoModuleRoot("packages/device-link/mobile/probe.go"),
+      "packages/device-link"
+    );
+    assert.equal(
       resolveGoModuleRoot("packages/events/stream-go/stream.go"),
       "packages/events/stream-go"
     );

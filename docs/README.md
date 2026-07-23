@@ -11,6 +11,7 @@ records. Choose the document type by the question you are trying to answer.
 | What rule must a change follow?                  | [Conventions](./conventions/README.md)           | Stable repository requirements                      |
 | Why was a consequential choice made?             | [Architecture Decision Records](./adr/README.md) | Accepted decisions and tradeoffs                    |
 | What is proposed or currently being implemented? | [Specs and Plans](./specs/README.md)             | Dated working records; not current truth by default |
+| How do I build and debug the Android mobile app? | [Mobile Development](./mobile/README.md)         | Practical Android and React Native onboarding       |
 | What should I do in this directory?              | The nearest `AGENTS.md`                          | Scoped routing, action rules, and required checks   |
 
 Package READMEs remain the source for a package's public usage and exports.
