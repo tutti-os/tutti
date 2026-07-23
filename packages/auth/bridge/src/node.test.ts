@@ -6,7 +6,7 @@ import {
   type Server,
   type ServerResponse
 } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createConnection, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -163,6 +163,79 @@ test("node login callback redirects to web result after writing auth json", asyn
       device_id: accountServer.requests.redeem?.device_id
     });
   } finally {
+    await accountServer.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("node login completes when another bridge connection is stalled", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "tutti-auth-bridge-"));
+  const file = join(dir, "auth.json");
+  const accountServer = await startAccountStub();
+  let stalledSocket: Socket | undefined;
+  let stalledSocketClosed: Promise<void> | undefined;
+  try {
+    const authBase = `http://127.0.0.1:${accountServer.port}`;
+    const auth = createTuttiNodeAuthClient({
+      authJsonPath: file,
+      appCallbackUrl: "tutti://auth/login",
+      accountBaseUrl: authBase,
+      authLoginUrl: `${authBase}/auth/login`,
+      openUrl: async (loginUrl) => {
+        const state = new URL(loginUrl).searchParams.get("state") ?? "";
+        const bridgeUrl = new URL(decodeState(state).localServerOrigin ?? "");
+        stalledSocket = createConnection({
+          host: bridgeUrl.hostname,
+          port: Number(bridgeUrl.port)
+        });
+        stalledSocketClosed = new Promise<void>((resolve) => {
+          stalledSocket?.once("close", resolve);
+        });
+        await new Promise<void>((resolve, reject) => {
+          stalledSocket?.once("connect", resolve);
+          stalledSocket?.once("error", reject);
+        });
+        stalledSocket.write(
+          `GET /oauth/health HTTP/1.1\r\nHost: ${bridgeUrl.host}\r\n`
+        );
+
+        const callbackUrl = new URL("/oauth/callback", bridgeUrl);
+        callbackUrl.searchParams.set("state", state);
+        callbackUrl.searchParams.set("transfer_code", "transfer-1");
+        const callbackResponse = await fetch(callbackUrl, {
+          redirect: "manual"
+        });
+        assert.equal(callbackResponse.status, 302);
+        assert.equal(callbackResponse.headers.get("connection"), "close");
+      }
+    });
+
+    let timeout: NodeJS.Timeout | undefined;
+    const result = await Promise.race([
+      auth.login(),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("login did not close the bridge in time")),
+          2_500
+        );
+      })
+    ]).finally(() => clearTimeout(timeout));
+    assert.equal(result.session.sessionId, "desktop-session-1");
+    let socketCloseTimeout: NodeJS.Timeout | undefined;
+    await Promise.race([
+      stalledSocketClosed,
+      new Promise<never>((_, reject) => {
+        socketCloseTimeout = setTimeout(
+          () =>
+            reject(
+              new Error("stalled bridge connection did not close in time")
+            ),
+          2_500
+        );
+      })
+    ]).finally(() => clearTimeout(socketCloseTimeout));
+  } finally {
+    stalledSocket?.destroy();
     await accountServer.close();
     await rm(dir, { recursive: true, force: true });
   }
