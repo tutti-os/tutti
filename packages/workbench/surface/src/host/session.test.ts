@@ -1572,6 +1572,57 @@ test("restored floating nodes smaller than the compact cap are not enlarged or s
   session.dispose();
 });
 
+test("legacy floating snapshots clamp into a smaller wide surface", async () => {
+  const session = createWorkbenchHostSession({
+    nodes: [browserNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          {
+            nodeStack: ["browser:browser-1"],
+            nodes: [
+              {
+                data: {
+                  instanceId: "browser-1",
+                  typeId: "browser"
+                },
+                displayMode: "floating",
+                frame: { x: 1700, y: 100, width: 900, height: 560 },
+                id: "browser:browser-1",
+                isMinimized: false,
+                kind: "browser",
+                restoreFrame: null,
+                title: "Browser"
+              }
+            ]
+          },
+          {
+            metadata: {
+              workbenchHostInitialized: true
+            }
+          }
+        );
+      },
+      async save(_workspaceId, snapshot) {
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  session.controller.commands.setSurfaceSize({ width: 1600, height: 900 });
+
+  assert.deepEqual(session.controller.getSnapshot().nodes[0]?.frame, {
+    x: 700,
+    y: 100,
+    width: 900,
+    height: 560
+  });
+
+  session.dispose();
+});
+
 test("restored fullscreen nodes keep fullscreen sizing below 1440", async () => {
   const session = createWorkbenchHostSession({
     nodes: [browserNodeDefinition],
@@ -1620,6 +1671,251 @@ test("restored fullscreen nodes keep fullscreen sizing below 1440", async () => 
       session.controller.getSnapshot().layoutConstraints
     )
   );
+
+  session.dispose();
+});
+
+test("restored fullscreen nodes migrate their restore frame from the persisted layout basis", async () => {
+  const session = createWorkbenchHostSession({
+    nodes: [browserNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          {
+            layoutConstraints: defaultWorkbenchLayoutConstraints,
+            nodeStack: ["browser:browser-1"],
+            nodes: [
+              {
+                data: {
+                  instanceId: "browser-1",
+                  typeId: "browser"
+                },
+                displayMode: "fullscreen",
+                frame: { x: 0, y: 52, width: 1512, height: 845 },
+                id: "browser:browser-1",
+                isMinimized: false,
+                kind: "browser",
+                restoreFrame: {
+                  x: 151.2,
+                  y: 127.7,
+                  width: 907.2,
+                  height: 454.2
+                },
+                title: "Browser"
+              }
+            ],
+            surfaceSize: { width: 1512, height: 897 }
+          },
+          {
+            metadata: {
+              workbenchHostInitialized: true
+            }
+          }
+        );
+      },
+      async save(_workspaceId, snapshot) {
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  session.controller.commands.setSurfaceSize({ width: 1210, height: 759 });
+
+  assert.deepEqual(session.controller.getSnapshot().nodes[0]?.frame, {
+    x: 0,
+    y: 52,
+    width: 1210,
+    height: 707
+  });
+  assert.deepEqual(session.controller.getSnapshot().nodes[0]?.restoreFrame, {
+    x: 121,
+    y: 113.9,
+    width: 726,
+    height: 371.4
+  });
+
+  session.exitFullscreenNode("browser:browser-1");
+  assert.deepEqual(session.controller.getSnapshot().nodes[0]?.frame, {
+    x: 121,
+    y: 113.9,
+    width: 726,
+    height: 371.4
+  });
+
+  session.dispose();
+});
+
+test("restored oversized floating nodes migrate once from their persisted frame", async () => {
+  const session = createWorkbenchHostSession({
+    nodes: [browserNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          {
+            layoutConstraints: defaultWorkbenchLayoutConstraints,
+            nodeStack: ["browser:browser-1"],
+            nodes: [
+              {
+                data: {
+                  instanceId: "browser-1",
+                  typeId: "browser"
+                },
+                displayMode: "floating",
+                frame: {
+                  x: 100,
+                  y: 105,
+                  width: 1800,
+                  height: 954
+                },
+                id: "browser:browser-1",
+                isMinimized: false,
+                kind: "browser",
+                restoreFrame: null,
+                title: "Browser"
+              }
+            ],
+            surfaceSize: { width: 2000, height: 1200 }
+          },
+          {
+            metadata: {
+              workbenchHostInitialized: true
+            }
+          }
+        );
+      },
+      async save(_workspaceId, snapshot) {
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  session.controller.commands.setSurfaceSize({ width: 1000, height: 700 });
+
+  assert.deepEqual(session.controller.getSnapshot().nodes[0]?.frame, {
+    x: 50,
+    y: 80,
+    width: 900,
+    height: 504
+  });
+
+  session.dispose();
+});
+
+test("legacy fullscreen snapshots clamp stale restore frames without a layout basis", async () => {
+  const session = createWorkbenchHostSession({
+    nodes: [browserNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          {
+            nodeStack: ["browser:browser-1"],
+            nodes: [
+              {
+                data: {
+                  instanceId: "browser-1",
+                  typeId: "browser"
+                },
+                displayMode: "fullscreen",
+                frame: { x: 0, y: 52, width: 2048, height: 1100 },
+                id: "browser:browser-1",
+                isMinimized: false,
+                kind: "browser",
+                restoreFrame: {
+                  x: 221,
+                  y: 83,
+                  width: 1480,
+                  height: 792
+                },
+                title: "Browser"
+              }
+            ]
+          },
+          {
+            metadata: {
+              workbenchHostInitialized: true
+            }
+          }
+        );
+      },
+      async save(_workspaceId, snapshot) {
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  session.controller.commands.setSurfaceSize({ width: 1210, height: 759 });
+  session.exitFullscreenNode("browser:browser-1");
+
+  assert.deepEqual(session.controller.getSnapshot().nodes[0]?.frame, {
+    x: 0,
+    y: 52,
+    width: 1210,
+    height: 619
+  });
+
+  session.dispose();
+});
+
+test("restores layout after the first measured surface matches the controller default", async () => {
+  const session = createWorkbenchHostSession({
+    nodes: [browserNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          {
+            layoutConstraints: defaultWorkbenchLayoutConstraints,
+            nodeStack: ["browser:browser-1"],
+            nodes: [
+              {
+                data: {
+                  instanceId: "browser-1",
+                  typeId: "browser"
+                },
+                displayMode: "fullscreen",
+                frame: { x: 0, y: 52, width: 1512, height: 845 },
+                id: "browser:browser-1",
+                isMinimized: false,
+                kind: "browser",
+                restoreFrame: {
+                  x: 151.2,
+                  y: 127.7,
+                  width: 907.2,
+                  height: 454.2
+                },
+                title: "Browser"
+              }
+            ],
+            surfaceSize: { width: 1512, height: 897 }
+          },
+          {
+            metadata: {
+              workbenchHostInitialized: true
+            }
+          }
+        );
+      },
+      async save(_workspaceId, snapshot) {
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  session.controller.commands.setSurfaceSize(defaultWorkbenchSurfaceSize);
+
+  assert.deepEqual(session.controller.getSnapshot().nodes[0]?.restoreFrame, {
+    x: 102.4,
+    y: 110,
+    width: 614.4,
+    height: 348
+  });
 
   session.dispose();
 });
@@ -2424,7 +2720,7 @@ test("launchNode applies custom same-type cascade offsets", async () => {
   const node = session.controller
     .getSnapshot()
     .nodes.find((entry) => entry.id === nodeId);
-  assert.deepEqual(node?.frame, { x: 320, y: 136, width: 1040, height: 538 });
+  assert.deepEqual(node?.frame, { x: 320, y: 140, width: 1040, height: 538 });
 
   session.dispose();
 });

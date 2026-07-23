@@ -13132,6 +13132,73 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceFileUploadConflict"
+    WorkbenchSize:
+      type: object
+      additionalProperties: false
+      required:
+        - width
+        - height
+      properties:
+        width:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        height:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+    WorkbenchSafeArea:
+      type: object
+      additionalProperties: false
+      required:
+        - top
+        - right
+        - bottom
+        - left
+      properties:
+        top:
+          type: number
+          minimum: 0
+        right:
+          type: number
+          minimum: 0
+        bottom:
+          type: number
+          minimum: 0
+        left:
+          type: number
+          minimum: 0
+    WorkbenchLayoutConstraints:
+      type: object
+      additionalProperties: false
+      required:
+        - minWidth
+        - minHeight
+        - surfacePadding
+        - safeArea
+      properties:
+        minWidth:
+          type: number
+          minimum: 0
+        minHeight:
+          type: number
+          minimum: 0
+        surfacePadding:
+          type: number
+          minimum: 0
+        safeArea:
+          $ref: "#/components/schemas/WorkbenchSafeArea"
+    WorkbenchLayoutBasis:
+      type: object
+      additionalProperties: false
+      required:
+        - surfaceSize
+        - layoutConstraints
+      properties:
+        surfaceSize:
+          $ref: "#/components/schemas/WorkbenchSize"
+        layoutConstraints:
+          $ref: "#/components/schemas/WorkbenchLayoutConstraints"
     WorkbenchFrame:
       type: object
       additionalProperties: false
@@ -13248,6 +13315,8 @@ components:
         activeSpaceId:
           type: string
           nullable: true
+        layoutBasis:
+          $ref: "#/components/schemas/WorkbenchLayoutBasis"
         metadata:
           type: object
           additionalProperties: true

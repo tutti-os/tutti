@@ -190,7 +190,12 @@ export function reduceWorkbenchState<TData>(
         return {
           ...node,
           displayMode: "floating",
-          frame: node.restoreFrame ?? node.frame,
+          frame: clampWorkbenchRect(
+            node.restoreFrame ?? node.frame,
+            state.surfaceSize,
+            state.layoutConstraints,
+            node.sizeConstraints
+          ),
           restoreFrame: null
         };
       });

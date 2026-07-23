@@ -10,6 +10,7 @@ export interface WorkbenchSnapshotV1 {
   activeNodeId?: string | null;
   spaces?: WorkbenchSnapshotSpaceV1[];
   activeSpaceId?: string | null;
+  layoutBasis?: WorkbenchSnapshotLayoutBasisV1;
   metadata?: Record<string, unknown>;
 }
 
@@ -18,6 +19,30 @@ export interface WorkbenchFrameV1 {
   y: number;
   width: number;
   height: number;
+}
+
+export interface WorkbenchSnapshotSizeV1 {
+  width: number;
+  height: number;
+}
+
+export interface WorkbenchSnapshotSafeAreaV1 {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+export interface WorkbenchSnapshotLayoutConstraintsV1 {
+  minWidth: number;
+  minHeight: number;
+  surfacePadding: number;
+  safeArea: WorkbenchSnapshotSafeAreaV1;
+}
+
+export interface WorkbenchSnapshotLayoutBasisV1 {
+  surfaceSize: WorkbenchSnapshotSizeV1;
+  layoutConstraints: WorkbenchSnapshotLayoutConstraintsV1;
 }
 
 export interface WorkbenchSnapshotNodeV1 {
