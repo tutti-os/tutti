@@ -731,6 +731,11 @@ func acpErrorSummary(err *acpError) string {
 		message = fmt.Sprintf("code %d", err.Code)
 	}
 	data := strings.TrimSpace(string(err.Data))
+	// A JSON null payload carries no information; rendering it as
+	// "data: null" only adds noise to user-visible error text.
+	if data == "null" {
+		data = ""
+	}
 	if data != "" {
 		return fmt.Sprintf("%s (code %d, data: %s)", message, err.Code, truncateACPLogValue(data, 1200))
 	}

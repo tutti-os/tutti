@@ -28,6 +28,10 @@ type standardACPConfig struct {
 	env                func(Session) []string
 	commandResolver    ProviderCommandResolver
 	beforeNewSession   func(context.Context, *acpClient, Session, json.RawMessage) error
+	// validateNewSessionResult, when set, inspects the raw session/new response
+	// right after it succeeds and may reject the start (setup probes use it to
+	// catch agents that create a session they cannot actually serve).
+	validateNewSessionResult func(json.RawMessage) error
 	// allowSyntheticNotice lets codex-acp-derived providers promote bare
 	// transport text ("Reconnecting... 1/5", "Falling back ... transport")
 	// streamed as ordinary chunks into system-notice banners instead of

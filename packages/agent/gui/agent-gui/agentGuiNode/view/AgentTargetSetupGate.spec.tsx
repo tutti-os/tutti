@@ -197,6 +197,140 @@ describe("AgentTargetSetupGate", () => {
     ).toBeTruthy();
   });
 
+  it("guides terminal sign-in methods with a copyable command instead of ACP authenticate", async () => {
+    const authenticate =
+      vi.fn<AgentHostAgentTargetSetupWatch["authenticate"]>();
+    const setup = createWatch(
+      {
+        snapshot: {
+          ...authRequired("extension:gemini").snapshot!,
+          authMethods: [
+            {
+              id: "login",
+              name: "Login with Kimi account",
+              type: "terminal",
+              terminalCommand: "/opt/kimi-code/bin/kimi login"
+            }
+          ]
+        },
+        loading: false,
+        failed: false
+      },
+      { authenticate }
+    );
+    installHost(new Map([["extension:gemini", setup.watch]]));
+    render(<Harness openDialog target={geminiTarget} />);
+
+    expect(
+      await screen.findByText("/opt/kimi-code/bin/kimi login")
+    ).toBeTruthy();
+    expect(screen.getByText(/must be completed in a terminal/)).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Continue to sign in" })
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy command" }));
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
+    expect(authenticate).not.toHaveBeenCalled();
+  });
+
+  function terminalLoginSetup(
+    overrides: Partial<AgentHostAgentTargetSetupWatch> = {}
+  ) {
+    return createWatch(
+      {
+        snapshot: {
+          ...authRequired("extension:gemini").snapshot!,
+          authMethods: [
+            {
+              id: "login",
+              name: "Login with Kimi account",
+              type: "terminal",
+              terminalCommand: "/opt/kimi-code/bin/kimi login"
+            }
+          ]
+        },
+        loading: false,
+        failed: false
+      },
+      overrides
+    );
+  }
+
+  it("launches an in-app terminal for terminal sign-in and closes it once ready", async () => {
+    const close = vi.fn();
+    const run = vi.fn(async (_input: { command: string; cwd?: string }) => ({
+      close
+    }));
+    const setup = terminalLoginSetup();
+    installHost(new Map([["extension:gemini", setup.watch]]), {
+      terminalLogin: { run }
+    });
+    render(<Harness openDialog target={geminiTarget} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start sign in" })
+    );
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run.mock.calls[0]?.[0]).toEqual({
+      command: "/opt/kimi-code/bin/kimi login"
+    });
+    expect(
+      await screen.findByText(/terminal has been opened in the workspace/)
+    ).toBeTruthy();
+
+    act(() => setup.publish(ready("extension:gemini")));
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+  });
+
+  it("cancels a waiting terminal sign-in and closes the terminal", async () => {
+    const close = vi.fn();
+    const run = vi.fn(async (_input: { command: string; cwd?: string }) => ({
+      close
+    }));
+    const setup = terminalLoginSetup();
+    installHost(new Map([["extension:gemini", setup.watch]]), {
+      terminalLogin: { run }
+    });
+    render(<Harness openDialog target={geminiTarget} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start sign in" })
+    );
+    expect(
+      await screen.findByText(/terminal has been opened in the workspace/)
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+    expect(
+      screen.queryByText(/terminal has been opened in the workspace/)
+    ).toBeNull();
+    expect(
+      await screen.findByRole("button", { name: "Start sign in" })
+    ).toBeTruthy();
+  });
+
+  it("keeps the copy fallback when the terminal cannot be launched", async () => {
+    const run = vi.fn(async () => {
+      throw new Error("Terminal login is unavailable in this window.");
+    });
+    const setup = terminalLoginSetup();
+    installHost(new Map([["extension:gemini", setup.watch]]), {
+      terminalLogin: { run }
+    });
+    render(<Harness openDialog target={geminiTarget} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start sign in" })
+    );
+    expect(
+      await screen.findByText(/could not be opened in this window/)
+    ).toBeTruthy();
+    expect(screen.getByText("/opt/kimi-code/bin/kimi login")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy command" })).toBeTruthy();
+  });
+
   it("resets dialog and auth selection when the target changes", async () => {
     const gemini = createWatch(authRequired("extension:gemini"));
     const codebuddy = createWatch({
@@ -349,7 +483,10 @@ function createWatch(
   };
 }
 
-function installHost(watches: Map<string, AgentHostAgentTargetSetupWatch>) {
+function installHost(
+  watches: Map<string, AgentHostAgentTargetSetupWatch>,
+  extra?: { terminalLogin?: AgentHostInputApi["terminalLogin"] }
+) {
   const watch = vi.fn(({ agentTargetId }: { agentTargetId: string }) => {
     const targetWatch = watches.get(agentTargetId);
     if (!targetWatch) throw new Error(`Missing watch for ${agentTargetId}`);
@@ -358,6 +495,7 @@ function installHost(watches: Map<string, AgentHostAgentTargetSetupWatch>) {
   const api: AgentHostInputApi = {
     agentTargetSetup: { watch },
     clipboard: { writeText: async () => undefined },
+    ...(extra?.terminalLogin ? { terminalLogin: extra.terminalLogin } : {}),
     filesystem: { readFileText: async () => ({ content: "" }) },
     workspace: {
       ensureDirectory: async () => undefined,

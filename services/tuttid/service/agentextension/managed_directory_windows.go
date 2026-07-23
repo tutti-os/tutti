@@ -88,6 +88,23 @@ func (w *managedRuntimeWorkspace) createTemp(prefix string) (*managedRuntimeDire
 	return result, nil
 }
 
+// createDirectory creates a fresh named directory inside the agent workspace.
+// It fails when the name already exists, so callers must remove or rename any
+// prior entry first.
+func (w *managedRuntimeWorkspace) createDirectory(name string) (*managedRuntimeDirectory, error) {
+	if err := w.verify(); err != nil {
+		return nil, err
+	}
+	if !validManagedRuntimeEntryName(name) {
+		return nil, errors.New("managed runtime directory name is invalid")
+	}
+	path := filepath.Join(w.agentPath, name)
+	if err := os.Mkdir(path, 0o700); err != nil {
+		return nil, err
+	}
+	return w.openDirectory(path)
+}
+
 func (w *managedRuntimeWorkspace) openDirectory(path string) (*managedRuntimeDirectory, error) {
 	path = filepath.Clean(path)
 	if filepath.Dir(path) != w.agentPath {

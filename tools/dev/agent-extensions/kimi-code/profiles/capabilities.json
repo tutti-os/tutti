@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "tutti.agent.capabilities.v1",
+  "declared": {
+    "imageInput": true,
+    "audioInput": false,
+    "embeddedContext": false,
+    "interrupt": true,
+    "resume": true,
+    "permissionModes": true,
+    "modelSelection": true,
+    "commands": true,
+    "skills": false
+  }
+}

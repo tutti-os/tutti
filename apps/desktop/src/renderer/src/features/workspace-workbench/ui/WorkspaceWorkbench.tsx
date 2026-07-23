@@ -39,6 +39,7 @@ import {
   registerWorkspaceAgentGuiLaunchHandler,
   requestWorkspaceAgentGuiLaunch
 } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
+import { registerWorkspaceTerminalLoginLaunchHandler } from "@renderer/features/workspace-agent/services/workspaceTerminalLoginLaunchCoordinator.ts";
 import {
   isDesktopAgentGUIProvider,
   normalizeDesktopAgentGUIProvider
@@ -106,6 +107,7 @@ import { WorkspaceFallbackState } from "./WorkspaceFallbackState.tsx";
 import type { WorkspaceWorkbenchHostSessionBinding } from "../services/workspaceWorkbenchHostService.interface.ts";
 import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
+import { defaultWorkspaceTerminalWorkbenchTypeId } from "../services/workspaceWorkbenchNodeIds.ts";
 import type { DesktopWorkspaceAppExternalHostApi } from "@preload/types";
 import type { DesktopWorkspaceAppExternalRendererEvent } from "@shared/contracts/ipc";
 import type {
@@ -304,6 +306,7 @@ function ReadyWorkspaceWorkbenchWithSession({
   const unregisterIssueManagerLaunchRef = useRef<(() => void) | null>(null);
   const unregisterGroupChatLaunchRef = useRef<(() => void) | null>(null);
   const unregisterWorkbenchNodeLaunchRef = useRef<(() => void) | null>(null);
+  const unregisterTerminalLoginLaunchRef = useRef<(() => void) | null>(null);
   const releaseAgentEnvHostRef = useRef<(() => void) | null>(null);
   const closeLaunchpad = useCallback(() => {
     setLaunchpadOpen(false);
@@ -399,6 +402,8 @@ function ReadyWorkspaceWorkbenchWithSession({
       unregisterGroupChatLaunchRef.current = null;
       unregisterWorkbenchNodeLaunchRef.current?.();
       unregisterWorkbenchNodeLaunchRef.current = null;
+      unregisterTerminalLoginLaunchRef.current?.();
+      unregisterTerminalLoginLaunchRef.current = null;
       releaseAgentEnvHostRef.current?.();
       releaseAgentEnvHostRef.current = null;
 
@@ -407,6 +412,31 @@ function ReadyWorkspaceWorkbenchWithSession({
       }
 
       releaseAgentEnvHostRef.current = agentEnvService.bindWorkbenchHost(host);
+
+      unregisterTerminalLoginLaunchRef.current =
+        registerWorkspaceTerminalLoginLaunchHandler(
+          state.workspace.id,
+          async ({ command, cwd }) => {
+            const nodeId = await host.launchNode({
+              payload: {
+                cwd,
+                initialInput: /[\r\n]$/u.test(command)
+                  ? command
+                  : `${command}\n`
+              },
+              reason: "host",
+              typeId: defaultWorkspaceTerminalWorkbenchTypeId
+            });
+            if (!nodeId) {
+              throw new Error("Terminal login did not open a workbench node.");
+            }
+            return {
+              close: () => {
+                host.closeNode(nodeId);
+              }
+            };
+          }
+        );
 
       unregisterAgentGuiLaunchRef.current =
         registerWorkspaceAgentGuiLaunchHandler(
@@ -547,6 +577,8 @@ function ReadyWorkspaceWorkbenchWithSession({
       unregisterGroupChatLaunchRef.current = null;
       unregisterWorkbenchNodeLaunchRef.current?.();
       unregisterWorkbenchNodeLaunchRef.current = null;
+      unregisterTerminalLoginLaunchRef.current?.();
+      unregisterTerminalLoginLaunchRef.current = null;
     };
   }, []);
 

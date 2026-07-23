@@ -108,6 +108,25 @@ ${(specification.agentExtensions?.sources ?? [])
   .join("\n")}
 \t\t},
 \t},
+\tAgentRuntimeTools: generatedAgentRuntimeToolDefaults{
+\t\tUV: generatedUVToolDefaults{
+\t\t\tVersion: ${goString(specification.agentRuntimeTools?.uv?.version ?? "")},
+\t\t\tArtifacts: []generatedUVToolArtifactDefaults{
+${(specification.agentRuntimeTools?.uv?.artifacts ?? [])
+  .map(
+    (artifact) => `\t\t\t\t{
+\t\t\t\t\tPlatform:          ${goString(artifact.platform)},
+\t\t\t\t\tURL:               ${goString(artifact.url)},
+\t\t\t\t\tSHA256:            ${goString(artifact.sha256)},
+\t\t\t\t\tSizeBytes:         ${artifact.sizeBytes},
+\t\t\t\t\tArchive:           ${goString(artifact.archive)},
+\t\t\t\t\tArchiveExecutable: ${goString(artifact.archiveExecutable)},
+\t\t\t\t},`
+  )
+  .join("\n")}
+\t\t\t},
+\t\t},
+\t},
 }
 `);
 }

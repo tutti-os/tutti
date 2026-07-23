@@ -24,6 +24,7 @@ import {
 } from "./createDesktopAgentHostApi.ts";
 import { WorkspaceAgentActivityService } from "./internal/workspaceAgentActivityService.ts";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
+import { registerWorkspaceTerminalLoginLaunchHandler } from "./workspaceTerminalLoginLaunchCoordinator.ts";
 
 const workspaceId = "workspace-1";
 
@@ -32,6 +33,46 @@ test("desktop agent host api projects the optional quick prompts capability", ()
   const api = createAgentHostApi({ agentQuickPromptService: quickPrompts });
 
   assert.equal(api.quickPrompts, quickPrompts);
+});
+
+test("desktop agent host api routes terminal login through the launch coordinator", async () => {
+  const api = createAgentHostApi();
+  const closeCalls: string[] = [];
+  const requests: Array<{
+    command: string;
+    cwd?: string;
+    workspaceId: string;
+  }> = [];
+  const unregister = registerWorkspaceTerminalLoginLaunchHandler(
+    workspaceId,
+    async (request) => {
+      requests.push(request);
+      return {
+        close: () => {
+          closeCalls.push("close");
+        }
+      };
+    }
+  );
+  try {
+    const handle = await api.terminalLogin?.run({
+      command: "/opt/kimi/bin/kimi login"
+    });
+    assert.deepEqual(requests, [
+      { command: "/opt/kimi/bin/kimi login", cwd: undefined, workspaceId }
+    ]);
+    handle?.close();
+    assert.deepEqual(closeCalls, ["close"]);
+  } finally {
+    unregister();
+  }
+
+  await assert.rejects(
+    () =>
+      api.terminalLogin?.run({ command: "/opt/kimi/bin/kimi login" }) ??
+      Promise.reject(new Error("missing terminalLogin")),
+    /Terminal login is unavailable/
+  );
 });
 
 type DesktopAgentHostApiUnderTest = AgentHostInputApi & {
@@ -163,6 +204,12 @@ test("desktop agent host api explicitly projects daemon target setup snapshots",
         id: "oauth-personal",
         name: "Log in with Google",
         description: "Personal account"
+      },
+      {
+        id: "login",
+        name: "Login with Kimi account",
+        type: "terminal",
+        terminalCommand: "/opt/kimi-code/bin/kimi login"
       }
     ],
     account: {
@@ -210,7 +257,16 @@ test("desktop agent host api explicitly projects daemon target setup snapshots",
       {
         id: "oauth-personal",
         name: "Log in with Google",
-        description: "Personal account"
+        description: "Personal account",
+        type: null,
+        terminalCommand: null
+      },
+      {
+        id: "login",
+        name: "Login with Kimi account",
+        description: null,
+        type: "terminal",
+        terminalCommand: "/opt/kimi-code/bin/kimi login"
       }
     ],
     account: {

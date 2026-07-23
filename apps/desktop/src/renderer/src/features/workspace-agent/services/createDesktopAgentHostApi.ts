@@ -29,6 +29,7 @@ import {
 } from "../../workspace-user-project/index.ts";
 import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface.ts";
+import { requestWorkspaceTerminalLoginLaunch } from "./workspaceTerminalLoginLaunchCoordinator.ts";
 
 interface CreateDesktopAgentHostApiInput {
   agentQuickPromptService?: AgentHostQuickPromptsApi;
@@ -55,7 +56,9 @@ export function projectDesktopAgentTargetSetupSnapshot(
     authMethods: snapshot.authMethods.map((method) => ({
       id: method.id,
       name: method.name,
-      description: method.description ?? null
+      description: method.description ?? null,
+      type: method.type ?? null,
+      terminalCommand: method.terminalCommand ?? null
     })),
     account: snapshot.account
       ? {
@@ -166,6 +169,19 @@ export function createDesktopAgentHostApi({
       writeImage: (input: { data: string; mimeType: "image/png" }) =>
         hostFilesApi.copyImageToClipboard(input),
       writeText: (text: string) => navigator.clipboard.writeText(text)
+    },
+    terminalLogin: {
+      run: async (input: { command: string; cwd?: string }) => {
+        const handle = await requestWorkspaceTerminalLoginLaunch({
+          command: input.command,
+          cwd: input.cwd,
+          workspaceId
+        });
+        if (!handle) {
+          throw new Error("Terminal login is unavailable in this window.");
+        }
+        return handle;
+      }
     },
     debug: {
       logRuntimeDiagnostics: (payload: unknown) => {

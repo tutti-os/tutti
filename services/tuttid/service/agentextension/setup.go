@@ -18,6 +18,10 @@ import (
 var (
 	ErrInstallPlanChanged = errors.New("agent target install plan changed")
 	ErrSetupServiceClosed = errors.New("agent target setup service is closed")
+	// ErrTerminalAuthMethod rejects ACP authenticate requests for terminal-type
+	// auth methods: their sign-in runs an interactive CLI flow that can only
+	// complete in a user-visible terminal, never inside the background probe.
+	ErrTerminalAuthMethod = errors.New("authentication method requires an interactive terminal")
 	clientActionIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 )
 
@@ -96,6 +100,7 @@ type SetupService struct {
 	Actions          SetupActionStore
 	Discovery        SetupDiscoveryDirectory
 	Runner           InstallCommandRunner
+	UVToolchain      UVToolchainResolver
 	AuthInvalidation RuntimeAuthInvalidation
 
 	mu           sync.Mutex
@@ -205,6 +210,9 @@ func (s *SetupService) Authenticate(ctx context.Context, input AuthenticateInput
 	}
 	if !containsRuntimeAuthMethod(current.AuthMethods, methodID) {
 		return SetupSnapshot{}, fmt.Errorf("%w: authentication method is not advertised", ErrInvalidInstallPlanRequest)
+	}
+	if method := findRuntimeAuthMethod(current.AuthMethods, methodID); method != nil && method.Type == "terminal" {
+		return SetupSnapshot{}, fmt.Errorf("%w: %s (run `%s` in a terminal, then re-detect)", ErrTerminalAuthMethod, methodID, method.TerminalCommand)
 	}
 
 	s.mu.Lock()
@@ -339,12 +347,16 @@ func setupStatusForAction(action SetupAction) SetupStatus {
 }
 
 func containsRuntimeAuthMethod(methods []RuntimeAuthMethod, methodID string) bool {
-	for _, method := range methods {
-		if method.ID == methodID {
-			return true
+	return findRuntimeAuthMethod(methods, methodID) != nil
+}
+
+func findRuntimeAuthMethod(methods []RuntimeAuthMethod, methodID string) *RuntimeAuthMethod {
+	for index := range methods {
+		if methods[index].ID == methodID {
+			return &methods[index]
 		}
 	}
-	return false
+	return nil
 }
 
 func (s *SetupService) runInstall(ctx context.Context, plan InstallPlan, action SetupAction) {

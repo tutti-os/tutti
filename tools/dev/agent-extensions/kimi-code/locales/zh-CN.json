@@ -1,0 +1,7 @@
+{
+  "agent.name": "Kimi Code",
+  "agent.description": "通过标准 ACP 使用 Kimi Code",
+  "runtime.install.title": "安装托管的 Kimi Code 运行时",
+  "runtime.install.description": "将固定版本运行时安装到 Tutti 按 Target 隔离的托管目录，不修改当前项目。",
+  "runtime.authRequired": "启动 ACP 会话前，请先在主机上运行 `kimi login`。"
+}
