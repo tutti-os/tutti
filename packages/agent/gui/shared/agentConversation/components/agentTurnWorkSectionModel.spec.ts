@@ -53,6 +53,41 @@ describe("agentTurnWorkSectionModel", () => {
     ).toBeNull();
   });
 
+  it("counts settled turn time from client submission", () => {
+    const prompt = {
+      ...message("Please fix it", null),
+      occurredAtUnixMs: 2_000,
+      sourceTimelineItems: [
+        {
+          id: 1,
+          agentSessionId: "session-1",
+          eventId: "user-1",
+          actorType: "user",
+          actorId: "user",
+          itemType: "message",
+          payload: { clientSubmittedAtUnixMs: 1_000 },
+          occurredAtUnixMs: 2_000
+        }
+      ]
+    };
+    const reply = message("Final answer", "Final answer", true);
+
+    const model = buildAgentTurnWorkSectionModel(
+      turnGroup([
+        userRow({ occurredAtUnixMs: 2_000, messages: [prompt] }),
+        assistantRow({ occurredAtUnixMs: 10_000, messages: [reply] })
+      ]),
+      canonicalTurn({
+        phase: "settled",
+        outcome: "completed",
+        startedAtUnixMs: 6_000,
+        settledAtUnixMs: 13_000
+      })
+    );
+
+    expect(model.timing).toEqual({ kind: "settled", elapsedSeconds: 12 });
+  });
+
   it("formats seconds and minute boundaries without a zero-second suffix", () => {
     expect(formatAgentTurnDuration(45)).toEqual({
       kind: "seconds",
