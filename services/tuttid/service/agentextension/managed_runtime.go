@@ -141,7 +141,7 @@ func (m *Manager) resolveInstalledManagedRuntime(
 		if artifact != nil {
 			identity = executableIdentity(fingerprint)
 		}
-		version, err := runtimeVersionWithIdentity(ctx, executable, candidate.Version.Args, candidate.Version.Constraint, identity)
+		version, err := m.runtimeVersionWithIdentity(ctx, executable, candidate.Version.Args, candidate.Version.Constraint, identity)
 		if err != nil {
 			if artifact != nil {
 				return RuntimeBinding{}, fmt.Errorf("%w: verified version probe failed: %v", ErrManagedRuntimeIntegrity, err)

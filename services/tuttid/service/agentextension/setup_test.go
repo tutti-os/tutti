@@ -103,6 +103,19 @@ func TestManagedBinaryVersionFixture(_ *testing.T) {
 	if os.Getenv("TUTTI_TEST_MANAGED_BINARY_VERSION") != "1" {
 		return
 	}
+	if logPath := os.Getenv("TUTTI_TEST_MANAGED_BINARY_VERSION_LOG"); logPath != "" {
+		file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := file.WriteString("probe\n"); err != nil {
+			_ = file.Close()
+			panic(err)
+		}
+		if err := file.Close(); err != nil {
+			panic(err)
+		}
+	}
 	fmt.Println("0.2.103")
 	if os.Getenv("TUTTI_TEST_MANAGED_BINARY_REPLACE") == "1" {
 		path, err := os.Executable()

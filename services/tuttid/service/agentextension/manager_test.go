@@ -251,7 +251,8 @@ func TestManagerResolveRuntimeUsesSignedUserSearchPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	executable := filepath.Join(binDir, "kimi")
-	if err := os.WriteFile(executable, []byte("#!/bin/sh\nprintf '0.28.0\\n'\n"), 0o700); err != nil {
+	versionProbeLog := filepath.Join(homeDir, "version-probes.log")
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\nprintf 'probe\\n' >> \"$VERSION_PROBE_LOG\"\nprintf '0.28.0\\n'\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
@@ -262,7 +263,12 @@ func TestManagerResolveRuntimeUsesSignedUserSearchPath(t *testing.T) {
 	manager := Manager{
 		Installations: agentextensiondata.NewFileInstallationStore(t.TempDir()),
 		RuntimeResolver: runtimecmd.Resolver{
-			Environ: func() []string { return []string{"PATH=/usr/bin:/bin"} },
+			Environ: func() []string {
+				return []string{
+					"PATH=/usr/bin:/bin",
+					"VERSION_PROBE_LOG=" + versionProbeLog,
+				}
+			},
 			HomeDir: func() (string, error) { return homeDir, nil },
 		},
 	}
@@ -282,6 +288,16 @@ func TestManagerResolveRuntimeUsesSignedUserSearchPath(t *testing.T) {
 	}
 	if binding.Source != "local" || binding.Version != "0.28.0" || len(binding.Command) != 2 || binding.Command[0] != executable || binding.Command[1] != "acp" {
 		t.Fatalf("ResolveRuntimeForCWD() = %#v", binding)
+	}
+	if _, err := manager.ResolveRuntimeForCWD(context.Background(), installation.ID, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	probes, err := os.ReadFile(versionProbeLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(probes), "probe\n"); got != 1 {
+		t.Fatalf("version probes = %d, want 1 across repeated runtime resolution", got)
 	}
 }
 

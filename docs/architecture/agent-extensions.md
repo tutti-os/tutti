@@ -463,6 +463,15 @@ active installation remains available. If no verified installation exists,
 the source is not registered and `tuttid` logs one
 `agent_extension.reconcile_failed` record with a JSON payload.
 
+Agent Target catalog reads continue to verify the installed extension package
+and managed runtime integrity before reporting availability. Successful runtime
+version probes are reused only while the resolved executable fingerprint,
+version arguments, and constraint are unchanged. Concurrent reads share the
+same in-flight probe. Failed probes are not cached, so repairing or installing a
+runtime is visible on the next read. Runtime launch and setup keep their
+authoritative integrity checks and do not trust catalog availability as launch
+authorization.
+
 Composite session-pinned adapter cache keys, richer tool/event profiles, and
 removal of remaining built-in catalogs remain migration work. Composer
 discovery is not setup state and does not infer
