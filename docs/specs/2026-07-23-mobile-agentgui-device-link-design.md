@@ -186,6 +186,13 @@ TypeScript 侧继续使用：
 
 Mobile、Tutti Personal 和 TSH 使用同一 tsh-server 账号体系。Tutti Personal 只有在登录功能开启且用户已登录时，才能开启移动端连接能力。
 
+“同账号”以账号服务返回的 canonical `user_id` 为准，不以界面展示的邮箱字符串
+判断。GitHub 登录与邮箱验证码登录即使展示相同邮箱，也可能对应不同账号 identity；
+Mobile 应优先允许用户复用 Desktop 的登录方式，不能通过邮箱相等放宽配对校验。
+Android GitHub 登录直接打开现有 Web 登录页，通过只监听 `127.0.0.1` 的短时 bridge
+接收一次性 transfer code，再复用账号服务兑换会话；App 不接触 GitHub 凭据或网页
+Cookie，也不新增移动端账号实体。
+
 配对必须同时满足：
 
 1. 手机拥有有效账号登录态；
@@ -470,7 +477,8 @@ pairing lifecycle 和 paired-device rendezvous 已完成并部署。Tutti Person
 控制面 adapter，以及 start/status/confirm/list/revoke 本地 API；challenge secret
 不会持久化，Desktop renderer 只在配对界面打开期间临时持有二维码 payload。
 Desktop UI 已接入 QR 创建、配对码显示/复制、状态轮询、自动确认和撤销；Android
-已接入同账号登录、Keystore 设备身份、Google Code Scanner/手动粘贴配对码、
+已接入系统浏览器 GitHub 登录、邮箱验证码登录、Keystore 设备身份、内置 ZXing
+扫码/手动粘贴配对码、
 challenge claim/poll，并只展示属于当前 Mobile identity 的配对设备。
 真实账号二维码联调仍是 M2 的剩余端到端完成条件。
 
@@ -506,7 +514,7 @@ snapshot polling。
 
 完成条件：登录、配对、选设备、选 workspace、重连和撤销形成完整非 Agent UI 闭环。
 
-当前进度：bare React Native 0.86 Android 工程、邮箱验证码登录、Keystore
+当前进度：bare React Native 0.86 Android 工程、系统浏览器 GitHub 登录、邮箱验证码登录、Keystore
 Ed25519 identity、扫码/粘贴配对码、配对设备列表、Native DeviceLink bridge、移动端 i18n
 和 semantic theme mapping 已完成。workspace 单项自动进入/多项选择、设备连接、
 Native 15 秒后台 grace 后断开也已接入。当前最低版本为 Android 13/API 33，

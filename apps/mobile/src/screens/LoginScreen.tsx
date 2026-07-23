@@ -9,7 +9,11 @@ import {
 } from "react-native";
 import { t } from "../i18n";
 import type { AccountSession } from "../native/mobileNative";
-import { sendEmailCode, verifyEmailCode } from "../services/accountClient";
+import {
+  sendEmailCode,
+  signInWithGitHub,
+  verifyEmailCode
+} from "../services/accountClient";
 import { theme } from "../theme";
 import { PrimaryButton } from "../components/PrimaryButton";
 
@@ -21,12 +25,12 @@ export function LoginScreen({ onSignedIn }: LoginScreenProps) {
   const [code, setCode] = useState("");
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<"email" | "github" | null>(null);
   const [step, setStep] = useState<"email" | "code">("email");
 
   const submit = async () => {
     setError(null);
-    setPending(true);
+    setPending("email");
     try {
       if (step === "email") {
         await sendEmailCode(email);
@@ -37,7 +41,26 @@ export function LoginScreen({ onSignedIn }: LoginScreenProps) {
     } catch {
       setError(t("genericError"));
     } finally {
-      setPending(false);
+      setPending(null);
+    }
+  };
+
+  const submitGitHub = async () => {
+    setError(null);
+    setPending("github");
+    try {
+      await onSignedIn(await signInWithGitHub());
+    } catch (cause) {
+      if (
+        typeof cause !== "object" ||
+        cause === null ||
+        !("code" in cause) ||
+        cause.code !== "BROWSER_LOGIN_CANCELLED"
+      ) {
+        setError(t("genericError"));
+      }
+    } finally {
+      setPending(null);
     }
   };
 
@@ -63,18 +86,29 @@ export function LoginScreen({ onSignedIn }: LoginScreenProps) {
         <Text style={styles.subtitle}>{t("loginSubtitle")}</Text>
 
         <View style={styles.form}>
+          <PrimaryButton
+            disabled={pending !== null}
+            label={t("githubLoginAction")}
+            loading={pending === "github"}
+            onPress={() => void submitGitHub()}
+          />
+          <View style={styles.alternative}>
+            <View style={styles.divider} />
+            <Text style={styles.alternativeText}>{t("loginAlternative")}</Text>
+            <View style={styles.divider} />
+          </View>
           <Text style={styles.label}>
             {t(step === "email" ? "email" : "code")}
           </Text>
           <TextInput
             autoCapitalize="none"
             autoComplete={step === "email" ? "email" : "one-time-code"}
-            editable={!pending}
+            editable={pending === null}
             inputMode={step === "email" ? "email" : "numeric"}
             keyboardType={step === "email" ? "email-address" : "number-pad"}
             onChangeText={step === "email" ? setEmail : setCode}
             onSubmitEditing={() => {
-              if (!disabled) {
+              if (!disabled && pending === null) {
                 void submit();
               }
             }}
@@ -88,9 +122,9 @@ export function LoginScreen({ onSignedIn }: LoginScreenProps) {
           ) : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <PrimaryButton
-            disabled={disabled}
+            disabled={disabled || pending !== null}
             label={t(step === "email" ? "loginAction" : "verifyAction")}
-            loading={pending}
+            loading={pending === "email"}
             onPress={() => void submit()}
           />
         </View>
@@ -105,6 +139,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700"
   },
+  alternative: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.space.small,
+    marginVertical: theme.space.small
+  },
+  alternativeText: {
+    color: theme.color.muted,
+    fontSize: 12
+  },
   brand: {
     alignItems: "center",
     flexDirection: "row",
@@ -116,6 +160,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     padding: theme.space.large
+  },
+  divider: {
+    backgroundColor: theme.color.border,
+    flex: 1,
+    height: StyleSheet.hairlineWidth
   },
   error: {
     color: theme.color.danger,

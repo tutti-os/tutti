@@ -170,19 +170,20 @@ Jest 检查。
 
 ## 6. 调试时先判断问题属于哪一层
 
-| 现象                           | 首先检查                                              |
-| ------------------------------ | ----------------------------------------------------- |
-| 页面布局、点击、列表滚动不正确 | React Native component 和 state                       |
-| DTO 有值但消息渲染错误         | AgentGUI projection，不要在 screen 内临时修数据       |
-| JS 报 native module 不存在     | Native module 注册、Gradle AAR 依赖、重新安装 App     |
-| App 切后台后连接状态错误       | Android lifecycle adapter                             |
-| 扫码未请求相机权限或立即返回   | Manifest `CAMERA`、App 权限和 ZXing `CaptureActivity` |
-| 手动配对点击后只闪动           | `TuttiMobileSecurity`、设备 identity 注册和页面错误区 |
-| ICE 没有 candidate             | Manifest 网络权限、网络状态、DeviceLink 诊断          |
-| QUIC 握手失败                  | peer identity、证书 fingerprint、protocol epoch       |
-| P2P 失败但 Relay 成功          | 这是允许的 fallback，检查清洗后的 path 诊断           |
-| 手机和桌面会话状态不一致       | snapshot/event reconcile 和 Agent API，不修本地缓存   |
-| 创建、发送、取消语义不一致     | `packages/agent/host`，不能在移动端复制生命周期       |
+| 现象                           | 首先检查                                                   |
+| ------------------------------ | ---------------------------------------------------------- |
+| 页面布局、点击、列表滚动不正确 | React Native component 和 state                            |
+| DTO 有值但消息渲染错误         | AgentGUI projection，不要在 screen 内临时修数据            |
+| JS 报 native module 不存在     | Native module 注册、Gradle AAR 依赖、重新安装 App          |
+| App 切后台后连接状态错误       | Android lifecycle adapter                                  |
+| 扫码未请求相机权限或立即返回   | Manifest `CAMERA`、App 权限和 ZXing `CaptureActivity`      |
+| 手动配对点击后只闪动           | `TuttiMobileSecurity`、设备 identity 注册和页面错误区      |
+| 同邮箱登录仍提示无法配对       | 确认 Mobile 与 Desktop 使用相同登录方式和同一账号 identity |
+| ICE 没有 candidate             | Manifest 网络权限、网络状态、DeviceLink 诊断               |
+| QUIC 握手失败                  | peer identity、证书 fingerprint、protocol epoch            |
+| P2P 失败但 Relay 成功          | 这是允许的 fallback，检查清洗后的 path 诊断                |
+| 手机和桌面会话状态不一致       | snapshot/event reconcile 和 Agent API，不修本地缓存        |
+| 创建、发送、取消语义不一致     | `packages/agent/host`，不能在移动端复制生命周期            |
 
 常用 ADB 命令：
 
@@ -253,8 +254,9 @@ Google Play 账号。以下事项等正式分发前再处理：
 - Personal `tuttid` 已接入设备注册、QR challenge、Desktop confirm、配对列表和撤销；
 - Personal 配对 API 已进入生成的 Go/TypeScript daemon client，账号 cookie 和设备私钥不会返回给 UI。
 - Desktop 设置页已接入二维码创建、配对码复制、轮询确认和撤销；
-- `apps/mobile` 已接入同账号邮箱验证码登录、Android Keystore 设备身份、设备列表、
-  内置 ZXing 二维码扫描或手动粘贴配对码，以及 challenge claim/poll；
+- `apps/mobile` 已接入系统浏览器 GitHub 登录和邮箱验证码登录、Android Keystore
+  设备身份、设备列表、内置 ZXing 二维码扫描或手动粘贴配对码，以及 challenge
+  claim/poll；
 - React Native 0.86、Kotlin native module、DeviceLink AAR 和四 ABI debug APK
   已在 Android 15 ARM64 模拟器完成构建、安装和启动验证。
 - 共享 authenticated facade 已统一 Desktop/Android 的 ICE、fingerprint pinning、
@@ -282,8 +284,10 @@ Google Play 账号。以下事项等正式分发前再处理：
 
 ## 10. Personal MVP 真机验收
 
-这一步需要真实 Tutti 账号、邮箱验证码和 Android 13 或更高版本的手机。不要在
-Issue、PR、聊天或日志中粘贴验证码、session cookie、二维码或配对码。
+这一步需要真实 Tutti 账号和 Android 13 或更高版本的手机。GitHub 登录会打开系统
+浏览器，并通过短时 localhost bridge 将一次性 transfer code 返回 App；GitHub
+凭据和网页 Cookie 不会进入 App。邮箱验证码仍可作为备选。不要在 Issue、PR、聊天
+或日志中粘贴验证码、session cookie、二维码、transfer code 或配对码。
 
 ### 10.1 启动当前分支的 Desktop
 
@@ -326,9 +330,11 @@ pnpm mobile:start
 pnpm mobile:android
 ```
 
-App 启动后，用与 Desktop 相同的邮箱获取并填写验证码。登录成功后点击配对；
-优先扫描 Desktop 二维码。首次扫码时允许 App 使用相机；如果当前环境无法使用相机，
-就在 Desktop 点击“复制配对码”，再在 Mobile 展开手动配对入口并粘贴。
+App 启动后，使用与 Desktop 相同的账号登录方式。如果 Desktop 使用 GitHub 登录，
+Mobile 也点击“使用 GitHub 登录”并在系统浏览器中完成登录；仅输入 GitHub 展示的
+相同邮箱不保证得到同一个账号 identity。登录成功后点击配对，优先扫描 Desktop
+二维码。首次扫码时允许 App 使用相机；如果当前环境无法使用相机，就在 Desktop
+点击“复制配对码”，再在 Mobile 展开手动配对入口并粘贴。
 
 配对二维码是 5 分钟有效的一次性 challenge。Desktop 会在 challenge 到期或状态查询
 失败后撤下旧二维码；此时重新点击“配对手机”生成新码，不要继续使用之前复制或拍摄的

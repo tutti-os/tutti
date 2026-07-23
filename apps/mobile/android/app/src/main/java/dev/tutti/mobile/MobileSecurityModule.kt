@@ -13,10 +13,12 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.modules.network.ForwardingCookieHandler
 import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import java.nio.charset.StandardCharsets
+import java.net.URI
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -34,6 +36,7 @@ import org.json.JSONObject
 class MobileSecurityModule(
     private val reactContext: ReactApplicationContext,
 ) : ReactContextBaseJavaModule(reactContext) {
+    private val browserAuthBridge = MobileBrowserAuthBridge(reactContext)
     private val store = SecureStore(reactContext)
     private var scanPromise: Promise? = null
     private val scanContract = ScanContract()
@@ -159,6 +162,86 @@ class MobileSecurityModule(
     }
 
     @ReactMethod
+    fun installSessionCookie(
+        accountBaseURL: String,
+        sessionId: String,
+        promise: Promise,
+    ) {
+        runCatching {
+            val cookieURL = validatedCookieURL(accountBaseURL)
+            val normalizedSessionID = sessionId.trim()
+            require(
+                normalizedSessionID.isNotEmpty() &&
+                    normalizedSessionID.none {
+                        it == ';' || it == '\r' || it == '\n'
+                    },
+            ) {
+                "Account session is invalid"
+            }
+            ForwardingCookieHandler().addCookies(
+                cookieURL,
+                listOf(
+                    "session_id=$normalizedSessionID; Path=/; Secure; HttpOnly; SameSite=Lax",
+                ),
+            )
+        }.fold({ promise.resolve(null) }) {
+            promise.reject(
+                "SESSION_COOKIE_WRITE_FAILED",
+                "Unable to install account session cookie",
+                it,
+            )
+        }
+    }
+
+    @ReactMethod
+    fun clearSessionCookie(
+        accountBaseURL: String,
+        promise: Promise,
+    ) {
+        runCatching {
+            ForwardingCookieHandler().addCookies(
+                validatedCookieURL(accountBaseURL),
+                listOf(
+                    "session_id=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax",
+                ),
+            )
+        }.fold({ promise.resolve(null) }) {
+            promise.reject(
+                "SESSION_COOKIE_CLEAR_FAILED",
+                "Unable to clear account session cookie",
+                it,
+            )
+        }
+    }
+
+    @ReactMethod
+    fun startBrowserLogin(
+        appId: String,
+        authLoginURL: String,
+        appCallbackURL: String,
+        promise: Promise,
+    ) {
+        runCatching {
+            val identity = store.getOrCreateIdentity()
+            browserAuthBridge.startLogin(
+                appId = appId,
+                authLoginURL = authLoginURL,
+                appCallbackURL = appCallbackURL,
+                deviceId = identity.deviceId,
+                deviceName = Build.MODEL.ifBlank { "Android" },
+                clientVersion = BuildConfig.VERSION_NAME,
+                promise = promise,
+            )
+        }.onFailure {
+            promise.reject(
+                "BROWSER_LOGIN_FAILED",
+                "Unable to start browser login",
+                it,
+            )
+        }
+    }
+
+    @ReactMethod
     fun scanQRCode(promise: Promise) {
         val activity = reactContext.currentActivity
         if (activity == null) {
@@ -199,6 +282,7 @@ class MobileSecurityModule(
 
     override fun invalidate() {
         reactContext.removeActivityEventListener(activityEventListener)
+        browserAuthBridge.close()
         scanPromise?.reject(
             "SCANNER_UNAVAILABLE",
             "QR scanner was closed",
@@ -209,6 +293,17 @@ class MobileSecurityModule(
 
     companion object {
         private const val QR_SCAN_REQUEST_CODE = 51731
+
+        private fun validatedCookieURL(rawURL: String): String {
+            val uri = URI(rawURL.trim())
+            require(
+                uri.scheme == "https" &&
+                    !uri.rawAuthority.isNullOrBlank(),
+            ) {
+                "Account URL must use HTTPS"
+            }
+            return "${uri.scheme}://${uri.rawAuthority}/"
+        }
     }
 }
 

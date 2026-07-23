@@ -104,6 +104,12 @@ CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 - [Browser Node focus pings miss iframe-hosted editors](./toolchain-browser-terminal.md#browser-node-focus-pings-miss-iframe-hosted-editors)
 - [Temporary Git fixture turns a linked worktree bare](./toolchain-browser-terminal.md#temporary-git-fixture-turns-a-linked-worktree-bare)
 
+## [Mobile](./mobile.md)
+
+Android app login, native bridge, secure identity, and mobile transport diagnostics.
+
+- [Browser login returns to the App but remains signed out](./mobile.md#browser-login-returns-to-the-app-but-remains-signed-out)
+
 ## [Computer Use](./computer-use.md)
 
 cua-driver discovery, targeting, capture, input delivery, and result verification.

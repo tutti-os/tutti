@@ -7,6 +7,13 @@ export interface AccountSession {
   userId: string;
 }
 
+export interface BrowserLoginCompletion {
+  attemptId: string;
+  bridgeToken: string;
+  deviceId: string;
+  transferCode: string;
+}
+
 export interface DeviceIdentity {
   arch: string;
   deviceId: string;
@@ -16,8 +23,13 @@ export interface DeviceIdentity {
 
 interface MobileSecurityNative {
   clearSession(): Promise<void>;
+  clearSessionCookie(accountBaseURL: string): Promise<void>;
   getOrCreateIdentity(): Promise<DeviceIdentity>;
   loadSession(): Promise<AccountSession | null>;
+  installSessionCookie(
+    accountBaseURL: string,
+    sessionId: string
+  ): Promise<void>;
   saveSession(
     sessionId: string,
     userId: string,
@@ -26,6 +38,11 @@ interface MobileSecurityNative {
   ): Promise<void>;
   scanQRCode(): Promise<string>;
   sign(message: string): Promise<string>;
+  startBrowserLogin(
+    appId: string,
+    authLoginURL: string,
+    appCallbackURL: string
+  ): Promise<BrowserLoginCompletion>;
 }
 
 interface DeviceLinkNative {

@@ -12,6 +12,7 @@ import {
   mobileSecurity,
   type AccountSession
 } from "./native/mobileNative";
+import { accountBaseURL } from "./config";
 import { DeviceScreen } from "./screens/DeviceScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { WorkspaceScreen } from "./screens/WorkspaceScreen";
@@ -26,7 +27,15 @@ export default function App() {
   useEffect(() => {
     mobileSecurity
       .loadSession()
-      .then(setSession)
+      .then(async (storedSession) => {
+        if (storedSession) {
+          await mobileSecurity.installSessionCookie(
+            accountBaseURL,
+            storedSession.sessionId
+          );
+        }
+        setSession(storedSession);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -83,6 +92,9 @@ export default function App() {
   const signOut = async () => {
     await deviceLink.closeLink().catch(() => undefined);
     await mobileSecurity.clearSession();
+    await mobileSecurity
+      .clearSessionCookie(accountBaseURL)
+      .catch(() => undefined);
     setConnectedDevice(null);
     setSession(null);
   };

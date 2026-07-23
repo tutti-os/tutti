@@ -1,5 +1,10 @@
-import { accountAppID, accountBaseURL } from "../config";
-import type { AccountSession } from "../native/mobileNative";
+import {
+  accountAppID,
+  accountAuthLoginURL,
+  accountBaseURL,
+  mobileAuthCallbackURL
+} from "../config";
+import { mobileSecurity, type AccountSession } from "../native/mobileNative";
 import { accountCookie, HTTPError, readJSON } from "./http";
 
 interface AccountEnvelope<T> {
@@ -50,6 +55,39 @@ export async function verifyEmailCode(
   if (!sessionId) {
     throw new Error("account session is missing");
   }
+  return accountSession(sessionId, email);
+}
+
+export async function signInWithGitHub(): Promise<AccountSession> {
+  const completion = await mobileSecurity.startBrowserLogin(
+    accountAppID,
+    accountAuthLoginURL,
+    mobileAuthCallbackURL
+  );
+  const redeemed = await accountRequest<{
+    sessionId?: string;
+    session_id?: string;
+  }>("auth/v1/redeem_desktop_transfer_code", {
+    app_id: accountAppID,
+    attempt_id: completion.attemptId,
+    bridge_token: completion.bridgeToken,
+    device_id: completion.deviceId,
+    transfer_code: completion.transferCode
+  });
+  const sessionId = String(
+    redeemed.sessionId ?? redeemed.session_id ?? ""
+  ).trim();
+  if (!sessionId) {
+    throw new Error("account session is missing");
+  }
+  return accountSession(sessionId);
+}
+
+async function accountSession(
+  sessionId: string,
+  fallbackEmail = ""
+): Promise<AccountSession> {
+  await mobileSecurity.installSessionCookie(accountBaseURL, sessionId);
   const user = await accountRequest<UserInfo>(
     "user/v1/user_info",
     {},
@@ -61,7 +99,7 @@ export async function verifyEmailCode(
   }
   return {
     email: String(
-      user.email ?? user.emailAddress ?? user.email_address ?? email
+      user.email ?? user.emailAddress ?? user.email_address ?? fallbackEmail
     ).trim(),
     name: String(user.name ?? "").trim(),
     sessionId,
