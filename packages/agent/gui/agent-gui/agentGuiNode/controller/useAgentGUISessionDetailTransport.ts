@@ -1,5 +1,6 @@
 import {
   selectLatestActivationForSession,
+  selectSessionHasOlderMessages,
   type SessionReconcileScope,
   type AgentActivitySnapshot,
   type AgentSessionEngine
@@ -21,6 +22,7 @@ import {
   useAgentConversationMessagePaging,
   windowHasTurnMissingUserPrompt
 } from "./useAgentConversationMessagePaging";
+import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 
 export function useAgentGUISessionDetailTransport(input: {
   activeConversationId: string | null;
@@ -65,11 +67,17 @@ export function useAgentGUISessionDetailTransport(input: {
     }),
     [agentActivityRuntimeOrigin, workspaceId]
   );
+  const canonicalHasOlderMessages = useEngineSelector(
+    sessionEngine,
+    (engineState) =>
+      selectSessionHasOlderMessages(engineState, activeConversationId)
+  );
   const state = useAgentSessionControllerState(
     sessionViewRef(activeConversationId),
     activeConversationId
       ? (agentActivitySnapshot.sessionMessagesById[activeConversationId] ?? [])
-      : []
+      : [],
+    canonicalHasOlderMessages
   );
   const resolveSessionMessages = useCallback(
     (agentSessionId: string | null | undefined) => {
@@ -160,7 +168,10 @@ export function useAgentGUISessionDetailTransport(input: {
     runtime: agentActivityRuntime,
     sessionViewRef,
     view: {
-      get: state.getAgentSessionView,
+      get: (ref) =>
+        ref.agentSessionId?.trim() === activeConversationId
+          ? state.activeSessionView
+          : state.getAgentSessionView(ref),
       mergeOlder: state.mergeAgentSessionViewOlderMessages,
       setOlderMessagesLoading: state.setAgentSessionViewOlderMessagesLoading
     },

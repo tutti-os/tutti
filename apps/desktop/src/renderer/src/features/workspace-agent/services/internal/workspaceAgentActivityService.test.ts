@@ -8,6 +8,7 @@ import {
   selectEngineTurnsForSession,
   selectSessionActivationPresentations,
   selectSessionAttention,
+  selectSessionHasOlderMessages,
   selectSessionMutations
 } from "@tutti-os/agent-activity-core";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
@@ -1173,6 +1174,7 @@ test("WorkspaceAgentActivityService reconciles a realtime message version gap be
   await service.load("ws-1");
   await service.listSessionMessages({
     agentSessionId: "session-1",
+    order: "desc",
     workspaceId: "ws-1"
   });
   assert.equal(
@@ -1325,6 +1327,7 @@ test("WorkspaceAgentActivityService reconciles cached messages after reconnect w
   await service.load("ws-1");
   await service.listSessionMessages({
     agentSessionId: "session-1",
+    order: "desc",
     workspaceId: "ws-1"
   });
   assert.ok(connectionListener);
@@ -1846,7 +1849,7 @@ test("WorkspaceAgentActivityService reconciles child sessions and their messages
       ) => {
         messageRequests.push(agentSessionId);
         return {
-          hasMore: false,
+          hasMore: agentSessionId === "child-1",
           latestVersion: 1,
           messages: [
             {
@@ -1897,11 +1900,11 @@ test("WorkspaceAgentActivityService reconciles child sessions and their messages
     snapshot.sessionMessagesById["child-1"]?.[0]?.turnId,
     "child-turn-1"
   );
+  const engineState = service.getSessionEngine("ws-1").getSnapshot();
+  assert.equal(selectSessionHasOlderMessages(engineState, "session-1"), false);
+  assert.equal(selectSessionHasOlderMessages(engineState, "child-1"), true);
   assert.deepEqual(
-    selectEngineTurnsForSession(
-      service.getSessionEngine("ws-1").getSnapshot(),
-      "session-1"
-    ).map((turn) => ({
+    selectEngineTurnsForSession(engineState, "session-1").map((turn) => ({
       turnId: turn.turnId,
       phase: turn.phase,
       updatedAtUnixMs: turn.updatedAtUnixMs,
@@ -1957,6 +1960,60 @@ test("WorkspaceAgentActivityService loads the newest history page first", async 
   assert.deepEqual(requests, [
     { afterVersion: 0, beforeVersion: undefined, limit: 100, order: "desc" }
   ]);
+  assert.equal(
+    selectSessionHasOlderMessages(
+      service.getSessionEngine("ws-1").getSnapshot(),
+      "session-1"
+    ),
+    true
+  );
+});
+
+test("WorkspaceAgentActivityService caches a boundary only for the unbounded newest page", async () => {
+  let hasMore = true;
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessionMessages: async () => ({
+        hasMore,
+        latestVersion: 4,
+        messages: []
+      }),
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  await service.listSessionMessages({
+    agentSessionId: "session-1",
+    order: "desc",
+    workspaceId: "ws-1"
+  });
+  assert.equal(
+    selectSessionHasOlderMessages(
+      service.getSessionEngine("ws-1").getSnapshot(),
+      "session-1"
+    ),
+    true
+  );
+
+  hasMore = false;
+  await service.listSessionMessages({
+    afterVersion: 4,
+    agentSessionId: "session-1",
+    order: "asc",
+    workspaceId: "ws-1"
+  });
+  assert.equal(
+    selectSessionHasOlderMessages(
+      service.getSessionEngine("ws-1").getSnapshot(),
+      "session-1"
+    ),
+    true
+  );
 });
 
 test("WorkspaceAgentActivityService drains every incremental history page", async () => {
@@ -2031,6 +2088,14 @@ test("WorkspaceAgentActivityService drains every incremental history page", asyn
       .sessionMessagesById["session-1"]?.map((item) => item.version),
     [100]
   );
+  service.getSessionEngine("ws-1").dispatch({
+    historyBoundaries: [
+      { agentSessionId: "session-1", hasOlderMessages: true }
+    ],
+    messages: [],
+    type: "message/snapshotReceived",
+    workspaceId: "ws-1"
+  });
   mode = "incremental";
   requests.length = 0;
   await (
@@ -2051,6 +2116,13 @@ test("WorkspaceAgentActivityService drains every incremental history page", asyn
       .getSnapshot("ws-1")
       .sessionMessagesById["session-1"]?.map((item) => item.version),
     [100, 200, 300]
+  );
+  assert.equal(
+    selectSessionHasOlderMessages(
+      service.getSessionEngine("ws-1").getSnapshot(),
+      "session-1"
+    ),
+    true
   );
 });
 

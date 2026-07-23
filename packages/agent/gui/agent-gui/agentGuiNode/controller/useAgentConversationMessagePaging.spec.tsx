@@ -45,6 +45,46 @@ describe("useAgentConversationMessagePaging", () => {
     expect(reconcileDetail).toHaveBeenCalledWith("historical-session");
   });
 
+  it("does not infer an older page from a non-contiguous mutable version cursor", async () => {
+    const listSessionMessages = vi.fn();
+    const { result } = renderHook(() =>
+      useAgentConversationMessagePaging({
+        diagnostics: { error: vi.fn(), page: vi.fn() },
+        getActiveSessionId: () => "historical-session",
+        getCanonicalMessages: () => [],
+        isMounted: () => true,
+        projection: {
+          maxVersion: () => 4,
+          minVersion: () => 2,
+          windowHasTurnMissingUserPrompt: () => false
+        },
+        reload: {
+          getActivationStatus: () => null,
+          reconcileDetail: vi.fn(),
+          syncConversationList: vi.fn()
+        },
+        runtime: { listSessionMessages } as unknown as AgentActivityRuntime,
+        sessionViewRef: (agentSessionId) => ({
+          agentSessionId,
+          origin: "test",
+          workspaceId: "workspace-1"
+        }),
+        view: {
+          get: () => null,
+          mergeOlder: vi.fn(),
+          setOlderMessagesLoading: vi.fn()
+        },
+        workspaceId: "workspace-1"
+      })
+    );
+
+    await act(async () => {
+      await result.current.loadOlderMessages("historical-session");
+    });
+
+    expect(listSessionMessages).not.toHaveBeenCalled();
+  });
+
   it("clears older-message loading after a successful page", async () => {
     const mergeOlder = vi.fn();
     const setOlderMessagesLoading = vi.fn();

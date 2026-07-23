@@ -4,6 +4,7 @@ import {
   mergeAgentActivityMessages
 } from "../merge.ts";
 import type { EngineIntent, EngineReducerResult } from "./types.ts";
+import type { AgentActivityMessageHistoryBoundary } from "./pendingIntents.types.ts";
 import type { SessionMessagesState } from "./sessionMessages.types.ts";
 
 const NO_COMMANDS = [] as const;
@@ -28,7 +29,7 @@ export interface SessionMessagesReducerContext {
 }
 
 export function createInitialSessionMessagesState(): SessionMessagesState {
-  return { messagesBySessionId: {} };
+  return { hasOlderMessagesBySessionId: {}, messagesBySessionId: {} };
 }
 
 export function sessionMessagesReducer(
@@ -38,10 +39,15 @@ export function sessionMessagesReducer(
 ): EngineReducerResult<SessionMessagesState> {
   switch (intent.type) {
     case "message/snapshotReceived":
-      return mergeIncomingMessages(state, context, intent.messages);
+      return mergeIncomingSnapshot(
+        state,
+        context,
+        intent.messages,
+        intent.historyBoundaries
+      );
     case "session/snapshotReceived":
     case "session/upserted":
-      return canonicalizeMessageBuckets(state, context.sessionsById);
+      return canonicalizeSessionMessageState(state, context.sessionsById);
     case "session/removed":
       return dropSessionBuckets(
         state,
@@ -53,12 +59,12 @@ export function sessionMessagesReducer(
   }
 }
 
-function mergeIncomingMessages(
+function mergeIncomingSnapshot(
   state: SessionMessagesState,
   context: SessionMessagesReducerContext,
-  messages: readonly AgentActivityMessage[]
+  messages: readonly AgentActivityMessage[],
+  historyBoundaries: readonly AgentActivityMessageHistoryBoundary[] | undefined
 ): EngineReducerResult<SessionMessagesState> {
-  if (messages.length === 0) return unchanged(state);
   const bySessionId = new Map<string, AgentActivityMessage[]>();
   for (const message of messages) {
     const rawId = message.agentSessionId.trim();
@@ -71,9 +77,52 @@ function mergeIncomingMessages(
   for (const [rawId, sessionMessages] of bySessionId) {
     next = mergeSessionMessages(next, context, rawId, sessionMessages);
   }
-  return next === state.messagesBySessionId
+  const hasOlderMessagesBySessionId = mergeHistoryBoundaries(
+    state.hasOlderMessagesBySessionId,
+    context,
+    historyBoundaries
+  );
+  return next === state.messagesBySessionId &&
+    hasOlderMessagesBySessionId === state.hasOlderMessagesBySessionId
     ? unchanged(state)
-    : changed({ messagesBySessionId: next });
+    : changed({
+        ...state,
+        hasOlderMessagesBySessionId,
+        messagesBySessionId: next
+      });
+}
+
+function mergeHistoryBoundaries(
+  current: Readonly<Record<string, boolean>>,
+  context: SessionMessagesReducerContext,
+  boundaries: readonly AgentActivityMessageHistoryBoundary[] | undefined
+): Readonly<Record<string, boolean>> {
+  let next = current;
+  for (const boundary of boundaries ?? []) {
+    const rawId = boundary.agentSessionId.trim();
+    const agentSessionId = resolveCanonicalAgentSessionId(
+      context.sessionsById,
+      rawId
+    );
+    if (!agentSessionId) {
+      continue;
+    }
+    const hasAlias =
+      rawId !== agentSessionId &&
+      Object.prototype.hasOwnProperty.call(next, rawId);
+    if (next[agentSessionId] === boundary.hasOlderMessages && !hasAlias) {
+      continue;
+    }
+    if (next[agentSessionId] !== boundary.hasOlderMessages) {
+      next = { ...next, [agentSessionId]: boundary.hasOlderMessages };
+    }
+    if (hasAlias) {
+      const withoutAlias = { ...next };
+      delete withoutAlias[rawId];
+      next = withoutAlias;
+    }
+  }
+  return next;
 }
 
 /**
@@ -134,11 +183,11 @@ function mergeSessionMessages(
   return next;
 }
 
-function canonicalizeMessageBuckets(
+function canonicalizeSessionMessageState(
   state: SessionMessagesState,
   sessionsById: Readonly<Record<string, SessionMessagesSessionIdentity>>
 ): EngineReducerResult<SessionMessagesState> {
-  let next = state.messagesBySessionId;
+  let messagesBySessionId = state.messagesBySessionId;
   for (const [rawAgentSessionId, messages] of Object.entries(
     state.messagesBySessionId
   )) {
@@ -153,20 +202,54 @@ function canonicalizeMessageBuckets(
       continue;
     }
     const merged = mergeAgentActivityMessages(
-      next[canonicalAgentSessionId] ?? [],
+      messagesBySessionId[canonicalAgentSessionId] ?? [],
       canonicalizeMessages(messages, canonicalAgentSessionId)
     );
-    next = deleteBucket(
+    messagesBySessionId = deleteBucket(
       {
-        ...next,
+        ...messagesBySessionId,
         [canonicalAgentSessionId]: merged
       },
       rawAgentSessionId
     );
   }
-  return next === state.messagesBySessionId
+  const hasOlderMessagesBySessionId = canonicalizeHistoryBoundaries(
+    state.hasOlderMessagesBySessionId,
+    sessionsById
+  );
+  return messagesBySessionId === state.messagesBySessionId &&
+    hasOlderMessagesBySessionId === state.hasOlderMessagesBySessionId
     ? unchanged(state)
-    : changed({ messagesBySessionId: next });
+    : changed({
+        ...state,
+        hasOlderMessagesBySessionId,
+        messagesBySessionId
+      });
+}
+
+function canonicalizeHistoryBoundaries(
+  current: Readonly<Record<string, boolean>>,
+  sessionsById: Readonly<Record<string, SessionMessagesSessionIdentity>>
+): Readonly<Record<string, boolean>> {
+  let next = current;
+  for (const [rawAgentSessionId, hasOlderMessages] of Object.entries(current)) {
+    const canonicalAgentSessionId = resolveCanonicalAgentSessionId(
+      sessionsById,
+      rawAgentSessionId
+    );
+    if (
+      !canonicalAgentSessionId ||
+      canonicalAgentSessionId === rawAgentSessionId
+    ) {
+      continue;
+    }
+    const canonicalValue = next[canonicalAgentSessionId];
+    next = deleteBoundary(next, rawAgentSessionId);
+    if (canonicalValue === undefined) {
+      next = { ...next, [canonicalAgentSessionId]: hasOlderMessages };
+    }
+  }
+  return next;
 }
 
 function dropSessionBuckets(
@@ -191,15 +274,34 @@ function dropSessionBuckets(
   ) {
     removableIds.add(providerSessionId);
   }
-  let next = state.messagesBySessionId;
+  let messagesBySessionId = state.messagesBySessionId;
+  let hasOlderMessagesBySessionId = state.hasOlderMessagesBySessionId;
   for (const removableId of removableIds) {
-    if (Object.prototype.hasOwnProperty.call(next, removableId)) {
-      next = deleteBucket(next, removableId);
+    if (
+      Object.prototype.hasOwnProperty.call(messagesBySessionId, removableId)
+    ) {
+      messagesBySessionId = deleteBucket(messagesBySessionId, removableId);
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(
+        hasOlderMessagesBySessionId,
+        removableId
+      )
+    ) {
+      hasOlderMessagesBySessionId = deleteBoundary(
+        hasOlderMessagesBySessionId,
+        removableId
+      );
     }
   }
-  return next === state.messagesBySessionId
+  return messagesBySessionId === state.messagesBySessionId &&
+    hasOlderMessagesBySessionId === state.hasOlderMessagesBySessionId
     ? unchanged(state)
-    : changed({ messagesBySessionId: next });
+    : changed({
+        ...state,
+        hasOlderMessagesBySessionId,
+        messagesBySessionId
+      });
 }
 
 /**
@@ -249,6 +351,15 @@ function deleteBucket(
   agentSessionId: string
 ): Record<string, readonly AgentActivityMessage[]> {
   const next = { ...messagesBySessionId };
+  delete next[agentSessionId];
+  return next;
+}
+
+function deleteBoundary(
+  boundariesBySessionId: Readonly<Record<string, boolean>>,
+  agentSessionId: string
+): Readonly<Record<string, boolean>> {
+  const next = { ...boundariesBySessionId };
   delete next[agentSessionId];
   return next;
 }

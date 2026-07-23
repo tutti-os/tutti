@@ -10,8 +10,14 @@ interface ReconcileAgentSessionMessagePagesInput {
   adapter: AgentActivityAdapter;
   agentSessionId: string;
   cached: AgentActivityMessage[];
+  historyBoundary: boolean | undefined;
   shouldAbort: () => boolean;
   workspaceId: string;
+}
+
+export interface ReconciledAgentSessionMessagePage {
+  historyBoundary?: boolean;
+  page: AgentActivityMessagePage;
 }
 
 export interface InlineMessageVersionContinuity {
@@ -57,14 +63,15 @@ export function analyzeInlineMessageVersionContinuity(
 
 export async function reconcileAgentSessionMessagePages(
   input: ReconcileAgentSessionMessagePagesInput
-): Promise<AgentActivityMessagePage> {
-  if (input.cached.length === 0) {
-    return input.adapter.listSessionMessages({
+): Promise<ReconciledAgentSessionMessagePage> {
+  if (input.historyBoundary === undefined) {
+    const page = await input.adapter.listSessionMessages({
       workspaceId: input.workspaceId,
       agentSessionId: input.agentSessionId,
       limit: 100,
       order: "desc"
     });
+    return { historyBoundary: page.hasMore, page };
   }
 
   const afterVersion = reconcileAfterVersion(input.cached);
@@ -80,12 +87,14 @@ export async function reconcileAgentSessionMessagePages(
     shouldAbort: input.shouldAbort
   });
   return {
-    hasMore: false,
-    latestVersion: result.messages.reduce(
-      (latest, message) => Math.max(latest, message.version),
-      afterVersion
-    ),
-    messages: result.messages
+    page: {
+      hasMore: false,
+      latestVersion: result.messages.reduce(
+        (latest, message) => Math.max(latest, message.version),
+        afterVersion
+      ),
+      messages: result.messages
+    }
   };
 }
 

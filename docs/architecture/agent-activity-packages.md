@@ -165,6 +165,8 @@ It owns:
 - the host adapter interface
 - canonical session, turn, interaction, message, composer-option, prompt-queue,
   and attention state inside one workspace engine
+- the exact server-confirmed older-history boundary for each canonical
+  per-session message window
 - memoized projection from engine state to the `AgentActivitySnapshot` runtime
   contract
 - message merge, immutable presentation-sequence ordering, mutable version
@@ -812,8 +814,14 @@ the normalized event is applied:
   `session/upserted`, and message buckets are canonicalized as soon as either
   shape reveals a provider-session alias
 - when a session is removed, use its pre-removal identity to delete both the
-  canonical message bucket and any provider-session alias bucket
+  canonical message bucket and any provider-session alias bucket, including
+  their older-history boundaries
 - deduplicate messages by stable message identity and version
+- retain `hasMore` from the initial descending message page as the canonical
+  older-history boundary; incremental ascending and realtime snapshots omit the
+  boundary so their page-continuation result cannot overwrite it
+- never infer older-history availability from message `version`; `version` is
+  the mutable incremental cursor
 - treat transcript `message_update` messages as normalized input: each message
   must have `messageId`, positive `version`/`seq`, nullable `turnId`, and
   `occurredAtUnixMs` before core merges it

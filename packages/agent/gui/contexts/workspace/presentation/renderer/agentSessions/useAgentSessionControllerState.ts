@@ -8,7 +8,8 @@ import {
 
 export function useAgentSessionControllerState(
   activeRef: AgentSessionViewRef,
-  canonicalMessages: readonly AgentActivityMessage[] = []
+  canonicalMessages: readonly AgentActivityMessage[] = [],
+  canonicalHasOlderMessages?: boolean
 ) {
   const transport = useAgentSessionTransport();
   const paging = useAgentSessionPagingState();
@@ -20,14 +21,15 @@ export function useAgentSessionControllerState(
         ? {
             ...(transportEntry ?? {
               olderMessages: [],
-              hasOlderMessages: false,
+              hasOlderMessages: null,
               oldestLoadedVersion: null
             }),
             ...(pagingEntry ?? {
               error: null,
               isLoadingMessages: false,
               isLoadingOlderMessages: false
-            })
+            }),
+            hasOlderMessages: transportEntry?.hasOlderMessages ?? false
           }
         : null;
     },
@@ -52,36 +54,37 @@ export function useAgentSessionControllerState(
   );
   void transport.entries;
   void paging.entries;
-  const storedActiveView = getAgentSessionView(activeRef);
+  const storedActiveTransport = transport.get(activeRef);
+  const storedActivePaging = paging.get(activeRef);
   const canonicalOldestVersion = oldestVersion(canonicalMessages);
-  const activeSessionView = storedActiveView
+  const hasActiveView =
+    storedActiveTransport !== null ||
+    storedActivePaging !== null ||
+    canonicalOldestVersion !== null ||
+    canonicalHasOlderMessages !== undefined;
+  const activeSessionView = hasActiveView
     ? {
-        ...storedActiveView,
+        error: storedActivePaging?.error ?? null,
         hasOlderMessages:
-          storedActiveView.hasOlderMessages ||
-          (storedActiveView.oldestLoadedVersion === null &&
-            canonicalOldestVersion !== null &&
-            canonicalOldestVersion > 1),
+          storedActiveTransport?.hasOlderMessages ??
+          canonicalHasOlderMessages ??
+          false,
+        isLoadingMessages: storedActivePaging?.isLoadingMessages ?? false,
+        isLoadingOlderMessages:
+          storedActivePaging?.isLoadingOlderMessages ?? false,
+        olderMessages: storedActiveTransport?.olderMessages ?? [],
         oldestLoadedVersion:
-          storedActiveView.oldestLoadedVersion === null
+          storedActiveTransport?.oldestLoadedVersion === null ||
+          storedActiveTransport === null
             ? canonicalOldestVersion
             : canonicalOldestVersion === null
-              ? storedActiveView.oldestLoadedVersion
+              ? storedActiveTransport.oldestLoadedVersion
               : Math.min(
-                  storedActiveView.oldestLoadedVersion,
+                  storedActiveTransport.oldestLoadedVersion,
                   canonicalOldestVersion
                 )
       }
-    : canonicalOldestVersion === null
-      ? null
-      : {
-          error: null,
-          hasOlderMessages: canonicalOldestVersion > 1,
-          isLoadingMessages: false,
-          isLoadingOlderMessages: false,
-          olderMessages: [],
-          oldestLoadedVersion: canonicalOldestVersion
-        };
+    : null;
   return {
     activeSessionView,
     deleteAgentSessionView,

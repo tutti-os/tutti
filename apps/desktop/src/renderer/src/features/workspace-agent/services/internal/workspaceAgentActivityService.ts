@@ -283,6 +283,18 @@ export class WorkspaceAgentActivityService
       .then((page) => {
         if (input.cache !== false) {
           entry.engine.dispatch({
+            ...(input.order === "desc" &&
+            input.afterVersion === undefined &&
+            input.beforeVersion === undefined
+              ? {
+                  historyBoundaries: [
+                    {
+                      agentSessionId: input.agentSessionId,
+                      hasOlderMessages: page.hasMore
+                    }
+                  ]
+                }
+              : {}),
             messages: page.messages,
             type: "message/snapshotReceived",
             workspaceId

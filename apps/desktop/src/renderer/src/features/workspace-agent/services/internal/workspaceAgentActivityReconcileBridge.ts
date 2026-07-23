@@ -1,12 +1,12 @@
 import {
-  type AgentActivityMessagePage,
   type AgentActivitySession,
   type AgentActivitySnapshot
 } from "@tutti-os/agent-activity-core";
 import {
   createAgentActivitySnapshotProjector,
   parseInlineActivityMessages,
-  selectEngineSession
+  selectEngineSession,
+  selectSessionHasOlderMessages
 } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityEnsureSessionSynchronizedInput } from "../workspaceAgentActivityService.interface.ts";
 import type { WorkspaceAgentSessionEngineHost } from "./workspaceAgentSessionEngineHost.ts";
@@ -608,14 +608,16 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
       return;
     }
-    const reconcileMessages = async (
-      sessions: AgentActivitySession[]
-    ): Promise<AgentActivityMessagePage[]> =>
+    const reconcileMessages = async (sessions: AgentActivitySession[]) =>
       Promise.all(
         sessions.map(async (session) => {
           const sessionId = session.agentSessionId;
           const cached =
             this.activitySnapshot(workspaceId).sessionMessagesById[sessionId];
+          const historyBoundary = selectSessionHasOlderMessages(
+            entry.engine.getSnapshot(),
+            sessionId
+          );
           const afterVersion = reconcileAfterVersion(cached ?? []);
           this.reportReconcileTrace({
             agentSessionId: sessionId,
@@ -623,10 +625,11 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
             workspaceId,
             fields: { afterVersion, requestedSessionId: agentSessionId }
           });
-          const page = await reconcileAgentSessionMessagePages({
+          const result = await reconcileAgentSessionMessagePages({
             adapter: entry.adapter,
             agentSessionId: sessionId,
             cached: cached ?? [],
+            historyBoundary,
             shouldAbort: () => this.isSessionTombstoned(workspaceId, sessionId),
             workspaceId
           });
@@ -636,12 +639,12 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
             workspaceId,
             fields: {
               afterVersion,
-              latestVersion: page.latestVersion,
-              messageCount: page.messages.length,
+              latestVersion: result.page.latestVersion,
+              messageCount: result.page.messages.length,
               requestedSessionId: agentSessionId
             }
           });
-          return page;
+          return { agentSessionId: sessionId, ...result };
         })
       );
     const discoveredSessions = [
@@ -675,11 +678,22 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       "reconcile.combined.state_upsert",
       { live }
     );
-    const reconciledMessages = pages.flatMap((page) => page.messages);
+    const reconciledMessages = pages.flatMap((result) => result.page.messages);
+    const historyBoundaries = pages.flatMap((result) =>
+      result.historyBoundary === undefined
+        ? []
+        : [
+            {
+              agentSessionId: result.agentSessionId,
+              hasOlderMessages: result.historyBoundary
+            }
+          ]
+    );
     for (const message of reconciledMessages) {
       this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
     }
     entry.engine.dispatch({
+      ...(historyBoundaries.length > 0 ? { historyBoundaries } : {}),
       messages: reconciledMessages,
       type: "message/snapshotReceived",
       workspaceId
@@ -744,6 +758,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     const entry = this.entry(workspaceId);
     const messages =
       this.activitySnapshot(workspaceId).sessionMessagesById[agentSessionId];
+    const historyBoundary = selectSessionHasOlderMessages(
+      entry.engine.getSnapshot(),
+      agentSessionId
+    );
     const afterVersion = reconcileAfterVersion(messages ?? []);
     this.reportReconcileTrace({
       agentSessionId,
@@ -751,10 +769,11 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       workspaceId,
       fields: { afterVersion }
     });
-    const page = await reconcileAgentSessionMessagePages({
+    const result = await reconcileAgentSessionMessagePages({
       adapter: entry.adapter,
       agentSessionId,
       cached: messages ?? [],
+      historyBoundary,
       shouldAbort: () => this.isSessionTombstoned(workspaceId, agentSessionId),
       workspaceId
     });
@@ -767,15 +786,25 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       workspaceId,
       fields: {
         afterVersion,
-        latestVersion: page.latestVersion,
-        messageCount: page.messages.length
+        latestVersion: result.page.latestVersion,
+        messageCount: result.page.messages.length
       }
     });
-    for (const message of page.messages) {
+    for (const message of result.page.messages) {
       this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
     }
     entry.engine.dispatch({
-      messages: page.messages,
+      ...(result.historyBoundary === undefined
+        ? {}
+        : {
+            historyBoundaries: [
+              {
+                agentSessionId,
+                hasOlderMessages: result.historyBoundary
+              }
+            ]
+          }),
+      messages: result.page.messages,
       type: "message/snapshotReceived",
       workspaceId
     });

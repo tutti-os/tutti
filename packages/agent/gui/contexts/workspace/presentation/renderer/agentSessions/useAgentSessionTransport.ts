@@ -10,13 +10,13 @@ export interface AgentSessionViewRef {
 
 export interface AgentSessionTransportEntry {
   olderMessages: AgentActivityMessage[];
-  hasOlderMessages: boolean;
+  hasOlderMessages: boolean | null;
   oldestLoadedVersion: number | null;
 }
 
 const EMPTY_ENTRY: AgentSessionTransportEntry = {
   olderMessages: [],
-  hasOlderMessages: false,
+  hasOlderMessages: null,
   oldestLoadedVersion: null
 };
 
@@ -86,7 +86,7 @@ export function useAgentSessionTransport() {
       update(ref, (entry) => ({
         ...entry,
         olderMessages: [],
-        hasOlderMessages: false,
+        hasOlderMessages: null,
         oldestLoadedVersion: null
       })),
     [update]

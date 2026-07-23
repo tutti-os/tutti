@@ -108,6 +108,7 @@ export {
   selectSessionAttention
 } from "./engine/attentionReadState.selectors.ts";
 export {
+  selectSessionHasOlderMessages,
   selectSessionMessages,
   selectSessionMessagesById
 } from "./engine/sessionMessages.selectors.ts";
@@ -217,6 +218,7 @@ export type {
 } from "./engine/promptQueue.types.ts";
 export type {
   ActivityMessagesReceivedIntent,
+  AgentActivityMessageHistoryBoundary,
   PendingActivationIntentRecord,
   PendingActivationStatus,
   PendingIntentsIntent,

@@ -273,6 +273,8 @@ One `(workspaceId, runtime origin)` maps to one `AgentSessionEngine`. Panel unmo
 The engine owns:
 
 - canonical Session, Turn, Interaction, and Message indexes
+- the exact server-confirmed older-history boundary for each canonical
+  per-Session message window
 - pending activation/submit intents and optimistic projections
 - prompt queue, send-now, and cancel-then-send coordination
 - session mutation, settings, composer options, and operation state
@@ -328,6 +330,11 @@ notice does not offer a manual retry because transport recovery is host-owned.
 - realtime authoritative entities use upsert intents
 - message updates fold inline only when unseen versions are continuous
 - version gaps and reconnects trigger incremental message reconciliation for hydrated Sessions
+- the initial descending message page carries its exact `hasMore` boundary into
+  the engine; realtime and incremental ascending updates omit that boundary and
+  must not overwrite it
+- `version` remains a mutable update cursor and must not be used to infer
+  whether older pages exist
 - Turn, Interaction, and legacy state invalidation trigger authoritative Session reconciliation
 - realtime provenance survives until the authoritative result reaches the engine; fetch failure must not downgrade it to historical
 
@@ -392,7 +399,12 @@ Relative time uses one renderer-realm minute clock. Timestamp leaves subscribe d
 
 Rail selection, detail hydration, older-page loading, and transcript projection are separate states.
 
-A focused controller may own detail paging/loading/error. Canonical messages, Turns, Interactions, and optimistic prompts still come from the engine. An empty message list means neither hydrated nor not-found.
+A focused controller owns older-page requests, loading/error state, and
+UI-local prepended pages. It reads the engine's exact older-history boundary
+for the canonical window and replaces that boundary only with an explicit
+older-page response. Canonical messages, Turns, Interactions, and optimistic
+prompts still come from the engine. An empty message list means neither hydrated
+nor not-found.
 
 Timeline projection is pure, deterministic, and provider-neutral. React views render rows/cards and dispatch actions.
 

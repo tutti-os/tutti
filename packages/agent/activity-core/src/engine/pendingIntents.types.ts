@@ -246,7 +246,18 @@ export interface SubmitCanceledIntent {
 export interface ActivityMessagesReceivedIntent {
   type: "message/snapshotReceived";
   messages: readonly AgentActivityMessage[];
+  /**
+   * Exact server-confirmed history boundaries for the canonical message
+   * windows in this snapshot. Omission means this snapshot carries no history
+   * boundary information, as with realtime or incremental-ascending updates.
+   */
+  historyBoundaries?: readonly AgentActivityMessageHistoryBoundary[];
   workspaceId?: string;
+}
+
+export interface AgentActivityMessageHistoryBoundary {
+  agentSessionId: string;
+  hasOlderMessages: boolean;
 }
 
 export type PendingIntentsIntent =

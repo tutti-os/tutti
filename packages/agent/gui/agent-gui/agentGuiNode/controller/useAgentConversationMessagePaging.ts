@@ -148,29 +148,6 @@ export function filterMessagesForDetailWindowOverlay(input: {
   );
 }
 
-export function sessionViewHasUnhydratedOlderDetailMessages(input: {
-  agentSessionId: string;
-  detailMessages: readonly AgentActivityMessage[];
-  hasLoadedInitialMessages: boolean;
-  hasOlderMessages: boolean;
-  oldestLoadedVersion: number | null;
-  snapshotMessagesById: Record<string, AgentActivityMessage[]>;
-}): boolean {
-  if (
-    input.hasLoadedInitialMessages ||
-    input.hasOlderMessages ||
-    input.detailMessages.length === 0
-  )
-    return false;
-  const oldest =
-    input.oldestLoadedVersion ?? minFiniteMessageVersion(input.detailMessages);
-  if (oldest === null) return false;
-  const snapshotOldest = minFiniteMessageVersion(
-    input.snapshotMessagesById[input.agentSessionId] ?? []
-  );
-  return oldest > 1 || (snapshotOldest !== null && snapshotOldest < oldest);
-}
-
 export function sessionHasRenderableMessages(input: {
   agentSessionId: string;
   snapshotMessagesById: Record<string, AgentActivityMessage[]>;
@@ -276,11 +253,7 @@ export function useAgentConversationMessagePaging(
       );
       const oldestLoadedVersion =
         view?.oldestLoadedVersion ?? canonicalOldestVersion;
-      const hasOlderMessages =
-        view?.hasOlderMessages === true ||
-        (view?.oldestLoadedVersion == null &&
-          canonicalOldestVersion !== null &&
-          canonicalOldestVersion > 1);
+      const hasOlderMessages = view?.hasOlderMessages === true;
       if (
         !hasOlderMessages ||
         view?.isLoadingOlderMessages === true ||

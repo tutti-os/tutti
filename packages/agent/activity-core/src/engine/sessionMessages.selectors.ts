@@ -17,3 +17,11 @@ export function selectSessionMessages(
   if (!id) return EMPTY_MESSAGES;
   return state.sessionMessages.messagesBySessionId[id] ?? EMPTY_MESSAGES;
 }
+
+export function selectSessionHasOlderMessages(
+  state: AgentSessionEngineState,
+  agentSessionId: string | null | undefined
+): boolean | undefined {
+  const id = agentSessionId?.trim() ?? "";
+  return id ? state.sessionMessages.hasOlderMessagesBySessionId[id] : undefined;
+}

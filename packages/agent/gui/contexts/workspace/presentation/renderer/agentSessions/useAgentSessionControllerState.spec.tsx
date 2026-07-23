@@ -23,9 +23,24 @@ function message(version: number): AgentActivityMessage {
 }
 
 describe("useAgentSessionControllerState", () => {
+  it("uses the exact engine boundary instead of inferring history from message versions", () => {
+    const { result } = renderHook(() =>
+      useAgentSessionControllerState(
+        ACTIVE_REF,
+        [message(2), message(4)],
+        false
+      )
+    );
+
+    expect(result.current.activeSessionView).toMatchObject({
+      hasOlderMessages: false,
+      oldestLoadedVersion: 2
+    });
+  });
+
   it("keeps a terminal older page authoritative over the bounded canonical window", () => {
     const { result } = renderHook(() =>
-      useAgentSessionControllerState(ACTIVE_REF, [message(446)])
+      useAgentSessionControllerState(ACTIVE_REF, [message(446)], true)
     );
 
     expect(result.current.activeSessionView?.hasOlderMessages).toBe(true);
