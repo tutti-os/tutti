@@ -180,6 +180,29 @@ The supported stable IDs are `meet-tutti`, `task-breakdown`, `quality-review`,
 `agent-interaction`, and `import-session`. Omitting `disabled` (or passing an
 empty array) renders all five entries.
 
+## Tutti Mode capability
+
+Tutti Mode UI (empty-hero toggle, composer badge activation, `/tutti`) is a
+host-gated product capability under
+`hostCapabilities.capabilityMenuState.tuttiMode.enabled`.
+
+Hosts must set `enabled: true` to show those controls. Omitting `tuttiMode` or
+setting `enabled: false` fails closed — the same rule as other unsupported host
+capabilities. External hosts that share AgentGUI for Codex/Claude/VM sessions
+should keep Tutti Mode disabled unless they intentionally productize it, and
+should also hide Tutti branding home chips via `disabled` (for example
+`meet-tutti`).
+
+```tsx
+<AgentGUI
+  disabled={["meet-tutti", "import-session"]}
+  hostCapabilities={{
+    capabilityMenuState: { tuttiMode: { enabled: false } }
+  }}
+  {...props}
+/>
+```
+
 ## Agent Directory
 
 `AgentGUI` requires the host's `/agents` projection through its `agents` prop.

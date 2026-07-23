@@ -468,9 +468,17 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
       onRetryComposerOptions: retryComposerOptions,
-      onTuttiModeChange: tuttiPlan.setTuttiModeActiveAndSettleReview,
+      // Only wire Tutti Mode callbacks when the host explicitly enables the
+      // capability. Empty hero toggle keys off callback presence; slash/badge
+      // use capabilityMenuState.tuttiMode.enabled === true (fail closed).
+      onTuttiModeChange:
+        capabilityMenuState?.tuttiMode?.enabled === true
+          ? tuttiPlan.setTuttiModeActiveAndSettleReview
+          : undefined,
       onTuttiModeOrchestrationIntensityChange:
-        setTuttiModeOrchestrationIntensity,
+        capabilityMenuState?.tuttiMode?.enabled === true
+          ? setTuttiModeOrchestrationIntensity
+          : undefined,
       onPlanIssueBudgetPresetChange: updatePlanIssueBudgetPreset,
       onSubmit: tuttiPlan.submitPromptOrDecidePlan,
       onSubmitEmpty: tuttiPlan.planReviewSendActive

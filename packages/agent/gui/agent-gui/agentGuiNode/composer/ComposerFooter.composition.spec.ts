@@ -99,7 +99,7 @@ describe("ComposerFooter trigger composition", () => {
 
   it("uses the host Tutti feature gate for typed slash-command submits", () => {
     expect(composerSource).toContain(
-      "tuttiModeSupported: capabilityMenuState?.tuttiMode?.enabled !== false"
+      "tuttiModeSupported: capabilityMenuState?.tuttiMode?.enabled === true"
     );
     expect(slashActionsSource).toContain("tuttiSupported: tuttiModeSupported");
     expect(slashActionsSource).not.toContain("tuttiSupported: true");

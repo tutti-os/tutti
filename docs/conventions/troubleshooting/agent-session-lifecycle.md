@@ -223,7 +223,10 @@
   `initialTuttiModeActivation` or its Tutti `capabilityRefs` even when the
   upstream type carries them. Reading mutable draft state after submit can also
   lose the exact composer selection. Separately, allowing `/tutti` while the lab
-  flag is disabled produces renderer state that the daemon must reject.
+  flag is disabled produces renderer state that the daemon must reject. AgentGUI
+  must therefore treat `capabilityMenuState.tuttiMode.enabled === true` as the
+  sole opt-in for the hero toggle, badge activation, and `/tutti` (omit or
+  `enabled: false` fails closed).
 - **Fix:** Snapshot active/inactive state and orchestration intensity atomically
   with the composer submit. Preserve both activation and capability provenance
   through every create projection, and gate slash actions with the same host
