@@ -1,9 +1,15 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { AgentGUIAccountMenuState } from "@tutti-os/agent-gui";
+import { useService } from "@tutti-os/infra/di";
+import { INotificationService } from "@tutti-os/ui-notifications";
 import {
   BillingIcon,
   Button,
   CloseIcon,
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
   CreditsIcon,
   OpenLinkLinedIcon,
   Popover,
@@ -79,7 +85,8 @@ type WorkspaceAccountMenuState = AgentGUIAccountMenuState & {
 };
 
 function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
-  const { locale } = useTranslation();
+  const { locale, t } = useTranslation();
+  const notifications = useService(INotificationService);
   const { service: accountService, state: accountState } = useAccountService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
   const [
@@ -181,6 +188,21 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
       onLogout() {
         void accountService.logout();
       },
+      async onCopyUserId() {
+        if (!user?.user_id) {
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(user.user_id);
+          notifications.success({
+            title: t("workspace.accountMenu.copyUserIdSuccess")
+          });
+        } catch {
+          notifications.error({
+            title: t("workspace.accountMenu.copyUserIdFailed")
+          });
+        }
+      },
       onOpenExternal(url) {
         void workbenchHostService.openExternal(url);
       }
@@ -193,6 +215,8 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
     accountState.user,
     debugRegistrationCreditsToastEnabled,
     locale,
+    notifications,
+    t,
     workbenchHostService
   ]);
 }
@@ -205,6 +229,7 @@ interface WorkspaceAccountMenuLabels {
   free: string;
   signIn: string;
   signOut: string;
+  copyUserId: string;
   loading: string;
   unavailable: string;
   dataUnavailable: string;
@@ -224,6 +249,7 @@ function useWorkspaceAccountMenuLabels(): WorkspaceAccountMenuLabels {
     free: t("workspace.accountMenu.free"),
     signIn: t("workspace.accountMenu.signIn"),
     signOut: t("workspace.accountMenu.signOut"),
+    copyUserId: t("workspace.accountMenu.copyUserId"),
     loading: t("workspace.accountMenu.loading"),
     unavailable: t("workspace.accountMenu.unavailable"),
     dataUnavailable: t("workspace.accountMenu.dataUnavailable"),
@@ -312,17 +338,26 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
             className="relative grid size-8 cursor-pointer place-items-center rounded-full border border-transparent bg-transparent p-0 text-[var(--workbench-chrome-foreground)] shadow-none hover:border-transparent hover:bg-transparent focus-visible:border-transparent focus-visible:bg-transparent active:bg-transparent aria-expanded:bg-transparent aria-expanded:text-[var(--workbench-chrome-foreground)] [-webkit-app-region:no-drag]"
             data-account-menu-trigger="true"
           >
-            <span className="grid size-7 place-items-center overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_16%,transparent)] text-[12px] font-semibold">
-              {accountMenuState.user?.avatar ? (
-                <img
-                  alt=""
-                  className="size-full object-cover"
-                  src={accountMenuState.user.avatar}
-                />
-              ) : (
-                <span aria-hidden="true">{initials}</span>
-              )}
-            </span>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <span className="grid size-7 place-items-center overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_16%,transparent)] text-[12px] font-semibold">
+                  {accountMenuState.user?.avatar ? (
+                    <img
+                      alt=""
+                      className="size-full object-cover"
+                      src={accountMenuState.user.avatar}
+                    />
+                  ) : (
+                    <span aria-hidden="true">{initials}</span>
+                  )}
+                </span>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem onSelect={accountMenuState.onCopyUserId}>
+                  {labels.copyUserId}
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
             {accountMenuState.user ? (
               <img
                 alt=""

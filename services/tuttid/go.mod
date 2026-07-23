@@ -17,6 +17,7 @@ require (
 	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.0
 	github.com/tutti-os/tutti/packages/appcli/core v0.0.0
 	github.com/tutti-os/tutti/packages/auth/bridge-go v0.0.0
+	github.com/tutti-os/tutti/packages/commerce v0.0.0
 	github.com/tutti-os/tutti/packages/events/stream-go v0.0.0
 	github.com/tutti-os/tutti/packages/workbench/service v0.0.0
 	github.com/tutti-os/tutti/packages/workspace/files v0.0.0
@@ -85,6 +86,7 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/speakeasy-api/jsonpath v0.6.3 // indirect
 	github.com/speakeasy-api/openapi v1.19.2 // indirect
+	github.com/tutti-os/tutti/packages/agent/activity-replication v0.0.0 // indirect
 	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect
 	github.com/woodsbury/decimal128 v1.4.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
@@ -108,3 +110,5 @@ tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 replace github.com/tutti-os/tutti/packages/appcli/core => ../../packages/appcli/core
 
 replace github.com/tutti-os/tutti/packages/auth/bridge-go => ../../packages/auth/bridge-go
+
+replace github.com/tutti-os/tutti/packages/commerce => ../../packages/commerce

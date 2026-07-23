@@ -195,6 +195,18 @@ func TestGetProductSummaryFetchesCommerceWithSessionCookie(t *testing.T) {
 	}
 }
 
+func TestCommerceAuthorizerFailsClosedWithoutSessionCookie(t *testing.T) {
+	service := NewService(filepath.Join(t.TempDir(), "auth.json"))
+	request := httptest.NewRequest(http.MethodGet, "https://tutti.sh/api/commerce/v1/user-info", nil)
+
+	if err := service.authorizeCommerceRequest(request); err == nil {
+		t.Fatal("authorizeCommerceRequest error = nil, want missing session cookie")
+	}
+	if cookie := request.Header.Get("Cookie"); cookie != "" {
+		t.Fatalf("Cookie = %q, want empty", cookie)
+	}
+}
+
 func TestMembershipSummaryMapsVIPUserInfoContract(t *testing.T) {
 	falseValue := false
 	trueValue := true

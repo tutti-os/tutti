@@ -1,6 +1,7 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   Coins,
+  Copy,
   Crown,
   ExternalLink,
   Gauge,
@@ -11,7 +12,15 @@ import {
   Wrench,
   X
 } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@tutti-os/ui-system";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  Popover,
+  PopoverContent,
+  PopoverTrigger
+} from "@tutti-os/ui-system";
 import { AccountMembershipBadge } from "../AccountMembershipBadge";
 import { AgentProbeUsageFreshness } from "../AgentProbeUsageFreshness";
 import { AgentUsageMeter } from "../AgentUsageMeter";
@@ -40,6 +49,31 @@ interface AgentGUIAccountRewardToastProps {
 }
 
 const accountRewardToastAutoDismissMs = 120_000;
+
+function AgentGUIAccountAvatar({
+  accountMenuState,
+  children,
+  label
+}: {
+  accountMenuState: AgentGUIAccountMenuState;
+  children: ReactNode;
+  label: string;
+}): React.JSX.Element {
+  if (!accountMenuState.user || !accountMenuState.onCopyUserId) {
+    return <>{children}</>;
+  }
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onSelect={accountMenuState.onCopyUserId}>
+          <Copy aria-hidden="true" size={15} strokeWidth={1.8} />
+          {label}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
 
 const AgentGUIAccountRewardToast = memo(function AgentGUIAccountRewardToast({
   toast,
@@ -143,17 +177,25 @@ export const AgentGUIAccountRailMenu = memo(function AgentGUIAccountRailMenu({
             data-account-menu-trigger="true"
             disabled={previewMode}
           >
-            <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-[var(--background-fronted)] text-[13px] font-semibold">
-              {accountMenuState.user?.avatar ? (
-                <img
-                  alt=""
-                  className="h-full w-full object-cover"
-                  src={accountMenuState.user.avatar}
-                />
-              ) : (
-                <span aria-hidden="true">{initials}</span>
-              )}
-            </span>
+            <AgentGUIAccountAvatar
+              accountMenuState={accountMenuState}
+              label={labels.accountMenuCopyUserId}
+            >
+              <span
+                className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-[var(--background-fronted)] text-[13px] font-semibold"
+                data-testid="agent-gui-account-avatar"
+              >
+                {accountMenuState.user?.avatar ? (
+                  <img
+                    alt=""
+                    className="h-full w-full object-cover"
+                    src={accountMenuState.user.avatar}
+                  />
+                ) : (
+                  <span aria-hidden="true">{initials}</span>
+                )}
+              </span>
+            </AgentGUIAccountAvatar>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13px] font-semibold leading-4">
                 {userLabel}
@@ -174,17 +216,22 @@ export const AgentGUIAccountRailMenu = memo(function AgentGUIAccountRailMenu({
         >
           <div className="flex min-w-0 flex-col">
             <div className="flex min-w-0 items-center gap-2 px-2 py-2">
-              <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[8px] bg-[var(--background-fronted)] text-[13px] font-semibold text-[var(--text-primary)]">
-                {accountMenuState.user?.avatar ? (
-                  <img
-                    alt=""
-                    className="h-full w-full object-cover"
-                    src={accountMenuState.user.avatar}
-                  />
-                ) : (
-                  initials
-                )}
-              </span>
+              <AgentGUIAccountAvatar
+                accountMenuState={accountMenuState}
+                label={labels.accountMenuCopyUserId}
+              >
+                <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[8px] bg-[var(--background-fronted)] text-[13px] font-semibold text-[var(--text-primary)]">
+                  {accountMenuState.user?.avatar ? (
+                    <img
+                      alt=""
+                      className="h-full w-full object-cover"
+                      src={accountMenuState.user.avatar}
+                    />
+                  ) : (
+                    initials
+                  )}
+                </span>
+              </AgentGUIAccountAvatar>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] font-semibold text-[var(--text-primary)]">
                   {userLabel}

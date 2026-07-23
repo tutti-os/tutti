@@ -195,6 +195,7 @@ export interface AgentGUIViewLabels {
   accountMenuFree: string;
   accountMenuSignIn: string;
   accountMenuSignOut: string;
+  accountMenuCopyUserId: string;
   accountMenuLoading: string;
   accountMenuUnavailable: string;
   accountMenuDataUnavailable: string;

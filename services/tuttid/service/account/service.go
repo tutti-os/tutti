@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	authbridge "github.com/tutti-os/tutti/packages/auth/bridge-go"
+	"github.com/tutti-os/tutti/packages/commerce"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -36,7 +37,9 @@ type Service struct {
 	mu       sync.Mutex
 	client   *authbridge.Client
 	attempts map[string]*authbridge.LoginAttempt
-	rewardMu sync.Mutex
+
+	commerceMu sync.Mutex
+	commerce   *commerce.Service
 }
 
 type LoginStart struct {

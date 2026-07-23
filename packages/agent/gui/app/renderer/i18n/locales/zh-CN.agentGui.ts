@@ -411,6 +411,7 @@ export const zhCNAgentGui = {
   accountMenuFree: "Free",
   accountMenuSignIn: "登录",
   accountMenuSignOut: "退出登录",
+  accountMenuCopyUserId: "复制用户 ID",
   accountMenuLoading: "加载中",
   accountMenuUnavailable: "--",
   accountMenuDataUnavailable: "部分账号数据暂不可用",

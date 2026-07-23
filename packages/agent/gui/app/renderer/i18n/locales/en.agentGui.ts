@@ -387,6 +387,7 @@ export const enAgentGui = {
   accountMenuFree: "Free",
   accountMenuSignIn: "Sign in",
   accountMenuSignOut: "Sign out",
+  accountMenuCopyUserId: "Copy user ID",
   accountMenuLoading: "Loading",
   accountMenuUnavailable: "--",
   accountMenuDataUnavailable: "Some account data is unavailable",
