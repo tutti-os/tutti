@@ -139,10 +139,13 @@ export function selectRepositoryChecks(changedFiles, { group } = {}) {
   return repositoryCheckDefinitions.filter(
     (definition) =>
       (!group || definition.group === group) &&
-      changedFiles.some(
-        (file) =>
-          isCheckInfrastructure(file) || definition.matches(normalize(file))
-      )
+      selectRepositoryCheckInputs(definition, changedFiles).length > 0
+  );
+}
+
+export function selectRepositoryCheckInputs(definition, changedFiles) {
+  return changedFiles.filter(
+    (file) => isCheckInfrastructure(file) || definition.matches(normalize(file))
   );
 }
 
