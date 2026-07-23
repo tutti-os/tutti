@@ -52,6 +52,17 @@ func TestNormalizeWorkbenchSnapshotRejectsInvalidMinimizedTimestamp(t *testing.T
 	}
 }
 
+func TestNormalizeWorkbenchSnapshotRejectsInvalidLayoutBasis(t *testing.T) {
+	t.Parallel()
+
+	snapshot := workbenchSnapshotWithSpacesFixture()
+	snapshot.LayoutBasis.SurfaceSize.Width = 0
+	_, _, err := normalizeWorkbenchSnapshot(snapshot)
+	if err == nil || !strings.Contains(err.Error(), "surface size") {
+		t.Fatalf("normalizeWorkbenchSnapshot() error = %v, want layout basis surface size error", err)
+	}
+}
+
 func TestNormalizeWorkbenchSnapshotRejectsOversizedPayload(t *testing.T) {
 	t.Parallel()
 
@@ -95,6 +106,9 @@ func TestNormalizeWorkbenchSnapshotEncodesCanonicalFields(t *testing.T) {
 	}
 	if (*decoded.Spaces)[0].Frame == nil || (*decoded.Spaces)[0].Frame.Width != 640 {
 		t.Fatalf("Space frame = %#v, want width 640", (*decoded.Spaces)[0].Frame)
+	}
+	if decoded.LayoutBasis == nil || decoded.LayoutBasis.SurfaceSize.Width != 1440 {
+		t.Fatalf("LayoutBasis = %#v, want surface width 1440", decoded.LayoutBasis)
 	}
 	if decoded.Metadata["initialized"] != true {
 		t.Fatalf("Metadata = %#v, want initialized=true", decoded.Metadata)
@@ -246,7 +260,24 @@ func workbenchSnapshotWithSpacesFixture() WorkbenchSnapshot {
 		ActiveNodeID:  &activeNodeID,
 		Spaces:        &spaces,
 		ActiveSpaceID: &activeSpaceID,
-		Metadata:      map[string]interface{}{"initialized": true},
+		LayoutBasis: &WorkbenchSnapshotLayoutBasis{
+			SurfaceSize: WorkbenchSnapshotSize{
+				Width:  1440,
+				Height: 900,
+			},
+			LayoutConstraints: WorkbenchSnapshotLayoutConstraints{
+				MinWidth:       280,
+				MinHeight:      160,
+				SurfacePadding: 0,
+				SafeArea: WorkbenchSnapshotSafeArea{
+					Top:    52,
+					Right:  0,
+					Bottom: 88,
+					Left:   0,
+				},
+			},
+		},
+		Metadata: map[string]interface{}{"initialized": true},
 	}
 }
 

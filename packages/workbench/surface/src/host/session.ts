@@ -1,5 +1,8 @@
 import type { WorkbenchSnapshot } from "@tutti-os/workbench-snapshot";
-import { createWorkbenchSnapshotFromState } from "../core/snapshot.ts";
+import {
+  createWorkbenchSnapshotFromState,
+  createWorkbenchSnapshotLayoutBasis
+} from "../core/snapshot.ts";
 import type { WorkbenchNode, WorkbenchState } from "../core/types.ts";
 import { createWorkbenchController } from "../store/createWorkbenchController.ts";
 import type {
@@ -8,7 +11,6 @@ import type {
 } from "../store/types.ts";
 import {
   type ClosedDockWindowFrameEntry,
-  compactRestoredWorkbenchHostNodes,
   createDefaultLaunchResult,
   createProjectedNodeID,
   createWorkbenchLaunchedHostNode,
@@ -25,6 +27,11 @@ import {
   updateProjectedNodeFromInput,
   writeClosedDockWindowFrameEntries
 } from "./sessionState.ts";
+import {
+  restoreClosedDockWindowFrameEntriesToSurface,
+  restoreWorkbenchHostNodesToSurface,
+  restoreWorkbenchHostSpacesToSurface
+} from "./snapshotLayout.ts";
 import {
   createWorkbenchHostExternalStateLookupInput,
   readWorkbenchHostExternalState
@@ -118,7 +125,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
   private loadPromise: Promise<void> | null = null;
   private readonly nodeLeases = new Map<string, WorkbenchHostNodeLeaseHandle>();
   private nextActivationSequence = 1;
-  private hasAppliedInitialCompactRestoredFrames = false;
+  private hasAppliedInitialRestoredLayout = false;
   private hasReceivedSurfaceSize = false;
   private observedSurfaceSize:
     | WorkbenchState<WorkbenchHostNodeData>["surfaceSize"]
@@ -180,17 +187,23 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
         this.nodeDefinitions,
         this.projectedNodes
       ),
-      { debugDiagnostics: input.debugDiagnostics }
+      {
+        debugDiagnostics: input.debugDiagnostics,
+        onSurfaceSizeMeasured: () => {
+          this.hasReceivedSurfaceSize = true;
+          this.applyInitialRestoredLayout();
+        }
+      }
     );
     this.observedSurfaceSize = this.controller.getSnapshot().surfaceSize;
     this.leaseUnsubscribe = this.controller.subscribe(() => {
       this.noteSurfaceSizeChange();
       this.reconcileNodeLeases();
-      this.applyInitialCompactRestoredFrames();
+      this.applyInitialRestoredLayout();
     });
     this.isSnapshotLoaded = this.loadedSnapshot !== null;
     if (this.isSnapshotLoaded) {
-      this.applyInitialCompactRestoredFrames();
+      this.applyInitialRestoredLayout();
       this.subscribeToPersistence();
     }
   }
@@ -440,6 +453,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
   }
 
   private async loadInitialSnapshot(generation: number): Promise<void> {
+    this.hasAppliedInitialRestoredLayout = false;
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.disposeExternalStatePersistenceSubscriptions();
@@ -486,7 +500,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
 
     this.reconcileNodeLeases();
     this.isSnapshotLoaded = true;
-    this.applyInitialCompactRestoredFrames();
+    this.applyInitialRestoredLayout();
     this.subscribeToPersistence();
     this.markReady();
   }
@@ -855,7 +869,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
 
   private resetHydrationBarrier(): void {
     this.isHydratingInitialSnapshot = true;
-    this.hasAppliedInitialCompactRestoredFrames = false;
+    this.hasAppliedInitialRestoredLayout = false;
     this.readyPromise = new Promise((resolve) => {
       this.resolveReady = resolve;
     });
@@ -873,9 +887,9 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
     this.observedSurfaceSize = currentSurfaceSize;
   }
 
-  private applyInitialCompactRestoredFrames(): void {
+  private applyInitialRestoredLayout(): void {
     if (
-      this.hasAppliedInitialCompactRestoredFrames ||
+      this.hasAppliedInitialRestoredLayout ||
       !this.isSnapshotLoaded ||
       !this.hasReceivedSurfaceSize
     ) {
@@ -883,17 +897,43 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
     }
 
     const snapshot = this.controller.getSnapshot();
-    const compactedNodes = compactRestoredWorkbenchHostNodes({
+    const sourceLayoutBasis = this.loadedSnapshot?.layoutBasis;
+    const restoredNodes = restoreWorkbenchHostNodesToSurface({
       constraints: snapshot.layoutConstraints,
+      layoutBasis: sourceLayoutBasis,
       nodeDefinitionByType: this.nodeDefinitionByType,
       nodes: snapshot.nodes,
+      persistedNodes: this.loadedSnapshot?.nodes,
       surfaceSize: snapshot.surfaceSize
     });
-    this.hasAppliedInitialCompactRestoredFrames = true;
-    if (shallowArrayEqual(snapshot.nodes, compactedNodes)) {
-      return;
+    this.closedDockWindowFrameEntries =
+      restoreClosedDockWindowFrameEntriesToSurface({
+        constraints: snapshot.layoutConstraints,
+        entries: this.closedDockWindowFrameEntries.values(),
+        layoutBasis: sourceLayoutBasis,
+        nodeDefinitionByType: this.nodeDefinitionByType,
+        surfaceSize: snapshot.surfaceSize
+      });
+    if (this.loadedSnapshot) {
+      this.loadedSnapshot = {
+        ...this.loadedSnapshot,
+        layoutBasis: createWorkbenchSnapshotLayoutBasis(snapshot),
+        metadata: writeClosedDockWindowFrameEntries(
+          this.loadedSnapshot.metadata,
+          this.closedDockWindowFrameEntries.values()
+        ),
+        spaces: restoreWorkbenchHostSpacesToSurface({
+          constraints: snapshot.layoutConstraints,
+          layoutBasis: sourceLayoutBasis,
+          spaces: this.loadedSnapshot.spaces,
+          surfaceSize: snapshot.surfaceSize
+        })
+      };
     }
-    this.controller.commands.replaceNodes(compactedNodes);
+    this.hasAppliedInitialRestoredLayout = true;
+    if (!shallowArrayEqual(snapshot.nodes, restoredNodes)) {
+      this.controller.commands.replaceNodes(restoredNodes);
+    }
   }
 
   private queueProjectedNodeReconciliation(): void {

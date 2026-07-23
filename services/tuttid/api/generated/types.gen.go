@@ -5973,10 +5973,39 @@ type WorkbenchFrame struct {
 	Y      float32 `json:"y"`
 }
 
+// WorkbenchLayoutBasis defines model for WorkbenchLayoutBasis.
+type WorkbenchLayoutBasis struct {
+	LayoutConstraints WorkbenchLayoutConstraints `json:"layoutConstraints"`
+	SurfaceSize       WorkbenchSize              `json:"surfaceSize"`
+}
+
+// WorkbenchLayoutConstraints defines model for WorkbenchLayoutConstraints.
+type WorkbenchLayoutConstraints struct {
+	MinHeight      float32           `json:"minHeight"`
+	MinWidth       float32           `json:"minWidth"`
+	SafeArea       WorkbenchSafeArea `json:"safeArea"`
+	SurfacePadding float32           `json:"surfacePadding"`
+}
+
+// WorkbenchSafeArea defines model for WorkbenchSafeArea.
+type WorkbenchSafeArea struct {
+	Bottom float32 `json:"bottom"`
+	Left   float32 `json:"left"`
+	Right  float32 `json:"right"`
+	Top    float32 `json:"top"`
+}
+
+// WorkbenchSize defines model for WorkbenchSize.
+type WorkbenchSize struct {
+	Height float32 `json:"height"`
+	Width  float32 `json:"width"`
+}
+
 // WorkbenchSnapshot defines model for WorkbenchSnapshot.
 type WorkbenchSnapshot struct {
 	ActiveNodeId  *string                        `json:"activeNodeId,omitempty"`
 	ActiveSpaceId *string                        `json:"activeSpaceId,omitempty"`
+	LayoutBasis   *WorkbenchLayoutBasis          `json:"layoutBasis,omitempty"`
 	Metadata      *map[string]interface{}        `json:"metadata,omitempty"`
 	NodeStack     *[]string                      `json:"nodeStack,omitempty"`
 	Nodes         []WorkbenchSnapshotNode        `json:"nodes"`
