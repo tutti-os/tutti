@@ -205,13 +205,20 @@ export const en = {
       copyUserId: "Copy user ID",
       copyUserIdSuccess: "User ID copied",
       copyUserIdFailed: "Couldn't copy user ID",
+      openExternalFailed: "Couldn't open account link",
       loading: "Loading",
       unavailable: "--",
       dataUnavailable: "Some account data is unavailable",
       rewardToastTitle: "New user credits",
       rewardToastCreditsUnit: "credits",
       rewardToastDescription: "Added to account balance",
-      rewardToastClose: "Close credits reward notification"
+      rewardToastClose: "Close credits reward notification",
+      insufficientCreditsUpgradeMessage:
+        "Your available credits are exhausted. Upgrade your membership for more credits",
+      insufficientCreditsRechargeMessage:
+        "Your Tutti credits are insufficient. Recharge credits to continue",
+      insufficientCreditsUnknownMessage:
+        "Your Tutti credits are insufficient. Review credit options to continue"
     },
     agentEnv: {
       configTitle: "{{provider}} environment",

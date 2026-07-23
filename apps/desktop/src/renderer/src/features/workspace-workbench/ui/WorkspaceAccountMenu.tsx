@@ -1,17 +1,33 @@
 import { memo, useEffect, useMemo, useState } from "react";
+import type {
+  CommerceMenuState,
+  MembershipAccessState,
+  RegistrationCreditsToastState
+} from "@tutti-os/commerce";
 import {
-  AgentGUIAccountMenu,
-  AgentGUIAccountRewardToast,
-  agentGUIAccountInitials,
-  type AgentGUIAccountMenuLabels,
-  type AgentGUIAccountMenuState
-} from "@tutti-os/agent-gui";
+  CommerceMenuContent,
+  MembershipBadge,
+  MembershipTierIcon,
+  RegistrationCreditsToast,
+  type CommerceMenuLabels
+} from "@tutti-os/commerce/react";
 import { useService } from "@tutti-os/infra/di";
 import { INotificationService } from "@tutti-os/ui-notifications";
-import { Button } from "@tutti-os/ui-system";
+import {
+  Button,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  SettingsIcon,
+  SignOutIcon
+} from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
 import { useAccountService } from "./useAccountService";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
+import {
+  projectWorkspaceAccountCommerce,
+  projectWorkspaceAccountMenuComposition
+} from "./workspaceAccountCommerceAdapter";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 
 const debugRegistrationCreditsToastStorageKey =
@@ -19,41 +35,38 @@ const debugRegistrationCreditsToastStorageKey =
 const debugRegistrationCreditsToastID =
   "debug:registrationCreditsToastShown:local";
 const registrationCreditsToastAutoDismissMs = 120_000;
-const PLAN_ICON_SOURCES = {
-  free: new URL("../../../assets/account-plans/star-free.png", import.meta.url)
-    .href,
-  lite: new URL("../../../assets/account-plans/star-lite.png", import.meta.url)
-    .href,
-  pro: new URL("../../../assets/account-plans/star-pro.png", import.meta.url)
-    .href,
-  ultra: new URL(
-    "../../../assets/account-plans/star-ultra.png",
-    import.meta.url
-  ).href
-} as const;
 
 export interface WorkspaceAccountMenuProps {
   showLeadingDivider?: boolean;
+  workspaceId: string;
 }
 
 export function WorkspaceAccountMenu({
-  showLeadingDivider = true
-}: WorkspaceAccountMenuProps = {}) {
+  showLeadingDivider = true,
+  workspaceId
+}: WorkspaceAccountMenuProps) {
   const { state: workspaceSettingsState } = useWorkspaceSettingsService();
-
-  if (workspaceSettingsState.tuttiAgentSwitchEnabled !== true) {
-    return null;
-  }
+  const commerceEnabled =
+    workspaceSettingsState.tuttiAgentSwitchEnabled === true;
 
   return (
-    <WorkspaceAccountMenuEnabled showLeadingDivider={showLeadingDivider} />
+    <WorkspaceAccountMenuEnabled
+      commerceEnabled={commerceEnabled}
+      showLeadingDivider={showLeadingDivider}
+      workspaceId={workspaceId}
+    />
   );
 }
 
 function WorkspaceAccountMenuEnabled({
-  showLeadingDivider
-}: Required<WorkspaceAccountMenuProps>) {
-  const accountMenuState = useWorkspaceAccountMenuState();
+  commerceEnabled,
+  showLeadingDivider,
+  workspaceId
+}: Required<WorkspaceAccountMenuProps> & { commerceEnabled: boolean }) {
+  const accountMenuState = useWorkspaceAccountMenuState(
+    commerceEnabled,
+    workspaceId
+  );
   const labels = useWorkspaceAccountMenuLabels();
 
   return (
@@ -65,25 +78,64 @@ function WorkspaceAccountMenuEnabled({
   );
 }
 
-type WorkspaceAccountMenuState = AgentGUIAccountMenuState;
+interface WorkspaceAccountMenuState {
+  user: {
+    userId: string;
+    name?: string | null;
+    email?: string | null;
+    avatar?: string | null;
+  } | null;
+  commerce: CommerceMenuState;
+  commerceVisible: boolean;
+  membershipLabel: string;
+  membershipAccess: MembershipAccessState;
+  membershipTierKey: string | null;
+  registrationCreditsToast: RegistrationCreditsToastState | null;
+  onOpenChange(open: boolean): void;
+  onLogin(): void;
+  onLogout(): void;
+  onSettings(): void;
+  onCopyUserId(): void | Promise<void>;
+}
 
-function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
+function useWorkspaceAccountMenuState(
+  commerceEnabled: boolean,
+  workspaceId: string
+): WorkspaceAccountMenuState {
   const { locale, t } = useTranslation();
   const notifications = useService(INotificationService);
   const { service: accountService, state: accountState } = useAccountService();
+  const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
   const [
     debugRegistrationCreditsToastEnabled,
     setDebugRegistrationCreditsToastEnabled
   ] = useState(readDebugRegistrationCreditsToastEnabled);
+  const commerceProjection = useMemo(
+    () =>
+      projectWorkspaceAccountCommerce({
+        enabled: commerceEnabled,
+        summary: accountState.productSummary,
+        loading: accountState.productSummaryLoading,
+        error: accountState.productSummaryError
+      }),
+    [
+      accountState.productSummary,
+      accountState.productSummaryError,
+      accountState.productSummaryLoading,
+      commerceEnabled
+    ]
+  );
 
   useEffect(() => {
     void accountService.refreshUserInfo();
-    void accountService.refreshProductSummary();
-  }, [accountService]);
+    if (commerceProjection.shouldRefresh) {
+      void accountService.refreshProductSummary();
+    }
+  }, [accountService, commerceProjection.shouldRefresh]);
 
   return useMemo<WorkspaceAccountMenuState>(() => {
-    const summary = accountState.productSummary;
+    const summary = commerceProjection.summary;
     const summaryUser = summary?.user ?? null;
     const user = summaryUser ?? accountState.user;
     const membershipLabel =
@@ -96,7 +148,7 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
       locale
     );
     const debugRegistrationCreditsReward =
-      user && debugRegistrationCreditsToastEnabled
+      commerceEnabled && user && debugRegistrationCreditsToastEnabled
         ? {
             id: debugRegistrationCreditsToastID,
             grant_no: "debug-registration-credits-toast",
@@ -125,14 +177,30 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
         : null,
       membershipLabel,
       membershipAccess: summary?.membership_access ?? "unknown",
-      membershipIconUrl: resolveMembershipIconSource(
-        membershipTierKey,
-        membershipLabel
-      ),
-      creditsLabel,
-      loading: accountState.productSummaryLoading,
-      error: user ? null : accountState.productSummaryError,
-      partialError: summary?.partial_error != null,
+      membershipTierKey,
+      commerceVisible: commerceProjection.commerceVisible,
+      commerce: {
+        membershipLabel,
+        membershipAccess: summary?.membership_access ?? "unknown",
+        creditsLabel,
+        loading: commerceProjection.loading,
+        dataUnavailable: commerceProjection.dataUnavailable,
+        links: {
+          planUrl: summary?.links.plan_url ?? "",
+          usageUrl: summary?.links.usage_url ?? "",
+          settingsUrl: summary?.links.settings_url ?? ""
+        },
+        async onOpenExternal(url) {
+          if (url.trim()) {
+            await workbenchHostService.openExternal(url);
+          }
+        },
+        onActionError() {
+          notifications.error({
+            title: t("workspace.accountMenu.openExternalFailed")
+          });
+        }
+      },
       registrationCreditsToast:
         registrationCreditsReward && registrationCreditsLabel
           ? {
@@ -155,15 +223,12 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
               }
             }
           : null,
-      links: {
-        planUrl: summary?.links.plan_url ?? "",
-        usageUrl: summary?.links.usage_url ?? "",
-        settingsUrl: summary?.links.settings_url ?? ""
-      },
       onOpenChange(open) {
         if (open) {
           void accountService.refreshUserInfo();
-          void accountService.refreshProductSummary({ force: true });
+          if (commerceEnabled) {
+            void accountService.refreshProductSummary({ force: true });
+          }
         }
       },
       onLogin() {
@@ -171,6 +236,12 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
       },
       onLogout() {
         void accountService.logout();
+      },
+      onSettings() {
+        workspaceSettingsService.openPanel(
+          { id: workspaceId },
+          { section: "general" }
+        );
       },
       async onCopyUserId() {
         if (!user?.user_id) {
@@ -186,28 +257,29 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
             title: t("workspace.accountMenu.copyUserIdFailed")
           });
         }
-      },
-      onOpenExternal(url) {
-        if (url.trim()) {
-          void workbenchHostService.openExternal(url);
-        }
       }
     };
   }, [
     accountService,
-    accountState.productSummary,
-    accountState.productSummaryError,
-    accountState.productSummaryLoading,
     accountState.user,
+    commerceProjection,
+    commerceEnabled,
     debugRegistrationCreditsToastEnabled,
     locale,
     notifications,
     t,
-    workbenchHostService
+    workbenchHostService,
+    workspaceId,
+    workspaceSettingsService
   ]);
 }
 
-type WorkspaceAccountMenuLabels = AgentGUIAccountMenuLabels & {
+type WorkspaceAccountMenuLabels = CommerceMenuLabels & {
+  title: string;
+  settings: string;
+  free: string;
+  signIn: string;
+  signOut: string;
   rewardToastTitle: string;
   rewardToastDescription: string;
   rewardToastCreditsUnit: string;
@@ -228,7 +300,6 @@ function useWorkspaceAccountMenuLabels(): WorkspaceAccountMenuLabels {
     free: t("workspace.accountMenu.free"),
     signIn: t("workspace.accountMenu.signIn"),
     signOut: t("workspace.accountMenu.signOut"),
-    copyUserId: t("workspace.accountMenu.copyUserId"),
     loading: t("workspace.accountMenu.loading"),
     unavailable: t("workspace.accountMenu.unavailable"),
     dataUnavailable: t("workspace.accountMenu.dataUnavailable"),
@@ -254,9 +325,16 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
     accountMenuState.user?.email?.trim() ||
     accountMenuState.user?.userId?.trim() ||
     labels.title;
-  const initials = agentGUIAccountInitials(userLabel);
-  const membershipIconSource =
-    accountMenuState.membershipIconUrl ?? PLAN_ICON_SOURCES.free;
+  const initials = accountInitials(userLabel);
+  const membershipLabel =
+    accountMenuState.membershipLabel.trim() ||
+    (accountMenuState.membershipAccess === "free"
+      ? labels.free
+      : labels.unavailable);
+  const composition = projectWorkspaceAccountMenuComposition({
+    commerceEnabled: accountMenuState.commerceVisible,
+    signedIn: Boolean(accountMenuState.user)
+  });
 
   if (!accountMenuState.user) {
     return (
@@ -279,24 +357,23 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
 
   return (
     <div className="relative flex min-w-0 items-center gap-1.5">
-      {accountMenuState.registrationCreditsToast ? (
+      {accountMenuState.commerceVisible !== false &&
+      accountMenuState.registrationCreditsToast ? (
         <div className="absolute right-0 top-10 z-50 w-[280px]">
-          <AgentGUIAccountRewardToast
+          <RegistrationCreditsToast
             toast={accountMenuState.registrationCreditsToast}
             labels={{
-              accountRewardToastTitle: labels.rewardToastTitle,
-              accountRewardToastDescription: labels.rewardToastDescription,
-              accountRewardToastCreditsUnit: labels.rewardToastCreditsUnit,
-              accountRewardToastClose: labels.rewardToastClose
+              title: labels.rewardToastTitle,
+              description: labels.rewardToastDescription,
+              creditsUnit: labels.rewardToastCreditsUnit,
+              close: labels.rewardToastClose
             }}
           />
         </div>
       ) : null}
       {showLeadingDivider ? <WorkspaceAccountMenuDivider /> : null}
-      <AgentGUIAccountMenu
-        state={accountMenuState}
-        labels={labels}
-        trigger={
+      <Popover onOpenChange={accountMenuState.onOpenChange}>
+        <PopoverTrigger asChild>
           <button
             type="button"
             aria-label={userLabel}
@@ -322,19 +399,97 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
                 <span aria-hidden="true">{initials}</span>
               )}
             </span>
-            <img
-              alt=""
-              aria-hidden="true"
-              draggable={false}
-              src={membershipIconSource}
-              className="absolute -right-0.5 -bottom-0.5 size-[14px] object-contain"
-            />
+            {accountMenuState.commerceVisible !== false ? (
+              <MembershipTierIcon
+                tierKey={accountMenuState.membershipTierKey}
+                className="absolute -right-0.5 -bottom-0.5 size-[14px] object-contain"
+              />
+            ) : null}
           </button>
-        }
-      />
+        </PopoverTrigger>
+        <PopoverContent
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          className="w-[232px] max-w-[calc(100vw-32px)] p-1 text-xs"
+          data-testid="workspace-account-menu"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
+          <div className="flex min-w-0 flex-col">
+            <div className="flex min-w-0 items-center gap-2 px-2 py-2">
+              <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-[var(--background-fronted)] text-[13px] font-semibold text-[var(--text-primary)]">
+                {accountMenuState.user.avatar ? (
+                  <img
+                    alt=""
+                    className="size-full object-cover"
+                    src={accountMenuState.user.avatar}
+                  />
+                ) : (
+                  initials
+                )}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-semibold text-[var(--text-primary)]">
+                  {userLabel}
+                </span>
+                {composition.showCommerce ? (
+                  <MembershipBadge
+                    className="mt-1"
+                    label={membershipLabel}
+                    tierKey={accountMenuState.membershipTierKey}
+                  />
+                ) : null}
+              </span>
+            </div>
+            <span
+              aria-hidden="true"
+              className="mx-2 h-px bg-[var(--border-1)]"
+            />
+            {composition.showCommerce ? (
+              <CommerceMenuContent
+                state={accountMenuState.commerce}
+                labels={labels}
+              />
+            ) : null}
+            {composition.showSettings ? (
+              <button
+                type="button"
+                className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+                onClick={accountMenuState.onSettings}
+              >
+                <SettingsIcon aria-hidden="true" size={15} />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {labels.settings}
+                </span>
+              </button>
+            ) : null}
+            {composition.showLogout ? (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="mx-2 my-1 h-px bg-[var(--border-1)]"
+                />
+                <button
+                  type="button"
+                  className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+                  onClick={accountMenuState.onLogout}
+                >
+                  <SignOutIcon aria-hidden="true" size={15} />
+                  <span className="truncate">{labels.signOut}</span>
+                </button>
+              </>
+            ) : null}
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 });
+
+function accountInitials(label: string): string {
+  const normalized = label.trim();
+  return normalized ? normalized.slice(0, 2).toUpperCase() : "T";
+}
 
 function WorkspaceAccountMenuDivider(): React.JSX.Element {
   return (
@@ -343,23 +498,6 @@ function WorkspaceAccountMenuDivider(): React.JSX.Element {
       className="h-4 w-px shrink-0 bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_24%,transparent)]"
     />
   );
-}
-
-function resolveMembershipIconSource(
-  tierKey: string | null,
-  membershipLabel: string
-): string {
-  const normalized = `${tierKey ?? ""} ${membershipLabel}`.toLowerCase();
-  if (normalized.includes("ultra")) {
-    return PLAN_ICON_SOURCES.ultra;
-  }
-  if (normalized.includes("pro")) {
-    return PLAN_ICON_SOURCES.pro;
-  }
-  if (normalized.includes("lite")) {
-    return PLAN_ICON_SOURCES.lite;
-  }
-  return PLAN_ICON_SOURCES.free;
 }
 
 function formatCreditsLabel(

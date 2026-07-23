@@ -26,6 +26,7 @@ The current fixed release group is:
 @tutti-os/workspace-terminal
 @tutti-os/agent-activity-core
 @tutti-os/agent-gui
+@tutti-os/commerce
 @tutti-os/claude-sdk-sidecar
 @tutti-os/browser-node
 @tutti-os/workspace-file-preview
@@ -268,6 +269,13 @@ The stable package entrypoints are:
 @tutti-os/agent-gui/workbench/browser-element-context
 @tutti-os/agent-gui/workbench/tool-sidebar
 @tutti-os/agent-gui/workspace-settings-panel
+@tutti-os/commerce
+@tutti-os/commerce/react
+@tutti-os/commerce/assets/star-free.png
+@tutti-os/commerce/assets/star-lite.png
+@tutti-os/commerce/assets/star-pro.png
+@tutti-os/commerce/assets/star-ultra.png
+@tutti-os/commerce/assets/registration-credits-bg.png
 @tutti-os/browser-node
 @tutti-os/browser-node/assets/workspace-dock-website.png
 @tutti-os/browser-node/bridge

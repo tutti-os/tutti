@@ -3,19 +3,25 @@
 AgentGUI renders workspace agent sessions, timelines, approvals, and composer
 UI. It is a UI package, not a host transport or business-core package.
 
-## Commerce And Account Presentation
+## Product Error Presentation
 
-Hosts own authentication, Commerce fetching, navigation, clipboard, and
-notification side effects. `AgentGUIAccountMenu` renders the shared account
-surface from `AgentGUIAccountMenuState`; `membershipAccess` must come from the
-normalized Commerce contract (`free`, `active`, `inactive`, or `unknown`).
-Hosts may pass `membershipIconUrl` to render their tier icon next to the
-membership label; the badge renders label text only when it is absent.
+AgentGUI does not own Account or Commerce UI. Product hosts render those
+surfaces through `@tutti-os/commerce` and its `./react` entrypoint.
 
-Pass `hostCapabilities.commercePresentation` to `AgentGUI` so insufficient
-credit cards can select upgrade, recharge, or neutral copy and use the
-Host-provided `planUrl`. Raw provider error details remain available to
-diagnostics but are not rendered in the product error card.
+Hosts may pass `hostCapabilities.visibleErrorPresentationOverrides` to
+customize structured product errors such as `insufficient_credits`. The
+override contains only localized copy and an optional sanitized external
+action; it does not expose membership state, credentials, or Commerce response
+objects to AgentGUI. Raw provider error details remain available to diagnostics
+but are not rendered in the product error card. Environment, authentication,
+network, and runtime errors are not overridable and remain AgentGUI policy.
+
+This is an intentional public API break. The former `accountMenuState`,
+`commercePresentation`, `AgentGUIAccountMenu*`, and
+`AgentGUIAccountRewardToast` surfaces were removed instead of being retained as
+silent no-ops. Hosts must render account chrome through
+`@tutti-os/commerce/react` and translate Commerce policy into
+`visibleErrorPresentationOverrides`.
 
 Before changing AgentGUI, AgentGuiNode, or the agent conversation module, read
 [AgentGuiNode Architecture and Troubleshooting](../../../docs/architecture/agent-gui-node.md).

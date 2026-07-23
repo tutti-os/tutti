@@ -38,8 +38,7 @@ import type {
   AgentMentionReferenceTargetResolver,
   AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
-import type { AgentGUIAccountMenuState } from "./accountMenuState";
-import type { AgentGUICommercePresentation } from "../../shared/commerce/AgentCommercePresentationContext";
+import type { AgentVisibleErrorOverrides } from "../../shared/agentEnv/agentErrorPresentation";
 import type {
   AgentComposerCapabilityMenuState,
   AgentComposerCapabilitySettingsTarget,
@@ -131,9 +130,11 @@ export interface AgentGUINodeHostCapabilities {
    * preventing this host from mutating device-owned capability settings.
    */
   capabilityControlsReadOnly?: boolean;
-  accountMenuState?: AgentGUIAccountMenuState | null;
-  /** Host-owned Commerce projection used by account and error presentation. */
-  commercePresentation?: AgentGUICommercePresentation | null;
+  /**
+   * Host-owned product copy and external action for structured run errors.
+   * AgentGUI owns the generic card; product domains own product semantics.
+   */
+  visibleErrorPresentationOverrides?: AgentVisibleErrorOverrides | null;
   agentTargets?: readonly AgentGUIAgentTarget[];
   agentTargetsLoading?: boolean;
   /** Launch-only targets for active-conversation handoff. */
@@ -380,7 +381,6 @@ export function areAgentGUINodePropsEqual(
     pr.agentStatusController === nr.agentStatusController &&
     pc.capabilityMenuState === nc.capabilityMenuState &&
     pc.capabilityControlsReadOnly === nc.capabilityControlsReadOnly &&
-    pc.accountMenuState === nc.accountMenuState &&
     pc.agentTargets === nc.agentTargets &&
     pc.agentTargetsLoading === nc.agentTargetsLoading &&
     pc.handoffAgentTargets === nc.handoffAgentTargets &&

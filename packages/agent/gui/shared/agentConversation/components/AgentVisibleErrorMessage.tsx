@@ -7,7 +7,7 @@ import {
   classifyRecoverableAgentMessage,
   resolveAgentErrorPresentation
 } from "../../agentEnv/agentErrorPresentation";
-import { useAgentCommercePresentation } from "../../commerce/AgentCommercePresentationContext";
+import { useAgentVisibleErrorPresentationOverrides } from "../../visibleError/AgentVisibleErrorPresentationContext";
 import type { AgentMessageContentVM } from "../contracts/agentMessageRowVM";
 
 // All error banners use the light-red danger surface. Yellow/warning surfaces
@@ -51,7 +51,7 @@ export function AgentVisibleErrorMessage({
 }): JSX.Element {
   "use memo";
   const openAgentEnvPanel = useOpenAgentEnvPanel();
-  const commercePresentation = useAgentCommercePresentation();
+  const presentationOverrides = useAgentVisibleErrorPresentationOverrides();
   const error = message.visibleError;
 
   // One card for every run-failure code. The presentation (keyed on the codes
@@ -62,16 +62,22 @@ export function AgentVisibleErrorMessage({
   const providerLabel = workspaceAgentProviderLabel(
     error?.provider ?? "unknown"
   );
-  const presentation = resolveAgentErrorPresentation(
-    error?.code,
-    commercePresentation
-  );
-  const headline = presentation?.messageKey
-    ? translate(presentation.messageKey, { provider: providerLabel })
-    : visibleErrorTitle(message);
+  const presentation = resolveAgentErrorPresentation(error?.code);
+  const insufficientCreditsOverride =
+    presentationOverrides?.insufficient_credits;
+  const presentationOverride =
+    error?.code === "insufficient_credits" &&
+    insufficientCreditsOverride?.providers.includes(error.provider ?? "")
+      ? insufficientCreditsOverride
+      : undefined;
+  const headline =
+    presentationOverride?.message ||
+    (presentation?.messageKey
+      ? translate(presentation.messageKey, { provider: providerLabel })
+      : visibleErrorTitle(message));
   const focus = presentation?.focus ?? null;
   const actionKey = presentation?.actionKey ?? null;
-  const externalUrl = presentation?.externalUrl ?? null;
+  const externalAction = presentationOverride?.action ?? null;
   const hint = visibleErrorHint(message);
   // Account limits are status notices, not process crashes. Provider payloads
   // stay in the canonical model and diagnostics; the product card never renders
@@ -95,16 +101,16 @@ export function AgentVisibleErrorMessage({
             </div>
           ) : null}
         </div>
-        {actionKey &&
-        ((focus && openAgentEnvPanel) || (externalUrl && onExternalLink)) ? (
+        {(externalAction?.url && onExternalLink) ||
+        (actionKey && focus && openAgentEnvPanel) ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="mt-0.5 shrink-0"
             onClick={() => {
-              if (externalUrl) {
-                onExternalLink?.(externalUrl);
+              if (externalAction?.url) {
+                onExternalLink?.(externalAction.url);
                 return;
               }
               if (focus && openAgentEnvPanel) {
@@ -115,7 +121,7 @@ export function AgentVisibleErrorMessage({
               }
             }}
           >
-            {translate(actionKey)}
+            {externalAction?.label || (actionKey ? translate(actionKey) : null)}
           </Button>
         ) : null}
       </div>

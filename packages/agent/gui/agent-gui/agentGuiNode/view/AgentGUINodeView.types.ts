@@ -22,7 +22,6 @@ import type {
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type { PlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
-import type { AgentGUIAccountMenuState } from "../accountMenuState";
 import type {
   AgentComposerGitBranchLoader,
   AgentComposerProps,
@@ -185,25 +184,6 @@ export interface AgentGUIViewLabels {
   homeSuggestionsClose?: string;
   conversations: string;
   newConversation: string;
-  accountMenuTitle: string;
-  accountMenuMember: string;
-  accountMenuUpgrade: string;
-  accountMenuRecharge: string;
-  accountMenuViewPlans: string;
-  accountMenuCreditsBalance: string;
-  accountMenuAccountCenter: string;
-  accountMenuSettings: string;
-  accountMenuFree: string;
-  accountMenuSignIn: string;
-  accountMenuSignOut: string;
-  accountMenuCopyUserId: string;
-  accountMenuLoading: string;
-  accountMenuUnavailable: string;
-  accountMenuDataUnavailable: string;
-  accountRewardToastTitle: string;
-  accountRewardToastCreditsUnit: string;
-  accountRewardToastDescription: string;
-  accountRewardToastClose: string;
   agentConfig: string;
   agentSettingsMenu: string;
   agentEnvSetup: string;
@@ -585,7 +565,6 @@ export interface AgentGUINodeViewProps {
   onSlashStatusOpen?: AgentComposerProps["onSlashStatusOpen"];
   onSlashStatusClose?: AgentComposerProps["onSlashStatusClose"];
   onSlashStatusRefresh?: AgentComposerProps["onSlashStatusRefresh"];
-  accountMenuState?: AgentGUIAccountMenuState | null;
   previewMode?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
   onAgentEnvPanelOpen?: (input?: OpenAgentEnvPanelInput) => void;

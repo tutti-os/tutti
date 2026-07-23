@@ -679,11 +679,14 @@ Browser/Computer entries visible but disables their mutation and setup actions.
 Unsupported capabilities remain absent according to the authoritative composer
 capability descriptor. A caller host must not open its local device settings as
 a fallback for a remote owner.
-`hostCapabilities.accountMenuState` is a sanitized presentation projection.
-The host owns Account/Commerce requests, login/logout, external navigation,
-reward receipt persistence, clipboard writes, and notifications. AgentGUI may
-render those values and invoke optional actions such as `onCopyUserId`, but it
-must never receive a Cookie or start a Commerce request.
+Account and Commerce UI is Host chrome rendered through
+`@tutti-os/commerce/react`; it is not an AgentGUI node capability. AgentGUI
+accepts only generic `hostCapabilities.visibleErrorPresentationOverrides` for
+structured product errors. The host owns Account/Commerce requests,
+login/logout, external navigation, reward receipt persistence, clipboard
+writes, notifications, localization, feature gating, and menu lifecycle.
+Neither AgentGUI nor the frontend Commerce package may receive a Cookie or
+start a Commerce request.
 Host chrome that aligns to AgentGUI's internal layout must consume explicit
 package signals such as `hostActions.onConversationRailLayoutChange`; it must
 not observe package DOM, CSS variables, or class names with

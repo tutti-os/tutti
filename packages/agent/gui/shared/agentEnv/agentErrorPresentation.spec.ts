@@ -121,42 +121,12 @@ describe("resolveAgentErrorPresentation", () => {
     }
   });
 
-  it("projects insufficient-credit copy from normalized membership access", () => {
-    const cases = [
-      [
-        "free",
-        "agentHost.agentGui.visibleErrorInsufficientCreditsFree",
-        "agentHost.agentGui.visibleErrorActionUpgradeMembership"
-      ],
-      [
-        "active",
-        "agentHost.agentGui.visibleErrorInsufficientCreditsActive",
-        "agentHost.agentGui.visibleErrorActionRechargeCredits"
-      ],
-      [
-        "unknown",
-        "agentHost.agentGui.visibleErrorInsufficientCreditsUnknown",
-        "agentHost.agentGui.visibleErrorActionViewCreditPlans"
-      ]
-    ] as const;
-    for (const [membershipAccess, messageKey, actionKey] of cases) {
-      expect(
-        resolveAgentErrorPresentation("insufficient_credits", {
-          membershipAccess,
-          planUrl: "https://example.test/plan"
-        })
-      ).toMatchObject({
-        messageKey,
-        focus: null,
-        actionKey,
-        externalUrl: "https://example.test/plan"
-      });
-    }
-    expect(
-      resolveAgentErrorPresentation("insufficient_credits", {
-        membershipAccess: "active"
-      })?.actionKey
-    ).toBeNull();
+  it("keeps insufficient-credit product semantics out of AgentGUI", () => {
+    expect(resolveAgentErrorPresentation("insufficient_credits")).toEqual({
+      messageKey: "agentHost.agentGui.visibleErrorInsufficientCreditsUnknown",
+      focus: null,
+      actionKey: null
+    });
   });
 
   it("offers a self-detect escape hatch for ambiguous hard failures", () => {

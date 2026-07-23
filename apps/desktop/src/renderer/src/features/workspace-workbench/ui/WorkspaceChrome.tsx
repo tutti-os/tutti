@@ -170,7 +170,7 @@ export function WorkspaceChrome({
             selectedWallpaperID={selectedWallpaperID}
             workspace={workspace}
           />
-          <WorkspaceAccountMenu />
+          <WorkspaceAccountMenu workspaceId={workspace.id} />
         </div>
       </header>
       <ExternalAgentSessionImportPrompt

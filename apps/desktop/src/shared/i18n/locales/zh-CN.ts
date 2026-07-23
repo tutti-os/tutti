@@ -201,13 +201,19 @@ export const zhCN = {
       copyUserId: "复制用户 ID",
       copyUserIdSuccess: "已复制用户 ID",
       copyUserIdFailed: "复制用户 ID 失败",
+      openExternalFailed: "无法打开账户链接",
       loading: "加载中",
       unavailable: "--",
       dataUnavailable: "部分账号数据暂不可用",
       rewardToastTitle: "新用户积分",
       rewardToastCreditsUnit: "积分",
       rewardToastDescription: "已添加到账户余额",
-      rewardToastClose: "关闭积分奖励通知"
+      rewardToastClose: "关闭积分奖励通知",
+      insufficientCreditsUpgradeMessage:
+        "您账户下可用的积分额度已耗尽，升级会员可获取更多额度",
+      insufficientCreditsRechargeMessage:
+        "Tutti 积分不足，充值积分后可继续使用",
+      insufficientCreditsUnknownMessage: "Tutti 积分不足，请查看积分方案后继续"
     },
     agentEnv: {
       configTitle: "{{provider}} 环境",

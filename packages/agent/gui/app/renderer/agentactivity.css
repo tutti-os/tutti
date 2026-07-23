@@ -5969,36 +5969,6 @@ aside.workspace-agents-status-panel
   );
 }
 
-.agent-gui-node__account-reward-toast {
-  border: 1px solid rgba(218, 233, 255, 0.62);
-  background:
-    linear-gradient(
-      90deg,
-      rgba(18, 60, 142, 0.08),
-      rgba(20, 66, 160, 0.2) 58%,
-      rgba(12, 32, 92, 0.34)
-    ),
-    url("./assets/commercial/registration-credits-bg.png") center / cover
-      no-repeat;
-  box-shadow:
-    0 14px 28px rgba(0, 0, 0, 0.2),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.24);
-}
-
-.agent-gui-node__account-reward-toast::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      circle at 17% 28%,
-      rgba(255, 255, 255, 0.5),
-      transparent 24%
-    ),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 54%);
-}
-
 .agent-gui-node__conversation-list {
   display: flex;
   flex-direction: column;

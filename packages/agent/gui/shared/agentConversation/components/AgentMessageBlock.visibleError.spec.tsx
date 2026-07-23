@@ -7,6 +7,8 @@ import type {
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
 import { AgentEnvPanelActionProvider } from "../../agentEnv";
+import { AgentVisibleErrorPresentationProvider } from "../../visibleError/AgentVisibleErrorPresentationContext";
+import type { AgentVisibleErrorOverrides } from "../../agentEnv/agentErrorPresentation";
 
 function buildRow(
   visibleError: AgentMessageContentVM["visibleError"],
@@ -36,20 +38,25 @@ function buildRow(
 function renderBlock(
   row: AgentMessageRowVM,
   provider?: string,
-  onLinkAction?: ComponentProps<typeof AgentMessageBlock>["onLinkAction"]
+  onLinkAction?: ComponentProps<typeof AgentMessageBlock>["onLinkAction"],
+  visibleErrorPresentationOverrides?: AgentVisibleErrorOverrides | null
 ) {
   const onOpenAgentEnvPanel = vi.fn();
   return {
     ...render(
       <AgentEnvPanelActionProvider openPanel={onOpenAgentEnvPanel}>
-        <AgentMessageBlock
-          workspaceRoot={null}
-          basePath="/"
-          row={row}
-          provider={provider}
-          onLinkAction={onLinkAction}
-          thinkingLabel="thinking"
-        />
+        <AgentVisibleErrorPresentationProvider
+          value={visibleErrorPresentationOverrides}
+        >
+          <AgentMessageBlock
+            workspaceRoot={null}
+            basePath="/"
+            row={row}
+            provider={provider}
+            onLinkAction={onLinkAction}
+            thinkingLabel="thinking"
+          />
+        </AgentVisibleErrorPresentationProvider>
       </AgentEnvPanelActionProvider>
     ),
     onOpenAgentEnvPanel
@@ -234,6 +241,73 @@ describe("AgentVisibleErrorMessage", () => {
     expect(queryByText("Open setup")).toBeNull();
     expect(queryByText("View credit options")).toBeNull();
     expect(onLinkAction).not.toHaveBeenCalled();
+  });
+
+  it("renders a generic Host error override without exposing Commerce state", () => {
+    const onLinkAction = vi.fn();
+    const { getByText, queryByText } = renderBlock(
+      buildRow({
+        code: "insufficient_credits",
+        phase: "turn",
+        provider: "tutti-agent",
+        detail: "private provider billing payload",
+        retryable: false
+      }),
+      "tutti-agent",
+      onLinkAction,
+      {
+        insufficient_credits: {
+          message: "Recharge credits to continue",
+          providers: ["tutti-agent"],
+          action: {
+            label: "Recharge credits",
+            url: "https://example.test/credits"
+          }
+        }
+      }
+    );
+
+    expect(getByText("Recharge credits to continue")).toBeTruthy();
+    expect(queryByText("private provider billing payload")).toBeNull();
+    fireEvent.click(getByText("Recharge credits"));
+    expect(onLinkAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "open-url",
+        url: "https://example.test/credits"
+      })
+    );
+  });
+
+  it("does not apply a Tutti Commerce override to another provider", () => {
+    const { getByText, queryByText } = renderBlock(
+      buildRow({
+        code: "insufficient_credits",
+        phase: "turn",
+        provider: "codex",
+        detail: "insufficient credits",
+        retryable: false
+      }),
+      "codex",
+      vi.fn(),
+      {
+        insufficient_credits: {
+          message: "Recharge Tutti credits",
+          providers: ["tutti-agent"],
+          action: {
+            label: "Recharge",
+            url: "https://example.test/credits"
+          }
+        }
+      }
+    );
+
+    expect(
+      getByText(
+        "Your Tutti credits are insufficient. Review credit options to continue"
+      )
+    ).toBeTruthy();
+    expect(queryByText("Recharge Tutti credits")).toBeNull();
+    expect(queryByText("Recharge")).toBeNull();
   });
 
   it("shows Cursor plan-limit cards as a calm warning status, not a danger alert", () => {

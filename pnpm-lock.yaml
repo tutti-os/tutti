@@ -75,6 +75,9 @@ importers:
       "@tutti-os/client-tuttid-ts":
         specifier: workspace:*
         version: link:../../packages/clients/tuttid-ts
+      "@tutti-os/commerce":
+        specifier: workspace:*
+        version: link:../../packages/commerce/web
       "@tutti-os/config-tsconfig":
         specifier: workspace:*
         version: link:../../packages/configs/tsconfig
@@ -570,6 +573,49 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
+
+  packages/commerce/web:
+    dependencies:
+      "@tutti-os/ui-system":
+        specifier: workspace:*
+        version: link:../../ui/system
+    devDependencies:
+      "@testing-library/jest-dom":
+        specifier: ^6.9.1
+        version: 6.9.1
+      "@testing-library/react":
+        specifier: ^16.3.0
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      "@tutti-os/config-tsconfig":
+        specifier: workspace:*
+        version: link:../../configs/tsconfig
+      "@types/node":
+        specifier: ^24.0.1
+        version: 24.12.4
+      "@types/react":
+        specifier: ^19.1.6
+        version: 19.2.15
+      "@types/react-dom":
+        specifier: ^19.1.5
+        version: 19.2.3(@types/react@19.2.15)
+      jsdom:
+        specifier: ^27.2.0
+        version: 27.4.0
+      react:
+        specifier: ^19.1.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.6(react@19.2.6)
+      tsup:
+        specifier: 8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.13
+        version: 4.1.7(@types/node@24.12.4)(jsdom@27.4.0)(vite@6.4.2(@types/node@24.12.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.22.3)(yaml@2.9.0))
 
   packages/configs/prettier: {}
 

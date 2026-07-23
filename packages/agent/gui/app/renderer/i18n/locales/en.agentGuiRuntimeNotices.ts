@@ -24,10 +24,6 @@ export const enAgentGuiRuntimeNotices = {
     "{{provider}}'s response was interrupted before it completed. Try again in a moment.",
   visibleErrorConcurrencyLimit:
     "{{provider}} is handling too many requests right now. Try again after another task finishes.",
-  visibleErrorInsufficientCreditsFree:
-    "Your available credits are exhausted. Upgrade your membership for more credits",
-  visibleErrorInsufficientCreditsActive:
-    "Your Tutti credits are insufficient. Recharge credits to continue",
   visibleErrorInsufficientCreditsUnknown:
     "Your Tutti credits are insufficient. Review credit options to continue",
   visibleErrorActionInstall: "Connect",
@@ -35,9 +31,6 @@ export const enAgentGuiRuntimeNotices = {
   visibleErrorActionRelogin: "Sign in",
   visibleErrorActionCheckNetwork: "Check network",
   visibleErrorActionDetect: "Open setup",
-  visibleErrorActionUpgradeMembership: "Upgrade membership",
-  visibleErrorActionRechargeCredits: "Recharge credits",
-  visibleErrorActionViewCreditPlans: "View credit options",
   systemNoticeTransportRetry: "Agent connection interrupted. Reconnecting...",
   systemNoticeTransportFallback: "Agent switched to HTTPS transport",
   systemNoticePlanImplementationPendingConfirmation:

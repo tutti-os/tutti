@@ -195,6 +195,52 @@ async function checkPackage(packageConfig, destination) {
     }
   }
 
+  if (packageConfig.name === "@tutti-os/commerce") {
+    const unpackedDirectory = join(destination, `${tarball}.unpacked`);
+    await mkdir(unpackedDirectory, { recursive: true });
+    execFileSync("tar", ["-xzf", tarballPath, "-C", unpackedDirectory]);
+    const packageRoot = join(unpackedDirectory, "package");
+    const missingAssets = await missingPackedModuleRelativeAssets(packageRoot);
+    for (const missingAsset of missingAssets) {
+      violations.push(`missing module-relative asset ${missingAsset}`);
+    }
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          `
+            for (const asset of [
+              "star-free.png",
+              "star-lite.png",
+              "star-pro.png",
+              "star-ultra.png",
+              "registration-credits-bg.png"
+            ]) {
+              const { default: assetUrl } = await import(
+                \`@tutti-os/commerce/assets/\${asset}\`
+              );
+              if (!assetUrl.startsWith("file:") || !assetUrl.endsWith(asset)) {
+                throw new Error(\`unexpected Commerce asset URL: \${assetUrl}\`);
+              }
+            }
+          `
+        ],
+        {
+          cwd: packageRoot,
+          stdio: "pipe"
+        }
+      );
+    } catch (error) {
+      const detail =
+        error instanceof Error && "stderr" in error
+          ? String(error.stderr).trim()
+          : String(error);
+      violations.push(`Node Commerce asset import failed: ${detail}`);
+    }
+  }
+
   if (violations.length > 0) {
     console.error(`${packageConfig.name} pack contents are invalid:`);
     for (const violation of violations) {

@@ -20,9 +20,6 @@ export const zhCNAgentGuiRuntimeNotices = {
     "{{provider}} 的响应在完成前被中断。请稍后重试。",
   visibleErrorConcurrencyLimit:
     "{{provider}} 当前处理的请求过多。请在其他任务完成后再试。",
-  visibleErrorInsufficientCreditsFree:
-    "您账户下可用的积分额度已耗尽，升级会员获取更多额度",
-  visibleErrorInsufficientCreditsActive: "Tutti 积分不足，充值积分后可继续使用",
   visibleErrorInsufficientCreditsUnknown:
     "Tutti 积分不足，请查看积分方案后继续",
   visibleErrorActionInstall: "去连接",
@@ -30,9 +27,6 @@ export const zhCNAgentGuiRuntimeNotices = {
   visibleErrorActionRelogin: "登录",
   visibleErrorActionCheckNetwork: "检测网络",
   visibleErrorActionDetect: "打开检测",
-  visibleErrorActionUpgradeMembership: "升级会员",
-  visibleErrorActionRechargeCredits: "充值积分",
-  visibleErrorActionViewCreditPlans: "查看积分方案",
   systemNoticeTransportRetry: "Agent 连接中断，正在重连",
   systemNoticeTransportFallback: "Agent 已切换到 HTTPS 传输",
   systemNoticePlanImplementationPendingConfirmation: "计划实现正在等待确认",

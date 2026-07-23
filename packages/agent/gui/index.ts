@@ -72,18 +72,11 @@ export type {
   AgentExternalPromptEntryResolver
 } from "./agent-gui/agentGuiNode/model/agentExternalPromptEntries";
 export type {
-  AgentGUIAccountMenuState,
-  AgentGUIMembershipAccessState
-} from "./agent-gui/agentGuiNode/accountMenuState";
-export {
-  AgentGUIAccountAvatar,
-  AgentGUIAccountMenu,
-  agentGUIAccountInitials,
-  type AgentGUIAccountMenuLabels,
-  type AgentGUIAccountMenuProps
-} from "./agent-gui/agentGuiNode/view/AgentGUIAccountMenu";
-export { AgentGUIAccountRewardToast } from "./agent-gui/agentGuiNode/view/AgentGUIAccountConfig";
-export type { AgentGUICommercePresentation } from "./shared/commerce/AgentCommercePresentationContext";
+  AgentRunErrorCode,
+  AgentVisibleErrorOverride,
+  AgentVisibleErrorOverrideCode,
+  AgentVisibleErrorOverrides
+} from "./shared/agentEnv/agentErrorPresentation";
 export type {
   AgentGUIComposerContentType,
   AgentGUIComposerFocusMethod,

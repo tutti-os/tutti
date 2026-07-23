@@ -102,6 +102,7 @@
     "@tutti-os/agent-gui": "workspace:*",
     "@tutti-os/browser-node": "workspace:*",
     "@tutti-os/client-tuttid-ts": "workspace:*",
+    "@tutti-os/commerce": "workspace:*",
     "@tutti-os/config-tsconfig": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
     "@tutti-os/ui-notifications": "workspace:*",

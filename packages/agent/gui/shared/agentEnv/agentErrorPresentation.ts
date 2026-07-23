@@ -1,5 +1,4 @@
 import type { AgentEnvPanelFocus } from "./agentEnvPanelActions";
-import type { AgentGUICommercePresentation } from "../commerce/AgentCommercePresentationContext";
 
 /**
  * Run-failure codes actually emitted by the daemon runtime classifier
@@ -24,6 +23,26 @@ export type AgentRunErrorCode =
   | "process_exited"
   | "provider_error"
   | "unknown";
+
+export interface AgentVisibleErrorOverride {
+  message: string;
+  /** Provider ids for which this product-owned override is valid. */
+  providers: readonly string[];
+  action?: {
+    label: string;
+    url: string;
+  } | null;
+}
+
+/**
+ * Product-owned structured errors whose copy may be supplied by a Host.
+ * Environment/runtime errors remain canonical AgentGUI policy.
+ */
+export type AgentVisibleErrorOverrideCode = "insufficient_credits";
+
+export type AgentVisibleErrorOverrides = Partial<
+  Record<AgentVisibleErrorOverrideCode, AgentVisibleErrorOverride>
+>;
 
 export interface AgentErrorPresentation {
   /**
@@ -119,52 +138,12 @@ const PRESENTATIONS: Record<AgentRunErrorCode, AgentErrorPresentation> = {
  * no call-to-action.
  */
 export function resolveAgentErrorPresentation(
-  code: string | null | undefined,
-  commerce?: AgentGUICommercePresentation | null
+  code: string | null | undefined
 ): AgentErrorPresentation | null {
   if (!code) {
     return null;
   }
-  if (code === "insufficient_credits") {
-    return insufficientCreditsPresentation(commerce);
-  }
   return PRESENTATIONS[code as AgentRunErrorCode] ?? null;
-}
-
-function insufficientCreditsPresentation(
-  commerce?: AgentGUICommercePresentation | null
-): AgentErrorPresentation {
-  const externalUrl = commerce?.planUrl?.trim() || null;
-  switch (commerce?.membershipAccess) {
-    case "free":
-    case "inactive":
-      return {
-        messageKey: "agentHost.agentGui.visibleErrorInsufficientCreditsFree",
-        focus: null,
-        actionKey: externalUrl
-          ? "agentHost.agentGui.visibleErrorActionUpgradeMembership"
-          : null,
-        externalUrl
-      };
-    case "active":
-      return {
-        messageKey: "agentHost.agentGui.visibleErrorInsufficientCreditsActive",
-        focus: null,
-        actionKey: externalUrl
-          ? "agentHost.agentGui.visibleErrorActionRechargeCredits"
-          : null,
-        externalUrl
-      };
-    default:
-      return {
-        messageKey: "agentHost.agentGui.visibleErrorInsufficientCreditsUnknown",
-        focus: null,
-        actionKey: externalUrl
-          ? "agentHost.agentGui.visibleErrorActionViewCreditPlans"
-          : null,
-        externalUrl
-      };
-  }
 }
 
 const FAILED_MESSAGE_CODE_MARKERS: ReadonlyArray<

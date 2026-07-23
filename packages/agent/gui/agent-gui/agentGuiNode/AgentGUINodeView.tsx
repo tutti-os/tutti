@@ -25,10 +25,7 @@ import {
   useOptionalStableEventCallback,
   useStableEventCallback
 } from "./view/agentGUIViewUtils";
-import {
-  AgentGUIAccountRailMenu,
-  AgentGUIConfigMenu
-} from "./view/AgentGUIAccountConfig";
+import { AgentGUIConfigMenu } from "./view/AgentGUIAccountConfig";
 import { AgentGUIProviderRail } from "./view/AgentGUIProviderRail";
 import { type AgentGUIConversationRailState } from "./view/AgentGUIConversationRailPane";
 import { AgentGUIConversationRailController } from "./controller/AgentGUIConversationRailController";
@@ -114,7 +111,6 @@ export function AgentGUINodeView({
   onSlashStatusOpen,
   onSlashStatusClose,
   onSlashStatusRefresh,
-  accountMenuState = null,
   previewMode = false,
   onAgentProviderLogin,
   onAgentEnvPanelOpen,
@@ -671,15 +667,6 @@ export function AgentGUINodeView({
               registerInteractionLockProbe={registerRailInteractionLockProbe}
               userProjects={viewModel.rail.userProjects}
               workspaceId={viewModel.shell.workspaceId}
-              footer={
-                accountMenuState?.user ? (
-                  <AgentGUIAccountRailMenu
-                    accountMenuState={accountMenuState}
-                    labels={labels}
-                    previewMode={previewMode}
-                  />
-                ) : null
-              }
             />
           </aside>
           <div
