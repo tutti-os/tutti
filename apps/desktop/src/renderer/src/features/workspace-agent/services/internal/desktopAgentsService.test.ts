@@ -342,6 +342,41 @@ test("desktop agents service gates extension agents behind the Early Access togg
   );
 });
 
+test("desktop agents service preserves the canonical Kimi Extension identity", () => {
+  const presentations = mapAgentTargetsToPresentations([
+    {
+      createdAtUnixMs: 1780272000000,
+      enabled: true,
+      heroImageUrl: null,
+      iconKey: "extension:kimi-code",
+      iconUrl: "data:image/svg+xml;base64,kimi",
+      maskIconUrl: null,
+      id: "extension:kimi-code",
+      launchRef: {
+        extensionInstallationId: "kimi-code@1.0.1",
+        type: "agent_extension"
+      },
+      name: "Kimi Code",
+      provider: "acp:kimi-code",
+      sortOrder: 700,
+      source: "system",
+      updatedAtUnixMs: 1780272000000
+    }
+  ]);
+
+  const agents = mapAgentTargetPresentationsToAgents(presentations, {
+    earlyAccessEnabled: true
+  });
+  const targets = projectAgentGUIAgentsToTargets(
+    normalizeAgentGUIAgents(agents)
+  );
+
+  assert.equal(agents[0]?.agentTargetId, "extension:kimi-code");
+  assert.equal(agents[0]?.provider, "acp:kimi-code");
+  assert.equal(targets[0]?.targetId, "extension:kimi-code");
+  assert.equal(targets[0]?.agentTargetId, "extension:kimi-code");
+});
+
 function selectIconPresentation(input: {
   agentTargetId: string;
   iconUrl: string;

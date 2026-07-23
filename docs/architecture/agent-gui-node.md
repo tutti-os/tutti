@@ -454,6 +454,15 @@ Harness target by exact target ID, then use the provider/icon catalog fallback.
 Host projections preserve these roles independently and do not create
 provider-specific renderer catalogs.
 
+An Agent directory target ID is launch authority, not a provider-derived
+presentation key. Desktop must preserve daemon-returned extension identities
+such as `extension:<agent>` and must never rebuild them as `local:<provider>`.
+During a released built-in-to-extension migration, tuttid may retain one narrow
+version-skew alias at the target-resolution boundary; successful resolution
+rewrites both the Session target and provider to the installed extension's
+canonical values. The dynamic runtime still requires the exact extension
+installation reference and never accepts a local-target bypass.
+
 When the Desktop host projects built-in Agent mentions into a workspace app,
 it replaces host-local file URLs with bounded 64px WebP data URLs. The external
 bridge is the serialization owner: workspace apps must not read host paths,

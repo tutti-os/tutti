@@ -203,6 +203,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	if agentTargetResolver, ok := store.(agentservice.AgentTargetResolver); ok {
 		agentActivityProjection.SetAgentTargetResolver(agentTargetResolver)
 	}
+	agentActivityProjection.SetWorkspaceAgentTargetResolver(workspaceAgentsStore)
 	managedRuntimeResolver := managedruntime.DefaultResolver{}
 	// Shared so a runtime auth failure (reporter side) surfaces in the status
 	// probe (List side) — see agentRunOutcomeReporter.
@@ -270,6 +271,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller())
 	agentSessionService := agentservice.NewService(agentRuntimeController)
+	agentSessionService.WorkspaceAgentResolver = workspaceAgents
 	if browserService != nil {
 		agentSessionService.AgentSessionResourceReleaser = browserService
 	}

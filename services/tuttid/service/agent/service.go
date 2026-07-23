@@ -381,6 +381,20 @@ func (s *Service) resolveCreateSessionLaunch(ctx context.Context, workspaceID st
 		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target store is unavailable", ErrInvalidArgument)
 	}
 	target, err := s.AgentTargetStore.GetAgentTarget(ctx, agentTargetID)
+	resolvedFromAlias := false
+	if errors.Is(err, workspacedata.ErrAgentTargetNotFound) {
+		if aliases, ok := s.AgentTargetStore.(AgentTargetResolver); ok {
+			canonicalID, aliasFound := aliases.ResolveAgentTargetAlias(ctx, agentTargetID)
+			canonicalID = strings.TrimSpace(canonicalID)
+			if aliasFound && canonicalID != "" && canonicalID != agentTargetID {
+				target, err = s.AgentTargetStore.GetAgentTarget(ctx, canonicalID)
+				if err == nil {
+					input.AgentTargetID = canonicalID
+					resolvedFromAlias = true
+				}
+			}
+		}
+	}
 	if err != nil {
 		if errors.Is(err, workspacedata.ErrAgentTargetNotFound) {
 			return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target not found", ErrInvalidArgument)
@@ -400,7 +414,9 @@ func (s *Service) resolveCreateSessionLaunch(ctx context.Context, workspaceID st
 	}
 	derivedProvider, _ := derivedRef["provider"].(string)
 	derivedProvider = strings.TrimSpace(derivedProvider)
-	if requestProvider != "" && requestProvider != derivedProvider {
+	if requestProvider != "" &&
+		requestProvider != derivedProvider &&
+		(!resolvedFromAlias || "acp:"+requestProvider != derivedProvider) {
 		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: provider does not match agent target", ErrInvalidArgument)
 	}
 	input.HarnessAgentTargetID = normalized.ID
