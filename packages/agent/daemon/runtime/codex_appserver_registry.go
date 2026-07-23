@@ -69,7 +69,7 @@ func (a *CodexAppServerAdapter) removeSession(agentSessionID string) {
 	}
 	a.mu.Unlock()
 	for _, request := range pending {
-		request.finish(pendingInteractiveRequestStateSuperseded)
+		request.supersede(errPermissionRequestCanceled)
 	}
 	a.mu.Lock()
 	delete(a.sessions, strings.TrimSpace(agentSessionID))
@@ -101,7 +101,7 @@ func (a *CodexAppServerAdapter) invalidateSessionClient(
 	a.mu.Unlock()
 
 	for _, request := range pending {
-		request.finish(pendingInteractiveRequestStateSuperseded)
+		request.supersede(errPermissionRequestCanceled)
 	}
 	_ = expectedClient.Close()
 	return true
