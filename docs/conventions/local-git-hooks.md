@@ -24,6 +24,14 @@ The repository currently uses `husky` with two primary hooks:
 - `pre-commit`
 - `pre-push`
 
+Both hooks source `.husky/find-pnpm.sh` before invoking `pnpm`. This helper
+resolves the `pnpm` executable for GUI Git clients (GitHub Desktop, Sourcetree,
+VS Code Source Control) that inherit a minimal system PATH without user shell
+profile additions. It searches common macOS/Linux install locations (Homebrew,
+`~/.local`, Volta, nvm, fnm, bun, corepack) and prepends the first match to
+`PATH`. When `pnpm` is already on `PATH` (Terminal, CI), the helper returns
+immediately with no overhead.
+
 ## `pre-commit`
 
 `pre-commit` should stay focused on staged-file hygiene and fast checks.

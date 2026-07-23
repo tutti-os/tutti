@@ -2,7 +2,7 @@
 # that inherit a minimal PATH without user shell profile additions.
 #
 # Sourced by .husky/pre-commit and .husky/pre-push via:
-#   . "$(dirname -- "$0")/_/find-pnpm.sh"
+#   . "$(dirname -- "$0")/find-pnpm.sh"
 #
 # This is a project-level fix: it does not modify user shell config and
 # works identically in Terminal, VS Code, GitHub Desktop, and CI.
