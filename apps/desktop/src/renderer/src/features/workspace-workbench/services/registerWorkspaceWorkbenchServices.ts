@@ -1,6 +1,7 @@
 import { SyncDescriptor, type ServiceRegistry } from "@tutti-os/infra/di";
 import { WorkbenchHostCoordinator } from "@tutti-os/workbench-host";
 import type {
+  MobileRemoteAccessClient,
   TuttidClient,
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
@@ -20,12 +21,14 @@ import type {
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import { createDesktopWorkspaceSettingsClient } from "./internal/adapters/desktopWorkspaceSettingsClient";
 import { AccountService } from "./internal/accountService";
+import { MobileRemoteAccessService } from "./internal/mobileRemoteAccessService";
 import { WorkspaceWorkbenchHostService } from "./internal/workspaceWorkbenchHostService";
 import {
   WorkspaceSettingsService,
   type WorkspaceSettingsServiceDependencies
 } from "./internal/workspaceSettingsService";
 import { IAccountService } from "./accountService.interface";
+import { IMobileRemoteAccessService } from "./mobileRemoteAccessService.interface";
 import { IWorkbenchHostCoordinator } from "./workbenchHostCoordinator.interface.ts";
 import { IWorkspaceWorkbenchHostService } from "./workspaceWorkbenchHostService.interface";
 import type { DesktopWorkspaceWorkbenchRepository } from "./internal/adapters/desktopWorkspaceWorkbenchRepository.ts";
@@ -64,7 +67,7 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
 
 export interface WorkspaceAccountServiceRegistrationInput {
   hostFilesApi: DesktopHostFilesApi;
-  tuttidClient: TuttidClient;
+  tuttidClient: TuttidClient & MobileRemoteAccessClient;
 }
 
 export function registerWorkspaceAccountService(
@@ -76,6 +79,10 @@ export function registerWorkspaceAccountService(
     tuttidClient: input.tuttidClient
   });
   registry.registerInstance(IAccountService, accountService);
+  registry.registerInstance(
+    IMobileRemoteAccessService,
+    new MobileRemoteAccessService(input.tuttidClient)
+  );
   return accountService;
 }
 

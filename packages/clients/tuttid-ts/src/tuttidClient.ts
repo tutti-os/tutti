@@ -28,6 +28,7 @@ import {
   getAccountLoginStatus,
   getAccountProductSummary,
   getAccountUserInfo,
+  getMobileRemotePairingChallenge,
   dismissAccountRegistrationCreditsReward,
   getHealth,
   getAgentTargetSetup,
@@ -44,6 +45,7 @@ import {
   getWorkspaceTerminalSnapshot,
   getWorkspaceWorkbench,
   listCliCapabilities,
+  listMobileRemotePairings,
   listWorkspaceAppMentionCandidates,
   listUserProjects,
   moveUserProject,
@@ -60,6 +62,7 @@ import {
   listWorkspaces,
   installAgentTargetRuntime,
   logoutAccount,
+  confirmMobileRemotePairing,
   copyWorkspaceFileEntry,
   moveWorkspaceFileEntry,
   renameWorkspaceFileEntry,
@@ -77,6 +80,7 @@ import {
   searchWorkspaceIssueReferences,
   setSystemAgentTargetEnabled,
   startAccountLogin,
+  startMobileRemotePairing,
   terminateWorkspaceTerminal,
   trackEvents,
   updateWorkspaceIssue,
@@ -86,6 +90,7 @@ import {
   updateWorkspace,
   uploadWorkspaceFiles,
   useUserProject,
+  revokeMobileRemotePairing,
   writeWorkspaceFileText
 } from "./generated/index.ts";
 import { createClient } from "./generated/client/index.ts";
@@ -99,11 +104,13 @@ import { createWorkspaceIssueOrchestrationClient } from "./workspaceIssueOrchest
 import { createWorkspaceWorkflowClient } from "./workspaceWorkflowClient.ts";
 import type {
   CreateTuttidClientInput,
+  MobileRemoteAccessClient,
   TuttidClient
 } from "./tuttidClientTypes.ts";
 
 export type {
   CreateTuttidClientInput,
+  MobileRemoteAccessClient,
   TuttidClient,
   TuttidRequestOptions,
   TuttidTrackEvent,
@@ -114,7 +121,7 @@ const defaultBaseUrl = "http://tuttid.local";
 
 export function createTuttidClient(
   input: CreateTuttidClientInput
-): TuttidClient {
+): TuttidClient & MobileRemoteAccessClient {
   const client = createClient({
     auth: input.auth,
     baseUrl: input.baseUrl ?? defaultBaseUrl,
@@ -237,6 +244,45 @@ export function createTuttidClient(
     async logoutAccount() {
       const response = await logoutAccount({ client });
       unwrapAccepted(response, "Account logout request failed.");
+    },
+    async startMobileRemotePairing() {
+      return unwrapData(
+        await startMobileRemotePairing({ client }),
+        "Start mobile remote pairing request failed."
+      );
+    },
+    async getMobileRemotePairingChallenge(challengeID) {
+      return unwrapData(
+        await getMobileRemotePairingChallenge({
+          client,
+          path: { challengeID }
+        }),
+        "Mobile remote pairing challenge request failed."
+      );
+    },
+    async confirmMobileRemotePairing(challengeID) {
+      return unwrapData(
+        await confirmMobileRemotePairing({
+          client,
+          path: { challengeID }
+        }),
+        "Confirm mobile remote pairing request failed."
+      );
+    },
+    async listMobileRemotePairings() {
+      return unwrapData(
+        await listMobileRemotePairings({ client }),
+        "List mobile remote pairings request failed."
+      );
+    },
+    async revokeMobileRemotePairing(pairingID) {
+      return unwrapData(
+        await revokeMobileRemotePairing({
+          client,
+          path: { pairingID }
+        }),
+        "Revoke mobile remote pairing request failed."
+      ).pairing;
     },
     async listCliCapabilities(workspaceID, options) {
       const response = await listCliCapabilities({

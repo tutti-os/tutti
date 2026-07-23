@@ -460,7 +460,8 @@ Wi-Fi/蜂窝切换和 VPN/TUN 失败分类仍待验证。
 pairing lifecycle 和 paired-device rendezvous 已完成并部署。Tutti Personal daemon
 已复用 daemon-wide stable device id，增加持久 Ed25519 identity、账号 cookie
 控制面 adapter，以及 start/status/confirm/list/revoke 本地 API；challenge secret
-只在 daemon 内存中保留到确认或过期。Desktop UI 与 Android claim 尚未接入，
+不会持久化，Desktop renderer 只在配对界面打开期间临时持有二维码 payload。
+Desktop UI 已接入 QR 创建、状态轮询、自动确认和撤销；Android claim 尚未接入，
 因此 M2 还未达到端到端完成条件。
 
 ### M3 — Relay 和 Agent API transport

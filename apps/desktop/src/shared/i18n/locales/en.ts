@@ -819,7 +819,33 @@ export const en = {
         reopenLogin: "Open sign-in again",
         signedOutTitle: "Not signed in",
         signingIn: "Signing in...",
-        signingOut: "Signing out..."
+        signingOut: "Signing out...",
+        mobileRemote: {
+          cancel: "Cancel pairing",
+          confirming: "Confirming this phone...",
+          description:
+            "Pair a phone signed in to the same Tutti account, then use it to access Agent sessions on this computer.",
+          empty: "No phones are paired with this computer.",
+          errors: {
+            list: "Paired phones could not be loaded.",
+            revoke: "This phone could not be removed.",
+            start: "Pairing could not be started.",
+            status: "Pairing status could not be updated."
+          },
+          mobileDevice: "Mobile device",
+          pairedDevices: "Paired phones",
+          qrAlt: "Mobile pairing QR code",
+          qrError: "QR code unavailable",
+          remove: "Remove",
+          removing: "Removing...",
+          revoked: "Removed",
+          scanHint:
+            "Open Tutti on your phone and scan this code. This code expires shortly and only works for your account.",
+          start: "Pair a phone",
+          starting: "Starting...",
+          title: "Mobile remote access",
+          waitingForScan: "Waiting for your phone to scan"
+        }
       },
       apps: {
         appCatalogChannelDescription:

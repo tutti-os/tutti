@@ -132,6 +132,7 @@ import {
   workspaceWallpaperOptions
 } from "../services/workspaceWallpaper";
 import { WorkspaceModelPlansSection } from "./WorkspaceModelPlansSection";
+import { WorkspaceMobileRemoteSettingsSection } from "./WorkspaceMobileRemoteSettingsSection";
 import {
   workspaceSettingsInputClass,
   workspaceSettingsSelectContentClass,
@@ -2874,6 +2875,7 @@ function WorkspaceAccountSettingsSection() {
           {accountState.error}
         </p>
       ) : null}
+      {user ? <WorkspaceMobileRemoteSettingsSection /> : null}
     </div>
   );
 }
