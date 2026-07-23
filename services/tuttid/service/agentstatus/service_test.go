@@ -634,7 +634,12 @@ func TestServiceProbeReportsCodexPlatformPackageIncomplete(t *testing.T) {
 	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
 	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
 	codexPath := filepath.Join(pkgDir, "bin", "codex")
-	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
+	// The launcher simulates the field ENOENT: `codex app-server` fails because
+	// the @openai/codex-<platform> subpackage is missing. The structural nested
+	// platform binary is also absent (genuine incomplete install). Under the
+	// behavior-first availability model the probe — not the npm layout — detects
+	// this, classifying the ENOENT as codex_platform_pkg_incomplete.
+	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nif [ \"$1\" = \"app-server\" ]; then echo 'Cannot find module @openai/codex-darwin-arm64 (enoent)' >&2; exit 127; fi\nexit 0\n")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
@@ -645,6 +650,11 @@ func TestServiceProbeReportsCodexPlatformPackageIncomplete(t *testing.T) {
 	}
 
 	service := probeTestService(home)
+	// Widen the probe ready-after window past shell-startup latency so a failing
+	// app-server (exit 127) is observed as ProbeFailed rather than racing the
+	// ready timer.
+	service.ProbeReadyAfter = 1500 * time.Millisecond
+	service.ProbeTimeout = 5 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir}
 	}
@@ -672,7 +682,7 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
 	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
 	codexPath := filepath.Join(pkgDir, "bin", "codex")
-	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
+	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nif [ \"$1\" = \"app-server\" ]; then echo 'Cannot find module @openai/codex-darwin-arm64 (enoent)' >&2; exit 127; fi\nexit 0\n")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
@@ -682,6 +692,8 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
 
 	service := probeTestService(home)
+	service.ProbeReadyAfter = 1500 * time.Millisecond
+	service.ProbeTimeout = 5 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
 	}
@@ -708,6 +720,7 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 			}
 		}
 		writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
+		writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nif [ \"$1\" = \"app-server\" ]; then sleep 5; fi\nexit 0\n")
 		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
 	}
 
@@ -751,6 +764,8 @@ func TestServiceRunActionRepairsCodexWhenAppServerLaunchFails(t *testing.T) {
 	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
 
 	service := probeTestService(home)
+	service.ProbeReadyAfter = 1500 * time.Millisecond
+	service.ProbeTimeout = 5 * time.Second
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
 	}

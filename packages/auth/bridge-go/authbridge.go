@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 )
 
 const (
@@ -115,20 +117,6 @@ type LoginAttempt struct {
 	doneOnce sync.Once
 }
 
-type bridgeState struct {
-	Version           int    `json:"v"`
-	Flow              string `json:"flow"`
-	AttemptID         string `json:"attemptId"`
-	LocalServerOrigin string `json:"localServerOrigin"`
-	BridgeToken       string `json:"bridgeToken"`
-	AppID             string `json:"appId"`
-	AppCallbackURL    string `json:"appCallbackUrl"`
-	DeviceID          string `json:"deviceId,omitempty"`
-	DeviceName        string `json:"deviceName,omitempty"`
-	ClientVersion     string `json:"clientVersion,omitempty"`
-	Hostname          string `json:"hostname,omitempty"`
-}
-
 type accountEnvelope struct {
 	Code    int             `json:"code"`
 	ErrMsg  string          `json:"errmsg"`
@@ -152,7 +140,7 @@ func NewClient(config Config) (*Client, error) {
 	}
 	httpClient := normalized.HTTPClient
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = httpx.Default()
 	}
 	return &Client{config: normalized, http: httpClient}, nil
 }
@@ -464,7 +452,10 @@ func (a *LoginAttempt) complete(transferCode string) {
 	defer cancel()
 
 	_ = a.completeWithContext(ctx, transferCode)
-	a.close()
+	// The /oauth/complete handler has already written its response. A graceful
+	// shutdown lets that in-flight response reach the browser before the local
+	// bridge stops accepting connections.
+	a.closeGracefully()
 }
 
 func (a *LoginAttempt) completeWithContext(ctx context.Context, transferCode string) error {
@@ -515,7 +506,7 @@ func (a *LoginAttempt) serve() {
 
 func (a *LoginAttempt) fail(err error) {
 	a.markFailed(err)
-	a.close()
+	a.closeGracefully()
 }
 
 func (a *LoginAttempt) markFailed(err error) {
@@ -531,13 +522,6 @@ func (a *LoginAttempt) markFailed(err error) {
 	}
 	a.err = err
 	a.mu.Unlock()
-}
-
-func (a *LoginAttempt) close() {
-	_ = a.server.Close()
-	a.doneOnce.Do(func() {
-		close(a.done)
-	})
 }
 
 func (a *LoginAttempt) closeGracefully() {
@@ -724,40 +708,6 @@ func listenBridge(host string, basePort int, maxPort int) (net.Listener, string,
 		return listener, "http://" + addr, nil
 	}
 	return nil, "", fmt.Errorf("no available bridge port in %d-%d", basePort, maxPort)
-}
-
-func encodeBridgeState(state bridgeState) (string, error) {
-	raw, err := json.Marshal(state)
-	if err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(raw), nil
-}
-
-func decodeBridgeState(raw string) (bridgeState, error) {
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return bridgeState{}, err
-	}
-	var state bridgeState
-	if err := json.Unmarshal(decoded, &state); err != nil {
-		return bridgeState{}, err
-	}
-	if state.Version != bridgeStateVersion || state.Flow != bridgeFlowDesktop || state.AttemptID == "" || state.BridgeToken == "" {
-		return bridgeState{}, errors.New("invalid bridge state")
-	}
-	return state, nil
-}
-
-func buildLoginURL(authLoginURL string, state string) string {
-	u, _ := url.Parse(authLoginURL)
-	u.Path = "/auth/login"
-	u.RawQuery = ""
-	u.Fragment = ""
-	q := u.Query()
-	q.Set("state", state)
-	u.RawQuery = q.Encode()
-	return u.String()
 }
 
 func redirectBridgeResult(w http.ResponseWriter, r *http.Request, attempt *LoginAttempt, status string, safeErrorCode string) {

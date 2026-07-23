@@ -75,6 +75,9 @@ func (s Service) statusForSpec(
 	cliVersion := ""
 	reuseCursorAboutVersion := installed && isCursorAuthCommandSpec(spec) && s.RunAuthStatusCommand == nil
 	var checks errgroup.Group
+	// adapterProbe captures the full probe result so availability can surface a
+	// probe-classified failure reason, rather than only a boolean result.
+	var adapterProbe ProbeResult
 	if installed && adapterReady && !options.skipAdapterProbe &&
 		s.shouldProbeAdapterCommandForStatus(spec, runtimeResolution) {
 		probeCacheKey := adapterProbeCacheKey(spec, runtimeResolution)
@@ -85,7 +88,8 @@ func (s Service) statusForSpec(
 			adapterProbeRan = true
 			checks.Go(func() error {
 				probeStartedAt := time.Now()
-				if probe := s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now); probe.Status == ProbeFailed {
+				adapterProbe = s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now)
+				if adapterProbe.Status == ProbeFailed {
 					adapterReady = false
 					adapterLaunchFailed = true
 				}
@@ -121,8 +125,17 @@ func (s Service) statusForSpec(
 	}
 	postChecksStartedAt := time.Now()
 
+	// codexRuntimeVerified is the behavioral source of truth: a successful
+	// adapter probe already launched `codex app-server` and observed it reach
+	// readiness, which proves the platform-specific native binary is present
+	// and invokable — regardless of how the CLI was installed (npm nested,
+	// bun hoisted, pnpm, homebrew, …). The structural codexPlatformBinaryOK
+	// check below is only a fallback diagnostic for when capability could not
+	// be confirmed by probe (probe skipped or not yet run); it must never
+	// override a probe that already demonstrated the runtime works.
+	codexRuntimeVerified := adapterProbeCacheHit || (adapterProbeRan && adapterReady && !adapterLaunchFailed)
 	codexPlatformOK := true
-	if isCodexStatusSpec(spec) && installed {
+	if isCodexStatusSpec(spec) && installed && !codexRuntimeVerified {
 		codexPlatformOK = s.codexPlatformBinaryOK(runtimeResolution.CLIPath)
 	}
 	availability := Availability{
@@ -149,7 +162,13 @@ func (s Service) statusForSpec(
 		actions = append(actions, daemonAction(ActionInstall))
 	} else if adapterLaunchFailed {
 		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = "acp_adapter_launch_failed"
+		// When the adapter probe classified its failure (e.g. a Codex launch
+		// failed because the @openai/codex-<platform> subpackage was missing,
+		// reported as an ENOENT), surface that precise reason code instead of
+		// the generic launch-failed label. Unclassified failures — including
+		// all non-codex providers and any error the probe did not match — keep
+		// the generic code, preserving prior behavior.
+		availability.ReasonCode = adapterLaunchFailureReasonCode(adapterProbe)
 		actions = append(actions, daemonAction(ActionInstall))
 	} else if !adapterReady {
 		availability.Status = AvailabilityNotInstalled
@@ -250,13 +269,22 @@ func (s Service) statusForSpec(
 	if isCodexStatusSpec(spec) {
 		status.Checks = codexProviderChecks(status, codexPlatformOK, s.codexNodeRuntimeCheck(spec))
 		status.LastError = codexProviderLastError(status)
+		// The structural platform-binary path is only meaningful as a
+		// diagnostic when the probe did not already verify the runtime; once
+		// the app-server probe succeeded the install layout is irrelevant, so
+		// avoid logging a misleading "missing" path for a working CLI.
+		missingPlatformPath := ""
+		if !codexRuntimeVerified {
+			missingPlatformPath = s.codexPlatformPackageMissingPath(runtimeResolution.CLIPath)
+		}
 		slog.Info(
 			"codex agent provider status checked",
 			"availability", status.Availability.Status,
 			"reasonCode", status.Availability.ReasonCode,
 			"version", status.CLI.Version,
 			"lastErrorCode", providerLastErrorCode(status.LastError),
-			"missingPlatformPath", s.codexPlatformPackageMissingPath(runtimeResolution.CLIPath),
+			"runtimeVerified", codexRuntimeVerified,
+			"missingPlatformPath", missingPlatformPath,
 		)
 	}
 	postChecksDuration = time.Since(postChecksStartedAt)
@@ -275,6 +303,20 @@ func (s Service) shouldProbeAdapterCommandForStatus(spec ProviderSpec, runtimeRe
 		return true
 	}
 	return isCodexStatusSpec(spec) && s.executableFile(runtimeResolution.AdapterPath)
+}
+
+// adapterLaunchFailureReasonCode surfaces a probe-classified failure reason
+// when the adapter probe identified a specific provider error (e.g. a Codex
+// launch failed because the @openai/codex-<platform> subpackage was missing,
+// classified from an ENOENT message), and otherwise falls back to the generic
+// adapter-launch-failed code. The probe sets LastError only when it matched a
+// known error pattern, so unclassified failures and all non-codex providers
+// are unaffected.
+func adapterLaunchFailureReasonCode(probe ProbeResult) string {
+	if probe.LastError != nil && strings.TrimSpace(probe.ReasonCode) != "" {
+		return probe.ReasonCode
+	}
+	return "acp_adapter_launch_failed"
 }
 
 func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {

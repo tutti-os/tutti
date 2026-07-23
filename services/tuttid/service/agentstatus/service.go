@@ -654,6 +654,23 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 	})
 	defer clearActiveAction(installCtx, spec.Provider)
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
+	if isCodexStatusSpec(spec) && strings.TrimSpace(runtimeResolution.CLIPath) != "" {
+		probe := s.probeAdapterRuntimeCommand(installCtx, spec, runtimeResolution, s.now())
+		if probe.Status == ProbeReady && !s.providerCLIRequiresInstall(spec, runtimeResolution) {
+			result.Probe = &probe
+			result.Status = RunActionCompleted
+			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+				Node:      "install_post_probe",
+				Provider:  spec.Provider,
+				Result:    RunActionResult{Status: RunActionCompleted},
+				StartedAt: s.now(),
+			})
+			return result, nil
+		}
+		if probe.Status == ProbeFailed {
+			runtimeResolution.ReasonCode = firstNonBlank(probe.ReasonCode, "acp_adapter_launch_failed")
+		}
+	}
 	summary, updatedRuntime, err := s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)
 	result = applyInstallerExecutionSummary(result, summary)
 	if err != nil {
