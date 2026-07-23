@@ -178,6 +178,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     emptyProviderReadinessGate,
     goalBannerLabels,
     hasActiveConversation,
+    homeNoticeChrome,
     inlineNoticeChrome,
     interactivePromptLabels,
     isComposerSending,
@@ -707,7 +708,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
                   ? selectHomeComposerAgentTargetAndFocus
                   : undefined
               }
-              inlineNoticeChrome={inlineNoticeChrome}
+              noticeChrome={homeNoticeChrome}
               isRespondingApproval={isInteractionPending}
               previewMode={previewMode}
               onSubmitApprovalOption={submitApprovalOption}

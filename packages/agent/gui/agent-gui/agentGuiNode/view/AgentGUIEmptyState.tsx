@@ -98,7 +98,7 @@ interface AgentGUIEmptyHomePaneProps {
   agentTargets: readonly AgentGUIAgentTarget[];
   selectedAgentTarget: AgentGUIAgentTarget | null;
   onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
-  inlineNoticeChrome: AgentGUISessionChrome | null;
+  noticeChrome: AgentGUISessionChrome | null;
   isRespondingApproval: boolean;
   previewMode: boolean;
   onSubmitApprovalOption: AgentGUINodeViewProps["actions"]["submitApprovalOption"];
@@ -209,7 +209,7 @@ interface AgentGUIEmptyHeroPaneProps {
   emptyProvider: string;
   avatarPresentations: readonly AgentGUIAgentAvatarPresentation[];
   carouselMountedExternally?: boolean;
-  inlineNoticeChrome: AgentGUISessionChrome | null;
+  noticeChrome: AgentGUISessionChrome | null;
   isRespondingApproval: boolean;
   onSubmitApprovalOption: AgentGUINodeViewProps["actions"]["submitApprovalOption"];
   onAuthLogin?: (provider?: string | null) => void;
@@ -234,7 +234,7 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
   emptyProvider,
   avatarPresentations,
   carouselMountedExternally = false,
-  inlineNoticeChrome,
+  noticeChrome,
   isRespondingApproval,
   onSubmitApprovalOption,
   onAuthLogin,
@@ -307,9 +307,9 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
             sharedAgentOwnerSeparator={sharedAgentOwnerSeparator}
           />
         </h2>
-        {inlineNoticeChrome ? (
+        {noticeChrome ? (
           <AgentSessionChrome
-            chrome={inlineNoticeChrome}
+            chrome={noticeChrome}
             isRespondingApproval={isRespondingApproval}
             onSubmitApprovalOption={onSubmitApprovalOption}
             onAuthLogin={onAuthLogin}

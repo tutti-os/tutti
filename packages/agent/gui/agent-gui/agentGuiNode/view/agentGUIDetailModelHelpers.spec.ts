@@ -3,6 +3,7 @@ import {
   buildAgentConversationHandoffPrompt,
   handoffProjectPathForConversation,
   isAgentGUITransportNoticeVisible,
+  resolveAgentGUIHomeNoticeChrome,
   resolveAgentGUIStopControl,
   shouldShowAgentGUIStopButton
 } from "./agentGUIDetailModelHelpers.ts";
@@ -106,6 +107,58 @@ describe("transport availability presentation", () => {
         canRetry: false
       })
     ).toBe(false);
+  });
+
+  it("projects target connection chrome onto the empty Home composer", () => {
+    const inlineNoticeChrome = {
+      auth: null,
+      approval: null,
+      recovery: {
+        kind: "failed" as const,
+        message: "Existing failure"
+      },
+      rawState: null
+    };
+    const sessionChrome = {
+      auth: null,
+      approval: null,
+      recovery: {
+        kind: "transport-connecting" as const,
+        message: "Connecting to device..."
+      },
+      rawState: null
+    };
+
+    expect(
+      resolveAgentGUIHomeNoticeChrome({
+        inlineNoticeChrome,
+        sessionChrome
+      })
+    ).toBe(sessionChrome);
+  });
+
+  it("keeps ordinary Home notices when target connection chrome is absent", () => {
+    const inlineNoticeChrome = {
+      auth: null,
+      approval: null,
+      recovery: {
+        kind: "failed" as const,
+        message: "Existing failure"
+      },
+      rawState: null
+    };
+
+    expect(
+      resolveAgentGUIHomeNoticeChrome({
+        inlineNoticeChrome,
+        sessionChrome: {
+          auth: null,
+          approval: null,
+          recovery: null,
+          rawState: null
+        }
+      })
+    ).toBe(inlineNoticeChrome);
   });
 
   it("keeps Stop visible but disables it while active work is disconnected", () => {

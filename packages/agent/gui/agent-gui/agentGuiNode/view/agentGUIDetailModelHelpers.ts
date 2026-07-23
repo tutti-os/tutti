@@ -265,6 +265,15 @@ export function isAgentGUITransportNoticeVisible(
   );
 }
 
+export function resolveAgentGUIHomeNoticeChrome(input: {
+  inlineNoticeChrome: AgentGUISessionChrome | null;
+  sessionChrome: AgentGUISessionChrome;
+}): AgentGUISessionChrome | null {
+  return isAgentGUITransportNoticeVisible(input.sessionChrome.recovery)
+    ? input.sessionChrome
+    : input.inlineNoticeChrome;
+}
+
 export function resolveAgentGUIStopControl(input: {
   hasPendingApproval: boolean;
   hasPendingInteractivePrompt: boolean;

@@ -17,6 +17,7 @@ import {
   isAgentGUITransportNoticeVisible,
   resolveActiveConversationBusyStatus,
   resolveConversationDetailStatus,
+  resolveAgentGUIHomeNoticeChrome,
   resolveAgentGUIStopControl,
   resolveSlashStatus,
   useStableSlashStatus
@@ -185,6 +186,10 @@ export function useAgentGUIDetailModel(input: Input) {
       rawState: null
     };
   }, [displayedInlineNotice]);
+  const homeNoticeChrome = resolveAgentGUIHomeNoticeChrome({
+    inlineNoticeChrome,
+    sessionChrome
+  });
   // Plan decisions replace the composer in the bottom dock: the card takes its slot
   // and the composer hides until it is acted on (optimistically cleared via
   // bottomDockDismissedPromptRequestId) or otherwise resolves.
@@ -725,6 +730,7 @@ export function useAgentGUIDetailModel(input: Input) {
     emptyProviderReadinessGate,
     goalBannerLabels,
     hasActiveConversation,
+    homeNoticeChrome,
     inlineNoticeChrome,
     interactivePromptLabels,
     isCollaboratorConversation,
