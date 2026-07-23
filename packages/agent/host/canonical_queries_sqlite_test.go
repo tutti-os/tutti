@@ -15,7 +15,7 @@ type sqliteCanonicalStore struct {
 	*storesqlite.Store
 }
 
-func (sqliteCanonicalStore) InitializeRuntimeSession(context.Context, agenthost.ProviderRuntimeSession) (storesqlite.Session, error) {
+func (sqliteCanonicalStore) InitializeRuntimeSession(context.Context, agenthost.RuntimeSessionInitialization) (storesqlite.Session, error) {
 	return storesqlite.Session{}, nil
 }
 

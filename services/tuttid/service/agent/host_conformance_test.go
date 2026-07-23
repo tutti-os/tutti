@@ -336,7 +336,8 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	persisted := PersistedSession{
 		ID: seed.AgentSessionID, WorkspaceID: seed.WorkspaceID, Kind: kind, Origin: seed.Origin,
 		Provider: seed.Provider, ProviderSessionID: seed.ProviderSessionID, Cwd: seed.Cwd,
-		RailSectionKey: "conversations", Settings: settings,
+		RailSectionKind: "conversations",
+		RailSectionKey:  "conversations", Settings: settings,
 		Metadata:               agentactivitybiz.SessionMetadata{Visible: true, Capabilities: []string{}},
 		InternalRuntimeContext: runtimeContext,
 		Title:                  seed.Title, ActiveTurnID: seed.ActiveTurnID,
@@ -356,7 +357,9 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		additionalKey := additional.WorkspaceID + ":" + additional.AgentSessionID
 		d.sessions.sessions[additionalKey] = PersistedSession{
 			ID: additional.AgentSessionID, WorkspaceID: additional.WorkspaceID, Kind: additionalKind,
-			Provider: additional.Provider, Cwd: additional.Cwd, RailSectionKey: "conversations",
+			Provider: additional.Provider, Cwd: additional.Cwd,
+			RailSectionKind: "conversations",
+			RailSectionKey:  "conversations",
 			Metadata:        agentactivitybiz.SessionMetadata{Visible: true, Capabilities: []string{}},
 			CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2, LastEventUnixMS: 2,
 		}
@@ -482,6 +485,7 @@ func (d *legacyHostConformanceDriver) Create(
 		ProviderTargetRef: input.ProviderTargetRef, ReasoningEffort: input.ReasoningEffort,
 		RuntimeContext: input.RuntimeContext, Speed: input.Speed,
 		ConversationDetailMode: input.ConversationDetailMode, Visible: input.Visible,
+		RailPlacement: input.RailPlacement,
 	})
 	if err != nil {
 		return hostconformance.SessionObservation{}, "", err
@@ -917,8 +921,9 @@ type legacyHostConformanceSessionInitializer struct {
 func (i legacyHostConformanceSessionInitializer) InitializeRuntimeSession(
 	ctx context.Context,
 	session ProviderRuntimeSession,
+	railPlacement *agenthost.RailPlacement,
 ) (PersistedSession, error) {
-	persisted, err := (fakeSessionInitializer{}).InitializeRuntimeSession(ctx, session)
+	persisted, err := (fakeSessionInitializer{}).InitializeRuntimeSession(ctx, session, railPlacement)
 	if err == nil {
 		i.sessions.sessions[persisted.WorkspaceID+":"+persisted.ID] = persisted
 	}
@@ -1042,7 +1047,8 @@ func legacyHostSessionObservationWithLive(session Session, live bool) hostconfor
 	}
 	return hostconformance.SessionObservation{
 		SessionID: session.ID, ProviderSessionID: session.ProviderSessionID,
-		Title: value(session.Title), ActiveTurnID: session.ActiveTurnID, Resumable: session.Resumable,
+		RailSectionKey: session.RailSectionKey,
+		Title:          value(session.Title), ActiveTurnID: session.ActiveTurnID, Resumable: session.Resumable,
 		Settings: settings, Pinned: session.PinnedAtUnixMS > 0, Live: live,
 	}
 }

@@ -696,6 +696,10 @@ The pending activation carries the same resolved project section key as the
 create command. Exact rail projection therefore shows the conversation as soon
 as the intent is accepted; it does not wait for provider startup or invent a
 temporary catch-all section.
+For delegated/shared execution, the initiating caller remains the placement
+authority: the adapter forwards that caller-selected `RailPlacement` through
+the binding to the owner Host. The owner persists the same section key and does
+not recompute it from the owner's user-project list.
 
 ### 7.2 Existing conversation submit
 

@@ -40,6 +40,19 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		}
 		return Session{}, false, fmt.Errorf("get workspace agent session: %w", err)
 	}
+	railSection, found, err := s.getAgentSessionRailSection(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return Session{}, false, err
+	}
+	if !found {
+		return Session{}, false, fmt.Errorf(
+			"workspace agent session %q has no rail section",
+			agentSessionID,
+		)
+	}
+	session.RailSectionKind = railSection.Kind
+	session.RailProjectPath = railSection.ProjectPath
+	session.RailSectionKey = railSection.Key
 	return session, true, nil
 }
 

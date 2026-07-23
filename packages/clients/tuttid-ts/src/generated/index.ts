@@ -1585,6 +1585,7 @@ export type {
   WorkspaceAgentPlanDecisionOperation,
   WorkspaceAgentPlanDecisionResponse,
   WorkspaceAgentProvider,
+  WorkspaceAgentRailPlacement,
   WorkspaceAgentSession,
   WorkspaceAgentSessionAttachmentResponse,
   WorkspaceAgentSessionDetailResponse,

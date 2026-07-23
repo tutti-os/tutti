@@ -217,6 +217,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		RuntimeContext:         stampAgentExtensionComposerScope(input.RuntimeContext, input.ProviderTargetRef, cwd, runtimeSettings),
 		Speed:                  stringPointer(runtimeSettings.Speed),
 		ConversationDetailMode: input.ConversationDetailMode, Visible: input.Visible,
+		RailPlacement: input.RailPlacement,
 	}
 	if err := s.applyInitialTuttiModeActivation(ctx, workspaceID, input.AgentSessionID, input.InitialTuttiModeActivation); err != nil {
 		return CreateSessionResult{}, err

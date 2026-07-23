@@ -68,6 +68,7 @@ type WorkspaceAgentSessionStateUpdate struct {
 	SubmitAvailability    *WorkspaceAgentSubmitAvailability         `json:"submitAvailability,omitempty"`
 	InteractionTransition *WorkspaceAgentInteractionTransition      `json:"interactionTransition,omitempty"`
 	CWD                   string                                    `json:"cwd,omitempty"`
+	RailPlacement         *RailPlacement                            `json:"railPlacement,omitempty"`
 	Title                 string                                    `json:"title,omitempty"`
 	LifecycleStatus       string                                    `json:"lifecycleStatus,omitempty"`
 	CurrentPhase          string                                    `json:"currentPhase,omitempty"`
@@ -77,6 +78,12 @@ type WorkspaceAgentSessionStateUpdate struct {
 	EndedAtUnixMS         int64                                     `json:"endedAtUnixMs,omitempty"`
 	Turn                  *WorkspaceAgentTurnStateUpdate            `json:"turn,omitempty"`
 	RootProviderTurn      *WorkspaceAgentRootProviderTurnTransition `json:"rootProviderTurn,omitempty"`
+}
+
+type RailPlacement struct {
+	Kind        string `json:"kind"`
+	ProjectPath string `json:"projectPath,omitempty"`
+	SectionKey  string `json:"sectionKey"`
 }
 
 type WorkspaceAgentRootProviderTurnTransition struct {

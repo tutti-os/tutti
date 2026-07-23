@@ -2707,6 +2707,7 @@ export type CreateWorkspaceAgentSessionRequest = {
    * Classifies a session that is intentionally not attached to a workspace project.
    */
   noProject?: boolean | null;
+  railPlacement?: WorkspaceAgentRailPlacement;
   speed?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;
@@ -2719,6 +2720,13 @@ export type CreateWorkspaceAgentSessionRequest = {
    */
   initialTuttiModeActivation?: TuttiModeActivationIntent | null;
   visible?: boolean | null;
+};
+
+export type WorkspaceAgentRailPlacement = {
+  version: 1;
+  kind: "conversations" | "project";
+  projectPath?: string;
+  sectionKey: string;
 };
 
 export type SendWorkspaceAgentSessionInputRequest = {

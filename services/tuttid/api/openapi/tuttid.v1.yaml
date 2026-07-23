@@ -12050,6 +12050,8 @@ components:
           type: boolean
           nullable: true
           description: Classifies a session that is intentionally not attached to a workspace project.
+        railPlacement:
+          $ref: "#/components/schemas/WorkspaceAgentRailPlacement"
         speed:
           type: string
           nullable: true
@@ -12073,6 +12075,29 @@ components:
         visible:
           type: boolean
           nullable: true
+    WorkspaceAgentRailPlacement:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - kind
+        - sectionKey
+      properties:
+        version:
+          type: integer
+          enum:
+            - 1
+        kind:
+          type: string
+          enum:
+            - conversations
+            - project
+        projectPath:
+          type: string
+          minLength: 1
+        sectionKey:
+          type: string
+          minLength: 1
     SendWorkspaceAgentSessionInputRequest:
       type: object
       additionalProperties: false

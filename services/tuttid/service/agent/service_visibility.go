@@ -19,7 +19,7 @@ func (s *Service) UpdateVisible(ctx context.Context, workspaceID string, agentSe
 	if err != nil {
 		return Session{}, normalizeRuntimeError(err)
 	}
-	persisted, err := s.initializeRuntimeSession(ctx, session)
+	persisted, err := s.initializeRuntimeSession(ctx, session, nil)
 	if err != nil {
 		return Session{}, err
 	}

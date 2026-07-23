@@ -3,6 +3,7 @@ package agenthost_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -76,10 +77,18 @@ func TestSQLiteWorkspaceStoreInitializesCanonicalRuntimeSession(t *testing.T) {
 		InitializationObserver: initializationObserver,
 	}
 
-	persisted, err := store.InitializeRuntimeSession(t.Context(), agenthost.ProviderRuntimeSession{
-		ID: "session-1", WorkspaceID: "workspace-1", AgentTargetID: "target-1", Provider: "codex",
-		Visible: true, Provisional: true, RuntimeContext: map[string]any{"source": "create"},
-		Settings: &agenthost.ComposerSettings{Model: "gpt-5.6", ReasoningEffort: "ultra", Speed: "standard"},
+	persisted, err := store.InitializeRuntimeSession(t.Context(), agenthost.RuntimeSessionInitialization{
+		Session: agenthost.ProviderRuntimeSession{
+			ID: "session-1", WorkspaceID: "workspace-1", AgentTargetID: "target-1", Provider: "codex",
+			Visible: true, Provisional: true, RuntimeContext: map[string]any{"source": "create"},
+			Settings: &agenthost.ComposerSettings{Model: "gpt-5.6", ReasoningEffort: "ultra", Speed: "standard"},
+		},
+		RailPlacement: &agenthost.RailPlacement{
+			Version:     1,
+			Kind:        agenthost.RailPlacementKindProject,
+			ProjectPath: "/workspace/app",
+			SectionKey:  "project:workspace-1:/workspace/app",
+		},
 	})
 	if err != nil {
 		t.Fatalf("InitializeRuntimeSession() error = %v", err)
@@ -89,6 +98,9 @@ func TestSQLiteWorkspaceStoreInitializesCanonicalRuntimeSession(t *testing.T) {
 	}
 	if persisted.LastEventUnixMS != 1234 || persisted.Settings["reasoningEffort"] != "ultra" || persisted.Settings["speed"] != "standard" {
 		t.Fatalf("persisted canonical fields = %#v", persisted)
+	}
+	if persisted.RailSectionKey != "project:workspace-1:/workspace/app" {
+		t.Fatalf("persisted rail section key = %q", persisted.RailSectionKey)
 	}
 	if persisted.Metadata.Visible {
 		t.Fatalf("provisional session visibility = true, want false")
@@ -101,6 +113,18 @@ func TestSQLiteWorkspaceStoreInitializesCanonicalRuntimeSession(t *testing.T) {
 	}
 	if initializationPolicy.calls != 1 {
 		t.Fatalf("initialization policy calls = %d, want 1", initializationPolicy.calls)
+	}
+
+	_, err = store.InitializeRuntimeSession(t.Context(), agenthost.RuntimeSessionInitialization{
+		Session: agenthost.ProviderRuntimeSession{
+			ID: "session-1", WorkspaceID: "workspace-1", AgentTargetID: "target-1", Provider: "codex",
+		},
+		RailPlacement: &agenthost.RailPlacement{
+			Version: 1, Kind: agenthost.RailPlacementKindConversations, SectionKey: "conversations",
+		},
+	})
+	if !errors.Is(err, agenthost.ErrRailPlacementConflict) {
+		t.Fatalf("conflicting rail placement error = %v", err)
 	}
 }
 

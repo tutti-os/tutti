@@ -1,5 +1,7 @@
 export type { AgentActivityAdapter } from "./adapter.ts";
 export type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
+export type { AgentActivityDisplayStatus } from "./displayStatus.types.ts";
+export type { AgentActivityRailPlacement } from "./railPlacement.types.ts";
 export { normalizeAgentActivityCapabilityReferences } from "./capabilityReferences.ts";
 export {
   normalizeAgentActivitySession,
@@ -262,7 +264,6 @@ export type {
   AgentActivityActivateSessionResult,
   AgentActivityActivationMode,
   AgentActivityActivationStatus,
-  AgentActivityDisplayStatus,
   AgentActivityCancelTurnInput,
   AgentActivityGoalControlAction,
   AgentActivityInitialGoalControl,

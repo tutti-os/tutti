@@ -1998,13 +1998,13 @@ func (e TuttiModePlanTaskPriority) Valid() bool {
 
 // Defines values for WorkbenchSnapshotSchemaVersion.
 const (
-	N1 WorkbenchSnapshotSchemaVersion = 1
+	WorkbenchSnapshotSchemaVersionN1 WorkbenchSnapshotSchemaVersion = 1
 )
 
 // Valid indicates whether the value is a known member of the WorkbenchSnapshotSchemaVersion enum.
 func (e WorkbenchSnapshotSchemaVersion) Valid() bool {
 	switch e {
-	case N1:
+	case WorkbenchSnapshotSchemaVersionN1:
 		return true
 	default:
 		return false
@@ -2170,6 +2170,39 @@ func (e WorkspaceAgentPlanDecisionOperationStatus) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentRailPlacementKind.
+const (
+	WorkspaceAgentRailPlacementKindConversations WorkspaceAgentRailPlacementKind = "conversations"
+	WorkspaceAgentRailPlacementKindProject       WorkspaceAgentRailPlacementKind = "project"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentRailPlacementKind enum.
+func (e WorkspaceAgentRailPlacementKind) Valid() bool {
+	switch e {
+	case WorkspaceAgentRailPlacementKindConversations:
+		return true
+	case WorkspaceAgentRailPlacementKindProject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentRailPlacementVersion.
+const (
+	WorkspaceAgentRailPlacementVersionN1 WorkspaceAgentRailPlacementVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentRailPlacementVersion enum.
+func (e WorkspaceAgentRailPlacementVersion) Valid() bool {
+	switch e {
+	case WorkspaceAgentRailPlacementVersionN1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSessionAttachmentResponseMimeType.
 const (
 	WorkspaceAgentSessionAttachmentResponseMimeTypeImagejpeg WorkspaceAgentSessionAttachmentResponseMimeType = "image/jpeg"
@@ -2295,16 +2328,16 @@ func (e WorkspaceAgentSessionKind) Valid() bool {
 
 // Defines values for WorkspaceAgentSessionSectionKind.
 const (
-	Conversations WorkspaceAgentSessionSectionKind = "conversations"
-	Project       WorkspaceAgentSessionSectionKind = "project"
+	WorkspaceAgentSessionSectionKindConversations WorkspaceAgentSessionSectionKind = "conversations"
+	WorkspaceAgentSessionSectionKindProject       WorkspaceAgentSessionSectionKind = "project"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentSessionSectionKind enum.
 func (e WorkspaceAgentSessionSectionKind) Valid() bool {
 	switch e {
-	case Conversations:
+	case WorkspaceAgentSessionSectionKindConversations:
 		return true
-	case Project:
+	case WorkspaceAgentSessionSectionKindProject:
 		return true
 	default:
 		return false
@@ -4371,14 +4404,15 @@ type CreateWorkspaceAgentSessionRequest struct {
 	Model                      *string                    `json:"model,omitempty"`
 
 	// NoProject Classifies a session that is intentionally not attached to a workspace project.
-	NoProject         *bool                   `json:"noProject,omitempty"`
-	PermissionModeId  *string                 `json:"permissionModeId,omitempty"`
-	PlanMode          *bool                   `json:"planMode,omitempty"`
-	ReasoningEffort   *string                 `json:"reasoningEffort,omitempty"`
-	Speed             *string                 `json:"speed,omitempty"`
-	SubmitDiagnostics *AgentSubmitDiagnostics `json:"submitDiagnostics,omitempty"`
-	Title             *string                 `json:"title,omitempty"`
-	Visible           *bool                   `json:"visible,omitempty"`
+	NoProject         *bool                        `json:"noProject,omitempty"`
+	PermissionModeId  *string                      `json:"permissionModeId,omitempty"`
+	PlanMode          *bool                        `json:"planMode,omitempty"`
+	RailPlacement     *WorkspaceAgentRailPlacement `json:"railPlacement,omitempty"`
+	ReasoningEffort   *string                      `json:"reasoningEffort,omitempty"`
+	Speed             *string                      `json:"speed,omitempty"`
+	SubmitDiagnostics *AgentSubmitDiagnostics      `json:"submitDiagnostics,omitempty"`
+	Title             *string                      `json:"title,omitempty"`
+	Visible           *bool                        `json:"visible,omitempty"`
 }
 
 // CreateWorkspaceAppFactoryJobRequest defines model for CreateWorkspaceAppFactoryJobRequest.
@@ -6154,6 +6188,20 @@ type WorkspaceAgentPlanDecisionResponse struct {
 
 // WorkspaceAgentProvider defines model for WorkspaceAgentProvider.
 type WorkspaceAgentProvider = string
+
+// WorkspaceAgentRailPlacement defines model for WorkspaceAgentRailPlacement.
+type WorkspaceAgentRailPlacement struct {
+	Kind        WorkspaceAgentRailPlacementKind    `json:"kind"`
+	ProjectPath *string                            `json:"projectPath,omitempty"`
+	SectionKey  string                             `json:"sectionKey"`
+	Version     WorkspaceAgentRailPlacementVersion `json:"version"`
+}
+
+// WorkspaceAgentRailPlacementKind defines model for WorkspaceAgentRailPlacement.Kind.
+type WorkspaceAgentRailPlacementKind string
+
+// WorkspaceAgentRailPlacementVersion defines model for WorkspaceAgentRailPlacement.Version.
+type WorkspaceAgentRailPlacementVersion int
 
 // WorkspaceAgentSession defines model for WorkspaceAgentSession.
 type WorkspaceAgentSession struct {
