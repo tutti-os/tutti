@@ -74,7 +74,15 @@ export function DeviceScreen({
         )
       );
       setDevices(nextDevices);
-    } catch {
+    } catch (cause) {
+      console.warn("[mobile-device-refresh] failed", {
+        message: cause instanceof Error ? cause.message : String(cause),
+        name: cause instanceof Error ? cause.name : "",
+        status:
+          typeof cause === "object" && cause !== null && "status" in cause
+            ? String(cause.status)
+            : ""
+      });
       setError(t("genericError"));
     } finally {
       setRefreshing(false);
@@ -161,14 +169,25 @@ export function DeviceScreen({
         typeof cause === "object" && cause !== null && "code" in cause
           ? String(cause.code)
           : "";
+      console.warn("[mobile-pairing] failed", {
+        code,
+        message: cause instanceof Error ? cause.message : String(cause),
+        name: cause instanceof Error ? cause.name : "",
+        status:
+          typeof cause === "object" && cause !== null && "status" in cause
+            ? String(cause.status)
+            : ""
+      });
       if (run !== pairingRun.current) {
         return;
       }
       if (code !== "SCAN_CANCELLED") {
         setError(
-          code === "SCANNER_UNAVAILABLE" || code === "SCAN_FAILED"
-            ? t("scannerUnavailable")
-            : t("pairingFailed")
+          code === "SCANNER_PERMISSION_DENIED"
+            ? t("cameraPermissionRequired")
+            : code === "SCANNER_UNAVAILABLE" || code === "SCAN_FAILED"
+              ? t("scannerUnavailable")
+              : t("pairingFailed")
         );
       }
       setPairingState("idle");
@@ -292,10 +311,10 @@ export function DeviceScreen({
             <Text style={styles.statusText}>{status}</Text>
           </View>
         ) : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
 
       <View style={styles.footer}>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton
           label={
             pairingState === "claiming" || pairingState === "waiting"

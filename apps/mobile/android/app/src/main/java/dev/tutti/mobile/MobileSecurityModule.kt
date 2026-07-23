@@ -1,25 +1,28 @@
 package dev.tutti.mobile
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.google.zxing.client.android.Intents
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import java.nio.charset.StandardCharsets
-import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.PrivateKey
 import java.security.Signature
-import java.security.spec.PKCS8EncodedKeySpec
-import java.security.spec.X509EncodedKeySpec
+import java.security.spec.ECGenParameterSpec
 import java.util.Locale
 import java.util.UUID
 import javax.crypto.Cipher
@@ -32,6 +35,50 @@ class MobileSecurityModule(
     private val reactContext: ReactApplicationContext,
 ) : ReactContextBaseJavaModule(reactContext) {
     private val store = SecureStore(reactContext)
+    private var scanPromise: Promise? = null
+    private val scanContract = ScanContract()
+    private val activityEventListener =
+        object : BaseActivityEventListener() {
+            override fun onActivityResult(
+                activity: Activity,
+                requestCode: Int,
+                resultCode: Int,
+                intent: Intent?,
+            ) {
+                if (requestCode != QR_SCAN_REQUEST_CODE) {
+                    return
+                }
+                val result = scanContract.parseResult(resultCode, intent)
+                val promise = scanPromise ?: return
+                scanPromise = null
+                val value = result.contents?.trim().orEmpty()
+                when {
+                    result.originalIntent?.getBooleanExtra(
+                        Intents.Scan.MISSING_CAMERA_PERMISSION,
+                        false,
+                    ) == true ->
+                        promise.reject(
+                            "SCANNER_PERMISSION_DENIED",
+                            "Camera permission is required",
+                        )
+                    result.contents == null ->
+                        promise.reject(
+                            "SCAN_CANCELLED",
+                            "QR scan cancelled",
+                        )
+                    value.isEmpty() ->
+                        promise.reject(
+                            "EMPTY_QR_CODE",
+                            "The scanned QR code is empty",
+                        )
+                    else -> promise.resolve(value)
+                }
+            }
+        }
+
+    init {
+        reactContext.addActivityEventListener(activityEventListener)
+    }
 
     override fun getName(): String = "TuttiMobileSecurity"
 
@@ -52,6 +99,7 @@ class MobileSecurityModule(
                 putString("deviceName", Build.MODEL.ifBlank { "Android" })
             }
         }.fold(promise::resolve) {
+            Log.e("TuttiMobileSecurity", "Unable to load device identity", it)
             promise.reject("IDENTITY_UNAVAILABLE", "Unable to load device identity", it)
         }
     }
@@ -61,6 +109,7 @@ class MobileSecurityModule(
         runCatching {
             store.sign(message.toByteArray(StandardCharsets.UTF_8))
         }.fold(promise::resolve) {
+            Log.e("TuttiMobileSecurity", "Unable to sign device proof", it)
             promise.reject("SIGN_FAILED", "Unable to sign device proof", it)
         }
     }
@@ -116,27 +165,50 @@ class MobileSecurityModule(
             promise.reject("SCANNER_UNAVAILABLE", "No active Android activity")
             return
         }
-        val options =
-            GmsBarcodeScannerOptions
-                .Builder()
-                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                .enableAutoZoom()
-                .build()
-        GmsBarcodeScanning
-            .getClient(activity, options)
-            .startScan()
-            .addOnSuccessListener { barcode ->
-                val value = barcode.rawValue?.trim().orEmpty()
-                if (value.isEmpty()) {
-                    promise.reject("EMPTY_QR_CODE", "The scanned QR code is empty")
-                } else {
-                    promise.resolve(value)
+        if (scanPromise != null) {
+            promise.reject("SCANNER_BUSY", "A QR scan is already active")
+            return
+        }
+        scanPromise = promise
+        activity.runOnUiThread {
+            try {
+                val options =
+                    ScanOptions()
+                    .setDesiredBarcodeFormats(
+                        listOf(ScanOptions.QR_CODE),
+                    ).setPrompt(
+                        reactContext.getString(R.string.scan_pairing_qr),
+                    ).setBeepEnabled(false)
+                    .setOrientationLocked(false)
+                activity.startActivityForResult(
+                    scanContract.createIntent(activity, options),
+                    QR_SCAN_REQUEST_CODE,
+                )
+            } catch (cause: Exception) {
+                if (scanPromise === promise) {
+                    scanPromise = null
+                    promise.reject(
+                        "SCAN_FAILED",
+                        "Unable to scan QR code",
+                        cause,
+                    )
                 }
-            }.addOnCanceledListener {
-                promise.reject("SCAN_CANCELLED", "QR scan cancelled")
-            }.addOnFailureListener {
-                promise.reject("SCAN_FAILED", "Unable to scan QR code", it)
             }
+        }
+    }
+
+    override fun invalidate() {
+        reactContext.removeActivityEventListener(activityEventListener)
+        scanPromise?.reject(
+            "SCANNER_UNAVAILABLE",
+            "QR scanner was closed",
+        )
+        scanPromise = null
+        super.invalidate()
+    }
+
+    companion object {
+        private const val QR_SCAN_REQUEST_CODE = 51731
     }
 }
 
@@ -169,9 +241,10 @@ private class SecureStore(
 
     @Synchronized
     fun sign(message: ByteArray): String {
+        val keyPair = loadOrCreateSigningKey()
         val signature =
-            Signature.getInstance(ED25519).run {
-                initSign(loadOrCreateSigningKey().private)
+            Signature.getInstance(ED25519, KEYSTORE_OPERATION_PROVIDER).run {
+                initSign(keyPair.private)
                 update(message)
                 sign()
             }
@@ -208,39 +281,40 @@ private class SecureStore(
     }
 
     private fun loadOrCreateSigningKey(): KeyPair {
-        val encryptedPrivate = preferences.getString(IDENTITY_PRIVATE, null)
-        val encodedPublic = preferences.getString(IDENTITY_PUBLIC, null)
-        if (encryptedPrivate != null && encodedPublic != null) {
-            return try {
-                val factory = KeyFactory.getInstance(ED25519)
-                KeyPair(
-                    factory.generatePublic(
-                        X509EncodedKeySpec(Base64.decode(encodedPublic, Base64.NO_WRAP)),
-                    ),
-                    factory.generatePrivate(PKCS8EncodedKeySpec(decrypt(encryptedPrivate))),
-                )
-            } catch (_: Exception) {
-                preferences
-                    .edit()
-                    .remove(IDENTITY_PRIVATE)
-                    .remove(IDENTITY_PUBLIC)
-                    .apply()
-                createSigningKey()
+        runCatching {
+            val privateKey =
+                keyStore.getKey(SIGNING_KEY_ALIAS, null) as? PrivateKey
+            val publicKey =
+                keyStore.getCertificate(SIGNING_KEY_ALIAS)?.publicKey
+            if (privateKey != null && publicKey != null) {
+                val keyPair = KeyPair(publicKey, privateKey)
+                rawEd25519PublicKey(keyPair.public.encoded)
+                return keyPair
             }
+        }.onFailure {
+            keyStore.deleteEntry(SIGNING_KEY_ALIAS)
         }
         return createSigningKey()
     }
 
     private fun createSigningKey(): KeyPair {
-        val keyPair = KeyPairGenerator.getInstance(ED25519).generateKeyPair()
-        preferences
-            .edit()
-            .putString(
-                IDENTITY_PUBLIC,
-                Base64.encodeToString(keyPair.public.encoded, Base64.NO_WRAP),
-            ).putString(IDENTITY_PRIVATE, encrypt(keyPair.private.encoded))
-            .apply()
-        return keyPair
+        return KeyPairGenerator
+            .getInstance(KeyProperties.KEY_ALGORITHM_EC, ANDROID_KEY_STORE)
+            .apply {
+                initialize(
+                    KeyGenParameterSpec
+                        .Builder(
+                            SIGNING_KEY_ALIAS,
+                            KeyProperties.PURPOSE_SIGN or
+                                KeyProperties.PURPOSE_VERIFY,
+                        ).setAlgorithmParameterSpec(
+                            ECGenParameterSpec(ED25519),
+                        )
+                        .setDigests(KeyProperties.DIGEST_NONE)
+                        .build(),
+                )
+            }.generateKeyPair()
+            .also { rawEd25519PublicKey(it.public.encoded) }
     }
 
     private fun encryptionKey(): SecretKey {
@@ -292,11 +366,20 @@ private class SecureStore(
     }
 
     private fun rawEd25519PublicKey(encoded: ByteArray): ByteArray {
-        require(encoded.size >= ED25519_PUBLIC_KEY_BYTES) {
+        require(
+            encoded.size ==
+                ED25519_SUBJECT_PUBLIC_KEY_INFO_PREFIX.size +
+                ED25519_PUBLIC_KEY_BYTES &&
+                encoded
+                    .copyOfRange(
+                        0,
+                        ED25519_SUBJECT_PUBLIC_KEY_INFO_PREFIX.size,
+                    ).contentEquals(ED25519_SUBJECT_PUBLIC_KEY_INFO_PREFIX),
+        ) {
             "invalid Ed25519 public key"
         }
         return encoded.copyOfRange(
-            encoded.size - ED25519_PUBLIC_KEY_BYTES,
+            ED25519_SUBJECT_PUBLIC_KEY_INFO_PREFIX.size,
             encoded.size,
         )
     }
@@ -315,7 +398,24 @@ private class SecureStore(
         private const val ED25519 = "Ed25519"
         private const val ED25519_PUBLIC_KEY_BYTES = 32
         private const val ENCRYPTION_KEY_ALIAS = "tutti-mobile-storage-v1"
-        private const val IDENTITY_PRIVATE = "device_identity_private"
-        private const val IDENTITY_PUBLIC = "device_identity_public"
+        private const val KEYSTORE_OPERATION_PROVIDER =
+            "AndroidKeyStoreBCWorkaround"
+        private const val SIGNING_KEY_ALIAS =
+            "tutti-mobile-signing-ed25519-v1"
+        private val ED25519_SUBJECT_PUBLIC_KEY_INFO_PREFIX =
+            byteArrayOf(
+                0x30,
+                0x2a,
+                0x30,
+                0x05,
+                0x06,
+                0x03,
+                0x2b,
+                0x65,
+                0x70,
+                0x03,
+                0x21,
+                0x00,
+            )
     }
 }

@@ -9,6 +9,8 @@ const messages = {
     approval: "Approval",
     backToDevices: "Back to computers",
     backToWorkspaces: "Back to workspaces",
+    cameraPermissionRequired:
+      "Camera permission is required to scan the pairing QR code.",
     cancel: "Cancel",
     code: "Verification code",
     codeHint: "Enter the 6-digit code",
@@ -72,6 +74,7 @@ const messages = {
     approval: "授权确认",
     backToDevices: "返回电脑列表",
     backToWorkspaces: "返回工作区列表",
+    cameraPermissionRequired: "需要允许相机权限才能扫描配对二维码",
     cancel: "取消",
     code: "验证码",
     codeHint: "输入 6 位验证码",

@@ -170,17 +170,19 @@ Jest 检查。
 
 ## 6. 调试时先判断问题属于哪一层
 
-| 现象                           | 首先检查                                            |
-| ------------------------------ | --------------------------------------------------- |
-| 页面布局、点击、列表滚动不正确 | React Native component 和 state                     |
-| DTO 有值但消息渲染错误         | AgentGUI projection，不要在 screen 内临时修数据     |
-| JS 报 native module 不存在     | Native module 注册、Gradle AAR 依赖、重新安装 App   |
-| App 切后台后连接状态错误       | Android lifecycle adapter                           |
-| ICE 没有 candidate             | Manifest 网络权限、网络状态、DeviceLink 诊断        |
-| QUIC 握手失败                  | peer identity、证书 fingerprint、protocol epoch     |
-| P2P 失败但 Relay 成功          | 这是允许的 fallback，检查清洗后的 path 诊断         |
-| 手机和桌面会话状态不一致       | snapshot/event reconcile 和 Agent API，不修本地缓存 |
-| 创建、发送、取消语义不一致     | `packages/agent/host`，不能在移动端复制生命周期     |
+| 现象                           | 首先检查                                              |
+| ------------------------------ | ----------------------------------------------------- |
+| 页面布局、点击、列表滚动不正确 | React Native component 和 state                       |
+| DTO 有值但消息渲染错误         | AgentGUI projection，不要在 screen 内临时修数据       |
+| JS 报 native module 不存在     | Native module 注册、Gradle AAR 依赖、重新安装 App     |
+| App 切后台后连接状态错误       | Android lifecycle adapter                             |
+| 扫码未请求相机权限或立即返回   | Manifest `CAMERA`、App 权限和 ZXing `CaptureActivity` |
+| 手动配对点击后只闪动           | `TuttiMobileSecurity`、设备 identity 注册和页面错误区 |
+| ICE 没有 candidate             | Manifest 网络权限、网络状态、DeviceLink 诊断          |
+| QUIC 握手失败                  | peer identity、证书 fingerprint、protocol epoch       |
+| P2P 失败但 Relay 成功          | 这是允许的 fallback，检查清洗后的 path 诊断           |
+| 手机和桌面会话状态不一致       | snapshot/event reconcile 和 Agent API，不修本地缓存   |
+| 创建、发送、取消语义不一致     | `packages/agent/host`，不能在移动端复制生命周期       |
 
 常用 ADB 命令：
 
@@ -190,10 +192,14 @@ adb shell pm list packages | grep tutti
 adb shell am force-stop dev.tutti.mobile
 adb logcat
 adb logcat -c
+adb logcat -s 'TuttiMobileSecurity:E' 'ReactNativeJS:V' '*:S'
 adb install -r path/to/app-debug.apk
 ```
 
 日志中禁止写入 candidate、IP、账号 token、私钥、证书原文或 Agent payload。
+扫码使用 App 内置的 ZXing capture Activity，不依赖 Google Play Services 动态下载；
+首次使用由 Android 请求相机权限。设备签名私钥由 Android Keystore 生成并持有，
+Native bridge 只导出原始 Ed25519 公钥和签名结果。
 
 ## 7. 真机开发需要做什么
 
@@ -248,7 +254,7 @@ Google Play 账号。以下事项等正式分发前再处理：
 - Personal 配对 API 已进入生成的 Go/TypeScript daemon client，账号 cookie 和设备私钥不会返回给 UI。
 - Desktop 设置页已接入二维码创建、配对码复制、轮询确认和撤销；
 - `apps/mobile` 已接入同账号邮箱验证码登录、Android Keystore 设备身份、设备列表、
-  Google Code Scanner 或手动粘贴配对码，以及 challenge claim/poll；
+  内置 ZXing 二维码扫描或手动粘贴配对码，以及 challenge claim/poll；
 - React Native 0.86、Kotlin native module、DeviceLink AAR 和四 ABI debug APK
   已在 Android 15 ARM64 模拟器完成构建、安装和启动验证。
 - 共享 authenticated facade 已统一 Desktop/Android 的 ICE、fingerprint pinning、
@@ -321,8 +327,8 @@ pnpm mobile:android
 ```
 
 App 启动后，用与 Desktop 相同的邮箱获取并填写验证码。登录成功后点击配对；
-优先扫描 Desktop 二维码。如果系统扫码服务不可用，就在 Desktop 点击“复制配对码”，
-再在 Mobile 展开手动配对入口并粘贴。
+优先扫描 Desktop 二维码。首次扫码时允许 App 使用相机；如果当前环境无法使用相机，
+就在 Desktop 点击“复制配对码”，再在 Mobile 展开手动配对入口并粘贴。
 
 ### 10.3 验收清单
 
