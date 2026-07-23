@@ -6,14 +6,8 @@ toolchain go1.24.5
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/tutti-os/tutti/packages/agent/store-sqlite v0.0.0
-	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.0
+	github.com/tutti-os/tutti/packages/agent/store-sqlite v0.0.214
+	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.214
 )
 
-require github.com/tutti-os/tutti/packages/agent/activity-replication v0.0.0 // indirect
-
-replace github.com/tutti-os/tutti/packages/agent/activity-replication => ../activity-replication
-
-replace github.com/tutti-os/tutti/packages/agent/store-sqlite => ../store-sqlite
-
-replace github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical => ../store-sqlite/canonical
+require github.com/tutti-os/tutti/packages/agent/activity-replication v0.0.214 // indirect
