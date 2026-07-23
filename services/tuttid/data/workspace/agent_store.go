@@ -25,6 +25,8 @@ var _ AgentActivityStore = (*SQLiteStore)(nil)
 
 const legacyIDLocalCodex = "local-codex"
 const legacyIDLocalClaudeCode = "local-claude-code"
+const legacyIDLocalKimiCode = "local:kimi-code"
+const extensionIDKimiCode = "extension:kimi-code"
 
 func newAgentStore(db *sql.DB) *agentstore.Store {
 	return agentstore.New(db, agentstore.Options{
@@ -523,13 +525,20 @@ func (s *SQLiteStore) DeleteAgentTarget(ctx context.Context, id string) error {
 // Contract: cross-domain id translation is owned by the host projection layer
 // (tsh/tutti-os rewrites a shared session's owner-domain agentTargetId to the
 // caller-local `shared-agent:{sharedAgentId}` id at its sync boundary), so
-// owner-domain ids are never expected to reach this store and no alias column
-// is planned. This hook exists purely as defense in depth for the ingestion
-// boundary in services/tuttid/service/agent: a hit means an upstream missed
-// its translation. The store-backed implementation therefore resolves
-// nothing.
-func (*SQLiteStore) ResolveAgentTargetAlias(context.Context, string) (string, bool) {
-	return "", false
+// owner-domain ids are never expected to reach this store and no general alias
+// column is planned. The one local alias below bridges a released Desktop /
+// daemon version-skew window from Kimi Code's built-in target to its
+// extension-owned target. It resolves only while the canonical extension
+// target exists, preserving the extension installation as launch authority.
+func (s *SQLiteStore) ResolveAgentTargetAlias(ctx context.Context, id string) (string, bool) {
+	if strings.TrimSpace(id) != legacyIDLocalKimiCode {
+		return "", false
+	}
+	target, err := s.GetAgentTarget(ctx, extensionIDKimiCode)
+	if err != nil || strings.TrimSpace(target.ID) != extensionIDKimiCode {
+		return "", false
+	}
+	return extensionIDKimiCode, true
 }
 
 func agentTargetToStore(target agenttargetbiz.Target) agentstore.Target {

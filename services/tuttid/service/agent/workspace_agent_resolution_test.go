@@ -2,11 +2,13 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
+	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
 
 type staticWorkspaceAgentResolver struct {
@@ -16,6 +18,77 @@ type staticWorkspaceAgentResolver struct {
 
 func (s staticWorkspaceAgentResolver) Resolve(context.Context, string, string) (workspaceagentbiz.Resolved, error) {
 	return s.resolved, s.err
+}
+
+type aliasingAgentTargetStore struct {
+	targets map[string]agenttargetbiz.Target
+	aliases map[string]string
+}
+
+func (s aliasingAgentTargetStore) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
+	target, ok := s.targets[id]
+	if !ok {
+		return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
+	}
+	return target, nil
+}
+
+func (s aliasingAgentTargetStore) ResolveAgentTargetAlias(_ context.Context, id string) (string, bool) {
+	canonicalID, ok := s.aliases[id]
+	return canonicalID, ok
+}
+
+func TestResolveCreateSessionLaunchCanonicalizesExternalizedAgentTargetAlias(t *testing.T) {
+	const extensionTargetID = "extension:kimi-code"
+	launchRef, err := agenttargetbiz.CanonicalLaunchRefJSON("acp:kimi-code", agenttargetbiz.LaunchRef{
+		Type:                    agenttargetbiz.LaunchRefTypeAgentExtension,
+		ExtensionInstallationID: "kimi-code@1.0.1",
+	})
+	if err != nil {
+		t.Fatalf("CanonicalLaunchRefJSON() error = %v", err)
+	}
+	service := &Service{
+		AgentTargetStore: aliasingAgentTargetStore{
+			targets: map[string]agenttargetbiz.Target{
+				extensionTargetID: {
+					ID:            extensionTargetID,
+					Provider:      "acp:kimi-code",
+					LaunchRefJSON: launchRef,
+					Name:          "Kimi Code",
+					Enabled:       true,
+					Source:        agenttargetbiz.SourceSystem,
+				},
+			},
+			aliases: map[string]string{"local:kimi-code": extensionTargetID},
+		},
+	}
+	input := CreateSessionInput{
+		AgentTargetID: "local:kimi-code",
+		Provider:      "kimi-code",
+	}
+
+	launch, err := service.resolveCreateSessionLaunch(context.Background(), "ws", &input)
+	if err != nil {
+		t.Fatalf("resolveCreateSessionLaunch() error = %v", err)
+	}
+	if input.AgentTargetID != extensionTargetID || input.HarnessAgentTargetID != extensionTargetID {
+		t.Fatalf("canonical target identity = %q / %q, want %q", input.AgentTargetID, input.HarnessAgentTargetID, extensionTargetID)
+	}
+	if launch.Provider != "acp:kimi-code" {
+		t.Fatalf("launch provider = %q, want acp:kimi-code", launch.Provider)
+	}
+	if launch.ProviderTargetRef["kind"] != agenttargetbiz.LaunchRefTypeAgentExtension ||
+		launch.ProviderTargetRef["extensionInstallationId"] != "kimi-code@1.0.1" {
+		t.Fatalf("launch target ref = %#v", launch.ProviderTargetRef)
+	}
+
+	mismatched := CreateSessionInput{
+		AgentTargetID: "local:kimi-code",
+		Provider:      "claude-code",
+	}
+	if _, err := service.resolveCreateSessionLaunch(context.Background(), "ws", &mismatched); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("resolveCreateSessionLaunch(mismatched provider) error = %v, want ErrInvalidArgument", err)
+	}
 }
 
 func TestResolveCreateSessionLaunchHydratesWorkspaceAgentRuntimeConfiguration(t *testing.T) {

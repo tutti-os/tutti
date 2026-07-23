@@ -450,10 +450,23 @@ idle | loading | ready | error
 `ready` may contain an authoritative empty list. `error` may retain the last successful snapshot. Components must not infer loading from `agents.length`.
 
 The directory owns Agent presentation. `agents[].iconUrl` is the primary
-identity used by conversation identity, Message Center, mentions, and the
-empty-home carousel and Provider Rail. `maskIconUrl` may supply the monochrome
-conversation-row glyph. Host projections preserve these roles independently
-and do not create provider-specific renderer catalogs.
+presentation asset used by conversation identity, Message Center, mentions,
+and the empty-home carousel and Provider Rail. It is decorative metadata:
+an Agent with an exact `agentTargetId` and name remains selectable when the
+icon is absent. `maskIconUrl` may supply the monochrome conversation-row glyph.
+Desktop Workspace Agent projections first inherit the resolved icon of their
+Harness target by exact target ID, then use the provider/icon catalog fallback.
+Host projections preserve these roles independently and do not create
+provider-specific renderer catalogs.
+
+An Agent directory target ID is launch authority, not a provider-derived
+presentation key. Desktop must preserve daemon-returned extension identities
+such as `extension:<agent>` and must never rebuild them as `local:<provider>`.
+During a released built-in-to-extension migration, tuttid may retain one narrow
+version-skew alias at the target-resolution boundary; successful resolution
+rewrites both the Session target and provider to the installed extension's
+canonical values. The dynamic runtime still requires the exact extension
+installation reference and never accepts a local-target bypass.
 
 When the Desktop host projects built-in Agent mentions into a workspace app,
 it replaces host-local file URLs with bounded 64px WebP data URLs. The external

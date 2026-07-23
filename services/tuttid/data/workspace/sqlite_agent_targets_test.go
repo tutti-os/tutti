@@ -167,6 +167,41 @@ VALUES ('ws-legacy-targets', 'session-1', 'runtime', ?, 'codex', ?, ?);
 	}
 }
 
+func TestSQLiteStoreResolvesExternalizedKimiTargetAlias(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	if canonicalID, ok := store.ResolveAgentTargetAlias(ctx, legacyIDLocalKimiCode); ok || canonicalID != "" {
+		t.Fatalf("ResolveAgentTargetAlias(missing extension) = %q, %v; want empty, false", canonicalID, ok)
+	}
+	launchRef, err := agenttargetbiz.CanonicalLaunchRefJSON("acp:kimi-code", agenttargetbiz.LaunchRef{
+		Type:                    agenttargetbiz.LaunchRefTypeAgentExtension,
+		ExtensionInstallationID: "kimi-code@1.0.1",
+	})
+	if err != nil {
+		t.Fatalf("CanonicalLaunchRefJSON() error = %v", err)
+	}
+	if _, err := store.PutAgentTarget(ctx, agenttargetbiz.Target{
+		ID:            extensionIDKimiCode,
+		Provider:      "acp:kimi-code",
+		LaunchRefJSON: launchRef,
+		Name:          "Kimi Code",
+		Enabled:       true,
+		Source:        agenttargetbiz.SourceSystem,
+	}); err != nil {
+		t.Fatalf("PutAgentTarget() error = %v", err)
+	}
+
+	canonicalID, ok := store.ResolveAgentTargetAlias(ctx, legacyIDLocalKimiCode)
+	if !ok || canonicalID != extensionIDKimiCode {
+		t.Fatalf("ResolveAgentTargetAlias() = %q, %v; want %q, true", canonicalID, ok, extensionIDKimiCode)
+	}
+	if canonicalID, ok := store.ResolveAgentTargetAlias(ctx, "local:unknown"); ok || canonicalID != "" {
+		t.Fatalf("ResolveAgentTargetAlias(unknown) = %q, %v; want empty, false", canonicalID, ok)
+	}
+}
+
 func TestSQLiteStorePutAgentTargetRejectsInvalidLaunchRefs(t *testing.T) {
 	t.Parallel()
 

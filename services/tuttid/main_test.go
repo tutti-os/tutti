@@ -104,16 +104,7 @@ func TestProcessExists(t *testing.T) {
 }
 
 func TestWiringUsesSupervisedAgentHostRun(t *testing.T) {
-	var source strings.Builder
-	for _, file := range []string{"wiring.go", "wiring_daemon_api.go"} {
-		raw, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatalf("read %s: %v", file, err)
-		}
-		source.Write(raw)
-		source.WriteByte('\n')
-	}
-	combined := source.String()
+	combined := readProductionWiring(t)
 	if !strings.Contains(combined, "agentHost.Run(ctx)") {
 		t.Fatal("production wiring does not start the supervised Agent Host lifecycle")
 	}
@@ -127,6 +118,32 @@ func TestWiringUsesSupervisedAgentHostRun(t *testing.T) {
 			t.Fatalf("production wiring still starts an unsupervised Host worker: %s", legacy)
 		}
 	}
+}
+
+func TestWiringConnectsWorkspaceAgentSessionResolvers(t *testing.T) {
+	combined := readProductionWiring(t)
+	for _, wiring := range []string{
+		"agentActivityProjection.SetWorkspaceAgentTargetResolver(workspaceAgentsStore)",
+		"agentSessionService.WorkspaceAgentResolver = workspaceAgents",
+	} {
+		if !strings.Contains(combined, wiring) {
+			t.Fatalf("production wiring does not connect Workspace Agent session dependency: %s", wiring)
+		}
+	}
+}
+
+func readProductionWiring(t *testing.T) string {
+	t.Helper()
+	var source strings.Builder
+	for _, file := range []string{"wiring.go", "wiring_daemon_api.go"} {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		source.Write(raw)
+		source.WriteByte('\n')
+	}
+	return source.String()
 }
 
 func testLogger() *slog.Logger {

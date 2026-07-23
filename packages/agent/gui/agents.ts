@@ -16,12 +16,7 @@ export function normalizeAgentGUIAgents(
     const maskIconUrl = agent.maskIconUrl?.trim() ?? "";
     const heroImageUrl = agent.heroImageUrl?.trim() ?? "";
     const ownerDeviceLabel = agent.ownerDeviceLabel?.trim() ?? "";
-    if (
-      !agentTargetId ||
-      !name ||
-      !iconUrl ||
-      seenAgentTargetIds.has(agentTargetId)
-    ) {
+    if (!agentTargetId || !name || seenAgentTargetIds.has(agentTargetId)) {
       continue;
     }
     seenAgentTargetIds.add(agentTargetId);

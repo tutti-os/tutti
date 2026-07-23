@@ -115,6 +115,15 @@ They do not look for a legacy binding whose key happens to equal the new Agent
 id. Plan and Agent mutations publish target-scoped configuration invalidation
 for the affected WorkspaceAgent ids.
 
+The daemon composition root must connect both sides of the WorkspaceAgent
+aggregate: its service resolves session launches, while its registry store
+validates activity-projection target identity. Launch resolution expands the
+opaque `workspace-agent:*` id into its trusted Harness, model route, and
+instructions; projection validation preserves that workspace-scoped id when
+sessions are persisted, listed, or restored. Wiring only one side either makes
+creation fail with an unavailable resolver or makes an otherwise valid Agent
+disappear from restored session state.
+
 Fallback resolution applies only while creating a new session. It does not
 mutate the Agent, and the actual selected Plan/model/revision is persisted in
 the immutable session snapshot. Editing fallback order affects later sessions

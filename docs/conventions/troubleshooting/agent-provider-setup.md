@@ -4,6 +4,40 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### Kimi Code session creation reports `requires an agent_extension target`
+
+- Symptom:
+  Selecting an installed Kimi Code Agent immediately fails session creation
+  with `dynamic provider "kimi-code" requires an agent_extension target`.
+- Quick checks:
+  Correlate the renderer's create-session request with the daemon error. If the
+  request carries `agentTargetId = local:kimi-code`, inspect `agent_targets`.
+  An installed externalized Kimi runtime should instead have the canonical
+  target `extension:kimi-code`, provider `acp:kimi-code`, and an
+  `agent_extension` launch reference.
+- Root cause:
+  A released Desktop/daemon version-skew window allowed a renderer that still
+  knew Kimi as a built-in local target to talk to a daemon that already required
+  the externalized Extension identity. The runtime correctly rejected the
+  stale local identity because a dynamic provider must launch through its
+  installed Extension.
+- Fix:
+  Preserve daemon-provided target and provider identities throughout Desktop
+  projection. At the daemon create boundary, resolve only the known released
+  `local:kimi-code` alias, and only when the canonical installed Extension
+  target exists. Rewrite the request to `extension:kimi-code` /
+  `acp:kimi-code` before persistence and launch. Do not weaken the dynamic
+  provider's `agent_extension` requirement or construct a launch reference
+  from the stale request.
+- Validation:
+  Cover Desktop projection of the canonical Kimi Extension identity, alias
+  resolution with and without the installed target, and create-session launch
+  canonicalization including the trusted Extension installation ID.
+- References:
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+  [agent_store.go](../../../services/tuttid/data/workspace/agent_store.go)
+  [service.go](../../../services/tuttid/service/agent/service.go)
+
 ### Focusing a workspace repeatedly starts provider CLIs and raises CPU usage
 
 - Symptom:
