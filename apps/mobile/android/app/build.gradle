@@ -1,0 +1,56 @@
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+react {
+    autolinkLibrariesWithApp()
+}
+
+def deviceLinkAar = file("${rootDir}/../../../packages/device-link/dist/tutti-device-link.aar")
+
+tasks.register("verifyDeviceLinkAar") {
+    doLast {
+        if (!deviceLinkAar.isFile()) {
+            throw new GradleException(
+                "DeviceLink AAR is missing. Run make -C packages/device-link android-aar first."
+            )
+        }
+    }
+}
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
+
+    namespace "dev.tutti.mobile"
+    defaultConfig {
+        applicationId "dev.tutti.mobile"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "0.1.0"
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn("verifyDeviceLinkAar")
+}
+
+dependencies {
+    implementation("com.facebook.react:react-android")
+    implementation("com.facebook.react:hermes-android")
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    implementation(files(deviceLinkAar))
+}

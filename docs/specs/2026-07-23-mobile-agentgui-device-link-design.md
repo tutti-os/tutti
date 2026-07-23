@@ -461,8 +461,9 @@ pairing lifecycle 和 paired-device rendezvous 已完成并部署。Tutti Person
 已复用 daemon-wide stable device id，增加持久 Ed25519 identity、账号 cookie
 控制面 adapter，以及 start/status/confirm/list/revoke 本地 API；challenge secret
 不会持久化，Desktop renderer 只在配对界面打开期间临时持有二维码 payload。
-Desktop UI 已接入 QR 创建、状态轮询、自动确认和撤销；Android claim 尚未接入，
-因此 M2 还未达到端到端完成条件。
+Desktop UI 已接入 QR 创建、状态轮询、自动确认和撤销；Android 已接入同账号登录、
+Keystore 设备身份、Google Code Scanner、challenge claim/poll 和配对设备列表。
+真实账号二维码联调仍是 M2 的剩余端到端完成条件。
 
 ### M3 — Relay 和 Agent API transport
 
@@ -487,6 +488,12 @@ Desktop UI 已接入 QR 创建、状态轮询、自动确认和撤销；Android 
 - 建立移动端 i18n 与 Native theme mapping。
 
 完成条件：登录、配对、选设备、选 workspace、重连和撤销形成完整非 Agent UI 闭环。
+
+当前进度：bare React Native 0.86 Android 工程、邮箱验证码登录、Keystore
+Ed25519 identity、扫码配对、配对设备列表、Native DeviceLink bridge、移动端 i18n
+和 semantic theme mapping 已完成。TypeScript/Jest、Kotlin/Java/CMake、四 ABI APK
+构建，以及 Android 15 ARM64 模拟器安装启动均通过；workspace 导航、真实
+DeviceLink 和前后台重连仍待完成。
 
 ### M5 — AgentGUI MVP
 

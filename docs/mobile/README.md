@@ -102,8 +102,9 @@ emulator -version
 
 ## 4. 当前可以运行的最小链路
 
-正式 `apps/mobile` 建立前，先用 DeviceLink probe 验证 Go 和 Android native
-边界。它没有 React Native UI，但会真实执行 ICE、pinned QUIC 和双向 stream。
+`apps/mobile` 已建立为 bare React Native 0.86 Android 工程，并直接消费
+DeviceLink AAR。独立 DeviceLink probe 仍用于在不经过 React Native 的情况下验证
+Go 和 Android native 边界；它会真实执行 ICE、pinned QUIC 和双向 stream。
 
 ```sh
 cd packages/device-link
@@ -141,7 +142,7 @@ tsh-server 与 Mac 完成真实配对和跨设备打洞。
 
 ## 5. 正式 App 的日常开发循环
 
-`apps/mobile` 落地后，典型循环会是：
+典型开发循环是：
 
 1. 启动 Android 模拟器或通过 USB/Wi-Fi 连接测试手机。
 2. 在一个终端启动 Metro。
@@ -150,7 +151,7 @@ tsh-server 与 Mac 完成真实配对和跨设备打洞。
 5. 修改 Kotlin、Manifest、Gradle 或 AAR 后重新构建 Android App。
 6. 同时查看 Metro、React Native 和 `adb logcat` 三类日志。
 
-预期命令会固化为仓库脚本，而不是要求开发者记住 Gradle 参数：
+仓库已经提供以下脚本：
 
 ```sh
 pnpm mobile:start
@@ -159,8 +160,9 @@ pnpm mobile:check
 pnpm mobile:test
 ```
 
-这些脚本会在 `apps/mobile` scaffold 落地时加入；在此之前不要自行创建第二套
-脚本名称。
+`pnpm mobile:android` 会构建并安装 debug App，`pnpm mobile:start` 启动
+Metro，`pnpm mobile:check` 运行移动端 TypeScript 和 Jest 检查。Android 构建前
+需要先执行 `make -C packages/device-link android-aar`。
 
 ## 6. 调试时先判断问题属于哪一层
 
@@ -240,14 +242,18 @@ Google Play 账号。以下事项等正式分发前再处理：
 - room 与 paired-device 共用同一 DeviceLink attempt repository、TTL、限流和 ready 状态机。
 - Personal `tuttid` 已接入设备注册、QR challenge、Desktop confirm、配对列表和撤销；
 - Personal 配对 API 已进入生成的 Go/TypeScript daemon client，账号 cookie 和设备私钥不会返回给 UI。
+- Desktop 设置页已接入二维码创建、轮询确认和撤销；
+- `apps/mobile` 已接入同账号邮箱验证码登录、Android Keystore 设备身份、设备列表、
+  Google Code Scanner 扫码和 challenge claim/poll；
+- React Native 0.86、Kotlin native module、DeviceLink AAR 和四 ABI debug APK
+  已在 Android 15 ARM64 模拟器完成构建、安装和启动验证。
 
 接下来按顺序推进：
 
-1. 给 Personal Desktop 增加最小配对入口，并用已登录账号验证真实 challenge；
-2. scaffold `apps/mobile`，接入登录、设备列表和 Native DeviceLink bridge；
-3. 用 Android 真机跑通 QR claim/confirm 与 direct/Relay DeviceLink；
-4. 增加 Personal Agent service stream adapter，接入会话抽屉、对话流和 Composer；
-5. Personal 闭环稳定后，再让 TSH 删除本地 transport 副本并消费共享 DeviceLink module。
+1. 用 Android 真机跑通 QR claim/confirm 与 direct/Relay DeviceLink；
+2. 增加 Personal Agent service stream adapter，接入会话抽屉、对话流和 Composer；
+3. 补齐前后台重连、撤销和协议 epoch 错误状态；
+4. Personal 闭环稳定后，再让 TSH 删除本地 transport 副本并消费共享 DeviceLink module。
 
 遇到问题时先看
 [Troubleshooting](../conventions/troubleshooting/README.md)，再根据上面的分层定位。
