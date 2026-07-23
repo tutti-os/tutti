@@ -305,13 +305,6 @@ probe utility in `packages/agent/gui/shared/testing/renderBudget.tsx` asserts
 React commit counts for typical interactions, and budget test cases are
 delivered with each feature-module slice.
 
-Fix-scope is soft-gated in pull-request CI by
-`tools/scripts/check-fix-scope.mjs`: a fix-titled PR changing more than 300
-implementation lines must answer "what is the root cause" and "why can this
-not be fixed at a lower layer" in the PR description. The count excludes docs,
-tests, fixtures, snapshots, and generated artifacts so the gate stays focused
-on production fix surface area.
-
 Electron `main` and `preload` runtime import graphs are checked by `pnpm check:electron-runtime-boundaries`.
 That script is intentionally narrow: it ignores type-only imports and test files, then follows reachable runtime imports to catch React/TSX leaks and Electron-externalized workspace packages that still resolve to raw source files.
 
