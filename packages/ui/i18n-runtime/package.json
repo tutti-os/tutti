@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/ui-i18n-runtime",
-  "version": "0.1.0",
+  "version": "0.0.199",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
