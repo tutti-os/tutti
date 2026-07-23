@@ -49,7 +49,19 @@ const latestSummaryPath = join(tmpRoot, "latest.json");
 const packageInfos = loadPackageInfos();
 
 export async function main() {
-  const currentLanes = buildChangedLanes().map((lane) => ({
+  const plannedLanes = buildChangedLanes();
+
+  if (plannedLanes.length === 0) {
+    console.log("check:changed found no changed files to validate");
+    return;
+  }
+
+  if (dryRun && !failedOnly) {
+    printPlan(plannedLanes);
+    return;
+  }
+
+  const currentLanes = plannedLanes.map((lane) => ({
     ...lane,
     inputFingerprint: buildLaneInputFingerprint({
       baseRef,
@@ -57,11 +69,6 @@ export async function main() {
       workspaceRoot
     })
   }));
-
-  if (currentLanes.length === 0) {
-    console.log("check:changed found no changed files to validate");
-    return;
-  }
 
   const failedOnlySelection = failedOnly
     ? readFailedOnlySelection(currentLanes)
