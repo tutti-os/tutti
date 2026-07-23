@@ -184,6 +184,7 @@ export function useReferenceSourcePickerView({
       loading: false
     }
   );
+  const [filteredTreeRetrySequence, setFilteredTreeRetrySequence] = useState(0);
   const openWithApplicationsCache = useRef(
     new WorkspaceFileOpenWithApplicationsCache()
   );
@@ -309,9 +310,17 @@ export function useReferenceSourcePickerView({
       ? JSON.stringify([activeSourceId, recursiveFilters])
       : null;
   const recursiveFilterActive = recursiveFilterKey !== null;
+  const recursiveFilterRequestKey = recursiveFilterKey
+    ? `${recursiveFilterKey}:${filteredTreeRetrySequence}`
+    : null;
 
   useEffect(() => {
-    if (!open || !activeSourceId || !recursiveFilterKey) {
+    if (
+      !open ||
+      !activeSourceId ||
+      !recursiveFilterKey ||
+      !recursiveFilterRequestKey
+    ) {
       setFilteredTreeState({
         childrenByKey: {},
         error: null,
@@ -362,6 +371,7 @@ export function useReferenceSourcePickerView({
     aggregator,
     open,
     recursiveFilterKey,
+    recursiveFilterRequestKey,
     recursiveFilters,
     scope
   ]);
@@ -941,6 +951,20 @@ export function useReferenceSourcePickerView({
     },
     loadMore: () =>
       isQuery ? controller.loadMoreSearch() : controller.loadMore(currentNode),
+    retryContent: () => {
+      if (isQuery) {
+        controller.setSearchQuery(
+          activeTabState?.searchQuery ?? "",
+          searchScopeNodeId
+        );
+        return;
+      }
+      if (recursiveFilterActive) {
+        setFilteredTreeRetrySequence((current) => current + 1);
+        return;
+      }
+      controller.refreshChildren(currentNode);
+    },
     isSelectable,
     isSelected,
     isOpeningReference,
