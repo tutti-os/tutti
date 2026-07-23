@@ -110,8 +110,6 @@ const styles = {
   conversationStatusGlyph: "agent-gui-node__conversation-status-glyph",
   conversationTime: "agent-gui-node__conversation-time",
   conversationTitle: "agent-gui-node__conversation-title",
-  conversationTitleMentionIcon:
-    "agent-gui-node__conversation-title-mention-icon",
   conversationTitleRow: "agent-gui-node__conversation-title-row",
   conversationUnreadLamp: "agent-gui-node__conversation-unread-lamp",
   detail: "agent-gui-node__detail",

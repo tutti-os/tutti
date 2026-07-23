@@ -6,7 +6,7 @@ import {
 } from "./agentConversationTitleProjection";
 
 describe("resolveAgentGUIConversationTitleLeadingMentionKind", () => {
-  it("keeps session references textual while mapping task references to rail markers", () => {
+  it("does not create title mention markers for any reference kind", () => {
     expect(
       resolveAgentGUIConversationTitleLeadingMentionKind(
         "[@Conversation](mention://agent-session/session-1?workspaceId=workspace-1) follow up"
@@ -16,10 +16,7 @@ describe("resolveAgentGUIConversationTitleLeadingMentionKind", () => {
       resolveAgentGUIConversationTitleLeadingMentionKind(
         "[@Task](mention://workspace-issue/issue-1?workspaceId=workspace-1) inspect"
       )
-    ).toBe("task");
-  });
-
-  it("keeps app and Agent references textual while mapping files to rail markers", () => {
+    ).toBeNull();
     expect(
       resolveAgentGUIConversationTitleLeadingMentionKind(
         "[@Weather](mention://workspace-app/weather?workspaceId=workspace-1) inspect"
@@ -29,7 +26,7 @@ describe("resolveAgentGUIConversationTitleLeadingMentionKind", () => {
       resolveAgentGUIConversationTitleLeadingMentionKind(
         "[@notes.md](/workspace/notes.md) inspect"
       )
-    ).toBe("file");
+    ).toBeNull();
     expect(
       resolveAgentGUIConversationTitleLeadingMentionKind(
         "[@Codex](mention://agent-target/local%3Acodex?workspaceId=workspace-1) inspect"
@@ -37,22 +34,18 @@ describe("resolveAgentGUIConversationTitleLeadingMentionKind", () => {
     ).toBeNull();
   });
 
-  it("keeps session, app, and Agent references out of rich titles", () => {
-    for (const { displayPrompt, title } of [
+  it("normalizes supported mention titles to plain @ text", () => {
+    for (const { displayPrompt, title, normalized } of [
       {
         displayPrompt:
-          "[@Conversation](mention://agent-session/session-1?workspaceId=workspace-1) follow up",
-        title: "@Conversation follow up"
+          "[@Task](mention://workspace-issue/issue-1?workspaceId=workspace-1) inspect",
+        title: "@Task inspect",
+        normalized: "@Task inspect"
       },
       {
-        displayPrompt:
-          "[@Weather](mention://workspace-app/weather?workspaceId=workspace-1) inspect",
-        title: "@Weather inspect"
-      },
-      {
-        displayPrompt:
-          "[@Codex](mention://agent-target/local%3Acodex?workspaceId=workspace-1) inspect",
-        title: "@Codex inspect"
+        displayPrompt: "[@notes.md](/workspace/notes.md) inspect",
+        title: "@notes.md inspect",
+        normalized: "@notes.md inspect"
       }
     ]) {
       expect(
@@ -60,11 +53,41 @@ describe("resolveAgentGUIConversationTitleLeadingMentionKind", () => {
           firstUserDisplayPrompt: displayPrompt,
           title
         })
-      ).toBeNull();
+      ).toBe(normalized);
     }
   });
 
-  it("keeps browser elements in the rich header title without adding a rail marker", () => {
+  it("normalizes session, app, and Agent references to plain @ text", () => {
+    for (const { displayPrompt, title, normalized } of [
+      {
+        displayPrompt:
+          "[@Conversation](mention://agent-session/session-1?workspaceId=workspace-1) follow up",
+        title: "@Conversation follow up",
+        normalized: "@Conversation follow up"
+      },
+      {
+        displayPrompt:
+          "[@Weather](mention://workspace-app/weather?workspaceId=workspace-1) inspect",
+        title: "@Weather inspect",
+        normalized: "@Weather inspect"
+      },
+      {
+        displayPrompt:
+          "[@Codex](mention://agent-target/local%3Acodex?workspaceId=workspace-1) inspect",
+        title: "@Codex inspect",
+        normalized: "@Codex inspect"
+      }
+    ]) {
+      expect(
+        resolveAgentGUIConversationTitleDisplayPrompt({
+          firstUserDisplayPrompt: displayPrompt,
+          title
+        })
+      ).toBe(normalized);
+    }
+  });
+
+  it("normalizes browser elements to plain text without adding a rail marker", () => {
     const displayPrompt =
       "[@<a>](mention://browser-element/element-1?workspaceId=workspace-1&tag=a) inspect";
     expect(
@@ -75,7 +98,7 @@ describe("resolveAgentGUIConversationTitleLeadingMentionKind", () => {
         firstUserDisplayPrompt: displayPrompt,
         title: "@<a> inspect"
       })
-    ).toBe(displayPrompt);
+    ).toBe("@<a> inspect");
   });
 });
 
