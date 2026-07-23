@@ -12,24 +12,31 @@ package tags until the Personal product path proves the authenticated
 Android/Desktop lifecycle. TSH cutover is a later consumer migration, not a
 condition of this spike.
 
-The currently exported candidate, ICE, TLS, and QUIC types are low-level
-provisional primitives used by the integration probe. They do not by themselves
-authenticate a product device. The Personal adapter must require the registered
-peer identity, pin the expected certificate fingerprint, and own
-connect/cancel/lifecycle ordering. Do not expose raw `QUICEndpoint.Listen` or
-`Dial` directly through a product or mobile bridge.
+The low-level candidate, ICE, TLS, and QUIC types remain provisional primitives.
+Product consumers use `authenticated.Participant`, which composes ICE,
+peer-fingerprint-pinned TLS/QUIC, stream creation, cancellation, and close
+ordering. The `authenticated` subpackage is the one narrow aggregation layer
+required by Go's dependency direction; it does not own account, pairing,
+rendezvous, or Agent behavior. Product bridges must not expose raw
+`QUICEndpoint.Listen` or `Dial`.
 
 ## Android vertical slice
 
-The `mobile` package deliberately exposes only:
+The `mobile` package deliberately exposes only a gomobile-safe authenticated
+link facade:
 
 - the current application-stream protocol epoch;
-- a loopback integration probe that negotiates ICE, runs pinned QUIC, and
-  echoes one bidirectional stream.
+- creation from server-authoritative STUN endpoints;
+- a JSON local description containing the ephemeral fingerprint and ICE
+  material;
+- caller/owner connection using the peer description;
+- authenticated bidirectional stream open/accept/read/write/close;
+- the loopback integration probe used by the Android build gate.
 
-This is the M0 gomobile boundary. Product rendezvous remains in the host adapter;
-the next package surface is a lifecycle-safe authenticated link facade, added
-only as the Personal Desktop/Android consumer is wired.
+Account identity signatures, DeviceLink attempts, pairing scope, Agent HTTP
+framing, and foreground/background policy remain in the Android and tuttid
+product adapters. The mobile facade never accepts account cookies or Agent
+DTOs.
 
 Run the portable checks:
 

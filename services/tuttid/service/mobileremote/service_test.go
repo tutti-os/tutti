@@ -40,9 +40,9 @@ type stubControlPlane struct {
 	signature  []byte
 }
 
-func (s *stubControlPlane) RegisterDevice(_ context.Context, _ string, input RegisterDeviceInput) error {
+func (s *stubControlPlane) RegisterDevice(_ context.Context, _ string, input RegisterDeviceInput) (RegisteredDevice, error) {
 	s.registered = input
-	return nil
+	return RegisteredDevice{UserDeviceID: "desktop-user-device", DeviceID: input.DeviceID}, nil
 }
 
 func (s *stubControlPlane) CreateChallenge(context.Context, string, string) (CreateChallengeResult, error) {
@@ -65,6 +65,14 @@ func (*stubControlPlane) ListPairings(context.Context, string) ([]mobileremotebi
 
 func (*stubControlPlane) RevokePairing(context.Context, string, string) (mobileremotebiz.DevicePairing, error) {
 	return mobileremotebiz.DevicePairing{}, nil
+}
+
+func (*stubControlPlane) ListDeviceLinkAttempts(context.Context, string, string, string, []byte) ([]DeviceLinkAttempt, error) {
+	return nil, nil
+}
+
+func (*stubControlPlane) UpdateDeviceLinkParticipant(context.Context, string, string, string, string, DeviceLinkParticipantInput) (DeviceLinkAttempt, error) {
+	return DeviceLinkAttempt{}, nil
 }
 
 func TestServiceStartAndConfirmPairing(t *testing.T) {

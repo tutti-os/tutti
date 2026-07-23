@@ -29,7 +29,29 @@ interface MobileSecurityNative {
 }
 
 interface DeviceLinkNative {
+  closeLink(): Promise<void>;
+  connectLink(
+    peerDescriptionJSON: string,
+    caller: boolean,
+    timeoutMillis: number
+  ): Promise<string>;
+  prepareLink(
+    stunEndpointsJSON: string,
+    timeoutMillis: number
+  ): Promise<string>;
   probeEpoch(): Promise<number>;
+  protocolEpoch(): Promise<number>;
+  requestAgentHTTP(
+    method: string,
+    path: string,
+    body: string,
+    timeoutMillis: number
+  ): Promise<{
+    body: string;
+    errorCode: string;
+    protocolEpoch: number;
+    status: number;
+  }>;
   runLoopbackProbe(timeoutMillis: number): Promise<string>;
 }
 

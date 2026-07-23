@@ -1,7 +1,9 @@
 import {
+  deviceLinkProof,
   identityProof,
   pairingClaimProof,
-  parsePairingQR
+  parsePairingQR,
+  standardBase64ToURL
 } from "./pairingProtocol";
 
 describe("parsePairingQR", () => {
@@ -40,5 +42,12 @@ describe("pairing proofs", () => {
     expect(pairingClaimProof(" challenge-1 ", "secret")).toBe(
       "tutti-device-pairing/1\nclaim\nchallenge-1\nsecret"
     );
+    expect(deviceLinkProof("create", " pairing-1 ", "", " fingerprint ")).toBe(
+      "tutti-device-link/1\ncreate\npairing-1\n\nfingerprint"
+    );
+    expect(deviceLinkProof("get", "pairing-1", "attempt-1", "")).toBe(
+      "tutti-device-link/1\nget\npairing-1\nattempt-1\n"
+    );
+    expect(standardBase64ToURL("a+b/c==")).toBe("a-b_c");
   });
 });

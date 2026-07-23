@@ -51,9 +51,15 @@ type Service struct {
 	ControlPlane ControlPlane
 	Metadata     DeviceMetadata
 	Now          func() time.Time
+	// RemotePollInterval is test-only tuning; zero uses the production default.
+	RemotePollInterval time.Duration
 
-	mu      sync.Mutex
-	pending map[string]pendingChallenge
+	mu         sync.Mutex
+	pending    map[string]pendingChallenge
+	remoteHost remoteHostState
+	remoteWG   sync.WaitGroup
+	// includeLoopback is only enabled by package tests.
+	includeLoopback bool
 }
 
 type pairingQRPayload struct {
@@ -185,6 +191,15 @@ func (s *Service) accountSession() (*authbridge.Session, error) {
 }
 
 func (s *Service) registerIdentity(ctx context.Context, cookie string, identity mobileremotebiz.DeviceIdentity) error {
+	_, err := s.registerIdentityResult(ctx, cookie, identity)
+	return err
+}
+
+func (s *Service) registerIdentityResult(
+	ctx context.Context,
+	cookie string,
+	identity mobileremotebiz.DeviceIdentity,
+) (RegisteredDevice, error) {
 	publicKey := append([]byte(nil), identity.PublicKey...)
 	proof := ed25519.Sign(identity.PrivateKey, identityRegistrationProof(identity.DeviceID, publicKey))
 	return s.ControlPlane.RegisterDevice(ctx, cookie, RegisterDeviceInput{

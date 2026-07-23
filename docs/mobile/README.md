@@ -137,8 +137,9 @@ adb logcat -d -s 'TuttiDeviceLinkProbe:I' '*:S'
 PASS epoch=1 echo=tutti-device-link-android-probe
 ```
 
-这只证明 Android 内部的传输 vertical slice；它还不等于手机已经通过
-tsh-server 与 Mac 完成真实配对和跨设备打洞。
+probe 只验证 Android 内部的传输 vertical slice。正式 App 还会通过同账号
+pairing 和 paired-device attempt 交换双方的 ephemeral fingerprint 与 ICE
+description，再使用同一个 authenticated facade 建立连接。
 
 ## 5. 正式 App 的日常开发循环
 
@@ -214,7 +215,7 @@ Google Play 账号。以下事项等正式分发前再处理：
 
 建议按真实依赖学习，不需要先完整学完 Android：
 
-1. **当前：传输 probe**
+1. **传输 probe**
    理解 AAR、Manifest、ADB，以及一次 ICE/QUIC stream 如何跑通。
 2. **设备配对和 rendezvous**
    理解同账号设备身份、一次性 challenge、P2P/Relay 选路。
@@ -247,12 +248,22 @@ Google Play 账号。以下事项等正式分发前再处理：
   Google Code Scanner 扫码和 challenge claim/poll；
 - React Native 0.86、Kotlin native module、DeviceLink AAR 和四 ABI debug APK
   已在 Android 15 ARM64 模拟器完成构建、安装和启动验证。
+- 共享 authenticated facade 已统一 Desktop/Android 的 ICE、fingerprint pinning、
+  QUIC、stream 和关闭顺序；
+- `tuttid` owner host 已接入 paired-device rendezvous，并且只允许 workspace、
+  Agent Target catalog 和 Agent Session HTTP surface；
+- Android caller 已接入 create/get/update attempt、STUN 二次 gathering、真实
+  DeviceLink request stream 和 15 秒后台 grace period；
+- 移动端已直接复用 `@tutti-os/client-tuttid-ts`，完成 workspace 自动进入/选择、
+  会话抽屉、增量消息读取、新建/切换、发送、停止和结构化 Interaction 提交；
+- Go authenticated link、owner host、application frame、allowlist、race，以及
+  TypeScript/Jest、Metro bundle、Kotlin/Java/CMake、四 ABI APK 均已有自动验证。
 
 接下来按顺序推进：
 
-1. 用 Android 真机跑通 QR claim/confirm 与 direct/Relay DeviceLink；
-2. 增加 Personal Agent service stream adapter，接入会话抽屉、对话流和 Composer；
-3. 补齐前后台重连、撤销和协议 epoch 错误状态；
+1. 用真实账号和 Android 真机跑通 QR claim/confirm、direct DeviceLink 与 Agent 操作；
+2. 增加 paired-device Relay fallback 和事件 stream，替换前台的一秒消息校准轮询；
+3. 补齐前台自动重连、撤销专用状态、动态 Composer 设置与 richer Native renderer；
 4. Personal 闭环稳定后，再让 TSH 删除本地 transport 副本并消费共享 DeviceLink module。
 
 遇到问题时先看

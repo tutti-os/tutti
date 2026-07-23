@@ -3,7 +3,9 @@ package mobileremote
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,12 +22,14 @@ const (
 )
 
 type ControlPlane interface {
-	RegisterDevice(context.Context, string, RegisterDeviceInput) error
+	RegisterDevice(context.Context, string, RegisterDeviceInput) (RegisteredDevice, error)
 	CreateChallenge(context.Context, string, string) (CreateChallengeResult, error)
 	GetChallenge(context.Context, string, string) (mobileremotebiz.PairingChallenge, error)
 	ConfirmChallenge(context.Context, string, string, string, []byte) (ConfirmChallengeResult, error)
 	ListPairings(context.Context, string) ([]mobileremotebiz.DevicePairing, error)
 	RevokePairing(context.Context, string, string) (mobileremotebiz.DevicePairing, error)
+	ListDeviceLinkAttempts(context.Context, string, string, string, []byte) ([]DeviceLinkAttempt, error)
+	UpdateDeviceLinkParticipant(context.Context, string, string, string, string, DeviceLinkParticipantInput) (DeviceLinkAttempt, error)
 }
 
 type RegisterDeviceInput struct {
@@ -37,6 +41,40 @@ type RegisterDeviceInput struct {
 	Algorithm     string
 	PublicKey     []byte
 	Proof         []byte
+}
+
+type RegisteredDevice struct {
+	UserDeviceID string
+	DeviceID     string
+}
+
+type DeviceLinkICEParams struct {
+	Ufrag      string   `json:"ufrag"`
+	Pwd        string   `json:"pwd"`
+	Candidates []string `json:"candidates"`
+}
+
+type DeviceLinkAttempt struct {
+	AttemptID             string               `json:"attemptId"`
+	PairingID             string               `json:"scopeId"`
+	CallerDeviceID        string               `json:"callerDeviceId"`
+	CallerFingerprint     string               `json:"callerFingerprint"`
+	CallerICE             *DeviceLinkICEParams `json:"callerIce"`
+	CallerProtocolVersion int                  `json:"callerProtocolVersion"`
+	OwnerDeviceID         string               `json:"ownerDeviceId"`
+	OwnerFingerprint      string               `json:"ownerFingerprint"`
+	OwnerICE              *DeviceLinkICEParams `json:"ownerIce"`
+	OwnerProtocolVersion  int                  `json:"ownerProtocolVersion"`
+	State                 string               `json:"state"`
+	STUNEndpoints         []string             `json:"stunEndpoints"`
+	ExpiresAt             string               `json:"expiresAt"`
+}
+
+type DeviceLinkParticipantInput struct {
+	Fingerprint       string
+	ProtocolVersion   int
+	ICE               DeviceLinkICEParams
+	IdentitySignature []byte
 }
 
 type CreateChallengeResult struct {
@@ -89,6 +127,11 @@ type devicePublicIdentityWire struct {
 	Proof     []byte `json:"proof"`
 }
 
+type registeredDeviceWire struct {
+	UserDeviceID string `json:"userDeviceId"`
+	DeviceID     string `json:"deviceId"`
+}
+
 type pairingChallengeWire struct {
 	ChallengeID            string `json:"challengeId"`
 	TargetUserDeviceID     string `json:"targetUserDeviceId"`
@@ -109,7 +152,7 @@ type pairingWire struct {
 	RevokedAt              *string `json:"revokedAt"`
 }
 
-func (c *HTTPControlPlane) RegisterDevice(ctx context.Context, cookie string, input RegisterDeviceInput) error {
+func (c *HTTPControlPlane) RegisterDevice(ctx context.Context, cookie string, input RegisterDeviceInput) (RegisteredDevice, error) {
 	request := userDeviceRegistrationWire{
 		DeviceID: strings.TrimSpace(input.DeviceID), ReportedName: strings.TrimSpace(input.ReportedName),
 		Platform: strings.TrimSpace(input.Platform), Arch: strings.TrimSpace(input.Arch),
@@ -120,7 +163,20 @@ func (c *HTTPControlPlane) RegisterDevice(ctx context.Context, cookie string, in
 			Proof:     append([]byte(nil), input.Proof...),
 		},
 	}
-	return c.doJSON(ctx, http.MethodPut, "/devices/current", cookie, request, nil)
+	var response struct {
+		Device registeredDeviceWire `json:"device"`
+	}
+	if err := c.doJSON(ctx, http.MethodPut, "/devices/current", cookie, request, &response); err != nil {
+		return RegisteredDevice{}, err
+	}
+	device := RegisteredDevice{
+		UserDeviceID: strings.TrimSpace(response.Device.UserDeviceID),
+		DeviceID:     strings.TrimSpace(response.Device.DeviceID),
+	}
+	if device.UserDeviceID == "" || device.DeviceID != strings.TrimSpace(input.DeviceID) {
+		return RegisteredDevice{}, errors.New("control-plane registered device is incomplete")
+	}
+	return device, nil
 }
 
 func (c *HTTPControlPlane) CreateChallenge(ctx context.Context, cookie, targetDeviceID string) (CreateChallengeResult, error) {
@@ -204,6 +260,64 @@ func (c *HTTPControlPlane) RevokePairing(ctx context.Context, cookie, pairingID 
 		return mobileremotebiz.DevicePairing{}, err
 	}
 	return pairingFromWire(response.Pairing)
+}
+
+func (c *HTTPControlPlane) ListDeviceLinkAttempts(
+	ctx context.Context,
+	cookie string,
+	pairingID string,
+	deviceID string,
+	identitySignature []byte,
+) ([]DeviceLinkAttempt, error) {
+	query := url.Values{}
+	query.Set("deviceId", strings.TrimSpace(deviceID))
+	query.Set("identitySignature", base64.RawURLEncoding.EncodeToString(identitySignature))
+	path := "/device-pairings/" + url.PathEscape(strings.TrimSpace(pairingID)) +
+		"/device-link-attempts?" + query.Encode()
+	var response struct {
+		Attempts []DeviceLinkAttempt `json:"attempts"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, path, cookie, nil, &response); err != nil {
+		return nil, err
+	}
+	attempts := make([]DeviceLinkAttempt, 0, len(response.Attempts))
+	for _, attempt := range response.Attempts {
+		normalized, err := normalizeDeviceLinkAttempt(attempt)
+		if err != nil {
+			return nil, err
+		}
+		attempts = append(attempts, normalized)
+	}
+	return attempts, nil
+}
+
+func (c *HTTPControlPlane) UpdateDeviceLinkParticipant(
+	ctx context.Context,
+	cookie string,
+	pairingID string,
+	attemptID string,
+	deviceID string,
+	input DeviceLinkParticipantInput,
+) (DeviceLinkAttempt, error) {
+	query := url.Values{}
+	query.Set("deviceId", strings.TrimSpace(deviceID))
+	path := "/device-pairings/" + url.PathEscape(strings.TrimSpace(pairingID)) +
+		"/device-link-attempts/" + url.PathEscape(strings.TrimSpace(attemptID)) +
+		"/participant?" + query.Encode()
+	request := map[string]any{
+		"ephemeralFingerprint": strings.TrimSpace(input.Fingerprint),
+		"candidates":           []any{},
+		"protocolVersion":      input.ProtocolVersion,
+		"ice":                  input.ICE,
+		"identitySignature":    append([]byte(nil), input.IdentitySignature...),
+	}
+	var response struct {
+		Attempt DeviceLinkAttempt `json:"attempt"`
+	}
+	if err := c.doJSON(ctx, http.MethodPost, path, cookie, request, &response); err != nil {
+		return DeviceLinkAttempt{}, err
+	}
+	return normalizeDeviceLinkAttempt(response.Attempt)
 }
 
 func (c *HTTPControlPlane) doJSON(ctx context.Context, method, path, cookie string, requestBody, responseBody any) error {
@@ -310,4 +424,24 @@ func pairingFromWire(wire pairingWire) (mobileremotebiz.DevicePairing, error) {
 		return mobileremotebiz.DevicePairing{}, fmt.Errorf("control-plane device pairing is incomplete")
 	}
 	return pairing, nil
+}
+
+func normalizeDeviceLinkAttempt(attempt DeviceLinkAttempt) (DeviceLinkAttempt, error) {
+	attempt.AttemptID = strings.TrimSpace(attempt.AttemptID)
+	attempt.PairingID = strings.TrimSpace(attempt.PairingID)
+	attempt.CallerDeviceID = strings.TrimSpace(attempt.CallerDeviceID)
+	attempt.CallerFingerprint = strings.TrimSpace(attempt.CallerFingerprint)
+	attempt.OwnerDeviceID = strings.TrimSpace(attempt.OwnerDeviceID)
+	attempt.OwnerFingerprint = strings.TrimSpace(attempt.OwnerFingerprint)
+	attempt.State = strings.TrimSpace(attempt.State)
+	if attempt.AttemptID == "" || attempt.PairingID == "" || attempt.CallerDeviceID == "" ||
+		attempt.OwnerDeviceID == "" || attempt.State == "" || attempt.CallerICE == nil {
+		return DeviceLinkAttempt{}, errors.New("control-plane device-link attempt is incomplete")
+	}
+	attempt.STUNEndpoints = append([]string(nil), attempt.STUNEndpoints...)
+	attempt.CallerICE.Candidates = append([]string(nil), attempt.CallerICE.Candidates...)
+	if attempt.OwnerICE != nil {
+		attempt.OwnerICE.Candidates = append([]string(nil), attempt.OwnerICE.Candidates...)
+	}
+	return attempt, nil
 }

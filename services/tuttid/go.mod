@@ -17,6 +17,7 @@ require (
 	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.0
 	github.com/tutti-os/tutti/packages/appcli/core v0.0.0
 	github.com/tutti-os/tutti/packages/auth/bridge-go v0.0.0
+	github.com/tutti-os/tutti/packages/device-link v0.0.0
 	github.com/tutti-os/tutti/packages/events/stream-go v0.0.0
 	github.com/tutti-os/tutti/packages/workbench/service v0.0.0
 	github.com/tutti-os/tutti/packages/workspace/files v0.0.0
@@ -80,12 +81,23 @@ require (
 	github.com/oasdiff/yaml3 v0.0.9 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pierrec/lz4/v4 v4.1.18 // indirect
+	github.com/pion/dtls/v3 v3.1.3 // indirect
+	github.com/pion/ice/v4 v4.2.7 // indirect
+	github.com/pion/logging v0.2.4 // indirect
+	github.com/pion/mdns/v2 v2.1.0 // indirect
+	github.com/pion/randutil v0.1.0 // indirect
+	github.com/pion/stun/v3 v3.1.4 // indirect
+	github.com/pion/transport/v4 v4.0.2 // indirect
+	github.com/pion/turn/v5 v5.0.7 // indirect
+	github.com/quic-go/quic-go v0.59.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/speakeasy-api/jsonpath v0.6.3 // indirect
 	github.com/speakeasy-api/openapi v1.19.2 // indirect
+	github.com/tutti-os/tutti/packages/agent/activity-replication v0.0.0 // indirect
 	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect
+	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/woodsbury/decimal128 v1.4.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
@@ -95,6 +107,7 @@ require (
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
@@ -108,3 +121,5 @@ tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 replace github.com/tutti-os/tutti/packages/appcli/core => ../../packages/appcli/core
 
 replace github.com/tutti-os/tutti/packages/auth/bridge-go => ../../packages/auth/bridge-go
+
+replace github.com/tutti-os/tutti/packages/device-link => ../../packages/device-link

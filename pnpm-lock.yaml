@@ -195,6 +195,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      "@tutti-os/client-tuttid-ts":
+        specifier: workspace:*
+        version: link:../../packages/clients/tuttid-ts
       react:
         specifier: 19.2.6
         version: 19.2.6

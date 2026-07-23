@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -13,6 +14,7 @@ import { t } from "../i18n";
 import { mobileSecurity, type AccountSession } from "../native/mobileNative";
 import {
   claimPairing,
+  connectPairedDevice,
   getPairingChallenge,
   listDevices,
   listPairings,
@@ -23,18 +25,26 @@ import {
 import { theme } from "../theme";
 
 interface DeviceScreenProps {
+  onConnected(deviceName: string): void;
   onSignOut(): Promise<void>;
   session: AccountSession;
 }
 
 type PairingState = "idle" | "claiming" | "waiting" | "confirmed";
 
-export function DeviceScreen({ onSignOut, session }: DeviceScreenProps) {
+export function DeviceScreen({
+  onConnected,
+  onSignOut,
+  session
+}: DeviceScreenProps) {
   const [devices, setDevices] = useState<UserDevice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pairingState, setPairingState] = useState<PairingState>("idle");
   const [pairings, setPairings] = useState<DevicePairing[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [connectingPairingID, setConnectingPairingID] = useState<string | null>(
+    null
+  );
   const pairingRun = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -131,6 +141,24 @@ export function DeviceScreen({ onSignOut, session }: DeviceScreenProps) {
     }
   };
 
+  const connect = async (pairing: DevicePairing, device?: UserDevice) => {
+    if (connectingPairingID) {
+      return;
+    }
+    setConnectingPairingID(pairing.pairingId);
+    setError(null);
+    try {
+      await connectPairedDevice(session.sessionId, pairing.pairingId);
+      onConnected(
+        device?.displayName || device?.reportedName || t("desktopFallback")
+      );
+    } catch {
+      setError(t("connectionFailed"));
+    } finally {
+      setConnectingPairingID(null);
+    }
+  };
+
   const status =
     pairingState === "waiting"
       ? t("pairingWaiting")
@@ -176,7 +204,15 @@ export function DeviceScreen({ onSignOut, session }: DeviceScreenProps) {
         {pairings.map((pairing) => {
           const device = devicesByID.get(pairing.targetUserDeviceId);
           return (
-            <View key={pairing.pairingId} style={styles.deviceCard}>
+            <Pressable
+              disabled={connectingPairingID !== null}
+              key={pairing.pairingId}
+              onPress={() => void connect(pairing, device)}
+              style={({ pressed }) => [
+                styles.deviceCard,
+                pressed && styles.deviceCardPressed
+              ]}
+            >
               <View style={styles.deviceMark}>
                 <Text style={styles.deviceMarkText}>T</Text>
               </View>
@@ -187,11 +223,17 @@ export function DeviceScreen({ onSignOut, session }: DeviceScreenProps) {
                     t("desktopFallback")}
                 </Text>
                 <Text style={styles.deviceMeta}>
-                  {device?.platform || "desktop"} · {t("connected")}
+                  {connectingPairingID === pairing.pairingId
+                    ? t("connecting")
+                    : `${device?.platform || "desktop"} · ${t("connected")}`}
                 </Text>
               </View>
-              <View style={styles.statusDot} />
-            </View>
+              {connectingPairingID === pairing.pairingId ? (
+                <ActivityIndicator color={theme.color.accent} size="small" />
+              ) : (
+                <View style={styles.statusDot} />
+              )}
+            </Pressable>
           );
         })}
 
@@ -242,6 +284,9 @@ const styles = StyleSheet.create({
   deviceCopy: {
     flex: 1,
     marginLeft: 14
+  },
+  deviceCardPressed: {
+    opacity: 0.72
   },
   deviceMark: {
     alignItems: "center",

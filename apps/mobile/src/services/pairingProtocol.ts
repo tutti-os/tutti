@@ -30,7 +30,20 @@ export function pairingClaimProof(challengeID: string, secret: string): string {
   return `tutti-device-pairing/1\nclaim\n${challengeID.trim()}\n${secret}`;
 }
 
+export function deviceLinkProof(
+  action: "create" | "get" | "update",
+  pairingID: string,
+  attemptID: string,
+  fingerprint: string
+): string {
+  return `tutti-device-link/1\n${action}\n${pairingID.trim()}\n${attemptID.trim()}\n${fingerprint.trim()}`;
+}
+
 export function base64URLToStandard(value: string): string {
   const standard = value.replace(/-/g, "+").replace(/_/g, "/");
   return standard.padEnd(Math.ceil(standard.length / 4) * 4, "=");
+}
+
+export function standardBase64ToURL(value: string): string {
+  return value.replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
