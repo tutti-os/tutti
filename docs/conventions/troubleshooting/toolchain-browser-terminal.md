@@ -511,6 +511,9 @@ emitted before this method can be called`, especially after HMR, navigation,
   `node_modules/.vite/deps/assets/...`: dependency prebundling moved the
   JavaScript module, then a preserved `new URL("./assets/...", import.meta.url)`
   resolved relative to the optimizer cache.
+  A browser-only correction can surface as `Unknown file extension ".png"` in
+  Vitest when the test runner externalizes the published dependency and Node
+  evaluates its asset import directly.
 - Quick checks:
   If the failing package entrypoint renders a package-local image or icon,
   inspect whether the main runtime entrypoint still imports that asset directly
@@ -519,7 +522,9 @@ emitted before this method can be called`, especially after HMR, navigation,
   Run `pnpm release:pack:check` and confirm the packed tarball includes the
   exported asset file under `dist/assets/...`.
   Inspect the built `dist` entrypoint and confirm the main runtime code no
-  longer hard-depends on the asset unless the consumer imported it explicitly.
+  longer uses a module-relative asset URL. If the runtime intentionally imports
+  the asset, verify the public export has both a browser asset target and a
+  Node-executable target.
 - Root cause:
   The public runtime entrypoint owned a default asset dependency instead of
   exposing that asset as an explicit public subpath. The packed npm artifact
@@ -539,11 +544,18 @@ emitted before this method can be called`, especially after HMR, navigation,
   explicit public asset subpath from that runtime and keep the asset import
   external in the package build. This lets the consumer bundler observe and
   rewrite the asset dependency instead of inferring it from `import.meta.url`.
+  If Node-based consumers also evaluate the runtime, give the same public asset
+  subpath conditional exports: a browser condition that targets the image and
+  a Node condition that targets a sibling JavaScript module returning the
+  module-relative file URL. Do not require every consumer to add a test alias
+  for the published package.
   Apply the same rule to every public runtime subpath in the package, not just
   the first failing icon.
 - Validation:
   Build the affected package, inspect the built runtime entrypoint for the
   absence of the old asset dependency, and rerun `pnpm release:pack:check`.
+  Import the packed public asset subpath with Node and run a real Vite
+  dependency-prebundle fixture; both paths must succeed.
   If the package is consumed by desktop renderer code in this repo, also run
   the relevant desktop build to confirm the consumer bundler copies or emits
   the asset only when the business import is present.

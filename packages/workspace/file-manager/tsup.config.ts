@@ -5,6 +5,10 @@ export default defineConfig({
   dts: true,
   entry: {
     index: "src/index.ts",
+    "runtime-assets/workspace-archive-fallback-url":
+      "src/runtime-assets/workspace-archive-fallback-url.ts",
+    "runtime-assets/workspace-folder-fallback-url":
+      "src/runtime-assets/workspace-folder-fallback-url.ts",
     "i18n/index": "src/i18n/index.ts",
     "services/index": "src/services/index.ts"
   },

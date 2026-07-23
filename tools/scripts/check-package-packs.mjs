@@ -161,6 +161,38 @@ async function checkPackage(packageConfig, destination) {
         violations.push(`missing public asset import ${publicAssetSpecifier}`);
       }
     }
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          `
+            for (const fallbackKind of ["archive", "folder"]) {
+              const { default: assetUrl } = await import(
+                \`@tutti-os/workspace-file-manager/assets/workspace-\${fallbackKind}-fallback.png\`
+              );
+              if (
+                !assetUrl.startsWith("file:") ||
+                !assetUrl.endsWith(\`workspace-\${fallbackKind}-fallback.png\`)
+              ) {
+                throw new Error(\`unexpected \${fallbackKind} fallback URL: \${assetUrl}\`);
+              }
+            }
+          `
+        ],
+        {
+          cwd: packageRoot,
+          stdio: "pipe"
+        }
+      );
+    } catch (error) {
+      const detail =
+        error instanceof Error && "stderr" in error
+          ? String(error.stderr).trim()
+          : String(error);
+      violations.push(`Node fallback asset import failed: ${detail}`);
+    }
   }
 
   if (violations.length > 0) {
