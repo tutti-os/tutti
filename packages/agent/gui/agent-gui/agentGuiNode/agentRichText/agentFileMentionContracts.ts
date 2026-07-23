@@ -47,6 +47,7 @@ export interface AgentMentionSessionItem {
   name: string;
   title: string;
   scope: AgentMentionScope;
+  initiatorUserId?: string;
   initiatorName: string;
   initiatorAvatarUrl?: string;
   agentName: string;

@@ -580,7 +580,7 @@ describe("AgentMentionSearchController", () => {
     expect(queryIssues).not.toHaveBeenCalled();
   });
 
-  it("groups session mentions by member across agent targets", async () => {
+  it("groups session mentions by initiator instead of Agent owner", async () => {
     const controller = new AgentMentionSearchController({
       querySessions: vi.fn().mockResolvedValue({
         sessions: [
@@ -602,7 +602,14 @@ describe("AgentMentionSearchController", () => {
             agentSessionId: "session-shared",
             agentTargetId: "shared-agent:shared-codex",
             provider: "codex",
-            title: "Shared build",
+            title: "Shared build initiated by me",
+            userId: "user-1"
+          },
+          {
+            agentSessionId: "session-shared-by-owner",
+            agentTargetId: "shared-agent:shared-codex",
+            provider: "codex",
+            title: "Shared build initiated by owner",
             userId: "user-2"
           },
           {
@@ -660,17 +667,22 @@ describe("AgentMentionSearchController", () => {
               expect.objectContaining({ targetId: "session-local-0" }),
               expect.objectContaining({ targetId: "session-local-claude" })
             ]),
-            totalCount: 32,
+            totalCount: 33,
             hasMore: true
           },
           {
             id: "member:user-2",
             label: "Lin",
-            items: [expect.objectContaining({ targetId: "session-shared" })]
+            items: [
+              expect.objectContaining({
+                initiatorUserId: "user-2",
+                targetId: "session-shared-by-owner"
+              })
+            ]
           },
           {
-            id: "agent:uncatalogued%3Alegacy-gemini",
-            label: "gemini",
+            id: "agent:uncatalogued%3Auser-3",
+            label: "user-3",
             items: [
               expect.objectContaining({ targetId: "session-uncatalogued" })
             ]
@@ -693,8 +705,14 @@ describe("AgentMentionSearchController", () => {
         status: "ready",
         groups: [
           {
-            id: "member:user-2",
+            id: "member:user-1",
             items: [expect.objectContaining({ targetId: "session-shared" })]
+          },
+          {
+            id: "member:user-2",
+            items: [
+              expect.objectContaining({ targetId: "session-shared-by-owner" })
+            ]
           }
         ]
       })

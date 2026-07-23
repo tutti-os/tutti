@@ -221,6 +221,14 @@ Agent-only adapter over the current Agent directory and does not synthesize
 Member options; collaboration hosts explicitly inject both their enabled
 dimensions and catalogs.
 
+Session mention providers preserve the canonical initiator user id in the
+mention scope. The compact AgentGUI palette groups Session results by that
+initiator through the injected Member catalog; Agent results continue to group
+by the Agent target owner's `parentMemberId`. A collaboration host also owns
+the Session row's Agent display label, including an owner-qualified label for
+another member's shared Agent, and must project the same label used by its Agent
+filter option.
+
 Catalog option identity is host-owned and normalized at the shared-package
 boundary. Agent options require a durable `agentTargetId`; product-local target
 ids are not provenance fallbacks. Filter cache keys use a collision-free

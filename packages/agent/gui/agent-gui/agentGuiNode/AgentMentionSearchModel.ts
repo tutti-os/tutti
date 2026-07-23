@@ -189,19 +189,16 @@ function buildAgentProvenanceGroups(input: {
       agentTargetId !== null && selectedAgentTargetIdSet.has(agentTargetId)
     );
   });
-  const catalogAgentTargetIds = new Set(
-    input.provenanceCatalog.agentOptions.map((option) => option.id)
-  );
+  const cataloguedItemIds = new Set<string>();
   const catalogGroups = agentProvenanceGroupSpecs(
+    input.currentFilter,
     input.provenanceCatalog
   ).flatMap((group) => {
-    const items = sourceItems.filter((item) => {
-      const agentTargetId = agentTargetIdForMentionItem(item);
-      return agentTargetId !== null && group.agentTargetIds.has(agentTargetId);
-    });
+    const items = sourceItems.filter(group.matches);
     if (items.length === 0) {
       return [];
     }
+    items.forEach((item) => cataloguedItemIds.add(item.targetId));
     return [
       buildAgentProvenanceGroup({
         currentFilter: input.currentFilter,
@@ -224,8 +221,7 @@ function buildAgentProvenanceGroups(input: {
     }
   >();
   for (const item of sourceItems) {
-    const agentTargetId = agentTargetIdForMentionItem(item);
-    if (agentTargetId && catalogAgentTargetIds.has(agentTargetId)) {
+    if (cataloguedItemIds.has(item.targetId)) {
       continue;
     }
     const identity = unmatchedAgentProvenanceIdentity(item);
@@ -253,11 +249,22 @@ function buildAgentProvenanceGroups(input: {
   ];
 }
 
-function agentProvenanceGroupSpecs(catalog: ReferenceProvenanceCatalog): Array<{
+function agentProvenanceGroupSpecs(
+  currentFilter: AgentMentionFilterId,
+  catalog: ReferenceProvenanceCatalog
+): Array<{
   id: AgentMentionGroupId;
   label: string;
-  agentTargetIds: ReadonlySet<string>;
+  matches: (item: AgentProvenanceMentionItem) => boolean;
 }> {
+  if (currentFilter === "session") {
+    return catalog.memberOptions.map((member) => ({
+      id: memberProvenanceMentionGroupId(member.id),
+      label: member.label,
+      matches: (item) =>
+        item.kind === "session" && item.initiatorUserId?.trim() === member.id
+    }));
+  }
   const groupedAgentTargetIds = new Set<string>();
   const memberGroups = catalog.memberOptions.flatMap((member) => {
     const agentTargetIds = catalog.agentOptions.flatMap((option) =>
@@ -273,7 +280,12 @@ function agentProvenanceGroupSpecs(catalog: ReferenceProvenanceCatalog): Array<{
       {
         id: memberProvenanceMentionGroupId(member.id),
         label: member.label,
-        agentTargetIds: new Set(agentTargetIds)
+        matches: (item: AgentProvenanceMentionItem) => {
+          const agentTargetId = agentTargetIdForMentionItem(item);
+          return (
+            agentTargetId !== null && agentTargetIds.includes(agentTargetId)
+          );
+        }
       }
     ];
   });
@@ -284,7 +296,8 @@ function agentProvenanceGroupSpecs(catalog: ReferenceProvenanceCatalog): Array<{
           {
             id: agentProvenanceMentionGroupId(option.id),
             label: option.label,
-            agentTargetIds: new Set([option.id])
+            matches: (item: AgentProvenanceMentionItem) =>
+              agentTargetIdForMentionItem(item) === option.id
           }
         ]
   );
@@ -317,12 +330,7 @@ function unmatchedAgentProvenanceIdentity(
   item: AgentProvenanceMentionItem
 ): string {
   if (item.kind === "session") {
-    return (
-      item.agentTargetId?.trim() ||
-      item.agentName.trim() ||
-      item.initiatorName.trim() ||
-      item.targetId
-    );
+    return item.initiatorUserId?.trim() || item.targetId;
   }
   return item.targetId;
 }
@@ -332,9 +340,9 @@ function unmatchedAgentProvenanceLabel(
 ): string {
   if (item.kind === "session") {
     return (
-      item.agentName.trim() ||
       item.initiatorName.trim() ||
-      item.agentTargetId?.trim() ||
+      item.initiatorUserId?.trim() ||
+      item.agentName.trim() ||
       item.title
     );
   }
@@ -660,6 +668,7 @@ export function providerItemToAgentMentionItem(input: {
         rawScope: scope.scope,
         userId: scope.userId
       }),
+      ...(scope.userId ? { initiatorUserId: scope.userId } : {}),
       initiatorName: "",
       agentName,
       agentIconUrl:
