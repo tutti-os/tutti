@@ -1211,6 +1211,11 @@ export const en = {
         logsSizeLabel: "Log size",
         logsSummary: "{{count}} files, {{size}} total",
         logsTitle: "Logs",
+        mobileRemoteAccessSettingsDescription:
+          "Show phone pairing and remote access controls in Account settings.",
+        mobileRemoteAccessSettingsLabel: "Show mobile remote access settings",
+        mobileRemoteAccessSettingsSaveFailed:
+          "We couldn't update mobile remote access visibility.",
         openDaemonLog: "Open daemon log",
         openDesktopLog: "Open desktop log",
         openLogsDirectory: "Open logs folder",

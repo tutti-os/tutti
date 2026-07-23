@@ -195,6 +195,11 @@ Mobile、Tutti Personal 和 TSH 使用同一 tsh-server 账号体系。Tutti Per
 5. tsh-server 校验同账号和 challenge 状态；
 6. Desktop 显式确认配对。
 
+Desktop 的账号登录入口与手机远程访问入口独立发布。登录能力可以面向用户开放，
+而账号设置中的手机配对和远程访问区块默认隐藏；开发者设置通过持久化
+`mobile.remoteAccessSettings` feature flag 控制该区块是否显示。此开关只控制
+Desktop 设置入口可见性，不创建第二套登录态、设备实体或协议能力。
+
 QR 不包含 bearer token、私钥、原始候选或可长期使用的连接凭据。
 
 ### 8.2 持久设备身份

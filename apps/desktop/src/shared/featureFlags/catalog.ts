@@ -19,6 +19,7 @@ export const WORKSPACE_STANDALONE_AGENT_MODE_FLAG =
 export const AGENT_REFERENCE_PROVENANCE_FILTER_FLAG =
   "agent.referenceProvenanceFilter";
 export const AGENT_QUICK_PROMPT_LIBRARY_FLAG = "agent.quickPromptLibrary";
+export const MOBILE_REMOTE_ACCESS_SETTINGS_FLAG = "mobile.remoteAccessSettings";
 export const AGENT_EXTENSION_GEMINI_FLAG = "agent.extension.gemini";
 export const AGENT_EXTENSION_CODEBUDDY_FLAG = "agent.extension.codebuddy";
 export const AGENT_EXTENSION_COPILOT_FLAG = "agent.extension.copilot";
@@ -152,6 +153,11 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
   },
   {
     key: AGENT_QUICK_PROMPT_LIBRARY_FLAG,
+    default: false,
+    group: "developer"
+  },
+  {
+    key: MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
     default: false,
     group: "developer"
   },

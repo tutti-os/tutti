@@ -93,6 +93,7 @@ import {
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
   LAB_WORKSPACE_AGENTS_FLAG,
+  MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
   resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
@@ -601,7 +602,12 @@ export function WorkspaceSettingsPanel({
                 }}
               />
             ) : settingsState.activeSection === "account" ? (
-              <WorkspaceAccountSettingsSection />
+              <WorkspaceAccountSettingsSection
+                featureFlags={
+                  desktopPreferencesState.changingFeatureFlags ??
+                  desktopPreferencesState.featureFlags
+                }
+              />
             ) : settingsState.activeSection === "about" ? (
               <WorkspaceAboutSettingsSection
                 developerLogs={settingsState.developerLogs}
@@ -2772,9 +2778,17 @@ function WorkspaceGeneralSettingsSection({
   );
 }
 
-function WorkspaceAccountSettingsSection() {
+function WorkspaceAccountSettingsSection({
+  featureFlags
+}: {
+  featureFlags: DesktopFeatureFlags;
+}) {
   const { t } = useTranslation();
   const { service: accountService, state: accountState } = useAccountService();
+  const mobileRemoteAccessSettingsEnabled = isFeatureEnabled(
+    featureFlags,
+    MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
+  );
 
   useEffect(() => {
     void accountService.refreshUserInfo();
@@ -2875,7 +2889,9 @@ function WorkspaceAccountSettingsSection() {
           {accountState.error}
         </p>
       ) : null}
-      {user ? <WorkspaceMobileRemoteSettingsSection /> : null}
+      {user && mobileRemoteAccessSettingsEnabled ? (
+        <WorkspaceMobileRemoteSettingsSection />
+      ) : null}
     </div>
   );
 }
