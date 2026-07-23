@@ -177,12 +177,23 @@ export function createDesktopAgentActivityAdapter({
           event: "renderer_adapter.create.http_requested",
           provider: null,
           submitDiagnostics: input.submitDiagnostics,
-          workspaceId: input.workspaceId
+          workspaceId: input.workspaceId,
+          fields: {
+            hasInitialTuttiModeActivation:
+              input.initialTuttiModeActivation != null
+          }
         });
         const agentTargetId = requiredAgentTargetId(input.agentTargetId);
         const request: CreateWorkspaceAgentSessionRequest = {
           agentSessionId,
           agentTargetId,
+          ...(input.capabilityRefs?.length
+            ? {
+                capabilityRefs: input.capabilityRefs.map(
+                  toTuttidCapabilityReference
+                )
+              }
+            : {}),
           clientSubmitId: input.clientSubmitId,
           cwd: input.cwd ?? null,
           initialContent: toTuttidPromptContentBlocks(
@@ -236,7 +247,11 @@ export function createDesktopAgentActivityAdapter({
           agentSessionId: input.agentSessionId?.trim() ?? null,
           clientSubmitId: input.clientSubmitId,
           event: "renderer_adapter.create.failed",
-          fields: normalizeDesktopAgentDiagnosticError(error),
+          fields: {
+            ...normalizeDesktopAgentDiagnosticError(error),
+            hasInitialTuttiModeActivation:
+              input.initialTuttiModeActivation != null
+          },
           provider: null,
           submitDiagnostics: input.submitDiagnostics,
           workspaceId: input.workspaceId

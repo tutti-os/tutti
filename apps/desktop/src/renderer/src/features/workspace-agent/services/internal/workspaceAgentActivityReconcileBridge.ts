@@ -715,17 +715,12 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         command.agentSessionId
       );
       if (isWorkspaceAgentSessionNotFoundError(error)) {
-        this.markSessionDeleted({
-          agentSessionId: command.agentSessionId,
-          data: { reason: "workspace_agent_session_not_found" },
-          workspaceId: command.workspaceId
-        });
         void this.reconcileDependencies.runtimeApi.logTerminalDiagnostic({
           details: {
             agentSessionId: command.agentSessionId,
             error: stringifyError(error)
           },
-          event: "agent.activity.reconcile_session_missing",
+          event: "agent.activity.reconcile_session_absent",
           level: "info",
           workspaceId: command.workspaceId
         });

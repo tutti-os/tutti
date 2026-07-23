@@ -116,9 +116,11 @@
   `make dev-gui` exits during startup before the desktop window is usable. The
   early form reports `pnpm <version> installation did not succeed`; the later
   form reaches `start electron app...` and then `make` exits while desktop logs
-  say `secondary tutti instance detected`. Another early form exits while
-  checking prerequisites because a stale `pnpm` shim reports that its bundled
-  `../node/bin/node` no longer exists.
+  say `secondary tutti instance detected`. A database form reports
+  `no such table: model_plan_first_use_candidates`, followed by
+  `tuttid exited before it published its listener info`. Another early form
+  exits while checking prerequisites because a stale `pnpm` shim reports that
+  its bundled `../node/bin/node` no longer exists.
 - Quick checks:
   Run `DEV_GUI_SKIP_START=1 make dev-gui` to isolate prerequisite setup from
   Electron startup. If full startup exits after `start electron app...`, inspect
@@ -134,6 +136,10 @@
   app makes the dev app quit as a secondary instance. Agent shells launched from
   the packaged app may inherit `TUTTI_ENV=production`, so `make dev-gui` must
   force the development environment instead of preserving that inherited value.
+  The missing-table variant comes from a development database that already
+  recorded `model_plans_v1` before the candidate table was added behind that
+  same marker. SQLite correctly skips the recorded migration, so startup
+  reconciliation reaches a physical schema that the marker does not describe.
 - Fix:
   Probe `pnpm --version` without letting a broken shim abort startup, discover
   Corepack from the active or locally installed Node runtime, prefer that
@@ -142,16 +148,23 @@
   single-instance lock. Ensure the dev-gui script exports
   `TUTTI_ENV=development` before resolving pid files, installing the dev CLI, or
   launching Electron.
+  Apply a new, idempotent `model_plan_first_use_candidates_v1` forward migration
+  after `model_plans_v1`; do not require deleting the development database and
+  do not rewrite or reuse the recorded migration identifier.
 - Validation:
   Run `DEV_GUI_SKIP_START=1 make dev-gui`, then run full `make dev-gui` while
   the packaged app is open and confirm the renderer dev server and development
   `tuttid` start. Also run `pnpm --filter @tutti-os/desktop test`,
   `pnpm --filter @tutti-os/desktop typecheck`, and
   `pnpm check:electron-runtime-boundaries`.
+  Retain a migration test that starts with `model_plans_v1` recorded and the
+  candidate table absent, then verifies a full migration pass restores the table
+  and index exactly once.
 - References:
   [dev-gui.sh](../../../tools/scripts/dev-gui.sh)
   [bootstrap.ts](../../../apps/desktop/src/main/bootstrap.ts)
   [defaults.ts](../../../apps/desktop/src/main/defaults.ts)
+  [migrations_model_plans.go](../../../services/tuttid/data/workspace/migrations_model_plans.go)
 
 ### Running a development tuttid breaks the production Agent session
 

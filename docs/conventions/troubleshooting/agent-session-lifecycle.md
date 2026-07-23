@@ -179,6 +179,64 @@
   order without deadlocking. Unsupported capability/source values must fail at
   HTTP ingress and event publication without changing activation.
 
+### Tutti mode is active in the composer but disappears after the first submit
+
+- **Symptom:** The home composer shows Tutti enabled and the submit trace records
+  `tutti_mode_active=true`, but the created Session has no activation and its
+  first `tutti_mode_turn_snapshots` row is `inactive`.
+- **Quick checks:** Confirm `lab.tuttiMode` is enabled first. Then trace
+  `initialTuttiModeActivation` at the composer submit, controller activation,
+  desktop activity service, renderer HTTP adapter, and daemon create ingress.
+  Log only a presence boolean at each boundary. Compare the Session export with
+  the durable activation and Turn snapshot rows; `capabilityRefs` do not prove
+  current activation.
+- **Root cause:** Session creation crosses several adapters that reconstruct
+  object literals. A manually projected create input can omit
+  `initialTuttiModeActivation` or its Tutti `capabilityRefs` even when the
+  upstream type carries them. Reading mutable draft state after submit can also
+  lose the exact composer selection. Separately, allowing `/tutti` while the lab
+  flag is disabled produces renderer state that the daemon must reject.
+- **Fix:** Snapshot active/inactive state and orchestration intensity atomically
+  with the composer submit. Preserve both activation and capability provenance
+  through every create projection, and gate slash actions with the same host
+  capability flag as the visible control.
+- **Validation:** Keep boundary tests for the service, engine host, and HTTP
+  adapter. In a real development launch, submit once with Tutti enabled and
+  verify the HTTP boundary sees the activation, the activation revision is
+  `active`, and the first Turn snapshot retains its source and intensity.
+
+### A new Tutti conversation becomes unavailable immediately after submit
+
+- **Symptom:** The optimistic conversation appears after the first submit, then
+  immediately changes to `Conversation unavailable` even though the provider
+  starts and the durable Session and Turn complete normally.
+- **Quick checks:** Correlate the Session ID across desktop and daemon submit
+  traces. The characteristic order is
+  `renderer_adapter.create.http_requested`, then
+  `agent.activity.reconcile_session_missing`, then
+  `renderer_adapter.create.resolved` and `api.create.completed`. Confirm the
+  missing reconcile occurs while the engine still has a requested or uncertain
+  new-session activation.
+- **Root cause:** Initial Tutti activation can publish
+  `workspace.tuttimode.updated` before the create transaction is query-visible
+  or its HTTP response returns. The renderer treats the event as a reconcile
+  hint, receives a transient 404, and mistakes it for authoritative deletion.
+  The resulting Session tombstone rejects the later successful create upsert.
+- **Fix:** Treat reconcile not-found as absence, not deletion evidence, and do
+  not create a tombstone from it. Let an authoritative create result or later
+  event upsert the Session. Tombstone only from explicit deletion evidence such
+  as `session_deleted` or a successful delete command, so real deletions remain
+  final.
+- **Validation:** Hold create in flight, publish
+  `workspace.tuttimode.updated`, return not-found from the Session read, and
+  verify the pending Session is not tombstoned. Then resolve create and verify
+  the canonical Session and active activation are present. Also prove an
+  ordinary reconcile 404 remains untombstoned while an explicit
+  `session_deleted` event does tombstone.
+- **References:**
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceAgentActivityEventSubscriptions.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityEventSubscriptions.ts)
+
 ### A Tutti submission remains `delivery is still being confirmed`
 
 - **Symptom:** Retrying the same composer submission keeps returning

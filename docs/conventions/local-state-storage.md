@@ -148,6 +148,11 @@ keys cascade target deletion and prevent a referenced plan from being deleted.
 `model_plan_first_use_candidates` durably attributes prepared sessions to
 plans until a completed canonical turn settles first-use state; startup
 reconciliation retries candidates left by observer failure or shutdown.
+Its dedicated `model_plan_first_use_candidates_v1` migration repairs databases
+that recorded `model_plans_v1` before this table existed. Migration identifiers
+are immutable once any development or production database can record them;
+later required tables, columns, or indexes must use a new forward migration
+rather than extending the SQL hidden behind an existing marker.
 
 The initial migration copies existing managed model-provider credentials into
 stable `mp-migrated-<provider>` plans without removing the legacy rows, because

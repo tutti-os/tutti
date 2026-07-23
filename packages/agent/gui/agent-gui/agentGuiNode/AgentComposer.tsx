@@ -15,7 +15,6 @@ import {
 import { type AgentFileMentionSuggestionState } from "./agentRichText/agentFileMentionExtension";
 import { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
-import { normalizeAgentActivityCapabilityReferences } from "@tutti-os/agent-activity-core";
 import { useComposerDraftAttachments } from "./composer/useComposerDraftAttachments";
 import { goalDraftObjectiveFromPrompt } from "./composer/composerDraftUtils";
 import { useComposerLayout } from "./composer/useComposerLayout";
@@ -35,6 +34,7 @@ import { useAgentMentionSearchController } from "./composer/useAgentMentionSearc
 import { useAgentQuickPromptLibrary } from "./composer/quickPrompts/useAgentQuickPromptLibrary";
 import { useScopedProjectMissingState } from "./composer/useScopedProjectMissingState";
 import type { AgentComposerProps } from "./composer/AgentComposer.types";
+import { withAgentComposerTuttiModeSnapshot } from "./composer/agentComposerSubmitOptions";
 import {
   agentComposerDraftAttachmentProjection,
   agentComposerDraftFiles,
@@ -77,6 +77,7 @@ export type {
   AgentComposerSlashStatus,
   AgentComposerSlashStatusLimit,
   AgentComposerSubmitOptions,
+  AgentComposerTuttiModeSubmitSnapshot,
   AgentComposerUsage
 } from "./composer/AgentComposer.types";
 
@@ -100,6 +101,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     submitDisabled,
     tuttiModeActive = false,
     tuttiModeUpdating = false,
+    tuttiModeOrchestrationIntensity = 50,
     placeholder,
     composerSettings,
     selectedAgentTarget = null,
@@ -184,17 +186,15 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     displayPrompt,
     options
   ) => {
-    onSubmit(content, displayPrompt, {
-      ...options,
-      ...(tuttiModeActive
-        ? {
-            capabilityRefs: normalizeAgentActivityCapabilityReferences([
-              ...(options?.capabilityRefs ?? []),
-              { capability: "tutti", source: "slash_command" }
-            ])
-          }
-        : {})
-    });
+    onSubmit(
+      content,
+      displayPrompt,
+      withAgentComposerTuttiModeSnapshot({
+        options,
+        active: tuttiModeActive,
+        orchestrationIntensity: tuttiModeOrchestrationIntensity
+      })
+    );
   };
   const submitGuidanceWithComposerModifiers: NonNullable<
     AgentComposerProps["onSubmitGuidance"]
@@ -403,6 +403,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     promptImagesSupported: canUploadAttachment && promptImagesSupported,
     availableSkills,
     composerSettings,
+    tuttiModeSupported: capabilityMenuState?.tuttiMode?.enabled !== false,
     capabilityControlsReadOnly,
     onDraftContentChange,
     onSettingsChange,

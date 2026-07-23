@@ -420,7 +420,12 @@ export class WorkspaceAgentActivityService
       provider: null,
       submitDiagnostics: input.submitDiagnostics,
       workspaceId,
-      fields: { agentTargetId: input.agentTargetId ?? null, mode: input.mode }
+      fields: {
+        agentTargetId: input.agentTargetId ?? null,
+        hasInitialTuttiModeActivation:
+          input.mode === "new" && input.initialTuttiModeActivation != null,
+        mode: input.mode
+      }
     });
     if (input.mode === "new") {
       reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
@@ -465,16 +470,22 @@ export class WorkspaceAgentActivityService
         provider: null,
         submitDiagnostics: input.submitDiagnostics,
         workspaceId,
-        fields: { agentTargetId: input.agentTargetId ?? null }
+        fields: {
+          agentTargetId: input.agentTargetId ?? null,
+          hasInitialTuttiModeActivation:
+            input.initialTuttiModeActivation != null
+        }
       });
       session = await this.createSession({
         clientSubmitId: input.clientSubmitId,
         workspaceId,
         agentSessionId: requestedAgentSessionId,
         agentTargetId: input.agentTargetId,
+        capabilityRefs: input.capabilityRefs ?? null,
         cwd: resolvedCwd?.cwd ?? null,
         initialContent: input.initialContent ?? [],
         initialDisplayPrompt: input.initialDisplayPrompt ?? null,
+        initialTuttiModeActivation: input.initialTuttiModeActivation ?? null,
         submitDiagnostics: input.submitDiagnostics,
         model: input.settings?.model ?? null,
         planMode: input.settings?.planMode ?? null,

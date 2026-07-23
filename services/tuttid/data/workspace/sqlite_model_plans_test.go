@@ -274,6 +274,58 @@ WHERE workspace_id = 'ws-retry' AND provider_id = 'openai'
 	}
 }
 
+func TestModelPlanFirstUseCandidatesMigrationRepairsLegacyModelPlansV1Schema(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	if _, err := store.writeDB.ExecContext(ctx, `
+DROP TABLE model_plan_first_use_candidates;
+DELETE FROM tuttid_schema_migrations WHERE id = ?;
+`, schemaMigrationModelPlanFirstUseCandidatesV1); err != nil {
+		t.Fatalf("simulate legacy model plans v1 schema: %v", err)
+	}
+
+	legacyMarkerApplied, err := store.hasMigration(ctx, schemaMigrationModelPlansV1)
+	if err != nil {
+		t.Fatalf("inspect legacy model plans marker: %v", err)
+	}
+	if !legacyMarkerApplied {
+		t.Fatal("legacy model_plans_v1 marker missing")
+	}
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() legacy model plans schema error = %v", err)
+	}
+
+	for kind, name := range map[string]string{
+		"table": "model_plan_first_use_candidates",
+		"index": "idx_model_plan_first_use_candidates_plan",
+	} {
+		var count int
+		if err := store.writeDB.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM sqlite_master WHERE type = ? AND name = ?
+`, kind, name).Scan(&count); err != nil {
+			t.Fatalf("inspect repaired %s %q: %v", kind, name, err)
+		}
+		if count != 1 {
+			t.Fatalf("repaired %s %q count = %d, want 1", kind, name, count)
+		}
+	}
+
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() idempotent retry error = %v", err)
+	}
+	var markerCount int
+	if err := store.writeDB.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM tuttid_schema_migrations WHERE id = ?
+`, schemaMigrationModelPlanFirstUseCandidatesV1).Scan(&markerCount); err != nil {
+		t.Fatalf("count first-use candidate migration marker: %v", err)
+	}
+	if markerCount != 1 {
+		t.Fatalf("first-use candidate migration marker count = %d, want 1", markerCount)
+	}
+}
+
 func TestListAgentModelBindingsByModelPolicy(t *testing.T) {
 	t.Parallel()
 
@@ -385,8 +437,8 @@ func resetModelPlanMigrations(t *testing.T, store *SQLiteStore) {
 	}
 	if _, err := store.writeDB.ExecContext(ctx, `
 DELETE FROM tuttid_schema_migrations
-WHERE id IN (?, ?)
-`, schemaMigrationModelPlansV1, schemaMigrationAgentModelBindingsV1, schemaMigrationModelPlanRevisionsV1); err != nil {
+WHERE id IN (?, ?, ?, ?)
+`, schemaMigrationModelPlansV1, schemaMigrationModelPlanFirstUseCandidatesV1, schemaMigrationAgentModelBindingsV1, schemaMigrationModelPlanRevisionsV1); err != nil {
 		t.Fatalf("reset model plan migration markers error = %v", err)
 	}
 }

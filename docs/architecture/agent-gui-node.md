@@ -545,6 +545,11 @@ home composer submit
 ```
 
 Initial-content create is one transaction. Failure compensates the provisional runtime/canonical shell; it must not leave a Turn-less Session.
+The initiating composer snapshots Tutti activation and orchestration intensity
+with that submit. An explicit active or inactive submit snapshot is authoritative
+over a later read of mutable home-draft state; non-composer callers may fall back
+to the engine draft when no snapshot exists. `capabilityRefs` remain independent
+audit provenance and must never substitute for `initialTuttiModeActivation`.
 An activation may instead carry `initialGoalControl`. In that branch the engine
 and runtime adapter preserve the structured `{action, objective}` command, the
 host integration creates a non-provisional Session without initial content,

@@ -287,6 +287,9 @@ function activationInput(
 ): Parameters<AgentActivityRuntime["activateSession"]>[0] {
   const shared = {
     agentSessionId: command.agentSessionId,
+    ...(command.capabilityRefs?.length
+      ? { capabilityRefs: command.capabilityRefs }
+      : {}),
     ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
     ...(command.initialContent
       ? { initialContent: [...command.initialContent] }
