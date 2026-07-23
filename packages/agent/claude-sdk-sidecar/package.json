@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/claude-sdk-sidecar",
-  "version": "0.1.0",
+  "version": "0.0.197",
   "private": false,
   "type": "module",
   "files": [
