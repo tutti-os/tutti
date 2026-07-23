@@ -1,5 +1,4 @@
 import { spawn, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   createWriteStream,
   existsSync,
@@ -10,14 +9,26 @@ import {
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  buildLaneInputFingerprint,
+  laneFingerprintVersion,
+  LaneCacheError,
+  mergeLaneResults,
+  resolveRetryPushReady,
+  selectFailedOnlyLanes
+} from "./run-check-changed-cache.mjs";
+import {
   buildGoLintLane,
   buildGoTestLane,
   buildPackageTestCommand,
   isBuiltinGenerateRequired,
+  resolveGoModuleRoot,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
 import { classifyChangedFiles } from "./change-classification.mjs";
-import { selectRepositoryChecks } from "./repository-checks.mjs";
+import {
+  selectRepositoryCheckInputs,
+  selectRepositoryChecks
+} from "./repository-checks.mjs";
 import { formatFailureExcerpt } from "./run-validation-lanes.mjs";
 import { resolveGolangciLintBinary } from "./golangci-lint-tool.mjs";
 
@@ -39,48 +50,85 @@ const latestSummaryPath = join(tmpRoot, "latest.json");
 const packageInfos = loadPackageInfos();
 
 export async function main() {
-  const lanes = failedOnly ? readFailedLanes() : buildChangedLanes();
+  const previousSummary = failedOnly ? readLatestSummary() : null;
+  if (failedOnly && !previousSummary) {
+    console.log("check:changed found no previous run to reuse");
+    return;
+  }
+  pushReady = resolveRetryPushReady(pushReady, previousSummary);
 
-  if (lanes.length === 0) {
+  const plannedLanes = buildChangedLanes();
+
+  if (plannedLanes.length === 0) {
+    console.log("check:changed found no changed files to validate");
+    return;
+  }
+
+  if (dryRun && !failedOnly) {
+    printPlan(plannedLanes);
+    return;
+  }
+
+  const currentLanes = plannedLanes.map((lane) => ({
+    ...lane,
+    inputFingerprint: buildLaneInputFingerprint({
+      baseRef,
+      lane,
+      workspaceRoot
+    })
+  }));
+
+  const failedOnlySelection = previousSummary
+    ? selectFailedOnlyLanes(currentLanes, previousSummary)
+    : null;
+  const lanesToRun = failedOnlySelection?.lanesToRun ?? currentLanes;
+  const reusedResults = failedOnlySelection?.reusedResults ?? [];
+
+  if (dryRun) {
+    printPlan(lanesToRun, reusedResults);
+    return;
+  }
+
+  if (lanesToRun.length === 0) {
     console.log(
-      failedOnly
-        ? "check:changed found no failed lanes in the latest run"
-        : "check:changed found no changed files to validate"
+      `check:changed found no failed or changed lanes; reused ${reusedResults.length} passed lane(s)`
     );
     return;
   }
-
-  if (dryRun) {
-    printPlan(lanes);
-    return;
-  }
-
-  const validationFingerprint = buildValidationFingerprint({
-    baseRef,
-    workspaceRoot
-  });
 
   const runId = new Date().toISOString().replace(/[:.]/g, "-");
   const runDirectory = join(tmpRoot, runId);
   mkdirSync(runDirectory, { recursive: true });
 
   if (verbose) {
-    console.log(`check:changed running ${lanes.length} lane(s)`);
+    console.log(`check:changed running ${lanesToRun.length} lane(s)`);
+    if (reusedResults.length > 0) {
+      console.log(
+        `check:changed reusing ${reusedResults.length} passed lane(s)`
+      );
+    }
     console.log(`logs: ${relative(workspaceRoot, runDirectory)}`);
   }
 
   const startedAt = Date.now();
-  const results = await runLanes(lanes, runDirectory);
+  const executedResults = await runLanes(lanesToRun, runDirectory);
+  const results = mergeLaneResults(
+    currentLanes,
+    executedResults,
+    reusedResults
+  );
   const durationMs = Date.now() - startedAt;
   const summary = {
     baseRef,
     durationMs,
+    executedLaneCount: executedResults.length,
     failedOnly,
+    laneFingerprintVersion,
     pushReady,
+    reusedLaneCount: reusedResults.length,
     runDirectory,
     startedAt: new Date(startedAt).toISOString(),
     tailLines,
-    validationFingerprint,
     results
   };
   writeFileSync(
@@ -103,8 +151,17 @@ function buildChangedLanes() {
   const classification = classifyChangedFiles(changedFiles);
   const lanesByKey = new Map();
   const addLane = (lane) => {
-    if (!lanesByKey.has(lane.key)) {
-      lanesByKey.set(lane.key, lane);
+    const normalizedInputs = Array.from(new Set(lane.inputFiles)).sort();
+    const existing = lanesByKey.get(lane.key);
+    if (existing) {
+      existing.inputFiles = Array.from(
+        new Set([...existing.inputFiles, ...normalizedInputs])
+      ).sort();
+    } else {
+      lanesByKey.set(lane.key, {
+        ...lane,
+        inputFiles: normalizedInputs
+      });
     }
   };
 
@@ -119,7 +176,8 @@ function buildChangedLanes() {
       "bash",
       "-lc",
       `git diff --check ${shellQuote(baseRef)}...HEAD && git diff --check && git diff --cached --check`
-    ]
+    ],
+    inputFiles: changedFiles
   });
 
   const lintFiles = classification.runTs
@@ -135,7 +193,8 @@ function buildChangedLanes() {
         "oxlint",
         "--deny-warnings",
         ...lintFiles
-      ]
+      ],
+      inputFiles: lintFiles
     });
   }
 
@@ -143,7 +202,8 @@ function buildChangedLanes() {
     addLane({
       key: check.key,
       label: check.label,
-      command: [...pnpmCommand, "run", check.script]
+      command: [...pnpmCommand, "run", check.script],
+      inputFiles: selectRepositoryCheckInputs(check, changedFiles)
     });
   }
 
@@ -153,33 +213,46 @@ function buildChangedLanes() {
   const forceBuiltinGenerate = isBuiltinGenerateRequired(changedFiles);
   if (goValidationTargets) {
     for (const [moduleRoot, targets] of goValidationTargets.lintByModule) {
-      addLane(
-        buildGoLintLane({
+      const inputFiles = selectGoLaneInputs(
+        changedFiles,
+        moduleRoot,
+        forceBuiltinGenerate
+      );
+      addLane({
+        ...buildGoLintLane({
           golangciLintBinary,
           moduleRoot,
           targets,
           shellQuote,
           workspaceRoot
-        })
-      );
+        }),
+        inputFiles
+      });
     }
     for (const [moduleRoot, targets] of goValidationTargets.testByModule) {
-      addLane(
-        buildGoTestLane({
+      const inputFiles = selectGoLaneInputs(
+        changedFiles,
+        moduleRoot,
+        forceBuiltinGenerate
+      );
+      addLane({
+        ...buildGoTestLane({
           forceBuiltinGenerate,
           moduleRoot,
           pnpmCommand: pnpmShellCommand,
           shellQuote,
           targets
-        })
-      );
+        }),
+        inputFiles
+      });
     }
 
     if (pushReady) {
       addLane({
         key: "build:go",
         label: "build:go",
-        command: [...pnpmCommand, "run", "build:go"]
+        command: [...pnpmCommand, "run", "build:go"],
+        inputFiles: changedFiles.filter(isGoValidationInput)
       });
     }
   }
@@ -190,7 +263,8 @@ function buildChangedLanes() {
     addLane({
       key: "typecheck:all",
       label: "typecheck:all",
-      command: [process.execPath, "./tools/scripts/run-typecheck.mjs"]
+      command: [process.execPath, "./tools/scripts/run-typecheck.mjs"],
+      inputFiles: changedFiles.filter(isTypeScriptValidationInput)
     });
   }
 
@@ -212,7 +286,8 @@ function buildChangedLanes() {
           "./tools/scripts/run-tsgo-typecheck.mjs",
           "--package-root",
           packageInfo.root
-        ]
+        ],
+        inputFiles: packageFiles
       });
     }
 
@@ -227,7 +302,8 @@ function buildChangedLanes() {
         addLane({
           key: `${packageInfo.name}:test`,
           label: `${packageInfo.name}:test`,
-          command
+          command,
+          inputFiles: packageFiles
         });
       }
     }
@@ -241,7 +317,8 @@ function buildChangedLanes() {
       addLane({
         key: `${packageInfo.name}:build`,
         label: `${packageInfo.name}:build`,
-        command: [...pnpmCommand, "--filter", packageInfo.name, "build"]
+        command: [...pnpmCommand, "--filter", packageInfo.name, "build"],
+        inputFiles: packageFiles
       });
     }
   }
@@ -250,46 +327,19 @@ function buildChangedLanes() {
     addLane({
       key: "pack:npm",
       label: "npm package pack",
-      command: [...pnpmCommand, "run", "release:pack:check"]
+      command: [...pnpmCommand, "run", "release:pack:check"],
+      inputFiles: changedFiles
     });
   }
 
   return Array.from(lanesByKey.values());
 }
 
-function readFailedLanes() {
+function readLatestSummary() {
   if (!existsSync(latestSummaryPath)) {
-    return [];
+    return null;
   }
-  const summary = JSON.parse(readFileSync(latestSummaryPath, "utf8"));
-  if (!summary.baseRef || !summary.validationFingerprint) {
-    validateFailedRunSummary(summary, null);
-  }
-  const currentFingerprint = buildValidationFingerprint({
-    baseRef,
-    workspaceRoot
-  });
-  validateFailedRunSummary(summary, currentFingerprint);
-  return (summary.results ?? [])
-    .filter((result) => result.exitCode !== 0)
-    .map((result) => ({
-      key: result.key,
-      label: result.label,
-      command: result.command
-    }));
-}
-
-export function validateFailedRunSummary(summary, currentFingerprint) {
-  if (!summary.baseRef || !summary.validationFingerprint) {
-    throw new UserFacingError(
-      "cannot reuse legacy failed-lane state; run pnpm check:changed"
-    );
-  }
-  if (currentFingerprint !== summary.validationFingerprint) {
-    throw new UserFacingError(
-      "workspace or base changed since the failed run; run pnpm check:changed"
-    );
-  }
+  return JSON.parse(readFileSync(latestSummaryPath, "utf8"));
 }
 
 export async function runLanes(inputLanes, runDirectory) {
@@ -357,30 +407,44 @@ function buildLaneResult(lane, index, logPath, startedAt, exitCode) {
     durationMs: Date.now() - startedAt,
     exitCode,
     index,
+    inputFiles: lane.inputFiles,
+    inputFingerprint: lane.inputFingerprint,
     key: lane.key,
     label: lane.label,
     logPath,
-    logPathRelative: relative(workspaceRoot, logPath)
+    logPathRelative: relative(workspaceRoot, logPath),
+    reused: false
   };
 }
 
-function printPlan(inputLanes) {
-  console.log(`check:changed plan (${inputLanes.length} lane(s))`);
+function printPlan(inputLanes, reusedResults = []) {
+  const reusedSuffix =
+    reusedResults.length > 0 ? `, ${reusedResults.length} reused` : "";
+  console.log(
+    `check:changed plan (${inputLanes.length} to run${reusedSuffix})`
+  );
   for (const lane of inputLanes) {
     console.log(`- ${lane.label}: ${formatCommand(lane.command)}`);
+  }
+  for (const result of reusedResults) {
+    console.log(`- ${result.label}: reuse passed result`);
   }
 }
 
 export function printSummary(results, failures, durationMs, runDirectory) {
+  const reusedCount = results.filter((result) => result.reused).length;
+  const runCount = results.length - reusedCount;
+  const reuseSuffix =
+    reusedCount > 0 ? ` (${runCount} run, ${reusedCount} reused)` : "";
   if (failures.length === 0) {
     console.log(
-      `check:changed passed ${results.length} lane(s) in ${formatDuration(durationMs)}`
+      `check:changed passed ${results.length} lane(s) in ${formatDuration(durationMs)}${reuseSuffix}`
     );
     return;
   }
 
   console.error(
-    `check:changed failed ${failures.length}/${results.length} lane(s) in ${formatDuration(durationMs)}`
+    `check:changed failed ${failures.length}/${results.length} lane(s) in ${formatDuration(durationMs)}${reuseSuffix}`
   );
   for (const failure of failures) {
     const output = failureExcerpt(failure.logPath, tailLines);
@@ -548,48 +612,6 @@ function applyCliOptions(options) {
   baseRef = options.baseRef ?? resolveDefaultBaseRef();
 }
 
-export function buildValidationFingerprint(input) {
-  const root = input.workspaceRoot;
-  const hash = createHash("sha256");
-  const addGitOutput = (label, args) => {
-    const result = spawnSync("git", args, {
-      cwd: root,
-      encoding: null
-    });
-    if (result.status !== 0) {
-      throw new Error(
-        `check:changed failed to fingerprint git ${args.join(" ")}`
-      );
-    }
-    hash.update(label);
-    hash.update(result.stdout);
-  };
-
-  hash.update(`base-ref:${input.baseRef}\n`);
-  addGitOutput("base-oid", ["rev-parse", "--verify", input.baseRef]);
-  addGitOutput("head-oid", ["rev-parse", "--verify", "HEAD"]);
-  addGitOutput("working-diff", ["diff", "--binary", "HEAD"]);
-  addGitOutput("staged-diff", ["diff", "--cached", "--binary", "HEAD"]);
-
-  const untrackedResult = spawnSync(
-    "git",
-    ["ls-files", "--others", "--exclude-standard", "-z"],
-    { cwd: root, encoding: "utf8" }
-  );
-  if (untrackedResult.status !== 0) {
-    throw new Error("check:changed failed to fingerprint untracked files");
-  }
-  for (const file of untrackedResult.stdout
-    .split("\0")
-    .filter(Boolean)
-    .sort()) {
-    hash.update(`untracked:${file}\n`);
-    hash.update(readFileSync(join(root, file)));
-  }
-
-  return hash.digest("hex");
-}
-
 function isLintableCodeFile(file) {
   return /\.(?:cjs|cts|js|jsx|mjs|mts|ts|tsx)$/u.test(file);
 }
@@ -632,6 +654,33 @@ function isGlobalTypecheckRelevant(file) {
     "pnpm-workspace.yaml",
     "tsconfig.json"
   ].includes(file);
+}
+
+function isTypeScriptValidationInput(file) {
+  return (
+    isPackageValidationRelevant(file) ||
+    ["pnpm-lock.yaml", "pnpm-workspace.yaml"].includes(file) ||
+    file.startsWith("packages/configs/")
+  );
+}
+
+function isGoValidationInput(file) {
+  return (
+    file.endsWith(".go") ||
+    /(?:^|\/)go\.(?:mod|sum)$/u.test(file) ||
+    ["go.work", "go.work.sum"].includes(file) ||
+    file.startsWith("services/tuttid/.golangci")
+  );
+}
+
+function selectGoLaneInputs(changedFiles, moduleRoot, forceBuiltinGenerate) {
+  return changedFiles.filter(
+    (file) =>
+      (isGoValidationInput(file) && resolveGoModuleRoot(file) === moduleRoot) ||
+      (forceBuiltinGenerate &&
+        moduleRoot === "services/tuttid" &&
+        file.startsWith("services/tuttid/builtin-apps/tutti-onboarding/"))
+  );
 }
 
 function fileExistsWithinWorkspace(file) {
@@ -680,7 +729,7 @@ if (process.argv[1] && resolve(process.argv[1]) === currentPath) {
     .then(() => main())
     .catch((error) => {
       console.error(
-        error instanceof UserFacingError
+        error instanceof UserFacingError || error instanceof LaneCacheError
           ? `check:changed: ${error.message}`
           : error instanceof Error
             ? (error.stack ?? error.message)

@@ -160,10 +160,16 @@ integer values. A misspelled `--push-ready` or malformed concurrency value must
 fail instead of silently selecting a weaker or empty validation plan.
 
 After failures, prefer `pnpm check:changed -- --failed-only` to rerun failed
-lanes instead of repeating successful lanes. Failed-lane state is bound to the
-validated base ref, HEAD, index, working tree, and untracked file contents. If
-any of those change, `--failed-only` refuses the stale result and requires a
-normal `pnpm check:changed` run.
+lanes after editing the failure. The runner rebuilds the current lane plan and
+stores a separate input fingerprint for every lane. The fingerprint covers the
+lane command and its relevant files across the base diff, index, working tree,
+and untracked contents. A previous result is reused only when that lane passed
+and its input fingerprint is unchanged. Failed lanes, new lanes, and lanes with
+changed inputs run again; lanes no longer selected by the current plan are
+dropped. A failed-only retry inherits the previous run's push-ready mode so
+failed build and pack lanes cannot disappear from the retry plan. Summaries
+created before per-lane fingerprints are rejected and require one normal
+`pnpm check:changed` run.
 
 When the changed set includes deleted package test files, `check:changed` should
 not pass those missing paths to Vitest as explicit targets. Deleting source files

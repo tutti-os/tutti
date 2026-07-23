@@ -5,12 +5,16 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
-  buildValidationFingerprint,
+  buildLaneInputFingerprint,
+  mergeLaneResults,
+  resolveRetryPushReady,
+  selectFailedOnlyLanes
+} from "./run-check-changed-cache.mjs";
+import {
   parseCliArgs,
   printSummary,
   runLanes,
-  selectExistingLintFiles,
-  validateFailedRunSummary
+  selectExistingLintFiles
 } from "./run-check-changed.mjs";
 import {
   isAgentActivityRuntimeBoundaryRelevant,
@@ -54,12 +58,14 @@ test("parseCliArgs accepts pnpm separators and explicit values", () => {
   );
 });
 
-test("validation fingerprint changes with working and staged state", () => {
+test("lane input fingerprints change only with their own inputs", () => {
   const workspaceRoot = mkdtempSync(join(tmpdir(), "check-fingerprint-"));
   runFixtureGit(workspaceRoot, ["init", "--quiet"]);
   const sourcePath = join(workspaceRoot, "source.ts");
+  const helperPath = join(workspaceRoot, "helper.ts");
   writeFileSync(sourcePath, "export const value = 1;\n");
-  runFixtureGit(workspaceRoot, ["add", "source.ts"]);
+  writeFileSync(helperPath, "export const helper = 1;\n");
+  runFixtureGit(workspaceRoot, ["add", "source.ts", "helper.ts"]);
   runFixtureGit(workspaceRoot, [
     "-c",
     "user.email=test@example.com",
@@ -70,52 +76,128 @@ test("validation fingerprint changes with working and staged state", () => {
     "-m",
     "init"
   ]);
-  const initial = buildValidationFingerprint({
+  const sourceLane = {
+    key: "source",
+    label: "source",
+    command: ["check", "source.ts"],
+    inputFiles: ["source.ts"]
+  };
+  const helperLane = {
+    key: "helper",
+    label: "helper",
+    command: ["check", "helper.ts"],
+    inputFiles: ["helper.ts"]
+  };
+  const initialSource = buildLaneInputFingerprint({
     baseRef: "HEAD",
+    lane: sourceLane,
     workspaceRoot
   });
-  const differentBase = buildValidationFingerprint({
-    baseRef: "HEAD^{commit}",
+  const initialHelper = buildLaneInputFingerprint({
+    baseRef: "HEAD",
+    lane: helperLane,
     workspaceRoot
   });
-  assert.notEqual(differentBase, initial);
 
   writeFileSync(sourcePath, "export const value = 2;\n");
-  const working = buildValidationFingerprint({
+  const workingSource = buildLaneInputFingerprint({
     baseRef: "HEAD",
+    lane: sourceLane,
     workspaceRoot
   });
-  assert.notEqual(working, initial);
+  const workingHelper = buildLaneInputFingerprint({
+    baseRef: "HEAD",
+    lane: helperLane,
+    workspaceRoot
+  });
+  assert.notEqual(workingSource, initialSource);
+  assert.equal(workingHelper, initialHelper);
 
   runFixtureGit(workspaceRoot, ["add", "source.ts"]);
   writeFileSync(sourcePath, "export const value = 3;\n");
-  const staged = buildValidationFingerprint({ baseRef: "HEAD", workspaceRoot });
-  runFixtureGit(workspaceRoot, ["reset", "--quiet"]);
-  const unstaged = buildValidationFingerprint({
+  const staged = buildLaneInputFingerprint({
     baseRef: "HEAD",
+    lane: sourceLane,
+    workspaceRoot
+  });
+  runFixtureGit(workspaceRoot, ["reset", "--quiet"]);
+  const unstaged = buildLaneInputFingerprint({
+    baseRef: "HEAD",
+    lane: sourceLane,
     workspaceRoot
   });
   assert.notEqual(staged, unstaged);
 });
 
-test("failed-only state must match the validated workspace", () => {
+test("failed-only reuses only passed lanes with unchanged inputs", () => {
+  const currentLanes = [
+    laneFixture("passed-unchanged", "same"),
+    laneFixture("failed-unchanged", "same"),
+    laneFixture("passed-changed", "after"),
+    laneFixture("new-lane", "new")
+  ];
+  const summary = {
+    laneFingerprintVersion: 1,
+    results: [
+      resultFixture("passed-unchanged", "same", 0),
+      resultFixture("failed-unchanged", "same", 1),
+      resultFixture("passed-changed", "before", 0),
+      resultFixture("removed-lane", "same", 0)
+    ]
+  };
+
+  const selection = selectFailedOnlyLanes(currentLanes, summary);
+
+  assert.deepEqual(
+    selection.lanesToRun.map((lane) => lane.key),
+    ["failed-unchanged", "passed-changed", "new-lane"]
+  );
+  assert.deepEqual(
+    selection.reusedResults.map((result) => result.key),
+    ["passed-unchanged"]
+  );
+});
+
+test("failed-only rejects summaries without lane fingerprints", () => {
   assert.throws(
-    () => validateFailedRunSummary({ baseRef: "HEAD" }, null),
+    () => selectFailedOnlyLanes([], { results: [] }),
     /legacy failed-lane state/u
   );
-  assert.throws(
-    () =>
-      validateFailedRunSummary(
-        { baseRef: "HEAD", validationFingerprint: "before" },
-        "after"
-      ),
-    /workspace or base changed/u
+});
+
+test("failed-only inherits push-ready lanes from the previous run", () => {
+  assert.equal(resolveRetryPushReady(false, { pushReady: true }), true);
+  assert.equal(resolveRetryPushReady(false, { pushReady: false }), false);
+  assert.equal(resolveRetryPushReady(true, { pushReady: false }), true);
+});
+
+test("failed-only keeps reused results available for the next retry", () => {
+  const currentLanes = [
+    laneFixture("passed", "same"),
+    laneFixture("retried", "fixed")
+  ];
+  const firstSelection = selectFailedOnlyLanes(currentLanes, {
+    laneFingerprintVersion: 1,
+    results: [
+      resultFixture("passed", "same", 0),
+      resultFixture("retried", "broken", 1)
+    ]
+  });
+  const mergedResults = mergeLaneResults(
+    currentLanes,
+    [resultFixture("retried", "fixed", 0)],
+    firstSelection.reusedResults
   );
-  assert.doesNotThrow(() =>
-    validateFailedRunSummary(
-      { baseRef: "HEAD", validationFingerprint: "same" },
-      "same"
-    )
+
+  const nextSelection = selectFailedOnlyLanes(currentLanes, {
+    laneFingerprintVersion: 1,
+    results: mergedResults
+  });
+
+  assert.deepEqual(nextSelection.lanesToRun, []);
+  assert.deepEqual(
+    nextSelection.reusedResults.map((result) => result.key),
+    ["passed", "retried"]
   );
 });
 
@@ -258,6 +340,27 @@ function runFixtureGit(workspaceRoot, args) {
     env: createIsolatedGitEnvironment(workspaceRoot)
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
+}
+
+function laneFixture(key, inputFingerprint) {
+  return {
+    command: ["check", key],
+    inputFiles: [`${key}.ts`],
+    inputFingerprint,
+    key,
+    label: key
+  };
+}
+
+function resultFixture(key, inputFingerprint, exitCode) {
+  return {
+    ...laneFixture(key, inputFingerprint),
+    durationMs: 10,
+    exitCode,
+    index: 0,
+    logPath: `/tmp/${key}.log`,
+    logPathRelative: `.tmp/${key}.log`
+  };
 }
 
 function isolateProcessGitEnvironment(nextEnvironment) {
