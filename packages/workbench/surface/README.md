@@ -149,6 +149,12 @@ Layout rules:
 - fullscreen nodes respect top, left, and right safe area, but ignore bottom
   safe area so immersive content can reach the bottom edge of the workbench
   surface
+- persisted snapshots record the surface and layout constraints that produced
+  their frames; initial restore maps node frames, fullscreen restore frames,
+  space frames, and reusable closed-window frames into the current safe layout
+- legacy snapshots without a layout basis remain readable; fullscreen geometry
+  is recomputed and hidden restore frames are clamped before they become
+  floating windows
 
 The package ships a baseline host layout default so new integrations do not
 start with windows tucked under shared chrome. Today that default uses:

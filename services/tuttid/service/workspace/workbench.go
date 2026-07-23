@@ -17,6 +17,10 @@ type WorkbenchSnapshot = workbenchservice.WorkbenchSnapshot
 type WorkbenchSnapshotNode = workbenchservice.WorkbenchSnapshotNode
 type WorkbenchSnapshotSpace = workbenchservice.WorkbenchSnapshotSpace
 type WorkbenchSnapshotFrame = workbenchservice.WorkbenchSnapshotFrame
+type WorkbenchSnapshotSize = workbenchservice.WorkbenchSnapshotSize
+type WorkbenchSnapshotSafeArea = workbenchservice.WorkbenchSnapshotSafeArea
+type WorkbenchSnapshotLayoutConstraints = workbenchservice.WorkbenchSnapshotLayoutConstraints
+type WorkbenchSnapshotLayoutBasis = workbenchservice.WorkbenchSnapshotLayoutBasis
 type WorkbenchSnapshotDisplayMode = workbenchservice.WorkbenchSnapshotDisplayMode
 
 const (

@@ -3118,6 +3118,30 @@ export type PreflightUploadWorkspaceFilesResponse = {
   conflicts: Array<WorkspaceFileUploadConflict>;
 };
 
+export type WorkbenchSize = {
+  width: number;
+  height: number;
+};
+
+export type WorkbenchSafeArea = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+export type WorkbenchLayoutConstraints = {
+  minWidth: number;
+  minHeight: number;
+  surfacePadding: number;
+  safeArea: WorkbenchSafeArea;
+};
+
+export type WorkbenchLayoutBasis = {
+  surfaceSize: WorkbenchSize;
+  layoutConstraints: WorkbenchLayoutConstraints;
+};
+
 export type WorkbenchFrame = {
   x: number;
   y: number;
@@ -3155,6 +3179,7 @@ export type WorkbenchSnapshot = {
   activeNodeId?: string | null;
   spaces?: Array<WorkbenchSnapshotSpace>;
   activeSpaceId?: string | null;
+  layoutBasis?: WorkbenchLayoutBasis;
   metadata?: {
     [key: string]: unknown;
   };

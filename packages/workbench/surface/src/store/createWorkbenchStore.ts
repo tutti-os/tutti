@@ -9,7 +9,10 @@ import type { WorkbenchDebugDiagnostics, WorkbenchStore } from "./types.ts";
 
 export function createWorkbenchStore<TData = unknown>(
   initialState: Partial<WorkbenchState<TData>> = {},
-  options: { debugDiagnostics?: WorkbenchDebugDiagnostics } = {}
+  options: {
+    debugDiagnostics?: WorkbenchDebugDiagnostics;
+    onSurfaceSizeMeasured?: () => void;
+  } = {}
 ): WorkbenchStore<TData> {
   let state = createWorkbenchInitialState(initialState);
   const subscriptions = createWorkbenchSubscriptionSet();
@@ -24,14 +27,25 @@ export function createWorkbenchStore<TData = unknown>(
     dispatch(action: WorkbenchAction<TData>) {
       const nextState = reduceWorkbenchState(state, action);
       if (nextState === state) {
+        notifySurfaceSizeMeasured(action, options);
         return;
       }
 
       logWorkbenchFrameChanges(action, state, nextState, options);
       state = nextState;
       subscriptions.notify();
+      notifySurfaceSizeMeasured(action, options);
     }
   };
+}
+
+function notifySurfaceSizeMeasured<TData>(
+  action: WorkbenchAction<TData>,
+  options: { onSurfaceSizeMeasured?: () => void }
+): void {
+  if (action.type === "setSurfaceSize") {
+    options.onSurfaceSizeMeasured?.();
+  }
 }
 
 function logWorkbenchFrameChanges<TData>(
