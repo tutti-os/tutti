@@ -290,7 +290,7 @@ func (s Service) installMissingProviderRuntime(
 }
 
 func (s Service) nextMissingInstaller(spec ProviderSpec, runtime providerRuntimeResolution) (InstallerSpec, bool, string) {
-	if strings.TrimSpace(runtime.ReasonCode) == "acp_adapter_launch_failed" {
+	if runtimeFailureRequiresRepair(spec, runtime.ReasonCode) {
 		if spec.AdapterInstall.Kind != "" {
 			return spec.AdapterInstall, true, "adapter"
 		}
@@ -335,6 +335,17 @@ func (s Service) nextMissingInstaller(spec ProviderSpec, runtime providerRuntime
 	return InstallerSpec{}, false, ""
 }
 
+func runtimeFailureRequiresRepair(spec ProviderSpec, reasonCode string) bool {
+	switch strings.TrimSpace(reasonCode) {
+	case "acp_adapter_launch_failed":
+		return true
+	case "codex_platform_pkg_incomplete":
+		return isCodexStatusSpec(spec)
+	default:
+		return false
+	}
+}
+
 func installNodeForTarget(target string) string {
 	if strings.TrimSpace(target) == "adapter" {
 		return "install_adapter"
@@ -343,9 +354,6 @@ func installNodeForTarget(target string) string {
 }
 
 func (s Service) providerCLIRequiresInstall(spec ProviderSpec, runtime providerRuntimeResolution) bool {
-	if isCodexStatusSpec(spec) && !s.codexPlatformBinaryOK(runtime.CLIPath) {
-		return true
-	}
 	if strings.TrimSpace(spec.MinVersion) == "" {
 		return false
 	}
