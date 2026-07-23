@@ -189,6 +189,8 @@ export interface AgentGUIViewLabels {
   accountMenuTitle: string;
   accountMenuMember: string;
   accountMenuUpgrade: string;
+  accountMenuRecharge: string;
+  accountMenuViewPlans: string;
   accountMenuCreditsBalance: string;
   accountMenuAccountCenter: string;
   accountMenuSettings: string;

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   classifyFailedAgentMessage,
   classifyRecoverableAgentMessage,
-  isProviderPlanLimitMessage,
   resolveAgentErrorPresentation
 } from "./agentErrorPresentation";
 
@@ -73,19 +72,6 @@ describe("classifyRecoverableAgentMessage", () => {
   });
 });
 
-describe("isProviderPlanLimitMessage", () => {
-  it("matches Cursor plan/payment gate copy only", () => {
-    expect(isProviderPlanLimitMessage("Upgrade your plan to continue")).toBe(
-      true
-    );
-    expect(isProviderPlanLimitMessage("Add a payment method to continue")).toBe(
-      true
-    );
-    expect(isProviderPlanLimitMessage("rate limit exceeded")).toBe(false);
-    expect(isProviderPlanLimitMessage("")).toBe(false);
-  });
-});
-
 describe("resolveAgentErrorPresentation", () => {
   it("routes env-fixable failures to the matching wizard step", () => {
     const expectations: Record<string, { focus: string; actionKey: string }> = {
@@ -135,14 +121,42 @@ describe("resolveAgentErrorPresentation", () => {
     }
   });
 
-  it("routes insufficient Tutti credits to the subscription plans page", () => {
-    const presentation = resolveAgentErrorPresentation("insufficient_credits");
-    expect(presentation).toMatchObject({
-      messageKey: "agentHost.agentGui.visibleErrorInsufficientCredits",
-      focus: null,
-      actionKey: "agentHost.agentGui.visibleErrorActionViewPlans",
-      externalUrl: "https://tutti.sh/profile/plan"
-    });
+  it("projects insufficient-credit copy from normalized membership access", () => {
+    const cases = [
+      [
+        "free",
+        "agentHost.agentGui.visibleErrorInsufficientCreditsFree",
+        "agentHost.agentGui.visibleErrorActionUpgradeMembership"
+      ],
+      [
+        "active",
+        "agentHost.agentGui.visibleErrorInsufficientCreditsActive",
+        "agentHost.agentGui.visibleErrorActionRechargeCredits"
+      ],
+      [
+        "unknown",
+        "agentHost.agentGui.visibleErrorInsufficientCreditsUnknown",
+        "agentHost.agentGui.visibleErrorActionViewCreditPlans"
+      ]
+    ] as const;
+    for (const [membershipAccess, messageKey, actionKey] of cases) {
+      expect(
+        resolveAgentErrorPresentation("insufficient_credits", {
+          membershipAccess,
+          planUrl: "https://example.test/plan"
+        })
+      ).toMatchObject({
+        messageKey,
+        focus: null,
+        actionKey,
+        externalUrl: "https://example.test/plan"
+      });
+    }
+    expect(
+      resolveAgentErrorPresentation("insufficient_credits", {
+        membershipAccess: "active"
+      })?.actionKey
+    ).toBeNull();
   });
 
   it("offers a self-detect escape hatch for ambiguous hard failures", () => {

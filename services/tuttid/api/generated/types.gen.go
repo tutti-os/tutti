@@ -40,6 +40,30 @@ func (e AccountLoginStatusValue) Valid() bool {
 	}
 }
 
+// Defines values for AccountMembershipAccessState.
+const (
+	AccountMembershipAccessStateActive   AccountMembershipAccessState = "active"
+	AccountMembershipAccessStateFree     AccountMembershipAccessState = "free"
+	AccountMembershipAccessStateInactive AccountMembershipAccessState = "inactive"
+	AccountMembershipAccessStateUnknown  AccountMembershipAccessState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the AccountMembershipAccessState enum.
+func (e AccountMembershipAccessState) Valid() bool {
+	switch e {
+	case AccountMembershipAccessStateActive:
+		return true
+	case AccountMembershipAccessStateFree:
+		return true
+	case AccountMembershipAccessStateInactive:
+		return true
+	case AccountMembershipAccessStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AccountProductSummaryPartialErrorScope.
 const (
 	AccountProductSummaryPartialErrorScopeCredits    AccountProductSummaryPartialErrorScope = "credits"
@@ -408,16 +432,16 @@ func (e AgentProviderSkillOptionSourceKind) Valid() bool {
 
 // Defines values for AgentProviderUpdateCapability.
 const (
-	Supported   AgentProviderUpdateCapability = "supported"
-	Unsupported AgentProviderUpdateCapability = "unsupported"
+	AgentProviderUpdateCapabilitySupported   AgentProviderUpdateCapability = "supported"
+	AgentProviderUpdateCapabilityUnsupported AgentProviderUpdateCapability = "unsupported"
 )
 
 // Valid indicates whether the value is a known member of the AgentProviderUpdateCapability enum.
 func (e AgentProviderUpdateCapability) Valid() bool {
 	switch e {
-	case Supported:
+	case AgentProviderUpdateCapabilitySupported:
 		return true
-	case Unsupported:
+	case AgentProviderUpdateCapabilityUnsupported:
 		return true
 	default:
 		return false
@@ -3196,6 +3220,9 @@ type AccountLoginStatusResponse struct {
 // AccountLoginStatusValue defines model for AccountLoginStatusValue.
 type AccountLoginStatusValue string
 
+// AccountMembershipAccessState defines model for AccountMembershipAccessState.
+type AccountMembershipAccessState string
+
 // AccountMembershipSummary defines model for AccountMembershipSummary.
 type AccountMembershipSummary struct {
 	AccessStatus      *string `json:"access_status,omitempty"`
@@ -3229,6 +3256,7 @@ type AccountProductSummaryResponse struct {
 	Credits                   *AccountCreditsSummary             `json:"credits"`
 	Links                     AccountProductSummaryLinks         `json:"links"`
 	Membership                *AccountMembershipSummary          `json:"membership"`
+	MembershipAccess          AccountMembershipAccessState       `json:"membership_access"`
 	PartialError              *AccountProductSummaryPartialError `json:"partial_error,omitempty"`
 	RegistrationCreditsReward *AccountRegistrationCreditsReward  `json:"registration_credits_reward,omitempty"`
 	User                      *AccountUserInfo                   `json:"user"`

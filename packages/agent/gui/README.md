@@ -3,6 +3,18 @@
 AgentGUI renders workspace agent sessions, timelines, approvals, and composer
 UI. It is a UI package, not a host transport or business-core package.
 
+## Commerce And Account Presentation
+
+Hosts own authentication, Commerce fetching, navigation, clipboard, and
+notification side effects. `AgentGUIAccountMenu` renders the shared account
+surface from `AgentGUIAccountMenuState`; `membershipAccess` must come from the
+normalized Commerce contract (`free`, `active`, `inactive`, or `unknown`).
+
+Pass `hostCapabilities.commercePresentation` to `AgentGUI` so insufficient
+credit cards can select upgrade, recharge, or neutral copy and use the
+Host-provided `planUrl`. Raw provider error details remain available to
+diagnostics but are not rendered in the product error card.
+
 Before changing AgentGUI, AgentGuiNode, or the agent conversation module, read
 [AgentGuiNode Architecture and Troubleshooting](../../../docs/architecture/agent-gui-node.md).
 It defines daemon, workspace-engine, GUI-module, provider, and desktop-host

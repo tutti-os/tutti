@@ -6,6 +6,7 @@ import (
 	"time"
 
 	authbridge "github.com/tutti-os/tutti/packages/auth/bridge-go"
+	"github.com/tutti-os/tutti/packages/commerce"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	accountservice "github.com/tutti-os/tutti/services/tuttid/service/account"
@@ -99,6 +100,7 @@ func (api DaemonAPI) GetAccountProductSummary(ctx context.Context, _ tuttigenera
 	return tuttigenerated.GetAccountProductSummary200JSONResponse{
 		User:                      generatedAccountUser(summary.User),
 		Membership:                generatedAccountMembership(summary.Membership),
+		MembershipAccess:          generatedAccountMembershipAccess(summary.MembershipAccess),
 		Credits:                   generatedAccountCredits(summary.Credits),
 		RegistrationCreditsReward: generatedAccountRegistrationCreditsReward(summary.RegistrationCreditsReward),
 		PartialError:              generatedAccountProductPartialError(summary.PartialError),
@@ -108,6 +110,19 @@ func (api DaemonAPI) GetAccountProductSummary(ctx context.Context, _ tuttigenera
 			SettingsUrl: summary.Links.SettingsURL,
 		},
 	}, nil
+}
+
+func generatedAccountMembershipAccess(
+	access commerce.MembershipAccessState,
+) tuttigenerated.AccountMembershipAccessState {
+	switch access {
+	case commerce.MembershipAccessFree,
+		commerce.MembershipAccessActive,
+		commerce.MembershipAccessInactive:
+		return tuttigenerated.AccountMembershipAccessState(access)
+	default:
+		return tuttigenerated.AccountMembershipAccessStateUnknown
+	}
 }
 
 func (api DaemonAPI) DismissAccountRegistrationCreditsReward(ctx context.Context, request tuttigenerated.DismissAccountRegistrationCreditsRewardRequestObject) (tuttigenerated.DismissAccountRegistrationCreditsRewardResponseObject, error) {

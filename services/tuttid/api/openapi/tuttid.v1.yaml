@@ -5955,6 +5955,13 @@ components:
         cancel_at_period_end:
           type: boolean
           nullable: true
+    AccountMembershipAccessState:
+      type: string
+      enum:
+        - free
+        - active
+        - inactive
+        - unknown
     AccountCreditsSummary:
       type: object
       additionalProperties: false
@@ -6038,6 +6045,7 @@ components:
       required:
         - user
         - membership
+        - membership_access
         - credits
         - links
       properties:
@@ -6049,6 +6057,8 @@ components:
           allOf:
             - $ref: "#/components/schemas/AccountMembershipSummary"
           nullable: true
+        membership_access:
+          $ref: "#/components/schemas/AccountMembershipAccessState"
         credits:
           allOf:
             - $ref: "#/components/schemas/AccountCreditsSummary"

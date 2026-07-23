@@ -58,6 +58,9 @@ func TestProductSummaryNormalizesMembershipCreditsAndAuthorization(t *testing.T)
 		summary.Membership.DisplayName != "Basic" {
 		t.Fatalf("membership = %#v", summary.Membership)
 	}
+	if summary.MembershipAccess != MembershipAccessActive {
+		t.Fatalf("membership access = %q, want active", summary.MembershipAccess)
+	}
 	if summary.Credits == nil || summary.Credits.AvailableCredits == nil ||
 		*summary.Credits.AvailableCredits != "2450.52" {
 		t.Fatalf("credits = %#v", summary.Credits)
@@ -107,6 +110,126 @@ func TestProductSummaryReturnsPartialErrorsWithoutDiscardingUsableData(t *testin
 	}
 	if summary.PartialError.Message != "Commerce session is unavailable" {
 		t.Fatalf("partial error message = %q", summary.PartialError.Message)
+	}
+	if summary.MembershipAccess != MembershipAccessUnknown {
+		t.Fatalf("membership access = %q, want unknown", summary.MembershipAccess)
+	}
+}
+
+func TestMembershipFromUserInfoNormalizesAccessState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		data     map[string]any
+		want     MembershipAccessState
+		wantTier string
+	}{
+		{
+			name: "top-level free is authoritative",
+			data: map[string]any{
+				"is_vip":    false,
+				"vip_level": "free",
+				"membership": map[string]any{
+					"tier_key":      "pro",
+					"access_status": "active",
+				},
+			},
+			want: MembershipAccessFree,
+		},
+		{
+			name: "top-level paid is active",
+			data: map[string]any{
+				"is_vip":    true,
+				"vip_level": "pro",
+			},
+			want: MembershipAccessActive,
+		},
+		{
+			name: "top-level vip flag without level is unknown",
+			data: map[string]any{
+				"is_vip": true,
+			},
+			want: MembershipAccessUnknown,
+		},
+		{
+			name: "top-level paid level without vip flag is unknown",
+			data: map[string]any{
+				"vip_level": "pro",
+			},
+			want: MembershipAccessUnknown,
+		},
+		{
+			name: "contradictory top-level facts fail closed",
+			data: map[string]any{
+				"is_vip":    false,
+				"vip_level": "pro",
+				"membership": map[string]any{
+					"tier_key":      "pro",
+					"access_status": "active",
+				},
+			},
+			want:     MembershipAccessUnknown,
+			wantTier: "pro",
+		},
+		{
+			name: "legacy free tier is free",
+			data: map[string]any{
+				"membership": map[string]any{
+					"tier_key": "free",
+				},
+			},
+			want: MembershipAccessFree,
+		},
+		{
+			name: "legacy explicit active access is active",
+			data: map[string]any{
+				"membership": map[string]any{
+					"tier_key":             "pro",
+					"access_status":        "active",
+					"cancel_at_period_end": true,
+				},
+			},
+			want: MembershipAccessActive,
+		},
+		{
+			name: "legacy explicit inactive access is inactive",
+			data: map[string]any{
+				"membership": map[string]any{
+					"tier_key":      "pro",
+					"access_status": "inactive",
+				},
+			},
+			want: MembershipAccessInactive,
+		},
+		{
+			name: "unrecognized state fails closed",
+			data: map[string]any{
+				"membership": map[string]any{
+					"tier_key":      "pro",
+					"access_status": "past_due",
+				},
+			},
+			want: MembershipAccessUnknown,
+		},
+		{
+			name: "missing membership is unknown",
+			data: map[string]any{},
+			want: MembershipAccessUnknown,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			summary, got := MembershipFromUserInfo(test.data)
+			if got != test.want {
+				t.Fatalf("membership access = %q, want %q", got, test.want)
+			}
+			if test.wantTier != "" && (summary == nil || summary.TierKey != test.wantTier) {
+				t.Fatalf("membership summary = %#v, want tier %q", summary, test.wantTier)
+			}
+		})
 	}
 }
 

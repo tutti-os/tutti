@@ -1,3 +1,9 @@
+export type AgentGUIMembershipAccessState =
+  | "free"
+  | "active"
+  | "inactive"
+  | "unknown";
+
 export interface AgentGUIAccountMenuState {
   user: {
     userId: string;
@@ -6,6 +12,11 @@ export interface AgentGUIAccountMenuState {
     avatar?: string | null;
   } | null;
   membershipLabel: string;
+  /**
+   * Normalized by the Commerce domain. Hosts must not infer access from
+   * provider-specific tier/status strings.
+   */
+  membershipAccess?: AgentGUIMembershipAccessState;
   creditsLabel: string | null;
   loading: boolean;
   error: string | null;

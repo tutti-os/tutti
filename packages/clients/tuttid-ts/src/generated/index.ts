@@ -214,6 +214,7 @@ export type {
   AccountLoginStartResponse,
   AccountLoginStatusResponse,
   AccountLoginStatusValue,
+  AccountMembershipAccessState,
   AccountMembershipSummary,
   AccountProductSummaryLinks,
   AccountProductSummaryPartialError,

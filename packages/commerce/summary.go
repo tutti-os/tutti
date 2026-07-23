@@ -87,9 +87,24 @@ func safeErrorMessage(err error) string {
 }
 
 func MembershipSummaryFromUserInfo(data map[string]any) *MembershipSummary {
-	if summary, ok := currentVIPMembershipSummary(data); ok {
-		return summary
+	summary, _ := MembershipFromUserInfo(data)
+	return summary
+}
+
+func MembershipFromUserInfo(
+	data map[string]any,
+) (*MembershipSummary, MembershipAccessState) {
+	if summary, access, ok := currentVIPMembershipSummary(data); ok {
+		if access == MembershipAccessUnknown {
+			return legacyMembershipSummary(data), access
+		}
+		return summary, access
 	}
+	summary := legacyMembershipSummary(data)
+	return summary, membershipAccessState(summary)
+}
+
+func legacyMembershipSummary(data map[string]any) *MembershipSummary {
 	membership, ok := objectField(data, "membership")
 	if !ok {
 		return nil
@@ -98,7 +113,7 @@ func MembershipSummaryFromUserInfo(data map[string]any) *MembershipSummary {
 	if tierKey == "" {
 		return nil
 	}
-	return &MembershipSummary{
+	summary := &MembershipSummary{
 		TierKey:           tierKey,
 		DisplayName:       displayPlanName(tierKey),
 		BillingPeriod:     stringField(membership, "billing_period", "billingPeriod"),
@@ -107,16 +122,40 @@ func MembershipSummaryFromUserInfo(data map[string]any) *MembershipSummary {
 		CurrentPeriodEnd:  stringField(membership, "current_period_end", "currentPeriodEnd", "expired_at", "expiredAt"),
 		CancelAtPeriodEnd: boolFieldPointer(membership, "cancel_at_period_end", "cancelAtPeriodEnd"),
 	}
+	return summary
 }
 
-func currentVIPMembershipSummary(data map[string]any) (*MembershipSummary, bool) {
+func membershipAccessState(summary *MembershipSummary) MembershipAccessState {
+	if summary == nil {
+		return MembershipAccessUnknown
+	}
+	if strings.EqualFold(strings.TrimSpace(summary.TierKey), "free") {
+		return MembershipAccessFree
+	}
+	for _, status := range []string{summary.AccessStatus, summary.Status} {
+		switch strings.ToLower(strings.TrimSpace(status)) {
+		case "active":
+			return MembershipAccessActive
+		case "inactive":
+			return MembershipAccessInactive
+		}
+	}
+	return MembershipAccessUnknown
+}
+
+func currentVIPMembershipSummary(
+	data map[string]any,
+) (*MembershipSummary, MembershipAccessState, bool) {
 	vipLevel := strings.ToLower(stringField(data, "vip_level", "vipLevel"))
 	isVIP := boolFieldPointer(data, "is_vip", "isVip")
 	if isVIP == nil && vipLevel == "" {
-		return nil, false
+		return nil, MembershipAccessUnknown, false
+	}
+	if isVIP != nil && !*isVIP && (vipLevel == "" || vipLevel == "free") {
+		return nil, MembershipAccessFree, true
 	}
 	if isVIP == nil || !*isVIP || vipLevel == "" || vipLevel == "free" {
-		return nil, true
+		return nil, MembershipAccessUnknown, true
 	}
 	periodEnd := stringField(data, "vip_renew_at", "vipRenewAt")
 	if periodEnd == "" {
@@ -130,7 +169,7 @@ func currentVIPMembershipSummary(data map[string]any) (*MembershipSummary, bool)
 		AccessStatus:      "active",
 		CurrentPeriodEnd:  periodEnd,
 		CancelAtPeriodEnd: boolFieldPointer(data, "vip_cancel_at_period_end", "vipCancelAtPeriodEnd"),
-	}, true
+	}, MembershipAccessActive, true
 }
 
 func CreditsSummaryFromResponses(
