@@ -23,6 +23,16 @@ type provenanceRuntimeBackend struct {
 	err   error
 }
 
+type execRuntimeBackend struct {
+	RuntimeBackend
+	input agentruntime.ExecInput
+}
+
+func (b *execRuntimeBackend) Exec(_ context.Context, input agentruntime.ExecInput) (agentruntime.ExecResult, error) {
+	b.input = input
+	return agentruntime.ExecResult{AgentSessionID: input.AgentSessionID, TurnID: input.TurnID, Accepted: true}, nil
+}
+
 func (b *provenanceRuntimeBackend) DurablyReportSubmitProvenance(_ context.Context, input agentruntime.SubmitProvenanceInput) error {
 	b.input = input
 	return b.err
@@ -209,5 +219,48 @@ func TestRuntimeControllerPreservesTypedExecIdentity(t *testing.T) {
 		projected.TuttiModeSnapshot.State != "active" || projected.TuttiModeSnapshot.Source != "workspace" ||
 		projected.TuttiModeSnapshot.OrchestrationIntensity != 75 {
 		t.Fatalf("projected Tutti Mode snapshot = %#v", projected.TuttiModeSnapshot)
+	}
+}
+
+func TestRuntimeExecInputMapsTurnLineage(t *testing.T) {
+	input := host.RuntimeExecInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-derived",
+		TurnLineage: &host.TurnLineage{ParentTurnID: " parent-turn ", Relation: host.TurnRelationRetry},
+	}
+
+	projected := runtimeExecInput(input)
+	if projected.TurnLineage == nil {
+		t.Fatal("projected TurnLineage = nil")
+	}
+	if projected.TurnLineage.ParentTurnID != "parent-turn" || projected.TurnLineage.Relation != agentruntime.TurnRelationRetry {
+		t.Fatalf("projected TurnLineage = %#v", projected.TurnLineage)
+	}
+}
+
+func TestRuntimeControllerExecDelegatesTurnLineageToProductionBackend(t *testing.T) {
+	backend := &execRuntimeBackend{}
+	controller := &RuntimeController{Backend: backend}
+	_, err := controller.Exec(t.Context(), host.RuntimeExecInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-derived",
+		TurnLineage: &host.TurnLineage{ParentTurnID: "parent-turn", Relation: host.TurnRelationRetry},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backend.input.TurnLineage == nil || backend.input.TurnLineage.ParentTurnID != "parent-turn" || backend.input.TurnLineage.Relation != agentruntime.TurnRelationRetry {
+		t.Fatalf("production backend exec lineage = %#v", backend.input.TurnLineage)
+	}
+}
+
+func TestRuntimeExecInputLeavesOrdinarySubmitWithoutLineage(t *testing.T) {
+	projected := runtimeExecInput(host.RuntimeExecInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-ordinary",
+		Content: []host.PromptContentBlock{{Type: "text", Text: "hello"}},
+	})
+	if projected.TurnLineage != nil {
+		t.Fatalf("ordinary submit lineage = %#v, want nil", projected.TurnLineage)
+	}
+	if len(projected.Content) != 1 || projected.Content[0].Text != "hello" {
+		t.Fatalf("ordinary submit content = %#v", projected.Content)
 	}
 }

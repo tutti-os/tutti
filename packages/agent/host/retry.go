@@ -2,8 +2,11 @@ package agenthost
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
@@ -50,7 +53,9 @@ func (h *Host) createDerivedTurn(ctx context.Context, ref SessionRef, parentTurn
 	}
 
 	return h.SendInput(ctx, ref, SendInput{
-		Content: userContent,
+		Content:        userContent,
+		TurnID:         derivedTurnID(ref, parentTurnID, relation),
+		ClientSubmitID: derivedTurnClientSubmitID(ref, parentTurnID, relation),
 		TurnLineage: &TurnLineage{
 			ParentTurnID: parentTurnID,
 			Relation:     relation,
@@ -77,18 +82,86 @@ func (h *Host) findTurnUserMessageContent(ctx context.Context, ref SessionRef, t
 		if strings.TrimSpace(msg.Role) != "user" {
 			continue
 		}
-		text := ""
-		if msg.Payload != nil {
-			if v, ok := msg.Payload["text"].(string); ok {
-				text = v
-			} else if v, ok := msg.Payload["content"].(string); ok {
-				text = v
+		if content, present := msg.Payload["content"]; present {
+			if text, ok := content.(string); ok {
+				if legacy := legacyPromptContent(text); legacy != nil {
+					return legacy, nil
+				}
+				continue
 			}
+			return promptContentFromActivityPayload(content)
 		}
-		if strings.TrimSpace(text) == "" {
+		if text, ok := msg.Payload["text"].(string); ok {
+			if legacy := legacyPromptContent(text); legacy != nil {
+				return legacy, nil
+			}
 			continue
 		}
-		return []PromptContentBlock{{Type: "text", Text: text}}, nil
 	}
 	return nil, ErrTurnNoUserMessage
+}
+
+// promptContentFromActivityPayload decodes the canonical activity payload
+// produced from PromptContentBlock. It intentionally validates through the
+// Host's prompt normalizer so recovered content follows the same contract as a
+// fresh submit rather than maintaining a second activity-content protocol.
+func promptContentFromActivityPayload(value any) ([]PromptContentBlock, error) {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("%w: encode structured content: %v", ErrTurnPromptUnrecoverable, err)
+	}
+	var content []PromptContentBlock
+	if err := json.Unmarshal(raw, &content); err != nil {
+		return nil, fmt.Errorf("%w: decode structured content: %v", ErrTurnPromptUnrecoverable, err)
+	}
+	normalized, _, err := normalizePromptContent(content)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid structured content", ErrTurnPromptUnrecoverable)
+	}
+	return normalized, nil
+}
+
+func legacyPromptContent(text string) []PromptContentBlock {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	return []PromptContentBlock{{Type: "text", Text: text}}
+}
+
+func derivedTurnID(ref SessionRef, parentTurnID string, relation TurnRelation) string {
+	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(strings.Join([]string{
+		"tutti", "derived-turn", strings.TrimSpace(ref.WorkspaceID), strings.TrimSpace(ref.AgentSessionID),
+		strings.TrimSpace(parentTurnID), string(relation),
+	}, "\x00"))).String()
+}
+
+func derivedTurnClientSubmitID(ref SessionRef, parentTurnID string, relation TurnRelation) string {
+	return "derived-turn:" + derivedTurnID(ref, parentTurnID, relation)
+}
+
+func (h *Host) validateTurnLineage(ctx context.Context, ref SessionRef, turnID string, lineage *TurnLineage) (*TurnLineage, error) {
+	if lineage == nil {
+		return nil, nil
+	}
+	normalized := &TurnLineage{
+		ParentTurnID: strings.TrimSpace(lineage.ParentTurnID),
+		Relation:     TurnRelation(strings.TrimSpace(string(lineage.Relation))),
+	}
+	if normalized.ParentTurnID == "" || normalized.Relation == "" ||
+		(normalized.Relation != TurnRelationRetry && normalized.Relation != TurnRelationEdit) ||
+		normalized.ParentTurnID == strings.TrimSpace(turnID) {
+		return nil, ErrInvalidTurnLineage
+	}
+	parent, found, err := h.store.GetTurn(ctx, ref.WorkspaceID, ref.AgentSessionID, normalized.ParentTurnID)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, ErrTurnNotFound
+	}
+	if parent.Phase != storesqlite.TurnPhaseSettled {
+		return nil, ErrTurnNotSettled
+	}
+	return normalized, nil
 }

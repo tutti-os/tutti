@@ -86,7 +86,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	}
 	// beginTurn returns the zero session on failure; keep the real session
 	// for the goal-control fallback below.
-	startedSession, err := c.beginTurnWithTuttiModeSnapshot(session, turnID, cancel, tuttiModeSnapshot, lineage)
+	startedSession, err := c.beginTurnWithTuttiModeSnapshot(session, turnID, cancel, tuttiModeSnapshot)
 	if err != nil {
 		cancel()
 		return ExecResult{}, err

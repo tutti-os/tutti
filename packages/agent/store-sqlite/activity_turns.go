@@ -92,6 +92,9 @@ func (*Store) recordTurnTransitionTx(
 	if err != nil {
 		return Turn{}, false, err
 	}
+	if err := validateTurnLineageTx(ctx, tx, workspaceID, agentSessionID, turnID, transition, existing, hasExisting); err != nil {
+		return Turn{}, false, err
+	}
 	if metadataOnly {
 		if !hasExisting {
 			return Turn{}, false, fmt.Errorf("merge workspace agent turn capability refs: %w", sql.ErrNoRows)

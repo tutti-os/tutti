@@ -190,3 +190,58 @@ func TestRecordTurnTransitionRejectsInvalidRelation(t *testing.T) {
 		t.Fatalf("RecordTurnTransition(bogus relation) accepted=true, want false")
 	}
 }
+
+func TestRecordTurnTransitionRejectsIncompleteOrSelfLineage(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-lineage-shape", AgentSessionID: "session-lineage-shape",
+		Origin: "runtime", Provider: "codex", Status: "completed", OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, transition := range []TurnTransition{
+		{TurnID: "only-parent", ParentTurnID: "parent"},
+		{TurnID: "only-relation", Relation: TurnRelationRetry},
+		{TurnID: "self", ParentTurnID: "self", Relation: TurnRelationRetry},
+	} {
+		transition.WorkspaceID = "ws-lineage-shape"
+		transition.AgentSessionID = "session-lineage-shape"
+		transition.Phase = TurnPhaseSubmitted
+		transition.OccurredAtUnixMS = 110
+		if _, accepted, err := store.RecordTurnTransition(ctx, transition); err == nil || accepted {
+			t.Fatalf("RecordTurnTransition(%#v) accepted=%v err=%v, want validation failure", transition, accepted, err)
+		}
+	}
+}
+
+func TestRecordTurnTransitionRejectsMissingOrUnsettledLineageParent(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-lineage-parent", AgentSessionID: "session-lineage-parent",
+		Origin: "runtime", Provider: "codex", Status: "completed", OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-lineage-parent", AgentSessionID: "session-lineage-parent", TurnID: "missing-parent-child",
+		Phase: TurnPhaseSubmitted, OccurredAtUnixMS: 110, ParentTurnID: "missing", Relation: TurnRelationRetry,
+	}); err == nil || accepted {
+		t.Fatalf("missing parent accepted=%v err=%v, want validation failure", accepted, err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-lineage-parent", AgentSessionID: "session-lineage-parent", TurnID: "running-parent",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 111,
+	}); err != nil || !accepted {
+		t.Fatalf("seed running parent accepted=%v err=%v", accepted, err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-lineage-parent", AgentSessionID: "session-lineage-parent", TurnID: "unsettled-parent-child",
+		Phase: TurnPhaseSubmitted, OccurredAtUnixMS: 112, ParentTurnID: "running-parent", Relation: TurnRelationRetry,
+	}); err == nil || accepted {
+		t.Fatalf("unsettled parent accepted=%v err=%v, want validation failure", accepted, err)
+	}
+}

@@ -314,6 +314,11 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 	if !input.Guidance && strings.TrimSpace(input.TurnID) == "" {
 		input.TurnID = uuid.NewString()
 	}
+	lineage, err := h.validateTurnLineage(ctx, ref, input.TurnID, input.TurnLineage)
+	if err != nil {
+		return SendInputResult{}, err
+	}
+	input.TurnLineage = lineage
 	claim, claimPending, err := h.prepareSubmitClaim(ctx, ref, metadata, input.TurnID)
 	if err != nil {
 		if errors.Is(err, storesqlite.ErrSubmitClaimTurnConflict) {

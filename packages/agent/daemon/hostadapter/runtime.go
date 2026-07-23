@@ -370,7 +370,17 @@ func runtimeExecInput(input host.RuntimeExecInput) agentruntime.ExecInput {
 		TuttiModeSnapshot: runtimeTuttiModeSnapshot(input.TuttiModeSnapshot),
 		Content:           runtimePromptContent(input.Content),
 		DisplayPrompt:     input.DisplayPrompt, InitialTitle: input.InitialTitle, InitialTitleBase: input.InitialTitleBase,
-		Metadata: cloneMap(input.Metadata), Guidance: input.Guidance,
+		Metadata: cloneMap(input.Metadata), Guidance: input.Guidance, TurnLineage: runtimeTurnLineage(input.TurnLineage),
+	}
+}
+
+func runtimeTurnLineage(input *host.TurnLineage) *agentruntime.TurnLineage {
+	if input == nil {
+		return nil
+	}
+	return &agentruntime.TurnLineage{
+		ParentTurnID: strings.TrimSpace(input.ParentTurnID),
+		Relation:     agentruntime.TurnRelation(input.Relation),
 	}
 }
 
