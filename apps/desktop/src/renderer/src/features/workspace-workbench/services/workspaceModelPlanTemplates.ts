@@ -11,7 +11,6 @@ const ANTHROPIC_API_KEYS_URL = "https://console.anthropic.com/settings/keys";
 const DEEPSEEK_API_KEYS_URL = "https://platform.deepseek.com/api_keys";
 const MINIMAX_API_KEYS_URL = "https://platform.minimax.io/console/access";
 const MIMO_API_KEYS_URL = "https://platform.xiaomimimo.com/console/api-keys";
-const OPENAI_API_KEYS_URL = "https://platform.openai.com/api-keys";
 
 const deepseekModels = [
   "deepseek-v4-flash",
@@ -74,18 +73,18 @@ export const workspaceModelPlanTemplateGroups: readonly WorkspaceModelPlanTempla
           labelKey: presetKey("anthropicOfficial"),
           protocol: "anthropic",
           protocolLocked: true,
-          baseUrl: "https://api.anthropic.com/v1",
-          apiKeyUrl: ANTHROPIC_API_KEYS_URL,
-          models: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"]
+          baseUrl: "",
+          apiKeyUrl: null,
+          models: []
         },
         {
           id: "openai-official",
           labelKey: presetKey("openaiOfficial"),
           protocol: "openai",
           protocolLocked: true,
-          baseUrl: "https://api.openai.com/v1",
-          apiKeyUrl: OPENAI_API_KEYS_URL,
-          models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
+          baseUrl: "",
+          apiKeyUrl: null,
+          models: []
         }
       ]
     },

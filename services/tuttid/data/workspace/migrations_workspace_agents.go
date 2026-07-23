@@ -72,6 +72,40 @@ VALUES (?, ?)
 	return nil
 }
 
+// applyWorkspaceAgentsV6 reconciles bindings written after the original
+// Workspace Agent backfill shipped. The legacy binding table remains readable
+// for historical session snapshots, while every current binding gains the
+// equivalent first-class Workspace Agent before Desktop retires the binding UI.
+func (s *SQLiteStore) applyWorkspaceAgentsV6(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentsV6)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin workspace agent legacy binding reconciliation: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := backfillWorkspaceAgentsFromBindings(ctx, tx); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+VALUES (?, ?)
+`, schemaMigrationWorkspaceAgentsV6, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record workspace agent legacy binding reconciliation: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit workspace agent legacy binding reconciliation: %w", err)
+	}
+	return nil
+}
+
 func backfillWorkspaceAgentsFromBindings(ctx context.Context, tx *sql.Tx) error {
 	rows, err := tx.QueryContext(ctx, `
 SELECT b.workspace_id,

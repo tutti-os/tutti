@@ -183,7 +183,7 @@ describe("AgentMentionSearchController issue topic groups", () => {
     );
   });
 
-  it("keeps rows ready during load more, dedupes clicks and items, retries failures, and restores the browse cache", async () => {
+  it("keeps rows ready during load more, dedupes clicks and items, retries failures, and restores the browse cache before revalidation", async () => {
     const failedPage = deferred<{
       id: string;
       label: string;
@@ -198,23 +198,27 @@ describe("AgentMentionSearchController issue topic groups", () => {
       totalCount: number;
       nextCursor?: string;
     }>();
-    const queryGroups = vi.fn(async () =>
-      groupedResult([
-        {
-          id: "topic/one",
-          label: "Pinned",
-          items: [issue("issue-1", "topic/one")],
-          totalCount: 2,
-          nextCursor: "cursor-1"
-        },
-        {
-          id: "topic:two",
-          label: "Recent",
-          items: [issue("issue-3", "topic:two")],
-          totalCount: 1
-        }
-      ])
-    );
+    const refresh = deferred<RichTextTriggerGroupedQueryResult<TestIssue>>();
+    const queryGroups = vi
+      .fn()
+      .mockResolvedValueOnce(
+        groupedResult([
+          {
+            id: "topic/one",
+            label: "Pinned",
+            items: [issue("issue-1", "topic/one")],
+            totalCount: 2,
+            nextCursor: "cursor-1"
+          },
+          {
+            id: "topic:two",
+            label: "Recent",
+            items: [issue("issue-3", "topic:two")],
+            totalCount: 1
+          }
+        ])
+      )
+      .mockReturnValueOnce(refresh.promise);
     const pageSignals: AbortSignal[] = [];
     let pageCallCount = 0;
     const queryGroupPage = vi.fn(
@@ -288,10 +292,34 @@ describe("AgentMentionSearchController issue topic groups", () => {
     restored.subscribe((state) => restoredStates.push(state));
     restored.setFilter("issue");
     restored.updateQuery({ workspaceId: "workspace-1", query: "" });
-    await vi.waitFor(() =>
-      expect(restoredStates.at(-1)?.groups[0]?.items).toHaveLength(2)
+
+    expect(restoredStates.at(-1)?.groups[0]).toMatchObject({
+      label: "Pinned",
+      items: [
+        expect.objectContaining({ targetId: "issue-1" }),
+        expect.objectContaining({ targetId: "issue-2" })
+      ]
+    });
+    await vi.waitFor(() => expect(queryGroups).toHaveBeenCalledTimes(2));
+    expect(restoredStates.at(-1)?.groups[0]?.items).toHaveLength(2);
+
+    refresh.resolve(
+      groupedResult([
+        {
+          id: "topic/one",
+          label: "Pinned refreshed",
+          items: [issue("issue-4", "topic/one")],
+          totalCount: 1
+        }
+      ])
     );
-    expect(queryGroups).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() =>
+      expect(restoredStates.at(-1)?.groups[0]).toMatchObject({
+        label: "Pinned refreshed",
+        items: [expect.objectContaining({ targetId: "issue-4" })]
+      })
+    );
+    expect(queryGroups).toHaveBeenCalledTimes(2);
   });
 
   it("preserves a page that completes while stale browse data revalidates", async () => {

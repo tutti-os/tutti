@@ -20,16 +20,20 @@ export type WorkspaceSettingsSectionID =
   | "account"
   | "agent"
   | "appearance"
-  | "apps"
   | "developer"
   | "general"
-  | "lab";
+  | "lab"
+  | "model";
 
 export type WorkspaceSettingsGeneralFocusAnchor =
   | "browser-use"
   | "computer-use";
 
-export type WorkspaceSettingsAgentTab = "general" | "agents";
+export type WorkspaceSettingsAgentTab =
+  | "general"
+  | "agents"
+  | "customAgents"
+  | "automation";
 
 export type WorkspaceModelPlanProtocol = "anthropic" | "openai";
 
@@ -219,21 +223,6 @@ export interface WorkspaceSettingsWorkspaceAgentsSnapshotState {
   readonly saving: boolean;
 }
 
-export interface WorkspaceAgentModelBinding {
-  readonly agentTargetId: string;
-  readonly modelPlanId?: string | null;
-  readonly defaultModel?: string | null;
-  readonly modelPolicyId?: string | null;
-  readonly updatedAt?: string | null;
-}
-
-export interface WorkspaceModelPlanBindingTarget {
-  readonly enabled: boolean;
-  readonly id: string;
-  readonly name: string;
-  readonly provider: string;
-}
-
 /**
  * Local edit buffer for a plan being created (planId null) or edited.
  * The apiKey field only ever holds a value the user typed in this session;
@@ -287,17 +276,7 @@ export interface WorkspaceModelPlanSaveImpact {
   readonly references: readonly WorkspaceModelPlanReference[];
 }
 
-export interface WorkspaceSettingsAgentModelBindingsMutableState {
-  agentTargets: WorkspaceModelPlanBindingTarget[];
-  bindings: WorkspaceAgentModelBinding[];
-  loadFailed: boolean;
-  loading: boolean;
-  saveFailedTargetID: string | null;
-  savingTargetID: string | null;
-}
-
 export interface WorkspaceSettingsModelPlansMutableState {
-  bindings: WorkspaceSettingsAgentModelBindingsMutableState;
   confirmingDeletePlanID: string | null;
   deleteBlock: WorkspaceModelPlanDeleteBlock | null;
   deletingPlanID: string | null;
@@ -318,17 +297,7 @@ export interface WorkspaceSettingsModelPlansMutableState {
   togglingPlanID: string | null;
 }
 
-export interface WorkspaceSettingsAgentModelBindingsSnapshotState {
-  readonly agentTargets: readonly WorkspaceModelPlanBindingTarget[];
-  readonly bindings: readonly WorkspaceAgentModelBinding[];
-  readonly loadFailed: boolean;
-  readonly loading: boolean;
-  readonly saveFailedTargetID: string | null;
-  readonly savingTargetID: string | null;
-}
-
 export interface WorkspaceSettingsModelPlansSnapshotState {
-  readonly bindings: WorkspaceSettingsAgentModelBindingsSnapshotState;
   readonly confirmingDeletePlanID: string | null;
   readonly deleteBlock: WorkspaceModelPlanDeleteBlock | null;
   readonly deletingPlanID: string | null;

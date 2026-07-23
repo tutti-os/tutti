@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  TuttidProtocolError,
-  type AgentTarget
-} from "@tutti-os/client-tuttid-ts";
+import { TuttidProtocolError } from "@tutti-os/client-tuttid-ts";
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import type {
   WorkspaceModelPlan,
@@ -18,26 +15,9 @@ import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
 
 type ModelPlansClient = WorkspaceModelPlansControllerDependencies["client"];
 
-test("WorkspaceModelPlansController keeps default refresh Plan-only", async () => {
-  let bindingLoads = 0;
-  let targetLoads = 0;
+test("WorkspaceModelPlansController refreshes Plans without legacy bindings", async () => {
   const { controller, store } = createController({
-    listModelPlans: async () => [createPlan("plan-1", "openai")],
-    listAgentTargets: async () => {
-      targetLoads += 1;
-      return [createAgentTarget("local:codex", "codex", true, 2)];
-    },
-    listAgentModelBindings: async () => {
-      bindingLoads += 1;
-      return [
-        {
-          workspaceId: "workspace-1",
-          agentTargetId: "local:codex",
-          defaultModel: "gpt-5.5",
-          modelPlanId: "plan-1"
-        }
-      ];
-    }
+    listModelPlans: async () => [createPlan("plan-1", "openai")]
   });
 
   await controller.refresh();
@@ -46,19 +26,6 @@ test("WorkspaceModelPlansController keeps default refresh Plan-only", async () =
     store.modelPlans.plans.map((plan) => plan.id),
     ["plan-1"]
   );
-  assert.equal(targetLoads, 0);
-  assert.equal(bindingLoads, 0);
-  assert.equal(store.modelPlans.bindings.agentTargets.length, 0);
-
-  await controller.refreshBindings();
-
-  assert.deepEqual(
-    store.modelPlans.bindings.agentTargets.map((target) => target.id),
-    ["local:codex"]
-  );
-  assert.equal(store.modelPlans.bindings.bindings[0]?.modelPlanId, "plan-1");
-  assert.equal(targetLoads, 1);
-  assert.equal(bindingLoads, 1);
 });
 
 test("WorkspaceModelPlansController owns first-use launch assembly and state", async () => {
@@ -73,10 +40,6 @@ test("WorkspaceModelPlansController owns first-use launch assembly and state", a
           defaultModel: "gpt-5.5",
           name: "OpenAI Plan"
         }
-      ],
-      listAgentTargets: async () => [
-        createAgentTarget("local:codex", "codex", true, 1),
-        createAgentTarget("local:claude", "claude_code", true, 2)
       ]
     },
     async (input) => {
@@ -388,7 +351,12 @@ test("WorkspaceModelPlansController keeps 100 discovered models out of the draft
   });
   await controller.detectDraft();
 
-  assert.deepEqual(detectRequests, [{ protocol: "openai" }]);
+  assert.deepEqual(detectRequests, [
+    {
+      protocol: "openai",
+      templateKind: "official_subscription"
+    }
+  ]);
   assert.equal(store.modelPlans.draftDetection?.stages.length, 1);
   assert.deepEqual(store.modelPlans.draft?.models, [{ id: "", name: "" }]);
   assert.equal(store.modelPlans.draft?.defaultModel, "");
@@ -881,47 +849,6 @@ test("WorkspaceModelPlansController still recognizes TuttidProtocolError referen
   assert.equal(store.modelPlans.deleteBlock?.planID, "plan-1");
 });
 
-test("WorkspaceModelPlansController persists agent bindings and clears them", async () => {
-  const puts: Array<{
-    agentTargetID: string;
-    input: { defaultModel?: string | null; modelPlanId?: string | null };
-  }> = [];
-  const { controller, store } = createController({
-    setAgentModelBinding: async (_workspaceID, agentTargetID, input) => {
-      puts.push({ agentTargetID, input });
-      return {
-        workspaceId: "workspace-1",
-        agentTargetId: agentTargetID,
-        defaultModel: input.defaultModel ?? null,
-        modelPlanId: input.modelPlanId ?? null
-      };
-    }
-  });
-
-  await controller.setAgentBinding("local:codex", {
-    defaultModel: "gpt-5.5",
-    modelPlanID: "plan-1"
-  });
-  await controller.setAgentBinding("local:codex", {
-    defaultModel: null,
-    modelPlanID: null
-  });
-
-  assert.deepEqual(
-    puts.map((put) => put.input),
-    [
-      { defaultModel: "gpt-5.5", modelPlanId: "plan-1", modelPolicyId: null },
-      { defaultModel: null, modelPlanId: null, modelPolicyId: null }
-    ]
-  );
-  assert.equal(
-    store.modelPlans.bindings.bindings.find(
-      (binding) => binding.agentTargetId === "local:codex"
-    )?.modelPlanId,
-    null
-  );
-});
-
 test("WorkspaceModelPlansController records a failed enable toggle inline", async () => {
   const { controller, store } = createController({
     listModelPlans: async () => [createPlan("plan-1", "openai")],
@@ -972,13 +899,8 @@ function createModelPlansClient(
     duplicateModelPlan: async () => {
       throw new Error("not used");
     },
-    listAgentModelBindings: async () => [],
-    listAgentTargets: async () => [],
     listModelPlanReferences: async () => [],
     listModelPlans: async () => [],
-    setAgentModelBinding: async () => {
-      throw new Error("not used");
-    },
     setModelPlanEnabled: async () => {
       throw new Error("not used");
     },
@@ -1025,26 +947,6 @@ function passedCoreDetection() {
       { stage: "inference" as const, status: "passed" as const },
       { stage: "agent_runtime" as const, status: "pending" as const }
     ]
-  };
-}
-
-function createAgentTarget(
-  id: string,
-  provider: AgentTarget["provider"],
-  enabled: boolean,
-  sortOrder: number
-): AgentTarget {
-  return {
-    createdAtUnixMs: 1,
-    enabled,
-    iconKey: provider,
-    id,
-    launchRef: { provider, type: "builtin_local" },
-    name: id,
-    provider,
-    sortOrder,
-    source: "system",
-    updatedAtUnixMs: 1
   };
 }
 

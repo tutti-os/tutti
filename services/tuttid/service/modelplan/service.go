@@ -50,15 +50,16 @@ type ConfigurationChangePublisher interface {
 }
 
 type Service struct {
-	Store                  workspacedata.ModelPlansStore
-	FirstUseStore          workspacedata.ModelPlanFirstUseStore
-	References             ReferenceResolver
-	Bindings               AgentTargetBindingResolver
-	Publisher              ChangePublisher
-	ConfigurationPublisher ConfigurationChangePublisher
-	Now                    func() time.Time
-	HTTPClient             *http.Client
-	NewID                  func() string
+	Store                   workspacedata.ModelPlansStore
+	FirstUseStore           workspacedata.ModelPlanFirstUseStore
+	References              ReferenceResolver
+	Bindings                AgentTargetBindingResolver
+	NativeSubscriptionProbe NativeSubscriptionProbe
+	Publisher               ChangePublisher
+	ConfigurationPublisher  ConfigurationChangePublisher
+	Now                     func() time.Time
+	HTTPClient              *http.Client
+	NewID                   func() string
 }
 
 type PutPlanInput struct {

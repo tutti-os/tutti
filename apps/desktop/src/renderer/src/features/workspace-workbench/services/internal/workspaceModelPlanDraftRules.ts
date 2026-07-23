@@ -50,6 +50,7 @@ export function buildWorkspaceModelPlanDetectRequest(
   return {
     ...(draft.planId ? { planId: draft.planId } : {}),
     protocol: draft.protocol,
+    ...(usesNativeLogin ? { templateKind: draft.templateKind } : {}),
     ...(baseUrl ? { baseUrl } : {}),
     ...(draft.apiKey.trim() ? { apiKey: draft.apiKey } : {}),
     ...(models.length > 0

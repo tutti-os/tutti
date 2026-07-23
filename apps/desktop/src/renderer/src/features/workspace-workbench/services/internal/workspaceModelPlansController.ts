@@ -1,13 +1,10 @@
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import { createTranslator } from "../../../../../../shared/i18n/index.ts";
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
+import type { IWorkspaceModelPlansController } from "../workspaceSettingsService.interface";
 import type {
-  IWorkspaceModelPlansController,
-  WorkspaceAgentModelBindingChange
-} from "../workspaceSettingsService.interface";
-import type {
+  WorkspaceAgentHarnessTargetOption,
   WorkspaceModelPlan,
-  WorkspaceModelPlanBindingTarget,
   WorkspaceModelPlanDraft,
   WorkspaceModelPlanDraftSeed,
   WorkspaceModelPlanFeedbackKind,
@@ -40,11 +37,8 @@ export interface WorkspaceModelPlansControllerDependencies {
     | "deleteModelPlan"
     | "detectModelPlan"
     | "duplicateModelPlan"
-    | "listAgentModelBindings"
-    | "listAgentTargets"
     | "listModelPlanReferences"
     | "listModelPlans"
-    | "setAgentModelBinding"
     | "setModelPlanEnabled"
     | "updateModelPlan"
   >;
@@ -54,7 +48,7 @@ export interface WorkspaceModelPlansControllerDependencies {
     model: string | null;
     modelPlanId: string;
     openInNewWindow: true;
-    provider: WorkspaceModelPlanBindingTarget["provider"];
+    provider: WorkspaceAgentHarnessTargetOption["provider"];
     workspaceId: string;
   }) => Promise<boolean>;
   notifications: NotificationService;
@@ -62,10 +56,10 @@ export interface WorkspaceModelPlansControllerDependencies {
 }
 
 /**
- * Owns the workspace model-plan settings slice. Legacy fixed-target bindings
- * remain available through explicit compatibility methods, but the default
- * settings refresh is Plan-only because WorkspaceAgents own new mappings.
- * API keys only ever live inside the in-flight draft and request payloads.
+ * Owns the workspace model-plan settings slice. WorkspaceAgents own every new
+ * Runtime + Plan mapping; legacy fixed-target bindings are intentionally not
+ * exposed through this renderer interface. API keys only ever live inside the
+ * in-flight draft and request payloads.
  */
 export class WorkspaceModelPlansController implements IWorkspaceModelPlansController {
   private readonly dependencies: WorkspaceModelPlansControllerDependencies;
@@ -107,36 +101,6 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
       });
     } finally {
       this.state.loading = false;
-    }
-  }
-
-  async refreshBindings(): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    const bindings = this.state.bindings;
-    if (!workspaceID || bindings.loading) {
-      return;
-    }
-    bindings.loading = true;
-    bindings.loadFailed = false;
-    try {
-      const [targets, targetBindings] = await Promise.all([
-        this.dependencies.client.listAgentTargets(),
-        this.dependencies.client.listAgentModelBindings(workspaceID)
-      ]);
-      bindings.agentTargets = targets
-        .filter((target) => target.enabled)
-        .sort((left, right) => left.sortOrder - right.sortOrder)
-        .map((target) => ({
-          enabled: target.enabled,
-          id: target.id,
-          name: target.name,
-          provider: target.provider
-        }));
-      bindings.bindings = targetBindings;
-    } catch {
-      bindings.loadFailed = true;
-    } finally {
-      bindings.loading = false;
     }
   }
 
@@ -591,41 +555,6 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
       }
     } finally {
       this.state.deletingPlanID = null;
-    }
-  }
-
-  async setAgentBinding(
-    agentTargetID: string,
-    change: WorkspaceAgentModelBindingChange
-  ): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    const bindings = this.state.bindings;
-    if (!workspaceID || bindings.savingTargetID) {
-      return;
-    }
-    const existing = bindings.bindings.find(
-      (binding) => binding.agentTargetId === agentTargetID
-    );
-    bindings.saveFailedTargetID = null;
-    bindings.savingTargetID = agentTargetID;
-    try {
-      const saved = await this.dependencies.client.setAgentModelBinding(
-        workspaceID,
-        agentTargetID,
-        {
-          defaultModel: change.defaultModel ?? null,
-          modelPlanId: change.modelPlanID ?? null,
-          modelPolicyId: existing?.modelPolicyId ?? null
-        }
-      );
-      const rest = bindings.bindings.filter(
-        (binding) => binding.agentTargetId !== agentTargetID
-      );
-      bindings.bindings = [...rest, saved];
-    } catch {
-      bindings.saveFailedTargetID = agentTargetID;
-    } finally {
-      bindings.savingTargetID = null;
     }
   }
 

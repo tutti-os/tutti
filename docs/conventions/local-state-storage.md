@@ -139,12 +139,16 @@ update action.
 
 ## Model Access Plans
 
-Workspace model access plans and agent-target bindings are daemon-owned rows in
+Workspace model access plans and custom Agents are daemon-owned rows in
 `tuttid.db`. `model_plans` stores the plan configuration and verification
 projection; API keys are encrypted in `api_key_ciphertext` and must never be
-returned through public plan DTOs. `agent_target_model_bindings` stores only
-the target's plan id and optional default model. Its target and plan foreign
-keys cascade target deletion and prevent a referenced plan from being deleted.
+returned through public plan DTOs. `workspace_agents` is the current writable
+Harness-to-Plan/default-model mapping. `agent_target_model_bindings` retains
+the older target-to-plan shape only for historical sessions, rollback, and
+legacy API compatibility; a forward migration idempotently materializes any
+late binding rows as `source=legacy_binding` WorkspaceAgents before Desktop
+removes the binding editor. Plan reference protection includes both current
+WorkspaceAgents and remaining legacy consumers.
 `model_plan_first_use_candidates` durably attributes prepared sessions to
 plans until a completed canonical turn settles first-use state; startup
 reconciliation retries candidates left by observer failure or shutdown.

@@ -401,7 +401,10 @@ files are touched.
 Local runs resolve `golangci-lint` from `$(go env GOPATH)/bin` first and fall
 back to `PATH`. This matches the repository install command without requiring a
 shell-specific `PATH` edit. The repository pins the CI version through
-`services/tuttid/.golangci-lint-version`.
+`services/tuttid/.golangci-lint-version`. CI downloads the official installer
+to a temporary file with transient-network retries, runs it only after the
+download succeeds, and adds the install directory to `PATH` only after verifying
+that the pinned binary is executable.
 
 If you plan to run `pnpm lint:go` or `pnpm check:full` locally, install
 `golangci-lint` first. A compatible binary already available on `PATH` remains

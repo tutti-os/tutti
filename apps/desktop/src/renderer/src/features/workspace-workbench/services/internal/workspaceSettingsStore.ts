@@ -38,14 +38,6 @@ export function createWorkspaceSettingsAutomationRulesState(): WorkspaceSettings
 
 export function createWorkspaceSettingsModelPlansState(): WorkspaceSettingsModelPlansMutableState {
   return {
-    bindings: {
-      agentTargets: [],
-      bindings: [],
-      loadFailed: false,
-      loading: false,
-      saveFailedTargetID: null,
-      savingTargetID: null
-    },
     confirmingDeletePlanID: null,
     deleteBlock: null,
     deletingPlanID: null,

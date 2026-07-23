@@ -870,6 +870,10 @@ export type DetectModelPlanRequest = {
    * When set, omitted fields fall back to the stored plan and the outcome persists onto it.
    */
   planId?: string | null;
+  /**
+   * Required for unsaved drafts whose detection path depends on the access scheme, such as an official provider subscription.
+   */
+  templateKind?: ModelPlanTemplateKind | null;
   protocol?: ModelPlanProtocol | null;
   baseUrl?: string | null;
   apiKey?: string | null;

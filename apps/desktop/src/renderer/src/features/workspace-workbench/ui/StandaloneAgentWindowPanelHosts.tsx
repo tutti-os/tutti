@@ -102,13 +102,8 @@ export function StandaloneAgentWindowPanelHosts({
     workspaceSettingsService.openPanel(
       { id: workspace.id },
       {
-        section:
-          settingsPanelRequest.section === "agent"
-            ? "general"
-            : ((settingsPanelRequest.section ??
-                "general") as WorkspaceSettingsSectionID),
-        // openPanel forces the agent section when pane is "agents", so the
-        // section remap above does not swallow an Agents-tab deep link.
+        section: (settingsPanelRequest.section ??
+          "general") as WorkspaceSettingsSectionID,
         pane: settingsPanelRequest.pane ?? undefined,
         provider: settingsPanelRequest.provider ?? undefined
       }

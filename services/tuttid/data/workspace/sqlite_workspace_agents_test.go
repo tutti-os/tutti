@@ -189,3 +189,68 @@ func TestWorkspaceAgentsMigrationBackfillsLegacyBindingIdempotently(t *testing.T
 		t.Fatalf("v5 migration retired columns = enabled %d permissions %q, want 1 and []", enabled, permissionsJSON)
 	}
 }
+
+func TestWorkspaceAgentsV6ReconcilesBindingCreatedAfterInitialBackfill(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-late-binding", Name: "Late binding"}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	now := time.UnixMilli(1700000000000).UTC()
+	plan := modelplanbiz.Plan{
+		ID:           "mp-late-binding",
+		WorkspaceID:  "ws-late-binding",
+		Name:         "Existing Plan",
+		TemplateKind: modelplanbiz.TemplateCustom,
+		Protocol:     modelplanbiz.ProtocolAnthropic,
+		Models:       []modelplanbiz.Model{{ID: "claude-opus", Name: "Claude Opus"}},
+		DefaultModel: "claude-opus",
+		Enabled:      true,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := store.PutModelPlan(ctx, plan); err != nil {
+		t.Fatalf("PutModelPlan() error = %v", err)
+	}
+	if err := store.PutAgentModelBinding(ctx, modelbindingbiz.Binding{
+		WorkspaceID:   "ws-late-binding",
+		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+		ModelPlanID:   plan.ID,
+		UpdatedAt:     now,
+	}); err != nil {
+		t.Fatalf("PutAgentModelBinding() error = %v", err)
+	}
+
+	agents, err := store.ListWorkspaceAgents(ctx, "ws-late-binding")
+	if err != nil {
+		t.Fatalf("ListWorkspaceAgents() before reconciliation error = %v", err)
+	}
+	if len(agents) != 0 {
+		t.Fatalf("ListWorkspaceAgents() before reconciliation len = %d, want 0", len(agents))
+	}
+	if _, err := store.writeDB.ExecContext(ctx, `DELETE FROM tuttid_schema_migrations WHERE id = ?`, schemaMigrationWorkspaceAgentsV6); err != nil {
+		t.Fatalf("reset workspace agent reconciliation marker error = %v", err)
+	}
+	if err := store.applyWorkspaceAgentsV6(ctx); err != nil {
+		t.Fatalf("applyWorkspaceAgentsV6() error = %v", err)
+	}
+	if err := store.applyWorkspaceAgentsV6(ctx); err != nil {
+		t.Fatalf("applyWorkspaceAgentsV6() idempotent error = %v", err)
+	}
+
+	agents, err = store.ListWorkspaceAgents(ctx, "ws-late-binding")
+	if err != nil {
+		t.Fatalf("ListWorkspaceAgents() after reconciliation error = %v", err)
+	}
+	if len(agents) != 1 {
+		t.Fatalf("ListWorkspaceAgents() after reconciliation len = %d, want 1", len(agents))
+	}
+	agent := agents[0]
+	if agent.ID != workspaceagentbiz.LegacyBindingID("ws-late-binding", agenttargetbiz.IDLocalClaudeCode) || agent.Source != workspaceagentbiz.SourceLegacyBinding {
+		t.Fatalf("reconciled identity = %#v", agent)
+	}
+	if agent.ModelPlanID != plan.ID || agent.DefaultModel != plan.DefaultModel {
+		t.Fatalf("reconciled model config = %#v", agent)
+	}
+}

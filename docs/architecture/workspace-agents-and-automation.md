@@ -68,6 +68,12 @@ Harness and may select one ModelPlan/default model. Saving a ModelPlan does not
 create the Harness × Plan Cartesian product; Agent creation is an explicit
 user action.
 
+Desktop Settings keeps this ownership visible: Agent has General Settings,
+Agent Runtime, Custom Agents, and Automation tabs in that order, while Model
+Plans live in an independent top-level Model tab. Custom Agents is the only
+new writable Harness × Plan mapping surface. The legacy Agent binding editor
+must not be mounted elsewhere.
+
 Every Agent update increments `revision`. The Desktop `AgentsService` loads
 the current workspace directory and projects each Agent whose Harness is
 available into an `AgentGUIAgent` using the Agent id unchanged. Multiple
@@ -319,7 +325,8 @@ action discriminator on the surviving agent-target rows.
 
 The upgrade is additive and rollback-safe:
 
-- Existing `agent_target_model_bindings` stay in place for legacy clients.
+- Existing `agent_target_model_bindings` stay in place for historical-session
+  reads and rollback compatibility; Desktop does not create new rows.
 - Each binding deterministically backfills one named WorkspaceAgent; rerunning
   the migration is idempotent.
 - The original Harness target remains available for configuration, historical

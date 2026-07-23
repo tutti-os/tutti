@@ -451,6 +451,23 @@ func TestResolveModelPlanProtocolOnlyForPreparedProviders(t *testing.T) {
 	}
 }
 
+func TestResolveNativeSubscriptionTargetUsesProviderDescriptor(t *testing.T) {
+	tests := []struct {
+		protocol ModelPlanProtocol
+		provider string
+		target   string
+	}{
+		{protocol: ModelPlanProtocolOpenAI, provider: CodexProviderID, target: CodexTargetID},
+		{protocol: ModelPlanProtocolAnthropic, provider: ClaudeCodeProviderID, target: ClaudeCodeTargetID},
+	}
+	for _, test := range tests {
+		resolved, ok := ResolveNativeSubscriptionTarget(test.protocol)
+		if !ok || resolved.ProviderID != test.provider || resolved.AgentTargetID != test.target {
+			t.Fatalf("ResolveNativeSubscriptionTarget(%q) = %#v, %v", test.protocol, resolved, ok)
+		}
+	}
+}
+
 func TestValidateRejectsUnsupportedDescriptorStrategies(t *testing.T) {
 	tests := []struct {
 		name   string
