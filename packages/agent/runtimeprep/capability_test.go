@@ -91,8 +91,8 @@ func TestCustomDeploymentProfileDoesNotInheritTuttiDesktopHostPolicy(t *testing.
 			t.Fatalf("managed VM prompt inherited desktop host policy %q: %s", forbidden, bundle.SystemPrompt)
 		}
 	}
-	if len(bundle.Skills) != 5 {
-		t.Fatalf("managed VM core skill count = %d, want 5", len(bundle.Skills))
+	if len(bundle.Skills) != 6 {
+		t.Fatalf("managed VM core skill count = %d, want 6", len(bundle.Skills))
 	}
 }
 

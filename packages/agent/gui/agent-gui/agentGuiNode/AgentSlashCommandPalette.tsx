@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import { Spinner } from "@tutti-os/ui-system";
 import {
+  BadgeCheck,
   Globe,
   Info,
   ListChecks,
@@ -372,6 +373,13 @@ function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
     ) : (
       <Globe className={SLASH_PALETTE_ICON_CLASS} />
     );
+  }
+  if (entry.type === "skill") {
+    const officialSourceKinds = new Set(["system", "tutti-injected", "bundled"]);
+    if (officialSourceKinds.has(entry.skill.sourceKind)) {
+      return <BadgeCheck className={SLASH_PALETTE_ICON_CLASS} />;
+    }
+    return null;
   }
   if (entry.type !== "command") {
     return null;

@@ -239,7 +239,7 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 		bundle.CLICommand != "tutti-dev" {
 		t.Fatalf("bundle metadata = %#v", bundle)
 	}
-	if got := skillBundleSlugs(bundle.Skills); strings.Join(got, ",") != "tutti-cli,tutti-handoff,issue-manager,workspace-app,reference" {
+	if got := skillBundleSlugs(bundle.Skills); strings.Join(got, ",") != "tutti-cli,tutti-handoff,issue-manager,workspace-app,reference,token-saver" {
 		t.Fatalf("skill slugs = %#v", got)
 	}
 	if bundle.RecommendedSystemPrompt == nil ||
@@ -340,7 +340,7 @@ func TestRenderProviderSkillBundleGatesOptionalSkills(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderSkillBundle() error = %v", err)
 	}
-	if got := strings.Join(skillBundleSlugs(withoutOptional.Skills), ","); got != "tutti-cli,tutti-handoff,issue-manager,workspace-app,reference" {
+	if got := strings.Join(skillBundleSlugs(withoutOptional.Skills), ","); got != "tutti-cli,tutti-handoff,issue-manager,workspace-app,reference,token-saver" {
 		t.Fatalf("skill slugs without optional = %q", got)
 	}
 
@@ -356,7 +356,7 @@ func TestRenderProviderSkillBundleGatesOptionalSkills(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderSkillBundle() error = %v", err)
 	}
-	wantSlugs := "tutti-cli,tutti-handoff,issue-manager,workspace-app,reference,browser-use,computer-use"
+	wantSlugs := "tutti-cli,tutti-handoff,issue-manager,workspace-app,reference,token-saver,browser-use,computer-use"
 	if got := strings.Join(skillBundleSlugs(withOptional.Skills), ","); got != wantSlugs {
 		t.Fatalf("skill slugs with optional = %q", got)
 	}

@@ -16,6 +16,7 @@ const workspaceAppSkillName = "workspace-app"
 const referenceSkillName = "reference"
 const browserUseSkillName = "browser-use"
 const computerUseSkillName = "computer-use"
+const tokenSaverSkillName = "token-saver"
 const tuttiHandoffSkillName = "tutti-handoff"
 const commandGuideReferencePath = "command-guide.md"
 
@@ -100,10 +101,20 @@ func computerUseSkill(input PrepareInput) string {
 	)
 }
 
+func tokenSaverSkill() string {
+	return renderProviderSkillTemplate(
+		"skill_templates/token-saver.md",
+		nil,
+	)
+}
+
 func renderProviderSkillTemplate(path string, replacements map[string]string) string {
 	content, err := providerSkillTemplates.ReadFile(path)
 	if err != nil {
 		panic(fmt.Sprintf("read provider skill template %s: %v", path, err))
+	}
+	if len(replacements) == 0 {
+		return string(content)
 	}
 	rendered, err := RenderTemplate(string(content), replacements)
 	if err != nil {
@@ -178,6 +189,10 @@ func providerSkills(input PrepareInput) []providerSkillSpec {
 		{
 			baseName: referenceSkillName,
 			files:    map[string]string{"SKILL.md": referenceSkill(input)},
+		},
+		{
+			baseName: tokenSaverSkillName,
+			files:    map[string]string{"SKILL.md": tokenSaverSkill()},
 		},
 	}
 	// Browser use is a daemon-owned `tutti browser` CLI; inject its skill only

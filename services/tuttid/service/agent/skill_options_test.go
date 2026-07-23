@@ -116,18 +116,21 @@ description: Internal Tutti CLI.
 	})
 
 	triggers := composerSkillOptionTriggers(options)
-	want := []string{"$architecture-review", "$caveman", "$lark-doc", "$imagegen"}
+	want := []string{"$token-saver", "$architecture-review", "$caveman", "$lark-doc"}
 	if !equalStringSlices(triggers, want) {
 		t.Fatalf("triggers = %#v, want %#v", triggers, want)
 	}
-	if options[0].SourceKind != "project" || options[1].SourceKind != "personal" || options[2].SourceKind != "personal" || options[3].SourceKind != "system" {
+	if options[0].SourceKind != "system" || options[1].SourceKind != "project" || options[2].SourceKind != "personal" || options[3].SourceKind != "personal" {
 		t.Fatalf("source kinds = %#v", options)
 	}
-	if options[1].Description != "Ultra-compressed communication mode. Use when the user asks to be brief." {
-		t.Fatalf("codex personal description = %q", options[1].Description)
+	if options[0].Name != "token-saver" {
+		t.Fatalf("first option name = %q, want 'token-saver'", options[0].Name)
 	}
-	if options[2].Description != "Work with Lark documents. Search and edit cloud docs." {
-		t.Fatalf("folded description = %q", options[2].Description)
+	if options[2].Description != "Ultra-compressed communication mode. Use when the user asks to be brief." {
+		t.Fatalf("codex personal description = %q", options[2].Description)
+	}
+	if options[3].Description != "Work with Lark documents. Search and edit cloud docs." {
+		t.Fatalf("folded description = %q", options[3].Description)
 	}
 }
 
@@ -162,12 +165,18 @@ description: Internal Tutti CLI.
 	})
 
 	triggers := composerSkillOptionTriggers(options)
-	want := []string{"/summarize", "/personal-review", "/product-design:frontend-design"}
+	// token-saver (system) first, then project/personal skills, then plugin skills.
+	// tutti-cli from a non-Tutti plugin (product-design) is NOT hidden — only
+	// skills from Tutti's own plugin ("tutti-cli") are hidden by name.
+	want := []string{"/token-saver", "/summarize", "/personal-review", "/product-design:frontend-design", "/product-design:tutti-cli"}
 	if !equalStringSlices(triggers, want) {
 		t.Fatalf("triggers = %#v, want %#v", triggers, want)
 	}
-	if options[2].PluginName != "product-design" || options[2].SourceKind != "plugin" {
-		t.Fatalf("plugin option = %#v", options[2])
+	if options[0].SourceKind != "system" || options[0].Name != "token-saver" {
+		t.Fatalf("first option should be token-saver with sourceKind 'system', got %#v", options[0])
+	}
+	if options[3].PluginName != "product-design" || options[3].SourceKind != "plugin" {
+		t.Fatalf("plugin option = %#v", options[3])
 	}
 }
 
@@ -202,12 +211,15 @@ description: Internal Tutti CLI.
 	})
 
 	triggers := composerSkillOptionTriggers(options)
-	want := []string{"$project-skill", "$personal-skill", "$workflow-check"}
+	want := []string{"$token-saver", "$project-skill", "$personal-skill", "$workflow-check"}
 	if !equalStringSlices(triggers, want) {
 		t.Fatalf("triggers = %#v, want %#v", triggers, want)
 	}
-	if options[2].PluginName != "tutti-cli" || options[2].SourceKind != "plugin" {
-		t.Fatalf("plugin option = %#v", options[2])
+	if options[0].SourceKind != "system" || options[0].Name != "token-saver" {
+		t.Fatalf("first option should be token-saver with sourceKind 'system', got %#v", options[0])
+	}
+	if options[3].PluginName != "tutti-cli" || options[3].SourceKind != "plugin" {
+		t.Fatalf("plugin option = %#v", options[3])
 	}
 }
 
@@ -255,6 +267,7 @@ description: Custom OpenCode config skill.
 
 	triggers := composerSkillOptionTriggers(options)
 	want := []string{
+		"/token-saver",
 		"/project-agent",
 		"/project-claude",
 		"/project-open",
@@ -266,7 +279,10 @@ description: Custom OpenCode config skill.
 	if !equalStringSlices(triggers, want) {
 		t.Fatalf("triggers = %#v, want %#v", triggers, want)
 	}
-	if options[0].SourceKind != "project" || options[3].SourceKind != "personal" {
+	if options[0].SourceKind != "system" || options[0].Name != "token-saver" {
+		t.Fatalf("first option should be token-saver with sourceKind 'system', got %#v", options[0])
+	}
+	if options[4].SourceKind != "personal" {
 		t.Fatalf("source kinds = %#v", options)
 	}
 }
