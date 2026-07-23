@@ -46,7 +46,10 @@ func TestDaemonAPIGeneratedRoutesAgentTargetSetupInstallAndAuthenticate(t *testi
 			return agentextensionservice.SetupSnapshot{
 				WorkspaceID: input.WorkspaceID, AgentTargetID: input.AgentTargetID,
 				Status: agentextensionservice.SetupNotInstalled, Plan: &plan,
-				AuthMethods: []agentextensionservice.RuntimeAuthMethod{{ID: "external", Name: "Login with Google/GitHub"}},
+				AuthMethods: []agentextensionservice.RuntimeAuthMethod{
+					{ID: "external", Name: "Login with Google/GitHub"},
+					{ID: "login", Name: "Login with Fixture account", Type: "terminal", TerminalCommand: "/opt/fixture/bin/agent login"},
+				},
 				Account: &agentextensionservice.RuntimeAuthenticatedAccount{
 					ID: "user-1", DisplayName: "Rhinoc", AuthMethodID: "external", Organization: "Tutti",
 				},
@@ -82,8 +85,16 @@ func TestDaemonAPIGeneratedRoutesAgentTargetSetupInstallAndAuthenticate(t *testi
 	if getResponse.Plan == nil || getResponse.Plan.PackageName != "@tencent-ai/codebuddy-code" || getResponse.Plan.PackageVersion != "2.121.2" {
 		t.Fatalf("GET response = %#v", getResponse)
 	}
-	if len(getResponse.AuthMethods) != 1 || getResponse.AuthMethods[0].Id != "external" {
+	if len(getResponse.AuthMethods) != 2 || getResponse.AuthMethods[0].Id != "external" {
 		t.Fatalf("GET auth methods = %#v", getResponse.AuthMethods)
+	}
+	terminalMethod := getResponse.AuthMethods[1]
+	if terminalMethod.Type == nil || *terminalMethod.Type != "terminal" ||
+		terminalMethod.TerminalCommand == nil || *terminalMethod.TerminalCommand != "/opt/fixture/bin/agent login" {
+		t.Fatalf("GET terminal auth method = %#v", terminalMethod)
+	}
+	if getResponse.AuthMethods[0].Type != nil || getResponse.AuthMethods[0].TerminalCommand != nil {
+		t.Fatalf("GET non-terminal auth method = %#v", getResponse.AuthMethods[0])
 	}
 	if getResponse.Account == nil || getResponse.Account.Id != "user-1" || getResponse.Account.DisplayName != "Rhinoc" ||
 		getResponse.Account.AuthMethodId != "external" || getResponse.Account.Organization == nil || *getResponse.Account.Organization != "Tutti" {

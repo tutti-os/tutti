@@ -60,6 +60,17 @@ export const zhCNAgentGui = {
   targetSetupAuthStarting: "正在打开登录…",
   targetSetupAuthFailed: "登录未完成",
   targetSetupNoAuthMethods: "运行时未返回支持的登录方式，请重新检测",
+  targetSetupTerminalAuthHint:
+    "该登录方式需要在终端中完成。在终端运行以下命令，按提示完成登录后，回到这里点击「重新检测」。",
+  targetSetupCopyCommand: "复制命令",
+  targetSetupCommandCopied: "已复制",
+  targetSetupTerminalLoginStart: "开始登录",
+  targetSetupTerminalLoginWaiting:
+    "已在工作台中打开终端，请在终端中按提示完成登录，这里会自动检测登录状态。",
+  targetSetupTerminalLoginCancel: "取消",
+  targetSetupTerminalLoginTimedOut: "等待登录完成超时，请重试",
+  targetSetupTerminalLoginUnavailable:
+    "无法在此窗口打开终端，请复制命令后在自己的终端中执行。",
   targetSetupRetry: "重新检测",
   targetSetupFailed: "运行时设置失败",
   targetSetupPhase: {

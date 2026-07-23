@@ -434,6 +434,107 @@ func TestAgentTargetSetupAuthenticatesGenericRuntimeToReady(t *testing.T) {
 	}
 }
 
+func TestAgentTargetSetupGuidesTerminalAuthMethod(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	transport := &probeTransport{authRequired: true, terminalAuthMethod: true}
+	service, targetID := setupFixture(
+		t, "generic", "Generic Agent", "@example/generic-agent", "1.2.3", "generic-agent", ">=1.2.3 <2.0.0",
+		&fixtureInstallRunner{binary: "generic-agent", packageName: "@example/generic-agent", version: "1.2.3"}, transport,
+	)
+	initial, err := service.GetSetup(context.Background(), InstallPlanInput{WorkspaceID: "workspace-1", AgentTargetID: targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Install(context.Background(), InstallInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+		PlanDigest: initial.Plan.PlanDigest, ClientActionID: "terminal-auth-install",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	authRequired := waitForSetupStatus(t, service, targetID, SetupAuthRequired)
+	if len(authRequired.AuthMethods) != 1 {
+		t.Fatalf("auth-required setup = %#v", authRequired)
+	}
+	method := authRequired.AuthMethods[0]
+	if method.Type != "terminal" || !strings.HasSuffix(method.TerminalCommand, " login") ||
+		!strings.Contains(method.TerminalCommand, "generic-agent") {
+		t.Fatalf("terminal auth method = %#v", method)
+	}
+	if _, err := service.Authenticate(context.Background(), AuthenticateInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+		MethodID: "login", ClientActionID: "terminal-auth-action",
+	}); !errors.Is(err, ErrTerminalAuthMethod) {
+		t.Fatalf("terminal method authenticate error = %v, want ErrTerminalAuthMethod", err)
+	}
+	if transport.isAuthenticated() {
+		t.Fatal("terminal method must not drive ACP authenticate")
+	}
+}
+
+func TestAgentTargetSetupGuidesTerminalAuthMethodFromMeta(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	// Kimi Code declares the terminal login metadata inside the ACP _meta
+	// extension rather than top-level type/args fields.
+	transport := &probeTransport{authRequired: true, terminalAuthMeta: true}
+	service, targetID := setupFixture(
+		t, "generic", "Generic Agent", "@example/generic-agent", "1.2.3", "generic-agent", ">=1.2.3 <2.0.0",
+		&fixtureInstallRunner{binary: "generic-agent", packageName: "@example/generic-agent", version: "1.2.3"}, transport,
+	)
+	initial, err := service.GetSetup(context.Background(), InstallPlanInput{WorkspaceID: "workspace-1", AgentTargetID: targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Install(context.Background(), InstallInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+		PlanDigest: initial.Plan.PlanDigest, ClientActionID: "terminal-meta-auth-install",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	authRequired := waitForSetupStatus(t, service, targetID, SetupAuthRequired)
+	if len(authRequired.AuthMethods) != 1 {
+		t.Fatalf("auth-required setup = %#v", authRequired)
+	}
+	method := authRequired.AuthMethods[0]
+	if method.Type != "terminal" || !strings.HasSuffix(method.TerminalCommand, " login") ||
+		!strings.Contains(method.TerminalCommand, "generic-agent") {
+		t.Fatalf("terminal auth method from _meta = %#v", method)
+	}
+	if _, err := service.Authenticate(context.Background(), AuthenticateInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+		MethodID: "login", ClientActionID: "terminal-meta-auth-action",
+	}); !errors.Is(err, ErrTerminalAuthMethod) {
+		t.Fatalf("terminal method authenticate error = %v, want ErrTerminalAuthMethod", err)
+	}
+	if transport.isAuthenticated() {
+		t.Fatal("terminal method must not drive ACP authenticate")
+	}
+}
+
+func TestTerminalLoginCommand(t *testing.T) {
+	t.Parallel()
+
+	method := agentruntime.StandardACPAuthMethod{ID: "login", Type: "terminal", Args: []string{"login"}}
+	if got := terminalLoginCommand([]string{"/opt/agent/bin/kimi", "acp"}, method); got != "/opt/agent/bin/kimi login" {
+		t.Fatalf("terminalLoginCommand = %q", got)
+	}
+	// The native Kimi Code CLI declares its ACP terminal-auth entry point as
+	// launch-command flags (["--login"]), which must append to the full ACP
+	// launch command instead of replacing its serve arguments.
+	flagMethod := agentruntime.StandardACPAuthMethod{ID: "login", Type: "terminal", Args: []string{"--login"}}
+	if got := terminalLoginCommand([]string{"/opt/agent/bin/kimi", "acp"}, flagMethod); got != "/opt/agent/bin/kimi acp --login" {
+		t.Fatalf("terminalLoginCommand with flag args = %q", got)
+	}
+	if got := terminalLoginCommand([]string{"/opt/agent dir/bin/kimi"}, method); got != `'/opt/agent dir/bin/kimi' login` {
+		t.Fatalf("terminalLoginCommand with spaces = %q", got)
+	}
+	if got := terminalLoginCommand([]string{"/opt/agent/bin/kimi"}, agentruntime.StandardACPAuthMethod{ID: "oauth"}); got != "" {
+		t.Fatalf("terminalLoginCommand for non-terminal method = %q", got)
+	}
+	if got := terminalLoginCommand(nil, method); got != "" {
+		t.Fatalf("terminalLoginCommand without command = %q", got)
+	}
+}
+
 func TestAgentTargetSetupFeedsRuntimeAuthFailureBackIntoDetectionAndAllowsRelogin(t *testing.T) {
 	binDir := t.TempDir()
 	writeVersionExecutable(t, filepath.Join(binDir, "gemini"), "0.50.0")
@@ -841,10 +942,12 @@ func writeVersionExecutable(t *testing.T, path, version string) {
 }
 
 type probeTransport struct {
-	mu                sync.Mutex
-	authRequired      bool
-	authenticated     bool
-	authenticateError string
+	mu                 sync.Mutex
+	authRequired       bool
+	terminalAuthMethod bool
+	terminalAuthMeta   bool
+	authenticated      bool
+	authenticateError  string
 }
 
 type fixtureRuntimeAuthInvalidation struct {
@@ -893,7 +996,20 @@ func (c *probeConnection) Send(value []byte) error {
 	case "initialize":
 		result = map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{}, "agentInfo": map[string]any{"name": "fixture", "version": "1.0.0"}}
 		if c.owner.authRequired {
-			result["authMethods"] = []any{map[string]any{"id": "oauth-personal", "name": "Log in with Google"}}
+			if c.owner.terminalAuthMethod {
+				result["authMethods"] = []any{map[string]any{
+					"id": "login", "name": "Login with Fixture account", "type": "terminal", "args": []any{"login"},
+				}}
+			} else if c.owner.terminalAuthMeta {
+				result["authMethods"] = []any{map[string]any{
+					"id": "login", "name": "Login with Fixture account",
+					"_meta": map[string]any{
+						"terminal-auth": map[string]any{"type": "terminal", "args": []any{"login"}},
+					},
+				}}
+			} else {
+				result["authMethods"] = []any{map[string]any{"id": "oauth-personal", "name": "Log in with Google"}}
+			}
 		}
 	case "authenticate":
 		if c.owner.authenticateError != "" {

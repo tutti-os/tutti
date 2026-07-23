@@ -301,6 +301,88 @@ func TestManagerResolveRuntimeUsesSignedUserSearchPath(t *testing.T) {
 	}
 }
 
+// The kimi-code extension ships two discovery candidates: the native Kimi
+// Code CLI (0.x, typically ~/.kimi-code/bin, works with API-key providers) is
+// preferred; the Python kimi-cli (1.x, OAuth-only in ACP mode) stays as a
+// fallback for members who already have it installed.
+func TestManagerResolveRuntimePrefersNativeKimiAndFallsBackToPython(t *testing.T) {
+	manifest := testManifest()
+	manifest.AgentKey = "kimi-code"
+	manifest.Name = "Kimi Code"
+	discovery := `{"schemaVersion":"tutti.agent.discovery.v1","candidates":[
+		{"binaryNames":["kimi"],"searchPaths":[{"scope":"user","path":".kimi-code/bin"}],"version":{"args":["--version"],"constraint":">=0.29.0 <1.0.0"},"launchArgs":["acp"],"probe":{"kind":"acp-initialize","timeoutMs":15000}},
+		{"binaryNames":["kimi"],"version":{"args":["--version"],"constraint":">=1.49.0 <2.0.0"},"launchArgs":["acp"],"probe":{"kind":"acp-initialize","timeoutMs":15000}}
+	]}`
+
+	writeKimi := func(t *testing.T, dir, version string) string {
+		t.Helper()
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		executable := filepath.Join(dir, "kimi")
+		script := "#!/bin/sh\nprintf '" + version + "\\n'\n"
+		if err := os.WriteFile(executable, []byte(script), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return executable
+	}
+	newManager := func(t *testing.T, homeDir, pathEnv string) Manager {
+		t.Helper()
+		return Manager{
+			Installations: agentextensiondata.NewFileInstallationStore(t.TempDir()),
+			RuntimeResolver: runtimecmd.Resolver{
+				Environ: func() []string { return []string{"PATH=" + pathEnv} },
+				HomeDir: func() (string, error) { return homeDir, nil },
+			},
+		}
+	}
+	install := func(t *testing.T, manager *Manager) Installation {
+		t.Helper()
+		installation, err := installTestPackage(
+			t, manager,
+			Release{AgentKey: manifest.AgentKey, Version: manifest.Version},
+			testPackageZIPFor(t, manifest, discovery),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return installation
+	}
+
+	t.Run("native cli wins over python cli on PATH", func(t *testing.T) {
+		homeDir := t.TempDir()
+		nativeExecutable := writeKimi(t, filepath.Join(homeDir, ".kimi-code", "bin"), "0.29.0")
+		pathDir := t.TempDir()
+		writeKimi(t, pathDir, "1.49.0")
+		manager := newManager(t, homeDir, pathDir)
+		installation := install(t, &manager)
+
+		binding, err := manager.ResolveRuntimeForCWD(context.Background(), installation.ID, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if binding.Source != "local" || binding.Version != "0.29.0" || binding.Command[0] != nativeExecutable {
+			t.Fatalf("ResolveRuntimeForCWD() = %#v, want native cli", binding)
+		}
+	})
+
+	t.Run("python cli on PATH remains a fallback", func(t *testing.T) {
+		homeDir := t.TempDir()
+		pathDir := t.TempDir()
+		pythonExecutable := writeKimi(t, pathDir, "1.49.0")
+		manager := newManager(t, homeDir, pathDir)
+		installation := install(t, &manager)
+
+		binding, err := manager.ResolveRuntimeForCWD(context.Background(), installation.ID, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if binding.Source != "local" || binding.Version != "1.49.0" || binding.Command[0] != pythonExecutable {
+			t.Fatalf("ResolveRuntimeForCWD() = %#v, want python cli fallback", binding)
+		}
+	})
+}
+
 func TestManagerLoadRejectsPackageBytesChangedAfterVerifiedInstall(t *testing.T) {
 	manager := &Manager{Installations: agentextensiondata.NewFileInstallationStore(t.TempDir())}
 	installation, err := installTestPackage(t, manager, Release{AgentKey: "gemini", Version: "1.0.0"}, testPackageZIP(t))

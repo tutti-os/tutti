@@ -7215,6 +7215,14 @@ components:
         description:
           type: string
           nullable: true
+        type:
+          type: string
+          nullable: true
+          description: Provider-declared method kind (for example "terminal").
+        terminalCommand:
+          type: string
+          nullable: true
+          description: Ready-to-run interactive sign-in command for terminal-type methods.
     InstallAgentTargetRuntimeRequest:
       type: object
       additionalProperties: false

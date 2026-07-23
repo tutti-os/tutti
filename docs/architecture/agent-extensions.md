@@ -295,6 +295,27 @@ hard byte limit; Tutti verifies response transport, size, digest, executable
 mode, and native Mach-O/ELF/PE platform identity. It never invokes an upstream
 installer, shell, archive extractor, or PATH/rc mutation for this runtime kind.
 
+The `uv` runner does not follow the stage-then-rename model: uv tool
+environments embed absolute paths (bin symlinks, venv shebangs, `pyvenv.cfg`)
+and cannot survive the activation rename. uv runtimes install in place. Tutti
+first resolves a Tutti-managed uv toolchain — a pinned uv version declared in
+`config/tutti.defaults.json` (`agentRuntimeTools.uv`) with per-platform
+archives, SHA-256, and byte sizes — downloaded with the same streaming
+verification as binary artifacts, extracted as a single pinned member, and
+cached under `~/.local/share/tutti/agent-runtimes/_tools/uv/<platform>/<version>`.
+The user machine needs no preinstalled uv or Python. The install runs `uv` by
+bare name with the toolchain directory prepended to PATH and confinement
+variables pointing into the final root: `UV_TOOL_DIR=<installRoot>/tools`,
+`UV_TOOL_BIN_DIR=<installRoot>/bin`, `UV_PYTHON_INSTALL_DIR=<installRoot>/python`,
+a shared content-addressed `UV_CACHE_DIR` under `_tools/uv/cache`, and
+`UV_NO_CONFIG=1`. A previously committed root (valid `activation.json`) is moved
+to `<runtimeIdentity>.previous` before installing and restored on any failure;
+an uncommitted partial root is discarded, and a missing root with a
+self-consistent backup (matching activation identity plus executable
+fingerprint) is restored instead of reinstalling. `activation.json` remains the
+commit marker, and the fingerprint/version/ACP-probe verification chain is
+unchanged.
+
 For both install kinds, Tutti fingerprints the ordinary in-root executable,
 runs the discovery profile's version check, then performs ACP `initialize` and
 `session/new`. A binary runtime must report the exact artifact version, not
@@ -390,6 +411,15 @@ process, revalidates the method, calls ACP `authenticate` on that process, then
 requires `session/new` to succeed. Only that result produces `ready`; methods
 being advertised is never itself an auth verdict. Authentication actions are
 durable and never persist credentials.
+
+A method may declare a provider-specific kind. Tutti reads the top-level
+`type`/`args` fields first and falls back to the ACP `_meta["terminal-auth"]`
+extension (the shape Kimi Code publishes, with `type`, `args`, `command`,
+`env`, and `label`). Methods of type `terminal` require an interactive
+terminal login that can never complete inside the headless setup process, so
+the daemon rejects ACP `authenticate` for them immediately and the snapshot
+carries a ready-to-run terminal command (the resolved runtime executable plus
+the declared args) for the host to surface or launch.
 
 An ACP `authenticate` result may expose non-secret account identity through a
 namespaced `_meta` entry ending in `/userinfo`. Setup normalizes only the user

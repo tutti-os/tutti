@@ -616,6 +616,14 @@ export type AgentTargetAuthMethod = {
   id: string;
   name: string;
   description?: string | null;
+  /**
+   * Provider-declared method kind (for example "terminal").
+   */
+  type?: string | null;
+  /**
+   * Ready-to-run interactive sign-in command for terminal-type methods.
+   */
+  terminalCommand?: string | null;
 };
 
 export type InstallAgentTargetRuntimeRequest = {

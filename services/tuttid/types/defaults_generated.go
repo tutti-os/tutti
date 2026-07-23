@@ -92,4 +92,51 @@ var generatedDefaults = generatedDefaultsSpec{
 			},
 		},
 	},
+	AgentRuntimeTools: generatedAgentRuntimeToolDefaults{
+		UV: generatedUVToolDefaults{
+			Version: "0.11.31",
+			Artifacts: []generatedUVToolArtifactDefaults{
+				{
+					Platform:          "darwin-arm64",
+					URL:               "https://github.com/astral-sh/uv/releases/download/0.11.31/uv-aarch64-apple-darwin.tar.gz",
+					SHA256:            "b2b93e82a6786f9c7cb89fd4ca0e859a147b292ae8f6f95784f9742f0efec39e",
+					SizeBytes:         22411216,
+					Archive:           "tar.gz",
+					ArchiveExecutable: "uv-aarch64-apple-darwin/uv",
+				},
+				{
+					Platform:          "darwin-amd64",
+					URL:               "https://github.com/astral-sh/uv/releases/download/0.11.31/uv-x86_64-apple-darwin.tar.gz",
+					SHA256:            "33ee6bd62b57fcd77a499deb54e4432dc1e1a2f3d34930ba987ad8b43f9c7bc7",
+					SizeBytes:         24112641,
+					Archive:           "tar.gz",
+					ArchiveExecutable: "uv-x86_64-apple-darwin/uv",
+				},
+				{
+					Platform:          "linux-amd64",
+					URL:               "https://github.com/astral-sh/uv/releases/download/0.11.31/uv-x86_64-unknown-linux-gnu.tar.gz",
+					SHA256:            "8cc1cd82d434ec565376f98bd938d4b715b5791a80ff2d3aa78821cf85091b4b",
+					SizeBytes:         26181465,
+					Archive:           "tar.gz",
+					ArchiveExecutable: "uv-x86_64-unknown-linux-gnu/uv",
+				},
+				{
+					Platform:          "linux-arm64",
+					URL:               "https://github.com/astral-sh/uv/releases/download/0.11.31/uv-aarch64-unknown-linux-gnu.tar.gz",
+					SHA256:            "d74f23949fd07be4970f293d06ca99d87cd2a78a341c3d7b7fc0df7bc2d8a145",
+					SizeBytes:         24478446,
+					Archive:           "tar.gz",
+					ArchiveExecutable: "uv-aarch64-unknown-linux-gnu/uv",
+				},
+				{
+					Platform:          "windows-amd64",
+					URL:               "https://github.com/astral-sh/uv/releases/download/0.11.31/uv-x86_64-pc-windows-msvc.zip",
+					SHA256:            "410c2fd3126ff621c9450a21cfc200002c7540dc48d130069a8f619cdb0a811b",
+					SizeBytes:         25653699,
+					Archive:           "zip",
+					ArchiveExecutable: "uv.exe",
+				},
+			},
+		},
+	},
 }

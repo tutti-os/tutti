@@ -3715,6 +3715,12 @@ type AgentTargetAuthMethod struct {
 	Description *string `json:"description,omitempty"`
 	Id          string  `json:"id"`
 	Name        string  `json:"name"`
+
+	// TerminalCommand Ready-to-run interactive sign-in command for terminal-type methods.
+	TerminalCommand *string `json:"terminalCommand,omitempty"`
+
+	// Type Provider-declared method kind (for example "terminal").
+	Type *string `json:"type,omitempty"`
 }
 
 // AgentTargetAuthenticatedAccount defines model for AgentTargetAuthenticatedAccount.

@@ -19,7 +19,7 @@
       "packages/agent/gui/shared/AgentMessageMarkdown.tsx": 7,
       "packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx": 10
     },
-    "effectCount": 140,
+    "effectCount": 142,
     "fileLines": {
       "packages/agent/gui/app/renderer/i18n/locales/en.ts": 1893,
       "packages/agent/gui/app/renderer/i18n/locales/zh-CN.ts": 1773
@@ -30,7 +30,7 @@
     "overlayStores": 3,
     "providerBranches": 1,
     "renderMirrorRefs": 8,
-    "setTimeoutCount": 40,
+    "setTimeoutCount": 43,
     "swallowedCatch": 3,
     "useSyncExternalStoreCount": 4
   }
