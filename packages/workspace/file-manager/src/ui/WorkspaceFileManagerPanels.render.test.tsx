@@ -20,6 +20,7 @@ describe("WorkspaceFileManagerPanels", () => {
       sizeBytes: null
     };
     const onSelect = vi.fn();
+    const onEntryDragStart = vi.fn();
     const onToggleDirectoryExpanded = vi.fn();
     const container = document.createElement("div");
     document.body.append(container);
@@ -80,6 +81,7 @@ describe("WorkspaceFileManagerPanels", () => {
             onClearInlineRenameValidation={() => {}}
             onConfirmInlineRename={async () => true}
             onEntryContextMenu={() => {}}
+            onEntryDragStart={onEntryDragStart}
             onMoveEntry={() => {}}
             onOpenEntry={() => {}}
             onSelect={onSelect}
@@ -100,8 +102,23 @@ describe("WorkspaceFileManagerPanels", () => {
 
       expect(row).not.toBeNull();
       expect(row?.querySelector("button button")).toBeNull();
+      expect(row?.draggable).toBe(true);
       expect(rowButton).not.toBeNull();
+      expect(rowButton?.draggable).toBe(false);
       expect(disclosureButton).not.toBeNull();
+
+      const dataTransfer = {} as DataTransfer;
+      const dragStartEvent = new Event("dragstart", {
+        bubbles: true,
+        cancelable: true
+      });
+      Object.defineProperty(dragStartEvent, "dataTransfer", {
+        value: dataTransfer
+      });
+      await act(async () => {
+        row?.dispatchEvent(dragStartEvent);
+      });
+      expect(onEntryDragStart).toHaveBeenCalledWith(entry, dataTransfer);
 
       await act(async () => {
         rowButton?.click();

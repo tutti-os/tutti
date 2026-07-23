@@ -1040,20 +1040,23 @@ function EntryRow({
   }
 
   return (
-    <div {...rowProps} ref={divRowRef}>
+    <div
+      {...rowProps}
+      draggable={draggable}
+      ref={divRowRef}
+      onDragStart={(event: ReactDragEvent<HTMLElement>) => {
+        if (!draggable) {
+          event.preventDefault();
+          return;
+        }
+        onDragStart?.(entry, event.dataTransfer);
+      }}
+    >
       <button
         aria-label={entry.name}
         className="absolute inset-0 z-0"
-        draggable={draggable}
         ref={buttonRowRef}
         type="button"
-        onDragStart={(event: ReactDragEvent<HTMLElement>) => {
-          if (!draggable) {
-            event.preventDefault();
-            return;
-          }
-          onDragStart?.(entry, event.dataTransfer);
-        }}
         onPointerDown={(event) => {
           onPointerDown(entry, event);
         }}
