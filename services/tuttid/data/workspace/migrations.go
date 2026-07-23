@@ -62,6 +62,7 @@ const schemaMigrationAgentModelBindingsV1 = "agent_model_bindings_v1"
 const schemaMigrationAgentModelBindingsV2 = "agent_model_bindings_v2"
 const schemaMigrationAgentModelBindingsV3 = "agent_model_bindings_v3"
 const schemaMigrationWorkspaceAgentsV5 = "workspace_agents_contract_cleanup_v1"
+const schemaMigrationWorkspaceAgentsV6 = "workspace_agents_reconcile_legacy_bindings_v1"
 const schemaMigrationCollabRunsV1 = "collab_runs_v1"
 const schemaMigrationModelPlanRevisionsV1 = "model_plan_revisions_v1"
 const schemaMigrationAppFactoryJobsV1 = "app_factory_jobs_v1"
@@ -300,6 +301,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	// Runs after model_usage_policies exists so the bindings table can gain a
 	// foreign key referencing it.
 	if err := s.applyAgentModelBindingsV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentsV6(ctx); err != nil {
 		return err
 	}
 	if err := s.applyAppFactoryJobsV1(ctx); err != nil {

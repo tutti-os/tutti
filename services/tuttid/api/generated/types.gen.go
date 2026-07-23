@@ -4680,6 +4680,9 @@ type DetectModelPlanRequest struct {
 	// PlanId When set, omitted fields fall back to the stored plan and the outcome persists onto it.
 	PlanId   *string            `json:"planId,omitempty"`
 	Protocol *ModelPlanProtocol `json:"protocol,omitempty"`
+
+	// TemplateKind Required for unsaved drafts whose detection path depends on the access scheme, such as an official provider subscription.
+	TemplateKind *ModelPlanTemplateKind `json:"templateKind,omitempty"`
 }
 
 // DetectModelPlanResponse defines model for DetectModelPlanResponse.

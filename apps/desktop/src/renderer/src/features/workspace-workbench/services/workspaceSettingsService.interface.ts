@@ -45,11 +45,6 @@ export interface WorkspaceSettingsWorkspaceInput {
   id: string;
 }
 
-export interface WorkspaceAgentModelBindingChange {
-  defaultModel?: string | null;
-  modelPlanID?: string | null;
-}
-
 /**
  * Workspace Agent directory operations exposed by the settings service. All
  * state lives on the settings store's `agents` slice; the daemon remains
@@ -97,14 +92,9 @@ export interface IWorkspaceModelPlansController {
   fetchDraftModels(): Promise<void>;
   launchFirstUse(planID: string, agentTargetID: string): Promise<void>;
   refresh(): Promise<void>;
-  refreshBindings(): Promise<void>;
   refreshPlans(): Promise<void>;
   requestDeletePlan(planID: string): Promise<void>;
   saveDraft(): Promise<void>;
-  setAgentBinding(
-    agentTargetID: string,
-    change: WorkspaceAgentModelBindingChange
-  ): Promise<void>;
   setPlanEnabled(planID: string, enabled: boolean): Promise<void>;
   updateDraft(patch: Partial<WorkspaceModelPlanDraft>): void;
 }

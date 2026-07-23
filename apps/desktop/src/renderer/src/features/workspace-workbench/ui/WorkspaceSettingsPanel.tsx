@@ -131,7 +131,6 @@ import {
   workspaceWallpaperDisplayModes,
   workspaceWallpaperOptions
 } from "../services/workspaceWallpaper";
-import { WorkspaceAgentModelBindingSection } from "./WorkspaceAgentModelBindingSection";
 import { WorkspaceModelPlansSection } from "./WorkspaceModelPlansSection";
 import {
   workspaceSettingsInputClass,
@@ -198,6 +197,14 @@ export function WorkspaceSettingsPanel({
     pendingFeatureFlags,
     LAB_MODEL_PLANS_FLAG
   );
+  const workspaceAgentsEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    LAB_WORKSPACE_AGENTS_FLAG
+  );
+  const automationRulesEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    LAB_AUTOMATION_RULES_FLAG
+  );
 
   useEffect(() => {
     if (settingsState.open) {
@@ -212,10 +219,24 @@ export function WorkspaceSettingsPanel({
   }, [labSectionVisible, settingsService, settingsState.activeSection]);
 
   useEffect(() => {
-    if (!modelPlansEnabled && settingsState.activeSection === "apps") {
+    if (!modelPlansEnabled && settingsState.activeSection === "model") {
       settingsService.selectSection("general");
     }
   }, [modelPlansEnabled, settingsService, settingsState.activeSection]);
+
+  useEffect(() => {
+    if (
+      (!workspaceAgentsEnabled && settingsState.agentTab === "customAgents") ||
+      (!automationRulesEnabled && settingsState.agentTab === "automation")
+    ) {
+      settingsService.selectAgentTab("general");
+    }
+  }, [
+    automationRulesEnabled,
+    settingsService,
+    settingsState.agentTab,
+    workspaceAgentsEnabled
+  ]);
 
   const handleVersionTap = () => {
     if (settingsState.developerPanelVisible) {
@@ -285,18 +306,18 @@ export function WorkspaceSettingsPanel({
               id: "agent" as const,
               label: t("workspace.settings.nav.agent")
             },
+            ...(modelPlansEnabled
+              ? [
+                  {
+                    id: "model" as const,
+                    label: t("workspace.settings.nav.model")
+                  }
+                ]
+              : []),
             {
               id: "appearance" as const,
               label: t("workspace.settings.nav.appearance")
             },
-            ...(modelPlansEnabled
-              ? [
-                  {
-                    id: "apps" as const,
-                    label: t("workspace.settings.nav.apps")
-                  }
-                ]
-              : []),
             ...(settingsState.tuttiAgentSwitchEnabled
               ? [
                   {
@@ -402,7 +423,25 @@ export function WorkspaceSettingsPanel({
                     {
                       value: "agents" as const,
                       label: t("workspace.settings.agent.tabs.agents")
-                    }
+                    },
+                    ...(workspaceAgentsEnabled
+                      ? [
+                          {
+                            value: "customAgents" as const,
+                            label: t(
+                              "workspace.settings.agent.tabs.customAgents"
+                            )
+                          }
+                        ]
+                      : []),
+                    ...(automationRulesEnabled
+                      ? [
+                          {
+                            value: "automation" as const,
+                            label: t("workspace.settings.agent.tabs.automation")
+                          }
+                        ]
+                      : [])
                   ]}
                   value={settingsState.agentTab}
                   onValueChange={(tab) => settingsService.selectAgentTab(tab)}
@@ -459,6 +498,16 @@ export function WorkspaceSettingsPanel({
                       agentEnvService.open({ focus: "detect", provider })
                     }
                   />
+                ) : settingsState.agentTab === "customAgents" &&
+                  workspaceAgentsEnabled ? (
+                  <SettingsRows>
+                    <WorkspaceAgentsSection />
+                  </SettingsRows>
+                ) : settingsState.agentTab === "automation" &&
+                  automationRulesEnabled ? (
+                  <SettingsRows>
+                    <WorkspaceAutomationRulesSection />
+                  </SettingsRows>
                 ) : (
                   <WorkspaceAgentSettingsSection
                     agentConversationDetailMode={
@@ -478,10 +527,6 @@ export function WorkspaceSettingsPanel({
                     }
                     defaultAgentProvider={
                       desktopPreferencesState.defaultAgentProvider
-                    }
-                    featureFlags={
-                      desktopPreferencesState.changingFeatureFlags ??
-                      desktopPreferencesState.featureFlags
                     }
                     focusedAnchor={settingsState.generalFocusAnchor}
                     focusRequestID={settingsState.generalFocusRequestID}
@@ -538,8 +583,8 @@ export function WorkspaceSettingsPanel({
                   desktopPreferencesState.workbenchWindowSnapping
                 }
               />
-            ) : settingsState.activeSection === "apps" && modelPlansEnabled ? (
-              <WorkspaceAppsSettingsSection />
+            ) : settingsState.activeSection === "model" && modelPlansEnabled ? (
+              <WorkspaceModelSettingsSection />
             ) : settingsState.activeSection === "lab" ? (
               <WorkspaceLabSettingsSection
                 changingFeatureFlags={
@@ -571,11 +616,10 @@ export function WorkspaceSettingsPanel({
   );
 }
 
-function WorkspaceAppsSettingsSection() {
+function WorkspaceModelSettingsSection() {
   return (
     <SettingsRows>
       <WorkspaceModelPlansSection />
-      <WorkspaceAgentModelBindingSection />
     </SettingsRows>
   );
 }
@@ -2116,7 +2160,6 @@ function WorkspaceAgentSettingsSection({
   changingDefaultAgentProvider,
   changingBrowserUseConnectionMode,
   defaultAgentProvider,
-  featureFlags,
   focusedAnchor,
   focusRequestID,
   onAgentConversationDetailModeChange,
@@ -2130,7 +2173,6 @@ function WorkspaceAgentSettingsSection({
   changingDefaultAgentProvider: DesktopDefaultAgentProvider | null;
   changingBrowserUseConnectionMode: DesktopBrowserUseConnectionMode | null;
   defaultAgentProvider: DesktopDefaultAgentProvider;
-  featureFlags: DesktopFeatureFlags;
   focusedAnchor: WorkspaceSettingsGeneralFocusAnchor | null;
   focusRequestID: number;
   onAgentConversationDetailModeChange: (
@@ -2372,13 +2414,6 @@ function WorkspaceAgentSettingsSection({
           focusedAnchor === "computer-use" ? focusRequestID : 0
         }
       />
-
-      {isFeatureEnabled(featureFlags, LAB_WORKSPACE_AGENTS_FLAG) ? (
-        <WorkspaceAgentsSection />
-      ) : null}
-      {isFeatureEnabled(featureFlags, LAB_AUTOMATION_RULES_FLAG) ? (
-        <WorkspaceAutomationRulesSection />
-      ) : null}
     </div>
   );
 }

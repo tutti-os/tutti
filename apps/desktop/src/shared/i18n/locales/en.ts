@@ -518,7 +518,9 @@ export const en = {
           updateUpToDateSummary: "{{current}} · Up to date"
         },
         tabs: {
-          agents: "Agents",
+          agents: "Agent Runtime",
+          automation: "Automation",
+          customAgents: "Custom Agents",
           general: "General Settings"
         }
       },
@@ -799,7 +801,8 @@ export const en = {
         agent: "Agent",
         developer: "Developer",
         general: "General",
-        lab: "Lab"
+        lab: "Lab",
+        model: "Model"
       },
       about: {
         appName: "Tutti",
@@ -872,7 +875,7 @@ export const en = {
           saveFailed:
             "Couldn't save the Agent — check the fields and try again.",
           saving: "Saving...",
-          title: "Agents"
+          title: "Custom Agents"
         },
         automationRules: {
           addRule: "Add automation",
@@ -941,19 +944,6 @@ export const en = {
             "Save the plan, then pick a compatible agent below and finish one real call to complete verification.",
           apiKey: "API key",
           baseUrl: "Base URL",
-          bindings: {
-            description:
-              "Choose which model plan each agent uses by default. An agent's first real call completes the plan's verification.",
-            empty: "No enabled agents to bind yet.",
-            loadFailed: "We couldn't load agent bindings.",
-            modelLabel: "Default model",
-            planDefault: "Plan default",
-            planLabel: "Model plan",
-            planNone: "No plan (agent's own models)",
-            saveFailed: "Couldn't save the binding — try again.",
-            title: "Agent bindings",
-            unsupported: "Binding not supported yet"
-          },
           defaultMarker: "Default",
           delete: "Delete",
           deleteBlockedDescription:
@@ -988,6 +978,9 @@ export const en = {
             modelCatalogUnavailable: "The model list isn't available.",
             modelRejected: "The endpoint rejected the model.",
             noModelSelected: "No model selected for the test call.",
+            providerAuthRequired: "The provider needs you to sign in.",
+            providerRuntimeUnavailable:
+              "The provider's Agent Runtime isn't available.",
             unauthorized: "The endpoint rejected the credentials.",
             unknown: "The check failed."
           },
@@ -1061,12 +1054,15 @@ export const en = {
             checkApiKey: "Check the API key.",
             checkModelId: "Check the model ID.",
             checkNetworkOrBaseUrl: "Check the network or Base URL.",
+            enableProvider: "Install or enable the Agent Runtime.",
+            loginProvider: "Sign in from Agent Runtime settings.",
+            retryCompatibleAgent: "Retry with the provider's Agent Runtime.",
             selectModel: "Select a model first."
           },
           removeModel: "Remove model",
           setDefaultModel: "Set {{model}} as the default model",
           requiredFieldsMissing:
-            "Fill in the name, API key, and Base URL first.",
+            "Enter a name and model. Endpoint plans also require an API key and Base URL.",
           save: "Save",
           saveFailed: "Couldn't save — try again.",
           saving: "Saving...",

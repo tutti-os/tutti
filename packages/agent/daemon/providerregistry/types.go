@@ -65,6 +65,9 @@ type RuntimeEndpointDescriptor struct {
 	// ModelPlanModelAddressing declares the composer/settings addressing for
 	// bound plan models; empty means raw plan model ids.
 	ModelPlanModelAddressing ModelPlanModelAddressing
+	// NativeSubscription marks the one local runtime that can validate an
+	// official subscription for this protocol without API credentials.
+	NativeSubscription bool
 }
 
 // InstallerKind is a transport-neutral installer identifier. tuttid converts

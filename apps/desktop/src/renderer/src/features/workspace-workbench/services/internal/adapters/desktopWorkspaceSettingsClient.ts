@@ -27,7 +27,6 @@ import type {
 } from "@shared/contracts/ipc";
 import type {
   WorkspaceAgentDefinition,
-  WorkspaceAgentModelBinding,
   WorkspaceModelPlan,
   WorkspaceModelPlanDetection,
   WorkspaceModelPlanModel,
@@ -42,10 +41,6 @@ interface ModelPlanListResponse {
 
 interface ModelPlanReferencesResponse {
   references: WorkspaceModelPlanReference[];
-}
-
-interface AgentModelBindingListResponse {
-  bindings: WorkspaceAgentModelBinding[];
 }
 
 interface ClearWorkspaceAgentSessionsResponse {
@@ -85,17 +80,12 @@ export interface DetectModelPlanInput {
   /** When set, omitted fields fall back to the stored plan. */
   planId?: string;
   protocol?: WorkspaceModelPlanProtocol;
+  templateKind?: WorkspaceModelPlanTemplateKind;
 }
 
 export interface DetectModelPlanResult {
   detection: WorkspaceModelPlanDetection;
   discoveredModels: WorkspaceModelPlanModel[];
-}
-
-export interface SetAgentModelBindingInput {
-  defaultModel?: string | null;
-  modelPlanId?: string | null;
-  modelPolicyId?: string | null;
 }
 
 export class DesktopWorkspaceSettingsDaemonError extends Error {
@@ -216,14 +206,6 @@ export interface DesktopWorkspaceSettingsClient {
     workspaceID: string,
     input: DetectModelPlanInput
   ): Promise<DetectModelPlanResult>;
-  listAgentModelBindings(
-    workspaceID: string
-  ): Promise<WorkspaceAgentModelBinding[]>;
-  setAgentModelBinding(
-    workspaceID: string,
-    agentTargetID: string,
-    input: SetAgentModelBindingInput
-  ): Promise<WorkspaceAgentModelBinding>;
 }
 
 export function createDesktopWorkspaceSettingsClient(input: {
@@ -442,23 +424,6 @@ export function createDesktopWorkspaceSettingsClient(input: {
         {
           body,
           method: "POST"
-        }
-      );
-    },
-    async listAgentModelBindings(workspaceID) {
-      const response = await requestDaemon<AgentModelBindingListResponse>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/agent-model-bindings`
-      );
-      return response.bindings;
-    },
-    async setAgentModelBinding(workspaceID, agentTargetID, body) {
-      return await requestDaemon<WorkspaceAgentModelBinding>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/agent-model-bindings/${encodeURIComponent(agentTargetID)}`,
-        {
-          body,
-          method: "PUT"
         }
       );
     }

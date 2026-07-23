@@ -5,29 +5,23 @@ supported agent runtimes through a named model endpoint. A plan owns its wire
 protocol, endpoint, encrypted credential, model catalog, default model,
 detection state, enabled state, and first-successful-use state.
 
-This slice owns plans and per-agent-target bindings. A separate staged layer,
-`services/tuttid/service/modelpolicy`, adds model-usage policies (role-to-plan
-mappings, per-session overrides, and a session acceptance record) and registers
-those policies as plan consumers for the deletion protection below. Binding and
-policy links are validated in both directions: a binding may reference only a
-model-usage policy that exists in the same workspace, and a policy cannot be
-deleted while any agent binding references it — deletion is rejected with a 409
-until those bindings are cleared or rebound. The daemon does not yet execute a
-policy's role map or its fixed review rule: review automation and automated
-acceptance advancement remain deferred to a later stack layer, so only the
-explicit user-acceptance endpoint moves the acceptance ladder today. This slice
-does not define workspace-app plan consumers.
+This slice owns Plans. `WorkspaceAgent` is the user-facing configuration seam
+that combines one Harness AgentTarget with an optional Plan/default model and
+instructions. The older per-AgentTarget binding and `modelpolicy` domains are
+compatibility-only: they remain readable for historical sessions and deletion
+protection, but Desktop Settings must not expose them as parallel writable
+configuration.
 
 ## Ownership
 
-- `services/tuttid/biz/modelplan` and `modelbinding` own the product models and
-  validation.
-- `services/tuttid/data/workspace` owns plan and binding persistence.
+- `services/tuttid/biz/modelplan` owns the Plan model and validation.
+- `services/tuttid/data/workspace` owns Plan persistence and retains legacy
+  binding persistence during the compatibility window.
 - `services/tuttid/service/modelplan` owns CRUD, staged endpoint detection,
   deletion protection, and first-use projection state.
-- `services/tuttid/service/modelbinding` owns target-to-plan validation and
-  reference listing. A binding is accepted only when the target provider
-  declares model-plan support for the plan's protocol.
+- `services/tuttid/service/workspaceagent` owns every new Harness-to-Plan
+  mapping. `services/tuttid/service/modelbinding` is a legacy adapter and
+  reference source; Desktop no longer calls its write routes.
 - `packages/agent/daemon/providerregistry` declares whether a provider runtime
   accepts a model-plan endpoint and which protocol it consumes.
 - `packages/agent/runtimeprep` contains the provider-specific endpoint
@@ -36,10 +30,10 @@ does not define workspace-app plan consumers.
   OpenCode receives a session-scoped `opencode.json` provider block via
   `OPENCODE_CONFIG` (credential travels only as `TUTTI_MODEL_PLAN_API_KEY`
   with an `{env:…}` reference in the file).
-- `services/tuttid/service/agent` is an adapter: it resolves the workspace
-  binding, supplies the endpoint to runtime preparation, and projects the
-  first completed turn back to the plan service. It does not change session or
-  Turn lifecycle semantics owned by `packages/agent/host`.
+- `services/tuttid/service/agent` resolves the WorkspaceAgent, supplies its
+  Plan endpoint to runtime preparation, and projects the first completed turn
+  back to the Plan service. Unsnapshotted historical sessions may still use
+  the isolated legacy-binding fallback.
 - Desktop settings and AgentGUI composer surfaces consume the daemon APIs
   behind the `lab.modelPlans` gate; they do not own plan credentials or
   detection state.
@@ -53,12 +47,13 @@ resolves protocols through the catalog instead of provider-identity switches.
 
 ## Request And Runtime Flow
 
-1. A client creates and detects a plan through the OpenAPI-defined daemon
+1. A client creates and detects a Plan through the OpenAPI-defined daemon
    routes.
-2. The client binds an agent target to that plan and, optionally, one model
-   from the plan catalog.
-3. Before a new session starts, the tuttid agent adapter resolves the binding
-   and validates an explicitly requested model against the plan catalog.
+2. The user explicitly creates a WorkspaceAgent by choosing one Harness and,
+   optionally, one Plan/default model. Saving a Plan never creates the Harness
+   × Plan Cartesian product.
+3. Before a new session starts, tuttid resolves that WorkspaceAgent and
+   validates its requested model against the Plan catalog.
 4. Runtime preparation injects the endpoint and credential only into the
    session-scoped provider environment/configuration. Credentials are never
    returned by the API or written into generated instructions and manifests.
@@ -80,11 +75,11 @@ those bindings first.
 
 ## Rollout Gate
 
-Model plan and agent-binding write routes require the device-global
-`lab.modelPlans` preference. Reads and previously established runtime bindings
-continue to work when the flag is off. Missing or unreadable preferences fail
-closed for writes. The desktop model-plan settings entry is hidden unless the
-same Lab toggle is on.
+Model Plan write routes require the device-global `lab.modelPlans` preference.
+Reads and historical runtime compatibility continue to work when the flag is
+off. Missing or unreadable preferences fail closed for writes. Desktop exposes
+Plans in an independent top-level Model tab; `lab.workspaceAgents` separately
+gates the Custom Agents tab under Agent.
 
 ## Credential Ownership
 
@@ -120,10 +115,18 @@ detection may use the first candidate only as the ephemeral inference target
 for that run. The tested id is recorded in the detection snapshot, while the
 Plan's `models` and `defaultModel` remain unchanged until the user selects one.
 
+`official_subscription` uses a different adapter behind the same stages. The
+provider registry chooses the one native runtime for each protocol (Codex for
+OpenAI and Claude Code for Anthropic). Detection checks installation/runtime,
+the provider's existing login, provider-native model discovery, and one hidden
+minimal inference call. It never accepts a Base URL/API key or returns native
+credentials. Endpoint-backed templates continue to use the HTTP detection
+path.
+
 ## Runtime Injection Chain
 
 ```text
-agent target binding (workspace settings)
+WorkspaceAgent primary Plan/default model
   -> agent.Service.resolveModelPlanEndpoint (Create + prepareRuntime)
   -> runtimeprep.PrepareInput.ModelEndpoint
   -> CodexPreparer: session config.toml [model_providers.tutti-model-plan] + env_key
@@ -187,24 +190,26 @@ protocol-compatible harness target with the plan/model prefilled
 
 `model_plans_v1` backfills every legacy `managed_model_provider_credentials`
 row into a named plan (`mp-migrated-<provider>`), copying the ciphertext
-as-is. Legacy tables stay for the workspace-app grant broker. Historical
-sessions are untouched: bindings only affect sessions that have not started.
+as-is. The WorkspaceAgent migration deterministically materializes legacy
+AgentTarget bindings as `source=legacy_binding` Agents. Legacy binding rows
+stay for rollback and pre-snapshot session recovery; new renderer writes are
+forbidden and the migration must remain idempotent.
 
 ## Reference Protection
 
 `DELETE /v1/workspaces/{id}/model-plans/{planId}` is blocked (409
-`model_plan_referenced`) while agent bindings or policies reference the plan;
+`model_plan_referenced`) while WorkspaceAgents or legacy consumers reference the plan;
 `GET .../references` lists the consumers so the UI shows impact before edits.
 The resolver composes per-consumer sources (`modelbinding.Service`,
-`modelpolicy.Service`). Symmetrically,
+`modelpolicy.Service`, and `workspaceagent.Service`). Symmetrically,
 `DELETE /v1/workspaces/{id}/model-policies/{policyId}` is blocked (409
 `model_policy_referenced`) while any agent binding still references the
 policy.
 
 ## What To Avoid
 
-- Do not add a "global current model" that switches every agent at once; the
-  binding is per agent target.
+- Do not add a "global current model" or a second AgentTarget binding editor.
+  New model selection is owned by explicit WorkspaceAgents.
 - Do not surface plan credentials to the renderer, tests, or snapshots.
 - Do not advertise `modelPlanBinding` for providers without a real injection
   path.

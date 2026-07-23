@@ -259,14 +259,19 @@ func (api DaemonAPI) DetectModelPlan(ctx context.Context, request tuttigenerated
 			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody()),
 		}, nil
 	}
+	templateKind := ""
+	if request.Body.TemplateKind != nil {
+		templateKind = string(*request.Body.TemplateKind)
+	}
 	input := modelplanservice.DetectInput{
-		WorkspaceID: request.WorkspaceID,
-		PlanID:      stringValue(request.Body.PlanId),
-		Protocol:    string(protocolValue(request.Body.Protocol)),
-		BaseURL:     stringValue(request.Body.BaseUrl),
-		APIKey:      request.Body.ApiKey,
-		Models:      bizModelPlanModels(request.Body.Models),
-		Model:       stringValue(request.Body.Model),
+		WorkspaceID:  request.WorkspaceID,
+		PlanID:       stringValue(request.Body.PlanId),
+		TemplateKind: templateKind,
+		Protocol:     string(protocolValue(request.Body.Protocol)),
+		BaseURL:      stringValue(request.Body.BaseUrl),
+		APIKey:       request.Body.ApiKey,
+		Models:       bizModelPlanModels(request.Body.Models),
+		Model:        stringValue(request.Body.Model),
 	}
 	result, err := api.ModelPlanService.Detect(ctx, input)
 	if err != nil {

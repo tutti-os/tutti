@@ -686,8 +686,9 @@ Do not start by adding a fallback to the visible component.
 
 ### 8.1 Agent settings surface
 
-The desktop settings panel's agent section has two tabs: General Settings and
-an Agents tab. The Agents tab renders provider rows from the authoritative
+The desktop settings panel's Agent section has four independently gated tabs:
+General Settings, Agent Runtime, Custom Agents, and Automation. The Agent
+Runtime tab renders provider rows from the authoritative
 identity catalog plus the live `IAgentProviderStatusService`; it does not copy
 a provider registry. Its Enable/Disable control reads all Agent Targets from
 `IAgentsService` and persists the daemon-owned Agent Target `enabled` field.
@@ -698,9 +699,11 @@ presentation-only (ordering and optional sidebar personalization); they do not
 authorize an Agent Target or replace daemon enablement. Staged
 (Beta/Preview/in-progress) rows are gated by the `lab.previewAgents` switch via
 the provider-neutral `agentGuiWorkbenchPreviewProviders` predicate; stable rows
-always show in settings. Deep links reach the tab through the existing
-`openWorkspaceSettingsPanel` intent (now carrying optional `pane`/`provider`)
-plus a bumped `agentFocus` request that scrolls and briefly highlights the row;
+always show in settings. Deep links publish the existing
+`openWorkspaceSettingsPanel` intent with optional `pane`/`provider`; the
+Desktop Settings service is the single adapter that resolves legacy aliases
+and current destinations for workspace and standalone windows. An Agent
+Runtime destination also bumps `agentFocus` to scroll and briefly highlight the row;
 a link to a hidden preview agent surfaces an "enable Preview Agents" hint rather
 than failing silently. This is a settings surface, not a second Agent Target
 state store.

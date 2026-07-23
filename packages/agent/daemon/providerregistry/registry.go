@@ -106,6 +106,9 @@ func ResolveEventProvider(value string) (EventProvider, bool) {
 }
 
 func ValidateMigrated() error {
+	if err := validateNativeSubscriptions(Migrated()); err != nil {
+		return err
+	}
 	providerKeys := map[string]string{}
 	eventKeys := map[string]string{}
 	targetIDs := map[string]string{}

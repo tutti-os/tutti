@@ -170,11 +170,12 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   ): void {
     this.scheduleTuttiAgentSwitchInitialization();
     this.syncWorkspace(workspace);
-    // "managed-models" remains the external open-request alias for the pane
-    // that now hosts model plans.
-    const modelPlansRequested = options?.pane === "managed-models";
-    if (modelPlansRequested) {
-      this.store.activeSection = "apps";
+    // Normalize every legacy/plain-string settings request at this single
+    // host-owned seam. Callers publish intent; only Settings understands its
+    // current information architecture.
+    const requestedSection = options?.section as string | undefined;
+    if (options?.pane === "managed-models" || requestedSection === "apps") {
+      this.store.activeSection = "model";
     } else if (options?.section) {
       this.store.activeSection = options.section;
     }
@@ -194,6 +195,15 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
           ? options.provider
           : null;
       this.store.agentFocusRequestID += 1;
+    } else if (
+      options?.pane === "custom-agents" ||
+      options?.pane === "workspace-agents"
+    ) {
+      this.store.activeSection = "agent";
+      this.store.agentTab = "customAgents";
+    } else if (options?.pane === "automation-rules") {
+      this.store.activeSection = "agent";
+      this.store.agentTab = "automation";
     }
     const wasOpen = this.store.open;
     this.store.open = true;
@@ -201,16 +211,8 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     if (!wasOpen) {
       this.reportSettingsOpened();
       void this.refreshDeveloperLogs();
-      if (
-        this.store.activeSection === "agent" ||
-        this.store.agentTab === "agents"
-      ) {
-        this.refreshAgentSettings();
-      } else {
-        this.refreshModelPlansSurface();
-      }
-    } else if (this.store.activeSection === "apps") {
     }
+    this.refreshActiveSettingsSurface();
   }
 
   closePanel(): void {
@@ -288,19 +290,20 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 
     this.store.activeSection = sectionID;
     this.reportSettingsSectionSwitched(sectionID);
-    if (sectionID === "apps") {
+    if (sectionID === "model") {
       this.refreshModelPlansSurface();
     }
     if (sectionID === "agent") {
-      this.refreshAgentSettings();
+      this.refreshActiveAgentTab();
     }
   }
 
   selectAgentTab(tab: WorkspaceSettingsAgentTab): void {
-    this.store.agentTab = tab;
-    if (tab === "agents") {
-      this.refreshAgentSettings();
+    if (this.store.agentTab === tab) {
+      return;
     }
+    this.store.agentTab = tab;
+    this.refreshActiveAgentTab();
   }
 
   setDeveloperPanelVisible(visible: boolean): void {
@@ -981,16 +984,28 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.store.developerLogs.loading = false;
   }
 
-  private refreshAgentSettings(): void {
-    this.refreshModelPlansSurface();
-    void this.automationRules.refresh();
+  private refreshActiveSettingsSurface(): void {
+    if (this.store.activeSection === "model") {
+      this.refreshModelPlansSurface();
+      return;
+    }
+    if (this.store.activeSection === "agent") {
+      this.refreshActiveAgentTab();
+    }
   }
 
-  // Plans stay Plan-only via controller.refresh(); bindings and harness targets
-  // load separately so model-plan first-use can list compatible Agents.
+  private refreshActiveAgentTab(): void {
+    if (this.store.agentTab === "customAgents") {
+      void this.agents.refresh();
+    } else if (this.store.agentTab === "automation") {
+      void this.automationRules.refresh();
+    }
+  }
+
+  // Model settings need Plans plus the Runtime catalog used by the explicit
+  // first-use launch. No legacy binding read or write participates here.
   private refreshModelPlansSurface(): void {
     void this.modelPlans.refresh();
-    void this.modelPlans.refreshBindings();
     void this.agents.refresh();
   }
 

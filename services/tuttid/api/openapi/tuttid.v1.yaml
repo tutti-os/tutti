@@ -7745,6 +7745,11 @@ components:
           type: string
           nullable: true
           description: When set, omitted fields fall back to the stored plan and the outcome persists onto it.
+        templateKind:
+          allOf:
+            - $ref: "#/components/schemas/ModelPlanTemplateKind"
+          nullable: true
+          description: Required for unsaved drafts whose detection path depends on the access scheme, such as an official provider subscription.
         protocol:
           allOf:
             - $ref: "#/components/schemas/ModelPlanProtocol"

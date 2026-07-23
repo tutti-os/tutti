@@ -27,8 +27,12 @@ const (
 	FailureModelRejected    = "model_rejected"
 	FailureInference        = "inference_failed"
 	FailureAgentRuntime     = "agent_runtime_failed"
+	FailureProviderRuntime  = "provider_runtime_unavailable"
+	FailureProviderAuth     = "provider_auth_required"
 	RemedyCheckNetwork      = "check_network_or_base_url"
 	RemedyCheckAPIKey       = "check_api_key"
+	RemedyEnableProvider    = "install_or_enable_agent_provider"
+	RemedyLoginProvider     = "login_agent_provider"
 	RemedyAddModelsManually = "add_models_manually"
 	RemedyCheckModelID      = "check_model_id"
 	RemedySelectModel       = "select_model"
@@ -41,10 +45,11 @@ var ErrDetectionInput = errors.New("invalid model plan detection input")
 // reuses stored fields for anything omitted and persists the outcome; without
 // PlanID it verifies an unsaved draft.
 type DetectInput struct {
-	WorkspaceID string
-	PlanID      string
-	Protocol    string
-	BaseURL     string
+	WorkspaceID  string
+	PlanID       string
+	TemplateKind string
+	Protocol     string
+	BaseURL      string
 	// APIKey nil reuses the stored plan credential.
 	APIKey *string
 	Models []modelplanbiz.Model
@@ -85,6 +90,16 @@ func (s *Service) Detect(ctx context.Context, input DetectInput) (DetectResult, 
 	if !modelplanbiz.IsProtocol(string(protocol)) {
 		return DetectResult{}, fmt.Errorf("%w: protocol is unsupported", ErrDetectionInput)
 	}
+	templateKind := modelplanbiz.TemplateKind(strings.TrimSpace(input.TemplateKind))
+	if templateKind == "" && hasStored {
+		templateKind = stored.TemplateKind
+	}
+	if templateKind == "" {
+		templateKind = modelplanbiz.TemplateCustom
+	}
+	if !modelplanbiz.IsTemplateKind(string(templateKind)) {
+		return DetectResult{}, fmt.Errorf("%w: template kind is unsupported", ErrDetectionInput)
+	}
 	baseURL := strings.TrimSpace(input.BaseURL)
 	if baseURL == "" && hasStored {
 		baseURL = stored.BaseURL
@@ -108,44 +123,53 @@ func (s *Service) Detect(ctx context.Context, input DetectInput) (DetectResult, 
 	}
 
 	now := s.now()
-	snapshot := modelplanbiz.DetectionSnapshot{CheckedAt: now, Model: inferenceModel}
+	var snapshot modelplanbiz.DetectionSnapshot
 	var discovered []modelplanbiz.Model
+	if templateKind == modelplanbiz.TemplateOfficialSubscription {
+		snapshot, discovered = s.detectNativeSubscription(ctx, NativeSubscriptionProbeInput{
+			WorkspaceID: workspaceID,
+			Protocol:    protocol,
+			Model:       inferenceModel,
+			Models:      models,
+		}, now)
+	} else {
+		snapshot = modelplanbiz.DetectionSnapshot{CheckedAt: now, Model: inferenceModel}
+		networkResult := s.checkNetwork(ctx, protocol, baseURL, now)
+		snapshot.Stages = append(snapshot.Stages, networkResult)
 
-	networkResult := s.checkNetwork(ctx, protocol, baseURL, now)
-	snapshot.Stages = append(snapshot.Stages, networkResult)
+		authResult := modelplanbiz.StageResult{Stage: modelplanbiz.StageAuth, Status: modelplanbiz.StageSkipped, CheckedAt: now}
+		discoveryResult := modelplanbiz.StageResult{Stage: modelplanbiz.StageModelDiscovery, Status: modelplanbiz.StageSkipped, CheckedAt: now}
+		inferenceResult := modelplanbiz.StageResult{Stage: modelplanbiz.StageInference, Status: modelplanbiz.StageSkipped, CheckedAt: now}
 
-	authResult := modelplanbiz.StageResult{Stage: modelplanbiz.StageAuth, Status: modelplanbiz.StageSkipped, CheckedAt: now}
-	discoveryResult := modelplanbiz.StageResult{Stage: modelplanbiz.StageModelDiscovery, Status: modelplanbiz.StageSkipped, CheckedAt: now}
-	inferenceResult := modelplanbiz.StageResult{Stage: modelplanbiz.StageInference, Status: modelplanbiz.StageSkipped, CheckedAt: now}
-
-	if networkResult.Status == modelplanbiz.StagePassed {
-		authResult, discoveryResult, discovered = s.checkAuthAndDiscovery(ctx, protocol, baseURL, apiKey, models, now)
-		if authResult.Status != modelplanbiz.StageFailed {
-			// Discovery candidates are not user selections. When the draft has
-			// no selected model, use the first candidate only for this run's
-			// connectivity check and record the model that was actually tested.
-			if inferenceModel == "" && len(discovered) > 0 {
-				inferenceModel = discovered[0].ID
-				snapshot.Model = inferenceModel
-			}
-			inferenceResult = s.checkInference(ctx, protocol, baseURL, apiKey, inferenceModel, now)
-			if inferenceResult.Status == modelplanbiz.StageFailed && inferenceResult.FailureReason == FailureUnauthorized {
-				// Inference is the authoritative credential check when the
-				// catalog endpoint could not verify the key.
-				authResult = modelplanbiz.StageResult{
-					Stage:         modelplanbiz.StageAuth,
-					Status:        modelplanbiz.StageFailed,
-					FailureReason: FailureUnauthorized,
-					Remedy:        RemedyCheckAPIKey,
-					CheckedAt:     now,
+		if networkResult.Status == modelplanbiz.StagePassed {
+			authResult, discoveryResult, discovered = s.checkAuthAndDiscovery(ctx, protocol, baseURL, apiKey, models, now)
+			if authResult.Status != modelplanbiz.StageFailed {
+				// Discovery candidates are not user selections. When the draft has
+				// no selected model, use the first candidate only for this run's
+				// connectivity check and record the model that was actually tested.
+				if inferenceModel == "" && len(discovered) > 0 {
+					inferenceModel = discovered[0].ID
+					snapshot.Model = inferenceModel
 				}
-			} else if inferenceResult.Status == modelplanbiz.StagePassed && authResult.Status == modelplanbiz.StageSkipped {
-				authResult = modelplanbiz.StageResult{Stage: modelplanbiz.StageAuth, Status: modelplanbiz.StagePassed, CheckedAt: now}
+				inferenceResult = s.checkInference(ctx, protocol, baseURL, apiKey, inferenceModel, now)
+				if inferenceResult.Status == modelplanbiz.StageFailed && inferenceResult.FailureReason == FailureUnauthorized {
+					// Inference is the authoritative credential check when the
+					// catalog endpoint could not verify the key.
+					authResult = modelplanbiz.StageResult{
+						Stage:         modelplanbiz.StageAuth,
+						Status:        modelplanbiz.StageFailed,
+						FailureReason: FailureUnauthorized,
+						Remedy:        RemedyCheckAPIKey,
+						CheckedAt:     now,
+					}
+				} else if inferenceResult.Status == modelplanbiz.StagePassed && authResult.Status == modelplanbiz.StageSkipped {
+					authResult = modelplanbiz.StageResult{Stage: modelplanbiz.StageAuth, Status: modelplanbiz.StagePassed, CheckedAt: now}
+				}
 			}
 		}
-	}
 
-	snapshot.Stages = append(snapshot.Stages, authResult, discoveryResult, inferenceResult)
+		snapshot.Stages = append(snapshot.Stages, authResult, discoveryResult, inferenceResult)
+	}
 
 	agentStage := modelplanbiz.StageResult{Stage: modelplanbiz.StageAgentRuntime, Status: modelplanbiz.StagePending, CheckedAt: now}
 	if hasStored {

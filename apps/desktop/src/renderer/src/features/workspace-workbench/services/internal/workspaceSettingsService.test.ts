@@ -322,7 +322,7 @@ test("WorkspaceSettingsService opens the model plans pane for managed-models req
     }
   );
 
-  assert.equal(service.store.activeSection, "apps");
+  assert.equal(service.store.activeSection, "model");
 });
 
 test("WorkspaceSettingsService opens agent settings with a focused anchor", () => {
@@ -1033,10 +1033,6 @@ function createWorkspaceSettingsClient(
       detection: { stages: [] },
       discoveredModels: []
     }),
-    listAgentModelBindings: async () => [],
-    setAgentModelBinding: async () => {
-      throw new Error("not used");
-    },
     ...overrides
   };
 }
@@ -1281,73 +1277,69 @@ test("WorkspaceSettingsService Agents deep-link works without a provider (blank 
   assert.equal(service.store.agentFocusProvider, null);
 });
 
-test("WorkspaceSettingsService loads agent bindings when the model-plans surface opens", async () => {
+test("WorkspaceSettingsService deep-links to Custom Agents and Automation", () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({})
+  });
+
+  service.openPanel({ id: "workspace-1" }, { pane: "custom-agents" });
+  assert.equal(service.store.activeSection, "agent");
+  assert.equal(service.store.agentTab, "customAgents");
+
+  service.openPanel({ id: "workspace-1" }, { pane: "automation-rules" });
+  assert.equal(service.store.activeSection, "agent");
+  assert.equal(service.store.agentTab, "automation");
+});
+
+test("WorkspaceSettingsService loads Plans and Runtime targets only on the Model surface", async () => {
   let listPlansCalls = 0;
-  let listBindingsCalls = 0;
-  let listTargetsCalls = 0;
+  let listWorkspaceAgentsCalls = 0;
   const service = new WorkspaceSettingsService({
     client: createWorkspaceSettingsClient({
-      listAgentTargets: async () => {
-        listTargetsCalls += 1;
-        return [
-          createTuttiAgentTarget(true),
-          {
-            ...createTuttiAgentTarget(true),
-            enabled: false,
-            id: "local:codex-disabled",
-            name: "Codex Disabled",
-            provider: "codex",
-            sortOrder: 10
-          },
-          {
-            ...createTuttiAgentTarget(true),
-            id: "local:codex",
-            name: "Codex",
-            provider: "codex",
-            sortOrder: 5
-          }
-        ];
-      },
       listModelPlans: async () => {
         listPlansCalls += 1;
         return [];
       },
-      listAgentModelBindings: async () => {
-        listBindingsCalls += 1;
-        return [
-          {
-            workspaceId: "workspace-1",
-            agentTargetId: "local:codex",
-            defaultModel: "gpt-5.5",
-            modelPlanId: "plan-1"
-          }
-        ];
+      listWorkspaceAgents: async () => {
+        listWorkspaceAgentsCalls += 1;
+        return [];
       }
     })
   });
 
   service.openPanel({ id: "workspace-1" });
-  await waitFor(
-    () =>
-      service.store.modelPlans.bindings.agentTargets.length > 0 &&
-      !service.store.modelPlans.bindings.loading
-  );
+  assert.equal(listPlansCalls, 0);
+  assert.equal(listWorkspaceAgentsCalls, 0);
 
-  assert.ok(listPlansCalls >= 1);
-  assert.ok(listBindingsCalls >= 1);
-  assert.ok(listTargetsCalls >= 1);
-  assert.deepEqual(
-    service.store.modelPlans.bindings.agentTargets.map((target) => target.id),
-    ["local:codex", "local:tutti-agent"]
-  );
-  assert.equal(
-    service.store.modelPlans.bindings.bindings[0]?.agentTargetId,
-    "local:codex"
-  );
+  service.selectSection("model");
+  await waitFor(() => listPlansCalls > 0 && listWorkspaceAgentsCalls > 0);
+});
 
-  // Selecting apps again after opening another section must reload bindings.
-  service.selectSection("appearance");
-  const bindingsBeforeApps = listBindingsCalls;
-  service.selectSection("apps");
-  await waitFor(() => listBindingsCalls > bindingsBeforeApps);
+test("WorkspaceSettingsService refreshes Custom Agents and Automation by tab", async () => {
+  let listWorkspaceAgentsCalls = 0;
+  let listAutomationRulesCalls = 0;
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listAutomationRules: async () => {
+        listAutomationRulesCalls += 1;
+        return [];
+      },
+      listWorkspaceAgents: async () => {
+        listWorkspaceAgentsCalls += 1;
+        return [];
+      }
+    })
+  });
+
+  service.openPanel({ id: "workspace-1" });
+  service.selectSection("agent");
+  assert.equal(listWorkspaceAgentsCalls, 0);
+  assert.equal(listAutomationRulesCalls, 0);
+
+  service.selectAgentTab("customAgents");
+  await waitFor(() => listWorkspaceAgentsCalls > 0);
+  assert.equal(listAutomationRulesCalls, 0);
+
+  service.selectAgentTab("automation");
+  await waitFor(() => listAutomationRulesCalls > 0);
 });

@@ -18,8 +18,9 @@ func claudeCodeDescriptor() ProviderDescriptor {
 					"ANTHROPIC_BASE_URL",
 					"ANTHROPIC_API_BASE_URL",
 				},
-				ConfigKind:        EndpointConfigKindClaudeSettings,
-				ModelPlanProtocol: ModelPlanProtocolAnthropic,
+				ConfigKind:         EndpointConfigKindClaudeSettings,
+				ModelPlanProtocol:  ModelPlanProtocolAnthropic,
+				NativeSubscription: true,
 			},
 		},
 		Status: StatusDescriptor{

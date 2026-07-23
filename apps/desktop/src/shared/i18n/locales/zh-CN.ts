@@ -499,7 +499,9 @@ export const zhCN = {
           updateUpToDateSummary: "{{current}} · 已是最新"
         },
         tabs: {
-          agents: "Agents",
+          agents: "Agent Runtime",
+          automation: "自动化",
+          customAgents: "自定义 Agent",
           general: "通用设置"
         }
       },
@@ -752,7 +754,8 @@ export const zhCN = {
         agent: "Agent",
         developer: "开发者",
         general: "通用",
-        lab: "实验室"
+        lab: "实验室",
+        model: "模型"
       },
       about: {
         appName: "Tutti",
@@ -820,7 +823,7 @@ export const zhCN = {
           save: "保存 Agent",
           saveFailed: "Agent 保存失败，请检查配置后重试",
           saving: "保存中...",
-          title: "Agents"
+          title: "自定义 Agent"
         },
         automationRules: {
           addRule: "添加自动化",
@@ -883,19 +886,6 @@ export const zhCN = {
             "保存方案后，在下方选择兼容的 Agent 完成第一次真实调用，即可完成验证",
           apiKey: "API 密钥",
           baseUrl: "Base URL",
-          bindings: {
-            description:
-              "为每个 Agent 选择默认使用的模型方案，Agent 的第一次真实调用会完成方案验证",
-            empty: "暂无可绑定的 Agent",
-            loadFailed: "暂时无法加载 Agent 绑定",
-            modelLabel: "默认模型",
-            planDefault: "方案默认",
-            planLabel: "模型方案",
-            planNone: "不绑定（使用 Agent 自带模型）",
-            saveFailed: "绑定保存失败，请重试",
-            title: "Agent 绑定",
-            unsupported: "暂不支持绑定"
-          },
           defaultMarker: "默认",
           delete: "删除",
           deleteBlockedDescription: "改绑或停用以下引用后才能删除",
@@ -926,6 +916,8 @@ export const zhCN = {
             modelCatalogUnavailable: "模型列表不可用",
             modelRejected: "接入点拒绝了该模型",
             noModelSelected: "没有可用于测试调用的模型",
+            providerAuthRequired: "需要先登录模型提供商",
+            providerRuntimeUnavailable: "对应的 Agent Runtime 当前不可用",
             unauthorized: "接入点拒绝了凭证",
             unknown: "检测失败"
           },
@@ -996,6 +988,9 @@ export const zhCN = {
             checkApiKey: "请检查 API 密钥",
             checkModelId: "请检查模型 ID",
             checkNetworkOrBaseUrl: "请检查网络或 Base URL",
+            enableProvider: "请安装或启用对应的 Agent Runtime",
+            loginProvider: "请前往 Agent Runtime 设置完成登录",
+            retryCompatibleAgent: "请使用提供商对应的 Agent Runtime 重试",
             selectModel: "请先选择模型"
           },
           removeModel: "移除模型",
