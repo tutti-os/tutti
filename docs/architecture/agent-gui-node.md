@@ -500,6 +500,24 @@ A controller may compose flows but cannot become a second lifecycle state machin
 
 Activation and existing-Session submit share a canonical prompt envelope. Submit eligibility includes text and renderable structured content; an individual composer does not redefine it.
 
+The conversation composer area is a stable `AgentComposerRegion` with explicit
+floating-control, lifted-interaction, accessory, and primary-composer slots.
+Workflow features compose through the accessory slot instead of adding another
+bottom-dock layout or reaching into composer DOM. A disclosure accessory owns
+only presentation and expanded state; its domain controller owns phase
+selection and commands.
+
+Tutti plan review and Issue execution project into one
+composer-anchored `TuttiWorkflowDock`. The same banner shell expands upward and
+moves through `review`, UI-local `materializing`, `execution`, or `error`;
+there is no top-level Plan/Task tab and no duplicate full plan or Issue card in
+the conversation timeline. Accepting a plan stores only the checkpoint identity
+and title needed to bridge the read-model handoff, not an accepted-plan copy.
+During that handoff the draft remains editable while submit is disabled. The
+arrival of a newer actionable plan takes presentation priority over an existing
+Issue, and the disclosure's expanded state survives phase changes so the UI
+does not jump.
+
 An active Tutti Mode composer badge is an intensity-settings entry, not a
 destructive toggle. Clicking it opens the UI-local `TuttiBudgetPopover`, seeded
 from the engine-projected orchestration intensity. Cancel discards the draft;

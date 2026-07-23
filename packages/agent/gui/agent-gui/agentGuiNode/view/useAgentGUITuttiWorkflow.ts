@@ -1,13 +1,12 @@
-import { useState, type RefObject } from "react";
+import { useState } from "react";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import {
   mergeTaskAssignmentDraft,
   taskAssignmentInputsFromDrafts,
   useTuttiModePlanPanels,
-  type TuttiModePlanPanelViewModel,
+  type TuttiModePlanAssignmentCatalog,
   type TuttiModePlanTaskAssignmentDraft,
   type TuttiModePlanTaskAssignmentDrafts,
-  type TuttiPlanIssueSnapshot,
   type TuttiPlanIssueTaskDecision
 } from "../../../workspaceWorkflow";
 import {
@@ -19,57 +18,48 @@ import type {
   AgentGUINodeViewProps,
   AgentGUIViewLabels
 } from "../AgentGUINodeView";
-import type { TuttiPlanIssueStatusStripCounts } from "../TuttiPlanIssueStatusStrip";
 import { useStableEventCallback } from "./agentGUIViewUtils";
-import type { AgentTranscriptAttachmentLocator } from "../../../shared/agentConversation/components/AgentTranscriptView";
+import type { TuttiWorkflowDockPhase } from "../TuttiWorkflowDock";
 
-export interface AgentGUITuttiPlanReview {
-  tuttiModePlanPanels: ReturnType<typeof useTuttiModePlanPanels>;
-  planAssignmentDrafts: Readonly<
-    Record<string, TuttiModePlanTaskAssignmentDrafts>
-  >;
-  handlePlanAssignmentDraftChange: (
-    panelId: string,
-    taskId: string,
-    patch: TuttiModePlanTaskAssignmentDraft
-  ) => void;
-  pendingPlanPanel: TuttiModePlanPanelViewModel | null;
-  pendingPlanSubmitting: boolean;
+export interface AgentGUITuttiWorkflowComposerController {
   planReviewSendActive: boolean;
   planReviewIntensityDiverged: boolean;
   acceptPendingPlan: () => void;
-  cancelPendingPlan: () => void;
   setTuttiModeActiveAndSettleReview: (active: boolean) => void;
   submitPromptOrDecidePlan: (
     ...args: Parameters<AgentGUINodeViewProps["actions"]["submitPrompt"]>
   ) => void;
-  planIssue: TuttiPlanIssueSnapshot | null;
-  planIssueDecideAvailable: boolean;
-  decidePlanIssueTask: (
+}
+
+export interface AgentGUITuttiWorkflowDockController {
+  assignmentCatalog: TuttiModePlanAssignmentCatalog;
+  assignmentDrafts: TuttiModePlanTaskAssignmentDrafts;
+  cancelExecution?: () => Promise<void>;
+  cancelReview: () => void;
+  changeIntensity: (value: number) => void;
+  decideTask?: (
     taskId: string,
     decision: TuttiPlanIssueTaskDecision
   ) => Promise<void>;
-  planIssueCancelAvailable: boolean;
-  cancelPlanIssueExecution: () => Promise<void>;
-  openPlanIssueTaskSession: (taskId: string) => Promise<void>;
-  openPlanIssue: () => void;
-  jumpToPlanIssuePanel: () => void;
-  tuttiPlanReview: {
-    planTitle: string;
-    submitting: boolean;
-    intensity: number;
-    intensityDiverged: boolean;
-  } | null;
-  tuttiPlanIssueStatus:
-    | (TuttiPlanIssueStatusStripCounts & { title: string })
-    | null;
+  openIssue?: () => void;
+  openTask?: (taskId: string) => Promise<void>;
+  phase: TuttiWorkflowDockPhase | null;
+  retry: () => void;
+  updateAssignment: (
+    taskId: string,
+    patch: TuttiModePlanTaskAssignmentDraft
+  ) => void;
 }
 
-function countTasksWithStatus(
-  issue: TuttiPlanIssueSnapshot,
-  status: string
-): number {
-  return issue.tasks.filter((task) => task.status === status).length;
+export interface AgentGUITuttiWorkflowController {
+  composer: AgentGUITuttiWorkflowComposerController;
+  workflowDock: AgentGUITuttiWorkflowDockController;
+}
+
+interface MaterializingPlan {
+  checkpointId: string;
+  sourceSessionId: string;
+  title: string;
 }
 
 /**
@@ -77,27 +67,27 @@ function countTasksWithStatus(
  * materialized plan Issue embed: composer-integrated review decisions (empty
  * send accepts, typed send requests changes, intensity divergence re-plans),
  * per-task assignment drafts, the embedded issue panel data plus its inline
- * acceptance decisions, and the bottom-dock banner/status-strip inputs.
+ * acceptance decisions, and the single bottom-dock workflow projection.
  */
-export function useAgentGUITuttiPlanReview(input: {
+export function useAgentGUITuttiWorkflow(input: {
   viewModel: AgentGUINodeViewModel;
   previewMode: boolean;
   labels: AgentGUIViewLabels;
-  timelineAttachmentLocatorRef: RefObject<AgentTranscriptAttachmentLocator | null>;
   stableLinkAction: ((action: WorkspaceLinkAction) => void) | undefined;
   setTuttiModeActive: (active: boolean) => void;
+  setTuttiModeOrchestrationIntensity: (value: number) => void;
   updateDraftContent: AgentGUINodeViewProps["actions"]["updateDraftContent"];
   submitPromptPassthrough: (
     ...args: Parameters<AgentGUINodeViewProps["actions"]["submitPrompt"]>
   ) => void;
-}): AgentGUITuttiPlanReview {
+}): AgentGUITuttiWorkflowController {
   const {
     viewModel,
     previewMode,
     labels,
-    timelineAttachmentLocatorRef,
     stableLinkAction,
     setTuttiModeActive,
+    setTuttiModeOrchestrationIntensity,
     updateDraftContent,
     submitPromptPassthrough
   } = input;
@@ -112,6 +102,11 @@ export function useAgentGUITuttiPlanReview(input: {
   const [planAssignmentDrafts, setPlanAssignmentDrafts] = useState<
     Readonly<Record<string, TuttiModePlanTaskAssignmentDrafts>>
   >({});
+  // Acceptance removes the pending checkpoint before the Issue read model may
+  // arrive. Keep only the minimum UI-local descriptor needed to preserve the
+  // Dock shell through that handoff; accepted plan content remains daemon-owned.
+  const [materializingPlan, setMaterializingPlan] =
+    useState<MaterializingPlan | null>(null);
   const handlePlanAssignmentDraftChange = useStableEventCallback(
     (
       panelId: string,
@@ -136,6 +131,12 @@ export function useAgentGUITuttiPlanReview(input: {
     pendingPlanPanel !== null &&
     tuttiModePlanPanels.submittingCheckpointId ===
       pendingPlanPanel.checkpoint.id;
+  const updateWorkflowAssignment = useStableEventCallback(
+    (taskId: string, patch: TuttiModePlanTaskAssignmentDraft): void => {
+      if (!pendingPlanPanel) return;
+      handlePlanAssignmentDraftChange(pendingPlanPanel.id, taskId, patch);
+    }
+  );
   const planReviewSendActive =
     pendingPlanPanel !== null && !pendingPlanSubmitting;
   // Once the session intensity diverges from the plan's snapshot, an empty
@@ -148,6 +149,9 @@ export function useAgentGUITuttiPlanReview(input: {
   const decidePendingPlan = useStableEventCallback(
     (decision: "accepted" | "rejected" | "canceled", reason?: string): void => {
       if (!pendingPlanPanel || pendingPlanSubmitting) return;
+      if (decision !== "accepted") {
+        setMaterializingPlan(null);
+      }
       const assignments =
         decision === "accepted"
           ? taskAssignmentInputsFromDrafts(
@@ -175,6 +179,13 @@ export function useAgentGUITuttiPlanReview(input: {
       );
       return;
     }
+    if (pendingPlanPanel && viewModel.rail.activeConversationId) {
+      setMaterializingPlan({
+        checkpointId: pendingPlanPanel.checkpoint.id,
+        sourceSessionId: viewModel.rail.activeConversationId,
+        title: pendingPlanPanel.title
+      });
+    }
     decidePendingPlan("accepted");
   });
   const cancelPendingPlan = useStableEventCallback((): void => {
@@ -186,6 +197,7 @@ export function useAgentGUITuttiPlanReview(input: {
   const setTuttiModeActiveAndSettleReview = useStableEventCallback(
     (active: boolean): void => {
       if (!active) {
+        setMaterializingPlan(null);
         decidePendingPlan("canceled");
       }
       setTuttiModeActive(active);
@@ -267,52 +279,86 @@ export function useAgentGUITuttiPlanReview(input: {
       source: "tutti-plan-issue-panel"
     });
   });
-  const jumpToPlanIssuePanel = useStableEventCallback((): void => {
-    if (!planIssue) return;
-    timelineAttachmentLocatorRef.current?.(`workflow:${planIssue.workflowId}`);
-  });
+  const materializingCurrentSession =
+    materializingPlan !== null &&
+    materializingPlan.sourceSessionId === viewModel.rail.activeConversationId;
+  const materializingCurrentCheckpoint =
+    materializingCurrentSession &&
+    pendingPlanPanel?.checkpoint.id === materializingPlan.checkpointId;
+  const materializationFailure =
+    tuttiModePlanPanels.planIssueMaterializationFailure;
+  let workflowDockPhase: TuttiWorkflowDockPhase | null = null;
+  if (
+    pendingPlanPanel &&
+    (!materializingCurrentCheckpoint ||
+      (tuttiModePlanPanels.error !== null && !pendingPlanSubmitting))
+  ) {
+    workflowDockPhase = {
+      kind: "review",
+      panel: pendingPlanPanel,
+      submitting: pendingPlanSubmitting,
+      intensity: viewModel.composer.tuttiModeOrchestrationIntensity,
+      intensityDiverged: planReviewIntensityDiverged
+    };
+  } else if (materializationFailure) {
+    workflowDockPhase = {
+      kind: "error",
+      message: labels.tuttiModePlanIssueCreateFailed(
+        materializationFailure.errorMessage ?? labels.tuttiModePlanLoadFailed
+      ),
+      retryable: false
+    };
+  } else if (planIssue) {
+    workflowDockPhase = { kind: "execution", issue: planIssue };
+  } else if (materializingCurrentSession && materializingPlan) {
+    workflowDockPhase = {
+      kind: "materializing",
+      title: materializingPlan.title
+    };
+  } else if (tuttiModePlanPanels.error !== null) {
+    workflowDockPhase = {
+      kind: "error",
+      message: labels.tuttiModePlanLoadFailed,
+      retryable: true
+    };
+  } else if (pendingPlanPanel) {
+    workflowDockPhase = {
+      kind: "review",
+      panel: pendingPlanPanel,
+      submitting: pendingPlanSubmitting,
+      intensity: viewModel.composer.tuttiModeOrchestrationIntensity,
+      intensityDiverged: planReviewIntensityDiverged
+    };
+  }
   return {
-    tuttiModePlanPanels,
-    planAssignmentDrafts,
-    handlePlanAssignmentDraftChange,
-    pendingPlanPanel,
-    pendingPlanSubmitting,
-    planReviewSendActive,
-    planReviewIntensityDiverged,
-    acceptPendingPlan,
-    cancelPendingPlan,
-    setTuttiModeActiveAndSettleReview,
-    submitPromptOrDecidePlan,
-    planIssue,
-    planIssueDecideAvailable: tuttiModePlanPanels.decidePlanIssueTask !== null,
-    decidePlanIssueTask,
-    planIssueCancelAvailable:
-      tuttiModePlanPanels.cancelPlanIssueExecution !== null,
-    cancelPlanIssueExecution,
-    openPlanIssueTaskSession,
-    openPlanIssue,
-    jumpToPlanIssuePanel,
-    tuttiPlanReview: pendingPlanPanel
-      ? {
-          planTitle: pendingPlanPanel.title,
-          submitting: pendingPlanSubmitting,
-          intensity: viewModel.composer.tuttiModeOrchestrationIntensity,
-          intensityDiverged: planReviewIntensityDiverged
-        }
-      : null,
-    tuttiPlanIssueStatus:
-      planIssue && !pendingPlanPanel
-        ? {
-            title: planIssue.title,
-            running: countTasksWithStatus(planIssue, "running"),
-            pendingAcceptance: countTasksWithStatus(
-              planIssue,
-              "pending_acceptance"
-            ),
-            failed: countTasksWithStatus(planIssue, "failed"),
-            done: countTasksWithStatus(planIssue, "completed"),
-            total: planIssue.tasks.length
-          }
-        : null
+    composer: {
+      acceptPendingPlan,
+      planReviewIntensityDiverged,
+      planReviewSendActive,
+      setTuttiModeActiveAndSettleReview,
+      submitPromptOrDecidePlan
+    },
+    workflowDock: {
+      assignmentCatalog: tuttiModePlanPanels.assignmentCatalog,
+      assignmentDrafts:
+        workflowDockPhase?.kind === "review"
+          ? (planAssignmentDrafts[workflowDockPhase.panel.id] ?? {})
+          : {},
+      cancelExecution:
+        tuttiModePlanPanels.cancelPlanIssueExecution !== null
+          ? cancelPlanIssueExecution
+          : undefined,
+      cancelReview: cancelPendingPlan,
+      changeIntensity: setTuttiModeOrchestrationIntensity,
+      decideTask:
+        tuttiModePlanPanels.decidePlanIssueTask !== null
+          ? decidePlanIssueTask
+          : undefined,
+      openIssue: stableLinkAction ? openPlanIssue : undefined,
+      openTask: stableLinkAction ? openPlanIssueTaskSession : undefined,
+      phase: workflowDockPhase,
+      retry: tuttiModePlanPanels.retry,
+      updateAssignment: updateWorkflowAssignment
+    }
   };
 }

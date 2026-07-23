@@ -54,6 +54,7 @@ export interface TuttiModePlanPanelLabels {
 export function TuttiModePlanPanel({
   assignmentCatalog,
   assignmentDrafts,
+  embedded = false,
   labels,
   panel,
   submitting,
@@ -61,6 +62,7 @@ export function TuttiModePlanPanel({
 }: {
   assignmentCatalog?: TuttiModePlanAssignmentCatalog | null;
   assignmentDrafts?: TuttiModePlanTaskAssignmentDrafts;
+  embedded?: boolean;
   labels: TuttiModePlanPanelLabels;
   panel: TuttiModePlanPanelViewModel;
   submitting: boolean;
@@ -78,7 +80,12 @@ export function TuttiModePlanPanel({
 
   return (
     <Card
-      className="mx-auto w-full max-w-[860px]"
+      className={cn(
+        "w-full",
+        embedded
+          ? "border-0 bg-transparent shadow-none"
+          : "mx-auto max-w-[860px]"
+      )}
       data-testid="tutti-mode-plan-panel"
     >
       <CardHeader>

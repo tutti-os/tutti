@@ -5,6 +5,11 @@ export const zhCNTuttiModePlan = {
   cancel: "取消计划",
   reviewHint: "直接发送即接受 · 输入反馈后发送即请求修改",
   reviewHintReplan: "强度已调整 · 发送即按新强度重新规划",
+  materializingTitle: "正在创建任务",
+  materializingHint: "正在将已接受的计划转换为可执行任务",
+  errorTitle: "工作流暂不可用",
+  expand: "展开工作流",
+  collapse: "收起工作流",
   sendAccept: "接受计划",
   sendRequestChanges: "请求修改",
   replanFeedback:
@@ -45,7 +50,6 @@ export const zhCNTuttiModePlan = {
   issueStripPending: "{{count}} 待验收",
   issueStripFailed: "{{count}} 失败",
   issueStripDone: "{{done}}/{{total}} 已完成",
-  issueStripJump: "查看子任务面板",
   issueCreateFailed:
     "已核准的计划未能创建 Issue：{{message}}。请让 Agent 修订计划。"
 } as const;
