@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -22,7 +20,6 @@ import (
 	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentextensiondata "github.com/tutti-os/tutti/services/tuttid/data/agentextension"
-	deviceidentitydata "github.com/tutti-os/tutti/services/tuttid/data/deviceidentity"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	accountservice "github.com/tutti-os/tutti/services/tuttid/service/account"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
@@ -49,7 +46,6 @@ import (
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 	managedcredentialsservice "github.com/tutti-os/tutti/services/tuttid/service/managedcredentials"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
-	mobileremoteservice "github.com/tutti-os/tutti/services/tuttid/service/mobileremote"
 	modelbindingservice "github.com/tutti-os/tutti/services/tuttid/service/modelbinding"
 	modelplanservice "github.com/tutti-os/tutti/services/tuttid/service/modelplan"
 	modelpolicyservice "github.com/tutti-os/tutti/services/tuttid/service/modelpolicy"
@@ -238,29 +234,12 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		UpdateCache:          agentstatusservice.NewProviderUpdateCache(),
 	}
 	accountService := accountservice.NewService("")
-	deviceID, err := tuttitypes.LoadOrCreateDeviceID(agentExtensionStateDir)
+	mobileRemoteService, err := buildMobileRemoteService(
+		agentExtensionStateDir,
+		accountService,
+	)
 	if err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("resolve daemon device id: %w", err)
-	}
-	reportedName, err := os.Hostname()
-	if err != nil {
-		reportedName = "Tutti Desktop"
-	}
-	mobileRemoteService := &mobileremoteservice.Service{
-		Account: accountService,
-		Identities: deviceidentitydata.NewFileStore(
-			filepath.Join(agentExtensionStateDir, "mobile-remote", "device-identity.json"),
-			deviceID,
-		),
-		ControlPlane: &mobileremoteservice.HTTPControlPlane{
-			BaseURL: os.Getenv("TUTTI_MOBILE_CONTROL_PLANE_BASE_URL"),
-		},
-		Metadata: mobileremoteservice.DeviceMetadata{
-			ReportedName:  reportedName,
-			Platform:      runtime.GOOS,
-			Arch:          runtime.GOARCH,
-			ClientVersion: tuttitypes.ResolveAppVersion(),
-		},
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, err
 	}
 	agentProcessTransport := agentdaemon.NewLocalProcessTransport()
 	agentHostMetadata := agentdaemon.HostMetadata{
