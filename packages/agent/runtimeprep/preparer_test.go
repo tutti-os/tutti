@@ -414,6 +414,113 @@ func TestExposeUserCodexModelsCacheSharesFirstRefreshAcrossSessions(t *testing.T
 	}
 }
 
+func TestDefaultPreparerCodexRefreshesRunConfigFromCurrentUserConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	userConfigPath := filepath.Join(userCodexHome, "config.toml")
+	if err := os.WriteFile(userConfigPath, []byte("model = \"gpt-5.6-sol\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	input := PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	}
+	first, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("first Prepare() error = %v", err)
+	}
+	codexConfigPath := filepath.Join(envValue(first.Env, "CODEX_HOME"), "config.toml")
+	firstConfig, err := os.ReadFile(codexConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(firstConfig), `model = "gpt-5.6-sol"`) {
+		t.Fatalf("first run config = %q, want initial user model", string(firstConfig))
+	}
+
+	if err := os.WriteFile(userConfigPath, []byte(strings.Join([]string{
+		`model_provider = "custom"`,
+		`model = "glm-5"`,
+		"",
+		"[model_providers.custom]",
+		`base_url = "https://proxy.example/v1"`,
+		"",
+	}, "\n")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("second Prepare() error = %v", err)
+	}
+	if got, want := envValue(second.Env, "CODEX_HOME"), envValue(first.Env, "CODEX_HOME"); got != want {
+		t.Fatalf("second CODEX_HOME = %q, want stable run home %q", got, want)
+	}
+	secondConfig, err := os.ReadFile(codexConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(secondConfig), `model_provider = "custom"`) ||
+		!strings.Contains(string(secondConfig), `model = "glm-5"`) ||
+		strings.Contains(string(secondConfig), `model = "gpt-5.6-sol"`) {
+		t.Fatalf("second run config = %q, want refreshed custom provider config", string(secondConfig))
+	}
+	if !strings.Contains(string(secondConfig), codexProjectRootMarkersDisabledConfig) {
+		t.Fatalf("second run config = %q, want runtime session overlay reapplied", string(secondConfig))
+	}
+}
+
+func TestDefaultPreparerCodexRemovesRunConfigWhenUserConfigDisappears(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	userConfigPath := filepath.Join(userCodexHome, "config.toml")
+	if err := os.WriteFile(userConfigPath, []byte("model = \"glm-5\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	input := PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	}
+	first, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("first Prepare() error = %v", err)
+	}
+	codexConfigPath := filepath.Join(envValue(first.Env, "CODEX_HOME"), "config.toml")
+	if err := os.Remove(userConfigPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), input); err != nil {
+		t.Fatalf("second Prepare() error = %v", err)
+	}
+	config, err := os.ReadFile(codexConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(config), `model = "glm-5"`) {
+		t.Fatalf("second run config retained removed user model: %q", string(config))
+	}
+	if !strings.Contains(string(config), codexProjectRootMarkersDisabledConfig) {
+		t.Fatalf("second run config = %q, want runtime session config", string(config))
+	}
+}
+
 func TestExposeUserCodexModelsCachePreservesExistingRunCache(t *testing.T) {
 	userCodexHome := filepath.Join(t.TempDir(), ".codex")
 	codexHome := t.TempDir()

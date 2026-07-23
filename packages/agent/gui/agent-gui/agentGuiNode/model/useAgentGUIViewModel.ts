@@ -91,7 +91,8 @@ export function useAgentGUIViewModel(
       candidate.readiness.activeConversationBusy,
       candidate.readiness.activeLiveState,
       candidate.readiness.providerReadinessGate,
-      candidate.readiness.sessionRuntimeBlocked
+      candidate.readiness.sessionRuntimeBlocked,
+      candidate.readiness.sessionRuntimeBlockedReason
     ]
   );
   const operations = useMemo(

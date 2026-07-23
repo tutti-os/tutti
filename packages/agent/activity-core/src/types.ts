@@ -1,4 +1,5 @@
 import type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
+import type { AgentActivitySessionMessageWindow } from "./messageWindow.types.ts";
 import type { AgentActivityRailPlacement } from "./railPlacement.types.ts";
 import type {
   AgentActivityCapabilityReference,
@@ -310,11 +311,8 @@ export interface AgentActivitySnapshot {
   sessions: AgentActivitySession[];
   presences: AgentActivityPresence[];
   sessionMessagesById: Record<string, AgentActivityMessage[]>;
-  /**
-   * Composer options cache, keyed by the opaque targetKey passed to
-   * loadComposerOptions. Single key space: the key is round-tripped verbatim and
-   * never parsed or rewritten.
-   */
+  sessionMessageWindowsById?: Record<string, AgentActivitySessionMessageWindow>;
+  /** Composer options keyed by the opaque, verbatim loadComposerOptions targetKey. */
   composerOptionsByTargetKey?: Record<string, AgentActivityComposerOptions>;
   /** Request lifecycle for composer options, keyed by the same opaque target. */
   composerOptionsLoadStatusByTargetKey?: Record<

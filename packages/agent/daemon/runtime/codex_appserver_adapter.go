@@ -22,6 +22,7 @@ const (
 	appServerMethodAccountRead    = "account/read"
 	appServerMethodRateLimitsRead = "account/rateLimits/read"
 	appServerMethodModelList      = "model/list"
+	appServerMethodConfigRead     = "config/read"
 	// Experimental: collaboration mode presets (plan/pair/execute). Absence of
 	// the method on older binaries downgrades planMode capability gracefully.
 	appServerMethodCollaborationModeList = "collaborationMode/list"
@@ -233,6 +234,7 @@ type codexAppServerSession struct {
 	// direct control, reconcile and delayed continuation nudges for this thread.
 	goalMutationMu         sync.Mutex
 	models                 []map[string]any
+	modelProvider          string
 	startupModelsReady     bool
 	startupRateLimitsReady bool
 	// lifecycleSeq numbers the adapter's TurnLifecycle snapshots (ADR 0008):

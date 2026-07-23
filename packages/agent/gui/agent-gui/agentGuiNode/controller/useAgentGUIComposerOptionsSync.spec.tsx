@@ -19,6 +19,12 @@ describe("useAgentGUIComposerOptionsSync", () => {
     const dataRef = { current: targetData("codex") };
     const selectedTargetRef = { current: composerTarget("codex") };
     const selectedProjectPathRef = { current: "/workspace/project" };
+    const authorityReconcilerRef =
+      createComposerDefaultsAuthorityReconcilerRef();
+    const composerOptionsByTargetKey = {
+      "local:codex": { provider: "codex" },
+      "local:claude-code": { provider: "claude-code" }
+    };
     const { result, rerender } = renderHook(
       ({ provider }) => {
         const target = composerTarget(provider);
@@ -28,7 +34,8 @@ describe("useAgentGUIComposerOptionsSync", () => {
           activeConversationId: null,
           activeConversationIdRef,
           agentActivityRuntime: {
-            getComposerOptions
+            getComposerOptions,
+            getSnapshot: () => ({ composerOptionsByTargetKey })
           } as unknown as AgentActivityRuntime,
           composerTargetData: target,
           conversationFilter: null,
@@ -42,8 +49,7 @@ describe("useAgentGUIComposerOptionsSync", () => {
           isCreatingConversation: false,
           loadDraftComposerOptionsRef: { current: () => {} },
           loadSessionState: vi.fn(),
-          onComposerDefaultsAuthorityReloadedRef:
-            createComposerDefaultsAuthorityReconcilerRef(),
+          onComposerDefaultsAuthorityReloadedRef: authorityReconcilerRef,
           previewMode: false,
           providerComposerOptions: null,
           reloadSelectedConversation: vi.fn(),
@@ -61,8 +67,17 @@ describe("useAgentGUIComposerOptionsSync", () => {
       { initialProps: { provider: "codex" as AgentGUIProvider } }
     );
 
-    await waitFor(() => expect(getComposerOptions).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(getComposerOptions).toHaveBeenCalledTimes(1);
+      expect(
+        authorityReconcilerRef.current.reconcileHomeDefaults
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ agentTargetId: "local:codex" }),
+        composerOptionsByTargetKey["local:codex"]
+      );
+    });
     getComposerOptions.mockClear();
+    vi.mocked(authorityReconcilerRef.current.reconcileHomeDefaults).mockClear();
 
     rerender({ provider: "claude-code" });
 
@@ -73,6 +88,12 @@ describe("useAgentGUIComposerOptionsSync", () => {
         force: undefined,
         provider: "claude-code"
       })
+    );
+    expect(
+      authorityReconcilerRef.current.reconcileHomeDefaults
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ agentTargetId: "local:claude-code" }),
+      composerOptionsByTargetKey["local:claude-code"]
     );
 
     getComposerOptions.mockClear();
@@ -113,7 +134,8 @@ describe("useAgentGUIComposerOptionsSync", () => {
           activeConversationId: null,
           activeConversationIdRef,
           agentActivityRuntime: {
-            getComposerOptions
+            getComposerOptions,
+            getSnapshot: () => ({})
           } as unknown as AgentActivityRuntime,
           composerTargetData: target,
           conversationFilter: null,
@@ -193,7 +215,8 @@ describe("useAgentGUIComposerOptionsSync", () => {
         activeConversationId: null,
         activeConversationIdRef: { current: null },
         agentActivityRuntime: {
-          getComposerOptions
+          getComposerOptions,
+          getSnapshot: () => ({})
         } as unknown as AgentActivityRuntime,
         composerTargetData: target,
         conversationFilter: null,
@@ -311,7 +334,8 @@ describe("useAgentGUIComposerOptionsSync", () => {
         activeConversationId: null,
         activeConversationIdRef: { current: null },
         agentActivityRuntime: {
-          getComposerOptions
+          getComposerOptions,
+          getSnapshot: () => ({})
         } as unknown as AgentActivityRuntime,
         composerTargetData: target,
         conversationFilter: null,
@@ -382,7 +406,8 @@ describe("useAgentGUIComposerOptionsSync", () => {
         activeConversationId: "session-1",
         activeConversationIdRef: { current: "session-1" },
         agentActivityRuntime: {
-          getComposerOptions
+          getComposerOptions,
+          getSnapshot: () => ({})
         } as unknown as AgentActivityRuntime,
         composerTargetData: target,
         conversationFilter: null,
@@ -426,6 +451,7 @@ function createComposerDefaultsAuthorityReconcilerRef(): {
         receipt: null,
         settings
       })),
+      reconcileHomeDefaults: vi.fn(),
       reloaded: vi.fn()
     }
   };

@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData } from "../../../types";
@@ -83,14 +83,11 @@ describe("useAgentGUIComposerPresentation", () => {
           data,
           defaultReasoningEffort: null,
           draftSettingsBySessionId: drafts,
-          draftSettingsBySessionIdRef: { current: drafts },
-          onDataChangeRef: { current: vi.fn() },
           providerComposerOptions: currentOptions,
           selectedComposerTargetData: target,
           selectedProjectPath: null,
           shouldApplyPreparedProjectSelection: true,
-          userProjects: [],
-          setDraftSettingsBySessionId: vi.fn()
+          userProjects: []
         }),
       {
         initialProps: {
@@ -229,14 +226,11 @@ describe("useAgentGUIComposerPresentation", () => {
           data,
           defaultReasoningEffort: "high",
           draftSettingsBySessionId,
-          draftSettingsBySessionIdRef: { current: draftSettingsBySessionId },
-          onDataChangeRef: { current: vi.fn() },
           providerComposerOptions: options,
           selectedComposerTargetData: target,
           selectedProjectPath: null,
           shouldApplyPreparedProjectSelection: false,
-          userProjects: [],
-          setDraftSettingsBySessionId: vi.fn()
+          userProjects: []
         });
       },
       { initialProps: { model: "opencode/big-pickle" } }

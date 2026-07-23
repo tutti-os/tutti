@@ -10,6 +10,7 @@ interface ReconcileAgentSessionMessagePagesInput {
   adapter: AgentActivityAdapter;
   agentSessionId: string;
   cached: AgentActivityMessage[];
+  messageWindowKnown: boolean;
   shouldAbort: () => boolean;
   workspaceId: string;
 }
@@ -58,7 +59,7 @@ export function analyzeInlineMessageVersionContinuity(
 export async function reconcileAgentSessionMessagePages(
   input: ReconcileAgentSessionMessagePagesInput
 ): Promise<AgentActivityMessagePage> {
-  if (input.cached.length === 0) {
+  if (input.cached.length === 0 || !input.messageWindowKnown) {
     return input.adapter.listSessionMessages({
       workspaceId: input.workspaceId,
       agentSessionId: input.agentSessionId,

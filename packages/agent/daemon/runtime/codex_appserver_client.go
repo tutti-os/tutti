@@ -284,6 +284,24 @@ func (c *codexAppServerClient) ModelListNoHandler(
 	return caller.rawResult, nil
 }
 
+func (c *codexAppServerClient) ConfigRead(
+	ctx context.Context,
+	timeout time.Duration,
+	params map[string]any,
+	handler acpMessageHandler,
+) (json.RawMessage, error) {
+	typedParams, err := codexProtoParams[codexproto.ConfigReadParams](params)
+	if err != nil {
+		return nil, err
+	}
+	client, caller := c.typed(timeout, handler, false)
+	_, err = client.ConfigRead(ctx, typedParams)
+	if err != nil {
+		return nil, err
+	}
+	return caller.rawResult, nil
+}
+
 func (c *codexAppServerClient) AccountRateLimitsRead(
 	ctx context.Context,
 	timeout time.Duration,

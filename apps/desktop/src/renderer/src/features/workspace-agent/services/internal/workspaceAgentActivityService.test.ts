@@ -1173,6 +1173,7 @@ test("WorkspaceAgentActivityService reconciles a realtime message version gap be
   await service.load("ws-1");
   await service.listSessionMessages({
     agentSessionId: "session-1",
+    order: "desc",
     workspaceId: "ws-1"
   });
   assert.equal(
@@ -1325,6 +1326,7 @@ test("WorkspaceAgentActivityService reconciles cached messages after reconnect w
   await service.load("ws-1");
   await service.listSessionMessages({
     agentSessionId: "session-1",
+    order: "desc",
     workspaceId: "ws-1"
   });
   assert.ok(connectionListener);
@@ -1941,7 +1943,22 @@ test("WorkspaceAgentActivityService loads the newest history page first", async 
         request: unknown
       ) => {
         requests.push(request);
-        return { hasMore: true, latestVersion: 200, messages: [] };
+        return {
+          hasMore: true,
+          latestVersion: 200,
+          messages: [
+            {
+              agentSessionId: "session-1",
+              kind: "text",
+              messageId: "message-200",
+              occurredAtUnixMs: 200,
+              payload: { text: "latest" },
+              role: "assistant",
+              turnId: "turn-200",
+              version: 200
+            }
+          ]
+        };
       }
     } as unknown as TuttidClient,
     runtimeApi: { logTerminalDiagnostic: async () => {} }
@@ -1957,6 +1974,13 @@ test("WorkspaceAgentActivityService loads the newest history page first", async 
   assert.deepEqual(requests, [
     { afterVersion: 0, beforeVersion: undefined, limit: 100, order: "desc" }
   ]);
+  assert.deepEqual(
+    service.getSnapshot("ws-1").sessionMessageWindowsById?.["session-1"],
+    {
+      hasOlderMessages: true,
+      oldestLoadedVersion: 200
+    }
+  );
 });
 
 test("WorkspaceAgentActivityService drains every incremental history page", async () => {
@@ -2023,6 +2047,7 @@ test("WorkspaceAgentActivityService drains every incremental history page", asyn
   mode = "seed";
   await service.listSessionMessages({
     agentSessionId: "session-1",
+    order: "desc",
     workspaceId: "ws-1"
   });
   assert.deepEqual(

@@ -138,8 +138,11 @@ export function useAgentGUISessionPresentation(
     input.activeConversationId && input.activeLatestPendingSubmitTurnId
   );
   const activeSubmitBlocked = input.activeEngineAvailability === "blocked";
-  const sessionRuntimeBlocked =
-    input.activeEngineRuntimeAvailability?.state === "blocked";
+  const sessionRuntimeBlockedReason =
+    input.activeEngineRuntimeAvailability?.state === "blocked"
+      ? input.activeEngineRuntimeAvailability.reason
+      : null;
+  const sessionRuntimeBlocked = sessionRuntimeBlockedReason !== null;
   const targetConnection = useAgentGUITargetConnectionState({
     agentTargetId: input.targetConnectionAgentTargetId,
     source: input.targetConnectionSource
@@ -390,6 +393,7 @@ export function useAgentGUISessionPresentation(
     isRespondingApproval,
     pendingInteractivePrompt,
     sessionRuntimeBlocked,
+    sessionRuntimeBlockedReason,
     targetConnectionBlocked: targetConnection.blocked,
     sessionChrome
   };

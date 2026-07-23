@@ -266,6 +266,14 @@ A durable message has two independent ordering values:
 
 Lifecycle timestamps describe occurrence time; they do not replace durable sequence. A live message with unknown Turn ownership must be completed or rejected at the boundary, never assigned an owner in GUI.
 
+Neither value is a history-coverage signal. A newest-to-oldest message read
+projects an explicit Session message window into the frontend engine:
+`oldestLoadedVersion` is the next paging cursor and the response's `hasMore`
+becomes `hasOlderMessages`. AgentGUI may request an older page only from that
+authoritative window. It must not infer older history from a non-one minimum
+version, a version gap, `sequence`, timestamps, or transcript shape; streaming
+updates can raise a message version without creating any older row.
+
 ## 4. Workspace frontend engine
 
 One `(workspaceId, runtime origin)` maps to one `AgentSessionEngine`. Panel unmount, Workbench node reconstruction, and standalone window switching must not change its lifecycle.
@@ -286,11 +294,11 @@ Runtime command availability is session-scoped whenever one workspace engine
 can contain Sessions backed by different transports. The host projects
 `available`, `transport_reconnecting`, or `transport_unavailable`; the engine
 uses that single fact to gate sends, cancellation, settings, and Interaction or
-plan responses. AgentGUI preserves an editable composer draft, disables
-runtime-dependent actions, and keeps an active Stop control visible but disabled
-until the transport recovers. It must not reuse the engine-wide connection state
-for this case, because one remote Session losing its owner must not disable Local
-Agent or another remote Session.
+plan responses. AgentGUI preserves the composer draft content but disables
+editing and runtime-dependent actions, and keeps an active Stop control visible
+but disabled until the transport recovers. It must not reuse the engine-wide
+connection state for this case, because one remote Session losing its owner must
+not disable Local Agent or another remote Session.
 
 Device connection presentation is target-scoped rather than Session-scoped.
 The host exposes a target connection source keyed by `agentTargetId` with the
@@ -325,6 +333,8 @@ notice does not offer a manual retry because transport recovery is host-owned.
 ### 4.2 Historical pull and realtime push
 
 - list/history reads use `session/snapshotReceived` and do not create unread completion
+- newest-to-oldest reads attach their authoritative message-window coverage to
+  the same snapshot intent; incremental/realtime updates preserve that coverage
 - realtime authoritative entities use upsert intents
 - message updates fold inline only when unseen versions are continuous
 - version gaps and reconnects trigger incremental message reconciliation for hydrated Sessions
@@ -457,6 +467,13 @@ provider ID
 
 An unknown provider produces explicit unsupported behavior. Provider adapters normalize their own wire; shared renderers consume canonical message/tool/notice contracts only.
 
+Skill invocation follows the same boundary. Filesystem and runtime adapters
+discover skill identity, source, and plugin ownership; `providerregistry`
+projects the provider-authored trigger and invocation strategy. Composer and
+host adapters consume that projection and must not rebuild `$` versus `/`,
+plugin namespaces, or prompt-item versus text-trigger behavior from provider
+names.
+
 ### 5.3 Agent Directory and setup
 
 The host provides a complete, ordered Agent Directory with this load lifecycle:
@@ -496,7 +513,7 @@ For a signed Agent Extension, package `icon` is the primary identity and
 optional package `maskIcon` is the conversation-row glyph. All assets remain
 pinned to the verified active installation.
 
-Target-managed setup uses exact `agentTargetId`; daemon persists its state and actions. Setup gates only the empty new-conversation surface. Active/history conversations follow Session recovery and capability.
+Target-managed setup uses exact `agentTargetId`; daemon persists its state and actions. Setup gates only the empty new-conversation surface. Active/history conversations follow host-projected Session runtime availability for exact-target capability and transport reachability. A blocked Session runtime disables both composer editing and submit until the host reports the Session available again.
 
 The built-in managed-environment wizard and Agent Extension setup have different owners. Shared UI must not combine their lifecycles by provider name.
 

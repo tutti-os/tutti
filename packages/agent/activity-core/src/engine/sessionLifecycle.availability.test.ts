@@ -116,6 +116,40 @@ test("runtime availability blocks only the targeted session", () => {
   );
 });
 
+test("Agent capability availability blocks the targeted session", () => {
+  const initial = createInitialAgentSessionEngineState();
+  let state = rootEngineReducer(initial, {
+    type: "session/snapshotReceived",
+    sessions: [
+      session(
+        {
+          ...baseTurn("session-1", "turn-1"),
+          outcome: "completed",
+          phase: "settled",
+          settledAtUnixMs: 2
+        },
+        []
+      )
+    ]
+  }).state;
+
+  for (const reason of [
+    "agent_capability_checking",
+    "agent_capability_unavailable"
+  ] as const) {
+    state = rootEngineReducer(state, {
+      type: "session/runtimeAvailabilityChanged",
+      agentSessionId: "session-1",
+      availability: { state: "blocked", reason }
+    }).state;
+
+    assert.deepEqual(
+      deriveCanonicalSubmitAvailability(state.sessionLifecycle, "session-1"),
+      { state: "blocked", reason }
+    );
+  }
+});
+
 function session(
   turn: AgentActivityTurn,
   pendingInteractions: readonly AgentActivityInteraction[]

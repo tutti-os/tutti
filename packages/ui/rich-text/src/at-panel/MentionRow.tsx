@@ -12,6 +12,7 @@ import {
   cn,
   type IconProps
 } from "@tutti-os/ui-system";
+import { Fragment } from "react";
 import type { MentionFileVisualKind } from "./mentionFileVisualKind.ts";
 import {
   mentionRowDataAttribute,
@@ -637,10 +638,50 @@ function MentionSessionTitle({
 }: {
   item: MentionRowSessionItem;
 }): React.JSX.Element {
+  const participantTruncatableSegments =
+    item.participantTruncatableSegments?.map((segment) => segment.trim()) ?? [];
+  const participantSegmentSeparator = item.participantSegmentSeparator ?? "";
+  const participantFixedSuffix = item.participantFixedSuffix ?? "";
+  const hasStructuredParticipant =
+    participantTruncatableSegments.length > 0 &&
+    participantTruncatableSegments.every((segment) => segment.length > 0) &&
+    participantFixedSuffix.length > 0 &&
+    `${participantTruncatableSegments.join(
+      participantSegmentSeparator
+    )}${participantFixedSuffix}` === item.participant;
   return (
     <>
-      <span className="rich-text-at-mention-row__entity-name rich-text-at-mention-row__session-participant">
-        {item.participant}
+      <span
+        className={cn(
+          "rich-text-at-mention-row__entity-name rich-text-at-mention-row__session-participant",
+          hasStructuredParticipant &&
+            "rich-text-at-mention-row__session-participant--structured"
+        )}
+        title={hasStructuredParticipant ? item.participant : undefined}
+      >
+        {hasStructuredParticipant ? (
+          <>
+            {participantTruncatableSegments.map((segment, index) => (
+              <Fragment key={`${index}:${segment}`}>
+                {index > 0 ? (
+                  <span className="rich-text-at-mention-row__session-participant-separator">
+                    {participantSegmentSeparator}
+                  </span>
+                ) : null}
+                <span className="rich-text-at-mention-row__session-participant-entity">
+                  <span className="rich-text-at-mention-row__session-participant-segment">
+                    {segment}
+                  </span>
+                </span>
+              </Fragment>
+            ))}
+            <span className="rich-text-at-mention-row__session-participant-suffix">
+              {participantFixedSuffix}
+            </span>
+          </>
+        ) : (
+          item.participant
+        )}
       </span>
       <span className="rich-text-at-mention-row__entity-description rich-text-at-mention-row__session-summary">
         {item.summary ?? ""}

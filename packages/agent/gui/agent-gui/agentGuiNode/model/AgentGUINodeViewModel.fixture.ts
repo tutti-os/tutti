@@ -94,6 +94,7 @@ export function groupAgentGUINodeViewModelFixture(
       activationError: flat.activationError,
       activeConversationBusy: flat.activeConversationBusy,
       sessionRuntimeBlocked: flat.sessionRuntimeBlocked,
+      sessionRuntimeBlockedReason: flat.sessionRuntimeBlockedReason ?? null,
       targetConnectionBlocked: flat.targetConnectionBlocked,
       providerReadinessGate: flat.providerReadinessGate
     },

@@ -13,7 +13,10 @@ import {
 } from "./sessionEntityKeys.ts";
 import { selectLatestActivationForSession } from "./pendingIntents.selectors.ts";
 import { isPendingActivationViable } from "./pendingIntents.types.ts";
-import { deriveCanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
+import {
+  deriveCanonicalSubmitAvailability,
+  type CanonicalSubmitAvailability
+} from "./sessionLifecycle.availability.ts";
 
 export interface WorkspaceAgentConsumerSession {
   activeTurn: AgentActivityTurn | null;
@@ -33,11 +36,7 @@ export interface WorkspaceAgentConsumerCounts {
 }
 
 export interface EngineSubmitAvailability {
-  reason?:
-    | "active_turn"
-    | "waiting"
-    | "transport_reconnecting"
-    | "transport_unavailable";
+  reason?: Exclude<CanonicalSubmitAvailability["reason"], undefined>;
   state: "available" | "blocked";
 }
 

@@ -21,13 +21,20 @@ import {
 import { useStableControllerEventCallback } from "./agentGuiController.stableHelpers";
 import {
   cloneComposerSettings,
+  nodeDataFromComposerSettings,
   nodeDefaultDraftKey,
   normalizePermissionModeId,
   readNodeDefaultDraftSettings,
-  resolveEffectiveComposerSettings
+  resolveEffectiveComposerSettings,
+  sameComposerSettings
 } from "./agentGuiController.composerHelpers";
 import { shouldRetrySessionSettingsUpdate } from "../model/composerModeSelection";
-import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
+import {
+  enforceComposerModelBindingForHomeDefaults,
+  nodeDataMatchesComposerTarget,
+  sanitizeComposerSettingsForTarget,
+  type AgentGUIComposerTargetData
+} from "./agentGuiController.composerPresentation";
 import {
   acknowledgeAgentGUIComposerDefaultsMutation,
   createAgentGUIComposerDefaultsLedger,
@@ -165,6 +172,55 @@ export function useAgentGUIComposerSettingsActions(
   );
   onComposerDefaultsAuthorityReloadedRef.current = {
     prepareRead: prepareComposerDefaultsAuthorityRead,
+    reconcileHomeDefaults: (target, options) => {
+      if (
+        !isMountedRef.current ||
+        activeConversationIdRef.current !== null ||
+        !nodeDataMatchesComposerTarget(
+          selectedComposerTargetDataRef.current.data,
+          target
+        )
+      ) {
+        return;
+      }
+      const draftKey = nodeDefaultDraftKey(
+        target.provider,
+        target.agentTargetId
+      );
+      const currentDraft = draftSettingsBySessionIdRef.current[draftKey];
+      if (!currentDraft) {
+        return;
+      }
+      const reconciledDraft = enforceComposerModelBindingForHomeDefaults(
+        sanitizeComposerSettingsForTarget({
+          settings: currentDraft,
+          target,
+          options
+        }),
+        options
+      );
+      if (sameComposerSettings(currentDraft, reconciledDraft)) {
+        return;
+      }
+      draftSettingsBySessionIdRef.current = {
+        ...draftSettingsBySessionIdRef.current,
+        [draftKey]: reconciledDraft
+      };
+      setDraftSettingsBySessionId((current) => ({
+        ...current,
+        [draftKey]: reconciledDraft
+      }));
+      onDataChangeRef.current((current) =>
+        nodeDataFromComposerSettings(
+          {
+            ...current,
+            provider: target.provider,
+            agentTargetId: target.agentTargetId
+          },
+          reconciledDraft
+        )
+      );
+    },
     reloaded: retireAcknowledgedDefaultsForRead
   };
   const updateComposerSettings = useCallback(

@@ -1,4 +1,5 @@
 import {
+  agentActivitySessionMessageWindowFromDescendingPage,
   dispatchSessionMutation,
   type AgentActivityAdapter,
   type AgentActivityGoalControlResult,
@@ -284,6 +285,18 @@ export class WorkspaceAgentActivityService
         if (input.cache !== false) {
           entry.engine.dispatch({
             messages: page.messages,
+            ...(input.order === "desc"
+              ? {
+                  sessionMessageWindows: [
+                    {
+                      agentSessionId: input.agentSessionId,
+                      ...agentActivitySessionMessageWindowFromDescendingPage(
+                        page
+                      )
+                    }
+                  ]
+                }
+              : {}),
             type: "message/snapshotReceived",
             workspaceId
           });

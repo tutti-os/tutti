@@ -664,6 +664,15 @@ export function useReferenceSourcePickerView({
       if (!sourceId) {
         return;
       }
+      if (
+        selectionMode === "single" &&
+        (isNodeSelectable?.(node) ?? true) &&
+        !snapshot.selection.some(
+          (selected) => nodeRefKey(selected.ref) === nodeRefKey(node.ref)
+        )
+      ) {
+        controller.toggleSelection(node);
+      }
       const nextScopeNodeId =
         node.ref.nodeId === WORKSPACE_ROOT_GROUP_NODE_ID
           ? null
@@ -687,6 +696,9 @@ export function useReferenceSourcePickerView({
     },
     [
       controller,
+      isNodeSelectable,
+      selectionMode,
+      snapshot.selection,
       snapshot.activeSourceId,
       navigateToRoot,
       shouldRefreshChildrenOnEnter

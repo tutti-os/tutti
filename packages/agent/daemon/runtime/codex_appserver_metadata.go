@@ -97,6 +97,57 @@ func (*CodexAppServerAdapter) fetchModelsNoHandler(
 	return payload.Data
 }
 
+type codexAppServerEffectiveConfig struct {
+	settings      map[string]any
+	modelProvider string
+}
+
+func (a *CodexAppServerAdapter) fetchEffectiveConfig(
+	ctx context.Context,
+	client *codexAppServerClient,
+	session Session,
+	trace *codexAppServerStartupTrace,
+) codexAppServerEffectiveConfig {
+	cwd := a.sessionCWD(session)
+	includeLayers := false
+	result, err := trace.TypedCall(acpStartCallTimeout, appServerMethodConfigRead, func() (json.RawMessage, error) {
+		return client.ConfigRead(ctx, acpStartCallTimeout, map[string]any{
+			"cwd":           cwd,
+			"includeLayers": includeLayers,
+		}, func(ctx context.Context, message acpMessage) error {
+			trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
+			_, err := a.handleAppServerMessage(ctx, client, session, "", message, nil, nil, nil)
+			return err
+		})
+	})
+	if err != nil {
+		return codexAppServerEffectiveConfig{}
+	}
+	var payload struct {
+		Config map[string]any `json:"config"`
+	}
+	if err := json.Unmarshal(result, &payload); err != nil {
+		return codexAppServerEffectiveConfig{}
+	}
+	config := make(map[string]any, 3)
+	copyConfigValue := func(targetKey, sourceKey string) {
+		if value, exists := payload.Config[sourceKey]; exists {
+			config[targetKey] = strings.TrimSpace(asString(value))
+		}
+	}
+	copyConfigValue("model", "model")
+	copyConfigValue("reasoning_effort", "model_reasoning_effort")
+	copyConfigValue("service_tier", "service_tier")
+	trace.Log("config.parsed", map[string]any{
+		"model":          asString(config["model"]),
+		"model_provider": asString(payload.Config["model_provider"]),
+	})
+	return codexAppServerEffectiveConfig{
+		settings:      config,
+		modelProvider: strings.TrimSpace(asString(payload.Config["model_provider"])),
+	}
+}
+
 func (*CodexAppServerAdapter) fetchRateLimitsNoHandler(
 	ctx context.Context,
 	client *codexAppServerClient,
