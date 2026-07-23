@@ -76,6 +76,9 @@ func (*Store) recordTurnTransitionTx(
 	if transition.Origin != "" && !isKnownTurnOrigin(transition.Origin) {
 		return Turn{}, false, fmt.Errorf("unknown workspace agent turn origin %q", transition.Origin)
 	}
+	if transition.Relation != "" && !isKnownTurnRelation(string(transition.Relation)) {
+		return Turn{}, false, fmt.Errorf("unknown workspace agent turn relation %q", transition.Relation)
+	}
 	if err := validateLiveTurnSlotTx(ctx, tx, workspaceID, agentSessionID, turnID, phase); err != nil {
 		return Turn{}, false, err
 	}
@@ -87,6 +90,9 @@ func (*Store) recordTurnTransitionTx(
 
 	existing, hasExisting, err := getAgentTurnTx(ctx, tx, workspaceID, agentSessionID, turnID)
 	if err != nil {
+		return Turn{}, false, err
+	}
+	if err := validateTurnLineageTx(ctx, tx, workspaceID, agentSessionID, turnID, transition, existing, hasExisting); err != nil {
 		return Turn{}, false, err
 	}
 	if metadataOnly {
@@ -139,8 +145,9 @@ INSERT INTO workspace_agent_turns (
   workspace_id, agent_session_id, turn_id, capability_refs_json, phase, outcome, error_json,
   file_changes_json, completed_command_json, backfilled,
   started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
-  turn_origin, source_goal_operation_id, source_goal_revision, source_goal_repair_epoch
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+  turn_origin, source_goal_operation_id, source_goal_revision, source_goal_repair_epoch,
+  parent_turn_id, relation
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
   capability_refs_json = excluded.capability_refs_json,
   phase = excluded.phase,
@@ -160,7 +167,8 @@ ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
 		}),
 		merged.StartedAtUnixMS, nullInt64(merged.SettledAtUnixMS),
 		merged.CreatedAtUnixMS, merged.UpdatedAtUnixMS, merged.Origin,
-		nullString(merged.SourceGoalOperationID), nullInt64(merged.SourceGoalRevision), nullInt64WhenAbsent(merged.SourceGoalRepairEpoch, merged.SourceGoalOperationID != "")); err != nil {
+		nullString(merged.SourceGoalOperationID), nullInt64(merged.SourceGoalRevision), nullInt64WhenAbsent(merged.SourceGoalRepairEpoch, merged.SourceGoalOperationID != ""),
+		nullString(merged.ParentTurnID), nullString(string(merged.Relation))); err != nil {
 		return Turn{}, false, fmt.Errorf("upsert workspace agent turn: %w", err)
 	}
 	if merged.Phase == TurnPhaseSettled {
@@ -267,6 +275,8 @@ func mergeTurnTransition(existing Turn, hasExisting bool, transition TurnTransit
 		merged.SourceGoalOperationID = strings.TrimSpace(transition.SourceGoalOperationID)
 		merged.SourceGoalRevision = transition.SourceGoalRevision
 		merged.SourceGoalRepairEpoch = transition.SourceGoalRepairEpoch
+		merged.ParentTurnID = strings.TrimSpace(transition.ParentTurnID)
+		merged.Relation = TurnRelation(strings.TrimSpace(string(transition.Relation)))
 	}
 	merged.Phase = phase
 	merged.CapabilityRefs = normalizeCapabilityReferences(append(
@@ -804,6 +814,14 @@ func isKnownTurnOutcome(outcome string) bool {
 
 func isKnownTurnOrigin(origin string) bool {
 	return canonical.IsKnownTurnOrigin(origin)
+}
+
+func isKnownTurnRelation(relation string) bool {
+	switch TurnRelation(relation) {
+	case TurnRelationRetry, TurnRelationEdit:
+		return true
+	}
+	return false
 }
 
 func isKnownInteractionKind(kind string) bool {

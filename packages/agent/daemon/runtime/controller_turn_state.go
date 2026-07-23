@@ -12,6 +12,7 @@ func submittedTurnActivityEvents(
 	session Session,
 	turnID string,
 	capabilityRefs []activityshared.CapabilityReference,
+	lineage TurnLineage,
 ) []activityshared.Event {
 	ctx, ok := activityEventContext(session, "turn-submitted:"+turnID, turnID)
 	if !ok {
@@ -19,6 +20,14 @@ func submittedTurnActivityEvents(
 	}
 	event := activityshared.NewTurnUpdated(ctx, turnID, activityshared.TurnPhaseSubmitted)
 	event.Payload.Metadata = map[string]any{"turnOrigin": "user_prompt"}
+	// Inject turn lineage metadata so the Store persistence pipeline carries
+	// parent_turn_id and relation into WorkspaceAgentTurnPatch → TurnTransition.
+	if lineage.ParentTurnID != "" {
+		event.Payload.Metadata["parentTurnId"] = lineage.ParentTurnID
+	}
+	if lineage.Relation != "" {
+		event.Payload.Metadata["turnRelation"] = string(lineage.Relation)
+	}
 	// The controller owns the submit moment; it publishes the submitted
 	// lifecycle snapshot so downstream layers copy instead of recomputing
 	// (ADR 0008).

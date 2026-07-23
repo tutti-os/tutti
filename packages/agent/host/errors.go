@@ -16,6 +16,11 @@ var (
 	ErrRuntimeOperationFailed           = errors.New("agent runtime operation failed")
 	ErrRuntimeOperationIdentityMismatch = errors.New("agent runtime operation identity is inconsistent")
 	ErrGoalConsumerUnavailable          = errors.New("agent goal reconcile consumer is unavailable")
+	ErrTurnNotFound                     = errors.New("workspace agent turn was not found")
+	ErrTurnNotSettled                   = errors.New("workspace agent turn is not settled")
+	ErrTurnNoUserMessage                = errors.New("workspace agent turn has no user message to retry")
+	ErrTurnPromptUnrecoverable          = errors.New("workspace agent turn prompt cannot be safely retried")
+	ErrInvalidTurnLineage               = errors.New("invalid workspace agent turn lineage")
 )
 
 // ProviderError preserves a provider-owned failure across the runtime adapter

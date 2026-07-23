@@ -23,7 +23,11 @@ var (
 		Name: "delete live session before canonical report",
 		run:  runDeleteLiveSessionBeforeCanonicalReport,
 	}
-	purgeDeletedSessionsScenario = Scenario{Name: "purge deleted sessions", run: runPurgeDeletedSessions}
+	purgeDeletedSessionsScenario    = Scenario{Name: "purge deleted sessions", run: runPurgeDeletedSessions}
+	retryTurnCreatesLineageScenario = Scenario{
+		Name: "retry turn creates lineage turn",
+		run:  runRetryTurnCreatesLineageTurn,
+	}
 )
 
 // Scenarios returns the lifecycle surface that every host adapter must support.
@@ -118,5 +122,13 @@ func ApplicationCoreScenarios() []Scenario {
 		deleteSessionScenario,
 		deleteLiveOnlySessionScenario,
 		purgeDeletedSessionsScenario,
+		retryTurnCreatesLineageScenario,
+	}
+}
+
+// RetryTurnScenarios covers the Retry/Edit lifecycle contract.
+func RetryTurnScenarios() []Scenario {
+	return []Scenario{
+		retryTurnCreatesLineageScenario,
 	}
 }

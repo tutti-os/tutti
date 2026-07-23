@@ -75,6 +75,87 @@ INSERT INTO agent_targets (
 	}
 }
 
+func TestTurnLineageMigrationsUpgradeExistingTurnsAndProtectDirectWrites(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db := openTestDB(t)
+	store := New(db, Options{})
+	// This is the pre-lineage workspace_agent_turns shape. It contains a
+	// settled historical turn but deliberately has neither lineage column.
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE agent_store_schema_migrations (
+  id TEXT PRIMARY KEY,
+  applied_at_unix_ms INTEGER NOT NULL
+);
+CREATE TABLE workspace_agent_turns (
+  workspace_id TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  outcome TEXT,
+  error_json TEXT,
+  file_changes_json TEXT,
+  completed_command_json TEXT,
+  backfilled INTEGER NOT NULL DEFAULT 0,
+  started_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  settled_at_unix_ms INTEGER,
+  created_at_unix_ms INTEGER NOT NULL,
+  updated_at_unix_ms INTEGER NOT NULL,
+  turn_origin TEXT NOT NULL DEFAULT 'legacy_unknown',
+  source_goal_operation_id TEXT,
+  source_goal_revision INTEGER,
+  source_goal_repair_epoch INTEGER,
+  root_provider_turn_id TEXT,
+  root_provider_turn_phase TEXT,
+  root_provider_turn_outcome TEXT,
+  root_provider_turn_error_json TEXT,
+  root_provider_turn_completed_command_json TEXT,
+  root_provider_turn_updated_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  capability_refs_json TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (workspace_id, agent_session_id, turn_id)
+);
+INSERT INTO workspace_agent_turns (
+  workspace_id, agent_session_id, turn_id, phase, outcome,
+  created_at_unix_ms, updated_at_unix_ms, capability_refs_json
+) VALUES ('ws-upgrade', 'session-upgrade', 'legacy-parent', 'settled', 'completed', 1, 2, '[]');
+`); err != nil {
+		t.Fatalf("create pre-lineage database: %v", err)
+	}
+	if err := store.applyWorkspaceAgentTurnLineageV1(ctx); err != nil {
+		t.Fatalf("lineage v1 migration: %v", err)
+	}
+	if err := store.applyWorkspaceAgentTurnLineageV2(ctx); err != nil {
+		t.Fatalf("lineage v2 migration: %v", err)
+	}
+	legacy, found, err := store.GetTurn(ctx, "ws-upgrade", "session-upgrade", "legacy-parent")
+	if err != nil || !found || legacy.Phase != TurnPhaseSettled || legacy.ParentTurnID != "" || legacy.Relation != "" {
+		t.Fatalf("migrated legacy turn=%#v found=%v err=%v", legacy, found, err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO workspace_agent_turns (
+  workspace_id, agent_session_id, turn_id, phase, created_at_unix_ms, updated_at_unix_ms,
+  capability_refs_json, parent_turn_id, relation
+) VALUES ('ws-upgrade', 'session-upgrade', 'retry-child', 'submitted', 3, 3, '[]', 'legacy-parent', 'retry')
+`); err != nil {
+		t.Fatalf("write lineage turn after upgrade: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO workspace_agent_turns (
+  workspace_id, agent_session_id, turn_id, phase, created_at_unix_ms, updated_at_unix_ms,
+  capability_refs_json, parent_turn_id
+) VALUES ('ws-upgrade', 'session-upgrade', 'invalid-child', 'submitted', 4, 4, '[]', 'legacy-parent')
+`); err == nil {
+		t.Fatal("invalid lineage shape write succeeded")
+	}
+	// Reapplying both migrations is a no-op, including trigger creation.
+	if err := store.applyWorkspaceAgentTurnLineageV1(ctx); err != nil {
+		t.Fatalf("lineage v1 second run: %v", err)
+	}
+	if err := store.applyWorkspaceAgentTurnLineageV2(ctx); err != nil {
+		t.Fatalf("lineage v2 second run: %v", err)
+	}
+}
+
 // createLegacyTuttidDatabase replays the schema a fully migrated tuttid
 // database had before the store was extracted: shared tuttid ledger, host
 // workspaces table, agent tables with the workspaces foreign key, and

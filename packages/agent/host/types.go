@@ -151,6 +151,7 @@ type RuntimeExecInput struct {
 	Metadata          map[string]any
 	Guidance          bool
 	TuttiModeSnapshot *TuttiModeTurnSnapshot
+	TurnLineage       *TurnLineage
 }
 
 type CapabilityReference struct {
@@ -323,6 +324,33 @@ type CreateSessionInput struct {
 	Visible                *bool
 }
 
+// TurnRelation is the closed vocabulary for how a derived turn relates to
+// its parent. Using a named type prevents arbitrary strings from reaching
+// the Store; the SQLite CHECK constraint is the last line of defense.
+type TurnRelation string
+
+const (
+	TurnRelationRetry TurnRelation = "retry"
+	TurnRelationEdit  TurnRelation = "edit"
+)
+
+// TurnLineage carries turn lineage for Retry/Edit. When non-nil, the runtime
+// persists parent_turn_id and relation on the new Turn.
+type TurnLineage struct {
+	ParentTurnID string
+	Relation     TurnRelation
+}
+
+// RetryTurnInput identifies one retry command. ClientSubmitID is owned by the
+// caller: replays of one user action reuse it, while a later intentional retry
+// supplies a new value. TurnID is optional; when omitted Host derives a stable
+// turn identity from ClientSubmitID for the submit-claim protocol.
+type RetryTurnInput struct {
+	ParentTurnID   string
+	ClientSubmitID string
+	TurnID         string
+}
+
 type SendInput struct {
 	CapabilityRefs    []CapabilityReference
 	TurnID            string
@@ -334,6 +362,7 @@ type SendInput struct {
 	// overrides any legacy clientSubmitId value carried in Metadata.
 	ClientSubmitID string
 	Guidance       bool
+	TurnLineage    *TurnLineage
 }
 
 type SubmitInteractiveInput struct {

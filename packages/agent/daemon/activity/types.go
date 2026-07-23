@@ -345,6 +345,8 @@ type WorkspaceAgentTurnPatch struct {
 	StartedAtUnixMS         int64                               `json:"startedAtUnixMs,omitempty"`
 	CompletedAtUnixMS       int64                               `json:"completedAtUnixMs,omitempty"`
 	FinalAssistantMessageID string                              `json:"finalAssistantMessageId,omitempty"`
+	ParentTurnID            string                              `json:"parentTurnId,omitempty"`
+	Relation                string                              `json:"relation,omitempty"`
 }
 
 type WorkspaceAgentEntityPatch struct {
