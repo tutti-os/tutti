@@ -1,4 +1,5 @@
 import type { AgentHostUserInfo } from "../../shared/contracts/dto";
+import { buildAssetUrl } from "../../shared/assetUrl";
 import { translate } from "../../i18n/index";
 import { agentMentionEmptyGroupLabel } from "./AgentMentionLabels";
 import {
@@ -32,7 +33,7 @@ export function buildSessionMentionItem(input: {
   currentUserId: string;
   session: AgentActivitySession;
   summary: WorkspaceAgentActivitySessionSummary | null;
-  userProfiles: Record<string, Pick<AgentHostUserInfo, "name" | "avatar">>;
+  userProfiles: Record<string, Pick<AgentHostUserInfo, "name" | "assetUrl">>;
   fallbackTitle?: string | null;
 }): AgentMentionSessionItem | null {
   const sessionUserId = input.session.userId?.trim() ?? "";
@@ -93,7 +94,15 @@ export function buildSessionMentionItem(input: {
     title: mentionTitle,
     scope,
     initiatorName,
-    ...(userProfile?.avatar ? { initiatorAvatarUrl: userProfile.avatar } : {}),
+    ...(userProfile?.assetUrl
+      ? {
+          initiatorAvatarUrl: buildAssetUrl(userProfile.assetUrl, {
+            kind: "avatar",
+            size: 32,
+            format: "webp"
+          })
+        }
+      : {}),
     agentName,
     status,
     inputPreview,

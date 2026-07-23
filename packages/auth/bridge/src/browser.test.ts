@@ -55,7 +55,8 @@ test("browser getUserInfo returns user and nulls unauthorized sessions", async (
       userId: "user-1",
       name: "Alice",
       email: undefined,
-      avatar: undefined
+      assetUrl: undefined,
+      assetRef: undefined
     });
     assert.equal(await auth.getUserInfo(), null);
   } finally {

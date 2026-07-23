@@ -5914,7 +5914,10 @@ components:
         email:
           type: string
           nullable: true
-        avatar:
+        assetUrl:
+          type: string
+          nullable: true
+        assetRef:
           type: string
           nullable: true
     AccountUserInfoResponse:

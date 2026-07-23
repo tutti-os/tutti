@@ -11,7 +11,8 @@ export interface TuttiUserInfo {
   userId: string;
   name?: string;
   email?: string;
-  avatar?: string;
+  assetUrl?: string;
+  assetRef?: string;
 }
 
 export interface TuttiAuthSession {
@@ -19,7 +20,8 @@ export interface TuttiAuthSession {
   cookie: string;
   userId: string;
   name: string;
-  avatar: string;
+  assetUrl: string;
+  assetRef: string;
   email: string;
   updatedAt: number;
 }
@@ -76,11 +78,7 @@ export function mapUserInfo(
       trimString(data.userEmail) ||
       trimString(data.emailAddress) ||
       undefined,
-    avatar:
-      trimString(data.avatar) ||
-      trimString(data.picture) ||
-      trimString(data.avatarUrl) ||
-      trimString(data.headImg) ||
-      undefined
+    assetUrl: trimString(data.assetUrl) || undefined,
+    assetRef: trimString(data.assetRef) || undefined
   };
 }

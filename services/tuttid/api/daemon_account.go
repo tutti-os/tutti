@@ -176,10 +176,11 @@ func generatedAccountUser(user *authbridge.UserInfo) *tuttigenerated.AccountUser
 		return nil
 	}
 	return &tuttigenerated.AccountUserInfo{
-		Avatar: stringPointer(user.Avatar),
-		Email:  stringPointer(user.Email),
-		Name:   stringPointer(user.Name),
-		UserId: user.UserID,
+		AssetUrl: stringPointer(user.AssetURL),
+		AssetRef: stringPointer(user.AssetRef),
+		Email:    stringPointer(user.Email),
+		Name:     stringPointer(user.Name),
+		UserId:   user.UserID,
 	}
 }
 

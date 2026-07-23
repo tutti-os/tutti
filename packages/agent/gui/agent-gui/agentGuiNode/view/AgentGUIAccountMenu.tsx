@@ -17,6 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger
 } from "@tutti-os/ui-system";
+import { buildAssetUrl } from "../../../shared/assetUrl";
 import { AccountMembershipBadge } from "../AccountMembershipBadge";
 import type { AgentGUIAccountMenuState } from "../accountMenuState";
 
@@ -93,11 +94,15 @@ export function AgentGUIAccountMenu({
           <div className="flex min-w-0 items-center gap-2 px-2 py-2">
             <AgentGUIAccountAvatar state={state} label={labels.copyUserId}>
               <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-[var(--background-fronted)] text-[13px] font-semibold text-[var(--text-primary)]">
-                {state.user?.avatar ? (
+                {state.user?.assetUrl ? (
                   <img
                     alt=""
                     className="size-full object-cover"
-                    src={state.user.avatar}
+                    src={buildAssetUrl(state.user.assetUrl, {
+                      kind: "avatar",
+                      size: 48,
+                      format: "webp"
+                    })}
                   />
                 ) : (
                   initials

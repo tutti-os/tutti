@@ -25,7 +25,8 @@ export type AccountUserInfo = {
   user_id: string;
   name?: string | null;
   email?: string | null;
-  avatar?: string | null;
+  assetUrl?: string | null;
+  assetRef?: string | null;
 };
 
 export type AccountUserInfoResponse = {

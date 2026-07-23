@@ -7,6 +7,7 @@ import {
   useSyncExternalStore
 } from "react";
 import { createPortal } from "react-dom";
+import { buildAssetUrl } from "@tutti-os/agent-gui";
 import { useService } from "@tutti-os/infra/di";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import { INotificationService } from "@tutti-os/ui-notifications";
@@ -2800,12 +2801,16 @@ function WorkspaceAccountSettingsSection() {
     <div className="flex flex-col gap-6 pb-[22px] pt-5">
       <div className="flex min-w-0 items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          {user?.avatar ? (
+          {user?.assetUrl ? (
             <img
               alt=""
               className="size-12 shrink-0 rounded-full object-cover"
               draggable={false}
-              src={user.avatar}
+              src={buildAssetUrl(user.assetUrl, {
+                kind: "avatar",
+                size: 48,
+                format: "webp"
+              })}
             />
           ) : (
             <div className="grid size-12 shrink-0 place-items-center rounded-full bg-[var(--transparency-block)] text-[18px] font-semibold text-[var(--text-primary)]">

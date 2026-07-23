@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { Gauge, Gift, Wrench, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@tutti-os/ui-system";
+import { buildAssetUrl } from "../../../shared/assetUrl";
 import { AgentProbeUsageFreshness } from "../AgentProbeUsageFreshness";
 import { AgentUsageMeter } from "../AgentUsageMeter";
 import { AccountMembershipBadge } from "../AccountMembershipBadge";
@@ -162,11 +163,15 @@ export const AgentGUIAccountRailMenu = memo(function AgentGUIAccountRailMenu({
                 className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-[var(--background-fronted)] text-[13px] font-semibold"
                 data-testid="agent-gui-account-avatar"
               >
-                {accountMenuState.user?.avatar ? (
+                {accountMenuState.user?.assetUrl ? (
                   <img
                     alt=""
                     className="h-full w-full object-cover"
-                    src={accountMenuState.user.avatar}
+                    src={buildAssetUrl(accountMenuState.user.assetUrl, {
+                      kind: "avatar",
+                      size: 48,
+                      format: "webp"
+                    })}
                   />
                 ) : (
                   <span aria-hidden="true">{initials}</span>

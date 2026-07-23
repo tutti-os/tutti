@@ -9,7 +9,7 @@ export interface AgentGUIAccountMenuState {
     userId: string;
     name?: string | null;
     email?: string | null;
-    avatar?: string | null;
+    assetUrl?: string | null;
   } | null;
   membershipLabel: string;
   /**
