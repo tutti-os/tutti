@@ -40,6 +40,12 @@
           "usage": "菜单、select、右键菜单等前置浮层"
         },
         {
+          "label": "--background-board-card",
+          "dark": "rgba(255, 255, 255, 0.08)",
+          "light": "rgb(255, 255, 255)",
+          "usage": "任务中心 board 卡片及分段控件选中滑块等板卡实底"
+        },
+        {
           "label": "--transparency-block",
           "dark": "rgba(255, 255, 255, 0.05)",
           "light": "rgba(60, 60, 60, 0.04)",

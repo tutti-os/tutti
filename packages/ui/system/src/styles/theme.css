@@ -23,6 +23,7 @@
   --background-session-sidepanel: rgb(244 245 247);
   --background-fronted: rgb(255 255 255 / 1);
   --background-soft: oklch(0.968 0.006 84);
+  --background-board-card: rgb(255 255 255 / 1);
   --foreground: oklch(0.248 0.016 258);
   --text-primary: rgb(60 60 60);
   --text-primary-hover: rgb(60 60 60 / 90%);
@@ -211,6 +212,7 @@
   --background-session-sidepanel: rgb(42 42 43);
   --background-fronted: rgb(51 51 51 / 1);
   --background-soft: oklch(0.224 0.01 255);
+  --background-board-card: rgb(255 255 255 / 8%);
   --foreground: oklch(0.955 0.004 84);
   --text-primary: rgb(255 255 255);
   --text-primary-hover: rgb(255 255 255 / 90%);
@@ -389,6 +391,7 @@
     --background-session-sidepanel: rgb(42 42 43);
     --background-fronted: rgb(51 51 51 / 1);
     --background-soft: oklch(0.224 0.01 255);
+    --background-board-card: rgb(255 255 255 / 8%);
     --foreground: oklch(0.955 0.004 84);
     --text-primary: rgb(255 255 255);
     --text-primary-hover: rgb(255 255 255 / 90%);
