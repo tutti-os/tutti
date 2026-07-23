@@ -2,20 +2,24 @@ package workspace
 
 import "sync"
 
-// IssueMutationLocks serializes Issue task/run mutations per Issue. Runs settle
-// through several concurrent paths — the canonical turn fan-out, the agent CLI
-// (`issue run complete`), the fallback reconciler, and the automation review
-// outcome — and each path performs read-modify-write cycles over full task
-// rows. Without one writer at a time per Issue, those cycles interleave into
-// contradictory durable states (observed in the wild: a task stuck at
-// pending_acceptance with acceptance user_accepted, wedging the frontier).
+// IssueMutationLocks serializes local Issue task/run mutations. Runs settle
+// through several concurrent paths — canonical Turn fan-out, the Agent CLI,
+// reconciliation, and review automation — and each performs read-modify-write
+// cycles over full rows. This registry reduces local conflicts; it is not a
+// durable transaction boundary or a substitute for store-level CAS/atomic
+// commands.
 type IssueMutationLocks struct {
 	mu    sync.Mutex
-	locks map[string]*sync.Mutex
+	locks map[string]*issueMutationLock
+}
+
+type issueMutationLock struct {
+	mu   sync.Mutex
+	refs int
 }
 
 func NewIssueMutationLocks() *IssueMutationLocks {
-	return &IssueMutationLocks{locks: map[string]*sync.Mutex{}}
+	return &IssueMutationLocks{locks: map[string]*issueMutationLock{}}
 }
 
 // Lock acquires the mutex for one workspace-scoped Issue and returns the
@@ -29,10 +33,19 @@ func (l *IssueMutationLocks) Lock(workspaceID string, issueID string) func() {
 	l.mu.Lock()
 	lock, ok := l.locks[key]
 	if !ok {
-		lock = &sync.Mutex{}
+		lock = &issueMutationLock{}
 		l.locks[key] = lock
 	}
+	lock.refs++
 	l.mu.Unlock()
-	lock.Lock()
-	return lock.Unlock
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		l.mu.Lock()
+		lock.refs--
+		if lock.refs == 0 {
+			delete(l.locks, key)
+		}
+		l.mu.Unlock()
+	}
 }

@@ -191,10 +191,10 @@ func (api DaemonAPI) RemoveWorkspaceIssueTaskContextRef(ctx context.Context, req
 }
 
 func (api DaemonAPI) CancelWorkspaceIssueExecution(ctx context.Context, request tuttigenerated.CancelWorkspaceIssueExecutionRequestObject) (tuttigenerated.CancelWorkspaceIssueExecutionResponseObject, error) {
-	if api.IssueService == nil {
+	if api.IssueExecutionService == nil {
 		return tuttigenerated.CancelWorkspaceIssueExecution503JSONResponse{ServiceUnavailableErrorJSONResponse: issueManagerServiceUnavailableError()}, nil
 	}
-	canceled, err := api.IssueService.CancelIssueExecution(ctx, string(request.WorkspaceID), string(request.IssueID))
+	canceled, err := api.IssueExecutionService.CancelIssueExecution(ctx, string(request.WorkspaceID), string(request.IssueID))
 	if err != nil {
 		return writeCancelWorkspaceIssueExecutionError(err), nil
 	}

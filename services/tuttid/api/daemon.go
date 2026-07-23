@@ -53,6 +53,7 @@ type DaemonAPI struct {
 	AgentStatusService         AgentProviderStatusService
 	TerminalService            workspaceapi.TerminalService
 	IssueService               workspaceapi.IssueManagerService
+	IssueExecutionService      workspaceapi.IssueExecutionService
 	TuttiModePlanService       TuttiModePlanService
 	TuttiModeActivationService TuttiModeActivationService
 	CLIRegistry                *cliservice.Registry

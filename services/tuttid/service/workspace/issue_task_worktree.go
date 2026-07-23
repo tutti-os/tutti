@@ -39,9 +39,9 @@ func (s IssueManagerService) resolveIssueTaskBaseDirectory(issue workspaceissues
 	if explicit := strings.TrimSpace(task.ExecutionDirectory); explicit != "" {
 		return explicit
 	}
-	if s.AgentSessionReader != nil && strings.TrimSpace(issue.SourceSessionID) != "" {
-		if source, ok := s.AgentSessionReader.GetSession(issue.WorkspaceID, issue.SourceSessionID); ok {
-			return strings.TrimSpace(source.Cwd)
+	if s.SourceSessionDirectoryResolver != nil && strings.TrimSpace(issue.SourceSessionID) != "" {
+		if directory, ok := s.SourceSessionDirectoryResolver.ResolveSourceSessionDirectory(issue.WorkspaceID, issue.SourceSessionID); ok {
+			return strings.TrimSpace(directory)
 		}
 	}
 	return ""
@@ -127,17 +127,11 @@ func (s IssueManagerService) createIssueTaskRunWorktree(
 	taskID string,
 	runID string,
 ) (string, string, error) {
-	suffix := strings.NewReplacer("-", "", ":", "").Replace(runID)
-	if len(suffix) > 8 {
-		suffix = suffix[:8]
-	}
-	name := taskID + "-" + suffix
-	root := filepath.Join(s.taskWorktreeRoot(), issueID)
+	path, branch := s.issueTaskRunWorktreePlan(issueID, taskID, runID)
+	root := filepath.Dir(path)
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return "", "", fmt.Errorf("create task worktree root: %w", err)
 	}
-	path := filepath.Join(root, name)
-	branch := "tutti/task/" + name
 	worktreeCtx, cancel := context.WithTimeout(ctx, issueTaskWorktreeTimeout)
 	defer cancel()
 	command := exec.CommandContext(worktreeCtx, "git", "-C", baseDir, "worktree", "add", "-b", branch, path, "HEAD")
@@ -146,4 +140,16 @@ func (s IssueManagerService) createIssueTaskRunWorktree(
 		return "", "", fmt.Errorf("create task worktree: %v: %s", err, strings.TrimSpace(string(output)))
 	}
 	return path, branch, nil
+}
+
+func (s IssueManagerService) issueTaskRunWorktreePlan(issueID string, taskID string, runID string) (string, string) {
+	suffix := strings.NewReplacer("-", "", ":", "").Replace(runID)
+	if len(suffix) > 8 {
+		suffix = suffix[:8]
+	}
+	name := taskID + "-" + suffix
+	root := filepath.Join(s.taskWorktreeRoot(), issueID)
+	path := filepath.Join(root, name)
+	branch := "tutti/task/" + name
+	return path, branch
 }

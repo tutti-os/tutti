@@ -9,54 +9,50 @@ import (
 
 	"github.com/google/uuid"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
-	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
-
-type agentSessionCreator interface {
-	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
-}
 
 // Keep automatic parallelism finite even when a plan contains many independent
 // roots. The limit is workspace-wide across Issue runs; in-flight work is
 // counted before every dispatch pass.
 const maxWorkspaceParallelIssueRuns = 4
 
-// dispatchEligibleIssueTasksLocked advances the Issue's execution frontier;
-// the caller holds the Issue mutation lock. A sequential Issue runs one
+// claimEligibleIssueRunsLocked advances the Issue's execution frontier and
+// returns durable launch claims; the caller holds the Issue mutation lock.
+// It never calls Agent Host. A sequential Issue runs one
 // exclusive Task at a time, except that Tasks the plan review marked
 // parallelizable may run alongside each other (each in an isolated per-run
 // worktree when they share a checkout). A parallel Issue dispatches every
 // isolated, dependency-ready Task. The user's execution choice is durable on
 // the Issue, and dependency, acceptance, and budget checks are repeated at
 // the daemon boundary before every launch.
-func (s IssueManagerService) dispatchEligibleIssueTasksLocked(ctx context.Context, workspaceID, issueID string) {
-	if s.AgentSessionCreator == nil {
-		return
+func (s IssueManagerService) claimEligibleIssueRunsLocked(ctx context.Context, workspaceID, issueID string) []IssueRunLaunch {
+	if s.RunLauncher == nil {
+		return nil
 	}
 	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
 	if err != nil || (!detail.Issue.SequentialExecution && !detail.Issue.ParallelExecution) || detail.Issue.DispatchPaused {
-		return
+		return nil
 	}
 	if detail.Issue.Budget.Status != workspaceissues.BudgetStatusActive {
-		return
+		return nil
 	}
 	inflight := 0
 	for _, task := range detail.Tasks {
 		switch task.Status {
 		case workspaceissues.StatusFailed:
-			return
+			return nil
 		case workspaceissues.StatusRunning, workspaceissues.StatusPendingAcceptance:
 			inflight++
 			// A live exclusive task keeps the sequential Issue exclusive;
 			// live parallelizable tasks only block other exclusive launches.
 			if detail.Issue.SequentialExecution && !task.Parallelizable {
-				return
+				return nil
 			}
 		}
 	}
 	running, err := s.domainService().ListRunningRuns(ctx, workspaceID, 1_000)
 	if err != nil {
-		return
+		return nil
 	}
 	activeIssueRuns := 0
 	for _, run := range running {
@@ -67,11 +63,11 @@ func (s IssueManagerService) dispatchEligibleIssueTasksLocked(ctx context.Contex
 	budgetSlots := issueAutomaticBudgetSlots(detail.Issue, activeIssueRuns)
 	if budgetSlots <= 0 {
 		s.markIssueBudgetSoftLimited(ctx, detail.Issue)
-		return
+		return nil
 	}
 	concurrentSlots := min(maxWorkspaceParallelIssueRuns-len(running), budgetSlots)
 	if detail.Issue.ParallelExecution && concurrentSlots <= 0 {
-		return
+		return nil
 	}
 	tasks := append([]workspaceissues.Task(nil), detail.Tasks...)
 	sort.SliceStable(tasks, func(i, j int) bool {
@@ -84,6 +80,7 @@ func (s IssueManagerService) dispatchEligibleIssueTasksLocked(ctx context.Contex
 	for _, task := range tasks {
 		byID[task.TaskID] = task
 	}
+	launches := make([]IssueRunLaunch, 0)
 	launchedConcurrent := 0
 	for _, task := range tasks {
 		if task.Status != workspaceissues.StatusNotStarted || strings.TrimSpace(task.AgentTargetID) == "" {
@@ -112,24 +109,31 @@ func (s IssueManagerService) dispatchEligibleIssueTasksLocked(ctx context.Contex
 				// Exclusive task: launch only into an idle Issue, and bar
 				// everything behind it until it completes and is accepted.
 				if inflight == 0 && launchedConcurrent == 0 {
-					s.startIssueTask(ctx, detail.Issue, task, issueTaskIsolation{}, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID))
+					if launch, ok := s.claimIssueTaskRunLocked(ctx, detail.Issue, task, issueTaskIsolation{}, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID)); ok {
+						launches = append(launches, launch)
+					}
 				}
-				return
+				return launches
 			}
 			if concurrentSlots <= 0 {
-				return
+				return launches
 			}
-			s.startIssueTask(ctx, detail.Issue, task, isolation, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID))
+			if launch, ok := s.claimIssueTaskRunLocked(ctx, detail.Issue, task, isolation, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID)); ok {
+				launches = append(launches, launch)
+			}
 			concurrentSlots--
 			launchedConcurrent++
 			continue
 		}
-		s.startIssueTask(ctx, detail.Issue, task, issueTaskIsolation{}, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID))
+		if launch, ok := s.claimIssueTaskRunLocked(ctx, detail.Issue, task, issueTaskIsolation{}, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID)); ok {
+			launches = append(launches, launch)
+		}
 		concurrentSlots--
 		if concurrentSlots <= 0 {
-			return
+			return launches
 		}
 	}
+	return launches
 }
 
 // issueTaskDependencyOutput points a successor task at a prerequisite whose
@@ -176,32 +180,20 @@ func (s IssueManagerService) dependencyWorktreeOutputs(
 	return outputs
 }
 
-func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspaceissues.Issue, task workspaceissues.Task, isolation issueTaskIsolation, dependencyOutputs []issueTaskDependencyOutput) {
+func (s IssueManagerService) claimIssueTaskRunLocked(
+	ctx context.Context,
+	issue workspaceissues.Issue,
+	task workspaceissues.Task,
+	isolation issueTaskIsolation,
+	dependencyOutputs []issueTaskDependencyOutput,
+) (IssueRunLaunch, bool) {
 	agentSessionID := uuid.NewString()
 	runID := uuid.NewString()
 	executionDirectory := s.resolveIssueTaskBaseDirectory(issue, task)
 	worktreeBranch := ""
 	worktreeBase := ""
 	if isolation.worktreeBase != "" {
-		worktreePath, branch, worktreeErr := s.createIssueTaskRunWorktree(ctx, isolation.worktreeBase, issue.IssueID, task.TaskID, runID)
-		if worktreeErr != nil {
-			// Surface the failed launch as a durable failed run, same as a
-			// failed session creation, so the Issue shows why nothing ran.
-			if run, err := s.createRunLocked(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, CreateIssueManagerRunInput{
-				RunID:              runID,
-				AgentTargetID:      task.AgentTargetID,
-				AgentSessionID:     agentSessionID,
-				ExecutionDirectory: executionDirectory,
-				ModelPlanID:        task.ModelPlanID,
-				Model:              task.Model,
-			}); err == nil {
-				_, _ = s.completeRunLocked(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, run.RunID, CompleteIssueManagerRunInput{
-					Status:       string(workspaceissues.StatusFailed),
-					ErrorMessage: worktreeErr.Error(),
-				})
-			}
-			return
-		}
+		worktreePath, branch := s.issueTaskRunWorktreePlan(issue.IssueID, task.TaskID, runID)
 		worktreeBase = isolation.worktreeBase
 		worktreeBranch = branch
 		executionDirectory = worktreePath
@@ -215,43 +207,132 @@ func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspace
 		Model:              task.Model,
 	})
 	if err != nil {
+		return IssueRunLaunch{}, false
+	}
+	return IssueRunLaunch{
+		WorkspaceID:        issue.WorkspaceID,
+		AgentSessionID:     agentSessionID,
+		AgentTargetID:      task.AgentTargetID,
+		RunID:              run.RunID,
+		TaskID:             task.TaskID,
+		IssueID:            issue.IssueID,
+		Title:              task.Title,
+		Prompt:             issueTaskPrompt(issue, task, executionDirectory, worktreeBase, worktreeBranch, dependencyOutputs),
+		ExecutionDirectory: executionDirectory,
+		ModelPlanID:        task.ModelPlanID,
+		Model:              task.Model,
+		ReasoningIntensity: run.ReasoningIntensity,
+		ReasoningEffort:    task.ReasoningEffort,
+		PermissionModeID:   task.PermissionModeID,
+		WorktreeBase:       worktreeBase,
+		WorktreeBranch:     worktreeBranch,
+	}, true
+}
+
+func (s IssueManagerService) launchClaimedIssueRuns(ctx context.Context, launches []IssueRunLaunch) {
+	for _, launch := range launches {
+		gate := s.runLaunchGate()
+		if !gate.begin(launch.WorkspaceID, launch.RunID) {
+			gate.clear(launch.WorkspaceID, launch.RunID)
+			_, _ = s.CompleteRun(ctx, launch.WorkspaceID, launch.IssueID, launch.TaskID, launch.RunID, CompleteIssueManagerRunInput{
+				Status: string(workspaceissues.StatusCanceled),
+			})
+			continue
+		}
+		decision := s.issueRunLaunchDecision(ctx, launch)
+		if decision != issueRunLaunch {
+			gate.finish(launch.WorkspaceID, launch.RunID)
+			if decision == issueRunCancelClaim {
+				_, _ = s.CompleteRun(ctx, launch.WorkspaceID, launch.IssueID, launch.TaskID, launch.RunID, CompleteIssueManagerRunInput{
+					Status: string(workspaceissues.StatusCanceled),
+				})
+			}
+			continue
+		}
+		var err error
+		if launch.WorktreeBase != "" {
+			_, _, err = s.createIssueTaskRunWorktree(ctx, launch.WorktreeBase, launch.IssueID, launch.TaskID, launch.RunID)
+		}
+		if err == nil {
+			err = s.RunLauncher.Launch(ctx, launch)
+		}
+		cancelRequested := gate.finish(launch.WorkspaceID, launch.RunID)
+		if err == nil {
+			if cancelRequested {
+				s.cancelIssueRunAfterLaunch(ctx, launch)
+			}
+			continue
+		}
+		_, _ = s.CompleteRun(ctx, launch.WorkspaceID, launch.IssueID, launch.TaskID, launch.RunID, CompleteIssueManagerRunInput{
+			Status:       string(workspaceissues.StatusFailed),
+			ErrorMessage: err.Error(),
+		})
+	}
+}
+
+func (s IssueManagerService) cancelIssueRunAfterLaunch(ctx context.Context, launch IssueRunLaunch) {
+	if s.RunCancellationRequester == nil {
+		s.enqueueWorkspaceRunReconcile(launch.WorkspaceID)
 		return
 	}
-	title := task.Title
-	model := optionalTrimmedString(task.Model)
-	modelPlanID := optionalTrimmedString(task.ModelPlanID)
-	cwd := optionalTrimmedString(executionDirectory)
-	// Task-level launch overrides recorded from the Tutti Mode plan review.
-	// An explicit reasoning effort wins over the Issue-inherited intensity;
-	// an explicit permission mode wins over the target's composer default.
-	// The permission mode the user confirmed in the review panel must never
-	// silently broaden: an unsupported/stale explicit mode fails the launch
-	// (run lands failed) instead of degrading to the provider default, per
-	// the unattended-automation StrictPermissionMode precedent.
-	reasoningEffort := optionalTrimmedString(task.ReasoningEffort)
-	permissionModeID := optionalTrimmedString(task.PermissionModeID)
-	_, err = s.AgentSessionCreator.Create(ctx, issue.WorkspaceID, agentservice.CreateSessionInput{
-		AgentSessionID:       agentSessionID,
-		AgentTargetID:        task.AgentTargetID,
-		ReasoningIntensity:   &run.ReasoningIntensity,
-		ReasoningEffort:      reasoningEffort,
-		PermissionModeID:     permissionModeID,
-		StrictPermissionMode: permissionModeID != nil,
-		InitialContent:       []agentservice.PromptContentBlock{{Type: "text", Text: issueTaskPrompt(issue, task, executionDirectory, worktreeBase, worktreeBranch, dependencyOutputs)}},
-		ClientSubmitID:       "issue-run:" + run.RunID,
-		Title:                &title,
-		Cwd:                  cwd,
-		Model:                model,
-		ModelPlanID:          modelPlanID,
-		Visible:              boolPointerValue(true),
+	result, err := s.RunCancellationRequester.RequestRunCancellation(ctx, IssueRunCancellationRequest{
+		WorkspaceID:    launch.WorkspaceID,
+		AgentSessionID: launch.AgentSessionID,
+		RunID:          launch.RunID,
 	})
-	if err == nil {
+	if err != nil {
+		s.enqueueWorkspaceRunReconcile(launch.WorkspaceID)
 		return
 	}
-	_, _ = s.completeRunLocked(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, run.RunID, CompleteIssueManagerRunInput{
-		Status:       string(workspaceissues.StatusFailed),
-		ErrorMessage: err.Error(),
+	if result.Settlement != nil {
+		s.applyIssueRunCancellationSettlement(ctx, launch.IssueID, launch.TaskID, launch.RunID, *result.Settlement)
+		return
+	}
+	s.enqueueWorkspaceRunReconcile(launch.WorkspaceID)
+}
+
+func (s IssueManagerService) applyIssueRunCancellationSettlement(
+	ctx context.Context,
+	issueID string,
+	taskID string,
+	runID string,
+	settlement IssueRunSettlement,
+) {
+	_, _ = s.CompleteRun(ctx, settlement.WorkspaceID, issueID, taskID, runID, CompleteIssueManagerRunInput{
+		Status:                   string(settlement.Status),
+		ErrorMessage:             settlement.ErrorMessage,
+		Usage:                    settlement.Usage,
+		RemainingQuotaPercent:    settlement.RemainingQuotaPercent,
+		HasRemainingQuotaPercent: settlement.HasRemainingQuotaPercent,
 	})
+}
+
+type issueRunLaunchDecision uint8
+
+const (
+	issueRunSkipLaunch issueRunLaunchDecision = iota
+	issueRunLaunch
+	issueRunCancelClaim
+)
+
+// issueRunLaunchDecision revalidates the durable claim while holding the Run
+// operation fence. The Issue lock is held only for these local reads and is
+// released before any worktree or Agent call.
+func (s IssueManagerService) issueRunLaunchDecision(ctx context.Context, launch IssueRunLaunch) issueRunLaunchDecision {
+	unlockIssue := s.MutationLocks.Lock(launch.WorkspaceID, launch.IssueID)
+	defer unlockIssue()
+	detail, err := s.domainService().GetIssueDetail(ctx, launch.WorkspaceID, launch.IssueID)
+	if err != nil {
+		return issueRunSkipLaunch
+	}
+	run, err := s.domainService().GetRunDetail(ctx, launch.WorkspaceID, launch.IssueID, launch.TaskID, launch.RunID)
+	if err != nil || run.Run.Status != workspaceissues.StatusRunning {
+		return issueRunSkipLaunch
+	}
+	if detail.Issue.DispatchPaused {
+		return issueRunCancelClaim
+	}
+	return issueRunLaunch
 }
 
 func issueTaskPrompt(issue workspaceissues.Issue, task workspaceissues.Task, executionDirectory string, worktreeBase string, worktreeBranch string, dependencyOutputs []issueTaskDependencyOutput) string {
@@ -294,16 +375,6 @@ Dependency outputs: these prerequisite tasks ran in isolated worktrees, so their
 	}
 	return prompt
 }
-
-func optionalTrimmedString(value string) *string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	return &value
-}
-
-func boolPointerValue(value bool) *bool { return &value }
 
 func firstNonEmptyText(values ...string) string {
 	for _, value := range values {

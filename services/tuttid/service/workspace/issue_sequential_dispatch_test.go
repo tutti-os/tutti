@@ -22,9 +22,36 @@ type sequentialSessionCreatorRecorder struct {
 	inputs []agentservice.CreateSessionInput
 }
 
-func (r *sequentialSessionCreatorRecorder) Create(_ context.Context, _ string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
+func (r *sequentialSessionCreatorRecorder) Launch(_ context.Context, launch IssueRunLaunch) error {
+	input := createSessionInputFromLaunch(launch)
 	r.inputs = append(r.inputs, input)
-	return agentservice.Session{ID: input.AgentSessionID, AgentTargetID: input.AgentTargetID, Provider: "codex"}, nil
+	return nil
+}
+
+func createSessionInputFromLaunch(launch IssueRunLaunch) agentservice.CreateSessionInput {
+	reasoningIntensity := launch.ReasoningIntensity
+	return agentservice.CreateSessionInput{
+		AgentSessionID:       launch.AgentSessionID,
+		AgentTargetID:        launch.AgentTargetID,
+		ReasoningIntensity:   &reasoningIntensity,
+		InitialContent:       []agentservice.PromptContentBlock{{Type: "text", Text: launch.Prompt}},
+		ClientSubmitID:       "issue-run:" + launch.RunID,
+		Title:                optionalTrimmedTestString(launch.Title),
+		Cwd:                  optionalTrimmedTestString(launch.ExecutionDirectory),
+		Model:                optionalTrimmedTestString(launch.Model),
+		ModelPlanID:          optionalTrimmedTestString(launch.ModelPlanID),
+		ReasoningEffort:      optionalTrimmedTestString(launch.ReasoningEffort),
+		PermissionModeID:     optionalTrimmedTestString(launch.PermissionModeID),
+		StrictPermissionMode: strings.TrimSpace(launch.PermissionModeID) != "",
+	}
+}
+
+func optionalTrimmedTestString(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func TestIssueSequentialExecutionDispatchesSuccessorOnlyAfterUserAcceptance(t *testing.T) {
@@ -41,9 +68,9 @@ func TestIssueSequentialExecutionDispatchesSuccessorOnlyAfterUserAcceptance(t *t
 	}
 	creator := &sequentialSessionCreatorRecorder{}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		Store:               store,
-		AgentTargetReader:   store,
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-sequential", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -112,9 +139,9 @@ func TestIssueParallelExecutionDispatchesIndependentRootsAndWaitsForAcceptedDepe
 	}
 	creator := &sequentialSessionCreatorRecorder{}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		Store:               store,
-		AgentTargetReader:   store,
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-parallel", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -179,7 +206,7 @@ func TestIssueParallelExecutionHonorsWorkspaceConcurrencyAndRefillsSlots(t *test
 		}
 	}
 	creator := &sequentialSessionCreatorRecorder{}
-	service := IssueManagerService{AgentSessionCreator: creator, Store: store, AgentTargetReader: store}
+	service := IssueManagerService{RunLauncher: creator, Store: store, AgentTargetReader: store}
 	tasks := make([]CreateIssueManagerTaskItemInput, 0, maxWorkspaceParallelIssueRuns+1)
 	for index := 0; index < maxWorkspaceParallelIssueRuns+1; index++ {
 		tasks = append(tasks, CreateIssueManagerTaskItemInput{
@@ -250,9 +277,9 @@ func TestIssueAgentSessionSettlementCompletesRunWithUsageAndAgentClaim(t *testin
 	}
 	creator := &sequentialSessionCreatorRecorder{}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		Store:               store,
-		AgentTargetReader:   store,
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-settlement", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -272,11 +299,17 @@ func TestIssueAgentSessionSettlementCompletesRunWithUsageAndAgentClaim(t *testin
 		t.Fatalf("CreateIssueFromPlan() error = %v", err)
 	}
 	outcome := "completed"
-	service.ObserveAgentSessionState(ctx, canonical.ReportSessionStateInput{
+	turnID := "turn-settlement"
+	reader := issueRunSettlementReaderStub{settlementByRunID: map[string]IssueRunSettlement{
+		detail.Tasks[0].LatestRunID: {TurnID: turnID, Status: workspaceissues.StatusCompleted},
+	}}
+	coordinator := IssueExecutionCoordinator{Issues: &service, SettlementReader: reader}
+	coordinator.ObserveAgentSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    "workspace-settlement",
 		AgentSessionID: creator.inputs[0].AgentSessionID,
 		State: canonical.WorkspaceAgentSessionStateUpdate{
 			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &outcome},
+			Turn:          &canonical.WorkspaceAgentTurnStateUpdate{TurnID: turnID, Phase: "settled", Outcome: outcome},
 			RuntimeContext: map[string]any{
 				"usage": map[string]any{
 					"inputTokens":      int64(100),
@@ -332,9 +365,9 @@ func TestIssueBudgetRecoveryUpdateResumesEligibleDispatch(t *testing.T) {
 	}
 	creator := &sequentialSessionCreatorRecorder{}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		Store:               store,
-		AgentTargetReader:   store,
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-budget-recovery", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -403,9 +436,9 @@ func TestIssueLowerIntensityRecoveryReleasesPreDispatchBudgetGate(t *testing.T) 
 	}
 	creator := &sequentialSessionCreatorRecorder{}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		Store:               store,
-		AgentTargetReader:   store,
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-intensity-recovery", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -483,9 +516,9 @@ func TestIssueExplicitPauseBlocksOnlyFutureDispatchAndResumeContinues(t *testing
 	}
 	creator := &sequentialSessionCreatorRecorder{}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		Store:               store,
-		AgentTargetReader:   store,
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-dispatch-pause", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -546,14 +579,15 @@ type strictPermissionSessionCreator struct {
 	supportedModes map[string]struct{}
 }
 
-func (r *strictPermissionSessionCreator) Create(_ context.Context, _ string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
+func (r *strictPermissionSessionCreator) Launch(_ context.Context, launch IssueRunLaunch) error {
+	input := createSessionInputFromLaunch(launch)
 	r.inputs = append(r.inputs, input)
 	if input.StrictPermissionMode && input.PermissionModeID != nil {
 		if _, ok := r.supportedModes[*input.PermissionModeID]; !ok {
-			return agentservice.Session{}, fmt.Errorf("unsupported permission mode %q", *input.PermissionModeID)
+			return fmt.Errorf("unsupported permission mode %q", *input.PermissionModeID)
 		}
 	}
-	return agentservice.Session{ID: input.AgentSessionID, AgentTargetID: input.AgentTargetID, Provider: "codex"}, nil
+	return nil
 }
 
 func TestIssueTaskLaunchAppliesTaskLevelOverridesWithStrictPermissionMode(t *testing.T) {
@@ -570,9 +604,9 @@ func TestIssueTaskLaunchAppliesTaskLevelOverridesWithStrictPermissionMode(t *tes
 	}
 	creator := &strictPermissionSessionCreator{supportedModes: map[string]struct{}{"acceptEdits": {}}}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		Store:               store,
-		AgentTargetReader:   store,
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
 	}
 
 	if _, err := service.CreateIssueFromPlan(ctx, "workspace-strict-overrides", CreateIssueManagerIssueFromPlanInput{
@@ -644,9 +678,9 @@ func TestIssueTaskLaunchFailsClosedOnUnsupportedPermissionMode(t *testing.T) {
 	}
 	creator := &strictPermissionSessionCreator{supportedModes: map[string]struct{}{"acceptEdits": {}}}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		Store:               store,
-		AgentTargetReader:   store,
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
 	}
 
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-strict-reject", CreateIssueManagerIssueFromPlanInput{
@@ -723,10 +757,10 @@ func newParallelizableDispatchService(t *testing.T, workspaceID string) (IssueMa
 	creator := &sequentialSessionCreatorRecorder{}
 	worktreeRoot := t.TempDir()
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		Store:               store,
-		AgentTargetReader:   store,
-		TaskWorktreeRoot:    worktreeRoot,
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
+		TaskWorktreeRoot:  worktreeRoot,
 	}
 	return service, creator, worktreeRoot
 }
@@ -891,9 +925,9 @@ func TestAutoAcceptTaskCompletionAdvancesDispatchWithoutHumanGate(t *testing.T) 
 	}
 	creator := &sequentialSessionCreatorRecorder{}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		Store:               store,
-		AgentTargetReader:   store,
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-auto-accept", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -948,9 +982,9 @@ func TestReworkFromPendingAcceptanceRedispatchesSequentialHead(t *testing.T) {
 	}
 	creator := &sequentialSessionCreatorRecorder{}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		Store:               store,
-		AgentTargetReader:   store,
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-rework", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -1035,10 +1069,10 @@ func TestTaskSettleWakesPlanningConversation(t *testing.T) {
 	creator := &sequentialSessionCreatorRecorder{}
 	notifier := &tuttiPlanNotifierRecorder{}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		CompletionNotifier:  notifier,
-		Store:               store,
-		AgentTargetReader:   store,
+		RunLauncher:        creator,
+		CompletionNotifier: notifier,
+		Store:              store,
+		AgentTargetReader:  store,
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "ws-settle-wake", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -1121,9 +1155,40 @@ type runSessionCancellerRecorder struct {
 	canceledSessionIDs []string
 }
 
-func (r *runSessionCancellerRecorder) CancelTargetSession(_ context.Context, _ string, agentSessionID string) error {
-	r.canceledSessionIDs = append(r.canceledSessionIDs, agentSessionID)
-	return nil
+func (r *runSessionCancellerRecorder) RequestRunCancellation(_ context.Context, request IssueRunCancellationRequest) (IssueRunCancelResult, error) {
+	r.canceledSessionIDs = append(r.canceledSessionIDs, request.AgentSessionID)
+	return IssueRunCancelResult{
+		State: IssueRunCancelCanceled,
+		Settlement: &IssueRunSettlement{
+			WorkspaceID:    request.WorkspaceID,
+			AgentSessionID: request.AgentSessionID,
+			Status:         workspaceissues.StatusCanceled,
+		},
+	}, nil
+}
+
+type failingRunSessionCanceller struct{}
+
+func (failingRunSessionCanceller) RequestRunCancellation(context.Context, IssueRunCancellationRequest) (IssueRunCancelResult, error) {
+	return IssueRunCancelResult{}, errors.New("cancel unavailable")
+}
+
+type reentrantRunSessionCanceller struct {
+	coordinator *IssueExecutionCoordinator
+	turnID      string
+}
+
+func (r *reentrantRunSessionCanceller) RequestRunCancellation(ctx context.Context, request IssueRunCancellationRequest) (IssueRunCancelResult, error) {
+	outcome := "canceled"
+	r.coordinator.ObserveAgentSessionState(ctx, canonical.ReportSessionStateInput{
+		WorkspaceID:    request.WorkspaceID,
+		AgentSessionID: request.AgentSessionID,
+		State: canonical.WorkspaceAgentSessionStateUpdate{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &outcome},
+			Turn:          &canonical.WorkspaceAgentTurnStateUpdate{TurnID: r.turnID, Phase: "settled", Outcome: outcome},
+		},
+	}, canonical.ReportSessionStateReply{})
+	return IssueRunCancelResult{State: IssueRunCancelAccepted}, nil
 }
 
 func TestStopOnPlanningSessionCancelsAllRunningIssueRuns(t *testing.T) {
@@ -1141,12 +1206,12 @@ func TestStopOnPlanningSessionCancelsAllRunningIssueRuns(t *testing.T) {
 	creator := &sequentialSessionCreatorRecorder{}
 	canceller := &runSessionCancellerRecorder{}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		Store:               store,
-		AgentTargetReader:   store,
-		RunSessionCanceller: canceller,
-		MutationLocks:       NewIssueMutationLocks(),
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
+		MutationLocks:     NewIssueMutationLocks(),
 	}
+	coordinator := IssueExecutionCoordinator{Issues: &service, RunSessionCanceller: canceller}
 	detail, err := service.CreateIssueFromPlan(ctx, "ws-stop-cascade", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
 			IssueID:                "tutti-mode-plan-stop-cascade",
@@ -1169,13 +1234,13 @@ func TestStopOnPlanningSessionCancelsAllRunningIssueRuns(t *testing.T) {
 		t.Fatalf("initial dispatches = %d, want 1", len(creator.inputs))
 	}
 	// A stop on an unrelated session must not touch this issue.
-	service.ObserveUserTurnCanceled(ctx, "ws-stop-cascade", "some-other-session")
+	coordinator.ObserveUserTurnCanceled(ctx, "ws-stop-cascade", "some-other-session")
 	if len(canceller.canceledSessionIDs) != 0 {
 		t.Fatalf("unrelated session cancel cascaded = %v, want none", canceller.canceledSessionIDs)
 	}
 	// The planning session's stop cancels the live run, settles it canceled,
 	// and durably pauses dispatch.
-	service.ObserveUserTurnCanceled(ctx, "ws-stop-cascade", "planning-session")
+	coordinator.ObserveUserTurnCanceled(ctx, "ws-stop-cascade", "planning-session")
 	if len(canceller.canceledSessionIDs) != 1 {
 		t.Fatalf("canceled sessions = %v, want the running run's session", canceller.canceledSessionIDs)
 	}
@@ -1196,8 +1261,279 @@ func TestStopOnPlanningSessionCancelsAllRunningIssueRuns(t *testing.T) {
 		t.Fatalf("dispatches after stop = %d, want no new launches", len(creator.inputs))
 	}
 	// Stop is idempotent.
-	if _, err := service.CancelIssueExecution(ctx, "ws-stop-cascade", detail.Issue.IssueID); err != nil {
+	if _, err := coordinator.CancelIssueExecution(ctx, "ws-stop-cascade", detail.Issue.IssueID); err != nil {
 		t.Fatalf("CancelIssueExecution() repeat error = %v", err)
+	}
+}
+
+func TestCancelIssueExecutionAllowsSynchronousAgentSettlementReentry(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-stop-reentry", Name: "Stop reentry"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	creator := &sequentialSessionCreatorRecorder{}
+	service := IssueManagerService{
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
+		MutationLocks:     NewIssueMutationLocks(),
+		RunLaunchGate:     NewIssueRunLaunchGate(),
+	}
+	detail, err := service.CreateIssueFromPlan(ctx, "ws-stop-reentry", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-stop-reentry",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Stop with synchronous settlement",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{{
+			TaskID: "task-1", Title: "First", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID := detail.Tasks[0].LatestRunID
+	turnID := "turn-stop-reentry"
+	reader := issueRunSettlementReaderStub{settlementByRunID: map[string]IssueRunSettlement{
+		runID: {TurnID: turnID, Status: workspaceissues.StatusCanceled},
+	}}
+	coordinator := &IssueExecutionCoordinator{Issues: &service, SettlementReader: reader}
+	coordinator.RunSessionCanceller = &reentrantRunSessionCanceller{coordinator: coordinator, turnID: turnID}
+
+	result := make(chan error, 1)
+	go func() {
+		_, cancelErr := coordinator.CancelIssueExecution(ctx, "ws-stop-reentry", detail.Issue.IssueID)
+		result <- cancelErr
+	}()
+	select {
+	case cancelErr := <-result:
+		if cancelErr != nil {
+			t.Fatalf("CancelIssueExecution() error = %v", cancelErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("CancelIssueExecution() deadlocked on synchronous Agent settlement")
+	}
+	updated, err := service.GetIssueDetail(ctx, "ws-stop-reentry", detail.Issue.IssueID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.Issue.DispatchPaused || updated.Tasks[0].Status != workspaceissues.StatusCanceled {
+		t.Fatalf("stopped Issue = %#v tasks=%#v, want paused with canceled task", updated.Issue, updated.Tasks)
+	}
+}
+
+func TestCancelIssueExecutionDoesNotForgeCanceledOutcomeOnAgentFailure(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-stop-failure", Name: "Stop failure"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	creator := &sequentialSessionCreatorRecorder{}
+	service := IssueManagerService{
+		RunLauncher:       creator,
+		Store:             store,
+		AgentTargetReader: store,
+		MutationLocks:     NewIssueMutationLocks(),
+		RunLaunchGate:     NewIssueRunLaunchGate(),
+	}
+	detail, err := service.CreateIssueFromPlan(ctx, "ws-stop-failure", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-stop-failure",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Stop failure",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{{
+			TaskID: "task-1", Title: "First", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator := IssueExecutionCoordinator{Issues: &service, RunSessionCanceller: failingRunSessionCanceller{}}
+	if _, err := coordinator.CancelIssueExecution(ctx, "ws-stop-failure", detail.Issue.IssueID); err == nil {
+		t.Fatal("CancelIssueExecution() error = nil, want Agent cancellation failure")
+	}
+	updated, err := service.GetIssueDetail(ctx, "ws-stop-failure", detail.Issue.IssueID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.Issue.DispatchPaused {
+		t.Fatal("Issue dispatch resumed after failed cancellation")
+	}
+	if updated.Tasks[0].Status != workspaceissues.StatusRunning {
+		t.Fatalf("task status = %q, want running until canonical Agent settlement", updated.Tasks[0].Status)
+	}
+}
+
+type reentrantIssueRunLauncher struct {
+	issues *IssueManagerService
+}
+
+func (l reentrantIssueRunLauncher) Launch(ctx context.Context, launch IssueRunLaunch) error {
+	_, err := l.issues.CompleteRun(ctx, launch.WorkspaceID, launch.IssueID, launch.TaskID, launch.RunID, CompleteIssueManagerRunInput{
+		Status: string(workspaceissues.StatusCompleted),
+	})
+	return err
+}
+
+func TestIssueDispatchAllowsSynchronousLaunchSettlementReentry(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-launch-reentry", Name: "Launch reentry"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service := IssueManagerService{
+		Store:             store,
+		AgentTargetReader: store,
+		MutationLocks:     NewIssueMutationLocks(),
+		RunLaunchGate:     NewIssueRunLaunchGate(),
+	}
+	service.RunLauncher = reentrantIssueRunLauncher{issues: &service}
+
+	result := make(chan error, 1)
+	go func() {
+		_, createErr := service.CreateIssueFromPlan(ctx, "ws-launch-reentry", CreateIssueManagerIssueFromPlanInput{
+			Issue: CreateIssueManagerIssueInput{
+				IssueID:             "issue-launch-reentry",
+				TopicID:             workspaceissues.DefaultTopicID,
+				Title:               "Launch with synchronous settlement",
+				PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+				SequentialExecution: true,
+			},
+			Tasks: []CreateIssueManagerTaskItemInput{{
+				TaskID: "task-1", Title: "First", AgentTargetID: agenttargetbiz.IDLocalCodex,
+			}},
+		})
+		result <- createErr
+	}()
+	select {
+	case createErr := <-result:
+		if createErr != nil {
+			t.Fatalf("CreateIssueFromPlan() error = %v", createErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("CreateIssueFromPlan() deadlocked on synchronous launch settlement")
+	}
+	updated, err := service.GetIssueDetail(ctx, "ws-launch-reentry", "issue-launch-reentry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Tasks[0].Status != workspaceissues.StatusPendingAcceptance {
+		t.Fatalf("task status = %q, want pending_acceptance", updated.Tasks[0].Status)
+	}
+}
+
+type blockingIssueRunLauncher struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (l blockingIssueRunLauncher) Launch(context.Context, IssueRunLaunch) error {
+	close(l.started)
+	<-l.release
+	return nil
+}
+
+func TestIssueStopFencesInFlightLaunchBeforeCancelingSession(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-launch-stop-race", Name: "Launch stop race"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	launcher := blockingIssueRunLauncher{started: make(chan struct{}), release: make(chan struct{})}
+	canceller := &runSessionCancellerRecorder{}
+	service := IssueManagerService{
+		RunLauncher:              launcher,
+		RunCancellationRequester: canceller,
+		Store:                    store,
+		AgentTargetReader:        store,
+		MutationLocks:            NewIssueMutationLocks(),
+		RunLaunchGate:            NewIssueRunLaunchGate(),
+	}
+	coordinator := IssueExecutionCoordinator{Issues: &service, RunSessionCanceller: canceller}
+	createDone := make(chan error, 1)
+	go func() {
+		_, createErr := service.CreateIssueFromPlan(ctx, "ws-launch-stop-race", CreateIssueManagerIssueFromPlanInput{
+			Issue: CreateIssueManagerIssueInput{
+				IssueID:             "issue-launch-stop-race",
+				TopicID:             workspaceissues.DefaultTopicID,
+				Title:               "Launch stop race",
+				PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+				SequentialExecution: true,
+			},
+			Tasks: []CreateIssueManagerTaskItemInput{{
+				TaskID: "task-1", Title: "First", AgentTargetID: agenttargetbiz.IDLocalCodex,
+			}},
+		})
+		createDone <- createErr
+	}()
+	<-launcher.started
+	cancelDone := make(chan error, 1)
+	go func() {
+		_, cancelErr := coordinator.CancelIssueExecution(ctx, "ws-launch-stop-race", "issue-launch-stop-race")
+		cancelDone <- cancelErr
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		current, readErr := service.GetIssueDetail(ctx, "ws-launch-stop-race", "issue-launch-stop-race")
+		if readErr == nil && current.Issue.DispatchPaused {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("stop did not persist dispatch pause while launch was in flight")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case err := <-cancelDone:
+		if err != nil {
+			t.Fatalf("CancelIssueExecution() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("CancelIssueExecution() waited for the external launch")
+	}
+	close(launcher.release)
+	if err := <-createDone; err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	if len(canceller.canceledSessionIDs) != 2 {
+		t.Fatalf("canceled sessions = %v, want stop request plus post-launch compensation", canceller.canceledSessionIDs)
+	}
+	updated, err := service.GetIssueDetail(ctx, "ws-launch-stop-race", "issue-launch-stop-race")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.Issue.DispatchPaused || updated.Tasks[0].Status != workspaceissues.StatusCanceled {
+		t.Fatalf("stopped Issue = %#v tasks=%#v, want paused with canceled task", updated.Issue, updated.Tasks)
 	}
 }
 
@@ -1216,10 +1552,10 @@ func TestFailedRunNotifiesPlanningConversationAndReworkRedispatches(t *testing.T
 	creator := &sequentialSessionCreatorRecorder{}
 	notifier := &tuttiPlanNotifierRecorder{}
 	service := IssueManagerService{
-		AgentSessionCreator: creator,
-		CompletionNotifier:  notifier,
-		Store:               store,
-		AgentTargetReader:   store,
+		RunLauncher:        creator,
+		CompletionNotifier: notifier,
+		Store:              store,
+		AgentTargetReader:  store,
 	}
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-fail-notify", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
@@ -1344,8 +1680,8 @@ func TestAgentSettlementCompletesOnlyTheInitiatingTurnRun(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	service, creator, _ := newParallelizableDispatchService(t, "ws-turn-match")
-	resolver := issueRunTurnResolverStub{initiatingTurnByRunID: map[string]string{}}
-	service.RunTurnResolver = resolver
+	reader := issueRunSettlementReaderStub{settlementByRunID: map[string]IssueRunSettlement{}}
+	coordinator := IssueExecutionCoordinator{Issues: &service, SettlementReader: reader}
 	detail, err := service.CreateIssueFromPlan(ctx, "ws-turn-match", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
 			IssueID:             "issue-turn-match",
@@ -1362,7 +1698,10 @@ func TestAgentSettlementCompletesOnlyTheInitiatingTurnRun(t *testing.T) {
 		t.Fatalf("CreateIssueFromPlan() error = %v", err)
 	}
 	first := detail.Tasks[0]
-	resolver.initiatingTurnByRunID[first.LatestRunID] = "turn-brief"
+	reader.settlementByRunID[first.LatestRunID] = IssueRunSettlement{
+		TurnID: "turn-brief",
+		Status: workspaceissues.StatusCompleted,
+	}
 	sessionID := creator.inputs[0].AgentSessionID
 	outcome := "completed"
 	settledState := func(turnID string) canonical.ReportSessionStateInput {
@@ -1382,7 +1721,7 @@ func TestAgentSettlementCompletesOnlyTheInitiatingTurnRun(t *testing.T) {
 
 	// A different turn settling in the delegate conversation (e.g. a human
 	// interjection) must not complete the run.
-	service.ObserveAgentSessionState(ctx, settledState("turn-interjection"), canonical.ReportSessionStateReply{})
+	coordinator.ObserveAgentSessionState(ctx, settledState("turn-interjection"), canonical.ReportSessionStateReply{})
 	after, err := service.GetIssueDetail(ctx, "ws-turn-match", detail.Issue.IssueID)
 	if err != nil {
 		t.Fatalf("GetIssueDetail() error = %v", err)
@@ -1392,12 +1731,57 @@ func TestAgentSettlementCompletesOnlyTheInitiatingTurnRun(t *testing.T) {
 	}
 
 	// The run's own initiating turn settling completes it.
-	service.ObserveAgentSessionState(ctx, settledState("turn-brief"), canonical.ReportSessionStateReply{})
+	coordinator.ObserveAgentSessionState(ctx, settledState("turn-brief"), canonical.ReportSessionStateReply{})
 	settled, err := service.GetIssueDetail(ctx, "ws-turn-match", detail.Issue.IssueID)
 	if err != nil {
 		t.Fatalf("GetIssueDetail() error = %v", err)
 	}
 	if settled.Tasks[0].Status != workspaceissues.StatusPendingAcceptance {
 		t.Fatalf("task status after initiating settle = %q, want pending_acceptance", settled.Tasks[0].Status)
+	}
+}
+
+func TestIssueRunReconcilerRecoversExactCanonicalSettlement(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	service, _, _ := newParallelizableDispatchService(t, "ws-settlement-recovery")
+	detail, err := service.CreateIssueFromPlan(ctx, "ws-settlement-recovery", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-settlement-recovery",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Settlement recovery",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{{
+			TaskID: "task-1", Title: "Only", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID := detail.Tasks[0].LatestRunID
+	coordinator := IssueExecutionCoordinator{
+		Issues: &service,
+		SettlementReader: issueRunSettlementReaderStub{settlementByRunID: map[string]IssueRunSettlement{
+			runID: {
+				TurnID: "turn-recovered",
+				Status: workspaceissues.StatusCompleted,
+			},
+		}},
+	}
+	result, err := coordinator.ReconcileRunningRuns(ctx, "ws-settlement-recovery")
+	if err != nil {
+		t.Fatalf("ReconcileRunningRuns() error = %v", err)
+	}
+	if result.CompletedCount != 1 {
+		t.Fatalf("completed count = %d, want 1", result.CompletedCount)
+	}
+	updated, err := service.GetIssueDetail(ctx, "ws-settlement-recovery", detail.Issue.IssueID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Tasks[0].Status != workspaceissues.StatusPendingAcceptance {
+		t.Fatalf("task status = %q, want pending_acceptance", updated.Tasks[0].Status)
 	}
 }
