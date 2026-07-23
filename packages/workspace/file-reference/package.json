@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/workspace-file-reference",
-  "version": "0.1.0",
+  "version": "0.0.205",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -26,10 +26,10 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@tutti-os/ui-react-hooks": "workspace:*",
-    "@tutti-os/ui-system": "workspace:*",
-    "@tutti-os/workspace-file-manager": "workspace:*",
-    "@tutti-os/workspace-file-preview": "workspace:*",
+    "@tutti-os/ui-react-hooks": "0.0.205",
+    "@tutti-os/ui-system": "0.0.205",
+    "@tutti-os/workspace-file-manager": "0.0.205",
+    "@tutti-os/workspace-file-preview": "0.0.205",
     "valtio": "^2.3.2"
   },
   "devDependencies": {
