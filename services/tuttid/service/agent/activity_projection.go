@@ -252,6 +252,7 @@ func (p *ActivityProjection) reportSessionState(
 		Settings:          clonePayload(input.State.Settings),
 		RuntimeContext:    clonePayload(runtimeContext),
 		Cwd:               strings.TrimSpace(input.State.CWD),
+		RailPlacement:     canonicalRailSection(input.State.RailPlacement),
 		Title:             strings.TrimSpace(sessionStateTitle(input.State)),
 		Status:            strings.TrimSpace(input.State.LifecycleStatus),
 		CurrentPhase:      strings.TrimSpace(input.State.CurrentPhase),
@@ -288,6 +289,17 @@ func (p *ActivityProjection) reportSessionState(
 		agenthost.NotifyCommitted(ctx, p, agenthost.ActivityStateDelta(input, reply, activityResult))
 	}
 	return reply, nil
+}
+
+func canonicalRailSection(placement *canonical.RailPlacement) *agentactivitybiz.RailSection {
+	if placement == nil {
+		return nil
+	}
+	return &agentactivitybiz.RailSection{
+		Kind:        strings.TrimSpace(placement.Kind),
+		ProjectPath: strings.TrimSpace(placement.ProjectPath),
+		Key:         strings.TrimSpace(placement.SectionKey),
+	}
 }
 
 func (p *ActivityProjection) reportFailedRuntimeNodeResult(ctx context.Context, input canonical.ReportSessionStateInput) {

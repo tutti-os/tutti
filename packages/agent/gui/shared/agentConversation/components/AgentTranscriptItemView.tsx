@@ -4,6 +4,7 @@ import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMar
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import { resolveAgentConversationLinkAction } from "../actions/agentConversationLinkActions";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
+import type { AgentConversationParticipantPresentation } from "../contracts/agentConversationParticipantPresentation";
 import { AgentGeneratedImageRow } from "./AgentGeneratedImageRow";
 import { AgentGoalControlRow } from "./AgentGoalControlRow";
 import { AgentMessageBlock } from "./AgentMessageBlock";
@@ -29,6 +30,7 @@ interface AgentTranscriptItemViewProps {
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   previewMode?: boolean;
   showRawTimelineJson?: boolean;
+  participantPresentation?: AgentConversationParticipantPresentation;
   toolGroupExpanded?: boolean;
   toolGroupExpansionKey?: string;
   onToolGroupExpandedChange?: (key: string, expanded: boolean) => void;
@@ -46,6 +48,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
   workspaceAppIcons,
   previewMode = false,
   showRawTimelineJson = false,
+  participantPresentation,
   toolGroupExpanded,
   toolGroupExpansionKey,
   onToolGroupExpandedChange
@@ -92,6 +95,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           thinkingLabel={labels.thinkingLabel}
           showRawTimelineJson={showRawTimelineJson}
           rawTimelineJsonLabel={labels.rawTimelineJson}
+          participantPresentation={participantPresentation}
         />
       );
     case "tool-group":

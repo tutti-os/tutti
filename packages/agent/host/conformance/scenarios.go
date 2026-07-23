@@ -3,6 +3,7 @@ package conformance
 var (
 	createEmptySessionScenario          = Scenario{Name: "create empty session", run: runCreateEmptySession}
 	createWithInitialContentScenario    = Scenario{Name: "create with initial content", run: runCreateWithInitialContent}
+	createWithRailPlacementScenario     = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
 	resumePersistedSessionScenario      = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
 	sendInputScenario                   = Scenario{Name: "send input", run: runSendInput}
 	duplicateClientSubmitIDScenario     = Scenario{Name: "duplicate client submit id", run: runDuplicateClientSubmitID}
@@ -31,6 +32,7 @@ func Scenarios() []Scenario {
 	return []Scenario{
 		createEmptySessionScenario,
 		createWithInitialContentScenario,
+		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
 		duplicateClientSubmitIDScenario,
@@ -108,6 +110,7 @@ func ApplicationCoreScenarios() []Scenario {
 	return []Scenario{
 		createEmptySessionScenario,
 		createWithInitialContentScenario,
+		createWithRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
 		duplicateClientSubmitIDScenario,

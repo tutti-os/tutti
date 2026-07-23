@@ -19,6 +19,7 @@ export type {
 export {
   createWorkbenchNode,
   createWorkbenchNodeFromSnapshot,
+  createWorkbenchSnapshotLayoutBasis,
   createWorkbenchSnapshotFromState,
   createWorkbenchStateFromSnapshot,
   type CreateWorkbenchNodeInput,
@@ -146,9 +147,11 @@ export type {
   WorkbenchResolveFullscreenHeaderMode,
   WorkbenchResolveWindowChromeMode,
   WorkbenchResolveWindowChromeModeContext,
+  WorkbenchResolveWindowHeaderPresentation,
   WorkbenchSurfacePresentation,
   WorkbenchFullscreenHeaderMode,
   WorkbenchWindowActionContext,
   WorkbenchWindowChromeMode,
-  WorkbenchWindowHeaderContext
+  WorkbenchWindowHeaderContext,
+  WorkbenchWindowHeaderPresentation
 } from "./react/types.ts";

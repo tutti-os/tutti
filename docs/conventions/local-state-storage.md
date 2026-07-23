@@ -149,14 +149,15 @@ legacy API compatibility; a forward migration idempotently materializes any
 late binding rows as `source=legacy_binding` WorkspaceAgents before Desktop
 removes the binding editor. Plan reference protection includes both current
 WorkspaceAgents and remaining legacy consumers.
-`model_plan_first_use_candidates` durably attributes prepared sessions to
-plans until a completed canonical turn settles first-use state; startup
-reconciliation retries candidates left by observer failure or shutdown.
-Its dedicated `model_plan_first_use_candidates_v1` migration repairs databases
-that recorded `model_plans_v1` before this table existed. Migration identifiers
-are immutable once any development or production database can record them;
-later required tables, columns, or indexes must use a new forward migration
-rather than extending the SQL hidden behind an existing marker.
+The retired `first_use_json` column and
+`model_plan_first_use_candidates` table remain only for database downgrade
+compatibility; current model-plan readiness ends at successful connection
+detection and no session attribution is written or reconciled. The historical
+`model_plan_first_use_candidates_v1` migration still repairs databases that
+recorded `model_plans_v1` before this table existed. Migration identifiers are
+immutable once any development or production database can record them; later
+required tables, columns, or indexes must use a new forward migration rather
+than extending the SQL hidden behind an existing marker.
 
 The initial migration copies existing managed model-provider credentials into
 stable `mp-migrated-<provider>` plans without removing the legacy rows, because

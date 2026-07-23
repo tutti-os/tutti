@@ -21,10 +21,7 @@ import type { IReporterService } from "../../analytics/services/reporterService.
 import { createDesktopWorkspaceSettingsClient } from "./internal/adapters/desktopWorkspaceSettingsClient";
 import { AccountService } from "./internal/accountService";
 import { WorkspaceWorkbenchHostService } from "./internal/workspaceWorkbenchHostService";
-import {
-  WorkspaceSettingsService,
-  type WorkspaceSettingsServiceDependencies
-} from "./internal/workspaceSettingsService";
+import { WorkspaceSettingsService } from "./internal/workspaceSettingsService";
 import { IAccountService } from "./accountService.interface";
 import { IWorkbenchHostCoordinator } from "./workbenchHostCoordinator.interface.ts";
 import { IWorkspaceWorkbenchHostService } from "./workspaceWorkbenchHostService.interface";
@@ -49,7 +46,6 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
     | "onOpenFileRequest"
     | "replaceWorkspaceWindow"
   >;
-  launchAgentGui?: WorkspaceSettingsServiceDependencies["launchAgentGui"];
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -119,7 +115,6 @@ export function registerWorkspaceWorkbenchServices(
           runtimeApi: input.runtimeApi,
           tuttidClient: input.tuttidClient
         }),
-        launchAgentGui: input.launchAgentGui,
         onAgentTargetsChanged: input.onAgentTargetsChanged,
         replaceWorkspaceWindow: input.hostWorkspaceApi.replaceWorkspaceWindow
       }

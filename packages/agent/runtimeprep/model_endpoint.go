@@ -83,29 +83,42 @@ func OpenCodePlanModelID(value string) string {
 }
 
 // modelEndpointClaudeEnv maps an anthropic-protocol plan endpoint onto the
-// Claude Code environment contract. Official API endpoints authenticate with
-// ANTHROPIC_API_KEY (x-api-key); relays and coding-plan gateways generally
-// expect the bearer ANTHROPIC_AUTH_TOKEN form.
+// Claude Code environment contract. Anthropic's official endpoint and Kimi
+// Coding authenticate with ANTHROPIC_API_KEY (x-api-key); relays and other
+// coding-plan gateways generally expect the bearer ANTHROPIC_AUTH_TOKEN form.
 func modelEndpointClaudeEnv(endpoint *ModelEndpointConfig) []string {
 	if !endpoint.supportsClaudeCode() {
 		return nil
 	}
 	baseURL := strings.TrimSpace(endpoint.BaseURL)
 	env := []string{"ANTHROPIC_BASE_URL=" + strings.TrimSuffix(baseURL, "/v1")}
-	if modelEndpointIsOfficialAnthropic(baseURL) {
-		env = append(env, "ANTHROPIC_API_KEY="+endpoint.APIKey)
+	if modelEndpointUsesAnthropicAPIKey(baseURL) {
+		env = append(
+			env,
+			"ANTHROPIC_API_KEY="+endpoint.APIKey,
+			"ANTHROPIC_AUTH_TOKEN=",
+		)
 	} else {
-		env = append(env, "ANTHROPIC_AUTH_TOKEN="+endpoint.APIKey)
+		env = append(
+			env,
+			"ANTHROPIC_AUTH_TOKEN="+endpoint.APIKey,
+			"ANTHROPIC_API_KEY=",
+		)
 	}
 	return env
 }
 
-func modelEndpointIsOfficialAnthropic(baseURL string) bool {
+func modelEndpointUsesAnthropicAPIKey(baseURL string) bool {
 	parsed, err := url.Parse(baseURL)
 	if err != nil {
 		return false
 	}
-	return strings.EqualFold(parsed.Hostname(), "api.anthropic.com")
+	switch strings.ToLower(parsed.Hostname()) {
+	case "api.anthropic.com", "api.kimi.com":
+		return true
+	default:
+		return false
+	}
 }
 
 // codexConfigWithModelPlanEndpoint rewrites the session-scoped Codex

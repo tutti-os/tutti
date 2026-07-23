@@ -307,6 +307,9 @@ function activationInput(
           }
         }
       : {}),
+    ...(command.railPlacement
+      ? { railPlacement: { ...command.railPlacement } }
+      : {}),
     ...(command.submitDiagnostics
       ? { submitDiagnostics: { ...command.submitDiagnostics } }
       : {}),

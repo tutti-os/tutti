@@ -103,3 +103,11 @@ test("stylesheet and HTML changes select the backdrop-filter authoring policy", 
     );
   }
 });
+
+test("stylesheet changes select the CSS :has() performance policy", () => {
+  const checks = selectRepositoryChecks([
+    "packages/agent/gui/app/renderer/agentactivity.css"
+  ]);
+
+  assert.ok(checks.some((check) => check.key === "policy:css-has-performance"));
+});

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { AgentActivityGoalControlAction } from "@tutti-os/agent-activity-core";
 import type { AgentGuiWorkbenchSessionActionRequest } from "../../../workbench/sessionActions";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
+import type { ReferenceSourcePickerProps } from "@tutti-os/workspace-file-reference/ui";
 import type {
   ReferenceLocateTarget,
   WorkspaceFileReference,
@@ -189,6 +190,8 @@ export interface AgentGUIViewLabels {
   accountMenuTitle: string;
   accountMenuMember: string;
   accountMenuUpgrade: string;
+  accountMenuRecharge: string;
+  accountMenuViewPlans: string;
   accountMenuCreditsBalance: string;
   accountMenuAccountCenter: string;
   accountMenuSettings: string;
@@ -699,6 +702,7 @@ export interface AgentGUINodeViewProps {
   workspaceFileReferenceCopy?: WorkspaceFileReferenceCopy | null;
   projectDirectorySourceAggregator?: ReferenceSourceAggregator | null;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
+  resolveReferenceContentErrorAction?: ReferenceSourcePickerProps["resolveContentErrorAction"];
   resolveWorkspaceReferenceEntryIconUrl?: (
     entry: WorkspaceFileEntry
   ) => Promise<string | null | undefined>;

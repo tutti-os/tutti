@@ -346,6 +346,8 @@ export function useAgentGUIViewLabels(input: {
       accountMenuTitle: t("agentHost.agentGui.accountMenuTitle"),
       accountMenuMember: t("agentHost.agentGui.accountMenuMember"),
       accountMenuUpgrade: t("agentHost.agentGui.accountMenuUpgrade"),
+      accountMenuRecharge: t("agentHost.agentGui.accountMenuRecharge"),
+      accountMenuViewPlans: t("agentHost.agentGui.accountMenuViewPlans"),
       accountMenuCreditsBalance: t(
         "agentHost.agentGui.accountMenuCreditsBalance"
       ),

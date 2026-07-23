@@ -15,6 +15,7 @@ import (
 	"time"
 
 	authbridge "github.com/tutti-os/tutti/packages/auth/bridge-go"
+	"github.com/tutti-os/tutti/packages/commerce"
 )
 
 func TestNewServiceReadsLocalAuthOverrides(t *testing.T) {
@@ -421,6 +422,9 @@ func TestGetProductSummaryReturnsLinksWhenSignedOut(t *testing.T) {
 	}
 	if summary.Links.PlanURL != "https://tutti.sh/profile/plan" {
 		t.Fatalf("plan url = %q", summary.Links.PlanURL)
+	}
+	if summary.MembershipAccess != commerce.MembershipAccessUnknown {
+		t.Fatalf("membership access = %q, want unknown", summary.MembershipAccess)
 	}
 }
 

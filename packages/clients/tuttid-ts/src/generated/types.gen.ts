@@ -42,6 +42,12 @@ export type AccountMembershipSummary = {
   cancel_at_period_end?: boolean | null;
 };
 
+export type AccountMembershipAccessState =
+  | "free"
+  | "active"
+  | "inactive"
+  | "unknown";
+
 export type AccountCreditsSummary = {
   available_credits: string | null;
   expiring_credits_within_24h?: string | null;
@@ -71,6 +77,7 @@ export type AccountRegistrationCreditsReward = {
 export type AccountProductSummaryResponse = {
   user: AccountUserInfo | null;
   membership: AccountMembershipSummary | null;
+  membership_access: AccountMembershipAccessState;
   credits: AccountCreditsSummary | null;
   partial_error?: AccountProductSummaryPartialError | null;
   registration_credits_reward?: AccountRegistrationCreditsReward | null;
@@ -760,23 +767,21 @@ export type ModelPlanTemplateKind =
   | "custom";
 
 /**
- * Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+ * Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
  */
 export type ModelPlanStatus =
   | "disabled"
   | "undetected"
   | "detection_failed"
-  | "pending_first_use"
   | "ready";
 
 export type ModelPlanDetectionStage =
   | "network"
   | "auth"
   | "model_discovery"
-  | "inference"
-  | "agent_runtime";
+  | "inference";
 
-export type ModelPlanStageStatus = "passed" | "failed" | "skipped" | "pending";
+export type ModelPlanStageStatus = "passed" | "failed" | "skipped";
 
 export type ModelPlanStageResult = {
   stage: ModelPlanDetectionStage;
@@ -803,14 +808,6 @@ export type ModelPlanDetection = {
   model?: string | null;
 };
 
-export type ModelPlanFirstUse = {
-  status: "pending" | "completed";
-  agentTargetId?: string | null;
-  agentSessionId?: string | null;
-  model?: string | null;
-  completedAt?: string | null;
-};
-
 export type ModelPlanModel = {
   id: string;
   name: string;
@@ -834,7 +831,6 @@ export type ModelPlan = {
   enabled: boolean;
   status: ModelPlanStatus;
   detection: ModelPlanDetection;
-  firstUse: ModelPlanFirstUse;
   createdAt: string;
   updatedAt: string;
 };
@@ -2707,6 +2703,7 @@ export type CreateWorkspaceAgentSessionRequest = {
    * Classifies a session that is intentionally not attached to a workspace project.
    */
   noProject?: boolean | null;
+  railPlacement?: WorkspaceAgentRailPlacement;
   speed?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;
@@ -2719,6 +2716,13 @@ export type CreateWorkspaceAgentSessionRequest = {
    */
   initialTuttiModeActivation?: TuttiModeActivationIntent | null;
   visible?: boolean | null;
+};
+
+export type WorkspaceAgentRailPlacement = {
+  version: 1;
+  kind: "conversations" | "project";
+  projectPath?: string;
+  sectionKey: string;
 };
 
 export type SendWorkspaceAgentSessionInputRequest = {
@@ -3114,6 +3118,30 @@ export type PreflightUploadWorkspaceFilesResponse = {
   conflicts: Array<WorkspaceFileUploadConflict>;
 };
 
+export type WorkbenchSize = {
+  width: number;
+  height: number;
+};
+
+export type WorkbenchSafeArea = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+export type WorkbenchLayoutConstraints = {
+  minWidth: number;
+  minHeight: number;
+  surfacePadding: number;
+  safeArea: WorkbenchSafeArea;
+};
+
+export type WorkbenchLayoutBasis = {
+  surfaceSize: WorkbenchSize;
+  layoutConstraints: WorkbenchLayoutConstraints;
+};
+
 export type WorkbenchFrame = {
   x: number;
   y: number;
@@ -3151,6 +3179,7 @@ export type WorkbenchSnapshot = {
   activeNodeId?: string | null;
   spaces?: Array<WorkbenchSnapshotSpace>;
   activeSpaceId?: string | null;
+  layoutBasis?: WorkbenchLayoutBasis;
   metadata?: {
     [key: string]: unknown;
   };

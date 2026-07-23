@@ -189,8 +189,12 @@ export const zhCN = {
     accountMenu: {
       title: "Tutti Agent",
       member: "管理订阅",
+      upgradeMembership: "升级会员",
+      rechargeCredits: "充值积分",
+      viewCreditPlans: "查看积分方案",
       creditsBalance: "积分余额",
       accountCenter: "账户设置",
+      settings: "设置",
       free: "Free",
       signIn: "登录",
       signOut: "退出登录",
@@ -885,8 +889,6 @@ export const zhCN = {
         modelPlans: {
           addModel: "添加模型",
           addPlan: "添加方案",
-          agentRuntimePendingHint:
-            "保存方案后，在下方选择兼容的 Agent 完成第一次真实调用，即可完成验证",
           apiKey: "API 密钥",
           baseUrl: "Base URL",
           defaultMarker: "默认",
@@ -902,8 +904,6 @@ export const zhCN = {
           detect: "检测连接",
           detectFailed: "连接检测失败，请重试",
           detecting: "检测中...",
-          detectionRequired: "保存方案前，请先完成并通过连接检测",
-          detectionTitle: "连接检测",
           duplicate: "复制",
           duplicateFailed: "复制失败，请重试",
           edit: "编辑",
@@ -912,18 +912,6 @@ export const zhCN = {
             "点「添加方案」用你的 API 密钥接入订阅、中转或自定义接口",
           emptyTitle: "还没有模型方案",
           enabled: "启用 {{plan}}",
-          failureReasons: {
-            connectionFailed: "无法连接到接入点",
-            inferenceFailed: "测试调用失败",
-            modelCatalogDecodeFailed: "模型列表响应无法解析",
-            modelCatalogUnavailable: "模型列表不可用",
-            modelRejected: "接入点拒绝了该模型",
-            noModelSelected: "没有可用于测试调用的模型",
-            providerAuthRequired: "需要先登录模型提供商",
-            providerRuntimeUnavailable: "对应的 Agent Runtime 当前不可用",
-            unauthorized: "接入点拒绝了凭证",
-            unknown: "检测失败"
-          },
           fetchModels: "拉取模型",
           fetchModelsEmpty: "接口未返回可选模型，你仍可手动输入模型 ID",
           fetchModelsFailed: "拉取模型失败，请检查凭证与 Base URL 后重试",
@@ -949,15 +937,6 @@ export const zhCN = {
           nameLabel: "名称",
           namePlaceholder: "我的模型方案",
           neverDetected: "尚未检测",
-          pendingFirstUseGuide:
-            "选择兼容的 Agent 并完成一次真实调用后，方案才算可用",
-          firstUseAction: "用此 Agent 试用",
-          firstUseAgentLabel: "兼容 Agent",
-          firstUseLaunchFailed: "无法打开首次使用会话",
-          firstUseLaunching: "正在打开...",
-          firstUsePrompt:
-            "请使用 {{plan}} 模型方案完成这次真实首次调用，简要介绍所选模型并确认它能在当前工作区正常响应",
-          noCompatibleFirstUseAgent: "当前没有启用与此方案协议兼容的 Agent",
           presetLabel: "服务商预设",
           presets: {
             agnes: "Agnes",
@@ -986,16 +965,6 @@ export const zhCN = {
             workspaceAgent: "工作区 Agent",
             workspaceApp: "应用"
           },
-          remedies: {
-            addModelsManually: "请手动添加模型",
-            checkApiKey: "请检查 API 密钥",
-            checkModelId: "请检查模型 ID",
-            checkNetworkOrBaseUrl: "请检查网络或 Base URL",
-            enableProvider: "请安装或启用对应的 Agent Runtime",
-            loginProvider: "请前往 Agent Runtime 设置完成登录",
-            retryCompatibleAgent: "请使用提供商对应的 Agent Runtime 重试",
-            selectModel: "请先选择模型"
-          },
           removeModel: "移除模型",
           setDefaultModel: "将 {{model}} 设为默认模型",
           requiredFieldsMissing:
@@ -1004,24 +973,9 @@ export const zhCN = {
           saveFailed: "保存失败，请重试",
           saving: "保存中...",
           showApiKey: "显示密钥",
-          stageLatency: "{{ms}} ms",
-          stageStatus: {
-            failed: "失败",
-            passed: "通过",
-            pending: "待检测",
-            skipped: "已跳过"
-          },
-          stages: {
-            agentRuntime: "Agent 首次调用",
-            auth: "认证",
-            inference: "真实调用",
-            modelDiscovery: "模型列表",
-            network: "网络"
-          },
           statusLabels: {
             detectionFailed: "检测失败",
             disabled: "已停用",
-            pendingFirstUse: "待首次使用",
             ready: "可用",
             undetected: "待检测"
           },

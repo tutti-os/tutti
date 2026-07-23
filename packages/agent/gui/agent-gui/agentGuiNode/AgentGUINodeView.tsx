@@ -51,7 +51,6 @@ import {
   useAgentGUIConversationRailResizePointerMove,
   type AgentGUIConversationRailResizeInteraction
 } from "./view/useAgentGUIConversationRailResizePointerMove";
-
 export type {
   AgentGUINodeViewProps,
   AgentGUIAgentsEmptyRenderer,
@@ -143,6 +142,7 @@ export function AgentGUINodeView({
   onRequestGitBranches = null,
   projectDirectorySourceAggregator = null,
   referenceSourceAggregator = null,
+  resolveReferenceContentErrorAction,
   resolveWorkspaceReferenceEntryIconUrl,
   resolveMentionReferenceTarget = null,
   resolveWorkspaceReferenceInitialTarget = null,
@@ -713,7 +713,13 @@ export function AgentGUINodeView({
           />
           <section id="agent-gui-detail" className={styles.detailPanel}>
             <AgentGUIDetailPane
-              viewModel={viewModel}
+              shell={viewModel.shell}
+              rail={viewModel.rail}
+              detail={viewModel.detail}
+              composer={viewModel.composer}
+              interaction={viewModel.interaction}
+              readiness={viewModel.readiness}
+              operations={viewModel.operations}
               homeTargetProjection={homeTargetProjection}
               referenceProvenanceFilter={referenceProvenanceFilter}
               composerEngagement={composerEngagement}
@@ -762,6 +768,7 @@ export function AgentGUINodeView({
           isNodeSelectable={isWorkspaceReferencePickerNodeSelectable}
           open={workspaceReferencePickerOpen}
           purpose={workspaceReferencePickerPurpose}
+          resolveContentErrorAction={resolveReferenceContentErrorAction}
           resolveEntryIconUrl={resolveWorkspaceReferenceEntryIconUrl}
           workspaceId={viewModel.shell.workspaceId}
           onClose={closeWorkspaceReferencePicker}
@@ -789,6 +796,5 @@ export function AgentGUINodeView({
       </AgentTargetSetupRoot>
     </AgentTargetPresentationProvider>
   );
-
   return previewMode ? content : <TooltipProvider>{content}</TooltipProvider>;
 }

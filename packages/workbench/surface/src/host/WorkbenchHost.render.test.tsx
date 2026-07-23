@@ -230,7 +230,13 @@ describe("WorkbenchHost", () => {
         renderHeader,
         title: "Deferred header",
         typeId: "deferred-header",
-        window: { defaultOpen: true }
+        window: {
+          defaultOpen: true,
+          header: {
+            heightPx: 52,
+            layout: "overlay"
+          }
+        }
       },
       {
         frame: { x: 360, y: 0, width: 320, height: 240 },
@@ -272,6 +278,17 @@ describe("WorkbenchHost", () => {
         .nodes.find((node) => node.data.typeId === "live-sibling-header")?.id;
       expect(nodeId).toBeTruthy();
       expect(siblingNodeId).toBeTruthy();
+      const deferredWindow = container
+        .querySelector("[data-header-frame]")
+        ?.closest(".workbench-window");
+      expect(deferredWindow?.getAttribute("data-window-header-layout")).toBe(
+        "overlay"
+      );
+      expect(
+        (deferredWindow as HTMLElement | null)?.style.getPropertyValue(
+          "--workbench-header-height"
+        )
+      ).toBe("52px");
 
       await act(async () => {
         host?.controller.commands.setSurfaceSize({ width: 1200, height: 800 });
@@ -440,6 +457,12 @@ describe("WorkbenchHost", () => {
           node={node}
           renderHeader={renderHeader}
           windowChromeMode="custom-header"
+          windowHeaderPresentation={{
+            border: "none",
+            heightPx: 76,
+            layout: "overlay",
+            overflow: "visible"
+          }}
         >
           <div />
         </WorkbenchWindowFrame>
@@ -462,6 +485,21 @@ describe("WorkbenchHost", () => {
 
       expect(revisions).toHaveLength(2);
       expect(revisions[1]).toBe(revisions[0]);
+      const windowElement = container.querySelector(".workbench-window");
+      expect(windowElement?.getAttribute("data-window-header-border")).toBe(
+        "none"
+      );
+      expect(windowElement?.getAttribute("data-window-header-layout")).toBe(
+        "overlay"
+      );
+      expect(windowElement?.getAttribute("data-window-header-overflow")).toBe(
+        "visible"
+      );
+      expect(
+        (windowElement as HTMLElement | null)?.style.getPropertyValue(
+          "--workbench-header-height"
+        )
+      ).toBe("76px");
       headerControls.minimizeNodeToAnchor?.(node.id);
       expect(firstMinimize).not.toHaveBeenCalled();
       expect(secondMinimize).toHaveBeenCalledWith(node.id, undefined);

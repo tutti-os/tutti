@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { createEmptyAgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { createTestAgentSessionEngine } from "../../../shared/testing/createTestAgentSessionEngine";
+import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import { buildAgentComposerDraft } from "../model/agentComposerDraft";
 import { useAgentGUIConversationDetail } from "./useAgentGUIConversationDetail";
 
 type ConversationDetailInput = Parameters<
@@ -102,4 +104,38 @@ describe("useAgentGUIConversationDetail", () => {
 
     expect(result.current.isInterrupting).toBe(true);
   });
+
+  it("keeps the conversation projection stable for a draft-only update", () => {
+    const input = conversationDetailInput({
+      activeConversation: conversationSummary()
+    });
+    const rendered = renderHook(
+      ({ draftByScopeKey }) =>
+        useAgentGUIConversationDetail({ ...input, draftByScopeKey }),
+      { initialProps: { draftByScopeKey: {} } }
+    );
+    const previousConversation = rendered.result.current.conversation;
+
+    rendered.rerender({
+      draftByScopeKey: {
+        "session:session-1": buildAgentComposerDraft({ prompt: "a" })
+      }
+    });
+
+    expect(rendered.result.current.conversation).toBe(previousConversation);
+  });
 });
+
+function conversationSummary(): AgentGUIConversationSummary {
+  return {
+    agentTargetId: "local:codex",
+    cwd: "/workspace",
+    id: "session-1",
+    provider: "codex",
+    status: "ready",
+    title: "Conversation",
+    titleFallback: null,
+    updatedAtUnixMs: 1,
+    userId: "user-1"
+  };
+}

@@ -99,11 +99,7 @@ export function createWorkspaceIssueManagerContribution(input: {
           input.workspaceId
         );
         return response.plans
-          .filter(
-            (plan) =>
-              plan.enabled &&
-              (plan.status === "pending_first_use" || plan.status === "ready")
-          )
+          .filter((plan) => plan.enabled && plan.status === "ready")
           .map((plan) => ({
             id: plan.id,
             name: plan.name,

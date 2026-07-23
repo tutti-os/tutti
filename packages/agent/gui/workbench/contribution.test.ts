@@ -546,6 +546,9 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(contribution).toBe(contributionIdentity);
     expect(contribution.nodes?.[0]).toBe(nodeDefinition);
+    expect(nodeDefinition?.window?.header).toEqual({
+      layout: "overlay"
+    });
     expect(renderedAgentTargetIds).toEqual([
       ["local:codex"],
       ["local:claude-code"]
@@ -1548,6 +1551,10 @@ describe("agent GUI workbench contribution copy", () => {
       "data-agent-gui-workbench-header-collapsed",
       "true"
     );
+    expect(header).toHaveAttribute(
+      "data-agent-gui-workbench-header-body-error",
+      "false"
+    );
     expect(primary).not.toHaveTextContent("Agent");
     expect(screen.queryByText("Agent")).toBeNull();
     expect(screen.queryByText("Codex")).toBeNull();
@@ -2005,22 +2012,17 @@ describe("agent GUI workbench contribution copy", () => {
       /\.tsh-zoom-dialog\[data-rmiz-modal\]\s*{[^}]*z-index:\s*var\(--z-dialog\);/s
     );
     expect(css).toMatch(
-      /\.workbench-window:has\(\s*> \.workbench-window__header\s+\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\s*\)\s*\.workbench-window__header\s*{[^}]*z-index:\s*calc\(var\(--z-panel\) \+ 1\);/s
+      /\.workbench-window\[data-agent-gui-standalone-window="true"\]\s*\.workbench-window__header\s*{[^}]*z-index:\s*calc\(var\(--z-panel\) \+ 1\);/s
     );
   });
 
-  it("only applies Agent window chrome when the Header occupies the window header slot", () => {
+  it("uses explicit window presentation state instead of root relational selectors", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.workbench-window:has\(\s*> \.workbench-window__header \[data-agent-gui-workbench-header="true"\]\s*\)\s*{/s
+      /\.workbench-window\[data-window-header-layout="overlay"\],\s*\.workbench-window\[data-agent-gui-standalone-window="true"\]\s*{/s
     );
-    expect(css).not.toMatch(
-      /\.workbench-window:has\(\s*\[data-agent-gui-workbench-header="true"\]/s
-    );
-    expect(css).not.toMatch(
-      /\.workbench-window:has\(\s*\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]/s
-    );
+    expect(css).not.toMatch(/\.workbench-window:has\(/);
   });
 
   it("keeps a lone provider settings footer clear of the window edge", () => {

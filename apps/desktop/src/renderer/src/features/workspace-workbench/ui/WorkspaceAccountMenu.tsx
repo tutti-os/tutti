@@ -1,29 +1,24 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import type { AgentGUIAccountMenuState } from "@tutti-os/agent-gui";
+import { memo, useEffect, useMemo, useState } from "react";
+import {
+  AgentGUIAccountMenu,
+  AgentGUIAccountRewardToast,
+  agentGUIAccountInitials,
+  type AgentGUIAccountMenuLabels,
+  type AgentGUIAccountMenuState
+} from "@tutti-os/agent-gui";
 import { useService } from "@tutti-os/infra/di";
 import { INotificationService } from "@tutti-os/ui-notifications";
-import {
-  BillingIcon,
-  Button,
-  CloseIcon,
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-  CreditsIcon,
-  OpenLinkLinedIcon,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  SignOutIcon,
-  UserLinedIcon
-} from "@tutti-os/ui-system";
+import { Button } from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
-import { cn } from "@renderer/lib/format";
 import { useAccountService } from "./useAccountService";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 
+const debugRegistrationCreditsToastStorageKey =
+  "tutti.agentGui.debugRegistrationCreditsToast";
+const debugRegistrationCreditsToastID =
+  "debug:registrationCreditsToastShown:local";
+const registrationCreditsToastAutoDismissMs = 120_000;
 const PLAN_ICON_SOURCES = {
   free: new URL("../../../assets/account-plans/star-free.png", import.meta.url)
     .href,
@@ -36,16 +31,6 @@ const PLAN_ICON_SOURCES = {
     import.meta.url
   ).href
 } as const;
-const REWARD_TOAST_BG_SOURCE = new URL(
-  "../../../assets/account-plans/reward-toast-bg.png",
-  import.meta.url
-).href;
-
-const debugRegistrationCreditsToastStorageKey =
-  "tutti.agentGui.debugRegistrationCreditsToast";
-const debugRegistrationCreditsToastID =
-  "debug:registrationCreditsToastShown:local";
-const registrationCreditsToastAutoDismissMs = 120_000;
 
 export interface WorkspaceAccountMenuProps {
   showLeadingDivider?: boolean;
@@ -103,9 +88,10 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
     const summary = accountState.productSummary;
     const summaryUser = summary?.user ?? null;
     const user = summaryUser ?? accountState.user;
-    const membershipTierKey = summary?.membership?.tier_key?.trim() || null;
     const membershipLabel =
-      summary?.membership?.display_name?.trim() || membershipTierKey || "";
+      summary?.membership?.display_name?.trim() ||
+      summary?.membership?.tier_key?.trim() ||
+      "";
     const creditsLabel = formatCreditsLabel(
       summary?.credits?.available_credits,
       locale
@@ -128,11 +114,6 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
             registrationCreditsReward.credits
           )
         : null;
-    const links = summary?.links ?? {
-      plan_url: "https://tutti.sh/profile/plan",
-      usage_url: "https://tutti.sh/profile/usage",
-      settings_url: "https://tutti.sh/profile/settings"
-    };
 
     return {
       user: user
@@ -144,7 +125,8 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
           }
         : null,
       membershipLabel,
-      membershipTierKey,
+      membershipAccess: summary?.membership_access ?? "unknown",
+      membershipTierKey: summary?.membership?.tier_key?.trim() || null,
       creditsLabel,
       loading: accountState.productSummaryLoading,
       error: user ? null : accountState.productSummaryError,
@@ -172,9 +154,9 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
             }
           : null,
       links: {
-        planUrl: links.plan_url,
-        usageUrl: links.usage_url,
-        settingsUrl: links.settings_url
+        planUrl: summary?.links.plan_url ?? "",
+        usageUrl: summary?.links.usage_url ?? "",
+        settingsUrl: summary?.links.settings_url ?? ""
       },
       onOpenChange(open) {
         if (open) {
@@ -204,7 +186,9 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
         }
       },
       onOpenExternal(url) {
-        void workbenchHostService.openExternal(url);
+        if (url.trim()) {
+          void workbenchHostService.openExternal(url);
+        }
       }
     };
   }, [
@@ -221,31 +205,24 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
   ]);
 }
 
-interface WorkspaceAccountMenuLabels {
-  title: string;
-  member: string;
-  creditsBalance: string;
-  accountCenter: string;
-  free: string;
-  signIn: string;
-  signOut: string;
-  copyUserId: string;
-  loading: string;
-  unavailable: string;
-  dataUnavailable: string;
+type WorkspaceAccountMenuLabels = AgentGUIAccountMenuLabels & {
   rewardToastTitle: string;
   rewardToastDescription: string;
   rewardToastCreditsUnit: string;
   rewardToastClose: string;
-}
+};
 
 function useWorkspaceAccountMenuLabels(): WorkspaceAccountMenuLabels {
   const { t } = useTranslation();
   return {
     title: t("workspace.accountMenu.title"),
     member: t("workspace.accountMenu.member"),
+    upgradeMembership: t("workspace.accountMenu.upgradeMembership"),
+    rechargeCredits: t("workspace.accountMenu.rechargeCredits"),
+    viewCreditPlans: t("workspace.accountMenu.viewCreditPlans"),
     creditsBalance: t("workspace.accountMenu.creditsBalance"),
     accountCenter: t("workspace.accountMenu.accountCenter"),
+    settings: t("workspace.accountMenu.settings"),
     free: t("workspace.accountMenu.free"),
     signIn: t("workspace.accountMenu.signIn"),
     signOut: t("workspace.accountMenu.signOut"),
@@ -270,37 +247,21 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
   showLeadingDivider: boolean;
 }) {
   "use memo";
-  const userLabel = workspaceAccountUserLabel(accountMenuState, labels);
-  const initials = workspaceAccountInitials(userLabel);
-  const membershipLabel =
-    accountMenuState.membershipLabel.trim() || labels.free;
+  const userLabel =
+    accountMenuState.user?.name?.trim() ||
+    accountMenuState.user?.email?.trim() ||
+    accountMenuState.user?.userId?.trim() ||
+    labels.title;
+  const initials = agentGUIAccountInitials(userLabel);
   const membershipIconSource = resolveMembershipIconSource(
     accountMenuState.membershipTierKey,
-    membershipLabel
-  );
-  const creditsLabel =
-    accountMenuState.loading && !accountMenuState.creditsLabel
-      ? labels.loading
-      : (accountMenuState.creditsLabel ?? labels.unavailable);
-  const errorLabel =
-    accountMenuState.error ||
-    (accountMenuState.partialError ? labels.dataUnavailable : null);
-  const openExternal = useCallback(
-    (url: string) => {
-      accountMenuState.onOpenExternal(url);
-    },
-    [accountMenuState]
+    accountMenuState.membershipLabel
   );
 
   if (!accountMenuState.user) {
     return (
       <div className="relative flex min-w-0 items-center gap-1.5">
-        {showLeadingDivider ? (
-          <span
-            aria-hidden="true"
-            className="h-4 w-px shrink-0 bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_24%,transparent)]"
-          />
-        ) : null}
+        {showLeadingDivider ? <WorkspaceAccountMenuDivider /> : null}
         <Button
           type="button"
           variant="ghost"
@@ -319,301 +280,86 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
   return (
     <div className="relative flex min-w-0 items-center gap-1.5">
       {accountMenuState.registrationCreditsToast ? (
-        <WorkspaceAccountRewardToast
-          labels={labels}
-          toast={accountMenuState.registrationCreditsToast}
-        />
+        <div className="absolute right-0 top-10 z-50 w-[280px]">
+          <AgentGUIAccountRewardToast
+            toast={accountMenuState.registrationCreditsToast}
+            labels={{
+              accountRewardToastTitle: labels.rewardToastTitle,
+              accountRewardToastDescription: labels.rewardToastDescription,
+              accountRewardToastCreditsUnit: labels.rewardToastCreditsUnit,
+              accountRewardToastClose: labels.rewardToastClose
+            }}
+          />
+        </div>
       ) : null}
-      {showLeadingDivider ? (
-        <span
-          aria-hidden="true"
-          className="h-4 w-px shrink-0 bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_24%,transparent)]"
-        />
-      ) : null}
-      <Popover onOpenChange={accountMenuState.onOpenChange}>
-        <PopoverTrigger asChild>
+      {showLeadingDivider ? <WorkspaceAccountMenuDivider /> : null}
+      <AgentGUIAccountMenu
+        state={accountMenuState}
+        labels={labels}
+        trigger={
           <button
             type="button"
             aria-label={userLabel}
-            className="relative grid size-8 cursor-pointer place-items-center rounded-full border border-transparent bg-transparent p-0 text-[var(--workbench-chrome-foreground)] shadow-none hover:border-transparent hover:bg-transparent focus-visible:border-transparent focus-visible:bg-transparent active:bg-transparent aria-expanded:bg-transparent aria-expanded:text-[var(--workbench-chrome-foreground)] [-webkit-app-region:no-drag]"
+            className="relative grid size-8 cursor-pointer place-items-center rounded-full border border-transparent bg-transparent p-0 text-[var(--workbench-chrome-foreground)] shadow-none hover:bg-transparent [-webkit-app-region:no-drag]"
             data-account-menu-trigger="true"
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void accountMenuState.onCopyUserId?.();
+            }}
           >
-            <ContextMenu>
-              <ContextMenuTrigger asChild>
-                <span className="grid size-7 place-items-center overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_16%,transparent)] text-[12px] font-semibold">
-                  {accountMenuState.user?.avatar ? (
-                    <img
-                      alt=""
-                      className="size-full object-cover"
-                      src={accountMenuState.user.avatar}
-                    />
-                  ) : (
-                    <span aria-hidden="true">{initials}</span>
-                  )}
-                </span>
-              </ContextMenuTrigger>
-              <ContextMenuContent>
-                <ContextMenuItem onSelect={accountMenuState.onCopyUserId}>
-                  {labels.copyUserId}
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-            {accountMenuState.user ? (
-              <img
-                alt=""
-                aria-hidden="true"
-                draggable={false}
-                src={membershipIconSource}
-                className="absolute -right-0.5 -bottom-0.5 size-[14px] object-contain"
-              />
-            ) : null}
-          </button>
-        </PopoverTrigger>
-        <PopoverContent
-          side="bottom"
-          align="end"
-          sideOffset={8}
-          className="w-[232px] max-w-[calc(100vw-32px)] p-1 text-xs"
-          data-testid="workspace-account-menu"
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-          }}
-        >
-          <div className="flex min-w-0 flex-col">
-            <div className="flex min-w-0 items-center gap-2 px-2 py-2">
-              <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-[var(--background-fronted)] text-[13px] font-semibold text-[var(--text-primary)]">
-                {accountMenuState.user?.avatar ? (
-                  <img
-                    alt=""
-                    className="size-full object-cover"
-                    src={accountMenuState.user.avatar}
-                  />
-                ) : (
-                  initials
-                )}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-semibold text-[var(--text-primary)]">
-                  {userLabel}
-                </span>
-                <WorkspaceAccountMembershipBadge
-                  className="mt-1"
-                  iconSource={membershipIconSource}
-                  label={membershipLabel}
-                />
-              </span>
-            </div>
             <span
+              className="grid size-7 place-items-center overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_16%,transparent)] text-[12px] font-semibold"
+              data-testid="workspace-account-avatar"
+            >
+              {accountMenuState.user.avatar ? (
+                <img
+                  alt=""
+                  className="size-full object-cover"
+                  src={accountMenuState.user.avatar}
+                />
+              ) : (
+                <span aria-hidden="true">{initials}</span>
+              )}
+            </span>
+            <img
+              alt=""
               aria-hidden="true"
-              className="mx-2 mb-1 h-px bg-[var(--border-1)]"
+              draggable={false}
+              src={membershipIconSource}
+              className="absolute -right-0.5 -bottom-0.5 size-[14px] object-contain"
             />
-            {accountMenuState.user ? (
-              <>
-                <button
-                  type="button"
-                  className="flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
-                  onClick={() => openExternal(accountMenuState.links.usageUrl)}
-                >
-                  <CreditsIcon
-                    aria-hidden="true"
-                    className="shrink-0"
-                    size={15}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-left">
-                    {labels.creditsBalance}
-                  </span>
-                  <span className="truncate text-[var(--text-secondary)]">
-                    {creditsLabel}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
-                  onClick={() => openExternal(accountMenuState.links.planUrl)}
-                >
-                  <BillingIcon
-                    aria-hidden="true"
-                    className="shrink-0"
-                    size={15}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-left">
-                    {labels.member}
-                  </span>
-                  <OpenLinkLinedIcon
-                    aria-hidden="true"
-                    className="text-[var(--text-secondary)]"
-                    size={14}
-                  />
-                </button>
-                <button
-                  type="button"
-                  className="flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
-                  onClick={() =>
-                    openExternal(accountMenuState.links.settingsUrl)
-                  }
-                >
-                  <UserLinedIcon aria-hidden="true" size={15} />
-                  <span className="min-w-0 flex-1 truncate text-left">
-                    {labels.accountCenter}
-                  </span>
-                  <OpenLinkLinedIcon
-                    aria-hidden="true"
-                    className="text-[var(--text-secondary)]"
-                    size={14}
-                  />
-                </button>
-                {accountMenuState.onLogout ? (
-                  <>
-                    <span
-                      aria-hidden="true"
-                      className="mx-2 my-1 h-px bg-[var(--border-1)]"
-                    />
-                    <button
-                      type="button"
-                      className="flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
-                      onClick={accountMenuState.onLogout}
-                    >
-                      <SignOutIcon
-                        aria-hidden="true"
-                        className="shrink-0"
-                        size={15}
-                      />
-                      <span className="truncate">{labels.signOut}</span>
-                    </button>
-                  </>
-                ) : null}
-              </>
-            ) : (
-              <button
-                type="button"
-                className="flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
-                onClick={accountMenuState.onLogin}
-              >
-                <OpenLinkLinedIcon aria-hidden="true" size={15} />
-                <span className="truncate">{labels.signIn}</span>
-              </button>
-            )}
-            {errorLabel ? (
-              <span className="px-2 py-1 text-[11px] leading-4 text-[var(--text-danger)]">
-                {errorLabel}
-              </span>
-            ) : null}
-          </div>
-        </PopoverContent>
-      </Popover>
+          </button>
+        }
+      />
     </div>
   );
 });
 
-function WorkspaceAccountMembershipBadge({
-  iconSource,
-  label,
-  className
-}: {
-  iconSource: string;
-  label: string;
-  className?: string;
-}) {
+function WorkspaceAccountMenuDivider(): React.JSX.Element {
   return (
     <span
-      className={cn(
-        "inline-flex max-w-full items-center gap-1 text-[11px] font-semibold leading-3 text-[var(--text-primary)]",
-        className
-      )}
-      data-account-membership-badge="true"
-    >
-      <img
-        alt=""
-        aria-hidden="true"
-        className="size-3 shrink-0"
-        draggable={false}
-        src={iconSource}
-      />
-      <span className="min-w-0 truncate">{label}</span>
-    </span>
+      aria-hidden="true"
+      className="h-4 w-px shrink-0 bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_24%,transparent)]"
+    />
   );
 }
 
 function resolveMembershipIconSource(
   tierKey: string | null,
-  label: string
+  membershipLabel: string
 ): string {
-  const normalized = `${tierKey ?? ""} ${label}`.toLowerCase();
+  const normalized = `${tierKey ?? ""} ${membershipLabel}`.toLowerCase();
   if (normalized.includes("ultra")) {
     return PLAN_ICON_SOURCES.ultra;
   }
   if (normalized.includes("pro")) {
     return PLAN_ICON_SOURCES.pro;
   }
-  if (normalized.includes("lite") || normalized.includes("basic")) {
+  if (normalized.includes("lite")) {
     return PLAN_ICON_SOURCES.lite;
   }
   return PLAN_ICON_SOURCES.free;
-}
-
-function WorkspaceAccountRewardToast({
-  labels,
-  toast
-}: {
-  labels: WorkspaceAccountMenuLabels;
-  toast: NonNullable<AgentGUIAccountMenuState["registrationCreditsToast"]>;
-}) {
-  useEffect(() => {
-    if (!toast.visible || !toast.autoDismissMs) {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      toast.onDismiss();
-    }, toast.autoDismissMs);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
-
-  if (!toast.visible) {
-    return null;
-  }
-
-  return (
-    <div
-      className="absolute top-[calc(100%+8px)] right-0 z-50 w-[220px] overflow-hidden rounded-[12px] border border-[var(--tutti-purple-border)] bg-cover bg-center bg-no-repeat p-2 shadow-lg"
-      style={{ backgroundImage: `url(${REWARD_TOAST_BG_SOURCE})` }}
-    >
-      <div className="relative rounded-[8px] bg-[var(--background-fronted)] p-3 text-[var(--text-primary)]">
-        <Button
-          aria-label={labels.rewardToastClose}
-          className="absolute top-1.5 right-1.5 size-6 rounded-full text-[var(--text-secondary)]"
-          onClick={toast.onDismiss}
-          size="icon-xs"
-          type="button"
-          variant="ghost"
-        >
-          <CloseIcon className="size-4" />
-        </Button>
-        <div className="pr-5 text-[13px] font-semibold">
-          {labels.rewardToastTitle}
-        </div>
-        <div className="mt-1 text-[12px] leading-4 text-[var(--text-secondary)]">
-          <span className="text-[var(--tutti-purple)]">
-            {toast.creditsLabel} {labels.rewardToastCreditsUnit}
-          </span>
-          <br />
-          {labels.rewardToastDescription}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function workspaceAccountUserLabel(
-  accountMenuState: AgentGUIAccountMenuState,
-  labels: Pick<WorkspaceAccountMenuLabels, "title">
-): string {
-  const user = accountMenuState.user;
-  return (
-    user?.name?.trim() ||
-    user?.email?.trim() ||
-    user?.userId?.trim() ||
-    labels.title
-  );
 }
 
 function formatCreditsLabel(
@@ -636,18 +382,6 @@ function formatCreditsLabel(
   return Number.isFinite(numeric)
     ? new Intl.NumberFormat(locale).format(numeric)
     : trimmed;
-}
-
-function workspaceAccountInitials(label: string): string {
-  const trimmed = label.trim();
-  if (!trimmed) {
-    return "T";
-  }
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
-  }
-  return trimmed.slice(0, 1).toUpperCase();
 }
 
 function readDebugRegistrationCreditsToastEnabled(): boolean {

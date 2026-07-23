@@ -53,6 +53,70 @@ describe("AgentTranscriptView", () => {
     ).toBe(true);
   });
 
+  it("compares participant presentation by its explicit state and identity data", () => {
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const conversation = projectAgentConversationVM(detailViewModel());
+    const baseProps = { conversation, labels };
+
+    expect(
+      areAgentTranscriptViewPropsEqual(baseProps, {
+        ...baseProps,
+        participantPresentation: { enabled: false }
+      })
+    ).toBe(true);
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        {
+          ...baseProps,
+          participantPresentation: { enabled: true, status: "loading" }
+        },
+        {
+          ...baseProps,
+          participantPresentation: { enabled: true, status: "loading" }
+        }
+      )
+    ).toBe(true);
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        {
+          ...baseProps,
+          participantPresentation: { enabled: false }
+        },
+        {
+          ...baseProps,
+          participantPresentation: { enabled: true, status: "loading" }
+        }
+      )
+    ).toBe(false);
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        {
+          ...baseProps,
+          participantPresentation: {
+            enabled: true,
+            status: "ready",
+            user: { name: "Alice", avatarUrl: "user.png" },
+            agent: { name: "Codex", avatarUrl: "agent.png" }
+          }
+        },
+        {
+          ...baseProps,
+          participantPresentation: {
+            enabled: true,
+            status: "ready",
+            user: { name: "Alice", avatarUrl: "user.png" },
+            agent: { name: "Codex", avatarUrl: "agent-v2.png" }
+          }
+        }
+      )
+    ).toBe(false);
+  });
+
   it("rerenders when canonical turn timing changes", () => {
     const labels = {
       thinkingLabel: "Thought process",
@@ -1386,8 +1450,27 @@ describe("AgentTranscriptView", () => {
     const assistantFlow = document.querySelector(
       ".agent-gui-conversation__assistant-message-flow"
     );
+    const assistantRow = assistantFlow?.closest("[data-agent-transcript-row]");
 
     expect(assistantFlow).toBeTruthy();
+    expect(assistantFlow).toHaveAttribute(
+      "data-agent-message-flow-thinking-first",
+      "true"
+    );
+    expect(assistantFlow).not.toHaveAttribute(
+      "data-agent-message-flow-thinking-last"
+    );
+    expect(assistantRow).toHaveAttribute(
+      "data-agent-transcript-row-speaker",
+      "assistant"
+    );
+    expect(assistantRow).toHaveAttribute(
+      "data-agent-transcript-row-thinking-first",
+      "true"
+    );
+    expect(assistantRow).not.toHaveAttribute(
+      "data-agent-transcript-row-thinking-last"
+    );
     expect(assistantFlow?.firstElementChild?.contains(thinkingButton)).toBe(
       true
     );
@@ -1980,7 +2063,7 @@ describe("AgentTranscriptView", () => {
     expect(screen.getByTitle("/workspace/demo/src/routes.ts")).toBeTruthy();
   });
 
-  it("renders visible agent errors as an alert with collapsible details", async () => {
+  it("renders visible agent errors without exposing raw details", () => {
     render(
       <AgentTranscriptView
         conversation={projectAgentConversationVM(
@@ -2040,17 +2123,12 @@ describe("AgentTranscriptView", () => {
     expect(
       screen.getByText("agentHost.agentGui.visibleErrorStartFailed")
     ).toBeTruthy();
-    const detailsToggle = screen.getByRole("button", {
-      name: "agentHost.agentGui.visibleErrorRawDetails"
-    });
-    expect(detailsToggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", {
+        name: "agentHost.agentGui.visibleErrorRawDetails"
+      })
+    ).toBeNull();
     expect(screen.queryByText("Config invalid")).toBeNull();
-
-    fireEvent.click(detailsToggle);
-    await flushCollapsibleRevealFrames();
-    expect(detailsToggle).toHaveAttribute("aria-expanded", "true");
-    const details = screen.getByText("Config invalid");
-    expect(details).toBeTruthy();
   });
 });
 

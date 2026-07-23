@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   type ReactNode,
   useCallback,
   useLayoutEffect,
@@ -28,7 +29,8 @@ import type {
   WorkbenchRenderWindowHeader,
   WorkbenchResolveWindowZIndex,
   WorkbenchSurfacePresentation,
-  WorkbenchWindowChromeMode
+  WorkbenchWindowChromeMode,
+  WorkbenchWindowHeaderPresentation
 } from "./types.ts";
 import type { WorkbenchGenieController } from "./useWorkbenchGenieAnimation.tsx";
 import { resolveWorkbenchWindowHeader } from "./windowHeader.ts";
@@ -46,6 +48,7 @@ export interface WorkbenchWindowFrameProps<TData = unknown> {
   resolveWindowZIndex?: WorkbenchResolveWindowZIndex<TData>;
   fullscreenHeaderMode?: WorkbenchFullscreenHeaderMode;
   windowChromeMode?: WorkbenchWindowChromeMode;
+  windowHeaderPresentation?: WorkbenchWindowHeaderPresentation;
   windowChromeI18n?: WorkbenchWindowChromeI18nRuntime;
 }
 
@@ -104,6 +107,7 @@ export function WorkbenchWindowFrame<TData>({
   renderHeader,
   resolveWindowZIndex,
   windowChromeMode = "system",
+  windowHeaderPresentation,
   windowChromeI18n
 }: WorkbenchWindowFrameProps<TData>) {
   const controller = useWorkbenchController<TData>();
@@ -195,6 +199,12 @@ export function WorkbenchWindowFrame<TData>({
     renderRevision: headerRenderRevision,
     windowChromeMode
   });
+  const windowHeaderHeightPx =
+    typeof windowHeaderPresentation?.heightPx === "number" &&
+    Number.isFinite(windowHeaderPresentation.heightPx) &&
+    windowHeaderPresentation.heightPx > 0
+      ? windowHeaderPresentation.heightPx
+      : null;
   const shouldRenderCustomHeader =
     resolvedHeader.windowChromeMode === "custom-header";
   const resolvedFullscreenHeaderMode: WorkbenchFullscreenHeaderMode =
@@ -283,9 +293,19 @@ export function WorkbenchWindowFrame<TData>({
           data-display-mode={node.displayMode}
           data-fullscreen-header-mode={resolvedFullscreenHeaderMode}
           data-window-chrome-mode={resolvedHeader.windowChromeMode}
+          data-window-header-border={windowHeaderPresentation?.border}
+          data-window-header-layout={windowHeaderPresentation?.layout}
+          data-window-header-overflow={windowHeaderPresentation?.overflow}
           data-workbench-window-capture="true"
           data-window-drag-state={isDragging ? "dragging" : "idle"}
           data-window-resize-state={isResizing ? "resizing" : "idle"}
+          style={
+            windowHeaderHeightPx !== null
+              ? ({
+                  "--workbench-header-height": `${windowHeaderHeightPx}px`
+                } as CSSProperties)
+              : undefined
+          }
         >
           <div
             className={[

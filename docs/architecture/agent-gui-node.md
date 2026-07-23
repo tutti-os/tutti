@@ -403,6 +403,14 @@ timestamp.
 
 High-frequency transcript updates must not pair DOM mutation with unconditional synchronous reads of the timeline's full scroll geometry. Conversation switches, explicit submit-to-bottom requests, skeleton transitions, and older-page prepend restoration may perform pre-paint scroll correction; ordinary content growth preserves bottom lock and user scroll-away state from observed content and viewport geometry after layout.
 
+Composer draft updates cross the view boundary through the stable `shell`,
+`rail`, `detail`, `composer`, `interaction`, `readiness`, and `operations`
+projections rather than one aggregate Detail prop. The active Timeline
+`ScrollArea` is a memoized render island and does not consume draft state.
+TipTap treats a controlled value as a local acknowledgement only when its
+draft scope and local edit revision match; a scope change or other external
+replacement may rebuild the document.
+
 A virtualized transcript derives message-locator selection from the virtualizer's measured turn positions and explicit transcript identity. The currently mounted DOM window is rendering output, not a selection source; range changes must not make the locator temporarily select a neighboring message.
 
 Historical rich text renders from the canonical Tiptap document through a static schema renderer. Only interactive composer surfaces own a Tiptap Editor/ProseMirror EditorView; read-only transcript and title surfaces reuse the same mention/token presentation without mounting editor lifecycle.
@@ -411,6 +419,16 @@ Attachment-only fallback labels such as `[Image]` may provide title or summary
 text, but they are not an additional transcript text block when the canonical
 structured content already renders the same image. Explicit display prompts
 remain transcript content and continue to replace expanded rich prompt text.
+
+Standalone hosts may opt a transcript into participant avatars through the
+`agent-conversation` entrypoint's explicit presentation contract. Omitted or
+disabled presentation preserves the existing transcript DOM. Enabled
+presentation has distinct `loading` and `ready` states, so the renderer never
+infers identity readiness from a missing image URL. The host supplies user and
+Agent names and optional avatar URLs; AgentGUI owns the UI System Avatar,
+fixed-size loading slot, fallback initial, and user-right/Agent-left layout.
+This presentation input is view data only and must not enter canonical Session,
+Turn, Message, activity-runtime, or workspace-engine state.
 
 ## 5. Agent identity and provider architecture
 
@@ -450,10 +468,14 @@ idle | loading | ready | error
 `ready` may contain an authoritative empty list. `error` may retain the last successful snapshot. Components must not infer loading from `agents.length`.
 
 The directory owns Agent presentation. `agents[].iconUrl` is the primary
-identity used by conversation identity, Message Center, mentions, and the
-empty-home carousel and Provider Rail. `maskIconUrl` may supply the monochrome
-conversation-row glyph. Host projections preserve these roles independently
-and do not create provider-specific renderer catalogs.
+presentation asset used by conversation identity, Message Center, mentions,
+and the empty-home carousel and Provider Rail. It is decorative metadata:
+an Agent with an exact `agentTargetId` and name remains selectable when the
+icon is absent. `maskIconUrl` may supply the monochrome conversation-row glyph.
+Desktop Workspace Agent projections first inherit the resolved icon of their
+Harness target by exact target ID, then use the provider/icon catalog fallback.
+Host projections preserve these roles independently and do not create
+provider-specific renderer catalogs.
 
 When the Desktop host projects built-in Agent mentions into a workspace app,
 it replaces host-local file URLs with bounded 64px WebP data URLs. The external
@@ -597,9 +619,25 @@ and the viewport calculation share the same line-height token so the 3.5-line
 cap remains exact. Regression coverage must expand across explicit newline
 rows, delete back to one row, and verify stable action-button placement.
 
+Dynamic Agent surfaces must not use `:has()` on `.workbench-window`, the
+timeline, or transcript rows. Composer and streaming DOM mutations would make
+those relational subjects candidates for subtree style invalidation. Window
+header layout and render-error state are projected onto the owning window or
+header; message footer, speaker, thinking-edge, and row-kind state are projected
+onto the owning message flow or transcript row. Small, self-contained controls
+may still use local relational selectors when their subject and mutation scope
+are bounded.
+
 External OS file paste and drop enter one host-injected classification boundary before draft attachment creation. The synchronous `resolveExternalPromptEntries` port classifies each source index as a live `WorkspaceFileReference` or a snapshot requiring preparation. AgentGUI owns ordered mention insertion and draft reconciliation: references become ordinary file/folder mentions and never consume prompt-asset slots, while only `prepare` entries create pending attachment state and enter `prepareExternalPromptFiles`. A host without the resolver prepares every external entry. The preparer owns native-path or byte lookup, size enforcement, persistence, and remote transport; each prepared input has one `sourceIndex` result, one failure must not fail siblings, successful results include a provider-readable `path` or `url`, and failures carry typed error codes. Hosts that classify path-backed entries as references must reject any such entry that unexpectedly reaches preparation, so classification failure cannot silently create a duplicate snapshot.
 
 Workspace picker results and internal workspace-reference drags remain live references. They enter the rich-text document as mentions and never pass through external-file preparation. A picker source whose selected locator is not yet consumer-readable may perform source-owned confirmation preparation before the mention is inserted; the picker waits in a loading state, publishes no partial result on failure, and remains open for retry. This confirmation transaction belongs to the reference source contract and is distinct from the external OS file preparation pipeline. Removing an inline external-file mention removes its draft intent; a later async result must not revive it or lose its error reason when the draft is in another scope.
+
+A host may map a reference-source content error to a labeled recovery action
+through the optional workspace contract. AgentGUI passes that policy through to
+the shared picker without copying error state. The picker owns centered error
+presentation and retries the failed browse or search; the host remains the
+authority for deciding which structured errors can request authorization or
+otherwise recover interactively.
 
 ### 6.2 Public node contract
 
@@ -697,6 +735,10 @@ The pending activation carries the same resolved project section key as the
 create command. Exact rail projection therefore shows the conversation as soon
 as the intent is accepted; it does not wait for provider startup or invent a
 temporary catch-all section.
+For delegated/shared execution, the initiating caller remains the placement
+authority: the adapter forwards that caller-selected `RailPlacement` through
+the binding to the owner Host. The owner persists the same section key and does
+not recompute it from the owner's user-project list.
 
 ### 7.2 Existing conversation submit
 

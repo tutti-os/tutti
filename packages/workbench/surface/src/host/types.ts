@@ -27,6 +27,7 @@ import type {
 import type {
   WorkbenchDockPlacement,
   WorkbenchMinimizeAnimation,
+  WorkbenchWindowHeaderPresentation,
   WorkbenchSurfacePresentation,
   WorkbenchWindowSurfaceLayer,
   WorkbenchWindowHeaderDragHandleProps
@@ -351,6 +352,7 @@ export interface WorkbenchHostNodeWindowCapabilities {
   defaultOpen?: boolean;
   fullscreenHeaderMode?: "persistent";
   fullscreenable?: boolean;
+  header?: WorkbenchWindowHeaderPresentation;
   keepMountedWhenMinimized?:
     | boolean
     | ((node: WorkbenchNode<WorkbenchHostNodeData>) => boolean);

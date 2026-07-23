@@ -670,6 +670,37 @@ export function FileCodeIcon(props: IconProps) {
   );
 }
 
+export function FileArchiveIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path
+        d="M6 2H14L19 7V20C19 21.1046 18.1046 22 17 22H6C4.89543 22 4 21.1046 4 20V4C4 2.89543 4.89543 2 6 2Z"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+      <path
+        d="M14 2V7H19"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+      <path
+        d="M10 3V5H12V7H10V9H12V11H10V13"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+      <path
+        d="M9 13H13V17H9V13Z"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    </SvgIcon>
+  );
+}
+
 export function TerminalLinedIcon(props: IconProps) {
   return (
     <FilledPathIcon {...props}>

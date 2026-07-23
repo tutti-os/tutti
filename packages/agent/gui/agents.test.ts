@@ -34,7 +34,7 @@ describe("normalizeAgentGUIAgents", () => {
     expect(agents.map((agent) => agent.provider)).toEqual(["codex", "codex"]);
   });
 
-  it("drops invalid and duplicate identities while normalizing presentation", () => {
+  it("drops invalid and duplicate identities while retaining iconless Agents", () => {
     const agents = normalizeAgentGUIAgents([
       createAgent(" alice ", {
         name: " Alice ",
@@ -50,7 +50,13 @@ describe("normalizeAgentGUIAgents", () => {
       createAgent("alice"),
       createAgent("", { name: "Missing identity" }),
       createAgent("missing-name", { name: " " }),
-      createAgent("missing-icon", { iconUrl: " " })
+      {
+        agentTargetId: "missing-icon",
+        name: "missing-icon",
+        iconUrl: "",
+        availability: { status: "ready" },
+        provider: "codex"
+      }
     ]);
 
     expect(agents).toEqual([
@@ -65,6 +71,13 @@ describe("normalizeAgentGUIAgents", () => {
         owner: { name: "Owner", avatarUrl: "app://owner.png" },
         ownership: "shared",
         availability: { status: "unavailable", reason: "Offline" },
+        provider: "codex"
+      },
+      {
+        agentTargetId: "missing-icon",
+        name: "missing-icon",
+        iconUrl: "",
+        availability: { status: "ready" },
         provider: "codex"
       }
     ]);
@@ -100,6 +113,21 @@ describe("projectAgentGUIAgentsToTargets", () => {
       iconUrl: "app://agents/agent-a.png",
       maskIconUrl: "app://agents/agent-a-mask.png"
     });
+  });
+
+  it("keeps an Agent without decorative icon metadata selectable", () => {
+    const agents = normalizeAgentGUIAgents([
+      createAgent("workspace-agent:reviewer", { iconUrl: " " })
+    ]);
+
+    const [target] = projectAgentGUIAgentsToTargets(agents);
+
+    expect(target).toMatchObject({
+      agentTargetId: "workspace-agent:reviewer",
+      iconUrl: "",
+      targetId: "workspace-agent:reviewer"
+    });
+    expect(target?.disabled).toBeUndefined();
   });
 
   it("preserves availability separately from disabled interaction state", () => {

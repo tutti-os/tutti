@@ -5,11 +5,10 @@ import { workspaceAgentProviderLabel } from "../../workspaceAgentProviderLabel";
 import { useOpenAgentEnvPanel } from "../../agentEnv";
 import {
   classifyRecoverableAgentMessage,
-  isProviderPlanLimitMessage,
   resolveAgentErrorPresentation
 } from "../../agentEnv/agentErrorPresentation";
+import { useAgentCommercePresentation } from "../../commerce/AgentCommercePresentationContext";
 import type { AgentMessageContentVM } from "../contracts/agentMessageRowVM";
-import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
 
 // All error banners use the light-red danger surface. Yellow/warning surfaces
 // are banned for notice boxes — see "Badges And Status" in
@@ -52,8 +51,8 @@ export function AgentVisibleErrorMessage({
 }): JSX.Element {
   "use memo";
   const openAgentEnvPanel = useOpenAgentEnvPanel();
+  const commercePresentation = useAgentCommercePresentation();
   const error = message.visibleError;
-  const detail = error?.detail?.trim() ?? "";
 
   // One card for every run-failure code. The presentation (keyed on the codes
   // the daemon actually emits — see agentErrorPresentation) supplies a granular,
@@ -63,7 +62,10 @@ export function AgentVisibleErrorMessage({
   const providerLabel = workspaceAgentProviderLabel(
     error?.provider ?? "unknown"
   );
-  const presentation = resolveAgentErrorPresentation(error?.code);
+  const presentation = resolveAgentErrorPresentation(
+    error?.code,
+    commercePresentation
+  );
   const headline = presentation?.messageKey
     ? translate(presentation.messageKey, { provider: providerLabel })
     : visibleErrorTitle(message);
@@ -71,14 +73,12 @@ export function AgentVisibleErrorMessage({
   const actionKey = presentation?.actionKey ?? null;
   const externalUrl = presentation?.externalUrl ?? null;
   const hint = visibleErrorHint(message);
-  // Plan/quota gates are account limits, not crashes — they keep role="status"
-  // (not "alert") and show the provider's own message, but share the standard
-  // light-red banner surface.
-  const isPlanOrQuotaLimit = error?.code === "quota_or_rate_limit";
-  const displayHeadline =
-    isPlanOrQuotaLimit && isProviderPlanLimitMessage(detail)
-      ? detail
-      : headline;
+  // Account limits are status notices, not process crashes. Provider payloads
+  // stay in the canonical model and diagnostics; the product card never renders
+  // raw upstream text.
+  const isPlanOrQuotaLimit =
+    error?.code === "quota_or_rate_limit" ||
+    error?.code === "insufficient_credits";
   return (
     <section
       role={isPlanOrQuotaLimit ? "status" : "alert"}
@@ -87,19 +87,12 @@ export function AgentVisibleErrorMessage({
       <div className="flex min-w-0 items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="font-medium text-[var(--text-primary)]">
-            {displayHeadline}
+            {headline}
           </div>
           {hint ? (
             <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
               {hint}
             </div>
-          ) : null}
-          {detail && displayHeadline !== detail ? (
-            <AgentMessageDetailsDisclosure
-              detail={detail}
-              className="mt-1"
-              label={translate("agentHost.agentGui.visibleErrorRawDetails")}
-            />
           ) : null}
         </div>
         {actionKey &&
@@ -156,10 +149,9 @@ function visibleErrorTitle(message: AgentMessageContentVM): string {
           provider
         });
       }
-      return (
-        message.body ||
-        translate("agentHost.agentGui.visibleErrorRequestFailed", { provider })
-      );
+      return translate("agentHost.agentGui.visibleErrorRequestFailed", {
+        provider
+      });
   }
 }
 

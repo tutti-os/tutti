@@ -6,6 +6,7 @@ import type {
   ReferenceProvenanceCatalog
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
+import type { ReferenceSourcePickerProps } from "@tutti-os/workspace-file-reference/ui";
 import type { AgentGuiWorkbenchSessionActionRequest } from "../../workbench/sessionActions";
 import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
@@ -38,6 +39,7 @@ import type {
   AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
 import type { AgentGUIAccountMenuState } from "./accountMenuState";
+import type { AgentGUICommercePresentation } from "../../shared/commerce/AgentCommercePresentationContext";
 import type {
   AgentComposerCapabilityMenuState,
   AgentComposerCapabilitySettingsTarget,
@@ -67,6 +69,7 @@ export interface AgentGUINodeWorkspace {
   promptAssetLimit?: number | null;
   projectDirectorySourceAggregator?: ReferenceSourceAggregator | null;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
+  resolveReferenceContentErrorAction?: ReferenceSourcePickerProps["resolveContentErrorAction"];
   resolveReferenceEntryIconUrl?: (
     entry: WorkspaceFileEntry
   ) => Promise<string | null | undefined>;
@@ -129,6 +132,8 @@ export interface AgentGUINodeHostCapabilities {
    */
   capabilityControlsReadOnly?: boolean;
   accountMenuState?: AgentGUIAccountMenuState | null;
+  /** Host-owned Commerce projection used by account and error presentation. */
+  commercePresentation?: AgentGUICommercePresentation | null;
   agentTargets?: readonly AgentGUIAgentTarget[];
   agentTargetsLoading?: boolean;
   /** Launch-only targets for active-conversation handoff. */
@@ -340,6 +345,8 @@ export function areAgentGUINodePropsEqual(
     pw.projectDirectorySourceAggregator ===
       nw.projectDirectorySourceAggregator &&
     pw.referenceSourceAggregator === nw.referenceSourceAggregator &&
+    pw.resolveReferenceContentErrorAction ===
+      nw.resolveReferenceContentErrorAction &&
     pw.resolveReferenceEntryIconUrl === nw.resolveReferenceEntryIconUrl &&
     pw.resolveMentionReferenceTarget === nw.resolveMentionReferenceTarget &&
     pw.resolveReferenceInitialTarget === nw.resolveReferenceInitialTarget &&

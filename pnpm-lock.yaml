@@ -1209,6 +1209,25 @@ importers:
         specifier: ^6.3.5
         version: 6.4.2(@types/node@24.12.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0)
 
+  tools/fixtures/workspace-file-manager-external-vite:
+    dependencies:
+      "@tutti-os/workspace-file-manager":
+        specifier: workspace:*
+        version: link:../../../packages/workspace/file-manager
+      react:
+        specifier: ^19.1.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.6(react@19.2.6)
+      valtio:
+        specifier: ^2.3.2
+        version: 2.3.2(@types/react@19.2.15)(react@19.2.6)
+    devDependencies:
+      vite:
+        specifier: ^6.3.5
+        version: 6.4.2(@types/node@24.12.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0)
+
 packages:
   7zip-bin@5.2.0:
     resolution:

@@ -508,6 +508,9 @@ export class WorkspaceAgentActivityService
         permissionModeId: resolveComposerPermissionMode(input.settings),
         reasoningEffort: input.settings?.reasoningEffort ?? null,
         ...(resolvedCwd?.noProject ? { noProject: true } : {}),
+        ...(input.railPlacement
+          ? { railPlacement: { ...input.railPlacement } }
+          : {}),
         speed: input.settings?.speed ?? null,
         title: input.title ?? null,
         visible: input.visible ?? true,

@@ -16,6 +16,10 @@ const openApiPath = resolve(
 const checkOnly = process.argv.includes("--check");
 
 const schemaNames = [
+  "WorkbenchSize",
+  "WorkbenchSafeArea",
+  "WorkbenchLayoutConstraints",
+  "WorkbenchLayoutBasis",
   "WorkbenchFrame",
   "WorkbenchSnapshotNode",
   "WorkbenchSnapshotSpace",
@@ -43,6 +47,12 @@ function buildOpenApiWorkbenchSchemas(schema) {
   const defs = schema.$defs ?? {};
 
   return {
+    WorkbenchSize: convertJsonSchemaToOpenApi(defs.size),
+    WorkbenchSafeArea: convertJsonSchemaToOpenApi(defs.safeArea),
+    WorkbenchLayoutConstraints: convertJsonSchemaToOpenApi(
+      defs.layoutConstraints
+    ),
+    WorkbenchLayoutBasis: convertJsonSchemaToOpenApi(defs.layoutBasis),
     WorkbenchFrame: convertJsonSchemaToOpenApi(defs.frame),
     WorkbenchSnapshotNode: convertJsonSchemaToOpenApi(defs.node),
     WorkbenchSnapshotSpace: convertJsonSchemaToOpenApi(defs.space),
@@ -87,6 +97,11 @@ function convertJsonSchemaToOpenApi(value) {
       output.enum = [entryValue];
       continue;
     }
+    if (key === "exclusiveMinimum" && typeof entryValue === "number") {
+      output.minimum = entryValue;
+      output.exclusiveMinimum = true;
+      continue;
+    }
     if (key === "type" && Array.isArray(entryValue)) {
       const nonNullTypes = entryValue.filter((item) => item !== "null");
       if (nonNullTypes.length === 1 && entryValue.includes("null")) {
@@ -124,9 +139,34 @@ function replaceWorkbenchSchemas(openApiSource, schemas) {
     throw new Error(`Unable to locate components.schemas in ${openApiPath}`);
   }
 
-  const replacements = schemaNames.map((schemaName) =>
-    locateSchemaReplacement(openApiSource, schemasNode, schemaName, schemas)
+  const replacements = schemaNames
+    .map((schemaName) =>
+      locateSchemaReplacement(openApiSource, schemasNode, schemaName, schemas)
+    )
+    .filter(Boolean);
+  const missingSchemaNames = schemaNames.filter(
+    (schemaName) =>
+      !schemasNode.items.some((pair) => pair.key?.value === schemaName)
   );
+  if (missingSchemaNames.length > 0) {
+    const firstWorkbenchSchema = replacements.reduce(
+      (first, replacement) =>
+        replacement.start < first.start ? replacement : first,
+      replacements[0]
+    );
+    if (!firstWorkbenchSchema) {
+      throw new Error(`Unable to locate Workbench schemas in ${openApiPath}`);
+    }
+    replacements.push({
+      start: firstWorkbenchSchema.start,
+      end: firstWorkbenchSchema.start,
+      content: missingSchemaNames
+        .map((schemaName) =>
+          renderIndentedSchema(schemaName, schemas[schemaName])
+        )
+        .join("")
+    });
+  }
 
   let output = openApiSource;
   for (const replacement of replacements.sort(
@@ -151,8 +191,11 @@ function locateSchemaReplacement(
     (pair) => pair.key?.value === schemaName
   );
   const pair = schemasNode.items[pairIndex];
-  if (!pair?.key?.range || !pair.value?.range) {
-    throw new Error(`Unable to locate ${schemaName} in ${openApiPath}`);
+  if (!pair) {
+    return null;
+  }
+  if (!pair.key?.range || !pair.value?.range) {
+    throw new Error(`Unable to read ${schemaName} in ${openApiPath}`);
   }
 
   const nextPair = schemasNode.items[pairIndex + 1];
@@ -196,6 +239,13 @@ function rewriteRef(value) {
 
   return value
     .replace("#/$defs/frame", "#/components/schemas/WorkbenchFrame")
+    .replace("#/$defs/size", "#/components/schemas/WorkbenchSize")
+    .replace("#/$defs/safeArea", "#/components/schemas/WorkbenchSafeArea")
+    .replace(
+      "#/$defs/layoutConstraints",
+      "#/components/schemas/WorkbenchLayoutConstraints"
+    )
+    .replace("#/$defs/layoutBasis", "#/components/schemas/WorkbenchLayoutBasis")
     .replace("#/$defs/node", "#/components/schemas/WorkbenchSnapshotNode")
     .replace("#/$defs/space", "#/components/schemas/WorkbenchSnapshotSpace");
 }
