@@ -873,9 +873,9 @@ func (d *legacyHostConformanceDriver) Recover(ctx context.Context) error {
 func (d *legacyHostConformanceDriver) RetryTurn(
 	ctx context.Context,
 	ref agenthost.SessionRef,
-	turnID string,
+	input agenthost.RetryTurnInput,
 ) (hostconformance.SendObservation, error) {
-	result, err := d.service.ApplicationHost().RetryTurn(ctx, ref, turnID)
+	result, err := d.service.ApplicationHost().RetryTurn(ctx, ref, input)
 	if err != nil {
 		return hostconformance.SendObservation{}, err
 	}

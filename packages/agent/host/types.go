@@ -341,6 +341,16 @@ type TurnLineage struct {
 	Relation     TurnRelation
 }
 
+// RetryTurnInput identifies one retry command. ClientSubmitID is owned by the
+// caller: replays of one user action reuse it, while a later intentional retry
+// supplies a new value. TurnID is optional; when omitted Host derives a stable
+// turn identity from ClientSubmitID for the submit-claim protocol.
+type RetryTurnInput struct {
+	ParentTurnID   string
+	ClientSubmitID string
+	TurnID         string
+}
+
 type SendInput struct {
 	CapabilityRefs    []CapabilityReference
 	TurnID            string

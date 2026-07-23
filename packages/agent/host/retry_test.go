@@ -120,9 +120,19 @@ func newRetryTestHost(store CanonicalStore) *Host {
 
 func TestRetryTurnRejectsEmptyArguments(t *testing.T) {
 	host := newRetryTestHost(&retryMockStore{})
-	_, err := host.RetryTurn(context.Background(), SessionRef{}, "")
+	_, err := host.RetryTurn(context.Background(), SessionRef{}, RetryTurnInput{})
 	if !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("RetryTurn(empty) error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestRetryTurnRequiresCallerSubmitIdentity(t *testing.T) {
+	host := newRetryTestHost(&retryMockStore{})
+	_, err := host.RetryTurn(context.Background(), SessionRef{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1",
+	}, RetryTurnInput{ParentTurnID: "parent-turn"})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("RetryTurn(without ClientSubmitID) error = %v, want ErrInvalidArgument", err)
 	}
 }
 
@@ -130,7 +140,7 @@ func TestRetryTurnRejectsMissingTurn(t *testing.T) {
 	host := newRetryTestHost(&retryMockStore{turnFound: false})
 	_, err := host.RetryTurn(context.Background(), SessionRef{
 		WorkspaceID: "ws-1", AgentSessionID: "session-1",
-	}, "turn-missing")
+	}, RetryTurnInput{ParentTurnID: "turn-missing", ClientSubmitID: "retry-missing"})
 	if !errors.Is(err, ErrTurnNotFound) {
 		t.Fatalf("RetryTurn(missing) error = %v, want ErrTurnNotFound", err)
 	}
@@ -146,7 +156,7 @@ func TestRetryTurnRejectsUnsettledTurn(t *testing.T) {
 	})
 	_, err := host.RetryTurn(context.Background(), SessionRef{
 		WorkspaceID: "ws-1", AgentSessionID: "session-1",
-	}, "turn-running")
+	}, RetryTurnInput{ParentTurnID: "turn-running", ClientSubmitID: "retry-running"})
 	if !errors.Is(err, ErrTurnNotSettled) {
 		t.Fatalf("RetryTurn(running) error = %v, want ErrTurnNotSettled", err)
 	}
@@ -168,7 +178,7 @@ func TestRetryTurnRejectsSettledTurnWithoutUserMessage(t *testing.T) {
 	})
 	_, err := host.RetryTurn(context.Background(), SessionRef{
 		WorkspaceID: "ws-1", AgentSessionID: "session-1",
-	}, "turn-settled")
+	}, RetryTurnInput{ParentTurnID: "turn-settled", ClientSubmitID: "retry-no-message"})
 	if !errors.Is(err, ErrTurnNoUserMessage) {
 		t.Fatalf("RetryTurn(no-user-msg) error = %v, want ErrTurnNoUserMessage", err)
 	}
@@ -389,11 +399,11 @@ func TestRetryTurnUsesStableSubmitClaimAndDurableProvenance(t *testing.T) {
 	host := New(Config{CanonicalStore: workspaceStore, Runtime: runtime})
 	ref := SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"}
 
-	first, err := host.RetryTurn(t.Context(), ref, "parent-turn")
+	first, err := host.RetryTurn(t.Context(), ref, RetryTurnInput{ParentTurnID: "parent-turn", ClientSubmitID: "retry-action-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := host.RetryTurn(t.Context(), ref, "parent-turn")
+	second, err := host.RetryTurn(t.Context(), ref, RetryTurnInput{ParentTurnID: "parent-turn", ClientSubmitID: "retry-action-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,5 +416,29 @@ func TestRetryTurnUsesStableSubmitClaimAndDurableProvenance(t *testing.T) {
 	claim, found, err := canonical.GetSubmitClaim(t.Context(), ref.WorkspaceID, ref.AgentSessionID, runtime.execCalls[0].ClientSubmitID)
 	if err != nil || !found || claim.Status != "accepted" || claim.TurnID != first.TurnID {
 		t.Fatalf("retry submit claim=%#v found=%v err=%v", claim, found, err)
+	}
+	if _, accepted, err := canonical.RecordTurnTransition(t.Context(), storesqlite.TurnTransition{
+		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, TurnID: first.TurnID,
+		Phase: storesqlite.TurnPhaseSettled, Outcome: storesqlite.TurnOutcomeCompleted, OccurredAtUnixMS: 12,
+	}); err != nil || !accepted {
+		t.Fatalf("settle first retry accepted=%v err=%v", accepted, err)
+	}
+
+	third, err := host.RetryTurn(t.Context(), ref, RetryTurnInput{ParentTurnID: "parent-turn", ClientSubmitID: "retry-action-2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third.TurnID == "" || third.TurnID == first.TurnID || len(runtime.execCalls) != 2 || len(runtime.provenanceCalls) != 2 {
+		t.Fatalf("new retry=%#v exec=%#v provenance=%#v", third, runtime.execCalls, runtime.provenanceCalls)
+	}
+	for _, turnID := range []string{first.TurnID, third.TurnID} {
+		turn, found, err := canonical.GetTurn(t.Context(), ref.WorkspaceID, ref.AgentSessionID, turnID)
+		if err != nil || !found || turn.ParentTurnID != "parent-turn" || turn.Relation != storesqlite.TurnRelationRetry {
+			t.Fatalf("retry turn %q = %#v found=%v err=%v", turnID, turn, found, err)
+		}
+	}
+	parent, found, err := canonical.GetTurn(t.Context(), ref.WorkspaceID, ref.AgentSessionID, "parent-turn")
+	if err != nil || !found || parent.Phase != storesqlite.TurnPhaseSettled || parent.ParentTurnID != "" || parent.Relation != "" {
+		t.Fatalf("parent turn = %#v found=%v err=%v", parent, found, err)
 	}
 }

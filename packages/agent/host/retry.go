@@ -20,23 +20,28 @@ import (
 //   - replay or rebuild Provider LLM context
 //   - modify the original Turn or any historical messages
 //   - copy Assistant messages or Tool Calls
-func (h *Host) RetryTurn(ctx context.Context, ref SessionRef, turnID string) (SendInputResult, error) {
-	return h.createDerivedTurn(ctx, ref, turnID, TurnRelationRetry)
+func (h *Host) RetryTurn(ctx context.Context, ref SessionRef, input RetryTurnInput) (SendInputResult, error) {
+	return h.createDerivedTurn(ctx, ref, input, TurnRelationRetry)
 }
 
 // createDerivedTurn is the shared internal entry point for Retry/Edit/Fork:
 // it validates the parent turn, extracts the original user input, and calls
 // SendInput with TurnLineage metadata. Future Edit/Bfork callers will reuse
 // this path with a different relation value and (optionally) overridden content.
-func (h *Host) createDerivedTurn(ctx context.Context, ref SessionRef, parentTurnID string, relation TurnRelation) (SendInputResult, error) {
+func (h *Host) createDerivedTurn(ctx context.Context, ref SessionRef, input RetryTurnInput, relation TurnRelation) (SendInputResult, error) {
 	ref.WorkspaceID = strings.TrimSpace(ref.WorkspaceID)
 	ref.AgentSessionID = strings.TrimSpace(ref.AgentSessionID)
-	parentTurnID = strings.TrimSpace(parentTurnID)
-	if h == nil || h.store == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" || parentTurnID == "" {
+	input.ParentTurnID = strings.TrimSpace(input.ParentTurnID)
+	input.ClientSubmitID = strings.TrimSpace(input.ClientSubmitID)
+	input.TurnID = strings.TrimSpace(input.TurnID)
+	if h == nil || h.store == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" || input.ParentTurnID == "" || input.ClientSubmitID == "" {
 		return SendInputResult{}, ErrInvalidArgument
 	}
+	if input.TurnID == "" {
+		input.TurnID = retryTurnID(ref, input.ClientSubmitID)
+	}
 
-	turn, found, err := h.store.GetTurn(ctx, ref.WorkspaceID, ref.AgentSessionID, parentTurnID)
+	turn, found, err := h.store.GetTurn(ctx, ref.WorkspaceID, ref.AgentSessionID, input.ParentTurnID)
 	if err != nil {
 		return SendInputResult{}, err
 	}
@@ -47,17 +52,17 @@ func (h *Host) createDerivedTurn(ctx context.Context, ref SessionRef, parentTurn
 		return SendInputResult{}, ErrTurnNotSettled
 	}
 
-	userContent, err := h.findTurnUserMessageContent(ctx, ref, parentTurnID)
+	userContent, err := h.findTurnUserMessageContent(ctx, ref, input.ParentTurnID)
 	if err != nil {
 		return SendInputResult{}, err
 	}
 
 	return h.SendInput(ctx, ref, SendInput{
 		Content:        userContent,
-		TurnID:         derivedTurnID(ref, parentTurnID, relation),
-		ClientSubmitID: derivedTurnClientSubmitID(ref, parentTurnID, relation),
+		TurnID:         input.TurnID,
+		ClientSubmitID: input.ClientSubmitID,
 		TurnLineage: &TurnLineage{
-			ParentTurnID: parentTurnID,
+			ParentTurnID: input.ParentTurnID,
 			Relation:     relation,
 		},
 	})
@@ -129,15 +134,10 @@ func legacyPromptContent(text string) []PromptContentBlock {
 	return []PromptContentBlock{{Type: "text", Text: text}}
 }
 
-func derivedTurnID(ref SessionRef, parentTurnID string, relation TurnRelation) string {
+func retryTurnID(ref SessionRef, clientSubmitID string) string {
 	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(strings.Join([]string{
-		"tutti", "derived-turn", strings.TrimSpace(ref.WorkspaceID), strings.TrimSpace(ref.AgentSessionID),
-		strings.TrimSpace(parentTurnID), string(relation),
+		"tutti", "retry-turn", strings.TrimSpace(ref.WorkspaceID), strings.TrimSpace(ref.AgentSessionID), strings.TrimSpace(clientSubmitID),
 	}, "\x00"))).String()
-}
-
-func derivedTurnClientSubmitID(ref SessionRef, parentTurnID string, relation TurnRelation) string {
-	return "derived-turn:" + derivedTurnID(ref, parentTurnID, relation)
 }
 
 func (h *Host) validateTurnLineage(ctx context.Context, ref SessionRef, turnID string, lineage *TurnLineage) (*TurnLineage, error) {

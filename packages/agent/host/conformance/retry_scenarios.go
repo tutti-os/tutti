@@ -53,9 +53,10 @@ func runRetryTurnCreatesLineageTurn(ctx context.Context, driver Driver) error {
 	}
 
 	// Retry the parent turn through the public Host contract.
-	result, err := driver.RetryTurn(ctx, ref, parentTurnID)
+	retryInput := agenthost.RetryTurnInput{ParentTurnID: parentTurnID, ClientSubmitID: "retry-conformance-1"}
+	result, err := driver.RetryTurn(ctx, ref, retryInput)
 	if err != nil {
-		return fmt.Errorf("RetryTurn(%s): %w", parentTurnID, err)
+		return fmt.Errorf("RetryTurn(%s): %w", retryInput.ParentTurnID, err)
 	}
 	if result.TurnID == "" || result.TurnID == parentTurnID {
 		return fmt.Errorf("RetryTurn result turnID=%q, want a new non-empty turn ID", result.TurnID)

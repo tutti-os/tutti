@@ -245,3 +245,55 @@ func TestRecordTurnTransitionRejectsMissingOrUnsettledLineageParent(t *testing.T
 		t.Fatalf("unsettled parent accepted=%v err=%v, want validation failure", accepted, err)
 	}
 }
+
+func TestRecordTurnTransitionKeepsLineageAcrossLaterTransitions(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	const workspaceID, sessionID = "ws-lineage-lifecycle", "session-lineage-lifecycle"
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: workspaceID, AgentSessionID: sessionID, Origin: "runtime", Provider: "codex", Status: "completed", OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: workspaceID, AgentSessionID: sessionID, TurnID: "parent", Phase: TurnPhaseSettled, Outcome: TurnOutcomeCompleted, OccurredAtUnixMS: 110,
+	}); err != nil || !accepted {
+		t.Fatalf("seed parent accepted=%v err=%v", accepted, err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: workspaceID, AgentSessionID: sessionID, TurnID: "child", Phase: TurnPhaseSubmitted, OccurredAtUnixMS: 120,
+		ParentTurnID: "parent", Relation: TurnRelationRetry,
+	}); err != nil || !accepted {
+		t.Fatalf("submitted child accepted=%v err=%v", accepted, err)
+	}
+	for _, transition := range []TurnTransition{
+		{Phase: TurnPhaseRunning, OccurredAtUnixMS: 130},
+		{Phase: TurnPhaseSettled, Outcome: TurnOutcomeCompleted, OccurredAtUnixMS: 140},
+	} {
+		transition.WorkspaceID, transition.AgentSessionID, transition.TurnID = workspaceID, sessionID, "child"
+		if _, accepted, err := store.RecordTurnTransition(ctx, transition); err != nil || !accepted {
+			t.Fatalf("%s child accepted=%v err=%v", transition.Phase, accepted, err)
+		}
+	}
+	child, found, err := store.GetTurn(ctx, workspaceID, sessionID, "child")
+	if err != nil || !found || child.ParentTurnID != "parent" || child.Relation != TurnRelationRetry || child.Phase != TurnPhaseSettled {
+		t.Fatalf("final child=%#v found=%v err=%v", child, found, err)
+	}
+
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: workspaceID, AgentSessionID: sessionID, TurnID: "child", Phase: TurnPhaseSettled, Outcome: TurnOutcomeCompleted,
+		OccurredAtUnixMS: 150, ParentTurnID: "other-parent", Relation: TurnRelationRetry,
+	}); err == nil || accepted {
+		t.Fatalf("different lineage accepted=%v err=%v, want immutable-lineage failure", accepted, err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: workspaceID, AgentSessionID: sessionID, TurnID: "child", Phase: TurnPhaseSettled, Outcome: TurnOutcomeCompleted, OccurredAtUnixMS: 151,
+	}); err != nil || accepted {
+		t.Fatalf("empty lineage settled replay accepted=%v err=%v, want harmless no-op", accepted, err)
+	}
+	child, found, err = store.GetTurn(ctx, workspaceID, sessionID, "child")
+	if err != nil || !found || child.ParentTurnID != "parent" || child.Relation != TurnRelationRetry {
+		t.Fatalf("lineage after empty transition=%#v found=%v err=%v", child, found, err)
+	}
+}

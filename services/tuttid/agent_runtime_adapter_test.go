@@ -2,16 +2,22 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	agenthostadapter "github.com/tutti-os/tutti/packages/agent/daemon/hostadapter"
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	_ "modernc.org/sqlite"
 )
 
 type unavailableAgentExtensionResumeResolver struct{}
@@ -41,6 +47,36 @@ func (submitProvenanceAdapterTestProvider) Cancel(context.Context, agentruntime.
 
 type submitProvenanceAdapterTestReporter struct {
 	provenance agentsessionstore.ReportActivityInput
+}
+
+type retryPromptPersistenceAdapter struct {
+	received chan []agentruntime.PromptContentBlock
+}
+
+func (*retryPromptPersistenceAdapter) Provider() string { return "retry-persistence-test" }
+func (*retryPromptPersistenceAdapter) Start(context.Context, agentruntime.Session) ([]activityshared.Event, error) {
+	return nil, nil
+}
+func (*retryPromptPersistenceAdapter) Resume(context.Context, agentruntime.Session) error { return nil }
+func (*retryPromptPersistenceAdapter) Close(context.Context, agentruntime.Session) error  { return nil }
+func (a *retryPromptPersistenceAdapter) Exec(_ context.Context, _ agentruntime.Session, content []agentruntime.PromptContentBlock, _ string, _ string, _ agentruntime.EventSink, _ agentruntime.CommandSnapshotSink) ([]activityshared.Event, error) {
+	copyContent := append([]agentruntime.PromptContentBlock(nil), content...)
+	a.received <- copyContent
+	return nil, nil
+}
+func (*retryPromptPersistenceAdapter) Cancel(context.Context, agentruntime.Session, string) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (a *retryPromptPersistenceAdapter) nextContent(t *testing.T) []agentruntime.PromptContentBlock {
+	t.Helper()
+	select {
+	case content := <-a.received:
+		return content
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for provider Exec")
+		return nil
+	}
 }
 
 func (*submitProvenanceAdapterTestReporter) Report(context.Context, agentsessionstore.ReportActivityInput) error {
@@ -204,6 +240,100 @@ func TestAgentRuntimeAdapterDelegatesTypedDurableSubmitProvenance(t *testing.T) 
 	message := got.MessageUpdates[0]
 	if message.TurnID != "turn-1" || message.Payload["clientSubmitId"] != "submit-1" || message.Payload["displayPrompt"] != "Visible hello" {
 		t.Fatalf("provenance message = %#v", message)
+	}
+}
+
+func TestRetryTurnRestoresProductionPersistedRichPrompt(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "agent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	store := storesqlite.New(db, storesqlite.Options{})
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	projection := agentservice.NewActivityProjection(store)
+	provider := &retryPromptPersistenceAdapter{received: make(chan []agentruntime.PromptContentBlock, 2)}
+	controller := agentruntime.NewController([]agentruntime.Adapter{provider}, projection)
+	if _, err := controller.Start(ctx, agentruntime.StartInput{
+		RoomID: "workspace-1", AgentSessionID: "session-1", Provider: provider.Provider(), CWD: t.TempDir(),
+	}); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	workspaceStore := &agenthost.SQLiteWorkspaceStore{StoreForWorkspace: func(string) *storesqlite.Store { return store }}
+	attachmentsRoot := t.TempDir()
+	sourceRoot := filepath.Join(t.TempDir(), "source")
+	if err := os.MkdirAll(sourceRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	pathImage := filepath.Join(sourceRoot, "path-image.png")
+	if err := os.WriteFile(pathImage, []byte("path-image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	host := agenthost.New(agenthost.Config{
+		CanonicalStore: workspaceStore,
+		Runtime:        &agenthostadapter.RuntimeController{Backend: controller},
+		Attachments: agentservice.PromptAttachmentStore{
+			RootDir: attachmentsRoot, SourceRootDir: sourceRoot,
+		},
+	})
+	ref := agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"}
+	parent, err := host.SendInput(ctx, ref, agenthost.SendInput{
+		TurnID: "parent-turn", ClientSubmitID: "parent-submit-1",
+		Content: []agenthost.PromptContentBlock{
+			{Type: "text", Text: "describe these images"},
+			{Type: "image", MimeType: "image/png", Data: "ZGF0YS1pbWFnZQ==", Name: "data.png"},
+			{Type: "image", MimeType: "image/png", URL: "https://example.com/image.png", Name: "remote.png"},
+			{Type: "image", MimeType: "image/png", Path: pathImage, Name: "path.png"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SendInput() error = %v", err)
+	}
+	initial := provider.nextContent(t)
+	if len(initial) != 4 || initial[0].Text != "describe these images" || initial[1].Data == "" || initial[2].URL == "" || initial[3].Data == "" {
+		t.Fatalf("initial provider content = %#v", initial)
+	}
+
+	page, found, err := store.ListSessionMessages(ctx, storesqlite.ListSessionMessagesInput{
+		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, TurnID: parent.TurnID, Limit: 10, Order: storesqlite.MessageOrderAsc,
+	})
+	if err != nil || !found || len(page.Messages) != 1 {
+		t.Fatalf("stored submit message=%#v found=%v err=%v", page, found, err)
+	}
+	content, ok := page.Messages[0].Payload["content"].([]any)
+	if !ok || len(content) != 4 {
+		t.Fatalf("stored content dynamic type=%T value=%#v", page.Messages[0].Payload["content"], page.Messages[0].Payload["content"])
+	}
+	for _, index := range []int{1, 3} {
+		block, ok := content[index].(map[string]any)
+		if !ok || block["attachmentId"] == "" || block["mimeType"] != "image/png" || block["name"] == "" || block["data"] != nil || block["path"] != nil {
+			t.Fatalf("persisted attachment block[%d]=%#v", index, content[index])
+		}
+	}
+	remote, ok := content[2].(map[string]any)
+	if !ok || remote["url"] != "https://example.com/image.png" || remote["name"] != "remote.png" {
+		t.Fatalf("persisted URL block=%#v", content[2])
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, storesqlite.TurnTransition{
+		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, TurnID: parent.TurnID,
+		Phase: storesqlite.TurnPhaseSettled, Outcome: storesqlite.TurnOutcomeCompleted, OccurredAtUnixMS: time.Now().UnixMilli(),
+	}); err != nil || !accepted {
+		t.Fatalf("settle parent accepted=%v err=%v", accepted, err)
+	}
+
+	retry, err := host.RetryTurn(ctx, ref, agenthost.RetryTurnInput{ParentTurnID: parent.TurnID, ClientSubmitID: "retry-submit-1"})
+	if err != nil {
+		t.Fatalf("RetryTurn() error = %v", err)
+	}
+	retried := provider.nextContent(t)
+	if retry.TurnID == parent.TurnID || len(retried) != 4 || retried[0].Text != "describe these images" ||
+		retried[1].Data == "" || retried[1].AttachmentID == "" || retried[1].Name != "data.png" ||
+		retried[2].URL != "https://example.com/image.png" || retried[2].Name != "remote.png" ||
+		retried[3].Data == "" || retried[3].AttachmentID == "" || retried[3].Name != "path.png" {
+		t.Fatalf("retried provider content = %#v", retried)
 	}
 }
 

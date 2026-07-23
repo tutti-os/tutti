@@ -179,7 +179,7 @@ type Driver interface {
 	Metrics() Metrics
 	// RetryTurn exercises the Host.RetryTurn lifecycle contract: it creates a
 	// new turn in the same session with parent_turn_id lineage metadata.
-	RetryTurn(context.Context, agenthost.SessionRef, string) (SendObservation, error)
+	RetryTurn(context.Context, agenthost.SessionRef, agenthost.RetryTurnInput) (SendObservation, error)
 	// GetTurn reads a canonical turn including lineage fields. Used by
 	// conformance scenarios to verify parent_turn_id and relation.
 	GetTurn(context.Context, agenthost.SessionRef, string) (TurnObservation, bool, error)
