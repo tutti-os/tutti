@@ -30,6 +30,29 @@ import {
 } from "./shared";
 
 const BRIDGE_SERVER_FORCE_CLOSE_TIMEOUT_MS = 1_000;
+const USER_CANCELLED_CALLBACK_ERROR = "user_cancelled";
+const USER_CANCELLED_RESULT_ERROR = "userCancelled";
+
+export type TuttiAuthErrorCode = "user_cancelled";
+
+export class TuttiAuthError extends Error {
+  readonly code: TuttiAuthErrorCode;
+
+  constructor(code: TuttiAuthErrorCode, message = code) {
+    super(message);
+    this.name = "TuttiAuthError";
+    this.code = code;
+  }
+}
+
+export function isTuttiAuthUserCancelledError(
+  error: unknown
+): error is TuttiAuthError {
+  return (
+    error instanceof TuttiAuthError &&
+    error.code === USER_CANCELLED_CALLBACK_ERROR
+  );
+}
 
 export interface TuttiNodeAuthClientOptions {
   authJsonPath: string;
@@ -406,11 +429,15 @@ async function createLoginBridgeServer(
         return;
       }
       if (callbackError) {
-        const error = new Error(callbackError);
+        const error = callbackErrorToError(callbackError);
         complete(() => rejectCompletion(error));
         sendRedirect(
           res,
-          buildBridgeResultUrl(input, "error", "providerError")
+          buildBridgeResultUrl(
+            input,
+            "error",
+            callbackErrorToSafeResultCode(callbackError)
+          )
         );
         return;
       }
@@ -467,10 +494,15 @@ async function createLoginBridgeServer(
         return;
       }
       if (callbackError) {
-        const error = new Error(callbackError);
+        const error = callbackErrorToError(callbackError);
         sendJson(res, 400, {
           ok: false,
-          error: { code: "PROVIDER_CALLBACK_ERROR", message: error.message }
+          error: {
+            code: isTuttiAuthUserCancelledError(error)
+              ? "USER_CANCELLED"
+              : "PROVIDER_CALLBACK_ERROR",
+            message: error.message
+          }
         });
         complete(() => rejectCompletion(error));
         return;
@@ -742,15 +774,26 @@ function buildBridgeResultUrl(
   if (safeErrorCode) {
     url.searchParams.set("desktopBridgeError", safeErrorCode);
   }
-  const openAppUrl = buildSafeOpenAppUrl(
-    input.appCallbackUrl,
-    status,
-    safeErrorCode
-  );
+  const openAppUrl =
+    safeErrorCode === USER_CANCELLED_RESULT_ERROR
+      ? null
+      : buildSafeOpenAppUrl(input.appCallbackUrl, status, safeErrorCode);
   if (openAppUrl) {
     url.searchParams.set("openAppUrl", openAppUrl);
   }
   return url.toString();
+}
+
+function callbackErrorToError(callbackError: string): Error {
+  return callbackError === USER_CANCELLED_CALLBACK_ERROR
+    ? new TuttiAuthError(USER_CANCELLED_CALLBACK_ERROR)
+    : new Error(callbackError);
+}
+
+function callbackErrorToSafeResultCode(callbackError: string): string {
+  return callbackError === USER_CANCELLED_CALLBACK_ERROR
+    ? USER_CANCELLED_RESULT_ERROR
+    : "providerError";
 }
 
 function buildSafeOpenAppUrl(
