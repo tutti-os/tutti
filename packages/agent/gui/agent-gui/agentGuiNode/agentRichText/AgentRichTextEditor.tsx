@@ -75,6 +75,7 @@ export const AgentRichTextEditor = forwardRef<
     removeMentionLabel,
     className,
     onChange,
+    onContentLayoutInvalidated,
     onFocus,
     onUserContentChange,
     onSubmit,
@@ -99,8 +100,10 @@ export const AgentRichTextEditor = forwardRef<
   "use memo";
   const { t } = useTranslation();
   const lastEmittedPromptRef = useRef<string | null>(value);
+  const pendingLocalPromptEchoesRef = useRef(new Set<string>());
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
+  const onContentLayoutInvalidatedRef = useRef(onContentLayoutInvalidated);
   const onFocusRef = useRef(onFocus);
   const onUserContentChangeRef = useRef(onUserContentChange);
   const pendingFocusMethodRef = useRef<"pointer" | "programmatic" | null>(null);
@@ -263,6 +266,7 @@ export const AgentRichTextEditor = forwardRef<
   );
 
   onChangeRef.current = onChange;
+  onContentLayoutInvalidatedRef.current = onContentLayoutInvalidated;
   onFocusRef.current = onFocus;
   onUserContentChangeRef.current = onUserContentChange;
   onSubmitRef.current = onSubmit;
@@ -624,11 +628,13 @@ export const AgentRichTextEditor = forwardRef<
     onUpdate: ({ editor: nextEditor, transaction }) => {
       editorRef.current = nextEditor;
       scheduleSelectionScroll(nextEditor);
+      onContentLayoutInvalidatedRef.current?.();
       const nextPrompt = editorToPromptText(nextEditor);
       if (nextPrompt === lastEmittedPromptRef.current) {
         return;
       }
       lastEmittedPromptRef.current = nextPrompt;
+      pendingLocalPromptEchoesRef.current.add(nextPrompt);
       if (isAgentRichTextUserContentInsertion(transaction)) {
         onUserContentChangeRef.current?.(nextPrompt);
       }
@@ -724,9 +730,16 @@ export const AgentRichTextEditor = forwardRef<
     if (!editor || editor.isDestroyed) {
       return;
     }
+    if (pendingLocalPromptEchoesRef.current.has(value)) {
+      if (value === lastEmittedPromptRef.current) {
+        pendingLocalPromptEchoesRef.current.clear();
+      }
+      return;
+    }
     if (value === lastEmittedPromptRef.current) {
       return;
     }
+    pendingLocalPromptEchoesRef.current.clear();
     const nextDoc = plainTextToAgentRichTextDoc(value, {
       capabilities: availableCapabilities,
       skills: availableSkills
@@ -738,6 +751,7 @@ export const AgentRichTextEditor = forwardRef<
     editor.commands.setContent(nextDoc, { emitUpdate: false });
     editor.commands.setTextSelection(editor.state.doc.content.size);
     lastEmittedPromptRef.current = value;
+    onContentLayoutInvalidatedRef.current?.();
   }, [availableCapabilities, availableSkills, editor, value]);
 
   return (

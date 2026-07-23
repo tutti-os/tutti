@@ -7847,6 +7847,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   max-height: var(--agent-gui-composer-input-max-height, 110px);
   align-items: end;
   align-self: end;
+  contain: layout;
   overflow: hidden;
   padding: 0 12px;
   border: 1px solid var(--line-2);
@@ -8770,7 +8771,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   p:not(.agent-rich-text-placeholder-node):not(:empty) {
   position: relative;
   top: 0;
-  line-height: 20px;
+  line-height: var(--agent-gui-composer-text-line-height);
 }
 
 .agent-gui-node__composer-textarea

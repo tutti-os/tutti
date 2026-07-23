@@ -207,15 +207,18 @@ test("composer input summary requires text, IME, and mention keyboard semantics"
     { dockComposer: true, editorReady: true, sessionID: "session-1" },
     {
       categoryChanged: true,
+      collapsedGeometry: { buttonBottomOffset: 13, height: 56 },
       compositionEnds: 1,
       compositionStarts: 1,
       compositionUpdates: 3,
+      expandedGeometry: { buttonBottomOffset: 13, height: 110 },
       highlightChanged: true,
       imeCommitted: true,
       inputEvents: 58,
       mentionClosed: true,
       mentionKeys: ["ArrowDown", "Tab", "Escape"],
-      mentionOpened: true
+      mentionOpened: true,
+      shrunkGeometry: { buttonBottomOffset: 13, height: 56 }
     }
   );
 
@@ -224,6 +227,9 @@ test("composer input summary requires text, IME, and mention keyboard semantics"
     report.assertions.map((assertion) => assertion.name),
     [
       "dock composer active",
+      "four-line composer expanded",
+      "composer shrank to one line",
+      "action button stayed bottom-aligned",
       "per-character text input observed",
       "IME composition lifecycle observed",
       "IME text committed once",

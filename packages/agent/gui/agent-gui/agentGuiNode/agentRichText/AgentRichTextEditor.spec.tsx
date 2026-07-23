@@ -102,9 +102,85 @@ describe("AgentRichTextEditor file paste", () => {
 });
 
 describe("AgentRichTextEditor prompt insertion", () => {
+  it("ignores stale controlled echoes while a transition catches up", async () => {
+    const ref = createRef<AgentRichTextEditorHandle>();
+    const props = {
+      disabled: false,
+      onChange: vi.fn(),
+      onSubmit: vi.fn(),
+      placeholder: "Prompt"
+    };
+    const rendered = render(
+      <AgentRichTextEditor ref={ref} value="a" {...props} />
+    );
+    await waitFor(() => expect(ref.current).not.toBeNull());
+
+    act(() => {
+      ref.current?.focusAtEnd();
+      ref.current?.insertPlainTextAtSelection("b");
+      ref.current?.insertPlainTextAtSelection("c");
+    });
+    expect(
+      rendered.container.querySelector('[contenteditable="true"]')
+    ).toHaveTextContent("abc");
+
+    rendered.rerender(<AgentRichTextEditor ref={ref} value="ab" {...props} />);
+    await waitFor(() =>
+      expect(
+        rendered.container.querySelector('[contenteditable="true"]')
+      ).toHaveTextContent("abc")
+    );
+
+    rendered.rerender(<AgentRichTextEditor ref={ref} value="abc" {...props} />);
+    rendered.rerender(
+      <AgentRichTextEditor ref={ref} value="replacement" {...props} />
+    );
+    await waitFor(() =>
+      expect(
+        rendered.container.querySelector('[contenteditable="true"]')
+      ).toHaveTextContent("replacement")
+    );
+  });
+
+  it("invalidates layout after a programmatic document update", async () => {
+    const onContentLayoutInvalidated = vi.fn();
+    const rendered = render(
+      <AgentRichTextEditor
+        value="hello"
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onContentLayoutInvalidated={onContentLayoutInvalidated}
+        onSubmit={vi.fn()}
+      />
+    );
+    await waitFor(() =>
+      expect(
+        rendered.container.querySelector('[contenteditable="true"]')
+      ).not.toBeNull()
+    );
+    onContentLayoutInvalidated.mockClear();
+
+    rendered.rerender(
+      <AgentRichTextEditor
+        value={"hello\nworld"}
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onContentLayoutInvalidated={onContentLayoutInvalidated}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    await waitFor(() =>
+      expect(onContentLayoutInvalidated).toHaveBeenCalledTimes(1)
+    );
+  });
+
   it("inserts multiline plain text at the current selection without submitting", async () => {
     const ref = createRef<AgentRichTextEditorHandle>();
     const onChange = vi.fn();
+    const onContentLayoutInvalidated = vi.fn();
     const onSubmit = vi.fn();
     render(
       <AgentRichTextEditor
@@ -113,6 +189,7 @@ describe("AgentRichTextEditor prompt insertion", () => {
         disabled={false}
         placeholder="Prompt"
         onChange={onChange}
+        onContentLayoutInvalidated={onContentLayoutInvalidated}
         onSubmit={onSubmit}
       />
     );
@@ -127,6 +204,7 @@ describe("AgentRichTextEditor prompt insertion", () => {
 
     expect(nextPrompt).toBe("hello\nworld 👋");
     expect(onChange).toHaveBeenLastCalledWith("hello\nworld 👋");
+    expect(onContentLayoutInvalidated).toHaveBeenCalled();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 

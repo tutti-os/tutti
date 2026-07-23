@@ -18,11 +18,14 @@ const editorSelector =
 const paletteSelector = '[data-testid="agent-gui-mention-palette-surface"]';
 const ordinaryText =
   "Measure AgentGUI composer input one character at a time. ";
+const multilineText = "2\n3\n4\n5";
 const imeCandidates = ["x", "xing", "性能"];
 const imeCommittedText = "性能";
 
 const composerInputMarkers = {
   start: "tutti-perf:composer-input:start",
+  multilineExpanded: "tutti-perf:composer-input:multiline-expanded-observed",
+  multilineShrunk: "tutti-perf:composer-input:multiline-shrunk-observed",
   textEntered: "tutti-perf:composer-input:text-entered-observed",
   imeComposing: "tutti-perf:composer-input:ime-composing-observed",
   imeCommitted: "tutti-perf:composer-input:ime-committed-observed",
@@ -36,6 +39,16 @@ export const composerInputScenario = {
   id: "composer-input",
   markers: composerInputMarkers,
   milestones: [
+    {
+      key: "multilineExpanded",
+      label: "four-line composer expanded",
+      marker: composerInputMarkers.multilineExpanded
+    },
+    {
+      key: "multilineShrunk",
+      label: "composer shrunk to one line",
+      marker: composerInputMarkers.multilineShrunk
+    },
     {
       key: "textEntered",
       label: "per-character text entered",
@@ -71,12 +84,36 @@ export const composerInputScenario = {
   prepare: prepareComposerInput,
   execute: executeComposerInput,
   describe(prepared) {
-    return `${prepared.sessionID}; ${Array.from(ordinaryText).length} text inserts + ${imeCandidates.length} IME updates + @ keyboard navigation`;
+    return `${prepared.sessionID}; ${Array.from(multilineText).length} multiline inserts + shrink + ${Array.from(ordinaryText).length} text inserts + ${imeCandidates.length} IME updates + @ keyboard navigation`;
   },
   summarize(prepared, result) {
     return summary(
       [
         { name: "dock composer active", passed: prepared.dockComposer },
+        {
+          name: "four-line composer expanded",
+          passed:
+            result.expandedGeometry.height > result.collapsedGeometry.height + 1
+        },
+        {
+          name: "composer shrank to one line",
+          passed:
+            Math.abs(
+              result.shrunkGeometry.height - result.collapsedGeometry.height
+            ) <= 1
+        },
+        {
+          name: "action button stayed bottom-aligned",
+          passed:
+            Math.abs(
+              result.expandedGeometry.buttonBottomOffset -
+                result.collapsedGeometry.buttonBottomOffset
+            ) <= 1 &&
+            Math.abs(
+              result.shrunkGeometry.buttonBottomOffset -
+                result.collapsedGeometry.buttonBottomOffset
+            ) <= 1
+        },
         {
           name: "per-character text input observed",
           passed: result.inputEvents >= Array.from(ordinaryText).length
@@ -104,8 +141,14 @@ export const composerInputScenario = {
       [
         { label: "Session", value: prepared.sessionID },
         {
+          label: "Composer heights",
+          value: `${result.collapsedGeometry.height.toFixed(1)} -> ${result.expandedGeometry.height.toFixed(1)} -> ${result.shrunkGeometry.height.toFixed(1)} px`
+        },
+        {
           label: "Text inserts",
-          value: String(Array.from(ordinaryText).length)
+          value: String(
+            Array.from(multilineText).length + Array.from(ordinaryText).length
+          )
         },
         { label: "Input events", value: String(result.inputEvents) },
         {
@@ -117,7 +160,7 @@ export const composerInputScenario = {
           value: result.mentionKeys.join(" -> ")
         }
       ],
-      "CDP injects each text character separately, drives one real IME composition lifecycle, then opens the @ panel and verifies ArrowDown, Tab, and Escape through DOM state and captured keyboard events"
+      "CDP expands the composer through explicit newline transactions, deletes back to one line, injects ordinary text character by character, drives one real IME composition lifecycle, then verifies @ keyboard navigation"
     );
   }
 };
@@ -207,6 +250,29 @@ async function executeComposerInput(context, _prepared, options) {
   await installComposerInputCounters(pageClient);
   await startRendererScenario(pageClient, composerInputMarkers.start);
 
+  const collapsedGeometry = await readComposerGeometry(pageClient);
+  for (const character of Array.from(multilineText)) {
+    await pageClient.send("Input.insertText", { text: character });
+  }
+  await waitForEditorText(pageClient, multilineText, options.timeoutMs);
+  const expandedGeometry = await waitForComposerGeometry(
+    pageClient,
+    `height > ${JSON.stringify(collapsedGeometry.height + 1)} && Math.abs(height - targetHeight) <= 1`,
+    options.timeoutMs,
+    "four-line composer expansion"
+  );
+  await markRenderer(pageClient, composerInputMarkers.multilineExpanded);
+
+  await clearComposerEditor(pageClient);
+  await waitForEditorText(pageClient, "", options.timeoutMs);
+  const shrunkGeometry = await waitForComposerGeometry(
+    pageClient,
+    `Math.abs(height - ${JSON.stringify(collapsedGeometry.height)}) <= 1`,
+    options.timeoutMs,
+    "composer shrink to one line"
+  );
+  await markRenderer(pageClient, composerInputMarkers.multilineShrunk);
+
   for (const character of Array.from(ordinaryText)) {
     await pageClient.send("Input.insertText", { text: character });
   }
@@ -274,6 +340,9 @@ async function executeComposerInput(context, _prepared, options) {
 
   return {
     ...counters,
+    collapsedGeometry,
+    expandedGeometry,
+    shrunkGeometry,
     categoryChanged: navigated.activeCategoryIndex !== initialCategory,
     highlightChanged: highlighted.highlightedIndex !== initialHighlight,
     imeCommitted:
@@ -282,6 +351,58 @@ async function executeComposerInput(context, _prepared, options) {
     mentionClosed: closed.palettePresent === false,
     mentionOpened: opened.palettePresent === true
   };
+}
+
+async function clearComposerEditor(client) {
+  await evaluate(
+    client,
+    `(() => {
+      const editor = document.querySelector(${JSON.stringify(editorSelector)});
+      if (!(editor instanceof HTMLElement)) throw new Error('composer editor is unavailable');
+      editor.focus();
+      document.execCommand('selectAll', false);
+      document.execCommand('delete', false);
+      return true;
+    })()`
+  );
+}
+
+async function readComposerGeometry(client) {
+  return evaluate(client, composerGeometryExpression("true"));
+}
+
+async function waitForComposerGeometry(client, predicate, timeoutMs, label) {
+  return waitForEvaluation(
+    client,
+    composerGeometryExpression(predicate),
+    timeoutMs,
+    label,
+    25
+  );
+}
+
+function composerGeometryExpression(predicate) {
+  return `(() => {
+    const editor = document.querySelector(${JSON.stringify(editorSelector)});
+    const inputArea = editor?.closest('.agent-gui-node__composer-prompt-input-area');
+    const actionButton = inputArea?.querySelector('.agent-gui-node__composer-send-button, .agent-gui-node__composer-stop-button');
+    if (!(inputArea instanceof HTMLElement) || !(actionButton instanceof HTMLElement)) {
+      return { ready: false, buttonBottomOffset: -1, height: -1, targetHeight: -1 };
+    }
+    const inputRect = inputArea.getBoundingClientRect();
+    const buttonRect = actionButton.getBoundingClientRect();
+    const height = inputRect.height;
+    const targetHeight = Number.parseFloat(
+      inputArea.style.getPropertyValue('--agent-gui-composer-input-height')
+    );
+    const buttonBottomOffset = inputRect.bottom - buttonRect.bottom;
+    return {
+      ready: ${predicate},
+      buttonBottomOffset,
+      height,
+      targetHeight
+    };
+  })()`;
 }
 
 async function installComposerInputCounters(client) {
@@ -334,7 +455,9 @@ async function waitForEditorText(client, expected, timeoutMs) {
     client,
     `(() => {
       const editor = document.querySelector(${JSON.stringify(editorSelector)});
-      const text = editor?.textContent ?? '';
+      const text = editor
+        ? [...editor.children].map((block) => block.textContent ?? '').join('\\n')
+        : '';
       return { ready: text === ${JSON.stringify(expected)}, text };
     })()`,
     timeoutMs,

@@ -17,7 +17,10 @@ import { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 import { useComposerDraftAttachments } from "./composer/useComposerDraftAttachments";
 import { goalDraftObjectiveFromPrompt } from "./composer/composerDraftUtils";
-import { useComposerLayout } from "./composer/useComposerLayout";
+import {
+  INITIAL_DOCK_COMPOSER_METRICS,
+  useComposerLayout
+} from "./composer/useComposerLayout";
 import { useComposerPaletteCatalog } from "./composer/useComposerPaletteCatalog";
 import { useMentionPaletteFrame } from "./composer/useMentionPaletteFrame";
 import { useComposerSlashActions } from "./composer/useComposerSlashActions";
@@ -51,15 +54,6 @@ import {
 
 export { formatSlashStatusTokenCount };
 
-const DOCK_COMPOSER_INPUT_MIN_HEIGHT = 56;
-const DOCK_COMPOSER_TEXT_LINE_HEIGHT = 24;
-const DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES = 3.5;
-const DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT = 26;
-const DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT =
-  DOCK_COMPOSER_TEXT_LINE_HEIGHT * DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES;
-const DOCK_COMPOSER_INPUT_MAX_HEIGHT =
-  DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT +
-  DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT;
 /**
  * 引用 picker 的确认结果:松散文件按 file mention 插入;mentionItems(如文件夹 bundle)
  * 作为整体节点插入。两者各走各的插入路径,composer 不需要理解 bundle 内部结构。
@@ -259,16 +253,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const lastComposerFocusRequestRef = useRef<number | null>(null);
   const autoMentionHighlightedKeyRef = useRef<string | null>(null);
   const [isPromptTipOverflowing, setIsPromptTipOverflowing] = useState(false);
-  const [dockComposerInputHeight, setDockComposerInputHeight] = useState(
-    DOCK_COMPOSER_INPUT_MIN_HEIGHT
-  );
-  const [dockComposerInputMaxHeight, setDockComposerInputMaxHeight] = useState(
-    DOCK_COMPOSER_INPUT_MAX_HEIGHT
-  );
-  const [dockComposerAttachmentHeight, setDockComposerAttachmentHeight] =
-    useState(0);
-  const [dockComposerTextHeight, setDockComposerTextHeight] = useState(
-    DOCK_COMPOSER_INPUT_MIN_HEIGHT
+  const [dockComposerMetrics, setDockComposerMetrics] = useState(
+    INITIAL_DOCK_COMPOSER_METRICS
   );
   const paletteCatalog = useComposerPaletteCatalog({
     provider,
@@ -603,14 +589,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     promptTipRef,
     promptInputAreaRef,
     setIsPromptTipOverflowing,
-    dockComposerInputHeight,
-    setDockComposerInputHeight,
-    dockComposerInputMaxHeight,
-    setDockComposerInputMaxHeight,
-    dockComposerAttachmentHeight,
-    setDockComposerAttachmentHeight,
-    dockComposerTextHeight,
-    setDockComposerTextHeight,
+    dockComposerMetrics,
+    setDockComposerMetrics,
     draftImages,
     draftLargeTexts
   });

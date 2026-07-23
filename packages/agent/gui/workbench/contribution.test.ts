@@ -2046,7 +2046,7 @@ describe("agent GUI workbench contribution copy", () => {
       /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s+textarea,\s*\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-textarea\s*{[^}]*padding-top:\s*12px;/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s+p:not\(\.agent-rich-text-placeholder-node\):not\(:empty\)\s*{[^}]*top:\s*0;/s
+      /\.agent-gui-node__composer-textarea\s+p:not\(\.agent-rich-text-placeholder-node\):not\(:empty\)\s*{[^}]*top:\s*0;[^}]*line-height:\s*var\(--agent-gui-composer-text-line-height\);/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__composer-textarea\s+p:not\(\.agent-rich-text-placeholder-node\):not\(:empty\)\s+\.agent-rich-text-mention-node\s*{[^}]*transform:\s*translateY\(-2px\);/s

@@ -568,11 +568,33 @@ alignment first activates. Later React updates coalesce alignment into the next
 animation frame; ResizeObserver and MutationObserver keep layout roots current.
 
 Composer text transactions may publish the current draft, but the draft value
-must not drive synchronous pre-paint geometry reads. The dock observes the
-actual editor, input area, and attachment containers; its initial and
-subsequent `ResizeObserver` deliveries own height measurement after layout.
-Viewport resizing is covered by those element observations and must not add a
-duplicate global resize measurement source.
+must not drive synchronous pre-paint geometry reads or an urgent AgentGUI tree
+render. The rich-text editor DOM owns the urgent input transaction. The latest
+prompt ref updates synchronously for submit and attachment reconciliation,
+while palette and controlled-draft projections publish in a React transition.
+The editor recognizes stale controlled echoes from that transition so an older
+projection cannot overwrite newer local input; a value not emitted locally
+remains an authoritative external replacement.
+
+The dock observes geometry through one coalesced animation-frame measurement
+entry point. Editor document updates, attachment membership or intrinsic
+attachment size changes, and changes to the stable input-shell width may
+invalidate that entry point.
+`ResizeObserver` must not observe the animated input area or editor block size:
+their height transition is an output of measurement and must never feed back
+into another measurement cycle. Width observations compare inline size before
+invalidating, while attachment observers cover asynchronous chip and preview
+sizes without a duplicate global resize listener.
+
+The measurement pass is read-only. It derives natural text height from the
+editor document blocks, reads attachment heights, and publishes one atomic
+composer-metrics snapshot only when the snapshot changes. It must not
+temporarily collapse or restyle either the editor or transitioned input
+container. The dock input area establishes a local layout-containment boundary
+so a composer read cannot invalidate the conversation root. Composer paragraphs
+and the viewport calculation share the same line-height token so the 3.5-line
+cap remains exact. Regression coverage must expand across explicit newline
+rows, delete back to one row, and verify stable action-button placement.
 
 External OS file paste and drop enter one host-injected classification boundary before draft attachment creation. The synchronous `resolveExternalPromptEntries` port classifies each source index as a live `WorkspaceFileReference` or a snapshot requiring preparation. AgentGUI owns ordered mention insertion and draft reconciliation: references become ordinary file/folder mentions and never consume prompt-asset slots, while only `prepare` entries create pending attachment state and enter `prepareExternalPromptFiles`. A host without the resolver prepares every external entry. The preparer owns native-path or byte lookup, size enforcement, persistence, and remote transport; each prepared input has one `sourceIndex` result, one failure must not fail siblings, successful results include a provider-readable `path` or `url`, and failures carry typed error codes. Hosts that classify path-backed entries as references must reject any such entry that unexpectedly reaches preparation, so classification failure cannot silently create a duplicate snapshot.
 
