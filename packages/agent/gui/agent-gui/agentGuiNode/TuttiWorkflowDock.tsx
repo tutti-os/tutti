@@ -22,10 +22,12 @@ import {
 } from "../../workspaceWorkflow";
 import { cn } from "../../app/renderer/lib/utils";
 import { AgentComposerDisclosureCard } from "./AgentComposerDisclosureCard";
+import styles from "./AgentGUIChrome.styles";
 import {
   TuttiBudgetPopover,
   type TuttiBudgetPopoverLabels
 } from "./composer/TuttiBudgetPopover";
+import { projectTuttiIntensityPreview } from "./composer/tuttiIntensityPreview";
 
 export type TuttiWorkflowDockPhase =
   | {
@@ -197,29 +199,49 @@ export function TuttiWorkflowDock({
       <AlertTriangle aria-hidden className="size-3.5" />
     );
 
+  const reviewTier =
+    review !== null
+      ? projectTuttiIntensityPreview(review.intensity).tier
+      : null;
+  const reviewTierLabel =
+    reviewTier !== null
+      ? {
+          cost: intensityPopoverLabels.previewCost,
+          balance: intensityPopoverLabels.previewBalance,
+          powerful: intensityPopoverLabels.previewPowerful
+        }[reviewTier]
+      : null;
+
   const actions =
     review !== null ? (
       <>
         <TuttiBudgetPopover
           intensity={review.intensity}
           labels={intensityPopoverLabels}
-          onConfirm={onIntensityChange}
+          onChange={onIntensityChange}
         >
           <button
             type="button"
             disabled={review.submitting}
             title={intensityPopoverLabels.title}
             aria-label={intensityPopoverLabels.intensityLabel}
+            data-agent-tutti-tier={reviewTier ?? undefined}
             data-testid="agent-gui-tutti-workflow-intensity"
             className={cn(
               "flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors",
               "hover:bg-[var(--transparency-hover)]",
-              "data-[state=open]:bg-[color-mix(in_srgb,var(--tutti-purple)_12%,transparent)] data-[state=open]:text-[var(--tutti-purple)]",
-              review.intensityDiverged && "text-[var(--tutti-purple)]"
+              "data-[state=open]:bg-[color-mix(in_srgb,var(--tutti-purple)_12%,transparent)] data-[state=open]:text-[var(--tutti-purple)]"
             )}
           >
             <Gauge aria-hidden className="size-3.5" />
-            <span className="text-[11px] tabular-nums">{review.intensity}</span>
+            <span className="flex items-center gap-0.5">
+              {reviewTierLabel !== null ? (
+                <span className="text-[11px]">{reviewTierLabel}</span>
+              ) : null}
+              <span className="inline-block w-[3ch] text-left text-[11px] tabular-nums">
+                {review.intensity}
+              </span>
+            </span>
           </button>
         </TuttiBudgetPopover>
         <button
@@ -229,6 +251,7 @@ export function TuttiWorkflowDock({
           title={labels.cancel}
           aria-label={labels.cancel}
           data-testid="agent-gui-tutti-workflow-cancel"
+          className="flex size-5 items-center justify-center rounded-md transition-colors hover:bg-[var(--transparency-hover)]"
         >
           <X aria-hidden className="size-3.5" />
         </button>
@@ -249,9 +272,11 @@ export function TuttiWorkflowDock({
   return (
     <AgentComposerDisclosureCard
       actions={actions}
+      bannerClassName={styles.tuttiWorkflowBanner}
       expanded={disclosure.expanded}
       icon={icon}
       labels={{ collapse: labels.collapse, expand: labels.expand }}
+      panelClassName={styles.tuttiWorkflowPanel}
       onExpandedChange={setExpanded}
       summary={summary}
       testId="agent-gui-tutti-workflow-dock"

@@ -147,8 +147,6 @@ export interface AgentGUIViewLabels {
   tuttiBudgetAgentCountCost: string;
   tuttiBudgetAgentCountBalance: string;
   tuttiBudgetAgentCountPowerful: string;
-  tuttiBudgetConfirm: string;
-  tuttiBudgetCancel: string;
   tuttiModeUpdateFailed: string;
   tuttiModeUpdateUncertain: string;
   tuttiModePlanPanel: TuttiModePlanPanelLabels;

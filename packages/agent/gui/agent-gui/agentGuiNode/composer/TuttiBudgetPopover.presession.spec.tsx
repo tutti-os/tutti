@@ -25,9 +25,7 @@ const labels = {
   agentCountLabel: "Parallel Agents",
   agentCountCost: "1",
   agentCountBalance: "2–3",
-  agentCountPowerful: "Up to 4",
-  confirm: "Confirm",
-  cancel: "Cancel"
+  agentCountPowerful: "Up to 4"
 };
 
 function createTestEngine() {
@@ -54,7 +52,7 @@ function PreSessionHarness({
     <TuttiBudgetPopover
       intensity={tuttiMode.orchestrationIntensity}
       labels={labels}
-      onConfirm={tuttiMode.setOrchestrationIntensity}
+      onChange={tuttiMode.setOrchestrationIntensity}
     >
       <button className="nodrag" type="button">
         Tutti
@@ -86,16 +84,15 @@ describe("TuttiBudgetPopover pre-session loop", () => {
     });
     fireEvent.click(slider);
     fireEvent.keyDown(slider, { key: "ArrowRight" });
-    // Confirm commits the draft through the workbench click-capture guard
-    // and closes the popup.
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    // Slider movement applies immediately through the workbench
+    // click-capture guard and the popup stays open.
     const draftKey = resolveAgentGUITuttiModeDraftKey("node-1");
     expect(
       engine.getSnapshot().tuttiModeActivation.draftsByKey[draftKey]
     ).toMatchObject({ active: true, orchestrationIntensity: 51 });
     expect(
       document.querySelector("[data-agent-tutti-budget-popover]")
-    ).toBeNull();
+    ).not.toBeNull();
   });
 
   it("keeps a committed pre-session intensity and preview across reopen", () => {
@@ -114,12 +111,12 @@ describe("TuttiBudgetPopover pre-session loop", () => {
       document.querySelector("[data-agent-tutti-budget-preview]")
     ).toHaveAttribute("data-agent-tutti-budget-preview", "powerful");
 
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     const draftKey = resolveAgentGUITuttiModeDraftKey("node-1");
     expect(
       engine.getSnapshot().tuttiModeActivation.draftsByKey[draftKey]
     ).toMatchObject({ active: true, orchestrationIntensity: 100 });
 
+    fireEvent.keyDown(document.body, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Tutti" }));
     expect(
       screen.getByRole("slider", { name: "Orchestration intensity" })

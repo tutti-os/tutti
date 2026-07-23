@@ -122,7 +122,7 @@ export function TuttiModePlanTaskAssignmentEditor({
 
   return (
     <div
-      className="tutti-plan-task-assignment-row mt-3 flex flex-wrap items-center gap-1 border-t border-[var(--line-2)] pt-2"
+      className="tutti-plan-task-assignment-row mt-3 flex flex-wrap items-center gap-3 border-t border-[var(--line-2)] pt-2"
       data-testid={`tutti-plan-task-assignment-${task.id}`}
     >
       <Select
@@ -202,7 +202,7 @@ export function TuttiModePlanTaskAssignmentEditor({
       />
       <label
         className={cn(
-          "flex min-h-[28px] w-auto shrink-0 items-center gap-1.5 px-1 text-[13px]",
+          "flex min-h-[28px] w-auto shrink-0 items-center gap-1.5 text-[13px]",
           disabled
             ? "cursor-not-allowed text-[var(--agent-gui-text-tertiary)]"
             : "cursor-pointer text-[var(--agent-gui-text-secondary)]"
@@ -224,7 +224,7 @@ export function TuttiModePlanTaskAssignmentEditor({
       </label>
       <label
         className={cn(
-          "flex min-h-[28px] w-auto shrink-0 items-center gap-1.5 px-1 text-[13px]",
+          "flex min-h-[28px] w-auto shrink-0 items-center gap-1.5 text-[13px]",
           disabled
             ? "cursor-not-allowed text-[var(--agent-gui-text-tertiary)]"
             : "cursor-pointer text-[var(--agent-gui-text-secondary)]"
@@ -277,7 +277,7 @@ function AssignmentSelectTrigger({
         <span
           className={cn(
             "truncate",
-            value === null && "text-[var(--agent-gui-text-tertiary)]"
+            value === null && "text-[var(--agent-gui-text-secondary)]"
           )}
         >
           {value ?? placeholder}

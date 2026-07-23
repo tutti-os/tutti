@@ -264,8 +264,6 @@ export const zhCNAgentGui = {
   tuttiBudgetAgentCountCost: "1 个",
   tuttiBudgetAgentCountBalance: "2–3 个",
   tuttiBudgetAgentCountPowerful: "最多 4 个",
-  tuttiBudgetConfirm: "确认",
-  tuttiBudgetCancel: "取消",
   tuttiModeUpdateFailed: "Tutti 模式更新失败，请重试",
   tuttiModeUpdateUncertain: "Tutti 模式状态仍在确认中，请稍后重试",
   tuttiModePlan: zhCNTuttiModePlan,

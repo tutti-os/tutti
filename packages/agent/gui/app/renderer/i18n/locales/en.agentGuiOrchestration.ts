@@ -24,8 +24,6 @@ export const enAgentGuiOrchestration = {
   tuttiBudgetAgentCountCost: "1",
   tuttiBudgetAgentCountBalance: "2–3",
   tuttiBudgetAgentCountPowerful: "Up to 4",
-  tuttiBudgetConfirm: "Confirm",
-  tuttiBudgetCancel: "Cancel",
   tuttiModeUpdateFailed: "Tutti mode couldn't be updated. Try again.",
   tuttiModeUpdateUncertain:
     "Tutti mode is still being reconciled. Try again after it finishes.",

@@ -185,7 +185,7 @@ function TaskAssignmentSummary({
     return null;
   }
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-0.5 border-t border-[var(--line-2)] pt-2">
+    <div className="tutti-plan-task-assignment-row mt-3 flex flex-wrap items-center gap-3 border-t border-[var(--line-2)] pt-2">
       {chips.map((chip) => (
         <span
           key={chip.label}
