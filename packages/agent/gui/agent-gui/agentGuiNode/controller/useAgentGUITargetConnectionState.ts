@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type {
   AgentGUITargetConnectionSource,
-  AgentGUITargetConnectionStatus
+  AgentGUITargetConnectionState
 } from "../../../types";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 import {
@@ -14,14 +14,14 @@ export function useAgentGUITargetConnectionState(input: {
   source?: AgentGUITargetConnectionSource | null;
 }): {
   blocked: boolean;
-  visibleStatus: AgentGUITargetConnectionStatus | null;
+  visibleState: AgentGUITargetConnectionState | null;
 } {
   const binding = useMemo<AgentGUITargetConnectionBinding>(
     () => ({
       getSnapshot: () => {
         const agentTargetId = input.agentTargetId?.trim() ?? "";
         return agentTargetId
-          ? (input.source?.getConnectionStatus(agentTargetId) ?? null)
+          ? (input.source?.getConnectionState(agentTargetId) ?? null)
           : null;
       },
       subscribe: (listener) =>
@@ -29,28 +29,37 @@ export function useAgentGUITargetConnectionState(input: {
     }),
     [input.agentTargetId, input.source]
   );
-  const status = useEngineSelector(
+  const state = useEngineSelector(
     binding,
-    identityTargetConnectionStatus,
-    Object.is
+    identityTargetConnectionState,
+    targetConnectionStatesEqual
   );
   const controller = useMemo(
     () => new AgentGUITargetConnectionController({ source: binding }),
     [binding]
   );
-  const visibleStatus = useEngineSelector(
+  const visibleState = useEngineSelector(
     controller,
-    identityTargetConnectionStatus,
-    Object.is
+    identityTargetConnectionState,
+    targetConnectionStatesEqual
   );
   return {
-    blocked: status === "connecting" || status === "unavailable",
-    visibleStatus
+    blocked: state?.status === "connecting" || state?.status === "unavailable",
+    visibleState
   };
 }
 
-function identityTargetConnectionStatus(
-  status: AgentGUITargetConnectionStatus | null
-): AgentGUITargetConnectionStatus | null {
-  return status;
+function identityTargetConnectionState(
+  state: AgentGUITargetConnectionState | null
+): AgentGUITargetConnectionState | null {
+  return state;
+}
+
+function targetConnectionStatesEqual(
+  left: AgentGUITargetConnectionState | null,
+  right: AgentGUITargetConnectionState | null
+): boolean {
+  return (
+    left?.status === right?.status && left?.retryAttempt === right?.retryAttempt
+  );
 }

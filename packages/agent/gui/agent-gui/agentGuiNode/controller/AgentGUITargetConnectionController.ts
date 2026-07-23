@@ -1,4 +1,4 @@
-import type { AgentGUITargetConnectionStatus } from "../../../types";
+import type { AgentGUITargetConnectionState } from "../../../types";
 import {
   agentGuiScheduler,
   type AgentGuiScheduledTask,
@@ -8,7 +8,7 @@ import {
 export const AGENT_GUI_TARGET_CONNECTING_NOTICE_DELAY_MS = 300;
 
 export interface AgentGUITargetConnectionBinding {
-  getSnapshot(): AgentGUITargetConnectionStatus | null;
+  getSnapshot(): AgentGUITargetConnectionState | null;
   subscribe(listener: () => void): () => void;
 }
 
@@ -18,7 +18,7 @@ interface AgentGUITargetConnectionControllerInput {
 }
 
 export class AgentGUITargetConnectionController {
-  readonly getSnapshot = (): AgentGUITargetConnectionStatus | null =>
+  readonly getSnapshot = (): AgentGUITargetConnectionState | null =>
     this.snapshot;
   readonly subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -40,7 +40,7 @@ export class AgentGUITargetConnectionController {
   private readonly scheduler: AgentGuiScheduler;
   private readonly source: AgentGUITargetConnectionBinding;
   private revealTask: AgentGuiScheduledTask | null = null;
-  private snapshot: AgentGUITargetConnectionStatus | null;
+  private snapshot: AgentGUITargetConnectionState | null;
   private unsubscribeSource: (() => void) | null = null;
 
   constructor(input: AgentGUITargetConnectionControllerInput) {
@@ -52,34 +52,37 @@ export class AgentGUITargetConnectionController {
   private readonly handleSourceChange = (): void => this.reconcile();
 
   private reconcile(): void {
-    const status = this.source.getSnapshot();
-    if (status === "unavailable") {
+    const state = this.source.getSnapshot();
+    if (state?.status === "unavailable") {
       this.cancelReveal();
-      this.publish("unavailable");
+      this.publish(state);
       return;
     }
-    if (status !== "connecting") {
+    if (state?.status !== "connecting") {
       this.cancelReveal();
       this.publish(null);
       return;
     }
-    if (this.snapshot === "connecting" || this.revealTask) return;
+    if (this.snapshot?.status === "connecting") {
+      this.publish(state);
+      return;
+    }
+    if (this.revealTask) return;
     this.revealTask = this.scheduler.schedule(
       AGENT_GUI_TARGET_CONNECTING_NOTICE_DELAY_MS,
       () => {
         this.revealTask = null;
-        if (
-          this.listeners.size > 0 &&
-          this.source.getSnapshot() === "connecting"
-        ) {
-          this.publish("connecting");
+        const current = this.source.getSnapshot();
+        if (this.listeners.size > 0 && current?.status === "connecting") {
+          this.publish(current);
         }
       }
     );
   }
 
-  private projectImmediateStatus(): AgentGUITargetConnectionStatus | null {
-    return this.source.getSnapshot() === "unavailable" ? "unavailable" : null;
+  private projectImmediateStatus(): AgentGUITargetConnectionState | null {
+    const state = this.source.getSnapshot();
+    return state?.status === "unavailable" ? state : null;
   }
 
   private cancelReveal(): void {
@@ -87,9 +90,18 @@ export class AgentGUITargetConnectionController {
     this.revealTask = null;
   }
 
-  private publish(next: AgentGUITargetConnectionStatus | null): void {
-    if (this.snapshot === next) return;
+  private publish(next: AgentGUITargetConnectionState | null): void {
+    if (targetConnectionStatesEqual(this.snapshot, next)) return;
     this.snapshot = next;
     for (const listener of this.listeners) listener();
   }
+}
+
+function targetConnectionStatesEqual(
+  left: AgentGUITargetConnectionState | null,
+  right: AgentGUITargetConnectionState | null
+): boolean {
+  return (
+    left?.status === right?.status && left?.retryAttempt === right?.retryAttempt
+  );
 }

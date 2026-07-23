@@ -41,6 +41,7 @@ export const enAgentGuiRuntimeNotices = {
   systemNoticeDefault: "Agent notice",
   sharedDeviceLabel: "shared device",
   runtimeConnecting: "Connecting to {{device}}…",
+  runtimeReconnectingAttempt: "Reconnecting to {{device}} · Retry {{attempt}}…",
   runtimeUnavailable:
     "Connection to {{device}} was lost. The system will retry automatically.",
   runtimeUnavailableActive:

@@ -2924,30 +2924,29 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-chrome__card--connecting {
-  border-color: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: var(--agent-gui-border-subtle, var(--line-2));
   border-bottom: 0;
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
   border-bottom-right-radius: 0;
   border-bottom-left-radius: 0;
-  color: var(--accent);
+  color: var(--agent-gui-text-primary, var(--text-primary));
   align-items: center;
   min-height: 36px;
   padding: 6px 16px;
   cursor: default;
-  background:
-    linear-gradient(
-      color-mix(in srgb, var(--accent) 8%, transparent),
-      color-mix(in srgb, var(--accent) 8%, transparent)
-    ),
-    var(--background-fronted);
+  background: var(--agent-gui-surface-strong, var(--background-fronted));
 }
 
 .agent-gui-chrome__card--connecting .agent-gui-chrome__message {
   display: inline-flex;
   min-width: 0;
   align-items: center;
-  color: var(--accent);
+  color: var(--agent-gui-text-primary, var(--text-primary));
+}
+
+.agent-gui-chrome__card--connecting .agent-gui-chrome__icon {
+  color: var(--agent-gui-text-primary, var(--text-primary));
 }
 
 .agent-gui-chrome__card--danger {

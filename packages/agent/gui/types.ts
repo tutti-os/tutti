@@ -233,11 +233,16 @@ export type AgentGUITargetConnectionStatus =
   | "connecting"
   | "unavailable";
 
+export interface AgentGUITargetConnectionState {
+  status: AgentGUITargetConnectionStatus;
+  retryAttempt: number;
+}
+
 /** Host-owned, ephemeral device transport state keyed by exact Agent target. */
 export interface AgentGUITargetConnectionSource {
-  getConnectionStatus(
+  getConnectionState(
     agentTargetId: string
-  ): AgentGUITargetConnectionStatus | null;
+  ): AgentGUITargetConnectionState | null;
   subscribe(listener: () => void): () => void;
 }
 

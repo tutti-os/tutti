@@ -187,13 +187,15 @@ export function useAgentGUISessionPresentation(
   ]);
   const sessionChrome = useMemo<AgentGUISessionChrome>(() => {
     if (
-      targetConnection.visibleStatus === "connecting" ||
-      targetConnection.visibleStatus === "unavailable"
+      targetConnection.visibleState?.status === "connecting" ||
+      targetConnection.visibleState?.status === "unavailable"
     ) {
       const device =
         input.ownerDeviceLabel?.trim() ||
         translate("agentHost.agentGui.sharedDeviceLabel");
-      const reconnecting = targetConnection.visibleStatus === "connecting";
+      const reconnecting =
+        targetConnection.visibleState.status === "connecting";
+      const retryAttempt = targetConnection.visibleState.retryAttempt;
       return {
         auth: null,
         approval: null,
@@ -201,11 +203,13 @@ export function useAgentGUISessionPresentation(
           kind: reconnecting ? "transport-connecting" : "transport-unavailable",
           message: translate(
             reconnecting
-              ? "agentHost.agentGui.runtimeConnecting"
+              ? retryAttempt > 0
+                ? "agentHost.agentGui.runtimeReconnectingAttempt"
+                : "agentHost.agentGui.runtimeConnecting"
               : input.activeEngineActiveTurn !== null
                 ? "agentHost.agentGui.runtimeUnavailableActive"
                 : "agentHost.agentGui.runtimeUnavailable",
-            { device }
+            { attempt: retryAttempt, device }
           ),
           canRetry: false
         },
@@ -276,7 +280,7 @@ export function useAgentGUISessionPresentation(
     input.activePendingActivation?.mode,
     input.pendingApproval,
     input.ownerDeviceLabel,
-    targetConnection.visibleStatus,
+    targetConnection.visibleState,
     sessionChromeRawState
   ]);
   const canSubmit =

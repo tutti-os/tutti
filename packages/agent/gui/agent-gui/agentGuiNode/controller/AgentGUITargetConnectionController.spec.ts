@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentGUITargetConnectionStatus } from "../../../types";
+import type { AgentGUITargetConnectionState } from "../../../types";
 import type {
   AgentGuiScheduledTask,
   AgentGuiScheduler
@@ -11,17 +11,16 @@ import {
 
 class FakeConnectionSource {
   private readonly listeners = new Set<() => void>();
-  constructor(private status: AgentGUITargetConnectionStatus | null) {}
+  constructor(private state: AgentGUITargetConnectionState | null) {}
 
-  readonly getSnapshot = (): AgentGUITargetConnectionStatus | null =>
-    this.status;
+  readonly getSnapshot = (): AgentGUITargetConnectionState | null => this.state;
   readonly subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
 
-  set(status: AgentGUITargetConnectionStatus | null): void {
-    this.status = status;
+  set(state: AgentGUITargetConnectionState | null): void {
+    this.state = state;
     for (const listener of this.listeners) listener();
   }
 }
@@ -49,7 +48,10 @@ class FakeScheduler implements AgentGuiScheduler {
 
 describe("AgentGUITargetConnectionController", () => {
   it("suppresses short connections and reveals persistent connections after 300ms", () => {
-    const source = new FakeConnectionSource("connecting");
+    const source = new FakeConnectionSource({
+      status: "connecting",
+      retryAttempt: 0
+    });
     const scheduler = new FakeScheduler();
     const listener = vi.fn();
     const controller = new AgentGUITargetConnectionController({
@@ -62,33 +64,45 @@ describe("AgentGUITargetConnectionController", () => {
     expect(scheduler.lastDelayMs).toBe(
       AGENT_GUI_TARGET_CONNECTING_NOTICE_DELAY_MS
     );
-    source.set("connected");
+    source.set({ status: "connected", retryAttempt: 0 });
     scheduler.run();
     expect(controller.getSnapshot()).toBeNull();
     expect(listener).not.toHaveBeenCalled();
 
-    source.set("connecting");
+    source.set({ status: "connecting", retryAttempt: 0 });
     scheduler.run();
-    expect(controller.getSnapshot()).toBe("connecting");
+    expect(controller.getSnapshot()).toEqual({
+      status: "connecting",
+      retryAttempt: 0
+    });
     expect(listener).toHaveBeenCalledTimes(1);
     unsubscribe();
   });
 
   it("reveals unavailable immediately and clears it on recovery", () => {
-    const source = new FakeConnectionSource("unavailable");
+    const source = new FakeConnectionSource({
+      status: "unavailable",
+      retryAttempt: 0
+    });
     const controller = new AgentGUITargetConnectionController({ source });
 
-    expect(controller.getSnapshot()).toBe("unavailable");
+    expect(controller.getSnapshot()).toEqual({
+      status: "unavailable",
+      retryAttempt: 0
+    });
     const listener = vi.fn();
     const unsubscribe = controller.subscribe(listener);
-    source.set("connected");
+    source.set({ status: "connected", retryAttempt: 0 });
     expect(controller.getSnapshot()).toBeNull();
     expect(listener).toHaveBeenCalledTimes(1);
     unsubscribe();
   });
 
   it("keeps unavailable visible until connecting passes the delay", () => {
-    const source = new FakeConnectionSource("unavailable");
+    const source = new FakeConnectionSource({
+      status: "unavailable",
+      retryAttempt: 0
+    });
     const scheduler = new FakeScheduler();
     const controller = new AgentGUITargetConnectionController({
       scheduler,
@@ -96,11 +110,41 @@ describe("AgentGUITargetConnectionController", () => {
     });
     const unsubscribe = controller.subscribe(() => undefined);
 
-    source.set("connecting");
-    expect(controller.getSnapshot()).toBe("unavailable");
+    source.set({ status: "connecting", retryAttempt: 1 });
+    expect(controller.getSnapshot()).toEqual({
+      status: "unavailable",
+      retryAttempt: 0
+    });
 
     scheduler.run();
-    expect(controller.getSnapshot()).toBe("connecting");
+    expect(controller.getSnapshot()).toEqual({
+      status: "connecting",
+      retryAttempt: 1
+    });
+    unsubscribe();
+  });
+
+  it("publishes retry progress without restarting the visibility delay", () => {
+    const source = new FakeConnectionSource({
+      status: "connecting",
+      retryAttempt: 1
+    });
+    const scheduler = new FakeScheduler();
+    const listener = vi.fn();
+    const controller = new AgentGUITargetConnectionController({
+      scheduler,
+      source
+    });
+    const unsubscribe = controller.subscribe(listener);
+
+    scheduler.run();
+    source.set({ status: "connecting", retryAttempt: 2 });
+
+    expect(controller.getSnapshot()).toEqual({
+      status: "connecting",
+      retryAttempt: 2
+    });
+    expect(listener).toHaveBeenCalledTimes(2);
     unsubscribe();
   });
 });
