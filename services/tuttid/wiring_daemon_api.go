@@ -67,7 +67,6 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentTargetStore, _ := store.(workspacedata.AgentTargetStore)
 	managedCredentialsStore, _ := store.(workspacedata.ManagedCredentialsStore)
 	modelPlansStore, _ := store.(workspacedata.ModelPlansStore)
-	modelPlanFirstUseStore, _ := store.(workspacedata.ModelPlanFirstUseStore)
 	agentActivityRepo, _ := store.(workspacedata.AgentActivityStore)
 	agentQuickPromptStore, _ := store.(workspacedata.AgentQuickPromptStore)
 	userProjectStore, _ := store.(workspacedata.UserProjectStore)
@@ -174,8 +173,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Publisher: eventstreamservice.AgentAutomationRulesPublisher{Service: events},
 	}
 	modelPlans := &modelplanservice.Service{
-		Store:         modelPlansStore,
-		FirstUseStore: modelPlanFirstUseStore,
+		Store: modelPlansStore,
 		// Plan deletion stays blocked while any consumer domain still points at
 		// the plan: agent model bindings, model usage policies, and workspace agents.
 		References: modelplanservice.CompositeReferenceResolver{modelBindings, modelPolicies, workspaceAgents},
@@ -280,7 +278,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentModelCatalog := agentservice.NewAgentModelCatalog()
 	agentModelCatalog.ModelCapabilities = agentModelCapabilities
 	agentSessionService.ModelCatalog = agentModelCatalog
-	agentSessionService.ConfigureModelPlanBinding(modelBindingsStore, modelPlansStore, modelPlans)
+	agentSessionService.ConfigureModelPlanBinding(modelBindingsStore, modelPlansStore)
 	agentSessionService.ModelCapabilities = agentModelCapabilities
 	agentSessionService.AgentTargetStore = agentTargetStore
 	agentSessionService.AgentComposerDefaultsReader = preferences
@@ -299,9 +297,6 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
 	agentSessionService.TurnStore = agentActivityRepo
-	if err := agentSessionService.ReconcilePendingModelPlanFirstUses(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("reconcile model plan first use: %w", err)
-	}
 	agentSessionService.TurnSummaryReader = agentActivityRepo
 	agentSessionService.RuntimeOperationStore = agentActivityRepo
 	agentSessionService.GoalStateStore = agentActivityRepo
@@ -525,7 +520,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Publisher:             eventstreamservice.WorkspaceAppFactoryPublisher{Service: events},
 	}
 	agentActivityProjection.SetSessionMessageObserver(appFactoryService)
-	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, agentSessionService, modelPolicies, automationRules, issueExecutionCoordinator})
+	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, modelPolicies, automationRules, issueExecutionCoordinator})
 	// Canonical root-turn settlements (root-provider aggregation, child-drain
 	// reconcile, cancel) fan out at-least-once to this dedicated opt-in list
 	// only. Automation rules and the Issue-run observer are the consumers

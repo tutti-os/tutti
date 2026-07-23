@@ -760,23 +760,21 @@ export type ModelPlanTemplateKind =
   | "custom";
 
 /**
- * Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+ * Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
  */
 export type ModelPlanStatus =
   | "disabled"
   | "undetected"
   | "detection_failed"
-  | "pending_first_use"
   | "ready";
 
 export type ModelPlanDetectionStage =
   | "network"
   | "auth"
   | "model_discovery"
-  | "inference"
-  | "agent_runtime";
+  | "inference";
 
-export type ModelPlanStageStatus = "passed" | "failed" | "skipped" | "pending";
+export type ModelPlanStageStatus = "passed" | "failed" | "skipped";
 
 export type ModelPlanStageResult = {
   stage: ModelPlanDetectionStage;
@@ -803,14 +801,6 @@ export type ModelPlanDetection = {
   model?: string | null;
 };
 
-export type ModelPlanFirstUse = {
-  status: "pending" | "completed";
-  agentTargetId?: string | null;
-  agentSessionId?: string | null;
-  model?: string | null;
-  completedAt?: string | null;
-};
-
 export type ModelPlanModel = {
   id: string;
   name: string;
@@ -834,7 +824,6 @@ export type ModelPlan = {
   enabled: boolean;
   status: ModelPlanStatus;
   detection: ModelPlanDetection;
-  firstUse: ModelPlanFirstUse;
   createdAt: string;
   updatedAt: string;
 };

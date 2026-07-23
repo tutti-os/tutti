@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 )
@@ -34,7 +33,7 @@ func TestApplyRequestedModelPlanOverridesAgentDefault(t *testing.T) {
 		Protocol:    modelplanbiz.ProtocolOpenAI,
 	}
 	service := &Service{}
-	service.ConfigureModelPlanBinding(nil, staticPlanSource{plan: requested}, nil)
+	service.ConfigureModelPlanBinding(nil, staticPlanSource{plan: requested})
 	requestedPlanID := "plan-requested"
 	input := CreateSessionInput{
 		ModelPlanID:       &requestedPlanID,
@@ -51,11 +50,6 @@ func TestApplyRequestedModelPlanOverridesAgentDefault(t *testing.T) {
 
 func (s staticPlanSource) GetModelPlan(context.Context, string, string) (modelplanbiz.Plan, error) {
 	return s.plan, s.err
-}
-
-type recordingFirstUse struct {
-	calls      []string
-	candidates map[string]modelplanbiz.FirstUseCandidate
 }
 
 type recordingModelCatalog struct {
@@ -75,36 +69,8 @@ func (r *recordingModelCatalog) ListModels(context.Context, AgentModelCatalogInp
 	}, nil
 }
 
-func (r *recordingFirstUse) PrepareFirstUse(_ context.Context, candidate modelplanbiz.FirstUseCandidate) error {
-	if r.candidates == nil {
-		r.candidates = map[string]modelplanbiz.FirstUseCandidate{}
-	}
-	r.candidates[candidate.WorkspaceID+"/"+candidate.AgentSessionID] = candidate
-	return nil
-}
-
-func (r *recordingFirstUse) CompleteFirstUse(_ context.Context, workspaceID string, agentSessionID string) error {
-	key := workspaceID + "/" + agentSessionID
-	candidate, ok := r.candidates[key]
-	if !ok {
-		return nil
-	}
-	r.calls = append(r.calls, workspaceID+"/"+candidate.PlanID+"/"+candidate.AgentTargetID+"/"+agentSessionID+"/"+candidate.Model)
-	delete(r.candidates, key)
-	return nil
-}
-
-func (r *recordingFirstUse) ListPendingFirstUses(context.Context) ([]modelplanbiz.FirstUseCandidate, error) {
-	candidates := make([]modelplanbiz.FirstUseCandidate, 0, len(r.candidates))
-	for _, candidate := range r.candidates {
-		candidates = append(candidates, candidate)
-	}
-	return candidates, nil
-}
-
-func newPlanBoundService(protocol modelplanbiz.Protocol, enabled bool) (*Service, *recordingFirstUse) {
+func newPlanBoundService(protocol modelplanbiz.Protocol, enabled bool) *Service {
 	service := &Service{}
-	firstUse := &recordingFirstUse{}
 	service.ConfigureModelPlanBinding(
 		staticBindingSource{binding: modelbindingbiz.Binding{
 			WorkspaceID:   "ws",
@@ -126,16 +92,15 @@ func newPlanBoundService(protocol modelplanbiz.Protocol, enabled bool) (*Service
 				{ID: "plan-alt", Name: "Plan Alt"},
 			},
 		}},
-		firstUse,
 	)
-	return service, firstUse
+	return service
 }
 
 func TestResolveModelPlanEndpointMatchesProviderProtocol(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	service, _ := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
+	service := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
 
 	endpoint, models := service.resolveModelPlanEndpoint(ctx, "ws", "local:codex", "codex", "")
 	if endpoint == nil {
@@ -155,7 +120,7 @@ func TestResolveModelPlanEndpointMatchesProviderProtocol(t *testing.T) {
 	}
 
 	// Anthropic-protocol plans do not bind onto codex.
-	anthropicService, _ := newPlanBoundService(modelplanbiz.ProtocolAnthropic, true)
+	anthropicService := newPlanBoundService(modelplanbiz.ProtocolAnthropic, true)
 	if endpoint, _ := anthropicService.resolveModelPlanEndpoint(ctx, "ws", "local:codex", "codex", ""); endpoint != nil {
 		t.Fatalf("protocol mismatch should not bind: %#v", endpoint)
 	}
@@ -165,7 +130,7 @@ func TestResolveModelPlanEndpointMatchesProviderProtocol(t *testing.T) {
 	}
 
 	// Disabled plans never bind.
-	disabledService, _ := newPlanBoundService(modelplanbiz.ProtocolOpenAI, false)
+	disabledService := newPlanBoundService(modelplanbiz.ProtocolOpenAI, false)
 	if endpoint, _ := disabledService.resolveModelPlanEndpoint(ctx, "ws", "local:codex", "codex", ""); endpoint != nil {
 		t.Fatalf("disabled plan should not bind: %#v", endpoint)
 	}
@@ -180,7 +145,7 @@ func TestResolveModelPlanReportsAuthoritativeConfiguration(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	service, _ := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
+	service := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
 	resolution := service.resolveModelPlan(ctx, "ws", "local:codex", "codex", "plan-alt")
 	if resolution.Endpoint == nil || resolution.Endpoint.Model != "plan-alt" {
 		t.Fatalf("requested model resolution = %#v, want plan-alt endpoint", resolution.Endpoint)
@@ -222,7 +187,6 @@ func TestResolveModelPlanReportsAuthoritativeConfiguration(t *testing.T) {
 				{ID: "plan-alt", Name: "Another display name"},
 			},
 		}},
-		nil,
 	)
 	rotatedResolution := rotated.resolveModelPlan(ctx, "ws", "local:codex", "codex", "plan-alt")
 	if rotatedResolution.ModelConfiguration.Fingerprint != configuration.Fingerprint {
@@ -234,9 +198,9 @@ func TestResolveModelPlanFallsBackToProviderNativeConfiguration(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	disabledService, _ := newPlanBoundService(modelplanbiz.ProtocolOpenAI, false)
-	mismatchService, _ := newPlanBoundService(modelplanbiz.ProtocolAnthropic, true)
-	unsupportedService, _ := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
+	disabledService := newPlanBoundService(modelplanbiz.ProtocolOpenAI, false)
+	mismatchService := newPlanBoundService(modelplanbiz.ProtocolAnthropic, true)
+	unsupportedService := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
 	tests := []struct {
 		name     string
 		service  *Service
@@ -330,54 +294,11 @@ func TestValidateModelAgainstPlanRejectsUnknownModel(t *testing.T) {
 	}
 }
 
-func TestObserveAgentSessionStateMarksFirstUseOnCompletedTurn(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	service, firstUse := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
-	endpoint, _ := service.resolveModelPlanEndpoint(ctx, "ws", "local:codex", "codex", "")
-	if err := service.preparePlanFirstUse(ctx, "ws", "session-1", endpoint, "local:codex"); err != nil {
-		t.Fatalf("preparePlanFirstUse() error = %v", err)
-	}
-
-	completed := "completed"
-	failed := "failed"
-	settledFailed := canonical.ReportSessionStateInput{
-		WorkspaceID:    "ws",
-		AgentSessionID: "session-1",
-		State: canonical.WorkspaceAgentSessionStateUpdate{
-			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &failed},
-		},
-	}
-	service.ObserveAgentSessionState(ctx, settledFailed, canonical.ReportSessionStateReply{})
-	if len(firstUse.calls) != 0 {
-		t.Fatalf("failed turn must not mark first use: %v", firstUse.calls)
-	}
-
-	settledCompleted := canonical.ReportSessionStateInput{
-		WorkspaceID:    "ws",
-		AgentSessionID: "session-1",
-		State: canonical.WorkspaceAgentSessionStateUpdate{
-			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &completed},
-		},
-	}
-	service.ObserveAgentSessionState(ctx, settledCompleted, canonical.ReportSessionStateReply{})
-	if len(firstUse.calls) != 1 || firstUse.calls[0] != "ws/mp-1/local:codex/session-1/plan-default" {
-		t.Fatalf("first use calls = %v", firstUse.calls)
-	}
-
-	// A second completed turn does not re-mark.
-	service.ObserveAgentSessionState(ctx, settledCompleted, canonical.ReportSessionStateReply{})
-	if len(firstUse.calls) != 1 {
-		t.Fatalf("first use should mark once: %v", firstUse.calls)
-	}
-}
-
 func TestApplyModelPlanComposerOverlayReplacesModelOptions(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	service, _ := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
+	service := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
 	options := ComposerOptions{
 		Provider: "codex",
 		ModelConfig: ComposerConfigOption{
@@ -446,7 +367,6 @@ func TestGetComposerOptionsBoundPlanSkipsProviderNativeModelCatalog(t *testing.T
 				{ID: "plan-alt", Name: "Plan Alt"},
 			},
 		}},
-		nil,
 	)
 	catalog := &recordingModelCatalog{}
 	service.ModelCatalog = catalog
@@ -546,7 +466,7 @@ func TestResolveModelPlanNamespacesOpenCodeModelValues(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	service, _ := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
+	service := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
 
 	// OpenCode consumes openai plans; composer/settings values carry the
 	// injected provider namespace while the endpoint catalog stays raw.
