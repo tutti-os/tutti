@@ -96,13 +96,83 @@ test("MobileRemoteAccessService cancels an active pairing poll", async () => {
   assert.equal(service.store.challenge, null);
 });
 
-function challenge(state: string): MobileRemotePairingChallenge {
+test("MobileRemoteAccessService retires an expired pairing code", async () => {
+  let statusCalls = 0;
+  const service = new MobileRemoteAccessService(
+    {
+      async startMobileRemotePairing() {
+        return {
+          challenge: challenge("awaiting_claim", -1),
+          qrPayload: "expired-qr-payload"
+        };
+      },
+      async getMobileRemotePairingChallenge() {
+        statusCalls += 1;
+        return { challenge: challenge("awaiting_claim") };
+      },
+      async confirmMobileRemotePairing() {
+        throw new Error("not used");
+      },
+      async listMobileRemotePairings() {
+        return { pairings: [] };
+      },
+      async revokeMobileRemotePairing() {
+        throw new Error("not used");
+      }
+    } satisfies MobileRemoteAccessClient,
+    0
+  );
+
+  await service.startPairing();
+  await waitFor(() => service.store.qrPayload === null);
+
+  assert.equal(statusCalls, 0);
+  assert.equal(service.store.challenge, null);
+  assert.equal(service.store.error, null);
+});
+
+test("MobileRemoteAccessService retires a pairing code after status failure", async () => {
+  const service = new MobileRemoteAccessService(
+    {
+      async startMobileRemotePairing() {
+        return {
+          challenge: challenge("awaiting_claim"),
+          qrPayload: "qr-payload"
+        };
+      },
+      async getMobileRemotePairingChallenge() {
+        throw new Error("challenge not found");
+      },
+      async confirmMobileRemotePairing() {
+        throw new Error("not used");
+      },
+      async listMobileRemotePairings() {
+        return { pairings: [] };
+      },
+      async revokeMobileRemotePairing() {
+        throw new Error("not used");
+      }
+    } satisfies MobileRemoteAccessClient,
+    0
+  );
+
+  await service.startPairing();
+  await waitFor(() => service.store.error === "status");
+
+  assert.equal(service.store.qrPayload, null);
+  assert.equal(service.store.challenge, null);
+});
+
+function challenge(
+  state: string,
+  expiresInMs = 60_000
+): MobileRemotePairingChallenge {
   return {
     challengeId: "challenge-1",
     targetUserDeviceId: "desktop-device",
     state,
     revision: 1,
-    expiresAt: "2026-07-23T10:05:00Z"
+    expiresAt: new Date(Date.now() + expiresInMs).toISOString()
   };
 }
 

@@ -104,6 +104,10 @@ export class MobileRemoteAccessService implements IMobileRemoteAccessService {
         if (generation !== this.generation) {
           return;
         }
+        if (this.challengeExpired()) {
+          this.clearPairingChallenge();
+          return;
+        }
         const response =
           await this.client.getMobileRemotePairingChallenge(challengeID);
         if (generation !== this.generation) {
@@ -133,10 +137,21 @@ export class MobileRemoteAccessService implements IMobileRemoteAccessService {
       }
     } catch {
       if (generation === this.generation) {
-        this.store.confirming = false;
+        this.clearPairingChallenge();
         this.store.error = "status";
       }
     }
+  }
+
+  private challengeExpired(): boolean {
+    const expiresAt = Date.parse(this.store.challenge?.expiresAt ?? "");
+    return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+  }
+
+  private clearPairingChallenge(): void {
+    this.store.challenge = null;
+    this.store.confirming = false;
+    this.store.qrPayload = null;
   }
 }
 
