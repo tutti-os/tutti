@@ -1,3 +1,4 @@
+export * from "./avatar";
 export * from "./badge";
 export * from "./bare-icon-button";
 export * from "./button";
