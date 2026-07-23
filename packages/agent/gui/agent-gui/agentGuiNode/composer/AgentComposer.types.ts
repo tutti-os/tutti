@@ -166,6 +166,7 @@ export interface AgentComposerProps {
     planModeLabel: string;
     tuttiModeLabel: string;
     tuttiModeDescription: string;
+    tuttiModeRemove: string;
     tuttiBudgetTitle: string;
     tuttiBudgetIntensityLabel: string;
     tuttiBudgetIntensityMin: string;
@@ -330,6 +331,8 @@ export interface AgentComposerProps {
     permissionModeId?: string | null;
   }) => void;
   onTuttiModeChange?: (active: boolean) => void;
+  /** Commits a confirmed Tutti budget popup orchestration-intensity draft. */
+  onTuttiModeOrchestrationIntensityChange?: (value: number) => void;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   capabilityControlsReadOnly?: boolean;
   onCapabilitySettingsRequest?: (

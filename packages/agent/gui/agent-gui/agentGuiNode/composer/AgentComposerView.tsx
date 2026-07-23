@@ -100,8 +100,10 @@ interface Props {
   isPlanModeActive: boolean;
   isTuttiModeActive: boolean;
   isTuttiModeUpdating: boolean;
+  tuttiModeOrchestrationIntensity: number;
   onClearPlanMode: () => void;
   onClearTuttiMode: () => void;
+  onTuttiModeOrchestrationIntensityChange: (value: number) => void;
   isPromptTipOverflowing: boolean;
 }
 
@@ -606,8 +608,14 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             isPlanModeActive={input.isPlanModeActive}
             isTuttiModeActive={input.isTuttiModeActive}
             isTuttiModeUpdating={input.isTuttiModeUpdating}
+            tuttiModeOrchestrationIntensity={
+              input.tuttiModeOrchestrationIntensity
+            }
             onClearPlanMode={input.onClearPlanMode}
             onClearTuttiMode={input.onClearTuttiMode}
+            onTuttiModeOrchestrationIntensityChange={
+              input.onTuttiModeOrchestrationIntensityChange
+            }
             composerActionButton={composerActionButton}
             quickPromptControl={
               <AgentQuickPromptPopover

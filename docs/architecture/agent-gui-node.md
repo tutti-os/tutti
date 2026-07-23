@@ -444,6 +444,13 @@ A controller may compose flows but cannot become a second lifecycle state machin
 
 Activation and existing-Session submit share a canonical prompt envelope. Submit eligibility includes text and renderable structured content; an individual composer does not redefine it.
 
+An active Tutti Mode composer badge is an intensity-settings entry, not a
+destructive toggle. Clicking it opens the UI-local `TuttiBudgetPopover`, seeded
+from the engine-projected orchestration intensity. Cancel discards the draft;
+Confirm sends the selected intensity through the existing Tutti Mode activation
+command. Turning Tutti Mode off remains a separate adjacent action, and both
+controls stay disabled while an activation update is unresolved.
+
 Home-composer project state distinguishes an unresolved durable default from an
 explicit selection whose path may be null. The project selector may apply the
 durable default only while that intent is unresolved. Entering the unscoped

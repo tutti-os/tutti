@@ -254,6 +254,7 @@ export function useAgentGUIViewLabels(input: {
       normalModeLabel: t("agentHost.agentGui.normalModeLabel"),
       normalModeDescription: t("agentHost.agentGui.normalModeDescription"),
       ...agentGUITuttiModeLabels(t),
+      tuttiModeRemove: t("agentHost.agentGui.tuttiModeRemove"),
       tuttiBudgetTitle: t("agentHost.agentGui.tuttiBudgetTitle"),
       tuttiBudgetIntensityLabel: t(
         "agentHost.agentGui.tuttiBudgetIntensityLabel"

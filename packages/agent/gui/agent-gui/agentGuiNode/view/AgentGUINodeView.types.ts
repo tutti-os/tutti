@@ -131,6 +131,7 @@ export interface AgentGUIViewLabels {
   normalModeDescription?: string;
   tuttiModeLabel: string;
   tuttiModeDescription: string;
+  tuttiModeRemove: string;
   tuttiBudgetTitle: string;
   tuttiBudgetIntensityLabel: string;
   tuttiBudgetIntensityMin: string;

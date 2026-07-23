@@ -14,6 +14,10 @@ const composerSource = readFileSync(
   join(process.cwd(), "agent-gui/agentGuiNode/AgentComposer.tsx"),
   "utf8"
 );
+const composerViewSource = readFileSync(
+  join(process.cwd(), "agent-gui/agentGuiNode/composer/AgentComposerView.tsx"),
+  "utf8"
+);
 const slashActionsSource = readFileSync(
   join(
     process.cwd(),
@@ -71,13 +75,26 @@ describe("ComposerFooter trigger composition", () => {
     );
   });
 
-  it("renders Plan and Tutti as independent removable badges without an execution-mode dropdown", () => {
+  it("keeps Plan removable while Tutti separates intensity editing from removal", () => {
     expect(source).not.toContain('data-testid="agent-composer-execution-mode"');
     expect(source).toContain('data-agent-plan-mode-badge="true"');
     expect(source).toContain('data-agent-tutti-mode-badge="true"');
+    expect(source).toContain('data-agent-tutti-mode-remove="true"');
+    expect(source).toContain("<TuttiBudgetPopover");
+    expect(source).toContain(
+      "onConfirm={onTuttiModeOrchestrationIntensityChange}"
+    );
     expect(source).toContain("isPlanModeActive ?");
     expect(source).toContain("isTuttiModeActive ?");
     expect(source).toContain("disabled={isTuttiModeUpdating}");
+    const tuttiBadgeButton = source.match(
+      /<button[\s\S]*?data-agent-tutti-mode-badge="true"[\s\S]*?<\/button>/u
+    )?.[0];
+    expect(tuttiBadgeButton).not.toContain("onClick={onClearTuttiMode}");
+    expect(composerSource).toContain("onTuttiModeOrchestrationIntensityChange");
+    expect(composerViewSource).toContain(
+      "onTuttiModeOrchestrationIntensityChange={"
+    );
   });
 
   it("uses the host Tutti feature gate for typed slash-command submits", () => {

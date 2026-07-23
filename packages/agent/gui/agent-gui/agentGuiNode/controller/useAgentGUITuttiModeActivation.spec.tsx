@@ -32,6 +32,30 @@ describe("useAgentGUITuttiModeActivation", () => {
     ).toBe(true);
   });
 
+  it("stores a confirmed home intensity in the engine-owned Tutti draft", () => {
+    const { engine } = createTestEngine();
+    const draftKey = resolveAgentGUITuttiModeDraftKey("node-1");
+    const { result } = renderHook(() =>
+      useAgentGUITuttiModeActivation({
+        activeConversationId: null,
+        draftKey,
+        engine,
+        workspaceId: "workspace-1"
+      })
+    );
+
+    act(() => result.current.setOrchestrationIntensity(73));
+
+    expect(result.current.active).toBe(true);
+    expect(result.current.orchestrationIntensity).toBe(73);
+    expect(
+      engine.getSnapshot().tuttiModeActivation.draftsByKey[draftKey]
+    ).toMatchObject({
+      active: true,
+      orchestrationIntensity: 73
+    });
+  });
+
   it("updates an existing session through the engine command while preserving Plan", () => {
     const { commands, engine } = createTestEngine();
     engine.dispatch({
