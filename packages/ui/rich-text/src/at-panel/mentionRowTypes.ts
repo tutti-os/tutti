@@ -53,6 +53,10 @@ export interface MentionRowSessionItem {
   kind: "session";
   /** The "Initiator & Agent" participant line. */
   participant: string;
+  /** Optional participant prefix that may truncate while the suffix remains visible. */
+  participantTruncatablePrefix?: string | null;
+  /** Optional fixed participant suffix, including its separator. */
+  participantFixedSuffix?: string | null;
   summary?: string | null;
   userAvatarUrl?: string | null;
   userAvatarPlaceholderUrl: string;

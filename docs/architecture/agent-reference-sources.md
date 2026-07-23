@@ -246,7 +246,9 @@ including an owner-qualified label for another member's shared Agent, and must
 project the same label used by its Agent filter option. The host also projects
 the Agent's provider identity separately as `agentProviderId`; AgentGUI resolves
 the provider icon from that identity and never infers it from an
-owner-qualified display label.
+owner-qualified display label. AgentGUI also resolves that label's structured
+owner and Agent segments from the matching provenance catalog entries so a
+long owner name may truncate without hiding the Agent name.
 
 Catalog option identity is host-owned and normalized at the shared-package
 boundary. Agent options require a durable `agentTargetId`; product-local target

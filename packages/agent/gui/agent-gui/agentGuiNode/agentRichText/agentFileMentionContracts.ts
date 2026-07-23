@@ -51,6 +51,10 @@ export interface AgentMentionSessionItem {
   initiatorName: string;
   initiatorAvatarUrl?: string;
   agentName: string;
+  /** Structured owner segment from the matching provenance Agent option. */
+  agentOwnerLabel?: string;
+  /** Structured Agent segment from the matching provenance Agent option. */
+  agentLabel?: string;
   agentIconUrl?: string;
   status?: string;
   inputPreview?: string;

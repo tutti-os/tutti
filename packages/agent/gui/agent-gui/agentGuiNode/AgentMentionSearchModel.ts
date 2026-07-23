@@ -39,6 +39,7 @@ import {
   resolveMentionGroupTotalCount,
   shouldShowEmptyGroup
 } from "./agentMentionSearchHelpers";
+import { resolveReferenceProvenanceAgentLabelParts } from "@tutti-os/workspace-file-reference/core";
 
 type AgentProvenanceMentionItem = Extract<
   AgentContextMentionItem,
@@ -185,9 +186,16 @@ function buildAgentProvenanceGroups(input: {
   const memberOptionsById = new Map(
     input.provenanceCatalog.memberOptions.map((member) => [member.id, member])
   );
+  const agentOptionsById = new Map(
+    input.provenanceCatalog.agentOptions.map((agent) => [agent.id, agent])
+  );
   const sourceItems = agentProvenanceItemsForFilter(input)
     .map((item) =>
-      projectAgentProvenanceMemberPresentation(item, memberOptionsById)
+      projectAgentProvenanceMemberPresentation(
+        item,
+        memberOptionsById,
+        agentOptionsById
+      )
     )
     .filter((item) => {
       if (selectedAgentTargetIdSet === null) {
@@ -337,7 +345,8 @@ function agentTargetIdForMentionItem(
 
 function projectAgentProvenanceMemberPresentation(
   item: AgentProvenanceMentionItem,
-  memberOptionsById: ReadonlyMap<string, ReferenceProvenanceOption>
+  memberOptionsById: ReadonlyMap<string, ReferenceProvenanceOption>,
+  agentOptionsById: ReadonlyMap<string, ReferenceProvenanceOption>
 ): AgentProvenanceMentionItem {
   if (item.kind !== "session") {
     return item;
@@ -351,10 +360,27 @@ function projectAgentProvenanceMemberPresentation(
   }
   const initiatorAvatarUrl =
     member.iconUrl?.trim() || item.initiatorAvatarUrl?.trim();
+  const agentTargetId = item.agentTargetId?.trim();
+  const agentOption = agentTargetId
+    ? agentOptionsById.get(agentTargetId)
+    : undefined;
+  const agentLabelParts =
+    agentOption && agentOption.label === item.agentName
+      ? resolveReferenceProvenanceAgentLabelParts(
+          agentOption,
+          memberOptionsById
+        )
+      : null;
   return {
     ...item,
     initiatorName: member.label,
-    ...(initiatorAvatarUrl ? { initiatorAvatarUrl } : {})
+    ...(initiatorAvatarUrl ? { initiatorAvatarUrl } : {}),
+    ...(agentLabelParts
+      ? {
+          agentLabel: agentLabelParts.agentLabel,
+          agentOwnerLabel: agentLabelParts.ownerLabel
+        }
+      : {})
   };
 }
 

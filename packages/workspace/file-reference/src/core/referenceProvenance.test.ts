@@ -6,6 +6,7 @@ import {
   normalizeReferenceProvenanceCatalog,
   normalizeReferenceProvenanceFilter,
   referenceProvenanceFilterCacheKey,
+  resolveReferenceProvenanceAgentLabelParts,
   toggleReferenceProvenanceFilterId
 } from "./referenceProvenance.ts";
 
@@ -76,6 +77,24 @@ test("provenance cache keys cannot collide through comma-delimited ids", () => {
       agentTargetIds: ["a", "b,c"],
       memberIds: null
     })
+  );
+});
+
+test("provenance Agent labels preserve structured owner and Agent parts", () => {
+  const member = { id: "member-1", label: "A very long member name" };
+  assert.deepEqual(
+    resolveReferenceProvenanceAgentLabelParts(
+      {
+        id: "agent-1",
+        label: `${member.label} · Codex`,
+        parentMemberId: member.id
+      },
+      new Map([[member.id, member]])
+    ),
+    {
+      agentLabel: "Codex",
+      ownerLabel: member.label
+    }
   );
 });
 

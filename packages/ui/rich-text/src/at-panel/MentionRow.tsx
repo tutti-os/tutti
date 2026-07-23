@@ -637,10 +637,36 @@ function MentionSessionTitle({
 }: {
   item: MentionRowSessionItem;
 }): React.JSX.Element {
+  const participantTruncatablePrefix =
+    item.participantTruncatablePrefix?.trim() ?? "";
+  const participantFixedSuffix = item.participantFixedSuffix ?? "";
+  const hasStructuredParticipant =
+    participantTruncatablePrefix.length > 0 &&
+    participantFixedSuffix.length > 0 &&
+    `${participantTruncatablePrefix}${participantFixedSuffix}` ===
+      item.participant;
   return (
     <>
-      <span className="rich-text-at-mention-row__entity-name rich-text-at-mention-row__session-participant">
-        {item.participant}
+      <span
+        className={cn(
+          "rich-text-at-mention-row__entity-name rich-text-at-mention-row__session-participant",
+          hasStructuredParticipant &&
+            "rich-text-at-mention-row__session-participant--structured"
+        )}
+        title={hasStructuredParticipant ? item.participant : undefined}
+      >
+        {hasStructuredParticipant ? (
+          <>
+            <span className="rich-text-at-mention-row__session-participant-prefix">
+              {participantTruncatablePrefix}
+            </span>
+            <span className="rich-text-at-mention-row__session-participant-suffix">
+              {participantFixedSuffix}
+            </span>
+          </>
+        ) : (
+          item.participant
+        )}
       </span>
       <span className="rich-text-at-mention-row__entity-description rich-text-at-mention-row__session-summary">
         {item.summary ?? ""}

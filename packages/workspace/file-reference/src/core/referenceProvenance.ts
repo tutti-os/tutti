@@ -5,6 +5,27 @@ import type {
   ReferenceProvenanceOption
 } from "../contracts/referenceProvenance.ts";
 
+export interface ReferenceProvenanceAgentLabelParts {
+  agentLabel: string;
+  ownerLabel: string;
+}
+
+export function resolveReferenceProvenanceAgentLabelParts(
+  option: ReferenceProvenanceOption,
+  memberOptionsById: ReadonlyMap<string, ReferenceProvenanceOption>
+): ReferenceProvenanceAgentLabelParts | null {
+  if (!option.parentMemberId) return null;
+
+  const ownerLabel = memberOptionsById.get(option.parentMemberId)?.label;
+  if (!ownerLabel) return null;
+
+  const prefix = `${ownerLabel} · `;
+  if (!option.label.startsWith(prefix)) return null;
+
+  const agentLabel = option.label.slice(prefix.length);
+  return agentLabel ? { agentLabel, ownerLabel } : null;
+}
+
 export function normalizeReferenceProvenanceCatalog(
   catalog: ReferenceProvenanceCatalog
 ): ReferenceProvenanceCatalog {
