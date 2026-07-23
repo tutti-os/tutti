@@ -6,8 +6,8 @@ toolchain go1.24.5
 
 require (
 	github.com/atombender/go-jsonschema v0.20.0
-	github.com/tutti-os/tutti/packages/agent/host v0.0.0
-	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.0
+	github.com/tutti-os/tutti/packages/agent/host v0.0.203
+	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.203
 	golang.org/x/net v0.50.0
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
@@ -27,11 +27,3 @@ require (
 )
 
 replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20260120221211-b8f7ae30c516
-
-replace github.com/tutti-os/tutti/packages/agent/host => ../host
-
-replace github.com/tutti-os/tutti/packages/agent/activity-replication => ../activity-replication
-
-replace github.com/tutti-os/tutti/packages/agent/store-sqlite => ../store-sqlite
-
-replace github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical => ../store-sqlite/canonical

@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/agent-activity-core",
-  "version": "0.1.0",
+  "version": "0.0.203",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
