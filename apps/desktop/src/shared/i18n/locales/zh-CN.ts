@@ -189,8 +189,12 @@ export const zhCN = {
     accountMenu: {
       title: "Tutti Agent",
       member: "管理订阅",
+      upgradeMembership: "升级会员",
+      rechargeCredits: "充值积分",
+      viewCreditPlans: "查看积分方案",
       creditsBalance: "积分余额",
       accountCenter: "账户设置",
+      settings: "设置",
       free: "Free",
       signIn: "登录",
       signOut: "退出登录",

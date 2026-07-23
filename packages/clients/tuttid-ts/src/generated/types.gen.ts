@@ -42,6 +42,12 @@ export type AccountMembershipSummary = {
   cancel_at_period_end?: boolean | null;
 };
 
+export type AccountMembershipAccessState =
+  | "free"
+  | "active"
+  | "inactive"
+  | "unknown";
+
 export type AccountCreditsSummary = {
   available_credits: string | null;
   expiring_credits_within_24h?: string | null;
@@ -71,6 +77,7 @@ export type AccountRegistrationCreditsReward = {
 export type AccountProductSummaryResponse = {
   user: AccountUserInfo | null;
   membership: AccountMembershipSummary | null;
+  membership_access: AccountMembershipAccessState;
   credits: AccountCreditsSummary | null;
   partial_error?: AccountProductSummaryPartialError | null;
   registration_credits_reward?: AccountRegistrationCreditsReward | null;

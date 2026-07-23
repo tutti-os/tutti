@@ -381,6 +381,8 @@ export const enAgentGui = {
   accountMenuTitle: "Tutti Agent",
   accountMenuMember: "Membership",
   accountMenuUpgrade: "Upgrade",
+  accountMenuRecharge: "Recharge credits",
+  accountMenuViewPlans: "View credit options",
   accountMenuCreditsBalance: "Credits",
   accountMenuAccountCenter: "Account center",
   accountMenuSettings: "Settings",

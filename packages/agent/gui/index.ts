@@ -71,7 +71,19 @@ export type {
   AgentExternalPromptEntryResolution,
   AgentExternalPromptEntryResolver
 } from "./agent-gui/agentGuiNode/model/agentExternalPromptEntries";
-export type { AgentGUIAccountMenuState } from "./agent-gui/agentGuiNode/accountMenuState";
+export type {
+  AgentGUIAccountMenuState,
+  AgentGUIMembershipAccessState
+} from "./agent-gui/agentGuiNode/accountMenuState";
+export {
+  AgentGUIAccountAvatar,
+  AgentGUIAccountMenu,
+  agentGUIAccountInitials,
+  type AgentGUIAccountMenuLabels,
+  type AgentGUIAccountMenuProps
+} from "./agent-gui/agentGuiNode/view/AgentGUIAccountMenu";
+export { AgentGUIAccountRewardToast } from "./agent-gui/agentGuiNode/view/AgentGUIAccountConfig";
+export type { AgentGUICommercePresentation } from "./shared/commerce/AgentCommercePresentationContext";
 export type {
   AgentGUIComposerContentType,
   AgentGUIComposerFocusMethod,

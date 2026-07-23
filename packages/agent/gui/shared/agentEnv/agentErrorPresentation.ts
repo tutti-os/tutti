@@ -1,4 +1,5 @@
 import type { AgentEnvPanelFocus } from "./agentEnvPanelActions";
+import type { AgentGUICommercePresentation } from "../commerce/AgentCommercePresentationContext";
 
 /**
  * Run-failure codes actually emitted by the daemon runtime classifier
@@ -99,10 +100,8 @@ const PRESENTATIONS: Record<AgentRunErrorCode, AgentErrorPresentation> = {
     ...NO_CTA
   },
   insufficient_credits: {
-    messageKey: "agentHost.agentGui.visibleErrorInsufficientCredits",
-    focus: null,
-    actionKey: "agentHost.agentGui.visibleErrorActionViewPlans",
-    externalUrl: "https://tutti.sh/profile/plan"
+    messageKey: "agentHost.agentGui.visibleErrorInsufficientCreditsUnknown",
+    ...NO_CTA
   },
   quota_or_rate_limit: {
     messageKey: "agentHost.agentGui.visibleErrorQuotaOrRateLimit",
@@ -120,12 +119,52 @@ const PRESENTATIONS: Record<AgentRunErrorCode, AgentErrorPresentation> = {
  * no call-to-action.
  */
 export function resolveAgentErrorPresentation(
-  code: string | null | undefined
+  code: string | null | undefined,
+  commerce?: AgentGUICommercePresentation | null
 ): AgentErrorPresentation | null {
   if (!code) {
     return null;
   }
+  if (code === "insufficient_credits") {
+    return insufficientCreditsPresentation(commerce);
+  }
   return PRESENTATIONS[code as AgentRunErrorCode] ?? null;
+}
+
+function insufficientCreditsPresentation(
+  commerce?: AgentGUICommercePresentation | null
+): AgentErrorPresentation {
+  const externalUrl = commerce?.planUrl?.trim() || null;
+  switch (commerce?.membershipAccess) {
+    case "free":
+    case "inactive":
+      return {
+        messageKey: "agentHost.agentGui.visibleErrorInsufficientCreditsFree",
+        focus: null,
+        actionKey: externalUrl
+          ? "agentHost.agentGui.visibleErrorActionUpgradeMembership"
+          : null,
+        externalUrl
+      };
+    case "active":
+      return {
+        messageKey: "agentHost.agentGui.visibleErrorInsufficientCreditsActive",
+        focus: null,
+        actionKey: externalUrl
+          ? "agentHost.agentGui.visibleErrorActionRechargeCredits"
+          : null,
+        externalUrl
+      };
+    default:
+      return {
+        messageKey: "agentHost.agentGui.visibleErrorInsufficientCreditsUnknown",
+        focus: null,
+        actionKey: externalUrl
+          ? "agentHost.agentGui.visibleErrorActionViewCreditPlans"
+          : null,
+        externalUrl
+      };
+  }
 }
 
 const FAILED_MESSAGE_CODE_MARKERS: ReadonlyArray<
@@ -220,19 +259,4 @@ export function classifyRecoverableAgentMessage(input: {
   return COMPLETED_AUTH_MESSAGE_PATTERN.test(input.body.trim())
     ? "auth_required"
     : null;
-}
-
-/** True when detail text is a provider plan/payment gate (not a generic quota). */
-export function isProviderPlanLimitMessage(
-  detail: string | null | undefined
-): boolean {
-  const normalized = detail?.trim().toLowerCase() ?? "";
-  if (!normalized) {
-    return false;
-  }
-  const markers =
-    FAILED_MESSAGE_CODE_MARKERS.find(
-      ([code]) => code === "quota_or_rate_limit"
-    )?.[1] ?? [];
-  return markers.some((marker) => normalized.includes(marker));
 }

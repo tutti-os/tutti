@@ -2063,7 +2063,7 @@ describe("AgentTranscriptView", () => {
     expect(screen.getByTitle("/workspace/demo/src/routes.ts")).toBeTruthy();
   });
 
-  it("renders visible agent errors as an alert with collapsible details", async () => {
+  it("renders visible agent errors without exposing raw details", () => {
     render(
       <AgentTranscriptView
         conversation={projectAgentConversationVM(
@@ -2123,17 +2123,12 @@ describe("AgentTranscriptView", () => {
     expect(
       screen.getByText("agentHost.agentGui.visibleErrorStartFailed")
     ).toBeTruthy();
-    const detailsToggle = screen.getByRole("button", {
-      name: "agentHost.agentGui.visibleErrorRawDetails"
-    });
-    expect(detailsToggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", {
+        name: "agentHost.agentGui.visibleErrorRawDetails"
+      })
+    ).toBeNull();
     expect(screen.queryByText("Config invalid")).toBeNull();
-
-    fireEvent.click(detailsToggle);
-    await flushCollapsibleRevealFrames();
-    expect(detailsToggle).toHaveAttribute("aria-expanded", "true");
-    const details = screen.getByText("Config invalid");
-    expect(details).toBeTruthy();
   });
 });
 

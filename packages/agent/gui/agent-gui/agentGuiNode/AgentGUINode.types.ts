@@ -38,6 +38,7 @@ import type {
   AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
 import type { AgentGUIAccountMenuState } from "./accountMenuState";
+import type { AgentGUICommercePresentation } from "../../shared/commerce/AgentCommercePresentationContext";
 import type {
   AgentComposerCapabilityMenuState,
   AgentComposerCapabilitySettingsTarget,
@@ -129,6 +130,8 @@ export interface AgentGUINodeHostCapabilities {
    */
   capabilityControlsReadOnly?: boolean;
   accountMenuState?: AgentGUIAccountMenuState | null;
+  /** Host-owned Commerce projection used by account and error presentation. */
+  commercePresentation?: AgentGUICommercePresentation | null;
   agentTargets?: readonly AgentGUIAgentTarget[];
   agentTargetsLoading?: boolean;
   /** Launch-only targets for active-conversation handoff. */

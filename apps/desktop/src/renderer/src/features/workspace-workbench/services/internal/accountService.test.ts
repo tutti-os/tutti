@@ -43,6 +43,7 @@ test("AccountService opens login URL and refreshes user after completion", async
             tier_key: "pro",
             display_name: "Pro"
           },
+          membership_access: "active" as const,
           credits: {
             available_credits: "2450.52"
           },
@@ -139,6 +140,7 @@ test("AccountService refreshes product summary with single-flight and preserves 
           return {
             user: null,
             membership: null,
+            membership_access: "unknown" as const,
             credits: {
               available_credits: "100.25"
             },
@@ -195,6 +197,7 @@ test("AccountService dismisses the current registration credits reward", async (
         return {
           user: null,
           membership: null,
+          membership_access: "unknown" as const,
           credits: {
             available_credits: "500"
           },
@@ -251,6 +254,7 @@ test("AccountService logout clears product summary", async () => {
         return {
           user: null,
           membership: null,
+          membership_access: "unknown" as const,
           credits: {
             available_credits: "100"
           },
@@ -300,6 +304,7 @@ test("AccountService ignores product summary responses after logout", async () =
         return {
           user: null,
           membership: null,
+          membership_access: "unknown" as const,
           credits: {
             available_credits: "100"
           },

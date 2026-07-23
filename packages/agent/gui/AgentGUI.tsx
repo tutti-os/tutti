@@ -23,6 +23,7 @@ import {
   TuttiModePlanReviewRuntimeProvider,
   type TuttiModePlanReviewRuntime
 } from "./workspaceWorkflow";
+import { AgentCommercePresentationProvider } from "./shared/commerce/AgentCommercePresentationContext";
 
 export type { AgentGUIHomeSuggestionId } from "./types";
 export type { ReferenceProvenanceCatalog as AgentGUIReferenceProvenanceFilterCatalog } from "@tutti-os/workspace-file-reference/contracts";
@@ -157,7 +158,11 @@ export const AgentGUI = memo(function AgentGUI({
           agentActivityRuntime={agentActivityRuntime}
           agentHostApi={agentHostApi}
         >
-          <AgentGUINode {...nodeProps} />
+          <AgentCommercePresentationProvider
+            value={props.hostCapabilities?.commercePresentation}
+          >
+            <AgentGUINode {...nodeProps} />
+          </AgentCommercePresentationProvider>
         </AgentActivityHostProvider>
       </TuttiModePlanReviewRuntimeProvider>
     </AgentGuiI18nProvider>
