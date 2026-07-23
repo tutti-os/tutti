@@ -223,7 +223,10 @@
   `initialTuttiModeActivation` or its Tutti `capabilityRefs` even when the
   upstream type carries them. Reading mutable draft state after submit can also
   lose the exact composer selection. Separately, allowing `/tutti` while the lab
-  flag is disabled produces renderer state that the daemon must reject.
+  flag is disabled produces renderer state that the daemon must reject. AgentGUI
+  must therefore treat `capabilityMenuState.tuttiMode.enabled === true` as the
+  sole opt-in for the hero toggle, badge activation, and `/tutti` (omit or
+  `enabled: false` fails closed).
 - **Fix:** Snapshot active/inactive state and orchestration intensity atomically
   with the composer submit. Preserve both activation and capability provenance
   through every create projection, and gate slash actions with the same host
@@ -406,6 +409,43 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [codex_appserver_event_params.go](../../../packages/agent/daemon/runtime/codex_appserver_event_params.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
+### Codex turn stays working before any reply or tool activity
+
+- Symptom:
+  A submitted Codex turn stays working without assistant text, reasoning, or
+  tool activity. Stop may return quickly, but the next prompt on the same
+  conversation can stall in the same way.
+- Quick checks:
+  Correlate `agent.submit.trace` records by `client_submit_id`, `turn_id`, and
+  `agent_session_id`. A `turn.start.requested` without
+  `turn.start.succeeded` means the immediate app-server acknowledgement did
+  not arrive. After the bounded failure, confirm
+  `agent_session.app_server.turn_start.client_invalidated` appears and the next
+  submit starts a new local process with `thread/resume`.
+- Root cause:
+  Codex `turn/start` should acknowledge immediately and stream the actual work
+  through notifications, but the adapter previously called it with no client
+  deadline. A graceful Stop could acknowledge `turn/interrupt` without proving
+  that the unacknowledged `turn/start` connection was healthy, so the adapter
+  retained and reused the same bad process.
+- Fix:
+  Bound only the `turn/start` acknowledgement to 30 seconds; do not bound the
+  subsequent running turn. Treat deadline, cancellation before acknowledgement,
+  or transport disconnect as an unhealthy client, remove exactly that client
+  from the live-session registry, and close it. Do not automatically replay the
+  prompt because delivery is unknown. The next explicit submit uses the
+  existing session recovery path to start a process and resume the provider
+  thread. Bound `turn/steer` acknowledgement separately to 10 seconds.
+- Validation:
+  Run
+  `go test ./packages/agent/daemon/runtime -run 'TestCodexAppServerAdapter(Turn(StartAckTimeoutInvalidatesClient|StartCancelBeforeAckInvalidatesClient|StartAckTimeoutDoesNotBoundRunningTurn|SteerTimesOut)|CanResumeAfterTurnStartAckTimeout)$'`.
+  Cover timeout, pre-ack cancellation, a long post-ack turn, bounded guidance,
+  and successful `thread/resume` followed by a completed turn.
+- References:
+  [codex_appserver_turn.go](../../../packages/agent/daemon/runtime/codex_appserver_turn.go)
+  [codex_appserver_registry.go](../../../packages/agent/daemon/runtime/codex_appserver_registry.go)
+  [codex_appserver_turn_timeout_test.go](../../../packages/agent/daemon/runtime/codex_appserver_turn_timeout_test.go)
 
 ### AgentGUI turn actions return plain-text route 404s
 

@@ -222,7 +222,7 @@ func (c *acpClient) CallWithTimeout(
 	defer cancel()
 	result, err := c.callLocked(callCtx, method, params, handler)
 	if errors.Is(err, context.DeadlineExceeded) {
-		return nil, fmt.Errorf("acp %s timed out after %s", method, timeout)
+		return nil, &acpCallTimeoutError{Method: method, Timeout: timeout}
 	}
 	return result, err
 }
@@ -352,7 +352,7 @@ func (c *acpClient) CallNoHandlerWithTimeout(
 	defer cancel()
 	result, err := c.CallNoHandler(callCtx, method, params)
 	if errors.Is(err, context.DeadlineExceeded) {
-		return nil, fmt.Errorf("acp %s timed out after %s", method, timeout)
+		return nil, &acpCallTimeoutError{Method: method, Timeout: timeout}
 	}
 	return result, err
 }

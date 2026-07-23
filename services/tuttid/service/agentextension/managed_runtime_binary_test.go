@@ -53,6 +53,34 @@ func TestResolveInstalledBinaryRejectsReplacementDuringVersionProbe(t *testing.T
 	}
 }
 
+func TestManagerRuntimeVersionWithIdentityReusesSuccessfulProbe(t *testing.T) {
+	manager, _, profile, sourceRoot, fingerprint := managedBinaryResolutionFixture(t, nil)
+	versionProbeLog := filepath.Join(t.TempDir(), "version-probes.log")
+	t.Setenv("TUTTI_TEST_MANAGED_BINARY_VERSION_LOG", versionProbeLog)
+	executable := filepath.Join(sourceRoot, "grok")
+	candidate := profile.Candidates[0]
+
+	for range 2 {
+		version, err := manager.runtimeVersionWithIdentity(
+			context.Background(),
+			executable,
+			candidate.Version.Args,
+			candidate.Version.Constraint,
+			executableIdentity(fingerprint),
+		)
+		if err != nil || version != "0.2.103" {
+			t.Fatalf("managed runtime version = %q, %v", version, err)
+		}
+	}
+	probes, err := os.ReadFile(versionProbeLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(probes), "probe\n"); got != 1 {
+		t.Fatalf("managed runtime version probes = %d, want 1", got)
+	}
+}
+
 func TestResolveInstalledBinaryRejectsSymlinkedActiveRoot(t *testing.T) {
 	manager, installation, profile, activeRoot, fingerprint := managedBinaryResolutionFixture(t, nil)
 	realRoot := activeRoot + ".real"

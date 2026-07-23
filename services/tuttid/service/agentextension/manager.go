@@ -40,6 +40,8 @@ type Manager struct {
 	Client            *http.Client
 	RuntimeResolver   runtimecmd.Resolver
 	reconcileMu       sync.Mutex
+	versionCacheOnce  sync.Once
+	runtimeVersions   *runtimeVersionCache
 }
 
 type Installation = agentextensionbiz.Installation
@@ -189,7 +191,7 @@ func (m *Manager) resolveRuntime(ctx context.Context, installationID, cwd string
 			if m.isManagedRuntimeExecutable(path) {
 				continue
 			}
-			version, err := runtimeVersionWithEnv(ctx, path, candidate.Version.Args, candidate.Version.Constraint, env)
+			version, err := m.runtimeVersionWithEnv(ctx, path, candidate.Version.Args, candidate.Version.Constraint, env)
 			if err != nil {
 				continue
 			}
@@ -668,6 +670,37 @@ func runtimeVersionWithEnv(ctx context.Context, executable string, args []string
 		return "", errors.New("runtime version is incompatible")
 	}
 	return version, nil
+}
+
+func (m *Manager) runtimeVersionWithEnv(
+	ctx context.Context,
+	executable string,
+	args []string,
+	constraint string,
+	env []string,
+) (string, error) {
+	return m.runtimeVersionCache().load(executable, args, constraint, func() (string, error) {
+		return runtimeVersionWithEnv(ctx, executable, args, constraint, env)
+	})
+}
+
+func (m *Manager) runtimeVersionWithIdentity(
+	ctx context.Context,
+	executable string,
+	args []string,
+	constraint string,
+	identity *agentruntime.ExecutableIdentity,
+) (string, error) {
+	return m.runtimeVersionCache().load(executable, args, constraint, func() (string, error) {
+		return runtimeVersionWithIdentity(ctx, executable, args, constraint, identity)
+	})
+}
+
+func (m *Manager) runtimeVersionCache() *runtimeVersionCache {
+	m.versionCacheOnce.Do(func() {
+		m.runtimeVersions = newRuntimeVersionCache()
+	})
+	return m.runtimeVersions
 }
 
 func runtimeVersionWithIdentity(

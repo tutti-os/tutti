@@ -710,7 +710,7 @@ function IssueManagerSubtaskBoardColumn({
             >
               <button
                 className={cn(
-                  "rounded-[8px] bg-[var(--background-fronted)] px-3 py-2.5 text-left transition-shadow duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
+                  "rounded-[8px] bg-[var(--background-board-card)] px-3 py-2.5 text-left transition-shadow duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
                   "cursor-grab active:cursor-grabbing",
                   isDraggingTask && issueManagerSubtaskDragShadowClassName
                 )}

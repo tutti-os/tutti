@@ -394,7 +394,7 @@ function IssueManagerSubtaskViewModeSwitch({
       <span
         aria-hidden="true"
         className={cn(
-          "absolute top-0.5 bottom-0.5 left-0.5 w-[calc((100%-4px)/2)] rounded-[5px] bg-[var(--background-fronted)] transition-transform duration-150 ease-out",
+          "absolute top-0.5 bottom-0.5 left-0.5 w-[calc((100%-4px)/2)] rounded-[5px] bg-[var(--background-board-card)] transition-transform duration-150 ease-out",
           value === "board" && "translate-x-full"
         )}
       />

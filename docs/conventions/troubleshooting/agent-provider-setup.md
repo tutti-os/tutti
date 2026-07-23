@@ -47,6 +47,38 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [desktopAgentProviderStatusService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
   [agent-provider-status-performance-scenario.mjs](../../../tools/scripts/agent-provider-status-performance-scenario.mjs)
 
+### Loading Agent Targets repeatedly starts Extension CLIs
+
+- Symptom:
+  Opening a workspace, standalone Agent window, or Agent settings takes longer
+  as more Agent Extensions are enabled. Repeated `GET /v1/agent-targets`
+  requests start the same Extension CLI `--version` commands even though the
+  executables did not change.
+- Quick checks:
+  Time several authenticated `GET /v1/agent-targets` requests and correlate them
+  with short-lived Extension CLI processes. Compare the total request duration
+  with each configured discovery candidate's version command.
+- Root cause:
+  Extension Target availability resolved every runtime from scratch. Package
+  and executable validation are required, but the stable successful version
+  result was discarded after every request. Concurrent catalog consumers could
+  also run the same version command independently.
+- Fix:
+  Cache only successful version results by resolved executable fingerprint,
+  arguments, and version constraint, and coalesce concurrent probes. Keep failed
+  probes uncached. Continue package authority and managed-runtime integrity
+  checks on every resolution; catalog availability is not runtime launch
+  authorization.
+- Validation:
+  Resolve the same Extension runtime twice and assert one version subprocess.
+  Cover concurrent callers, a failed probe followed by recovery, and executable
+  replacement invalidation. Repeated `/v1/agent-targets` requests should retain
+  the same availability while no longer starting unchanged Extension CLIs.
+- References:
+  [agent-extensions.md](../../architecture/agent-extensions.md)
+  [manager.go](../../../services/tuttid/service/agentextension/manager.go)
+  [runtime_version_cache.go](../../../services/tuttid/service/agentextension/runtime_version_cache.go)
+
 ### An extension Agent is installed in the terminal but Tutti cannot detect it
 
 - Symptom:

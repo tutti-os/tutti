@@ -396,6 +396,11 @@ A focused controller may own detail paging/loading/error. Canonical messages, Tu
 
 Timeline projection is pure, deterministic, and provider-neutral. React views render rows/cards and dispatch actions.
 
+Turn elapsed-time presentation starts at the client submission timestamp carried
+by the canonical user-message payload, not at provider runtime start. Historical
+activity without that timestamp falls back to the leading user-message
+timestamp.
+
 High-frequency transcript updates must not pair DOM mutation with unconditional synchronous reads of the timeline's full scroll geometry. Conversation switches, explicit submit-to-bottom requests, skeleton transitions, and older-page prepend restoration may perform pre-paint scroll correction; ordinary content growth preserves bottom lock and user scroll-away state from observed content and viewport geometry after layout.
 
 A virtualized transcript derives message-locator selection from the virtualizer's measured turn positions and explicit transcript identity. The currently mounted DOM window is rendering output, not a selection source; range changes must not make the locator temporarily select a neighboring message.
