@@ -24,6 +24,7 @@ describe("useAgentGUIDetailScroll", () => {
 
     expect(harness.timeline.scrollTop).toBe(4_900);
     act(() => {
+      harness.timeline.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
       harness.timeline.scrollTop = 2_000;
       harness.timeline.dispatchEvent(new Event("scroll"));
     });
@@ -82,6 +83,7 @@ describe("useAgentGUIDetailScroll", () => {
     );
 
     act(() => {
+      harness.timeline.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
       harness.timeline.scrollTop = 2_000;
       harness.timeline.dispatchEvent(new Event("scroll"));
     });
@@ -125,6 +127,7 @@ describe("useAgentGUIDetailScroll", () => {
     expect(harness.timeline.scrollTop).toBe(4_900);
 
     act(() => {
+      harness.timeline.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
       harness.timeline.scrollTop = 4_000;
       harness.timeline.dispatchEvent(new Event("scroll"));
     });
@@ -173,6 +176,41 @@ describe("useAgentGUIDetailScroll", () => {
     expect(harness.timeline.scrollTop).toBe(4_900);
   });
 
+  it("keeps the bottom lock through virtualizer-driven scroll changes", () => {
+    const resizeObservers = installResizeObserverMock();
+    const harness = createHarness({ scrollHeight: 5_000 });
+
+    const { result } = renderHook(() =>
+      useAgentGUIDetailScroll(
+        harness.input({
+          activeConversationId: "conversation-virtualized",
+          hasOlderMessages: true,
+          showTimelineSkeleton: false
+        })
+      )
+    );
+    const timelineObserver = resizeObservers.find((observer) =>
+      observer.observed.has(harness.timelineContent)
+    );
+    expect(timelineObserver).toBeDefined();
+
+    act(() => {
+      harness.timeline.scrollTop = 100;
+      harness.timeline.dispatchEvent(new Event("scroll"));
+    });
+
+    expect(harness.timeline.scrollTop).toBe(4_900);
+    expect(result.current.isTimelineScrolledToBottom).toBe(true);
+    expect(harness.loadOlderConversationMessages).not.toHaveBeenCalled();
+
+    harness.setScrollHeight(6_000);
+    act(() => {
+      timelineObserver?.callback([], timelineObserver);
+    });
+
+    expect(harness.timeline.scrollTop).toBe(5_900);
+  });
+
   it("releases the bottom lock after the user scrolls upward", () => {
     const harness = createHarness({ scrollHeight: 5_000 });
 
@@ -198,6 +236,72 @@ describe("useAgentGUIDetailScroll", () => {
     });
 
     expect(harness.timeline.scrollTop).toBe(4_000);
+  });
+
+  it("releases the bottom lock during pointer-driven scrolling", () => {
+    const resizeObservers = installResizeObserverMock();
+    const harness = createHarness({ scrollHeight: 5_000 });
+
+    renderHook(() =>
+      useAgentGUIDetailScroll(
+        harness.input({
+          activeConversationId: "conversation-pointer-scroll",
+          showTimelineSkeleton: false
+        })
+      )
+    );
+    const timelineObserver = resizeObservers.find((observer) =>
+      observer.observed.has(harness.timelineContent)
+    );
+    expect(timelineObserver).toBeDefined();
+
+    act(() => {
+      harness.timeline.dispatchEvent(new Event("pointerdown"));
+      harness.timeline.scrollTop = 4_000;
+      harness.timeline.dispatchEvent(new Event("scroll"));
+      window.dispatchEvent(new Event("pointerup"));
+    });
+
+    harness.setScrollHeight(6_000);
+    act(() => {
+      timelineObserver?.callback([], timelineObserver);
+    });
+
+    expect(harness.timeline.scrollTop).toBe(4_000);
+  });
+
+  it("releases the bottom lock when a locator initiates scrolling", () => {
+    const resizeObservers = installResizeObserverMock();
+    const harness = createHarness({ scrollHeight: 5_000 });
+    const locator = document.createElement("button");
+    locator.setAttribute("data-agent-transcript-scroll-away-intent", "");
+    harness.timeline.appendChild(locator);
+
+    renderHook(() =>
+      useAgentGUIDetailScroll(
+        harness.input({
+          activeConversationId: "conversation-locator-scroll",
+          showTimelineSkeleton: false
+        })
+      )
+    );
+    const timelineObserver = resizeObservers.find((observer) =>
+      observer.observed.has(harness.timelineContent)
+    );
+    expect(timelineObserver).toBeDefined();
+
+    act(() => {
+      locator.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      harness.timeline.scrollTop = 2_000;
+      harness.timeline.dispatchEvent(new Event("scroll"));
+    });
+
+    harness.setScrollHeight(6_000);
+    act(() => {
+      timelineObserver?.callback([], timelineObserver);
+    });
+
+    expect(harness.timeline.scrollTop).toBe(2_000);
   });
 
   it("does not synchronously read full timeline geometry during scrolling", () => {
@@ -269,6 +373,27 @@ describe("useAgentGUIDetailScroll", () => {
       scrollHeight: 1,
       scrollTop: 0
     });
+  });
+
+  it("waits for the timeline skeleton to resolve before filling the viewport", () => {
+    const harness = createHarness({ scrollHeight: 100 });
+    const { rerender } = renderHook(
+      ({ showTimelineSkeleton }) =>
+        useAgentGUIDetailScroll(
+          harness.input({
+            activeConversationId: "conversation-skeleton-prefetch",
+            hasOlderMessages: true,
+            showTimelineSkeleton
+          })
+        ),
+      { initialProps: { showTimelineSkeleton: true } }
+    );
+
+    expect(harness.loadOlderConversationMessages).not.toHaveBeenCalled();
+
+    rerender({ showTimelineSkeleton: false });
+
+    expect(harness.loadOlderConversationMessages).toHaveBeenCalledOnce();
   });
 
   it("restores a prepend anchor from one timeline geometry snapshot", () => {

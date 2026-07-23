@@ -79,6 +79,7 @@ export function useAgentGUIDetailScroll(input: Input) {
   const [isTimelineScrolledToBottom, setIsTimelineScrolledToBottom] =
     useState(true);
   const bottomLockOwnerRef = useRef<string | null>(null);
+  const pointerScrollConversationRef = useRef<string | null>(null);
   const userScrollAwayIntentConversationRef = useRef<string | null>(null);
   const lastShowTimelineSkeletonRef = useRef(showTimelineSkeleton);
   useLayoutEffect(() => {
@@ -94,6 +95,7 @@ export function useAgentGUIDetailScroll(input: Input) {
       timelineScrollAnchorRef.current = null;
       bottomLockOwnerRef.current = null;
       pendingPrependScrollAnchorRef.current = null;
+      pointerScrollConversationRef.current = null;
       submittedPromptScrollConversationRef.current = null;
       userScrollAwayIntentConversationRef.current = null;
       setIsTimelineScrolledToTop(true);
@@ -122,6 +124,7 @@ export function useAgentGUIDetailScroll(input: Input) {
     let nextScrollTop: number;
     if (conversationChanged || shouldScrollSubmittedPromptToBottom) {
       bottomLockOwnerRef.current = activeConversationId;
+      pointerScrollConversationRef.current = null;
       userScrollAwayIntentConversationRef.current = null;
     }
     const shouldKeepBottomLocked =
@@ -357,12 +360,17 @@ export function useAgentGUIDetailScroll(input: Input) {
 
     const loadOlderMessagesNearTop = (
       scrollTop: number,
-      scrollHeight: number
+      scrollHeight: number,
+      clientHeight: number
     ): void => {
+      const bottomLocked = bottomLockOwnerRef.current === activeConversationId;
+      const needsMoreContentToFillViewport = scrollHeight <= clientHeight;
       if (
         activeConversationId === viewModel.rail.activeConversationId &&
         viewModel.detail.hasOlderMessages &&
         !viewModel.detail.isLoadingOlderMessages &&
+        !showTimelineSkeleton &&
+        (!bottomLocked || needsMoreContentToFillViewport) &&
         scrollTop <= AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX
       ) {
         pendingPrependScrollAnchorRef.current = {
@@ -382,13 +390,28 @@ export function useAgentGUIDetailScroll(input: Input) {
       ) {
         return;
       }
-      const scrollTop = timeline.scrollTop;
-      const inferredUserScrollAway = scrollTop < previousAnchor.scrollTop - 1;
+      let scrollTop = timeline.scrollTop;
+      const pointerDrivenScrollAway =
+        pointerScrollConversationRef.current === activeConversationId &&
+        scrollTop < previousAnchor.scrollTop - 1;
       const explicitUserScrollAway =
         userScrollAwayIntentConversationRef.current === activeConversationId;
-      if (explicitUserScrollAway || inferredUserScrollAway) {
+      if (explicitUserScrollAway || pointerDrivenScrollAway) {
         bottomLockOwnerRef.current = null;
         userScrollAwayIntentConversationRef.current = null;
+      }
+      const bottomLocked = bottomLockOwnerRef.current === activeConversationId;
+      const anchoredMaxScrollTop = Math.max(
+        0,
+        previousAnchor.scrollHeight - previousAnchor.clientHeight
+      );
+      if (
+        bottomLocked &&
+        anchoredMaxScrollTop - scrollTop >
+          AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX
+      ) {
+        setTimelineScrollTopInstantly(timeline, anchoredMaxScrollTop);
+        scrollTop = anchoredMaxScrollTop;
       }
       timelineScrollAnchorRef.current = {
         conversationId: activeConversationId,
@@ -408,7 +431,11 @@ export function useAgentGUIDetailScroll(input: Input) {
         scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
       );
       setIsTimelineScrolledToBottom(effectiveAtBottom);
-      loadOlderMessagesNearTop(scrollTop, previousAnchor.scrollHeight);
+      loadOlderMessagesNearTop(
+        scrollTop,
+        previousAnchor.scrollHeight,
+        previousAnchor.clientHeight
+      );
     };
 
     const syncObservedTimelineGeometry = (): void => {
@@ -456,17 +483,42 @@ export function useAgentGUIDetailScroll(input: Input) {
         userScrollAwayIntentConversationRef.current = activeConversationId;
       }
     };
+    const captureSemanticScrollAwayIntent = (event: MouseEvent): void => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-agent-transcript-scroll-away-intent]")
+      ) {
+        userScrollAwayIntentConversationRef.current = activeConversationId;
+      }
+    };
+    const capturePointerIntent = (): void => {
+      pointerScrollConversationRef.current = activeConversationId;
+    };
+    const clearPointerIntent = (): void => {
+      if (pointerScrollConversationRef.current === activeConversationId) {
+        pointerScrollConversationRef.current = null;
+      }
+    };
 
     const initialAnchor = timelineScrollAnchorRef.current;
     if (initialAnchor?.conversationId === activeConversationId) {
       loadOlderMessagesNearTop(
         initialAnchor.scrollTop,
-        initialAnchor.scrollHeight
+        initialAnchor.scrollHeight,
+        initialAnchor.clientHeight
       );
     }
     timeline.addEventListener("scroll", captureScrollAnchor, { passive: true });
     timeline.addEventListener("wheel", captureWheelIntent, { passive: true });
     timeline.addEventListener("keydown", captureKeyboardIntent);
+    timeline.addEventListener("click", captureSemanticScrollAwayIntent);
+    timeline.addEventListener("pointerdown", capturePointerIntent, {
+      passive: true
+    });
+    window.addEventListener("pointerup", clearPointerIntent, { passive: true });
+    window.addEventListener("pointercancel", clearPointerIntent, {
+      passive: true
+    });
     const geometryObserver =
       timelineContent && typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(syncObservedTimelineGeometry)
@@ -480,10 +532,15 @@ export function useAgentGUIDetailScroll(input: Input) {
       timeline.removeEventListener("scroll", captureScrollAnchor);
       timeline.removeEventListener("wheel", captureWheelIntent);
       timeline.removeEventListener("keydown", captureKeyboardIntent);
+      timeline.removeEventListener("click", captureSemanticScrollAwayIntent);
+      timeline.removeEventListener("pointerdown", capturePointerIntent);
+      window.removeEventListener("pointerup", clearPointerIntent);
+      window.removeEventListener("pointercancel", clearPointerIntent);
     };
   }, [
     actions,
     timelineConversationId,
+    showTimelineSkeleton,
     viewModel.rail.activeConversationId,
     viewModel.detail.hasOlderMessages,
     viewModel.detail.isLoadingOlderMessages
