@@ -273,3 +273,73 @@ Google Play 账号。以下事项等正式分发前再处理：
 
 遇到问题时先看
 [Troubleshooting](../conventions/troubleshooting/README.md)，再根据上面的分层定位。
+
+## 10. Personal MVP 真机验收
+
+这一步需要真实 Tutti 账号、邮箱验证码和 Android 13 或更高版本的手机。不要在
+Issue、PR、聊天或日志中粘贴验证码、session cookie、二维码或配对码。
+
+### 10.1 启动当前分支的 Desktop
+
+在仓库根目录准备并启动开发版 Desktop：
+
+```sh
+pnpm install
+pnpm setup:dev
+make dev-gui
+```
+
+开发版使用独立状态目录，因此即使正式版已经登录，也可能需要在开发版重新登录
+同一个 Tutti 账号。进入工作区后，打开：
+
+```text
+工作区设置 -> 账号 -> 手机远程访问
+```
+
+先保持此页面打开；点击“配对手机”后会显示二维码和可复制的配对码。
+
+### 10.2 安装并启动 Android App
+
+手机打开开发者选项和 USB 调试，连接电脑并接受手机上的授权提示。先确认：
+
+```sh
+adb devices
+```
+
+列表中的手机状态必须为 `device`，不能是 `unauthorized`。在一个新终端启动
+Metro，并建立 USB 端口转发：
+
+```sh
+adb reverse tcp:8081 tcp:8081
+pnpm mobile:start
+```
+
+再打开另一个终端构建和安装 App：
+
+```sh
+pnpm mobile:android
+```
+
+App 启动后，用与 Desktop 相同的邮箱获取并填写验证码。登录成功后点击配对；
+优先扫描 Desktop 二维码。如果系统扫码服务不可用，就在 Desktop 点击“复制配对码”，
+再在 Mobile 展开手动配对入口并粘贴。
+
+### 10.3 验收清单
+
+按顺序验证，每一步成功后再继续：
+
+1. Mobile 只显示当前手机 identity 拥有的同账号配对设备。
+2. 点击 Desktop 后成功建立 direct DeviceLink，只有一个 workspace 时自动进入；
+   多个 workspace 时先显示选择页。
+3. 会话抽屉可新建、切换会话，主页面正确显示历史对话流。
+4. 发送一条普通消息，Desktop 和 Mobile 最终显示同一个结果且没有重复消息。
+5. 在 Agent 运行时点击停止，两个端最终收敛到同一个 Turn 状态。
+6. 分别触发 Question、Approval 和 Plan 交互，并从 Mobile 提交一次。
+7. 将 App 切到后台少于 15 秒再返回，当前连接保持；切到后台超过 15 秒再返回，
+   App 回到设备列表并可手动重连。
+8. 在 Desktop 移除手机配对，Mobile 刷新后不再显示该 Desktop，旧连接不可继续使用。
+9. 至少分别测试同一 Wi-Fi 和手机蜂窝网络。记录 direct P2P 是否成功；蜂窝或严格
+   NAT 失败但同一 Wi-Fi 成功时，将结果归入 Relay fallback 后续项，不改 Agent 协议。
+
+验收失败时保留三个终端：Desktop、Metro、`adb logcat`。先记录失败发生在哪一层、
+操作步骤和用户可见错误，不要复制网络 candidate、IP、Agent 正文或任何账号材料。
