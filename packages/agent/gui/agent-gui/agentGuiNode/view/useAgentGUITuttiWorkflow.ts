@@ -60,6 +60,7 @@ interface MaterializingPlan {
   checkpointId: string;
   sourceSessionId: string;
   title: string;
+  workflowId: string;
 }
 
 /**
@@ -183,7 +184,8 @@ export function useAgentGUITuttiWorkflow(input: {
       setMaterializingPlan({
         checkpointId: pendingPlanPanel.checkpoint.id,
         sourceSessionId: viewModel.rail.activeConversationId,
-        title: pendingPlanPanel.title
+        title: pendingPlanPanel.title,
+        workflowId: pendingPlanPanel.workflowId
       });
     }
     decidePendingPlan("accepted");
@@ -287,6 +289,22 @@ export function useAgentGUITuttiWorkflow(input: {
     pendingPlanPanel?.checkpoint.id === materializingPlan.checkpointId;
   const materializationFailure =
     tuttiModePlanPanels.planIssueMaterializationFailure;
+  const materializingWorkflowSettled =
+    materializingCurrentSession &&
+    materializingPlan !== null &&
+    ((planIssue !== null &&
+      planIssue.workflowId === materializingPlan.workflowId) ||
+      (materializationFailure !== null &&
+        materializationFailure.workflowId === materializingPlan.workflowId) ||
+      (pendingPlanPanel !== null &&
+        pendingPlanPanel.checkpoint.id !== materializingPlan.checkpointId) ||
+      (tuttiModePlanPanels.error !== null && !pendingPlanSubmitting));
+  // This is a conditional same-component state adjustment: React restarts the
+  // render before commit, so a terminal read-model observation cannot expose a
+  // stale materializing phase for one frame or survive a later Session switch.
+  if (materializingWorkflowSettled) {
+    setMaterializingPlan(null);
+  }
   let workflowDockPhase: TuttiWorkflowDockPhase | null = null;
   if (
     pendingPlanPanel &&
