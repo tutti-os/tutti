@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/event-stream-core",
-  "version": "0.1.0",
+  "version": "0.0.198",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
