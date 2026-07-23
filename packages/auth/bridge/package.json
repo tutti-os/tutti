@@ -11,7 +11,8 @@
   "types": "./src/browser.ts",
   "exports": {
     "./browser": "./src/browser.ts",
-    "./node": "./src/node.ts"
+    "./node": "./src/node.ts",
+    "./shared": "./src/shared.ts"
   },
   "files": [
     "dist",
@@ -37,6 +38,10 @@
       "./node": {
         "types": "./dist/node.d.ts",
         "import": "./dist/node.js"
+      },
+      "./shared": {
+        "types": "./dist/shared.d.ts",
+        "import": "./dist/shared.js"
       }
     },
     "types": "./dist/browser.d.ts"

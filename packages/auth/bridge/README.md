@@ -2,6 +2,21 @@
 
 High-level Tutti auth helpers for browser apps and Node/Electron clients.
 
+## Shared contract
+
+Clients that implement their own platform-specific account UI can reuse the
+canonical account defaults without importing Browser or Node runtime behavior:
+
+```ts
+import {
+  DEFAULT_ACCOUNT_BASE_URL,
+  DEFAULT_APP_ID
+} from "@tutti-os/auth-bridge/shared";
+```
+
+Keep compatibility identifiers in this shared contract rather than copying
+their literal values into product clients.
+
 ## Browser
 
 ```ts

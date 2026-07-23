@@ -198,6 +198,9 @@ importers:
       "@tutti-os/agent-gui":
         specifier: workspace:*
         version: link:../../packages/agent/gui
+      "@tutti-os/auth-bridge":
+        specifier: workspace:*
+        version: link:../../packages/auth/bridge
       "@tutti-os/client-tuttid-ts":
         specifier: workspace:*
         version: link:../../packages/clients/tuttid-ts
