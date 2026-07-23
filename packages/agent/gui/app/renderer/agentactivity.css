@@ -3747,9 +3747,7 @@ aside.workspace-agents-status-panel
   content: "";
 }
 
-.agent-gui-conversation__message-group:has(
-  > .agent-gui-conversation__message-footer
-) {
+.agent-gui-conversation__message-group[data-agent-message-footer="true"] {
   margin-bottom: 26px;
 }
 
@@ -3870,9 +3868,7 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__timeline
-  > .agent-gui-conversation__assistant-message-flow:has(
-    > .workspace-agents-status-panel__detail-thinking-disclosure:last-child
-  )
+  > .agent-gui-conversation__assistant-message-flow[data-agent-message-flow-thinking-last="true"]
   + :is(
     .workspace-agents-status-panel__detail-tool-section,
     .workspace-agents-status-panel__detail-tool-row
@@ -3882,9 +3878,7 @@ aside.workspace-agents-status-panel
     .workspace-agents-status-panel__detail-tool-section,
     .workspace-agents-status-panel__detail-tool-row
   )
-  + .agent-gui-conversation__assistant-message-flow:has(
-    > .workspace-agents-status-panel__detail-thinking-disclosure:first-child
-  ),
+  + .agent-gui-conversation__assistant-message-flow[data-agent-message-flow-thinking-first="true"],
 .agent-gui-node__timeline
   > :is(
     .workspace-agents-status-panel__detail-tool-section,
@@ -3898,63 +3892,23 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > .agent-gui-conversation__assistant-message-flow
-      > .workspace-agents-status-panel__detail-thinking-disclosure:last-child
-  )
-  + .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  ),
+  > .agent-gui-transcript-row[data-agent-transcript-row-thinking-last="true"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"],
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  )
-  + .agent-gui-transcript-row:has(
-    > .agent-gui-conversation__assistant-message-flow
-      > .workspace-agents-status-panel__detail-thinking-disclosure:first-child
-  ),
+  > .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-thinking-first="true"],
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  )
-  + .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  ) {
+  > .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"] {
   margin-top: -8px;
 }
 
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > .agent-gui-conversation__assistant-message-flow
-  )
-  + .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  ),
+  > .agent-gui-transcript-row[data-agent-transcript-row-speaker="assistant"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"],
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  )
-  + .agent-gui-transcript-row:has(
-    > .agent-gui-conversation__assistant-message-flow
-  ) {
+  > .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-speaker="assistant"] {
   margin-top: -12px;
 }
 
@@ -4619,17 +4573,16 @@ aside.workspace-agents-status-panel
   transition: none;
 }
 
-.workbench-window:has(
-  > .workbench-window__header [data-agent-gui-workbench-header="true"]
-) {
+.workbench-window[data-window-header-layout="overlay"],
+.workbench-window[data-agent-gui-standalone-window="true"] {
   --agent-gui-workbench-header-height: 44px;
 
   grid-template-rows: minmax(0, 1fr);
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
+  .workbench-window__header,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__header {
   position: absolute !important;
   top: 0 !important;
@@ -4648,50 +4601,34 @@ aside.workspace-agents-status-panel
   user-select: auto;
 }
 
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__header {
   cursor: grab !important;
 }
 
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__header:active {
   cursor: grabbing !important;
 }
 
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__header {
   z-index: calc(var(--z-panel) + 1);
 }
 
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-workbench-header::after {
   display: none;
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"] .workbench-window__body,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__body {
   grid-row: 1;
   overflow: hidden;
 }
 
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__body {
   display: flex;
   width: 100%;
@@ -4753,9 +4690,9 @@ aside.workspace-agents-status-panel
   overscroll-behavior: contain;
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
+  .agent-gui-node__provider-rail-panel,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__provider-rail-panel {
   padding-top: var(--agent-gui-workbench-header-height);
 }
@@ -4764,30 +4701,29 @@ aside.workspace-agents-status-panel
    breathing room on the inner rail, so the "All" tile sits at header + 2px. The
    toolbar has no such wrapper, so fold the same 2px into its offset to keep the
    search field top aligned with the provider tiles. */
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
+  .agent-gui-node__rail-toolbar,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__rail-toolbar {
   padding-top: calc(var(--agent-gui-workbench-header-height) + 2px);
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
+  .agent-gui-node__detail-panel,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__detail-panel {
   position: relative;
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"] .agent-gui-node__detail,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__detail {
   padding-top: var(--agent-gui-workbench-header-height);
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
+  .agent-gui-node__timeline-with-composer,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__timeline-with-composer {
   padding-top: 20px;
 }
@@ -5280,15 +5216,9 @@ aside.workspace-agents-status-panel
   pointer-events: auto;
 }
 
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-workbench-header__session-title,
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-workbench-header__detail-title {
   box-sizing: border-box;
   width: auto;
@@ -5389,7 +5319,7 @@ aside.workspace-agents-status-panel
   margin-left: -4px;
 }
 
-.workbench-window:has([data-workbench-node-render-error="true"])
+.agent-gui-workbench-header[data-agent-gui-workbench-header-body-error="true"]
   .agent-gui-workbench-header__rail-toggle {
   display: none !important;
 }
@@ -5570,9 +5500,9 @@ aside.workspace-agents-status-panel
   );
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
+  .agent-gui-node__provider-rail-panel::after,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__provider-rail-panel::after {
   top: var(--agent-gui-workbench-header-height);
 }

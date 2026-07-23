@@ -132,8 +132,6 @@ export function BrowserNodeChrome({
       )}
       data-browser-node-header="true"
       data-browser-node-header-display-mode={displayMode}
-      data-workbench-custom-header-layout="browser-tabs"
-      data-workbench-custom-header-overflow="visible"
     >
       <div
         {...restDragHandleProps}

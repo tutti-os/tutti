@@ -192,10 +192,6 @@
     box-shadow 0.16s ease;
 }
 
-.workbench-window:has([data-workbench-custom-header-layout="browser-tabs"]) {
-  --workbench-header-height: 76px;
-}
-
 .workbench-window[data-display-mode="floating"] {
   background: var(--background-panel);
 }
@@ -229,15 +225,13 @@
   user-select: auto;
 }
 
-.workbench-window__header--custom:has(
-  [data-workbench-custom-header-overflow="visible"]
-) {
+.workbench-window[data-window-header-overflow="visible"]
+  > .workbench-window__header--custom {
   overflow: visible;
 }
 
-.workbench-window__header--custom:has(
-  [data-workbench-custom-header-border="none"]
-) {
+.workbench-window[data-window-header-border="none"]
+  > .workbench-window__header--custom {
   border-bottom-color: transparent;
 }
 
@@ -786,7 +780,7 @@
 }
 
 [data-dock-placement="left"] > .desktop-dock-plate,
-.desktop-dock-plate:has(.desktop-dock[data-dock-placement="left"]) {
+.desktop-dock-plate[data-dock-placement="left"] {
   width: auto;
   height: var(--desktop-dock-frame-size, auto);
   max-width: none;
@@ -841,7 +835,7 @@
   transition: none;
 }
 
-.desktop-dock-plate:has(.desktop-dock[data-dock-pointer-active="true"]) {
+.desktop-dock-plate[data-dock-pointer-active="true"] {
   transition: none;
 }
 

@@ -180,6 +180,7 @@ export function WorkbenchHostDock({
     () => new Set(context.minimizedNodes.map((node) => node.id)),
     [context.minimizedNodes]
   );
+  const dockPlateRef = useRef<HTMLDivElement | null>(null);
   const dockMeasureRef = useRef<HTMLDivElement | null>(null);
   const dockItemsRef = useRef<HTMLDivElement | null>(null);
   const hoverPanelRef = useRef<HTMLDivElement | null>(null);
@@ -456,6 +457,7 @@ export function WorkbenchHostDock({
     pauseMagnification: pauseDockMagnification,
     resetMagnification: resetDockMagnification
   } = useDockMagnification({
+    dockPlateRef,
     dockPlacement,
     dockRootRef: dockMeasureRef,
     dockViewportRef: dockItemsRef,
@@ -1415,7 +1417,9 @@ export function WorkbenchHostDock({
       data-dock-placement={dockPlacement}
     >
       <div
+        ref={dockPlateRef}
         className="desktop-dock-plate"
+        data-dock-placement={dockPlacement}
         style={
           dockFrameSize === null
             ? undefined

@@ -50,11 +50,13 @@
   clips descendants before stacking order can place the menu over the node
   body. Raising the menu z-index cannot escape ancestor overflow clipping.
 - Fix:
-  Keep the shared inline menu and mark only headers that own intentional inline
-  overlays with `data-workbench-custom-header-overflow="visible"`. Workbench
-  uses that semantic opt-in to allow overflow on the custom-header row; do not
-  copy the menu into the OS shell or globally disable clipping for every custom
-  header. The outer `.workbench-window` remains the window-bounds clip.
+  Keep the shared inline menu and declare the owning node's header presentation
+  as `window.header: { overflow: "visible" }` (plus its explicit `heightPx`
+  when it owns a non-default header height). Workbench projects that contract
+  to `data-window-header-overflow="visible"` on `.workbench-window` and allows
+  overflow only for that custom-header row. Do not copy the menu into the OS
+  shell or globally disable clipping for every custom header. The outer
+  `.workbench-window` remains the window-bounds clip.
 - Validation:
   Run the Browser Node and Workbench Surface package tests, typecheck the
   affected packages, and build the desktop renderer. In both Agent-only and OS

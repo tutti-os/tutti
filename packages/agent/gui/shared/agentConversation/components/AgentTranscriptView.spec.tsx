@@ -1386,8 +1386,27 @@ describe("AgentTranscriptView", () => {
     const assistantFlow = document.querySelector(
       ".agent-gui-conversation__assistant-message-flow"
     );
+    const assistantRow = assistantFlow?.closest("[data-agent-transcript-row]");
 
     expect(assistantFlow).toBeTruthy();
+    expect(assistantFlow).toHaveAttribute(
+      "data-agent-message-flow-thinking-first",
+      "true"
+    );
+    expect(assistantFlow).not.toHaveAttribute(
+      "data-agent-message-flow-thinking-last"
+    );
+    expect(assistantRow).toHaveAttribute(
+      "data-agent-transcript-row-speaker",
+      "assistant"
+    );
+    expect(assistantRow).toHaveAttribute(
+      "data-agent-transcript-row-thinking-first",
+      "true"
+    );
+    expect(assistantRow).not.toHaveAttribute(
+      "data-agent-transcript-row-thinking-last"
+    );
     expect(assistantFlow?.firstElementChild?.contains(thinkingButton)).toBe(
       true
     );

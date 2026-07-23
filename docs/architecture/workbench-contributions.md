@@ -129,6 +129,8 @@ Those packages may own:
 - capability-local external state shaping
 - capability-local launch helpers
 - capability-local close-policy hooks
+- custom-header presentation declared through
+  `WorkbenchHostNodeWindowCapabilities.header`
 
 They must not own:
 
@@ -136,6 +138,20 @@ They must not own:
 - preload surface assumptions
 - app-specific daemon client creation
 - product-specific enablement or routing policy
+
+### Window header presentation
+
+A node definition declares structural custom-header state through
+`window.header`: `heightPx`, `layout: "overlay"`, `overflow: "visible"`, or
+`border: "none"`. `WorkbenchHost` projects that state onto the
+`.workbench-window` subject as data attributes and, for height, a CSS custom
+property.
+
+Do not discover these states with `.workbench-window:has(...)` or by inspecting
+rendered header descendants. A descendant mutation inside an editor, browser,
+or other live node can otherwise make the full window subtree a style
+invalidation candidate. Component-local relational selectors remain acceptable
+only when both the subject and mutation scope are small and bounded.
 
 ### External State Subscription
 

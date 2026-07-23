@@ -403,6 +403,14 @@ timestamp.
 
 High-frequency transcript updates must not pair DOM mutation with unconditional synchronous reads of the timeline's full scroll geometry. Conversation switches, explicit submit-to-bottom requests, skeleton transitions, and older-page prepend restoration may perform pre-paint scroll correction; ordinary content growth preserves bottom lock and user scroll-away state from observed content and viewport geometry after layout.
 
+Composer draft updates cross the view boundary through the stable `shell`,
+`rail`, `detail`, `composer`, `interaction`, `readiness`, and `operations`
+projections rather than one aggregate Detail prop. The active Timeline
+`ScrollArea` is a memoized render island and does not consume draft state.
+TipTap treats a controlled value as a local acknowledgement only when its
+draft scope and local edit revision match; a scope change or other external
+replacement may rebuild the document.
+
 A virtualized transcript derives message-locator selection from the virtualizer's measured turn positions and explicit transcript identity. The currently mounted DOM window is rendering output, not a selection source; range changes must not make the locator temporarily select a neighboring message.
 
 Historical rich text renders from the canonical Tiptap document through a static schema renderer. Only interactive composer surfaces own a Tiptap Editor/ProseMirror EditorView; read-only transcript and title surfaces reuse the same mention/token presentation without mounting editor lifecycle.
@@ -595,6 +603,15 @@ so a composer read cannot invalidate the conversation root. Composer paragraphs
 and the viewport calculation share the same line-height token so the 3.5-line
 cap remains exact. Regression coverage must expand across explicit newline
 rows, delete back to one row, and verify stable action-button placement.
+
+Dynamic Agent surfaces must not use `:has()` on `.workbench-window`, the
+timeline, or transcript rows. Composer and streaming DOM mutations would make
+those relational subjects candidates for subtree style invalidation. Window
+header layout and render-error state are projected onto the owning window or
+header; message footer, speaker, thinking-edge, and row-kind state are projected
+onto the owning message flow or transcript row. Small, self-contained controls
+may still use local relational selectors when their subject and mutation scope
+are bounded.
 
 External OS file paste and drop enter one host-injected classification boundary before draft attachment creation. The synchronous `resolveExternalPromptEntries` port classifies each source index as a live `WorkspaceFileReference` or a snapshot requiring preparation. AgentGUI owns ordered mention insertion and draft reconciliation: references become ordinary file/folder mentions and never consume prompt-asset slots, while only `prepare` entries create pending attachment state and enter `prepareExternalPromptFiles`. A host without the resolver prepares every external entry. The preparer owns native-path or byte lookup, size enforcement, persistence, and remote transport; each prepared input has one `sourceIndex` result, one failure must not fail siblings, successful results include a provider-readable `path` or `url`, and failures carry typed error codes. Hosts that classify path-backed entries as references must reject any such entry that unexpectedly reaches preparation, so classification failure cannot silently create a duplicate snapshot.
 

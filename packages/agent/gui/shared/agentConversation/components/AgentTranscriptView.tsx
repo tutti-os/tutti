@@ -361,6 +361,24 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
         className="agent-gui-transcript-row"
         data-agent-transcript-row={rowKey}
         data-agent-transcript-row-kind={row.kind}
+        data-agent-transcript-row-speaker={
+          row.kind === "message" ? row.speaker : undefined
+        }
+        data-agent-transcript-row-thinking-first={
+          row.kind === "message" &&
+          row.speaker === "assistant" &&
+          row.thinking.length > 0
+            ? "true"
+            : undefined
+        }
+        data-agent-transcript-row-thinking-last={
+          row.kind === "message" &&
+          row.speaker === "assistant" &&
+          row.thinking.length > 0 &&
+          row.messages.length === 0
+            ? "true"
+            : undefined
+        }
         data-agent-transcript-row-index={rowIndex}
         data-agent-transcript-row-enter={
           shouldAnimateEnter ? "true" : undefined

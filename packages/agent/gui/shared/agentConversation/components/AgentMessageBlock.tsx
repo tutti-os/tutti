@@ -136,6 +136,14 @@ export function AgentMessageBlock({
   return (
     <div
       className={isUser ? styles.userMessageFlow : styles.assistantMessageFlow}
+      data-agent-message-flow-thinking-first={
+        !isUser && row.thinking.length > 0 ? "true" : undefined
+      }
+      data-agent-message-flow-thinking-last={
+        !isUser && row.thinking.length > 0 && row.messages.length === 0
+          ? "true"
+          : undefined
+      }
     >
       {thinkingContent}
       {row.messages.map((message) => {
@@ -268,11 +276,16 @@ function AgentCopyableMessageGroup({
 }): JSX.Element {
   "use memo";
   const timestamp = formatAgentMessageTimestamp(occurredAtUnixMs);
+  const hasFooter = Boolean(timestamp || copyText);
 
   return (
-    <div className={styles.messageGroup} data-agent-message-speaker={speaker}>
+    <div
+      className={styles.messageGroup}
+      data-agent-message-footer={hasFooter ? "true" : undefined}
+      data-agent-message-speaker={speaker}
+    >
       {children}
-      {timestamp || copyText ? (
+      {hasFooter ? (
         <div className={styles.messageFooter}>
           {timestamp ? (
             <span className={styles.messageTimestamp}>{timestamp}</span>

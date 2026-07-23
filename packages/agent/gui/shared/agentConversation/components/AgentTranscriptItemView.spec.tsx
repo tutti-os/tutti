@@ -286,6 +286,7 @@ describe("AgentTranscriptItemView render stability", () => {
       throw new Error("Expected user message bubble to render.");
     }
     expect(group).toHaveAttribute("data-agent-message-speaker", "user");
+    expect(group).toHaveAttribute("data-agent-message-footer", "true");
     expect(group).toHaveTextContent("User asks for a fix");
     expect(
       group.querySelector(".agent-gui-conversation__message-copy-button")

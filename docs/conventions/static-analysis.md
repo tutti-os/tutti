@@ -22,6 +22,7 @@ Repository entrypoints:
 
 - `pnpm setup:dev`
 - `pnpm check:backdrop-filter-authoring`
+- `pnpm check:css-has-performance`
 - `pnpm check:golangci-version`
 - `pnpm lint`
 - `pnpm lint:ts`
@@ -167,6 +168,27 @@ followed by the standard property; it rejects prefix-only output, reversed
 ordering, and a launchpad dismiss layer without a non-`none` standard filter.
 The React `WebkitBackdropFilter` inline-style property is outside this stylesheet
 optimization boundary and is not rejected by the authoring check.
+
+## CSS Relational Selector Performance
+
+`pnpm check:css-has-performance` scans production CSS under `apps/`,
+`packages/`, and `services/`. It rejects `:has()` when the selector subject is
+the document root, a Workbench window/surface, an AgentGUI root layout,
+timeline, transcript row, or another listed large dynamic surface.
+
+Those subjects contain editors, streamed transcript content, dock animation, or
+other frequently mutating descendants. Relational matching there can make the
+entire subject subtree a style-invalidation candidate. Project the semantic
+state onto the subject with a class or data attribute instead.
+
+The check intentionally permits bounded local subjects such as buttons, icons,
+dialogs, and individual conversation rows. Add a subject to the policy only
+when its descendant scope or mutation frequency makes relational invalidation
+structurally unsafe; do not turn this into a blanket ban on `:has()`.
+
+The staged form runs in `pre-commit`. The full form is selected by
+`check:changed` for production CSS or policy implementation changes and is part
+of `check:full`.
 
 Renderer feature implementation boundaries are checked by `pnpm check:renderer-boundaries`.
 That check also enforces the Workbench-specific rule that

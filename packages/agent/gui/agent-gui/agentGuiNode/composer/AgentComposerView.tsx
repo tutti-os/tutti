@@ -384,6 +384,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                   <AgentRichTextEditor
                     ref={input.editorHandleRef}
                     value={input.paletteDraftPrompt}
+                    contentScopeKey={input.props.draftScopeKey}
                     placeholder={effectivePlaceholder}
                     disabled={inputDisabled}
                     className={styles.composerTextarea}

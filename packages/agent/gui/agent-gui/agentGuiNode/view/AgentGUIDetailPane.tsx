@@ -1,13 +1,4 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties
-} from "react";
-import { ScrollArea } from "@tutti-os/ui-system/components";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
@@ -23,8 +14,14 @@ import type {
 } from "../AgentComposer";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
 import type {
+  AgentGUIComposerViewModel,
+  AgentGUIDetailViewModel,
   AgentHomeSuggestionAction,
-  AgentGUINodeViewModel
+  AgentGUIInteractionViewModel,
+  AgentGUIOperationsViewModel,
+  AgentGUIRailViewModel,
+  AgentGUIReadinessViewModel,
+  AgentGUIShellViewModel
 } from "../model/agentGuiNodeTypes";
 import { updateAgentComposerDraft } from "../model/agentComposerDraft";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
@@ -45,7 +42,7 @@ import {
   resolveAgentGUIHeroIconUrl
 } from "./AgentGUIEmptyState";
 import { AgentGUIContentToast } from "./AgentGUIContentToast";
-import { AgentGUIConversationTimelinePane } from "./AgentGUIConversationTimelinePane";
+import { AgentGUIDetailTimeline } from "./AgentGUIDetailTimeline";
 import {
   useOptionalStableEventCallback,
   useStableEventCallback
@@ -56,17 +53,16 @@ import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
 import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
 import { useAgentGUITuttiWorkflow } from "./useAgentGUITuttiWorkflow";
 
-const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
-  width: "100%",
-  minWidth: "100%",
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr)",
-  gap: "24px"
-};
 export const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
 export interface AgentGUIDetailPaneProps {
-  viewModel: AgentGUINodeViewModel;
+  shell: AgentGUIShellViewModel;
+  rail: AgentGUIRailViewModel;
+  detail: AgentGUIDetailViewModel;
+  composer: AgentGUIComposerViewModel;
+  interaction: AgentGUIInteractionViewModel;
+  readiness: AgentGUIReadinessViewModel;
+  operations: AgentGUIOperationsViewModel;
   homeTargetProjection: AgentGUIManagedHomeTargetProjection;
   referenceProvenanceFilter?: AgentComposerProps["referenceProvenanceFilter"];
   composerEngagement?: AgentGUIComposerEngagement;
@@ -107,7 +103,13 @@ export interface AgentGUIDetailPaneProps {
 }
 
 export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
-  viewModel,
+  shell,
+  rail,
+  detail,
+  composer,
+  interaction,
+  readiness,
+  operations,
   homeTargetProjection,
   referenceProvenanceFilter = null,
   composerEngagement,
@@ -143,6 +145,15 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   renderProviderUnavailableState
 }: AgentGUIDetailPaneProps): React.JSX.Element {
   "use memo";
+  const viewModel = {
+    shell,
+    rail,
+    detail,
+    composer,
+    interaction,
+    readiness,
+    operations
+  };
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const timelineContentRef = useRef<HTMLDivElement | null>(null);
   const bottomDockRef = useRef<HTMLDivElement | null>(null);
@@ -660,6 +671,53 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     timelineScrollAnchorRef,
     viewModel
   });
+  const homeContent = !hasActiveConversation ? (
+    shouldRenderProviderUnavailableState && disabledProviderTarget ? (
+      <>
+        {renderProviderUnavailableState?.({
+          provider: disabledProviderTarget.provider,
+          providerLabel:
+            labels.emptyProviderForProvider?.(
+              disabledProviderTarget.provider
+            ) ??
+            resolveAgentGuiWorkbenchProviderLabel(
+              disabledProviderTarget.provider
+            ),
+          target: disabledProviderTarget,
+          iconUrl: resolveAgentGUIHeroIconUrl(disabledProviderTarget.provider),
+          unavailableReason: disabledProviderTarget.unavailableReason ?? null
+        })}
+      </>
+    ) : (
+      <AgentGUIEmptyHomePane
+        provider={emptyHeroProvider}
+        providerReadinessGate={emptyProviderReadinessGate}
+        showAllProviders={viewModel.rail.conversationFilter.kind === "all"}
+        agentTargets={composerProviderTargets}
+        selectedAgentTarget={composerSelectedProviderTarget}
+        onProviderSelect={
+          canSwitchComposerProvider &&
+          viewModel.rail.activeConversationId === null
+            ? selectHomeComposerAgentTargetAndFocus
+            : undefined
+        }
+        noticeChrome={homeNoticeChrome}
+        isRespondingApproval={isInteractionPending}
+        previewMode={previewMode}
+        onSubmitApprovalOption={submitApprovalOption}
+        onRetryActivation={retryActivation}
+        onAuthLogin={authLogin}
+        onContinueInNewConversation={continueInNewConversation}
+        chromeLabels={chromeLabels}
+        composerProps={emptyHeroComposerProps}
+        labels={labels}
+        suggestions={labels.homeSuggestions ?? EMPTY_HOME_SUGGESTIONS}
+        suggestionsCloseLabel={labels.homeSuggestionsClose}
+        onSelectSuggestion={handleSelectHomeSuggestion}
+        onSelectSuggestionAction={handleHomeSuggestionAction}
+      />
+    )
+  ) : null;
 
   return (
     <main
@@ -674,90 +732,25 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           message={labels.goalRemoved}
         />
       ) : null}
-      <ScrollArea
-        scrollbarMode="native"
-        className="flex h-full min-h-0 flex-1 flex-col [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"
-        viewportRef={timelineRef}
-        viewportContentRef={timelineContentRef}
-        viewportTestId="agent-gui-timeline"
-        viewportClassName={`${styles.timeline} ${
-          hasActiveConversation
-            ? styles.timelineWithComposer
-            : styles.timelineCentered
-        } ${
-          !isTimelineScrolledToTop ? styles.timelineScrolledFromTop : ""
-        } ${showUnavailableChatEmpty ? styles.timelineUnavailableChatEmpty : ""}`.trim()}
-        viewportContentStyle={AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE}
-      >
-        {!hasActiveConversation ? (
-          shouldRenderProviderUnavailableState && disabledProviderTarget ? (
-            <>
-              {renderProviderUnavailableState?.({
-                provider: disabledProviderTarget.provider,
-                providerLabel:
-                  labels.emptyProviderForProvider?.(
-                    disabledProviderTarget.provider
-                  ) ??
-                  resolveAgentGuiWorkbenchProviderLabel(
-                    disabledProviderTarget.provider
-                  ),
-                target: disabledProviderTarget,
-                iconUrl: resolveAgentGUIHeroIconUrl(
-                  disabledProviderTarget.provider
-                ),
-                unavailableReason:
-                  disabledProviderTarget.unavailableReason ?? null
-              })}
-            </>
-          ) : (
-            <AgentGUIEmptyHomePane
-              provider={emptyHeroProvider}
-              providerReadinessGate={emptyProviderReadinessGate}
-              showAllProviders={
-                viewModel.rail.conversationFilter.kind === "all"
-              }
-              agentTargets={composerProviderTargets}
-              selectedAgentTarget={composerSelectedProviderTarget}
-              onProviderSelect={
-                canSwitchComposerProvider &&
-                viewModel.rail.activeConversationId === null
-                  ? selectHomeComposerAgentTargetAndFocus
-                  : undefined
-              }
-              noticeChrome={homeNoticeChrome}
-              isRespondingApproval={isInteractionPending}
-              previewMode={previewMode}
-              onSubmitApprovalOption={submitApprovalOption}
-              onRetryActivation={retryActivation}
-              onAuthLogin={authLogin}
-              onContinueInNewConversation={continueInNewConversation}
-              chromeLabels={chromeLabels}
-              composerProps={emptyHeroComposerProps}
-              labels={labels}
-              suggestions={labels.homeSuggestions ?? EMPTY_HOME_SUGGESTIONS}
-              suggestionsCloseLabel={labels.homeSuggestionsClose}
-              onSelectSuggestion={handleSelectHomeSuggestion}
-              onSelectSuggestionAction={handleHomeSuggestionAction}
-            />
-          )
-        ) : (
-          <>
-            <AgentGUIConversationTimelinePane
-              conversation={conversation}
-              isLoading={showTimelineSkeleton}
-              isLoadingOlderMessages={viewModel.detail.isLoadingOlderMessages}
-              loadingLabel={labels.loadingConversation}
-              empty={conversationFlowEmpty}
-              onLinkAction={stableLinkAction}
-              onAuthLogin={authLogin}
-              availableSkills={viewModel.composer.availableSkills}
-              workspaceAppIcons={workspaceAppIcons}
-              previewMode={previewMode}
-              labels={conversationFlowLabels}
-            />
-          </>
-        )}
-      </ScrollArea>
+      <AgentGUIDetailTimeline
+        availableSkills={viewModel.composer.availableSkills}
+        conversation={conversation}
+        conversationFlowEmpty={conversationFlowEmpty}
+        conversationFlowLabels={conversationFlowLabels}
+        hasActiveConversation={hasActiveConversation}
+        homeContent={homeContent}
+        isLoadingOlderMessages={viewModel.detail.isLoadingOlderMessages}
+        isTimelineScrolledToTop={isTimelineScrolledToTop}
+        labels={labels}
+        onAuthLogin={authLogin}
+        onLinkAction={stableLinkAction}
+        previewMode={previewMode}
+        showTimelineSkeleton={showTimelineSkeleton}
+        showUnavailableChatEmpty={showUnavailableChatEmpty}
+        timelineContentRef={timelineContentRef}
+        timelineRef={timelineRef}
+        workspaceAppIcons={workspaceAppIcons}
+      />
       {hasActiveConversation ? (
         <AgentGUIBottomDockPane
           bottomDockRef={bottomDockRef}
