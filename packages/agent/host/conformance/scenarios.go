@@ -116,5 +116,13 @@ func ApplicationCoreScenarios() []Scenario {
 		deleteSessionScenario,
 		deleteLiveOnlySessionScenario,
 		purgeDeletedSessionsScenario,
+		{Name: "retry turn creates lineage turn", run: runRetryTurnCreatesLineageTurn},
+	}
+}
+
+// RetryTurnScenarios covers the Retry/Edit lifecycle contract.
+func RetryTurnScenarios() []Scenario {
+	return []Scenario{
+		{Name: "retry turn creates lineage turn", run: runRetryTurnCreatesLineageTurn},
 	}
 }

@@ -63,11 +63,11 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	if len(metadata) > 0 {
 		runCtx = context.WithValue(runCtx, execMetadataContextKey{}, metadata)
 	}
-	turnMetadata := TurnMetadata{}
-	if input.TurnMetadata != nil {
-		turnMetadata = *input.TurnMetadata
+	lineage := TurnLineage{}
+	if input.TurnLineage != nil {
+		lineage = *input.TurnLineage
 	}
-	startedSession, err := c.beginTurn(session, turnID, cancel, turnMetadata)
+	startedSession, err := c.beginTurn(session, turnID, cancel, lineage)
 	if err != nil {
 		cancel()
 		return ExecResult{}, err
@@ -77,7 +77,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	c.mu.Lock()
 	provisional := c.provisionalSessions[key]
 	c.mu.Unlock()
-	submitEvents := submittedTurnActivityEvents(session, turnID, turnMetadata)
+	submitEvents := submittedTurnActivityEvents(session, turnID, lineage)
 	if titleUpdated {
 		submitEvents = append([]activityshared.Event{newSessionTitleActivityEvent(session, session.Title)}, submitEvents...)
 	}

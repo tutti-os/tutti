@@ -13,13 +13,14 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 		wantCount int
 	}{
 		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 17},
-		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 12},
+		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 13},
 		{name: "resume policy", scenarios: ResumePolicyScenarios(), wantCount: 4},
 		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
 		{name: "title policy", scenarios: TitlePolicyScenarios(), wantCount: 1},
 		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 7},
 		{name: "goal", scenarios: GoalScenarios(), wantCount: 5},
 		{name: "commit observer", scenarios: CommitObserverScenarios(), wantCount: 2},
+		{name: "retry turn", scenarios: RetryTurnScenarios(), wantCount: 1},
 	}
 	for _, catalog := range catalogs {
 		catalog := catalog
@@ -57,6 +58,7 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"delete session",
 		"delete live session before canonical report",
 		"purge deleted sessions",
+		"retry turn creates lineage turn",
 	}
 	wantCoordinator := []string{
 		"exact turn cancel",

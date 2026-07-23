@@ -92,6 +92,7 @@ type SessionTurnSummary = agentstore.SessionTurnSummary
 type SessionTurnSummaryPage = agentstore.SessionTurnSummaryPage
 
 type TurnTransition = agentstore.TurnTransition
+type TurnRelation = agentstore.TurnRelation
 type RootProviderTurnTransition = agentstore.RootProviderTurnTransition
 
 type Interaction = agentstore.Interaction

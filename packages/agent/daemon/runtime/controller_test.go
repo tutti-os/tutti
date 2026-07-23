@@ -3730,7 +3730,7 @@ func TestControllerCancelTreatsNoActiveTurnAfterSettleAsIdempotent(t *testing.T)
 	turnID := "turn-1"
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if _, err := controller.beginTurn(started.Session, turnID, cancel, TurnMetadata{}); err != nil {
+	if _, err := controller.beginTurn(started.Session, turnID, cancel, TurnLineage{}); err != nil {
 		t.Fatalf("beginTurn: %v", err)
 	}
 	outcome := string(activityshared.TurnOutcomeInterrupted)

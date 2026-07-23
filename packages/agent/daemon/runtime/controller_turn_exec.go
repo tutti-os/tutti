@@ -12,7 +12,7 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func (c *Controller) beginTurn(session Session, turnID string, cancel context.CancelFunc, metadata TurnMetadata) (Session, error) {
+func (c *Controller) beginTurn(session Session, turnID string, cancel context.CancelFunc, lineage TurnLineage) (Session, error) {
 	if c == nil {
 		return Session{}, fmt.Errorf("agent session controller is unavailable")
 	}
@@ -27,7 +27,7 @@ func (c *Controller) beginTurn(session Session, turnID string, cancel context.Ca
 		return Session{}, ErrSessionActiveTurn
 	}
 	c.sessions[key] = session
-	c.turns[key] = activeTurn{turnID: turnID, cancel: cancel, metadata: metadata}
+	c.turns[key] = activeTurn{turnID: turnID, cancel: cancel, lineage: lineage}
 	return session, nil
 }
 

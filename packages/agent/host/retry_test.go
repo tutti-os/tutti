@@ -18,13 +18,17 @@ type retryMockStore struct {
 	messages  storesqlite.MessagePage
 	msgFound  bool
 	msgErr    error
+	// Captures the TurnID passed to ListSessionMessages for multi-turn
+	// isolation verification.
+	capturedTurnID string
 }
 
-func (s retryMockStore) GetTurn(_ context.Context, _, _, _ string) (storesqlite.Turn, bool, error) {
+func (s *retryMockStore) GetTurn(_ context.Context, _, _, _ string) (storesqlite.Turn, bool, error) {
 	return s.turn, s.turnFound, s.turnErr
 }
 
-func (s retryMockStore) ListSessionMessages(_ context.Context, _ storesqlite.ListSessionMessagesInput) (storesqlite.MessagePage, bool, error) {
+func (s *retryMockStore) ListSessionMessages(_ context.Context, input storesqlite.ListSessionMessagesInput) (storesqlite.MessagePage, bool, error) {
+	s.capturedTurnID = input.TurnID
 	return s.messages, s.msgFound, s.msgErr
 }
 
@@ -71,7 +75,7 @@ func newRetryTestHost(store CanonicalStore) *Host {
 }
 
 func TestRetryTurnRejectsEmptyArguments(t *testing.T) {
-	host := newRetryTestHost(retryMockStore{})
+	host := newRetryTestHost(&retryMockStore{})
 	_, err := host.RetryTurn(context.Background(), SessionRef{}, "")
 	if !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("RetryTurn(empty) error = %v, want ErrInvalidArgument", err)
@@ -79,7 +83,7 @@ func TestRetryTurnRejectsEmptyArguments(t *testing.T) {
 }
 
 func TestRetryTurnRejectsMissingTurn(t *testing.T) {
-	host := newRetryTestHost(retryMockStore{turnFound: false})
+	host := newRetryTestHost(&retryMockStore{turnFound: false})
 	_, err := host.RetryTurn(context.Background(), SessionRef{
 		WorkspaceID: "ws-1", AgentSessionID: "session-1",
 	}, "turn-missing")
@@ -89,7 +93,7 @@ func TestRetryTurnRejectsMissingTurn(t *testing.T) {
 }
 
 func TestRetryTurnRejectsUnsettledTurn(t *testing.T) {
-	host := newRetryTestHost(retryMockStore{
+	host := newRetryTestHost(&retryMockStore{
 		turnFound: true,
 		turn: storesqlite.Turn{
 			WorkspaceID: "ws-1", AgentSessionID: "session-1",
@@ -105,7 +109,7 @@ func TestRetryTurnRejectsUnsettledTurn(t *testing.T) {
 }
 
 func TestRetryTurnRejectsSettledTurnWithoutUserMessage(t *testing.T) {
-	host := newRetryTestHost(retryMockStore{
+	host := newRetryTestHost(&retryMockStore{
 		turnFound: true,
 		turn: storesqlite.Turn{
 			WorkspaceID: "ws-1", AgentSessionID: "session-1",
@@ -129,7 +133,7 @@ func TestRetryTurnRejectsSettledTurnWithoutUserMessage(t *testing.T) {
 func TestRetryTurnFindUserMessageExtractsText(t *testing.T) {
 	// Verify findTurnUserMessageContent correctly extracts user text from
 	// stored message payload. This is the core logic that feeds SendInput.
-	host := newRetryTestHost(retryMockStore{
+	host := newRetryTestHost(&retryMockStore{
 		turnFound: true,
 		turn: storesqlite.Turn{
 			WorkspaceID: "ws-1", AgentSessionID: "session-1",
@@ -162,7 +166,7 @@ func TestRetryTurnFindUserMessageExtractsText(t *testing.T) {
 }
 
 func TestRetryTurnFindUserMessageFallsBackToContentField(t *testing.T) {
-	host := newRetryTestHost(retryMockStore{
+	host := newRetryTestHost(&retryMockStore{
 		messages: storesqlite.MessagePage{
 			Messages: []storesqlite.Message{
 				{Role: "user", Payload: map[string]any{"content": "fallback text"}},
@@ -178,5 +182,35 @@ func TestRetryTurnFindUserMessageFallsBackToContentField(t *testing.T) {
 	}
 	if content[0].Text != "fallback text" {
 		t.Fatalf("content[0].Text = %q, want %q", content[0].Text, "fallback text")
+	}
+}
+
+// TestRetryTurnPassesCorrectTurnIDToMessageQuery verifies that RetryTurn
+// queries messages for the SPECIFIC turn being retried, not the entire
+// session. This prevents multi-turn sessions from returning the wrong
+// user message.
+func TestRetryTurnPassesCorrectTurnIDToMessageQuery(t *testing.T) {
+	store := &retryMockStore{
+		turnFound: true,
+		turn: storesqlite.Turn{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1",
+			TurnID: "turn-2", Phase: storesqlite.TurnPhaseSettled,
+		},
+		messages: storesqlite.MessagePage{
+			Messages: []storesqlite.Message{
+				{Role: "user", Payload: map[string]any{"text": "turn-2 input"}},
+			},
+		},
+		msgFound: true,
+	}
+	host := newRetryTestHost(store)
+	_, err := host.findTurnUserMessageContent(context.Background(), SessionRef{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1",
+	}, "turn-2")
+	if err != nil {
+		t.Fatalf("findTurnUserMessageContent error = %v", err)
+	}
+	if store.capturedTurnID != "turn-2" {
+		t.Fatalf("ListSessionMessages called with TurnID=%q, want %q", store.capturedTurnID, "turn-2")
 	}
 }

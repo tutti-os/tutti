@@ -71,6 +71,9 @@ func (*Store) recordTurnTransitionTx(
 	if transition.Origin != "" && !isKnownTurnOrigin(transition.Origin) {
 		return Turn{}, false, fmt.Errorf("unknown workspace agent turn origin %q", transition.Origin)
 	}
+	if transition.Relation != "" && !isKnownTurnRelation(string(transition.Relation)) {
+		return Turn{}, false, fmt.Errorf("unknown workspace agent turn relation %q", transition.Relation)
+	}
 	if err := validateLiveTurnSlotTx(ctx, tx, workspaceID, agentSessionID, turnID, phase); err != nil {
 		return Turn{}, false, err
 	}
@@ -137,7 +140,7 @@ ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
 		merged.StartedAtUnixMS, nullInt64(merged.SettledAtUnixMS),
 		merged.CreatedAtUnixMS, merged.UpdatedAtUnixMS, merged.Origin,
 		nullString(merged.SourceGoalOperationID), nullInt64(merged.SourceGoalRevision), nullInt64WhenAbsent(merged.SourceGoalRepairEpoch, merged.SourceGoalOperationID != ""),
-		nullString(merged.ParentTurnID), nullString(merged.Relation)); err != nil {
+		nullString(merged.ParentTurnID), nullString(string(merged.Relation))); err != nil {
 		return Turn{}, false, fmt.Errorf("upsert workspace agent turn: %w", err)
 	}
 	if merged.Phase == TurnPhaseSettled {
@@ -245,7 +248,7 @@ func mergeTurnTransition(existing Turn, hasExisting bool, transition TurnTransit
 		merged.SourceGoalRevision = transition.SourceGoalRevision
 		merged.SourceGoalRepairEpoch = transition.SourceGoalRepairEpoch
 		merged.ParentTurnID = strings.TrimSpace(transition.ParentTurnID)
-		merged.Relation = strings.TrimSpace(transition.Relation)
+		merged.Relation = TurnRelation(strings.TrimSpace(string(transition.Relation)))
 	}
 	merged.Phase = phase
 	merged.Backfilled = false
@@ -779,6 +782,14 @@ func isKnownTurnOutcome(outcome string) bool {
 
 func isKnownTurnOrigin(origin string) bool {
 	return canonical.IsKnownTurnOrigin(origin)
+}
+
+func isKnownTurnRelation(relation string) bool {
+	switch TurnRelation(relation) {
+	case TurnRelationRetry, TurnRelationEdit:
+		return true
+	}
+	return false
 }
 
 func isKnownInteractionKind(kind string) bool {

@@ -146,7 +146,7 @@ type RuntimeExecInput struct {
 	InitialTitleBase string
 	Metadata         map[string]any
 	Guidance         bool
-	TurnMetadata     *TurnMetadata
+	TurnLineage      *TurnLineage
 }
 
 type RuntimeExecResult struct {
@@ -290,18 +290,22 @@ type CreateSessionInput struct {
 	Visible                *bool
 }
 
-// TurnMetadata carries turn lineage for Retry/Edit. When non-nil, the runtime
-// persists parent_turn_id and relation on the new Turn.
-type TurnMetadata struct {
-	ParentTurnID string
-	Relation     string
-}
+// TurnRelation is the closed vocabulary for how a derived turn relates to
+// its parent. Using a named type prevents arbitrary strings from reaching
+// the Store; the SQLite CHECK constraint is the last line of defense.
+type TurnRelation string
 
-// Turn relation constants.
 const (
-	TurnRelationRetry = "retry"
-	TurnRelationEdit  = "edit"
+	TurnRelationRetry TurnRelation = "retry"
+	TurnRelationEdit  TurnRelation = "edit"
 )
+
+// TurnLineage carries turn lineage for Retry/Edit. When non-nil, the runtime
+// persists parent_turn_id and relation on the new Turn.
+type TurnLineage struct {
+	ParentTurnID string
+	Relation     TurnRelation
+}
 
 type SendInput struct {
 	Content       []PromptContentBlock
@@ -311,7 +315,7 @@ type SendInput struct {
 	// overrides any legacy clientSubmitId value carried in Metadata.
 	ClientSubmitID string
 	Guidance       bool
-	TurnMetadata   *TurnMetadata
+	TurnLineage    *TurnLineage
 }
 
 type SubmitInteractiveInput struct {
