@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/workspace-external-core",
-  "version": "0.1.0",
+  "version": "0.0.200",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -25,10 +25,10 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@tutti-os/agent-activity-core": "workspace:*",
-    "@tutti-os/ui-rich-text": "workspace:*",
-    "@tutti-os/workspace-file-reference": "workspace:*",
-    "@tutti-os/workspace-user-project": "workspace:*"
+    "@tutti-os/agent-activity-core": "0.0.200",
+    "@tutti-os/ui-rich-text": "0.0.200",
+    "@tutti-os/workspace-file-reference": "0.0.200",
+    "@tutti-os/workspace-user-project": "0.0.200"
   },
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",
