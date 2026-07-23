@@ -5,9 +5,9 @@ import {
   ListChecks,
   LoaderCircle,
   RotateCcw,
-  Sparkles,
   X
 } from "lucide-react";
+import { TaskIcon } from "@tutti-os/ui-system/icons";
 import {
   TuttiModePlanPanel,
   TuttiPlanIssuePanel,
@@ -184,7 +184,7 @@ export function TuttiWorkflowDock({
           : (failure?.message ?? "");
   const icon =
     review !== null ? (
-      <Sparkles aria-hidden className="size-3.5" />
+      <TaskIcon aria-hidden className="size-3.5" />
     ) : phase.kind === "materializing" ? (
       <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
     ) : execution !== null ? (
@@ -212,7 +212,9 @@ export function TuttiWorkflowDock({
             aria-label={intensityPopoverLabels.intensityLabel}
             data-testid="agent-gui-tutti-workflow-intensity"
             className={cn(
-              "flex items-center gap-1",
+              "flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors",
+              "hover:bg-[var(--transparency-hover)]",
+              "data-[state=open]:bg-[color-mix(in_srgb,var(--tutti-purple)_12%,transparent)] data-[state=open]:text-[var(--tutti-purple)]",
               review.intensityDiverged && "text-[var(--tutti-purple)]"
             )}
           >

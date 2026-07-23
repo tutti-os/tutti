@@ -182,7 +182,7 @@ empty array) renders all five entries.
 
 ## Tutti Mode capability
 
-Tutti Mode UI (empty-hero toggle, composer badge activation, `/tutti`) is a
+Tutti Mode UI (composer footer chip, composer badge activation, `/tutti`) is a
 host-gated product capability under
 `hostCapabilities.capabilityMenuState.tuttiMode.enabled`.
 

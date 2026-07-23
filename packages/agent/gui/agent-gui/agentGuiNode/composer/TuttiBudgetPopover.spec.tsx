@@ -19,9 +19,7 @@ const labels = {
   agentCountLabel: "Parallel Agents",
   agentCountCost: "1",
   agentCountBalance: "2–3",
-  agentCountPowerful: "Up to 4",
-  confirm: "Confirm",
-  cancel: "Cancel"
+  agentCountPowerful: "Up to 4"
 };
 
 function renderPopover({ intensity = 50 } = {}) {
@@ -124,21 +122,7 @@ describe("TuttiBudgetPopover", () => {
     ).toHaveTextContent("Up to 4");
   });
 
-  it("cancel closes without committing the draft", () => {
-    const { onConfirm } = renderPopover();
-    openPopover();
-
-    fireEvent.keyDown(
-      screen.getByRole("slider", { name: "Orchestration intensity" }),
-      { key: "ArrowRight" }
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
-    expect(screen.queryByText("Tutti orchestration")).toBeNull();
-    expect(onConfirm).not.toHaveBeenCalled();
-  });
-
-  it("confirm commits the edited draft value and closes", () => {
+  it("commits every slider movement directly and keeps the popup open", () => {
     const { onConfirm } = renderPopover({ intensity: 50 });
     openPopover();
 
@@ -146,11 +130,12 @@ describe("TuttiBudgetPopover", () => {
       screen.getByRole("slider", { name: "Orchestration intensity" }),
       { key: "ArrowRight" }
     );
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onConfirm).toHaveBeenCalledWith(51);
-    expect(screen.queryByText("Tutti orchestration")).toBeNull();
+    expect(screen.getByText("Tutti orchestration")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
   });
 
   it("reseeds the draft from the effective value on every open", () => {
@@ -160,14 +145,14 @@ describe("TuttiBudgetPopover", () => {
       screen.getByRole("slider", { name: "Orchestration intensity" }),
       { key: "ArrowRight" }
     );
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.keyDown(document.body, { key: "Escape" });
 
     openPopover();
 
     expect(
       screen.getByRole("slider", { name: "Orchestration intensity" })
     ).toHaveAttribute("aria-valuenow", "50");
-    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
   it("does not close on outside pointerdown", () => {

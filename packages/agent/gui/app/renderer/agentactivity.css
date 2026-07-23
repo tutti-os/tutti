@@ -3190,6 +3190,7 @@ aside.workspace-agents-status-panel
   padding: 12px;
   background: var(--agent-gui-surface-strong, var(--background-panel));
   pointer-events: auto;
+  transform: translateY(12px);
 }
 
 .agent-gui-chrome__composer-disclosure[data-expanded="true"]

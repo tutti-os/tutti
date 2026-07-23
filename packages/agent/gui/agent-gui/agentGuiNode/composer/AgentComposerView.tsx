@@ -611,14 +611,11 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             isPlanModeActive={input.isPlanModeActive}
             isTuttiModeActive={input.isTuttiModeActive}
             isTuttiModeUpdating={input.isTuttiModeUpdating}
-            tuttiModeOrchestrationIntensity={
-              input.tuttiModeOrchestrationIntensity
+            tuttiModeSupported={
+              input.props.capabilityMenuState?.tuttiMode?.enabled === true
             }
+            onTuttiModeChange={input.props.onTuttiModeChange}
             onClearPlanMode={input.onClearPlanMode}
-            onClearTuttiMode={input.onClearTuttiMode}
-            onTuttiModeOrchestrationIntensityChange={
-              input.onTuttiModeOrchestrationIntensityChange
-            }
             composerActionButton={composerActionButton}
             quickPromptControl={
               <AgentQuickPromptPopover

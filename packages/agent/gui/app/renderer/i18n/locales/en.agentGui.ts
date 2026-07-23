@@ -661,7 +661,7 @@ export const enAgentGui = {
   composerFileFolderUnsupported: "Folders cannot be attached here",
   composerFileTooLarge: "File is too large",
   composerFilePreparationFailed: "File preparation failed",
-  mentionPalette: "Mention context",
+  mentionPalette: "Reference or Invoke",
   addReference: "Add reference",
   addContent: "Add files and more",
   quickPrompts: enAgentGuiQuickPrompts,

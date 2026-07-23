@@ -534,10 +534,11 @@ banner.
 
 An active Tutti Mode composer badge is an intensity-settings entry, not a
 destructive toggle. Clicking it opens the UI-local `TuttiBudgetPopover`, seeded
-from the engine-projected orchestration intensity. Cancel discards the draft;
-Confirm sends the selected intensity through the existing Tutti Mode activation
-command. Turning Tutti Mode off remains a separate adjacent action, and both
-controls stay disabled while an activation update is unresolved.
+from the engine-projected orchestration intensity. Every slider movement sends
+the selected intensity directly through the existing Tutti Mode activation
+command -- there is no draft/confirm step. Turning Tutti Mode off remains a
+separate adjacent action, and both controls stay disabled while an activation
+update is unresolved.
 The Desktop command host and HTTP adapter must preserve both the optimistic
 CAS revision and the optional orchestration intensity; dropping either field
 turns a valid UI intent into a stale or semantically mismatched response.

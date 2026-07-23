@@ -218,6 +218,15 @@ export function useAgentGUIDetailScroll(input: Input) {
           }
           return;
         }
+        // Composer disclosure panels (e.g. Tutti mode plan review) are
+        // absolutely-positioned overlays that expand upward from their banner.
+        // They must not inflate the timeline's bottom safe-area — doing so
+        // would push the conversation stream up — but they do affect where
+        // floating controls (scroll-to-bottom) should anchor.
+        if (element.closest(`.${styles.composerDisclosurePanel}`)) {
+          floatingVisualTop = Math.min(floatingVisualTop, rect.top);
+          return;
+        }
         floatingVisualTop = Math.min(floatingVisualTop, rect.top);
         timelineVisualTop = Math.min(timelineVisualTop, rect.top);
       });

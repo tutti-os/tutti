@@ -991,7 +991,7 @@ button {
     --tooltip-background: oklch(0.264 0.01 255);
     --muted: oklch(0.282 0.008 255);
     --muted-foreground: oklch(0.734 0.012 255);
-    --accent-codex: rgb(79 143 255);
+    --accent-codex: rgb(90 155 255);
     --accent-claude: rgb(251 111 62);
     --tutti-purple: rgb(136 152 255);
     --border: oklch(0.352 0.012 255);
