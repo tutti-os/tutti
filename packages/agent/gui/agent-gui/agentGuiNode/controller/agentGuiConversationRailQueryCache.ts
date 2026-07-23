@@ -142,7 +142,6 @@ export function replaceConversationRailFirstPages(input: {
   }
   return {
     ...input.queryState,
-    pending: false,
     reconcilingSessionIds: [],
     sectionPageStates,
     sections

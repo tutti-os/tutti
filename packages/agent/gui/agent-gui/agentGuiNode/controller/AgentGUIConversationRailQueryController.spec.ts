@@ -107,6 +107,98 @@ describe("AgentGUIConversationRailQueryController", () => {
     engine.dispose();
   });
 
+  it("does not start a targeted page refresh while the rail scope is pending", async () => {
+    const engine = createTestAgentSessionEngine();
+    const session = normalizeAgentActivitySession({
+      activeTurnId: null,
+      agentSessionId: "session-during-first-pages",
+      agentTargetId: "local:codex",
+      cwd: "/workspace",
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "codex",
+      railSectionKey: "conversations",
+      title: "Session during first pages",
+      updatedAtUnixMs: 1,
+      workspaceId: "test-workspace"
+    });
+    let resolveFirstPages!: () => void;
+    const listSessionSections = vi.fn<
+      NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
+    >((input) =>
+      new Promise<void>((resolve) => {
+        resolveFirstPages = resolve;
+      }).then(() => ({
+        sections: [
+          {
+            hasMore: false,
+            kind: "conversations" as const,
+            sectionKey: "conversations",
+            sessions: [session],
+            totalCount: 1
+          }
+        ],
+        workspaceId: input.workspaceId
+      }))
+    );
+    const listSessionSectionPage = vi.fn(async (input) => ({
+      hasMore: false,
+      kind: "conversations" as const,
+      sectionKey: input.sectionKey,
+      sessions: [session],
+      totalCount: 1
+    }));
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime: { listSessionSections, listSessionSectionPage },
+      workspaceId: "test-workspace"
+    });
+    const scope: ConversationRailQueryScope = {
+      conversationFilter: { kind: "all" },
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    };
+    const scopeKey = resolveConversationRailQueryScope(
+      "test-workspace",
+      scope
+    ).scopeKey;
+    controller.configure(scope);
+
+    const detach = controller.attach();
+    await vi.waitFor(() =>
+      expect(engine.getSnapshot().engineRuntime.workspaceReconcile.status).toBe(
+        "ready"
+      )
+    );
+    engine.dispatch({ session, type: "session/upserted" });
+    expect(listSessionSectionPage).not.toHaveBeenCalled();
+
+    expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(true);
+    expect(controller.getSnapshot().runtimeRailResolvedScopeKey).not.toBe(
+      scopeKey
+    );
+    expect(controller.getSnapshot().runtimeRailMemberships).toBeNull();
+    expect(controller.isInteractionLocked()).toBe(true);
+
+    resolveFirstPages();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    expect(controller.getSnapshot().runtimeRailResolvedScopeKey).toBe(scopeKey);
+    expect(controller.getSnapshot().runtimeRailMemberships).toEqual([
+      expect.objectContaining({
+        id: "conversations",
+        sessionIds: [session.agentSessionId]
+      })
+    ]);
+    expect(controller.isInteractionLocked()).toBe(false);
+
+    detach();
+    engine.dispose();
+  });
+
   it("debounces conversation searches and immediately clears an active query", async () => {
     vi.useFakeTimers();
     try {

@@ -397,7 +397,9 @@ export class AgentGUIConversationRailQueryController {
     }
     if (
       !this.runtimeSectionsEnabled() ||
-      state.engineRuntime.workspaceReconcile.status === "loading"
+      state.engineRuntime.workspaceReconcile.status === "loading" ||
+      this.queryState.pending ||
+      this.queryState.resolvedScopeKey !== this.railSectionQueryKey
     ) {
       this.previousMembershipRecords = next;
       this.publishIfReady(state);
@@ -708,7 +710,6 @@ export class AgentGUIConversationRailQueryController {
       this.runtime.listSessionSectionPage
     );
   }
-
   private searchEnabled(): boolean {
     return Boolean(!this.scope?.previewMode && this.runtime.listSessionsPage);
   }

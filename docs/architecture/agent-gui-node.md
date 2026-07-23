@@ -364,6 +364,12 @@ candidate lookup and the batch mutation. AgentGUI fails that paired capability
 closed when either method is absent, so the view cannot expose an action that
 will resolve to an empty optional-method path.
 
+The full first-page query is the only Rail read that resolves a navigation
+scope and clears its pending state. Targeted section refresh and pagination may
+update only an already-resolved matching scope. A subordinate result must not
+cancel the full query, publish partial membership for an unresolved scope, or
+unlock Rail interactions.
+
 Presentation-invisible Sessions remain canonical engine entities and stay
 available through exact Session selectors for trusted open, reconcile, and
 command flows. Plural consumer selectors exclude them before Rail and Message
