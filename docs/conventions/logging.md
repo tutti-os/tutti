@@ -83,6 +83,10 @@ Choosing logs only must not query or write Agent Session records. Runtime contex
 the export summary, and other non-Session diagnostic snapshots remain part of the
 log bundle so exported evidence stays interpretable.
 
+Runtime-context transport diagnostics are allowlisted. Exports may include the
+bound/requested address and listener/PID paths, but must never serialize the
+transport access token or newly added transport snapshot fields by default.
+
 ## Error Codes
 
 Startup, transport, and supervision failures should carry a stable `error_code` in addition to the human-readable message.

@@ -60,6 +60,22 @@ import (
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
+type workspaceAgentTargetResolverSetter interface {
+	SetWorkspaceAgentTargetResolver(agentservice.WorkspaceAgentTargetResolver)
+}
+
+func configureWorkspaceAgentResolution(
+	agentSessions *agentservice.Service,
+	activityProjection workspaceAgentTargetResolverSetter,
+	workspaceAgents *workspaceagentservice.Service,
+	workspaceAgentTargets agentservice.WorkspaceAgentTargetResolver,
+) {
+	agentSessions.WorkspaceAgentResolver = workspaceAgents
+	if workspaceAgentTargets != nil {
+		activityProjection.SetWorkspaceAgentTargetResolver(workspaceAgentTargets)
+	}
+}
+
 func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service, computerService *computersvc.Service) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, *agentservice.ProviderAuthWatcher, error) {
 	workspaceStore, _ := store.(workspacedata.WorkbenchStore)
 	issueStore, _ := store.(workspaceissues.Store)
@@ -281,6 +297,12 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.ConfigureModelPlanBinding(modelBindingsStore, modelPlansStore)
 	agentSessionService.ModelCapabilities = agentModelCapabilities
 	agentSessionService.AgentTargetStore = agentTargetStore
+	configureWorkspaceAgentResolution(
+		agentSessionService,
+		agentActivityProjection,
+		workspaceAgents,
+		workspaceAgentsStore,
+	)
 	agentSessionService.AgentComposerDefaultsReader = preferences
 	preferences.AgentComposerDefaultsValidator = agentSessionService
 	agentSessionService.ExtensionComposerProfiles = agentExtensionComposerProfileResolver{

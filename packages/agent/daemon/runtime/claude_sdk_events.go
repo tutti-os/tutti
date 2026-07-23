@@ -170,6 +170,15 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 			payloadString(event.Payload, "content"),
 			true,
 		), false, nil
+	case "assistant_failed":
+		messageID := firstNonEmptyString(payloadString(event.Payload, "messageId"), adapterSession.assistantMessageID(providerTurnID))
+		return a.claudeSDKAssistantFailedEvents(
+			adapterSession,
+			session,
+			rootTurnID,
+			messageID,
+			payloadString(event.Payload, "content"),
+		), false, nil
 	case "thinking_delta":
 		messageID := firstNonEmptyString(payloadString(event.Payload, "messageId"), adapterSession.thinkingMessageID(providerTurnID))
 		content := firstNonEmpty(payloadString(event.Payload, "snapshot"), payloadString(event.Payload, "content"))
@@ -268,7 +277,7 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 
 func isClaudeSDKGoalClearHiddenEvent(eventType string) bool {
 	switch eventType {
-	case "turn_started", "assistant_delta", "assistant_completed", "thinking_delta", "thinking_completed":
+	case "turn_started", "assistant_delta", "assistant_completed", "assistant_failed", "thinking_delta", "thinking_completed":
 		return true
 	default:
 		return false
@@ -567,6 +576,12 @@ func (a *ClaudeCodeSDKAdapter) logClaudeSDKLifecycleEvent(agentSessionID string,
 	}
 	if payloadBoolValue(payload, "rootContinuationCandidate") {
 		args = append(args, "root_continuation_candidate", true)
+	}
+	if payloadBoolValue(payload, "sdkResultIsError") {
+		args = append(args, "sdk_result_is_error", true)
+	}
+	if apiErrorStatus := payloadInt64(payload, "sdkApiErrorStatus"); apiErrorStatus > 0 {
+		args = append(args, "sdk_api_error_status", apiErrorStatus)
 	}
 	if payloadBoolValue(payload, "syntheticTimeout") {
 		args = append(args, "synthetic_timeout", true)

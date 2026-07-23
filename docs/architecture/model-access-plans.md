@@ -132,6 +132,14 @@ Rules:
   `openai` plans, `claude-code` consumes `anthropic` plans. Cursor keeps
   provider-native credentials (no endpoint injection) — no fake UI entry
   points.
+- Anthropic-protocol credential injection follows the endpoint's Claude Code
+  contract, not a blanket “official versus relay” rule. `api.anthropic.com`
+  and Kimi Coding (`api.kimi.com`) require `ANTHROPIC_API_KEY`/`x-api-key`;
+  other relay-style endpoints keep the bearer `ANTHROPIC_AUTH_TOKEN` default.
+  Runtime preparation explicitly blanks the opposite credential variable so
+  inherited shell or Claude settings cannot override the Plan's auth shape.
+  Detection and the launched Agent must use equivalent authentication shapes,
+  or a plan can pass inference detection while every real Agent turn gets 401.
 - Model addressing is a second registry strategy
   (`ModelPlanModelAddressing`): OpenCode declares `provider_prefixed`, so its
   composer/settings values carry the injected `tutti-model-plan/<model>`

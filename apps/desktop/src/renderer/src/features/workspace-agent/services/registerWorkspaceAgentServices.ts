@@ -125,6 +125,7 @@ export function registerWorkspaceAgentServices(
       preferencesStore.featureFlags,
       EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG
     ),
+    resolveAgentTargetIconUrl: input.resolveAgentTargetIconUrl,
     tuttidClient: input.tuttidClient,
     workspaceId: input.workspaceId
   });
