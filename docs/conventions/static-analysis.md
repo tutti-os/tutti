@@ -58,6 +58,11 @@ Validation runners that spawn nested pnpm commands should read the root
 let runner-spawned lanes resolve a bare `pnpm` from `PATH`, because local
 package-manager shims can differ from the repository pin.
 
+Changed-aware lane fingerprints include base, staged, working-tree, and
+untracked content for each lane. Git subprocess buffers must accommodate large
+binary or generated diffs; the runner uses a bounded 64 MiB buffer so a normal
+large pull request does not fail before its validation lanes start.
+
 Tests and checks that create temporary Git repositories must also isolate
 repository-local Git environment variables before invoking Git. In particular,
 remove inherited `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, index/object

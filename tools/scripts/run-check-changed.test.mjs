@@ -129,6 +129,38 @@ test("lane input fingerprints change only with their own inputs", () => {
   assert.notEqual(staged, unstaged);
 });
 
+test("lane input fingerprints support diffs larger than the spawnSync default buffer", () => {
+  const workspaceRoot = mkdtempSync(join(tmpdir(), "check-large-fingerprint-"));
+  runFixtureGit(workspaceRoot, ["init", "--quiet"]);
+  const sourcePath = join(workspaceRoot, "source.txt");
+  writeFileSync(sourcePath, "initial\n");
+  runFixtureGit(workspaceRoot, ["add", "source.txt"]);
+  runFixtureGit(workspaceRoot, [
+    "-c",
+    "user.email=test@example.com",
+    "-c",
+    "user.name=Test",
+    "commit",
+    "--quiet",
+    "-m",
+    "init"
+  ]);
+  writeFileSync(sourcePath, `${"x".repeat(2 * 1024 * 1024)}\n`);
+
+  const fingerprint = buildLaneInputFingerprint({
+    baseRef: "HEAD",
+    lane: {
+      key: "large-source",
+      label: "large-source",
+      command: ["check", "source.txt"],
+      inputFiles: ["source.txt"]
+    },
+    workspaceRoot
+  });
+
+  assert.match(fingerprint, /^[a-f0-9]{64}$/u);
+});
+
 test("failed-only reuses only passed lanes with unchanged inputs", () => {
   const currentLanes = [
     laneFixture("passed-unchanged", "same"),
