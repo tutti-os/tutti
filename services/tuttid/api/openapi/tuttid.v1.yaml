@@ -5,6 +5,7 @@ info:
   description: Versioned local daemon API for tutti desktop, CLI, and approved local integrations.
 x-tutti-openapi-fragments:
   - packages/workspace/issue-manager/openapi/issue-manager.v1.yaml
+  - services/tuttid/api/openapi/mobile-remote-access.v1.yaml
 servers:
   - url: http://127.0.0.1:4545
 security:

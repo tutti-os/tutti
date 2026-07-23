@@ -3880,6 +3880,48 @@ export type CancelIssueManagerExecutionResponse = {
   canceledRunCount: number;
 };
 
+export type MobileRemotePairingChallenge = {
+  challengeId: string;
+  targetUserDeviceId: string;
+  controllerUserDeviceId?: string;
+  state: string;
+  pairingId?: string;
+  revision: number;
+  expiresAt: string;
+};
+
+export type MobileRemoteDevicePairing = {
+  pairingId: string;
+  controllerUserDeviceId: string;
+  targetUserDeviceId: string;
+  state: string;
+  revision: number;
+  confirmedAt: string;
+  revokedAt?: string;
+};
+
+export type MobileRemotePairingStartResponse = {
+  challenge: MobileRemotePairingChallenge;
+  qrPayload: string;
+};
+
+export type MobileRemotePairingChallengeResponse = {
+  challenge: MobileRemotePairingChallenge;
+};
+
+export type MobileRemotePairingResponse = {
+  pairing: MobileRemoteDevicePairing;
+};
+
+export type MobileRemotePairingConfirmResponse = {
+  pairing: MobileRemoteDevicePairing;
+  challenge: MobileRemotePairingChallenge;
+};
+
+export type MobileRemotePairingListResponse = {
+  pairings: Array<MobileRemoteDevicePairing>;
+};
+
 export type CliCommandId = string;
 
 export type WorkspaceId = string;
@@ -3961,6 +4003,10 @@ export type IssueManagerStatusFilter2 = IssueManagerStatusFilter;
  * Case-insensitive substring search over the visible title only.
  */
 export type IssueManagerSearchQuery = string;
+
+export type MobileRemoteChallengeId = string;
+
+export type MobileRemotePairingId = string;
 
 export type GetHealthData = {
   body?: never;
@@ -13839,3 +13885,196 @@ export type CompleteWorkspaceIssueTaskRunResponses = {
 
 export type CompleteWorkspaceIssueTaskRunResponse =
   CompleteWorkspaceIssueTaskRunResponses[keyof CompleteWorkspaceIssueTaskRunResponses];
+
+export type StartMobileRemotePairingData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/mobile-remote-access/pairing-challenges";
+};
+
+export type StartMobileRemotePairingErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type StartMobileRemotePairingError =
+  StartMobileRemotePairingErrors[keyof StartMobileRemotePairingErrors];
+
+export type StartMobileRemotePairingResponses = {
+  /**
+   * Pairing challenge created
+   */
+  200: MobileRemotePairingStartResponse;
+};
+
+export type StartMobileRemotePairingResponse =
+  StartMobileRemotePairingResponses[keyof StartMobileRemotePairingResponses];
+
+export type GetMobileRemotePairingChallengeData = {
+  body?: never;
+  path: {
+    challengeID: string;
+  };
+  query?: never;
+  url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}";
+};
+
+export type GetMobileRemotePairingChallengeErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetMobileRemotePairingChallengeError =
+  GetMobileRemotePairingChallengeErrors[keyof GetMobileRemotePairingChallengeErrors];
+
+export type GetMobileRemotePairingChallengeResponses = {
+  /**
+   * Current pairing challenge
+   */
+  200: MobileRemotePairingChallengeResponse;
+};
+
+export type GetMobileRemotePairingChallengeResponse =
+  GetMobileRemotePairingChallengeResponses[keyof GetMobileRemotePairingChallengeResponses];
+
+export type ConfirmMobileRemotePairingData = {
+  body?: never;
+  path: {
+    challengeID: string;
+  };
+  query?: never;
+  url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm";
+};
+
+export type ConfirmMobileRemotePairingErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ConfirmMobileRemotePairingError =
+  ConfirmMobileRemotePairingErrors[keyof ConfirmMobileRemotePairingErrors];
+
+export type ConfirmMobileRemotePairingResponses = {
+  /**
+   * Pairing confirmed
+   */
+  200: MobileRemotePairingConfirmResponse;
+};
+
+export type ConfirmMobileRemotePairingResponse =
+  ConfirmMobileRemotePairingResponses[keyof ConfirmMobileRemotePairingResponses];
+
+export type ListMobileRemotePairingsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/mobile-remote-access/pairings";
+};
+
+export type ListMobileRemotePairingsErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListMobileRemotePairingsError =
+  ListMobileRemotePairingsErrors[keyof ListMobileRemotePairingsErrors];
+
+export type ListMobileRemotePairingsResponses = {
+  /**
+   * Pairings for this desktop device
+   */
+  200: MobileRemotePairingListResponse;
+};
+
+export type ListMobileRemotePairingsResponse =
+  ListMobileRemotePairingsResponses[keyof ListMobileRemotePairingsResponses];
+
+export type RevokeMobileRemotePairingData = {
+  body?: never;
+  path: {
+    pairingID: string;
+  };
+  query?: never;
+  url: "/v1/mobile-remote-access/pairings/{pairingID}";
+};
+
+export type RevokeMobileRemotePairingErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type RevokeMobileRemotePairingError =
+  RevokeMobileRemotePairingErrors[keyof RevokeMobileRemotePairingErrors];
+
+export type RevokeMobileRemotePairingResponses = {
+  /**
+   * Pairing revoked
+   */
+  200: MobileRemotePairingResponse;
+};
+
+export type RevokeMobileRemotePairingResponse =
+  RevokeMobileRemotePairingResponses[keyof RevokeMobileRemotePairingResponses];

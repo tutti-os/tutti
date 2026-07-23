@@ -5272,6 +5272,55 @@ type LoadLocalWorkspaceAppRequest struct {
 	SourceDir      string `json:"sourceDir"`
 }
 
+// MobileRemoteDevicePairing defines model for MobileRemoteDevicePairing.
+type MobileRemoteDevicePairing struct {
+	ConfirmedAt            time.Time  `json:"confirmedAt"`
+	ControllerUserDeviceId string     `json:"controllerUserDeviceId"`
+	PairingId              string     `json:"pairingId"`
+	Revision               int64      `json:"revision"`
+	RevokedAt              *time.Time `json:"revokedAt,omitempty"`
+	State                  string     `json:"state"`
+	TargetUserDeviceId     string     `json:"targetUserDeviceId"`
+}
+
+// MobileRemotePairingChallenge defines model for MobileRemotePairingChallenge.
+type MobileRemotePairingChallenge struct {
+	ChallengeId            string    `json:"challengeId"`
+	ControllerUserDeviceId *string   `json:"controllerUserDeviceId,omitempty"`
+	ExpiresAt              time.Time `json:"expiresAt"`
+	PairingId              *string   `json:"pairingId,omitempty"`
+	Revision               int64     `json:"revision"`
+	State                  string    `json:"state"`
+	TargetUserDeviceId     string    `json:"targetUserDeviceId"`
+}
+
+// MobileRemotePairingChallengeResponse defines model for MobileRemotePairingChallengeResponse.
+type MobileRemotePairingChallengeResponse struct {
+	Challenge MobileRemotePairingChallenge `json:"challenge"`
+}
+
+// MobileRemotePairingConfirmResponse defines model for MobileRemotePairingConfirmResponse.
+type MobileRemotePairingConfirmResponse struct {
+	Challenge MobileRemotePairingChallenge `json:"challenge"`
+	Pairing   MobileRemoteDevicePairing    `json:"pairing"`
+}
+
+// MobileRemotePairingListResponse defines model for MobileRemotePairingListResponse.
+type MobileRemotePairingListResponse struct {
+	Pairings []MobileRemoteDevicePairing `json:"pairings"`
+}
+
+// MobileRemotePairingResponse defines model for MobileRemotePairingResponse.
+type MobileRemotePairingResponse struct {
+	Pairing MobileRemoteDevicePairing `json:"pairing"`
+}
+
+// MobileRemotePairingStartResponse defines model for MobileRemotePairingStartResponse.
+type MobileRemotePairingStartResponse struct {
+	Challenge MobileRemotePairingChallenge `json:"challenge"`
+	QrPayload string                       `json:"qrPayload"`
+}
+
 // ModelPlan Workspace-level model access plan. Credentials are stored daemon-side only; hasApiKey is the only credential signal in responses.
 type ModelPlan struct {
 	BaseUrl      *string            `json:"baseUrl,omitempty"`
@@ -7160,6 +7209,12 @@ type IssueManagerTopicID = string
 
 // IssueManagerTopicIDQuery defines model for IssueManagerTopicIDQuery.
 type IssueManagerTopicIDQuery = string
+
+// MobileRemoteChallengeID defines model for MobileRemoteChallengeID.
+type MobileRemoteChallengeID = string
+
+// MobileRemotePairingID defines model for MobileRemotePairingID.
+type MobileRemotePairingID = string
 
 // ModelPlanID defines model for ModelPlanID.
 type ModelPlanID = string

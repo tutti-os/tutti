@@ -86,6 +86,21 @@ type ServerInterface interface {
 	// Get daemon health status
 	// (GET /v1/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// Register this desktop device and create a short-lived pairing challenge
+	// (POST /v1/mobile-remote-access/pairing-challenges)
+	StartMobileRemotePairing(w http.ResponseWriter, r *http.Request)
+	// Read the latest pairing challenge state
+	// (GET /v1/mobile-remote-access/pairing-challenges/{challengeID})
+	GetMobileRemotePairingChallenge(w http.ResponseWriter, r *http.Request, challengeID MobileRemoteChallengeID)
+	// Confirm a claimed challenge with the daemon-held target device key
+	// (POST /v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm)
+	ConfirmMobileRemotePairing(w http.ResponseWriter, r *http.Request, challengeID MobileRemoteChallengeID)
+	// List pairings for this desktop device
+	// (GET /v1/mobile-remote-access/pairings)
+	ListMobileRemotePairings(w http.ResponseWriter, r *http.Request)
+	// Revoke an active pairing
+	// (DELETE /v1/mobile-remote-access/pairings/{pairingID})
+	RevokeMobileRemotePairing(w http.ResponseWriter, r *http.Request, pairingID MobileRemotePairingID)
 	// Get persisted desktop preferences
 	// (GET /v1/preferences/desktop)
 	GetDesktopPreferences(w http.ResponseWriter, r *http.Request)
@@ -1296,6 +1311,142 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartMobileRemotePairing operation middleware
+func (siw *ServerInterfaceWrapper) StartMobileRemotePairing(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartMobileRemotePairing(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMobileRemotePairingChallenge operation middleware
+func (siw *ServerInterfaceWrapper) GetMobileRemotePairingChallenge(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "challengeID" -------------
+	var challengeID MobileRemoteChallengeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "challengeID", r.PathValue("challengeID"), &challengeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "challengeID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMobileRemotePairingChallenge(w, r, challengeID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmMobileRemotePairing operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmMobileRemotePairing(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "challengeID" -------------
+	var challengeID MobileRemoteChallengeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "challengeID", r.PathValue("challengeID"), &challengeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "challengeID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmMobileRemotePairing(w, r, challengeID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMobileRemotePairings operation middleware
+func (siw *ServerInterfaceWrapper) ListMobileRemotePairings(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMobileRemotePairings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeMobileRemotePairing operation middleware
+func (siw *ServerInterfaceWrapper) RevokeMobileRemotePairing(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "pairingID" -------------
+	var pairingID MobileRemotePairingID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "pairingID", r.PathValue("pairingID"), &pairingID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pairingID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeMobileRemotePairing(w, r, pairingID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9029,6 +9180,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/cli/commands/{commandID}/invoke", wrapper.InvokeCliCommand)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events/ws", wrapper.AttachEventStream)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/health", wrapper.GetHealth)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/mobile-remote-access/pairing-challenges", wrapper.StartMobileRemotePairing)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/mobile-remote-access/pairing-challenges/{challengeID}", wrapper.GetMobileRemotePairingChallenge)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm", wrapper.ConfirmMobileRemotePairing)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/mobile-remote-access/pairings", wrapper.ListMobileRemotePairings)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/mobile-remote-access/pairings/{pairingID}", wrapper.RevokeMobileRemotePairing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/preferences/desktop", wrapper.GetDesktopPreferences)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/preferences/desktop", wrapper.PutDesktopPreferences)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/track", wrapper.TrackEvents)
@@ -11242,6 +11398,392 @@ func (response GetHealth405JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartMobileRemotePairingRequestObject struct {
+}
+
+type StartMobileRemotePairingResponseObject interface {
+	VisitStartMobileRemotePairingResponse(w http.ResponseWriter) error
+}
+
+type StartMobileRemotePairing200JSONResponse MobileRemotePairingStartResponse
+
+func (response StartMobileRemotePairing200JSONResponse) VisitStartMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartMobileRemotePairing401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response StartMobileRemotePairing401JSONResponse) VisitStartMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartMobileRemotePairing405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response StartMobileRemotePairing405JSONResponse) VisitStartMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartMobileRemotePairing503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response StartMobileRemotePairing503JSONResponse) VisitStartMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMobileRemotePairingChallengeRequestObject struct {
+	ChallengeID MobileRemoteChallengeID `json:"challengeID"`
+}
+
+type GetMobileRemotePairingChallengeResponseObject interface {
+	VisitGetMobileRemotePairingChallengeResponse(w http.ResponseWriter) error
+}
+
+type GetMobileRemotePairingChallenge200JSONResponse MobileRemotePairingChallengeResponse
+
+func (response GetMobileRemotePairingChallenge200JSONResponse) VisitGetMobileRemotePairingChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMobileRemotePairingChallenge400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GetMobileRemotePairingChallenge400JSONResponse) VisitGetMobileRemotePairingChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMobileRemotePairingChallenge401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetMobileRemotePairingChallenge401JSONResponse) VisitGetMobileRemotePairingChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMobileRemotePairingChallenge405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetMobileRemotePairingChallenge405JSONResponse) VisitGetMobileRemotePairingChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMobileRemotePairingChallenge503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetMobileRemotePairingChallenge503JSONResponse) VisitGetMobileRemotePairingChallengeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmMobileRemotePairingRequestObject struct {
+	ChallengeID MobileRemoteChallengeID `json:"challengeID"`
+}
+
+type ConfirmMobileRemotePairingResponseObject interface {
+	VisitConfirmMobileRemotePairingResponse(w http.ResponseWriter) error
+}
+
+type ConfirmMobileRemotePairing200JSONResponse MobileRemotePairingConfirmResponse
+
+func (response ConfirmMobileRemotePairing200JSONResponse) VisitConfirmMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmMobileRemotePairing400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ConfirmMobileRemotePairing400JSONResponse) VisitConfirmMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmMobileRemotePairing401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ConfirmMobileRemotePairing401JSONResponse) VisitConfirmMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmMobileRemotePairing405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ConfirmMobileRemotePairing405JSONResponse) VisitConfirmMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmMobileRemotePairing503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ConfirmMobileRemotePairing503JSONResponse) VisitConfirmMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMobileRemotePairingsRequestObject struct {
+}
+
+type ListMobileRemotePairingsResponseObject interface {
+	VisitListMobileRemotePairingsResponse(w http.ResponseWriter) error
+}
+
+type ListMobileRemotePairings200JSONResponse MobileRemotePairingListResponse
+
+func (response ListMobileRemotePairings200JSONResponse) VisitListMobileRemotePairingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMobileRemotePairings401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ListMobileRemotePairings401JSONResponse) VisitListMobileRemotePairingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMobileRemotePairings405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListMobileRemotePairings405JSONResponse) VisitListMobileRemotePairingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMobileRemotePairings503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListMobileRemotePairings503JSONResponse) VisitListMobileRemotePairingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMobileRemotePairingRequestObject struct {
+	PairingID MobileRemotePairingID `json:"pairingID"`
+}
+
+type RevokeMobileRemotePairingResponseObject interface {
+	VisitRevokeMobileRemotePairingResponse(w http.ResponseWriter) error
+}
+
+type RevokeMobileRemotePairing200JSONResponse MobileRemotePairingResponse
+
+func (response RevokeMobileRemotePairing200JSONResponse) VisitRevokeMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMobileRemotePairing400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response RevokeMobileRemotePairing400JSONResponse) VisitRevokeMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMobileRemotePairing401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response RevokeMobileRemotePairing401JSONResponse) VisitRevokeMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMobileRemotePairing405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response RevokeMobileRemotePairing405JSONResponse) VisitRevokeMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeMobileRemotePairing503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response RevokeMobileRemotePairing503JSONResponse) VisitRevokeMobileRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -32099,6 +32641,21 @@ type StrictServerInterface interface {
 	// Get daemon health status
 	// (GET /v1/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+	// Register this desktop device and create a short-lived pairing challenge
+	// (POST /v1/mobile-remote-access/pairing-challenges)
+	StartMobileRemotePairing(ctx context.Context, request StartMobileRemotePairingRequestObject) (StartMobileRemotePairingResponseObject, error)
+	// Read the latest pairing challenge state
+	// (GET /v1/mobile-remote-access/pairing-challenges/{challengeID})
+	GetMobileRemotePairingChallenge(ctx context.Context, request GetMobileRemotePairingChallengeRequestObject) (GetMobileRemotePairingChallengeResponseObject, error)
+	// Confirm a claimed challenge with the daemon-held target device key
+	// (POST /v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm)
+	ConfirmMobileRemotePairing(ctx context.Context, request ConfirmMobileRemotePairingRequestObject) (ConfirmMobileRemotePairingResponseObject, error)
+	// List pairings for this desktop device
+	// (GET /v1/mobile-remote-access/pairings)
+	ListMobileRemotePairings(ctx context.Context, request ListMobileRemotePairingsRequestObject) (ListMobileRemotePairingsResponseObject, error)
+	// Revoke an active pairing
+	// (DELETE /v1/mobile-remote-access/pairings/{pairingID})
+	RevokeMobileRemotePairing(ctx context.Context, request RevokeMobileRemotePairingRequestObject) (RevokeMobileRemotePairingResponseObject, error)
 	// Get persisted desktop preferences
 	// (GET /v1/preferences/desktop)
 	GetDesktopPreferences(ctx context.Context, request GetDesktopPreferencesRequestObject) (GetDesktopPreferencesResponseObject, error)
@@ -33287,6 +33844,132 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartMobileRemotePairing operation middleware
+func (sh *strictHandler) StartMobileRemotePairing(w http.ResponseWriter, r *http.Request) {
+	var request StartMobileRemotePairingRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartMobileRemotePairing(ctx, request.(StartMobileRemotePairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartMobileRemotePairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartMobileRemotePairingResponseObject); ok {
+		if err := validResponse.VisitStartMobileRemotePairingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMobileRemotePairingChallenge operation middleware
+func (sh *strictHandler) GetMobileRemotePairingChallenge(w http.ResponseWriter, r *http.Request, challengeID MobileRemoteChallengeID) {
+	var request GetMobileRemotePairingChallengeRequestObject
+
+	request.ChallengeID = challengeID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMobileRemotePairingChallenge(ctx, request.(GetMobileRemotePairingChallengeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMobileRemotePairingChallenge")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMobileRemotePairingChallengeResponseObject); ok {
+		if err := validResponse.VisitGetMobileRemotePairingChallengeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfirmMobileRemotePairing operation middleware
+func (sh *strictHandler) ConfirmMobileRemotePairing(w http.ResponseWriter, r *http.Request, challengeID MobileRemoteChallengeID) {
+	var request ConfirmMobileRemotePairingRequestObject
+
+	request.ChallengeID = challengeID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfirmMobileRemotePairing(ctx, request.(ConfirmMobileRemotePairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfirmMobileRemotePairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfirmMobileRemotePairingResponseObject); ok {
+		if err := validResponse.VisitConfirmMobileRemotePairingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListMobileRemotePairings operation middleware
+func (sh *strictHandler) ListMobileRemotePairings(w http.ResponseWriter, r *http.Request) {
+	var request ListMobileRemotePairingsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMobileRemotePairings(ctx, request.(ListMobileRemotePairingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMobileRemotePairings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMobileRemotePairingsResponseObject); ok {
+		if err := validResponse.VisitListMobileRemotePairingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeMobileRemotePairing operation middleware
+func (sh *strictHandler) RevokeMobileRemotePairing(w http.ResponseWriter, r *http.Request, pairingID MobileRemotePairingID) {
+	var request RevokeMobileRemotePairingRequestObject
+
+	request.PairingID = pairingID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeMobileRemotePairing(ctx, request.(RevokeMobileRemotePairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeMobileRemotePairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeMobileRemotePairingResponseObject); ok {
+		if err := validResponse.VisitRevokeMobileRemotePairingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -238,14 +238,16 @@ Google Play 账号。以下事项等正式分发前再处理：
 - Android 15 ARM64 emulator 上的 ICE -> pinned QUIC -> stream echo。
 - `tsh-server` 同账号设备 identity、QR pairing、撤销和 paired-device rendezvous；
 - room 与 paired-device 共用同一 DeviceLink attempt repository、TTL、限流和 ready 状态机。
+- Personal `tuttid` 已接入设备注册、QR challenge、Desktop confirm、配对列表和撤销；
+- Personal 配对 API 已进入生成的 Go/TypeScript daemon client，账号 cookie 和设备私钥不会返回给 UI。
 
 接下来按顺序推进：
 
-1. 发布共享 DeviceLink module，让 TSH 删除本地 transport 副本；
-2. 在 Personal Desktop 增加设备注册、配对入口和 Agent service stream adapter；
-3. scaffold `apps/mobile`，接入登录、设备列表和 Native DeviceLink bridge；
-4. 用 Android 真机跑通 QR 配对与 direct/Relay DeviceLink；
-5. 接入会话抽屉、对话流和 Composer。
+1. 给 Personal Desktop 增加最小配对入口，并用已登录账号验证真实 challenge；
+2. scaffold `apps/mobile`，接入登录、设备列表和 Native DeviceLink bridge；
+3. 用 Android 真机跑通 QR claim/confirm 与 direct/Relay DeviceLink；
+4. 增加 Personal Agent service stream adapter，接入会话抽屉、对话流和 Composer；
+5. Personal 闭环稳定后，再让 TSH 删除本地 transport 副本并消费共享 DeviceLink module。
 
 遇到问题时先看
 [Troubleshooting](../conventions/troubleshooting/README.md)，再根据上面的分层定位。

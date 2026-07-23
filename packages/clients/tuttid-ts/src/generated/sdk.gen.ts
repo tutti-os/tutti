@@ -58,6 +58,9 @@ import type {
   CompleteWorkspaceIssueTaskRunData,
   CompleteWorkspaceIssueTaskRunErrors,
   CompleteWorkspaceIssueTaskRunResponses,
+  ConfirmMobileRemotePairingData,
+  ConfirmMobileRemotePairingErrors,
+  ConfirmMobileRemotePairingResponses,
   CopyWorkspaceFileEntryData,
   CopyWorkspaceFileEntryErrors,
   CopyWorkspaceFileEntryResponses,
@@ -220,6 +223,9 @@ import type {
   GetHealthData,
   GetHealthErrors,
   GetHealthResponses,
+  GetMobileRemotePairingChallengeData,
+  GetMobileRemotePairingChallengeErrors,
+  GetMobileRemotePairingChallengeResponses,
   GetModelPlanData,
   GetModelPlanErrors,
   GetModelPlanResponses,
@@ -325,6 +331,9 @@ import type {
   ListCollaborationRunsData,
   ListCollaborationRunsErrors,
   ListCollaborationRunsResponses,
+  ListMobileRemotePairingsData,
+  ListMobileRemotePairingsErrors,
+  ListMobileRemotePairingsResponses,
   ListModelPlanReferencesData,
   ListModelPlanReferencesErrors,
   ListModelPlanReferencesResponses,
@@ -496,6 +505,9 @@ import type {
   RetryWorkspaceAppFactoryJobValidationErrors,
   RetryWorkspaceAppFactoryJobValidationResponses,
   RetryWorkspaceAppResponses,
+  RevokeMobileRemotePairingData,
+  RevokeMobileRemotePairingErrors,
+  RevokeMobileRemotePairingResponses,
   RollbackWorkspaceAppData,
   RollbackWorkspaceAppErrors,
   RollbackWorkspaceAppResponses,
@@ -541,6 +553,9 @@ import type {
   StartEnabledWorkspaceAppsData,
   StartEnabledWorkspaceAppsErrors,
   StartEnabledWorkspaceAppsResponses,
+  StartMobileRemotePairingData,
+  StartMobileRemotePairingErrors,
+  StartMobileRemotePairingResponses,
   StopAllWorkspaceAppsData,
   StopAllWorkspaceAppsErrors,
   StopAllWorkspaceAppsResponses,
@@ -4529,4 +4544,88 @@ export const completeWorkspaceIssueTaskRun = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Register this desktop device and create a short-lived pairing challenge
+ */
+export const startMobileRemotePairing = <ThrowOnError extends boolean = false>(
+  options?: Options<StartMobileRemotePairingData, ThrowOnError>
+) =>
+  (options?.client ?? client).post<
+    StartMobileRemotePairingResponses,
+    StartMobileRemotePairingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairing-challenges",
+    ...options
+  });
+
+/**
+ * Read the latest pairing challenge state
+ */
+export const getMobileRemotePairingChallenge = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetMobileRemotePairingChallengeData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetMobileRemotePairingChallengeResponses,
+    GetMobileRemotePairingChallengeErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}",
+    ...options
+  });
+
+/**
+ * Confirm a claimed challenge with the daemon-held target device key
+ */
+export const confirmMobileRemotePairing = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ConfirmMobileRemotePairingData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ConfirmMobileRemotePairingResponses,
+    ConfirmMobileRemotePairingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm",
+    ...options
+  });
+
+/**
+ * List pairings for this desktop device
+ */
+export const listMobileRemotePairings = <ThrowOnError extends boolean = false>(
+  options?: Options<ListMobileRemotePairingsData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    ListMobileRemotePairingsResponses,
+    ListMobileRemotePairingsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairings",
+    ...options
+  });
+
+/**
+ * Revoke an active pairing
+ */
+export const revokeMobileRemotePairing = <ThrowOnError extends boolean = false>(
+  options: Options<RevokeMobileRemotePairingData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    RevokeMobileRemotePairingResponses,
+    RevokeMobileRemotePairingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairings/{pairingID}",
+    ...options
   });
