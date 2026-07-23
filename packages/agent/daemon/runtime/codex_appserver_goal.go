@@ -12,7 +12,7 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func (*CodexAppServerAdapter) steerActiveTurn(
+func (a *CodexAppServerAdapter) steerActiveTurn(
 	ctx context.Context,
 	appSession *codexAppServerSession,
 	session Session,
@@ -24,7 +24,11 @@ func (*CodexAppServerAdapter) steerActiveTurn(
 	activeTurnID string,
 	emit EventSink,
 ) ([]activityshared.Event, error) {
-	_, err := appSession.client.TurnSteerNoHandler(ctx, map[string]any{
+	timeout := a.turnSteerTimeout
+	if timeout <= 0 {
+		timeout = defaultCodexAppServerTurnSteerTimeout
+	}
+	_, err := appSession.client.TurnSteerNoHandler(ctx, timeout, map[string]any{
 		"threadId":       appSession.threadID,
 		"expectedTurnId": activeTurnID,
 		"input":          appServerUserInput(providerContent),

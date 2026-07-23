@@ -90,6 +90,8 @@ type scriptedAppServerConnection struct {
 	childNicknames                  map[string]string // thread/read agentNickname responses by threadId
 	turnStartEntered                chan struct{}
 	turnStartRelease                chan struct{}
+	hangTurnStart                   bool
+	hangSteer                       bool
 	threadName                      string
 	commandApproval                 bool
 	userInputRequest                bool
@@ -431,12 +433,16 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			foreignThreadNoise := c.foreignThreadNoise
 			turnStartEntered := c.turnStartEntered
 			turnStartRelease := c.turnStartRelease
+			hangTurnStart := c.hangTurnStart
 			c.mu.Unlock()
 			if turnStartEntered != nil {
 				close(turnStartEntered)
 			}
 			if turnStartRelease != nil {
 				<-turnStartRelease
+			}
+			if hangTurnStart {
+				continue
 			}
 			if steered {
 				// Mirror real codex steering (live-verified against codex
@@ -643,6 +649,12 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				c.completePendingTurn()
 			}
 		case appServerMethodTurnSteer:
+			c.mu.Lock()
+			hang := c.hangSteer
+			c.mu.Unlock()
+			if hang {
+				continue
+			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"turnId": "turn-1"}})
 		case appServerMethodThreadCompact:
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{}})

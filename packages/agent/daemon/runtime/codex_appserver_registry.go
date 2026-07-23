@@ -76,6 +76,37 @@ func (a *CodexAppServerAdapter) removeSession(agentSessionID string) {
 	a.mu.Unlock()
 }
 
+// invalidateSessionClient removes and closes only the client that failed its
+// turn/start acknowledgement. The identity check prevents a late failure from
+// closing a replacement process that another lifecycle operation installed.
+func (a *CodexAppServerAdapter) invalidateSessionClient(
+	agentSessionID string,
+	expectedClient *codexAppServerClient,
+) bool {
+	if a == nil || expectedClient == nil {
+		return false
+	}
+	key := strings.TrimSpace(agentSessionID)
+	a.mu.Lock()
+	appSession := a.sessions[key]
+	if appSession == nil || appSession.client != expectedClient {
+		a.mu.Unlock()
+		return false
+	}
+	pending := make([]*pendingInteractiveRequest, 0, len(appSession.pendingRequests))
+	for _, request := range appSession.pendingRequests {
+		pending = append(pending, request)
+	}
+	delete(a.sessions, key)
+	a.mu.Unlock()
+
+	for _, request := range pending {
+		request.finish(pendingInteractiveRequestStateSuperseded)
+	}
+	_ = expectedClient.Close()
+	return true
+}
+
 func (a *CodexAppServerAdapter) getSession(agentSessionID string) *codexAppServerSession {
 	if a == nil {
 		return nil

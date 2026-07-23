@@ -355,7 +355,8 @@ func (a *CodexAppServerAdapter) execBlocking(
 	// production; the blocking shell below only waits and returns.
 	a.markTurnSettleEmits(appTurn)
 
-	trace := newCodexAppServerTurnTrace(session, turnID, execMetadataFromContext(ctx))
+	execMetadata := execMetadataFromContext(ctx)
+	trace := newCodexAppServerTurnTrace(session, turnID, execMetadata)
 	turnParams := appServerTurnStartParams(
 		session,
 		appSession.threadID,
@@ -367,8 +368,15 @@ func (a *CodexAppServerAdapter) execBlocking(
 		a.config.commandNetworkAccess,
 	)
 	trace.Log("turn.start.params", codexAppServerTraceTurnStartParams(session, turnParams, providerContent))
+	turnStartAckTimeout := a.turnStartAckTimeout
+	if turnStartAckTimeout <= 0 {
+		turnStartAckTimeout = defaultCodexAppServerTurnStartAckTimeout
+	}
+	logAgentSubmitTrace("turn.start.requested", session, turnID, execMetadata, map[string]any{
+		"timeout_ms": turnStartAckTimeout.Milliseconds(),
+	})
 	turnStartedAt := time.Now()
-	result, err := appSession.client.TurnStart(ctx, turnParams,
+	result, err := appSession.client.TurnStart(ctx, turnStartAckTimeout, turnParams,
 		func(ctx context.Context, message acpMessage) error {
 			trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
 			next, err := a.handleAppServerMessage(ctx, appSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
@@ -376,10 +384,16 @@ func (a *CodexAppServerAdapter) execBlocking(
 			return err
 		})
 	if err != nil {
+		durationMS := time.Since(turnStartedAt).Milliseconds()
 		trace.Log("turn.start.failed", map[string]any{
-			"duration_ms": time.Since(turnStartedAt).Milliseconds(),
+			"duration_ms": durationMS,
 			"error":       err.Error(),
 		})
+		logAgentSubmitTrace("turn.start.failed", session, turnID, execMetadata, map[string]any{
+			"duration_ms": durationMS,
+			"error":       err.Error(),
+		})
+		invalidateClient := codexTurnStartClientUnhealthy(err, appSession.client)
 		a.endActiveTurn(session.AgentSessionID, appTurn)
 		if errors.Is(err, context.Canceled) || errors.Is(err, errPermissionRequestCanceled) {
 			terminalEvents := a.pendingRequestFailureEvents(session, turnID, errPermissionRequestCanceled)
@@ -393,10 +407,25 @@ func (a *CodexAppServerAdapter) execBlocking(
 			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err)))
 			emitTerminal(terminalEvents)
 		}
+		if invalidateClient && a.invalidateSessionClient(session.AgentSessionID, appSession.client) {
+			slog.Warn(
+				"agent session app-server client invalidated after turn/start failed",
+				"event", "agent_session.app_server.turn_start.client_invalidated",
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", appSession.threadID,
+				"turn_id", turnID,
+				"error", err.Error(),
+			)
+		}
 		return snapshotEvents(), nil
 	}
+	durationMS := time.Since(turnStartedAt).Milliseconds()
 	trace.Log("turn.start.succeeded", map[string]any{
-		"duration_ms": time.Since(turnStartedAt).Milliseconds(),
+		"duration_ms": durationMS,
+		"result_size": len(result),
+	})
+	logAgentSubmitTrace("turn.start.succeeded", session, turnID, execMetadata, map[string]any{
+		"duration_ms": durationMS,
 		"result_size": len(result),
 	})
 
@@ -445,6 +474,23 @@ func (a *CodexAppServerAdapter) execBlocking(
 	normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
 	emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
 	return snapshotEvents(), nil
+}
+
+func codexTurnStartClientUnhealthy(err error, client *codexAppServerClient) bool {
+	if errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, ErrSessionDisconnected) {
+		return true
+	}
+	if client == nil {
+		return true
+	}
+	select {
+	case <-client.Done():
+		return true
+	default:
+		return false
+	}
 }
 
 // pendingRequestFailureEvents resolves any still-pending approval or

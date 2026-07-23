@@ -360,6 +360,7 @@ func (c *codexAppServerClient) ThreadResume(
 
 func (c *codexAppServerClient) TurnStart(
 	ctx context.Context,
+	timeout time.Duration,
 	params map[string]any,
 	handler acpMessageHandler,
 ) (json.RawMessage, error) {
@@ -367,7 +368,7 @@ func (c *codexAppServerClient) TurnStart(
 	if err != nil {
 		return nil, err
 	}
-	client, caller := c.typed(0, handler, false)
+	client, caller := c.typed(timeout, handler, false)
 	_, err = client.TurnStart(ctx, typedParams)
 	if err != nil {
 		return nil, err
@@ -375,12 +376,16 @@ func (c *codexAppServerClient) TurnStart(
 	return caller.rawResult, nil
 }
 
-func (c *codexAppServerClient) TurnSteerNoHandler(ctx context.Context, params map[string]any) (json.RawMessage, error) {
+func (c *codexAppServerClient) TurnSteerNoHandler(
+	ctx context.Context,
+	timeout time.Duration,
+	params map[string]any,
+) (json.RawMessage, error) {
 	typedParams, err := codexProtoParams[codexproto.TurnSteerParams](params)
 	if err != nil {
 		return nil, err
 	}
-	client, caller := c.typed(0, nil, true)
+	client, caller := c.typed(timeout, nil, true)
 	_, err = client.TurnSteer(ctx, typedParams)
 	if err != nil {
 		return nil, err

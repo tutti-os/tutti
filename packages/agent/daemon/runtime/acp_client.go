@@ -75,6 +75,22 @@ type acpCallError struct {
 	Err    acpError
 }
 
+type acpCallTimeoutError struct {
+	Method  string
+	Timeout time.Duration
+}
+
+func (e *acpCallTimeoutError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("acp %s timed out after %s", e.Method, e.Timeout)
+}
+
+func (*acpCallTimeoutError) Unwrap() error {
+	return context.DeadlineExceeded
+}
+
 func (e *acpCallError) Error() string {
 	if e == nil {
 		return ""
@@ -222,7 +238,7 @@ func (c *acpClient) CallWithTimeout(
 	defer cancel()
 	result, err := c.callLocked(callCtx, method, params, handler)
 	if errors.Is(err, context.DeadlineExceeded) {
-		return nil, fmt.Errorf("acp %s timed out after %s", method, timeout)
+		return nil, &acpCallTimeoutError{Method: method, Timeout: timeout}
 	}
 	return result, err
 }
@@ -352,7 +368,7 @@ func (c *acpClient) CallNoHandlerWithTimeout(
 	defer cancel()
 	result, err := c.CallNoHandler(callCtx, method, params)
 	if errors.Is(err, context.DeadlineExceeded) {
-		return nil, fmt.Errorf("acp %s timed out after %s", method, timeout)
+		return nil, &acpCallTimeoutError{Method: method, Timeout: timeout}
 	}
 	return result, err
 }

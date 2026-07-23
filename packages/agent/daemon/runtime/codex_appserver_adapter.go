@@ -110,6 +110,15 @@ type CodexAppServerAdapterOptions struct {
 // honor turn/interrupt gracefully before force-closing the app-server process.
 const defaultCodexAppServerCancelGraceWindow = 3 * time.Second
 
+// defaultCodexAppServerTurnStartAckTimeout only bounds the immediate
+// turn/start acknowledgement. Turn output continues through notifications
+// without this deadline after the acknowledgement arrives.
+const defaultCodexAppServerTurnStartAckTimeout = acpStartCallTimeout
+
+// defaultCodexAppServerTurnSteerTimeout bounds guidance delivery to a running
+// turn so a missing app-server response cannot block the caller forever.
+const defaultCodexAppServerTurnSteerTimeout = 10 * time.Second
+
 // startupModelSteadyRetryCount is how many 30s-spaced model/list retries follow
 // the initial fast ramp before the background refresh gives up (~18 minutes
 // total), bounding the goroutine while covering realistic transient outages.
@@ -151,6 +160,12 @@ type CodexAppServerAdapter struct {
 	// cancelGraceWindow bounds the graceful-interrupt wait in Cancel before the
 	// process is force-closed. Zero falls back to the default.
 	cancelGraceWindow time.Duration
+	// turnStartAckTimeout bounds only the immediate turn/start RPC response.
+	// Zero falls back to the default.
+	turnStartAckTimeout time.Duration
+	// turnSteerTimeout bounds turn/steer guidance delivery. Zero falls back to
+	// the default.
+	turnSteerTimeout time.Duration
 	// cliVersionMu/cliVersionCached memoize the served CLI's --version result
 	// per adapter instance (each instance owns one command).
 	cliVersionMu     sync.Mutex
@@ -395,13 +410,15 @@ func newAppServerAdapter(
 	commandResolver ProviderCommandResolver,
 ) *CodexAppServerAdapter {
 	return &CodexAppServerAdapter{
-		transport:         transport,
-		host:              host,
-		config:            config,
-		commandResolver:   commandResolver,
-		sessions:          make(map[string]*codexAppServerSession),
-		lifecycleLocks:    make(map[string]*codexAppServerSessionLock),
-		cancelGraceWindow: defaultCodexAppServerCancelGraceWindow,
+		transport:           transport,
+		host:                host,
+		config:              config,
+		commandResolver:     commandResolver,
+		sessions:            make(map[string]*codexAppServerSession),
+		lifecycleLocks:      make(map[string]*codexAppServerSessionLock),
+		cancelGraceWindow:   defaultCodexAppServerCancelGraceWindow,
+		turnStartAckTimeout: defaultCodexAppServerTurnStartAckTimeout,
+		turnSteerTimeout:    defaultCodexAppServerTurnSteerTimeout,
 	}
 }
 
