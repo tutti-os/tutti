@@ -14,10 +14,12 @@ import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import {
   isContextCanceledMessage,
   isDifferentKnownConversationOwner,
+  isAgentGUITransportNoticeVisible,
   resolveActiveConversationBusyStatus,
   resolveConversationDetailStatus,
+  resolveAgentGUIHomeNoticeChrome,
+  resolveAgentGUIStopControl,
   resolveSlashStatus,
-  shouldShowAgentGUIStopButton,
   useStableSlashStatus
 } from "./agentGUIDetailModelHelpers";
 import { useAgentGUITimelineTransition } from "./useAgentGUITimelineTransition";
@@ -94,6 +96,9 @@ export function useAgentGUIDetailModel(input: Input) {
     () => ({ ...viewModel.interaction.sessionChrome, approval: null }),
     [viewModel.interaction.sessionChrome]
   );
+  const transportNoticeVisible = isAgentGUITransportNoticeVisible(
+    sessionChrome.recovery
+  );
   const rawSlashStatus = useMemo(
     () =>
       resolveSlashStatus({
@@ -126,6 +131,9 @@ export function useAgentGUIDetailModel(input: Input) {
     ]
   );
   const displayedInlineNotice = useMemo(() => {
+    if (transportNoticeVisible) {
+      return null;
+    }
     const inlineNotice =
       tuttiModeUpdateNotice ?? viewModel.interaction.inlineNotice;
     const inlineNoticeMessage = inlineNotice?.message.trim() ?? "";
@@ -158,6 +166,7 @@ export function useAgentGUIDetailModel(input: Input) {
     tuttiModeUpdateNotice,
     viewModel.rail.activeConversation?.status,
     viewModel.readiness.activeLiveState,
+    transportNoticeVisible,
     viewModel.interaction.inlineNotice
   ]);
   const inlineNoticeChrome = useMemo<AgentGUISessionChrome | null>(() => {
@@ -177,6 +186,10 @@ export function useAgentGUIDetailModel(input: Input) {
       rawState: null
     };
   }, [displayedInlineNotice]);
+  const homeNoticeChrome = resolveAgentGUIHomeNoticeChrome({
+    inlineNoticeChrome,
+    sessionChrome
+  });
   // Plan decisions replace the composer in the bottom dock: the card takes its slot
   // and the composer hides until it is acted on (optimistically cleared via
   // bottomDockDismissedPromptRequestId) or otherwise resolves.
@@ -185,6 +198,7 @@ export function useAgentGUIDetailModel(input: Input) {
     activePrompt?.kind === "plan-implementation";
   const activePromptIsVisible =
     activePrompt !== null &&
+    !transportNoticeVisible &&
     bottomDockDismissedPromptRequestId !== activePromptRequestId;
   const bottomDockReplacementPrompt =
     activePromptIsPlanDecision && activePromptIsVisible ? activePrompt : null;
@@ -199,7 +213,9 @@ export function useAgentGUIDetailModel(input: Input) {
       ? activePrompt
       : null;
   const composerActivePrompt =
-    activePromptIsPlanDecision || shouldLiftActivePromptAboveInlineNotice
+    !activePromptIsVisible ||
+    activePromptIsPlanDecision ||
+    shouldLiftActivePromptAboveInlineNotice
       ? null
       : activePrompt;
   const showUnavailableChatEmpty =
@@ -228,29 +244,30 @@ export function useAgentGUIDetailModel(input: Input) {
     viewModel.composer.canQueueWhileBusy && !isCollaboratorConversation;
   const composerDisabledReason = isCollaboratorConversation
     ? labels.collaboratorSessionReadOnlyPlaceholder
-    : viewModel.readiness.sessionRuntimeBlocked
-      ? labels.activatingSession
-      : null;
+    : null;
   const hasNonRetryableRecoveryFailure =
     (sessionChrome.recovery?.kind === "failed" &&
       sessionChrome.recovery.canRetry === false) ||
     sessionChrome.recovery?.kind === "resume-unavailable";
+  const runtimeBlocked =
+    viewModel.readiness.sessionRuntimeBlocked ||
+    viewModel.readiness.targetConnectionBlocked;
   const submitDisabled =
     hasNonRetryableRecoveryFailure ||
     isCollaboratorConversation ||
-    viewModel.readiness.sessionRuntimeBlocked ||
+    runtimeBlocked ||
     (!viewModel.composer.canSubmit && !canQueueWhileBusy);
   const composerDisabled =
-    hasNonRetryableRecoveryFailure ||
     isCollaboratorConversation ||
-    viewModel.readiness.sessionRuntimeBlocked ||
-    (!canQueueWhileBusy &&
-      (viewModel.interaction.pendingApproval !== null ||
-        viewModel.interaction.pendingInteractivePrompt !== null ||
-        viewModel.composer.isSubmitting ||
-        viewModel.composer.isInterrupting ||
-        viewModel.composer.isCreatingConversation));
-  const showStopButton = shouldShowAgentGUIStopButton({
+    (!runtimeBlocked &&
+      (hasNonRetryableRecoveryFailure ||
+        (!canQueueWhileBusy &&
+          (viewModel.interaction.pendingApproval !== null ||
+            viewModel.interaction.pendingInteractivePrompt !== null ||
+            viewModel.composer.isSubmitting ||
+            viewModel.composer.isInterrupting ||
+            viewModel.composer.isCreatingConversation))));
+  const stopControl = resolveAgentGUIStopControl({
     hasPendingApproval: viewModel.interaction.pendingApproval !== null,
     hasPendingInteractivePrompt:
       viewModel.interaction.pendingInteractivePrompt !== null,
@@ -260,10 +277,11 @@ export function useAgentGUIDetailModel(input: Input) {
     isCreatingConversation: viewModel.composer.isCreatingConversation,
     isInterrupting: viewModel.composer.isInterrupting,
     isSubmitting: viewModel.composer.isSubmitting,
-    isUnavailable:
-      viewModel.readiness.activeLiveState === "failed" ||
-      viewModel.readiness.sessionRuntimeBlocked
+    isUnavailable: viewModel.readiness.activeLiveState === "failed",
+    sessionRuntimeBlocked: runtimeBlocked
   });
+  const showStopButton = stopControl.visible;
+  const stopDisabled = stopControl.disabled;
   const conversationFlowLabels = useMemo(
     () => ({
       thinkingLabel: labels.thinkingLabel,
@@ -740,6 +758,7 @@ export function useAgentGUIDetailModel(input: Input) {
     emptyProviderReadinessGate,
     goalBannerLabels,
     hasActiveConversation,
+    homeNoticeChrome,
     inlineNoticeChrome,
     interactivePromptLabels,
     isCollaboratorConversation,
@@ -747,6 +766,7 @@ export function useAgentGUIDetailModel(input: Input) {
     selectedAgentTargetComingSoon,
     sessionChrome,
     showStopButton,
+    stopDisabled,
     showTimelineSkeleton,
     showUnavailableChatEmpty,
     slashStatus,

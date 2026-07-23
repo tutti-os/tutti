@@ -38,5 +38,12 @@ export const enAgentGuiRuntimeNotices = {
     "Plan implementation is awaiting confirmation",
   systemNoticePlanImplementationCompleted: "Plan implementation started",
   systemNoticeWarning: "Agent warning",
-  systemNoticeDefault: "Agent notice"
+  systemNoticeDefault: "Agent notice",
+  sharedDeviceLabel: "shared device",
+  runtimeConnecting: "Connecting to {{device}}…",
+  runtimeReconnectingAttempt: "Reconnecting to {{device}} · Retry {{attempt}}…",
+  runtimeUnavailable:
+    "Connection to {{device}} was lost. The system will retry automatically.",
+  runtimeUnavailableActive:
+    "Connection to {{device}} was lost. Sending and stopping are temporarily unavailable; the task may still be running on the device."
 } as const;

@@ -258,10 +258,32 @@ Runtime command availability is session-scoped whenever one workspace engine
 can contain Sessions backed by different transports. The host projects
 `available`, `transport_reconnecting`, or `transport_unavailable`; the engine
 uses that single fact to gate sends, cancellation, settings, and Interaction or
-plan responses. AgentGUI freezes the affected composer and interactive card in
-a loading state. It must not reuse the engine-wide connection state for this
-case, because one remote Session losing its owner must not disable Local Agent
-or another remote Session.
+plan responses. AgentGUI preserves an editable composer draft, disables
+runtime-dependent actions, and keeps an active Stop control visible but disabled
+until the transport recovers. It must not reuse the engine-wide connection state
+for this case, because one remote Session losing its owner must not disable Local
+Agent or another remote Session.
+
+Device connection presentation is target-scoped rather than Session-scoped.
+The host exposes a target connection source keyed by `agentTargetId` with the
+current status and retry attempt, and AgentGUI reads the active conversation
+target or the selected Home target. This lets a new-conversation composer show
+and enforce connection state before any Session exists. Session runtime
+availability remains the independent command safety gate for existing
+Sessions; it is not the source of device connection presentation.
+
+AgentGUI projects a blocked target connection through the chrome above the
+composer and gives it precedence over other recovery, approval, or prompt
+notices because those actions cannot complete while the target is blocked.
+An explicitly terminal `unavailable` state appears immediately. Initial
+`connecting` appears only after a 300-millisecond controller delay so short
+background connections do not flash. A recoverable host retry, including a
+dormant low-frequency retry, remains a neutral `connecting` presentation and
+updates the visible retry attempt without restarting the delay. During the
+initial delay, the raw target state already blocks commands, but AgentGUI keeps
+the existing recovery, approval, or prompt chrome visible until the connection
+notice replaces it. Recovery removes the notice without a success banner. The
+notice does not offer a manual retry because transport recovery is host-owned.
 
 ### 4.1 Read/write rules
 

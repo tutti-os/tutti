@@ -15,6 +15,7 @@ import type {
   AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
+  AgentGUITargetConnectionSource,
   AgentGUIHomeSuggestionId,
   AgentGUIAgentTarget,
   NodeFrame,
@@ -139,6 +140,7 @@ export interface AgentGUINodeHostCapabilities {
   providerReadinessGates?: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
+  targetConnectionSource?: AgentGUITargetConnectionSource | null;
   defaultAgentTargetId?: string | null;
   providerAuthAccountLabels?: Partial<Record<string, string>>;
   mentionService?: RichTextMentionService;
@@ -381,6 +383,7 @@ export function areAgentGUINodePropsEqual(
     pc.providerRailMode === nc.providerRailMode &&
     pc.comingSoonProviders === nc.comingSoonProviders &&
     pc.providerReadinessGates === nc.providerReadinessGates &&
+    pc.targetConnectionSource === nc.targetConnectionSource &&
     pc.defaultAgentTargetId === nc.defaultAgentTargetId &&
     pc.providerAuthAccountLabels === nc.providerAuthAccountLabels &&
     pc.mentionService === nc.mentionService &&

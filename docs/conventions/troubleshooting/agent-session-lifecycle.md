@@ -2,6 +2,34 @@
 
 [Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
 
+### A shared-device connection banner looks terminal while the host is still retrying
+
+- **Symptom:** AgentGUI keeps showing a strong connection-lost notice for a
+  shared device, so the user cannot tell whether recovery is still running.
+- **Quick checks:** Inspect host logs for
+  `shared-agent-query.caller.connection.retry`,
+  `shared-agent-query.caller.connection.dormant`, and
+  `shared-agent-query.caller.connection.dormant-summary`. Correlate them with
+  `desktop.device_link.diagnostic` when distinguishing direct, rendezvous, and
+  relay transport attempts. A dormant state means the host has moved from
+  short retry delays to low-frequency recovery; it is not a terminal failure.
+- **Root cause:** The query channel correctly blocked runtime-dependent
+  commands, but its recoverable unavailable state was projected directly as a
+  terminal target-connection error. The target event also omitted retry
+  progress, so an unchanged banner made periodic recovery invisible.
+- **Fix:** Keep Session runtime availability as the command-safety gate.
+  Separately project target-scoped connection status with a retry attempt.
+  Present recoverable unavailable states as neutral reconnecting progress,
+  reserve the strong unavailable notice for explicitly non-retryable failures,
+  and remove the notice silently after recovery.
+- **Validation:** Force the query channel into dormant recovery and verify each
+  failed probe increments the target retry attempt while the composer remains
+  blocked. Confirm the reconnecting notice updates without restarting its
+  visibility delay, a non-retryable failure is still immediate, and recovery
+  produces no success banner.
+- **References:**
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### Deleting an Agent Session leaves a Tutti plan active or emits duplicate removal events
 
 - **Symptom:** Deleting one Session removes the conversation but its pending

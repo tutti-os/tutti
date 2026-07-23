@@ -97,6 +97,7 @@ export interface AgentComposerProps {
   onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
   canQueueWhileBusy: boolean;
   showStopButton: boolean;
+  stopDisabled: boolean;
   activePrompt: AgentConversationPromptVM | null;
   activePromptKeyboardShortcutsEnabled?: boolean;
   promptTips?: readonly AgentComposerPromptTip[];

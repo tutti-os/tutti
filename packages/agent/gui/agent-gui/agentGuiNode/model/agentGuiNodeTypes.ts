@@ -43,7 +43,12 @@ export interface AgentGUISessionChrome {
   approval: AgentGUIApprovalRequest | null;
   recovery:
     | {
-        kind: "activating" | "failed" | "warning";
+        kind:
+          | "activating"
+          | "failed"
+          | "warning"
+          | "transport-connecting"
+          | "transport-unavailable";
         message: string;
         canRetry?: boolean;
         followupAction?: never;
@@ -421,6 +426,7 @@ export interface AgentGUIReadinessViewModel {
   activationError: string | null;
   activeConversationBusy: boolean;
   sessionRuntimeBlocked: boolean;
+  targetConnectionBlocked: boolean;
   providerReadinessGate: AgentGUIProviderReadinessGate | null;
 }
 

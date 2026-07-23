@@ -43,6 +43,45 @@ export function resolveAgentGUIProviderRailTargetSelection(input: {
     : "open-home-composer";
 }
 
+export function agentTargetForConversation(
+  conversation: AgentGUIConversationSummary | null,
+  targets: readonly AgentGUIAgentTarget[]
+): AgentGUIAgentTarget | null {
+  const agentTargetId = conversation?.agentTargetId?.trim() ?? "";
+  if (!agentTargetId) return null;
+  return (
+    targets.find((target) => target.agentTargetId === agentTargetId) ?? null
+  );
+}
+
+export function ownerDeviceLabelForConversation(
+  conversation: AgentGUIConversationSummary | null,
+  targets: readonly AgentGUIAgentTarget[]
+): string | null {
+  return (
+    agentTargetForConversation(
+      conversation,
+      targets
+    )?.ownerDeviceLabel?.trim() || null
+  );
+}
+
+export function targetConnectionForAgentGUIView(input: {
+  activeConversation: AgentGUIConversationSummary | null;
+  selectedTarget: AgentGUIAgentTarget | null;
+  targets: readonly AgentGUIAgentTarget[];
+}): { agentTargetId: string | null; ownerDeviceLabel: string | null } {
+  const presentationTarget = input.activeConversation
+    ? agentTargetForConversation(input.activeConversation, input.targets)
+    : input.selectedTarget;
+  return {
+    agentTargetId: input.activeConversation
+      ? input.activeConversation.agentTargetId?.trim() || null
+      : (presentationTarget?.agentTargetId?.trim() ?? null),
+    ownerDeviceLabel: presentationTarget?.ownerDeviceLabel?.trim() || null
+  };
+}
+
 export function agentActivityInteractionListsEqual(
   left: readonly AgentActivityInteraction[],
   right: readonly AgentActivityInteraction[]
