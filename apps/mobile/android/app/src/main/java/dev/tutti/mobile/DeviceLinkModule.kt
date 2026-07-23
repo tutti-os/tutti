@@ -317,9 +317,12 @@ class DeviceLinkModule(
         val output = ByteArrayOutputStream(size)
         while (output.size() < size) {
             val remaining = size - output.size()
-            val chunk = stream.read(minOf(remaining, MAX_READ_CHUNK).toLong())
-            require(chunk.isNotEmpty()) { "DeviceLink stream closed before the response completed" }
-            output.write(chunk)
+            val chunk = ByteArray(minOf(remaining, MAX_READ_CHUNK))
+            val count = stream.readInto(chunk).toInt()
+            require(count > 0 && count <= chunk.size) {
+                "DeviceLink stream closed before the response completed"
+            }
+            output.write(chunk, 0, count)
         }
         return output.toByteArray()
     }

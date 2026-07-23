@@ -109,6 +109,7 @@ CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 Android app login, native bridge, secure identity, and mobile transport diagnostics.
 
 - [Browser login returns to the App but remains signed out](./mobile.md#browser-login-returns-to-the-app-but-remains-signed-out)
+- [Android DeviceLink opens a session and then repeatedly restarts](./mobile.md#android-devicelink-opens-a-session-and-then-repeatedly-restarts)
 
 ## [Computer Use](./computer-use.md)
 

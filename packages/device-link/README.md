@@ -33,6 +33,13 @@ link facade:
 - authenticated bidirectional stream open/accept/read/write/deadline/close;
 - the loopback integration probe used by the Android build gate.
 
+The Android read boundary intentionally fills a caller-owned byte buffer and
+returns only a scalar count. Do not replace it with a Go `[]byte` plus `error`
+return while the pinned Go/cgo toolchain is affected by packed-result alignment
+failures: gomobile cannot preserve final bytes returned together with `io.EOF`,
+and the generated pointer-bearing result may abort the Android process before
+Java receives it.
+
 Account identity signatures, DeviceLink attempts, pairing scope, Agent HTTP
 framing, and foreground/background policy remain in the Android and tuttid
 product adapters. The mobile facade never accepts account cookies or Agent

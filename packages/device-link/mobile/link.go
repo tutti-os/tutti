@@ -165,16 +165,24 @@ type Stream struct {
 	once sync.Once
 }
 
-func (s *Stream) Read(maxBytes int) ([]byte, error) {
+func (s *Stream) ReadInto(buffer []byte) int {
 	if s == nil || s.conn == nil {
-		return nil, errors.New("device-link mobile stream is closed")
+		return -1
 	}
-	if maxBytes <= 0 || maxBytes > maxMobileStreamRead {
-		return nil, fmt.Errorf("device-link mobile stream read must be between 1 and %d bytes", maxMobileStreamRead)
+	if len(buffer) == 0 || len(buffer) > maxMobileStreamRead {
+		return -1
 	}
-	buffer := make([]byte, maxBytes)
 	count, err := s.conn.Read(buffer)
-	return buffer[:count], err
+	if count > 0 {
+		// Go readers may return final bytes together with io.EOF. The gomobile
+		// boundary cannot return both data and an error without losing the data,
+		// so the positive byte count always wins for this call.
+		return count
+	}
+	if err != nil {
+		return -1
+	}
+	return 0
 }
 
 func (s *Stream) Write(data []byte) (int, error) {
