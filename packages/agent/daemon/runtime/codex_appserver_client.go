@@ -362,13 +362,12 @@ func (c *codexAppServerClient) TurnStart(
 	ctx context.Context,
 	timeout time.Duration,
 	params map[string]any,
-	handler acpMessageHandler,
 ) (json.RawMessage, error) {
 	typedParams, err := codexProtoParams[codexproto.TurnStartParams](params)
 	if err != nil {
 		return nil, err
 	}
-	client, caller := c.typed(timeout, handler, false)
+	client, caller := c.typed(timeout, nil, false)
 	_, err = client.TurnStart(ctx, typedParams)
 	if err != nil {
 		return nil, err

@@ -376,13 +376,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 		"timeout_ms": turnStartAckTimeout.Milliseconds(),
 	})
 	turnStartedAt := time.Now()
-	result, err := appSession.client.TurnStart(ctx, turnStartAckTimeout, turnParams,
-		func(ctx context.Context, message acpMessage) error {
-			trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
-			next, err := a.handleAppServerMessage(ctx, appSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
-			emitEvents(next)
-			return err
-		})
+	result, err := appSession.client.TurnStart(ctx, turnStartAckTimeout, turnParams)
 	if err != nil {
 		durationMS := time.Since(turnStartedAt).Milliseconds()
 		trace.Log("turn.start.failed", map[string]any{
