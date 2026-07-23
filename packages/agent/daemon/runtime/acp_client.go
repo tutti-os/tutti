@@ -75,22 +75,6 @@ type acpCallError struct {
 	Err    acpError
 }
 
-type acpCallTimeoutError struct {
-	Method  string
-	Timeout time.Duration
-}
-
-func (e *acpCallTimeoutError) Error() string {
-	if e == nil {
-		return ""
-	}
-	return fmt.Sprintf("acp %s timed out after %s", e.Method, e.Timeout)
-}
-
-func (*acpCallTimeoutError) Unwrap() error {
-	return context.DeadlineExceeded
-}
-
 func (e *acpCallError) Error() string {
 	if e == nil {
 		return ""
