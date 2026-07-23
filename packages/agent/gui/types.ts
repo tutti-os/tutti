@@ -228,6 +228,19 @@ export interface AgentGUIAgentTarget {
   unavailableReason?: string;
 }
 
+export type AgentGUITargetConnectionStatus =
+  | "connected"
+  | "connecting"
+  | "unavailable";
+
+/** Host-owned, ephemeral device transport state keyed by exact Agent target. */
+export interface AgentGUITargetConnectionSource {
+  getConnectionStatus(
+    agentTargetId: string
+  ): AgentGUITargetConnectionStatus | null;
+  subscribe(listener: () => void): () => void;
+}
+
 export interface AgentGUIProviderRailAllPresentation {
   iconUrl?: string | null;
 }

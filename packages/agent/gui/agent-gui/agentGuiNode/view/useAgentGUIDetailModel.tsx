@@ -244,14 +244,17 @@ export function useAgentGUIDetailModel(input: Input) {
     (sessionChrome.recovery?.kind === "failed" &&
       sessionChrome.recovery.canRetry === false) ||
     sessionChrome.recovery?.kind === "resume-unavailable";
+  const runtimeBlocked =
+    viewModel.readiness.sessionRuntimeBlocked ||
+    viewModel.readiness.targetConnectionBlocked;
   const submitDisabled =
     hasNonRetryableRecoveryFailure ||
     isCollaboratorConversation ||
-    viewModel.readiness.sessionRuntimeBlocked ||
+    runtimeBlocked ||
     (!viewModel.composer.canSubmit && !canQueueWhileBusy);
   const composerDisabled =
     isCollaboratorConversation ||
-    (!viewModel.readiness.sessionRuntimeBlocked &&
+    (!runtimeBlocked &&
       (hasNonRetryableRecoveryFailure ||
         (!canQueueWhileBusy &&
           (viewModel.interaction.pendingApproval !== null ||
@@ -270,7 +273,7 @@ export function useAgentGUIDetailModel(input: Input) {
     isInterrupting: viewModel.composer.isInterrupting,
     isSubmitting: viewModel.composer.isSubmitting,
     isUnavailable: viewModel.readiness.activeLiveState === "failed",
-    sessionRuntimeBlocked: viewModel.readiness.sessionRuntimeBlocked
+    sessionRuntimeBlocked: runtimeBlocked
   });
   const showStopButton = stopControl.visible;
   const stopDisabled = stopControl.disabled;

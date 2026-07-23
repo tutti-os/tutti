@@ -426,6 +426,7 @@ export interface AgentGUIReadinessViewModel {
   activationError: string | null;
   activeConversationBusy: boolean;
   sessionRuntimeBlocked: boolean;
+  targetConnectionBlocked: boolean;
   providerReadinessGate: AgentGUIProviderReadinessGate | null;
 }
 

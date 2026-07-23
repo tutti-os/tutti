@@ -7,7 +7,8 @@ import {
   composerOptionsForTarget,
   composerOptionsLoadingForTarget,
   ownerDeviceLabelForConversation,
-  resolveAgentGUIProviderRailTargetSelection
+  resolveAgentGUIProviderRailTargetSelection,
+  targetConnectionForAgentGUIView
 } from "./agentGuiController.providerHelpers";
 import { createSharedAgentGUIAgentTarget } from "../../../agentTargets";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
@@ -153,6 +154,43 @@ describe("conversation owner device label", () => {
         ]
       )
     ).toBeNull();
+  });
+});
+
+describe("target connection selection", () => {
+  const selectedTarget = createSharedAgentGUIAgentTarget({
+    agentTargetId: "target-home",
+    label: "Shared Home",
+    ownerDeviceLabel: "Home Device",
+    provider: "codex",
+    sharedAgentId: "shared-home"
+  });
+
+  it("uses the selected Home target before a Session exists", () => {
+    expect(
+      targetConnectionForAgentGUIView({
+        activeConversation: null,
+        selectedTarget,
+        targets: [selectedTarget]
+      })
+    ).toEqual({
+      agentTargetId: "target-home",
+      ownerDeviceLabel: "Home Device"
+    });
+  });
+
+  it("preserves the exact Session target when its presentation is stale", () => {
+    expect(
+      targetConnectionForAgentGUIView({
+        activeConversation: conversation(
+          "session-1",
+          "target-missing",
+          "codex"
+        ),
+        selectedTarget,
+        targets: [selectedTarget]
+      })
+    ).toEqual({ agentTargetId: "target-missing", ownerDeviceLabel: null });
   });
 });
 
