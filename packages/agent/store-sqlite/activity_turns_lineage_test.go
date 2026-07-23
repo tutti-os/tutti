@@ -159,3 +159,34 @@ func TestRecordTurnTransitionPersistsEditRelation(t *testing.T) {
 		t.Fatalf("turn.ParentTurnID = %q, want %q", turn.ParentTurnID, "turn-orig")
 	}
 }
+
+// TestRecordTurnTransitionRejectsInvalidRelation verifies that the Store
+// rejects an unknown relation value at the Go validation layer, before it
+// reaches the SQLite CHECK constraint.
+func TestRecordTurnTransitionRejectsInvalidRelation(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-bad", AgentSessionID: "session-bad",
+		Origin: "runtime", Provider: "codex", Status: "completed",
+		OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatalf("ReportSessionState: %v", err)
+	}
+
+	_, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-bad", AgentSessionID: "session-bad",
+		TurnID: "turn-bad", Phase: TurnPhaseSubmitted,
+		OccurredAtUnixMS: 110,
+		ParentTurnID:     "turn-parent",
+		Relation:         TurnRelation("bogus"),
+	})
+	if err == nil {
+		t.Fatalf("RecordTurnTransition(bogus relation) err=nil, want error")
+	}
+	if accepted {
+		t.Fatalf("RecordTurnTransition(bogus relation) accepted=true, want false")
+	}
+}

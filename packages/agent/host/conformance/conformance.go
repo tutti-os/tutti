@@ -42,6 +42,16 @@ type InteractionSeed struct {
 	Status    string
 }
 
+// MessageSeed seeds a stored message for a turn so that RetryTurn can
+// resolve the original user input through the canonical store.
+type MessageSeed struct {
+	MessageID string
+	TurnID    string
+	Role      string
+	Kind      string
+	Text      string
+}
+
 type Fixture struct {
 	Session                *SessionSeed
 	LiveOnlySession        *SessionSeed
@@ -50,6 +60,7 @@ type Fixture struct {
 	AdditionalTurns        []TurnSeed
 	Interaction            *InteractionSeed
 	AdditionalInteractions []InteractionSeed
+	Messages               []MessageSeed
 	PreparedSubmitID       string
 	RecoverInteractive     bool
 	DisableGoalInbox       bool
@@ -105,6 +116,17 @@ type InteractiveObservation struct {
 	Disposition agenthost.RuntimeInteractiveDisposition
 }
 
+// TurnObservation is the canonical read model for a single turn, including
+// lineage metadata. Conformance scenarios use it to verify that RetryTurn
+// persists parent_turn_id and relation.
+type TurnObservation struct {
+	TurnID       string
+	Phase        string
+	Outcome      string
+	ParentTurnID string
+	Relation     string
+}
+
 type Metrics struct {
 	StartCalls               int
 	ResumeCalls              int
@@ -122,8 +144,12 @@ type Metrics struct {
 	LastInteractiveTurnID    string
 	LastInteractiveRequestID string
 	LastInitialTitle         string
-	LastResumeRecreate       bool
-	RecoverySteps            []string
+	// LastExecText is the concatenated text content from the most recent
+	// Runtime.Exec prompt. RetryTurn scenarios use it to prove the Host
+	// re-sent the selected parent turn's user input, not an earlier turn's.
+	LastExecText       string
+	LastResumeRecreate bool
+	RecoverySteps      []string
 }
 
 // Driver adapts one host implementation to the shared lifecycle scenarios.
@@ -151,6 +177,12 @@ type Driver interface {
 	StepGoalOperations(context.Context, int64) error
 	Recover(context.Context) error
 	Metrics() Metrics
+	// RetryTurn exercises the Host.RetryTurn lifecycle contract: it creates a
+	// new turn in the same session with parent_turn_id lineage metadata.
+	RetryTurn(context.Context, agenthost.SessionRef, string) (SendObservation, error)
+	// GetTurn reads a canonical turn including lineage fields. Used by
+	// conformance scenarios to verify parent_turn_id and relation.
+	GetTurn(context.Context, agenthost.SessionRef, string) (TurnObservation, bool, error)
 }
 
 type Scenario struct {

@@ -364,10 +364,12 @@ const (
 	TurnOriginLegacyUnknown     = canonical.TurnOriginLegacyUnknown
 )
 
-// Turn relation constants for Retry/Edit lineage.
+// TurnRelation is the closed vocabulary for turn lineage relations.
+type TurnRelation string
+
 const (
-	TurnRelationRetry = "retry"
-	TurnRelationEdit  = "edit"
+	TurnRelationRetry TurnRelation = "retry"
+	TurnRelationEdit  TurnRelation = "edit"
 )
 
 // Turn is the protocol v2 execution entity inside either a root or child
@@ -410,7 +412,7 @@ type Turn struct {
 	ParentTurnID string
 	// Relation records how this turn relates to its parent: "retry" or "edit".
 	// Empty for normal user-prompt turns.
-	Relation string
+	Relation TurnRelation
 }
 
 // SessionTurnCursor is the stable position immediately before a descending
@@ -498,7 +500,7 @@ type TurnTransition struct {
 	OccurredAtUnixMS        int64
 	// ParentTurnID and Relation carry turn lineage for Retry/Edit.
 	ParentTurnID string
-	Relation     string
+	Relation     TurnRelation
 }
 
 // Closed protocol v2 interaction vocabulary; mirrors the openapi

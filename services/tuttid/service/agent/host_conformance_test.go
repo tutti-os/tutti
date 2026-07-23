@@ -116,6 +116,18 @@ func TestHostCommitObserverConformance(t *testing.T) {
 	}
 }
 
+func TestHostRetryTurnConformance(t *testing.T) {
+	for _, scenario := range hostconformance.RetryTurnScenarios() {
+		scenario := scenario
+		t.Run(scenario.Name, func(t *testing.T) {
+			driver := &legacyHostConformanceDriver{t: t, directHost: true}
+			if err := hostconformance.Run(context.Background(), driver, scenario); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestHostCancelAcceptanceDoesNotImplyCanonicalSettlement(t *testing.T) {
 	driver := &legacyHostConformanceDriver{t: t, directHost: true}
 	fixture := hostconformance.Fixture{
@@ -217,6 +229,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		sessions:     map[string]agentactivitybiz.Session{},
 		turns:        map[string]agentactivitybiz.Turn{},
 		interactions: map[string][]agentactivitybiz.Interaction{},
+		messages:     map[string][]agentactivitybiz.Message{},
 	}
 	d.operations = &runtimeOperationMemoryStore{interactionStore: d.turns}
 	d.createdTurns = make(map[string]string)
@@ -431,6 +444,14 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 			WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID,
 			TurnID: interaction.TurnID, RequestID: interaction.RequestID,
 			Kind: interaction.Kind, Status: interaction.Status,
+		})
+		d.service.TurnStore = d.turns
+	}
+	for _, message := range fixture.Messages {
+		d.turns.messages[seed.AgentSessionID] = append(d.turns.messages[seed.AgentSessionID], agentactivitybiz.Message{
+			AgentSessionID: seed.AgentSessionID, MessageID: message.MessageID,
+			TurnID: message.TurnID, Role: message.Role, Kind: message.Kind,
+			Payload: map[string]any{"text": message.Text},
 		})
 		d.service.TurnStore = d.turns
 	}
@@ -807,7 +828,9 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 		metrics.LastInteractiveRequestID = last.RequestID
 	}
 	if len(d.runtime.execCalls) > 0 {
-		metrics.LastInitialTitle = d.runtime.execCalls[len(d.runtime.execCalls)-1].InitialTitle
+		last := d.runtime.execCalls[len(d.runtime.execCalls)-1]
+		metrics.LastInitialTitle = last.InitialTitle
+		metrics.LastExecText = conformanceExecText(last.Content)
 	}
 	if len(d.runtime.resumeCalls) > 0 {
 		metrics.LastResumeRecreate = d.runtime.resumeCalls[len(d.runtime.resumeCalls)-1].RecreateIfMissing
@@ -845,6 +868,37 @@ func (d *legacyHostConformanceDriver) Recover(ctx context.Context) error {
 		return d.service.ApplicationHost().Recover(ctx)
 	}
 	return d.service.ApplicationHost().Recover(ctx)
+}
+
+func (d *legacyHostConformanceDriver) RetryTurn(
+	ctx context.Context,
+	ref agenthost.SessionRef,
+	turnID string,
+) (hostconformance.SendObservation, error) {
+	result, err := d.service.ApplicationHost().RetryTurn(ctx, ref, turnID)
+	if err != nil {
+		return hostconformance.SendObservation{}, err
+	}
+	d.recordSubmittedTurn(ref.WorkspaceID, ref.AgentSessionID, result.TurnID)
+	session, err := d.service.Get(ctx, ref.WorkspaceID, ref.AgentSessionID)
+	return hostconformance.SendObservation{
+		Session: legacyHostSessionObservation(session), TurnID: result.TurnID, Kind: result.Kind,
+	}, err
+}
+
+func (d *legacyHostConformanceDriver) GetTurn(
+	ctx context.Context,
+	ref agenthost.SessionRef,
+	turnID string,
+) (hostconformance.TurnObservation, bool, error) {
+	turn, found, err := d.service.ApplicationHost().GetTurn(ctx, ref, turnID)
+	if err != nil || !found {
+		return hostconformance.TurnObservation{}, found, err
+	}
+	return hostconformance.TurnObservation{
+		TurnID: turn.TurnID, Phase: turn.Phase, Outcome: turn.Outcome,
+		ParentTurnID: turn.ParentTurnID, Relation: string(turn.Relation),
+	}, true, nil
 }
 
 type conformanceRuntimeOperationStore struct {
@@ -903,10 +957,19 @@ func (d *legacyHostConformanceDriver) recordSubmittedTurn(workspaceID, sessionID
 	if turnID == "" {
 		return
 	}
-	d.turns.turns[sessionID+":"+turnID] = agentactivitybiz.Turn{
+	turn := agentactivitybiz.Turn{
 		WorkspaceID: workspaceID, AgentSessionID: sessionID, TurnID: turnID,
 		Phase: agentactivitybiz.TurnPhaseSubmitted,
 	}
+	// Mirror production activity projection: lineage from RuntimeExecInput is
+	// persisted onto the submitted turn so Host.GetTurn can observe it.
+	if n := len(d.runtime.execCalls); n > 0 {
+		if lineage := d.runtime.execCalls[n-1].TurnLineage; lineage != nil {
+			turn.ParentTurnID = lineage.ParentTurnID
+			turn.Relation = agentactivitybiz.TurnRelation(lineage.Relation)
+		}
+	}
+	d.turns.turns[sessionID+":"+turnID] = turn
 	d.service.TurnStore = d.turns
 }
 
@@ -929,6 +992,7 @@ type legacyHostConformanceTurnStore struct {
 	sessions     map[string]agentactivitybiz.Session
 	turns        map[string]agentactivitybiz.Turn
 	interactions map[string][]agentactivitybiz.Interaction
+	messages     map[string][]agentactivitybiz.Message
 }
 
 func (s *legacyHostConformanceTurnStore) GetLatestTurn(_ context.Context, _ string, sessionID string) (agentactivitybiz.Turn, bool, error) {
@@ -943,6 +1007,25 @@ func (s *legacyHostConformanceTurnStore) GetLatestTurn(_ context.Context, _ stri
 func (s *legacyHostConformanceTurnStore) GetTurn(_ context.Context, _ string, sessionID, turnID string) (agentactivitybiz.Turn, bool, error) {
 	turn, ok := s.turns[sessionID+":"+turnID]
 	return turn, ok, nil
+}
+
+func (s *legacyHostConformanceTurnStore) ListSessionMessages(
+	_ context.Context,
+	input agentactivitybiz.ListSessionMessagesInput,
+) (agentactivitybiz.MessagePage, bool, error) {
+	if _, ok := s.sessions[input.AgentSessionID]; !ok {
+		return agentactivitybiz.MessagePage{}, false, nil
+	}
+	messages := make([]agentactivitybiz.Message, 0, len(s.messages[input.AgentSessionID]))
+	for _, message := range s.messages[input.AgentSessionID] {
+		if turnID := strings.TrimSpace(input.TurnID); turnID != "" && message.TurnID != turnID {
+			continue
+		}
+		messages = append(messages, message)
+	}
+	return agentactivitybiz.MessagePage{
+		AgentSessionID: input.AgentSessionID, Messages: messages,
+	}, true, nil
 }
 
 func (s *legacyHostConformanceTurnStore) GetSession(_ context.Context, _ string, sessionID string) (agentactivitybiz.Session, bool, error) {
@@ -1052,4 +1135,14 @@ func boolUnixMS(value bool) int64 {
 		return 1
 	}
 	return 0
+}
+
+func conformanceExecText(content []agenthost.PromptContentBlock) string {
+	parts := make([]string, 0, len(content))
+	for _, block := range content {
+		if text := strings.TrimSpace(block.Text); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n")
 }

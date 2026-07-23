@@ -379,7 +379,7 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 			CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...), Content: content,
 			DisplayPrompt: displayPrompt, InitialTitle: initialTitle, InitialTitleBase: session.Title,
 			Guidance: input.Guidance, Metadata: cloneMap(metadata), TuttiModeSnapshot: input.TuttiModeSnapshot,
-			TurnMetadata: input.TurnMetadata,
+			TurnLineage: input.TurnLineage,
 		})
 	}()
 	if err != nil {

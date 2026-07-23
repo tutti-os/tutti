@@ -136,7 +136,7 @@ func turnTransitionFromStateInput(
 			SourceGoalRepairEpoch:   turn.SourceGoalRepairEpoch,
 			FinalAssistantMessageID: strings.TrimSpace(turn.FinalAssistantMessageID),
 			ParentTurnID:            strings.TrimSpace(turn.ParentTurnID),
-			Relation:                strings.TrimSpace(turn.Relation),
+			Relation:                agentactivitybiz.TurnRelation(strings.TrimSpace(turn.Relation)),
 		}
 		if turn.CompletedCommand != nil {
 			transition.CompletedCommandKind = strings.TrimSpace(turn.CompletedCommand.Kind)

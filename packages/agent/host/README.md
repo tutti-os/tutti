@@ -162,10 +162,10 @@ implementation supplies a `conformance.Driver`, seeds its own canonical and
 runtime fakes in `Reset`, and runs every value returned by
 `conformance.Scenarios`. This lets `tuttid`, the extracted Host, and downstream
 adapters share one behavior baseline without importing one another.
-Coordinator, goal, and commit-observer scenario groups extend the same driver
-with recovery ordering through the worktree sweep, recovery failure
-propagation, post-commit failure semantics, and exact-tombstone permanent
-removal semantics.
+Coordinator, goal, commit-observer, and retry-turn scenario groups extend the
+same driver with recovery ordering through the worktree sweep, recovery failure
+propagation, post-commit failure semantics, exact-tombstone permanent removal
+semantics, and RetryTurn lineage creation.
 
 The conformance package keeps its shared fixture and driver contract in
 `conformance.go`, explicit scenario membership in `scenarios.go`, and scenario

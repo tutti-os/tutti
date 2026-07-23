@@ -12,8 +12,8 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func (c *Controller) beginTurn(session Session, turnID string, cancel context.CancelFunc, metadata TurnMetadata) (Session, error) {
-	return c.beginTurnWithTuttiModeSnapshot(session, turnID, cancel, nil, metadata)
+func (c *Controller) beginTurn(session Session, turnID string, cancel context.CancelFunc, lineage TurnLineage) (Session, error) {
+	return c.beginTurnWithTuttiModeSnapshot(session, turnID, cancel, nil, lineage)
 }
 
 func (c *Controller) beginTurnWithTuttiModeSnapshot(
@@ -21,7 +21,7 @@ func (c *Controller) beginTurnWithTuttiModeSnapshot(
 	turnID string,
 	cancel context.CancelFunc,
 	tuttiModeSnapshot *TuttiModeTurnSnapshot,
-	metadata TurnMetadata,
+	lineage TurnLineage,
 ) (Session, error) {
 	if c == nil {
 		return Session{}, fmt.Errorf("agent session controller is unavailable")
@@ -41,7 +41,7 @@ func (c *Controller) beginTurnWithTuttiModeSnapshot(
 		turnID:            turnID,
 		cancel:            cancel,
 		tuttiModeSnapshot: cloneTuttiModeTurnSnapshot(tuttiModeSnapshot),
-		metadata:          metadata,
+		lineage:           lineage,
 	}
 	return session, nil
 }

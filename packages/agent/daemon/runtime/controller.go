@@ -53,7 +53,7 @@ type activeTurn struct {
 	tuttiModeSnapshot     *TuttiModeTurnSnapshot
 	openCallIDs           map[string]struct{}
 	pendingTerminalEvents []activityshared.Event
-	metadata              TurnMetadata
+	lineage               TurnLineage
 }
 
 type reportRequest struct {

@@ -174,7 +174,7 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		Guidance:          input.Guidance,
 		Metadata:          cloneRuntimeContext(input.Metadata),
 		TuttiModeSnapshot: runtimeTuttiModeSnapshotFromService(input.TuttiModeSnapshot),
-		TurnMetadata:      mapTurnMetadataFromService(input.TurnMetadata),
+		TurnLineage:       mapTurnLineageFromService(input.TurnLineage),
 	})
 	if err != nil {
 		agentservice.LogSubmitTrace("runtime_adapter.exec.failed", input.WorkspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
@@ -256,13 +256,13 @@ func serviceSubmitAvailabilityFromRuntime(value agentruntime.SubmitAvailability)
 	}
 }
 
-func mapTurnMetadataFromService(value *agenthost.TurnMetadata) *agentruntime.TurnMetadata {
+func mapTurnLineageFromService(value *agenthost.TurnLineage) *agentruntime.TurnLineage {
 	if value == nil {
 		return nil
 	}
-	return &agentruntime.TurnMetadata{
+	return &agentruntime.TurnLineage{
 		ParentTurnID: strings.TrimSpace(value.ParentTurnID),
-		Relation:     strings.TrimSpace(value.Relation),
+		Relation:     agentruntime.TurnRelation(value.Relation),
 	}
 }
 

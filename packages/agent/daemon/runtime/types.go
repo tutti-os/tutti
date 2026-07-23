@@ -104,12 +104,20 @@ type CloseInput struct {
 	AgentSessionID string
 }
 
-// TurnMetadata carries turn lineage for Retry/Edit. When non-nil, the runtime
+// TurnRelation is the closed vocabulary for turn lineage relations.
+type TurnRelation string
+
+const (
+	TurnRelationRetry TurnRelation = "retry"
+	TurnRelationEdit  TurnRelation = "edit"
+)
+
+// TurnLineage carries turn lineage for Retry/Edit. When non-nil, the runtime
 // injects ParentTurnID and Relation into the submitted turn event so the Store
 // persists the relationship alongside the new turn.
-type TurnMetadata struct {
+type TurnLineage struct {
 	ParentTurnID string
-	Relation     string
+	Relation     TurnRelation
 }
 
 type ExecInput struct {
@@ -127,7 +135,7 @@ type ExecInput struct {
 	InitialTitleBase  string
 	Metadata          map[string]any
 	Guidance          bool
-	TurnMetadata      *TurnMetadata
+	TurnLineage       *TurnLineage
 }
 
 // SubmitProvenanceInput describes the canonical user submit that an adapter

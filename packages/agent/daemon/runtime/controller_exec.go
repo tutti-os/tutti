@@ -80,13 +80,13 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	}
 	tuttiModeSnapshot := normalizeTuttiModeTurnSnapshot(input.TuttiModeSnapshot)
 	runCtx = withTuttiModeTurnSnapshot(runCtx, tuttiModeSnapshot)
-	turnMetadata := TurnMetadata{}
-	if input.TurnMetadata != nil {
-		turnMetadata = *input.TurnMetadata
+	lineage := TurnLineage{}
+	if input.TurnLineage != nil {
+		lineage = *input.TurnLineage
 	}
 	// beginTurn returns the zero session on failure; keep the real session
 	// for the goal-control fallback below.
-	startedSession, err := c.beginTurnWithTuttiModeSnapshot(session, turnID, cancel, tuttiModeSnapshot, turnMetadata)
+	startedSession, err := c.beginTurnWithTuttiModeSnapshot(session, turnID, cancel, tuttiModeSnapshot, lineage)
 	if err != nil {
 		cancel()
 		return ExecResult{}, err
@@ -96,7 +96,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	c.mu.Lock()
 	provisional := c.provisionalSessions[key]
 	c.mu.Unlock()
-	submitEvents := submittedTurnActivityEvents(session, turnID, input.CapabilityRefs, turnMetadata)
+	submitEvents := submittedTurnActivityEvents(session, turnID, input.CapabilityRefs, lineage)
 	if titleUpdated {
 		submitEvents = append([]activityshared.Event{newSessionTitleActivityEvent(session, session.Title)}, submitEvents...)
 	}
