@@ -84,13 +84,14 @@ export interface AgentHostRoomStatus {
 }
 
 export interface AgentHostRoomUserSnapshot {
-  imageUrl: string;
+  assetRef: string;
+  assetUrl: string;
   capturedAtUnixMs: string;
 }
 
 export interface AgentHostCreateObjectUploadResult {
   uploadId: string;
-  objectKey?: string;
+  assetRef?: string;
   uploadUrl: string;
   headers?: Record<string, string>;
   expiresAt?: string;
@@ -98,7 +99,7 @@ export interface AgentHostCreateObjectUploadResult {
 
 export interface AgentHostCompleteObjectUploadResult {
   uploadId: string;
-  objectKey?: string;
+  assetRef?: string;
   status: string;
 }
 
@@ -117,7 +118,8 @@ export interface AgentHostLeaveRoomMembershipInput {
 
 export interface AgentHostCaptureRoomSnapshotResult {
   captured: boolean;
-  imageUrl?: string;
+  assetRef?: string;
+  assetUrl?: string;
   capturedAtUnixMs?: number;
 }
 

@@ -400,7 +400,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       "user-a": {
         userId: "user-a",
         name: "Jessica",
-        avatar: "https://cdn.example.com/jessica.png",
+        assetUrl:
+          "https://assets.tutti.sh/v1/assets/user-a/account_avatar/jessica.png",
         email: "jessica@example.com"
       }
     };
@@ -425,7 +426,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       sessionId: "session-10",
       userId: "user-a",
       userName: "Jessica",
-      userAvatarUrl: "https://cdn.example.com/jessica.png",
+      userAvatarUrl:
+        "https://assets.tutti.sh/v1/assets/user-a/account_avatar/jessica.png?width=32&height=32&fit=cover&format=webp",
       agentProvider: "codex",
       agentName: "Codex",
       title: "帮我根据目前工作区的 Landing 页面信息出交互原型",
@@ -2407,7 +2409,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       "member-2": {
         userId: "member-2",
         name: "Mina",
-        avatar: "https://cdn.example.com/mina.png"
+        assetUrl:
+          "https://assets.tutti.sh/v1/assets/member-2/account_avatar/mina.png"
       }
     };
 
@@ -2418,7 +2421,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     expect(view.activities[0]).toMatchObject({
       userId: "member-2",
       userName: "Mina",
-      userAvatarUrl: "https://cdn.example.com/mina.png"
+      userAvatarUrl:
+        "https://assets.tutti.sh/v1/assets/member-2/account_avatar/mina.png?width=32&height=32&fit=cover&format=webp"
     });
   });
 

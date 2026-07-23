@@ -244,7 +244,8 @@ export async function readAuthJson(
       cookie: trimString(parsed.cookie) || buildSessionCookie(sessionId),
       userId: trimString(parsed.userId) || trimString(parsed.user_id),
       name: trimString(parsed.name),
-      avatar: trimString(parsed.avatar),
+      assetUrl: trimString(parsed.assetUrl),
+      assetRef: trimString(parsed.assetRef),
       email: trimString(parsed.email),
       updatedAt:
         typeof parsed.updatedAt === "number" &&
@@ -267,7 +268,8 @@ export async function writeAuthJson(
     cookie: session.cookie,
     user_id: session.userId,
     name: session.name,
-    avatar: session.avatar,
+    assetUrl: session.assetUrl,
+    assetRef: session.assetRef,
     email: session.email,
     updatedAt: session.updatedAt
   };
@@ -682,7 +684,8 @@ function sessionFromUser(
     cookie: buildSessionCookie(sessionId),
     userId: user.userId,
     name: user.name ?? "",
-    avatar: user.avatar ?? "",
+    assetUrl: user.assetUrl ?? "",
+    assetRef: user.assetRef ?? "",
     email: user.email ?? "",
     updatedAt: Date.now()
   };

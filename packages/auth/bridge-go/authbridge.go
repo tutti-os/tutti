@@ -71,10 +71,11 @@ type Client struct {
 }
 
 type UserInfo struct {
-	UserID string `json:"user_id"`
-	Name   string `json:"name,omitempty"`
-	Email  string `json:"email,omitempty"`
-	Avatar string `json:"avatar,omitempty"`
+	UserID   string `json:"user_id"`
+	Name     string `json:"name,omitempty"`
+	Email    string `json:"email,omitempty"`
+	AssetURL string `json:"assetUrl,omitempty"`
+	AssetRef string `json:"assetRef,omitempty"`
 }
 
 type Session struct {
@@ -82,7 +83,8 @@ type Session struct {
 	Cookie    string `json:"cookie"`
 	UserID    string `json:"user_id"`
 	Name      string `json:"name"`
-	Avatar    string `json:"avatar"`
+	AssetURL  string `json:"assetUrl"`
+	AssetRef  string `json:"assetRef"`
 	Email     string `json:"email"`
 	UpdatedAt int64  `json:"updatedAt"`
 }
@@ -296,7 +298,8 @@ func (c *Client) ReadSession() (*Session, error) {
 		Cookie    string `json:"cookie"`
 		UserID    string `json:"user_id"`
 		Name      string `json:"name"`
-		Avatar    string `json:"avatar"`
+		AssetURL  string `json:"assetUrl"`
+		AssetRef  string `json:"assetRef"`
 		Email     string `json:"email"`
 		UpdatedAt int64  `json:"updatedAt"`
 	}
@@ -307,10 +310,11 @@ func (c *Client) ReadSession() (*Session, error) {
 		return nil, nil
 	}
 	session := sessionFromUser(payload.SessionID, UserInfo{
-		UserID: payload.UserID,
-		Name:   payload.Name,
-		Email:  payload.Email,
-		Avatar: payload.Avatar,
+		UserID:   payload.UserID,
+		Name:     payload.Name,
+		Email:    payload.Email,
+		AssetURL: payload.AssetURL,
+		AssetRef: payload.AssetRef,
 	})
 	if payload.Cookie != "" {
 		session.Cookie = payload.Cookie
@@ -779,44 +783,6 @@ func isAllowedAppCallbackScheme(scheme string) bool {
 	default:
 		return false
 	}
-}
-
-func buildAccountURL(baseURL string, path string) string {
-	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(path, "/")
-}
-
-func buildSessionCookie(sessionID string) string {
-	return "session_id=" + strings.TrimSpace(sessionID)
-}
-
-func sessionFromUser(sessionID string, user UserInfo) Session {
-	return Session{
-		SessionID: strings.TrimSpace(sessionID),
-		Cookie:    buildSessionCookie(sessionID),
-		UserID:    user.UserID,
-		Name:      user.Name,
-		Avatar:    user.Avatar,
-		Email:     user.Email,
-		UpdatedAt: time.Now().UnixMilli(),
-	}
-}
-
-func mapUserInfo(data map[string]any) UserInfo {
-	return UserInfo{
-		UserID: stringField(data, "userId", "user_id"),
-		Name:   stringField(data, "name"),
-		Email:  stringField(data, "email", "userEmail", "emailAddress"),
-		Avatar: stringField(data, "avatar", "picture", "avatarUrl", "headImg"),
-	}
-}
-
-func stringField(data map[string]any, keys ...string) string {
-	for _, key := range keys {
-		if value, ok := data[key].(string); ok && strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func readJSON(reader io.Reader, out any) error {

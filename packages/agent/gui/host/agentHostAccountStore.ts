@@ -167,10 +167,8 @@ function mergeProfilesIntoSnapshot(
     profilesByUserId[userId] = {
       userId,
       ...(user.email?.trim() ? { email: user.email.trim() } : {}),
-      ...(user.avatar?.trim() ? { avatar: user.avatar.trim() } : {}),
-      ...(user.avatarObjectKey?.trim()
-        ? { avatarObjectKey: user.avatarObjectKey.trim() }
-        : {}),
+      ...(user.assetUrl?.trim() ? { assetUrl: user.assetUrl.trim() } : {}),
+      ...(user.assetRef?.trim() ? { assetRef: user.assetRef.trim() } : {}),
       ...(user.name?.trim() ? { name: user.name.trim() } : {})
     };
   }

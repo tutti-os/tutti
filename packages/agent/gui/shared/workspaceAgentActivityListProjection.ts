@@ -4,6 +4,7 @@ import type {
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
 import { selectRootAgentActivitySessions } from "@tutti-os/agent-activity-core";
+import { buildAssetUrl } from "./assetUrl";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "./workspaceAgentSessionSortTime";
 import { workspaceAgentProviderLabel } from "./workspaceAgentProviderLabel";
 import {
@@ -192,13 +193,21 @@ function resolveUserFromId(
   const userId = rawUserId.trim();
   const profile = options.userProfilesById?.[userId];
   const profileName = compactText(profile?.name ?? "");
-  const profileAvatar = profile?.avatar?.trim();
+  const profileAvatar = profile?.assetUrl?.trim();
   const rawName = profileName || userId || "Unknown member";
 
   return {
     userId,
     userName: stripTrailingParentheticalEmailFromLabel(rawName) || rawName,
-    ...(profileAvatar ? { userAvatarUrl: profileAvatar } : {})
+    ...(profileAvatar
+      ? {
+          userAvatarUrl: buildAssetUrl(profileAvatar, {
+            kind: "avatar",
+            size: 32,
+            format: "webp"
+          })
+        }
+      : {})
   };
 }
 

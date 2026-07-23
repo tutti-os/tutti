@@ -1,4 +1,12 @@
 export {
+  buildAssetUrl,
+  type AssetOutputFormat,
+  type AssetVariant,
+  type AvatarAssetSize,
+  type ContentAssetWidth,
+  type EmojiAssetSize
+} from "./shared/assetUrl";
+export {
   getAgentCustomMentionKind,
   registerAgentCustomMentionKind,
   resetAgentCustomMentionKindsForTests,

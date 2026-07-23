@@ -3272,10 +3272,11 @@ type AccountRegistrationCreditsReward struct {
 
 // AccountUserInfo defines model for AccountUserInfo.
 type AccountUserInfo struct {
-	Avatar *string `json:"avatar,omitempty"`
-	Email  *string `json:"email,omitempty"`
-	Name   *string `json:"name,omitempty"`
-	UserId string  `json:"user_id"`
+	AssetRef *string `json:"assetRef,omitempty"`
+	AssetUrl *string `json:"assetUrl,omitempty"`
+	Email    *string `json:"email,omitempty"`
+	Name     *string `json:"name,omitempty"`
+	UserId   string  `json:"user_id"`
 }
 
 // AccountUserInfoResponse defines model for AccountUserInfoResponse.

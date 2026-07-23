@@ -481,10 +481,11 @@ func newAccountServer(t *testing.T) *httptest.Server {
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"code": 0,
 				"data": map[string]string{
-					"user_id": "user-1",
-					"name":    "Tutti User",
-					"email":   "user@example.com",
-					"avatar":  "https://example.com/avatar.png",
+					"user_id":  "user-1",
+					"name":     "Tutti User",
+					"email":    "user@example.com",
+					"assetUrl": "https://assets.tutti.sh/v1/assets/user-1/account_avatar/avatar.png",
+					"assetRef": "user-1/account_avatar/avatar.png",
 				},
 			})
 		case "/auth/v1/logout-web-session":

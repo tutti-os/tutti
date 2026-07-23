@@ -131,7 +131,7 @@ func TestGetProductSummaryFetchesCommerceWithSessionCookie(t *testing.T) {
 			if got := r.Header.Get("Cookie"); got != "session_id=session-1" {
 				t.Fatalf("account user info Cookie = %q, want session cookie", got)
 			}
-			_, _ = w.Write([]byte(`{"code":0,"data":{"userId":"user-1","name":"Jane","email":"jane@example.com","avatar":"https://example.com/avatar.png"}}`))
+			_, _ = w.Write([]byte(`{"code":0,"data":{"userId":"user-1","name":"Jane","email":"jane@example.com","assetUrl":"https://assets.tutti.sh/v1/assets/user-1/account_avatar/avatar.png","assetRef":"user-1/account_avatar/avatar.png"}}`))
 		case "/v1/user-info":
 			commerceUserInfoCookie = r.Header.Get("Cookie")
 			_, _ = w.Write([]byte(`{

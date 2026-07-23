@@ -4,6 +4,7 @@ import {
   AgentGUIAccountMenu,
   AgentGUIAccountRewardToast,
   agentGUIAccountInitials,
+  buildAssetUrl,
   type AgentGUIAccountMenuLabels,
   type AgentGUIAccountMenuState
 } from "@tutti-os/agent-gui";
@@ -122,7 +123,7 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
             userId: user.user_id,
             name: user.name,
             email: user.email,
-            avatar: user.avatar
+            assetUrl: user.assetUrl
           }
         : null,
       membershipLabel,
@@ -312,11 +313,15 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
                 className="grid size-7 place-items-center overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_16%,transparent)] text-[12px] font-semibold"
                 data-testid="workspace-account-avatar"
               >
-                {accountMenuState.user.avatar ? (
+                {accountMenuState.user.assetUrl ? (
                   <img
                     alt=""
                     className="size-full object-cover"
-                    src={accountMenuState.user.avatar}
+                    src={buildAssetUrl(accountMenuState.user.assetUrl, {
+                      kind: "avatar",
+                      size: 48,
+                      format: "webp"
+                    })}
                   />
                 ) : (
                   <span aria-hidden="true">{initials}</span>

@@ -364,7 +364,7 @@ function createTestSessionProvider(
             agentTargetId: session.agentTargetId,
             agentName: testProviderLabel(session.provider),
             id: session.agentSessionId,
-            initiatorAvatarUrl: profile?.avatar ?? "",
+            initiatorAvatarUrl: profile?.assetUrl ?? "",
             initiatorName: profile?.name || userId,
             provider: session.provider,
             scope:
@@ -2288,12 +2288,14 @@ describe("AgentMentionSearchController", () => {
           {
             userId: "user-1",
             name: "Wang",
-            avatar: "https://cdn.example.com/wang.png"
+            assetUrl:
+              "https://assets.tutti.sh/v1/assets/member-wang/account_avatar/wang.png"
           },
           {
             userId: "user-2",
             name: "Alice",
-            avatar: "https://cdn.example.com/alice.png"
+            assetUrl:
+              "https://assets.tutti.sh/v1/assets/member-alice/account_avatar/alice.png"
           }
         ]
       }),

@@ -2,7 +2,8 @@ export interface AgentHostMockSession {
   name: string;
   userId: string;
   email?: string;
-  avatar?: string;
+  assetUrl?: string;
+  assetRef?: string;
 }
 
 export const UNAUTHENTICATED_AGENT_HOST_MOCK_SESSION: AgentHostMockSession = {
@@ -58,8 +59,8 @@ export interface AgentHostConsumeBetaInviteCodeResult {
 export interface AgentHostUserInfo {
   userId: string;
   email?: string;
-  avatar?: string;
-  avatarObjectKey?: string;
+  assetUrl?: string;
+  assetRef?: string;
   name?: string;
 }
 
@@ -73,8 +74,8 @@ export interface AgentHostBatchUserInfoResult {
 
 export interface AgentHostUpdateUserProfileInput {
   name?: string;
-  avatar?: string;
-  avatarObjectKey?: string;
+  assetUrl?: string;
+  assetRef?: string;
 }
 
 export const TSH_DESKTOP_MAX_USER_DISPLAY_NAME_LENGTH = 32;

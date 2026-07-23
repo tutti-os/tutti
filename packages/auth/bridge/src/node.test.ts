@@ -27,7 +27,8 @@ test("auth json read/write keeps desktop-compatible shape", async () => {
       cookie: "session_id=session-1",
       userId: "user-1",
       name: "Alice",
-      avatar: "https://example.com/a.png",
+      assetUrl: "https://assets.tutti.sh/v1/assets/user-1/account_avatar/a.png",
+      assetRef: "user-1/account_avatar/a.png",
       email: "alice@example.com",
       updatedAt: 123
     });
@@ -36,7 +37,8 @@ test("auth json read/write keeps desktop-compatible shape", async () => {
       cookie: "session_id=session-1",
       user_id: "user-1",
       name: "Alice",
-      avatar: "https://example.com/a.png",
+      assetUrl: "https://assets.tutti.sh/v1/assets/user-1/account_avatar/a.png",
+      assetRef: "user-1/account_avatar/a.png",
       email: "alice@example.com",
       updatedAt: 123
     });
@@ -96,7 +98,8 @@ test("node login completes bridge, redeems transfer code, writes auth json", asy
       userId: "user-1",
       name: "Alice",
       email: "alice@example.com",
-      avatar: undefined
+      assetUrl: undefined,
+      assetRef: undefined
     });
     assert.equal(
       (await readAuthJson(file))?.cookie,
@@ -401,7 +404,8 @@ test("node getUserInfo refreshes auth json and logout clears it", async () => {
       cookie: "session_id=desktop-session-1",
       userId: "old-user",
       name: "",
-      avatar: "",
+      assetUrl: "",
+      assetRef: "",
       email: "",
       updatedAt: 1
     });
@@ -420,7 +424,8 @@ test("node getUserInfo refreshes auth json and logout clears it", async () => {
       userId: "user-1",
       name: "Alice",
       email: "alice@example.com",
-      avatar: undefined
+      assetUrl: undefined,
+      assetRef: undefined
     });
     assert.equal((await readAuthJson(file))?.userId, "user-1");
     await auth.logout();
