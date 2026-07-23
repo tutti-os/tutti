@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   buildLaneInputFingerprint,
   mergeLaneResults,
+  resolveRetryPushReady,
   selectFailedOnlyLanes
 } from "./run-check-changed-cache.mjs";
 import {
@@ -162,6 +163,12 @@ test("failed-only rejects summaries without lane fingerprints", () => {
     () => selectFailedOnlyLanes([], { results: [] }),
     /legacy failed-lane state/u
   );
+});
+
+test("failed-only inherits push-ready lanes from the previous run", () => {
+  assert.equal(resolveRetryPushReady(false, { pushReady: true }), true);
+  assert.equal(resolveRetryPushReady(false, { pushReady: false }), false);
+  assert.equal(resolveRetryPushReady(true, { pushReady: false }), true);
 });
 
 test("failed-only keeps reused results available for the next retry", () => {

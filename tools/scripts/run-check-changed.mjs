@@ -13,6 +13,7 @@ import {
   laneFingerprintVersion,
   LaneCacheError,
   mergeLaneResults,
+  resolveRetryPushReady,
   selectFailedOnlyLanes
 } from "./run-check-changed-cache.mjs";
 import {
@@ -49,6 +50,13 @@ const latestSummaryPath = join(tmpRoot, "latest.json");
 const packageInfos = loadPackageInfos();
 
 export async function main() {
+  const previousSummary = failedOnly ? readLatestSummary() : null;
+  if (failedOnly && !previousSummary) {
+    console.log("check:changed found no previous run to reuse");
+    return;
+  }
+  pushReady = resolveRetryPushReady(pushReady, previousSummary);
+
   const plannedLanes = buildChangedLanes();
 
   if (plannedLanes.length === 0) {
@@ -70,13 +78,9 @@ export async function main() {
     })
   }));
 
-  const failedOnlySelection = failedOnly
-    ? readFailedOnlySelection(currentLanes)
+  const failedOnlySelection = previousSummary
+    ? selectFailedOnlyLanes(currentLanes, previousSummary)
     : null;
-  if (failedOnlySelection && !failedOnlySelection.hasSummary) {
-    console.log("check:changed found no previous run to reuse");
-    return;
-  }
   const lanesToRun = failedOnlySelection?.lanesToRun ?? currentLanes;
   const reusedResults = failedOnlySelection?.reusedResults ?? [];
 
@@ -331,19 +335,11 @@ function buildChangedLanes() {
   return Array.from(lanesByKey.values());
 }
 
-function readFailedOnlySelection(currentLanes) {
+function readLatestSummary() {
   if (!existsSync(latestSummaryPath)) {
-    return {
-      hasSummary: false,
-      lanesToRun: [],
-      reusedResults: []
-    };
+    return null;
   }
-  const summary = JSON.parse(readFileSync(latestSummaryPath, "utf8"));
-  return {
-    hasSummary: true,
-    ...selectFailedOnlyLanes(currentLanes, summary)
-  };
+  return JSON.parse(readFileSync(latestSummaryPath, "utf8"));
 }
 
 export async function runLanes(inputLanes, runDirectory) {

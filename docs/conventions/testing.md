@@ -22,10 +22,11 @@ Direct package or boundary commands are iteration tools for a failing or
 uncertain surface. After a failed changed-aware run, use
 `pnpm check:changed -- --failed-only` after fixing the failure. The runner
 rebuilds the current plan, reruns failed, new, and input-changed lanes, and
-reuses only lanes that previously passed with the same lane inputs. A focused
-command run before subsequent edits is evidence for that iteration, not for the
-final worktree; some narrow coverage may therefore run again in the final
-changed-aware gate.
+reuses only lanes that previously passed with the same lane inputs. Retries
+inherit the previous run's push-ready mode so failed build or pack lanes remain
+in the plan. A focused command run before subsequent edits is evidence for that
+iteration, not for the final worktree; some narrow coverage may therefore run
+again in the final changed-aware gate.
 
 Add a standalone final check only when the dry-run plan omits a capability the
 changed surface requires:

@@ -166,8 +166,10 @@ lane command and its relevant files across the base diff, index, working tree,
 and untracked contents. A previous result is reused only when that lane passed
 and its input fingerprint is unchanged. Failed lanes, new lanes, and lanes with
 changed inputs run again; lanes no longer selected by the current plan are
-dropped. Summaries created before per-lane fingerprints are rejected and
-require one normal `pnpm check:changed` run.
+dropped. A failed-only retry inherits the previous run's push-ready mode so
+failed build and pack lanes cannot disappear from the retry plan. Summaries
+created before per-lane fingerprints are rejected and require one normal
+`pnpm check:changed` run.
 
 When the changed set includes deleted package test files, `check:changed` should
 not pass those missing paths to Vitest as explicit targets. Deleting source files

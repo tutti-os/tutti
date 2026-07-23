@@ -7,6 +7,10 @@ export const laneFingerprintVersion = 1;
 
 export class LaneCacheError extends Error {}
 
+export function resolveRetryPushReady(requestedPushReady, previousSummary) {
+  return requestedPushReady || previousSummary?.pushReady === true;
+}
+
 export function buildLaneInputFingerprint(input) {
   const root = input.workspaceRoot;
   const inputFiles = Array.from(new Set(input.lane.inputFiles)).sort();
