@@ -213,6 +213,25 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
             intensityLabel: composerProps.labels.tuttiBudgetIntensityLabel,
             intensityMin: composerProps.labels.tuttiBudgetIntensityMin,
             intensityMax: composerProps.labels.tuttiBudgetIntensityMax,
+            previewTitle: composerProps.labels.tuttiBudgetPreviewTitle,
+            previewHint: composerProps.labels.tuttiBudgetPreviewHint,
+            previewCost: composerProps.labels.tuttiBudgetPreviewCost,
+            previewBalance: composerProps.labels.tuttiBudgetPreviewBalance,
+            previewPowerful: composerProps.labels.tuttiBudgetPreviewPowerful,
+            modelStrengthLabel:
+              composerProps.labels.tuttiBudgetModelStrengthLabel,
+            modelStrengthCost:
+              composerProps.labels.tuttiBudgetModelStrengthCost,
+            modelStrengthBalance:
+              composerProps.labels.tuttiBudgetModelStrengthBalance,
+            modelStrengthPowerful:
+              composerProps.labels.tuttiBudgetModelStrengthPowerful,
+            agentCountLabel: composerProps.labels.tuttiBudgetAgentCountLabel,
+            agentCountCost: composerProps.labels.tuttiBudgetAgentCountCost,
+            agentCountBalance:
+              composerProps.labels.tuttiBudgetAgentCountBalance,
+            agentCountPowerful:
+              composerProps.labels.tuttiBudgetAgentCountPowerful,
             confirm: composerProps.labels.tuttiBudgetConfirm,
             cancel: composerProps.labels.tuttiBudgetCancel
           }}

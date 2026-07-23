@@ -8,6 +8,20 @@ const labels = {
   intensityLabel: "Orchestration intensity",
   intensityMin: "Minimal",
   intensityMax: "Maximal",
+  previewTitle: "Planner tendency",
+  previewHint:
+    "The exact model and task graph are inferred from the request and selected Skills.",
+  previewCost: "Cost",
+  previewBalance: "Balance",
+  previewPowerful: "Powerful",
+  modelStrengthLabel: "Model strength",
+  modelStrengthCost: "Economical",
+  modelStrengthBalance: "Balanced",
+  modelStrengthPowerful: "Most capable",
+  agentCountLabel: "Agent count",
+  agentCountCost: "1",
+  agentCountBalance: "2–3",
+  agentCountPowerful: "Up to 4 parallel",
   confirm: "Confirm",
   cancel: "Cancel"
 };
@@ -43,6 +57,58 @@ describe("TuttiBudgetPopover", () => {
     ).toHaveAttribute("aria-valuenow", "62");
     expect(screen.getByText("Minimal")).toBeInTheDocument();
     expect(screen.getByText("Maximal")).toBeInTheDocument();
+  });
+
+  it("links slider changes to the planning tendency, model strength, and Agent count", () => {
+    renderPopover({ intensity: 33 });
+    openPopover();
+
+    const preview = document.querySelector("[data-agent-tutti-budget-preview]");
+    expect(preview).toHaveAttribute("data-agent-tutti-budget-preview", "cost");
+    expect(
+      document.querySelector("[data-agent-tutti-budget-model-strength]")
+    ).toHaveTextContent("Economical");
+    expect(
+      document.querySelector("[data-agent-tutti-budget-agent-count]")
+    ).toHaveTextContent("1");
+
+    fireEvent.keyDown(
+      screen.getByRole("slider", { name: "Orchestration intensity" }),
+      { key: "ArrowRight" }
+    );
+
+    expect(preview).toHaveAttribute(
+      "data-agent-tutti-budget-preview",
+      "balance"
+    );
+    expect(preview).toHaveTextContent("Balance");
+    expect(
+      document.querySelector("[data-agent-tutti-budget-model-strength]")
+    ).toHaveTextContent("Balanced");
+    expect(
+      document.querySelector("[data-agent-tutti-budget-agent-count]")
+    ).toHaveTextContent("2–3");
+    expect(
+      document.querySelector("[data-agent-tutti-budget-preview-marker]")
+    ).toHaveStyle({ left: "34%" });
+  });
+
+  it("shows the powerful tendency at the upper intensity band", () => {
+    renderPopover({ intensity: 67 });
+    openPopover();
+
+    const preview = document.querySelector("[data-agent-tutti-budget-preview]");
+    expect(preview).toHaveAttribute(
+      "data-agent-tutti-budget-preview",
+      "powerful"
+    );
+    expect(preview).toHaveTextContent("Powerful");
+    expect(
+      document.querySelector("[data-agent-tutti-budget-model-strength]")
+    ).toHaveTextContent("Most capable");
+    expect(
+      document.querySelector("[data-agent-tutti-budget-agent-count]")
+    ).toHaveTextContent("Up to 4 parallel");
   });
 
   it("cancel closes without committing the draft", () => {

@@ -12,6 +12,12 @@ describe("agentGUITuttiModeLabels", () => {
     expect(labels.tuttiModeUpdateFailed).toBe(
       "agentHost.agentGui.tuttiModeUpdateFailed"
     );
+    expect(labels.tuttiBudgetPreviewPowerful).toBe(
+      "agentHost.agentGui.tuttiBudgetPreviewPowerful"
+    );
+    expect(labels.tuttiBudgetAgentCountPowerful).toBe(
+      "agentHost.agentGui.tuttiBudgetAgentCountPowerful"
+    );
     expect(labels.tuttiModePlanPanel.taskReview).toBe(
       "agentHost.agentGui.tuttiModePlan.taskReview"
     );

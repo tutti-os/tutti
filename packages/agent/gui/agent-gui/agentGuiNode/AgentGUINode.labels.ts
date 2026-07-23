@@ -254,15 +254,6 @@ export function useAgentGUIViewLabels(input: {
       normalModeLabel: t("agentHost.agentGui.normalModeLabel"),
       normalModeDescription: t("agentHost.agentGui.normalModeDescription"),
       ...agentGUITuttiModeLabels(t),
-      tuttiModeRemove: t("agentHost.agentGui.tuttiModeRemove"),
-      tuttiBudgetTitle: t("agentHost.agentGui.tuttiBudgetTitle"),
-      tuttiBudgetIntensityLabel: t(
-        "agentHost.agentGui.tuttiBudgetIntensityLabel"
-      ),
-      tuttiBudgetIntensityMin: t("agentHost.agentGui.tuttiBudgetIntensityMin"),
-      tuttiBudgetIntensityMax: t("agentHost.agentGui.tuttiBudgetIntensityMax"),
-      tuttiBudgetConfirm: t("agentHost.agentGui.tuttiBudgetConfirm"),
-      tuttiBudgetCancel: t("agentHost.agentGui.tuttiBudgetCancel"),
       planModeDescription: t("agentHost.agentGui.planModeDescription"),
       planModeOnLabel: t("agentHost.agentGui.planModeOnLabel"),
       planModeOffLabel: t("agentHost.agentGui.planModeOffLabel"),

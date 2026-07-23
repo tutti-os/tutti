@@ -357,6 +357,20 @@ export function ComposerFooter({
                   intensityLabel: labels.tuttiBudgetIntensityLabel,
                   intensityMin: labels.tuttiBudgetIntensityMin,
                   intensityMax: labels.tuttiBudgetIntensityMax,
+                  previewTitle: labels.tuttiBudgetPreviewTitle,
+                  previewHint: labels.tuttiBudgetPreviewHint,
+                  previewCost: labels.tuttiBudgetPreviewCost,
+                  previewBalance: labels.tuttiBudgetPreviewBalance,
+                  previewPowerful: labels.tuttiBudgetPreviewPowerful,
+                  modelStrengthLabel: labels.tuttiBudgetModelStrengthLabel,
+                  modelStrengthCost: labels.tuttiBudgetModelStrengthCost,
+                  modelStrengthBalance: labels.tuttiBudgetModelStrengthBalance,
+                  modelStrengthPowerful:
+                    labels.tuttiBudgetModelStrengthPowerful,
+                  agentCountLabel: labels.tuttiBudgetAgentCountLabel,
+                  agentCountCost: labels.tuttiBudgetAgentCountCost,
+                  agentCountBalance: labels.tuttiBudgetAgentCountBalance,
+                  agentCountPowerful: labels.tuttiBudgetAgentCountPowerful,
                   confirm: labels.tuttiBudgetConfirm,
                   cancel: labels.tuttiBudgetCancel
                 }}

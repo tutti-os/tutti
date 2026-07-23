@@ -3,8 +3,28 @@ import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 
 type AgentGUITuttiModeLabels = Pick<
   AgentGUIViewLabels,
+  | "tuttiBudgetAgentCountBalance"
+  | "tuttiBudgetAgentCountCost"
+  | "tuttiBudgetAgentCountLabel"
+  | "tuttiBudgetAgentCountPowerful"
+  | "tuttiBudgetCancel"
+  | "tuttiBudgetConfirm"
+  | "tuttiBudgetIntensityLabel"
+  | "tuttiBudgetIntensityMax"
+  | "tuttiBudgetIntensityMin"
+  | "tuttiBudgetModelStrengthBalance"
+  | "tuttiBudgetModelStrengthCost"
+  | "tuttiBudgetModelStrengthLabel"
+  | "tuttiBudgetModelStrengthPowerful"
+  | "tuttiBudgetPreviewBalance"
+  | "tuttiBudgetPreviewCost"
+  | "tuttiBudgetPreviewHint"
+  | "tuttiBudgetPreviewPowerful"
+  | "tuttiBudgetPreviewTitle"
+  | "tuttiBudgetTitle"
   | "tuttiModeDescription"
   | "tuttiModeLabel"
+  | "tuttiModeRemove"
   | "tuttiModePlanBanner"
   | "tuttiModePlanIssueCreateFailed"
   | "tuttiModePlanIssuePanel"
@@ -26,6 +46,48 @@ export function agentGUITuttiModeLabels(
   return {
     tuttiModeLabel: t("agentHost.agentGui.tuttiModeLabel"),
     tuttiModeDescription: t("agentHost.agentGui.tuttiModeDescription"),
+    tuttiModeRemove: t("agentHost.agentGui.tuttiModeRemove"),
+    tuttiBudgetTitle: t("agentHost.agentGui.tuttiBudgetTitle"),
+    tuttiBudgetIntensityLabel: t(
+      "agentHost.agentGui.tuttiBudgetIntensityLabel"
+    ),
+    tuttiBudgetIntensityMin: t("agentHost.agentGui.tuttiBudgetIntensityMin"),
+    tuttiBudgetIntensityMax: t("agentHost.agentGui.tuttiBudgetIntensityMax"),
+    tuttiBudgetPreviewTitle: t("agentHost.agentGui.tuttiBudgetPreviewTitle"),
+    tuttiBudgetPreviewHint: t("agentHost.agentGui.tuttiBudgetPreviewHint"),
+    tuttiBudgetPreviewCost: t("agentHost.agentGui.tuttiBudgetPreviewCost"),
+    tuttiBudgetPreviewBalance: t(
+      "agentHost.agentGui.tuttiBudgetPreviewBalance"
+    ),
+    tuttiBudgetPreviewPowerful: t(
+      "agentHost.agentGui.tuttiBudgetPreviewPowerful"
+    ),
+    tuttiBudgetModelStrengthLabel: t(
+      "agentHost.agentGui.tuttiBudgetModelStrengthLabel"
+    ),
+    tuttiBudgetModelStrengthCost: t(
+      "agentHost.agentGui.tuttiBudgetModelStrengthCost"
+    ),
+    tuttiBudgetModelStrengthBalance: t(
+      "agentHost.agentGui.tuttiBudgetModelStrengthBalance"
+    ),
+    tuttiBudgetModelStrengthPowerful: t(
+      "agentHost.agentGui.tuttiBudgetModelStrengthPowerful"
+    ),
+    tuttiBudgetAgentCountLabel: t(
+      "agentHost.agentGui.tuttiBudgetAgentCountLabel"
+    ),
+    tuttiBudgetAgentCountCost: t(
+      "agentHost.agentGui.tuttiBudgetAgentCountCost"
+    ),
+    tuttiBudgetAgentCountBalance: t(
+      "agentHost.agentGui.tuttiBudgetAgentCountBalance"
+    ),
+    tuttiBudgetAgentCountPowerful: t(
+      "agentHost.agentGui.tuttiBudgetAgentCountPowerful"
+    ),
+    tuttiBudgetConfirm: t("agentHost.agentGui.tuttiBudgetConfirm"),
+    tuttiBudgetCancel: t("agentHost.agentGui.tuttiBudgetCancel"),
     tuttiModeUpdateFailed: t("agentHost.agentGui.tuttiModeUpdateFailed"),
     tuttiModeUpdateUncertain: t("agentHost.agentGui.tuttiModeUpdateUncertain"),
     tuttiModePlanPanel: {

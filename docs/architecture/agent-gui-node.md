@@ -451,6 +451,14 @@ Confirm sends the selected intensity through the existing Tutti Mode activation
 command. Turning Tutti Mode off remains a separate adjacent action, and both
 controls stay disabled while an activation update is unresolved.
 
+The intensity popup also projects the local draft into equal Cost, Balance,
+and Powerful tendency bands while the slider moves. That projection is
+explanatory UI, not a model or task assignment: it previews economical,
+balanced, or most-capable model strength and 1, 2–3, or up to 4 parallel
+Agents, matching the workspace-wide Issue execution ceiling. The planning
+Agent still derives the exact model, task graph, and safe parallelism from the
+request, selected Skills, available composer catalog, and workspace state.
+
 Home-composer project state distinguishes an unresolved durable default from an
 explicit selection whose path may be null. The project selector may apply the
 durable default only while that intent is unresolved. Entering the unscoped
