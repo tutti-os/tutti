@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/browser-node",
-  "version": "0.1.0",
+  "version": "0.0.213",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -35,10 +35,10 @@
     "verify:built-entries": "node -e \"import('./dist/chrome-cookie-import/macos/index.js')\""
   },
   "dependencies": {
-    "@tutti-os/ui-i18n-runtime": "workspace:*",
-    "@tutti-os/ui-react-hooks": "workspace:*",
-    "@tutti-os/ui-system": "workspace:*",
-    "@tutti-os/workbench-surface": "workspace:*",
+    "@tutti-os/ui-i18n-runtime": "0.0.213",
+    "@tutti-os/ui-react-hooks": "0.0.213",
+    "@tutti-os/ui-system": "0.0.213",
+    "@tutti-os/workbench-surface": "0.0.213",
     "ws": "^8.21.0"
   },
   "devDependencies": {

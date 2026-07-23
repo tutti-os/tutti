@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/workbench-launchpad",
-  "version": "0.0.26-beta.0",
+  "version": "0.0.213",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -23,8 +23,8 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@tutti-os/ui-system": "workspace:*",
-    "@tutti-os/workbench-surface": "workspace:*"
+    "@tutti-os/ui-system": "0.0.213",
+    "@tutti-os/workbench-surface": "0.0.213"
   },
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",

@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/workbench-host",
-  "version": "0.1.0",
+  "version": "0.0.213",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -24,14 +24,14 @@
   },
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",
-    "@tutti-os/workbench-surface": "workspace:*",
+    "@tutti-os/workbench-surface": "0.0.213",
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
-    "@tutti-os/workbench-surface": "workspace:*"
+    "@tutti-os/workbench-surface": "0.0.213"
   },
   "publishConfig": {
     "access": "public",
