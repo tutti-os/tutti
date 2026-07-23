@@ -347,9 +347,21 @@ jobs:
       - name: Install pinned golangci-lint
         run: |
           version=$(tr -d '\n' < services/tuttid/.golangci-lint-version)
-          install_dir="${HOME}/.local/bin"
+          install_dir="${RUNNER_TEMP}/golangci-lint/bin"
+          installer="${RUNNER_TEMP}/golangci-lint-install.sh"
           mkdir -p "${install_dir}"
-          curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "${install_dir}" "${version}"
+          curl \
+            --retry 5 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            --silent \
+            --show-error \
+            --fail \
+            --location \
+            --output "${installer}" \
+            https://golangci-lint.run/install.sh
+          sh "${installer}" -b "${install_dir}" "${version}"
+          test -x "${install_dir}/golangci-lint"
           echo "${install_dir}" >> "${GITHUB_PATH}"
 
       - name: Run Go lint
