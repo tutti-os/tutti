@@ -3,6 +3,7 @@ package mobileremote
 import (
 	"context"
 	"crypto/ed25519"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -19,8 +20,9 @@ const (
 )
 
 type activeRemoteAttempt struct {
-	pairingID string
-	cancel    context.CancelFunc
+	pairingID  string
+	cancel     context.CancelFunc
+	generation uint64
 }
 
 type remoteHostState struct {
@@ -32,6 +34,7 @@ type remoteHostState struct {
 	registeredSession string
 	registeredDevice  RegisteredDevice
 	registerAfter     time.Time
+	nextGeneration    uint64
 }
 
 func (s *Service) StartRemoteHost(handler http.Handler) {
@@ -100,10 +103,16 @@ func (s *Service) pollRemoteHost(ctx context.Context) {
 	}
 	registered, err := s.ensureRegisteredDevice(ctx, session.SessionID, session.Cookie, identity)
 	if err != nil {
+		if isControlPlaneUnauthorized(err) {
+			s.stopRemoteAttempts(nil)
+		}
 		return
 	}
 	pairings, err := s.ControlPlane.ListPairings(ctx, session.Cookie)
 	if err != nil {
+		if isControlPlaneUnauthorized(err) {
+			s.stopRemoteAttempts(nil)
+		}
 		return
 	}
 	validPairings := make(map[string]struct{})
@@ -117,6 +126,10 @@ func (s *Service) pollRemoteHost(ctx context.Context) {
 			ctx, session.Cookie, pairing.PairingID, identity.DeviceID, signature,
 		)
 		if err != nil {
+			if isControlPlaneUnauthorized(err) {
+				s.stopRemoteAttempts(nil)
+				return
+			}
 			continue
 		}
 		for _, attempt := range attempts {
@@ -173,7 +186,11 @@ func (s *Service) startRemoteAttempt(
 		return
 	}
 	ctx, cancel := context.WithCancel(parent)
-	s.remoteHost.attempts[attempt.AttemptID] = activeRemoteAttempt{pairingID: pairingID, cancel: cancel}
+	s.remoteHost.nextGeneration++
+	generation := s.remoteHost.nextGeneration
+	s.remoteHost.attempts[attempt.AttemptID] = activeRemoteAttempt{
+		pairingID: pairingID, cancel: cancel, generation: generation,
+	}
 	handler := s.remoteHost.handler
 	s.remoteHost.mu.Unlock()
 
@@ -181,11 +198,7 @@ func (s *Service) startRemoteAttempt(
 	go func() {
 		defer s.remoteWG.Done()
 		defer cancel()
-		defer func() {
-			s.remoteHost.mu.Lock()
-			delete(s.remoteHost.attempts, attempt.AttemptID)
-			s.remoteHost.mu.Unlock()
-		}()
+		defer s.finishRemoteAttempt(attempt.AttemptID, generation)
 		var ok bool
 		attempt, ok = s.settledRemoteAttempt(ctx, cookie, identity, pairingID, attempt)
 		if !ok {
@@ -193,6 +206,34 @@ func (s *Service) startRemoteAttempt(
 		}
 		s.serveRemoteAttempt(ctx, handler, cookie, identity, pairingID, attempt)
 	}()
+}
+
+func (s *Service) finishRemoteAttempt(attemptID string, generation uint64) {
+	s.remoteHost.mu.Lock()
+	defer s.remoteHost.mu.Unlock()
+	if current, exists := s.remoteHost.attempts[attemptID]; exists &&
+		current.generation == generation {
+		delete(s.remoteHost.attempts, attemptID)
+	}
+}
+
+func (s *Service) stopRemotePairing(pairingID string) {
+	s.remoteHost.mu.Lock()
+	defer s.remoteHost.mu.Unlock()
+	for attemptID, attempt := range s.remoteHost.attempts {
+		if attempt.pairingID != strings.TrimSpace(pairingID) {
+			continue
+		}
+		attempt.cancel()
+		delete(s.remoteHost.attempts, attemptID)
+	}
+}
+
+func isControlPlaneUnauthorized(err error) bool {
+	var controlPlaneErr *ControlPlaneError
+	return errors.As(err, &controlPlaneErr) &&
+		(controlPlaneErr.StatusCode == http.StatusUnauthorized ||
+			controlPlaneErr.StatusCode == http.StatusForbidden)
 }
 
 func (s *Service) settledRemoteAttempt(
@@ -236,11 +277,12 @@ func (s *Service) serveRemoteAttempt(
 	pairingID string,
 	attempt DeviceLinkAttempt,
 ) {
+	handshakeCtx := ctx
+	cancelHandshake := func() {}
 	if deadline, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(attempt.ExpiresAt)); err == nil {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithDeadline(ctx, deadline)
-		defer cancel()
+		handshakeCtx, cancelHandshake = context.WithDeadline(ctx, deadline)
 	}
+	defer cancelHandshake()
 	participant, err := authenticatedlink.NewParticipant(authenticatedlink.ParticipantConfig{
 		STUNEndpoints:   append([]string(nil), attempt.STUNEndpoints...),
 		IncludeLoopback: s.includeLoopback,
@@ -249,7 +291,7 @@ func (s *Service) serveRemoteAttempt(
 		return
 	}
 	defer participant.Close()
-	description, err := participant.LocalDescription(ctx)
+	description, err := participant.LocalDescription(handshakeCtx)
 	if err != nil {
 		return
 	}
@@ -258,7 +300,7 @@ func (s *Service) serveRemoteAttempt(
 		deviceLinkProof("update", pairingID, attempt.AttemptID, description.Fingerprint),
 	)
 	updated, err := s.ControlPlane.UpdateDeviceLinkParticipant(
-		ctx, cookie, pairingID, attempt.AttemptID, identity.DeviceID,
+		handshakeCtx, cookie, pairingID, attempt.AttemptID, identity.DeviceID,
 		DeviceLinkParticipantInput{
 			Fingerprint:     description.Fingerprint,
 			ProtocolVersion: deviceLinkProtocolVersion,
@@ -276,7 +318,7 @@ func (s *Service) serveRemoteAttempt(
 	if peer == nil {
 		return
 	}
-	link, err := participant.Connect(ctx, authenticatedlink.Description{
+	link, err := participant.Connect(handshakeCtx, authenticatedlink.Description{
 		Fingerprint: updated.CallerFingerprint,
 		Ufrag:       peer.Ufrag,
 		Pwd:         peer.Pwd,
@@ -285,6 +327,7 @@ func (s *Service) serveRemoteAttempt(
 	if err != nil {
 		return
 	}
+	cancelHandshake()
 	defer link.Close()
 
 	for {

@@ -64,6 +64,9 @@ func TestLoopbackLinksExchangeDescriptionsAndStreams(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := stream.SetDeadline(20_000); err != nil {
+		t.Fatal(err)
+	}
 	payload := []byte("gomobile-authenticated-link")
 	if _, err := stream.Write(payload); err != nil {
 		t.Fatal(err)

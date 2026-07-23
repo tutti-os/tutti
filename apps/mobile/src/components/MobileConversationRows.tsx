@@ -2,7 +2,12 @@ import type {
   WorkspaceAgentInteraction,
   WorkspaceAgentSessionMessage
 } from "@tutti-os/client-tuttid-ts";
-import { useMemo, useState } from "react";
+import {
+  buildAskUserAnswerPayload,
+  readOwnAnswer,
+  writeOwnAnswer
+} from "@tutti-os/agent-gui/agent-conversation/interactive-answer";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { PrimaryButton } from "./PrimaryButton";
 import { t } from "../i18n";
@@ -51,6 +56,7 @@ export function MobileInteractionCard({
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [failed, setFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const interactionIdentity = `${interaction.agentSessionId}:${interaction.turnId}:${interaction.requestId}`;
   const input = interaction.input ?? {};
   const questions = useMemo(() => normalizeQuestions(input.questions), [input]);
   const options = normalizeOptions(input.options);
@@ -65,6 +71,12 @@ export function MobileInteractionCard({
       setSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    setAnswers({});
+    setFailed(false);
+    setSubmitting(false);
+  }, [interactionIdentity]);
 
   return (
     <View style={styles.interactionCard}>
@@ -83,7 +95,7 @@ export function MobileInteractionCard({
       {interaction.kind === "question" ? (
         <>
           {questions.map((question) => {
-            const selected = answers[question.id] ?? [];
+            const selected = readOwnAnswer(answers, question.id, []);
             return (
               <View key={question.id} style={styles.question}>
                 <Text style={styles.questionText}>{question.question}</Text>
@@ -94,16 +106,23 @@ export function MobileInteractionCard({
                       return (
                         <Pressable
                           key={option}
-                          onPress={() =>
-                            setAnswers((current) => ({
-                              ...current,
-                              [question.id]: question.multiSelect
-                                ? active
-                                  ? selected.filter((value) => value !== option)
-                                  : [...selected, option]
-                                : [option]
-                            }))
-                          }
+                          onPress={() => {
+                            setAnswers((current) => {
+                              const updated = { ...current };
+                              writeOwnAnswer(
+                                updated,
+                                question.id,
+                                question.multiSelect
+                                  ? active
+                                    ? selected.filter(
+                                        (value) => value !== option
+                                      )
+                                    : [...selected, option]
+                                  : [option]
+                              );
+                              return updated;
+                            });
+                          }}
                           style={[
                             styles.option,
                             active && styles.optionSelected
@@ -117,12 +136,17 @@ export function MobileInteractionCard({
                 ) : (
                   <TextInput
                     multiline
-                    onChangeText={(value) =>
-                      setAnswers((current) => ({
-                        ...current,
-                        [question.id]: value ? [value] : []
-                      }))
-                    }
+                    onChangeText={(value) => {
+                      setAnswers((current) => {
+                        const updated = { ...current };
+                        writeOwnAnswer(
+                          updated,
+                          question.id,
+                          value ? [value] : []
+                        );
+                        return updated;
+                      });
+                    }}
                     placeholder={t("answerHint")}
                     placeholderTextColor={theme.color.muted}
                     style={styles.answerInput}
@@ -134,27 +158,24 @@ export function MobileInteractionCard({
           })}
           <PrimaryButton
             disabled={questions.some(
-              (question) => (answers[question.id]?.length ?? 0) === 0
+              (question) => readOwnAnswer(answers, question.id, []).length === 0
             )}
             label={t("submit")}
             loading={submitting}
             onPress={() => {
-              const answersByQuestionId = Object.fromEntries(
-                questions.map((question) => {
-                  const values = answers[question.id] ?? [];
-                  return [
-                    question.id,
-                    question.multiSelect ? values : (values[0] ?? "")
-                  ];
-                })
-              );
+              const answersByQuestionId: Record<string, string | string[]> = {};
+              for (const question of questions) {
+                const values = readOwnAnswer(answers, question.id, []);
+                writeOwnAnswer(
+                  answersByQuestionId,
+                  question.id,
+                  question.multiSelect ? values : (values[0] ?? "")
+                );
+              }
               void submit({
                 action: "submit",
                 payload: {
-                  answers: Object.values(answersByQuestionId).map((value) =>
-                    Array.isArray(value) ? value.join(", ") : value
-                  ),
-                  answersByQuestionId
+                  ...buildAskUserAnswerPayload(answersByQuestionId)
                 }
               });
             }}

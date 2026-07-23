@@ -32,6 +32,10 @@ export interface UserDevice {
   userDeviceId: string;
 }
 
+interface RegisteredDevice {
+  userDeviceId: string;
+}
+
 interface PairingChallenge {
   challengeId: string;
   expiresAt: string;
@@ -118,27 +122,31 @@ export async function listDevices(sessionId: string): Promise<UserDevice[]> {
 
 export async function connectPairedDevice(
   sessionId: string,
-  pairingId: string
+  pairingId: string,
+  isCurrent: () => boolean = () => true
 ): Promise<void> {
   const identity = await mobileSecurity.getOrCreateIdentity();
+  await requireCurrentConnection(isCurrent);
   await registerIdentity(sessionId, identity);
+  await requireCurrentConnection(isCurrent);
   try {
-    let local = parseDeviceLinkDescription(
-      await deviceLink.prepareLink("[]", 10_000)
-    );
+    let prepared = await deviceLink.prepareLink("[]", 10_000);
+    let local = parseDeviceLinkDescription(prepared.descriptionJSON);
+    await requireCurrentConnection(isCurrent);
     let attempt = await createDeviceLinkAttempt(
       sessionId,
       identity.deviceId,
       pairingId,
       local
     );
+    await requireCurrentConnection(isCurrent);
     if ((attempt.stunEndpoints?.length ?? 0) > 0) {
-      local = parseDeviceLinkDescription(
-        await deviceLink.prepareLink(
-          JSON.stringify(attempt.stunEndpoints),
-          10_000
-        )
+      prepared = await deviceLink.prepareLink(
+        JSON.stringify(attempt.stunEndpoints),
+        10_000
       );
+      local = parseDeviceLinkDescription(prepared.descriptionJSON);
+      await requireCurrentConnection(isCurrent);
       attempt = await updateDeviceLinkParticipant(
         sessionId,
         identity.deviceId,
@@ -146,6 +154,7 @@ export async function connectPairedDevice(
         attempt.attemptId,
         local
       );
+      await requireCurrentConnection(isCurrent);
     }
     const getSignature = standardBase64ToURL(
       await mobileSecurity.sign(
@@ -167,11 +176,14 @@ export async function connectPairedDevice(
             ufrag: attempt.ownerIce.ufrag
           }),
           true,
+          prepared.token,
           30_000
         );
+        await requireCurrentConnection(isCurrent);
         return;
       }
       await delay(500);
+      await requireCurrentConnection(isCurrent);
       attempt = await getDeviceLinkAttempt(
         sessionId,
         identity.deviceId,
@@ -179,12 +191,22 @@ export async function connectPairedDevice(
         attempt.attemptId,
         getSignature
       );
+      await requireCurrentConnection(isCurrent);
     }
     throw new Error("device-link attempt expired");
   } catch (error) {
-    await deviceLink.closeLink().catch(() => undefined);
+    if (isCurrent()) {
+      await deviceLink.closeLink().catch(() => undefined);
+    }
     throw error;
   }
+}
+
+export async function registerCurrentDevice(
+  sessionId: string
+): Promise<RegisteredDevice> {
+  const identity = await mobileSecurity.getOrCreateIdentity();
+  return registerIdentity(sessionId, identity);
 }
 
 async function createDeviceLinkAttempt(
@@ -285,25 +307,42 @@ function parseDeviceLinkDescription(raw: string): DeviceLinkDescription {
 async function registerIdentity(
   sessionId: string,
   identity: DeviceIdentity
-): Promise<void> {
+): Promise<RegisteredDevice> {
   const proof = await mobileSecurity.sign(
     identityProof(identity.deviceId, identity.publicKey)
   );
-  await controlPlaneRequest(sessionId, "/devices/current", {
-    body: JSON.stringify({
-      arch: identity.arch,
-      clientVersion: mobileClientVersion,
-      deviceId: identity.deviceId,
-      platform: "android",
-      publicIdentity: {
-        algorithm: "ed25519",
-        proof,
-        publicKey: base64URLToStandard(identity.publicKey)
-      },
-      reportedName: identity.deviceName
-    }),
-    method: "PUT"
-  });
+  const response = await controlPlaneRequest<{ device: RegisteredDevice }>(
+    sessionId,
+    "/devices/current",
+    {
+      body: JSON.stringify({
+        arch: identity.arch,
+        clientVersion: mobileClientVersion,
+        deviceId: identity.deviceId,
+        platform: "android",
+        publicIdentity: {
+          algorithm: "ed25519",
+          proof,
+          publicKey: base64URLToStandard(identity.publicKey)
+        },
+        reportedName: identity.deviceName
+      }),
+      method: "PUT"
+    }
+  );
+  if (!response.device?.userDeviceId) {
+    throw new Error("registered mobile device is incomplete");
+  }
+  return response.device;
+}
+
+async function requireCurrentConnection(
+  isCurrent: () => boolean
+): Promise<void> {
+  if (isCurrent()) {
+    return;
+  }
+  throw new Error("device-link connection was cancelled");
 }
 
 function delay(ms: number): Promise<void> {
@@ -315,13 +354,20 @@ async function controlPlaneRequest<T>(
   path: string,
   init: RequestInit
 ): Promise<T> {
-  const response = await fetch(`${controlPlaneBaseURL}${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      Cookie: accountCookie(sessionId),
-      ...(init.body ? { "Content-Type": "application/json" } : {})
-    }
-  });
-  return readJSON<T>(response);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(`${controlPlaneBaseURL}${path}`, {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        Cookie: accountCookie(sessionId),
+        ...(init.body ? { "Content-Type": "application/json" } : {})
+      },
+      signal: controller.signal
+    });
+    return readJSON<T>(response);
+  } finally {
+    clearTimeout(timer);
+  }
 }

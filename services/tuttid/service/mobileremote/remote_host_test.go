@@ -107,7 +107,7 @@ const errTestInvalidProof = testProofError("invalid test proof")
 
 func TestRemoteHostConnectsAuthenticatedLinkAndServesAgentHTTP(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -122,6 +122,7 @@ func TestRemoteHostConnectsAuthenticatedLinkAndServesAgentHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	attemptExpiry := time.Now().Add(8 * time.Second)
 	controlPlane := &remoteHostControlPlane{
 		identityKey: publicKey, registered: make(chan struct{}, 1), updated: make(chan DeviceLinkAttempt, 1),
 		attempt: DeviceLinkAttempt{
@@ -133,7 +134,7 @@ func TestRemoteHostConnectsAuthenticatedLinkAndServesAgentHTTP(t *testing.T) {
 				Candidates: append([]string(nil), callerDescription.Candidates...),
 			},
 			OwnerDeviceID: "desktop-device", State: "awaiting_owner",
-			ExpiresAt: time.Now().Add(time.Minute).UTC().Format(time.RFC3339Nano),
+			ExpiresAt: attemptExpiry.UTC().Format(time.RFC3339Nano),
 		},
 	}
 	service := &Service{
@@ -181,6 +182,15 @@ func TestRemoteHostConnectsAuthenticatedLinkAndServesAgentHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer link.Close()
+	if wait := time.Until(attemptExpiry.Add(100 * time.Millisecond)); wait > 0 {
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			t.Fatal("timed out while waiting for rendezvous attempt expiry")
+		case <-timer.C:
+		}
+	}
 	stream, err := link.OpenStream(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -192,12 +202,40 @@ func TestRemoteHostConnectsAuthenticatedLinkAndServesAgentHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	var response RemoteResponse
-	if err := readRemoteFrame(stream, maxRemoteResponseBytes, &response); err != nil {
+	if err := readRemoteFrame(stream, maxRemoteResponseFrameBytes, &response); err != nil {
 		t.Fatal(err)
 	}
 	_ = stream.Close()
 	if response.Status != http.StatusOK ||
 		!strings.Contains(string(response.Body), `"workspaceId":"workspace-1"`) {
 		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
+func TestRemoteHostAttemptCleanupDoesNotDeleteNewGeneration(t *testing.T) {
+	t.Parallel()
+	service := &Service{}
+	service.remoteHost.attempts = map[string]activeRemoteAttempt{
+		"attempt-1": {generation: 2},
+	}
+	service.finishRemoteAttempt("attempt-1", 1)
+	if _, exists := service.remoteHost.attempts["attempt-1"]; !exists {
+		t.Fatal("old worker cleanup deleted the newer attempt generation")
+	}
+	service.finishRemoteAttempt("attempt-1", 2)
+	if _, exists := service.remoteHost.attempts["attempt-1"]; exists {
+		t.Fatal("current worker cleanup did not delete its attempt")
+	}
+}
+
+func TestControlPlaneUnauthorizedClassification(t *testing.T) {
+	t.Parallel()
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		if !isControlPlaneUnauthorized(&ControlPlaneError{StatusCode: status}) {
+			t.Fatalf("status %d was not classified as unauthorized", status)
+		}
+	}
+	if isControlPlaneUnauthorized(&ControlPlaneError{StatusCode: http.StatusInternalServerError}) {
+		t.Fatal("server error was classified as unauthorized")
 	}
 }

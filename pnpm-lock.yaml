@@ -195,6 +195,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      "@tutti-os/agent-gui":
+        specifier: workspace:*
+        version: link:../../packages/agent/gui
       "@tutti-os/client-tuttid-ts":
         specifier: workspace:*
         version: link:../../packages/clients/tuttid-ts

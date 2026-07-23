@@ -1,17 +1,19 @@
 {
   "name": "@tutti-os/mobile",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.11.0",
   "scripts": {
-    "android": "react-native run-android",
-    "build:android": "cd android && ./gradlew app:assembleDebug",
+    "android": "pnpm android:aar && react-native run-android",
+    "android:aar": "make -C ../../packages/device-link android-aar",
+    "build:android": "pnpm android:aar && cd android && ./gradlew app:assembleDebug",
     "check": "pnpm typecheck && pnpm test",
     "start": "react-native start",
     "test": "jest --runInBand",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tutti-os/agent-gui": "workspace:*",
     "@tutti-os/client-tuttid-ts": "workspace:*",
     "react": "19.2.6",
     "react-native": "0.86.0",

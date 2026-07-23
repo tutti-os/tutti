@@ -776,6 +776,8 @@ export const zhCN = {
         mobileRemote: {
           cancel: "取消配对",
           confirming: "正在确认这台手机...",
+          copyPairingCode: "复制配对码",
+          copyPairingCodeFailed: "暂时无法复制配对码",
           description:
             "与登录同一 Tutti 账号的手机配对，随后可在手机上访问这台电脑的 Agent 会话",
           empty: "尚未有手机与这台电脑配对",
@@ -787,6 +789,7 @@ export const zhCN = {
           },
           mobileDevice: "移动设备",
           pairedDevices: "已配对手机",
+          pairingCodeCopied: "配对码已复制",
           qrAlt: "手机配对二维码",
           qrError: "二维码生成失败",
           remove: "移除",

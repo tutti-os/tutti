@@ -7,11 +7,16 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View
 } from "react-native";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { t } from "../i18n";
-import { mobileSecurity, type AccountSession } from "../native/mobileNative";
+import {
+  deviceLink,
+  mobileSecurity,
+  type AccountSession
+} from "../native/mobileNative";
 import {
   claimPairing,
   connectPairedDevice,
@@ -19,6 +24,7 @@ import {
   listDevices,
   listPairings,
   parsePairingQR,
+  registerCurrentDevice,
   type DevicePairing,
   type UserDevice
 } from "../services/pairingClient";
@@ -45,17 +51,28 @@ export function DeviceScreen({
   const [connectingPairingID, setConnectingPairingID] = useState<string | null>(
     null
   );
+  const [manualPairingCode, setManualPairingCode] = useState("");
+  const [manualPairingOpen, setManualPairingOpen] = useState(false);
   const pairingRun = useRef(0);
+  const connectionRun = useRef(0);
+  const scannerOpen = useRef(false);
 
   const refresh = useCallback(async () => {
     setError(null);
     setRefreshing(true);
     try {
-      const [nextPairings, nextDevices] = await Promise.all([
+      const [registered, nextPairings, nextDevices] = await Promise.all([
+        registerCurrentDevice(session.sessionId),
         listPairings(session.sessionId),
         listDevices(session.sessionId)
       ]);
-      setPairings(nextPairings.filter((pairing) => pairing.state === "active"));
+      setPairings(
+        nextPairings.filter(
+          (pairing) =>
+            pairing.state === "active" &&
+            pairing.controllerUserDeviceId === registered.userDeviceId
+        )
+      );
       setDevices(nextDevices);
     } catch {
       setError(t("genericError"));
@@ -71,14 +88,20 @@ export function DeviceScreen({
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
       if (nextState !== "active") {
-        pairingRun.current += 1;
-        setPairingState((current) =>
-          current === "claiming" || current === "waiting" ? "idle" : current
-        );
+        connectionRun.current += 1;
+        void deviceLink.closeLink().catch(() => undefined);
+        setConnectingPairingID(null);
+        if (!scannerOpen.current) {
+          pairingRun.current += 1;
+          setPairingState((current) =>
+            current === "claiming" || current === "waiting" ? "idle" : current
+          );
+        }
       }
     });
     return () => {
       pairingRun.current += 1;
+      connectionRun.current += 1;
       subscription.remove();
     };
   }, []);
@@ -88,12 +111,21 @@ export function DeviceScreen({
     [devices]
   );
 
-  const pair = async () => {
+  const pair = async (manualPayload?: string) => {
     const run = ++pairingRun.current;
     setError(null);
     setPairingState("claiming");
     try {
-      const payload = parsePairingQR(await mobileSecurity.scanQRCode());
+      let rawPayload = manualPayload?.trim();
+      if (!rawPayload) {
+        scannerOpen.current = true;
+        try {
+          rawPayload = await mobileSecurity.scanQRCode();
+        } finally {
+          scannerOpen.current = false;
+        }
+      }
+      const payload = parsePairingQR(rawPayload);
       if (run !== pairingRun.current) {
         return;
       }
@@ -117,6 +149,8 @@ export function DeviceScreen({
             return;
           }
           setPairingState("confirmed");
+          setManualPairingCode("");
+          setManualPairingOpen(false);
           await refresh();
           return;
         }
@@ -145,17 +179,29 @@ export function DeviceScreen({
     if (connectingPairingID) {
       return;
     }
+    const run = ++connectionRun.current;
     setConnectingPairingID(pairing.pairingId);
     setError(null);
     try {
-      await connectPairedDevice(session.sessionId, pairing.pairingId);
+      await connectPairedDevice(
+        session.sessionId,
+        pairing.pairingId,
+        () => run === connectionRun.current
+      );
+      if (run !== connectionRun.current) {
+        return;
+      }
       onConnected(
         device?.displayName || device?.reportedName || t("desktopFallback")
       );
     } catch {
-      setError(t("connectionFailed"));
+      if (run === connectionRun.current) {
+        setError(t("connectionFailed"));
+      }
     } finally {
-      setConnectingPairingID(null);
+      if (run === connectionRun.current) {
+        setConnectingPairingID(null);
+      }
     }
   };
 
@@ -175,7 +221,10 @@ export function DeviceScreen({
         </View>
         <PrimaryButton
           label={t("logout")}
-          onPress={() => void onSignOut()}
+          onPress={() => {
+            connectionRun.current += 1;
+            void onSignOut();
+          }}
           secondary
           style={styles.logout}
         />
@@ -257,6 +306,32 @@ export function DeviceScreen({
           disabled={pairingState !== "idle" && pairingState !== "confirmed"}
           onPress={() => void pair()}
         />
+        {manualPairingOpen ? (
+          <>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              multiline
+              onChangeText={setManualPairingCode}
+              placeholder={t("pairingCodeHint")}
+              placeholderTextColor={theme.color.muted}
+              style={styles.manualInput}
+              value={manualPairingCode}
+            />
+            <PrimaryButton
+              disabled={!manualPairingCode.trim() || pairingState !== "idle"}
+              label={t("pairingCodeSubmit")}
+              onPress={() => void pair(manualPairingCode)}
+              secondary
+            />
+          </>
+        ) : (
+          <PrimaryButton
+            label={t("pairingCodeAction")}
+            onPress={() => setManualPairingOpen(true)}
+            secondary
+          />
+        )}
       </View>
     </View>
   );
@@ -300,6 +375,15 @@ const styles = StyleSheet.create({
     color: theme.color.text,
     fontSize: 20,
     fontWeight: "900"
+  },
+  manualInput: {
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.medium,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: theme.color.text,
+    maxHeight: 120,
+    minHeight: 72,
+    padding: theme.space.small
   },
   deviceMeta: {
     color: theme.color.muted,
@@ -362,6 +446,7 @@ const styles = StyleSheet.create({
   footer: {
     borderColor: theme.color.border,
     borderTopWidth: StyleSheet.hairlineWidth,
+    gap: theme.space.small,
     padding: theme.space.large
   },
   header: {

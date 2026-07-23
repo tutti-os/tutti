@@ -36,7 +36,10 @@ class MobileSecurityModule(
     override fun getName(): String = "TuttiMobileSecurity"
 
     override fun getConstants(): Map<String, Any> =
-        mapOf("localeIdentifier" to Locale.getDefault().toLanguageTag())
+        mapOf(
+            "clientVersion" to BuildConfig.VERSION_NAME,
+            "localeIdentifier" to Locale.getDefault().toLanguageTag(),
+        )
 
     @ReactMethod
     fun getOrCreateIdentity(promise: Promise) {

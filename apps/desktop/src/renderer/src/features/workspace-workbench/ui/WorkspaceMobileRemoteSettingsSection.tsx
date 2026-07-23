@@ -8,6 +8,8 @@ import { useMobileRemoteAccessService } from "./useMobileRemoteAccessService";
 export function WorkspaceMobileRemoteSettingsSection() {
   const { t } = useTranslation();
   const { service, state } = useMobileRemoteAccessService();
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [codeCopyFailed, setCodeCopyFailed] = useState(false);
   const [qrDataURL, setQRDataURL] = useState<string | null>(null);
   const [qrRenderFailed, setQRRenderFailed] = useState(false);
 
@@ -18,6 +20,8 @@ export function WorkspaceMobileRemoteSettingsSection() {
 
   useEffect(() => {
     let active = true;
+    setCodeCopied(false);
+    setCodeCopyFailed(false);
     setQRRenderFailed(false);
     if (!state.qrPayload) {
       setQRDataURL(null);
@@ -116,6 +120,44 @@ export function WorkspaceMobileRemoteSettingsSection() {
             <p className="mb-0 mt-2 text-[13px] leading-5 text-[var(--text-secondary)]">
               {t("workspace.settings.account.mobileRemote.scanHint")}
             </p>
+            <div className="mt-3 flex max-w-[440px] flex-col gap-2">
+              <code className="max-h-20 select-all overflow-auto break-all rounded-[6px] bg-[var(--transparency-block)] px-2.5 py-2 text-[11px] leading-4 text-[var(--text-secondary)]">
+                {state.qrPayload}
+              </code>
+              <WorkspaceSettingsActionButton
+                className="w-auto self-start"
+                label={
+                  codeCopied
+                    ? t(
+                        "workspace.settings.account.mobileRemote.pairingCodeCopied"
+                      )
+                    : t(
+                        "workspace.settings.account.mobileRemote.copyPairingCode"
+                      )
+                }
+                onClick={() => {
+                  if (!state.qrPayload) return;
+                  void navigator.clipboard
+                    .writeText(state.qrPayload)
+                    .then(() => {
+                      setCodeCopied(true);
+                      setCodeCopyFailed(false);
+                    })
+                    .catch(() => {
+                      setCodeCopied(false);
+                      setCodeCopyFailed(true);
+                    });
+                }}
+                variant="secondary"
+              />
+              {codeCopyFailed ? (
+                <span className="text-[12px] text-[var(--state-warning)]">
+                  {t(
+                    "workspace.settings.account.mobileRemote.copyPairingCodeFailed"
+                  )}
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}

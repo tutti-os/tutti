@@ -30,7 +30,7 @@ link facade:
 - a JSON local description containing the ephemeral fingerprint and ICE
   material;
 - caller/owner connection using the peer description;
-- authenticated bidirectional stream open/accept/read/write/close;
+- authenticated bidirectional stream open/accept/read/write/deadline/close;
 - the loopback integration probe used by the Android build gate.
 
 Account identity signatures, DeviceLink attempts, pairing scope, Agent HTTP

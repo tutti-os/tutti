@@ -184,6 +184,13 @@ func (s *Stream) Write(data []byte) (int, error) {
 	return s.conn.Write(data)
 }
 
+func (s *Stream) SetDeadline(timeoutMillis int64) error {
+	if s == nil || s.conn == nil {
+		return errors.New("device-link mobile stream is closed")
+	}
+	return s.conn.SetDeadline(time.Now().Add(linkTimeout(timeoutMillis)))
+}
+
 func (s *Stream) Close() error {
 	if s == nil {
 		return nil
@@ -192,7 +199,6 @@ func (s *Stream) Close() error {
 	s.once.Do(func() {
 		if s.conn != nil {
 			closeErr = s.conn.Close()
-			s.conn = nil
 		}
 	})
 	return closeErr

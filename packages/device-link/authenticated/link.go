@@ -202,9 +202,6 @@ func (l *Link) Close() error {
 	var closeErr error
 	l.once.Do(func() {
 		closeErr = errors.Join(l.session.Close(), l.endpoint.Close(), l.agent.Close())
-		l.session = nil
-		l.endpoint = nil
-		l.agent = nil
 	})
 	return closeErr
 }

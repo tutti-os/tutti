@@ -823,6 +823,8 @@ export const en = {
         mobileRemote: {
           cancel: "Cancel pairing",
           confirming: "Confirming this phone...",
+          copyPairingCode: "Copy pairing code",
+          copyPairingCodeFailed: "Pairing code could not be copied.",
           description:
             "Pair a phone signed in to the same Tutti account, then use it to access Agent sessions on this computer.",
           empty: "No phones are paired with this computer.",
@@ -834,6 +836,7 @@ export const en = {
           },
           mobileDevice: "Mobile device",
           pairedDevices: "Paired phones",
+          pairingCodeCopied: "Pairing code copied",
           qrAlt: "Mobile pairing QR code",
           qrError: "QR code unavailable",
           remove: "Remove",

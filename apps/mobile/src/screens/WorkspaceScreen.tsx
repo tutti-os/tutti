@@ -22,6 +22,11 @@ import { PrimaryButton } from "../components/PrimaryButton";
 import { t } from "../i18n";
 import { remoteTuttidClient } from "../services/remoteTuttidClient";
 import { theme } from "../theme";
+import {
+  mergeMessages,
+  resolvePendingSubmission,
+  type PendingSubmission
+} from "./workspaceConversationModel";
 
 interface WorkspaceScreenProps {
   deviceName: string;
@@ -136,6 +141,9 @@ function ConversationWorkspace({
   workspace
 }: ConversationWorkspaceProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [ambiguousSubmissionKeys, setAmbiguousSubmissionKeys] = useState<
+    Record<string, boolean>
+  >({});
   const [creating, setCreating] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState(false);
@@ -147,7 +155,9 @@ function ConversationWorkspace({
   const [selectedTargetID, setSelectedTargetID] = useState<string | null>(null);
   const [targets, setTargets] = useState<AgentTarget[]>([]);
   const latestVersion = useRef(0);
+  const pendingSubmissions = useRef<Record<string, PendingSubmission>>({});
   const scroll = useRef<ScrollView>(null);
+  const sessionsLoadSequence = useRef(0);
 
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedID) ?? null,
@@ -155,14 +165,19 @@ function ConversationWorkspace({
   );
   const draftKey = creating ? "new" : (selectedID ?? "none");
   const draft = drafts[draftKey] ?? "";
+  const ambiguousSubmission = ambiguousSubmissionKeys[draftKey] === true;
   const setDraft = (value: string) =>
     setDrafts((current) => ({ ...current, [draftKey]: value }));
 
   const loadSessions = useCallback(async () => {
+    const sequence = ++sessionsLoadSequence.current;
     const response = await remoteTuttidClient.listWorkspaceAgentSessions(
       workspace.id,
       { limit: 100 }
     );
+    if (sequence !== sessionsLoadSequence.current) {
+      return;
+    }
     const roots = response.sessions.filter(
       (session) => session.kind === "root" && session.visible
     );
@@ -176,6 +191,23 @@ function ConversationWorkspace({
 
   useEffect(() => {
     let active = true;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    const schedulePoll = () => {
+      if (active) {
+        pollTimer = setTimeout(() => void poll(), 2_000);
+      }
+    };
+    const poll = async () => {
+      try {
+        await loadSessions();
+      } catch {
+        if (active) {
+          setError(true);
+        }
+      } finally {
+        schedulePoll();
+      }
+    };
     const run = async () => {
       try {
         const [, catalog] = await Promise.all([
@@ -183,12 +215,18 @@ function ConversationWorkspace({
           remoteTuttidClient.listAgentTargets()
         ]);
         if (active) {
-          const enabled = catalog.targets.filter((target) => target.enabled);
+          const enabled = catalog.targets.filter(
+            (target) =>
+              target.enabled &&
+              (!target.availability || target.availability.status === "ready")
+          );
           setTargets(enabled);
           setSelectedTargetID((current) =>
             current && enabled.some((target) => target.id === current)
               ? current
-              : (enabled[0]?.id ?? null)
+              : enabled.length === 1
+                ? (enabled[0]?.id ?? null)
+                : null
           );
           setError(false);
         }
@@ -199,25 +237,22 @@ function ConversationWorkspace({
       } finally {
         if (active) {
           setLoading(false);
+          schedulePoll();
         }
       }
     };
     void run();
-    const interval = setInterval(() => {
-      void loadSessions().catch(() => {
-        if (active) {
-          setError(true);
-        }
-      });
-    }, 2_000);
     return () => {
       active = false;
-      clearInterval(interval);
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+      }
     };
   }, [loadSessions]);
 
   useEffect(() => {
     let active = true;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
     latestVersion.current = 0;
     setMessages([]);
     if (!selectedID) {
@@ -256,13 +291,18 @@ function ConversationWorkspace({
         if (active) {
           setError(true);
         }
+      } finally {
+        if (active) {
+          pollTimer = setTimeout(() => void loadMessages(), 1_000);
+        }
       }
     };
     void loadMessages();
-    const interval = setInterval(() => void loadMessages(), 1_000);
     return () => {
       active = false;
-      clearInterval(interval);
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+      }
     };
   }, [selectedID, workspace.id]);
 
@@ -271,9 +311,17 @@ function ConversationWorkspace({
     if ((!selectedSession && !creating) || !text || sending) {
       return;
     }
-    const clientSubmitId = createClientSubmitID();
+    const existingSubmission = pendingSubmissions.current[draftKey] ?? null;
+    const submission = resolvePendingSubmission(existingSubmission, {
+      agentSessionID: selectedSession?.id ?? null,
+      agentTargetID: selectedTargetID,
+      creating,
+      text
+    });
+    pendingSubmissions.current[draftKey] = submission;
     setSending(true);
     setDraft("");
+    let delivered = false;
     try {
       if (creating) {
         if (!selectedTargetID) {
@@ -282,9 +330,9 @@ function ConversationWorkspace({
         const created = await remoteTuttidClient.createWorkspaceAgentSession(
           workspace.id,
           {
-            agentSessionId: createEntityID(),
-            agentTargetId: selectedTargetID,
-            clientSubmitId,
+            agentSessionId: submission.agentSessionID,
+            agentTargetId: submission.agentTargetID!,
+            clientSubmitId: submission.clientSubmitID,
             initialContent: [{ text, type: "text" }],
             submitDiagnostics: {
               blockCount: 1,
@@ -300,7 +348,7 @@ function ConversationWorkspace({
           workspace.id,
           selectedSession.id,
           {
-            clientSubmitId,
+            clientSubmitId: submission.clientSubmitID,
             content: [{ text, type: "text" }],
             submitDiagnostics: {
               blockCount: 1,
@@ -310,12 +358,25 @@ function ConversationWorkspace({
           }
         );
       }
-      await loadSessions();
+      delivered = true;
+      delete pendingSubmissions.current[draftKey];
+      setAmbiguousSubmissionKeys((current) => {
+        const next = { ...current };
+        delete next[draftKey];
+        return next;
+      });
     } catch {
       setDraft(text);
       setError(true);
+      setAmbiguousSubmissionKeys((current) => ({
+        ...current,
+        [draftKey]: true
+      }));
     } finally {
       setSending(false);
+    }
+    if (delivered) {
+      await loadSessions().catch(() => setError(true));
     }
   };
 
@@ -378,7 +439,7 @@ function ConversationWorkspace({
           {selectedSession.pendingInteractions.map((interaction) => (
             <MobileInteractionCard
               interaction={interaction}
-              key={interaction.requestId}
+              key={`${interaction.agentSessionId}:${interaction.turnId}:${interaction.requestId}`}
               onSubmit={async (input) => {
                 await remoteTuttidClient.submitWorkspaceAgentInteractive(
                   workspace.id,
@@ -402,7 +463,10 @@ function ConversationWorkspace({
             {targets.map((target) => (
               <Pressable
                 key={target.id}
-                onPress={() => setSelectedTargetID(target.id)}
+                disabled={ambiguousSubmission}
+                onPress={() => {
+                  setSelectedTargetID(target.id);
+                }}
                 style={[
                   styles.targetChip,
                   target.id === selectedTargetID && styles.targetChipSelected
@@ -425,7 +489,7 @@ function ConversationWorkspace({
       {selectedSession || creating ? (
         <View style={styles.composer}>
           <TextInput
-            editable={!sending}
+            editable={!sending && !ambiguousSubmission}
             multiline
             onChangeText={setDraft}
             placeholder={t("messageHint")}
@@ -442,8 +506,8 @@ function ConversationWorkspace({
             />
           ) : (
             <PrimaryButton
-              disabled={!draft.trim()}
-              label={t("send")}
+              disabled={!draft.trim() || (creating && !selectedTargetID)}
+              label={ambiguousSubmission ? t("retry") : t("send")}
               loading={sending}
               onPress={() => void send()}
               style={styles.sendButton}
@@ -503,36 +567,6 @@ function ConversationWorkspace({
       ) : null}
     </View>
   );
-}
-
-function mergeMessages(
-  current: WorkspaceAgentSessionMessage[],
-  incoming: WorkspaceAgentSessionMessage[]
-): WorkspaceAgentSessionMessage[] {
-  const byID = new Map(current.map((message) => [message.messageId, message]));
-  for (const message of incoming) {
-    const previous = byID.get(message.messageId);
-    if (!previous || message.version >= previous.version) {
-      byID.set(message.messageId, message);
-    }
-  }
-  return [...byID.values()].sort(
-    (left, right) =>
-      left.sequence - right.sequence ||
-      left.messageId.localeCompare(right.messageId)
-  );
-}
-
-function createClientSubmitID(): string {
-  return createEntityID();
-}
-
-function createEntityID(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  const fallbackHex = Math.random().toString(16).slice(2).padEnd(12, "0");
-  return `00000000-0000-4000-8000-${fallbackHex.slice(0, 12)}`;
 }
 
 const styles = StyleSheet.create({

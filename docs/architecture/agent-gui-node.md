@@ -667,6 +667,11 @@ Every surface shares the exact interaction identity
 `(workspaceId, agentSessionId, turnId, requestId)` and submitting state.
 Provider request ids remain unchanged and may repeat across Turns; no adapter
 may recover a missing Turn by scanning for a session-wide request-id match.
+Non-DOM hosts such as React Native reuse the pure
+`agent-conversation/interactive-answer` entrypoint for canonical ask-user
+payload construction and own-property-safe question-id access. Presentation
+components remain platform-specific, but they must not copy or reinterpret
+this cross-provider answer contract.
 
 A synthesized plan decision uses a durable `plan_decision` operation. A provider-native plan Interaction continues through `interactive_response`. Similar UI does not justify merging their write paths.
 

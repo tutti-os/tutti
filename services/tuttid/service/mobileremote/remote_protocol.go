@@ -17,11 +17,14 @@ import (
 )
 
 const (
-	ApplicationProtocolEpoch = 1
-	AgentHTTPService         = "agent_http"
-	maxRemoteRequestBytes    = 8 << 20
-	maxRemoteResponseBytes   = 16 << 20
-	maxRemoteFrameBytes      = maxRemoteResponseBytes + (1 << 20)
+	ApplicationProtocolEpoch    = 1
+	AgentHTTPService            = "agent_http"
+	maxRemoteRequestBodyBytes   = 8 << 20
+	maxRemoteResponseBodyBytes  = 16 << 20
+	remoteFrameEnvelopeBytes    = 1 << 20
+	maxRemoteRequestFrameBytes  = ((maxRemoteRequestBodyBytes + 2) / 3 * 4) + remoteFrameEnvelopeBytes
+	maxRemoteResponseFrameBytes = ((maxRemoteResponseBodyBytes + 2) / 3 * 4) +
+		remoteFrameEnvelopeBytes
 )
 
 type RemoteRequest struct {
@@ -46,7 +49,7 @@ type RemoteResponse struct {
 func serveRemoteStream(ctx context.Context, stream net.Conn, handler http.Handler) error {
 	defer stream.Close()
 	var request RemoteRequest
-	if err := readRemoteFrame(stream, maxRemoteRequestBytes, &request); err != nil {
+	if err := readRemoteFrame(stream, maxRemoteRequestFrameBytes, &request); err != nil {
 		return err
 	}
 	response := executeRemoteRequest(ctx, handler, request)
@@ -75,7 +78,7 @@ func executeRemoteRequest(ctx context.Context, handler http.Handler, request Rem
 		response.ErrorCode = "route_not_allowed"
 		return response
 	}
-	if len(request.Body) > maxRemoteRequestBytes {
+	if len(request.Body) > maxRemoteRequestBodyBytes {
 		response.Status = http.StatusRequestEntityTooLarge
 		response.ErrorCode = "request_too_large"
 		return response
@@ -92,13 +95,13 @@ func executeRemoteRequest(ctx context.Context, handler http.Handler, request Rem
 	handler.ServeHTTP(recorder, httpRequest)
 	result := recorder.Result()
 	defer result.Body.Close()
-	body, readErr := io.ReadAll(io.LimitReader(result.Body, maxRemoteResponseBytes+1))
+	body, readErr := io.ReadAll(io.LimitReader(result.Body, maxRemoteResponseBodyBytes+1))
 	if readErr != nil {
 		response.Status = http.StatusInternalServerError
 		response.ErrorCode = "response_read_failed"
 		return response
 	}
-	if len(body) > maxRemoteResponseBytes {
+	if len(body) > maxRemoteResponseBodyBytes {
 		response.Status = http.StatusInsufficientStorage
 		response.ErrorCode = "response_too_large"
 		return response
@@ -165,8 +168,8 @@ func writeRemoteFrame(writer io.Writer, value any) error {
 	if err != nil {
 		return fmt.Errorf("encode mobile remote frame: %w", err)
 	}
-	if len(raw) > maxRemoteFrameBytes {
-		return fmt.Errorf("mobile remote frame exceeds %d bytes", maxRemoteFrameBytes)
+	if len(raw) > maxRemoteResponseFrameBytes {
+		return fmt.Errorf("mobile remote frame exceeds %d bytes", maxRemoteResponseFrameBytes)
 	}
 	var size [4]byte
 	binary.BigEndian.PutUint32(size[:], uint32(len(raw)))

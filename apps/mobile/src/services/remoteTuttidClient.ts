@@ -17,8 +17,18 @@ const remoteFetch: typeof fetch = async (input, init) => {
   if (response.protocolEpoch !== applicationProtocolEpoch) {
     throw new Error("protocol_epoch_mismatch");
   }
-  return new Response(response.body, {
-    headers: { "Content-Type": "application/json" },
+  const hasBody =
+    response.status !== 204 &&
+    response.status !== 205 &&
+    response.status !== 304;
+  const headers = new Headers();
+  for (const [name, values] of Object.entries(response.headers)) {
+    for (const value of values) {
+      headers.append(name, value);
+    }
+  }
+  return new Response(hasBody ? response.body : null, {
+    headers,
     status: response.status
   });
 };

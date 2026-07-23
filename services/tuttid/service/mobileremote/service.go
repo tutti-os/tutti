@@ -155,7 +155,12 @@ func (s *Service) RevokePairing(ctx context.Context, pairingID string) (mobilere
 	if pairingID == "" {
 		return mobileremotebiz.DevicePairing{}, errors.New("device pairing id is required")
 	}
-	return s.ControlPlane.RevokePairing(ctx, session.Cookie, pairingID)
+	pairing, err := s.ControlPlane.RevokePairing(ctx, session.Cookie, pairingID)
+	if err != nil {
+		return mobileremotebiz.DevicePairing{}, err
+	}
+	s.stopRemotePairing(pairingID)
+	return pairing, nil
 }
 
 func (s *Service) readyIdentity(ctx context.Context) (*authbridge.Session, mobileremotebiz.DeviceIdentity, error) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -21,6 +21,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<AccountSession | null>(null);
   const [connectedDevice, setConnectedDevice] = useState<string | null>(null);
+  const backgroundedAt = useRef<number | null>(null);
 
   useEffect(() => {
     mobileSecurity
@@ -31,17 +32,34 @@ export default function App() {
 
   useEffect(() => {
     let disconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    const disconnect = () => {
+      backgroundedAt.current = null;
+      void deviceLink.closeLink();
+      setConnectedDevice(null);
+    };
     const subscription = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
         if (disconnectTimer) {
           clearTimeout(disconnectTimer);
           disconnectTimer = undefined;
         }
+        if (
+          backgroundedAt.current !== null &&
+          Date.now() - backgroundedAt.current >= 15_000
+        ) {
+          disconnect();
+        } else {
+          backgroundedAt.current = null;
+        }
         return;
       }
+      if (backgroundedAt.current !== null) {
+        return;
+      }
+      backgroundedAt.current = Date.now();
       disconnectTimer = setTimeout(() => {
-        void deviceLink.closeLink();
-        setConnectedDevice(null);
+        disconnectTimer = undefined;
+        disconnect();
       }, 15_000);
     });
     return () => {

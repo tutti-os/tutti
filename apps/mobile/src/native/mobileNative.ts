@@ -33,12 +33,16 @@ interface DeviceLinkNative {
   connectLink(
     peerDescriptionJSON: string,
     caller: boolean,
+    token: number,
     timeoutMillis: number
   ): Promise<string>;
   prepareLink(
     stunEndpointsJSON: string,
     timeoutMillis: number
-  ): Promise<string>;
+  ): Promise<{
+    descriptionJSON: string;
+    token: number;
+  }>;
   probeEpoch(): Promise<number>;
   protocolEpoch(): Promise<number>;
   requestAgentHTTP(
@@ -49,6 +53,7 @@ interface DeviceLinkNative {
   ): Promise<{
     body: string;
     errorCode: string;
+    headers: Record<string, string[]>;
     protocolEpoch: number;
     status: number;
   }>;

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 	mobileremotebiz "github.com/tutti-os/tutti/services/tuttid/biz/mobileremote"
 )
 
@@ -344,7 +345,7 @@ func (c *HTTPControlPlane) doJSON(ctx context.Context, method, path, cookie stri
 	request.Header.Set("Cookie", strings.TrimSpace(cookie))
 	client := c.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
+		client = httpx.NewClient(15 * time.Second)
 	}
 	response, err := client.Do(request)
 	if err != nil {

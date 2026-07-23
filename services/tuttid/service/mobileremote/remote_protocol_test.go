@@ -44,7 +44,7 @@ func TestRemoteProtocolRoundTripsAllowedAgentRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	var response RemoteResponse
-	if err := readRemoteFrame(client, maxRemoteResponseBytes, &response); err != nil {
+	if err := readRemoteFrame(client, maxRemoteResponseFrameBytes, &response); err != nil {
 		t.Fatal(err)
 	}
 	_ = client.Close()
@@ -93,10 +93,10 @@ func TestRemoteProtocolRejectsOversizedFrameBeforeAllocation(t *testing.T) {
 	t.Parallel()
 	var raw bytes.Buffer
 	var size [4]byte
-	binary.BigEndian.PutUint32(size[:], uint32(maxRemoteRequestBytes+1))
+	binary.BigEndian.PutUint32(size[:], uint32(maxRemoteRequestFrameBytes+1))
 	raw.Write(size[:])
 	var value map[string]any
-	if err := readRemoteFrame(&raw, maxRemoteRequestBytes, &value); err == nil {
+	if err := readRemoteFrame(&raw, maxRemoteRequestFrameBytes, &value); err == nil {
 		t.Fatal("expected oversized frame rejection")
 	}
 }
@@ -142,11 +142,10 @@ func TestRemoteProtocolStreamHonorsCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	done := make(chan error, 1)
+	requestContextErr := make(chan error, 1)
 	go func() {
 		done <- serveRemoteStream(ctx, server, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Context().Err() == nil {
-				t.Fatal("expected canceled request context")
-			}
+			requestContextErr <- r.Context().Err()
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}))
 	}()
@@ -158,11 +157,14 @@ func TestRemoteProtocolStreamHonorsCanceledContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	var response RemoteResponse
-	if err := readRemoteFrame(client, maxRemoteResponseBytes, &response); err != nil {
+	if err := readRemoteFrame(client, maxRemoteResponseFrameBytes, &response); err != nil {
 		t.Fatal(err)
 	}
 	_ = client.Close()
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+	if err := <-requestContextErr; err == nil {
+		t.Fatal("expected canceled request context")
 	}
 }
