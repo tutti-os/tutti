@@ -11,6 +11,12 @@ import { createServer as createNetServer } from "node:net";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
 import {
+  buildBridgeResultUrl,
+  callbackErrorToError,
+  callbackErrorToSafeResultCode,
+  isTuttiAuthUserCancelledError
+} from "./node-login-result";
+import {
   type AccountEnvelope,
   AUTH_SERVER_BASE_PORT,
   AUTH_SERVER_HOST,
@@ -30,29 +36,6 @@ import {
 } from "./shared";
 
 const BRIDGE_SERVER_FORCE_CLOSE_TIMEOUT_MS = 1_000;
-const USER_CANCELLED_CALLBACK_ERROR = "user_cancelled";
-const USER_CANCELLED_RESULT_ERROR = "userCancelled";
-
-export type TuttiAuthErrorCode = "user_cancelled";
-
-export class TuttiAuthError extends Error {
-  readonly code: TuttiAuthErrorCode;
-
-  constructor(code: TuttiAuthErrorCode, message = code) {
-    super(message);
-    this.name = "TuttiAuthError";
-    this.code = code;
-  }
-}
-
-export function isTuttiAuthUserCancelledError(
-  error: unknown
-): error is TuttiAuthError {
-  return (
-    error instanceof TuttiAuthError &&
-    error.code === USER_CANCELLED_CALLBACK_ERROR
-  );
-}
 
 export interface TuttiNodeAuthClientOptions {
   authJsonPath: string;
@@ -764,72 +747,6 @@ function sendRedirect(res: ServerResponse, location: string): void {
   res.end();
 }
 
-function buildBridgeResultUrl(
-  input: PendingLogin,
-  status: string,
-  safeErrorCode?: string
-): string {
-  const url = new URL("/auth/login/callback", input.authOrigin);
-  url.searchParams.set("desktopBridgeStatus", status);
-  if (safeErrorCode) {
-    url.searchParams.set("desktopBridgeError", safeErrorCode);
-  }
-  const openAppUrl =
-    safeErrorCode === USER_CANCELLED_RESULT_ERROR
-      ? null
-      : buildSafeOpenAppUrl(input.appCallbackUrl, status, safeErrorCode);
-  if (openAppUrl) {
-    url.searchParams.set("openAppUrl", openAppUrl);
-  }
-  return url.toString();
-}
-
-function callbackErrorToError(callbackError: string): Error {
-  return callbackError === USER_CANCELLED_CALLBACK_ERROR
-    ? new TuttiAuthError(USER_CANCELLED_CALLBACK_ERROR)
-    : new Error(callbackError);
-}
-
-function callbackErrorToSafeResultCode(callbackError: string): string {
-  return callbackError === USER_CANCELLED_CALLBACK_ERROR
-    ? USER_CANCELLED_RESULT_ERROR
-    : "providerError";
-}
-
-function buildSafeOpenAppUrl(
-  rawUrl: string,
-  status: string,
-  safeErrorCode?: string
-): string | null {
-  try {
-    const url = new URL(rawUrl.trim());
-    if (!isAllowedAppCallbackProtocol(url.protocol)) {
-      return null;
-    }
-    url.search = "";
-    url.hash = "";
-    url.searchParams.set("desktopBridgeStatus", status);
-    if (safeErrorCode) {
-      url.searchParams.set("desktopBridgeError", safeErrorCode);
-    }
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-function isAllowedAppCallbackProtocol(protocol: string): boolean {
-  const legacyProtocol = `${DEFAULT_APP_ID}:`;
-  const legacyDevProtocol = `${DEFAULT_APP_ID}-dev:`;
-
-  return (
-    protocol === "tutti:" ||
-    protocol === "tutti-dev:" ||
-    protocol === legacyProtocol ||
-    protocol === legacyDevProtocol
-  );
-}
-
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve) => {
     const forceCloseTimer = setTimeout(() => {
@@ -867,4 +784,9 @@ function openUrlWithDefaultBrowser(url: string): Promise<void> {
   });
 }
 
+export {
+  isTuttiAuthUserCancelledError,
+  TuttiAuthError
+} from "./node-login-result";
+export type { TuttiAuthErrorCode } from "./node-login-result";
 export type { TuttiAuthSession, TuttiUserInfo } from "./shared";
