@@ -14,6 +14,13 @@ const composerSource = readFileSync(
   join(process.cwd(), "agent-gui/agentGuiNode/AgentComposer.tsx"),
   "utf8"
 );
+const slashActionsSource = readFileSync(
+  join(
+    process.cwd(),
+    "agent-gui/agentGuiNode/composer/useComposerSlashActions.ts"
+  ),
+  "utf8"
+);
 
 describe("ComposerFooter trigger composition", () => {
   it("keeps tooltip and select triggers on separate elements", () => {
@@ -71,5 +78,13 @@ describe("ComposerFooter trigger composition", () => {
     expect(source).toContain("isPlanModeActive ?");
     expect(source).toContain("isTuttiModeActive ?");
     expect(source).toContain("disabled={isTuttiModeUpdating}");
+  });
+
+  it("uses the host Tutti feature gate for typed slash-command submits", () => {
+    expect(composerSource).toContain(
+      "tuttiModeSupported: capabilityMenuState?.tuttiMode?.enabled !== false"
+    );
+    expect(slashActionsSource).toContain("tuttiSupported: tuttiModeSupported");
+    expect(slashActionsSource).not.toContain("tuttiSupported: true");
   });
 });

@@ -38,6 +38,17 @@ export interface AgentComposerReferenceProvenanceFilter {
 export interface AgentComposerSubmitOptions {
   requiredSettingsPatch?: AgentActivitySubmitSettingsPatch;
   capabilityRefs?: readonly AgentComposerCapabilityReference[];
+  /**
+   * Immutable Tutti presentation captured by the composer that initiated the
+   * submit. An explicit inactive snapshot is authoritative over stale draft
+   * state while a new conversation is being created.
+   */
+  tuttiMode?: AgentComposerTuttiModeSubmitSnapshot;
+}
+
+export interface AgentComposerTuttiModeSubmitSnapshot {
+  active: boolean;
+  orchestrationIntensity?: number;
 }
 
 export interface AgentComposerCapabilityReference {
@@ -67,6 +78,8 @@ export interface AgentComposerProps {
   tuttiModeActive?: boolean;
   /** Blocks submission/removal while activation CAS or creation is unresolved. */
   tuttiModeUpdating?: boolean;
+  /** Effective Tutti orchestration intensity (0-100) captured on submit. */
+  tuttiModeOrchestrationIntensity?: number;
   placeholder: string;
   composerSettings: AgentGUIComposerSettingsVM;
   queueStatus?: AgentGUIQueueStatus;

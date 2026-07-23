@@ -82,6 +82,54 @@ VALUES (?, ?)
 	return nil
 }
 
+// applyModelPlanFirstUseCandidatesV1 repairs databases that recorded the
+// original model_plans_v1 migration before the first-use candidate table was
+// added to that migration during feature-branch development. A distinct marker
+// keeps the already-recorded migration immutable for every existing database.
+func (s *SQLiteStore) applyModelPlanFirstUseCandidatesV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationModelPlanFirstUseCandidatesV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin model plan first-use candidates v1 migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS model_plan_first_use_candidates (
+  workspace_id TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  model_plan_id TEXT NOT NULL,
+  agent_target_id TEXT NOT NULL,
+  model TEXT NOT NULL DEFAULT '',
+  plan_updated_at_unix_ms INTEGER NOT NULL,
+  created_at_unix_ms INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, agent_session_id),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (workspace_id, model_plan_id)
+    REFERENCES model_plans(workspace_id, plan_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_plan_first_use_candidates_plan
+  ON model_plan_first_use_candidates(workspace_id, model_plan_id);
+
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+VALUES (?, ?);
+`, schemaMigrationModelPlanFirstUseCandidatesV1, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("migrate model plan first-use candidates v1: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit model plan first-use candidates v1 migration: %w", err)
+	}
+	return nil
+}
+
 // applyModelPlanRevisionsV1 adds immutable, secret-bearing plan revisions.
 // Session runtime context stores only the plan id/revision/fingerprint; the
 // encrypted endpoint credential remains in this daemon-owned table.

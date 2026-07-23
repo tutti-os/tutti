@@ -77,6 +77,7 @@ type Props = Pick<
 
 interface UseComposerSlashActionsInput extends Props {
   onTuttiModeActivate?: () => void;
+  tuttiModeSupported: boolean;
   draftContent: AgentComposerDraft;
   selectedProjectPath: string;
   slashStatusAgentSessionId: string | null;
@@ -124,6 +125,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     promptImagesSupported,
     availableSkills = [],
     composerSettings,
+    tuttiModeSupported,
     capabilityControlsReadOnly = false,
     onDraftContentChange,
     onSettingsChange,
@@ -501,7 +503,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         const slashCommandEffect = resolveSlashCommandSubmitEffect({
           browserSupported: Boolean(composerSettings.supportsBrowser),
           computerSupported: Boolean(composerSettings.supportsComputerUse),
-          tuttiSupported: true,
+          tuttiSupported: tuttiModeSupported,
           commands: resolvedSlashCommands,
           draft: nextPrompt,
           provider,
