@@ -43,6 +43,13 @@ drag movement.
 Hosts now provide one app-level i18n runtime and scope it into the file-manager
 namespace, rather than hand-assembling package-local message objects.
 
+The React surface owns its archive and folder fallback artwork. Those files are
+published through the stable
+`@tutti-os/workspace-file-manager/assets/workspace-*-fallback.png` subpaths so
+consumer bundlers can resolve them during dependency prebundling. Keep runtime
+imports on those public subpaths; relative `new URL("./assets/...", import.meta.url)`
+references from the built entry are not a supported asset contract.
+
 What stays outside this package is concrete host integration: desktop preload
 calls, tuttid transport wiring, host absolute paths, import/export/upload
 flows, share/exposure flows, and other product-specific integration details

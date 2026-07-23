@@ -143,6 +143,24 @@ async function checkPackage(packageConfig, destination) {
     if (/data:image\/png(?:;|,)/i.test(mainEntrySource)) {
       violations.push("PNG data URL embedded in dist/index.js");
     }
+    if (
+      /new URL\(\s*["']\.\/assets\/workspace-(?:archive|folder)-fallback\.png["']/u.test(
+        mainEntrySource
+      )
+    ) {
+      violations.push(
+        "fallback asset URL is relative to the bundled module location"
+      );
+    }
+    for (const assetName of [
+      "workspace-archive-fallback.png",
+      "workspace-folder-fallback.png"
+    ]) {
+      const publicAssetSpecifier = `@tutti-os/workspace-file-manager/assets/${assetName}`;
+      if (!mainEntrySource.includes(publicAssetSpecifier)) {
+        violations.push(`missing public asset import ${publicAssetSpecifier}`);
+      }
+    }
   }
 
   if (violations.length > 0) {

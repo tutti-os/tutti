@@ -229,6 +229,11 @@ following:
   CSS-safe data URL or an absolute URL constructed relative to the module
 - every asset referenced through `new URL(relativePath, import.meta.url)` exists
   at that exact module-relative location inside the packed tarball
+- published code that may be dependency-prebundled must import fallback images
+  through explicit public asset subpaths; do not leave
+  `new URL("./assets/...", import.meta.url)` in a bundled runtime entrypoint,
+  because a consumer optimizer may relocate the JavaScript without relocating
+  the adjacent asset
 
 Emitting an SVG next to a bundled JavaScript file is not sufficient when the
 bundle only exports a string such as `./icon-HASH.svg`. CSS resolves that value
@@ -285,6 +290,8 @@ The stable package entrypoints are:
 @tutti-os/workspace-file-preview/core
 @tutti-os/workspace-file-preview/react
 @tutti-os/workspace-file-manager
+@tutti-os/workspace-file-manager/assets/workspace-archive-fallback.png
+@tutti-os/workspace-file-manager/assets/workspace-folder-fallback.png
 @tutti-os/workspace-file-manager/services
 @tutti-os/workspace-file-reference
 @tutti-os/workspace-file-reference/contracts
