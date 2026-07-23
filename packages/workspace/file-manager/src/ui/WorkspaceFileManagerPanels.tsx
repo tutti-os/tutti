@@ -944,7 +944,7 @@ function EntryRow({
   }, [selected]);
 
   const rowClassName = cn(
-    "grid min-h-10 w-full items-center gap-x-6 border-b border-[var(--border-1)] px-0 text-left transition-colors",
+    "relative grid min-h-10 w-full items-center gap-x-6 border-b border-[var(--border-1)] px-0 text-left transition-colors",
     gridClassName,
     isInlineRenaming
       ? "cursor-default"
@@ -959,17 +959,21 @@ function EntryRow({
     moveDragActive && !moveDragSource && !moveDragTarget && "opacity-90"
   );
   const rowProps = {
-    "aria-label": entry.name,
     className: rowClassName,
     "data-workspace-file-entry-path": entry.path,
-    draggable: isInlineRenaming ? false : draggable,
     style: gridStyle,
     onContextMenu: (event: ReactMouseEvent<HTMLElement>) => {
       onContextMenu(event, entry);
     }
   };
   const nameCell = (
-    <span className={cn("min-w-0 overflow-hidden", tableCellPaddingClassName)}>
+    <span
+      className={cn(
+        "min-w-0 overflow-hidden",
+        !isInlineRenaming && "pointer-events-none relative z-[1]",
+        tableCellPaddingClassName
+      )}
+    >
       <EntryNameCell
         copy={copy}
         contextLabel={contextLabel}
@@ -996,6 +1000,7 @@ function EntryRow({
     <span
       className={cn(
         "truncate text-xs text-[var(--text-secondary)]",
+        !isInlineRenaming && "pointer-events-none relative z-[1]",
         tableCellPaddingClassName
       )}
     >
@@ -1009,6 +1014,7 @@ function EntryRow({
     <span
       className={cn(
         "truncate text-xs text-[var(--text-secondary)]",
+        !isInlineRenaming && "pointer-events-none relative z-[1]",
         tableCellPaddingClassName
       )}
     >
@@ -1020,7 +1026,12 @@ function EntryRow({
 
   if (isInlineRenaming) {
     return (
-      <div {...rowProps} ref={divRowRef}>
+      <div
+        {...rowProps}
+        aria-label={entry.name}
+        draggable={false}
+        ref={divRowRef}
+      >
         {nameCell}
         {modifiedCell}
         {sizeCell}
@@ -1029,28 +1040,31 @@ function EntryRow({
   }
 
   return (
-    <button
-      {...rowProps}
-      ref={buttonRowRef}
-      type="button"
-      onDragStart={(event: ReactDragEvent<HTMLElement>) => {
-        if (!draggable) {
-          event.preventDefault();
-          return;
-        }
-        onDragStart?.(entry, event.dataTransfer);
-      }}
-      onPointerDown={(event) => {
-        onPointerDown(entry, event);
-      }}
-      onClick={() => {
-        onClick(entry);
-      }}
-    >
+    <div {...rowProps} ref={divRowRef}>
+      <button
+        aria-label={entry.name}
+        className="absolute inset-0 z-0"
+        draggable={draggable}
+        ref={buttonRowRef}
+        type="button"
+        onDragStart={(event: ReactDragEvent<HTMLElement>) => {
+          if (!draggable) {
+            event.preventDefault();
+            return;
+          }
+          onDragStart?.(entry, event.dataTransfer);
+        }}
+        onPointerDown={(event) => {
+          onPointerDown(entry, event);
+        }}
+        onClick={() => {
+          onClick(entry);
+        }}
+      />
       {nameCell}
       {modifiedCell}
       {sizeCell}
-    </button>
+    </div>
   );
 }
 
@@ -1260,7 +1274,7 @@ function DirectoryDisclosureButton({
         expanded ? "collapseFolderLabel" : "expandFolderLabel"
       )}
       aria-expanded={expanded}
-      className="grid size-5 shrink-0 place-items-center rounded text-[var(--text-tertiary)] transition-colors hover:bg-transparency-block hover:text-[var(--text-primary)]"
+      className="pointer-events-auto grid size-5 shrink-0 place-items-center rounded text-[var(--text-tertiary)] transition-colors hover:bg-transparency-block hover:text-[var(--text-primary)]"
       disabled={isLoading}
       type="button"
       onClick={(event) => {

@@ -20,7 +20,7 @@
   },
   "scripts": {
     "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/assets dist/assets",
-    "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
+    "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\" && vitest run ./src/ui/WorkspaceFileManagerPanels.render.test.tsx --environment jsdom",
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
@@ -33,10 +33,12 @@
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
+    "jsdom": "^27.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "typescript": "^5.8.3",
-    "valtio": "^2.3.2"
+    "valtio": "^2.3.2",
+    "vitest": "^4.0.13"
   },
   "peerDependencies": {
     "react": "^19.1.0",
