@@ -16,7 +16,12 @@ vi.mock("../../../i18n/index", async (importOriginal) => {
       t: (key: string, options?: Record<string, unknown>) =>
         key === "agentHost.agentGui.turnProcessedSeconds"
           ? `Processed for ${String(options?.seconds)}s`
-          : key
+          : key === "agentHost.agentGui.turnDurationSeconds"
+            ? `${String(options?.seconds)}s`
+            : key.startsWith("agentHost.agentGui.turnStage") &&
+                key !== "agentHost.agentGui.turnStageBreakdown"
+              ? `${key} ${String(options?.duration)}`
+              : key
     })
   };
 });
@@ -258,6 +263,42 @@ describe("AgentTurnWorkSection", () => {
     fireEvent.click(duration);
 
     expect(setExpandedOverride).toHaveBeenCalledWith("session-1:turn-1", true);
+  });
+
+  it("shows the stage breakdown when task details are expanded", () => {
+    render(
+      <AgentTurnWorkSection
+        group={interleavedTurnGroup()}
+        sessionId="session-1"
+        turn={canonicalTurn({
+          phase: "settled",
+          outcome: "completed",
+          settledAtUnixMs: 15_000
+        })}
+        isActiveTurn={false}
+        disclosureStore={{
+          expandedOverrides: { "session-1:turn-1": true },
+          setExpandedOverride: () => {}
+        }}
+        renderRow={(row) => <div key={row.id}>{row.id}</div>}
+      />
+    );
+
+    const breakdown = screen.getByLabelText(
+      /agentHost\.agentGui\.turnStageBreakdown/
+    );
+    expect(breakdown.textContent).toContain(
+      "agentHost.agentGui.turnStageStartup"
+    );
+    expect(breakdown.textContent).toContain(
+      "agentHost.agentGui.turnStageFirstResponse"
+    );
+    expect(breakdown.textContent).toContain(
+      "agentHost.agentGui.turnStageGeneration"
+    );
+    expect(breakdown.textContent).toContain(
+      "agentHost.agentGui.turnStageFinalization"
+    );
   });
 
   it("keeps dynamic section spacing inside the animated height", () => {

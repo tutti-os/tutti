@@ -36,4 +36,6 @@ export interface WorkspaceAgentActivityTimelineItem {
   };
   occurredAtUnixMs?: number;
   createdAtUnixMs?: number;
+  startedAtUnixMs?: number;
+  completedAtUnixMs?: number;
 }

@@ -37,7 +37,16 @@ describe("agentTurnWorkSectionModel", () => {
         }),
         false
       )
-    ).toEqual({ kind: "settled", elapsedSeconds: 122 });
+    ).toEqual({
+      kind: "settled",
+      elapsedSeconds: 122,
+      stages: {
+        startupSeconds: null,
+        firstResponseSeconds: null,
+        generationSeconds: null,
+        finalizationSeconds: null
+      }
+    });
 
     expect(
       resolveAgentTurnTiming(
@@ -51,6 +60,65 @@ describe("agentTurnWorkSectionModel", () => {
         false
       )
     ).toBeNull();
+  });
+
+  it("counts from client submission and splits settled turn stages", () => {
+    const prompt = {
+      ...message("Please fix it", null),
+      occurredAtUnixMs: 2_000,
+      sourceTimelineItems: [
+        {
+          id: 1,
+          agentSessionId: "session-1",
+          eventId: "user-1",
+          actorType: "user",
+          actorId: "user",
+          itemType: "message",
+          payload: { clientSubmittedAtUnixMs: 1_000 },
+          occurredAtUnixMs: 2_000
+        }
+      ]
+    };
+    const reply = {
+      ...message("Final answer", "Final answer", true),
+      occurredAtUnixMs: 10_000,
+      sourceTimelineItems: [
+        {
+          id: 2,
+          agentSessionId: "session-1",
+          eventId: "assistant-1",
+          actorType: "agent",
+          actorId: "session-1",
+          itemType: "message",
+          startedAtUnixMs: 10_000,
+          completedAtUnixMs: 12_000
+        }
+      ]
+    };
+
+    const model = buildAgentTurnWorkSectionModel(
+      turnGroup([
+        userRow({ occurredAtUnixMs: 2_000, messages: [prompt] }),
+        assistantRow({ occurredAtUnixMs: 10_000, messages: [reply] })
+      ]),
+      canonicalTurn({
+        phase: "settled",
+        outcome: "completed",
+        startedAtUnixMs: 6_000,
+        settledAtUnixMs: 13_000
+      })
+    );
+
+    expect(model.timing).toEqual({
+      kind: "settled",
+      elapsedSeconds: 12,
+      stages: {
+        startupSeconds: 5,
+        firstResponseSeconds: 4,
+        generationSeconds: 2,
+        finalizationSeconds: 1
+      }
+    });
   });
 
   it("formats seconds and minute boundaries without a zero-second suffix", () => {
@@ -390,7 +458,16 @@ describe("agentTurnWorkSectionModel", () => {
       })
     );
 
-    expect(model.timing).toEqual({ kind: "settled", elapsedSeconds: 10 });
+    expect(model.timing).toEqual({
+      kind: "settled",
+      elapsedSeconds: 10,
+      stages: {
+        startupSeconds: 0,
+        firstResponseSeconds: 9,
+        generationSeconds: 0,
+        finalizationSeconds: 1
+      }
+    });
     expect(model.collapseEligible).toBe(false);
     expect(model.sections).toHaveLength(1);
     expect(model.sections[0]?.kind).toBe("visible");

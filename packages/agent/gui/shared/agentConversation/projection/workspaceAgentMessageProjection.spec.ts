@@ -12,6 +12,24 @@ import {
 } from "./workspaceAgentMessageProjection";
 
 describe("projectWorkspaceAgentMessagesToConversationVM", () => {
+  it("preserves message start and completion timestamps for turn timing", () => {
+    const [item] = projectWorkspaceAgentMessagesToTimelineItems([
+      message({
+        messageId: "assistant-1",
+        role: "assistant",
+        kind: "text",
+        payload: { text: "Done" },
+        startedAtUnixMs: 100,
+        completedAtUnixMs: 250
+      })
+    ]);
+
+    expect(item).toMatchObject({
+      startedAtUnixMs: 100,
+      completedAtUnixMs: 250
+    });
+  });
+
   it("prefers canonical browser element prompt content over a lossy provider echo", () => {
     const prompt =
       "[@a](mention://browser-element/browser-element%3A1?path=%2Ftmp%2Fa.txt&tag=a&workspaceId=workspace-1) " +

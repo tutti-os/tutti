@@ -8,6 +8,7 @@ import { useElapsedSeconds } from "./useElapsedSeconds";
 import {
   formatAgentTurnDuration,
   type AgentTurnDuration,
+  type AgentTurnStageTiming,
   type AgentTurnTiming,
   type AgentTurnWorkSectionModel,
   type AgentTurnWorkSectionRow
@@ -100,7 +101,7 @@ export function AgentTurnWorkSection({
         </div>
       ) : null}
       <div
-        className="flex min-h-6 items-center gap-0.5 text-[12px] text-[var(--text-tertiary)]"
+        className="flex min-h-6 flex-wrap items-center gap-x-0.5 text-[12px] text-[var(--text-tertiary)]"
         data-agent-turn-work-header={turnKey}
       >
         {model.collapseEligible ? (
@@ -133,6 +134,10 @@ export function AgentTurnWorkSection({
         ) : (
           <AgentTurnDurationLabel timing={model.timing} />
         )}
+        {model.timing.kind === "settled" &&
+        (!model.collapseEligible || expanded) ? (
+          <AgentTurnStageSummary stages={model.timing.stages} />
+        ) : null}
       </div>
       {model.sections.map((section, sectionIndex) => {
         const content = renderRows(section.rows, renderRow);
@@ -183,7 +188,42 @@ function AgentTurnDurationLabel({
   );
   const elapsedSeconds =
     timing.kind === "live" ? (liveElapsedSeconds ?? 0) : timing.elapsedSeconds;
-  return <span>{translateDuration(t, timing.kind, elapsedSeconds)}</span>;
+  const stageTitle =
+    timing.kind === "settled"
+      ? translateStageSummary(t, timing.stages)
+      : undefined;
+  return (
+    <span title={stageTitle || undefined}>
+      {translateDuration(t, timing.kind, elapsedSeconds)}
+    </span>
+  );
+}
+
+function AgentTurnStageSummary({
+  stages
+}: {
+  stages: AgentTurnStageTiming;
+}): JSX.Element | null {
+  const { t } = useTranslation();
+  const entries = translatedStageEntries(t, stages);
+  if (entries.length === 0) {
+    return null;
+  }
+  return (
+    <span
+      className="inline-flex flex-wrap items-center gap-x-1"
+      aria-label={`${t("agentHost.agentGui.turnStageBreakdown")}: ${entries
+        .map((entry) => entry.text)
+        .join(", ")}`}
+    >
+      {entries.map((entry, index) => (
+        <span key={entry.key} className="inline-flex items-center gap-x-1">
+          {index > 0 ? <span aria-hidden="true">·</span> : null}
+          <span>{entry.text}</span>
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function translateDuration(
@@ -232,6 +272,64 @@ function translateSettledDuration(
     });
   }
   return t("agentHost.agentGui.turnTotalMinutesSeconds", {
+    minutes: duration.minutes,
+    seconds: duration.seconds
+  });
+}
+
+function translateStageSummary(
+  t: ReturnType<typeof useTranslation>["t"],
+  stages: AgentTurnStageTiming
+): string {
+  return translatedStageEntries(t, stages)
+    .map((entry) => entry.text)
+    .join(" · ");
+}
+
+function translatedStageEntries(
+  t: ReturnType<typeof useTranslation>["t"],
+  stages: AgentTurnStageTiming
+): Array<{ key: keyof AgentTurnStageTiming; text: string }> {
+  const definitions = [
+    ["startupSeconds", "agentHost.agentGui.turnStageStartup"],
+    ["firstResponseSeconds", "agentHost.agentGui.turnStageFirstResponse"],
+    ["generationSeconds", "agentHost.agentGui.turnStageGeneration"],
+    ["finalizationSeconds", "agentHost.agentGui.turnStageFinalization"]
+  ] as const;
+  return definitions.flatMap(([key, labelKey]) => {
+    const seconds = stages[key];
+    if (seconds === null) {
+      return [];
+    }
+    return [
+      {
+        key,
+        text: t(labelKey, {
+          duration: translateCompactDuration(
+            t,
+            formatAgentTurnDuration(seconds)
+          )
+        })
+      }
+    ];
+  });
+}
+
+function translateCompactDuration(
+  t: ReturnType<typeof useTranslation>["t"],
+  duration: AgentTurnDuration
+): string {
+  if (duration.kind === "seconds") {
+    return t("agentHost.agentGui.turnDurationSeconds", {
+      seconds: duration.seconds
+    });
+  }
+  if (duration.kind === "minutes") {
+    return t("agentHost.agentGui.turnDurationMinutes", {
+      minutes: duration.minutes
+    });
+  }
+  return t("agentHost.agentGui.turnDurationMinutesSeconds", {
     minutes: duration.minutes,
     seconds: duration.seconds
   });
