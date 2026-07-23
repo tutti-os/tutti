@@ -3,14 +3,12 @@ import { createTranslator } from "../../../../../../shared/i18n/index.ts";
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
 import type { IWorkspaceModelPlansController } from "../workspaceSettingsService.interface";
 import type {
-  WorkspaceAgentHarnessTargetOption,
   WorkspaceModelPlan,
   WorkspaceModelPlanDraft,
   WorkspaceModelPlanDraftSeed,
   WorkspaceModelPlanFeedbackKind,
   WorkspaceSettingsStoreState
 } from "../workspaceSettingsTypes.ts";
-import { compatibleWorkspaceModelPlanFirstUseTargets } from "../workspaceModelPlanFirstUse.ts";
 import {
   createEmptyWorkspaceModelPlanDraftModel,
   repairWorkspaceModelPlanDraftDefault
@@ -24,8 +22,6 @@ import {
   buildWorkspaceModelPlanDetectRequest,
   hasRequiredWorkspaceModelPlanDraftFields,
   normalizeWorkspaceModelPlanDraftModels,
-  workspaceModelPlanConnectionChanged,
-  workspaceModelPlanDetectionCorePassed,
   workspaceModelPlanModelRangeChanged
 } from "./workspaceModelPlanDraftRules.ts";
 import { createWorkspaceSettingsModelPlansState } from "./workspaceSettingsStore.ts";
@@ -42,15 +38,6 @@ export interface WorkspaceModelPlansControllerDependencies {
     | "setModelPlanEnabled"
     | "updateModelPlan"
   >;
-  launchAgentGui?: (input: {
-    agentTargetId: string;
-    draftPrompt: string;
-    model: string | null;
-    modelPlanId: string;
-    openInNewWindow: true;
-    provider: WorkspaceAgentHarnessTargetOption["provider"];
-    workspaceId: string;
-  }) => Promise<boolean>;
   notifications: NotificationService;
   store: WorkspaceSettingsStoreState;
 }
@@ -164,68 +151,23 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
     this.state.draftFeedback = null;
     this.state.draftSaveImpact = null;
     if (invalidatesConnection) {
-      // A new connection identity invalidates both the check result and the
-      // model catalog that the previous credentials discovered.
-      this.state.draftDetection = null;
+      // A new connection identity invalidates the model catalog that the
+      // previous credentials discovered.
       this.state.draftDiscoveredModels = [];
     }
   }
 
   cancelDraft(): void {
     this.state.draft = null;
-    this.state.draftDetection = null;
     this.state.draftDiscoveredModels = [];
     this.state.draftFeedback = null;
     this.state.draftSaveImpact = null;
   }
 
-  async detectDraft(): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    const draft = this.state.draft;
-    if (
-      !workspaceID ||
-      !draft ||
-      this.state.detecting ||
-      this.state.fetchingDraftModels
-    ) {
-      return;
-    }
-    const request = buildWorkspaceModelPlanDetectRequest(draft);
-    if (!request) {
-      this.setDraftFeedback("requiredFields");
-      return;
-    }
-    this.state.draftFeedback = null;
-    this.state.draftDetection = null;
-    this.state.detecting = true;
-    try {
-      const result = await this.dependencies.client.detectModelPlan(
-        workspaceID,
-        request
-      );
-      if (this.state.draft !== draft) {
-        // The draft changed while the check was in flight; a stale result
-        // must not attach to (or unlock saving for) the newer draft.
-        return;
-      }
-      this.state.draftDetection = result.detection;
-      this.state.draftDiscoveredModels = result.discoveredModels;
-      if (draft.planId) {
-        await this.reloadPlan(draft.planId);
-      }
-    } catch {
-      if (this.state.draft === draft) {
-        this.setDraftFeedback("detectFailed");
-      }
-    } finally {
-      this.state.detecting = false;
-    }
-  }
-
   /**
    * Explicit "fetch models" step: runs the daemon detection chain for its
-   * discovery output only. The result feeds the picker catalog; it never
-   * stands in for the final connection check that gates saving.
+   * discovery output only. The result feeds the picker catalog without
+   * persisting a connection-check status for the unsaved draft.
    */
   async fetchDraftModels(): Promise<void> {
     const workspaceID = this.store.workspaceID;
@@ -233,7 +175,7 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
     if (
       !workspaceID ||
       !draft ||
-      this.state.detecting ||
+      this.state.detectingPlanID !== null ||
       this.state.fetchingDraftModels
     ) {
       return;
@@ -293,15 +235,6 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
     const storedPlan = draft.planId
       ? this.state.plans.find((plan) => plan.id === draft.planId)
       : undefined;
-    const requiresPersistedDetection =
-      !draft.planId || workspaceModelPlanConnectionChanged(draft, storedPlan);
-    if (
-      requiresPersistedDetection &&
-      !workspaceModelPlanDetectionCorePassed(this.state.draftDetection)
-    ) {
-      this.setDraftFeedback("detectionRequired");
-      return;
-    }
     if (
       draft.planId &&
       workspaceModelPlanModelRangeChanged(draft, storedPlan) &&
@@ -371,33 +304,6 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
           )
         : await this.dependencies.client.createModelPlan(workspaceID, request);
       this.upsertPlan(saved);
-      if (requiresPersistedDetection) {
-        // Draft detection proves the proposed endpoint before commit. Repeat
-        // the check against the saved Plan identity so the durable list row
-        // enters pending_first_use instead of falling back to undetected.
-        this.state.draft = {
-          ...draft,
-          apiKey: "",
-          hasApiKey: saved.hasApiKey,
-          planId: saved.id
-        };
-        try {
-          const result = await this.dependencies.client.detectModelPlan(
-            workspaceID,
-            { planId: saved.id }
-          );
-          this.state.draftDetection = result.detection;
-          this.state.draftDiscoveredModels = result.discoveredModels;
-          await this.reloadPlan(saved.id);
-          if (!workspaceModelPlanDetectionCorePassed(result.detection)) {
-            this.setDraftFeedback("detectFailed");
-            return;
-          }
-        } catch {
-          this.setDraftFeedback("detectFailed");
-          return;
-        }
-      }
       this.cancelDraft();
     } catch {
       this.setDraftFeedback("saveFailed");
@@ -447,57 +353,27 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
     }
   }
 
-  async launchFirstUse(planID: string, agentTargetID: string): Promise<void> {
+  async detectPlan(planID: string): Promise<void> {
     const workspaceID = this.store.workspaceID;
-    if (!workspaceID || this.state.firstUseLaunchingPlanID) {
+    if (
+      !workspaceID ||
+      this.state.detectingPlanID !== null ||
+      !this.state.plans.some((plan) => plan.id === planID)
+    ) {
       return;
     }
-    const plan = this.state.plans.find((candidate) => candidate.id === planID);
-    const target = plan
-      ? compatibleWorkspaceModelPlanFirstUseTargets({
-          plan,
-          targets: this.store.agents.harnessTargets
-        }).find((candidate) => candidate.id === agentTargetID)
-      : undefined;
-    if (!plan || !target || !this.dependencies.launchAgentGui) {
-      this.state.firstUseLaunchFailedPlanID = planID;
-      return;
-    }
-
-    this.state.firstUseLaunchFailedPlanID = null;
-    this.state.firstUseLaunchingPlanID = planID;
+    this.clearPlanFeedback(planID);
+    this.state.detectingPlanID = planID;
     try {
-      const launched = await this.dependencies.launchAgentGui({
-        agentTargetId: target.id,
-        draftPrompt: createActiveTranslator().t(
-          "workspace.settings.apps.modelPlans.firstUsePrompt",
-          { plan: plan.name }
-        ),
-        model: plan.defaultModel ?? null,
-        modelPlanId: plan.id,
-        openInNewWindow: true,
-        provider: target.provider,
-        workspaceId: workspaceID
+      await this.dependencies.client.detectModelPlan(workspaceID, {
+        planId: planID
       });
-      if (
-        this.store.workspaceID === workspaceID &&
-        this.state.firstUseLaunchingPlanID === planID
-      ) {
-        this.state.firstUseLaunchFailedPlanID = launched ? null : planID;
-      }
+      await this.reloadPlan(planID);
     } catch {
-      if (
-        this.store.workspaceID === workspaceID &&
-        this.state.firstUseLaunchingPlanID === planID
-      ) {
-        this.state.firstUseLaunchFailedPlanID = planID;
-      }
+      this.setPlanFeedback(planID, "detectFailed");
     } finally {
-      if (
-        this.store.workspaceID === workspaceID &&
-        this.state.firstUseLaunchingPlanID === planID
-      ) {
-        this.state.firstUseLaunchingPlanID = null;
+      if (this.state.detectingPlanID === planID) {
+        this.state.detectingPlanID = null;
       }
     }
   }
@@ -593,7 +469,6 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
 
   private setDraft(draft: WorkspaceModelPlanDraft): void {
     this.state.draft = draft;
-    this.state.draftDetection = null;
     this.state.draftDiscoveredModels = [];
     this.state.draftFeedback = null;
     this.state.draftSaveImpact = null;

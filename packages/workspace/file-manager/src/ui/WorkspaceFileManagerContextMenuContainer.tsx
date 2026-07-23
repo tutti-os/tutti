@@ -28,9 +28,13 @@ export function WorkspaceFileManagerContextMenuContainer({
     readonly WorkspaceFileManagerContextMenuItem[]
   >([]);
 
+  const contextMenuX = view.contextMenu?.x;
+  const contextMenuY = view.contextMenu?.y;
+  const contextMenuEntryPath = view.contextMenu?.entry?.path ?? null;
+
   useLayoutEffect(() => {
-    if (!view.contextMenu) {
-      setItems([]);
+    if (contextMenuX === undefined || contextMenuY === undefined) {
+      setItems((current) => (current.length === 0 ? current : []));
       return;
     }
 
@@ -40,24 +44,34 @@ export function WorkspaceFileManagerContextMenuContainer({
     });
     const resolved = resolveContextMenu(request);
     if (!isPromiseLike(resolved)) {
-      setItems(resolved);
+      setItems((current) =>
+        areContextMenuItemsEquivalent(current, resolved) ? current : resolved
+      );
       return;
     }
 
     let cancelled = false;
-    setItems([]);
+    setItems((current) => (current.length === 0 ? current : []));
     void resolved.then((nextItems) => {
       if (!cancelled) {
-        setItems(nextItems);
+        setItems((current) =>
+          areContextMenuItemsEquivalent(current, nextItems)
+            ? current
+            : nextItems
+        );
       }
     });
     return () => {
       cancelled = true;
     };
+    // Depend on stable primitives from the view — `view.contextMenu` is a new
+    // object every render and would retrigger setItems forever.
   }, [
+    contextMenuEntryPath,
+    contextMenuX,
+    contextMenuY,
     resolveContextMenu,
     session,
-    view.contextMenu,
     view.currentDirectoryPath,
     view.isBusy,
     view.isLoading,
@@ -79,6 +93,7 @@ export function WorkspaceFileManagerContextMenuContainer({
       contextMenu={{ x: view.contextMenu.x, y: view.contextMenu.y }}
       contextMenuRef={contextMenuRef}
       items={items}
+      positionMode="viewport"
       onClose={() => {
         session.closeContextMenu();
       }}
@@ -128,6 +143,47 @@ function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
     "then" in value &&
     typeof value.then === "function"
   );
+}
+
+function areContextMenuItemsEquivalent(
+  left: readonly WorkspaceFileManagerContextMenuItem[],
+  right: readonly WorkspaceFileManagerContextMenuItem[]
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    const leftItem = left[index];
+    const rightItem = right[index];
+    if (!leftItem || !rightItem || leftItem.id !== rightItem.id) {
+      return false;
+    }
+    if (leftItem.type !== rightItem.type) {
+      return false;
+    }
+    if (leftItem.type === "item" && rightItem.type === "item") {
+      if (
+        leftItem.label !== rightItem.label ||
+        leftItem.disabled !== rightItem.disabled ||
+        leftItem.danger !== rightItem.danger
+      ) {
+        return false;
+      }
+    }
+    if (leftItem.type === "submenu" && rightItem.type === "submenu") {
+      if (
+        leftItem.label !== rightItem.label ||
+        leftItem.disabled !== rightItem.disabled ||
+        leftItem.loading !== rightItem.loading
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 function useCloseContextMenuOnOutsideInteraction(input: {

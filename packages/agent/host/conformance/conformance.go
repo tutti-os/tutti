@@ -61,6 +61,7 @@ type Fixture struct {
 type SessionObservation struct {
 	SessionID         string
 	ProviderSessionID string
+	RailSectionKey    string
 	Title             string
 	ActiveTurnID      string
 	Resumable         bool

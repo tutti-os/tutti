@@ -64,6 +64,22 @@ import (
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
+type workspaceAgentTargetResolverSetter interface {
+	SetWorkspaceAgentTargetResolver(agentservice.WorkspaceAgentTargetResolver)
+}
+
+func configureWorkspaceAgentResolution(
+	agentSessions *agentservice.Service,
+	activityProjection workspaceAgentTargetResolverSetter,
+	workspaceAgents *workspaceagentservice.Service,
+	workspaceAgentTargets agentservice.WorkspaceAgentTargetResolver,
+) {
+	agentSessions.WorkspaceAgentResolver = workspaceAgents
+	if workspaceAgentTargets != nil {
+		activityProjection.SetWorkspaceAgentTargetResolver(workspaceAgentTargets)
+	}
+}
+
 func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service, computerService *computersvc.Service) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, *agentservice.ProviderAuthWatcher, error) {
 	workspaceStore, _ := store.(workspacedata.WorkbenchStore)
 	issueStore, _ := store.(workspaceissues.Store)
@@ -71,7 +87,6 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentTargetStore, _ := store.(workspacedata.AgentTargetStore)
 	managedCredentialsStore, _ := store.(workspacedata.ManagedCredentialsStore)
 	modelPlansStore, _ := store.(workspacedata.ModelPlansStore)
-	modelPlanFirstUseStore, _ := store.(workspacedata.ModelPlanFirstUseStore)
 	agentActivityRepo, _ := store.(workspacedata.AgentActivityStore)
 	agentQuickPromptStore, _ := store.(workspacedata.AgentQuickPromptStore)
 	userProjectStore, _ := store.(workspacedata.UserProjectStore)
@@ -178,8 +193,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Publisher: eventstreamservice.AgentAutomationRulesPublisher{Service: events},
 	}
 	modelPlans := &modelplanservice.Service{
-		Store:         modelPlansStore,
-		FirstUseStore: modelPlanFirstUseStore,
+		Store: modelPlansStore,
 		// Plan deletion stays blocked while any consumer domain still points at
 		// the plan: agent model bindings, model usage policies, and workspace agents.
 		References: modelplanservice.CompositeReferenceResolver{modelBindings, modelPolicies, workspaceAgents},
@@ -308,9 +322,15 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentModelCatalog := agentservice.NewAgentModelCatalog()
 	agentModelCatalog.ModelCapabilities = agentModelCapabilities
 	agentSessionService.ModelCatalog = agentModelCatalog
-	agentSessionService.ConfigureModelPlanBinding(modelBindingsStore, modelPlansStore, modelPlans)
+	agentSessionService.ConfigureModelPlanBinding(modelBindingsStore, modelPlansStore)
 	agentSessionService.ModelCapabilities = agentModelCapabilities
 	agentSessionService.AgentTargetStore = agentTargetStore
+	configureWorkspaceAgentResolution(
+		agentSessionService,
+		agentActivityProjection,
+		workspaceAgents,
+		workspaceAgentsStore,
+	)
 	agentSessionService.AgentComposerDefaultsReader = preferences
 	preferences.AgentComposerDefaultsValidator = agentSessionService
 	agentSessionService.ExtensionComposerProfiles = agentExtensionComposerProfileResolver{
@@ -327,9 +347,6 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
 	agentSessionService.TurnStore = agentActivityRepo
-	if err := agentSessionService.ReconcilePendingModelPlanFirstUses(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("reconcile model plan first use: %w", err)
-	}
 	agentSessionService.TurnSummaryReader = agentActivityRepo
 	agentSessionService.RuntimeOperationStore = agentActivityRepo
 	agentSessionService.GoalStateStore = agentActivityRepo
@@ -553,7 +570,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Publisher:             eventstreamservice.WorkspaceAppFactoryPublisher{Service: events},
 	}
 	agentActivityProjection.SetSessionMessageObserver(appFactoryService)
-	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, agentSessionService, modelPolicies, automationRules, issueExecutionCoordinator})
+	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, modelPolicies, automationRules, issueExecutionCoordinator})
 	// Canonical root-turn settlements (root-provider aggregation, child-drain
 	// reconcile, cancel) fan out at-least-once to this dedicated opt-in list
 	// only. Automation rules and the Issue-run observer are the consumers

@@ -52,7 +52,6 @@ export type {
   ModelPlan,
   ModelPlanDetection,
   ModelPlanDetectionStage,
-  ModelPlanFirstUse,
   ModelPlanModel,
   ModelPlanProtocol,
   ModelPlanReference,

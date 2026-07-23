@@ -566,6 +566,13 @@ emitted before this method can be called`, especially after HMR, navigation,
   `dist/assets/...`. The same feature often works inside this monorepo because
   workspace source resolution or local build layout hides the packaging
   problem.
+  In Vite development mode the failing URL may instead point at
+  `node_modules/.vite/deps/assets/...`: dependency prebundling moved the
+  JavaScript module, then a preserved `new URL("./assets/...", import.meta.url)`
+  resolved relative to the optimizer cache.
+  A browser-only correction can surface as `Unknown file extension ".png"` in
+  Vitest when the test runner externalizes the published dependency and Node
+  evaluates its asset import directly.
 - Quick checks:
   If the failing package entrypoint renders a package-local image or icon,
   inspect whether the main runtime entrypoint still imports that asset directly
@@ -574,12 +581,17 @@ emitted before this method can be called`, especially after HMR, navigation,
   Run `pnpm release:pack:check` and confirm the packed tarball includes the
   exported asset file under `dist/assets/...`.
   Inspect the built `dist` entrypoint and confirm the main runtime code no
-  longer hard-depends on the asset unless the consumer imported it explicitly.
+  longer uses a module-relative asset URL. If the runtime intentionally imports
+  the asset, verify the public export has both a browser asset target and a
+  Node-executable target.
 - Root cause:
   The public runtime entrypoint owned a default asset dependency instead of
   exposing that asset as an explicit public subpath. The packed npm artifact
   either did not ship the matching file layout or forced every consumer to pay
   the asset cost even when the feature was unused.
+  A related failure occurs when a published bundle preserves a module-relative
+  `new URL(...)`: consumer dependency optimization can relocate that bundle
+  independently from its adjacent asset.
 - Fix:
   Move the image or icon out of the main runtime entrypoint and export it
   through an explicit package asset subpath such as
@@ -587,11 +599,22 @@ emitted before this method can be called`, especially after HMR, navigation,
   Let the business consumer import that asset only when it needs the default
   visual, and keep the package build rule that copies the asset into the packed
   `dist/assets` directory.
+  When the package runtime owns an always-available default icon, prefer a
+  code-owned UI-system SVG component so the runtime does not import an image at
+  all. Conditional asset exports are not sufficient for this case: a
+  browser-conditioned test environment can select the image target and then
+  externalize the package for Node execution, which still fails on `.png`.
+  Keep explicit public asset subpaths only for browser consumers that knowingly
+  opt into the artwork. Do not require every consumer to add a test alias for
+  the published package.
   Apply the same rule to every public runtime subpath in the package, not just
   the first failing icon.
 - Validation:
   Build the affected package, inspect the built runtime entrypoint for the
   absence of the old asset dependency, and rerun `pnpm release:pack:check`.
+  Import any intentionally supported packed asset subpath with Node and run a
+  real Vite dependency-prebundle fixture. The optimized root runtime must
+  contain the code-owned fallback icon and no fallback image dependency.
   If the package is consumed by desktop renderer code in this repo, also run
   the relevant desktop build to confirm the consumer bundler copies or emits
   the asset only when the business import is present.

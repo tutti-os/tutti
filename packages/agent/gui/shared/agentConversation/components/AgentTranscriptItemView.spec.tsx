@@ -260,8 +260,8 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(mockState.markdownStreamingFlags.at(-1)).toBe(false);
   });
 
-  it("renders plain user messages inside a copyable message group", () => {
-    render(
+  it("keeps participant presentation off by default", () => {
+    const { container } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
         basePath="/workspace/demo"
@@ -286,10 +286,131 @@ describe("AgentTranscriptItemView render stability", () => {
       throw new Error("Expected user message bubble to render.");
     }
     expect(group).toHaveAttribute("data-agent-message-speaker", "user");
+    expect(group).toHaveAttribute("data-agent-message-footer", "true");
     expect(group).toHaveTextContent("User asks for a fix");
     expect(
       group.querySelector(".agent-gui-conversation__message-copy-button")
     ).toBeInstanceOf(HTMLButtonElement);
+    expect(
+      container.querySelector("[data-agent-conversation-participant-avatar]")
+    ).toBeNull();
+    expect(
+      container.querySelector(
+        ".agent-gui-conversation__participant-message-layout"
+      )
+    ).toBeNull();
+  });
+
+  it("preserves the existing message DOM when participant presentation is disabled", () => {
+    const { container } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow()}
+        thinkingLabel="Thought process"
+        participantPresentation={{ enabled: false }}
+      />
+    );
+
+    expect(
+      container.querySelector(
+        ".agent-gui-conversation__participant-message-layout"
+      )
+    ).toBeNull();
+    expect(
+      container.querySelector("[data-agent-conversation-participant-avatar]")
+    ).toBeNull();
+    expect(
+      container.querySelector(".agent-gui-conversation__user-message-flow")
+        ?.children
+    ).toHaveLength(1);
+  });
+
+  it("renders fixed participant avatar loading slots without hiding messages", () => {
+    const participantPresentation = {
+      enabled: true,
+      status: "loading"
+    } as const;
+    const { container } = render(
+      <>
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={assistantMessageRow()}
+          thinkingLabel="Thought process"
+          participantPresentation={participantPresentation}
+        />
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={userMessageRow()}
+          thinkingLabel="Thought process"
+          participantPresentation={participantPresentation}
+        />
+      </>
+    );
+
+    const avatars = container.querySelectorAll(
+      "[data-agent-conversation-participant-avatar]"
+    );
+    expect(avatars).toHaveLength(2);
+    expect(avatars[0]).toHaveAttribute(
+      "data-agent-conversation-participant-avatar",
+      "assistant"
+    );
+    expect(avatars[1]).toHaveAttribute(
+      "data-agent-conversation-participant-avatar",
+      "user"
+    );
+    expect(avatars[0]).toHaveAttribute("data-avatar-state", "loading");
+    expect(avatars[1]).toHaveAttribute("data-avatar-state", "loading");
+    expect(screen.getByText(/Assistant answer/)).toBeInTheDocument();
+    expect(screen.getByText("User asks for a fix")).toBeInTheDocument();
+  });
+
+  it("places the agent avatar left and the user avatar right from external identity data", () => {
+    const participantPresentation = {
+      enabled: true,
+      status: "ready",
+      agent: { name: "Codex" },
+      user: { name: "Alice" }
+    } as const;
+    const { container } = render(
+      <>
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={assistantMessageRow()}
+          thinkingLabel="Thought process"
+          participantPresentation={participantPresentation}
+        />
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={userMessageRow()}
+          thinkingLabel="Thought process"
+          participantPresentation={participantPresentation}
+        />
+      </>
+    );
+
+    const assistantLayout = container.querySelector(
+      '.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="assistant"]'
+    );
+    const userLayout = container.querySelector(
+      '.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="user"]'
+    );
+    expect(assistantLayout?.firstElementChild).toHaveAttribute(
+      "aria-label",
+      "Codex"
+    );
+    expect(assistantLayout?.lastElementChild).toHaveClass(
+      "agent-gui-conversation__participant-message-content"
+    );
+    expect(userLayout?.firstElementChild).toHaveClass(
+      "agent-gui-conversation__participant-message-content"
+    );
+    expect(userLayout?.lastElementChild).toHaveAttribute("aria-label", "Alice");
   });
 
   it("copies user message text through the agent host clipboard", async () => {

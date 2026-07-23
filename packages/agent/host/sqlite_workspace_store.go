@@ -3,6 +3,7 @@ package agenthost
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -78,7 +79,8 @@ func (s *SQLiteWorkspaceStore) RollbackRuntimeSessionInitialization(ctx context.
 	return changed, err
 }
 
-func (s *SQLiteWorkspaceStore) InitializeRuntimeSession(ctx context.Context, session ProviderRuntimeSession) (storesqlite.Session, error) {
+func (s *SQLiteWorkspaceStore) InitializeRuntimeSession(ctx context.Context, input RuntimeSessionInitialization) (storesqlite.Session, error) {
+	session := input.Session
 	if s != nil && s.InitializationPolicy != nil {
 		var err error
 		session, err = s.InitializationPolicy.NormalizeRuntimeSessionInitialization(ctx, session)
@@ -108,6 +110,14 @@ func (s *SQLiteWorkspaceStore) InitializeRuntimeSession(ctx context.Context, ses
 	}
 	runtimeContext["visible"] = session.Visible && !session.Provisional
 	userID := firstNonBlank(session.UserID, s.currentUserID())
+	var railPlacement *storesqlite.RailSection
+	if input.RailPlacement != nil {
+		railPlacement = &storesqlite.RailSection{
+			Kind:        string(input.RailPlacement.Kind),
+			ProjectPath: input.RailPlacement.ProjectPath,
+			Key:         input.RailPlacement.SectionKey,
+		}
+	}
 	result, err := store.ReportActivityState(ctx, storesqlite.ActivityStateReport{
 		Session: storesqlite.SessionStateReport{
 			WorkspaceID:       workspaceID,
@@ -122,6 +132,7 @@ func (s *SQLiteWorkspaceStore) InitializeRuntimeSession(ctx context.Context, ses
 			Settings:          composerSettingsPayload(session.Settings),
 			RuntimeContext:    runtimeContext,
 			Cwd:               strings.TrimSpace(session.Cwd),
+			RailPlacement:     railPlacement,
 			Title:             strings.TrimSpace(session.Title),
 			Status:            runtimeLifecycleStatus(session.Status),
 			CurrentPhase:      runtimeLifecyclePhase(session.Status),
@@ -132,6 +143,9 @@ func (s *SQLiteWorkspaceStore) InitializeRuntimeSession(ctx context.Context, ses
 		},
 	})
 	if err != nil {
+		if errors.Is(err, storesqlite.ErrRailSectionConflict) {
+			return storesqlite.Session{}, fmt.Errorf("%w: %v", ErrRailPlacementConflict, err)
+		}
 		return storesqlite.Session{}, err
 	}
 	persisted := result.State.Session

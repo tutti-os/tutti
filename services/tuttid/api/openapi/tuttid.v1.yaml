@@ -1125,7 +1125,7 @@ paths:
       tags:
         - model-plan
       summary: Create one named model access plan
-      description: Creates a plan for one access scheme (official subscription, coding plan, relay, or custom compatible endpoint). Multiple named plans may share one protocol. New plans start undetected and pending first use.
+      description: Creates a plan for one access scheme (official subscription, coding plan, relay, or custom compatible endpoint). Multiple named plans may share one protocol. New plans start undetected.
       requestBody:
         required: true
         content:
@@ -1157,7 +1157,7 @@ paths:
       tags:
         - model-plan
       summary: Run the staged connection detection for a plan or draft
-      description: Runs the network, auth, model discovery, and minimal real inference stages in order and reports one structured result per stage. The agent_runtime stage stays pending until the plan completes its first real agent call. With planId the outcome persists onto the stored plan; omitted fields fall back to stored values. Without planId the request verifies an unsaved draft.
+      description: Runs the network, auth, model discovery, and minimal real inference stages in order and reports one structured result per stage. With planId the outcome persists onto the stored plan; omitted fields fall back to stored values. Without planId the request verifies an unsaved draft.
       requestBody:
         required: true
         content:
@@ -1216,7 +1216,7 @@ paths:
       tags:
         - model-plan
       summary: Update one model access plan
-      description: Replaces the mutable plan fields. Omitting apiKey keeps the stored credential. Changing the credential, base URL, or protocol resets detection and first-use state, so the plan must be re-verified before it reads as usable. Changes affect only calls that have not started yet.
+      description: Replaces the mutable plan fields. Omitting apiKey keeps the stored credential. Changing the credential, base URL, or protocol resets detection state. Changes affect only calls that have not started yet.
       requestBody:
         required: true
         content:
@@ -5956,6 +5956,13 @@ components:
         cancel_at_period_end:
           type: boolean
           nullable: true
+    AccountMembershipAccessState:
+      type: string
+      enum:
+        - free
+        - active
+        - inactive
+        - unknown
     AccountCreditsSummary:
       type: object
       additionalProperties: false
@@ -6039,6 +6046,7 @@ components:
       required:
         - user
         - membership
+        - membership_access
         - credits
         - links
       properties:
@@ -6050,6 +6058,8 @@ components:
           allOf:
             - $ref: "#/components/schemas/AccountMembershipSummary"
           nullable: true
+        membership_access:
+          $ref: "#/components/schemas/AccountMembershipAccessState"
         credits:
           allOf:
             - $ref: "#/components/schemas/AccountCreditsSummary"
@@ -7508,12 +7518,11 @@ components:
         - custom
     ModelPlanStatus:
       type: string
-      description: Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+      description: Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
       enum:
         - disabled
         - undetected
         - detection_failed
-        - pending_first_use
         - ready
     ModelPlanDetectionStage:
       type: string
@@ -7522,14 +7531,12 @@ components:
         - auth
         - model_discovery
         - inference
-        - agent_runtime
     ModelPlanStageStatus:
       type: string
       enum:
         - passed
         - failed
         - skipped
-        - pending
     ModelPlanStageResult:
       type: object
       additionalProperties: false
@@ -7578,30 +7585,6 @@ components:
           type: string
           nullable: true
           description: Model id exercised by the inference stage.
-    ModelPlanFirstUse:
-      type: object
-      additionalProperties: false
-      required:
-        - status
-      properties:
-        status:
-          type: string
-          enum:
-            - pending
-            - completed
-        agentTargetId:
-          type: string
-          nullable: true
-        agentSessionId:
-          type: string
-          nullable: true
-        model:
-          type: string
-          nullable: true
-        completedAt:
-          type: string
-          format: date-time
-          nullable: true
     ModelPlanModel:
       type: object
       additionalProperties: false
@@ -7634,7 +7617,6 @@ components:
         - enabled
         - status
         - detection
-        - firstUse
         - createdAt
         - updatedAt
       properties:
@@ -7670,8 +7652,6 @@ components:
           $ref: "#/components/schemas/ModelPlanStatus"
         detection:
           $ref: "#/components/schemas/ModelPlanDetection"
-        firstUse:
-          $ref: "#/components/schemas/ModelPlanFirstUse"
         createdAt:
           type: string
           format: date-time
@@ -12051,6 +12031,8 @@ components:
           type: boolean
           nullable: true
           description: Classifies a session that is intentionally not attached to a workspace project.
+        railPlacement:
+          $ref: "#/components/schemas/WorkspaceAgentRailPlacement"
         speed:
           type: string
           nullable: true
@@ -12074,6 +12056,29 @@ components:
         visible:
           type: boolean
           nullable: true
+    WorkspaceAgentRailPlacement:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - kind
+        - sectionKey
+      properties:
+        version:
+          type: integer
+          enum:
+            - 1
+        kind:
+          type: string
+          enum:
+            - conversations
+            - project
+        projectPath:
+          type: string
+          minLength: 1
+        sectionKey:
+          type: string
+          minLength: 1
     SendWorkspaceAgentSessionInputRequest:
       type: object
       additionalProperties: false
@@ -13128,6 +13133,73 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceFileUploadConflict"
+    WorkbenchSize:
+      type: object
+      additionalProperties: false
+      required:
+        - width
+        - height
+      properties:
+        width:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        height:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+    WorkbenchSafeArea:
+      type: object
+      additionalProperties: false
+      required:
+        - top
+        - right
+        - bottom
+        - left
+      properties:
+        top:
+          type: number
+          minimum: 0
+        right:
+          type: number
+          minimum: 0
+        bottom:
+          type: number
+          minimum: 0
+        left:
+          type: number
+          minimum: 0
+    WorkbenchLayoutConstraints:
+      type: object
+      additionalProperties: false
+      required:
+        - minWidth
+        - minHeight
+        - surfacePadding
+        - safeArea
+      properties:
+        minWidth:
+          type: number
+          minimum: 0
+        minHeight:
+          type: number
+          minimum: 0
+        surfacePadding:
+          type: number
+          minimum: 0
+        safeArea:
+          $ref: "#/components/schemas/WorkbenchSafeArea"
+    WorkbenchLayoutBasis:
+      type: object
+      additionalProperties: false
+      required:
+        - surfaceSize
+        - layoutConstraints
+      properties:
+        surfaceSize:
+          $ref: "#/components/schemas/WorkbenchSize"
+        layoutConstraints:
+          $ref: "#/components/schemas/WorkbenchLayoutConstraints"
     WorkbenchFrame:
       type: object
       additionalProperties: false
@@ -13244,6 +13316,8 @@ components:
         activeSpaceId:
           type: string
           nullable: true
+        layoutBasis:
+          $ref: "#/components/schemas/WorkbenchLayoutBasis"
         metadata:
           type: object
           additionalProperties: true

@@ -258,6 +258,29 @@ func (n *acpTurnNormalizer) AppendAssistantSnapshot(
 	return n.Finish(session, turnID, messageStreamStateCompleted)
 }
 
+func (n *acpTurnNormalizer) FailAssistantSnapshot(
+	session Session,
+	turnID string,
+	text string,
+	messageID string,
+) []activityshared.Event {
+	if n == nil || n.suppressAssistantOutput {
+		return nil
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	messageID = strings.TrimSpace(messageID)
+	if n.assistantMessageID == "" || (messageID != "" && n.assistantMessageID != messageID) {
+		n.assistantMessageID = firstNonEmpty(messageID, newID())
+	}
+	n.assistantContent.Reset()
+	_, _ = n.assistantContent.WriteString(text)
+	n.assistantSegmentCompleted = false
+	return n.Finish(session, turnID, messageStreamStateFailed)
+}
+
 func (n *acpTurnNormalizer) mergeAssistantText(next string) {
 	if n == nil || next == "" {
 		return

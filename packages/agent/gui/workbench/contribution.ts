@@ -434,6 +434,9 @@ export function createAgentGuiWorkbenchContribution(
         window: {
           closable: true,
           defaultOpen: false,
+          header: {
+            layout: "overlay"
+          },
           minimizedDock: {
             kind: "component",
             providePreview: (item) =>

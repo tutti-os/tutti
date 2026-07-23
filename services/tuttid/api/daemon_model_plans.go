@@ -347,7 +347,6 @@ func generatedModelPlan(plan modelplanbiz.PublicPlan) tuttigenerated.ModelPlan {
 		Enabled:      plan.Enabled,
 		Status:       tuttigenerated.ModelPlanStatus(plan.Status),
 		Detection:    generatedModelPlanDetection(plan.Detection),
-		FirstUse:     generatedModelPlanFirstUse(plan.FirstUse),
 		CreatedAt:    plan.CreatedAt,
 		UpdatedAt:    plan.UpdatedAt,
 	}
@@ -407,26 +406,6 @@ func generatedModelPlanDetection(detection modelplanbiz.DetectionSnapshot) tutti
 			generated.CheckedAt = &checkedAt
 		}
 		result.Stages = append(result.Stages, generated)
-	}
-	return result
-}
-
-func generatedModelPlanFirstUse(firstUse modelplanbiz.FirstUse) tuttigenerated.ModelPlanFirstUse {
-	result := tuttigenerated.ModelPlanFirstUse{
-		Status: tuttigenerated.ModelPlanFirstUseStatus(firstUse.Status),
-	}
-	if firstUse.AgentTargetID != "" {
-		result.AgentTargetId = stringPointer(firstUse.AgentTargetID)
-	}
-	if firstUse.AgentSessionID != "" {
-		result.AgentSessionId = stringPointer(firstUse.AgentSessionID)
-	}
-	if firstUse.Model != "" {
-		result.Model = stringPointer(firstUse.Model)
-	}
-	if !firstUse.CompletedAt.IsZero() {
-		completedAt := firstUse.CompletedAt
-		result.CompletedAt = &completedAt
 	}
 	return result
 }

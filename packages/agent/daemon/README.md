@@ -39,11 +39,12 @@ start or initialize failure, live-session close, idle release, and live process
 replacement. Cleanup failures are logged and do not replace the original close
 or start error.
 
-Hosts that need unrestricted command networking while retaining Codex's
-permission-mode filesystem sandbox and approval UX can construct the adapter
-with `CodexAppServerAdapterOptions{CommandNetworkAccess: true}`. The option
-sets `sandboxPolicy.networkAccess` on read-only and workspace-write turns. It
-does not change `approvalPolicy`, `approvalsReviewer`, writable roots, or
+Hosts that need unrestricted command networking while retaining a
+Codex-compatible provider's permission-mode filesystem sandbox and approval UX
+can construct the Codex or Tutti Agent adapter with
+`CodexAppServerAdapterOptions{CommandNetworkAccess: true}`. The option sets
+`sandboxPolicy.networkAccess` on read-only and workspace-write turns. It does
+not change `approvalPolicy`, `approvalsReviewer`, writable roots, or
 network-proxy policy. Full-access turns remain unrestricted by definition.
 
 ## Package Ownership

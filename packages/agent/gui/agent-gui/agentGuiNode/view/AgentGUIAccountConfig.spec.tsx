@@ -48,6 +48,59 @@ describe("AgentGUIAccountRailMenu", () => {
 
     expect(onCopyUserId).toHaveBeenCalledOnce();
   });
+
+  it("owns exactly one reward toast", () => {
+    render(
+      <AgentGUIAccountRailMenu
+        accountMenuState={{
+          user: { userId: "user-123", name: "Tutti User" },
+          membershipLabel: "Free",
+          membershipAccess: "free",
+          creditsLabel: "500",
+          loading: false,
+          error: null,
+          registrationCreditsToast: {
+            id: "reward-1",
+            creditsLabel: "500",
+            visible: true,
+            onDismiss: vi.fn()
+          },
+          links: { planUrl: "", usageUrl: "", settingsUrl: "" },
+          onOpenChange: vi.fn(),
+          onLogin: vi.fn(),
+          onOpenExternal: vi.fn()
+        }}
+        labels={
+          {
+            accountMenuTitle: "Account",
+            accountMenuMember: "Membership",
+            accountMenuUpgrade: "Upgrade membership",
+            accountMenuRecharge: "Recharge credits",
+            accountMenuViewPlans: "View credit options",
+            accountMenuCreditsBalance: "Credits",
+            accountMenuAccountCenter: "Account center",
+            accountMenuSettings: "Settings",
+            accountMenuFree: "Free",
+            accountMenuSignIn: "Sign in",
+            accountMenuSignOut: "Sign out",
+            accountMenuCopyUserId: "Copy user ID",
+            accountMenuLoading: "Loading",
+            accountMenuUnavailable: "--",
+            accountMenuDataUnavailable: "Unavailable",
+            accountRewardToastTitle: "Reward",
+            accountRewardToastCreditsUnit: "credits",
+            accountRewardToastDescription: "Added",
+            accountRewardToastClose: "Close"
+          } as never
+        }
+        previewMode={false}
+      />
+    );
+
+    expect(
+      screen.getAllByTestId("agent-gui-account-reward-toast")
+    ).toHaveLength(1);
+  });
 });
 
 describe("AgentGUIConfigMenu status", () => {

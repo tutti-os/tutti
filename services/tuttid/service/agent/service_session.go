@@ -139,11 +139,12 @@ func serviceSession(session ProviderRuntimeSession, resumable bool) Session {
 func (s *Service) initializeRuntimeSession(
 	ctx context.Context,
 	session ProviderRuntimeSession,
+	railPlacement *agenthost.RailPlacement,
 ) (PersistedSession, error) {
 	if s == nil || s.SessionInitializer == nil {
 		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: session initializer is unavailable")
 	}
-	persisted, err := s.SessionInitializer.InitializeRuntimeSession(ctx, session)
+	persisted, err := s.SessionInitializer.InitializeRuntimeSession(ctx, session, railPlacement)
 	if err != nil {
 		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: %w", err)
 	}

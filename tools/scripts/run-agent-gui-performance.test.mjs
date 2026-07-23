@@ -9,6 +9,7 @@ import {
   agentGuiPerformanceScenarios,
   resolveAgentGuiPerformanceScenario
 } from "./agent-gui-performance-scenarios.mjs";
+import { sessionSwitchScenario } from "./agent-gui-session-performance-scenarios.mjs";
 import { composerInputScenario } from "./agent-gui-composer-performance-scenarios.mjs";
 import { summarizeProviderStatusFocusRefresh } from "./agent-provider-status-performance-scenario.mjs";
 import { buildAllProcessTimeProfileArgs } from "./all-process-time-profile.mjs";
@@ -173,6 +174,12 @@ test("session switch target selection keeps active source and chooses another", 
     ),
     { sourceSessionID: "session-2", targetSessionID: "session-1" }
   );
+});
+
+test("session switch profiles its timeline geometry choke point", () => {
+  assert.deepEqual(sessionSwitchScenario.profileFunctionNames, [
+    "readTimelineGeometry"
+  ]);
 });
 
 test("performance scenario registry exposes renderer and window scenarios", () => {

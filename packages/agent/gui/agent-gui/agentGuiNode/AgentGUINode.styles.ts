@@ -15,6 +15,7 @@ const styles = {
   composerFooterRight: "agent-gui-node__composer-footer-right",
   composerHero: "agent-gui-node__composer-hero",
   composerFloatingPrompt: "agent-gui-node__composer-floating-prompt",
+  composerDisclosurePanel: "agent-gui-chrome__composer-disclosure-panel",
   composerFileDropOverlay: "agent-gui-node__composer-file-drop-overlay",
   composerFileDropOverlayActive:
     "agent-gui-node__composer-file-drop-overlay--active",

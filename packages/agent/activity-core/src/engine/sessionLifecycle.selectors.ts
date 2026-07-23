@@ -1,8 +1,5 @@
-import type {
-  AgentActivityDisplayStatus,
-  AgentActivityInteraction,
-  AgentActivityTurn
-} from "../types.ts";
+import type { AgentActivityInteraction, AgentActivityTurn } from "../types.ts";
+import type { AgentActivityDisplayStatus } from "../displayStatus.types.ts";
 import type { AgentSessionEngineState } from "./types.ts";
 import type {
   InteractionResponseState,

@@ -136,6 +136,9 @@ func TestAccountProductSummaryRouteIsRegistered(t *testing.T) {
 	if body.Credits == nil || body.Credits.AvailableCredits == nil || *body.Credits.AvailableCredits != "2450.52" {
 		t.Fatalf("credits = %#v", body.Credits)
 	}
+	if body.MembershipAccess != tuttigenerated.AccountMembershipAccessStateUnknown {
+		t.Fatalf("membership access = %q, want unknown", body.MembershipAccess)
+	}
 }
 
 func TestDismissAccountRegistrationCreditsRewardMapsRequest(t *testing.T) {

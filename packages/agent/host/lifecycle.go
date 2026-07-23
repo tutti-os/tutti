@@ -18,6 +18,11 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	if h == nil || h.runtime == nil || h.store == nil || workspaceID == "" || input.AgentSessionID == "" || input.Provider == "" {
 		return CreateSessionResult{}, ErrInvalidArgument
 	}
+	var err error
+	input.RailPlacement, err = normalizeRailPlacement(input.RailPlacement)
+	if err != nil {
+		return CreateSessionResult{}, err
+	}
 	ref := SessionRef{WorkspaceID: workspaceID, AgentSessionID: input.AgentSessionID}
 	normalized, promptText, err := normalizeOptionalPromptContent(input.InitialContent)
 	if err != nil {
@@ -48,6 +53,9 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		canonicalSession, _, readErr := h.store.GetSession(ctx, workspaceID, input.AgentSessionID)
 		if readErr != nil {
 			return CreateSessionResult{}, readErr
+		}
+		if !railPlacementMatchesSession(input.RailPlacement, canonicalSession) {
+			return CreateSessionResult{}, ErrRailPlacementConflict
 		}
 		runtimeSession, _ := h.runtime.Session(workspaceID, input.AgentSessionID)
 		return CreateSessionResult{Session: runtimeSession, Canonical: canonicalSession, TurnID: claim.TurnID}, nil
@@ -111,7 +119,10 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	}
 	h.observeStep(ctx, "session_create", "runtime_started", session.ID, session.Provider, startedAt, nil)
 	startedAt = h.now()
-	canonicalSession, err := h.store.InitializeRuntimeSession(ctx, session)
+	canonicalSession, err := h.store.InitializeRuntimeSession(ctx, RuntimeSessionInitialization{
+		Session:       session,
+		RailPlacement: input.RailPlacement,
+	})
 	if err != nil {
 		h.observeStep(ctx, "session_create", "session_persisted", session.ID, session.Provider, startedAt, err)
 		return CreateSessionResult{}, cleanup(err, true, false)
@@ -120,6 +131,11 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		identityErr := fmt.Errorf("initialize workspace agent session: persisted session identity mismatch")
 		h.observeStep(ctx, "session_create", "session_persisted", session.ID, session.Provider, startedAt, identityErr)
 		return CreateSessionResult{}, cleanup(identityErr, true, true)
+	}
+	if !railPlacementMatchesSession(input.RailPlacement, canonicalSession) {
+		placementErr := ErrRailPlacementConflict
+		h.observeStep(ctx, "session_create", "session_persisted", session.ID, session.Provider, startedAt, placementErr)
+		return CreateSessionResult{}, cleanup(placementErr, true, true)
 	}
 	h.observeStep(ctx, "session_create", "session_persisted", session.ID, session.Provider, startedAt, nil)
 	if len(normalized) == 0 && !isTypedGoal {

@@ -35,7 +35,6 @@ import {
   replaceWorkspaceModelPlanDraftModel
 } from "../services/workspaceModelPlanDraftModels";
 import type {
-  WorkspaceModelPlanDetection,
   WorkspaceModelPlanDraft,
   WorkspaceModelPlanFeedback,
   WorkspaceModelPlanModel,
@@ -43,7 +42,6 @@ import type {
   WorkspaceModelPlanReferenceKind,
   WorkspaceModelPlanSaveImpact
 } from "../services/workspaceSettingsTypes";
-import { WorkspaceModelPlanDetectionSteps } from "./WorkspaceModelPlanDetectionSteps";
 import {
   workspaceSettingsInputClass,
   workspaceSettingsSelectContentClass,
@@ -69,10 +67,6 @@ const draftFeedbackConfig: Record<
   detectFailed: {
     className: "text-[var(--state-danger)]",
     messageKey: "workspace.settings.apps.modelPlans.detectFailed"
-  },
-  detectionRequired: {
-    className: "text-[var(--state-danger)]",
-    messageKey: "workspace.settings.apps.modelPlans.detectionRequired"
   },
   deleteFailed: {
     className: "text-[var(--state-danger)]",
@@ -123,12 +117,10 @@ export function WorkspaceModelPlanFeedbackLine({
 
 /**
  * Inline editor for one model plan draft, ordered as the user works:
- * credentials, explicit model fetch, model selection with an inline default
- * marker, then the connection check as the final gate before saving.
+ * credentials, explicit model fetch, and model selection with an inline
+ * default marker. Connection detection is an optional action on the saved row.
  */
 export function WorkspaceModelPlanEditor({
-  detecting,
-  detection,
   discoveredModels,
   draft,
   feedback,
@@ -136,13 +128,10 @@ export function WorkspaceModelPlanEditor({
   saveImpact,
   saving,
   onCancel,
-  onDetect,
   onFetchModels,
   onSave,
   onUpdate
 }: {
-  detecting: boolean;
-  detection: WorkspaceModelPlanDetection | null;
   discoveredModels: readonly WorkspaceModelPlanModel[];
   draft: Readonly<WorkspaceModelPlanDraft>;
   feedback: WorkspaceModelPlanFeedback | null;
@@ -150,7 +139,6 @@ export function WorkspaceModelPlanEditor({
   saveImpact: WorkspaceModelPlanSaveImpact | null;
   saving: boolean;
   onCancel: () => void;
-  onDetect: () => void;
   onFetchModels: () => void;
   onSave: () => void;
   onUpdate: (patch: Partial<WorkspaceModelPlanDraft>) => void;
@@ -392,7 +380,7 @@ export function WorkspaceModelPlanEditor({
       <div className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            disabled={fetchingModels || detecting}
+            disabled={fetchingModels}
             size="sm"
             type="button"
             variant="secondary"
@@ -526,30 +514,6 @@ export function WorkspaceModelPlanEditor({
             {t("workspace.settings.apps.modelPlans.addModel")}
           </button>
         </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.modelPlans.detectionTitle")}
-          </span>
-          <Button
-            className="h-auto px-0 text-[12px] font-medium text-[var(--text-primary)] hover:bg-transparent hover:text-[var(--text-primary)]"
-            disabled={detecting || fetchingModels}
-            size="sm"
-            type="button"
-            variant="ghost"
-            onClick={onDetect}
-          >
-            {detecting
-              ? t("workspace.settings.apps.modelPlans.detecting")
-              : t("workspace.settings.apps.modelPlans.detect")}
-          </Button>
-        </div>
-        <WorkspaceModelPlanDetectionSteps
-          detecting={detecting}
-          detection={detection}
-        />
       </div>
 
       <WorkspaceModelPlanFeedbackLine feedback={generalFeedback} />

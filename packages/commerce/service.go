@@ -38,8 +38,10 @@ func NewService(config Config) (*Service, error) {
 func (s *Service) ProductSummary(ctx context.Context, userID string) ProductSummary {
 	reward := s.rewards.reward(ctx, userID)
 	remote := s.fetchSummary(ctx)
+	membership, membershipAccess := MembershipFromUserInfo(remote.userInfo)
 	return ProductSummary{
-		Membership: MembershipSummaryFromUserInfo(remote.userInfo),
+		Membership:       membership,
+		MembershipAccess: membershipAccess,
 		Credits: CreditsSummaryFromResponses(
 			remote.creditsOverview,
 			remote.userInfo,

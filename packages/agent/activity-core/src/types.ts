@@ -1,4 +1,5 @@
 import type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
+import type { AgentActivityRailPlacement } from "./railPlacement.types.ts";
 import type {
   AgentActivityCapabilityReference,
   AgentActivityInitialTuttiModeActivation,
@@ -15,14 +16,6 @@ export type {
   AgentActivityUpdateTuttiModeActivationInput,
   AgentActivityUpdateTuttiModeActivationResult
 } from "./tuttiMode.types.ts";
-
-export type AgentActivityDisplayStatus =
-  | "working"
-  | "waiting"
-  | "idle"
-  | "completed"
-  | "canceled"
-  | "failed";
 
 export type AgentActivitySessionKind = "root" | "child";
 
@@ -481,6 +474,7 @@ export interface AgentActivityCreateSessionInput {
   noProject?: boolean | null;
   capabilityRefs?: readonly AgentActivityCapabilityReference[] | null;
   initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation | null;
+  railPlacement?: AgentActivityRailPlacement;
   initialContent?: AgentPromptContentBlock[] | null;
   /** 仅展示用的首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;

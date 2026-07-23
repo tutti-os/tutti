@@ -1317,7 +1317,7 @@ test("WorkspaceSettingsService deep-links to Custom Agents and Automation", () =
   assert.equal(service.store.agentTab, "automation");
 });
 
-test("WorkspaceSettingsService loads Plans and Runtime targets only on the Model surface", async () => {
+test("WorkspaceSettingsService loads Plans only on the Model surface", async () => {
   let listPlansCalls = 0;
   let listWorkspaceAgentsCalls = 0;
   const service = new WorkspaceSettingsService({
@@ -1338,7 +1338,8 @@ test("WorkspaceSettingsService loads Plans and Runtime targets only on the Model
   assert.equal(listWorkspaceAgentsCalls, 0);
 
   service.selectSection("model");
-  await waitFor(() => listPlansCalls > 0 && listWorkspaceAgentsCalls > 0);
+  await waitFor(() => listPlansCalls > 0);
+  assert.equal(listWorkspaceAgentsCalls, 0);
 });
 
 test("WorkspaceSettingsService refreshes Custom Agents and Automation by tab", async () => {

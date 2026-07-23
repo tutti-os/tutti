@@ -25,6 +25,8 @@
     "check:api-generated": "node ./tools/scripts/generate-openapi.mjs --check && node ./tools/scripts/check-agent-protocol-enums.mjs",
     "check:backdrop-filter-authoring": "node ./tools/scripts/check-backdrop-filter-authoring.mjs",
     "check:backdrop-filter-authoring:staged": "node ./tools/scripts/check-backdrop-filter-authoring.mjs --staged",
+    "check:css-has-performance": "node ./tools/scripts/check-css-has-performance.mjs",
+    "check:css-has-performance:staged": "node ./tools/scripts/check-css-has-performance.mjs --staged",
     "check:agent-protocol-enums": "node ./tools/scripts/check-agent-protocol-enums.mjs",
     "check:agent-activity-runtime-boundaries": "node ./tools/scripts/check-agent-activity-runtime-boundaries.mjs",
     "check:agent-gui-degradation": "node ./tools/scripts/check-agent-gui-degradation.mjs",

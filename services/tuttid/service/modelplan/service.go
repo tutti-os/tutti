@@ -1,6 +1,5 @@
-// Package modelplan orchestrates workspace model access plans: CRUD with
-// reference protection, staged connection detection, and the pending-first-use
-// lifecycle that completes on the first real agent-runtime call.
+// Package modelplan orchestrates workspace model access plans: CRUD,
+// reference protection, and staged connection detection.
 package modelplan
 
 import (
@@ -51,7 +50,6 @@ type ConfigurationChangePublisher interface {
 
 type Service struct {
 	Store                   workspacedata.ModelPlansStore
-	FirstUseStore           workspacedata.ModelPlanFirstUseStore
 	References              ReferenceResolver
 	Bindings                AgentTargetBindingResolver
 	NativeSubscriptionProbe NativeSubscriptionProbe
@@ -112,7 +110,6 @@ func (s *Service) CreatePlan(ctx context.Context, input PutPlanInput) (modelplan
 		Models:       input.Models,
 		DefaultModel: input.DefaultModel,
 		Enabled:      input.Enabled,
-		FirstUse:     modelplanbiz.FirstUse{Status: modelplanbiz.FirstUsePending},
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -154,7 +151,6 @@ func (s *Service) UpdatePlan(ctx context.Context, input PutPlanInput) (modelplan
 	}
 	if credentialChanged(existing, normalized) {
 		normalized.Detection = modelplanbiz.DetectionSnapshot{}
-		normalized.FirstUse = modelplanbiz.FirstUse{Status: modelplanbiz.FirstUsePending}
 	}
 	if err := s.Store.PutModelPlan(ctx, normalized); err != nil {
 		return modelplanbiz.PublicPlan{}, err
@@ -186,7 +182,6 @@ func (s *Service) DuplicatePlan(ctx context.Context, workspaceID string, planID 
 	}
 	clone.Enabled = false
 	clone.Detection = modelplanbiz.DetectionSnapshot{}
-	clone.FirstUse = modelplanbiz.FirstUse{Status: modelplanbiz.FirstUsePending}
 	clone.CreatedAt = now
 	clone.UpdatedAt = now
 	normalized, err := modelplanbiz.Normalize(clone)
@@ -258,123 +253,6 @@ func (s *Service) PlanReferences(ctx context.Context, workspaceID string, planID
 	return references, nil
 }
 
-// MarkFirstUse records the first successful agent-runtime call through the
-// plan, settling the agent_runtime detection stage and completing the
-// pending-first-use lifecycle.
-func (s *Service) MarkFirstUse(ctx context.Context, workspaceID string, planID string, agentTargetID string, agentSessionID string, model string) error {
-	plan, err := s.Store.GetModelPlan(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(planID))
-	if err != nil {
-		return err
-	}
-	if plan.FirstUse.Status == modelplanbiz.FirstUseCompleted {
-		return nil
-	}
-	now := s.now()
-	plan.FirstUse = modelplanbiz.FirstUse{
-		Status:         modelplanbiz.FirstUseCompleted,
-		AgentTargetID:  strings.TrimSpace(agentTargetID),
-		AgentSessionID: strings.TrimSpace(agentSessionID),
-		Model:          strings.TrimSpace(model),
-		CompletedAt:    now,
-	}
-	plan.Detection = upsertStageResult(plan.Detection, modelplanbiz.StageResult{
-		Stage:     modelplanbiz.StageAgentRuntime,
-		Status:    modelplanbiz.StagePassed,
-		Detail:    strings.TrimSpace(agentTargetID),
-		CheckedAt: now,
-	})
-	plan.Revision = nextModelPlanRevision(plan.Revision)
-	plan.UpdatedAt = now
-	return s.Store.PutModelPlan(ctx, plan)
-}
-
-// PrepareFirstUse durably records which plan endpoint a session will use
-// before the Host is allowed to start its provider runtime.
-func (s *Service) PrepareFirstUse(ctx context.Context, candidate modelplanbiz.FirstUseCandidate) error {
-	if s.FirstUseStore == nil {
-		return errors.New("model plan first use store is not configured")
-	}
-	candidate.WorkspaceID = strings.TrimSpace(candidate.WorkspaceID)
-	candidate.AgentSessionID = strings.TrimSpace(candidate.AgentSessionID)
-	candidate.PlanID = strings.TrimSpace(candidate.PlanID)
-	candidate.AgentTargetID = strings.TrimSpace(candidate.AgentTargetID)
-	candidate.Model = strings.TrimSpace(candidate.Model)
-	candidate.PlanUpdatedAt = candidate.PlanUpdatedAt.UTC()
-	candidate.CreatedAt = s.now()
-	return s.FirstUseStore.PutModelPlanFirstUseCandidate(ctx, candidate)
-}
-
-// CompleteFirstUse resolves a durable session attribution and removes it only
-// after the plan update succeeds. Replays are therefore safe after a crash.
-func (s *Service) CompleteFirstUse(ctx context.Context, workspaceID string, agentSessionID string) error {
-	if s.FirstUseStore == nil {
-		return errors.New("model plan first use store is not configured")
-	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	agentSessionID = strings.TrimSpace(agentSessionID)
-	candidate, err := s.FirstUseStore.GetModelPlanFirstUseCandidate(ctx, workspaceID, agentSessionID)
-	if errors.Is(err, workspacedata.ErrModelPlanFirstUseCandidateNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	plan, err := s.Store.GetModelPlan(ctx, workspaceID, candidate.PlanID)
-	if errors.Is(err, workspacedata.ErrModelPlanNotFound) {
-		return s.FirstUseStore.DeleteModelPlanFirstUseCandidate(ctx, workspaceID, agentSessionID)
-	}
-	if err != nil {
-		return err
-	}
-	if plan.FirstUse.Status == modelplanbiz.FirstUseCompleted || !plan.UpdatedAt.Equal(candidate.PlanUpdatedAt) {
-		return s.FirstUseStore.DeleteModelPlanFirstUseCandidate(ctx, workspaceID, agentSessionID)
-	}
-	if err := s.MarkFirstUse(ctx, workspaceID, candidate.PlanID, candidate.AgentTargetID, agentSessionID, candidate.Model); err != nil {
-		if errors.Is(err, workspacedata.ErrModelPlanNotFound) {
-			return s.FirstUseStore.DeleteModelPlanFirstUseCandidate(ctx, workspaceID, agentSessionID)
-		}
-		return err
-	}
-	return s.FirstUseStore.DeleteModelPlanFirstUseCandidate(ctx, workspaceID, agentSessionID)
-}
-
-func (s *Service) ListPendingFirstUses(ctx context.Context) ([]modelplanbiz.FirstUseCandidate, error) {
-	if s.FirstUseStore == nil {
-		return []modelplanbiz.FirstUseCandidate{}, nil
-	}
-	return s.FirstUseStore.ListModelPlanFirstUseCandidates(ctx)
-}
-
-// MarkFirstUseFailure records a failed real Agent call on the corresponding
-// detection node while keeping first use pending. A later successful retry
-// can still complete the same Plan.
-func (s *Service) MarkFirstUseFailure(ctx context.Context, workspaceID string, planID string, agentTargetID string, _ string, _ string) error {
-	plan, err := s.Store.GetModelPlan(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(planID))
-	if err != nil {
-		return err
-	}
-	if plan.FirstUse.Status == modelplanbiz.FirstUseCompleted {
-		return nil
-	}
-	now := s.now()
-	plan.FirstUse = modelplanbiz.FirstUse{Status: modelplanbiz.FirstUsePending}
-	plan.Detection = upsertStageResult(plan.Detection, modelplanbiz.StageResult{
-		Stage:         modelplanbiz.StageAgentRuntime,
-		Status:        modelplanbiz.StageFailed,
-		FailureReason: FailureAgentRuntime,
-		Remedy:        RemedyRetryAgentRuntime,
-		Detail:        strings.TrimSpace(agentTargetID),
-		CheckedAt:     now,
-	})
-	plan.Revision = nextModelPlanRevision(plan.Revision)
-	plan.UpdatedAt = now
-	if err := s.Store.PutModelPlan(ctx, plan); err != nil {
-		return err
-	}
-	s.publishChanged(plan.WorkspaceID)
-	return nil
-}
-
 func nextModelPlanRevision(current uint64) uint64 {
 	if current == 0 {
 		return 1
@@ -393,17 +271,6 @@ func composerConfigurationChanged(before modelplanbiz.Plan, after modelplanbiz.P
 		before.DefaultModel != after.DefaultModel ||
 		before.Enabled != after.Enabled ||
 		!reflect.DeepEqual(before.Models, after.Models)
-}
-
-func upsertStageResult(snapshot modelplanbiz.DetectionSnapshot, result modelplanbiz.StageResult) modelplanbiz.DetectionSnapshot {
-	for index, stage := range snapshot.Stages {
-		if stage.Stage == result.Stage {
-			snapshot.Stages[index] = result
-			return snapshot
-		}
-	}
-	snapshot.Stages = append(snapshot.Stages, result)
-	return snapshot
 }
 
 func (s *Service) now() time.Time {

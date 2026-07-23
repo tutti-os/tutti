@@ -39,6 +39,7 @@ export function validateWorkbenchSnapshot(
       "activeNodeId",
       "spaces",
       "activeSpaceId",
+      "layoutBasis",
       "metadata"
     ],
     issues
@@ -75,6 +76,10 @@ export function validateWorkbenchSnapshot(
   }
 
   validateOptionalStringOrNull(value.activeSpaceId, "activeSpaceId", issues);
+
+  if (value.layoutBasis !== undefined) {
+    validateLayoutBasis(value.layoutBasis, "layoutBasis", issues);
+  }
 
   const serializedBytes = serializedByteLength(value);
   if (serializedBytes > workbenchSnapshotLimits.maxSerializedBytes) {
@@ -328,6 +333,111 @@ function validateFrame(
       path: `${path}.height`,
       message: `height must be at least ${workbenchSnapshotLimits.minFrameHeight}`
     });
+  }
+}
+
+function validateLayoutBasis(
+  value: unknown,
+  path: string,
+  issues: WorkbenchSnapshotValidationIssue[]
+): void {
+  if (!isRecord(value)) {
+    issues.push({ path, message: "layout basis must be an object" });
+    return;
+  }
+  validateAllowedKeys(
+    value,
+    path,
+    ["surfaceSize", "layoutConstraints"],
+    issues
+  );
+  validateSize(value.surfaceSize, `${path}.surfaceSize`, issues);
+  validateLayoutConstraints(
+    value.layoutConstraints,
+    `${path}.layoutConstraints`,
+    issues
+  );
+}
+
+function validateSize(
+  value: unknown,
+  path: string,
+  issues: WorkbenchSnapshotValidationIssue[]
+): void {
+  if (!isRecord(value)) {
+    issues.push({ path, message: "size must be an object" });
+    return;
+  }
+  validateAllowedKeys(value, path, ["width", "height"], issues);
+  validatePositiveFiniteNumber(value.width, `${path}.width`, issues);
+  validatePositiveFiniteNumber(value.height, `${path}.height`, issues);
+}
+
+function validateLayoutConstraints(
+  value: unknown,
+  path: string,
+  issues: WorkbenchSnapshotValidationIssue[]
+): void {
+  if (!isRecord(value)) {
+    issues.push({ path, message: "layout constraints must be an object" });
+    return;
+  }
+  validateAllowedKeys(
+    value,
+    path,
+    ["minWidth", "minHeight", "surfacePadding", "safeArea"],
+    issues
+  );
+  validateNonNegativeFiniteNumber(value.minWidth, `${path}.minWidth`, issues);
+  validateNonNegativeFiniteNumber(value.minHeight, `${path}.minHeight`, issues);
+  validateNonNegativeFiniteNumber(
+    value.surfacePadding,
+    `${path}.surfacePadding`,
+    issues
+  );
+
+  const safeAreaPath = `${path}.safeArea`;
+  if (!isRecord(value.safeArea)) {
+    issues.push({
+      path: safeAreaPath,
+      message: "safe area must be an object"
+    });
+    return;
+  }
+  validateAllowedKeys(
+    value.safeArea,
+    safeAreaPath,
+    ["top", "right", "bottom", "left"],
+    issues
+  );
+  for (const edge of ["top", "right", "bottom", "left"] as const) {
+    validateNonNegativeFiniteNumber(
+      value.safeArea[edge],
+      `${safeAreaPath}.${edge}`,
+      issues
+    );
+  }
+}
+
+function validatePositiveFiniteNumber(
+  value: unknown,
+  path: string,
+  issues: WorkbenchSnapshotValidationIssue[]
+): void {
+  validateFiniteNumber(value, path, issues);
+  if (typeof value === "number" && Number.isFinite(value) && value <= 0) {
+    issues.push({ path, message: "value must be greater than zero" });
+  }
+}
+
+function validateNonNegativeFiniteNumber(
+  value: unknown,
+  path: string,
+  issues: WorkbenchSnapshotValidationIssue[]
+): void {
+  validateFiniteNumber(value, path, issues);
+  if (typeof value === "number" && Number.isFinite(value) && value < 0) {
+    issues.push({ path, message: "value must be non-negative" });
   }
 }
 

@@ -4,7 +4,7 @@ export const enAgentGuiOrchestration = {
   planModeLabel: "Plan Mode",
   normalModeLabel: "Normal",
   normalModeDescription: "Execute the request directly",
-  tuttiModeLabel: "Tutti",
+  tuttiModeLabel: "Tutti Mode",
   tuttiModeDescription:
     "Ask the agent to prefer Tutti's native workflow capabilities",
   tuttiModeRemove: "Turn off Tutti mode",

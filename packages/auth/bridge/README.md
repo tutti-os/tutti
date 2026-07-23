@@ -53,6 +53,7 @@ The Node bridge starts a loopback HTTP server for desktop sign-in. New desktop O
 
 - `GET /oauth/callback?state=<base64url>&transfer_code=<code>`
 - `GET /oauth/callback?state=<base64url>&error=<providerError>`
+- `GET /oauth/callback?state=<base64url>&error=user_cancelled`
 
 The callback validates the signed login state, redeems the desktop transfer code through the account service, writes `auth.json`, fetches user info, and redirects the browser back to the web result page:
 
@@ -62,5 +63,11 @@ The callback validates the signed login state, redeems the desktop transfer code
 ```
 
 `openAppUrl` is only used to focus or reopen Tutti. It is sanitized to the allowed app schemes and must not carry `transfer_code`, sessions, or tokens.
+
+An explicit `user_cancelled` callback is preserved as a typed cancellation for
+Node/Go consumers and returns the safe Web result code `userCancelled`.
+Cancellation results intentionally omit `openAppUrl`, so the Web result page
+can keep the user in the browser. Other callback errors continue to use the
+safe `providerError` result code.
 
 `/oauth/health` and `POST /oauth/complete` remain available for compatibility with older web clients, but the current web flow redirects the browser to `/oauth/callback` instead of fetching the local bridge.

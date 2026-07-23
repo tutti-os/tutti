@@ -25,6 +25,13 @@ export const repositoryCheckDefinitions = [
     matches: isBackdropFilterAuthoringRelevant
   },
   {
+    group: "policy",
+    key: "policy:css-has-performance",
+    label: "CSS :has() performance policy",
+    script: "check:css-has-performance",
+    matches: isCssHasPerformanceRelevant
+  },
+  {
     group: "contracts",
     key: "contracts:tool-tests",
     label: "repository tool contracts",
@@ -187,6 +194,15 @@ function isBackdropFilterAuthoringRelevant(file) {
   return (
     /^(?:apps|packages|services)\//u.test(file) &&
     /\.(?:cjs|css|cts|html|js|jsx|mjs|mts|ts|tsx)$/u.test(file)
+  );
+}
+
+function isCssHasPerformanceRelevant(file) {
+  return (
+    (/^(?:apps|packages|services)\//u.test(file) && file.endsWith(".css")) ||
+    file === "tools/scripts/check-css-has-performance.mjs" ||
+    file === "tools/scripts/css-has-performance-policy.mjs" ||
+    file === "tools/scripts/css-has-performance-policy.test.mjs"
   );
 }
 

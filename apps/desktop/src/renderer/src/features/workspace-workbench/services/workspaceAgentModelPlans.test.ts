@@ -82,7 +82,6 @@ function createPlan(
     enabled: true,
     status: "ready",
     detection: { stages: [] },
-    firstUse: { status: "completed" },
     createdAt: "2026-07-17T00:00:00Z",
     updatedAt: "2026-07-17T00:00:00Z"
   };

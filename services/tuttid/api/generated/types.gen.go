@@ -40,6 +40,30 @@ func (e AccountLoginStatusValue) Valid() bool {
 	}
 }
 
+// Defines values for AccountMembershipAccessState.
+const (
+	AccountMembershipAccessStateActive   AccountMembershipAccessState = "active"
+	AccountMembershipAccessStateFree     AccountMembershipAccessState = "free"
+	AccountMembershipAccessStateInactive AccountMembershipAccessState = "inactive"
+	AccountMembershipAccessStateUnknown  AccountMembershipAccessState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the AccountMembershipAccessState enum.
+func (e AccountMembershipAccessState) Valid() bool {
+	switch e {
+	case AccountMembershipAccessStateActive:
+		return true
+	case AccountMembershipAccessStateFree:
+		return true
+	case AccountMembershipAccessStateInactive:
+		return true
+	case AccountMembershipAccessStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AccountProductSummaryPartialErrorScope.
 const (
 	AccountProductSummaryPartialErrorScopeCredits    AccountProductSummaryPartialErrorScope = "credits"
@@ -408,16 +432,16 @@ func (e AgentProviderSkillOptionSourceKind) Valid() bool {
 
 // Defines values for AgentProviderUpdateCapability.
 const (
-	Supported   AgentProviderUpdateCapability = "supported"
-	Unsupported AgentProviderUpdateCapability = "unsupported"
+	AgentProviderUpdateCapabilitySupported   AgentProviderUpdateCapability = "supported"
+	AgentProviderUpdateCapabilityUnsupported AgentProviderUpdateCapability = "unsupported"
 )
 
 // Valid indicates whether the value is a known member of the AgentProviderUpdateCapability enum.
 func (e AgentProviderUpdateCapability) Valid() bool {
 	switch e {
-	case Supported:
+	case AgentProviderUpdateCapabilitySupported:
 		return true
-	case Unsupported:
+	case AgentProviderUpdateCapabilityUnsupported:
 		return true
 	default:
 		return false
@@ -1605,7 +1629,6 @@ func (e IssueManagerTaskContextRefParentKind) Valid() bool {
 
 // Defines values for ModelPlanDetectionStage.
 const (
-	AgentRuntime   ModelPlanDetectionStage = "agent_runtime"
 	Auth           ModelPlanDetectionStage = "auth"
 	Inference      ModelPlanDetectionStage = "inference"
 	ModelDiscovery ModelPlanDetectionStage = "model_discovery"
@@ -1615,8 +1638,6 @@ const (
 // Valid indicates whether the value is a known member of the ModelPlanDetectionStage enum.
 func (e ModelPlanDetectionStage) Valid() bool {
 	switch e {
-	case AgentRuntime:
-		return true
 	case Auth:
 		return true
 	case Inference:
@@ -1624,24 +1645,6 @@ func (e ModelPlanDetectionStage) Valid() bool {
 	case ModelDiscovery:
 		return true
 	case Network:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ModelPlanFirstUseStatus.
-const (
-	ModelPlanFirstUseStatusCompleted ModelPlanFirstUseStatus = "completed"
-	ModelPlanFirstUseStatusPending   ModelPlanFirstUseStatus = "pending"
-)
-
-// Valid indicates whether the value is a known member of the ModelPlanFirstUseStatus enum.
-func (e ModelPlanFirstUseStatus) Valid() bool {
-	switch e {
-	case ModelPlanFirstUseStatusCompleted:
-		return true
-	case ModelPlanFirstUseStatusPending:
 		return true
 	default:
 		return false
@@ -1691,7 +1694,6 @@ func (e ModelPlanReferenceKind) Valid() bool {
 const (
 	ModelPlanStageStatusFailed  ModelPlanStageStatus = "failed"
 	ModelPlanStageStatusPassed  ModelPlanStageStatus = "passed"
-	ModelPlanStageStatusPending ModelPlanStageStatus = "pending"
 	ModelPlanStageStatusSkipped ModelPlanStageStatus = "skipped"
 )
 
@@ -1701,8 +1703,6 @@ func (e ModelPlanStageStatus) Valid() bool {
 	case ModelPlanStageStatusFailed:
 		return true
 	case ModelPlanStageStatusPassed:
-		return true
-	case ModelPlanStageStatusPending:
 		return true
 	case ModelPlanStageStatusSkipped:
 		return true
@@ -1715,7 +1715,6 @@ func (e ModelPlanStageStatus) Valid() bool {
 const (
 	DetectionFailed ModelPlanStatus = "detection_failed"
 	Disabled        ModelPlanStatus = "disabled"
-	PendingFirstUse ModelPlanStatus = "pending_first_use"
 	Ready           ModelPlanStatus = "ready"
 	Undetected      ModelPlanStatus = "undetected"
 )
@@ -1726,8 +1725,6 @@ func (e ModelPlanStatus) Valid() bool {
 	case DetectionFailed:
 		return true
 	case Disabled:
-		return true
-	case PendingFirstUse:
 		return true
 	case Ready:
 		return true
@@ -1998,13 +1995,13 @@ func (e TuttiModePlanTaskPriority) Valid() bool {
 
 // Defines values for WorkbenchSnapshotSchemaVersion.
 const (
-	N1 WorkbenchSnapshotSchemaVersion = 1
+	WorkbenchSnapshotSchemaVersionN1 WorkbenchSnapshotSchemaVersion = 1
 )
 
 // Valid indicates whether the value is a known member of the WorkbenchSnapshotSchemaVersion enum.
 func (e WorkbenchSnapshotSchemaVersion) Valid() bool {
 	switch e {
-	case N1:
+	case WorkbenchSnapshotSchemaVersionN1:
 		return true
 	default:
 		return false
@@ -2170,6 +2167,39 @@ func (e WorkspaceAgentPlanDecisionOperationStatus) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentRailPlacementKind.
+const (
+	WorkspaceAgentRailPlacementKindConversations WorkspaceAgentRailPlacementKind = "conversations"
+	WorkspaceAgentRailPlacementKindProject       WorkspaceAgentRailPlacementKind = "project"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentRailPlacementKind enum.
+func (e WorkspaceAgentRailPlacementKind) Valid() bool {
+	switch e {
+	case WorkspaceAgentRailPlacementKindConversations:
+		return true
+	case WorkspaceAgentRailPlacementKindProject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentRailPlacementVersion.
+const (
+	WorkspaceAgentRailPlacementVersionN1 WorkspaceAgentRailPlacementVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentRailPlacementVersion enum.
+func (e WorkspaceAgentRailPlacementVersion) Valid() bool {
+	switch e {
+	case WorkspaceAgentRailPlacementVersionN1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSessionAttachmentResponseMimeType.
 const (
 	WorkspaceAgentSessionAttachmentResponseMimeTypeImagejpeg WorkspaceAgentSessionAttachmentResponseMimeType = "image/jpeg"
@@ -2295,16 +2325,16 @@ func (e WorkspaceAgentSessionKind) Valid() bool {
 
 // Defines values for WorkspaceAgentSessionSectionKind.
 const (
-	Conversations WorkspaceAgentSessionSectionKind = "conversations"
-	Project       WorkspaceAgentSessionSectionKind = "project"
+	WorkspaceAgentSessionSectionKindConversations WorkspaceAgentSessionSectionKind = "conversations"
+	WorkspaceAgentSessionSectionKindProject       WorkspaceAgentSessionSectionKind = "project"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentSessionSectionKind enum.
 func (e WorkspaceAgentSessionSectionKind) Valid() bool {
 	switch e {
-	case Conversations:
+	case WorkspaceAgentSessionSectionKindConversations:
 		return true
-	case Project:
+	case WorkspaceAgentSessionSectionKindProject:
 		return true
 	default:
 		return false
@@ -3075,31 +3105,31 @@ func (e WorkspaceWorkflowPlanRevisionSchemaVersion) Valid() bool {
 
 // Defines values for WorkspaceWorkflowStatus.
 const (
-	Accepted      WorkspaceWorkflowStatus = "accepted"
-	Canceled      WorkspaceWorkflowStatus = "canceled"
-	Completed     WorkspaceWorkflowStatus = "completed"
-	Failed        WorkspaceWorkflowStatus = "failed"
-	InProgress    WorkspaceWorkflowStatus = "in_progress"
-	PendingReview WorkspaceWorkflowStatus = "pending_review"
-	Rejected      WorkspaceWorkflowStatus = "rejected"
+	WorkspaceWorkflowStatusAccepted      WorkspaceWorkflowStatus = "accepted"
+	WorkspaceWorkflowStatusCanceled      WorkspaceWorkflowStatus = "canceled"
+	WorkspaceWorkflowStatusCompleted     WorkspaceWorkflowStatus = "completed"
+	WorkspaceWorkflowStatusFailed        WorkspaceWorkflowStatus = "failed"
+	WorkspaceWorkflowStatusInProgress    WorkspaceWorkflowStatus = "in_progress"
+	WorkspaceWorkflowStatusPendingReview WorkspaceWorkflowStatus = "pending_review"
+	WorkspaceWorkflowStatusRejected      WorkspaceWorkflowStatus = "rejected"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowStatus enum.
 func (e WorkspaceWorkflowStatus) Valid() bool {
 	switch e {
-	case Accepted:
+	case WorkspaceWorkflowStatusAccepted:
 		return true
-	case Canceled:
+	case WorkspaceWorkflowStatusCanceled:
 		return true
-	case Completed:
+	case WorkspaceWorkflowStatusCompleted:
 		return true
-	case Failed:
+	case WorkspaceWorkflowStatusFailed:
 		return true
-	case InProgress:
+	case WorkspaceWorkflowStatusInProgress:
 		return true
-	case PendingReview:
+	case WorkspaceWorkflowStatusPendingReview:
 		return true
-	case Rejected:
+	case WorkspaceWorkflowStatusRejected:
 		return true
 	default:
 		return false
@@ -3190,6 +3220,9 @@ type AccountLoginStatusResponse struct {
 // AccountLoginStatusValue defines model for AccountLoginStatusValue.
 type AccountLoginStatusValue string
 
+// AccountMembershipAccessState defines model for AccountMembershipAccessState.
+type AccountMembershipAccessState string
+
 // AccountMembershipSummary defines model for AccountMembershipSummary.
 type AccountMembershipSummary struct {
 	AccessStatus      *string `json:"access_status,omitempty"`
@@ -3223,6 +3256,7 @@ type AccountProductSummaryResponse struct {
 	Credits                   *AccountCreditsSummary             `json:"credits"`
 	Links                     AccountProductSummaryLinks         `json:"links"`
 	Membership                *AccountMembershipSummary          `json:"membership"`
+	MembershipAccess          AccountMembershipAccessState       `json:"membership_access"`
 	PartialError              *AccountProductSummaryPartialError `json:"partial_error,omitempty"`
 	RegistrationCreditsReward *AccountRegistrationCreditsReward  `json:"registration_credits_reward,omitempty"`
 	User                      *AccountUserInfo                   `json:"user"`
@@ -4371,14 +4405,15 @@ type CreateWorkspaceAgentSessionRequest struct {
 	Model                      *string                    `json:"model,omitempty"`
 
 	// NoProject Classifies a session that is intentionally not attached to a workspace project.
-	NoProject         *bool                   `json:"noProject,omitempty"`
-	PermissionModeId  *string                 `json:"permissionModeId,omitempty"`
-	PlanMode          *bool                   `json:"planMode,omitempty"`
-	ReasoningEffort   *string                 `json:"reasoningEffort,omitempty"`
-	Speed             *string                 `json:"speed,omitempty"`
-	SubmitDiagnostics *AgentSubmitDiagnostics `json:"submitDiagnostics,omitempty"`
-	Title             *string                 `json:"title,omitempty"`
-	Visible           *bool                   `json:"visible,omitempty"`
+	NoProject         *bool                        `json:"noProject,omitempty"`
+	PermissionModeId  *string                      `json:"permissionModeId,omitempty"`
+	PlanMode          *bool                        `json:"planMode,omitempty"`
+	RailPlacement     *WorkspaceAgentRailPlacement `json:"railPlacement,omitempty"`
+	ReasoningEffort   *string                      `json:"reasoningEffort,omitempty"`
+	Speed             *string                      `json:"speed,omitempty"`
+	SubmitDiagnostics *AgentSubmitDiagnostics      `json:"submitDiagnostics,omitempty"`
+	Title             *string                      `json:"title,omitempty"`
+	Visible           *bool                        `json:"visible,omitempty"`
 }
 
 // CreateWorkspaceAppFactoryJobRequest defines model for CreateWorkspaceAppFactoryJobRequest.
@@ -5328,7 +5363,6 @@ type ModelPlan struct {
 	DefaultModel *string            `json:"defaultModel,omitempty"`
 	Detection    ModelPlanDetection `json:"detection"`
 	Enabled      bool               `json:"enabled"`
-	FirstUse     ModelPlanFirstUse  `json:"firstUse"`
 	HasApiKey    bool               `json:"hasApiKey"`
 	Id           string             `json:"id"`
 	Models       []ModelPlanModel   `json:"models"`
@@ -5338,7 +5372,7 @@ type ModelPlan struct {
 	Protocol ModelPlanProtocol `json:"protocol"`
 	Revision int64             `json:"revision"`
 
-	// Status Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+	// Status Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
 	Status ModelPlanStatus `json:"status"`
 
 	// TemplateKind Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
@@ -5358,18 +5392,6 @@ type ModelPlanDetection struct {
 
 // ModelPlanDetectionStage defines model for ModelPlanDetectionStage.
 type ModelPlanDetectionStage string
-
-// ModelPlanFirstUse defines model for ModelPlanFirstUse.
-type ModelPlanFirstUse struct {
-	AgentSessionId *string                 `json:"agentSessionId,omitempty"`
-	AgentTargetId  *string                 `json:"agentTargetId,omitempty"`
-	CompletedAt    *time.Time              `json:"completedAt,omitempty"`
-	Model          *string                 `json:"model,omitempty"`
-	Status         ModelPlanFirstUseStatus `json:"status"`
-}
-
-// ModelPlanFirstUseStatus defines model for ModelPlanFirstUse.Status.
-type ModelPlanFirstUseStatus string
 
 // ModelPlanModel defines model for ModelPlanModel.
 type ModelPlanModel struct {
@@ -5417,7 +5439,7 @@ type ModelPlanStageResult struct {
 // ModelPlanStageStatus defines model for ModelPlanStageStatus.
 type ModelPlanStageStatus string
 
-// ModelPlanStatus Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+// ModelPlanStatus Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
 type ModelPlanStatus string
 
 // ModelPlanTemplateKind Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
@@ -6000,10 +6022,39 @@ type WorkbenchFrame struct {
 	Y      float32 `json:"y"`
 }
 
+// WorkbenchLayoutBasis defines model for WorkbenchLayoutBasis.
+type WorkbenchLayoutBasis struct {
+	LayoutConstraints WorkbenchLayoutConstraints `json:"layoutConstraints"`
+	SurfaceSize       WorkbenchSize              `json:"surfaceSize"`
+}
+
+// WorkbenchLayoutConstraints defines model for WorkbenchLayoutConstraints.
+type WorkbenchLayoutConstraints struct {
+	MinHeight      float32           `json:"minHeight"`
+	MinWidth       float32           `json:"minWidth"`
+	SafeArea       WorkbenchSafeArea `json:"safeArea"`
+	SurfacePadding float32           `json:"surfacePadding"`
+}
+
+// WorkbenchSafeArea defines model for WorkbenchSafeArea.
+type WorkbenchSafeArea struct {
+	Bottom float32 `json:"bottom"`
+	Left   float32 `json:"left"`
+	Right  float32 `json:"right"`
+	Top    float32 `json:"top"`
+}
+
+// WorkbenchSize defines model for WorkbenchSize.
+type WorkbenchSize struct {
+	Height float32 `json:"height"`
+	Width  float32 `json:"width"`
+}
+
 // WorkbenchSnapshot defines model for WorkbenchSnapshot.
 type WorkbenchSnapshot struct {
 	ActiveNodeId  *string                        `json:"activeNodeId,omitempty"`
 	ActiveSpaceId *string                        `json:"activeSpaceId,omitempty"`
+	LayoutBasis   *WorkbenchLayoutBasis          `json:"layoutBasis,omitempty"`
 	Metadata      *map[string]interface{}        `json:"metadata,omitempty"`
 	NodeStack     *[]string                      `json:"nodeStack,omitempty"`
 	Nodes         []WorkbenchSnapshotNode        `json:"nodes"`
@@ -6203,6 +6254,20 @@ type WorkspaceAgentPlanDecisionResponse struct {
 
 // WorkspaceAgentProvider defines model for WorkspaceAgentProvider.
 type WorkspaceAgentProvider = string
+
+// WorkspaceAgentRailPlacement defines model for WorkspaceAgentRailPlacement.
+type WorkspaceAgentRailPlacement struct {
+	Kind        WorkspaceAgentRailPlacementKind    `json:"kind"`
+	ProjectPath *string                            `json:"projectPath,omitempty"`
+	SectionKey  string                             `json:"sectionKey"`
+	Version     WorkspaceAgentRailPlacementVersion `json:"version"`
+}
+
+// WorkspaceAgentRailPlacementKind defines model for WorkspaceAgentRailPlacement.Kind.
+type WorkspaceAgentRailPlacementKind string
+
+// WorkspaceAgentRailPlacementVersion defines model for WorkspaceAgentRailPlacement.Version.
+type WorkspaceAgentRailPlacementVersion int
 
 // WorkspaceAgentSession defines model for WorkspaceAgentSession.
 type WorkspaceAgentSession struct {

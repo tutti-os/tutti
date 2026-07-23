@@ -1402,7 +1402,7 @@ export const listModelPlans = <ThrowOnError extends boolean = false>(
 /**
  * Create one named model access plan
  *
- * Creates a plan for one access scheme (official subscription, coding plan, relay, or custom compatible endpoint). Multiple named plans may share one protocol. New plans start undetected and pending first use.
+ * Creates a plan for one access scheme (official subscription, coding plan, relay, or custom compatible endpoint). Multiple named plans may share one protocol. New plans start undetected.
  */
 export const createModelPlan = <ThrowOnError extends boolean = false>(
   options: Options<CreateModelPlanData, ThrowOnError>
@@ -1424,7 +1424,7 @@ export const createModelPlan = <ThrowOnError extends boolean = false>(
 /**
  * Run the staged connection detection for a plan or draft
  *
- * Runs the network, auth, model discovery, and minimal real inference stages in order and reports one structured result per stage. The agent_runtime stage stays pending until the plan completes its first real agent call. With planId the outcome persists onto the stored plan; omitted fields fall back to stored values. Without planId the request verifies an unsaved draft.
+ * Runs the network, auth, model discovery, and minimal real inference stages in order and reports one structured result per stage. With planId the outcome persists onto the stored plan; omitted fields fall back to stored values. Without planId the request verifies an unsaved draft.
  */
 export const detectModelPlan = <ThrowOnError extends boolean = false>(
   options: Options<DetectModelPlanData, ThrowOnError>
@@ -1480,7 +1480,7 @@ export const getModelPlan = <ThrowOnError extends boolean = false>(
 /**
  * Update one model access plan
  *
- * Replaces the mutable plan fields. Omitting apiKey keeps the stored credential. Changing the credential, base URL, or protocol resets detection and first-use state, so the plan must be re-verified before it reads as usable. Changes affect only calls that have not started yet.
+ * Replaces the mutable plan fields. Omitting apiKey keeps the stored credential. Changing the credential, base URL, or protocol resets detection state. Changes affect only calls that have not started yet.
  */
 export const updateModelPlan = <ThrowOnError extends boolean = false>(
   options: Options<UpdateModelPlanData, ThrowOnError>

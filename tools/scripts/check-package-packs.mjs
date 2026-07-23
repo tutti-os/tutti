@@ -143,6 +143,56 @@ async function checkPackage(packageConfig, destination) {
     if (/data:image\/png(?:;|,)/i.test(mainEntrySource)) {
       violations.push("PNG data URL embedded in dist/index.js");
     }
+    if (
+      /new URL\(\s*["']\.\/assets\/workspace-(?:archive|folder)-fallback\.png["']/u.test(
+        mainEntrySource
+      )
+    ) {
+      violations.push(
+        "fallback asset URL is relative to the bundled module location"
+      );
+    }
+    if (
+      /@tutti-os\/workspace-file-manager\/assets\/workspace-(?:archive|folder)-fallback\.png/u.test(
+        mainEntrySource
+      )
+    ) {
+      violations.push(
+        "main runtime imports a fallback image instead of a code-owned UI icon"
+      );
+    }
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          `
+            for (const fallbackKind of ["archive", "folder"]) {
+              const { default: assetUrl } = await import(
+                \`@tutti-os/workspace-file-manager/assets/workspace-\${fallbackKind}-fallback.png\`
+              );
+              if (
+                !assetUrl.startsWith("file:") ||
+                !assetUrl.endsWith(\`workspace-\${fallbackKind}-fallback.png\`)
+              ) {
+                throw new Error(\`unexpected \${fallbackKind} fallback URL: \${assetUrl}\`);
+              }
+            }
+          `
+        ],
+        {
+          cwd: packageRoot,
+          stdio: "pipe"
+        }
+      );
+    } catch (error) {
+      const detail =
+        error instanceof Error && "stderr" in error
+          ? String(error.stderr).trim()
+          : String(error);
+      violations.push(`Node fallback asset import failed: ${detail}`);
+    }
   }
 
   if (violations.length > 0) {

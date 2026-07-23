@@ -52,8 +52,8 @@ func (a serviceHostStore) RollbackRuntimeSessionInitialization(ctx context.Conte
 	return rollbacker.RollbackRuntimeSessionInitialization(ctx, workspaceID, sessionID)
 }
 
-func (a serviceHostStore) InitializeRuntimeSession(ctx context.Context, session ProviderRuntimeSession) (storesqlite.Session, error) {
-	persisted, err := a.service.initializeRuntimeSession(ctx, session)
+func (a serviceHostStore) InitializeRuntimeSession(ctx context.Context, input agenthost.RuntimeSessionInitialization) (storesqlite.Session, error) {
+	persisted, err := a.service.initializeRuntimeSession(ctx, input.Session, input.RailPlacement)
 	return activitySessionFromPersisted(persisted), err
 }
 
@@ -308,7 +308,9 @@ func activitySessionFromPersisted(session PersistedSession) storesqlite.Session 
 		ParentAgentSessionID: session.ParentAgentSessionID, ParentTurnID: session.ParentTurnID,
 		ParentToolCallID: session.ParentToolCallID, Origin: session.Origin, UserID: session.UserID,
 		AgentTargetID: session.AgentTargetID, Provider: session.Provider, ProviderSessionID: session.ProviderSessionID,
-		Cwd: session.Cwd, RailSectionKey: session.RailSectionKey, Settings: ComposerSettingsToMap(session.Settings),
+		Cwd:             session.Cwd,
+		RailSectionKind: session.RailSectionKind, RailProjectPath: session.RailProjectPath,
+		RailSectionKey: session.RailSectionKey, Settings: ComposerSettingsToMap(session.Settings),
 		Metadata: session.Metadata, InternalRuntimeContext: clonePayload(session.InternalRuntimeContext), Title: session.Title,
 		PinnedAtUnixMS: session.PinnedAtUnixMS, LastEventUnixMS: session.LastEventUnixMS,
 		StartedAtUnixMS: session.StartedAtUnixMS, EndedAtUnixMS: session.EndedAtUnixMS,

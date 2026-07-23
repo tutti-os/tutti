@@ -123,7 +123,8 @@ export class MessageProjection {
     block: Record<string, unknown>,
     parentToolUseID = "",
     messageId = "",
-    usedSegmentIds = new Set<string>()
+    usedSegmentIds = new Set<string>(),
+    failed = false
   ): void {
     if (isThinkingBlock(block)) {
       if (!parentToolUseID) {
@@ -138,12 +139,22 @@ export class MessageProjection {
     }
     if (block.type === "text") {
       if (!parentToolUseID) {
-        this.assistant.completeContent(
-          "assistant",
-          messageId,
-          stringValue(block.text),
-          usedSegmentIds
-        );
+        const content = stringValue(block.text);
+        if (failed) {
+          this.assistant.failContent(
+            "assistant",
+            messageId,
+            content,
+            usedSegmentIds
+          );
+        } else {
+          this.assistant.completeContent(
+            "assistant",
+            messageId,
+            content,
+            usedSegmentIds
+          );
+        }
       }
       return;
     }

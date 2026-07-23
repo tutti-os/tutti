@@ -147,7 +147,7 @@ export function TuttiBudgetPopover({
           <div className="mt-2">
             <Slider
               aria-label={labels.intensityLabel}
-              className={`[&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-track]]:bg-[linear-gradient(90deg,var(--state-success)_0%,var(--state-warning)_50%,var(--tutti-purple)_100%)] ${previewTone.sliderClassName}`}
+              className={`[&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-track]]:bg-[linear-gradient(90deg,var(--state-success)_0%,var(--state-warning)_50%,var(--tutti-purple)_100%)] ${previewTone.sliderClassName} [&_[data-slot=slider-thumb]]:cursor-grab [&_[data-slot=slider-thumb]]:active:cursor-grabbing`}
               data-agent-tutti-budget-intensity-slider="true"
               data-agent-tutti-budget-slider-tone={preview.tier}
               max={100}

@@ -252,7 +252,7 @@ function createAssignmentOptionsSource(
       const compatiblePlans = (plans?.plans ?? []).filter(
         (plan) =>
           plan.enabled &&
-          (plan.status === "ready" || plan.status === "pending_first_use") &&
+          plan.status === "ready" &&
           planProtocol !== null &&
           plan.protocol === planProtocol
       );

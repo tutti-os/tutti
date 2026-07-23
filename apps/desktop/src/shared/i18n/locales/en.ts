@@ -193,8 +193,12 @@ export const en = {
     accountMenu: {
       title: "Tutti Agent",
       member: "Manage subscription",
+      upgradeMembership: "Upgrade membership",
+      rechargeCredits: "Recharge credits",
+      viewCreditPlans: "View credit options",
       creditsBalance: "Credits",
       accountCenter: "Account settings",
+      settings: "Settings",
       free: "Free",
       signIn: "Sign in",
       signOut: "Sign out",
@@ -972,8 +976,6 @@ export const en = {
         modelPlans: {
           addModel: "Add model",
           addPlan: "Add plan",
-          agentRuntimePendingHint:
-            "Save the plan, then pick a compatible agent below and finish one real call to complete verification.",
           apiKey: "API key",
           baseUrl: "Base URL",
           defaultMarker: "Default",
@@ -991,9 +993,6 @@ export const en = {
           detect: "Test connection",
           detectFailed: "Couldn't run the connection check — try again.",
           detecting: "Checking...",
-          detectionRequired:
-            "Complete a successful connection check before saving this plan.",
-          detectionTitle: "Connection check",
           duplicate: "Duplicate",
           duplicateFailed: "Couldn't duplicate — try again.",
           edit: "Edit",
@@ -1002,20 +1001,6 @@ export const en = {
             "Click \u201cAdd plan\u201d to connect a subscription, relay, or custom endpoint with your API key",
           emptyTitle: "No model plans yet",
           enabled: "Enable {{plan}}",
-          failureReasons: {
-            connectionFailed: "Couldn't reach the endpoint.",
-            inferenceFailed: "The test call failed.",
-            modelCatalogDecodeFailed:
-              "The model list response couldn't be read.",
-            modelCatalogUnavailable: "The model list isn't available.",
-            modelRejected: "The endpoint rejected the model.",
-            noModelSelected: "No model selected for the test call.",
-            providerAuthRequired: "The provider needs you to sign in.",
-            providerRuntimeUnavailable:
-              "The provider's Agent Runtime isn't available.",
-            unauthorized: "The endpoint rejected the credentials.",
-            unknown: "The check failed."
-          },
           fetchModels: "Fetch models",
           fetchModelsEmpty:
             "The endpoint returned no models. You can still type a model ID manually.",
@@ -1043,16 +1028,6 @@ export const en = {
           nameLabel: "Name",
           namePlaceholder: "My model plan",
           neverDetected: "Not checked yet",
-          pendingFirstUseGuide:
-            "Choose a compatible Agent and finish one real call to make this plan fully usable.",
-          firstUseAction: "Try with this Agent",
-          firstUseAgentLabel: "Compatible Agent",
-          firstUseLaunchFailed: "Couldn't open the first-use session.",
-          firstUseLaunching: "Opening...",
-          firstUsePrompt:
-            "Use the {{plan}} model plan for this real first call. Briefly introduce the selected model and confirm it can respond in this workspace.",
-          noCompatibleFirstUseAgent:
-            "No compatible Agent is enabled for this plan's protocol.",
           presetLabel: "Provider preset",
           presets: {
             agnes: "Agnes",
@@ -1081,16 +1056,6 @@ export const en = {
             workspaceAgent: "Workspace agent",
             workspaceApp: "App"
           },
-          remedies: {
-            addModelsManually: "Add models manually.",
-            checkApiKey: "Check the API key.",
-            checkModelId: "Check the model ID.",
-            checkNetworkOrBaseUrl: "Check the network or Base URL.",
-            enableProvider: "Install or enable the Agent Runtime.",
-            loginProvider: "Sign in from Agent Runtime settings.",
-            retryCompatibleAgent: "Retry with the provider's Agent Runtime.",
-            selectModel: "Select a model first."
-          },
           removeModel: "Remove model",
           setDefaultModel: "Set {{model}} as the default model",
           requiredFieldsMissing:
@@ -1099,24 +1064,9 @@ export const en = {
           saveFailed: "Couldn't save — try again.",
           saving: "Saving...",
           showApiKey: "Show key",
-          stageLatency: "{{ms}} ms",
-          stageStatus: {
-            failed: "Failed",
-            passed: "Passed",
-            pending: "Pending",
-            skipped: "Skipped"
-          },
-          stages: {
-            agentRuntime: "Agent first call",
-            auth: "Authentication",
-            inference: "Real call",
-            modelDiscovery: "Model list",
-            network: "Network"
-          },
           statusLabels: {
             detectionFailed: "Check failed",
             disabled: "Disabled",
-            pendingFirstUse: "Awaiting first use",
             ready: "Ready",
             undetected: "Not checked"
           },

@@ -59,12 +59,11 @@ const (
 	StageAuth           DetectionStage = "auth"
 	StageModelDiscovery DetectionStage = "model_discovery"
 	StageInference      DetectionStage = "inference"
-	StageAgentRuntime   DetectionStage = "agent_runtime"
 )
 
 // DetectionStages lists every stage in execution order.
 func DetectionStages() []DetectionStage {
-	return []DetectionStage{StageNetwork, StageAuth, StageModelDiscovery, StageInference, StageAgentRuntime}
+	return []DetectionStage{StageNetwork, StageAuth, StageModelDiscovery, StageInference}
 }
 
 // StageStatus is the outcome of one detection stage.
@@ -74,7 +73,6 @@ const (
 	StagePassed  StageStatus = "passed"
 	StageFailed  StageStatus = "failed"
 	StageSkipped StageStatus = "skipped"
-	StagePending StageStatus = "pending"
 )
 
 // StageResult is the structured record of one detection stage run.
@@ -122,37 +120,6 @@ func (d DetectionSnapshot) CorePassed() bool {
 	return true
 }
 
-// FirstUseStatus tracks whether a saved plan has completed its first real
-// agent-runtime call.
-type FirstUseStatus string
-
-const (
-	FirstUsePending   FirstUseStatus = "pending"
-	FirstUseCompleted FirstUseStatus = "completed"
-)
-
-// FirstUse records the first successful agent-runtime call through the plan.
-type FirstUse struct {
-	Status         FirstUseStatus `json:"status"`
-	AgentTargetID  string         `json:"agentTargetId,omitempty"`
-	AgentSessionID string         `json:"agentSessionId,omitempty"`
-	Model          string         `json:"model,omitempty"`
-	CompletedAt    time.Time      `json:"completedAt,omitempty"`
-}
-
-// FirstUseCandidate durably attributes a newly created agent session to the
-// plan endpoint prepared for it. It is removed after the first completed turn
-// has been projected into FirstUse.
-type FirstUseCandidate struct {
-	WorkspaceID    string
-	AgentSessionID string
-	PlanID         string
-	AgentTargetID  string
-	Model          string
-	PlanUpdatedAt  time.Time
-	CreatedAt      time.Time
-}
-
 // PlanStatus is the derived lifecycle status shown to users.
 type PlanStatus string
 
@@ -160,7 +127,6 @@ const (
 	StatusDisabled        PlanStatus = "disabled"
 	StatusUndetected      PlanStatus = "undetected"
 	StatusDetectionFailed PlanStatus = "detection_failed"
-	StatusPendingFirstUse PlanStatus = "pending_first_use"
 	StatusReady           PlanStatus = "ready"
 )
 
@@ -224,7 +190,6 @@ type Plan struct {
 	DefaultModel string
 	Enabled      bool
 	Detection    DetectionSnapshot
-	FirstUse     FirstUse
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -239,9 +204,6 @@ func (p Plan) Status() PlanStatus {
 	}
 	if !p.Detection.CorePassed() {
 		return StatusDetectionFailed
-	}
-	if p.FirstUse.Status != FirstUseCompleted {
-		return StatusPendingFirstUse
 	}
 	return StatusReady
 }
@@ -262,7 +224,6 @@ type PublicPlan struct {
 	Enabled      bool              `json:"enabled"`
 	Status       PlanStatus        `json:"status"`
 	Detection    DetectionSnapshot `json:"detection"`
-	FirstUse     FirstUse          `json:"firstUse"`
 	CreatedAt    time.Time         `json:"createdAt"`
 	UpdatedAt    time.Time         `json:"updatedAt"`
 }
@@ -284,7 +245,6 @@ func Public(plan Plan) PublicPlan {
 		Enabled:      plan.Enabled,
 		Status:       plan.Status(),
 		Detection:    plan.Detection,
-		FirstUse:     plan.FirstUse,
 		CreatedAt:    plan.CreatedAt,
 		UpdatedAt:    plan.UpdatedAt,
 	}
@@ -344,9 +304,6 @@ func Normalize(plan Plan) (Plan, error) {
 	plan.Models = NormalizeModels(plan.Models)
 	if plan.DefaultModel != "" && !ModelsContain(plan.Models, plan.DefaultModel) {
 		return Plan{}, fmt.Errorf("%w: default model is not in the model list", ErrInvalidPlan)
-	}
-	if plan.FirstUse.Status == "" {
-		plan.FirstUse.Status = FirstUsePending
 	}
 	return plan, nil
 }

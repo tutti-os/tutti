@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
@@ -25,8 +26,9 @@ type recordingWorktreeSessionInitializer struct {
 func (i recordingWorktreeSessionInitializer) InitializeRuntimeSession(
 	ctx context.Context,
 	session ProviderRuntimeSession,
+	railPlacement *agenthost.RailPlacement,
 ) (PersistedSession, error) {
-	persisted, err := (fakeSessionInitializer{}).InitializeRuntimeSession(ctx, session)
+	persisted, err := (fakeSessionInitializer{}).InitializeRuntimeSession(ctx, session, railPlacement)
 	if err == nil {
 		i.sessions.sessions[persisted.WorkspaceID+":"+persisted.ID] = persisted
 	}

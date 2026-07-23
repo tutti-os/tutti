@@ -46,7 +46,34 @@ func WorkbenchSnapshotFromGenerated(snapshot tuttigenerated.WorkbenchSnapshot) w
 		ActiveNodeID:  snapshot.ActiveNodeId,
 		Spaces:        workbenchSpacesFromGenerated(snapshot.Spaces),
 		ActiveSpaceID: snapshot.ActiveSpaceId,
+		LayoutBasis:   workbenchLayoutBasisFromGenerated(snapshot.LayoutBasis),
 		Metadata:      mapPointerValue(snapshot.Metadata),
+	}
+}
+
+func workbenchLayoutBasisFromGenerated(
+	layoutBasis *tuttigenerated.WorkbenchLayoutBasis,
+) *workspaceservice.WorkbenchSnapshotLayoutBasis {
+	if layoutBasis == nil {
+		return nil
+	}
+
+	return &workspaceservice.WorkbenchSnapshotLayoutBasis{
+		SurfaceSize: workspaceservice.WorkbenchSnapshotSize{
+			Width:  float64(layoutBasis.SurfaceSize.Width),
+			Height: float64(layoutBasis.SurfaceSize.Height),
+		},
+		LayoutConstraints: workspaceservice.WorkbenchSnapshotLayoutConstraints{
+			MinWidth:       float64(layoutBasis.LayoutConstraints.MinWidth),
+			MinHeight:      float64(layoutBasis.LayoutConstraints.MinHeight),
+			SurfacePadding: float64(layoutBasis.LayoutConstraints.SurfacePadding),
+			SafeArea: workspaceservice.WorkbenchSnapshotSafeArea{
+				Top:    float64(layoutBasis.LayoutConstraints.SafeArea.Top),
+				Right:  float64(layoutBasis.LayoutConstraints.SafeArea.Right),
+				Bottom: float64(layoutBasis.LayoutConstraints.SafeArea.Bottom),
+				Left:   float64(layoutBasis.LayoutConstraints.SafeArea.Left),
+			},
+		},
 	}
 }
 

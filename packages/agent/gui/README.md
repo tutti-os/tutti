@@ -3,6 +3,18 @@
 AgentGUI renders workspace agent sessions, timelines, approvals, and composer
 UI. It is a UI package, not a host transport or business-core package.
 
+## Commerce And Account Presentation
+
+Hosts own authentication, Commerce fetching, navigation, clipboard, and
+notification side effects. `AgentGUIAccountMenu` renders the shared account
+surface from `AgentGUIAccountMenuState`; `membershipAccess` must come from the
+normalized Commerce contract (`free`, `active`, `inactive`, or `unknown`).
+
+Pass `hostCapabilities.commercePresentation` to `AgentGUI` so insufficient
+credit cards can select upgrade, recharge, or neutral copy and use the
+Host-provided `planUrl`. Raw provider error details remain available to
+diagnostics but are not rendered in the product error card.
+
 Before changing AgentGUI, AgentGuiNode, or the agent conversation module, read
 [AgentGuiNode Architecture and Troubleshooting](../../../docs/architecture/agent-gui-node.md).
 It defines daemon, workspace-engine, GUI-module, provider, and desktop-host
@@ -89,6 +101,45 @@ accepted for host capabilities that are not agent activity data:
 
 AgentGUI has no host-API activity fallback. A host must inject the runtime and
 the grouped `AgentGUINodeProps` responsibility objects.
+
+## Reference Picker Error Recovery
+
+Hosts may provide `workspace.resolveReferenceContentErrorAction` to map a
+reference-source content error to a labeled recovery action. AgentGUI passes
+the resolver to the shared `ReferenceSourcePicker`; the picker renders the
+action in its centered error state and retries the failed browse or search when
+the user activates it. Hosts should return an action only for errors they can
+recover interactively, such as requesting filesystem authorization again.
+
+## Standalone Conversation Participant Presentation
+
+The `@tutti-os/agent-gui/agent-conversation` entrypoint exposes one optional,
+host-owned participant presentation contract on `WorkspaceAgentSessionDetail`,
+`AgentConversationFlow`, and `AgentTranscriptView`:
+
+```tsx
+<WorkspaceAgentSessionDetail
+  participantPresentation={{
+    enabled: true,
+    status: "ready",
+    user: { name: "Alice", avatarUrl: userAvatarUrl },
+    agent: { name: "Codex", avatarUrl: agentAvatarUrl }
+  }}
+  {...props}
+/>
+```
+
+Omitting the property or passing `{ enabled: false }` preserves the existing
+transcript DOM and spacing. Pass `{ enabled: true, status: "loading" }` while
+the host is resolving identities; existing messages stay visible and the
+package renders fixed-size circular loading slots. In the `ready` state, each
+participant requires a non-empty `name`; `avatarUrl` is optional and the shared
+UI System `Avatar` falls back to the name's initial.
+
+The host owns identity lookup and lifecycle. Agent GUI owns placement, sizing,
+loading treatment, image fallback, and left/right message alignment. The
+contract is presentation-only and must not be copied into canonical Session,
+Turn, Message, or workspace-engine state.
 
 ## Session Handoff Drafts
 
@@ -182,7 +233,7 @@ empty array) renders all five entries.
 
 ## Tutti Mode capability
 
-Tutti Mode UI (empty-hero toggle, composer badge activation, `/tutti`) is a
+Tutti Mode UI (composer footer chip, composer badge activation, `/tutti`) is a
 host-gated product capability under
 `hostCapabilities.capabilityMenuState.tuttiMode.enabled`.
 

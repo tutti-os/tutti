@@ -124,8 +124,27 @@ describe("TuttiBudgetPopover", () => {
     ).toHaveTextContent("Up to 4");
   });
 
-  it("cancel closes without committing the draft", () => {
-    const { onConfirm } = renderPopover();
+  it("defers slider movement to the draft and commits on confirm", () => {
+    const { onConfirm } = renderPopover({ intensity: 50 });
+    openPopover();
+
+    fireEvent.keyDown(
+      screen.getByRole("slider", { name: "Orchestration intensity" }),
+      { key: "ArrowRight" }
+    );
+
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByText("Tutti orchestration")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm).toHaveBeenCalledWith(51);
+    expect(screen.queryByText("Tutti orchestration")).toBeNull();
+  });
+
+  it("cancel closes the popup without committing the draft", () => {
+    const { onConfirm } = renderPopover({ intensity: 50 });
     openPopover();
 
     fireEvent.keyDown(
@@ -134,22 +153,7 @@ describe("TuttiBudgetPopover", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    expect(screen.queryByText("Tutti orchestration")).toBeNull();
     expect(onConfirm).not.toHaveBeenCalled();
-  });
-
-  it("confirm commits the edited draft value and closes", () => {
-    const { onConfirm } = renderPopover({ intensity: 50 });
-    openPopover();
-
-    fireEvent.keyDown(
-      screen.getByRole("slider", { name: "Orchestration intensity" }),
-      { key: "ArrowRight" }
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
-
-    expect(onConfirm).toHaveBeenCalledTimes(1);
-    expect(onConfirm).toHaveBeenCalledWith(51);
     expect(screen.queryByText("Tutti orchestration")).toBeNull();
   });
 
@@ -160,7 +164,7 @@ describe("TuttiBudgetPopover", () => {
       screen.getByRole("slider", { name: "Orchestration intensity" }),
       { key: "ArrowRight" }
     );
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.keyDown(document.body, { key: "Escape" });
 
     openPopover();
 

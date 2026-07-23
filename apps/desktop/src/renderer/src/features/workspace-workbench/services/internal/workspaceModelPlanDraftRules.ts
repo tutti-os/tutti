@@ -1,6 +1,5 @@
 import type {
   WorkspaceModelPlan,
-  WorkspaceModelPlanDetection,
   WorkspaceModelPlanDraft,
   WorkspaceModelPlanModel
 } from "../workspaceSettingsTypes.ts";
@@ -60,20 +59,6 @@ export function buildWorkspaceModelPlanDetectRequest(
   };
 }
 
-export function workspaceModelPlanConnectionChanged(
-  draft: WorkspaceModelPlanDraft,
-  stored: WorkspaceModelPlan | undefined
-): boolean {
-  if (!stored) {
-    return true;
-  }
-  return (
-    draft.apiKey.trim().length > 0 ||
-    draft.baseUrl.trim() !== (stored.baseUrl ?? "").trim() ||
-    draft.protocol !== stored.protocol
-  );
-}
-
 export function workspaceModelPlanModelRangeChanged(
   draft: WorkspaceModelPlanDraft,
   stored: WorkspaceModelPlan | undefined
@@ -91,21 +76,6 @@ export function workspaceModelPlanModelRangeChanged(
     draftIDs.length !== storedIDs.length ||
     draftIDs.some((id, index) => id !== storedIDs[index])
   );
-}
-
-export function workspaceModelPlanDetectionCorePassed(
-  detection: WorkspaceModelPlanDetection | null
-): boolean {
-  if (!detection) {
-    return false;
-  }
-  const stages = ["network", "auth", "model_discovery", "inference"] as const;
-  return stages.every((stage) => {
-    const result = detection.stages.find(
-      (candidate) => candidate.stage === stage
-    );
-    return result?.status === "passed" || result?.status === "skipped";
-  });
 }
 
 export function normalizeWorkspaceModelPlanDraftModels(

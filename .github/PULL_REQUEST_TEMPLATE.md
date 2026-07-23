@@ -6,15 +6,6 @@
 
 <!-- Commands run, manual checks, or why verification is not applicable. -->
 
-## Fix Scope Justification
-
-<!--
-Required when a fix-titled PR changes more than 300 lines; delete otherwise.
-
-- Root cause: which event or state is the actual source of the bug?
-- Why can this not be fixed at a lower layer?
--->
-
 ## Fallback Three Questions
 
 <!--

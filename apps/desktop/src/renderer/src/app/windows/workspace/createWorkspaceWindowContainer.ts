@@ -13,7 +13,6 @@ import { registerDesktopPreferencesServices } from "@renderer/features/desktop-p
 import { registerRichTextAtServices } from "@renderer/features/rich-text-at/services/registerRichTextAtServices";
 import { createDesktopAgentSessionStatusViewResolver } from "@renderer/features/rich-text-at/providers/desktopAgentSessionStatusView.ts";
 import { registerWorkspaceAgentServices } from "@renderer/features/workspace-agent/services/registerWorkspaceAgentServices";
-import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import { startDesktopAgentAvailabilitySnapshotAnalytics } from "@renderer/features/workspace-agent/desktopAgentAvailabilitySnapshotAnalytics.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
@@ -35,6 +34,8 @@ import {
   userAvatarPlaceholderUrl,
   workspaceAgentActivityStatusLabel
 } from "@tutti-os/agent-gui/agent-message-center";
+import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
+import { resolveProviderIconAsset } from "@tutti-os/agent-gui/provider-icons";
 import { normalizeAgentActivityDisplayStatus } from "@tutti-os/agent-activity-core";
 import { translate } from "../../../i18n";
 import { getActiveLocale } from "../../../i18n/runtime";
@@ -216,6 +217,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     tuttidClient,
     notifications: notificationService,
     reporterService,
+    resolveAgentTargetIconUrl: resolveWorkspaceAgentTargetIconUrl,
     runtimeApi: desktopApi.runtime,
     terminalCommandRunner: createAgentProviderTerminalCommandRunner(
       desktopApi.runtime
@@ -302,7 +304,6 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       windowSearch: window.location.search
     }),
     wallpaperApi: desktopApi.wallpaper,
-    launchAgentGui: requestWorkspaceAgentGuiLaunch,
     onAgentTargetsChanged: async () => {
       await workspaceAgentServices.agentsService.refresh();
     }
@@ -450,4 +451,18 @@ function logWorkspaceWindowRuntimeDiagnostic(
 
 function resolveWorkspaceRichTextAgentIconUrl(provider: string | undefined) {
   return managedAgentRoundedIconUrl(provider);
+}
+
+function resolveWorkspaceAgentTargetIconUrl(identity: {
+  iconKey: string | null;
+  provider: string;
+}): string {
+  const catalogIconKey =
+    identity.iconKey ||
+    resolveAgentGUIProviderCatalogIdentity(identity.provider)?.iconKey;
+  return (
+    resolveProviderIconAsset(catalogIconKey, "rounded") ??
+    resolveProviderIconAsset(catalogIconKey, "manage") ??
+    managedAgentRoundedIconUrl(identity.provider)
+  );
 }
