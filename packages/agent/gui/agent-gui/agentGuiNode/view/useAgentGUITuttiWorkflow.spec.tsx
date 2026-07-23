@@ -228,6 +228,26 @@ describe("useAgentGUITuttiWorkflow materialization bridge", () => {
     expect(rendered.result.current.workflowDock.phase).toBeNull();
   });
 
+  it("clears materializing when the accept decision fails", async () => {
+    const rendered = renderWorkflow(reviewProjection());
+
+    act(() => rendered.result.current.composer.acceptPendingPlan());
+    rendered.setProjection({
+      ...reviewProjection(),
+      error: new Error("Decision failed")
+    });
+    rendered.rerender({ activeConversationId: "session-a" });
+    expect(rendered.result.current.workflowDock.phase?.kind).toBe("review");
+    await waitFor(() =>
+      expect(rendered.result.current.workflowDock.phase?.kind).toBe("review")
+    );
+
+    rendered.setProjection(emptyProjection());
+    rendered.rerender({ activeConversationId: "session-b" });
+    rendered.rerender({ activeConversationId: "session-a" });
+    expect(rendered.result.current.workflowDock.phase).toBeNull();
+  });
+
   it("clears materializing when a newer checkpoint supersedes it", async () => {
     const rendered = renderWorkflow(reviewProjection());
 
