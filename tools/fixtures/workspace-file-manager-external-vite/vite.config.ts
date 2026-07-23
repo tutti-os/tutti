@@ -16,16 +16,7 @@ export default defineConfig({
       {
         find: /^@tutti-os\/workspace-file-manager$/u,
         replacement: fileURLToPath(new URL("index.js", packageRoot))
-      },
-      ...["archive", "folder"].map((fallbackKind) => ({
-        find: new RegExp(
-          `^@tutti-os/workspace-file-manager/assets/workspace-${fallbackKind}-fallback\\.png$`,
-          "u"
-        ),
-        replacement: fileURLToPath(
-          new URL(`assets/workspace-${fallbackKind}-fallback.png`, packageRoot)
-        )
-      }))
+      }
     ]
   }
 });

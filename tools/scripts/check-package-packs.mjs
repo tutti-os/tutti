@@ -152,14 +152,14 @@ async function checkPackage(packageConfig, destination) {
         "fallback asset URL is relative to the bundled module location"
       );
     }
-    for (const assetName of [
-      "workspace-archive-fallback.png",
-      "workspace-folder-fallback.png"
-    ]) {
-      const publicAssetSpecifier = `@tutti-os/workspace-file-manager/assets/${assetName}`;
-      if (!mainEntrySource.includes(publicAssetSpecifier)) {
-        violations.push(`missing public asset import ${publicAssetSpecifier}`);
-      }
+    if (
+      /@tutti-os\/workspace-file-manager\/assets\/workspace-(?:archive|folder)-fallback\.png/u.test(
+        mainEntrySource
+      )
+    ) {
+      violations.push(
+        "main runtime imports a fallback image instead of a code-owned UI icon"
+      );
     }
     try {
       execFileSync(

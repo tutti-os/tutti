@@ -7,9 +7,48 @@ import {
   workspaceFileManagerI18nResources
 } from "../i18n/workspaceFileManagerI18n.ts";
 import type { WorkspaceFileEntry } from "../services/workspaceFileManagerTypes.ts";
+import {
+  WorkspaceArchiveFallbackIcon,
+  WorkspaceFolderFallbackIcon
+} from "./WorkspaceFileEntryIcon.tsx";
 import { WorkspaceFileManagerPanels } from "./WorkspaceFileManagerPanels.tsx";
 
 describe("WorkspaceFileManagerPanels", () => {
+  it.each([
+    ["archive", WorkspaceArchiveFallbackIcon],
+    ["folder", WorkspaceFolderFallbackIcon]
+  ] as const)(
+    "renders the %s fallback as a code-owned SVG without an image request",
+    async (_kind, FallbackIcon) => {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      const previousActEnvironment = (
+        globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT;
+      (
+        globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = true;
+
+      try {
+        await act(async () => {
+          root.render(<FallbackIcon className="size-4" />);
+        });
+
+        expect(container.querySelector("svg")).not.toBeNull();
+        expect(container.querySelector("img")).toBeNull();
+      } finally {
+        await act(async () => {
+          root.unmount();
+        });
+        container.remove();
+        (
+          globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+        ).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+      }
+    }
+  );
+
   it("keeps row activation and directory disclosure as sibling buttons", async () => {
     const entry: WorkspaceFileEntry = {
       hasChildren: true,

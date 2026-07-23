@@ -540,22 +540,22 @@ emitted before this method can be called`, especially after HMR, navigation,
   Let the business consumer import that asset only when it needs the default
   visual, and keep the package build rule that copies the asset into the packed
   `dist/assets` directory.
-  When the package runtime intentionally owns the default visual, import the
-  explicit public asset subpath from that runtime and keep the asset import
-  external in the package build. This lets the consumer bundler observe and
-  rewrite the asset dependency instead of inferring it from `import.meta.url`.
-  If Node-based consumers also evaluate the runtime, give the same public asset
-  subpath conditional exports: a browser condition that targets the image and
-  a Node condition that targets a sibling JavaScript module returning the
-  module-relative file URL. Do not require every consumer to add a test alias
-  for the published package.
+  When the package runtime owns an always-available default icon, prefer a
+  code-owned UI-system SVG component so the runtime does not import an image at
+  all. Conditional asset exports are not sufficient for this case: a
+  browser-conditioned test environment can select the image target and then
+  externalize the package for Node execution, which still fails on `.png`.
+  Keep explicit public asset subpaths only for browser consumers that knowingly
+  opt into the artwork. Do not require every consumer to add a test alias for
+  the published package.
   Apply the same rule to every public runtime subpath in the package, not just
   the first failing icon.
 - Validation:
   Build the affected package, inspect the built runtime entrypoint for the
   absence of the old asset dependency, and rerun `pnpm release:pack:check`.
-  Import the packed public asset subpath with Node and run a real Vite
-  dependency-prebundle fixture; both paths must succeed.
+  Import any intentionally supported packed asset subpath with Node and run a
+  real Vite dependency-prebundle fixture. The optimized root runtime must
+  contain the code-owned fallback icon and no fallback image dependency.
   If the package is consumed by desktop renderer code in this repo, also run
   the relevant desktop build to confirm the consumer bundler copies or emits
   the asset only when the business import is present.

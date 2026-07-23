@@ -32,30 +32,10 @@ try {
   );
   assert.doesNotMatch(
     optimizedSource,
-    /\.vite\/deps\/assets\/workspace-(?:archive|folder)-fallback\.png/u
+    /workspace-(?:archive|folder)-fallback\.png/u
   );
-
-  for (const fallbackKind of ["archive", "folder"]) {
-    const assetModulePath = matchFirst(
-      optimizedSource,
-      new RegExp(
-        `["']([^"']*workspace-${fallbackKind}-fallback\\.png\\?[^"']*)["']`,
-        "u"
-      ),
-      `${fallbackKind} fallback asset module`
-    );
-    const assetModuleSource = await fetchText(
-      new URL(assetModulePath, origin).href
-    );
-    const assetPath = matchFirst(
-      assetModuleSource,
-      /export default\s+["']([^"']+)["']/u,
-      `${fallbackKind} fallback asset URL`
-    );
-    const assetResponse = await fetch(new URL(assetPath, origin));
-    assert.equal(assetResponse.status, 200);
-    assert.equal(assetResponse.headers.get("content-type"), "image/png");
-  }
+  assert.match(optimizedSource, /FileArchiveIcon/u);
+  assert.match(optimizedSource, /FolderFilledIcon/u);
 } finally {
   await server.close();
 }
