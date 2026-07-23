@@ -19,7 +19,9 @@ const labels = {
   agentCountLabel: "Parallel Agents",
   agentCountCost: "1",
   agentCountBalance: "2–3",
-  agentCountPowerful: "Up to 4"
+  agentCountPowerful: "Up to 4",
+  confirm: "Confirm",
+  cancel: "Cancel"
 };
 
 function renderPopover({ intensity = 50 } = {}) {
@@ -122,7 +124,7 @@ describe("TuttiBudgetPopover", () => {
     ).toHaveTextContent("Up to 4");
   });
 
-  it("commits every slider movement directly and keeps the popup open", () => {
+  it("defers slider movement to the draft and commits on confirm", () => {
     const { onConfirm } = renderPopover({ intensity: 50 });
     openPopover();
 
@@ -131,11 +133,28 @@ describe("TuttiBudgetPopover", () => {
       { key: "ArrowRight" }
     );
 
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByText("Tutti orchestration")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onConfirm).toHaveBeenCalledWith(51);
-    expect(screen.getByText("Tutti orchestration")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(screen.queryByText("Tutti orchestration")).toBeNull();
+  });
+
+  it("cancel closes the popup without committing the draft", () => {
+    const { onConfirm } = renderPopover({ intensity: 50 });
+    openPopover();
+
+    fireEvent.keyDown(
+      screen.getByRole("slider", { name: "Orchestration intensity" }),
+      { key: "ArrowRight" }
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.queryByText("Tutti orchestration")).toBeNull();
   });
 
   it("reseeds the draft from the effective value on every open", () => {
@@ -152,7 +171,7 @@ describe("TuttiBudgetPopover", () => {
     expect(
       screen.getByRole("slider", { name: "Orchestration intensity" })
     ).toHaveAttribute("aria-valuenow", "50");
-    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it("does not close on outside pointerdown", () => {
