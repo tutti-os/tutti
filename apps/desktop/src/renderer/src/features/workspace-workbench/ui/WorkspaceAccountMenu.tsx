@@ -1,6 +1,5 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import {
-  AgentGUIAccountAvatar,
   AgentGUIAccountMenu,
   AgentGUIAccountRewardToast,
   agentGUIAccountInitials,
@@ -303,26 +302,26 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
             aria-label={userLabel}
             className="relative grid size-8 cursor-pointer place-items-center rounded-full border border-transparent bg-transparent p-0 text-[var(--workbench-chrome-foreground)] shadow-none hover:bg-transparent [-webkit-app-region:no-drag]"
             data-account-menu-trigger="true"
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void accountMenuState.onCopyUserId?.();
+            }}
           >
-            <AgentGUIAccountAvatar
-              state={accountMenuState}
-              label={labels.copyUserId}
+            <span
+              className="grid size-7 place-items-center overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_16%,transparent)] text-[12px] font-semibold"
+              data-testid="workspace-account-avatar"
             >
-              <span
-                className="grid size-7 place-items-center overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_16%,transparent)] text-[12px] font-semibold"
-                data-testid="workspace-account-avatar"
-              >
-                {accountMenuState.user.avatar ? (
-                  <img
-                    alt=""
-                    className="size-full object-cover"
-                    src={accountMenuState.user.avatar}
-                  />
-                ) : (
-                  <span aria-hidden="true">{initials}</span>
-                )}
-              </span>
-            </AgentGUIAccountAvatar>
+              {accountMenuState.user.avatar ? (
+                <img
+                  alt=""
+                  className="size-full object-cover"
+                  src={accountMenuState.user.avatar}
+                />
+              ) : (
+                <span aria-hidden="true">{initials}</span>
+              )}
+            </span>
             <img
               alt=""
               aria-hidden="true"
