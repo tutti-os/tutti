@@ -1166,7 +1166,6 @@ export type {
   ModelPlan,
   ModelPlanDetection,
   ModelPlanDetectionStage,
-  ModelPlanFirstUse,
   ModelPlanId,
   ModelPlanModel,
   ModelPlanProtocol,

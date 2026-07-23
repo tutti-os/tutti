@@ -1124,7 +1124,7 @@ paths:
       tags:
         - model-plan
       summary: Create one named model access plan
-      description: Creates a plan for one access scheme (official subscription, coding plan, relay, or custom compatible endpoint). Multiple named plans may share one protocol. New plans start undetected and pending first use.
+      description: Creates a plan for one access scheme (official subscription, coding plan, relay, or custom compatible endpoint). Multiple named plans may share one protocol. New plans start undetected.
       requestBody:
         required: true
         content:
@@ -1156,7 +1156,7 @@ paths:
       tags:
         - model-plan
       summary: Run the staged connection detection for a plan or draft
-      description: Runs the network, auth, model discovery, and minimal real inference stages in order and reports one structured result per stage. The agent_runtime stage stays pending until the plan completes its first real agent call. With planId the outcome persists onto the stored plan; omitted fields fall back to stored values. Without planId the request verifies an unsaved draft.
+      description: Runs the network, auth, model discovery, and minimal real inference stages in order and reports one structured result per stage. With planId the outcome persists onto the stored plan; omitted fields fall back to stored values. Without planId the request verifies an unsaved draft.
       requestBody:
         required: true
         content:
@@ -1215,7 +1215,7 @@ paths:
       tags:
         - model-plan
       summary: Update one model access plan
-      description: Replaces the mutable plan fields. Omitting apiKey keeps the stored credential. Changing the credential, base URL, or protocol resets detection and first-use state, so the plan must be re-verified before it reads as usable. Changes affect only calls that have not started yet.
+      description: Replaces the mutable plan fields. Omitting apiKey keeps the stored credential. Changing the credential, base URL, or protocol resets detection state. Changes affect only calls that have not started yet.
       requestBody:
         required: true
         content:
@@ -7507,12 +7507,11 @@ components:
         - custom
     ModelPlanStatus:
       type: string
-      description: Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+      description: Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
       enum:
         - disabled
         - undetected
         - detection_failed
-        - pending_first_use
         - ready
     ModelPlanDetectionStage:
       type: string
@@ -7521,14 +7520,12 @@ components:
         - auth
         - model_discovery
         - inference
-        - agent_runtime
     ModelPlanStageStatus:
       type: string
       enum:
         - passed
         - failed
         - skipped
-        - pending
     ModelPlanStageResult:
       type: object
       additionalProperties: false
@@ -7577,30 +7574,6 @@ components:
           type: string
           nullable: true
           description: Model id exercised by the inference stage.
-    ModelPlanFirstUse:
-      type: object
-      additionalProperties: false
-      required:
-        - status
-      properties:
-        status:
-          type: string
-          enum:
-            - pending
-            - completed
-        agentTargetId:
-          type: string
-          nullable: true
-        agentSessionId:
-          type: string
-          nullable: true
-        model:
-          type: string
-          nullable: true
-        completedAt:
-          type: string
-          format: date-time
-          nullable: true
     ModelPlanModel:
       type: object
       additionalProperties: false
@@ -7633,7 +7606,6 @@ components:
         - enabled
         - status
         - detection
-        - firstUse
         - createdAt
         - updatedAt
       properties:
@@ -7669,8 +7641,6 @@ components:
           $ref: "#/components/schemas/ModelPlanStatus"
         detection:
           $ref: "#/components/schemas/ModelPlanDetection"
-        firstUse:
-          $ref: "#/components/schemas/ModelPlanFirstUse"
         createdAt:
           type: string
           format: date-time

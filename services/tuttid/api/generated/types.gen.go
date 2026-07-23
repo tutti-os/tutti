@@ -1605,7 +1605,6 @@ func (e IssueManagerTaskContextRefParentKind) Valid() bool {
 
 // Defines values for ModelPlanDetectionStage.
 const (
-	AgentRuntime   ModelPlanDetectionStage = "agent_runtime"
 	Auth           ModelPlanDetectionStage = "auth"
 	Inference      ModelPlanDetectionStage = "inference"
 	ModelDiscovery ModelPlanDetectionStage = "model_discovery"
@@ -1615,8 +1614,6 @@ const (
 // Valid indicates whether the value is a known member of the ModelPlanDetectionStage enum.
 func (e ModelPlanDetectionStage) Valid() bool {
 	switch e {
-	case AgentRuntime:
-		return true
 	case Auth:
 		return true
 	case Inference:
@@ -1624,24 +1621,6 @@ func (e ModelPlanDetectionStage) Valid() bool {
 	case ModelDiscovery:
 		return true
 	case Network:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ModelPlanFirstUseStatus.
-const (
-	ModelPlanFirstUseStatusCompleted ModelPlanFirstUseStatus = "completed"
-	ModelPlanFirstUseStatusPending   ModelPlanFirstUseStatus = "pending"
-)
-
-// Valid indicates whether the value is a known member of the ModelPlanFirstUseStatus enum.
-func (e ModelPlanFirstUseStatus) Valid() bool {
-	switch e {
-	case ModelPlanFirstUseStatusCompleted:
-		return true
-	case ModelPlanFirstUseStatusPending:
 		return true
 	default:
 		return false
@@ -1691,7 +1670,6 @@ func (e ModelPlanReferenceKind) Valid() bool {
 const (
 	ModelPlanStageStatusFailed  ModelPlanStageStatus = "failed"
 	ModelPlanStageStatusPassed  ModelPlanStageStatus = "passed"
-	ModelPlanStageStatusPending ModelPlanStageStatus = "pending"
 	ModelPlanStageStatusSkipped ModelPlanStageStatus = "skipped"
 )
 
@@ -1701,8 +1679,6 @@ func (e ModelPlanStageStatus) Valid() bool {
 	case ModelPlanStageStatusFailed:
 		return true
 	case ModelPlanStageStatusPassed:
-		return true
-	case ModelPlanStageStatusPending:
 		return true
 	case ModelPlanStageStatusSkipped:
 		return true
@@ -1715,7 +1691,6 @@ func (e ModelPlanStageStatus) Valid() bool {
 const (
 	DetectionFailed ModelPlanStatus = "detection_failed"
 	Disabled        ModelPlanStatus = "disabled"
-	PendingFirstUse ModelPlanStatus = "pending_first_use"
 	Ready           ModelPlanStatus = "ready"
 	Undetected      ModelPlanStatus = "undetected"
 )
@@ -1726,8 +1701,6 @@ func (e ModelPlanStatus) Valid() bool {
 	case DetectionFailed:
 		return true
 	case Disabled:
-		return true
-	case PendingFirstUse:
 		return true
 	case Ready:
 		return true
@@ -3108,31 +3081,31 @@ func (e WorkspaceWorkflowPlanRevisionSchemaVersion) Valid() bool {
 
 // Defines values for WorkspaceWorkflowStatus.
 const (
-	Accepted      WorkspaceWorkflowStatus = "accepted"
-	Canceled      WorkspaceWorkflowStatus = "canceled"
-	Completed     WorkspaceWorkflowStatus = "completed"
-	Failed        WorkspaceWorkflowStatus = "failed"
-	InProgress    WorkspaceWorkflowStatus = "in_progress"
-	PendingReview WorkspaceWorkflowStatus = "pending_review"
-	Rejected      WorkspaceWorkflowStatus = "rejected"
+	WorkspaceWorkflowStatusAccepted      WorkspaceWorkflowStatus = "accepted"
+	WorkspaceWorkflowStatusCanceled      WorkspaceWorkflowStatus = "canceled"
+	WorkspaceWorkflowStatusCompleted     WorkspaceWorkflowStatus = "completed"
+	WorkspaceWorkflowStatusFailed        WorkspaceWorkflowStatus = "failed"
+	WorkspaceWorkflowStatusInProgress    WorkspaceWorkflowStatus = "in_progress"
+	WorkspaceWorkflowStatusPendingReview WorkspaceWorkflowStatus = "pending_review"
+	WorkspaceWorkflowStatusRejected      WorkspaceWorkflowStatus = "rejected"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowStatus enum.
 func (e WorkspaceWorkflowStatus) Valid() bool {
 	switch e {
-	case Accepted:
+	case WorkspaceWorkflowStatusAccepted:
 		return true
-	case Canceled:
+	case WorkspaceWorkflowStatusCanceled:
 		return true
-	case Completed:
+	case WorkspaceWorkflowStatusCompleted:
 		return true
-	case Failed:
+	case WorkspaceWorkflowStatusFailed:
 		return true
-	case InProgress:
+	case WorkspaceWorkflowStatusInProgress:
 		return true
-	case PendingReview:
+	case WorkspaceWorkflowStatusPendingReview:
 		return true
-	case Rejected:
+	case WorkspaceWorkflowStatusRejected:
 		return true
 	default:
 		return false
@@ -5313,7 +5286,6 @@ type ModelPlan struct {
 	DefaultModel *string            `json:"defaultModel,omitempty"`
 	Detection    ModelPlanDetection `json:"detection"`
 	Enabled      bool               `json:"enabled"`
-	FirstUse     ModelPlanFirstUse  `json:"firstUse"`
 	HasApiKey    bool               `json:"hasApiKey"`
 	Id           string             `json:"id"`
 	Models       []ModelPlanModel   `json:"models"`
@@ -5323,7 +5295,7 @@ type ModelPlan struct {
 	Protocol ModelPlanProtocol `json:"protocol"`
 	Revision int64             `json:"revision"`
 
-	// Status Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+	// Status Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
 	Status ModelPlanStatus `json:"status"`
 
 	// TemplateKind Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
@@ -5343,18 +5315,6 @@ type ModelPlanDetection struct {
 
 // ModelPlanDetectionStage defines model for ModelPlanDetectionStage.
 type ModelPlanDetectionStage string
-
-// ModelPlanFirstUse defines model for ModelPlanFirstUse.
-type ModelPlanFirstUse struct {
-	AgentSessionId *string                 `json:"agentSessionId,omitempty"`
-	AgentTargetId  *string                 `json:"agentTargetId,omitempty"`
-	CompletedAt    *time.Time              `json:"completedAt,omitempty"`
-	Model          *string                 `json:"model,omitempty"`
-	Status         ModelPlanFirstUseStatus `json:"status"`
-}
-
-// ModelPlanFirstUseStatus defines model for ModelPlanFirstUse.Status.
-type ModelPlanFirstUseStatus string
 
 // ModelPlanModel defines model for ModelPlanModel.
 type ModelPlanModel struct {
@@ -5402,7 +5362,7 @@ type ModelPlanStageResult struct {
 // ModelPlanStageStatus defines model for ModelPlanStageStatus.
 type ModelPlanStageStatus string
 
-// ModelPlanStatus Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+// ModelPlanStatus Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
 type ModelPlanStatus string
 
 // ModelPlanTemplateKind Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.

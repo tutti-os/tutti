@@ -190,9 +190,6 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.runtime_prepared", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"cwd": prepared.Cwd, "env_count": len(prepared.Env)})
-	if err := s.preparePlanFirstUse(ctx, workspaceID, input.AgentSessionID, planResolution.Endpoint, input.AgentTargetID); err != nil {
-		return CreateSessionResult{}, err
-	}
 	ctx = withServicePreparedRuntime(ctx, s, prepared)
 	runtimeSettings := ComposerSettings{
 		Model:            clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
