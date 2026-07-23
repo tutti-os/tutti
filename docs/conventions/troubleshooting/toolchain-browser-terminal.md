@@ -507,6 +507,10 @@ emitted before this method can be called`, especially after HMR, navigation,
   `dist/assets/...`. The same feature often works inside this monorepo because
   workspace source resolution or local build layout hides the packaging
   problem.
+  In Vite development mode the failing URL may instead point at
+  `node_modules/.vite/deps/assets/...`: dependency prebundling moved the
+  JavaScript module, then a preserved `new URL("./assets/...", import.meta.url)`
+  resolved relative to the optimizer cache.
 - Quick checks:
   If the failing package entrypoint renders a package-local image or icon,
   inspect whether the main runtime entrypoint still imports that asset directly
@@ -521,6 +525,9 @@ emitted before this method can be called`, especially after HMR, navigation,
   exposing that asset as an explicit public subpath. The packed npm artifact
   either did not ship the matching file layout or forced every consumer to pay
   the asset cost even when the feature was unused.
+  A related failure occurs when a published bundle preserves a module-relative
+  `new URL(...)`: consumer dependency optimization can relocate that bundle
+  independently from its adjacent asset.
 - Fix:
   Move the image or icon out of the main runtime entrypoint and export it
   through an explicit package asset subpath such as
@@ -528,6 +535,10 @@ emitted before this method can be called`, especially after HMR, navigation,
   Let the business consumer import that asset only when it needs the default
   visual, and keep the package build rule that copies the asset into the packed
   `dist/assets` directory.
+  When the package runtime intentionally owns the default visual, import the
+  explicit public asset subpath from that runtime and keep the asset import
+  external in the package build. This lets the consumer bundler observe and
+  rewrite the asset dependency instead of inferring it from `import.meta.url`.
   Apply the same rule to every public runtime subpath in the package, not just
   the first failing icon.
 - Validation:

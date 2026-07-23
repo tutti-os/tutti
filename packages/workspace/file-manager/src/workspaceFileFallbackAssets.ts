@@ -1,9 +1,4 @@
-export const workspaceArchiveFallbackIconUrl = new URL(
-  "./assets/workspace-archive-fallback.png",
-  import.meta.url
-).toString();
+import workspaceArchiveFallbackIconUrl from "@tutti-os/workspace-file-manager/assets/workspace-archive-fallback.png";
+import workspaceFolderFallbackIconUrl from "@tutti-os/workspace-file-manager/assets/workspace-folder-fallback.png";
 
-export const workspaceFolderFallbackIconUrl = new URL(
-  "./assets/workspace-folder-fallback.png",
-  import.meta.url
-).toString();
+export { workspaceArchiveFallbackIconUrl, workspaceFolderFallbackIconUrl };
