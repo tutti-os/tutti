@@ -355,8 +355,6 @@ export function ComposerFooter({
                 labels={{
                   title: labels.tuttiBudgetTitle,
                   intensityLabel: labels.tuttiBudgetIntensityLabel,
-                  intensityMin: labels.tuttiBudgetIntensityMin,
-                  intensityMax: labels.tuttiBudgetIntensityMax,
                   previewTitle: labels.tuttiBudgetPreviewTitle,
                   previewHint: labels.tuttiBudgetPreviewHint,
                   previewCost: labels.tuttiBudgetPreviewCost,

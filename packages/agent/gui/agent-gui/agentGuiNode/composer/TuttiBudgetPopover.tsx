@@ -15,8 +15,6 @@ import {
 export interface TuttiBudgetPopoverLabels {
   title: string;
   intensityLabel: string;
-  intensityMin: string;
-  intensityMax: string;
   previewTitle: string;
   previewHint: string;
   previewCost: string;
@@ -38,20 +36,22 @@ const tierTone: Record<
   TuttiIntensityTier,
   {
     badgeVariant: "success" | "warning" | "pending";
-    markerClassName: string;
+    sliderClassName: string;
   }
 > = {
   cost: {
     badgeVariant: "success",
-    markerClassName: "border-[var(--state-success)] bg-[var(--state-success)]"
+    sliderClassName:
+      "[&_[data-slot=slider-thumb]]:border-[var(--state-success)]"
   },
   balance: {
     badgeVariant: "warning",
-    markerClassName: "border-[var(--state-warning)] bg-[var(--state-warning)]"
+    sliderClassName:
+      "[&_[data-slot=slider-thumb]]:border-[var(--state-warning)]"
   },
   powerful: {
     badgeVariant: "pending",
-    markerClassName: "border-[var(--tutti-purple)] bg-[var(--tutti-purple)]"
+    sliderClassName: "[&_[data-slot=slider-thumb]]:border-[var(--tutti-purple)]"
   }
 };
 
@@ -97,7 +97,6 @@ export function TuttiBudgetPopover({
     smallGroup: labels.agentCountBalance,
     maxParallel: labels.agentCountPowerful
   }[preview.agentCount];
-  const markerPosition = Math.min(98, Math.max(2, preview.intensity));
   return (
     <Popover
       open={open}
@@ -132,8 +131,11 @@ export function TuttiBudgetPopover({
         <div className="text-[13px] font-semibold text-[var(--text-primary)]">
           {labels.title}
         </div>
-        <div className="grid gap-1.5 text-[12px] text-[var(--text-secondary)]">
-          <div className="flex items-center justify-between gap-2">
+        <div
+          className="rounded-[8px] border border-[var(--line-2)] bg-[var(--transparency-block)] p-2.5"
+          data-agent-tutti-budget-preview={preview.tier}
+        >
+          <div className="flex items-center justify-between gap-2 text-[12px] text-[var(--text-secondary)]">
             <span>{labels.intensityLabel}</span>
             <span
               className="text-[var(--text-primary)] tabular-nums"
@@ -142,49 +144,20 @@ export function TuttiBudgetPopover({
               {draftIntensity}
             </span>
           </div>
-          <Slider
-            aria-label={labels.intensityLabel}
-            max={100}
-            min={0}
-            step={1}
-            value={[draftIntensity]}
-            onValueChange={(values) =>
-              setDraftIntensity(values[0] ?? draftIntensity)
-            }
-          />
-          <div className="flex items-center justify-between gap-2 text-[11px]">
-            <span>{labels.intensityMin}</span>
-            <span>{labels.intensityMax}</span>
-          </div>
-        </div>
-        <div
-          className="rounded-[8px] border border-[var(--line-2)] bg-[var(--transparency-block)] p-2.5"
-          data-agent-tutti-budget-preview={preview.tier}
-        >
-          <div
-            aria-live="polite"
-            className="flex items-center justify-between gap-2"
-          >
-            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-              {labels.previewTitle}
-            </span>
-            <Badge size="sm" variant={previewTone.badgeVariant}>
-              {previewLabel}
-            </Badge>
-          </div>
           <div className="mt-2">
-            <div className="relative">
-              <div
-                aria-hidden
-                className="h-1.5 rounded-full bg-[linear-gradient(90deg,var(--state-success)_0%,var(--state-warning)_50%,var(--tutti-purple)_100%)]"
-              />
-              <span
-                aria-hidden
-                className={`absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-[0_0_0_2px_var(--background-fronted)] ${previewTone.markerClassName}`}
-                data-agent-tutti-budget-preview-marker="true"
-                style={{ left: `${markerPosition}%` }}
-              />
-            </div>
+            <Slider
+              aria-label={labels.intensityLabel}
+              className={`[&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-track]]:bg-[linear-gradient(90deg,var(--state-success)_0%,var(--state-warning)_50%,var(--tutti-purple)_100%)] ${previewTone.sliderClassName}`}
+              data-agent-tutti-budget-intensity-slider="true"
+              data-agent-tutti-budget-slider-tone={preview.tier}
+              max={100}
+              min={0}
+              step={1}
+              value={[draftIntensity]}
+              onValueChange={(values) =>
+                setDraftIntensity(values[0] ?? draftIntensity)
+              }
+            />
             <div className="mt-1 flex items-center justify-between gap-2 text-[10px] font-medium">
               <span className="text-[var(--state-success)]">
                 {labels.previewCost}
@@ -197,7 +170,18 @@ export function TuttiBudgetPopover({
               </span>
             </div>
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-2 border-t border-[var(--line-2)] pt-2 text-[10px]">
+          <div
+            aria-live="polite"
+            className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--line-2)] pt-2"
+          >
+            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+              {labels.previewTitle}
+            </span>
+            <Badge size="sm" variant={previewTone.badgeVariant}>
+              {previewLabel}
+            </Badge>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
             <div className="min-w-0">
               <div className="text-[var(--text-tertiary)]">
                 {labels.modelStrengthLabel}

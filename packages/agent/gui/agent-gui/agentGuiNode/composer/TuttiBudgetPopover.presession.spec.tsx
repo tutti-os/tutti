@@ -12,11 +12,9 @@ import { TuttiBudgetPopover } from "./TuttiBudgetPopover";
 const labels = {
   title: "Tutti orchestration",
   intensityLabel: "Orchestration intensity",
-  intensityMin: "Minimal",
-  intensityMax: "Maximal",
   previewTitle: "Planner tendency",
   previewHint:
-    "The exact model and task graph are inferred from the request and selected Skills.",
+    "The exact model, total task count, and safe parallelism are inferred from the request and selected Skills.",
   previewCost: "Cost",
   previewBalance: "Balance",
   previewPowerful: "Powerful",
@@ -24,10 +22,10 @@ const labels = {
   modelStrengthCost: "Economical",
   modelStrengthBalance: "Balanced",
   modelStrengthPowerful: "Most capable",
-  agentCountLabel: "Agent count",
+  agentCountLabel: "Parallel Agents",
   agentCountCost: "1",
   agentCountBalance: "2–3",
-  agentCountPowerful: "Up to 4 parallel",
+  agentCountPowerful: "Up to 4",
   confirm: "Confirm",
   cancel: "Cancel"
 };

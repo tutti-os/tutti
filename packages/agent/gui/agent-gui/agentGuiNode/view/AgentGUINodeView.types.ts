@@ -134,8 +134,6 @@ export interface AgentGUIViewLabels {
   tuttiModeRemove: string;
   tuttiBudgetTitle: string;
   tuttiBudgetIntensityLabel: string;
-  tuttiBudgetIntensityMin: string;
-  tuttiBudgetIntensityMax: string;
   tuttiBudgetPreviewTitle: string;
   tuttiBudgetPreviewHint: string;
   tuttiBudgetPreviewCost: string;

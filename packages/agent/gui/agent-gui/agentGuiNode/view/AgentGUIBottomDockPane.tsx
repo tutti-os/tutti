@@ -211,8 +211,6 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           intensityPopoverLabels={{
             title: composerProps.labels.tuttiBudgetTitle,
             intensityLabel: composerProps.labels.tuttiBudgetIntensityLabel,
-            intensityMin: composerProps.labels.tuttiBudgetIntensityMin,
-            intensityMax: composerProps.labels.tuttiBudgetIntensityMax,
             previewTitle: composerProps.labels.tuttiBudgetPreviewTitle,
             previewHint: composerProps.labels.tuttiBudgetPreviewHint,
             previewCost: composerProps.labels.tuttiBudgetPreviewCost,

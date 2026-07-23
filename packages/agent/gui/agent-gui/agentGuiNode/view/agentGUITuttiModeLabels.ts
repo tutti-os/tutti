@@ -10,8 +10,6 @@ type AgentGUITuttiModeLabels = Pick<
   | "tuttiBudgetCancel"
   | "tuttiBudgetConfirm"
   | "tuttiBudgetIntensityLabel"
-  | "tuttiBudgetIntensityMax"
-  | "tuttiBudgetIntensityMin"
   | "tuttiBudgetModelStrengthBalance"
   | "tuttiBudgetModelStrengthCost"
   | "tuttiBudgetModelStrengthLabel"
@@ -51,8 +49,6 @@ export function agentGUITuttiModeLabels(
     tuttiBudgetIntensityLabel: t(
       "agentHost.agentGui.tuttiBudgetIntensityLabel"
     ),
-    tuttiBudgetIntensityMin: t("agentHost.agentGui.tuttiBudgetIntensityMin"),
-    tuttiBudgetIntensityMax: t("agentHost.agentGui.tuttiBudgetIntensityMax"),
     tuttiBudgetPreviewTitle: t("agentHost.agentGui.tuttiBudgetPreviewTitle"),
     tuttiBudgetPreviewHint: t("agentHost.agentGui.tuttiBudgetPreviewHint"),
     tuttiBudgetPreviewCost: t("agentHost.agentGui.tuttiBudgetPreviewCost"),
