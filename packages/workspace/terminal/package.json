@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/workspace-terminal",
-  "version": "0.1.0",
+  "version": "0.0.202",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -27,10 +27,10 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@tutti-os/ui-i18n-runtime": "workspace:*",
-    "@tutti-os/ui-react-hooks": "workspace:*",
-    "@tutti-os/ui-system": "workspace:*",
-    "@tutti-os/workbench-surface": "workspace:*",
+    "@tutti-os/ui-i18n-runtime": "0.0.202",
+    "@tutti-os/ui-react-hooks": "0.0.202",
+    "@tutti-os/ui-system": "0.0.202",
+    "@tutti-os/workbench-surface": "0.0.202",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-serialize": "^0.14.0",
