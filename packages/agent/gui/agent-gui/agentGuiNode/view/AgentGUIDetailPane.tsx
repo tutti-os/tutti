@@ -54,7 +54,7 @@ import styles from "../AgentGUINode.styles";
 import { useAgentGUIDetailScroll } from "./useAgentGUIDetailScroll";
 import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
 import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
-import { useAgentGUITuttiPlanTimelineAttachments } from "./useAgentGUITuttiPlanTimelineAttachments";
+import { useAgentGUITuttiWorkflow } from "./useAgentGUITuttiWorkflow";
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -303,16 +303,19 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     actions.submitInteractivePrompt
   );
   const stableLinkAction = useOptionalStableEventCallback(onLinkAction);
-  const tuttiPlanTimeline = useAgentGUITuttiPlanTimelineAttachments({
+  const tuttiWorkflow = useAgentGUITuttiWorkflow({
     viewModel,
     previewMode,
     labels,
     stableLinkAction,
     setTuttiModeActive: actions.setTuttiModeActive,
+    setTuttiModeOrchestrationIntensity:
+      actions.setTuttiModeOrchestrationIntensity,
     updateDraftContent: actions.updateDraftContent,
     submitPromptPassthrough: submitPromptAndScrollToBottom
   });
-  const tuttiPlan = tuttiPlanTimeline.review;
+  const tuttiWorkflowComposer = tuttiWorkflow.composer;
+  const tuttiWorkflowDock = tuttiWorkflow.workflowDock;
   const stableRequestWorkspaceReferences = useOptionalStableEventCallback(
     onRequestWorkspaceReferences
   );
@@ -419,7 +422,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           : undefined,
       disabled: composerDisabled || timelineInteractionLocked,
       disabledReason: composerDisabledReason,
-      submitDisabled: submitDisabled || timelineInteractionLocked,
+      submitDisabled:
+        submitDisabled ||
+        timelineInteractionLocked ||
+        tuttiWorkflowDock.phase?.kind === "materializing",
       tuttiModeActive: viewModel.composer.isTuttiModeActive,
       tuttiModeUpdating: viewModel.composer.isTuttiModeUpdating,
       tuttiModeOrchestrationIntensity:
@@ -473,19 +479,20 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       // use capabilityMenuState.tuttiMode.enabled === true (fail closed).
       onTuttiModeChange:
         capabilityMenuState?.tuttiMode?.enabled === true
-          ? tuttiPlan.setTuttiModeActiveAndSettleReview
+          ? tuttiWorkflowComposer.setTuttiModeActiveAndSettleReview
           : undefined,
       onTuttiModeOrchestrationIntensityChange:
         capabilityMenuState?.tuttiMode?.enabled === true
           ? setTuttiModeOrchestrationIntensity
           : undefined,
       onPlanIssueBudgetPresetChange: updatePlanIssueBudgetPreset,
-      onSubmit: tuttiPlan.submitPromptOrDecidePlan,
-      onSubmitEmpty: tuttiPlan.planReviewSendActive
-        ? tuttiPlan.acceptPendingPlan
+      onSubmit: tuttiWorkflowComposer.submitPromptOrDecidePlan,
+      onSubmitEmpty: tuttiWorkflowComposer.planReviewSendActive
+        ? tuttiWorkflowComposer.acceptPendingPlan
         : undefined,
       emptySubmitLabel:
-        tuttiPlan.planReviewSendActive && tuttiPlan.planReviewIntensityDiverged
+        tuttiWorkflowComposer.planReviewSendActive &&
+        tuttiWorkflowComposer.planReviewIntensityDiverged
           ? labels.tuttiModePlanSendRequestChanges
           : undefined,
       onSubmitGuidance: submitGuidancePromptAndScrollToBottom,
@@ -553,11 +560,12 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       setTuttiModeActive,
       setTuttiModeOrchestrationIntensity,
       submitInteractivePrompt,
-      tuttiPlan.submitPromptOrDecidePlan,
-      tuttiPlan.planReviewSendActive,
-      tuttiPlan.planReviewIntensityDiverged,
+      tuttiWorkflowComposer.submitPromptOrDecidePlan,
+      tuttiWorkflowComposer.planReviewSendActive,
+      tuttiWorkflowComposer.planReviewIntensityDiverged,
+      tuttiWorkflowDock.phase?.kind,
       labels.tuttiModePlanSendRequestChanges,
-      tuttiPlan.acceptPendingPlan,
+      tuttiWorkflowComposer.acceptPendingPlan,
       submitGuidancePromptAndScrollToBottom,
       uiLanguage,
       stableLinkAction,
@@ -736,11 +744,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           <>
             <AgentGUIConversationTimelinePane
               conversation={conversation}
-              turnAttachments={tuttiPlanTimeline.turnAttachments}
-              turnAttachmentLocatorRef={tuttiPlanTimeline.locatorRef}
-              onTurnAttachmentVisibilityChange={
-                tuttiPlanTimeline.onVisibilityChange
-              }
               isLoading={showTimelineSkeleton}
               isLoadingOlderMessages={viewModel.detail.isLoadingOlderMessages}
               loadingLabel={labels.loadingConversation}
@@ -781,13 +784,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           }
           onGoalControl={goalControl}
           goalPauseSupported={viewModel.composer.goalPauseSupported}
-          tuttiPlanReview={tuttiPlan.tuttiPlanReview}
-          tuttiPlanReviewLabels={labels.tuttiModePlanBanner}
-          onCancelTuttiPlanReview={tuttiPlan.cancelPendingPlan}
-          onTuttiPlanReviewIntensityChange={setTuttiModeOrchestrationIntensity}
-          tuttiPlanIssueStatus={tuttiPlanTimeline.dockIssueStatus}
-          tuttiPlanIssueStripLabels={labels.tuttiModePlanIssueStrip}
-          onJumpToTuttiPlanIssue={tuttiPlan.jumpToPlanIssuePanel}
+          tuttiWorkflowDock={tuttiWorkflowDock}
+          tuttiWorkflowDockLabels={labels.tuttiWorkflowDock}
+          tuttiPlanPanelLabels={labels.tuttiModePlanPanel}
+          tuttiPlanIssuePanelLabels={labels.tuttiModePlanIssuePanel}
         />
       ) : null}
     </main>

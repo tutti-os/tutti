@@ -136,6 +136,7 @@ function taskHasConversation(task: TuttiPlanIssueTaskSnapshot): boolean {
  * a jump into the full Issue surface remains one click away.
  */
 export function TuttiPlanIssuePanel({
+  embedded = false,
   issue,
   labels,
   onOpenIssue,
@@ -143,6 +144,7 @@ export function TuttiPlanIssuePanel({
   onCancelExecution,
   onOpenTask
 }: {
+  embedded?: boolean;
   issue: TuttiPlanIssueSnapshot;
   labels: TuttiPlanIssuePanelLabels;
   onOpenIssue?: () => void;
@@ -198,7 +200,13 @@ export function TuttiPlanIssuePanel({
         }
       : undefined;
   return (
-    <Card className="w-full" data-testid="tutti-plan-issue-panel">
+    <Card
+      className={cn(
+        "w-full",
+        embedded && "border-0 bg-transparent shadow-none"
+      )}
+      data-testid="tutti-plan-issue-panel"
+    >
       <CardHeader className="gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">

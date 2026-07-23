@@ -3175,6 +3175,70 @@ aside.workspace-agents-status-panel
   color: var(--agent-gui-text-primary, var(--text-primary));
 }
 
+.agent-gui-chrome__composer-disclosure {
+  display: grid;
+  min-width: 0;
+}
+
+.agent-gui-chrome__composer-disclosure-panel {
+  box-sizing: border-box;
+  max-height: min(52vh, 520px);
+  overflow: auto;
+  border: 1px solid var(--agent-gui-border-subtle, var(--line-2));
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  padding: 12px;
+  background: var(--agent-gui-surface-strong, var(--background-panel));
+  pointer-events: auto;
+}
+
+.agent-gui-chrome__composer-disclosure[data-expanded="true"]
+  .agent-gui-chrome__composer-disclosure-banner {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.agent-gui-chrome__composer-disclosure-banner {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+}
+
+.agent-gui-chrome__composer-disclosure-trigger {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--agent-gui-text-secondary, var(--text-secondary));
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-gui-chrome__composer-disclosure-trigger:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid color-mix(in srgb, var(--tutti-purple) 62%, transparent);
+  outline-offset: 2px;
+}
+
+.agent-gui-chrome__composer-disclosure-chevron {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  transition: transform 160ms ease;
+}
+
+.agent-gui-chrome__composer-disclosure-chevron--expanded {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-chrome__composer-disclosure-chevron {
+    transition: none;
+  }
+}
+
 .agent-gui-chrome__goal-edit-input {
   min-width: 0;
   flex: 1 1 auto;

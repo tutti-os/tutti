@@ -23,10 +23,9 @@ type AgentGUITuttiModeLabels = Pick<
   | "tuttiModeDescription"
   | "tuttiModeLabel"
   | "tuttiModeRemove"
-  | "tuttiModePlanBanner"
+  | "tuttiWorkflowDock"
   | "tuttiModePlanIssueCreateFailed"
   | "tuttiModePlanIssuePanel"
-  | "tuttiModePlanIssueStrip"
   | "tuttiModePlanLoadFailed"
   | "tuttiModePlanPanel"
   | "tuttiModePlanRetry"
@@ -87,9 +86,6 @@ export function agentGUITuttiModeLabels(
     tuttiModeUpdateFailed: t("agentHost.agentGui.tuttiModeUpdateFailed"),
     tuttiModeUpdateUncertain: t("agentHost.agentGui.tuttiModeUpdateUncertain"),
     tuttiModePlanPanel: {
-      mode: t("agentHost.agentGui.tuttiModePlan.mode"),
-      taskReview: t("agentHost.agentGui.tuttiModePlan.taskReview"),
-      pending: t("agentHost.agentGui.tuttiModePlan.pending"),
       tasks: t("agentHost.agentGui.tuttiModePlan.tasks"),
       priority: t("agentHost.agentGui.tuttiModePlan.priority"),
       priorityHigh: t("agentHost.agentGui.tuttiModePlan.priorityHigh"),
@@ -106,11 +102,29 @@ export function agentGUITuttiModeLabels(
       ),
       notSpecified: t("agentHost.agentGui.tuttiModePlan.notSpecified")
     },
-    tuttiModePlanBanner: {
-      title: t("agentHost.agentGui.tuttiModePlan.taskReview"),
-      hint: t("agentHost.agentGui.tuttiModePlan.reviewHint"),
-      hintReplan: t("agentHost.agentGui.tuttiModePlan.reviewHintReplan"),
-      cancel: t("agentHost.agentGui.tuttiModePlan.cancel")
+    tuttiWorkflowDock: {
+      reviewTitle: t("agentHost.agentGui.tuttiModePlan.taskReview"),
+      reviewHint: t("agentHost.agentGui.tuttiModePlan.reviewHint"),
+      reviewHintReplan: t("agentHost.agentGui.tuttiModePlan.reviewHintReplan"),
+      materializingTitle: t(
+        "agentHost.agentGui.tuttiModePlan.materializingTitle"
+      ),
+      materializingHint: t(
+        "agentHost.agentGui.tuttiModePlan.materializingHint"
+      ),
+      errorTitle: t("agentHost.agentGui.tuttiModePlan.errorTitle"),
+      expand: t("agentHost.agentGui.tuttiModePlan.expand"),
+      collapse: t("agentHost.agentGui.tuttiModePlan.collapse"),
+      cancel: t("agentHost.agentGui.tuttiModePlan.cancel"),
+      retry: t("agentHost.agentGui.tuttiModePlan.retry"),
+      issueRunning: (count) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStripRunning", { count }),
+      issuePendingAcceptance: (count) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStripPending", { count }),
+      issueFailed: (count) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStripFailed", { count }),
+      issueDone: (done, total) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStripDone", { done, total })
     },
     tuttiModePlanSendAccept: t("agentHost.agentGui.tuttiModePlan.sendAccept"),
     tuttiModePlanSendRequestChanges: t(
@@ -155,17 +169,6 @@ export function agentGUITuttiModeLabels(
       ),
       statusFailed: t("agentHost.agentGui.tuttiModePlan.issueStatusFailed"),
       statusCanceled: t("agentHost.agentGui.tuttiModePlan.issueStatusCanceled")
-    },
-    tuttiModePlanIssueStrip: {
-      running: (count) =>
-        t("agentHost.agentGui.tuttiModePlan.issueStripRunning", { count }),
-      pendingAcceptance: (count) =>
-        t("agentHost.agentGui.tuttiModePlan.issueStripPending", { count }),
-      failed: (count) =>
-        t("agentHost.agentGui.tuttiModePlan.issueStripFailed", { count }),
-      done: (done, total) =>
-        t("agentHost.agentGui.tuttiModePlan.issueStripDone", { done, total }),
-      jump: t("agentHost.agentGui.tuttiModePlan.issueStripJump")
     },
     tuttiModePlanLoadFailed: t("agentHost.agentGui.tuttiModePlan.loadFailed"),
     tuttiModePlanRetry: t("agentHost.agentGui.tuttiModePlan.retry"),
