@@ -169,6 +169,34 @@ without a frame is a failed refresh: a retained value may remain visible, but
 the UI must show the refresh failure rather than treating the old value as a
 new success.
 
+Desktop availability analytics reads the renderer's loaded managed-provider
+snapshot and must not turn a pageview or focus event into a daemon request. A
+stale visibility snapshot may reconcile through a non-forced tuttid status
+read; tuttid owns cache validity, credential-fingerprint checks, and
+single-flight probing. Forced detection is reserved for explicit provider
+refresh and the provider-scoped confirmation after an install, login, or
+update action. A confirmed new-conversation creation failure is the only
+analytics exception: Desktop force-refreshes only the exact target's provider,
+then reports the fresh availability snapshot with a failure-specific trigger.
+
+Cold workspace initialization may request all managed providers together so the
+first useful snapshot arrives quickly. tuttid may detect different providers in
+parallel, but it applies one process-wide limit to auth, version, and adapter
+probe subprocesses because a single provider can otherwise fan out into several
+CLI processes. Later visible-window stale reconciliation is best-effort
+background work and checks providers serially; another focus cannot overlap the
+same reconciliation run.
+
+Provider detection separates volatile readiness from stable executable facts.
+An ordinary read may reuse the full provider snapshot. A forced read bypasses
+that snapshot and rechecks current authentication/readiness, including the
+provider credential marker, but may reuse a successful CLI version or adapter
+launch result while the resolved executable fingerprint is unchanged. Failed
+version reads and failed adapter launches are never cached. OpenCode and
+Tutti Agent use their validated local credential files as the primary auth
+signal; malformed files may fall back to one CLI check. Cursor's single
+`about --format json` result supplies both auth and version when available.
+
 ## 3. Domain model
 
 ### 3.1 Session

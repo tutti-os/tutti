@@ -29,7 +29,7 @@ test("workspace lifecycle gives pageview and availability the same activation op
   startDesktopAgentAvailabilitySnapshotAnalytics({
     dependencies: { reporterService, storage: null },
     lifecycle,
-    async refreshStatuses() {
+    readStatuses() {
       return [
         {
           actions: [],
@@ -50,7 +50,8 @@ test("workspace lifecycle gives pageview and availability the same activation op
           }
         }
       ];
-    }
+    },
+    subscribeStatuses: () => () => {}
   });
 
   lifecycle.start();
@@ -62,13 +63,16 @@ test("workspace lifecycle gives pageview and availability the same activation op
   await flushAsyncWork();
 
   assert.deepEqual(
-    events.map((event) => [event.name, event.clientTS]),
-    [
-      ["app.pageview", 1_000],
-      ["agent.availability_snapshot", 1_000],
-      ["app.pageview", 2_000],
-      ["agent.availability_snapshot", 2_000]
-    ]
+    events
+      .filter((event) => event.name === "app.pageview")
+      .map((event) => event.clientTS),
+    [1_000, 2_000]
+  );
+  assert.deepEqual(
+    events
+      .filter((event) => event.name === "agent.availability_snapshot")
+      .map((event) => event.clientTS),
+    [1_000, 2_000]
   );
 });
 

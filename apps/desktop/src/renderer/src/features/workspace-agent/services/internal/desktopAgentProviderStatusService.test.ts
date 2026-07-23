@@ -2018,6 +2018,52 @@ test("a targeted ensure resolves before an older full scan and keeps its newer s
   assert.equal(service.getStatus("cursor")?.availability.status, "ready");
 });
 
+test("reconcileStatuses reuses an in-flight read without forcing daemon detection", async () => {
+  const requests: Array<{
+    providers: readonly WorkspaceAgentProvider[] | undefined;
+    refresh: boolean | undefined;
+  }> = [];
+  const firstStatusRequest = createDeferred<AgentProviderStatusListResponse>();
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: {
+      async getAgentProviderStatuses(request) {
+        requests.push({
+          providers: request?.providers,
+          refresh: request?.refresh
+        });
+        return firstStatusRequest.promise;
+      }
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  const firstRead = service.reconcileStatuses(["codex"]);
+  const secondRead = service.reconcileStatuses(["codex"]);
+
+  assert.deepEqual(requests, [{ providers: ["codex"], refresh: undefined }]);
+
+  firstStatusRequest.resolve(
+    createStatusResponse([
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "codex"
+      })
+    ])
+  );
+  await Promise.all([firstRead, secondRead]);
+
+  await service.reconcileStatuses(["codex"]);
+
+  assert.equal(service.getStatus("codex")?.availability.status, "ready");
+  assert.deepEqual(requests, [
+    { providers: ["codex"], refresh: undefined },
+    { providers: ["codex"], refresh: undefined }
+  ]);
+});
+
 test("refresh waits for an in-flight load and then requests a fresh status", async () => {
   const calls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
   const firstStatusRequest = createDeferred<AgentProviderStatusListResponse>();

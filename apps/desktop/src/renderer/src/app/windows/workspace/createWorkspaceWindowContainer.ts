@@ -234,8 +234,9 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     ? startDesktopAgentAvailabilitySnapshotAnalytics({
         dependencies: { reporterService },
         lifecycle: windowLifecycle,
-        refreshStatuses:
-          workspaceAgentServices.refreshManagedAgentProviderStatuses
+        readStatuses: workspaceAgentServices.readManagedAgentProviderStatuses,
+        subscribeStatuses:
+          workspaceAgentServices.subscribeManagedAgentProviderStatuses
       })
     : null;
   windowLifecycle.start();

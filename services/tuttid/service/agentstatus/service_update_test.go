@@ -156,7 +156,12 @@ func TestTuttiAgentVersionFloorPrecedesAdapterFailure(t *testing.T) {
 	spec := specs[0]
 	spec.AdapterBinaryNames = []string{"missing-adapter"}
 
-	status := service.statusForSpec(context.Background(), spec, service.now())
+	status := service.statusForSpec(
+		context.Background(),
+		spec,
+		service.now(),
+		statusDetectionOptions{},
+	)
 	if status.Availability.ReasonCode != "cli_version_unsupported" {
 		t.Fatalf("Availability = %#v, want CLI floor before adapter failure", status.Availability)
 	}

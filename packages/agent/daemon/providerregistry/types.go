@@ -110,6 +110,7 @@ type AuthMarkerParserKind string
 const (
 	AuthMarkerParserKindFileExists AuthMarkerParserKind = "file_exists"
 	AuthMarkerParserKindClaude     AuthMarkerParserKind = "claude"
+	AuthMarkerParserKindOpenCode   AuthMarkerParserKind = "opencode"
 	AuthMarkerParserKindTuttiToken AuthMarkerParserKind = "tutti_token"
 )
 

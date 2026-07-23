@@ -74,6 +74,9 @@ class FakeProviderStatusService implements IAgentProviderStatusService {
     this.ensureLoadedInputs[0] = input;
     return null;
   }
+  async reconcileStatuses(): Promise<null> {
+    return null;
+  }
   async runAction(
     provider: WorkspaceAgentProvider,
     actionId: string,

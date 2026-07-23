@@ -221,13 +221,17 @@ func TestParseCursorAuthStatusOutput(t *testing.T) {
 }
 
 func TestParseCursorAboutJSON(t *testing.T) {
-	auth, ok := parseCursorAboutJSON([]byte(`{
+	output := []byte(`{
 		"cliVersion": "2026.07.01-41b2de7",
 		"subscriptionTier": "Ultra",
 		"userEmail": "user@example.com"
-	}`))
+	}`)
+	auth, cliVersion, ok := parseCursorAboutJSONWithVersion(output)
 	if !ok {
-		t.Fatal("parseCursorAboutJSON() ok = false, want true")
+		t.Fatal("parseCursorAboutJSONWithVersion() ok = false, want true")
+	}
+	if cliVersion != "2026.07.01-41b2de7" {
+		t.Fatalf("cliVersion = %q, want 2026.07.01-41b2de7", cliVersion)
 	}
 	if auth.Status != AuthAuthenticated {
 		t.Fatalf("status = %q, want authenticated", auth.Status)
@@ -246,14 +250,17 @@ func TestParseCursorAboutJSON(t *testing.T) {
 }
 
 func TestParseCursorAboutText(t *testing.T) {
-	auth, ok := parseCursorAboutText([]byte(`About Cursor CLI
+	auth, cliVersion, ok := parseCursorAboutTextWithVersion([]byte(`About Cursor CLI
 
 CLI Version         2026.07.01-41b2de7
 Subscription Tier   Ultra
 User Email          user@example.com
 `))
 	if !ok {
-		t.Fatal("parseCursorAboutText() ok = false, want true")
+		t.Fatal("parseCursorAboutTextWithVersion() ok = false, want true")
+	}
+	if cliVersion != "2026.07.01-41b2de7" {
+		t.Fatalf("cliVersion = %q, want 2026.07.01-41b2de7", cliVersion)
 	}
 	if auth.AccountLabel != "Cursor Ultra · user@example.com" {
 		t.Fatalf("accountLabel = %q, want Cursor Ultra · user@example.com", auth.AccountLabel)
@@ -270,6 +277,8 @@ func TestParseOpenCodeAuthStatusOutput(t *testing.T) {
 		{output: "Status: authenticated", status: AuthAuthenticated, ok: true},
 		{output: "Not authenticated. Run opencode auth login.", status: AuthRequired, ok: true},
 		{output: "No providers are authenticated", status: AuthRequired, ok: true},
+		{output: "\x1b[0m\n└  0 credentials", status: AuthRequired, ok: true},
+		{output: "\x1b[0m\n└  2 credentials", status: AuthAuthenticated, ok: true},
 		{output: "", ok: false},
 		{output: "unexpected opencode error", ok: false},
 	} {

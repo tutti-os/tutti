@@ -9,10 +9,12 @@ import {
 } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import type {
+  AgentProviderStatusListResponse,
   Client,
   CollaborationRun,
   TuttidClient,
-  TuttidEventStreamClient
+  TuttidEventStreamClient,
+  WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import {
   createClient,
@@ -30,7 +32,6 @@ import type {
   IWorkspaceAgentActivityService,
   WorkspaceAgentActivityListMessagesInput
 } from "../workspaceAgentActivityService.interface.ts";
-import type { IAgentProviderStatusService } from "../agentProviderStatusService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../../workspace-user-project/index.ts";
 import {
   createWorkspaceAgentSessionEngineHost,
@@ -87,7 +88,12 @@ export interface WorkspaceAgentActivityServiceDependencies {
   reporterService?: Pick<IReporterService, "trackEvents">;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic"> &
     Partial<Pick<DesktopRuntimeApi, "getBackendConfig">>;
-  agentProviderStatusService?: Pick<IAgentProviderStatusService, "refresh">;
+  forceRefreshAgentProviderStatuses?: (
+    providers: WorkspaceAgentProvider[]
+  ) => Promise<AgentProviderStatusListResponse | null>;
+  resolveAgentTargetProvider?: (
+    agentTargetId: string
+  ) => WorkspaceAgentProvider | null;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
 
@@ -123,8 +129,11 @@ export class WorkspaceAgentActivityService
     super(dependencies);
     this.dependencies = dependencies;
     this.analytics = new WorkspaceAgentActivityAnalytics({
+      forceRefreshAgentProviderStatuses:
+        dependencies.forceRefreshAgentProviderStatuses,
       reporterNow: dependencies.reporterNow,
       reporterService: dependencies.reporterService,
+      resolveAgentTargetProvider: dependencies.resolveAgentTargetProvider,
       workspaceUserProjectService: dependencies.workspaceUserProjectService
     });
     this.queryOperations = new WorkspaceAgentActivityQueryOperations(
@@ -405,7 +414,14 @@ export class WorkspaceAgentActivityService
   async createSession(
     input: Parameters<AgentActivityAdapter["createSession"]>[0]
   ): Promise<AgentActivitySession> {
-    return this.mutationOperations.createSession(input);
+    try {
+      return await this.mutationOperations.createSession(input);
+    } catch (error) {
+      this.analytics.trackSessionCreateFailure({
+        agentTargetId: input.agentTargetId
+      });
+      throw error;
+    }
   }
 
   async activateSession(

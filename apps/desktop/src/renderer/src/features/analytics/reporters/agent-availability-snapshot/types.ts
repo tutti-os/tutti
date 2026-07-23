@@ -2,6 +2,7 @@ import type { AnalyticsReporterParams } from "../baseReporter.ts";
 
 export type AgentAvailabilitySnapshotTrigger =
   | "config_change"
+  | "conversation_start_failed"
   | "daily_rollover"
   | "env_detected"
   | "resume";

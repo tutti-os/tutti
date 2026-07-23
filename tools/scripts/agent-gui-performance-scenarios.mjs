@@ -14,6 +14,7 @@ import {
 } from "./agent-gui-layout-performance-scenarios.mjs";
 import { composerInputScenario } from "./agent-gui-composer-performance-scenarios.mjs";
 import { virtualizedScrollLocatorScenario } from "./agent-gui-scroll-performance-scenario.mjs";
+import { providerStatusFocusRefreshScenario } from "./agent-provider-status-performance-scenario.mjs";
 
 export const agentGuiPerformanceScenarios = [
   providerSwitchScenario,
@@ -25,7 +26,8 @@ export const agentGuiPerformanceScenarios = [
   composerInputScenario,
   composerOverflowResizeScenario,
   workbenchWindowLifecycleScenario,
-  desktopWindowStateScenario
+  desktopWindowStateScenario,
+  providerStatusFocusRefreshScenario
 ];
 
 export function resolveAgentGuiPerformanceScenario(id) {

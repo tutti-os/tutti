@@ -110,6 +110,9 @@ func TestOpenCodeStatusSpecComesFromProviderDescriptor(t *testing.T) {
 		!reflect.DeepEqual(spec.AuthStatusCommand, []string{"auth", "list"}) {
 		t.Fatalf("status commands = %#v %#v", spec.AdapterCommand, spec.AuthStatusCommand)
 	}
+	if spec.AuthMarkerParserKind != providerregistry.AuthMarkerParserKindOpenCode {
+		t.Fatalf("AuthMarkerParserKind = %q, want opencode", spec.AuthMarkerParserKind)
+	}
 	if spec.Install.Kind != InstallerKindOfficialScript ||
 		spec.Install.ScriptURL != "https://opencode.ai/install" ||
 		spec.Install.ScriptShell != "bash" {
@@ -158,6 +161,7 @@ func TestAuthStrategiesProjectFromProviderDescriptor(t *testing.T) {
 		providerregistry.CodexProviderID,
 		providerregistry.ClaudeCodeProviderID,
 		providerregistry.CursorProviderID,
+		providerregistry.OpenCodeProviderID,
 		providerregistry.TuttiAgentProviderID,
 	} {
 		descriptor, ok := providerregistry.Find(provider)

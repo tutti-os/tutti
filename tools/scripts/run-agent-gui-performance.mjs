@@ -29,6 +29,7 @@ import {
   agentGuiPerformanceScenarios,
   resolveAgentGuiPerformanceScenario
 } from "./agent-gui-performance-scenarios.mjs";
+import { startAllProcessTimeProfile } from "./all-process-time-profile.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(scriptDirectory, "..", "..");
@@ -79,9 +80,11 @@ export async function main(argv) {
   const reportJSONPath = join(outputDirectory, "report.json");
   const reportMarkdownPath = join(outputDirectory, "report.md");
   const desktopLogPath = join(outputDirectory, "desktop.log");
+  const timeProfilePath = join(outputDirectory, "time-profile.trace");
   let desktopProcess = null;
   let pageClient = null;
   let browserClient = null;
+  let timeProfileCapture = null;
   let primaryError = null;
 
   log(`source snapshot: ${basename(options.sourceDatabase)}`);
@@ -137,6 +140,15 @@ export async function main(argv) {
     });
     log(`scenario ${scenario.id}: ${scenario.describe(prepared)}`);
 
+    if (options.allProcessTimeProfile) {
+      log("starting all-process Time Profiler");
+      timeProfileCapture = await startAllProcessTimeProfile({
+        cwd: workspaceRoot,
+        outputPath: timeProfilePath,
+        timeoutMs: 30_000
+      });
+    }
+
     await browserClient.send("Tracing.start", {
       categories: defaultTraceCategories,
       options: "sampling-frequency=10000",
@@ -144,13 +156,30 @@ export async function main(argv) {
     });
 
     let scenarioResult;
+    let scenarioError = null;
+    let captureError = null;
     try {
       scenarioResult = await scenario.execute(context, prepared, {
         timeoutMs: scenarioReadyTimeoutMs
       });
+    } catch (error) {
+      scenarioError = error;
     } finally {
-      await stopTrace(browserClient, tracePath);
+      try {
+        await stopTrace(browserClient, tracePath);
+      } catch (error) {
+        captureError = error;
+      }
+      if (timeProfileCapture) {
+        try {
+          await timeProfileCapture.stop();
+        } catch (error) {
+          captureError ??= error;
+        }
+      }
     }
+    if (scenarioError) throw scenarioError;
+    if (captureError) throw captureError;
 
     const summary = await analyzeElectronTrace({
       tracePath,
@@ -169,6 +198,12 @@ export async function main(argv) {
       sourceProjectCount: snapshotInfo.projectCount,
       clearedRecoveryRows: snapshotInfo.clearedRecoveryRows
     };
+    if (timeProfileCapture) {
+      summary.run.details.push({
+        label: "All-process Time Profiler",
+        value: basename(timeProfilePath)
+      });
+    }
     applyScenarioAssessment(summary, scenario.assessTrace?.(summary));
     await writeFile(reportJSONPath, `${JSON.stringify(summary, null, 2)}\n`);
     await writeFile(
@@ -184,12 +219,11 @@ export async function main(argv) {
     );
     log(`report: ${reportMarkdownPath}`);
     log(`trace: ${tracePath}`);
-    if (summary.verdict.status === "failed") {
+    if (timeProfileCapture) log(`time profile: ${timeProfilePath}`);
+    const failureReasons = performanceRunFailureReasons(summary);
+    if (failureReasons.length > 0) {
       throw new Error(
-        `${scenario.id} performance gate failed: ${summary.run.assertions
-          .filter((assertion) => !assertion.passed)
-          .map((assertion) => assertion.name)
-          .join(", ")}`
+        `${scenario.id} performance gate failed: ${failureReasons.join(", ")}`
       );
     }
   } catch (error) {
@@ -198,6 +232,14 @@ export async function main(argv) {
   } finally {
     pageClient?.close();
     browserClient?.close();
+    if (timeProfileCapture) {
+      try {
+        await timeProfileCapture.stop();
+      } catch (error) {
+        if (!primaryError) process.exitCode = 1;
+        log(`Time Profiler cleanup warning: ${error.message}`);
+      }
+    }
     if (desktopProcess) {
       await stopProcessTree(desktopProcess);
     }
@@ -404,6 +446,19 @@ export function applyScenarioAssessment(summary, assessment) {
           reason: `${failedAssertions.length} of ${summary.run.assertions.length} scenario assertions failed`
         };
   return summary;
+}
+
+export function performanceRunFailureReasons(summary) {
+  const failedAssertions = (summary.run?.assertions ?? [])
+    .filter((assertion) => !assertion.passed)
+    .map((assertion) => assertion.name);
+  if (failedAssertions.length > 0) {
+    return failedAssertions;
+  }
+  if (summary.verdict?.status === "failed") {
+    return [summary.verdict.reason ?? "trace assessment failed"];
+  }
+  return [];
 }
 
 async function buildDaemon(outputPath) {
@@ -648,6 +703,8 @@ function parseArgs(argv) {
       );
     } else if (arg === "--keep-runtime") {
       options.keepRuntime = true;
+    } else if (arg === "--all-process-time-profile") {
+      options.allProcessTimeProfile = true;
     } else {
       throw new Error(`unknown option: ${arg}`);
     }
@@ -692,7 +749,7 @@ function log(message) {
 
 function printUsage() {
   process.stdout.write(
-    `Run an isolated, report-only AgentGUI performance scenario.\n\nUsage:\n  pnpm perf:agent-gui\n  pnpm perf:agent-gui -- --scenario session-switch\n  pnpm perf:agent-gui -- --list-scenarios\n\nOptions:\n  --scenario <id>          Scenario. Default: provider-switch\n  --list-scenarios         Print available scenario ids\n  --source-db <path>       Source dev DB. Default: ~/.tutti-dev/tuttid.db\n  --output <directory>     Report/trace output directory under .tmp by default\n  --from-target-id <id>    Source Agent target for provider scenarios\n  --to-target-id <id>      Target Agent target for provider scenarios\n  --min-ms <milliseconds>  Long-event threshold. Default: 16\n  --keep-runtime           Keep isolated DB and Electron userData for debugging\n`
+    `Run an isolated, report-only AgentGUI performance scenario.\n\nUsage:\n  pnpm perf:agent-gui\n  pnpm perf:agent-gui -- --scenario session-switch\n  pnpm perf:agent-gui -- --list-scenarios\n\nOptions:\n  --scenario <id>          Scenario. Default: provider-switch\n  --list-scenarios         Print available scenario ids\n  --source-db <path>       Source dev DB. Default: ~/.tutti-dev/tuttid.db\n  --output <directory>     Report/trace output directory under .tmp by default\n  --from-target-id <id>    Source Agent target for provider scenarios\n  --to-target-id <id>      Target Agent target for provider scenarios\n  --min-ms <milliseconds>  Long-event threshold. Default: 16\n  --all-process-time-profile\n                           Also record macOS Time Profiler for all processes\n  --keep-runtime           Keep isolated DB and Electron userData for debugging\n`
   );
   process.stdout.write(
     "\n--min-ms applies to renderer-main RunTask duration, not all trace events.\n"

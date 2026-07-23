@@ -213,6 +213,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		ClaudeCodeRuntimeDir: filepath.Join(agentRuntimeDir, "claude-code"),
 		RunOutcomes:          runOutcomes,
 		StatusCache:          agentstatusservice.NewProviderStatusCache(),
+		CLIVersionCache:      agentstatusservice.NewCLIVersionCache(),
+		AdapterProbeCache:    agentstatusservice.NewAdapterProbeCache(),
+		DetectionCommands:    agentstatusservice.NewDetectionCommandLimiter(4),
 		UpdateCache:          agentstatusservice.NewProviderUpdateCache(),
 	}
 	accountService := accountservice.NewService("")

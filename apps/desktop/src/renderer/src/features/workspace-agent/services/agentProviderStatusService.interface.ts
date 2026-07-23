@@ -76,6 +76,14 @@ export interface IAgentProviderStatusService {
      */
     includeUpdates?: boolean;
   }): Promise<AgentProviderStatusListResponse | null>;
+  /**
+   * Reconciles the renderer snapshot with tuttid without bypassing tuttid's
+   * provider-status cache. Stale visibility checks use this path; analytics
+   * reuses ensureLoaded, and explicit user actions use refresh instead.
+   */
+  reconcileStatuses(
+    providers?: WorkspaceAgentProvider[]
+  ): Promise<AgentProviderStatusListResponse | null>;
   runAction(
     provider: WorkspaceAgentProvider,
     actionId: string,

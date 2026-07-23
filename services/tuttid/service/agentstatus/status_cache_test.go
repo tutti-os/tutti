@@ -3,6 +3,9 @@ package agentstatus
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -39,6 +42,50 @@ func TestProviderStatusCacheReusesProviderAcrossRequestShapes(t *testing.T) {
 	}
 	if got := authCalls.Load(); got <= probesAfterFirst {
 		t.Fatalf("auth probes after force refresh = %d, want > %d", got, probesAfterFirst)
+	}
+}
+
+func TestForcedProviderStatusRefreshRechecksAuthButReusesStableCLIVersion(t *testing.T) {
+	tempDir := t.TempDir()
+	binaryPath := filepath.Join(tempDir, "cursor-agent")
+	versionCallsPath := filepath.Join(tempDir, "version-calls")
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = \"--version\" ]; then\n" +
+		"  echo call >> " + versionCallsPath + "\n" +
+		"  echo 'cursor-agent 1.2.3'\n" +
+		"fi\n"
+	if err := os.WriteFile(binaryPath, []byte(script), 0o700); err != nil {
+		t.Fatalf("write cursor test CLI: %v", err)
+	}
+
+	var authCalls atomic.Int32
+	service := testService(func(string) (string, error) {
+		return binaryPath, nil
+	}, map[string]bool{})
+	service.StatusCache = NewProviderStatusCache()
+	service.CLIVersionCache = NewCLIVersionCache()
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		authCalls.Add(1)
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	for range 2 {
+		if _, err := service.List(context.Background(), ListInput{
+			Providers:    []string{"cursor"},
+			ForceRefresh: true,
+		}); err != nil {
+			t.Fatalf("forced List() error = %v", err)
+		}
+	}
+	if got := authCalls.Load(); got != 2 {
+		t.Fatalf("auth checks = %d, want every forced refresh", got)
+	}
+	versionCalls, err := os.ReadFile(versionCallsPath)
+	if err != nil {
+		t.Fatalf("read version calls: %v", err)
+	}
+	if got := len(strings.Fields(string(versionCalls))); got != 1 {
+		t.Fatalf("version checks = %d, want stable binary checked once", got)
 	}
 }
 

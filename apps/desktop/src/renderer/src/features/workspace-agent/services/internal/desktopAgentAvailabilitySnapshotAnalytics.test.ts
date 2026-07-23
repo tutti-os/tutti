@@ -8,21 +8,21 @@ import type {
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
 import { startDesktopAgentAvailabilitySnapshotAnalytics } from "./desktopAgentAvailabilitySnapshotAnalytics.ts";
 
-test("availability analytics waits for refreshed provider information", async () => {
+test("availability analytics waits for current provider information", async () => {
   const events: ReporterEventInput[] = [];
   const lifecycle = createLifecycleHarness();
-  const refresh = deferred<readonly AgentProviderStatus[] | null>();
+  const statuses = createStatusSource();
   startDesktopAgentAvailabilitySnapshotAnalytics({
     dependencies: createDependencies(events),
     lifecycle,
-    refreshStatuses: () => refresh.promise
+    readStatuses: statuses.read,
+    subscribeStatuses: statuses.subscribe
   });
 
   lifecycle.emit({ kind: "opened", occurredAt: 1_000 });
-  await Promise.resolve();
   assert.equal(events.length, 0);
 
-  refresh.resolve([createReadyStatus("codex")]);
+  statuses.set([createReadyStatus("codex")]);
   await flushAsyncWork();
 
   const event = events.at(0);
@@ -34,38 +34,30 @@ test("availability analytics waits for refreshed provider information", async ()
   assert.equal(events.length, 1);
 });
 
-test("availability analytics coalesces activations while a refresh is running", async () => {
+test("availability analytics preserves activations while waiting for a snapshot", async () => {
   const events: ReporterEventInput[] = [];
   const lifecycle = createLifecycleHarness();
-  const refreshes = [
-    deferred<readonly AgentProviderStatus[] | null>(),
-    deferred<readonly AgentProviderStatus[] | null>()
-  ];
-  let refreshCount = 0;
+  const statuses = createStatusSource();
   startDesktopAgentAvailabilitySnapshotAnalytics({
     dependencies: createDependencies(events),
     lifecycle,
-    refreshStatuses: () => refreshes[refreshCount++]!.promise
+    readStatuses: statuses.read,
+    subscribeStatuses: statuses.subscribe
   });
 
   lifecycle.emit({ kind: "opened", occurredAt: 1_000 });
   lifecycle.emit({ kind: "focused", occurredAt: 2_000 });
   lifecycle.emit({ kind: "focused", occurredAt: 3_000 });
-  assert.equal(refreshCount, 1);
 
-  refreshes[0]!.resolve([createReadyStatus("codex")]);
-  await flushAsyncWork();
-  assert.equal(refreshCount, 2);
-
-  refreshes[1]!.resolve([createUnavailableStatus("codex")]);
+  statuses.set([createUnavailableStatus("codex")]);
   await flushAsyncWork();
 
-  assert.equal(refreshCount, 2);
   assert.deepEqual(
     events.map((event) => [event.clientTS, event.params?.trigger]),
     [
       [1_000, "env_detected"],
-      [3_000, "config_change"]
+      [2_000, "env_detected"],
+      [3_000, "env_detected"]
     ]
   );
 });
@@ -76,9 +68,10 @@ test("availability analytics reports unchanged status for every pageview opportu
   startDesktopAgentAvailabilitySnapshotAnalytics({
     dependencies: createDependencies(events),
     lifecycle,
-    async refreshStatuses() {
+    readStatuses() {
       return [createReadyStatus("codex")];
-    }
+    },
+    subscribeStatuses: () => () => {}
   });
 
   lifecycle.emit({ kind: "opened", occurredAt: 1_000 });
@@ -98,16 +91,17 @@ test("availability analytics reports unchanged status for every pageview opportu
 test("availability analytics does not report after disposal", async () => {
   const events: ReporterEventInput[] = [];
   const lifecycle = createLifecycleHarness();
-  const refresh = deferred<readonly AgentProviderStatus[] | null>();
+  const statuses = createStatusSource();
   const controller = startDesktopAgentAvailabilitySnapshotAnalytics({
     dependencies: createDependencies(events),
     lifecycle,
-    refreshStatuses: () => refresh.promise
+    readStatuses: statuses.read,
+    subscribeStatuses: statuses.subscribe
   });
 
   lifecycle.emit({ kind: "opened", occurredAt: 1_000 });
   controller.dispose();
-  refresh.resolve([createReadyStatus("codex")]);
+  statuses.set([createReadyStatus("codex")]);
   await flushAsyncWork();
 
   assert.deepEqual(events, []);
@@ -142,12 +136,22 @@ function createLifecycleHarness(): WorkspaceWindowLifecycle & {
   };
 }
 
-function deferred<T>() {
-  let resolve = (_value: T) => {};
-  const promise = new Promise<T>((nextResolve) => {
-    resolve = nextResolve;
-  });
-  return { promise, resolve };
+function createStatusSource() {
+  const listeners = new Set<() => void>();
+  let value: readonly AgentProviderStatus[] | null = null;
+  return {
+    read: () => value,
+    set(nextValue: readonly AgentProviderStatus[]) {
+      value = nextValue;
+      for (const listener of [...listeners]) {
+        listener();
+      }
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    }
+  };
 }
 
 function createReadyStatus(

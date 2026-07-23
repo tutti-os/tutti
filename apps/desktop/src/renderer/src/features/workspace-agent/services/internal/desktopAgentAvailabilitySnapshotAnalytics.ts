@@ -21,38 +21,33 @@ export interface DesktopAgentAvailabilitySnapshotAnalyticsController {
 export function startDesktopAgentAvailabilitySnapshotAnalytics(input: {
   dependencies?: DesktopAgentAvailabilitySnapshotAnalyticsDependencies;
   lifecycle: WorkspaceWindowLifecycle;
-  refreshStatuses(): Promise<readonly AgentProviderStatus[] | null>;
+  readStatuses(): readonly AgentProviderStatus[] | null;
+  subscribeStatuses(listener: () => void): () => void;
 }): DesktopAgentAvailabilitySnapshotAnalyticsController {
   const telemetry = new AgentAvailabilitySnapshotTelemetry(input.dependencies);
   let disposed = false;
-  let pendingActivation: WorkspaceWindowLifecycleEvent | null = null;
-  let running = false;
+  const pendingActivations: WorkspaceWindowLifecycleEvent[] = [];
 
-  const drain = async (): Promise<void> => {
-    running = true;
-    while (!disposed && pendingActivation) {
-      const activation = pendingActivation;
-      pendingActivation = null;
-      try {
-        const statuses = await input.refreshStatuses();
-        if (!disposed && statuses) {
-          telemetry.reportStatuses(statuses, activation.occurredAt);
-        }
-      } catch {
-        // Status refresh and analytics are best effort on window activation.
-      }
+  const reportPendingActivations = (): void => {
+    if (disposed || pendingActivations.length === 0) {
+      return;
     }
-    running = false;
+    const statuses = input.readStatuses();
+    if (!statuses) {
+      return;
+    }
+    for (const activation of pendingActivations.splice(0)) {
+      telemetry.reportStatuses(statuses, activation.occurredAt);
+    }
   };
 
+  const unsubscribeStatuses = input.subscribeStatuses(reportPendingActivations);
   const unsubscribeLifecycle = input.lifecycle.subscribe((event) => {
     if (event.kind !== "opened" && event.kind !== "focused") {
       return;
     }
-    pendingActivation = event;
-    if (!running) {
-      void drain();
-    }
+    pendingActivations.push(event);
+    reportPendingActivations();
   });
 
   return {
@@ -61,7 +56,8 @@ export function startDesktopAgentAvailabilitySnapshotAnalytics(input: {
         return;
       }
       disposed = true;
-      pendingActivation = null;
+      pendingActivations.length = 0;
+      unsubscribeStatuses();
       unsubscribeLifecycle();
     }
   };

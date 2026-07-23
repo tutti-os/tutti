@@ -16,6 +16,7 @@ Use the focused runtime index or open one area directly:
 
 - [Agent Providers And Setup](./agent-provider-setup.md): Provider discovery, installation, authentication, models, configuration, and runtime reachability.
   Includes extension command/Skill palette hydration failures.
+  Also covers focus-driven provider CLI scans and CPU spikes.
 - [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, activation, planning-mode classification, Tutti workflow response contracts, loading, cancel, goal controls, restore, file-change undo, rail projection, realtime completion provenance, event updates, imports, and performance.
   Includes shared-device recovery that looks terminal while the host is still retrying.
 - [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.

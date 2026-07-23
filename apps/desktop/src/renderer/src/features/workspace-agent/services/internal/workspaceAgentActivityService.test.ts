@@ -200,6 +200,119 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
   });
 });
 
+test("WorkspaceAgentActivityService force-refreshes only the failed conversation provider before reporting availability", async () => {
+  const refreshCalls: string[][] = [];
+  const reporterEvents: ReporterEventInput[] = [];
+  const service = new WorkspaceAgentActivityService({
+    forceRefreshAgentProviderStatuses: async (providers) => {
+      refreshCalls.push(providers);
+      return {
+        capturedAt: "2026-07-22T12:00:00.000Z",
+        defaultProvider: "cursor",
+        providers: [
+          {
+            actions: [],
+            adapter: { command: [], installed: true },
+            auth: { status: "required" },
+            availability: { status: "auth_required" },
+            cli: { installed: true },
+            provider: "cursor",
+            update: {
+              capability: "unsupported",
+              currentVersion: null,
+              lastCheckedAt: null,
+              latestVersion: null,
+              reasonCode: null,
+              source: null,
+              unsupportedReason: "update_strategy_unsupported",
+              updateAvailable: null
+            }
+          }
+        ]
+      };
+    },
+    reporterNow: () => 1_749_124_800_000,
+    reporterService: {
+      async trackEvents(events) {
+        reporterEvents.push(...events);
+      }
+    },
+    resolveAgentTargetProvider: (agentTargetId) =>
+      agentTargetId === "target-cursor" ? "cursor" : null,
+    tuttidClient: {
+      createWorkspaceAgentSession: async () => {
+        throw new Error("provider launch failed");
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  await assert.rejects(
+    service.createSession({
+      agentSessionId: "session-failed",
+      agentTargetId: "target-cursor",
+      clientSubmitId: "submit-failed",
+      initialContent: [{ type: "text", text: "hello" }],
+      workspaceId: "ws-1"
+    }),
+    /provider launch failed/
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(refreshCalls, [["cursor"]]);
+  const snapshot = reporterEvents.find(
+    (event) => event.name === "agent.availability_snapshot"
+  );
+  assert.deepEqual(snapshot?.params, {
+    authenticated: false,
+    cli_installed: true,
+    error_code: "agent_error_none",
+    error_message: "",
+    is_available: false,
+    provider: "cursor",
+    trigger: "conversation_start_failed",
+    unavailable_reason: "not_authenticated"
+  });
+});
+
+test("WorkspaceAgentActivityService does not report a cached availability snapshot when the forced refresh fails", async () => {
+  const reporterEvents: ReporterEventInput[] = [];
+  const service = new WorkspaceAgentActivityService({
+    forceRefreshAgentProviderStatuses: async () => null,
+    reporterService: {
+      async trackEvents(events) {
+        reporterEvents.push(...events);
+      }
+    },
+    resolveAgentTargetProvider: () => "cursor",
+    tuttidClient: {
+      createWorkspaceAgentSession: async () => {
+        throw new Error("provider launch failed");
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  await assert.rejects(
+    service.createSession({
+      agentSessionId: "session-failed",
+      agentTargetId: "target-cursor",
+      clientSubmitId: "submit-failed",
+      initialContent: [{ type: "text", text: "hello" }],
+      workspaceId: "ws-1"
+    }),
+    /provider launch failed/
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(
+    reporterEvents.some(
+      (event) => event.name === "agent.availability_snapshot"
+    ),
+    false
+  );
+});
+
 test("WorkspaceAgentActivityService confirms engine activation from the realtime session upsert", async () => {
   const createRequests: unknown[] = [];
   const service = new WorkspaceAgentActivityService({

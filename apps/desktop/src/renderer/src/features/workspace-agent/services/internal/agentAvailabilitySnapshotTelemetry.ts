@@ -58,11 +58,23 @@ export class AgentAvailabilitySnapshotTelemetry {
         currentSignature: signature,
         previous
       });
-      // State classifies the next snapshot; it does not suppress a pageview
-      // opportunity when the provider state is unchanged.
-      this.writeState(status.provider, { date, signature });
-      void this.report({ ...params, trigger }, now);
+      this.reportStatus(status, trigger, now);
     }
+  }
+
+  reportStatus(
+    status: AgentProviderStatus,
+    trigger: AgentAvailabilitySnapshotTrigger,
+    occurredAt: number = this.now()
+  ): void {
+    const params = buildAvailabilitySnapshotParams(status, trigger);
+    // State classifies the next snapshot; it does not suppress a pageview or
+    // failure-diagnostic opportunity when the provider state is unchanged.
+    this.writeState(status.provider, {
+      date: localDateKey(occurredAt),
+      signature: snapshotSignature(params)
+    });
+    void this.report(params, occurredAt);
   }
 
   private async report(

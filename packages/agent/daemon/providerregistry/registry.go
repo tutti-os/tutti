@@ -321,7 +321,7 @@ func Validate(descriptor ProviderDescriptor) error {
 		return fmt.Errorf("provider %q auth output parser kind %q is unsupported", providerID, descriptor.Status.AuthOutputParserKind)
 	}
 	switch descriptor.Status.AuthMarkerParserKind {
-	case AuthMarkerParserKindFileExists, AuthMarkerParserKindClaude, AuthMarkerParserKindTuttiToken:
+	case AuthMarkerParserKindFileExists, AuthMarkerParserKindClaude, AuthMarkerParserKindOpenCode, AuthMarkerParserKindTuttiToken:
 	default:
 		return fmt.Errorf("provider %q auth marker parser kind %q is unsupported", providerID, descriptor.Status.AuthMarkerParserKind)
 	}

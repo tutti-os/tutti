@@ -70,9 +70,8 @@ export interface WorkspaceAgentServiceRegistrationResult {
   agentEnvService: IAgentEnvService;
   agentsService: IAgentsService;
   agentProviderStatusService: IAgentProviderStatusService;
-  refreshManagedAgentProviderStatuses(): Promise<
-    readonly AgentProviderStatus[] | null
-  >;
+  readManagedAgentProviderStatuses(): readonly AgentProviderStatus[] | null;
+  subscribeManagedAgentProviderStatuses(listener: () => void): () => void;
   agentQuickPromptService: AgentQuickPromptService;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   dispose(): void;
@@ -110,14 +109,13 @@ export function registerWorkspaceAgentServices(
   const managedProviderSet = new Set<WorkspaceAgentProvider>(
     desktopManagedAgentProviders
   );
-  const refreshManagedAgentProviderStatuses = async () => {
-    const response = await agentProviderStatusService.refreshStatuses([
-      ...desktopManagedAgentProviders
-    ]);
-    return (
-      response?.providers.filter((status) =>
-        managedProviderSet.has(status.provider)
-      ) ?? null
+  const readManagedAgentProviderStatuses = () => {
+    const snapshot = agentProviderStatusService.getSnapshot();
+    if (!snapshot.capturedAt) {
+      return null;
+    }
+    return snapshot.statuses.filter((status) =>
+      managedProviderSet.has(status.provider)
     );
   };
   startManagedAgentInstallBootstraps(agentProviderStatusService);
@@ -143,7 +141,10 @@ export function registerWorkspaceAgentServices(
   registry.registerInstance(IAgentQuickPromptService, agentQuickPromptService);
   const workspaceAgentActivityService = new WorkspaceAgentActivityService({
     ...input,
-    agentProviderStatusService
+    forceRefreshAgentProviderStatuses: (providers) =>
+      agentProviderStatusService.refreshStatuses(providers),
+    resolveAgentTargetProvider: (agentTargetId) =>
+      agentsService.getAgentTarget({ agentTargetId })?.provider ?? null
   });
   registry.registerInstance(
     IWorkspaceAgentActivityService,
@@ -161,7 +162,9 @@ export function registerWorkspaceAgentServices(
     agentEnvService,
     agentsService,
     agentProviderStatusService,
-    refreshManagedAgentProviderStatuses,
+    readManagedAgentProviderStatuses,
+    subscribeManagedAgentProviderStatuses: (listener) =>
+      agentProviderStatusService.subscribe(listener),
     agentQuickPromptService,
     workspaceAgentActivityService,
     dispose() {

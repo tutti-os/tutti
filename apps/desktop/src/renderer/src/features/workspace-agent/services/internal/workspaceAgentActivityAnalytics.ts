@@ -1,4 +1,8 @@
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
+import type {
+  AgentProviderStatusListResponse,
+  WorkspaceAgentProvider
+} from "@tutti-os/client-tuttid-ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../../workspace-user-project/index.ts";
 import type { IWorkspaceAgentActivityService } from "../workspaceAgentActivityService.interface.ts";
@@ -9,10 +13,17 @@ import {
   resolveAgentSessionSource
 } from "./agentSessionStartedAnalytics.ts";
 import { resolveComposerPermissionMode } from "./desktopAgentHostProjection.ts";
+import { AgentAvailabilitySnapshotTelemetry } from "./agentAvailabilitySnapshotTelemetry.ts";
 
 interface WorkspaceAgentActivityAnalyticsDependencies {
+  forceRefreshAgentProviderStatuses?: (
+    providers: WorkspaceAgentProvider[]
+  ) => Promise<AgentProviderStatusListResponse | null>;
   reporterNow?: () => number;
   reporterService?: Pick<IReporterService, "trackEvents">;
+  resolveAgentTargetProvider?: (
+    agentTargetId: string
+  ) => WorkspaceAgentProvider | null;
   workspaceUserProjectService?: Pick<
     IWorkspaceUserProjectService,
     "isNoProjectPath"
@@ -20,6 +31,7 @@ interface WorkspaceAgentActivityAnalyticsDependencies {
 }
 
 export class WorkspaceAgentActivityAnalytics {
+  private readonly availabilitySnapshotTelemetry: AgentAvailabilitySnapshotTelemetry;
   private readonly dependencies: WorkspaceAgentActivityAnalyticsDependencies;
   private readonly messageSentTracker: ReturnType<
     typeof createAgentMessageSentTracker
@@ -30,8 +42,37 @@ export class WorkspaceAgentActivityAnalytics {
 
   constructor(dependencies: WorkspaceAgentActivityAnalyticsDependencies) {
     this.dependencies = dependencies;
+    this.availabilitySnapshotTelemetry = new AgentAvailabilitySnapshotTelemetry(
+      {
+        now: dependencies.reporterNow,
+        reporterService: dependencies.reporterService
+      }
+    );
     this.messageSentTracker = createAgentMessageSentTracker(dependencies);
     this.sessionStartedTracker = createAgentSessionStartedTracker(dependencies);
+  }
+
+  trackSessionCreateFailure(input: { agentTargetId?: string | null }): void {
+    const agentTargetId = input.agentTargetId?.trim() ?? "";
+    const provider = agentTargetId
+      ? this.dependencies.resolveAgentTargetProvider?.(agentTargetId)
+      : null;
+    const forceRefresh = this.dependencies.forceRefreshAgentProviderStatuses;
+    if (!provider || !forceRefresh) {
+      return;
+    }
+    runBestEffortAnalytics(async () => {
+      const response = await forceRefresh([provider]);
+      const freshStatus = response?.providers.find(
+        (status) => status.provider === provider
+      );
+      if (freshStatus) {
+        this.availabilitySnapshotTelemetry.reportStatus(
+          freshStatus,
+          "conversation_start_failed"
+        );
+      }
+    });
   }
 
   trackEngineActivation(

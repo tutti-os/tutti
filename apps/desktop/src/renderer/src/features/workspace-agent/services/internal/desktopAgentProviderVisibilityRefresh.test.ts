@@ -8,13 +8,14 @@ import type {
 import { desktopManagedAgentProviders } from "./desktopManagedAgentProviders.ts";
 import { bindDesktopManagedAgentProviderVisibilityRefresh } from "./desktopAgentProviderVisibilityRefresh.ts";
 
-test("managed provider refresh follows visible window activations", () => {
-  const refreshCalls: unknown[] = [];
+test("managed provider reconciliation serializes providers for visible window activations", async () => {
+  const reconcileCalls: unknown[] = [];
   const lifecycle = createLifecycleHarness();
   const dispose = bindDesktopManagedAgentProviderVisibilityRefresh(
     {
-      async refresh(providers) {
-        refreshCalls.push(providers);
+      async reconcileStatuses(providers) {
+        reconcileCalls.push(providers);
+        return null;
       }
     },
     lifecycle,
@@ -23,6 +24,7 @@ test("managed provider refresh follows visible window activations", () => {
 
   lifecycle.emit({ kind: "opened", occurredAt: 1_000 });
   lifecycle.emit({ kind: "focused", occurredAt: 2_000 });
+  await flushAsyncWork();
   lifecycle.setSnapshot({ focused: false, visibility: "hidden" });
   lifecycle.emit({ kind: "focused", occurredAt: 3_000 });
   lifecycle.setSnapshot({ focused: false, visibility: "visible" });
@@ -31,17 +33,20 @@ test("managed provider refresh follows visible window activations", () => {
     occurredAt: 4_000,
     visibility: "visible"
   });
+  await flushAsyncWork();
   dispose();
   lifecycle.emit({ kind: "focused", occurredAt: 5_000 });
 
-  assert.deepEqual(refreshCalls, [
-    [...desktopManagedAgentProviders],
-    [...desktopManagedAgentProviders]
-  ]);
+  assert.deepEqual(
+    reconcileCalls,
+    [...desktopManagedAgentProviders, ...desktopManagedAgentProviders].map(
+      (provider) => [provider]
+    )
+  );
 });
 
-test("managed provider refresh preserves a fresh application snapshot", () => {
-  const refreshCalls: unknown[] = [];
+test("managed provider reconciliation preserves a fresh application snapshot", async () => {
+  const reconcileCalls: unknown[] = [];
   const lifecycle = createLifecycleHarness();
   bindDesktopManagedAgentProviderVisibilityRefresh(
     {
@@ -55,8 +60,9 @@ test("managed provider refresh preserves a fresh application snapshot", () => {
           statuses: []
         };
       },
-      async refresh(providers) {
-        refreshCalls.push(providers);
+      async reconcileStatuses(providers) {
+        reconcileCalls.push(providers);
+        return null;
       }
     },
     lifecycle,
@@ -67,8 +73,36 @@ test("managed provider refresh preserves a fresh application snapshot", () => {
     kind: "focused",
     occurredAt: Date.parse("2026-07-16T06:00:00Z")
   });
+  await flushAsyncWork();
 
-  assert.deepEqual(refreshCalls, []);
+  assert.deepEqual(reconcileCalls, []);
+});
+
+test("managed provider reconciliation stops scheduling when the window hides", async () => {
+  const lifecycle = createLifecycleHarness();
+  const reconcileCalls: unknown[] = [];
+  const firstProvider = deferred<void>();
+  bindDesktopManagedAgentProviderVisibilityRefresh(
+    {
+      async reconcileStatuses(providers) {
+        reconcileCalls.push(providers);
+        if (reconcileCalls.length === 1) {
+          await firstProvider.promise;
+        }
+        return null;
+      }
+    },
+    lifecycle,
+    { minIntervalMs: 0 }
+  );
+
+  lifecycle.emit({ kind: "focused", occurredAt: 1_000 });
+  await Promise.resolve();
+  lifecycle.setSnapshot({ focused: false, visibility: "hidden" });
+  firstProvider.resolve();
+  await flushAsyncWork();
+
+  assert.deepEqual(reconcileCalls, [[desktopManagedAgentProviders[0]]]);
 });
 
 function createLifecycleHarness(): WorkspaceWindowLifecycle & {
@@ -95,4 +129,16 @@ function createLifecycleHarness(): WorkspaceWindowLifecycle & {
       return () => listeners.delete(listener);
     }
   };
+}
+
+function deferred<T>() {
+  let resolve = (_value: T | PromiseLike<T>) => {};
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
+async function flushAsyncWork(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
 }

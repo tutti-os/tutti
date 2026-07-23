@@ -8,7 +8,7 @@ export interface DesktopAgentProviderVisibilityRefreshOptions {
 }
 
 export function bindDesktopManagedAgentProviderVisibilityRefresh(
-  service: Pick<IAgentProviderStatusService, "refresh"> &
+  service: Pick<IAgentProviderStatusService, "reconcileStatuses"> &
     Partial<Pick<IAgentProviderStatusService, "getSnapshot">>,
   lifecycle: WorkspaceWindowLifecycle,
   options: DesktopAgentProviderVisibilityRefreshOptions = {}
@@ -17,12 +17,32 @@ export function bindDesktopManagedAgentProviderVisibilityRefresh(
   const freshnessMs = options.freshnessMs ?? 30 * 60 * 1_000;
   const providers = [...desktopManagedAgentProviders];
   let lastRefreshAt = Number.NEGATIVE_INFINITY;
+  let disposed = false;
+  let running = false;
 
-  return lifecycle.subscribe((event) => {
+  const reconcileProviders = async (): Promise<void> => {
+    running = true;
+    try {
+      for (const provider of providers) {
+        if (disposed || lifecycle.getSnapshot().visibility !== "visible") {
+          return;
+        }
+        await service.reconcileStatuses([provider]).catch(() => null);
+      }
+    } finally {
+      running = false;
+    }
+  };
+
+  const unsubscribe = lifecycle.subscribe((event) => {
     const activated =
       event.kind === "focused" ||
       (event.kind === "visibility_changed" && event.visibility === "visible");
-    if (!activated || lifecycle.getSnapshot().visibility !== "visible") {
+    if (
+      !activated ||
+      running ||
+      lifecycle.getSnapshot().visibility !== "visible"
+    ) {
       return;
     }
     if (event.occurredAt - lastRefreshAt < minIntervalMs) {
@@ -37,6 +57,11 @@ export function bindDesktopManagedAgentProviderVisibilityRefresh(
       return;
     }
     lastRefreshAt = event.occurredAt;
-    void service.refresh(providers).catch(() => {});
+    void reconcileProviders();
   });
+
+  return () => {
+    disposed = true;
+    unsubscribe();
+  };
 }

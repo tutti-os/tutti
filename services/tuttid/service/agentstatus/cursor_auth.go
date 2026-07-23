@@ -11,7 +11,7 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
 
-func runCursorAuthStatusCommand(ctx context.Context, binaryPath string, env []string) (AuthInfo, bool) {
+func runCursorAuthStatusCommand(ctx context.Context, binaryPath string, env []string) (AuthInfo, string, bool) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -20,7 +20,7 @@ func runCursorAuthStatusCommand(ctx context.Context, binaryPath string, env []st
 	defer cancel()
 	output, ok := runCursorCLICommand(commandCtx, binaryPath, []string{"about", "--format", "json"}, proxyEnv)
 	if !ok {
-		return AuthInfo{}, false
+		return AuthInfo{}, "", false
 	}
 	return parseCursorAboutOutput(output)
 }
@@ -75,28 +75,34 @@ func parseCursorAuthStatusOutput(output []byte) (AuthInfo, bool) {
 	return AuthInfo{}, false
 }
 
-func parseCursorAboutOutput(output []byte) (AuthInfo, bool) {
+func parseCursorAboutOutput(output []byte) (AuthInfo, string, bool) {
 	trimmed := bytes.TrimSpace(output)
 	if len(trimmed) == 0 {
-		return AuthInfo{}, false
+		return AuthInfo{}, "", false
 	}
 	if trimmed[0] == '{' {
-		return parseCursorAboutJSON(trimmed)
+		return parseCursorAboutJSONWithVersion(trimmed)
 	}
-	return parseCursorAboutText(trimmed)
+	return parseCursorAboutTextWithVersion(trimmed)
 }
 
 func parseCursorAboutJSON(output []byte) (AuthInfo, bool) {
+	auth, _, ok := parseCursorAboutJSONWithVersion(output)
+	return auth, ok
+}
+
+func parseCursorAboutJSONWithVersion(output []byte) (AuthInfo, string, bool) {
 	var payload struct {
 		CLIVersion       string          `json:"cliVersion"`
 		SubscriptionTier *string         `json:"subscriptionTier"`
 		UserEmail        json.RawMessage `json:"userEmail"`
 	}
 	if err := json.Unmarshal(output, &payload); err != nil {
-		return AuthInfo{}, false
+		return AuthInfo{}, "", false
 	}
+	cliVersion := strings.TrimSpace(payload.CLIVersion)
 	if len(payload.UserEmail) > 0 && string(payload.UserEmail) == "null" {
-		return AuthInfo{Status: AuthRequired}, true
+		return AuthInfo{Status: AuthRequired}, cliVersion, true
 	}
 	userEmail := ""
 	if len(payload.UserEmail) > 0 && string(payload.UserEmail) != "null" {
@@ -110,37 +116,37 @@ func parseCursorAboutJSON(output []byte) (AuthInfo, bool) {
 		subscriptionTier = strings.TrimSpace(*payload.SubscriptionTier)
 	}
 	if isCursorUnauthenticatedEmail(userEmail) {
-		return AuthInfo{Status: AuthRequired}, true
+		return AuthInfo{Status: AuthRequired}, cliVersion, true
 	}
 	if userEmail == "" && subscriptionTier == "" {
-		return AuthInfo{}, false
+		return AuthInfo{}, cliVersion, false
 	}
 	return AuthInfo{
 		Status:       AuthAuthenticated,
 		AccountLabel: formatCursorAccountLabel(subscriptionTier, userEmail),
 		AuthMethod:   "cursor_login",
-	}, true
+	}, cliVersion, true
 }
 
-func parseCursorAboutText(output []byte) (AuthInfo, bool) {
+func parseCursorAboutTextWithVersion(output []byte) (AuthInfo, string, bool) {
 	plain := stripANSIEscapeSequences(string(output))
 	version := extractCursorAboutField(plain, "CLI Version")
 	userEmail := extractCursorAboutField(plain, "User Email")
 	subscriptionTier := extractCursorAboutField(plain, "Subscription Tier")
 	if userEmail == "" && subscriptionTier == "" && version == "" {
-		return AuthInfo{}, false
+		return AuthInfo{}, "", false
 	}
 	if isCursorUnauthenticatedEmail(userEmail) {
-		return AuthInfo{Status: AuthRequired}, true
+		return AuthInfo{Status: AuthRequired}, version, true
 	}
 	if userEmail == "" && subscriptionTier == "" {
-		return AuthInfo{Status: AuthAuthenticated}, true
+		return AuthInfo{Status: AuthAuthenticated}, version, true
 	}
 	return AuthInfo{
 		Status:       AuthAuthenticated,
 		AccountLabel: formatCursorAccountLabel(subscriptionTier, userEmail),
 		AuthMethod:   "cursor_login",
-	}, true
+	}, version, true
 }
 
 func formatCursorAccountLabel(subscriptionTier, userEmail string) string {

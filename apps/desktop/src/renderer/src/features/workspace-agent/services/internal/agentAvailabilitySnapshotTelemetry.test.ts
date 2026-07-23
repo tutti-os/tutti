@@ -116,6 +116,46 @@ test("availability requires installed CLI, authentication, and ready provider", 
   assert.equal(params.unavailableReason, "provider_error");
 });
 
+test("availability reports an explicit conversation failure trigger", async () => {
+  const events: ReporterEventInput[] = [];
+  const telemetry = new AgentAvailabilitySnapshotTelemetry({
+    now: () => 1_749_124_800_000,
+    reporterService: {
+      async trackEvents(input) {
+        events.push(...input);
+      }
+    },
+    storage: createMemoryStorage()
+  });
+
+  telemetry.reportStatus(
+    status({
+      authenticated: false,
+      availability: "auth_required",
+      cliInstalled: true,
+      provider: "cursor"
+    }),
+    "conversation_start_failed"
+  );
+  await flushAsyncWork();
+
+  assert.deepEqual(
+    events.map((event) => event.params),
+    [
+      {
+        authenticated: false,
+        cli_installed: true,
+        error_code: "agent_error_none",
+        error_message: "",
+        is_available: false,
+        provider: "cursor",
+        trigger: "conversation_start_failed",
+        unavailable_reason: "not_authenticated"
+      }
+    ]
+  );
+});
+
 test("availability rollover uses the activation time supplied by its lifecycle", async () => {
   const events: ReporterEventInput[] = [];
   const telemetry = new AgentAvailabilitySnapshotTelemetry({

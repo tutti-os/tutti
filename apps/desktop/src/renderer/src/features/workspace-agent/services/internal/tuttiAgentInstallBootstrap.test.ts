@@ -161,6 +161,7 @@ function createService(
         providers: [status]
       };
     },
+    reconcileStatuses: async () => null,
     getDiagnosticsConsent: () => false,
     getRevision: () => 0,
     getSnapshot: () => ({

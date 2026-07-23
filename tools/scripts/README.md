@@ -82,6 +82,7 @@ pnpm perf:agent-gui -- --list-scenarios
 pnpm perf:agent-gui -- --scenario session-switch
 pnpm perf:agent-gui -- --scenario virtualized-streaming
 pnpm perf:agent-gui -- --scenario composer-input
+pnpm perf:agent-gui -- --scenario provider-status-focus-refresh --all-process-time-profile
 ```
 
 The command reads `~/.tutti-dev/tuttid.db` by default and uses SQLite online
@@ -109,6 +110,13 @@ The streaming scenario rewrites only the isolated snapshot and shadows
 to an installed Agent provider. The native window scenarios are currently
 macOS-only. Use `--source-db`,
 `--from-target-id`, or `--to-target-id` to override the defaults.
+
+The `provider-status-focus-refresh` scenario dispatches a second synthetic
+workspace focus and observes the page for one second, then proves neither focus
+starts a provider-status request. On macOS,
+`--all-process-time-profile` additionally writes `time-profile.trace` for all
+processes, including `tuttid` and short-lived provider CLIs that are outside the
+Chromium trace.
 
 The Markdown report contains scenario assertions, observed milestone phases,
 renderer-main `RunTask`/layout/paint metrics, React component fanout, and static

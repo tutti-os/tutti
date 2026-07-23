@@ -213,6 +213,12 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     return this.requestStatuses(input);
   }
 
+  async reconcileStatuses(
+    providers?: WorkspaceAgentProvider[]
+  ): Promise<AgentProviderStatusListResponse | null> {
+    return this.requestStatuses({ providers });
+  }
+
   private async requestStatuses(
     input: {
       providers?: WorkspaceAgentProvider[];

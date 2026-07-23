@@ -250,6 +250,7 @@ type Service struct {
 	InstallCommand              func(context.Context, InstallCommandInput) (InstallCommandResult, error)
 	InstallTimeout              time.Duration
 	RunAuthStatusCommand        func(context.Context, ProviderSpec, string) (AuthInfo, bool)
+	runCursorAuthStatusCommand  func(context.Context, string, []string) (AuthInfo, string, bool)
 	AuthStatusCommandRetryDelay time.Duration
 	IsExecutableFile            func(string) bool
 	Now                         func() time.Time
@@ -272,6 +273,12 @@ type Service struct {
 	// readiness probes run once per provider instead of once per caller/window.
 	StatusCache    *ProviderStatusCache
 	StatusCacheTTL time.Duration
+	// CLIVersionCache and AdapterProbeCache keep stable executable facts across
+	// forced auth refreshes. DetectionCommands bounds actual subprocess fan-out
+	// across concurrent requests.
+	CLIVersionCache   *CLIVersionCache
+	AdapterProbeCache *AdapterProbeCache
+	DetectionCommands *DetectionCommandLimiter
 	// UpdateCache is separate from readiness caching because remote release
 	// discovery is opt-in and must never make ordinary local status reads touch
 	// the network.
@@ -423,7 +430,7 @@ func (s Service) List(ctx context.Context, input ListInput) (snapshot Snapshot, 
 func (s Service) cachedStatusForSpec(ctx context.Context, spec ProviderSpec, forceRefresh bool) ProviderStatus {
 	cache := s.StatusCache
 	if cache == nil {
-		return s.detectStatusForSpec(ctx, spec)
+		return s.detectStatusForSpec(ctx, spec, forceRefresh)
 	}
 	if !forceRefresh {
 		if cached, cachedAt, credentialFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
@@ -439,7 +446,7 @@ func (s Service) cachedStatusForSpec(ctx context.Context, spec ProviderSpec, for
 				return cached, nil
 			}
 		}
-		status := s.detectStatusForSpec(ctx, spec)
+		status := s.detectStatusForSpec(ctx, spec, forceRefresh)
 		completedAt := s.now()
 		status.Availability.CheckedAt = &completedAt
 		cache.set(spec.Provider, completedAt, s.providerCredentialFingerprint(spec), status)
@@ -448,8 +455,10 @@ func (s Service) cachedStatusForSpec(ctx context.Context, spec ProviderSpec, for
 	return cloneProviderStatus(value.(ProviderStatus))
 }
 
-func (s Service) detectStatusForSpec(ctx context.Context, spec ProviderSpec) ProviderStatus {
-	status := s.statusForSpec(ctx, spec, s.now())
+func (s Service) detectStatusForSpec(ctx context.Context, spec ProviderSpec, forceRefresh bool) ProviderStatus {
+	status := s.statusForSpec(ctx, spec, s.now(), statusDetectionOptions{
+		forceRefresh: forceRefresh,
+	})
 	completedAt := s.now()
 	status.Availability.CheckedAt = &completedAt
 	return status
@@ -491,7 +500,10 @@ func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, erro
 		return result, nil
 	}
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
-	status := s.statusForSpec(ctx, spec, now)
+	status := s.statusForSpec(ctx, spec, now, statusDetectionOptions{
+		forceRefresh:     true,
+		skipAdapterProbe: true,
+	})
 	result := ProbeResult{
 		Provider:   spec.Provider,
 		CheckedAt:  now,
@@ -562,7 +574,21 @@ func (s Service) probeAdapterRuntimeCommand(
 	} else {
 		result.BinaryPath = command[0]
 	}
+	release, acquired := s.DetectionCommands.acquire(ctx)
+	if !acquired {
+		result.Status = ProbeFailed
+		result.ReasonCode = "probe_canceled"
+		result.Message = context.Cause(ctx).Error()
+		return result
+	}
+	defer release()
 	result = s.probeCommandWithReadyAfter(ctx, result, command, env, s.probeReadyAfterForSpec(spec))
+	if result.Status == ProbeReady {
+		s.AdapterProbeCache.markReady(
+			adapterProbeCacheKey(spec, runtimeResolution),
+			result.BinaryPath,
+		)
+	}
 	if isCodexStatusSpec(spec) && result.Status == ProbeFailed {
 		if code, ok := classifyCodexRuntimeError(result.Message); ok {
 			result.LastError = &ProviderLastError{Code: string(code), Message: result.Message}
@@ -570,6 +596,14 @@ func (s Service) probeAdapterRuntimeCommand(
 		}
 	}
 	return result
+}
+
+func adapterProbeCacheKey(spec ProviderSpec, runtimeResolution providerRuntimeResolution) string {
+	command := runtimeResolution.AdapterCommand
+	if len(command) == 0 {
+		command = spec.AdapterCommand
+	}
+	return spec.Provider + "\x00" + strings.Join(command, "\x00")
 }
 
 func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunActionResult, error) {
@@ -640,7 +674,9 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 		}
 		result.Probe = &probe
 		if probe.Status == ProbeFailed {
-			repairStatus := s.statusForSpec(ctx, spec, s.now())
+			repairStatus := s.statusForSpec(ctx, spec, s.now(), statusDetectionOptions{
+				forceRefresh: true,
+			})
 			if repairStatus.Availability.ReasonCode == "acp_adapter_launch_failed" {
 				runtimeResolution.ReasonCode = "acp_adapter_launch_failed"
 				summary, updatedRuntime, err = s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)

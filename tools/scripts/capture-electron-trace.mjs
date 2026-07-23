@@ -188,6 +188,7 @@ export class CdpClient {
     this.nextId = 1;
     this.pending = new Map();
     this.eventWaiters = new Map();
+    this.eventListeners = new Map();
 
     socket.addEventListener("message", (event) => {
       this.handleMessage(event.data);
@@ -217,6 +218,15 @@ export class CdpClient {
       waiters.push(resolveEvent);
       this.eventWaiters.set(method, waiters);
     });
+  }
+
+  subscribe(method, listener) {
+    const listeners = this.eventListeners.get(method) ?? new Set();
+    listeners.add(listener);
+    this.eventListeners.set(method, listeners);
+    return () => {
+      listeners.delete(listener);
+    };
   }
 
   close() {
@@ -249,6 +259,10 @@ export class CdpClient {
     }
 
     if (message.method) {
+      const listeners = this.eventListeners.get(message.method);
+      for (const listener of listeners ?? []) {
+        listener(message);
+      }
       const waiters = this.eventWaiters.get(message.method);
       if (!waiters?.length) {
         return;

@@ -4,6 +4,49 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### Focusing a workspace repeatedly starts provider CLIs and raises CPU usage
+
+- Symptom:
+  Focusing or reopening a workspace makes the fan ramp up even when no Agent
+  turn starts. The effect grows when more managed provider CLIs are installed.
+- Quick checks:
+  Inspect GET requests to `/v1/agent-providers/status`. A focus-driven request
+  with `refresh=true` bypasses the daemon status cache. Correlate the same time
+  range with short-lived `codex`, `opencode`, `cursor`, `node`, `git`, and
+  credential-helper processes. Use `pnpm perf:agent-gui -- --scenario
+provider-status-focus-refresh --all-process-time-profile` on macOS when a
+  Chromium trace cannot see daemon child processes.
+- Root cause:
+  Window lifecycle analytics requested a fresh availability snapshot by using
+  the explicit-refresh path. Every pageview opportunity therefore bypassed the
+  daemon cache and launched provider detection work; a focus arriving during a
+  scan queued another forced scan.
+- Fix:
+  Let availability analytics reuse the renderer's loaded status snapshot, and
+  route only stale visibility reconciliation through a non-forced tuttid read.
+  Let tuttid own cache expiry, credential fingerprints, and per-provider
+  single-flight. Initialize providers in parallel for first-paint latency, but
+  serialize later background stale reconciliation and cap the aggregate
+  auth/version/adapter subprocess count. Keep `refresh=true` only for explicit
+  user refreshes and provider-scoped confirmation after state-changing actions.
+  A forced read must recheck auth/readiness, but can reuse successful
+  executable-scoped facts while the binary fingerprint is unchanged; never
+  cache failed version or adapter probes. Prefer validated credential files for
+  OpenCode and Tutti Agent and allow at most one CLI fallback for malformed
+  files. Reuse fields from a provider command instead of launching duplicate
+  probes: Cursor `about --format json` returns both authentication details and
+  `cliVersion`, so its status detection must not also launch `cursor-agent
+--version` unless the `about` output omitted the version.
+- Validation:
+  Dispatch two focus events and assert they start no provider-status request,
+  availability pageviews are unchanged, and an explicit refresh still sends
+  exactly one forced request. The all-process trace should contain no
+  focus-driven provider-detection child process burst.
+- References:
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+  [desktopAgentProviderStatusService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
+  [agent-provider-status-performance-scenario.mjs](../../../tools/scripts/agent-provider-status-performance-scenario.mjs)
+
 ### An extension Agent is installed in the terminal but Tutti cannot detect it
 
 - Symptom:

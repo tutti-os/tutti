@@ -197,11 +197,21 @@ func resolveInstallerShell() string {
 }
 
 func (s Service) resolveAuth(ctx context.Context, spec ProviderSpec, installed bool, binaryPath string) AuthInfo {
+	auth, _ := s.resolveAuthAndCLIVersion(ctx, spec, installed, binaryPath)
+	return auth
+}
+
+func (s Service) resolveAuthAndCLIVersion(
+	ctx context.Context,
+	spec ProviderSpec,
+	installed bool,
+	binaryPath string,
+) (AuthInfo, string) {
 	if !installed {
-		return AuthInfo{Status: AuthUnknown}
+		return AuthInfo{Status: AuthUnknown}, ""
 	}
 	if isClaudeStatusSpec(spec) && strings.TrimSpace(os.Getenv("TUTTI_MOCK_AGENT_UNBOUND")) == "1" {
-		return AuthInfo{Status: AuthRequired}
+		return AuthInfo{Status: AuthRequired}, ""
 	}
 	// A runtime authentication failure (e.g. a 401 sending a message) invalidates
 	// the stale "logged in" marker/command result until the user re-authenticates
@@ -211,114 +221,59 @@ func (s Service) resolveAuth(ctx context.Context, spec ProviderSpec, installed b
 	// next message succeeds, leaving the dock/wizard stuck on "needs login".
 	if failedAt, ok := s.RunOutcomes.AuthInvalidatedSince(spec.Provider); ok {
 		if !s.authCredentialsRefreshedAfter(spec, failedAt) {
-			return AuthInfo{Status: AuthRequired}
+			return AuthInfo{Status: AuthRequired}, ""
 		}
 		s.RunOutcomes.ClearAuthInvalidated(spec.Provider)
 	}
-	if len(spec.AuthStatusCommand) > 0 && strings.TrimSpace(binaryPath) != "" {
+	// RunAuthStatusCommand is an explicit test seam. Keep it authoritative so
+	// status-cache tests can observe detection without depending on a real home
+	// directory or provider credential file.
+	if s.RunAuthStatusCommand != nil && len(spec.AuthStatusCommand) > 0 &&
+		strings.TrimSpace(binaryPath) != "" {
 		if auth, ok := s.resolveAuthFromCommand(ctx, spec, binaryPath); ok {
-			return auth
+			return auth, ""
 		}
-		return s.resolveAuthFromMarkers(spec)
+		return s.resolveAuthFromMarkers(spec), ""
 	}
-	return s.resolveAuthFromMarkers(spec)
+	if authMarkerIsAuthoritative(spec) {
+		if auth, definitive := s.resolveAuthFromMarkersWithValidity(spec); definitive {
+			return auth, ""
+		}
+	}
+	if len(spec.AuthStatusCommand) > 0 && strings.TrimSpace(binaryPath) != "" {
+		if isCursorAuthCommandSpec(spec) && s.RunAuthStatusCommand == nil {
+			release, acquired := s.DetectionCommands.acquire(ctx)
+			if !acquired {
+				return s.resolveAuthFromMarkers(spec), ""
+			}
+			defer release()
+			auth, cliVersion, ok := s.cursorAuthStatus(
+				ctx,
+				binaryPath,
+				s.commandResolver().Env(spec.AdapterEnv),
+			)
+			if ok {
+				return auth, cliVersion
+			}
+			return s.resolveAuthFromMarkers(spec), cliVersion
+		}
+		if auth, ok := s.resolveAuthFromCommand(ctx, spec, binaryPath); ok {
+			return auth, ""
+		}
+		return s.resolveAuthFromMarkers(spec), ""
+	}
+	return s.resolveAuthFromMarkers(spec), ""
 }
 
-// authCredentialsRefreshedAfter reports whether any of the provider's credential
-// marker files was modified after the given time — i.e. a login rewrote the
-// credentials since the recorded auth failure.
-func (s Service) authCredentialsRefreshedAfter(spec ProviderSpec, since time.Time) bool {
-	if len(spec.AuthMarkerPaths) == 0 {
-		return false
+func (s Service) cursorAuthStatus(
+	ctx context.Context,
+	binaryPath string,
+	env []string,
+) (AuthInfo, string, bool) {
+	if s.runCursorAuthStatusCommand != nil {
+		return s.runCursorAuthStatusCommand(ctx, binaryPath, env)
 	}
-	home, err := s.homeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		return false
-	}
-	for _, marker := range spec.AuthMarkerPaths {
-		path := expandHomePath(marker, home)
-		if mod, ok := s.fileModTime(path); ok && mod.After(since) {
-			return true
-		}
-	}
-	return false
-}
-
-func (s Service) resolveAuthFromMarkers(spec ProviderSpec) AuthInfo {
-	if len(spec.AuthMarkerPaths) == 0 {
-		return AuthInfo{Status: AuthUnknown}
-	}
-
-	home, err := s.homeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		return AuthInfo{Status: AuthUnknown}
-	}
-
-	for _, marker := range spec.AuthMarkerPaths {
-		path := expandHomePath(marker, home)
-		if auth, ok := s.authFromMarkerFile(spec, path); ok {
-			return auth
-		}
-	}
-	return AuthInfo{Status: AuthRequired}
-}
-
-func (s Service) authFromMarkerFile(spec ProviderSpec, path string) (AuthInfo, bool) {
-	if !s.fileExists(path) {
-		return AuthInfo{}, false
-	}
-	markerParserKind := spec.AuthMarkerParserKind
-	if markerParserKind == "" {
-		if status, ok := migratedProviderStatus(spec.Provider); ok {
-			markerParserKind = status.AuthMarkerParserKind
-		}
-	}
-	switch markerParserKind {
-	case providerregistry.AuthMarkerParserKindClaude:
-		if auth, ok := parseClaudeAuthMarkerFile(path); ok {
-			return auth, true
-		}
-		return AuthInfo{}, false
-	case providerregistry.AuthMarkerParserKindTuttiToken:
-		if auth, ok := parseTuttiAgentAuthMarkerFile(path); ok {
-			return auth, true
-		}
-		return AuthInfo{}, false
-	case providerregistry.AuthMarkerParserKindFileExists:
-		return AuthInfo{Status: AuthAuthenticated}, true
-	default:
-		return AuthInfo{}, false
-	}
-}
-
-// parseTuttiAgentAuthMarkerFile validates that the Tutti Agent auth.json holds
-// a usable `tutti_llm` token bundle instead of treating file existence as
-// authenticated.
-func parseTuttiAgentAuthMarkerFile(path string) (AuthInfo, bool) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return AuthInfo{}, false
-	}
-	var payload struct {
-		TuttiLLM *struct {
-			AppID        string `json:"app_id"`
-			AccessToken  string `json:"access_token"`
-			RefreshToken string `json:"refresh_token"`
-		} `json:"tutti_llm"`
-	}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return AuthInfo{}, false
-	}
-	if payload.TuttiLLM == nil ||
-		strings.TrimSpace(payload.TuttiLLM.AccessToken) == "" ||
-		strings.TrimSpace(payload.TuttiLLM.RefreshToken) == "" {
-		return AuthInfo{Status: AuthRequired}, true
-	}
-	return AuthInfo{
-		AccountLabel: payload.TuttiLLM.AppID,
-		AuthMethod:   "tutti_llm",
-		Status:       AuthAuthenticated,
-	}, true
+	return runCursorAuthStatusCommand(ctx, binaryPath, env)
 }
 
 func (s Service) resolveAuthFromCommand(ctx context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
@@ -326,7 +281,8 @@ func (s Service) resolveAuthFromCommand(ctx context.Context, spec ProviderSpec, 
 		ctx = context.Background()
 	}
 	attempts := authStatusCommandAttempts
-	if isCursorAuthCommandSpec(spec) {
+	if isCursorAuthCommandSpec(spec) ||
+		authMarkerIsAuthoritative(spec) {
 		attempts = 1
 	}
 	for attempt := 0; attempt < attempts; attempt++ {
@@ -354,6 +310,11 @@ func (s Service) runAuthStatusCommand(ctx context.Context, spec ProviderSpec, bi
 	if s.RunAuthStatusCommand != nil {
 		return s.RunAuthStatusCommand(ctx, spec, binaryPath)
 	}
+	release, acquired := s.DetectionCommands.acquire(ctx)
+	if !acquired {
+		return AuthInfo{}, false
+	}
+	defer release()
 	return runAuthStatusCommand(ctx, spec, binaryPath, s.commandResolver().Env(spec.AdapterEnv))
 }
 
@@ -373,15 +334,15 @@ func parseCLIVersion(output string) string {
 // "" when the binary is absent, errors, or prints nothing version-like. Used for
 // every supported provider (not just codex) so the config panel can show the
 // installed CLI version.
-func (Service) cliVersion(ctx context.Context, binaryPath string, env []string) string {
-	return parseCLIVersion(cliVersionOutput(ctx, binaryPath, env))
+func (s Service) cliVersion(ctx context.Context, binaryPath string, env []string) string {
+	return parseCLIVersion(s.cliVersionOutput(ctx, binaryPath, env))
 }
 
 // providerCLIVersion applies the public managed-npm version contract to
 // managed package providers. Other providers retain their historical
 // semver-ish output compatibility.
-func (Service) providerCLIVersion(ctx context.Context, spec ProviderSpec, binaryPath string, env []string) string {
-	output := cliVersionOutput(ctx, binaryPath, env)
+func (s Service) providerCLIVersion(ctx context.Context, spec ProviderSpec, binaryPath string, env []string) string {
+	output := s.cliVersionOutput(ctx, binaryPath, env)
 	if providerUsesManagedNPMVersionContract(spec) {
 		version, _ := managednpm.ExtractVersion(output)
 		return version
@@ -389,7 +350,7 @@ func (Service) providerCLIVersion(ctx context.Context, spec ProviderSpec, binary
 	return parseCLIVersion(output)
 }
 
-func cliVersionOutput(ctx context.Context, binaryPath string, env []string) string {
+func (s Service) cliVersionOutput(ctx context.Context, binaryPath string, env []string) string {
 	binaryPath = strings.TrimSpace(binaryPath)
 	if binaryPath == "" {
 		return ""
@@ -397,17 +358,24 @@ func cliVersionOutput(ctx context.Context, binaryPath string, env []string) stri
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	commandCtx, cancel := context.WithTimeout(ctx, authStatusCommandTimeout)
-	defer cancel()
-	command := exec.CommandContext(commandCtx, binaryPath, "--version")
-	if env != nil {
-		command.Env = env
-	}
-	output, err := command.CombinedOutput()
-	if err != nil {
-		return ""
-	}
-	return string(output)
+	return s.CLIVersionCache.load(binaryPath, func() string {
+		release, acquired := s.DetectionCommands.acquire(ctx)
+		if !acquired {
+			return ""
+		}
+		defer release()
+		commandCtx, cancel := context.WithTimeout(ctx, authStatusCommandTimeout)
+		defer cancel()
+		command := exec.CommandContext(commandCtx, binaryPath, "--version")
+		if env != nil {
+			command.Env = env
+		}
+		output, err := command.CombinedOutput()
+		if err != nil {
+			return ""
+		}
+		return string(output)
+	})
 }
 
 func cloneProviderChecks(input []ProviderCheck) []ProviderCheck {
@@ -449,7 +417,8 @@ func runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath str
 		}
 	}
 	if runnerKind == providerregistry.AuthCommandRunnerKindCursor {
-		return runCursorAuthStatusCommand(ctx, binaryPath, env)
+		auth, _, ok := runCursorAuthStatusCommand(ctx, binaryPath, env)
+		return auth, ok
 	}
 	commandCtx, cancel := context.WithTimeout(ctx, authStatusTimeout(spec))
 	defer cancel()
@@ -562,6 +531,12 @@ func parseOpenCodeAuthStatusOutput(output []byte) (AuthInfo, bool) {
 	if normalized == "" {
 		return AuthInfo{}, false
 	}
+	if match := openCodeCredentialCountPattern.FindStringSubmatch(normalized); len(match) == 2 {
+		if strings.TrimLeft(match[1], "0") == "" {
+			return AuthInfo{Status: AuthRequired}, true
+		}
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
 	if strings.Contains(normalized, "not logged in") ||
 		strings.Contains(normalized, "not authenticated") ||
 		strings.Contains(normalized, "no authenticated") ||
@@ -575,6 +550,8 @@ func parseOpenCodeAuthStatusOutput(output []byte) (AuthInfo, bool) {
 	}
 	return AuthInfo{}, false
 }
+
+var openCodeCredentialCountPattern = regexp.MustCompile(`([0-9]+)\s+credentials?\b`)
 
 func parseClaudeAuthStatusOutput(output []byte) (AuthInfo, bool) {
 	output = bytes.TrimSpace(output)

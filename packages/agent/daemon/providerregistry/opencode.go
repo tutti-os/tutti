@@ -35,7 +35,7 @@ func openCodeDescriptor() ProviderDescriptor {
 		Status: StatusDescriptor{
 			Kind:                   StatusKindOpenCodeCLI,
 			AuthOutputParserKind:   AuthOutputParserKindOpenCode,
-			AuthMarkerParserKind:   AuthMarkerParserKindFileExists,
+			AuthMarkerParserKind:   AuthMarkerParserKindOpenCode,
 			AuthCommandRunnerKind:  AuthCommandRunnerKindGeneric,
 			StaticSpecResolverKind: StaticSpecResolverKindGeneric,
 			BinaryNames:            []string{"opencode"},

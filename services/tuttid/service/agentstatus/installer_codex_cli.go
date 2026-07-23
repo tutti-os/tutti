@@ -203,7 +203,7 @@ func (s Service) runManagedNPMPackageAction(
 	return result, err
 }
 
-func (Service) repairManagedNPMBinEEXIST(
+func (s Service) repairManagedNPMBinEEXIST(
 	ctx context.Context,
 	result InstallCommandResult,
 	installPrefix string,
@@ -215,7 +215,7 @@ func (Service) repairManagedNPMBinEEXIST(
 	if !ok || !managedNPMBinConflictMatchesInstallTarget(conflictPath, installPrefix, binaryName) {
 		return false
 	}
-	installedVersion, _ := managednpm.ExtractVersion(cliVersionOutput(ctx, conflictPath, env))
+	installedVersion, _ := managednpm.ExtractVersion(s.cliVersionOutput(ctx, conflictPath, env))
 	if required := strings.TrimSpace(requiredVersion); required != "" && installedVersion == required {
 		return false
 	}

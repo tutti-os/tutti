@@ -111,7 +111,8 @@ The capture runner ships `provider-switch`, `session-switch`,
 `provider-session-cycle`, `virtualized-streaming`,
 `virtualized-scroll-locator`, `rail-scope-reveal`, `composer-input`,
 `composer-overflow-resize`, `workbench-window-lifecycle`, and
-`desktop-window-state`. List them with `--list-scenarios`; select one with
+`desktop-window-state`, and `provider-status-focus-refresh`. List them with
+`--list-scenarios`; select one with
 `--scenario <id>`. Scenario modules own preparation, completion conditions,
 semantic assertions, milestones, and metadata; runtime startup, trace capture,
 renderer analysis, and report rendering stay scenario-neutral.
@@ -153,6 +154,14 @@ close/reopen is not part of that renderer-marked scenario because closing the
 owning native window destroys the renderer that owns the trace boundary
 markers. Every declared milestone is required in the captured trace; a missing
 marker fails capture instead of silently producing an incomplete phase table.
+
+`provider-status-focus-refresh` dispatches a second workspace focus while the
+first focus is being observed, then watches the page for one second. It asserts
+that neither focus starts a provider-status request. This guards against window
+focus regressing into provider CLI scans without starting an Agent turn. On
+macOS, pass `--all-process-time-profile` to also write `time-profile.trace`,
+covering Electron, `tuttid`, and short-lived provider CLI child processes that
+Chromium CDP tracing cannot see.
 
 Daemon migrations remain forward-only. If the personal dev database was last
 opened by a newer checkout with incompatible Agent target migrations, the

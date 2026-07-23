@@ -10,9 +10,12 @@ import {
   resolveAgentGuiPerformanceScenario
 } from "./agent-gui-performance-scenarios.mjs";
 import { composerInputScenario } from "./agent-gui-composer-performance-scenarios.mjs";
+import { summarizeProviderStatusFocusRefresh } from "./agent-provider-status-performance-scenario.mjs";
+import { buildAllProcessTimeProfileArgs } from "./all-process-time-profile.mjs";
 import {
   applyScenarioAssessment,
   findUnknownAgentTargetMigrationIDs,
+  performanceRunFailureReasons,
   prepareWorkbenchSnapshotForPerformance
 } from "./run-agent-gui-performance.mjs";
 
@@ -42,6 +45,22 @@ test("scenario trace assessment turns report metrics into a gate", () => {
   });
   assert.equal(summary.run.outcome, "failed");
   assert.deepEqual(summary.run.details, [{ label: "Scroll", value: "4 ms" }]);
+});
+
+test("failed scenario contract fails even when trace metrics are ungraded", () => {
+  assert.deepEqual(
+    performanceRunFailureReasons({
+      run: {
+        assertions: [
+          { name: "semantic contract", passed: false },
+          { name: "non-forced request", passed: true }
+        ],
+        outcome: "failed"
+      },
+      verdict: { status: "ungraded", reason: "report only" }
+    }),
+    ["semantic contract"]
+  );
 });
 
 test("performance snapshot rejects newer Agent target migrations", () => {
@@ -169,7 +188,8 @@ test("performance scenario registry exposes renderer and window scenarios", () =
       "composer-input",
       "composer-overflow-resize",
       "workbench-window-lifecycle",
-      "desktop-window-state"
+      "desktop-window-state",
+      "provider-status-focus-refresh"
     ]
   );
   assert.equal(
@@ -214,4 +234,38 @@ test("composer input summary requires text, IME, and mention keyboard semantics"
       "mention panel closed"
     ]
   );
+});
+
+test("provider status focus summary proves focus reuses the renderer snapshot", () => {
+  const report = summarizeProviderStatusFocusRefresh(
+    { providerCount: 6, startupRequestCount: 1 },
+    { requests: [] }
+  );
+
+  assert.equal(report.outcome, "passed");
+  assert.deepEqual(
+    report.assertions.map((assertion) => assertion.name),
+    [
+      "startup provider snapshot loaded before capture",
+      "focus uses the loaded renderer snapshot",
+      "focus never forces provider detection"
+    ]
+  );
+  assert.deepEqual(report.details.at(-1), {
+    label: "Unexpected request durations",
+    value: "none"
+  });
+});
+
+test("all-process Time Profiler records every process without a time limit", () => {
+  assert.deepEqual(buildAllProcessTimeProfileArgs("/tmp/profile.trace"), [
+    "xctrace",
+    "record",
+    "--template",
+    "Time Profiler",
+    "--all-processes",
+    "--no-prompt",
+    "--output",
+    "/tmp/profile.trace"
+  ]);
 });
