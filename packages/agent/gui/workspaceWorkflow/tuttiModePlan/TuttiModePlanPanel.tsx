@@ -26,9 +26,6 @@ import type {
 } from "./tuttiModePlanTaskAssignments";
 
 export interface TuttiModePlanPanelLabels {
-  mode: string;
-  taskReview: string;
-  pending: string;
   tasks: string;
   priority: string;
   priorityHigh: string;
@@ -89,13 +86,6 @@ export function TuttiModePlanPanel({
       data-testid="tutti-mode-plan-panel"
     >
       <CardHeader>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="accent">{labels.mode}</Badge>
-          <Badge variant="pending">{labels.pending}</Badge>
-          <span className="text-xs text-muted-foreground">
-            {labels.taskReview}
-          </span>
-        </div>
         <CardTitle>{panel.title}</CardTitle>
         <CardDescription>{panel.topicId}</CardDescription>
       </CardHeader>

@@ -86,9 +86,6 @@ export function agentGUITuttiModeLabels(
     tuttiModeUpdateFailed: t("agentHost.agentGui.tuttiModeUpdateFailed"),
     tuttiModeUpdateUncertain: t("agentHost.agentGui.tuttiModeUpdateUncertain"),
     tuttiModePlanPanel: {
-      mode: t("agentHost.agentGui.tuttiModePlan.mode"),
-      taskReview: t("agentHost.agentGui.tuttiModePlan.taskReview"),
-      pending: t("agentHost.agentGui.tuttiModePlan.pending"),
       tasks: t("agentHost.agentGui.tuttiModePlan.tasks"),
       priority: t("agentHost.agentGui.tuttiModePlan.priority"),
       priorityHigh: t("agentHost.agentGui.tuttiModePlan.priorityHigh"),

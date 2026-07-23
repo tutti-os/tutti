@@ -1,7 +1,5 @@
 export const zhCNTuttiModePlan = {
-  mode: "Tutti mode plan",
   taskReview: "计划确认",
-  pending: "待确认",
   cancel: "取消计划",
   reviewHint: "直接发送即接受 · 输入反馈后发送即请求修改",
   reviewHintReplan: "强度已调整 · 发送即按新强度重新规划",

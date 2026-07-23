@@ -9,9 +9,6 @@ import type { TuttiModePlanPanelViewModel } from "./tuttiModePlanPanelProjection
 import type { TuttiModePlanAssignmentCatalog } from "./useTuttiModePlanPanels";
 
 const labels: TuttiModePlanPanelLabels = {
-  mode: "Tutti mode plan",
-  taskReview: "Plan review",
-  pending: "Needs review",
   tasks: "Tasks",
   priority: "Priority",
   priorityHigh: "High",
@@ -116,6 +113,17 @@ function assignmentCatalog(
 }
 
 describe("TuttiModePlanPanel", () => {
+  it("renders the plan without duplicating workflow phase badges", () => {
+    render(
+      <TuttiModePlanPanel labels={labels} panel={panel} submitting={false} />
+    );
+
+    expect(screen.getByText("Ship the durable workflow")).toBeInTheDocument();
+    expect(screen.queryByText("Tutti mode plan")).not.toBeInTheDocument();
+    expect(screen.queryByText("Plan review")).not.toBeInTheDocument();
+    expect(screen.queryByText("Needs review")).not.toBeInTheDocument();
+  });
+
   it("hides plan internals: execution/budget cards, task metadata, decisions", () => {
     render(
       <TuttiModePlanPanel labels={labels} panel={panel} submitting={false} />

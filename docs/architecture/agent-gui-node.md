@@ -518,7 +518,9 @@ arrival of a newer actionable plan takes presentation priority over an existing
 Issue. Each newly identified actionable review starts expanded once; an
 explicit user collapse remains authoritative for that review, while the
 disclosure's current expanded state survives materialization and execution
-handoffs so the UI does not jump.
+handoffs so the UI does not jump. The expanded plan panel starts with the plan
+title and body; it does not repeat mode, review-kind, or pending-state badges
+already communicated by the workflow banner.
 
 An active Tutti Mode composer badge is an intensity-settings entry, not a
 destructive toggle. Clicking it opens the UI-local `TuttiBudgetPopover`, seeded

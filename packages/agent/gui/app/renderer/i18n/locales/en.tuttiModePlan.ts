@@ -1,7 +1,5 @@
 export const enTuttiModePlan = {
-  mode: "Tutti mode plan",
   taskReview: "Plan review",
-  pending: "Needs review",
   cancel: "Cancel plan",
   reviewHint: "Send to accept · type feedback to request changes",
   reviewHintReplan: "Intensity changed · send to re-plan at the new intensity",

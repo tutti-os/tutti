@@ -31,9 +31,6 @@ const labels: TuttiWorkflowDockLabels = {
 };
 
 const planPanelLabels: TuttiModePlanPanelLabels = {
-  mode: "Tutti mode plan",
-  taskReview: "Plan review",
-  pending: "Needs review",
   tasks: "Tasks",
   priority: "Priority",
   priorityHigh: "High",
