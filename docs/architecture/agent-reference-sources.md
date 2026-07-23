@@ -151,6 +151,20 @@ separator, cached tree depth, or already loaded rows. Search results remain
 ordinary insertable mentions unless the provider explicitly marks them as
 navigable directories.
 
+Directory navigation owns a request lifecycle that is independent from
+keyword-search and root-browse provider queries. Entering another directory,
+going back, changing the query scope, closing the palette, or disposing the
+controller aborts the active directory request and advances its own response
+fence. A directory response applies only while its request id, workspace,
+active file filter, empty query, and browse-stack head still match.
+
+Directory reads do not inherit the short provider-search timeout or its
+partial-result fallback. They remain loading until the provider completes or
+the directory lifecycle explicitly cancels them. A successful authoritative
+empty result is the only state presented as an empty directory; provider
+failure remains an error, and a file provider without `queryDirectory()` fails
+closed instead of falling back to keyword search.
+
 The compact palette browse cache is presentation-only. Every user-opened `@`
 browse paints a matching cached entry synchronously when one exists and always
 starts a provider query in parallel, even while the cached entry is within its
