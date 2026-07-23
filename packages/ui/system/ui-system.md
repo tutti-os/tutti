@@ -49,6 +49,18 @@ recorded in the package `NOTICE`. Update that provenance whenever registry
 source is refreshed. Storyboard coverage is the visual inventory for enabled,
 disabled, keyboard-focus, and overlay states.
 
+## Avatar foundation
+
+`Avatar` is the single high-level identity-image primitive. It owns decorative
+image loading, broken-image fallback, initial or empty fallback modes, loading
+presentation, named or numeric sizing, and a caller-owned overlay slot through
+`children`. Consumers own identity resolution, image URLs, labels, fallback
+colors, presence semantics, and overlay content. The underlying Radix/shadcn
+parts are intentionally not public. `fallbackColor` is the narrow exception for
+caller-owned dynamic identity data; component defaults still use semantic
+tokens. Initial fallback content appears only when the image URL is absent or
+the image fails, never while a valid image URL is still loading.
+
 ## Current Package Role
 
 `@tutti-os/ui-system` is the single source of truth for:

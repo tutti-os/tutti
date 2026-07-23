@@ -1,4 +1,5 @@
 import {
+  Avatar,
   Badge,
   BareIconButton,
   Button,
@@ -127,6 +128,11 @@ const storyboardDarkThemeOverrideCss = `
   border-color: var(--border-1) !important;
 }
 `;
+
+const avatarSampleImageUrl = new URL(
+  "../../../docs/assets/tutti-logo.png",
+  import.meta.url
+).href;
 
 const {
   CheckIcon,
@@ -304,6 +310,7 @@ const buttonComponent = uiSystemMetadata.components.find(
 
 const sections = [
   ...foundationNavigationSections,
+  ...componentSection("avatar", "Avatar", "身份图片、字母与加载回退"),
   ...componentSection("badge", "Badge", "状态标签与紧凑元信息"),
   ...componentSection("button", "Button", "按钮层级、尺寸与状态"),
   {
@@ -1560,6 +1567,104 @@ function BadgeStoryboard() {
           </div>
         </ExampleCard>
       </div>
+    </DocsSection>
+  );
+}
+
+function AvatarStoryboard() {
+  if (!hasStoryboard("Avatar")) {
+    return null;
+  }
+
+  const states = [
+    {
+      description: "Local raster image",
+      label: "Image",
+      node: (
+        <Avatar label="Tutti" size="lg" src={avatarSampleImageUrl}>
+          <StatusDot
+            className="absolute right-0 bottom-0 ring-2 ring-background"
+            tone="green"
+          />
+        </Avatar>
+      )
+    },
+    {
+      description: "Label-derived fallback",
+      label: "Initial",
+      node: <Avatar label="Tutti" size="lg" />
+    },
+    {
+      description: "Intentionally blank",
+      label: "Empty",
+      node: <Avatar fallback="empty" label="Private identity" size="lg" />
+    },
+    {
+      description: "Busy placeholder",
+      label: "Loading",
+      node: <Avatar label="Loading identity" loading size="lg" />
+    },
+    {
+      description: "Broken image to initial",
+      label: "Error",
+      node: (
+        <Avatar
+          initial="B"
+          label="Broken image"
+          size="lg"
+          src="/__missing-avatar-image__.png"
+        />
+      )
+    }
+  ];
+  const sizes = [
+    { label: "xs", size: "xs" as const },
+    { label: "sm", size: "sm" as const },
+    { label: "md", size: "md" as const },
+    { label: "lg", size: "lg" as const },
+    { label: "28px", size: 28 }
+  ];
+
+  return (
+    <DocsSection
+      id="avatar"
+      title="Avatar"
+      description="统一身份图片、字母、空白、加载和坏图回退"
+      componentId={metadataFor("Avatar")?.id}
+    >
+      <ExampleCard
+        title="Identity States"
+        description="真实图片和所有公开回退状态"
+      >
+        <div className="flex flex-wrap gap-5">
+          {states.map((state) => (
+            <div
+              className="grid min-w-20 justify-items-center gap-2 text-center"
+              key={state.label}
+            >
+              {state.node}
+              <div className="grid gap-0.5">
+                <span className="text-[13px] font-medium text-[var(--text-primary)]">
+                  {state.label}
+                </span>
+                <span className="text-[11px] text-[var(--text-secondary)]">
+                  {state.description}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 flex flex-wrap items-end gap-4 border-t border-[var(--border-1)] pt-5">
+          {sizes.map(({ label, size }) => (
+            <div className="grid justify-items-center gap-2" key={label}>
+              <Avatar label={label} size={size} />
+              <code className="font-mono text-[11px] text-[var(--text-secondary)]">
+                {label}
+              </code>
+            </div>
+          ))}
+        </div>
+      </ExampleCard>
     </DocsSection>
   );
 }
@@ -3953,6 +4058,7 @@ export function App() {
               description={copy.baseLayerDescription}
             />
           ) : null}
+          <AvatarStoryboard />
           <BadgeStoryboard />
           <ButtonStoryboard />
           <CheckboxStoryboard />

@@ -95,6 +95,28 @@
       "migrationHints": []
     },
     {
+      "id": "avatar",
+      "layer": "base",
+      "name": "Avatar",
+      "export": "Avatar",
+      "from": "@tutti-os/ui-system/components",
+      "category": "primitive",
+      "status": "stable",
+      "source": "src/components/avatar/index.tsx",
+      "description": "High-level identity image primitive with initial, empty, loading, and broken-image fallback states.",
+      "propsType": "AvatarProps",
+      "useCases": [
+        "People and account identity",
+        "Agent identity",
+        "Compact image surfaces with caller-owned overlays"
+      ],
+      "migrationHints": [
+        "Pass a stable label even when src is available so broken images have a meaningful fallback.",
+        "Use children for caller-owned presence badges and other overlays."
+      ],
+      "storyboard": true
+    },
+    {
       "id": "badge",
       "layer": "base",
       "name": "Badge",
