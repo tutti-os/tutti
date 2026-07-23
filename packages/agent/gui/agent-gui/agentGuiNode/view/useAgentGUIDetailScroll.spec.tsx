@@ -35,6 +35,33 @@ describe("useAgentGUIDetailScroll", () => {
     expect(harness.timeline.scrollTop).toBe(7_900);
   });
 
+  it("reads timeline geometry once for a semantic conversation switch", () => {
+    const harness = createHarness({ scrollHeight: 5_000 });
+    const { rerender } = renderHook(
+      ({ activeConversationId }) =>
+        useAgentGUIDetailScroll(
+          harness.input({ activeConversationId, showTimelineSkeleton: false })
+        ),
+      { initialProps: { activeConversationId: "conversation-a" } }
+    );
+
+    expect(harness.geometryReadCounts()).toEqual({
+      clientHeight: 1,
+      scrollHeight: 1,
+      scrollTop: 0
+    });
+
+    harness.resetGeometryReadCounts();
+    harness.setScrollHeight(8_000);
+    rerender({ activeConversationId: "conversation-b" });
+
+    expect(harness.geometryReadCounts()).toEqual({
+      clientHeight: 1,
+      scrollHeight: 1,
+      scrollTop: 0
+    });
+  });
+
   it("does not scroll the retained previous timeline when selection changes", () => {
     const harness = createHarness({ scrollHeight: 5_000 });
     const { rerender } = renderHook(
@@ -135,8 +162,14 @@ describe("useAgentGUIDetailScroll", () => {
     });
     expect(harness.timeline.scrollTop).toBe(4_900);
 
+    harness.resetGeometryReadCounts();
     act(() => animationFrames[0]?.(0));
 
+    expect(harness.geometryReadCounts()).toEqual({
+      clientHeight: 1,
+      scrollHeight: 1,
+      scrollTop: 0
+    });
     expect(harness.timeline.scrollTop).toBe(4_900);
   });
 
@@ -215,6 +248,87 @@ describe("useAgentGUIDetailScroll", () => {
       scrollHeight: 0,
       scrollTop: 0
     });
+  });
+
+  it("prefetches older messages from the initialized anchor without rereading scrollTop", () => {
+    const harness = createHarness({ scrollHeight: 100 });
+
+    renderHook(() =>
+      useAgentGUIDetailScroll(
+        harness.input({
+          activeConversationId: "conversation-prefetch",
+          hasOlderMessages: true,
+          showTimelineSkeleton: false
+        })
+      )
+    );
+
+    expect(harness.loadOlderConversationMessages).toHaveBeenCalledOnce();
+    expect(harness.geometryReadCounts()).toEqual({
+      clientHeight: 1,
+      scrollHeight: 1,
+      scrollTop: 0
+    });
+  });
+
+  it("restores a prepend anchor from one timeline geometry snapshot", () => {
+    const harness = createHarness({ scrollHeight: 5_000 });
+    const { rerender } = renderHook(
+      ({ isLoadingOlderMessages }) =>
+        useAgentGUIDetailScroll(
+          harness.input({
+            activeConversationId: "conversation-prepend",
+            isLoadingOlderMessages,
+            showTimelineSkeleton: false
+          })
+        ),
+      { initialProps: { isLoadingOlderMessages: false } }
+    );
+
+    act(() => {
+      harness.timeline.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
+      harness.timeline.scrollTop = 200;
+      harness.timeline.dispatchEvent(new Event("scroll"));
+    });
+    harness.pendingPrependScrollAnchorRef.current = {
+      conversationId: "conversation-prepend",
+      scrollHeight: 5_000,
+      scrollTop: 200
+    };
+    harness.setScrollHeight(6_000);
+    harness.resetGeometryReadCounts();
+
+    rerender({ isLoadingOlderMessages: true });
+
+    expect(harness.geometryReadCounts()).toEqual({
+      clientHeight: 1,
+      scrollHeight: 1,
+      scrollTop: 0
+    });
+    expect(harness.timeline.scrollTop).toBe(1_200);
+  });
+
+  it("reads timeline geometry once for an explicit scroll to bottom", () => {
+    const harness = createHarness({ scrollHeight: 5_000 });
+    const { result } = renderHook(() =>
+      useAgentGUIDetailScroll(
+        harness.input({
+          activeConversationId: "conversation-scroll-bottom",
+          showTimelineSkeleton: false
+        })
+      )
+    );
+    harness.timeline.scrollTop = 2_000;
+    harness.resetGeometryReadCounts();
+
+    act(() => result.current.scrollTimelineToBottom());
+
+    expect(harness.geometryReadCounts()).toEqual({
+      clientHeight: 1,
+      scrollHeight: 1,
+      scrollTop: 0
+    });
+    expect(harness.timeline.scrollTop).toBe(4_900);
   });
 
   it("keeps the bottom lock through observed streaming content growth", () => {
@@ -368,6 +482,9 @@ function createHarness(input: { scrollHeight: number }) {
       }
     }
   });
+  timeline.scrollTo = ((options: ScrollToOptions) => {
+    scrollTop = options.top ?? scrollTop;
+  }) as typeof timeline.scrollTo;
 
   const timelineScrollAnchorRef = mutableRef<{
     conversationId: string;
@@ -381,12 +498,15 @@ function createHarness(input: { scrollHeight: number }) {
     scrollTop: number;
   } | null>(null);
   const submittedPromptScrollConversationRef = mutableRef<string | null>(null);
+  const loadOlderConversationMessages = vi.fn();
   const actions = {
-    loadOlderConversationMessages: vi.fn()
+    loadOlderConversationMessages
   } as unknown as AgentGUINodeViewProps["actions"];
 
   return {
     bottomDock,
+    loadOlderConversationMessages,
+    pendingPrependScrollAnchorRef,
     timeline,
     timelineContent,
     resetGeometryReadCounts() {
@@ -407,6 +527,8 @@ function createHarness(input: { scrollHeight: number }) {
     input(options: {
       activeConversationId: string;
       conversation?: AgentConversationVM;
+      hasOlderMessages?: boolean;
+      isLoadingOlderMessages?: boolean;
       showTimelineSkeleton: boolean;
       timelineConversationId?: string;
     }) {
@@ -423,7 +545,11 @@ function createHarness(input: { scrollHeight: number }) {
         timelineContentRef: ref(timelineContent),
         timelineRef: ref(timeline),
         timelineScrollAnchorRef,
-        viewModel: viewModel(options.activeConversationId)
+        viewModel: viewModel(
+          options.activeConversationId,
+          options.hasOlderMessages,
+          options.isLoadingOlderMessages
+        )
       };
     }
   };
@@ -463,12 +589,16 @@ function installResizeObserverMock(): ResizeObserverMock[] {
   return observers;
 }
 
-function viewModel(activeConversationId: string): AgentGUINodeViewModel {
+function viewModel(
+  activeConversationId: string,
+  hasOlderMessages = false,
+  isLoadingOlderMessages = false
+): AgentGUINodeViewModel {
   return {
     rail: { activeConversationId },
     detail: {
-      hasOlderMessages: false,
-      isLoadingOlderMessages: false
+      hasOlderMessages,
+      isLoadingOlderMessages
     }
   } as unknown as AgentGUINodeViewModel;
 }

@@ -18,6 +18,8 @@ use ./packages/workspace/issues
 
 use ./packages/auth/bridge-go
 
+use ./packages/commerce
+
 use (
 	./packages/agent/activity-replication
 	./packages/agent/daemon

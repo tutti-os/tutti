@@ -144,9 +144,12 @@ renderer viewport, asserts the hero prompt-tip's native `scrollWidth` and
 `clientWidth` getters were read after resize, then restores the original
 viewport metrics.
 `composer-input` restores a settled Session so the dock composer is active,
-injects text one character at a time, drives a real CDP IME composition
-lifecycle, then opens the `@` panel and verifies ArrowDown, Tab, and Escape
-navigation without submitting the draft.
+inserts four explicit newline rows, waits for the 3.5-line viewport to finish
+expanding, deletes back to one row, and verifies that the action button remains
+bottom-aligned across both transitions. It then injects ordinary text one
+character at a time, drives a real CDP IME composition lifecycle, opens the `@`
+panel, and verifies ArrowDown, Tab, and Escape navigation without submitting
+the draft.
 
 `workbench-window-lifecycle` measures the internal AgentGUI Workbench node's
 minimize, restore, maximize, unmaximize, close, and reopen mechanics.

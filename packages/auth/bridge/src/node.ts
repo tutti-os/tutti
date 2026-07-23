@@ -29,6 +29,8 @@ import {
   trimString
 } from "./shared";
 
+const BRIDGE_SERVER_FORCE_CLOSE_TIMEOUT_MS = 1_000;
+
 export interface TuttiNodeAuthClientOptions {
   authJsonPath: string;
   appCallbackUrl: string;
@@ -694,7 +696,8 @@ function sendCors(res: ServerResponse, status: number): void {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Private-Network": "true"
+    "Access-Control-Allow-Private-Network": "true",
+    Connection: "close"
   });
   res.end();
 }
@@ -718,13 +721,14 @@ function sendJson(res: ServerResponse, status: number, payload: unknown): void {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Private-Network": "true",
-    "Content-Type": "application/json; charset=utf-8"
+    "Content-Type": "application/json; charset=utf-8",
+    Connection: "close"
   });
   res.end(JSON.stringify(payload));
 }
 
 function sendRedirect(res: ServerResponse, location: string): void {
-  res.writeHead(302, { Location: location });
+  res.writeHead(302, { Location: location, Connection: "close" });
   res.end();
 }
 
@@ -784,7 +788,19 @@ function isAllowedAppCallbackProtocol(protocol: string): boolean {
 }
 
 function closeServer(server: Server): Promise<void> {
-  return new Promise((resolve) => server.close(() => resolve()));
+  return new Promise((resolve) => {
+    const forceCloseTimer = setTimeout(() => {
+      server.closeAllConnections();
+      resolve();
+    }, BRIDGE_SERVER_FORCE_CLOSE_TIMEOUT_MS);
+    forceCloseTimer.unref();
+
+    server.close(() => {
+      clearTimeout(forceCloseTimer);
+      resolve();
+    });
+    server.closeIdleConnections();
+  });
 }
 
 function openUrlWithDefaultBrowser(url: string): Promise<void> {

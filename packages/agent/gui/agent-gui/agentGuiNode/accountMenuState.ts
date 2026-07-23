@@ -26,5 +26,6 @@ export interface AgentGUIAccountMenuState {
   onLogin(): void;
   onLogout?(): void;
   onSettings?(): void;
+  onCopyUserId?(): void | Promise<void>;
   onOpenExternal(url: string): void;
 }

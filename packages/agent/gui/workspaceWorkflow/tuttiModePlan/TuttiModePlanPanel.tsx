@@ -26,9 +26,6 @@ import type {
 } from "./tuttiModePlanTaskAssignments";
 
 export interface TuttiModePlanPanelLabels {
-  mode: string;
-  taskReview: string;
-  pending: string;
   tasks: string;
   priority: string;
   priorityHigh: string;
@@ -54,6 +51,7 @@ export interface TuttiModePlanPanelLabels {
 export function TuttiModePlanPanel({
   assignmentCatalog,
   assignmentDrafts,
+  embedded = false,
   labels,
   panel,
   submitting,
@@ -61,6 +59,7 @@ export function TuttiModePlanPanel({
 }: {
   assignmentCatalog?: TuttiModePlanAssignmentCatalog | null;
   assignmentDrafts?: TuttiModePlanTaskAssignmentDrafts;
+  embedded?: boolean;
   labels: TuttiModePlanPanelLabels;
   panel: TuttiModePlanPanelViewModel;
   submitting: boolean;
@@ -78,17 +77,15 @@ export function TuttiModePlanPanel({
 
   return (
     <Card
-      className="mx-auto w-full max-w-[860px]"
+      className={cn(
+        "w-full",
+        embedded
+          ? "border-0 bg-transparent shadow-none"
+          : "mx-auto max-w-[860px]"
+      )}
       data-testid="tutti-mode-plan-panel"
     >
       <CardHeader>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="accent">{labels.mode}</Badge>
-          <Badge variant="pending">{labels.pending}</Badge>
-          <span className="text-xs text-muted-foreground">
-            {labels.taskReview}
-          </span>
-        </div>
         <CardTitle>{panel.title}</CardTitle>
         <CardDescription>{panel.topicId}</CardDescription>
       </CardHeader>

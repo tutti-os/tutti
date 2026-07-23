@@ -388,6 +388,9 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                     disabled={inputDisabled}
                     className={styles.composerTextarea}
                     onChange={handleDraftChange}
+                    onContentLayoutInvalidated={
+                      input.layout.invalidateComposerMeasurement
+                    }
                     onFocus={(method) => engagement?.focused(method)}
                     onUserContentChange={(nextPrompt) => {
                       if (

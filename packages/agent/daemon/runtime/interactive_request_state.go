@@ -253,6 +253,23 @@ func (p *pendingInteractiveRequest) wait(ctx context.Context) (pendingInteractiv
 	}
 }
 
+func (p *pendingInteractiveRequest) supersede(err error) bool {
+	if p == nil {
+		return false
+	}
+	if err == nil {
+		err = errPermissionRequestCanceled
+	}
+	if !p.finish(pendingInteractiveRequestStateSuperseded) {
+		return false
+	}
+	select {
+	case p.response <- pendingInteractiveResponse{err: err}:
+	default:
+	}
+	return true
+}
+
 func (p *pendingInteractiveRequest) reject(err error) {
 	if p == nil {
 		return

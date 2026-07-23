@@ -1,10 +1,13 @@
 export const enTuttiModePlan = {
-  mode: "Tutti mode plan",
   taskReview: "Plan review",
-  pending: "Needs review",
   cancel: "Cancel plan",
   reviewHint: "Send to accept · type feedback to request changes",
   reviewHintReplan: "Intensity changed · send to re-plan at the new intensity",
+  materializingTitle: "Creating tasks",
+  materializingHint: "Turning the accepted plan into executable tasks",
+  errorTitle: "Workflow unavailable",
+  expand: "Expand workflow",
+  collapse: "Collapse workflow",
   sendAccept: "Accept plan",
   sendRequestChanges: "Request changes",
   replanFeedback:
@@ -46,7 +49,6 @@ export const enTuttiModePlan = {
   issueStripPending: "{{count}} awaiting acceptance",
   issueStripFailed: "{{count}} failed",
   issueStripDone: "{{done}}/{{total}} done",
-  issueStripJump: "View the subtask board",
   issueCreateFailed:
     "The approved plan could not create its Issue: {{message}}. Ask the Agent to revise the plan."
 } as const;

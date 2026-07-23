@@ -6,6 +6,7 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
-	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 )
 
@@ -357,7 +357,7 @@ func TestIssueManagerServiceCountsPendingAcceptanceSubtasksAsCompletedProgress(t
 	}
 }
 
-func TestIssueRunReconcileCompletionWaitsGraceBeforeFailedSessionCompletion(t *testing.T) {
+func TestIssueRunReconcileCompletionFailsOnlyAtProductTimeout(t *testing.T) {
 	now := time.Now().UnixMilli()
 	run := workspaceissues.Run{
 		RunID:           "run-1",
@@ -367,19 +367,17 @@ func TestIssueRunReconcileCompletionWaitsGraceBeforeFailedSessionCompletion(t *t
 		StartedAtUnixMS: now,
 		UpdatedAtUnixMS: now,
 	}
-	session := agentservice.PersistedSession{ID: "session-1"}
-	if _, _, ok := issueRunReconcileCompletion(run, session, now+defaultIssueRunReconcileGrace.Milliseconds()-1); ok {
-		t.Fatal("completion before grace = true, want false")
+	if _, _, ok := issueRunReconcileCompletion(run, now+defaultIssueRunMaxDuration.Milliseconds()-1); ok {
+		t.Fatal("completion before product timeout = true, want false")
 	}
-	status, message, ok := issueRunReconcileCompletion(run, session, now+defaultIssueRunReconcileGrace.Milliseconds())
-	if !ok || status != workspaceissues.StatusFailed || message != "Agent session ended without reporting run completion." {
-		t.Fatalf("completion after grace = %q %q %v", status, message, ok)
+	status, message, ok := issueRunReconcileCompletion(run, now+defaultIssueRunMaxDuration.Milliseconds())
+	if !ok || status != workspaceissues.StatusFailed || message != "Issue run timed out." {
+		t.Fatalf("completion at product timeout = %q %q %v", status, message, ok)
 	}
 }
 
-func TestIssueRunReconcileCompletionSparesStreamingSessions(t *testing.T) {
+func TestIssueRunReconcileCompletionDoesNotInferAgentStateFromProjectionSilence(t *testing.T) {
 	now := time.Now().UnixMilli()
-	grace := defaultIssueRunReconcileGrace.Milliseconds()
 	run := workspaceissues.Run{
 		RunID:           "run-1",
 		Status:          workspaceissues.StatusRunning,
@@ -388,35 +386,53 @@ func TestIssueRunReconcileCompletionSparesStreamingSessions(t *testing.T) {
 		StartedAtUnixMS: now,
 		UpdatedAtUnixMS: now,
 	}
-	// The persisted active turn id can stay empty while a turn streams (async
-	// stamping), so recent session events must veto the failure verdict: this
-	// exact shape — six-minute-old run, event seven seconds ago — was killed
-	// as "ended without reporting" while the delegate was still working.
-	streaming := agentservice.PersistedSession{
-		ID:              "session-1",
-		LastEventUnixMS: now + 6*60*1000 - 7*1000,
-	}
-	if _, _, ok := issueRunReconcileCompletion(run, streaming, now+6*60*1000); ok {
-		t.Fatal("completion with a recent session event = true, want false")
-	}
-	quiet := agentservice.PersistedSession{
-		ID:              "session-1",
-		LastEventUnixMS: now,
-	}
-	status, _, ok := issueRunReconcileCompletion(run, quiet, now+grace)
-	if !ok || status != workspaceissues.StatusFailed {
-		t.Fatalf("completion after quiet grace = %q %v, want failed", status, ok)
+	if status, message, ok := issueRunReconcileCompletion(run, now+30*time.Second.Milliseconds()); ok {
+		t.Fatalf("projection silence inferred completion = %q %q, want no completion", status, message)
 	}
 }
 
-type issueRunTurnResolverStub struct {
-	initiatingTurnByRunID map[string]string
+func TestIssueRunReconcileQueueRetriesTransientErrors(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	completed := make(chan struct{})
+	var calls int
+	var mu sync.Mutex
+	queue := NewIssueRunReconcileQueue(IssueRunReconcileQueueOptions{
+		Context:  ctx,
+		Delay:    time.Millisecond,
+		Interval: time.Millisecond,
+		Reconcile: func(context.Context, string) (IssueRunReconcileResult, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			calls++
+			if calls == 1 {
+				return IssueRunReconcileResult{}, errors.New("temporary read failure")
+			}
+			close(completed)
+			return IssueRunReconcileResult{}, nil
+		},
+	})
+	queue.Enqueue("workspace-1")
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("reconcile queue did not retry a transient error")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("reconcile calls = %d, want 2", calls)
+	}
 }
 
-func (r issueRunTurnResolverStub) FindTurnByClientSubmitID(_ context.Context, _ string, _ string, clientSubmitID string) (string, bool, error) {
+type issueRunSettlementReaderStub struct {
+	settlementByRunID map[string]IssueRunSettlement
+}
+
+func (r issueRunSettlementReaderStub) ReadRunSettlement(_ context.Context, _ string, _ string, clientSubmitID string) (IssueRunSettlement, bool, error) {
 	runID := strings.TrimPrefix(clientSubmitID, "issue-run:")
-	turnID, ok := r.initiatingTurnByRunID[runID]
-	return turnID, ok, nil
+	settlement, ok := r.settlementByRunID[runID]
+	return settlement, ok, nil
 }
 
 func openIssueServiceStore(t *testing.T) *workspacedata.SQLiteStore {

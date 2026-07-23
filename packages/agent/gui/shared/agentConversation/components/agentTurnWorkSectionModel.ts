@@ -37,22 +37,28 @@ interface AgentTurnWorkSectionOptions {
 
 export function resolveAgentTurnTiming(
   turn: AgentActivityTurn | null | undefined,
-  isActiveTurn: boolean
+  isActiveTurn: boolean,
+  submittedAtUnixMs?: number | null
 ): AgentTurnTiming | null {
   if (!turn || !Number.isFinite(turn.startedAtUnixMs)) {
     return null;
   }
+  const timingStartedAtUnixMs =
+    Number.isFinite(submittedAtUnixMs) &&
+    (submittedAtUnixMs as number) <= turn.startedAtUnixMs
+      ? (submittedAtUnixMs as number)
+      : turn.startedAtUnixMs;
 
   if (turn.phase !== "settled") {
     return isActiveTurn
-      ? { kind: "live", startedAtUnixMs: turn.startedAtUnixMs }
+      ? { kind: "live", startedAtUnixMs: timingStartedAtUnixMs }
       : null;
   }
 
   const endUnixMs = turn.settledAtUnixMs;
   if (
     !Number.isFinite(endUnixMs) ||
-    (endUnixMs as number) < turn.startedAtUnixMs
+    (endUnixMs as number) < timingStartedAtUnixMs
   ) {
     return null;
   }
@@ -61,7 +67,7 @@ export function resolveAgentTurnTiming(
     kind: "settled",
     elapsedSeconds: Math.max(
       0,
-      Math.floor(((endUnixMs as number) - turn.startedAtUnixMs) / 1_000)
+      Math.floor(((endUnixMs as number) - timingStartedAtUnixMs) / 1_000)
     )
   };
 }
@@ -88,13 +94,17 @@ export function buildAgentTurnWorkSectionModel(
   isActiveTurn = false,
   options: AgentTurnWorkSectionOptions = {}
 ): AgentTurnWorkSectionModel | null {
-  const timing = resolveAgentTurnTiming(turn, isActiveTurn);
+  const leadingRowCount = countLeadingUserRows(group.rows);
+  const leadingRows = group.rows.slice(0, leadingRowCount);
+  const submittedAtUnixMs = resolveTurnSubmittedAtUnixMs(
+    leadingRows,
+    turn?.startedAtUnixMs
+  );
+  const timing = resolveAgentTurnTiming(turn, isActiveTurn, submittedAtUnixMs);
   if (!timing) {
     return null;
   }
 
-  const leadingRowCount = countLeadingUserRows(group.rows);
-  const leadingRows = group.rows.slice(0, leadingRowCount);
   const finalTarget = findFinalAssistantTextTarget(group.rows);
   const sections = buildOrderedSections(
     group.rows,
@@ -119,6 +129,50 @@ export function buildAgentTurnWorkSectionModel(
     sections,
     collapseEligible
   };
+}
+
+function resolveTurnSubmittedAtUnixMs(
+  leadingRows: readonly AgentTurnWorkSectionRow[],
+  fallbackUnixMs: number | null | undefined
+): number | null {
+  const exactTimestamps = leadingRows.flatMap(({ row }) => {
+    if (row.kind !== "message" || row.speaker !== "user") {
+      return [];
+    }
+    return row.messages.flatMap((message) =>
+      (message.sourceTimelineItems ?? []).flatMap((item) => {
+        const value = item.payload?.clientSubmittedAtUnixMs;
+        return validUnixMs(value) ? [value] : [];
+      })
+    );
+  });
+  const exact = minimumTimestamp(exactTimestamps);
+  if (exact !== null) {
+    return exact;
+  }
+
+  const projected = minimumTimestamp(
+    leadingRows.flatMap(({ row }) =>
+      row.kind === "message" && row.speaker === "user"
+        ? [
+            row.occurredAtUnixMs,
+            ...row.messages.map((message) => message.occurredAtUnixMs)
+          ]
+        : []
+    )
+  );
+  return projected ?? (validUnixMs(fallbackUnixMs) ? fallbackUnixMs : null);
+}
+
+function minimumTimestamp(
+  values: readonly (number | null | undefined)[]
+): number | null {
+  const valid = values.filter(validUnixMs);
+  return valid.length > 0 ? Math.min(...valid) : null;
+}
+
+function validUnixMs(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 function countLeadingUserRows(

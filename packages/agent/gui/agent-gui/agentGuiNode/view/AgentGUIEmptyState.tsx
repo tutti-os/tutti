@@ -344,7 +344,11 @@ export function AgentGUIEmptyHeroTuttiToggle({
 }): React.JSX.Element | null {
   const switchId = useId();
   const onTuttiModeChange = composerProps.onTuttiModeChange;
-  if (!onTuttiModeChange) {
+  // Same host gate as /tutti and the composer badge: omit or enabled:false
+  // must not show Tutti Mode chrome on Codex/VM or other shared AgentGUI hosts.
+  const tuttiModeEnabled =
+    composerProps.capabilityMenuState?.tuttiMode?.enabled === true;
+  if (!onTuttiModeChange || !tuttiModeEnabled) {
     return null;
   }
   const active = composerProps.tuttiModeActive === true;

@@ -18,7 +18,7 @@ describe("agentGUITuttiModeLabels", () => {
     expect(labels.tuttiBudgetAgentCountPowerful).toBe(
       "agentHost.agentGui.tuttiBudgetAgentCountPowerful"
     );
-    expect(labels.tuttiModePlanPanel.taskReview).toBe(
+    expect(labels.tuttiWorkflowDock.reviewTitle).toBe(
       "agentHost.agentGui.tuttiModePlan.taskReview"
     );
     expect(labels.tuttiModePlanPanel.permissionMode).toBe(

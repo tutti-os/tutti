@@ -16,6 +16,7 @@ export interface AgentRichTextEditorProps {
   removeMentionLabel?: string;
   className?: string;
   onChange: (value: string) => void;
+  onContentLayoutInvalidated?: () => void;
   onFocus?: (method: AgentGUIComposerFocusMethod) => void;
   onUserContentChange?: (value: string) => void;
   onSubmit: () => void;

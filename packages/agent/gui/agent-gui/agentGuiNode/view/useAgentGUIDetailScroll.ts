@@ -44,6 +44,22 @@ interface Input {
   viewModel: AgentGUINodeViewModel;
 }
 
+interface TimelineGeometry {
+  clientHeight: number;
+  maxScrollTop: number;
+  scrollHeight: number;
+}
+
+function readTimelineGeometry(timeline: HTMLElement): TimelineGeometry {
+  const scrollHeight = timeline.scrollHeight;
+  const clientHeight = timeline.clientHeight;
+  return {
+    clientHeight,
+    maxScrollTop: Math.max(0, scrollHeight - clientHeight),
+    scrollHeight
+  };
+}
+
 export function useAgentGUIDetailScroll(input: Input) {
   const {
     actions,
@@ -101,10 +117,8 @@ export function useAgentGUIDetailScroll(input: Input) {
     ) {
       return;
     }
-    const maxScrollTop = Math.max(
-      0,
-      timeline.scrollHeight - timeline.clientHeight
-    );
+    const geometry = readTimelineGeometry(timeline);
+    const maxScrollTop = geometry.maxScrollTop;
     let nextScrollTop: number;
     if (conversationChanged || shouldScrollSubmittedPromptToBottom) {
       bottomLockOwnerRef.current = activeConversationId;
@@ -125,7 +139,7 @@ export function useAgentGUIDetailScroll(input: Input) {
         pendingPrependScrollAnchorRef.current = null;
       }
     } else if (shouldRestorePrependAnchor && prependAnchor) {
-      const nextScrollHeight = timeline.scrollHeight;
+      const nextScrollHeight = geometry.scrollHeight;
       const delta = nextScrollHeight - prependAnchor.scrollHeight;
       nextScrollTop = Math.max(0, prependAnchor.scrollTop + delta);
       timeline.scrollTop = nextScrollTop;
@@ -152,9 +166,9 @@ export function useAgentGUIDetailScroll(input: Input) {
 
     timelineScrollAnchorRef.current = {
       conversationId: activeConversationId,
-      scrollHeight: timeline.scrollHeight,
+      scrollHeight: geometry.scrollHeight,
       scrollTop: nextScrollTop,
-      clientHeight: timeline.clientHeight
+      clientHeight: geometry.clientHeight
     };
     setIsTimelineScrolledToTop(
       nextScrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
@@ -271,16 +285,14 @@ export function useAgentGUIDetailScroll(input: Input) {
         ) {
           return;
         }
-        const maxScrollTop = Math.max(
-          0,
-          timeline.scrollHeight - timeline.clientHeight
-        );
+        const geometry = readTimelineGeometry(timeline);
+        const maxScrollTop = geometry.maxScrollTop;
         timeline.scrollTop = maxScrollTop;
         timelineScrollAnchorRef.current = {
           conversationId: activeConversationId,
-          scrollHeight: timeline.scrollHeight,
+          scrollHeight: geometry.scrollHeight,
           scrollTop: maxScrollTop,
-          clientHeight: timeline.clientHeight
+          clientHeight: geometry.clientHeight
         };
         setIsTimelineScrolledToTop(
           maxScrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
@@ -334,6 +346,25 @@ export function useAgentGUIDetailScroll(input: Input) {
       return;
     }
 
+    const loadOlderMessagesNearTop = (
+      scrollTop: number,
+      scrollHeight: number
+    ): void => {
+      if (
+        activeConversationId === viewModel.rail.activeConversationId &&
+        viewModel.detail.hasOlderMessages &&
+        !viewModel.detail.isLoadingOlderMessages &&
+        scrollTop <= AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX
+      ) {
+        pendingPrependScrollAnchorRef.current = {
+          conversationId: activeConversationId,
+          scrollHeight,
+          scrollTop
+        };
+        actions.loadOlderConversationMessages();
+      }
+    };
+
     const captureScrollAnchor = (): void => {
       const previousAnchor = timelineScrollAnchorRef.current;
       if (
@@ -368,19 +399,7 @@ export function useAgentGUIDetailScroll(input: Input) {
         scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
       );
       setIsTimelineScrolledToBottom(effectiveAtBottom);
-      if (
-        activeConversationId === viewModel.rail.activeConversationId &&
-        viewModel.detail.hasOlderMessages &&
-        !viewModel.detail.isLoadingOlderMessages &&
-        scrollTop <= AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX
-      ) {
-        pendingPrependScrollAnchorRef.current = {
-          conversationId: activeConversationId,
-          scrollHeight: previousAnchor.scrollHeight,
-          scrollTop
-        };
-        actions.loadOlderConversationMessages();
-      }
+      loadOlderMessagesNearTop(scrollTop, previousAnchor.scrollHeight);
     };
 
     const syncObservedTimelineGeometry = (): void => {
@@ -389,9 +408,8 @@ export function useAgentGUIDetailScroll(input: Input) {
         return;
       }
 
-      const scrollHeight = timeline.scrollHeight;
-      const clientHeight = timeline.clientHeight;
-      const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
+      const geometry = readTimelineGeometry(timeline);
+      const { clientHeight, maxScrollTop, scrollHeight } = geometry;
       const bottomLocked = bottomLockOwnerRef.current === activeConversationId;
       let scrollTop = Math.min(maxScrollTop, timeline.scrollTop);
       if (bottomLocked) {
@@ -430,7 +448,13 @@ export function useAgentGUIDetailScroll(input: Input) {
       }
     };
 
-    captureScrollAnchor();
+    const initialAnchor = timelineScrollAnchorRef.current;
+    if (initialAnchor?.conversationId === activeConversationId) {
+      loadOlderMessagesNearTop(
+        initialAnchor.scrollTop,
+        initialAnchor.scrollHeight
+      );
+    }
     timeline.addEventListener("scroll", captureScrollAnchor, { passive: true });
     timeline.addEventListener("wheel", captureWheelIntent, { passive: true });
     timeline.addEventListener("keydown", captureKeyboardIntent);
@@ -466,18 +490,16 @@ export function useAgentGUIDetailScroll(input: Input) {
       return;
     }
 
-    const maxScrollTop = Math.max(
-      0,
-      timeline.scrollHeight - timeline.clientHeight
-    );
+    const geometry = readTimelineGeometry(timeline);
+    const maxScrollTop = geometry.maxScrollTop;
     bottomLockOwnerRef.current = activeConversationId;
     userScrollAwayIntentConversationRef.current = null;
     setTimelineScrollTopWithUserTransition(timeline, maxScrollTop);
     timelineScrollAnchorRef.current = {
       conversationId: activeConversationId,
-      scrollHeight: timeline.scrollHeight,
+      scrollHeight: geometry.scrollHeight,
       scrollTop: maxScrollTop,
-      clientHeight: timeline.clientHeight
+      clientHeight: geometry.clientHeight
     };
     setIsTimelineScrolledToTop(
       maxScrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX

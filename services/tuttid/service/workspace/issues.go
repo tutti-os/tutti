@@ -7,43 +7,36 @@ import (
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
-	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 )
 
 const issueManagerLocalActorUserID = "local"
 
 type IssueManagerService struct {
-	AgentSessionCreator agentSessionCreator
-	AgentSessionReader  agentservice.SessionReader
-	Publisher           IssueManagerEventPublisher
-	RunReconcileQueue   *IssueRunReconcileQueue
-	Store               workspaceissues.Store
-	AgentTargetReader   IssueAssignmentAgentTargetReader
-	PlanningTimeline    IssuePlanningTimelineReporter
+	RunLauncher                    IssueRunLauncher
+	RunReconciler                  IssueRunReconciler
+	SourceSessionDirectoryResolver IssueSourceSessionDirectoryResolver
+	Publisher                      IssueManagerEventPublisher
+	RunReconcileQueue              *IssueRunReconcileQueue
+	Store                          workspaceissues.Store
+	AgentTargetReader              IssueAssignmentAgentTargetReader
+	PlanningTimeline               IssuePlanningTimelineReporter
 	// TaskWorktreeRoot overrides where per-run task worktrees are created;
 	// empty falls back to <state dir>/task-worktrees.
 	TaskWorktreeRoot string
 	// CompletionNotifier hands control back to the planning conversation once
 	// every task of a tutti-mode-plan Issue is completed and accepted.
 	CompletionNotifier TuttiPlanIssueCompletionNotifier
-	// RunTurnResolver resolves which canonical turn a client submit id
-	// produced, so a settled turn is matched to the exact Issue run that
-	// initiated it before the run is completed from Agent state.
-	RunTurnResolver IssueRunTurnResolver
 	// MutationLocks serializes task/run mutations per Issue so the concurrent
 	// settle paths cannot interleave read-modify-write cycles into
 	// contradictory task states. Nil (bare test services) means no locking.
 	MutationLocks *IssueMutationLocks
-	// RunSessionCanceller cancels the live agent turn of a run's delegate
-	// session when the user stops the Issue's execution.
-	RunSessionCanceller IssueRunSessionCanceller
-}
-
-// IssueRunTurnResolver looks up the canonical turn created for a client
-// submit id (the Issue dispatcher stamps "issue-run:<runID>").
-type IssueRunTurnResolver interface {
-	FindTurnByClientSubmitID(ctx context.Context, workspaceID string, agentSessionID string, clientSubmitID string) (string, bool, error)
+	// RunOperationLocks fences lock-free external launch/cancel operations for
+	// one durable Run without holding a mutex across Agent or filesystem work.
+	RunLaunchGate *IssueRunLaunchGate
+	// RunCancellationRequester compensates a launch when Stop arrived while
+	// the external Agent create call was already in flight.
+	RunCancellationRequester IssueRunSessionCanceller
 }
 
 type TuttiPlanIssueCompletionNotifier interface {
@@ -349,8 +342,18 @@ func (s IssueManagerService) UpdateIssue(ctx context.Context, workspaceID string
 // not already hold the Issue mutation lock.
 func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, workspaceID, issueID string) {
 	unlock := s.MutationLocks.Lock(workspaceID, issueID)
-	defer unlock()
-	s.dispatchEligibleIssueTasksLocked(ctx, workspaceID, issueID)
+	launches := s.claimEligibleIssueRunsLocked(ctx, workspaceID, issueID)
+	unlock()
+	for _, launch := range launches {
+		s.publishRunCreated(ctx, workspaceissues.Run{
+			WorkspaceID:    launch.WorkspaceID,
+			IssueID:        launch.IssueID,
+			TaskID:         launch.TaskID,
+			RunID:          launch.RunID,
+			AgentSessionID: launch.AgentSessionID,
+		})
+	}
+	s.launchClaimedIssueRuns(ctx, launches)
 }
 
 func (s IssueManagerService) DeleteIssue(ctx context.Context, workspaceID string, issueID string) (bool, error) {
@@ -482,8 +485,27 @@ func (s IssueManagerService) GetTaskDetail(ctx context.Context, workspaceID stri
 
 func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string, issueID string, taskID string, input UpdateIssueManagerTaskInput) (workspaceissues.Task, error) {
 	unlock := s.MutationLocks.Lock(workspaceID, issueID)
-	defer unlock()
-	return s.updateTaskLocked(ctx, workspaceID, issueID, taskID, input)
+	task, err := s.updateTaskLocked(ctx, workspaceID, issueID, taskID, input)
+	unlock()
+	if err != nil {
+		return workspaceissues.Task{}, err
+	}
+	s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
+		WorkspaceID: task.WorkspaceID,
+		IssueID:     task.IssueID,
+		TaskID:      task.TaskID,
+		ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskUpdated,
+	})
+	if task.Status == workspaceissues.StatusCompleted && task.AcceptanceState == workspaceissues.AcceptanceUserAccepted {
+		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
+		s.notifyTuttiPlanIssueCompletedBestEffort(ctx, workspaceID, issueID)
+	}
+	// A rework (back to not_started) re-opens the execution frontier; without
+	// this the rejected head of a sequential Issue waits for an unrelated event.
+	if input.HasStatus && task.Status == workspaceissues.StatusNotStarted {
+		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
+	}
+	return task, nil
 }
 
 func (s IssueManagerService) updateTaskLocked(ctx context.Context, workspaceID string, issueID string, taskID string, input UpdateIssueManagerTaskInput) (workspaceissues.Task, error) {
@@ -525,21 +547,6 @@ func (s IssueManagerService) updateTaskLocked(ctx context.Context, workspaceID s
 	})
 	if err != nil {
 		return workspaceissues.Task{}, err
-	}
-	s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
-		WorkspaceID: task.WorkspaceID,
-		IssueID:     task.IssueID,
-		TaskID:      task.TaskID,
-		ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskUpdated,
-	})
-	if task.Status == workspaceissues.StatusCompleted && task.AcceptanceState == workspaceissues.AcceptanceUserAccepted {
-		s.dispatchEligibleIssueTasksLocked(ctx, workspaceID, issueID)
-		s.notifyTuttiPlanIssueCompletedBestEffort(ctx, workspaceID, issueID)
-	}
-	// A rework (back to not_started) re-opens the execution frontier; without
-	// this the rejected head of a sequential Issue waits for an unrelated event.
-	if input.HasStatus && task.Status == workspaceissues.StatusNotStarted {
-		s.dispatchEligibleIssueTasksLocked(ctx, workspaceID, issueID)
 	}
 	return task, nil
 }
@@ -692,12 +699,12 @@ func (s IssueManagerService) enqueueWorkspaceRunReconcile(workspaceID string) {
 }
 
 func (s IssueManagerService) reconcileWorkspaceRunsBestEffort(ctx context.Context, workspaceID string) {
-	if strings.TrimSpace(workspaceID) == "" || s.AgentSessionReader == nil {
+	if strings.TrimSpace(workspaceID) == "" || s.RunReconciler == nil {
 		return
 	}
 	reconcileCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
-	_, _ = s.ReconcileRunningRuns(reconcileCtx, workspaceID)
+	_, _ = s.RunReconciler.ReconcileRunningRuns(reconcileCtx, workspaceID)
 }
 
 func (s IssueManagerService) publishWorkspaceIssueUpdated(ctx context.Context, update eventstreamservice.WorkspaceIssueUpdate) {

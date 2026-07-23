@@ -236,7 +236,7 @@ export function AgentGUINodeView({
   const requestComposerFocus = useCallback(() => {
     setLocalComposerFocusRequestSequence((current) => current + 1);
   }, []);
-  const requestCreateConversation = useCallback(
+  const requestCreateConversation = useStableEventCallback(
     (options?: { projectPath?: string | null; source?: string }) => {
       if (previewMode) {
         return;
@@ -253,13 +253,7 @@ export function AgentGUINodeView({
         createConversationAction({ source: source ?? "rail_toolbar" });
       }
       requestComposerFocus();
-    },
-    [
-      createConversationAction,
-      previewMode,
-      requestComposerFocus,
-      viewModel.composer.composerSettings.selectedProjectPath
-    ]
+    }
   );
   const effectiveWorkspaceAppIcons = useMemo(
     () =>

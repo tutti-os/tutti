@@ -356,6 +356,7 @@ export function useAgentGUIViewLabels(input: {
       accountMenuFree: t("agentHost.agentGui.accountMenuFree"),
       accountMenuSignIn: t("agentHost.agentGui.accountMenuSignIn"),
       accountMenuSignOut: t("agentHost.agentGui.accountMenuSignOut"),
+      accountMenuCopyUserId: t("agentHost.agentGui.accountMenuCopyUserId"),
       accountMenuLoading: t("agentHost.agentGui.accountMenuLoading"),
       accountMenuUnavailable: t("agentHost.agentGui.accountMenuUnavailable"),
       accountMenuDataUnavailable: t(

@@ -1,5 +1,6 @@
 import { flushSync } from "react-dom";
 import {
+  startTransition,
   useCallback,
   useRef,
   type Dispatch,
@@ -67,7 +68,6 @@ function useStableEventCallback<Args extends unknown[], Result>(
   callbackRef.current = callback;
   return useCallback((...args: Args) => callbackRef.current(...args), []);
 }
-
 interface UseComposerDraftAttachmentsInput {
   workspaceId: string;
   workspacePath?: string | null;
@@ -175,30 +175,36 @@ export function useComposerDraftAttachments({
       if (isGoalModeActive) {
         const nextGoalPrompt = buildGoalModePrompt(nextDraft);
         draftPromptRef.current = nextGoalPrompt;
-        setPaletteDraftPrompt(nextDraft);
-        setIsPaletteOpen(true);
-        updateScopedDraft(draftScopeKey, (currentDraft) =>
-          updateDraftPromptAndReconcileFiles(currentDraft, nextGoalPrompt)
-        );
+        startTransition(() => {
+          setPaletteDraftPrompt(nextDraft);
+          setIsPaletteOpen(true);
+          updateScopedDraft(draftScopeKey, (currentDraft) =>
+            updateDraftPromptAndReconcileFiles(currentDraft, nextGoalPrompt)
+          );
+        });
         return;
       }
       const nextGoalObjective = goalDraftObjectiveFromPrompt(nextDraft);
       if (nextGoalObjective !== null) {
         const nextGoalPrompt = buildGoalModePrompt(nextGoalObjective);
         draftPromptRef.current = nextGoalPrompt;
-        setPaletteDraftPrompt(nextGoalObjective);
-        setIsPaletteOpen(true);
-        updateScopedDraft(draftScopeKey, (currentDraft) =>
-          updateDraftPromptAndReconcileFiles(currentDraft, nextGoalPrompt)
-        );
+        startTransition(() => {
+          setPaletteDraftPrompt(nextGoalObjective);
+          setIsPaletteOpen(true);
+          updateScopedDraft(draftScopeKey, (currentDraft) =>
+            updateDraftPromptAndReconcileFiles(currentDraft, nextGoalPrompt)
+          );
+        });
         return;
       }
       draftPromptRef.current = nextDraft;
-      setPaletteDraftPrompt(nextDraft);
-      setIsPaletteOpen(true);
-      updateScopedDraft(draftScopeKey, (currentDraft) =>
-        updateDraftPromptAndReconcileFiles(currentDraft, nextDraft)
-      );
+      startTransition(() => {
+        setPaletteDraftPrompt(nextDraft);
+        setIsPaletteOpen(true);
+        updateScopedDraft(draftScopeKey, (currentDraft) =>
+          updateDraftPromptAndReconcileFiles(currentDraft, nextDraft)
+        );
+      });
     }
   );
 

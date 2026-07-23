@@ -11,6 +11,7 @@ function composerProps(
     tuttiModeActive: false,
     tuttiModeUpdating: false,
     onTuttiModeChange: vi.fn(),
+    capabilityMenuState: { tuttiMode: { enabled: true } },
     labels: {
       tuttiModeLabel: "Tutti mode",
       tuttiModeDescription: "Plan first, then orchestrate agents"
@@ -59,6 +60,30 @@ describe("AgentGUIEmptyHeroTuttiToggle", () => {
     render(
       <AgentGUIEmptyHeroTuttiToggle
         composerProps={composerProps({ onTuttiModeChange: undefined })}
+      />
+    );
+    expect(
+      screen.queryByTestId("agent-gui-hero-tutti-toggle")
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders nothing when the host Tutti Mode capability is disabled", () => {
+    render(
+      <AgentGUIEmptyHeroTuttiToggle
+        composerProps={composerProps({
+          capabilityMenuState: { tuttiMode: { enabled: false } }
+        })}
+      />
+    );
+    expect(
+      screen.queryByTestId("agent-gui-hero-tutti-toggle")
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders nothing when the host omits the Tutti Mode capability", () => {
+    render(
+      <AgentGUIEmptyHeroTuttiToggle
+        composerProps={composerProps({ capabilityMenuState: undefined })}
       />
     );
     expect(

@@ -14,17 +14,43 @@ import (
 // turn lifecycle. Issue Agents are not required to call the Issue Manager CLI
 // themselves, so a normal completed turn cannot be mistaken for a vanished
 // session by the fallback reconciler.
-func (s IssueManagerService) ObserveAgentSessionState(ctx context.Context, input canonical.ReportSessionStateInput, _ canonical.ReportSessionStateReply) {
+func (c *IssueExecutionCoordinator) ObserveAgentSessionState(ctx context.Context, input canonical.ReportSessionStateInput, _ canonical.ReportSessionStateReply) {
 	status, ok := issueRunStatusFromSessionState(input.State)
-	if !ok || s.Store == nil {
+	if !ok || c == nil || c.Issues == nil || c.Issues.Store == nil {
 		return
 	}
-	workspaceID := strings.TrimSpace(input.WorkspaceID)
-	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	usage := issueRunUsageFromRuntimeContext(input.State.RuntimeContext)
+	remainingQuota, hasRemainingQuota := issueRunRemainingQuota(input.State.RuntimeContext)
+	settledTurnID := ""
+	if input.State.Turn != nil {
+		settledTurnID = strings.TrimSpace(input.State.Turn.TurnID)
+	}
+	errorMessage := ""
+	if status != workspaceissues.StatusCompleted {
+		errorMessage = strings.TrimSpace(input.State.LastError)
+	}
+	c.ObserveRunSettlement(ctx, IssueRunSettlement{
+		WorkspaceID:              input.WorkspaceID,
+		AgentSessionID:           input.AgentSessionID,
+		TurnID:                   settledTurnID,
+		Status:                   status,
+		ErrorMessage:             errorMessage,
+		Usage:                    usage,
+		RemainingQuotaPercent:    remainingQuota,
+		HasRemainingQuotaPercent: hasRemainingQuota,
+	})
+}
+
+func (c *IssueExecutionCoordinator) ObserveRunSettlement(ctx context.Context, settlement IssueRunSettlement) {
+	if c == nil || c.Issues == nil || c.Issues.Store == nil {
+		return
+	}
+	workspaceID := strings.TrimSpace(settlement.WorkspaceID)
+	agentSessionID := strings.TrimSpace(settlement.AgentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
 		return
 	}
-	runs, err := s.domainService().ListRunningRuns(ctx, workspaceID, defaultIssueRunReconcileLimit)
+	runs, err := c.Issues.domainService().ListRunningRuns(ctx, workspaceID, defaultIssueRunReconcileLimit)
 	if err != nil {
 		slog.Warn("list running Issue runs for Agent settlement failed",
 			"event", "workspace_issue.agent_settlement_list_failed",
@@ -34,12 +60,7 @@ func (s IssueManagerService) ObserveAgentSessionState(ctx context.Context, input
 		)
 		return
 	}
-	usage := issueRunUsageFromRuntimeContext(input.State.RuntimeContext)
-	remainingQuota, hasRemainingQuota := issueRunRemainingQuota(input.State.RuntimeContext)
-	settledTurnID := ""
-	if input.State.Turn != nil {
-		settledTurnID = strings.TrimSpace(input.State.Turn.TurnID)
-	}
+	settledTurnID := strings.TrimSpace(settlement.TurnID)
 	for _, run := range runs {
 		if strings.TrimSpace(run.AgentSessionID) != agentSessionID {
 			continue
@@ -47,24 +68,30 @@ func (s IssueManagerService) ObserveAgentSessionState(ctx context.Context, input
 		// A delegate session can settle turns that are not the run's own
 		// brief (a human interjecting in its conversation, queued guidance).
 		// Match the settled turn against the run's initiating submit so only
-		// the run's terminal fact completes it; unresolvable lookups fall
-		// back to completing, which still beats the failure-biased reconciler.
-		if s.RunTurnResolver != nil && settledTurnID != "" {
-			initiatingTurnID, found, resolveErr := s.RunTurnResolver.FindTurnByClientSubmitID(ctx, workspaceID, agentSessionID, "issue-run:"+run.RunID)
-			if resolveErr == nil && found && strings.TrimSpace(initiatingTurnID) != settledTurnID {
-				continue
-			}
+		// the run's own terminal fact completes it. An unresolved identity is
+		// not evidence of settlement: fail closed and let reconciliation retry.
+		if c.SettlementReader == nil || settledTurnID == "" {
+			c.Issues.enqueueWorkspaceRunReconcile(workspaceID)
+			continue
 		}
-		errorMessage := ""
-		if status != workspaceissues.StatusCompleted {
-			errorMessage = strings.TrimSpace(input.State.LastError)
+		canonicalSettlement, found, resolveErr := c.SettlementReader.ReadRunSettlement(ctx, workspaceID, agentSessionID, "issue-run:"+run.RunID)
+		if resolveErr != nil || !found || strings.TrimSpace(canonicalSettlement.TurnID) == "" {
+			c.Issues.enqueueWorkspaceRunReconcile(workspaceID)
+			continue
 		}
-		if _, err := s.CompleteRun(ctx, workspaceID, run.IssueID, run.TaskID, run.RunID, CompleteIssueManagerRunInput{
-			Status:                   string(status),
-			ErrorMessage:             errorMessage,
-			Usage:                    usage,
-			RemainingQuotaPercent:    remainingQuota,
-			HasRemainingQuotaPercent: hasRemainingQuota,
+		if strings.TrimSpace(canonicalSettlement.TurnID) != settledTurnID {
+			continue
+		}
+		settlement.Status = canonicalSettlement.Status
+		if canonicalSettlement.ErrorMessage != "" {
+			settlement.ErrorMessage = canonicalSettlement.ErrorMessage
+		}
+		if _, err := c.Issues.CompleteRun(ctx, workspaceID, run.IssueID, run.TaskID, run.RunID, CompleteIssueManagerRunInput{
+			Status:                   string(settlement.Status),
+			ErrorMessage:             settlement.ErrorMessage,
+			Usage:                    settlement.Usage,
+			RemainingQuotaPercent:    settlement.RemainingQuotaPercent,
+			HasRemainingQuotaPercent: settlement.HasRemainingQuotaPercent,
 		}); err != nil {
 			slog.Warn("settle Issue run from Agent state failed",
 				"event", "workspace_issue.agent_settlement_failed",

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestPendingInteractionTransitionProjectsSelfDescribingActions(t *testing.T) {
@@ -203,6 +204,30 @@ func TestPendingInteractiveRequestReleaseResolvingDoesNotOverwriteTerminal(t *te
 	}
 	if pending.disposition() != pendingInteractiveRequestStateSuperseded {
 		t.Fatalf("terminal disposition = %q, want superseded", pending.disposition())
+	}
+}
+
+func TestPendingInteractiveRequestSupersedeUnblocksProviderWaiter(t *testing.T) {
+	t.Parallel()
+	pending := &pendingInteractiveRequest{
+		requestID: "request-1",
+		response:  make(chan pendingInteractiveResponse, 1),
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := pending.wait(context.Background())
+		result <- err
+	}()
+
+	pending.supersede(errPermissionRequestCanceled)
+
+	select {
+	case err := <-result:
+		if !errors.Is(err, errPermissionRequestCanceled) {
+			t.Fatalf("wait error = %v, want permission request canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("terminal request left provider waiter blocked")
 	}
 }
 

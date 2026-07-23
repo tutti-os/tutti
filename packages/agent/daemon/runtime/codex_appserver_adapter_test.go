@@ -90,6 +90,8 @@ type scriptedAppServerConnection struct {
 	childNicknames                  map[string]string // thread/read agentNickname responses by threadId
 	turnStartEntered                chan struct{}
 	turnStartRelease                chan struct{}
+	hangTurnStart                   bool
+	hangSteer                       bool
 	threadName                      string
 	commandApproval                 bool
 	userInputRequest                bool
@@ -118,6 +120,25 @@ type scriptedAppServerConnection struct {
 
 func (c *scriptedAppServerConnection) sendJSON(value map[string]any) {
 	c.sendJSONWithWaitSignal(value, nil)
+}
+
+// sendJSONBatch mirrors stdio coalescing adjacent JSON-RPC lines into one
+// frame, so response/request ordering cannot depend on goroutine scheduling.
+func (c *scriptedAppServerConnection) sendJSONBatch(values ...map[string]any) {
+	var raw []byte
+	for _, value := range values {
+		line, err := json.Marshal(value)
+		if err != nil {
+			return
+		}
+		raw = append(raw, line...)
+		raw = append(raw, '\n')
+	}
+	select {
+	case <-c.closed:
+		return
+	case c.recv <- ProcessFrame{Stdout: raw}:
+	}
 }
 
 func (c *scriptedAppServerConnection) sendJSONWithWaitSignal(value map[string]any, waitEntered chan<- struct{}) {
@@ -431,12 +452,16 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			foreignThreadNoise := c.foreignThreadNoise
 			turnStartEntered := c.turnStartEntered
 			turnStartRelease := c.turnStartRelease
+			hangTurnStart := c.hangTurnStart
 			c.mu.Unlock()
 			if turnStartEntered != nil {
 				close(turnStartEntered)
 			}
 			if turnStartRelease != nil {
 				<-turnStartRelease
+			}
+			if hangTurnStart {
+				continue
 			}
 			if steered {
 				// Mirror real codex steering (live-verified against codex
@@ -447,26 +472,90 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				// turn/started ever fires for the stub id and the only
 				// terminal notification is the running turn's turn/completed
 				// (sent by the test via completePendingTurn).
-				c.sendJSON(map[string]any{
+				turnStartResponse := map[string]any{
 					"id": message.ID,
 					"result": map[string]any{
 						"turn": map[string]any{"id": "turn-steer-stub", "status": "inProgress", "items": []any{}},
 					},
-				})
+				}
+				if approval {
+					c.sendJSONBatch(
+						turnStartResponse,
+						map[string]any{
+							"id":     "approval-1",
+							"method": appServerMethodCommandApproval,
+							"params": map[string]any{
+								"threadId":    "codex-thread-1",
+								"turnId":      "turn-1",
+								"itemId":      "item-cmd",
+								"command":     "rm -rf build",
+								"cwd":         "/workspace",
+								"reason":      "cleanup",
+								"startedAtMs": 1750000000000,
+							},
+						},
+					)
+					continue
+				}
+				c.sendJSON(turnStartResponse)
 				continue
 			}
-			// Mirror the real app-server: the RPC responds immediately with
-			// the inProgress turn; output streams as notifications.
-			c.sendJSON(map[string]any{
+			turnStartResponse := map[string]any{
 				"id": message.ID,
 				"result": map[string]any{
 					"turn": map[string]any{"id": "turn-1", "status": "inProgress", "items": []any{}},
 				},
-			})
-			c.notify(appServerNotifyTurnStarted, map[string]any{
-				"threadId": "codex-thread-1",
-				"turn":     map[string]any{"id": "turn-1", "status": "inProgress", "items": []any{}},
-			})
+			}
+			turnStartedNotification := map[string]any{
+				"method": appServerNotifyTurnStarted,
+				"params": map[string]any{
+					"threadId": "codex-thread-1",
+					"turn":     map[string]any{"id": "turn-1", "status": "inProgress", "items": []any{}},
+				},
+			}
+			if approval {
+				c.sendJSONBatch(
+					turnStartResponse,
+					turnStartedNotification,
+					map[string]any{
+						"id":     "approval-1",
+						"method": appServerMethodCommandApproval,
+						"params": map[string]any{
+							"threadId":    "codex-thread-1",
+							"turnId":      "turn-1",
+							"itemId":      "item-cmd",
+							"command":     "rm -rf build",
+							"cwd":         "/workspace",
+							"reason":      "cleanup",
+							"startedAtMs": 1750000000000,
+						},
+					},
+				)
+				continue
+			}
+			if userInput {
+				c.sendJSONBatch(
+					turnStartResponse,
+					turnStartedNotification,
+					map[string]any{
+						"id":     "question-1",
+						"method": appServerMethodRequestUserInput,
+						"params": map[string]any{
+							"threadId": "codex-thread-1",
+							"turnId":   "turn-1",
+							"itemId":   "item-question",
+							"questions": []any{
+								map[string]any{"id": "q1", "question": "Which database?"},
+							},
+						},
+					},
+				)
+				continue
+			}
+			// Mirror the real app-server: the RPC responds immediately with
+			// the inProgress turn; output streams as notifications.
+			c.sendJSON(turnStartResponse)
+			c.sendJSON(turnStartedNotification)
 			if foreignThreadNoise {
 				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
 					"threadId": "foreign-thread-1", "turnId": "foreign-turn-1", "itemId": "foreign-msg",
@@ -488,37 +577,6 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 						},
 					},
 				})
-			}
-			if approval {
-				c.sendJSON(map[string]any{
-					"id":     "approval-1",
-					"method": appServerMethodCommandApproval,
-					"params": map[string]any{
-						"threadId":    "codex-thread-1",
-						"turnId":      "turn-1",
-						"itemId":      "item-cmd",
-						"command":     "rm -rf build",
-						"cwd":         "/workspace",
-						"reason":      "cleanup",
-						"startedAtMs": 1750000000000,
-					},
-				})
-				continue
-			}
-			if userInput {
-				c.sendJSON(map[string]any{
-					"id":     "question-1",
-					"method": appServerMethodRequestUserInput,
-					"params": map[string]any{
-						"threadId": "codex-thread-1",
-						"turnId":   "turn-1",
-						"itemId":   "item-question",
-						"questions": []any{
-							map[string]any{"id": "q1", "question": "Which database?"},
-						},
-					},
-				})
-				continue
 			}
 			if emitPlan {
 				c.notify(appServerNotifyItemCompleted, map[string]any{
@@ -643,6 +701,12 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				c.completePendingTurn()
 			}
 		case appServerMethodTurnSteer:
+			c.mu.Lock()
+			hang := c.hangSteer
+			c.mu.Unlock()
+			if hang {
+				continue
+			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"turnId": "turn-1"}})
 		case appServerMethodThreadCompact:
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{}})
@@ -2158,6 +2222,54 @@ func TestCodexAppServerAdapterExecSteeredTurnSettlesOnRunningTurnCompletion(t *t
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatalf("Exec never settled: turn/completed for the running turn was dropped by the provider-turn-id guard")
+	}
+}
+
+func TestCodexAppServerAdapterQueuedSteerKeepsApprovalAlive(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.steeredTurnStart = true
+	transport.conn.commandApproval = true
+
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(
+			context.Background(),
+			session,
+			textPrompt("change direction"),
+			"",
+			"turn-local-2",
+			func([]activityshared.Event) {},
+			nil,
+		)
+		execDone <- events
+	}()
+
+	waitForCondition(t, func() bool {
+		return adapter.getPendingRequest(session.AgentSessionID, "turn-local-2", "approval-1") != nil
+	})
+	result, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		TurnID:    "turn-local-2",
+		RequestID: "approval-1",
+		OptionID:  "approve",
+	})
+	if err != nil {
+		t.Fatalf("SubmitInteractive: %v", err)
+	}
+	if !result.Accepted || result.Disposition != InteractiveDispositionAnswered {
+		t.Fatalf("submit result = %#v, want answered approval", result)
+	}
+
+	select {
+	case events := <-execDone:
+		completed := eventsOfType(events, activityshared.EventRootProviderTurnCompleted)
+		if len(completed) != 1 ||
+			completed[0].Payload.TurnOutcome != string(activityshared.TurnOutcomeCompleted) {
+			t.Fatalf("queued steer terminal events = %#v, want one completed outcome", events)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("queued steer did not settle after its approval response")
 	}
 }
 
