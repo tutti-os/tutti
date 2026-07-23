@@ -66,6 +66,11 @@ export interface TuttiWorkflowDockLabels {
   reviewTitle: string;
 }
 
+interface TuttiWorkflowDockDisclosureState {
+  expanded: boolean;
+  reviewPanelId: string | null;
+}
+
 function countIssueTasks(
   issue: TuttiPlanIssueSnapshot,
   status: string
@@ -137,10 +142,27 @@ export function TuttiWorkflowDock({
   planPanelLabels: TuttiModePlanPanelLabels;
   planIssuePanelLabels: TuttiPlanIssuePanelLabels;
 }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(false);
   const review = phase.kind === "review" ? phase : null;
   const execution = phase.kind === "execution" ? phase : null;
   const failure = phase.kind === "error" ? phase : null;
+  const reviewPanelId = review?.panel.id ?? null;
+  const [disclosure, setDisclosure] =
+    useState<TuttiWorkflowDockDisclosureState>(() => ({
+      expanded: reviewPanelId !== null,
+      reviewPanelId
+    }));
+
+  // A newly actionable checkpoint starts open once. Recording its stable panel
+  // identity prevents ordinary snapshot updates from overriding a user's
+  // explicit collapse, while phase handoffs retain the current disclosure.
+  if (reviewPanelId !== null && reviewPanelId !== disclosure.reviewPanelId) {
+    setDisclosure({ expanded: true, reviewPanelId });
+  }
+  const setExpanded = (expanded: boolean): void => {
+    setDisclosure((current) =>
+      current.expanded === expanded ? current : { ...current, expanded }
+    );
+  };
 
   const title =
     review !== null
@@ -225,7 +247,7 @@ export function TuttiWorkflowDock({
   return (
     <AgentComposerDisclosureCard
       actions={actions}
-      expanded={expanded}
+      expanded={disclosure.expanded}
       icon={icon}
       labels={{ collapse: labels.collapse, expand: labels.expand }}
       onExpandedChange={setExpanded}

@@ -515,8 +515,10 @@ the conversation timeline. Accepting a plan stores only the checkpoint identity
 and title needed to bridge the read-model handoff, not an accepted-plan copy.
 During that handoff the draft remains editable while submit is disabled. The
 arrival of a newer actionable plan takes presentation priority over an existing
-Issue, and the disclosure's expanded state survives phase changes so the UI
-does not jump.
+Issue. Each newly identified actionable review starts expanded once; an
+explicit user collapse remains authoritative for that review, while the
+disclosure's current expanded state survives materialization and execution
+handoffs so the UI does not jump.
 
 An active Tutti Mode composer badge is an intensity-settings entry, not a
 destructive toggle. Clicking it opens the UI-local `TuttiBudgetPopover`, seeded

@@ -185,7 +185,7 @@ function renderDock(phase: TuttiWorkflowDockPhase) {
 }
 
 describe("TuttiWorkflowDock", () => {
-  it("keeps one expanded disclosure mounted across workflow phases", () => {
+  it("starts a newly actionable review expanded and carries it across phases", () => {
     const { actions, rerender } = renderDock({
       kind: "review",
       panel: plan,
@@ -194,8 +194,12 @@ describe("TuttiWorkflowDock", () => {
       intensityDiverged: false
     });
 
-    expect(screen.getByText("Plan review")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Expand workflow" }));
+    expect(
+      screen.getByTestId("agent-gui-tutti-workflow-dock")
+    ).toHaveTextContent("Plan review");
+    expect(
+      screen.getByRole("button", { name: "Collapse workflow" })
+    ).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByTestId("tutti-mode-plan-panel")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancel plan" }));
     expect(actions.onCancelReview).toHaveBeenCalledTimes(1);
@@ -233,6 +237,121 @@ describe("TuttiWorkflowDock", () => {
     );
     expect(screen.getByTestId("tutti-plan-issue-panel")).toBeInTheDocument();
     expect(screen.getAllByText(/1 running/).length).toBeGreaterThan(0);
+  });
+
+  it("preserves an explicit collapse until a different review becomes actionable", () => {
+    const { actions, rerender } = renderDock({
+      kind: "review",
+      panel: plan,
+      submitting: false,
+      intensity: 60,
+      intensityDiverged: false
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse workflow" }));
+    expect(
+      screen.getByRole("button", { name: "Expand workflow" })
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByTestId("tutti-mode-plan-panel")
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <TuttiWorkflowDock
+        assignmentCatalog={assignmentCatalog}
+        assignmentDrafts={{}}
+        intensityPopoverLabels={intensityPopoverLabels}
+        labels={labels}
+        phase={{
+          kind: "review",
+          panel: {
+            ...plan,
+            title: "Ship the updated workflow",
+            revision: {
+              ...plan.revision,
+              sha256: "b".repeat(64)
+            }
+          },
+          submitting: false,
+          intensity: 60,
+          intensityDiverged: false
+        }}
+        planPanelLabels={planPanelLabels}
+        planIssuePanelLabels={planIssuePanelLabels}
+        {...actions}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Expand workflow" })
+    ).toHaveAttribute("aria-expanded", "false");
+
+    rerender(
+      <TuttiWorkflowDock
+        assignmentCatalog={assignmentCatalog}
+        assignmentDrafts={{}}
+        intensityPopoverLabels={intensityPopoverLabels}
+        labels={labels}
+        phase={{ kind: "materializing", title: "Ship the updated workflow" }}
+        planPanelLabels={planPanelLabels}
+        planIssuePanelLabels={planIssuePanelLabels}
+        {...actions}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Expand workflow" })
+    ).toHaveAttribute("aria-expanded", "false");
+
+    rerender(
+      <TuttiWorkflowDock
+        assignmentCatalog={assignmentCatalog}
+        assignmentDrafts={{}}
+        intensityPopoverLabels={intensityPopoverLabels}
+        labels={labels}
+        phase={{ kind: "execution", issue }}
+        planPanelLabels={planPanelLabels}
+        planIssuePanelLabels={planIssuePanelLabels}
+        {...actions}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Expand workflow" })
+    ).toHaveAttribute("aria-expanded", "false");
+
+    const replan = {
+      ...plan,
+      id: "workflow-1:checkpoint-2",
+      title: "Re-plan the workflow",
+      checkpoint: {
+        ...plan.checkpoint,
+        id: "checkpoint-2",
+        createdAtUnixMs: 210,
+        updatedAtUnixMs: 210
+      }
+    };
+    rerender(
+      <TuttiWorkflowDock
+        assignmentCatalog={assignmentCatalog}
+        assignmentDrafts={{}}
+        intensityPopoverLabels={intensityPopoverLabels}
+        labels={labels}
+        phase={{
+          kind: "review",
+          panel: replan,
+          submitting: false,
+          intensity: 60,
+          intensityDiverged: false
+        }}
+        planPanelLabels={planPanelLabels}
+        planIssuePanelLabels={planIssuePanelLabels}
+        {...actions}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Collapse workflow" })
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("tutti-mode-plan-panel")).toHaveTextContent(
+      "Re-plan the workflow"
+    );
   });
 
   it("changes the review hint when intensity diverges", () => {
