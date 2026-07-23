@@ -53,6 +53,70 @@ describe("AgentTranscriptView", () => {
     ).toBe(true);
   });
 
+  it("compares participant presentation by its explicit state and identity data", () => {
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const conversation = projectAgentConversationVM(detailViewModel());
+    const baseProps = { conversation, labels };
+
+    expect(
+      areAgentTranscriptViewPropsEqual(baseProps, {
+        ...baseProps,
+        participantPresentation: { enabled: false }
+      })
+    ).toBe(true);
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        {
+          ...baseProps,
+          participantPresentation: { enabled: true, status: "loading" }
+        },
+        {
+          ...baseProps,
+          participantPresentation: { enabled: true, status: "loading" }
+        }
+      )
+    ).toBe(true);
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        {
+          ...baseProps,
+          participantPresentation: { enabled: false }
+        },
+        {
+          ...baseProps,
+          participantPresentation: { enabled: true, status: "loading" }
+        }
+      )
+    ).toBe(false);
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        {
+          ...baseProps,
+          participantPresentation: {
+            enabled: true,
+            status: "ready",
+            user: { name: "Alice", avatarUrl: "user.png" },
+            agent: { name: "Codex", avatarUrl: "agent.png" }
+          }
+        },
+        {
+          ...baseProps,
+          participantPresentation: {
+            enabled: true,
+            status: "ready",
+            user: { name: "Alice", avatarUrl: "user.png" },
+            agent: { name: "Codex", avatarUrl: "agent-v2.png" }
+          }
+        }
+      )
+    ).toBe(false);
+  });
+
   it("rerenders when canonical turn timing changes", () => {
     const labels = {
       thinkingLabel: "Thought process",

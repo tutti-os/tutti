@@ -3731,6 +3731,38 @@ aside.workspace-agents-status-panel
   justify-items: end;
 }
 
+.agent-gui-conversation__participant-message-layout {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  column-gap: 10px;
+  align-items: start;
+}
+
+.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="assistant"] {
+  grid-template-columns: 32px minmax(0, 1fr);
+}
+
+.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="user"] {
+  grid-template-columns: minmax(0, 1fr) 32px;
+}
+
+.agent-gui-conversation__participant-message-content {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="user"]
+  > .agent-gui-conversation__participant-message-content {
+  row-gap: 14px;
+  justify-items: end;
+}
+
+.agent-gui-conversation__participant-avatar {
+  margin-top: 2px;
+}
+
 .agent-gui-conversation__message-group {
   position: relative;
   display: grid;

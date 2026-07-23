@@ -420,6 +420,16 @@ text, but they are not an additional transcript text block when the canonical
 structured content already renders the same image. Explicit display prompts
 remain transcript content and continue to replace expanded rich prompt text.
 
+Standalone hosts may opt a transcript into participant avatars through the
+`agent-conversation` entrypoint's explicit presentation contract. Omitted or
+disabled presentation preserves the existing transcript DOM. Enabled
+presentation has distinct `loading` and `ready` states, so the renderer never
+infers identity readiness from a missing image URL. The host supplies user and
+Agent names and optional avatar URLs; AgentGUI owns the UI System Avatar,
+fixed-size loading slot, fallback initial, and user-right/Agent-left layout.
+This presentation input is view data only and must not enter canonical Session,
+Turn, Message, activity-runtime, or workspace-engine state.
+
 ## 5. Agent identity and provider architecture
 
 ### 5.1 `agentTargetId` is UI identity

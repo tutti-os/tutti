@@ -90,6 +90,36 @@ accepted for host capabilities that are not agent activity data:
 AgentGUI has no host-API activity fallback. A host must inject the runtime and
 the grouped `AgentGUINodeProps` responsibility objects.
 
+## Standalone Conversation Participant Presentation
+
+The `@tutti-os/agent-gui/agent-conversation` entrypoint exposes one optional,
+host-owned participant presentation contract on `WorkspaceAgentSessionDetail`,
+`AgentConversationFlow`, and `AgentTranscriptView`:
+
+```tsx
+<WorkspaceAgentSessionDetail
+  participantPresentation={{
+    enabled: true,
+    status: "ready",
+    user: { name: "Alice", avatarUrl: userAvatarUrl },
+    agent: { name: "Codex", avatarUrl: agentAvatarUrl }
+  }}
+  {...props}
+/>
+```
+
+Omitting the property or passing `{ enabled: false }` preserves the existing
+transcript DOM and spacing. Pass `{ enabled: true, status: "loading" }` while
+the host is resolving identities; existing messages stay visible and the
+package renders fixed-size circular loading slots. In the `ready` state, each
+participant requires a non-empty `name`; `avatarUrl` is optional and the shared
+UI System `Avatar` falls back to the name's initial.
+
+The host owns identity lookup and lifecycle. Agent GUI owns placement, sizing,
+loading treatment, image fallback, and left/right message alignment. The
+contract is presentation-only and must not be copied into canonical Session,
+Turn, Message, or workspace-engine state.
+
 ## Session Handoff Drafts
 
 External AgentGUI hosts can use `createAgentSessionHandoffPrompt` to prefill a
