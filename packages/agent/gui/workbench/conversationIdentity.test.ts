@@ -9,7 +9,7 @@ import {
 } from "./conversationIdentity.ts";
 
 describe("resolveAgentGuiWorkbenchTitleDisplayPrompt", () => {
-  it("projects browser elements into the workbench rich title", () => {
+  it("projects browser elements into plain @ text", () => {
     const prompt =
       "[@<a>](mention://browser-element/browser-element%3A1?path=%2Ftmp%2Fa.txt&tag=a&workspaceId=workspace-1) 这里说的什么";
 
@@ -18,7 +18,7 @@ describe("resolveAgentGuiWorkbenchTitleDisplayPrompt", () => {
         messages: [userMessage(prompt)],
         title: "@<a> 这里说的什么"
       })
-    ).toBe(prompt);
+    ).toBe("@<a> 这里说的什么");
   });
 
   it("keeps only conversation text in the workbench title", () => {
@@ -63,12 +63,12 @@ describe("resolveAgentGuiWorkbenchTitleDisplayPrompt", () => {
     ).toEqual(
       expect.objectContaining({
         title: "这张图片打出来给我看看",
-        titleDisplayPrompt: prompt
+        titleDisplayPrompt: "@img 这张图片打出来给我看看"
       })
     );
   });
 
-  it("preserves an allowed mention-rich first prompt when the title was derived from it", () => {
+  it("normalizes an issue mention when the title was derived from it", () => {
     const prompt =
       "[@Task](mention://workspace-issue/issue-1?workspaceId=workspace-1) 看看";
 
@@ -77,7 +77,7 @@ describe("resolveAgentGuiWorkbenchTitleDisplayPrompt", () => {
         messages: [userMessage(prompt)],
         title: "@Task 看看"
       })
-    ).toBe(prompt);
+    ).toBe("@Task 看看");
   });
 
   it("does not replace an explicitly renamed title with the first prompt", () => {

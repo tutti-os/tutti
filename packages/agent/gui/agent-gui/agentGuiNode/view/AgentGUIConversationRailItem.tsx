@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo } from "react";
 import { ExternalLink } from "lucide-react";
-import { IssueIcon, NewWorkspaceLinedIcon, cn } from "@tutti-os/ui-system";
+import { NewWorkspaceLinedIcon, cn } from "@tutti-os/ui-system";
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { BareIconButton } from "@tutti-os/ui-system/components";
@@ -59,12 +59,7 @@ function agentGUIConversationRailTitle(
   labels: AgentGUIConversationRailLabels,
   uiLanguage: UiLanguage
 ): string {
-  const title = conversationPlainTitle(item, labels, uiLanguage);
-  // Only the task kind renders a leading mention icon, so only its "@" prefix
-  // is dropped; every other kind (file included) keeps its plain "@" text.
-  return item.titleLeadingMentionKind === "task"
-    ? title.replace(/^@\s*/, "")
-    : title;
+  return conversationPlainTitle(item, labels, uiLanguage);
 }
 
 interface AgentGUIConversationRailItemProps {
@@ -230,17 +225,6 @@ export const AgentGUIConversationRailItem = memo(
                 draggable={false}
                 src={conversationIcon.url}
               />
-            ) : null}
-            {item.titleLeadingMentionKind === "task" ? (
-              <span
-                aria-hidden="true"
-                className={styles.conversationTitleMentionIcon}
-                data-agent-gui-conversation-title-mention-icon={
-                  item.titleLeadingMentionKind
-                }
-              >
-                <IssueIcon />
-              </span>
             ) : null}
             <span className={styles.conversationTitle}>
               {agentGUIConversationRailTitle(item, labels, uiLanguage)}

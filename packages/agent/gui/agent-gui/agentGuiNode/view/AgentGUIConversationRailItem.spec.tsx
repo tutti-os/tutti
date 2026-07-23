@@ -9,7 +9,7 @@ import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
 import { AgentGUIConversationRailItem } from "./AgentGUIConversationRailItem";
 
 describe("AgentGUIConversationRailItem interaction lock", () => {
-  it("keeps the provider icon and plain title while adding a monochrome task icon", () => {
+  it("keeps the provider icon and plain @ title without a task icon", () => {
     const { container } = renderRailItem({
       isRailInteractionLocked: () => false,
       item: {
@@ -23,11 +23,10 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     ).not.toBeNull();
     expect(
       container.querySelector(
-        '[data-agent-gui-conversation-title-mention-icon="task"]'
+        "[data-agent-gui-conversation-title-mention-icon]"
       )
-    ).not.toBeNull();
-    expect(container.textContent).toContain("看看最新的代码提交 111");
-    expect(container.textContent).not.toContain("@看看最新的代码提交 111");
+    ).toBeNull();
+    expect(container.textContent).toContain("@看看最新的代码提交 111");
     expect(container.querySelector(".agent-rich-text-readonly")).toBeNull();
   });
 
