@@ -338,6 +338,28 @@ describe("AgentRichTextReadonly", () => {
     );
   });
 
+  it("renders pasted text references as file pills instead of raw markdown", async () => {
+    const href =
+      "mention://pasted-text/11111111-1111-4111-8111-111111111111?path=%2Fvar%2Fcache%2Ftsh%2Flocal-assets%2Fdeadbeef.txt&size=15083";
+    const { container } = render(
+      <AgentRichTextReadonly value={`[@first pasted line](${href})`} />
+    );
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-agent-mention-kind="pasted-text"]')
+      ).not.toBeNull()
+    );
+
+    const mention = container.querySelector(
+      '[data-agent-mention-kind="pasted-text"]'
+    );
+    expect(mention).toHaveTextContent("first pasted line");
+    expect(mention?.querySelector('[data-slot="mention-pill"]')).not.toBeNull();
+    expect(mention).toHaveAttribute("data-agent-mention-href", href);
+    expect(container).not.toHaveTextContent("mention://pasted-text");
+  });
+
   it("renders known skill triggers as skill tokens", async () => {
     const { container } = render(
       <AgentRichTextReadonly

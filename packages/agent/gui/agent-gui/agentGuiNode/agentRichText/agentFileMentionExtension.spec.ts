@@ -339,6 +339,26 @@ describe("parseAgentMentionMarkdown", () => {
     });
   });
 
+  it("parses pasted-text mentions as built-in file presentations", () => {
+    const href =
+      "mention://pasted-text/11111111-1111-4111-8111-111111111111?path=%2Fvar%2Fcache%2Ftsh%2Flocal-assets%2Fdeadbeef.txt&size=15083";
+    const parsed = parseAgentMentionMarkdown(`[@first pasted line](${href})`);
+
+    expect(parsed?.item).toEqual({
+      kind: "pasted-text",
+      href,
+      targetId: "11111111-1111-4111-8111-111111111111",
+      name: "first pasted line",
+      path: "/var/cache/tsh/local-assets/deadbeef.txt"
+    });
+    expect(formatAgentMentionMarkdown(parsed!.item)).toBe(
+      `[@first pasted line](${href})`
+    );
+    expect(attrsToMentionItem(mentionItemToAttrs(parsed!.item))).toEqual(
+      parsed!.item
+    );
+  });
+
   it("accepts workspace issue mention hrefs without an @ prefix", () => {
     expect(
       parseAgentMentionMarkdown(

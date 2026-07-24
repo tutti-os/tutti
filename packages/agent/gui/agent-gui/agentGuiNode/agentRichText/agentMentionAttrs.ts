@@ -84,6 +84,15 @@ export function mentionItemToAttrs(
       iconUrl: item.iconUrl ?? ""
     };
   }
+  if (item.kind === "pasted-text") {
+    return {
+      name: item.name,
+      kind: item.kind,
+      href: item.href,
+      targetId: item.targetId,
+      path: item.path
+    };
+  }
   if (item.kind === "workspace-reference") {
     return {
       name: item.name,
@@ -285,6 +294,15 @@ export function attrsToMentionItem(
           : undefined
     };
   }
+  if (kind === "pasted-text") {
+    return {
+      kind,
+      href,
+      targetId: typeof attrs.targetId === "string" ? attrs.targetId.trim() : "",
+      name,
+      path: typeof attrs.path === "string" ? attrs.path.trim() : ""
+    };
+  }
   if (kind === "workspace-reference") {
     const workspaceId = workspaceIdFromMentionAttrs(attrs);
     const targetId =
@@ -436,6 +454,9 @@ function normalizeMentionKind(value: unknown): AgentMentionKind {
   }
   if (value === "workspace-app-factory") {
     return "workspace-app-factory";
+  }
+  if (value === "pasted-text") {
+    return "pasted-text";
   }
   if (value === "custom") {
     return "custom";

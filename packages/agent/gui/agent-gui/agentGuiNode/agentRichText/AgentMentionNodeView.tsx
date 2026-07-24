@@ -32,6 +32,7 @@ type AgentMentionNodeViewKind =
   | "workspace-reference"
   | "workspace-app-factory"
   | "workspace-issue"
+  | "pasted-text"
   | "custom";
 
 function parseFileCountAttr(value: unknown): number {
@@ -110,6 +111,9 @@ function normalizeKind(value: string): AgentMentionNodeViewKind {
   }
   if (value === "agent-target") {
     return "agent-target";
+  }
+  if (value === "pasted-text") {
+    return "pasted-text";
   }
   if (value === "custom") {
     return "custom";
@@ -210,6 +214,17 @@ function mentionViewModel(
       iconUrl:
         attrString(attrs, "iconUrl").trim() ||
         managedAgentRoundedIconUrl(agentProviderId),
+      kind,
+      label: name
+    };
+  }
+
+  if (kind === "pasted-text") {
+    return {
+      ariaLabel: name,
+      directoryPath: "",
+      entryKind: "file",
+      href,
       kind,
       label: name
     };
@@ -450,7 +465,8 @@ function AgentMentionView({
   if (
     mention.kind === "workspace-app" ||
     mention.kind === "workspace-reference" ||
-    mention.kind === "agent-target"
+    mention.kind === "agent-target" ||
+    mention.kind === "pasted-text"
   ) {
     return (
       <Wrapper
@@ -471,13 +487,23 @@ function AgentMentionView({
           iconUrl={mention.iconUrl}
           iconContainerProps={{
             "data-agent-mention-app-icon":
-              mention.kind === "agent-target" ? undefined : "true",
+              mention.kind === "agent-target" || mention.kind === "pasted-text"
+                ? undefined
+                : "true",
             "data-agent-mention-session-icon":
               mention.kind === "agent-target" ? "true" : undefined,
             "data-workspace-app-icon":
-              mention.kind === "agent-target" ? undefined : "true"
+              mention.kind === "agent-target" || mention.kind === "pasted-text"
+                ? undefined
+                : "true"
           }}
-          kind={mention.kind === "agent-target" ? "session" : "app"}
+          kind={
+            mention.kind === "agent-target"
+              ? "session"
+              : mention.kind === "pasted-text"
+                ? "file"
+                : "app"
+          }
           label={mention.label}
           removable={isEditable}
           removeButtonProps={
