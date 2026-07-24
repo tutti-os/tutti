@@ -99,6 +99,8 @@
   --border-2: rgb(60 60 60 / 8%);
   --line-1: var(--border-1);
   --line-2: var(--border-2);
+  /* Legacy TSH-era name still read by agentactivity.css (--agent-gui-border); never declared. */
+  --cove-border: var(--line-1);
   --line-focus-window: rgb(60 60 60 / 12%);
   --border-focus: rgb(65 130 245 / 24%);
   --input: oklch(0.936 0.006 252);
@@ -189,6 +191,23 @@
   --workbench-focused-border: rgb(255 255 255 / 68%);
   --workbench-scrim: color-mix(in srgb, var(--card) 78%, transparent);
   --workbench-window-elevation: 0 18px 44px rgb(0 0 0 / 26%);
+
+  /*
+   * Agent GUI node-window chrome (packages/agent/gui/agent-gui/shared/WorkspaceNodeWindow.tsx
+   * and .workspace-agents-status-panel in agentactivity.css) reads these --node- and
+   * --window-drop-shadow custom properties directly. They were never declared anywhere in
+   * the design system, so the floating node window chrome (border, shadow, backdrop blur,
+   * header/body surfaces) silently resolved to nothing. Alias them onto the equivalent
+   * --workbench- window tokens above so the two chrome layers stay in sync.
+   */
+  --node-surface: var(--workbench-node-surface);
+  --terminal-node-surface: var(--workbench-node-surface);
+  --node-header-surface: var(--workbench-window-header-bg);
+  --node-window-border: var(--workbench-border);
+  --node-header-border: var(--workbench-border);
+  --node-window-backdrop-filter: var(--workbench-window-backdrop-filter);
+  --window-drop-shadow: var(--workbench-window-elevation);
+  --node-header-height: 40px;
   --workbench-control-hover-bg: color-mix(
     in srgb,
     var(--workbench-foreground) 9%,
