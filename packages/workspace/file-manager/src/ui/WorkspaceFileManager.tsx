@@ -33,6 +33,7 @@ import {
 } from "./WorkspaceFileManagerPanels.tsx";
 import type { ResolveWorkspaceFileManagerContextMenu } from "./workspaceFileManagerContextMenuTypes.ts";
 import { WorkspaceFileManagerToolbar } from "./WorkspaceFileManagerToolbar.tsx";
+import type { RenderWorkspaceFileManagerToolbarTrailingActions } from "./workspaceFileManagerToolbarTypes.ts";
 import { WorkspaceFileManagerSidebar } from "./WorkspaceFileManagerSidebar.tsx";
 import {
   clampWorkspaceFileManagerSidebarWidth,
@@ -75,6 +76,11 @@ import {
 
 const workspaceFileManagerSearchDebounceMs = 180;
 
+export type {
+  RenderWorkspaceFileManagerToolbarTrailingActions,
+  WorkspaceFileManagerToolbarTrailingActionsContext
+} from "./workspaceFileManagerToolbarTypes.ts";
+
 export interface WorkspaceFileManagerProps {
   className?: string;
   dateLocale?: TuttiDateLocale;
@@ -92,6 +98,12 @@ export interface WorkspaceFileManagerProps {
   renderExternalLocationContent?: (
     location: Extract<WorkspaceFileLocation, { kind: "external" }>
   ) => ReactElement | null;
+  /**
+   * Optional host actions rendered in the toolbar trailing cluster, after
+   * Refresh and before Search. Use for product-owned primary affordances such
+   * as upload; keep multi-step transfer UX outside this package.
+   */
+  renderToolbarTrailingActions?: RenderWorkspaceFileManagerToolbarTrailingActions;
   i18n: WorkspaceFileManagerI18nRuntime;
   session: WorkspaceFileManagerSession;
   /**
@@ -115,6 +127,7 @@ export function WorkspaceFileManager({
   resolveContextMenu,
   resolveEntryIconUrl,
   renderExternalLocationContent,
+  renderToolbarTrailingActions,
   session,
   showLocationSidebar = true,
   showPreviewPanel = true,
@@ -482,6 +495,7 @@ export function WorkspaceFileManager({
               onArrangeModeChange={setArrangeMode}
               onDirectoryExpanded={onDirectoryExpanded}
               onLayoutModeChange={setLayoutMode}
+              renderToolbarTrailingActions={renderToolbarTrailingActions}
               session={session}
             />
             <div className="@max-[600px]/workspace-file-manager:flex-col @max-[600px]/workspace-file-manager:gap-3 flex min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -522,6 +536,7 @@ function WorkspaceFileManagerToolbarContainer({
   onArrangeModeChange,
   onDirectoryExpanded,
   onLayoutModeChange,
+  renderToolbarTrailingActions,
   session
 }: {
   arrangeMode: WorkspaceFileManagerArrangeMode;
@@ -530,6 +545,7 @@ function WorkspaceFileManagerToolbarContainer({
   onArrangeModeChange: (arrangeMode: WorkspaceFileManagerArrangeMode) => void;
   onDirectoryExpanded?: (path: string) => void;
   onLayoutModeChange: (layoutMode: WorkspaceFileManagerLayoutMode) => void;
+  renderToolbarTrailingActions?: RenderWorkspaceFileManagerToolbarTrailingActions;
   session: WorkspaceFileManagerSession;
 }): ReactElement {
   const { view } = useWorkspaceFileManagerToolbarView(session, i18n);
@@ -582,6 +598,7 @@ function WorkspaceFileManagerToolbarContainer({
       isSearching={view.isSearching}
       arrangeMode={arrangeMode}
       layoutMode={layoutMode}
+      renderToolbarTrailingActions={renderToolbarTrailingActions}
       searchQuery={searchQuery}
       onArrangeModeChange={onArrangeModeChange}
       onGoBack={() => {

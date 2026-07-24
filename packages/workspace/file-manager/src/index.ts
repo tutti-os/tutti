@@ -47,6 +47,10 @@ export {
   WorkspaceFileManager,
   type WorkspaceFileManagerProps
 } from "./ui/WorkspaceFileManager.tsx";
+export type {
+  RenderWorkspaceFileManagerToolbarTrailingActions,
+  WorkspaceFileManagerToolbarTrailingActionsContext
+} from "./ui/workspaceFileManagerToolbarTypes.ts";
 export {
   WorkspaceFileManagerContextMenu,
   type WorkspaceFileManagerContextMenuProps

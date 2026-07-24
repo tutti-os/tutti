@@ -73,7 +73,9 @@ When another host wants to reuse this package:
    `createWorkspaceFileManagerI18nRuntime(...)`.
 5. Provide `resolveContextMenu` when using the React surface so blank,
    directory, and file menus stay host-owned.
-6. Override wording in the host runtime when the host intentionally owns the
+6. Optionally provide `renderToolbarTrailingActions` for product-owned primary
+   toolbar actions (for example upload) after Refresh.
+7. Override wording in the host runtime when the host intentionally owns the
    product phrasing; otherwise fall back to the package defaults.
 
 This keeps the package reusable across different hosts without pushing host
