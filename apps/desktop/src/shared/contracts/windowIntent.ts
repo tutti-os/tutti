@@ -131,6 +131,18 @@ export function encodeDesktopWindowIntent(
     if (intent.userProjectPath) {
       params.set("userProjectPath", intent.userProjectPath);
     }
+    if (intent.agentDirectorySnapshot) {
+      params.set(
+        "agentDirectorySnapshot",
+        JSON.stringify(stripDataUrls(intent.agentDirectorySnapshot))
+      );
+    }
+    if (intent.providerStatusSnapshot) {
+      params.set(
+        "agentProviderStatusSnapshot",
+        JSON.stringify(stripDataUrls(intent.providerStatusSnapshot))
+      );
+    }
   } else {
     params.set("view", "workspace");
     if (intent.kind === "workspace") {
@@ -412,6 +424,31 @@ function normalizeAgentWindowAvailability(
 
 function readTrimmedString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Recursively strip `data:` URLs from a value before serializing it into a URL
+ * query param.  Extension agent icons (256×256 PNG, ~92 KB → ~123 KB base64)
+ * can push a single snapshot past Vite's 16 KB `maxHeaderSize`, producing
+ * HTTP 431.  Stripping them keeps agent ids, names, statuses and availability
+ * intact so the receiving standalone window still gets a valid bootstrap
+ * snapshot — only the visual assets are deferred to the IPC fetch.
+ */
+function stripDataUrls(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.startsWith("data:") ? "" : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(stripDataUrls);
+  }
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      result[k] = stripDataUrls(v);
+    }
+    return result;
+  }
+  return value;
 }
 
 function parseAgentProviderStatusSnapshot(
