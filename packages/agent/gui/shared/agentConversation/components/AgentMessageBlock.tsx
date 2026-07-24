@@ -163,6 +163,7 @@ export function AgentMessageBlock({
       ) : isUser ? (
         <AgentRichTextReadonly
           value={message.body}
+          documentCacheKey={message.id}
           className={`workspace-agents-status-panel__detail-user-message ${styles.userMessageBubble}`}
           editorClassName="text-[inherit]"
           onLinkClick={handleLinkClick}
@@ -204,6 +205,7 @@ export function AgentMessageBlock({
       ) : (
         <AgentMessageMarkdown
           content={message.body}
+          documentCacheKey={message.id}
           className={styles.assistantMarkdown}
           onLinkAction={onLinkAction}
           workspaceLinkContext={{

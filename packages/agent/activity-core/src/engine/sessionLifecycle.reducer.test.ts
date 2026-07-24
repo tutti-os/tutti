@@ -45,6 +45,64 @@ test("snapshot decomposes protocol v2 session and turn entities", () => {
   );
 });
 
+test("identical session upserts preserve canonical state references", () => {
+  const source = session(activeTurn(2), 2);
+  const first = reduce(createInitialSessionLifecycleState(), {
+    type: "session/upserted",
+    session: source
+  }).state;
+  const second = reduce(first, {
+    type: "session/upserted",
+    session: source
+  }).state;
+
+  assert.equal(second, first);
+  assert.equal(second.sessionsById, first.sessionsById);
+  assert.equal(second.turnsById, first.turnsById);
+});
+
+test("identical session snapshots preserve canonical state references", () => {
+  const source = session(activeTurn(2), 2);
+  const first = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [source]
+  }).state;
+  const second = reduce(first, {
+    type: "session/snapshotReceived",
+    sessions: [source]
+  }).state;
+
+  assert.equal(second, first);
+});
+
+test("equal-version sessions still merge changed pending interactions", () => {
+  const source = session(activeTurn(2), 2);
+  source.latestTurnInteractions = [interaction("pending", 2)];
+  source.pendingInteractions = source.latestTurnInteractions;
+  const first = reduce(createInitialSessionLifecycleState(), {
+    type: "session/upserted",
+    session: source
+  }).state;
+  const changed = {
+    ...source,
+    latestTurnInteractions: [interaction("pending", 3)],
+    pendingInteractions: [interaction("pending", 3)]
+  };
+  const second = reduce(first, {
+    type: "session/upserted",
+    session: changed
+  }).state;
+
+  assert.equal(second.sessionsById, first.sessionsById);
+  assert.notEqual(second.interactionsById, first.interactionsById);
+  assert.equal(
+    second.interactionsById[
+      canonicalInteractionKey("session-1", "turn-1", "request-1")
+    ]?.updatedAtUnixMs,
+    3
+  );
+});
+
 test("snapshot restores a settled latest turn without an active turn", () => {
   const latestTurn: AgentActivityTurn = {
     ...activeTurn(7),

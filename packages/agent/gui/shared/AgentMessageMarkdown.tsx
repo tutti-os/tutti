@@ -65,6 +65,7 @@ import {
 } from "./AgentMessageMarkdownRenderers";
 import { MarkdownMedia } from "./AgentMessageMarkdownMedia";
 import { remarkLiteralAutolinkBoundary } from "./remarkLiteralAutolinkBoundary";
+import { cachedMarkdownParser } from "./cachedMarkdownParser";
 export { resetCachedMarkdownImagesForTests } from "./AgentMessageMarkdownMedia";
 export type { StreamingMarkdownBlock } from "./agentMessageMarkdownRuntime";
 export { splitStreamingMarkdownBlocks } from "./agentMessageMarkdownRuntime";
@@ -107,6 +108,7 @@ export interface AgentMessageMarkdownWorkspaceLinkContext {
 
 interface AgentMessageMarkdownProps {
   content: string;
+  documentCacheKey?: string;
   onLinkClick?: (href: string) => void;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   workspaceLinkContext?: AgentMessageMarkdownWorkspaceLinkContext | null;
@@ -140,9 +142,13 @@ export type MarkdownDomProps<Tag extends keyof JSX.IntrinsicElements> =
 type ReactMarkdownComponents = ComponentPropsWithoutRef<
   typeof ReactMarkdown
 >["components"];
+type ReactMarkdownRemarkPlugins = NonNullable<
+  ComponentPropsWithoutRef<typeof ReactMarkdown>["remarkPlugins"]
+>;
 
 export function AgentMessageMarkdown({
   content,
+  documentCacheKey,
   onLinkClick,
   onLinkAction,
   workspaceLinkContext = null,
@@ -196,6 +202,20 @@ export function AgentMessageMarkdown({
         )
       ),
     [normalizePlainIssueMentionTitle, stabilizedContent]
+  );
+  const settledRemarkPlugins = useMemo<ReactMarkdownRemarkPlugins>(
+    () => [
+      remarkGfm,
+      remarkLiteralAutolinkBoundary,
+      [
+        cachedMarkdownParser,
+        {
+          cacheKey: documentCacheKey?.trim() || "content",
+          content: normalizedContent
+        }
+      ]
+    ],
+    [documentCacheKey, normalizedContent]
   );
   const isMentionOnly = isMentionOnlyMarkdownContent(normalizedContent);
   const handleLinkClick = useCallback(
@@ -306,7 +326,7 @@ export function AgentMessageMarkdown({
           />
         ) : (
           <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkLiteralAutolinkBoundary]}
+            remarkPlugins={settledRemarkPlugins}
             rehypePlugins={[[rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
             urlTransform={markdownUrlTransform}
             components={markdownComponents}

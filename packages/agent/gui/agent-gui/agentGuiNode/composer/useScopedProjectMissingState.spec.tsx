@@ -3,26 +3,30 @@ import { describe, expect, it } from "vitest";
 import { useScopedProjectMissingState } from "./useScopedProjectMissingState";
 
 describe("useScopedProjectMissingState", () => {
-  it("does not carry missing results across session scopes", () => {
+  it("keeps results for the same path and rejects stale results after a path change", () => {
     const rendered = renderHook(
       ({ scopeKey }) => useScopedProjectMissingState(scopeKey),
-      { initialProps: { scopeKey: "session:one" } }
+      { initialProps: { scopeKey: "/workspace/one" } }
     );
 
     act(() => rendered.result.current[1](true));
     expect(rendered.result.current[0]).toBe(true);
+    const reportForFirstPath = rendered.result.current[1];
 
-    const reportForFirstSession = rendered.result.current[1];
-    rendered.rerender({ scopeKey: "session:two" });
+    rendered.rerender({ scopeKey: "/workspace/one" });
+    expect(rendered.result.current[0]).toBe(true);
+    expect(rendered.result.current[1]).toBe(reportForFirstPath);
+
+    rendered.rerender({ scopeKey: "/workspace/two" });
     expect(rendered.result.current[0]).toBe(false);
 
-    act(() => reportForFirstSession(true));
+    act(() => reportForFirstPath(true));
     expect(rendered.result.current[0]).toBe(false);
 
     act(() => rendered.result.current[1](true));
     expect(rendered.result.current[0]).toBe(true);
 
-    rendered.rerender({ scopeKey: "session:one" });
+    rendered.rerender({ scopeKey: "/workspace/one" });
     expect(rendered.result.current[0]).toBe(false);
   });
 });

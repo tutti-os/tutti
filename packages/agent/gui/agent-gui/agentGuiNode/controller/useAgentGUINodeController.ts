@@ -364,7 +364,6 @@ export function useAgentGUINodeController({
   const {
     loadSessionState,
     markSelectedConversationDetailPending,
-    reloadSelectedConversation,
     resolveSessionMessages
   } = sessionDetailTransport;
   const storedActiveMessages = activeConversationId
@@ -627,11 +626,9 @@ export function useAgentGUINodeController({
       onComposerDefaultsAuthorityReloadedRef,
       previewMode,
       providerComposerOptions,
-      reloadSelectedConversation,
       selectedComposerTargetDataRef,
       selectedProjectPath,
       selectedProjectPathRef,
-      sessionEngine,
       syncConversationListProjection,
       workspaceId,
       workspacePath
