@@ -116,7 +116,6 @@ describe("clearFailedAgentGUIActivationSelection", () => {
         intent,
         openSessionRequest: null,
         pendingOpenSessionRequestRef: { current: null },
-        previewMode: false,
         selectConversation: (agentSessionId) => {
           routeSelections(agentSessionId);
           activeConversationIdRef.current = agentSessionId;

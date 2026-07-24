@@ -28,7 +28,6 @@ interface AgentTranscriptItemViewProps {
   provider?: string | null;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  previewMode?: boolean;
   showRawTimelineJson?: boolean;
   participantPresentation?: AgentConversationParticipantPresentation;
   toolGroupExpanded?: boolean;
@@ -46,7 +45,6 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
   provider,
   availableSkills,
   workspaceAppIcons,
-  previewMode = false,
   showRawTimelineJson = false,
   participantPresentation,
   toolGroupExpanded,
@@ -91,7 +89,6 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           provider={provider}
           availableSkills={availableSkills}
           workspaceAppIcons={workspaceAppIcons}
-          previewMode={previewMode}
           thinkingLabel={labels.thinkingLabel}
           toolCallsLabel={labels.toolCallsLabel}
           showRawTimelineJson={showRawTimelineJson}
@@ -106,7 +103,6 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           label={labels.toolCallsLabel}
           thinkingLabel={labels.thinkingLabel}
           onLinkClick={handleLinkClick}
-          previewMode={previewMode}
           showRawTimelineJson={showRawTimelineJson}
           rawTimelineJsonLabel={labels.rawTimelineJson}
           expanded={row.grouped ? toolGroupExpanded : undefined}
@@ -122,7 +118,6 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           basePath={basePath}
           label={labels.turnSummary}
           onLinkAction={onLinkAction}
-          previewMode={previewMode}
         />
       );
     case "processing":

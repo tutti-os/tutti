@@ -255,7 +255,7 @@ Host owns recovery for runtime operations, Goal operations, and the reconcile in
 
 On daemon restart, Host recovery first restores durable operations, then settles unrecoverable active Turns as `settled/interrupted` and supersedes pending Interactions.
 
-Codex's restored Full access warning is presentation-only, device-local safety chrome. Show it only when an empty home composer restores an unacknowledged Full access target default; do not show it for another provider or permission mode, an active or historical Session, preview chrome, or while defaults are loading. Explicit Full access confirmation and “Don't show again” persist the same browser-local acknowledgement, while the close action affects only the current mount. This acknowledgement must not enter Session lifecycle, target defaults, Workbench node data, or `AgentActivityRuntime` state.
+Codex's restored Full access warning is presentation-only, device-local safety chrome. Show it only when an empty home composer restores an unacknowledged Full access target default; do not show it for another provider or permission mode, an active or historical Session, or while defaults are loading. Explicit Full access confirmation and “Don't show again” persist the same browser-local acknowledgement, while the close action affects only the current mount. This acknowledgement must not enter Session lifecycle, target defaults, Workbench node data, or `AgentActivityRuntime` state.
 
 ### 3.5 Messages and ordering
 
@@ -738,6 +738,12 @@ client-local until the user explicitly saves them through the CRUD capability.
 AgentGUI, Message Center, dock/header, workspace window, and standalone Agent window consume the same workspace engine.
 
 Opening a panel/window creates presentation state only. It does not clone a Session, copy engine entities, or start another event stream. Standalone tools are Desktop chrome, not AgentGUI lifecycle.
+
+Workbench previews must not mount a second AgentGUI tree. Genie capture clones the
+visible node DOM into a texture, while Dock popup cards and minimized slots use
+the captured image and its cache. If no captured image exists, those Dock
+surfaces show their placeholder; they do not mount AgentGUI as a fallback.
+AgentGUI therefore has no preview-mode rendering contract.
 
 The shared Workbench Header owns conversation-identity visibility. When no
 Conversation exists, it ignores conversation titles, Agent titles, primary

@@ -565,7 +565,6 @@ export interface AgentGUINodeViewProps {
   onSlashStatusOpen?: AgentComposerProps["onSlashStatusOpen"];
   onSlashStatusClose?: AgentComposerProps["onSlashStatusClose"];
   onSlashStatusRefresh?: AgentComposerProps["onSlashStatusRefresh"];
-  previewMode?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
   onAgentEnvPanelOpen?: (input?: OpenAgentEnvPanelInput) => void;
   actions: {

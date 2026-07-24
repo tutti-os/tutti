@@ -40,7 +40,6 @@ interface AgentGUIDetailTimelineProps {
   };
   onAuthLogin?: (provider?: string | null) => void;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
-  previewMode: boolean;
   showTimelineSkeleton: boolean;
   showUnavailableChatEmpty: boolean;
   timelineContentRef: RefObject<HTMLDivElement | null>;
@@ -60,7 +59,6 @@ export const AgentGUIDetailTimeline = memo(function AgentGUIDetailTimeline({
   labels,
   onAuthLogin,
   onLinkAction,
-  previewMode,
   showTimelineSkeleton,
   showUnavailableChatEmpty,
   timelineContentRef,
@@ -95,7 +93,6 @@ export const AgentGUIDetailTimeline = memo(function AgentGUIDetailTimeline({
           onAuthLogin={onAuthLogin}
           availableSkills={availableSkills}
           workspaceAppIcons={workspaceAppIcons}
-          previewMode={previewMode}
           labels={conversationFlowLabels}
         />
       ) : (

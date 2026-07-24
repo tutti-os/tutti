@@ -291,7 +291,6 @@ function providerRailProps(
     onSelectConversationFilterTarget: vi.fn(),
     onSelectHomeComposerAgentTarget: vi.fn(),
     onUpdateConversationFilter: vi.fn(),
-    previewMode: false,
     providerRailMode: "exact",
     selectedAgentTarget: target({
       agentTargetId: "agent:default",

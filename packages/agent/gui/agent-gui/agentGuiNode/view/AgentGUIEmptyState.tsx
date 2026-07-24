@@ -98,7 +98,6 @@ interface AgentGUIEmptyHomePaneProps {
   onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
   noticeChrome: AgentGUISessionChrome | null;
   isRespondingApproval: boolean;
-  previewMode: boolean;
   onSubmitApprovalOption: AgentGUINodeViewProps["actions"]["submitApprovalOption"];
   onAuthLogin?: (provider?: string | null) => void;
   onRetryActivation: AgentGUINodeViewProps["actions"]["retryActivation"];
@@ -119,7 +118,6 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
   agentTargets,
   selectedAgentTarget,
   onProviderSelect,
-  previewMode,
   labels,
   ...heroProps
 }: AgentGUIEmptyHomePaneProps): React.JSX.Element {
@@ -160,7 +158,6 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
       }
       items={avatarPresentations}
       onProviderSelect={onProviderSelect}
-      previewMode={previewMode}
       providerSelectLabel={labels.providerSwitchLabel}
     >
       <AgentTargetSetupGate

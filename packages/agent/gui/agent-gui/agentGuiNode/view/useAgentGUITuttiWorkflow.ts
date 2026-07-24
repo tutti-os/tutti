@@ -72,7 +72,6 @@ interface MaterializingPlan {
  */
 export function useAgentGUITuttiWorkflow(input: {
   viewModel: AgentGUINodeViewModel;
-  previewMode: boolean;
   labels: AgentGUIViewLabels;
   stableLinkAction: ((action: WorkspaceLinkAction) => void) | undefined;
   setTuttiModeActive: (active: boolean) => void;
@@ -84,7 +83,6 @@ export function useAgentGUITuttiWorkflow(input: {
 }): AgentGUITuttiWorkflowController {
   const {
     viewModel,
-    previewMode,
     labels,
     stableLinkAction,
     setTuttiModeActive,
@@ -93,7 +91,7 @@ export function useAgentGUITuttiWorkflow(input: {
     submitPromptPassthrough
   } = input;
   const tuttiModePlanPanels = useTuttiModePlanPanels({
-    enabled: !previewMode,
+    enabled: true,
     workspaceId: viewModel.shell.workspaceId,
     sourceSessionId: viewModel.rail.activeConversationId,
     decidedBy: viewModel.shell.currentUserId?.trim() || "local"

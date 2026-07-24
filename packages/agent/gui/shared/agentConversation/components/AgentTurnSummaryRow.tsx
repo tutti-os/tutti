@@ -43,7 +43,6 @@ interface AgentTurnSummaryRowProps {
   basePath?: string | null;
   label: string;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
-  previewMode?: boolean;
 }
 
 type PatchSupportState =

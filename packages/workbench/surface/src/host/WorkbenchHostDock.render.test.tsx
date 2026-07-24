@@ -125,6 +125,72 @@ describe("WorkbenchHostDock", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("captures dock popup previews as images when no component preview exists", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        disconnect() {}
+        observe() {}
+        unobserve() {}
+      }
+    );
+    const node = createNode();
+    const props = createDockProps([node]);
+    const captureNodePreviewImage = vi.fn(
+      async () => "data:image/png;base64,AA=="
+    );
+    const dockEntry = {
+      icon: null,
+      id: "agent-gui",
+      instanceMode: "multi" as const,
+      label: "Agent",
+      typeId: "agent-gui",
+      visibility: "always" as const
+    };
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const previousActEnvironment = (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT;
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+
+    try {
+      await act(async () => {
+        root.render(
+          <WorkbenchHostDock
+            {...props}
+            captureNodePreviewImage={captureNodePreviewImage}
+            dockEntries={[dockEntry]}
+          />
+        );
+      });
+      const button = container.querySelector<HTMLButtonElement>(
+        'button[aria-haspopup="dialog"]'
+      );
+      expect(button).not.toBeNull();
+
+      await act(async () => {
+        button?.click();
+      });
+
+      await vi.waitFor(() => {
+        expect(captureNodePreviewImage).toHaveBeenCalledWith(node);
+      });
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (
+        globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 function createNode(): WorkbenchNode<WorkbenchHostNodeData> {

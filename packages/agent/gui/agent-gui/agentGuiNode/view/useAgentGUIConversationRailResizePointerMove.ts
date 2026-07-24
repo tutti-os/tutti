@@ -13,7 +13,6 @@ interface UseAgentGUIConversationRailResizePointerMoveInput {
   clampConversationRailWidth: (widthPx: number) => number;
   layoutElementRef: { current: HTMLElement | null };
   onConversationRailLayoutChange: AgentGUINodeViewProps["onConversationRailLayoutChange"];
-  previewMode: boolean;
   providerRailWidthPx: number;
   railResizeInteractionRef: {
     current: AgentGUIConversationRailResizeInteraction | null;
@@ -24,7 +23,6 @@ export function useAgentGUIConversationRailResizePointerMove({
   clampConversationRailWidth,
   layoutElementRef,
   onConversationRailLayoutChange,
-  previewMode,
   providerRailWidthPx,
   railResizeInteractionRef
 }: UseAgentGUIConversationRailResizePointerMoveInput): (
@@ -36,7 +34,6 @@ export function useAgentGUIConversationRailResizePointerMove({
 
   return useCallback(
     (event: PointerEvent<HTMLDivElement>): void => {
-      if (previewMode) return;
       const resizeState = railResizeInteractionRef.current;
       if (!resizeState || resizeState.pointerId !== event.pointerId) return;
 
@@ -61,7 +58,6 @@ export function useAgentGUIConversationRailResizePointerMove({
     [
       clampConversationRailWidth,
       layoutElementRef,
-      previewMode,
       providerRailWidthPx,
       railResizeInteractionRef,
       reportConversationRailLayoutChange

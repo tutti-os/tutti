@@ -2230,10 +2230,12 @@ export function WorkbenchHostDock({
               : null
           }
           capturePreview={
-            popupEntry.entry.capturePopupItemPreview
+            popupEntry.entry.capturePopupItemPreview || captureNodePreviewImage
               ? async (item) => {
                   const previewImageUrl = await Promise.resolve(
-                    popupEntry.entry.capturePopupItemPreview?.(item) ?? null
+                    popupEntry.entry.capturePopupItemPreview
+                      ? popupEntry.entry.capturePopupItemPreview(item)
+                      : (captureNodePreviewImage?.(item.node) ?? null)
                   ).catch(() => null);
                   return previewImageUrl
                     ? {

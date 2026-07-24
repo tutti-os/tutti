@@ -174,7 +174,7 @@ describe("useAgentGUIConversationPresentation", () => {
     const conversation = createConversation();
     const input = createInput(conversation);
     let data: AgentGUINodeData = input.data;
-    input.previewMode = false;
+
     input.dataRef = { current: data };
     input.normalizedExplicitProviderTargets = [
       {
@@ -225,7 +225,6 @@ function createInput(
     normalizedExplicitProviderTargets: [],
     normalizedProviderTargets: [],
     onDataChangeRef: { current: vi.fn() },
-    previewMode: true,
     shouldUseStaticProviderTargets: false,
     transientConversation: null,
     userProjects: [],

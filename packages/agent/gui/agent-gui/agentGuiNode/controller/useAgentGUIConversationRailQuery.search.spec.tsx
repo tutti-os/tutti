@@ -52,7 +52,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           activeConversationId: null,
           conversationFilter: { kind: "all" },
           conversationQuery: "",
-          previewMode: false,
           sectionAgentTargetFallbackId: null,
           userProjects: [],
           workspaceId: "workspace-1"
@@ -258,7 +257,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
         activeConversationId: null,
         conversationFilter: { agentTargetId, kind: "agentTarget" },
         conversationQuery: "",
-        previewMode: false,
         sectionAgentTargetFallbackId: null,
         userProjects: [],
         workspaceId: "workspace-1"
@@ -333,7 +331,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
             kind: "agentTarget"
           },
           conversationQuery: " backend ",
-          previewMode: false,
           sectionAgentTargetFallbackId: null,
           userProjects: [],
           workspaceId: "workspace-1"
@@ -412,7 +409,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           activeConversationId: null,
           conversationFilter: { kind: "all" },
           conversationQuery: "backend",
-          previewMode: false,
           sectionAgentTargetFallbackId: null,
           userProjects: [],
           workspaceId: "workspace-1"
@@ -463,7 +459,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           activeConversationId: "session-1",
           conversationFilter: { kind: "all" },
           conversationQuery: "",
-          previewMode: true,
           sectionAgentTargetFallbackId: null,
           userProjects: [],
           workspaceId: "workspace-1"
@@ -515,7 +510,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
         activeConversationId: "session-1",
         conversationFilter: { kind: "all" },
         conversationQuery: "streaming",
-        previewMode: true,
         sectionAgentTargetFallbackId: null,
         userProjects: [],
         workspaceId: "workspace-1"
@@ -544,7 +538,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
             isLoadingConversations={false}
             labels={RAIL_LABELS}
             pendingDeleteConversationId={null}
-            previewMode
             railQuery={railQuery}
             sectionAgentTargetFallbackId={null}
             uiLanguage="en"
@@ -574,7 +567,9 @@ describe("useAgentGUIConversationRailQuery search", () => {
 
     render(
       <AgentActivityRuntimeProvider runtime={runtime}>
-        <RailHarness />
+        <TooltipProvider>
+          <RailHarness />
+        </TooltipProvider>
       </AgentActivityRuntimeProvider>
     );
     await screen.findByText("streaming session");
@@ -640,7 +635,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
         activeConversationId: null,
         conversationFilter: { kind: "all" },
         conversationQuery: "does-not-match",
-        previewMode: false,
         sectionAgentTargetFallbackId: null,
         userProjects,
         workspaceId: "workspace-1"
@@ -662,7 +656,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           isLoadingConversations={false}
           labels={RAIL_LABELS}
           pendingDeleteConversationId={null}
-          previewMode={false}
           railQuery={railQuery}
           sectionAgentTargetFallbackId={null}
           uiLanguage="en"
@@ -771,7 +764,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
         activeConversationId: null,
         conversationFilter: { kind: "all" },
         conversationQuery: "",
-        previewMode: false,
         sectionAgentTargetFallbackId: null,
         userProjects,
         workspaceId: "workspace-1"
@@ -794,7 +786,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           isUserProjectMutationPending={isMutationPending}
           labels={RAIL_LABELS}
           pendingDeleteConversationId={null}
-          previewMode={false}
           railQuery={railQuery}
           sectionAgentTargetFallbackId={null}
           uiLanguage="en"

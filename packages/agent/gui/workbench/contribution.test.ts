@@ -63,30 +63,23 @@ function readDockEntryIconImageSrcs(icon: ReactNode): string[] {
 function createTestAgentGuiWorkbenchContribution(
   input: Omit<
     Parameters<typeof createAgentGuiWorkbenchContribution>[0],
-    "agentDirectory" | "renderMinimizedPreview"
+    "agentDirectory"
   > & {
     agentDirectory?: AgentGUIAgentDirectoryPort;
     agents?: readonly AgentGUIAgent[];
     agentsLoading?: boolean;
-  } & Partial<
-      Pick<
-        Parameters<typeof createAgentGuiWorkbenchContribution>[0],
-        "renderMinimizedPreview"
-      >
-    >
+  }
 ) {
   const {
     agentDirectory,
     agents = [createAgent("codex")],
     agentsLoading = false,
-    renderMinimizedPreview = () => null,
     ...contributionInput
   } = input;
   return createAgentGuiWorkbenchContribution({
     ...contributionInput,
     agentDirectory:
-      agentDirectory ?? createTestAgentDirectory(agents, agentsLoading),
-    renderMinimizedPreview
+      agentDirectory ?? createTestAgentDirectory(agents, agentsLoading)
   });
 }
 
@@ -1318,14 +1311,9 @@ describe("agent GUI workbench contribution copy", () => {
     ).toBeNull();
   });
 
-  it("uses the host preview renderer for agent GUI dock popup previews", async () => {
+  it("leaves agent GUI dock popup previews to the host image capture", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,
-      renderPreview: () => "preview",
-      resolveDockPopupTitle: (state) =>
-        state?.lastActiveAgentSessionId === "session-1"
-          ? "Current session title"
-          : null,
       workspaceId: "workspace-1"
     });
     const dockEntry = contribution.dockEntries?.find(
@@ -1333,85 +1321,16 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(dockEntry).toBeDefined();
 
-    const node = {
-      data: {
-        dockEntryId: agentGuiWorkbenchTypeId,
-        instanceId: "agent-gui:codex:panel:test-1",
-        typeId: agentGuiWorkbenchTypeId
-      },
-      displayMode: "floating",
-      frame: { height: 560, width: 1040, x: 0, y: 0 },
-      id: "agent-gui:agent-gui:codex:panel:test-1",
-      isMinimized: false,
-      restoreFrame: null,
-      title: "Codex"
-    };
-
-    const preview =
-      dockEntry?.providePopupItemPreview?.({
-        externalNodeState: {
-          lastActiveAgentSessionId: "session-1",
-          lastActiveConversationTitle: "Stale session title"
-        },
-        externalWorkspaceState: null,
-        host: {} as never,
-        isFocused: false,
-        isMinimized: false,
-        node: node as never
-      }) ?? null;
-    expect(preview?.kind).toBe("component");
-    expect(preview?.revision).toContain("Current session title");
-    expect(preview?.revision).not.toContain("Stale session title");
+    expect(dockEntry?.providePopupItemPreview).toBeUndefined();
   });
 
-  it("uses the host minimized preview renderer for agent GUI minimized slots", () => {
+  it("uses host snapshot capture for agent GUI minimized slots", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,
-      renderMinimizedPreview: () => "minimized-preview",
-      resolveDockPopupTitle: (state) =>
-        state?.lastActiveAgentSessionId === "session-1"
-          ? "Current session title"
-          : null,
       workspaceId: "workspace-1"
     });
     const minimizedDock = contribution.nodes?.[0]?.window?.minimizedDock;
-    expect(minimizedDock?.kind).toBe("component");
-    if (minimizedDock?.kind !== "component") {
-      throw new Error("expected component minimized preview");
-    }
-
-    const preview =
-      minimizedDock.providePreview({
-        externalNodeState: {
-          lastActiveAgentSessionId: "session-1",
-          lastActiveConversationTitle: "Stale session title"
-        },
-        externalWorkspaceState: null,
-        host: {} as never,
-        isFocused: false,
-        isMinimized: true,
-        node: {
-          data: {
-            dockEntryId: agentGuiWorkbenchTypeId,
-            instanceId: "agent-gui:codex:panel:test-1",
-            typeId: agentGuiWorkbenchTypeId
-          },
-          displayMode: "floating",
-          frame: { height: 560, width: 1040, x: 0, y: 0 },
-          id: "agent-gui:agent-gui:codex:panel:test-1",
-          isMinimized: true,
-          restoreFrame: null,
-          title: "Codex"
-        } as never
-      }) ?? null;
-
-    expect(preview?.kind).toBe("component");
-    if (preview?.kind !== "component") {
-      throw new Error("expected component preview content");
-    }
-    expect(preview.element).toBe("minimized-preview");
-    expect(preview.revision).toContain("Current session title");
-    expect(preview.revision).not.toContain("Stale session title");
+    expect(minimizedDock).toEqual({ kind: "snapshot" });
   });
 
   it("shows a new-session action when collapsed", () => {

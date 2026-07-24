@@ -5,7 +5,6 @@ import type { DesktopAgentGUIWorkbenchBodyProps } from "./desktopAgentGUIWorkben
 export function useDesktopAgentGUIOpenConversationWindow(input: {
   agentTargetId: string | null;
   onOpenAgentConversationWindow: DesktopAgentGUIWorkbenchBodyProps["onOpenAgentConversationWindow"];
-  previewMode: boolean;
   provider: DesktopAgentGUIProvider;
   workspaceId: string;
 }): ((agentSessionId: string) => void) | undefined {
@@ -14,15 +13,14 @@ export function useDesktopAgentGUIOpenConversationWindow(input: {
     currentInputRef.current = input;
   }, [input]);
 
-  const enabled =
-    !input.previewMode && Boolean(input.onOpenAgentConversationWindow);
+  const enabled = Boolean(input.onOpenAgentConversationWindow);
   return useMemo(() => {
     if (!enabled) {
       return undefined;
     }
     return (agentSessionId: string) => {
       const current = currentInputRef.current;
-      if (current.previewMode || !current.onOpenAgentConversationWindow) {
+      if (!current.onOpenAgentConversationWindow) {
         return;
       }
       const normalizedSessionId = agentSessionId.trim();

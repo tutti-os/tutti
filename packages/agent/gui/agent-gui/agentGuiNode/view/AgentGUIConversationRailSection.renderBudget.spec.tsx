@@ -104,7 +104,6 @@ function renderSectionElement(
         isSectionCollapsed={false}
         labels={LABELS}
         pendingDeleteConversationId={null}
-        previewMode={false}
         projectDragging={false}
         projectDropIndicator={null}
         projectLabel="Alpha"

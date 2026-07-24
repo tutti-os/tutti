@@ -72,7 +72,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     controller.configure({
       conversationFilter: { kind: "all" },
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     });
@@ -156,7 +155,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     const scope: ConversationRailQueryScope = {
       conversationFilter: { kind: "all" },
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     };
@@ -218,7 +216,6 @@ describe("AgentGUIConversationRailQueryController", () => {
       });
       controller.configure({
         conversationFilter: { kind: "all" },
-        previewMode: false,
         sectionAgentTargetFallbackId: null,
         userProjects: []
       });
@@ -331,7 +328,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     const initialScope: ConversationRailQueryScope = {
       conversationFilter: { kind: "all" },
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     };
@@ -437,7 +433,6 @@ describe("AgentGUIConversationRailQueryController", () => {
         agentTargetId: "local:claude-code",
         kind: "agentTarget"
       },
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     };
@@ -453,7 +448,7 @@ describe("AgentGUIConversationRailQueryController", () => {
     engine.dispose();
   });
 
-  it("reuses fresh first pages across reattach and preview-mode scope changes", async () => {
+  it("reuses fresh first pages across reattach and equivalent scope changes", async () => {
     const engine = createTestAgentSessionEngine();
     const listSessionSections = vi.fn<
       NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
@@ -479,7 +474,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     const regularScope = {
       conversationFilter: { kind: "all" } as const,
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     };
@@ -494,13 +488,9 @@ describe("AgentGUIConversationRailQueryController", () => {
     const detachSecond = controller.attach();
     expect(listSessionSections).toHaveBeenCalledTimes(1);
 
-    controller.configure({ ...regularScope, previewMode: true });
-    expect(controller.getSnapshot().runtimeSectionsEnabled).toBe(false);
-    expect(listSessionSections).toHaveBeenCalledTimes(1);
-
-    controller.configure(regularScope);
-    expect(listSessionSections).toHaveBeenCalledTimes(1);
+    controller.configure({ ...regularScope });
     expect(controller.getSnapshot().runtimeSectionsEnabled).toBe(true);
+    expect(listSessionSections).toHaveBeenCalledTimes(1);
 
     detachSecond();
     engine.dispose();
@@ -545,7 +535,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     };
     const scope = {
       conversationFilter: { kind: "all" } as const,
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: [alpha, beta]
     };
@@ -631,7 +620,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     controller.configure({
       conversationFilter: { kind: "all" },
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     });
@@ -700,7 +688,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     controller.configure({
       conversationFilter: { kind: "all" },
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     });
@@ -775,7 +762,6 @@ describe("AgentGUIConversationRailQueryController", () => {
         kind: "agentTarget",
         agentTargetId: "local:codex"
       },
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     });
@@ -839,7 +825,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     const scope = {
       conversationFilter: { kind: "all" } as const,
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     };
@@ -914,7 +899,6 @@ describe("AgentGUIConversationRailQueryController", () => {
         agentTargetId: "local:codex",
         kind: "agentTarget"
       } as const,
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     };
@@ -997,7 +981,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     const scope = (agentTargetId: string) => ({
       conversationFilter: { agentTargetId, kind: "agentTarget" as const },
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     });
@@ -1120,7 +1103,6 @@ describe("AgentGUIConversationRailQueryController", () => {
         agentTargetId: "shared:one",
         kind: "agentTarget"
       },
-      previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
     });
@@ -1132,7 +1114,6 @@ describe("AgentGUIConversationRailQueryController", () => {
 
     controller.configure({
       conversationFilter: { kind: "all" },
-      previewMode: false,
       sectionAgentTargetFallbackId: "shared:one",
       userProjects: []
     });

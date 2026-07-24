@@ -54,21 +54,21 @@ The visual similarity between a Minimization Snapshot and the corresponding
 live Workbench Node. AgentGUI snapshots should preserve the full visible
 structure and content as closely as practical; performance work must not
 intentionally replace them with a skeleton or generic shell. Snapshot content
-may still be stale, and preview-only interaction behavior is irrelevant.
+may still be stale.
 
 ### Restoration Snapshot Fallback
 
-The recovery path used when neither an in-memory Minimization Snapshot nor its
-persisted Dock preview is available. A component-based Node may render its
-existing non-interactive preview mode to produce the restoration texture while
-the real Node remains unmounted until Restoration Animation Completion.
+The recovery path used when an in-memory Minimization Snapshot is unavailable.
+AgentGUI captures the restored live Node DOM when it exists; if it cannot
+produce a texture, the Node becomes visible without a restoration animation.
+Its persisted Dock preview is not a restoration texture source.
 
 ### Dock Preview
 
 A decorative, non-interactive representation of a minimized Workbench Node.
-When a cached preview image is available, the AgentGUI Dock Preview renders that
-image instead of mounting a component-based preview. When no image is
-available, it falls back to the existing frozen component preview.
+AgentGUI Dock surfaces render the captured preview image from memory or
+persistent cache. When no image is available, they render a placeholder rather
+than mounting another AgentGUI tree.
 
 ### Browser Node
 

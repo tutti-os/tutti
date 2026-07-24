@@ -9,7 +9,6 @@ import { userProjectCollectionKey } from "./agentGuiConversationRailQueryScope";
 
 export interface ConversationRailQueryScope {
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
-  previewMode: boolean;
   sectionAgentTargetFallbackId: string | null;
   userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
 }
@@ -55,7 +54,6 @@ export function resolveConversationRailQueryScope(
       scope.conversationFilter.kind === "agentTarget"
         ? `agentTarget:${scope.conversationFilter.agentTargetId.trim()}`
         : "all",
-      scope.previewMode,
       agentTargetId,
       projectCollectionKey
     ])

@@ -305,7 +305,6 @@ function AgentQueuedPromptText({
         className="agent-gui-node__composer-queued-prompt-markdown"
         inline
         onLinkClick={onLinkClick}
-        previewMode
         workspaceAppIcons={workspaceAppIcons}
       />
     </div>

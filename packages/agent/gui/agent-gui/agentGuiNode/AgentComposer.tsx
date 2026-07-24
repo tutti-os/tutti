@@ -114,7 +114,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     projectMissingProbeEnabled = true,
     uiLanguage = "en",
     isActive = true,
-    previewMode = false,
     workspaceReferencePickerOpen = false,
     promptImagesSupported = true,
     canGoalControl = true,
@@ -522,7 +521,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
 
   const providerState = useComposerProviderTargets({
     layoutMode,
-    previewMode,
     provider,
     agentTargets,
     handoffAgentTargets,
@@ -581,7 +579,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     projectMissingProbeEnabled,
     showFileMentionPalette,
     showFloatingCommandMenu,
-    previewMode,
     promptTips,
     promptTipsPrefix: labels.promptTipsPrefix,
     composerSettings,

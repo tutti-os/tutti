@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { prepareWorkspaceUserProjectSelection } from "@tutti-os/workspace-user-project/core";
 import { useAgentHostApi } from "../../agentActivityHost";
 import {
@@ -42,7 +41,6 @@ export function AgentPermissionModeDropdown({
   disabled = false,
   disabledTooltip,
   onLinkAction,
-  previewMode = false,
   provider,
   labels,
   onSettingsChange
@@ -51,7 +49,6 @@ export function AgentPermissionModeDropdown({
   disabled?: boolean;
   disabledTooltip?: string;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
-  previewMode?: boolean;
   provider: string;
   labels: Pick<
     AgentComposerSettingsMenuLabels,
@@ -128,30 +125,6 @@ export function AgentPermissionModeDropdown({
     }
     commitPermissionModeId(permissionModeId);
   };
-  const trigger = (
-    <button
-      type="button"
-      className={cn(
-        "w-auto max-w-full",
-        styles.composerMenuTrigger,
-        selectDisabled &&
-          "cursor-not-allowed text-[var(--agent-gui-text-tertiary)] opacity-60 hover:text-[var(--agent-gui-text-tertiary)]",
-        composerSettings.isSettingsLoading && "animate-pulse"
-      )}
-      aria-label={labels.permissionLabel}
-      data-permission-tone={triggerTone}
-    >
-      <span className="flex min-w-0 flex-1 items-center">
-        <span className="truncate">{triggerLabel}</span>
-      </span>
-      <ChevronDown aria-hidden="true" className="shrink-0" size={16} />
-    </button>
-  );
-
-  if (previewMode) {
-    return trigger;
-  }
-
   const selectTrigger = (
     <SelectTrigger
       className={cn(
@@ -221,7 +194,7 @@ export function AgentPermissionModeDropdown({
                   {option.description ? (
                     <ComposerOptionInfoTooltip
                       description={option.description}
-                      tooltipsEnabled={!previewMode}
+                      tooltipsEnabled
                     />
                   ) : null}
                 </span>

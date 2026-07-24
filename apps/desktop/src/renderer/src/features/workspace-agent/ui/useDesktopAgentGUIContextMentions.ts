@@ -24,7 +24,6 @@ export function useDesktopAgentGUIContextMentions(input: {
   contextMentionProviders: readonly AgentContextMentionProvider[];
   dockPreviewCache: WorkbenchDockPreviewCache;
   host: WorkbenchHostNodeBodyContext["host"];
-  previewMode: boolean;
   workspaceId: string;
 }) {
   const {
@@ -33,7 +32,6 @@ export function useDesktopAgentGUIContextMentions(input: {
     contextMentionProviders,
     dockPreviewCache,
     host,
-    previewMode,
     workspaceId
   } = input;
   const appCenterState = useSnapshot(appCenterService.store);
@@ -46,30 +44,27 @@ export function useDesktopAgentGUIContextMentions(input: {
     [appCenterState.apps, workspaceId]
   );
   const workspaceAppMentionProvider = useMemo(() => {
-    if (previewMode) return null;
     return (
       contextMentionProviders.find(
         (provider) =>
           provider.id === AGENT_CONTEXT_MENTION_PROVIDER_IDS.workspaceApp
       ) ?? null
     );
-  }, [contextMentionProviders, previewMode]);
+  }, [contextMentionProviders]);
   const agentGeneratedFileMentionProvider = useMemo(
     () =>
-      previewMode
-        ? null
-        : createDesktopAgentGeneratedFileMentionProvider({
-            agentActivityRuntime,
-            workspaceId
-          }),
-    [agentActivityRuntime, previewMode, workspaceId]
+      createDesktopAgentGeneratedFileMentionProvider({
+        agentActivityRuntime,
+        workspaceId
+      }),
+    [agentActivityRuntime, workspaceId]
   );
   const resolveDockFiles = useCallback(
     () => resolveWorkbenchDockFileMentionItems({ host, workspaceId }),
     [host, workspaceId]
   );
   const effectiveContextMentionProviders = useMemo(() => {
-    if (previewMode || !agentGeneratedFileMentionProvider) {
+    if (!agentGeneratedFileMentionProvider) {
       return DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS;
     }
     return composeDesktopAgentGuiContextMentionProviders({
@@ -85,7 +80,6 @@ export function useDesktopAgentGUIContextMentions(input: {
   }, [
     agentGeneratedFileMentionProvider,
     dockPreviewCache,
-    previewMode,
     resolveDockFiles,
     contextMentionProviders,
     workspaceAppMentionProvider

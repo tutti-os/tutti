@@ -66,7 +66,6 @@ interface AgentMessageBlockProps {
   provider?: string | null;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  previewMode?: boolean;
   showRawTimelineJson?: boolean;
   rawTimelineJsonLabel?: string;
   participantPresentation?: AgentConversationParticipantPresentation;
@@ -83,7 +82,6 @@ export function AgentMessageBlock({
   provider,
   availableSkills,
   workspaceAppIcons,
-  previewMode = false,
   showRawTimelineJson = false,
   rawTimelineJsonLabel = "",
   participantPresentation
@@ -138,7 +136,6 @@ export function AgentMessageBlock({
           thinking={thinking}
           label={thinkingLabel}
           onLinkClick={handleLinkClick}
-          previewMode={previewMode}
           showRawTimelineJson={showRawTimelineJson}
           rawTimelineJsonLabel={rawTimelineJsonLabel}
         />
@@ -154,7 +151,6 @@ export function AgentMessageBlock({
             label={toolCallsLabel}
             thinkingLabel={thinkingLabel}
             onLinkClick={handleLinkClick}
-            previewMode={previewMode}
             showRawTimelineJson={showRawTimelineJson}
             rawTimelineJsonLabel={rawTimelineJsonLabel}
           />
@@ -212,7 +208,6 @@ export function AgentMessageBlock({
           basePath={basePath}
           onLinkAction={onLinkAction}
           workspaceAppIcons={workspaceAppIcons}
-          previewMode={previewMode}
         />
       ) : message.contentKind === "plan" ? (
         <AgentPlanCardMessage
@@ -221,7 +216,6 @@ export function AgentMessageBlock({
           basePath={basePath}
           onLinkAction={onLinkAction}
           workspaceAppIcons={workspaceAppIcons}
-          previewMode={previewMode}
         />
       ) : (
         <AgentMessageMarkdown
@@ -236,7 +230,6 @@ export function AgentMessageBlock({
           }}
           workspaceAppIcons={workspaceAppIcons}
           enableImageZoom
-          previewMode={previewMode}
           streaming={message.statusKind === "working"}
         />
       );
@@ -289,9 +282,7 @@ export function AgentMessageBlock({
           ? "true"
           : undefined
       }
-      data-agent-message-flow-participant={
-        showParticipant ? "true" : undefined
-      }
+      data-agent-message-flow-participant={showParticipant ? "true" : undefined}
     >
       {showParticipant ? (
         <AgentConversationParticipantHeader
@@ -672,15 +663,13 @@ function AgentPlanCardMessage({
   workspaceRoot,
   basePath,
   onLinkAction,
-  workspaceAppIcons,
-  previewMode = false
+  workspaceAppIcons
 }: {
   message: AgentMessageContentVM;
   workspaceRoot: string | null;
   basePath: string;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  previewMode?: boolean;
 }): JSX.Element {
   "use memo";
   return (
@@ -696,7 +685,6 @@ function AgentPlanCardMessage({
         }}
         workspaceAppIcons={workspaceAppIcons}
         enableImageZoom
-        previewMode={previewMode}
       />
     </AgentPlanCard>
   );

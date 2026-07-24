@@ -89,7 +89,6 @@ function createGoalControlInput(
     planActionsRef: {
       current: { implement: vi.fn(), feedback: vi.fn(), skip: vi.fn() }
     },
-    previewMode: false,
     promptImagesSupported: true,
     optimisticGoalControl: null,
     sessionEngine,

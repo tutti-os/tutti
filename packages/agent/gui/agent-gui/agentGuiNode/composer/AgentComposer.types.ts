@@ -108,7 +108,6 @@ export interface AgentComposerProps {
   projectMissingProbeEnabled?: boolean;
   uiLanguage?: UiLanguage;
   isActive?: boolean;
-  previewMode?: boolean;
   workspaceReferencePickerOpen?: boolean;
   promptImagesSupported?: boolean;
   canGoalControl?: boolean;

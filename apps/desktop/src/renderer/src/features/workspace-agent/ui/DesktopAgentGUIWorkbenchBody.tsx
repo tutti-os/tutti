@@ -94,7 +94,6 @@ function DesktopAgentGUISurfaceImpl({
   onOpenAgentConversationWindow,
   onStateChange,
   prefillPromptBootstrapRequest = null,
-  previewMode = false,
   providerStatusBootstrapSnapshot = null,
   agentDirectory,
   allAgentsPresentation = null,
@@ -180,7 +179,6 @@ function DesktopAgentGUISurfaceImpl({
     computerUseApi,
     host: surface.host,
     provider: readinessProvider,
-    previewMode,
     providerStatusBootstrapSnapshot,
     trackAgentProviderChatReady,
     workspaceId
@@ -195,7 +193,6 @@ function DesktopAgentGUISurfaceImpl({
     contextMentionProviders,
     dockPreviewCache,
     host: surface.host,
-    previewMode,
     workspaceId
   });
   useEffect(() => {
@@ -258,13 +255,12 @@ function DesktopAgentGUISurfaceImpl({
   // already visible, so it can skip a redundant in-app interruption.
   useEffect(() => {
     const agentSessionId = workbenchState.lastActiveAgentSessionId?.trim();
-    if (previewMode || !agentSessionId || surface.isMinimized) {
+    if (!agentSessionId || surface.isMinimized) {
       return undefined;
     }
     return registerWorkspaceAgentGuiOpenSession(workspaceId, agentSessionId);
   }, [
     surface.isMinimized,
-    previewMode,
     workbenchState.lastActiveAgentSessionId,
     workspaceId
   ]);
@@ -298,7 +294,6 @@ function DesktopAgentGUISurfaceImpl({
       const previousRailCollapsed = current.conversationRailCollapsed === true;
       const nextRailCollapsed = next.conversationRailCollapsed === true;
       if (
-        !previewMode &&
         previousRailCollapsed !== nextRailCollapsed &&
         isDesktopAgentProvider(next.provider)
       ) {
@@ -335,13 +330,7 @@ function DesktopAgentGUISurfaceImpl({
         onStateChangeRef.current(nextWorkbenchState);
       }
     },
-    [
-      desktopPreferencesService,
-      nodeProvider,
-      previewMode,
-      runtimeApi,
-      workspaceId
-    ]
+    [desktopPreferencesService, nodeProvider, runtimeApi, workspaceId]
   );
   const agentStatusController = useDesktopAgentStatusController({
     agentActivityRuntime,
@@ -408,9 +397,6 @@ function DesktopAgentGUISurfaceImpl({
   ]);
 
   useEffect(() => {
-    if (previewMode) {
-      return;
-    }
     const request = consumeDesktopAgentGUIPrefillPromptActivation({
       activation: surface.activation,
       clearNodeActivation: surface.host.clearNodeActivation?.bind(surface.host),
@@ -440,13 +426,7 @@ function DesktopAgentGUISurfaceImpl({
       }
       setPrefillPromptRequest(request);
     }
-  }, [
-    surface.activation,
-    surface.host,
-    surface.nodeId,
-    handleUpdateNode,
-    previewMode
-  ]);
+  }, [surface.activation, surface.host, surface.nodeId, handleUpdateNode]);
 
   const {
     newConversationSequence: newConversationRequestSequence,
@@ -458,15 +438,13 @@ function DesktopAgentGUISurfaceImpl({
         ...current,
         conversationRailCollapsed
       }));
-    },
-    previewMode
+    }
   });
 
   const handleOpenConversationWindow = useDesktopAgentGUIOpenConversationWindow(
     {
       agentTargetId: workbenchAgentTargetId,
       onOpenAgentConversationWindow,
-      previewMode,
       provider: nodeProvider,
       workspaceId
     }
@@ -474,7 +452,6 @@ function DesktopAgentGUISurfaceImpl({
 
   useEffect(() => {
     if (
-      previewMode ||
       hasExplicitConversationRailCollapsedState ||
       !preferredConversationRailCollapsed
     ) {
@@ -502,7 +479,6 @@ function DesktopAgentGUISurfaceImpl({
     nodeState,
     nodeProvider,
     preferredConversationRailCollapsed,
-    previewMode,
     workbenchState
   ]);
 
@@ -512,7 +488,7 @@ function DesktopAgentGUISurfaceImpl({
     ({ agentTargetId, provider: defaultsProvider, defaults }) => {
       // Remembered defaults are keyed strictly by agent target; targets
       // without an agentTargetId (legacy refs) are not persisted.
-      if (previewMode || !agentTargetId || !defaults) {
+      if (!agentTargetId || !defaults) {
         return;
       }
       return desktopPreferencesService
@@ -528,7 +504,7 @@ function DesktopAgentGUISurfaceImpl({
           throw error;
         });
     },
-    [desktopPreferencesService, previewMode, runtimeApi, workspaceId]
+    [desktopPreferencesService, runtimeApi, workspaceId]
   );
 
   const frame = surface.frame;
@@ -584,12 +560,10 @@ function DesktopAgentGUISurfaceImpl({
   const handleAgentEnvPanelOpen = useCallback<
     NonNullable<AgentGUIProps["hostActions"]["onAgentEnvPanelOpen"]>
   >((input) => agentEnvService.open(input), [agentEnvService]);
-  const referenceProvenanceFilterEnabled =
-    !previewMode &&
-    isFeatureEnabled(
-      desktopPreferencesState.featureFlags,
-      AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
-    );
+  const referenceProvenanceFilterEnabled = isFeatureEnabled(
+    desktopPreferencesState.featureFlags,
+    AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
+  );
   const providerAuthAccountLabels = useMemo(() => {
     const labels: Partial<Record<WorkspaceAgentProvider, string>> = {};
     for (const status of providerStatusSnapshot.statuses) {
@@ -624,31 +598,17 @@ function DesktopAgentGUISurfaceImpl({
     },
     workspace: {
       path: "",
-      fileReferenceAdapter: previewMode ? null : workspaceFileReferenceAdapter,
-      onRequestGitBranches: previewMode ? null : onRequestGitBranches,
-      selectProjectDirectory: previewMode
-        ? undefined
-        : agentHostApi.workspace.selectDirectory,
-      resolveExternalPromptEntries: previewMode
-        ? null
-        : resolveExternalPromptEntries,
-      prepareExternalPromptFiles: previewMode
-        ? null
-        : prepareExternalPromptFiles,
+      fileReferenceAdapter: workspaceFileReferenceAdapter,
+      onRequestGitBranches: onRequestGitBranches,
+      selectProjectDirectory: agentHostApi.workspace.selectDirectory,
+      resolveExternalPromptEntries: resolveExternalPromptEntries,
+      prepareExternalPromptFiles: prepareExternalPromptFiles,
       promptAssetLimit: 16,
-      referenceSourceAggregator: previewMode ? null : referenceSourceAggregator,
-      resolveReferenceEntryIconUrl: previewMode
-        ? undefined
-        : resolveWorkspaceReferenceEntryIconUrl,
-      resolveMentionReferenceTarget: previewMode
-        ? undefined
-        : resolveMentionReferenceTarget,
-      resolveReferenceInitialTarget: previewMode
-        ? undefined
-        : resolveWorkspaceReferenceInitialTarget,
-      onFileReferencesAdded: previewMode
-        ? undefined
-        : trackWorkspaceFileReferences,
+      referenceSourceAggregator: referenceSourceAggregator,
+      resolveReferenceEntryIconUrl: resolveWorkspaceReferenceEntryIconUrl,
+      resolveMentionReferenceTarget: resolveMentionReferenceTarget,
+      resolveReferenceInitialTarget: resolveWorkspaceReferenceInitialTarget,
+      onFileReferencesAdded: trackWorkspaceFileReferences,
       agentSettings: DESKTOP_AGENT_GUI_AGENT_SETTINGS
     },
     runtimeRequests: {
@@ -658,7 +618,7 @@ function DesktopAgentGUISurfaceImpl({
       sessionAction: sessionActionRequest,
       openSession: openSessionRequest,
       prefillPrompt: prefillPromptRequest,
-      agentStatusController: previewMode ? undefined : agentStatusController
+      agentStatusController: agentStatusController
     },
     hostCapabilities: {
       referenceProvenanceFilterEnabled,
@@ -672,31 +632,25 @@ function DesktopAgentGUISurfaceImpl({
       workspaceAppIcons
     },
     hostActions: {
-      onAgentEnvPanelOpen: previewMode ? undefined : handleAgentEnvPanelOpen,
-      onAgentProviderLogin:
-        !previewMode && agentProviderStatusService
-          ? handleAgentProviderLogin
-          : undefined,
-      onCapabilitySettingsRequest: previewMode
-        ? undefined
-        : onCapabilitySettingsRequest,
+      onAgentEnvPanelOpen: handleAgentEnvPanelOpen,
+      onAgentProviderLogin: agentProviderStatusService
+        ? handleAgentProviderLogin
+        : undefined,
+      onCapabilitySettingsRequest: onCapabilitySettingsRequest,
       onClose: DESKTOP_AGENT_GUI_NOOP,
-      onLinkAction: previewMode ? undefined : onLinkAction,
-      onHandoffConversation: previewMode
-        ? undefined
-        : handleHandoffConversation,
+      onLinkAction: onLinkAction,
+      onHandoffConversation: handleHandoffConversation,
       onResize: DESKTOP_AGENT_GUI_NOOP,
       onShowMessage: handleDesktopAgentGUIShowMessage,
       onUpdateNode: handleUpdateNode,
       onRememberComposerDefaults: handleRememberComposerDefaults,
-      onEngagementEvent: previewMode ? undefined : onEngagementEvent,
-      onOpenConversationWindow:
-        previewMode || !onOpenAgentConversationWindow
-          ? undefined
-          : handleOpenConversationWindow
+      onEngagementEvent: onEngagementEvent,
+      onOpenConversationWindow: !onOpenAgentConversationWindow
+        ? undefined
+        : handleOpenConversationWindow
     },
     renderSlots: {
-      sidebarFooter: previewMode ? undefined : renderSidebarFooter
+      sidebarFooter: renderSidebarFooter
     }
   });
 
@@ -728,7 +682,6 @@ function DesktopAgentGUISurfaceImpl({
             surface.presentationMode !== "mission-control" &&
             surface.isMinimized !== true,
           embedded: true,
-          previewMode,
           conversationRailAutoCollapseWidthPx
         }}
         state={nodeState}

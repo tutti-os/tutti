@@ -32,7 +32,6 @@ describe("AgentGUIDetailTimeline render budget", () => {
       isLoadingOlderMessages: false,
       isTimelineScrolledToTop: true,
       labels: { loadingConversation: "Loading" },
-      previewMode: false,
       showTimelineSkeleton: false,
       showUnavailableChatEmpty: false,
       timelineContentRef: createRef<HTMLDivElement>(),

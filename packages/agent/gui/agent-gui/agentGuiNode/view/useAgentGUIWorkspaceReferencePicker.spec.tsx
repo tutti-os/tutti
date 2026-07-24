@@ -9,7 +9,6 @@ function createInput(
 ): Parameters<typeof useAgentGUIWorkspaceReferencePicker>[0] {
   return {
     onWorkspaceFileReferencesAdded: undefined,
-    previewMode: false,
     projectDirectorySourceAggregator,
     referenceSourceAggregator: {} as ReferenceSourceAggregator,
     resolveMentionReferenceTarget: undefined,

@@ -9,7 +9,6 @@ interface AgentGUIEmptyHeroCarouselStageProps {
   children: ReactNode;
   items: readonly AgentGUIAgentAvatarPresentation[];
   onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
-  previewMode: boolean;
   providerSelectLabel: string;
 }
 
@@ -100,12 +99,7 @@ export class AgentGUIEmptyHeroCarouselStage extends Component<AgentGUIEmptyHeroC
   }
 
   private canAlign(): boolean {
-    return Boolean(
-      !this.props.previewMode &&
-      this.props.items.length > 1 &&
-      this.stage &&
-      this.layer
-    );
+    return Boolean(this.props.items.length > 1 && this.stage && this.layer);
   }
 
   private stopAlignment(): void {

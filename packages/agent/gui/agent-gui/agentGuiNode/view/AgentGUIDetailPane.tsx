@@ -71,7 +71,6 @@ export interface AgentGUIDetailPaneProps {
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   uiLanguage: UiLanguage;
   isActive: boolean;
-  previewMode: boolean;
   workspaceReferencePickerOpen: boolean;
   composerFocusRequestSequence: number | null;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
@@ -118,7 +117,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   workspaceUserProjectI18n,
   uiLanguage,
   isActive,
-  previewMode,
   workspaceReferencePickerOpen,
   composerFocusRequestSequence,
   slashStatusLimits,
@@ -316,7 +314,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const stableLinkAction = useOptionalStableEventCallback(onLinkAction);
   const tuttiWorkflow = useAgentGUITuttiWorkflow({
     viewModel,
-    previewMode,
     labels,
     stableLinkAction,
     setTuttiModeActive: actions.setTuttiModeActive,
@@ -452,7 +449,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         : labels.initialPlaceholder,
       showStopButton,
       stopDisabled: stopDisabled || timelineInteractionLocked,
-      previewMode,
       workspaceReferencePickerOpen,
       referenceProvenanceFilter,
       // Plan decisions replace the composer; approval / ask-user embed here.
@@ -553,7 +549,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onSlashStatusOpen,
       onSlashStatusClose,
       onSlashStatusRefresh,
-      previewMode,
       workspaceReferencePickerOpen,
       composerActivePrompt,
       editQueuedPrompt,
@@ -703,7 +698,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         }
         noticeChrome={homeNoticeChrome}
         isRespondingApproval={isInteractionPending}
-        previewMode={previewMode}
         onSubmitApprovalOption={submitApprovalOption}
         onRetryActivation={retryActivation}
         onAuthLogin={authLogin}
@@ -744,7 +738,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         labels={labels}
         onAuthLogin={authLogin}
         onLinkAction={stableLinkAction}
-        previewMode={previewMode}
         showTimelineSkeleton={showTimelineSkeleton}
         showUnavailableChatEmpty={showUnavailableChatEmpty}
         timelineContentRef={timelineContentRef}

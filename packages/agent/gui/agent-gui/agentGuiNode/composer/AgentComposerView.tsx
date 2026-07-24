@@ -123,7 +123,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
     activePromptKeyboardShortcutsEnabled = true,
     promptImagesSupported = true,
-    previewMode = false,
     layoutMode = "dock",
     providerSelectLabel = "",
     labels,
@@ -247,7 +246,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             embedded={true}
             edgeGlow={true}
             keyboardShortcuts={activePromptKeyboardShortcutsEnabled}
-            previewMode={previewMode}
             isSubmitting={isSubmittingPrompt}
             onSubmit={submitInteractivePromptAndDismiss}
             labels={{
@@ -315,7 +313,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
           composerSettings.selectedPermissionModeValue ??
           composerSettings.draftSettings.permissionModeId
         }
-        previewMode={previewMode}
         provider={provider}
         visibleOnHome={isHeroLayout}
       />
@@ -599,7 +596,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             provider={provider}
             composerSettings={composerSettings}
             usage={usage}
-            previewMode={previewMode}
             compactSupported={compactSupported}
             hasCompactableContext={hasCompactableContext}
             composerControlsHardDisabled={composerControlsHardDisabled}
@@ -658,7 +654,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
               <AgentProjectDropdown
                 composerSettings={composerSettings}
                 i18n={workspaceUserProjectI18n}
-                previewMode={previewMode}
                 labels={{
                   projectLocked: labels.projectLocked,
                   projectMissingDescription: labels.projectMissingDescription
@@ -674,9 +669,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                 className={styles.composerPromptTips}
                 data-testid="agent-gui-prompt-tips"
               >
-                {!previewMode &&
-                input.isPromptTipOverflowing &&
-                promptTipNode ? (
+                {input.isPromptTipOverflowing && promptTipNode ? (
                   <TooltipProvider delayDuration={0}>
                     <Tooltip>
                       <TooltipTrigger asChild>{promptTipNode}</TooltipTrigger>

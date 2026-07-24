@@ -38,7 +38,6 @@ export function ApprovalPromptSurface({
   embedded = false,
   edgeGlow = false,
   keyboardShortcuts = true,
-  previewMode = false,
   isSubmitting,
   onSubmit,
   labels
@@ -179,7 +178,7 @@ export function ApprovalPromptSurface({
                 <span className={styles.interactiveOptionTitle}>
                   {detail.label}
                 </span>
-                <PromptDetailValue detail={detail} previewMode={previewMode} />
+                <PromptDetailValue detail={detail} />
                 {detail.meta ? (
                   <span className={styles.interactiveOptionDescription}>
                     {detail.meta}
@@ -285,7 +284,7 @@ export function ApprovalPromptSurface({
                   <CommandTextWithTooltip
                     value={optionPresentation.commandPrefix}
                     testId="agent-interactive-command-prefix-option"
-                    tooltipsEnabled={!previewMode}
+                    tooltipsEnabled
                   />
                 ) : null}
                 {option.description ? (

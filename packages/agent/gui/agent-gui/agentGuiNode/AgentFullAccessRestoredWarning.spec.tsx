@@ -23,7 +23,6 @@ describe("AgentFullAccessRestoredWarning", () => {
       <AgentFullAccessRestoredWarning
         isSettingsLoading={false}
         permissionModeId="full-access"
-        previewMode={false}
         provider="opencode"
         visibleOnHome
       />
@@ -31,26 +30,14 @@ describe("AgentFullAccessRestoredWarning", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("does not warn in history, previews, or while defaults are loading", () => {
+  it("does not warn in history or while defaults are loading", () => {
     const { rerender } = renderWarning({ visibleOnHome: false });
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-
-    rerender(
-      <AgentFullAccessRestoredWarning
-        isSettingsLoading={false}
-        permissionModeId="full-access"
-        previewMode
-        provider="codex"
-        visibleOnHome
-      />
-    );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 
     rerender(
       <AgentFullAccessRestoredWarning
         isSettingsLoading
         permissionModeId="full-access"
-        previewMode={false}
         provider="codex"
         visibleOnHome
       />
@@ -102,7 +89,6 @@ function renderWarning(
     <AgentFullAccessRestoredWarning
       isSettingsLoading={false}
       permissionModeId="full-access"
-      previewMode={false}
       provider="codex"
       visibleOnHome
       {...overrides}

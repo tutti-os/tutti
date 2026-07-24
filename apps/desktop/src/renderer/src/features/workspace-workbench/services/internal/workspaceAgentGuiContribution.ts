@@ -26,7 +26,6 @@ import type {
   WorkbenchContribution,
   WorkbenchDockPreviewCache
 } from "@tutti-os/workbench-surface";
-import { WorkbenchDockComponentPreviewFrame } from "@tutti-os/workbench-surface";
 import type {
   DesktopComputerUseApi,
   DesktopHostFilesApi,
@@ -154,10 +153,8 @@ export function createWorkspaceAgentGuiContribution(input: {
     >[0],
     helpers: Parameters<
       Parameters<typeof createAgentGuiWorkbenchContribution>[0]["renderBody"]
-    >[1],
-    options?: { previewMode?: boolean }
+    >[1]
   ) => {
-    const previewMode = options?.previewMode === true;
     return createElement(DesktopWorkspaceAgentGUIWorkbenchBody, {
       agentActivityRuntime: agentGUIWorkbenchHostInput.agentActivityRuntime,
       agentHostApi: agentGUIWorkbenchHostInput.agentHostApi,
@@ -177,7 +174,6 @@ export function createWorkspaceAgentGuiContribution(input: {
         });
       },
       onStateChange: (...args) => helpers.onStateChange(...args),
-      previewMode,
       agentsService: helpers.agentDirectory,
       allAgentsPresentation: input.allAgentsPresentation,
       renderAgentsEmpty: input.renderAgentsEmpty,
@@ -250,33 +246,6 @@ export function createWorkspaceAgentGuiContribution(input: {
     ),
     renderBody: (context, helpers) =>
       renderAgentGuiWorkbenchBody(context, helpers),
-    renderPreview: (context, helpers) => {
-      const body = renderAgentGuiWorkbenchBody(context, helpers, {
-        previewMode: true
-      });
-      return context.previewViewport
-        ? createElement(
-            WorkbenchDockComponentPreviewFrame,
-            {
-              sourceSize: context.node.frame,
-              viewport: context.previewViewport
-            },
-            body
-          )
-        : body;
-    },
-    renderMinimizedPreview: (context, helpers) => {
-      const previewViewport =
-        context.previewViewport ?? minimizedDockPreviewViewport;
-      return createElement(
-        WorkbenchDockComponentPreviewFrame,
-        {
-          sourceSize: context.node.frame,
-          viewport: previewViewport
-        },
-        renderAgentGuiWorkbenchBody(context, helpers, { previewMode: true })
-      );
-    },
     resolveDockPopupIdentity: (state) =>
       resolveWorkspaceAgentGuiDockPopupIdentity(state, {
         dockIconUrls: input.dockIconUrls,
@@ -392,8 +361,3 @@ function resolveWorkspaceAgentGuiDockPopupIdentity(
     workbenchState: state
   });
 }
-
-const minimizedDockPreviewViewport = {
-  height: 34.2,
-  width: 46.8
-};

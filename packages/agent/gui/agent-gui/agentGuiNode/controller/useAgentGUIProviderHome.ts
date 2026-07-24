@@ -73,7 +73,6 @@ interface UseAgentGUIProviderHomeInput {
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
   persistActiveConversation(agentSessionId: string | null): void;
-  previewMode: boolean;
   providerReadinessGates: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
@@ -123,7 +122,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
 
   const resetHomeComposerAgentTargetToDefault = useCallback(() => {
     const currentInput = inputRef.current;
-    if (currentInput.previewMode) return;
+
     const nextTarget = resolveDefaultHomeComposerTarget();
     if (!nextTarget) return;
     const nextTargetIsExplicit =
@@ -182,7 +181,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
       agentTargetId?: string | null;
     }) => {
       const currentInput = inputRef.current;
-      if (currentInput.previewMode) return;
+
       const nextTarget = resolveAgentGUIAgentTarget({
         agentTargetId: selection.agentTargetId,
         defaultAgentTargetId: currentInput.defaultAgentTargetId,
@@ -282,7 +281,6 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
 
   useEffect(() => {
     if (
-      input.previewMode ||
       input.activeConversationId !== null ||
       input.conversationFilter.kind !== "all" ||
       input.homeComposerTargetOverride !== null ||
@@ -325,7 +323,6 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
     input.effectiveSelectedProviderTarget,
     input.firstReadyHomeComposerProviderTarget,
     input.homeComposerTargetOverride,
-    input.previewMode,
     input.providerReadinessGates,
     selectHomeComposerAgentTarget
   ]);

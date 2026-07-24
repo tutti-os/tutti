@@ -312,7 +312,6 @@ function createComposerLayoutInput(
     projectMissingProbeEnabled: true,
     showFileMentionPalette: false,
     showFloatingCommandMenu: false,
-    previewMode: false,
     promptTips: [],
     promptTipsPrefix: "Tip: ",
     composerSettings: {
