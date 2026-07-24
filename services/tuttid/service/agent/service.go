@@ -12,10 +12,12 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
+	modelgatewayservice "github.com/tutti-os/tutti/services/tuttid/service/modelgateway"
 )
 
 var (
@@ -457,13 +459,48 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 		return preparedRuntime{Cwd: cwd}, nil
 	}
 	provider := strings.TrimSpace(input.Provider)
+	effectiveEndpoint := planEndpoint
+	gatewayRegistered := false
+	if agentprovider.ModelPlanUsesResponsesToChatGateway(provider) && modelEndpointUsesOpenAIProtocol(planEndpoint) {
+		if s.ModelGateway == nil {
+			return preparedRuntime{}, errors.New("codex model-plan gateway is unavailable")
+		}
+		models := make([]string, 0, len(planEndpoint.Models)+1)
+		for _, model := range planEndpoint.Models {
+			if id := strings.TrimSpace(model.ID); id != "" {
+				models = append(models, id)
+			}
+		}
+		if len(models) == 0 && strings.TrimSpace(planEndpoint.Model) != "" {
+			models = append(models, strings.TrimSpace(planEndpoint.Model))
+		}
+		// Revoke before replacement so a failed resume preparation can never
+		// leave the previous process token usable.
+		s.ModelGateway.Unregister(ctx, workspaceID, input.AgentSessionID)
+		clientEndpoint, err := s.ModelGateway.Register(ctx, modelgatewayservice.Route{
+			WorkspaceID:    workspaceID,
+			AgentSessionID: strings.TrimSpace(input.AgentSessionID),
+			UpstreamURL:    planEndpoint.BaseURL,
+			UpstreamAPIKey: planEndpoint.APIKey,
+			Models:         models,
+		})
+		if err != nil {
+			return preparedRuntime{}, fmt.Errorf("register Codex model gateway route: %w", err)
+		}
+		endpointCopy := *planEndpoint
+		endpointCopy.BaseURL = clientEndpoint.BaseURL
+		endpointCopy.APIKey = clientEndpoint.Token
+		endpointCopy.WireAPI = clientEndpoint.WireAPI
+		effectiveEndpoint = &endpointCopy
+		gatewayRegistered = true
+	}
 	prepared, err := s.RuntimePreparer.Prepare(ctx, runtimeprep.PrepareInput{
 		WorkspaceID:               workspaceID,
 		AgentSessionID:            strings.TrimSpace(input.AgentSessionID),
 		AgentTargetID:             strings.TrimSpace(input.AgentTargetID),
 		Provider:                  provider,
 		Cwd:                       cwd,
-		ModelEndpoint:             planEndpoint,
+		ModelEndpoint:             effectiveEndpoint,
 		Title:                     value(input.Title),
 		PermissionModeID:          value(input.PermissionModeID),
 		PlanMode:                  clampComposerPlanModeForLaunch(provider, input.ProviderTargetRef, valueBool(input.PlanMode)),
@@ -484,6 +521,9 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 		ExternalRolloutSourcePath: input.ExternalRolloutSourcePath,
 	})
 	if err != nil {
+		if gatewayRegistered {
+			s.ModelGateway.Unregister(context.WithoutCancel(ctx), workspaceID, input.AgentSessionID)
+		}
 		return preparedRuntime{}, err
 	}
 	if strings.TrimSpace(prepared.Cwd) == "" {
@@ -493,6 +533,13 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 		Cwd: prepared.Cwd,
 		Env: append([]string(nil), prepared.Env...),
 	}, nil
+}
+
+func modelEndpointUsesOpenAIProtocol(endpoint *runtimeprep.ModelEndpointConfig) bool {
+	return endpoint != nil &&
+		strings.TrimSpace(endpoint.Protocol) == "openai" &&
+		strings.TrimSpace(endpoint.BaseURL) != "" &&
+		strings.TrimSpace(endpoint.APIKey) != ""
 }
 
 func sessionSkillBundlesToProviderSkillBundles(input []SessionSkillBundle) []runtimeprep.ProviderSkillBundle {
@@ -640,13 +687,17 @@ func (s *Service) UpdatePin(ctx context.Context, workspaceID string, agentSessio
 }
 
 func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentSessionID string) error {
-	if s.RuntimePreparer == nil {
-		return nil
+	var runtimeErr error
+	if s.RuntimePreparer != nil {
+		runtimeErr = s.RuntimePreparer.Cleanup(ctx, runtimeprep.CleanupInput{
+			WorkspaceID:    workspaceID,
+			AgentSessionID: agentSessionID,
+		})
 	}
-	return s.RuntimePreparer.Cleanup(ctx, runtimeprep.CleanupInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-	})
+	if s.ModelGateway != nil {
+		s.ModelGateway.Unregister(ctx, workspaceID, agentSessionID)
+	}
+	return runtimeErr
 }
 
 func (s *Service) cleanupSessionResources(ctx context.Context, workspaceID string, agentSessionID string) error {

@@ -449,6 +449,15 @@ func TestResolveModelPlanProtocolOnlyForPreparedProviders(t *testing.T) {
 	if !ok || addressing != ModelPlanModelAddressingProviderPrefixed {
 		t.Fatalf("ResolveModelPlanModelAddressing(opencode) = %q, %v; want provider_prefixed", addressing, ok)
 	}
+	adapter, ok := ResolveModelPlanEndpointAdapter(CodexProviderID)
+	if !ok || adapter != ModelPlanEndpointAdapterResponsesToChatGateway {
+		t.Fatalf("ResolveModelPlanEndpointAdapter(codex) = %q, %v; want responses_to_chat_gateway", adapter, ok)
+	}
+	for _, provider := range []string{ClaudeCodeProviderID, TuttiAgentProviderID, OpenCodeProviderID, "unknown"} {
+		if adapter, ok := ResolveModelPlanEndpointAdapter(provider); ok {
+			t.Fatalf("ResolveModelPlanEndpointAdapter(%q) = %q, true; want direct endpoint", provider, adapter)
+		}
+	}
 }
 
 func TestResolveNativeSubscriptionTargetUsesProviderDescriptor(t *testing.T) {
@@ -482,6 +491,7 @@ func TestValidateRejectsUnsupportedDescriptorStrategies(t *testing.T) {
 		{name: "runtime client info", mutate: func(value *ProviderDescriptor) { value.Runtime.ClientInfoName = " " }},
 		{name: "runtime auth message", mutate: func(value *ProviderDescriptor) { value.Runtime.AuthRequiredMessage = " " }},
 		{name: "model plan protocol", mutate: func(value *ProviderDescriptor) { value.Runtime.Endpoint.ModelPlanProtocol = "poison" }},
+		{name: "model plan endpoint adapter", mutate: func(value *ProviderDescriptor) { value.Runtime.Endpoint.ModelPlanEndpointAdapter = "poison" }},
 		{name: "model plan capability missing", mutate: func(value *ProviderDescriptor) {
 			value.ComposerProfile.Capabilities = slices.DeleteFunc(value.ComposerProfile.Capabilities, func(capability string) bool {
 				return capability == CapabilityModelPlanBinding

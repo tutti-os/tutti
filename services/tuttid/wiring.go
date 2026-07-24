@@ -22,6 +22,7 @@ import (
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 	mobileremoteservice "github.com/tutti-os/tutti/services/tuttid/service/mobileremote"
+	modelgatewayservice "github.com/tutti-os/tutti/services/tuttid/service/modelgateway"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
@@ -40,6 +41,7 @@ type tuttiWiring struct {
 	providerAuthWatcher     *agentservice.ProviderAuthWatcher
 	agentCLIUpdateScheduler *agentstatusservice.ProviderUpdateScheduler
 	mobileRemoteService     *mobileremoteservice.Service
+	modelGateway            *modelgatewayservice.Gateway
 }
 
 type analyticsDebugEventPublisher struct {
@@ -141,8 +143,15 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	if runtimeprep.ComputerUseDefaultEnabled() {
 		w.computerService = computersvc.NewService()
 	}
-	api, appCenterService, agentRuntime, providerAuthWatcher, err := buildDaemonAPI(ctx, workspaceStore, nil, w.browserService, w.computerService)
+	modelGateway, err := modelgatewayservice.New(modelgatewayservice.Config{})
 	if err != nil {
+		return fmt.Errorf("start model gateway: %w", err)
+	}
+	w.modelGateway = modelGateway
+	api, appCenterService, agentRuntime, providerAuthWatcher, err := buildDaemonAPI(ctx, workspaceStore, nil, w.browserService, w.computerService, modelGateway)
+	if err != nil {
+		_ = modelGateway.Close()
+		w.modelGateway = nil
 		return err
 	}
 	agentTargetSetup, ok := api.AgentTargetSetupService.(*agentextensionservice.SetupService)
@@ -282,6 +291,11 @@ func (w *tuttiWiring) Close() error {
 	}
 	if w.agentRuntime != nil {
 		w.agentRuntime.Close()
+	}
+	if w.modelGateway != nil {
+		if err := w.modelGateway.Close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
 	}
 	if w.analyticsReporter != nil {
 		if err := w.analyticsReporter.Close(); err != nil && closeErr == nil {
