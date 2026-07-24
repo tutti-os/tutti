@@ -9,8 +9,8 @@ const (
 	CursorTargetID               = "local:cursor"
 	TuttiAgentProviderID         = canonical.TuttiAgentProviderID
 	TuttiAgentTargetID           = "local:tutti-agent"
-	TuttiAgentMinVersion         = "0.0.5"
-	TuttiAgentRecommendedVersion = "0.0.5"
+	TuttiAgentMinVersion         = "0.0.6"
+	TuttiAgentRecommendedVersion = "0.0.6"
 	NexightProviderID            = canonical.NexightProviderID
 	NexightTargetID              = "local:nexight"
 	OpenClawProviderID           = canonical.OpenClawProviderID
@@ -73,7 +73,7 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 		ComposerProfile: ComposerProfileDescriptor{
 			ModelSelection: true, ModelCatalog: ModelCatalogKindTuttiCLI, ReasoningEffort: true, ReasoningEffortOptions: ReasoningEffortOptionsModelCatalog, DefaultReasoningEffort: "high", Speed: true,
 			SpeedValues: []string{"standard", "fast"}, DefaultSpeed: "standard",
-			Capabilities: []string{CapabilityImageInput, CapabilitySkills, CapabilityCompact, CapabilityTokenUsage, CapabilityRateLimits, CapabilityPlanMode, CapabilityInterrupt, CapabilityActiveTurnGuidance, CapabilityModelSwitch, CapabilityModelPlanBinding}, PermissionConfigurable: true, DefaultPermissionModeID: "auto",
+			Capabilities: []string{CapabilityImageInput, CapabilitySkills, CapabilityCompact, CapabilityTokenUsage, CapabilityPlanMode, CapabilityInterrupt, CapabilityActiveTurnGuidance, CapabilityModelSwitch, CapabilityModelPlanBinding}, PermissionConfigurable: true, DefaultPermissionModeID: "auto",
 			PermissionModes: []PermissionModeDescriptor{{ID: "read-only", Semantic: "ask-before-write"}, {ID: "auto", Semantic: "auto"}, {ID: "full-access", Semantic: "full-access"}}, ConfigOptionIDs: ComposerConfigOptionIDs{Model: "model", Reasoning: "reasoning_effort", Speed: "service_tier", Permission: "mode"},
 		},
 		Target:  TargetDescriptor{ID: TuttiAgentTargetID, LaunchRefType: TargetLaunchRefTypeLocalCLI, Enabled: false, SortOrder: 40},

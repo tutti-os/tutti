@@ -87,6 +87,9 @@ func (e *acpCallError) AuthRequired() bool {
 		return false
 	}
 	haystack := strings.ToLower(e.Err.Message + " " + string(e.Err.Data))
+	if structuredProviderFailureCode(haystack) != "" {
+		return false
+	}
 	return strings.Contains(haystack, "auth")
 }
 
