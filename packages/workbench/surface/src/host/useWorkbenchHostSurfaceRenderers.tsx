@@ -290,12 +290,8 @@ export function useWorkbenchHostSurfaceRenderers(input: {
   );
 
   const shouldCaptureNodePreviewImage = useCallback(
-    (node: WorkbenchNode<WorkbenchHostNodeData>) => {
-      const minimizedDock = input.nodeDefinitionByType.get(node.data.typeId)
-        ?.window?.minimizedDock;
-      return minimizedDock?.kind !== "component";
-    },
-    [input.nodeDefinitionByType]
+    (_node: WorkbenchNode<WorkbenchHostNodeData>) => true,
+    []
   );
 
   const renderNodeGeniePreview = useCallback(

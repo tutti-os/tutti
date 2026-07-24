@@ -61,32 +61,6 @@ function copyResolvedThemeVariables({
   }
 }
 
-function preserveVisibleCloneOpacity({
-  clone,
-  source,
-  window
-}: {
-  clone: HTMLElement;
-  source: HTMLElement;
-  window: Window;
-}): void {
-  const sourceElements = [source, ...Array.from(source.querySelectorAll("*"))];
-  const cloneElements = [clone, ...Array.from(clone.querySelectorAll("*"))];
-  for (let index = 0; index < sourceElements.length; index += 1) {
-    const sourceElement = sourceElements[index];
-    const cloneElement = cloneElements[index];
-    if (!sourceElement || !cloneElement || !("style" in cloneElement)) {
-      continue;
-    }
-    const opacity = Number.parseFloat(
-      window.getComputedStyle(sourceElement).opacity || "1"
-    );
-    if (opacity > 0) {
-      (cloneElement as HTMLElement | SVGElement).style.opacity = "1";
-    }
-  }
-}
-
 export function prepareGenieTextureCapture(
   element: HTMLElement
 ): PreparedGenieTextureCapture | null {
@@ -117,11 +91,6 @@ export function prepareGenieTextureCapture(
   documentClone.append(headClone, bodyClone);
   copyResolvedThemeVariables({
     clone: documentClone,
-    source: element,
-    window
-  });
-  preserveVisibleCloneOpacity({
-    clone: contentClone,
     source: element,
     window
   });

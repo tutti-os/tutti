@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { prepareGenieTextureCapture } from "./genieTextureCapture.ts";
 
 describe("prepareGenieTextureCapture", () => {
-  it("clones document styles without measuring every preview element", () => {
+  it("clones document styles with one root computed-style read", () => {
     const previousTheme = document.documentElement.dataset.theme;
     const previousBodyClassName = document.body.className;
     const stylesheet = document.createElement("style");
@@ -28,6 +28,7 @@ describe("prepareGenieTextureCapture", () => {
     if (!child || !image) {
       return;
     }
+    const getComputedStyle = vi.spyOn(window, "getComputedStyle");
 
     let childMeasurementCount = 0;
     let imageMeasurementCount = 0;
@@ -76,6 +77,8 @@ describe("prepareGenieTextureCapture", () => {
       );
       expect(childMeasurementCount).toBe(0);
       expect(imageMeasurementCount).toBe(1);
+      expect(getComputedStyle).toHaveBeenCalledTimes(1);
+      expect(getComputedStyle).toHaveBeenCalledWith(source);
       expect(prepared?.images).toEqual([
         {
           displayHeight: 40,
@@ -84,6 +87,7 @@ describe("prepareGenieTextureCapture", () => {
         }
       ]);
     } finally {
+      getComputedStyle.mockRestore();
       source.remove();
       stylesheet.remove();
       document.body.className = previousBodyClassName;
