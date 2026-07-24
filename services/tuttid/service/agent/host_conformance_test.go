@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -234,6 +235,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.service.SessionReader = d.sessions
 	d.service.SessionPurgeStore = d.sessions
 	d.service.SessionInitializer = legacyHostConformanceSessionInitializer{sessions: d.sessions}
+	d.service.TurnSummaryReader = d.turns
 	canonicalStore := openAgentServiceSQLiteStore(d.t)
 	d.service.SubmitClaimStore = canonicalStore
 	d.service.RuntimeOperationStore = d.operationPort
@@ -410,6 +412,8 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		d.turns.turns[seed.AgentSessionID+":"+turn.TurnID] = agentactivitybiz.Turn{
 			WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID,
 			TurnID: turn.TurnID, Phase: turn.Phase, Outcome: turn.Outcome,
+			FinalAssistantMessageID: turn.FinalAssistantMessageID,
+			StartedAtUnixMS:         turn.StartedAtUnixMS, SettledAtUnixMS: turn.SettledAtUnixMS, Origin: turn.Origin,
 		}
 		d.service.TurnStore = d.turns
 	}
@@ -417,6 +421,8 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		d.turns.turns[seed.AgentSessionID+":"+turn.TurnID] = agentactivitybiz.Turn{
 			WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID,
 			TurnID: turn.TurnID, Phase: turn.Phase, Outcome: turn.Outcome,
+			FinalAssistantMessageID: turn.FinalAssistantMessageID,
+			StartedAtUnixMS:         turn.StartedAtUnixMS, SettledAtUnixMS: turn.SettledAtUnixMS, Origin: turn.Origin,
 		}
 		d.service.TurnStore = d.turns
 	}
@@ -666,6 +672,16 @@ func (d *legacyHostConformanceDriver) GetSession(ctx context.Context, ref agenth
 	session, err := d.service.Get(ctx, ref.WorkspaceID, ref.AgentSessionID)
 	_, live := d.runtime.Session(ref.WorkspaceID, ref.AgentSessionID)
 	return legacyHostSessionObservationWithLive(session, live), err
+}
+
+func (d *legacyHostConformanceDriver) ListSessionTurns(ctx context.Context, ref agenthost.SessionRef, query agenthost.SessionTurnQuery) (agenthost.SessionTurnSummaryPage, error) {
+	if d.directHost {
+		return d.service.ApplicationHost().ListSessionTurns(ctx, ref, query)
+	}
+	page, err := d.service.ListTurns(ctx, ref.WorkspaceID, ref.AgentSessionID, ListTurnsInput{
+		Before: query.Before, Limit: query.Limit,
+	})
+	return agenthost.SessionTurnSummaryPage{Turns: page.Turns, HasMore: page.HasMore}, err
 }
 
 func (d *legacyHostConformanceDriver) GetCanonicalSession(_ context.Context, ref agenthost.SessionRef) (hostconformance.SessionObservation, error) {
@@ -963,6 +979,41 @@ func (s *legacyHostConformanceTurnStore) ListSessionTurns(_ context.Context, _ s
 		}
 	}
 	return result, nil
+}
+
+func (s *legacyHostConformanceTurnStore) ListSessionTurnSummaries(_ context.Context, input agentactivitybiz.ListSessionTurnSummariesInput) (agentactivitybiz.SessionTurnSummaryPage, error) {
+	turns := make([]agentactivitybiz.SessionTurnSummary, 0)
+	for _, turn := range s.turns {
+		if turn.WorkspaceID != input.WorkspaceID || turn.AgentSessionID != input.AgentSessionID {
+			continue
+		}
+		turns = append(turns, agentactivitybiz.SessionTurnSummary{
+			TurnID: turn.TurnID, Phase: turn.Phase, Outcome: turn.Outcome,
+			FinalAssistantMessageID: turn.FinalAssistantMessageID,
+			StartedAtUnixMS:         turn.StartedAtUnixMS, SettledAtUnixMS: turn.SettledAtUnixMS, Origin: turn.Origin,
+		})
+	}
+	sort.Slice(turns, func(left, right int) bool {
+		if turns[left].StartedAtUnixMS != turns[right].StartedAtUnixMS {
+			return turns[left].StartedAtUnixMS > turns[right].StartedAtUnixMS
+		}
+		return turns[left].TurnID > turns[right].TurnID
+	})
+	if input.Before != nil {
+		filtered := turns[:0]
+		for _, turn := range turns {
+			if turn.StartedAtUnixMS < input.Before.StartedAtUnixMS ||
+				(turn.StartedAtUnixMS == input.Before.StartedAtUnixMS && turn.TurnID < input.Before.TurnID) {
+				filtered = append(filtered, turn)
+			}
+		}
+		turns = filtered
+	}
+	hasMore := len(turns) > input.Limit
+	if hasMore {
+		turns = turns[:input.Limit]
+	}
+	return agentactivitybiz.SessionTurnSummaryPage{Turns: turns, HasMore: hasMore}, nil
 }
 
 func (s *legacyHostConformanceTurnStore) ListSessionInteractions(_ context.Context, input agentactivitybiz.ListSessionInteractionsInput) ([]agentactivitybiz.Interaction, error) {

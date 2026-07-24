@@ -51,6 +51,26 @@ func (h *Host) ListSessionMessages(ctx context.Context, ref SessionRef, query Se
 	})
 }
 
+// ListSessionTurns reads one bounded, newest-first page of canonical Turn
+// metadata without loading messages or starting a provider runtime.
+func (h *Host) ListSessionTurns(ctx context.Context, ref SessionRef, query SessionTurnQuery) (SessionTurnSummaryPage, error) {
+	ref = normalizedSessionRef(ref)
+	if h == nil || h.store == nil || ref.WorkspaceID == "" || ref.AgentSessionID == "" {
+		return SessionTurnSummaryPage{}, ErrInvalidArgument
+	}
+	var before *storesqlite.SessionTurnCursor
+	if query.Before != nil {
+		before = &storesqlite.SessionTurnCursor{
+			StartedAtUnixMS: query.Before.StartedAtUnixMS,
+			TurnID:          strings.TrimSpace(query.Before.TurnID),
+		}
+	}
+	return h.store.ListSessionTurnSummaries(ctx, storesqlite.ListSessionTurnSummariesInput{
+		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
+		Before: before, Limit: query.Limit,
+	})
+}
+
 // GetSessionInteractionSnapshot returns every interaction from the canonical
 // latest turn and derives the actionable subset from that same read. It does
 // not start or resume a provider runtime.

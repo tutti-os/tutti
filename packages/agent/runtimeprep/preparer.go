@@ -88,6 +88,9 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	logRuntimePrepareTrace("runtime_prepare.runtime_root_ensured", input, nil)
 
 	input = p.normalizeCapabilities(input)
+	if workflow, workflowErr := normalizeAgentWorkflowProfile(p.Profile.AgentWorkflow); workflowErr == nil {
+		input.agentWorkflow = workflow
+	}
 	manifest := NewManifest(ManifestInput{
 		AgentSessionID: agentSessionID,
 		Provider:       providerID,
@@ -95,7 +98,8 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 		RuntimeRoot:    runtimeRoot,
 	})
 	input.CLICommand = firstNonEmptyText(input.CLICommand, p.CLICommand, resolveCLICommand(p.StateDir))
-	input.CommandGuide = commandGuideFromCatalog(ctx, p.CommandCatalog, workspaceID, input.CLICommand)
+	input.commandCapabilities = resolveCommandCapabilities(ctx, p.CommandCatalog, workspaceID)
+	input.CommandGuide = commandGuideFromResolvedCapabilities(input)
 	resolved, err := resolveCapabilities(ctx, input, p.Profile, p.SkillSources)
 	if err != nil {
 		return PreparedRuntime{}, err
@@ -153,7 +157,11 @@ func (p *DefaultPreparer) RenderSkillBundle(ctx context.Context, input PrepareIn
 	input.Provider = providerID
 	input.CLICommand = firstNonEmptyText(input.CLICommand, p.CLICommand, resolveCLICommand(p.StateDir))
 	input = p.normalizeCapabilities(input)
-	input.CommandGuide = commandGuideFromCatalog(ctx, p.CommandCatalog, workspaceID, input.CLICommand)
+	if workflow, workflowErr := normalizeAgentWorkflowProfile(p.Profile.AgentWorkflow); workflowErr == nil {
+		input.agentWorkflow = workflow
+	}
+	input.commandCapabilities = resolveCommandCapabilities(ctx, p.CommandCatalog, workspaceID)
+	input.CommandGuide = commandGuideFromResolvedCapabilities(input)
 	resolved, err := resolveCapabilities(ctx, input, p.Profile, p.SkillSources)
 	if err != nil {
 		return SkillBundle{}, err

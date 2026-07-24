@@ -79,6 +79,48 @@ func runGetSession(ctx context.Context, driver Driver) error {
 	return nil
 }
 
+func runListSessionTurns(ctx context.Context, driver Driver) error {
+	fixture := Fixture{
+		Session: &SessionSeed{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-turns", Provider: "codex",
+		},
+		Turn: &TurnSeed{
+			TurnID: "turn-1", Phase: "settled", Outcome: "completed",
+			StartedAtUnixMS: 10, SettledAtUnixMS: 11,
+		},
+		AdditionalTurns: []TurnSeed{
+			{TurnID: "turn-2", Phase: "settled", Outcome: "completed", StartedAtUnixMS: 20, SettledAtUnixMS: 21},
+			{TurnID: "turn-3", Phase: "running", StartedAtUnixMS: 30},
+		},
+	}
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	ref := agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-turns"}
+	first, err := driver.ListSessionTurns(ctx, ref, agenthost.SessionTurnQuery{Limit: 2})
+	if err != nil {
+		return fmt.Errorf("list first session turn page: %w", err)
+	}
+	if len(first.Turns) != 2 || first.Turns[0].TurnID != "turn-3" ||
+		first.Turns[1].TurnID != "turn-2" || !first.HasMore {
+		return fmt.Errorf("first session turn page=%#v", first)
+	}
+	second, err := driver.ListSessionTurns(ctx, ref, agenthost.SessionTurnQuery{
+		Before: &agenthost.SessionTurnCursor{
+			StartedAtUnixMS: first.Turns[1].StartedAtUnixMS,
+			TurnID:          first.Turns[1].TurnID,
+		},
+		Limit: 2,
+	})
+	if err != nil {
+		return fmt.Errorf("list second session turn page: %w", err)
+	}
+	if len(second.Turns) != 1 || second.Turns[0].TurnID != "turn-1" || second.HasMore {
+		return fmt.Errorf("second session turn page=%#v", second)
+	}
+	return nil
+}
+
 func runHistoricalAndLiveSettings(ctx context.Context, driver Driver) error {
 	historical := Fixture{Session: &SessionSeed{
 		WorkspaceID: "workspace-1", AgentSessionID: "session-settings-history", Provider: "claude-code",

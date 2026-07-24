@@ -35,6 +35,10 @@ type defaultInput struct {
 	TimeoutMS *int `cli:"timeout-ms" default:"30000" validate:"min=0,max=60000"`
 }
 
+type numberInput struct {
+	Percent *float64 `cli:"percent" validate:"min=0,max=100"`
+}
+
 func TestFromStructGeneratesInputSchema(t *testing.T) {
 	schema := Schema(FromStruct[sampleInput]())
 	properties := schema["properties"].(map[string]any)
@@ -188,6 +192,24 @@ func TestBindInputTracksOptionalPointerPresence(t *testing.T) {
 	}
 	if input.DueAt == nil || *input.DueAt != 123 {
 		t.Fatalf("dueAt = %#v", input.DueAt)
+	}
+}
+
+func TestNumberInputSchemaAndBinding(t *testing.T) {
+	spec := FromStruct[numberInput]()
+	property := Schema(spec)["properties"].(map[string]any)["percent"].(map[string]any)
+	if property["type"] != "number" || property["minimum"] != int64(0) || property["maximum"] != int64(100) {
+		t.Fatalf("percent property = %#v", property)
+	}
+	input, err := BindInput[numberInput](spec, map[string]any{"percent": "12.5"})
+	if err != nil {
+		t.Fatalf("BindInput: %v", err)
+	}
+	if input.Percent == nil || *input.Percent != 12.5 {
+		t.Fatalf("percent = %#v", input.Percent)
+	}
+	if _, err := BindInput[numberInput](spec, map[string]any{"percent": "101"}); !errors.Is(err, cliservice.ErrInvalidInput) {
+		t.Fatalf("out-of-range error = %v", err)
 	}
 }
 

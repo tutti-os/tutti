@@ -274,12 +274,37 @@ func TestIssueCreateFromPlanRejectsTuttiOwnedPlanningSource(t *testing.T) {
 	_, err := provider.runIssueCreateFromPlan(
 		context.Background(),
 		framework.InvokeContext{WorkspaceID: "workspace-1"},
-		issueCreateFromPlanInput{issueCreateInput: issueCreateInput{
+		issueCreateFromPlanInput{
 			PlanningSource: string(workspaceissues.PlanningSourceTuttiModePlan),
-		}},
+		},
 	)
 	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), "planning-source") {
 		t.Fatalf("runIssueCreateFromPlan() error = %v, want invalid planning-source", err)
+	}
+}
+
+func TestIssueCreateFromPlanAdvertisesAndBindsFlatInputs(t *testing.T) {
+	spec := framework.FromStruct[issueCreateFromPlanInput]()
+	createSpec := framework.FromStruct[issueCreateInput]()
+	if !reflect.DeepEqual(spec.Fields[:len(spec.Fields)-1], createSpec.Fields) {
+		t.Fatalf("create-from-plan fields drifted from issue create:\nplan=%#v\ncreate=%#v", spec.Fields, createSpec.Fields)
+	}
+	schema := framework.Schema(spec)
+	required := schema["required"].([]string)
+	if !reflect.DeepEqual(required, []string{"topic-id", "title", "tasks-json"}) {
+		t.Fatalf("required = %#v", required)
+	}
+	input, err := framework.BindInput[issueCreateFromPlanInput](spec, map[string]any{
+		"topic-id":        "topic-1",
+		"title":           "Launch",
+		"planning-source": string(workspaceissues.PlanningSourceTraditionalPlan),
+		"tasks-json":      `[{"title":"Implement"}]`,
+	})
+	if err != nil {
+		t.Fatalf("BindInput: %v", err)
+	}
+	if input.TopicID != "topic-1" || input.Title != "Launch" || input.TasksJSON == "" {
+		t.Fatalf("input = %#v", input)
 	}
 }
 
@@ -295,11 +320,9 @@ func TestIssueCreateCommandsRejectReservedTuttiModePlanIssueID(t *testing.T) {
 	}
 
 	if _, err := provider.runIssueCreateFromPlan(context.Background(), framework.InvokeContext{WorkspaceID: "workspace-1"}, issueCreateFromPlanInput{
-		issueCreateInput: issueCreateInput{
-			IssueID: reservedID, TopicID: workspaceissues.DefaultTopicID, Title: "Preempt",
-			PlanningSource: string(workspaceissues.PlanningSourceTraditionalPlan),
-		},
-		TasksJSON: `[{"taskId":"task-1","title":"Task"}]`,
+		IssueID: reservedID, TopicID: workspaceissues.DefaultTopicID, Title: "Preempt",
+		PlanningSource: string(workspaceissues.PlanningSourceTraditionalPlan),
+		TasksJSON:      `[{"taskId":"task-1","title":"Task"}]`,
 	}); !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), "issue-id") {
 		t.Fatalf("runIssueCreateFromPlan() error = %v, want reserved issue-id rejection", err)
 	}

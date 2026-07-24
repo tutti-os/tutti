@@ -105,6 +105,18 @@ profile := runtimeprep.DeploymentProfile{
 }
 ```
 
+`DeploymentProfile.AgentWorkflow` selects the Agent CLI contract rendered into
+`tutti-cli`, `tutti-handoff`, runtime policy, and fallback command guides.
+Omitted fields keep Tutti's default progressive `agent get`, local turn
+resource paths, Turn cancellation, interaction responses, workspace
+environment scope, and continuation for every target. Hosts should set only
+real CLI differences. For example, a host can select
+`AgentSessionContextSummaryAndState`, `AgentTurnResourcesReadPath`,
+session-scoped cancellation, unavailable interaction responses, room scope,
+and `AgentTargetContinuationExceptPrefixes`. The latter takes explicit target
+id prefixes and documents those catalog targets as start-only without
+hard-coding host target kinds into shared templates.
+
 ## Skill Injection
 
 Skills resolve in this order:

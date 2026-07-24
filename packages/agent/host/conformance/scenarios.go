@@ -14,6 +14,7 @@ var (
 	planDecisionScenario                = Scenario{Name: "plan decision", run: runPlanDecision}
 	initialTitleCASScenario             = Scenario{Name: "initial title cas", run: runInitialTitleCAS}
 	getSessionScenario                  = Scenario{Name: "get session", run: runGetSession}
+	listSessionTurnsScenario            = Scenario{Name: "list session turns", run: runListSessionTurns}
 	historicalAndLiveSettingsScenario   = Scenario{
 		Name: "historical and live settings",
 		run:  runHistoricalAndLiveSettings,
@@ -43,6 +44,7 @@ func Scenarios() []Scenario {
 		planDecisionScenario,
 		initialTitleCASScenario,
 		getSessionScenario,
+		listSessionTurnsScenario,
 		historicalAndLiveSettingsScenario,
 		pinSessionScenario,
 		deleteSessionScenario,
@@ -116,6 +118,7 @@ func ApplicationCoreScenarios() []Scenario {
 		duplicateClientSubmitIDScenario,
 		initialTitleCASScenario,
 		getSessionScenario,
+		listSessionTurnsScenario,
 		historicalAndLiveSettingsScenario,
 		pinSessionScenario,
 		deleteSessionScenario,

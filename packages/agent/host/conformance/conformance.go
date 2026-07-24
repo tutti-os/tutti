@@ -30,9 +30,13 @@ type SessionSeed struct {
 }
 
 type TurnSeed struct {
-	TurnID  string
-	Phase   string
-	Outcome string
+	TurnID                  string
+	Phase                   string
+	Outcome                 string
+	FinalAssistantMessageID string
+	StartedAtUnixMS         int64
+	SettledAtUnixMS         int64
+	Origin                  string
 }
 
 type InteractionSeed struct {
@@ -141,6 +145,7 @@ type Driver interface {
 	SubmitPlanDecision(context.Context, agenthost.SessionRef, string, string, agenthost.SubmitPlanDecisionInput) (OperationObservation, error)
 	UpdateTitle(context.Context, agenthost.UpdateTitleInput) (SessionObservation, error)
 	GetSession(context.Context, agenthost.SessionRef) (SessionObservation, error)
+	ListSessionTurns(context.Context, agenthost.SessionRef, agenthost.SessionTurnQuery) (agenthost.SessionTurnSummaryPage, error)
 	GetCanonicalSession(context.Context, agenthost.SessionRef) (SessionObservation, error)
 	UpdateSettings(context.Context, agenthost.UpdateSettingsInput) (SessionObservation, error)
 	UpdatePin(context.Context, agenthost.UpdatePinInput) (SessionObservation, error)

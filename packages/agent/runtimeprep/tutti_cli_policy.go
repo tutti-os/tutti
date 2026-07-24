@@ -60,6 +60,10 @@ func tuttiRuntimePolicy(input PrepareInput) string {
 			"{{PROVIDER}}":                                strings.TrimSpace(input.Provider),
 			"{{PROVIDER_SPECIFIC_MENTION_ROUTING}}":       providerSpecificMentionRouting(input.Provider),
 			"{{PROVIDER_SPECIFIC_EXECUTION_ENVIRONMENT}}": "",
+			"{{AGENT_RUNTIME_GUIDANCE}}":                  agentRuntimeGuidance(input),
+			"{{APP_OPEN_POLICY}}":                         policyAppOpenLine(input),
+			"{{ISSUE_FALLBACK}}":                          policyIssueFallback(input),
+			"{{REFERENCE_FALLBACK}}":                      policyReferenceFallback(input),
 			"{{ENVIRONMENT_POLICY_SECTIONS}}":             renderPolicySections(input, PolicyAnchorEnvironment, PolicyDeliveryProviderRuntime),
 			"{{TOOLS_POLICY_SECTIONS}}":                   capabilityPolicyLines(input, PolicyDeliveryProviderRuntime),
 			"{{SKILL_STRATEGY_POLICY_SECTIONS}}":          renderPolicySections(input, PolicyAnchorSkillStrategy, PolicyDeliveryProviderRuntime),
@@ -93,6 +97,10 @@ func tuttiSkillBundleRecommendedPolicy(input PrepareInput) string {
 			"{{PROVIDER}}":                                strings.TrimSpace(input.Provider),
 			"{{PROVIDER_SPECIFIC_MENTION_ROUTING}}":       providerSpecificMentionRouting(input.Provider),
 			"{{PROVIDER_SPECIFIC_EXECUTION_ENVIRONMENT}}": "",
+			"{{AGENT_SKILL_BUNDLE_FALLBACK_GUIDANCE}}":    agentSkillBundleFallbackGuidance(input),
+			"{{APP_OPEN_POLICY}}":                         policyAppOpenLine(input),
+			"{{ISSUE_FALLBACK}}":                          policyIssueFallback(input),
+			"{{REFERENCE_FALLBACK}}":                      policyReferenceFallback(input),
 			"{{ENVIRONMENT_POLICY_SECTIONS}}":             renderPolicySections(input, PolicyAnchorEnvironment, PolicyDeliverySkillBundle),
 			"{{TOOLS_POLICY_SECTIONS}}":                   capabilityPolicyLines(input, PolicyDeliverySkillBundle),
 			"{{SKILL_STRATEGY_POLICY_SECTIONS}}":          renderPolicySections(input, PolicyAnchorSkillStrategy, PolicyDeliverySkillBundle),
@@ -162,7 +170,10 @@ func providerSpecificExecutionEnvironment(provider string, cliCommand string) st
 func commandGuide(input PrepareInput) string {
 	guide := strings.TrimSpace(input.CommandGuide)
 	if guide == "" {
-		return fallbackCommandGuide(input.CLICommand)
+		if isDefaultAgentWorkflowProfile(resolvedAgentWorkflow(input)) {
+			return fallbackCommandGuide(input.CLICommand)
+		}
+		return fallbackCommandGuideForWorkflow(input)
 	}
 	return guide
 }

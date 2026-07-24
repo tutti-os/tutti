@@ -34,11 +34,19 @@ func tuttiCLISkill(input PrepareInput) string {
 	return renderProviderSkillTemplate(
 		"skill_templates/tutti-cli.md",
 		map[string]string{
-			"{{COMMAND_SUMMARY}}":  commandGuideSummary(input),
-			"{{CLI_COMMAND}}":      normalizeCLICommandName(input.CLICommand),
-			"{{AGENT_TARGET_ID}}":  strings.TrimSpace(input.AgentTargetID),
-			"{{AGENT_PROVIDER}}":   strings.TrimSpace(input.Provider),
-			"{{AGENT_SESSION_ID}}": strings.TrimSpace(input.AgentSessionID),
+			"{{COMMAND_SUMMARY}}":                commandGuideSummary(input),
+			"{{CLI_COMMAND}}":                    normalizeCLICommandName(input.CLICommand),
+			"{{AGENT_TARGET_ID}}":                strings.TrimSpace(input.AgentTargetID),
+			"{{AGENT_PROVIDER}}":                 strings.TrimSpace(input.Provider),
+			"{{AGENT_SESSION_ID}}":               strings.TrimSpace(input.AgentSessionID),
+			"{{AGENT_ROUTE_FIRST_GUIDANCE}}":     dynamicRouteFirstGuidance(input),
+			"{{AGENT_SESSION_MENTION_GUIDANCE}}": agentSessionMentionGuidance(input),
+			"{{AGENT_SESSION_CONTEXT_GUIDANCE}}": agentSessionContextSkillGuidance(input),
+			"{{APP_OPEN_GUIDANCE}}":              appOpenGuidance(input),
+			"{{FAMILY_REFERENCE}}":               dynamicFamilyReference(input),
+			"{{ISSUE_BREAKDOWN_GUIDANCE}}":       issueBreakdownPersistenceGuidance(input),
+			"{{ISSUE_RUN_METADATA_GUIDANCE}}":    issueRunMetadataGuidance(input),
+			"{{OUTPUT_RULES}}":                   commandOutputGuidance(input),
 		},
 	)
 }
@@ -47,8 +55,11 @@ func tuttiHandoffSkill(input PrepareInput) string {
 	return renderProviderSkillTemplate(
 		"skill_templates/tutti-handoff.md",
 		map[string]string{
-			"{{CLI_COMMAND}}":      normalizeCLICommandName(input.CLICommand),
-			"{{AGENT_SESSION_ID}}": strings.TrimSpace(input.AgentSessionID),
+			"{{CLI_COMMAND}}":                    normalizeCLICommandName(input.CLICommand),
+			"{{AGENT_SESSION_ID}}":               strings.TrimSpace(input.AgentSessionID),
+			"{{AGENT_IMAGE_HANDOFF_GUIDANCE}}":   agentImageHandoffGuidance(input),
+			"{{AGENT_FETCH_GUIDANCE}}":           agentFetchGuidance(input),
+			"{{AGENT_WAIT_DISCIPLINE_GUIDANCE}}": agentWaitDisciplineAndCommandGuidance(input),
 		},
 	)
 }
@@ -57,9 +68,14 @@ func issueManagerSkill(input PrepareInput) string {
 	return renderProviderSkillTemplate(
 		"skill_templates/issue-manager.md",
 		map[string]string{
-			"{{AGENT_TARGET_ID}}":  strings.TrimSpace(input.AgentTargetID),
-			"{{AGENT_PROVIDER}}":   strings.TrimSpace(input.Provider),
-			"{{AGENT_SESSION_ID}}": strings.TrimSpace(input.AgentSessionID),
+			"{{ISSUE_BREAKDOWN_GUIDANCE}}":    issueBreakdownPersistenceGuidance(input),
+			"{{ISSUE_GET_COMMAND}}":           firstNonEmptyText(issueGetInvocation(input), "No issue-get command is advertised by the current host."),
+			"{{ISSUE_REFERENCE_GUIDANCE}}":    issueReferenceGuidance(input),
+			"{{ISSUE_RUN_COMPLETE_GUIDANCE}}": issueRunCompleteGuidance(input),
+			"{{ISSUE_RUN_METADATA_GUIDANCE}}": issueRunMetadataGuidance(input),
+			"{{ISSUE_RUN_OPEN_GUIDANCE}}":     issueRunOpenGuidance(input),
+			"{{ISSUE_APP_OPEN_GUIDANCE}}":     issueAppOpenGuidance(input),
+			"{{ISSUE_EXTRA_READ_GUIDANCE}}":   issueExtraReadGuidance(input),
 		},
 	)
 }
@@ -77,7 +93,8 @@ func referenceSkill(input PrepareInput) string {
 	return renderProviderSkillTemplate(
 		"skill_templates/reference.md",
 		map[string]string{
-			"{{CLI_COMMAND}}": normalizeCLICommandName(input.CLICommand),
+			"{{REFERENCE_MENTION_CONTRACT}}": referenceMentionContract(input),
+			"{{REFERENCE_RESOLVE_GUIDANCE}}": referenceResolveGuidance(input),
 		},
 	)
 }

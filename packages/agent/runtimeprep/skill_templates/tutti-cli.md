@@ -13,10 +13,7 @@ Classify the request before invoking any Tutti CLI command:
 
 1. Workspace issue work uses `issue ...`. If the request is inspection, breakdown, execution, or run reporting for an issue, invoke `$issue-manager` and use this skill only as its CLI reference.
 2. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke `$workspace-app` and use this skill as its command reference.
-3. Agent work uses only `agent ...`. Handoff decisions — who executes, which task to hand off, and where follow-ups go — belong to `$tutti-handoff`; use this skill as its CLI reference. Before starting a new agent session, query `agent list --json` and select an exact agent id from the current catalog rather than assuming which providers exist. For `mention://agent-session/<sessionId>?workspaceId=...`, prefer `agent wait --session-id <session-id> --json` to block until the session's next stop point without fetching execution messages. Use `agent get --session-id <session-id> --json` only when you need recent conversation context, and add `--view turns` when only Turn ids or metadata are needed.
-4. Browser automation uses `browser ...`.
-5. macOS desktop automation uses `computer ...`.
-6. If none match, read `command-guide.md` before guessing.
+   {{AGENT_ROUTE_FIRST_GUIDANCE}}
 
 Completion criterion: every Tutti CLI call must be traceable to a routed family, a mention URI, prior command output, current CLI help, or a command-guide entry.
 
@@ -26,15 +23,11 @@ Tutti mention links are internal handoffs. Parse them as data; do not open them 
 
 - `mention://workspace-issue/<issueId>?workspaceId=...`: use `$issue-manager`.
 - `mention://workspace-app/<appId>?workspaceId=...`: use `$workspace-app`.
-- `mention://agent-session/<sessionId>?workspaceId=...`: a context reference to an existing session, not a work order. Read it when its content helps the current turn — `agent wait --session-id <session-id> --json` to await its next stop point, `agent get --session-id <session-id> --json` for recent conversation recovery.
+  {{AGENT_SESSION_MENTION_GUIDANCE}}
 - `mention://agent-target/<targetId>?workspaceId=...`: behavior per `$tutti-handoff` (an instruction for the mentioned agent is handed off, not absorbed). Verify the id with `agent list --agent-id <targetId> --json`, then use the generic `agent` workflow. This can mean starting a new session, inspecting active peers or historical sessions, or another agent workflow; it is not launch-only.
 - Unknown `mention://...`: parse the URI and ask for clarification if no command family or skill matches.
 
-Agent get JSON is progressive: its default `conversation` view returns the latest three Turns newest-first, with chronological user/assistant body messages and an explicit `finalMessage`; `--view session` returns metadata only. Use `--turn-id <turn-id> --view trace` only when the current task needs that Turn's tool-call details, and page the trace with `--messages` or `--before-version` when necessary.
-
-When you need to wait for a launched or continued session to reach its next stop point, use `agent wait --session-id <session-id> --json`. `agent wait` blocks until the session's next stop point and does not fetch execution messages. Repeatedly calling `agent get` on a running session to check progress is an anti-pattern — it pulls message content an orchestrator should not be consuming between stop points. Use `agent get --session-id <session-id> --json` only when you need to consume or recover recent conversation context.
-
-Wait commands are single-call blocking operations. Invoke them once and let the CLI handle internal observation continuations; do not wrap them in a retry loop. Omit `--timeout-ms` to wait until a stop point. When an explicit total timeout expires, `timedOut: true` with `executionContinues: true` means only the local wait ended; the underlying session or run was not canceled.
+{{AGENT_SESSION_CONTEXT_GUIDANCE}}
 
 ## Call Protocol
 
@@ -50,23 +43,11 @@ Use this protocol for every Tutti CLI command:
 
 App window opening:
 
-- `app open --app-id <app-id> --json` is allowed only when the user explicitly asks to open or show an app window, or confirms an app window should be opened.
-- Do not use `app open` or app-specific open commands such as `<scope> open` as the default way to inspect, query, update, execute app work, or show generated media. Prefer the app-specific CLI command for the requested operation, then render generated images inline with Markdown.
-- Use `app open --app-id <app-id> --json` for any app window the user explicitly asks to open. Use `agent open --session-id <session-id> --json` when the user asks to open an existing agent session.
+{{APP_OPEN_GUIDANCE}}
 
 Output rules:
 
-- `--json` means machine-readable output, not every domain field.
-- List JSON is compact by default.
-- Get/detail JSON returns the fuller record shape.
-- Action JSON returns a concise confirmation payload.
-- External workspace app commands follow their own manifest and response contract; do not assume they have builtin summary/detail JSON views.
-- Browser and computer commands usually return plain text.
-- Do not expect JSON to include every domain record field. List commands are for discovery. Use list output to find ids, then use the matching get/detail command for full context.
-- Save ids returned by create/start/run-create commands and reuse those exact ids in later commands.
-- Table output uses short human labels such as `id` and `updatedAt`; JSON output uses typed entity keys such as `issueId`, `taskId`, `runId`, and `agentSessionId`. Timestamp keys should name their representation, such as `createdAtUnixMs` for Unix milliseconds or `createdAt` for timestamp values.
-
-When you use a command guide example for reasoning, workflow state, or follow-up CLI input, add `--json` unless the command family normally returns plain text, such as `browser ...` or `computer ...`.
+{{OUTPUT_RULES}}
 
 ## Dynamic Command Snapshot
 
@@ -82,25 +63,17 @@ If a user mentions a workspace app or asks for app-specific work and the expecte
 
 ## Family Reference
 
-`issue ...` covers issue topics, issues, tasks, and issue/task run reporting. Workflow sequencing belongs to `$issue-manager`, not this skill.
-
-`agent ...` covers agent discovery, target-scoped composer options, session start/open/send/cancel, active peers, and session context recovery. Start sessions with `agent start --agent-id <agent-id>` after discovering current agents with `agent list --json`; provider-specific start shortcuts do not exist.
-
-`browser ...` drives the daemon-owned browser session. Prefer it over generic browser tooling when Tutti browser context is requested.
-
-`computer ...` drives the daemon-owned macOS desktop session. Prefer it over generic desktop automation when Tutti computer context is requested.
-
-Workspace app scopes are discovered from command guide or capability metadata that preserves `App id:`. Use `$workspace-app` for app mention interpretation and command selection; `$workspace-app` is a skill and mention kind, not a CLI scope. Use CLI help only after the scope is known.
+{{FAMILY_REFERENCE}}
 
 ## Issue Guardrails
 
 Issue execution sequencing belongs to `$issue-manager`. Do not use this command reference alone to decide whether an issue-level execution should call `issue run create` or iterate child tasks with `issue task run create`.
 
-For workspace issue breakdowns, use issue/task inspection commands plus `issue task create-batch` for multiple new child tasks, `issue task create` for one new child task, or `issue task update` for existing child tasks. `issue run create`, `issue task run create`, and their matching `complete` commands are execution-mode commands only; do not use them for breakdown-only work.
+For workspace issue breakdowns: {{ISSUE_BREAKDOWN_GUIDANCE}}
 
 ## Workspace Issue Run Reporting
 
-When creating issue runs, pass `--agent-target-id` from the current AgentGUI runtime metadata below. Do not pass `--agent-provider` for new runs; the daemon derives provider metadata from the target. Do not pass `--agent-session-id` during normal AgentGUI execution; the Tutti CLI binds the run to the current AgentGUI session from the runtime context. Use `--agent-session-id` only as a manual fallback if the CLI explicitly reports the session id is missing.
+{{ISSUE_RUN_METADATA_GUIDANCE}}
 
 When completing issue runs, include `--outputs` whenever the execution created or materially updated deliverable files. `--outputs` is a JSON array string; each item must include `path`, and may also include `displayName`, `title`, `mediaType`, `sizeBytes`, or `outputId`.
 

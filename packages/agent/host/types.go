@@ -39,6 +39,24 @@ type SessionMessageQuery struct {
 	Order         storesqlite.MessageOrder
 }
 
+// SessionTurnCursor is the stable position immediately before a descending
+// session-Turn page.
+type SessionTurnCursor = storesqlite.SessionTurnCursor
+
+// SessionTurnSummary is the canonical metadata needed to discover and render
+// one Turn without loading message or provider payloads.
+type SessionTurnSummary = storesqlite.SessionTurnSummary
+
+// SessionTurnSummaryPage is one newest-first page of canonical Turn metadata.
+type SessionTurnSummaryPage = storesqlite.SessionTurnSummaryPage
+
+// SessionTurnQuery selects one bounded, newest-first page of canonical Turns.
+// Session identity comes from SessionRef.
+type SessionTurnQuery struct {
+	Before *SessionTurnCursor
+	Limit  int
+}
+
 type ComposerSettings struct {
 	Model            string
 	ModelPlanID      string

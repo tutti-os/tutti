@@ -81,7 +81,13 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			Path:        []string{"issue", "task", "run", "complete"},
 			Summary:     "Complete an issue task run",
 			Description: "Complete a task run.",
-			InputSchema: map[string]any{"required": []any{"issue-id", "task-id", "run-id", "status"}},
+			InputSchema: map[string]any{
+				"required": []any{"issue-id", "task-id", "run-id", "status"},
+				"properties": map[string]any{
+					"summary": map[string]any{"type": "string"},
+					"outputs": map[string]any{"type": "array"},
+				},
+			},
 		},
 		{
 			ID:          "issue-manager.issue.task.run.create",
@@ -177,10 +183,12 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 		!strings.Contains(guide, "--status <string> (optional; values: open|completed; default: open) - Optional issue status filter.") {
 		t.Fatalf("guide missing argument details: %q", guide)
 	}
-	if !strings.Contains(guide, "tutti issue update --issue-id <issue-id> --status completed --json") {
+	if !strings.Contains(guide, "tutti issue update --issue-id <issue-id> --json") ||
+		strings.Contains(guide, "tutti issue update --issue-id <issue-id> --status") {
 		t.Fatalf("guide missing issue update: %q", guide)
 	}
-	if !strings.Contains(guide, "tutti issue task update --issue-id <issue-id> --task-id <task-id> --status completed --json") {
+	if !strings.Contains(guide, "tutti issue task update --issue-id <issue-id> --task-id <task-id> --json") ||
+		strings.Contains(guide, "tutti issue task update --issue-id <issue-id> --task-id <task-id> --status") {
 		t.Fatalf("guide missing issue task update: %q", guide)
 	}
 	if !strings.Contains(guide, "tutti issue task create --issue-id <issue-id> --title <title>") ||
@@ -222,8 +230,8 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 	if strings.Contains(guide, "skill-bundle") {
 		t.Fatalf("guide included host integration command: %q", guide)
 	}
-	if strings.Contains(guide, "diagnostics") {
-		t.Fatalf("guide included irrelevant command: %q", guide)
+	if !strings.Contains(guide, "tutti diagnostics ping") {
+		t.Fatalf("guide omitted public diagnostics command: %q", guide)
 	}
 }
 

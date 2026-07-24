@@ -39,8 +39,18 @@ type issueCreateInput struct {
 }
 
 type issueCreateFromPlanInput struct {
-	issueCreateInput
-	TasksJSON string `cli:"tasks-json" validate:"required" description:"Ordered JSON task array. Each task supports taskId, title, content, priority, agentTargetId, modelPlanId, model, executionDirectory, and dependencyTaskIds."`
+	IssueID                string   `cli:"issue-id"`
+	TopicID                string   `cli:"topic-id" validate:"required" description:"Required topic id. Use issue topic list to discover workspace topics." hint:"Use issue topic list to discover workspace topics."`
+	Title                  string   `cli:"title" validate:"required"`
+	Content                string   `cli:"content"`
+	PlanningSource         string   `cli:"planning-source" enum:"manual,traditional_plan" description:"Origin of the plan that produced this issue."`
+	SourceSessionID        string   `cli:"source-session-id" description:"AgentGUI session that produced the plan."`
+	ReasoningIntensity     *int     `cli:"reasoning-intensity" validate:"min=0,max=100" description:"Default task reasoning intensity from 0 to 100."`
+	OrchestrationIntensity *int     `cli:"orchestration-intensity" validate:"min=0,max=100" description:"Planning and collaboration intensity from 0 to 100."`
+	BudgetMode             string   `cli:"budget-mode" enum:"auto,fixed" description:"Automatic or fixed token budget."`
+	TokenBudget            *int64   `cli:"token-budget" validate:"min=1" description:"Fixed token limit; required when budget-mode is fixed."`
+	QuotaWaterlinePercent  *float64 `cli:"quota-waterline-percent" validate:"min=0,max=100" description:"Pause new dispatch when subscription quota reaches this percentage."`
+	TasksJSON              string   `cli:"tasks-json" validate:"required" description:"Ordered JSON task array. Each task supports taskId, title, content, priority, agentTargetId, modelPlanId, model, executionDirectory, and dependencyTaskIds."`
 }
 
 type issueUpdateInput struct {
@@ -280,9 +290,25 @@ func (p Provider) runIssueCreateFromPlan(ctx context.Context, invoke framework.I
 		tasks = append(tasks, taskCreateBatchServiceInput(item))
 	}
 	return manager.CreateIssueFromPlan(ctx, invoke.WorkspaceID, workspaceservice.CreateIssueManagerIssueFromPlanInput{
-		Issue: issueCreateServiceInput(input.issueCreateInput),
+		Issue: issueCreateServiceInput(input.issueCreateInput()),
 		Tasks: tasks,
 	})
+}
+
+func (input issueCreateFromPlanInput) issueCreateInput() issueCreateInput {
+	return issueCreateInput{
+		IssueID:                input.IssueID,
+		TopicID:                input.TopicID,
+		Title:                  input.Title,
+		Content:                input.Content,
+		PlanningSource:         input.PlanningSource,
+		SourceSessionID:        input.SourceSessionID,
+		ReasoningIntensity:     input.ReasoningIntensity,
+		OrchestrationIntensity: input.OrchestrationIntensity,
+		BudgetMode:             input.BudgetMode,
+		TokenBudget:            input.TokenBudget,
+		QuotaWaterlinePercent:  input.QuotaWaterlinePercent,
+	}
 }
 
 func issueCreateServiceInput(input issueCreateInput) workspaceservice.CreateIssueManagerIssueInput {

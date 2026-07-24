@@ -55,10 +55,12 @@ an idempotent clear once to resolve a crash window, while unsafe set replay
 remains rejected.
 
 `GetSession` reads canonical session truth plus an optional live runtime
-observation without starting a provider. `GetTurn`, `ListSessionMessages`,
-`FindTurnByClientSubmitID`, and `GetSessionInteractionSnapshot` expose
-canonical queries without leaking an adapter's concrete store. Message pages
-use per-session version cursors and may be narrowed to one turn. The interaction
+observation without starting a provider. `GetTurn`, `ListSessionTurns`,
+`ListSessionMessages`, `FindTurnByClientSubmitID`, and
+`GetSessionInteractionSnapshot` expose canonical queries without leaking an
+adapter's concrete store. Turn pages are newest-first, bounded metadata reads
+with stable cursors. Message pages use per-session version cursors and may be
+narrowed to one turn. The interaction
 snapshot contains every interaction on the latest turn and derives its pending
 subset from that same read; older-turn pending rows can never become current
 actionable state. `CreateSessionInput.ClientSubmitID` and

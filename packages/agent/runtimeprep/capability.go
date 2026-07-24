@@ -61,10 +61,11 @@ type CapabilityPack struct {
 }
 
 type DeploymentProfile struct {
-	Name  string
-	Title string
-	Intro string
-	Packs []CapabilityPack
+	Name          string
+	Title         string
+	Intro         string
+	AgentWorkflow AgentWorkflowProfile
+	Packs         []CapabilityPack
 }
 
 type SkillContext struct {
@@ -81,6 +82,7 @@ type SkillSource interface {
 type resolvedCapabilities struct {
 	Title          string
 	Intro          string
+	AgentWorkflow  AgentWorkflowProfile
 	Skills         []SkillSpec
 	PolicySections []PolicySection
 	EnvOverlay     []string
@@ -109,9 +111,10 @@ func Resolve(ctx context.Context, input PrepareInput, profile DeploymentProfile,
 
 func StandardProfile() DeploymentProfile {
 	return DeploymentProfile{
-		Name:  "tutti-standard",
-		Title: "Tutti Runtime",
-		Intro: "This directory is being used by a Tutti AgentGUI session.",
+		Name:          "tutti-standard",
+		Title:         "Tutti Runtime",
+		Intro:         "This directory is being used by a Tutti AgentGUI session.",
+		AgentWorkflow: DefaultAgentWorkflowProfile(),
 		Packs: []CapabilityPack{
 			CoreSkillsPack(), TuttiDesktopHostPack(), BrowserUsePack(), ComputerUsePack(),
 		},
@@ -157,7 +160,7 @@ func TuttiDesktopHostPack() CapabilityPack {
 
 func BrowserUsePack() CapabilityPack {
 	return CapabilityPack{Name: "browser-use", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
-		enabled := input.BrowserUse && BrowserUseDefaultEnabled()
+		enabled := input.BrowserUse && BrowserUseDefaultEnabled() && commandFamilyAvailable(input, "browser")
 		return CapabilityContribution{Enabled: enabled,
 			Skills:         []SkillSpec{{ID: "tutti/browser-use", Name: browserUseSkillName, Files: map[string]string{"SKILL.md": browserUseSkill(input)}}},
 			PolicySections: []PolicySection{{Anchor: PolicyAnchorTools, Key: "handoff", Body: browserUseHandoffPolicyLines(input)}},
@@ -168,7 +171,7 @@ func BrowserUsePack() CapabilityPack {
 
 func ComputerUsePack() CapabilityPack {
 	return CapabilityPack{Name: "computer-use", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
-		enabled := input.ComputerUse && ComputerUseDefaultEnabled()
+		enabled := input.ComputerUse && ComputerUseDefaultEnabled() && commandFamilyAvailable(input, "computer")
 		return CapabilityContribution{Enabled: enabled,
 			Skills:         []SkillSpec{{ID: "tutti/computer-use", Name: computerUseSkillName, Files: map[string]string{"SKILL.md": computerUseSkill(input)}}},
 			PolicySections: []PolicySection{{Anchor: PolicyAnchorTools, Key: "handoff", Body: computerUseHandoffPolicyLines(input)}},
@@ -181,7 +184,16 @@ func resolveCapabilities(ctx context.Context, input PrepareInput, profile Deploy
 	if strings.TrimSpace(profile.Name) == "" && len(profile.Packs) == 0 {
 		profile = StandardProfile()
 	}
-	resolved := &resolvedCapabilities{Title: strings.TrimSpace(profile.Title), Intro: strings.TrimSpace(profile.Intro)}
+	agentWorkflow, err := normalizeAgentWorkflowProfile(profile.AgentWorkflow)
+	if err != nil {
+		return nil, fmt.Errorf("resolve agent workflow profile: %w", err)
+	}
+	input.agentWorkflow = agentWorkflow
+	resolved := &resolvedCapabilities{
+		Title:         strings.TrimSpace(profile.Title),
+		Intro:         strings.TrimSpace(profile.Intro),
+		AgentWorkflow: agentWorkflow,
+	}
 	if resolved.Title == "" {
 		resolved.Title = "Tutti Runtime"
 	}

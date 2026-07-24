@@ -35,14 +35,11 @@ Execution:
 
 Fallback only when matching skill is unavailable:
 
-- Issue mention: parse id/query, start with `{{CLI_COMMAND}} issue get --issue-id <issue-id> --json`.
-- App mention: open only on explicit open/show request with `{{CLI_COMMAND}} app open --app-id <appId> --json`; otherwise match `App id: <appId>` in `command-guide.md`. Agent launches use `agent-target` mentions and the generic agent workflow, not provider-specific workspace-app commands. Do not invent `{{CLI_COMMAND}} workspace-app ...`.
-- Reference mention: `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json`, then read returned paths.
-- Agent-session mention: prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json` to block until the session's next stop point without fetching execution messages; use `{{CLI_COMMAND}} agent get --session-id <session-id> --json` only for recent conversation recovery, or add `--view turns` for metadata-only Turn discovery, never as a progress poll on a running session.
-- After `agent start`, use `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
-- After `agent send`, use `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`; `agent wait` does not fetch execution messages.
-- Call wait once; omit `--timeout-ms` to block to a stop point. A timeout ends only the local wait and never cancels execution.
-- Agent-target mention: run `{{CLI_COMMAND}} agent list --agent-id <targetId> --json` to verify the current agent, then use `{{CLI_COMMAND}} agent start --agent-id <targetId> --prompt <task> --show --json` when a new session is required. Do not infer provider-specific commands or assume a fixed agent catalog. Active-peer inspection, historical session lookup, and other generic agent workflows are also valid. An instruction addressed to the mentioned agent must be handed off, not absorbed.
+- Issue mention: {{ISSUE_FALLBACK}}
+- App mention: match `App id: <appId>` in `command-guide.md`; agent launches use `agent-target` mentions and the generic agent workflow.
+- Reference mention: {{REFERENCE_FALLBACK}}
+  {{APP_OPEN_POLICY}}
+  {{AGENT_SKILL_BUNDLE_FALLBACK_GUIDANCE}}
   {{TOOLS_POLICY_SECTIONS}}
 
 {{SKILL_STRATEGY_POLICY_SECTIONS}}

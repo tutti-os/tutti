@@ -278,6 +278,14 @@ func (s *SQLiteWorkspaceStore) ListSessionMessages(ctx context.Context, input st
 	return store.ListSessionMessages(ctx, input)
 }
 
+func (s *SQLiteWorkspaceStore) ListSessionTurnSummaries(ctx context.Context, input storesqlite.ListSessionTurnSummariesInput) (storesqlite.SessionTurnSummaryPage, error) {
+	store, err := s.store(input.WorkspaceID)
+	if err != nil {
+		return storesqlite.SessionTurnSummaryPage{}, err
+	}
+	return store.ListSessionTurnSummaries(ctx, input)
+}
+
 func (s *SQLiteWorkspaceStore) PrepareSubmitClaim(ctx context.Context, input storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error) {
 	store, err := s.store(input.WorkspaceID)
 	if err != nil {

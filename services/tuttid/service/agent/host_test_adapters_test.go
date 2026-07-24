@@ -166,6 +166,13 @@ func (a serviceHostStore) ListSessionMessages(ctx context.Context, input storesq
 	return reader.ListSessionMessages(ctx, input)
 }
 
+func (a serviceHostStore) ListSessionTurnSummaries(ctx context.Context, input storesqlite.ListSessionTurnSummariesInput) (storesqlite.SessionTurnSummaryPage, error) {
+	if a.service == nil || a.service.TurnSummaryReader == nil {
+		return storesqlite.SessionTurnSummaryPage{}, agenthost.ErrInvalidArgument
+	}
+	return a.service.TurnSummaryReader.ListSessionTurnSummaries(ctx, input)
+}
+
 func (a serviceHostStore) PrepareSubmitClaim(ctx context.Context, input storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error) {
 	if a.service.SubmitClaimStore == nil {
 		return storesqlite.SubmitClaim{}, false, nil

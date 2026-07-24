@@ -256,7 +256,7 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 		"read materialized `SKILL.md`",
 		"Do not infer fixed filesystem paths from slugs",
 		"Do not read app `AGENTS.md`, `COMMANDS.md`, source files, or run shell before matching Tutti skill.",
-		"Do not invent `tutti-dev workspace-app ...`.",
+		"current host advertises no app-window open command",
 		"match `App id: <appId>` in `command-guide.md`",
 		"CLI reference:",
 		"`tutti-dev <scope> --help`",

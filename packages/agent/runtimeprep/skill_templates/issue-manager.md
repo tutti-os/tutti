@@ -7,9 +7,9 @@ description: Issue-manager for Tutti workspace issues — `mention://workspace-i
 
 Owns issue **handoff** interpretation, **mode** selection, and **run** lifecycle. Before choosing issue commands, use injected `$tutti-cli`; exact syntax and flags live in its `command-guide.md` file.
 
-Run metadata: use `--agent-target-id {{AGENT_TARGET_ID}}`. The daemon derives the provider from that target; do not use `--agent-provider` for new runs. Do not pass `--agent-session-id` in normal AgentGUI execution; the Tutti CLI binds the run to the current AgentGUI session from the runtime context. Use `--agent-session-id` only as a manual fallback if the CLI explicitly reports the session id is missing.
+{{ISSUE_RUN_METADATA_GUIDANCE}}
 
-If the user explicitly asks to open or show the Task Manager app window, use `app open --app-id issue-manager --json`. Do not use app opening as a substitute for issue inspection, breakdown, execution, or run reporting.
+{{ISSUE_APP_OPEN_GUIDANCE}}
 
 ## Entry Protocol
 
@@ -17,8 +17,8 @@ Run this on every invocation:
 
 1. Resolve the target issue. Parse `mention://workspace-issue/<issueId>?workspaceId=...` when present; otherwise use explicit issue id, issue title, or issue-panel context when the turn clearly targets one issue.
    - **Done when:** you have `<issue-id>` and any query fields: `workspaceId`, `topicId`, `taskId`, `runId`, `mode`.
-2. Recover minimal context. Start with `issue get --issue-id <issue-id> --json`; add task, run, or topic reads only when query fields or the user request require them.
-   - `issue get` and `issue task get` return `detail.references` — a flat, fully-resolved list of referenced input files (`{ path, displayName, source }`) gathered from the issue/task content, attached context refs, and any embedded `mention://workspace-reference/...` project/folder references (already expanded server-side; `source` is `content`, `context`, or `reference`). Read the references relevant to the request directly with your normal file tools; do not re-resolve them with `reference list`, and do not dump every file.
+2. Recover minimal context. Start with `{{ISSUE_GET_COMMAND}}`; add task, run, or topic reads only when query fields or the user request require them.
+   - {{ISSUE_REFERENCE_GUIDANCE}}
    - **Done when:** you can answer or choose inspection, execution, or breakdown without guessing issue state.
 3. Pick one mode and keep later CLI calls inside that mode.
    - **Done when:** you can name the active mode and no planned command violates it.
@@ -43,15 +43,11 @@ Use when the turn asks you to implement, fix, execute, process, complete, or oth
 
 **Run open:**
 
-- Handoff includes `taskId` → `issue task run create --issue-id <issue-id> --task-id <task-id> --agent-target-id {{AGENT_TARGET_ID}} --json`
-- Handoff omits `taskId` → inspect issue tasks before creating a run:
-  - no child tasks → `issue run create --issue-id <issue-id> --agent-target-id {{AGENT_TARGET_ID}} --json`
-  - child tasks present → execute each child task in issue order: one `issue task run create` → work → `issue task run complete` per task before the next
+{{ISSUE_RUN_OPEN_GUIDANCE}}
 
 **Run complete:**
 
-- Scoped task run → `issue task run complete --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --status completed --summary "<summary>" --outputs '[{"path":"<artifact-path>"}]' --json` when artifacts exist
-- Issue-level run → `issue run complete --issue-id <issue-id> --run-id <run-id> --status completed --summary "<summary>" --outputs '[{"path":"<artifact-path>"}]' --json` when artifacts exist
+{{ISSUE_RUN_COMPLETE_GUIDANCE}}
 
 `--outputs` is a JSON array; each item needs `path`. `outputId`, `displayName`, `title`, `mediaType`, and `sizeBytes` are optional.
 
@@ -67,7 +63,7 @@ A breakdown handoff is a **persist** request. Treat `mode=breakdown` or an expli
 
 1. Recover context (Entry step 2).
 2. Draft child tasks from issue context, existing tasks, references, and recent runs.
-3. **Persist by default.** Write multiple new tasks back with `issue task create-batch`, one new task with `issue task create`, or existing tasks with `issue task update` in the same turn.
+3. {{ISSUE_BREAKDOWN_GUIDANCE}}
 4. Report what was created or updated (ids/titles), not whether the user wants you to continue.
 
 **Persist without asking when:**
@@ -99,9 +95,6 @@ Fields:
 
 Extra reads:
 
-- `taskId`: `issue task get --issue-id <issue-id> --task-id <task-id> --json`
-- `runId` with `taskId`: `issue task run get --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --json`
-- `runId` without `taskId`: `issue run get --issue-id <issue-id> --run-id <run-id> --json`
-- `topicId`: matching topic from `issue topic list --json`
+{{ISSUE_EXTRA_READ_GUIDANCE}}
 
 Only mutate Tutti state when the user asked, the active mode requires it, or breakdown mode calls for persist-by-default above.

@@ -12,21 +12,15 @@ reference handle into its artifact files so you can read them as context. Use in
 
 ## Mention Contract
 
-Treat the `mention://workspace-reference/...` link as the machine-readable source of truth. Parse:
+Treat the `mention://workspace-reference/...` link as the machine-readable source of truth.
 
-- URL path: the entity id — `appId` when `source=app`, `topicId` when `source=task`.
-- `source`: one of `app`, `task`.
-- `workspaceId`: required scope.
-- `groupId`: optional sub-scope — an app group when `source=app`, an `issueId` when `source=task`.
-  Absent means the whole app / the whole topic.
+{{REFERENCE_MENTION_CONTRACT}}
 
 Do not infer the file set from the mention label.
 
 ## Resolve
 
-Run exactly one command to list the referenced files:
-
-`{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json`
+{{REFERENCE_RESOLVE_GUIDANCE}}
 
 The JSON result is `{ "items": [ { "path", "displayName", "sizeBytes", "mediaType" } ] }`,
 already flattened. Then read the paths you need with your normal file tools.

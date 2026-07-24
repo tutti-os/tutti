@@ -182,3 +182,66 @@ func TestListSessionMessagesReadsOneCanonicalTurnPageFromSQLite(t *testing.T) {
 		t.Fatalf("ListSessionMessages() page = %#v, want first current-turn message with cursor", page)
 	}
 }
+
+func TestListSessionTurnsReadsStableNewestFirstPagesFromSQLite(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "agent-host-turns.db"))
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	store := storesqlite.New(db, storesqlite.Options{})
+	if err := store.Migrate(t.Context()); err != nil {
+		t.Fatalf("migrate SQLite: %v", err)
+	}
+	if _, err := store.ReportSessionState(t.Context(), storesqlite.SessionStateReport{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "codex", OccurredAtUnixMS: 1,
+	}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	for index, turnID := range []string{"turn-1", "turn-2", "turn-3"} {
+		startedAt := int64((index + 1) * 10)
+		if _, accepted, err := store.RecordTurnTransition(t.Context(), storesqlite.TurnTransition{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: turnID,
+			Phase: storesqlite.TurnPhaseRunning, OccurredAtUnixMS: startedAt,
+		}); err != nil || !accepted {
+			t.Fatalf("seed turn %s: accepted=%v err=%v", turnID, accepted, err)
+		}
+		if index < 2 {
+			if _, accepted, err := store.RecordTurnTransition(t.Context(), storesqlite.TurnTransition{
+				WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: turnID,
+				Phase: storesqlite.TurnPhaseSettled, Outcome: storesqlite.TurnOutcomeCompleted,
+				OccurredAtUnixMS: startedAt + 1,
+			}); err != nil || !accepted {
+				t.Fatalf("settle turn %s: accepted=%v err=%v", turnID, accepted, err)
+			}
+		}
+	}
+
+	host := agenthost.New(agenthost.Config{CanonicalStore: sqliteCanonicalStore{Store: store}})
+	first, err := host.ListSessionTurns(t.Context(), agenthost.SessionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+	}, agenthost.SessionTurnQuery{Limit: 2})
+	if err != nil {
+		t.Fatalf("ListSessionTurns(first) error = %v", err)
+	}
+	if len(first.Turns) != 2 || first.Turns[0].TurnID != "turn-3" || first.Turns[1].TurnID != "turn-2" || !first.HasMore {
+		t.Fatalf("ListSessionTurns(first) = %#v", first)
+	}
+
+	second, err := host.ListSessionTurns(t.Context(), agenthost.SessionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+	}, agenthost.SessionTurnQuery{
+		Before: &agenthost.SessionTurnCursor{
+			StartedAtUnixMS: first.Turns[1].StartedAtUnixMS,
+			TurnID:          first.Turns[1].TurnID,
+		},
+		Limit: 2,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionTurns(second) error = %v", err)
+	}
+	if len(second.Turns) != 1 || second.Turns[0].TurnID != "turn-1" || second.HasMore {
+		t.Fatalf("ListSessionTurns(second) = %#v", second)
+	}
+}

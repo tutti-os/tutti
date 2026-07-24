@@ -24,6 +24,7 @@ type RuntimeSessionInitialization struct {
 type CanonicalTurnStore interface {
 	GetTurn(context.Context, string, string, string) (storesqlite.Turn, bool, error)
 	FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error)
+	ListSessionTurnSummaries(context.Context, storesqlite.ListSessionTurnSummariesInput) (storesqlite.SessionTurnSummaryPage, error)
 	ListLatestTurnInteractions(context.Context, string, []string) (map[string][]storesqlite.Interaction, error)
 	ListSessionInteractions(context.Context, storesqlite.ListSessionInteractionsInput) ([]storesqlite.Interaction, error)
 }

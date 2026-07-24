@@ -20,12 +20,29 @@ type CommandSource struct {
 	AppName string
 }
 
+type CommandTableColumn struct {
+	Key   string
+	Label string
+}
+
+type CommandTableOutput struct {
+	Columns []CommandTableColumn
+}
+
+type CommandCapabilityOutput struct {
+	DefaultMode string
+	JSON        bool
+	Table       *CommandTableOutput
+}
+
 type CommandCapability struct {
 	ID            string
 	Path          []string
 	Summary       string
 	Description   string
+	Visibility    string
 	InputSchema   map[string]any
+	Output        CommandCapabilityOutput
 	ExecutionMode string
 	Source        CommandSource
 }
@@ -38,6 +55,32 @@ type CommandContext struct {
 
 type CommandCatalog interface {
 	Capabilities(context.Context, CommandContext) []CommandCapability
+}
+
+type resolvedCommandCapabilities struct {
+	hostProvided bool
+	commands     []CommandCapability
+}
+
+func resolveCommandCapabilities(ctx context.Context, catalog CommandCatalog, workspaceID string) *resolvedCommandCapabilities {
+	if catalog == nil {
+		return &resolvedCommandCapabilities{}
+	}
+	commands := catalog.Capabilities(ctx, CommandContext{
+		Source:                "agent-runtime",
+		WorkspaceID:           strings.TrimSpace(workspaceID),
+		SkipCapabilityFilters: true,
+	})
+	for index := range commands {
+		commands[index].InputSchema = executionFacingInputSchema(
+			commands[index].ExecutionMode,
+			agentFacingInputSchema(commands[index].ID, commands[index].InputSchema),
+		)
+	}
+	return &resolvedCommandCapabilities{
+		hostProvided: true,
+		commands:     commands,
+	}
 }
 
 func commandGuideFromCatalog(ctx context.Context, catalog CommandCatalog, workspaceID string, cliName string) string {
@@ -84,6 +127,9 @@ type runtimeCommand struct {
 func relevantRuntimeCommands(cliName string, capabilities []CommandCapability) []runtimeCommand {
 	commands := make([]runtimeCommand, 0)
 	for _, capability := range capabilities {
+		if !commandVisibleToAgent(capability) {
+			continue
+		}
 		command, ok := runtimeCommandFromCapability(cliName, capability)
 		if ok {
 			commands = append(commands, command)
@@ -98,6 +144,11 @@ func relevantRuntimeCommands(cliName string, capabilities []CommandCapability) [
 	return commands
 }
 
+func commandVisibleToAgent(capability CommandCapability) bool {
+	visibility := strings.TrimSpace(capability.Visibility)
+	return visibility == "" || visibility == "public"
+}
+
 func runtimeCommandFromCapability(cliName string, capability CommandCapability) (runtimeCommand, bool) {
 	id := strings.TrimSpace(capability.ID)
 	if id == "agent-context.agent.skill-bundle" || id == "agent-context.agent.tutti-cli-skill-bundle" {
@@ -107,13 +158,6 @@ func runtimeCommandFromCapability(cliName string, capability CommandCapability) 
 		return runtimeCommand{}, false
 	}
 	capability.InputSchema = executionFacingInputSchema(capability.ExecutionMode, agentFacingInputSchema(id, capability.InputSchema))
-	if capability.Source.Kind != CommandSourceApp &&
-		id != "workspace-apps.app.open" &&
-		!strings.HasPrefix(id, "issue-manager.") &&
-		!strings.HasPrefix(id, "agent-context.") &&
-		!strings.HasPrefix(id, "browser.") {
-		return runtimeCommand{}, false
-	}
 	path := commandPath(capability.Path)
 	if path == "" {
 		return runtimeCommand{}, false
@@ -152,20 +196,22 @@ func runtimeCommandFromCapability(cliName string, capability CommandCapability) 
 	summary := firstNonEmptyText(capability.Summary, id)
 	if id == "issue-manager.issue.list" {
 		summary = "List issues in a topic"
-		topicDiscoveryHint := fmt.Sprintf("Requires --topic-id; use `%s issue topic list --json` first when the topic is unknown.", normalizeCLICommandName(cliName))
-		description = strings.ReplaceAll(description, "`issue topic list --json`", fmt.Sprintf("`%s issue topic list --json`", normalizeCLICommandName(cliName)))
-		if !strings.Contains(description, topicDiscoveryHint) {
-			if description != "" {
-				description += " "
+		if schemaRequiresInput(capability.InputSchema, "topic-id") {
+			topicDiscoveryHint := fmt.Sprintf("Requires --topic-id; use `%s issue topic list --json` first when the topic is unknown.", normalizeCLICommandName(cliName))
+			description = strings.ReplaceAll(description, "`issue topic list --json`", fmt.Sprintf("`%s issue topic list --json`", normalizeCLICommandName(cliName)))
+			if !strings.Contains(description, topicDiscoveryHint) {
+				if description != "" {
+					description += " "
+				}
+				description += topicDiscoveryHint
 			}
-			description += topicDiscoveryHint
 		}
 	}
 	return runtimeCommand{
 		ID:           id,
 		Summary:      summary,
 		Description:  description,
-		Example:      normalizeCLICommandName(cliName) + " " + path + requiredInputHintForCommand(id, capability.InputSchema) + commandExampleSuffix(id),
+		Example:      normalizeCLICommandName(cliName) + " " + path + requiredInputHintForCommand(id, capability.InputSchema) + commandExampleSuffix(id, capability.InputSchema),
 		InputDetails: inputDetailsForCommand(id, capability.InputSchema),
 		Rank:         commandRank(id),
 	}, true
@@ -205,25 +251,36 @@ func legacyAgentCompatibilityCommand(id string, path []string) bool {
 }
 
 func agentFacingInputSchema(id string, schema map[string]any) map[string]any {
+	properties := mapSchemaValue(schema["properties"])
+	_, hasRoomID := properties["room-id"]
+	launcher := false
 	switch strings.TrimSpace(id) {
 	case "agent-context.agent.start", "agent-context.agent.composer-options":
-	default:
+		launcher = true
+	}
+	if !hasRoomID && !launcher {
 		return schema
 	}
 	projected := make(map[string]any, len(schema))
 	for key, value := range schema {
 		projected[key] = value
 	}
-	properties := mapSchemaValue(schema["properties"])
 	projectedProperties := make(map[string]any, len(properties))
 	for key, value := range properties {
-		if key != "provider" {
+		if key != "room-id" && (!launcher || key != "provider") {
 			projectedProperties[key] = value
 		}
 	}
 	projected["properties"] = projectedProperties
 	required := stringSliceSchemaValue(schema["required"])
-	if !containsSchemaString(required, "agent-id") {
+	filteredRequired := make([]string, 0, len(required)+1)
+	for _, name := range required {
+		if strings.TrimSpace(name) != "room-id" {
+			filteredRequired = append(filteredRequired, name)
+		}
+	}
+	required = filteredRequired
+	if launcher && !containsSchemaString(required, "agent-id") {
 		required = append(required, "agent-id")
 	}
 	projected["required"] = required
@@ -404,29 +461,53 @@ func agentCommandAcceptsImageInput(id string, schema map[string]any) bool {
 	return ok
 }
 
-func commandExampleSuffix(id string) string {
+func commandExampleSuffix(id string, schema map[string]any) string {
 	switch id {
 	case "issue-manager.issue.topic.update":
-		return " --title <title> --json"
+		return exampleFlagIfOptional(schema, "title", "<title>") + " --json"
 	case "issue-manager.issue.update", "issue-manager.issue.task.update":
-		return " --status completed --json"
+		return exampleFlagIfOptional(schema, "status", "completed") + " --json"
 	case "issue-manager.issue.run.create", "issue-manager.issue.task.run.create":
 		return " --json"
 	case "issue-manager.issue.run.complete", "issue-manager.issue.task.run.complete":
-		return " --summary <summary> --outputs '[{\"path\":\"<artifact-path>\"}]' --json"
+		return exampleFlagIfOptional(schema, "summary", "<summary>") +
+			exampleFlagIfOptional(schema, "outputs", "'[{\"path\":\"<artifact-path>\"}]'") + " --json"
 	case "browser.navigate":
-		return " --url <url>"
+		return exampleFlagIfOptional(schema, "url", "<url>")
 	case "browser.click":
-		return " --uid <uid>"
+		return exampleFlagIfOptional(schema, "uid", "<uid>")
 	case "browser.fill":
-		return " --uid <uid> --value <text>"
+		return exampleFlagIfOptional(schema, "uid", "<uid>") + exampleFlagIfOptional(schema, "value", "<text>")
 	case "browser.eval":
-		return " --script '() => document.title'"
+		return exampleFlagIfOptional(schema, "script", "'() => document.title'")
 	case "workspace-apps.app.open":
 		return " --json"
 	default:
 		return ""
 	}
+}
+
+func schemaRequiresInput(schema map[string]any, name string) bool {
+	return containsSchemaString(stringSliceSchemaValue(schema["required"]), name)
+}
+
+func schemaHasInput(schema map[string]any, name string) bool {
+	_, ok := mapSchemaValue(schema["properties"])[name]
+	return ok
+}
+
+func optionalExampleFlag(schema map[string]any, name string, value string) string {
+	if !schemaHasInput(schema, name) {
+		return ""
+	}
+	return " --" + name + " " + value
+}
+
+func exampleFlagIfOptional(schema map[string]any, name string, value string) string {
+	if schemaRequiresInput(schema, name) {
+		return ""
+	}
+	return optionalExampleFlag(schema, name, value)
 }
 
 func stringSliceSchemaValue(value any) []string {
