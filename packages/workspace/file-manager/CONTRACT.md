@@ -45,7 +45,7 @@ It does **not** own:
 | Side-pane preview loading + built-in preview shells            | `@tutti-os/workspace-file-preview`       |
 | File-manager preview projection into session `previewState`    | This package                             |
 | Open / reveal / open-with / browser / system activation        | This package orchestrates; host executes |
-| Import / export / upload / download / drag-to-import UX        | Host                                     |
+| Import / export / upload / download / drag-to-import UX        | Host (toolbar slot / menus / overlays)   |
 | Multi-step upload UX, transfer progress, gitignore pickers     | Host                                     |
 | Share / link / exposure / room collaboration                   | Host                                     |
 | Context-menu action lists for blank / directory / file targets | Host via `resolveContextMenu`            |
@@ -225,10 +225,17 @@ Public entrypoints:
 
 UI injection points that remain host-owned presentation hooks include, among
 others: `resolveContextMenu`, `renderExternalLocationContent`,
-`resolveEntryIconUrl`, `showPreviewPanel`, `showLocationSidebar`,
-`showInternalOpenWithActions`, open-with icon overrides, and analytics
-callbacks. These do **not** become a general product-action plugin system in
-this phase.
+`renderToolbarTrailingActions`, `resolveEntryIconUrl`, `showPreviewPanel`,
+`showLocationSidebar`, `showInternalOpenWithActions`, open-with icon
+overrides, and analytics callbacks. These do **not** become a general
+product-action plugin system in this phase.
+
+**Toolbar trailing actions (decided):** hosts may inject a narrow React node
+cluster through `renderToolbarTrailingActions`. The package places it in the
+toolbar trailing cluster after Refresh and before Search, and passes the
+current directory path plus busy/loading/mutating flags. Product primary
+affordances such as upload belong here (or in host chrome outside the shared
+surface); multi-step transfer UX stays host-owned.
 
 **Published UI assets (decided):** folder/archive fallback glyphs ship as
 inlined `data:` URLs in the published `dist` (tsup `loader: { ".png": "dataurl" }`).
@@ -277,9 +284,9 @@ Hosts own:
 - Requiring every host to implement Tutti’s full capability set
 - Inventing a parallel preview taxonomy or open-with advisory stack in hosts
   that already consume the workspace file packages
-- Promising a host menu/action contribution API for arbitrary product commands
-  in this phase (hosts wrap or add product entry points outside the shared
-  menu when needed)
+- Promising a general host menu/action contribution API for arbitrary product
+  commands in this phase (hosts use `resolveContextMenu`,
+  `renderToolbarTrailingActions`, or wrappers outside the shared surface)
 
 ## Relationship to other workspace packages
 
