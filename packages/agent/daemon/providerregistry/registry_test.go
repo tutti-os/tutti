@@ -60,6 +60,9 @@ func TestMigratedTuttiAgentDescriptorRequiresRefreshCapableVersion(t *testing.T)
 		!descriptor.Status.Install.IncludeOptional {
 		t.Fatalf("Status.Install = %#v", descriptor.Status.Install)
 	}
+	if slices.Contains(descriptor.ComposerProfile.Capabilities, CapabilityRateLimits) {
+		t.Fatal("Tutti Agent must not advertise ChatGPT rate limits")
+	}
 }
 
 func TestValidateRejectsInvalidMinimumVersionFloor(t *testing.T) {

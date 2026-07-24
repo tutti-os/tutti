@@ -50,6 +50,7 @@ func newAdapterFromProviderDescriptor(
 				command:             append([]string(nil), descriptor.Runtime.Command...),
 				clientInfoName:      descriptor.Runtime.ClientInfoName,
 				authRequiredMessage: descriptor.Runtime.AuthRequiredMessage,
+				rateLimits:          providerDescriptorHasCapability(descriptor, CapabilityRateLimits),
 			},
 			commandResolver,
 		)
@@ -73,6 +74,15 @@ func newAdapterFromProviderDescriptor(
 	default:
 		return nil
 	}
+}
+
+func providerDescriptorHasCapability(descriptor providerregistry.ProviderDescriptor, capability string) bool {
+	for _, candidate := range descriptor.ComposerProfile.Capabilities {
+		if candidate == capability {
+			return true
+		}
+	}
+	return false
 }
 
 func newStandardACPAdapterFromProviderDescriptor(

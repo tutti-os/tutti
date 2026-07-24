@@ -149,7 +149,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 		acpLiveState:           liveState,
 		pendingRequests:        make(map[string]*pendingInteractiveRequest),
 	})
-	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, true, trace)
+	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, a.config.rateLimits, trace)
 	a.emitCommandSnapshot(AgentSessionCommandSnapshot{
 		AgentSessionID: strings.TrimSpace(session.AgentSessionID),
 		Commands:       codexAppServerCommands(),
@@ -291,7 +291,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 		acpLiveState:           liveState,
 		pendingRequests:        make(map[string]*pendingInteractiveRequest),
 	})
-	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, true, trace)
+	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, a.config.rateLimits, trace)
 	// Mirror Start: push the command snapshot so a resumed session advertises
 	// review/compact/undo to the GUI (otherwise the slash palette and the
 	// review picker only work on freshly created sessions).

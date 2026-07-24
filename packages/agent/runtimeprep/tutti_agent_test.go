@@ -59,6 +59,11 @@ func TestTuttiAgentPreparerUsesExplicitAuthSourceAndInstallsSkills(t *testing.T)
 	if strings.Contains(string(config), "must-not-be-copied") {
 		t.Fatal("explicit auth source unexpectedly imported the VM user's config")
 	}
+	for _, unexpected := range []string{`model_provider =`, `model = "gpt-5.4"`, `[model_providers.tutti-llm]`} {
+		if strings.Contains(string(config), unexpected) {
+			t.Fatalf("managed config unexpectedly pinned %q: %s", unexpected, config)
+		}
+	}
 	if len(result.Env) == 0 || result.Env[0] != "TUTTI_AGENT_HOME="+home {
 		t.Fatalf("Prepare() env = %#v", result.Env)
 	}

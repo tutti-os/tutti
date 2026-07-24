@@ -75,6 +75,12 @@ func TestSharedAppServerAdapterKeepsTuttiAgentIdentity(t *testing.T) {
 	if serverInfo["name"] != "tutti-agent-app-server" || serverInfo["title"] != "Tutti Agent" {
 		t.Fatalf("server info = %#v, want Tutti Agent identity", serverInfo)
 	}
+	if adapter.config.rateLimits {
+		t.Fatal("Tutti Agent adapter must not probe ChatGPT rate limits")
+	}
+	if capabilities := adapter.SessionState(Session{AgentSessionID: "missing"}).RuntimeContext["capabilities"]; capabilities != nil {
+		t.Fatalf("empty session capabilities = %#v, want nil", capabilities)
+	}
 }
 
 func TestMigratedCodexDescriptorOwnsPermissionModes(t *testing.T) {
