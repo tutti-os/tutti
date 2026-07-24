@@ -83,7 +83,12 @@ func (*fakeIssueManager) CreateIssue(context.Context, string, workspaceservice.C
 
 func (*fakeIssueManager) GetIssueDetail(context.Context, string, string) (workspaceissues.IssueDetail, error) {
 	return workspaceissues.IssueDetail{
-		Issue: workspaceissues.Issue{IssueID: "ISS-1", Title: "Issue"},
+		Issue: workspaceissues.Issue{
+			IssueID:         "ISS-1",
+			Title:           "Issue",
+			CreatedAtUnixMS: 1700000000000,
+			UpdatedAtUnixMS: 1700000060000,
+		},
 		Tasks: []workspaceissues.Task{{TaskID: "TASK-1", IssueID: "ISS-1", Title: "Task"}},
 	}, nil
 }
@@ -144,12 +149,32 @@ func (f *fakeIssueManager) CreateTasks(_ context.Context, workspaceID string, is
 }
 
 func (*fakeIssueManager) GetTaskDetail(context.Context, string, string, string) (workspaceissues.TaskDetail, error) {
-	run := workspaceissues.Run{RunID: "RUN-1", TaskID: "TASK-1", IssueID: "ISS-1", AgentSessionID: "SESSION-1"}
+	run := workspaceissues.Run{
+		RunID:           "RUN-1",
+		TaskID:          "TASK-1",
+		IssueID:         "ISS-1",
+		AgentSessionID:  "SESSION-1",
+		CreatedAtUnixMS: 1700000120000,
+		UpdatedAtUnixMS: 1700000180000,
+	}
 	return workspaceissues.TaskDetail{
-		Task:          workspaceissues.Task{TaskID: "TASK-1", IssueID: "ISS-1", Title: "Task", Content: "visible content", LatestRunID: "RUN-1"},
-		LatestRun:     &run,
-		RecentRuns:    []workspaceissues.Run{run},
-		LatestOutputs: []workspaceissues.RunOutput{{OutputID: "OUT-1", Path: "/tmp/report.md", DisplayName: "report.md"}},
+		Task: workspaceissues.Task{
+			TaskID:          "TASK-1",
+			IssueID:         "ISS-1",
+			Title:           "Task",
+			Content:         "visible content",
+			LatestRunID:     "RUN-1",
+			CreatedAtUnixMS: 1700000000000,
+			UpdatedAtUnixMS: 1700000060000,
+		},
+		LatestRun:  &run,
+		RecentRuns: []workspaceissues.Run{run},
+		LatestOutputs: []workspaceissues.RunOutput{{
+			OutputID:        "OUT-1",
+			Path:            "/tmp/report.md",
+			DisplayName:     "report.md",
+			CreatedAtUnixMS: 1700000240000,
+		}},
 	}, nil
 }
 
@@ -387,8 +412,36 @@ func TestTaskGetIncludesLatestRunAndOutputs(t *testing.T) {
 	if detail["task"].(map[string]any)["content"] != "visible content" {
 		t.Fatalf("detail = %#v", detail)
 	}
-	if len(detail["latestOutputs"].([]any)) != 1 {
+	task := detail["task"].(map[string]any)
+	if task["createdAt"] != "2023-11-14T22:13:20Z" || task["createdAtUnixMs"] != int64(1700000000000) {
+		t.Fatalf("task timestamps = %#v", task)
+	}
+	outputs := detail["latestOutputs"].([]any)
+	if len(outputs) != 1 {
 		t.Fatalf("detail = %#v", detail)
+	}
+	outputItem := outputs[0].(map[string]any)
+	if outputItem["createdAt"] != "2023-11-14T22:17:20Z" || outputItem["createdAtUnixMs"] != int64(1700000240000) {
+		t.Fatalf("output timestamps = %#v", outputItem)
+	}
+}
+
+func TestIssueGetIncludesReadableTimestamps(t *testing.T) {
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}, nil).newIssueGetCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"issue-id": "ISS-1"},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	detail := output.Value["detail"].(map[string]any)
+	issue := detail["issue"].(map[string]any)
+	if issue["createdAt"] != "2023-11-14T22:13:20Z" || issue["createdAtUnixMs"] != int64(1700000000000) {
+		t.Fatalf("issue timestamps = %#v", issue)
+	}
+	if issue["updatedAt"] != "2023-11-14T22:14:20Z" || issue["updatedAtUnixMs"] != int64(1700000060000) {
+		t.Fatalf("issue update timestamps = %#v", issue)
 	}
 }
 
