@@ -262,6 +262,9 @@ importers:
       "@types/react-test-renderer":
         specifier: 19.1.0
         version: 19.1.0
+      hermes-compiler:
+        specifier: 250829098.0.14
+        version: 250829098.0.14
       jest:
         specifier: 29.7.0
         version: 29.7.0(@types/node@24.12.4)
