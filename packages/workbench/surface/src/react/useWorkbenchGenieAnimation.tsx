@@ -1835,6 +1835,15 @@ export function useWorkbenchGenieAnimation<TData>({
           return;
         }
 
+        // Hide the node BEFORE starting the genie animation so that if
+        // setupCanvas fails inside runGenieAnimation and onComplete fires
+        // synchronously, showNodeForGenie in onComplete can properly
+        // un-hide the node. Calling hideNodeForGenie after runGenieAnimation
+        // would re-hide the node after onComplete already showed it, leaving
+        // the node stuck invisible.
+        flushSync(() => {
+          hideNodeForGenie(nodeID);
+        });
         runGenieAnimation({
           direction: "minimize",
           dockRect,
@@ -1852,9 +1861,6 @@ export function useWorkbenchGenieAnimation<TData>({
           },
           skipStop: true,
           texture
-        });
-        flushSync(() => {
-          hideNodeForGenie(nodeID);
         });
       })();
     },
