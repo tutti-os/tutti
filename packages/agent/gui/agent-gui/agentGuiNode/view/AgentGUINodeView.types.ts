@@ -25,7 +25,7 @@ import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type {
   AgentComposerGitBranchLoader,
   AgentComposerProps,
-  AgentComposerReferenceProvenanceFilter,
+  AgentComposerReferenceProvenanceFilters,
   AgentComposerPromptTip,
   AgentComposerSlashStatusLimit
 } from "../AgentComposer";
@@ -364,6 +364,7 @@ export interface AgentGUIViewLabels {
   slashStatusContext: string;
   slashStatusLimits: string;
   slashStatusAccount: string;
+  slashStatusProviderAccount: (provider: string) => string | null;
   slashStatusClose: string;
   slashStatusContextValue: (input: {
     percentLeft: number;
@@ -514,7 +515,7 @@ export type AgentGUIConversationRailLabels = Pick<
 
 export interface AgentGUINodeViewProps {
   viewModel: AgentGUINodeViewModel;
-  referenceProvenanceFilter?: AgentComposerReferenceProvenanceFilter | null;
+  referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
   renderProjectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
   renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   /** Renders the provider rail empty state in "exact" mode. See the type doc. */

@@ -14,7 +14,7 @@ export function MembershipBadge({
 }: MembershipBadgeProps): React.JSX.Element {
   return (
     <span
-      className={`inline-flex max-w-full items-center gap-1 rounded-[5px] bg-[color-mix(in_srgb,var(--tutti-purple)_18%,transparent)] px-1.5 py-0.5 text-[11px] font-semibold leading-3 text-[var(--tutti-purple)] ${className}`}
+      className={`inline-flex max-w-full items-center gap-1 rounded-[5px] py-0.5 text-[11px] font-normal leading-3 text-[var(--text-secondary)] ${className}`}
       data-commerce-membership-badge="true"
     >
       {tierKey ? (

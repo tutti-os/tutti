@@ -696,9 +696,9 @@ otherwise recover interactively.
 Do not restore flat compatibility props or hide workflow inside a render slot.
 The optional `renderSlots.projectDirectoryPickerHeaderActions` slot is limited
 to host presentation beside the directory picker's title. AgentGUI owns picker
-state and supplies a refresh callback after host mutations; the host owns the
-action's side effects and must not duplicate picker navigation or selection
-state.
+state and supplies refresh plus source-located target selection after host
+mutations; the host owns the action's side effects and must not duplicate
+picker navigation or selection state.
 Hosts that render capabilities owned by another device set
 `hostCapabilities.capabilityControlsReadOnly`; AgentGUI keeps owner-supported
 Browser/Computer entries visible but disables their mutation and setup actions.
@@ -758,6 +758,10 @@ The reusable tool-sidebar contract lives in
 `packages/agent/gui/workbench/tool-sidebar`. Hosts provide the supported panel
 catalog and render adapters; the shared component owns tab selection, picker,
 sizing, toolbar mechanics, and a structured `AgentToolSidebarHeaderLayout`.
+Hosts may hide the shared toolbar toggle through the explicit
+`showToggleButton` presentation input; omission preserves the standard visible
+entry. Hiding the entry does not duplicate or override sidebar behavior in the
+host.
 That layout carries the actions, open state, and reserved width into the one
 authoritative `AgentGuiWorkbenchHeader`.
 

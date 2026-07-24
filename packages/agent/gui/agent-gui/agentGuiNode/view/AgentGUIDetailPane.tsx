@@ -64,7 +64,7 @@ export interface AgentGUIDetailPaneProps {
   readiness: AgentGUIReadinessViewModel;
   operations: AgentGUIOperationsViewModel;
   homeTargetProjection: AgentGUIManagedHomeTargetProjection;
-  referenceProvenanceFilter?: AgentComposerProps["referenceProvenanceFilter"];
+  referenceProvenanceFilters?: AgentComposerProps["referenceProvenanceFilters"];
   composerEngagement?: AgentGUIComposerEngagement;
   actions: AgentGUINodeViewProps["actions"];
   labels: AgentGUIViewLabels;
@@ -110,7 +110,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   readiness,
   operations,
   homeTargetProjection,
-  referenceProvenanceFilter = null,
+  referenceProvenanceFilters = null,
   composerEngagement,
   actions,
   labels,
@@ -450,7 +450,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       showStopButton,
       stopDisabled: stopDisabled || timelineInteractionLocked,
       workspaceReferencePickerOpen,
-      referenceProvenanceFilter,
+      referenceProvenanceFilters,
       // Plan decisions replace the composer; approval / ask-user embed here.
       activePrompt: composerActivePrompt,
       activePromptKeyboardShortcutsEnabled: isActive,
@@ -607,7 +607,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.detail.usage,
       viewModel.shell.workspaceId,
       viewModel.shell.workspacePath,
-      referenceProvenanceFilter,
+      referenceProvenanceFilters,
       workspaceUserProjectI18n,
       workspaceAppIcons,
       selectHomeComposerAgentTargetAndFocus

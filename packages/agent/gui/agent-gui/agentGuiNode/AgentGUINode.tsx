@@ -1,11 +1,7 @@
 import { memo, useCallback, useMemo, useRef } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { createWorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
-import { useReferenceProvenanceFilterCatalog } from "@tutti-os/workspace-file-reference/react";
-import type {
-  ReferenceProvenanceCatalog,
-  WorkspaceFileReference
-} from "@tutti-os/workspace-file-reference/contracts";
+import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import { useTranslation } from "../../i18n/index";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type { AgentGUINodeData } from "../../types";
@@ -32,7 +28,6 @@ import {
   resolveNextAgentGUIConversationRailWidthPx,
   resolveAgentGUIConversationRailMaxWidthPx
 } from "./model/agentGuiRailLayout";
-import { resolveAgentGUIReferenceProvenanceFilterCatalog } from "./model/agentReferenceProvenanceCatalog";
 import type { AgentGUINodeProps } from "./AgentGUINode.types";
 import { areAgentGUINodePropsEqual } from "./AgentGUINode.types";
 import { AgentGUIMentionServiceBoundary } from "./AgentGUIMentionServiceBoundary";
@@ -41,14 +36,9 @@ import {
   useAgentGUIConversationRailLabels,
   useAgentGUIWorkspaceFileReferenceCopy
 } from "./AgentGUINode.labels";
+import { useAgentMentionProvenanceFilters } from "./composer/useAgentMentionProvenanceFilters";
 
 export type { AgentGUINodeProps } from "./AgentGUINode.types";
-
-const DISABLED_REFERENCE_PROVENANCE_CATALOG: ReferenceProvenanceCatalog = {
-  enabledDimensions: [],
-  agentOptions: [],
-  memberOptions: []
-};
 
 export const AgentGUINode = memo(function AgentGUINode({
   identity,
@@ -122,20 +112,11 @@ export const AgentGUINode = memo(function AgentGUINode({
     referenceProvenanceFilterCatalog: injectedReferenceProvenanceFilterCatalog,
     referenceProvenanceFilterEnabled = false
   } = hostCapabilities;
-  const referenceProvenanceFilterCatalog =
-    resolveAgentGUIReferenceProvenanceFilterCatalog({
-      agentTargets,
-      injectedCatalog: injectedReferenceProvenanceFilterCatalog,
-      legacyAgentFilterEnabled: referenceProvenanceFilterEnabled
-    });
-  const referenceProvenanceFilterBinding = useReferenceProvenanceFilterCatalog(
-    referenceProvenanceFilterCatalog ?? DISABLED_REFERENCE_PROVENANCE_CATALOG
-  );
-  const referenceProvenanceFilter =
-    referenceProvenanceFilterBinding.snapshot.catalog.enabledDimensions.length >
-    0
-      ? referenceProvenanceFilterBinding
-      : null;
+  const referenceProvenanceFilters = useAgentMentionProvenanceFilters({
+    agentTargets,
+    injectedCatalog: injectedReferenceProvenanceFilterCatalog,
+    legacyAgentFilterEnabled: referenceProvenanceFilterEnabled
+  });
   const {
     onLinkAction,
     onHandoffConversation,
@@ -540,7 +521,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               }
               workspaceFileReferenceCopy={workspaceFileReferenceCopy}
               workspaceAppIcons={workspaceAppIcons}
-              referenceProvenanceFilter={referenceProvenanceFilter}
+              referenceProvenanceFilters={referenceProvenanceFilters}
               renderProjectDirectoryPickerHeaderActions={
                 renderProjectDirectoryPickerHeaderActions
               }

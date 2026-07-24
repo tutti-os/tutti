@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import type { WorkspaceFileReferenceCopy } from "@tutti-os/workspace-file-reference/contracts";
 import type { TranslateFn } from "../../i18n/index";
+import {
+  agentGUIProviderIdentityDisplayName,
+  resolveAgentGUIProviderCatalogIdentity
+} from "../../providerIdentityCatalog";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import type { AgentGUIHomeSuggestionId } from "../../types";
 import { resolveAgentGUIProviderDisplayLabel } from "./model/agentGuiProviderIdentity";
@@ -272,6 +276,15 @@ export function useAgentGUIViewLabels(input: {
       slashStatusContext: t("agentHost.agentGui.slashStatusContext"),
       slashStatusLimits: t("agentHost.agentGui.slashStatusLimits"),
       slashStatusAccount: t("agentHost.agentGui.slashStatusAccount"),
+      slashStatusProviderAccount: (provider: string) => {
+        const identity = resolveAgentGUIProviderCatalogIdentity(provider);
+        if (!identity) {
+          return null;
+        }
+        return t("agentHost.agentGui.slashStatusProviderAccount", {
+          provider: agentGUIProviderIdentityDisplayName(identity, t)
+        });
+      },
       slashStatusClose: t("agentHost.agentGui.slashStatusClose"),
       slashStatusContextValue: (input: {
         percentLeft: number;

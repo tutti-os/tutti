@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import { agentTranscriptRowHasPresentationKind } from "../projection/agentTranscriptPresentation";
 import { normalizeAgentTitleText } from "../../utils/agentTitleText.ts";
@@ -278,4 +278,26 @@ export function attachLeadingToolRowsToFollowingMessages(
   }
   result.push(...pendingToolRows);
   return result;
+}
+
+/**
+ * Read hook owning the display-row projection for the transcript view: in
+ * participant-header mode tool-group rows attach to the following assistant
+ * message, and row keys derive from the same pass. Keeping the memoization in
+ * this model module (next to `useEnteringTranscriptRows`) keeps the view
+ * component within the degradation-check memoization budget.
+ */
+export function useAgentTranscriptDisplayRows(
+  rows: ReadonlyArray<AgentConversationVM["rows"][number]>,
+  participantHeadersEnabled: boolean
+): {
+  rows: ReadonlyArray<AgentConversationVM["rows"][number]>;
+  rowKeys: string[];
+} {
+  return useMemo(() => {
+    const displayRows = participantHeadersEnabled
+      ? attachLeadingToolRowsToFollowingMessages(rows)
+      : rows;
+    return { rows: displayRows, rowKeys: displayRows.map(transcriptRowKey) };
+  }, [rows, participantHeadersEnabled]);
 }

@@ -17,7 +17,7 @@
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterPanel.tsx": 22,
       "packages/agent/gui/app/renderer/components/ZoomableImage.tsx": 9,
       "packages/agent/gui/shared/AgentMessageMarkdown.tsx": 7,
-      "packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx": 10
+      "packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx": 9
     },
     "effectCount": 137,
     "fileLines": {

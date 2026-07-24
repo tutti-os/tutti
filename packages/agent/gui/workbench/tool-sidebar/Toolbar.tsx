@@ -68,6 +68,7 @@ export function AgentToolSidebarToolbar({
   panels,
   quickActionPanels = [],
   reminders = {},
+  showToggleButton = true,
   onAddPanel,
   onOpenPanel,
   onToggleExpansion,
@@ -80,6 +81,7 @@ export function AgentToolSidebarToolbar({
   panels: readonly AgentToolPanelDefinition[];
   quickActionPanels?: readonly AgentToolPanelId[];
   reminders?: AgentToolSidebarReminderCounts;
+  showToggleButton?: boolean;
   onAddPanel: (panel: AgentToolPanelId) => void;
   onOpenPanel: (panel: AgentToolPanelId) => void;
   onToggleExpansion: () => void;
@@ -180,23 +182,27 @@ export function AgentToolSidebarToolbar({
             )}
           </Button>
         ) : null}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              aria-label={label}
-              aria-pressed={isOpen}
-              className="relative"
-              data-agent-tool-sidebar-toggle="true"
-              size="icon-sm"
-              type="button"
-              variant={isOpen && activePanel !== null ? "secondary" : "chrome"}
-              onClick={onToggleSidebar}
-            >
-              <PanelIcon aria-hidden className="size-[18px] -scale-x-100" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{label}</TooltipContent>
-        </Tooltip>
+        {showToggleButton ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label={label}
+                aria-pressed={isOpen}
+                className="relative"
+                data-agent-tool-sidebar-toggle="true"
+                size="icon-sm"
+                type="button"
+                variant={
+                  isOpen && activePanel !== null ? "secondary" : "chrome"
+                }
+                onClick={onToggleSidebar}
+              >
+                <PanelIcon aria-hidden className="size-[18px] -scale-x-100" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{label}</TooltipContent>
+          </Tooltip>
+        ) : null}
       </nav>
     </TooltipProvider>
   );

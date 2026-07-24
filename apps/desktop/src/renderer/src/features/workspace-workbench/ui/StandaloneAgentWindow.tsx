@@ -115,6 +115,7 @@ function renderStandaloneAgentSidebarFooter(workspaceId: string): ReactNode {
     <Suspense fallback={null}>
       <LazyWorkspaceAccountMenu
         showLeadingDivider={false}
+        signedOutPresentation="placeholderAvatar"
         workspaceId={workspaceId}
       />
     </Suspense>

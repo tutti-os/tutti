@@ -43,6 +43,28 @@ describe("AgentToolSidebar", () => {
     expect(screen.queryByText("Messages")).not.toBeInTheDocument();
   });
 
+  it("hides the sidebar toggle when the host disables that entry", () => {
+    render(
+      <AgentToolSidebar
+        containerWidth={900}
+        copy={copy}
+        header={{
+          layout: "overlay",
+          owner: "host",
+          render: (layout) => <header>{layout.actions}</header>
+        }}
+        panels={panels}
+        renderPanel={({ tab }) => <div>{tab.panel} content</div>}
+        resizeContainerContentWidth={async (width) => ({ width })}
+        showToggleButton={false}
+      >
+        <main>Agent content</main>
+      </AgentToolSidebar>
+    );
+
+    expect(screen.queryByLabelText("Open right panel")).not.toBeInTheDocument();
+  });
+
   it("opens a panel through the shared handle and keeps its content mounted", async () => {
     vi.useFakeTimers();
     const ref = createRef<AgentToolSidebarHandle>();

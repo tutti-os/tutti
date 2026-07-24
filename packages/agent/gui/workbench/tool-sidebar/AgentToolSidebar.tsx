@@ -50,6 +50,7 @@ export interface AgentToolSidebarProps {
   }) => ReactNode;
   renderTabIcon?: (tab: AgentToolTab) => ReactNode;
   resolveTabLabel?: (tab: AgentToolTab, defaultLabel: string) => string;
+  showToggleButton?: boolean;
   resizeContainerContentWidth(
     width: number,
     animate?: boolean
@@ -78,6 +79,7 @@ export const AgentToolSidebar = forwardRef<
     renderPanel,
     renderTabIcon,
     resolveTabLabel,
+    showToggleButton,
     resizeContainerContentWidth,
     onActivePanelChange,
     onLayoutWidthChange,
@@ -194,6 +196,7 @@ export const AgentToolSidebar = forwardRef<
         panels={panels}
         quickActionPanels={quickActionPanels}
         reminders={reminders}
+        showToggleButton={showToggleButton}
         onAddPanel={addPanel}
         onOpenPanel={openPanel}
         onToggleExpansion={() => {

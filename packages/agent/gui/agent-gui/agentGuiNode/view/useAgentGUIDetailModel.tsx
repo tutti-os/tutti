@@ -538,6 +538,7 @@ export function useAgentGUIDetailModel(input: Input) {
       slashStatusContext: labels.slashStatusContext,
       slashStatusLimits: labels.slashStatusLimits,
       slashStatusAccount: labels.slashStatusAccount,
+      slashStatusProviderAccount: labels.slashStatusProviderAccount,
       slashStatusClose: labels.slashStatusClose,
       slashStatusContextValue: labels.slashStatusContextValue,
       slashStatusContextUnavailable: labels.slashStatusContextUnavailable,

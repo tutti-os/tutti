@@ -35,8 +35,8 @@ import type {
   ReferenceProvenanceCatalog,
   ReferenceProvenanceFilter
 } from "@tutti-os/workspace-file-reference/contracts";
-import { referenceProvenanceFilterCacheKey } from "@tutti-os/workspace-file-reference/core";
 import { presentWorkspaceFileDirectoryMentionItems } from "./agentMentionWorkspaceFilesPresentation";
+import { AgentMentionProvenanceFilterState } from "./AgentMentionProvenanceFilterState";
 
 export type {
   AgentMentionBrowseCategory,
@@ -54,6 +54,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
   >();
   private readonly directoryRequestLifecycle =
     new AgentMentionDirectoryRequestLifecycle();
+  private readonly provenanceFilters = new AgentMentionProvenanceFilterState();
 
   setProvenanceCatalog(catalog: ReferenceProvenanceCatalog | null): void {
     if (this.currentProvenanceCatalog === catalog) return;
@@ -70,16 +71,13 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     });
   }
 
-  setProvenanceFilter(filter: ReferenceProvenanceFilter | null): void {
-    const previousKey = this.currentProvenanceFilter
-      ? referenceProvenanceFilterCacheKey(this.currentProvenanceFilter)
-      : "disabled";
-    const nextKey = filter
-      ? referenceProvenanceFilterCacheKey(filter)
-      : "disabled";
-    if (previousKey === nextKey) return;
+  setProvenanceFilters(
+    filters: Record<AgentMentionFilterId, ReferenceProvenanceFilter | null>
+  ): void {
+    const next = this.provenanceFilters.replace(filters, this.currentFilter);
+    if (!next.changed) return;
     this.cancelPendingPreload();
-    this.currentProvenanceFilter = filter;
+    this.currentProvenanceFilter = next.value;
     this.updateQuery({
       workspaceId: this.activeWorkspaceId,
       currentUserId: this.currentUserId,
@@ -171,6 +169,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       return;
     }
     this.currentFilter = filter;
+    this.currentProvenanceFilter = this.provenanceFilters.value(filter);
     this.clearTimer();
     this.abortActiveRequest();
     this.directoryRequestLifecycle.cancel();

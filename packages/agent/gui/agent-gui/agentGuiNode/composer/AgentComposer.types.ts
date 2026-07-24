@@ -26,12 +26,20 @@ import type {
   ReferenceProvenanceFilterSnapshot
 } from "@tutti-os/workspace-file-reference/react";
 import type { AgentQuickPromptLabels } from "./quickPrompts/agentQuickPromptLabels";
+import type { AgentMentionFilterId } from "../AgentMentionSearchContracts";
 
 export interface AgentComposerReferenceProvenanceFilter {
   snapshot: ReferenceProvenanceFilterSnapshot;
   controller: Pick<
     ReferenceProvenanceFilterController,
     "reset" | "toggle" | "toggleAll"
+  >;
+}
+
+export interface AgentComposerReferenceProvenanceFilters {
+  byFilter: Record<
+    AgentMentionFilterId,
+    AgentComposerReferenceProvenanceFilter
   >;
 }
 
@@ -394,7 +402,7 @@ export interface AgentComposerProps {
   promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
-  referenceProvenanceFilter?: AgentComposerReferenceProvenanceFilter | null;
+  referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
 }
 
 export type AgentComposerCapabilitySettingsTarget = Exclude<

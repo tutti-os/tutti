@@ -702,9 +702,15 @@ describe("AgentMentionSearchController", () => {
         states.at(-1) as { groups: Array<{ id: string; items: unknown[] }> }
       ).groups.find((group) => group.id === "member:user-1")?.items
     ).toHaveLength(20);
-    controller.setProvenanceFilter({
-      agentTargetIds: ["shared-agent:shared-codex"],
-      memberIds: null
+    controller.setProvenanceFilters({
+      session: {
+        agentTargetIds: ["shared-agent:shared-codex"],
+        memberIds: null
+      },
+      file: null,
+      issue: null,
+      agent: null,
+      app: null
     });
     await vi.waitFor(() =>
       expect(states.at(-1)).toMatchObject({
@@ -817,6 +823,107 @@ describe("AgentMentionSearchController", () => {
     expect(queryIssues).not.toHaveBeenCalled();
     expect(queryAgentTargets).not.toHaveBeenCalled();
     expect(querySessions).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps provenance filters independent across mention tabs", async () => {
+    const querySessions = vi.fn().mockResolvedValue([]);
+    const queryFiles = vi.fn().mockResolvedValue([]);
+    const sessionProvider: AgentContextMentionProvider<{ id: string }> = {
+      id: AGENT_SESSION_PROVIDER_ID,
+      trigger: "@",
+      query: querySessions,
+      getItemKey: (item) => item.id,
+      getItemLabel: (item) => item.id,
+      toInsertResult: (item) => ({
+        kind: "markdown-link",
+        href: `mention://agent-session/${item.id}`,
+        label: item.id
+      })
+    };
+    const fileProvider: AgentContextMentionProvider<{
+      href: string;
+      label: string;
+    }> = {
+      id: FILE_PROVIDER_ID,
+      trigger: "@",
+      query: queryFiles,
+      getItemKey: (item) => item.href,
+      getItemLabel: (item) => item.label,
+      toInsertResult: (item) => ({
+        kind: "markdown-link",
+        href: item.href,
+        label: item.label
+      })
+    };
+    const controller = new AgentMentionSearchController({
+      contextMentionProviders: [sessionProvider, fileProvider],
+      debounceMs: 0
+    });
+    controller.setProvenanceFilters({
+      session: {
+        agentTargetIds: null,
+        memberIds: ["zhou-man"]
+      },
+      file: {
+        agentTargetIds: null,
+        memberIds: null
+      },
+      issue: null,
+      agent: null,
+      app: null
+    });
+    controller.updateQuery({
+      workspaceId: "room-1",
+      currentUserId: "user-1",
+      query: "report"
+    });
+
+    await vi.waitFor(() => expect(querySessions).toHaveBeenCalledTimes(1));
+    expect(querySessions).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        context: {
+          metadata: expect.objectContaining({
+            referenceProvenanceFilter: {
+              agentTargetIds: null,
+              memberIds: ["zhou-man"]
+            }
+          })
+        }
+      })
+    );
+
+    controller.setFilter("file");
+
+    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(1));
+    expect(queryFiles).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        context: {
+          metadata: expect.objectContaining({
+            referenceProvenanceFilter: {
+              agentTargetIds: null,
+              memberIds: null
+            }
+          })
+        }
+      })
+    );
+
+    controller.setFilter("session");
+
+    await vi.waitFor(() => expect(querySessions).toHaveBeenCalledTimes(2));
+    expect(querySessions).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        context: {
+          metadata: expect.objectContaining({
+            referenceProvenanceFilter: {
+              agentTargetIds: null,
+              memberIds: ["zhou-man"]
+            }
+          })
+        }
+      })
+    );
+    controller.dispose();
   });
 
   it("loads agent targets from the agent tab and inserts agent-target mentions", async () => {
@@ -968,9 +1075,15 @@ describe("AgentMentionSearchController", () => {
       limit: undefined
     });
     expect(queryWorkspaceApps).not.toHaveBeenCalled();
-    controller.setProvenanceFilter({
-      agentTargetIds: ["shared-agent:shared-codex"],
-      memberIds: null
+    controller.setProvenanceFilters({
+      session: null,
+      file: null,
+      issue: null,
+      agent: {
+        agentTargetIds: ["shared-agent:shared-codex"],
+        memberIds: null
+      },
+      app: null
     });
     await vi.waitFor(() =>
       expect(states.at(-1)).toMatchObject({
@@ -2493,11 +2606,17 @@ describe("AgentMentionSearchController", () => {
     });
     const states: unknown[] = [];
     controller.subscribe((state) => states.push(state));
-    controller.setProvenanceFilter({
-      agentTargetIds: ["agent-codex"],
-      memberIds: null
-    });
     controller.setFilter("file");
+    controller.setProvenanceFilters({
+      session: null,
+      file: {
+        agentTargetIds: ["agent-codex"],
+        memberIds: null
+      },
+      issue: null,
+      agent: null,
+      app: null
+    });
     controller.updateQuery({
       workspaceId: "room-1",
       currentUserId: "user-1",

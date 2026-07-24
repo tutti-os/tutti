@@ -84,7 +84,10 @@ import {
 export interface ReferenceSourcePickerProps {
   aggregator: ReferenceSourceAggregator;
   copy: WorkspaceFileReferenceCopy;
-  renderHeaderActions?: (context: { refresh: () => void }) => ReactNode;
+  renderHeaderActions?: (context: {
+    refresh: () => void;
+    selectTarget: (target: ReferenceLocateTarget) => Promise<boolean>;
+  }) => ReactNode;
   resolveContentErrorAction?: (
     error: Error
   ) => ReferenceSourceContentErrorAction | null;
@@ -580,7 +583,10 @@ export function ReferenceSourcePicker({
               )}
             </CardTitle>
             <div className="flex items-center gap-2">
-              {renderHeaderActions?.({ refresh: view.retryContent })}
+              {renderHeaderActions?.({
+                refresh: view.retryContent,
+                selectTarget: view.selectTarget
+              })}
               <Button
                 aria-label={copy.t("actions.cancel")}
                 disabled={view.isConfirming}
