@@ -55,7 +55,39 @@ describe("AgentModelReasoningDropdown", () => {
       ctrlKey: false,
       pointerType: "mouse"
     });
-    fireEvent.click(favoriteToggle);
+
+    expect(onSettingsChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Remove from favorites" })
+    ).toHaveAttribute("data-favorited", "true");
+    expect(
+      globalThis.localStorage.getItem(
+        "agent-gui:composer-model-favorites:target-1"
+      )
+    ).toBe('["gpt-5.4"]');
+    expect(screen.getByText("Model selection")).toBeInTheDocument();
+  });
+
+  it("favorites a model through keyboard click activation", async () => {
+    const onSettingsChange = vi.fn();
+    render(
+      <AgentModelReasoningDropdown
+        composerSettings={composerModelSettings()}
+        labels={modelSettingsLabels}
+        modelHistoryTargetId="target-1"
+        onSettingsChange={onSettingsChange}
+      />
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Model / Reasoning" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+    const favoriteToggle = (
+      await screen.findAllByRole("button", { name: "Add to favorites" })
+    )[1]!;
+
+    fireEvent.click(favoriteToggle, { detail: 0 });
 
     expect(onSettingsChange).not.toHaveBeenCalled();
     expect(
