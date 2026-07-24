@@ -61,11 +61,11 @@ type CapabilityPack struct {
 }
 
 type DeploymentProfile struct {
-	Name          string
-	Title         string
-	Intro         string
-	AgentWorkflow AgentWorkflowProfile
-	Packs         []CapabilityPack
+	Name      string
+	Title     string
+	Intro     string
+	HostFacts HostFacts
+	Packs     []CapabilityPack
 }
 
 type SkillContext struct {
@@ -82,7 +82,7 @@ type SkillSource interface {
 type resolvedCapabilities struct {
 	Title          string
 	Intro          string
-	AgentWorkflow  AgentWorkflowProfile
+	HostFacts      HostFacts
 	Skills         []SkillSpec
 	PolicySections []PolicySection
 	EnvOverlay     []string
@@ -102,8 +102,12 @@ func Resolve(ctx context.Context, input PrepareInput, profile DeploymentProfile,
 		return ResolvedBundle{}, err
 	}
 	input.resolved = resolved
+	systemPrompt, err := tuttiCLIPolicy(input)
+	if err != nil {
+		return ResolvedBundle{}, err
+	}
 	return ResolvedBundle{
-		SystemPrompt: tuttiCLIPolicy(input),
+		SystemPrompt: systemPrompt,
 		Skills:       append([]SkillSpec(nil), resolved.Skills...),
 		EnvOverlay:   append([]string(nil), resolved.EnvOverlay...),
 	}, nil
@@ -111,10 +115,10 @@ func Resolve(ctx context.Context, input PrepareInput, profile DeploymentProfile,
 
 func StandardProfile() DeploymentProfile {
 	return DeploymentProfile{
-		Name:          "tutti-standard",
-		Title:         "Tutti Runtime",
-		Intro:         "This directory is being used by a Tutti AgentGUI session.",
-		AgentWorkflow: DefaultAgentWorkflowProfile(),
+		Name:      "tutti-standard",
+		Title:     "Tutti Runtime",
+		Intro:     "This directory is being used by a Tutti AgentGUI session.",
+		HostFacts: DefaultHostFacts(),
 		Packs: []CapabilityPack{
 			CoreSkillsPack(), TuttiDesktopHostPack(), BrowserUsePack(), ComputerUsePack(),
 		},
@@ -126,12 +130,36 @@ func StandardProfile() DeploymentProfile {
 // the shared skills without inheriting Tutti desktop-host policy.
 func CoreSkillsPack() CapabilityPack {
 	return CapabilityPack{Name: "tutti-core-skills", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
+		tuttiCLI, err := tuttiCLISkill(input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
+		handoff, err := tuttiHandoffSkill(input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
+		issueManager, err := issueManagerSkill(input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
+		workspaceApp, err := workspaceAppSkill(input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
+		reference, err := referenceSkill(input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
+		commandGuide, err := commandGuideReference(input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
 		return CapabilityContribution{Enabled: true, Skills: []SkillSpec{
-			{ID: "tutti/tutti-cli", Name: tuttiSkillName, Files: map[string]string{"SKILL.md": tuttiCLISkill(input), commandGuideReferencePath: commandGuideReference(input)}},
-			{ID: "tutti/tutti-handoff", Name: tuttiHandoffSkillName, Files: map[string]string{"SKILL.md": tuttiHandoffSkill(input)}},
-			{ID: "tutti/issue-manager", Name: issueManagerSkillName, Files: map[string]string{"SKILL.md": issueManagerSkill(input)}},
-			{ID: "tutti/workspace-app", Name: workspaceAppSkillName, Files: map[string]string{"SKILL.md": workspaceAppSkill(input)}},
-			{ID: "tutti/reference", Name: referenceSkillName, Files: map[string]string{"SKILL.md": referenceSkill(input)}},
+			{ID: "tutti/tutti-cli", Name: tuttiSkillName, Files: map[string]string{"SKILL.md": tuttiCLI, commandGuideReferencePath: commandGuide}},
+			{ID: "tutti/tutti-handoff", Name: tuttiHandoffSkillName, Files: map[string]string{"SKILL.md": handoff}},
+			{ID: "tutti/issue-manager", Name: issueManagerSkillName, Files: map[string]string{"SKILL.md": issueManager}},
+			{ID: "tutti/workspace-app", Name: workspaceAppSkillName, Files: map[string]string{"SKILL.md": workspaceApp}},
+			{ID: "tutti/reference", Name: referenceSkillName, Files: map[string]string{"SKILL.md": reference}},
 		}}, nil
 	}}
 }
@@ -140,19 +168,27 @@ func CoreSkillsPack() CapabilityPack {
 // desktop host but not necessarily for other deployments such as managed VMs.
 func TuttiDesktopHostPack() CapabilityPack {
 	return CapabilityPack{Name: "tutti-desktop-host", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
+		hostContext, err := hostAppContextPolicy(input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
+		providerExecution, err := renderPolicyTemplate("policy_templates/provider-execution.md", input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
 		return CapabilityContribution{Enabled: true, PolicySections: []PolicySection{
 			{
 				Anchor: PolicyAnchorTools,
 				Key:    "provider-execution",
 				Order:  -100,
-				Body:   providerSpecificExecutionEnvironment(input.Provider, input.CLICommand),
+				Body:   providerExecution,
 			},
 			{
 				Anchor:   PolicyAnchorSpecialized,
 				Key:      "host-app-context",
 				Order:    1000,
 				Delivery: PolicyDeliveryProviderRuntime,
-				Body:     hostAppContextPolicy(input),
+				Body:     hostContext,
 			},
 		}}, nil
 	}}
@@ -160,10 +196,41 @@ func TuttiDesktopHostPack() CapabilityPack {
 
 func BrowserUsePack() CapabilityPack {
 	return CapabilityPack{Name: "browser-use", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
-		enabled := input.BrowserUse && BrowserUseDefaultEnabled() && commandFamilyAvailable(input, "browser")
+		enabled := input.BrowserUse && BrowserUseDefaultEnabled() &&
+			input.commandCapabilities != nil &&
+			input.commandCapabilities.HasAll(
+				"browser.navigate",
+				"browser.snapshot",
+				"browser.click",
+				"browser.fill",
+				"browser.list-pages",
+				"browser.select-page",
+				"browser.new-page",
+				"browser.close-page",
+				"browser.eval",
+				"browser.screenshot",
+			) &&
+			hasCommandInputs(input.commandCapabilities, "browser.navigate", "url") &&
+			hasCommandInputs(input.commandCapabilities, "browser.click", "uid") &&
+			hasCommandInputs(input.commandCapabilities, "browser.fill", "uid", "value") &&
+			hasCommandInputs(input.commandCapabilities, "browser.select-page", "page-id") &&
+			hasCommandInputs(input.commandCapabilities, "browser.new-page", "url") &&
+			hasCommandInputs(input.commandCapabilities, "browser.close-page", "page-id") &&
+			hasCommandInputs(input.commandCapabilities, "browser.eval", "script")
+		if !enabled {
+			return CapabilityContribution{Enabled: false}, nil
+		}
+		skill, err := browserUseSkill(input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
+		policy, err := renderPolicyTemplate("policy_templates/browser-use.md", input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
 		return CapabilityContribution{Enabled: enabled,
-			Skills:         []SkillSpec{{ID: "tutti/browser-use", Name: browserUseSkillName, Files: map[string]string{"SKILL.md": browserUseSkill(input)}}},
-			PolicySections: []PolicySection{{Anchor: PolicyAnchorTools, Key: "handoff", Body: browserUseHandoffPolicyLines(input)}},
+			Skills:         []SkillSpec{{ID: "tutti/browser-use", Name: browserUseSkillName, Files: map[string]string{"SKILL.md": skill}}},
+			PolicySections: []PolicySection{{Anchor: PolicyAnchorTools, Key: "handoff", Body: policy}},
 			EnvOverlay:     browserUseEnv(enabled),
 		}, nil
 	}}
@@ -171,28 +238,75 @@ func BrowserUsePack() CapabilityPack {
 
 func ComputerUsePack() CapabilityPack {
 	return CapabilityPack{Name: "computer-use", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
-		enabled := input.ComputerUse && ComputerUseDefaultEnabled() && commandFamilyAvailable(input, "computer")
+		enabled := input.ComputerUse && ComputerUseDefaultEnabled() &&
+			input.commandCapabilities != nil &&
+			input.commandCapabilities.HasAll(
+				"computer.screenshot",
+				"computer.click",
+				"computer.double-click",
+				"computer.right-click",
+				"computer.type",
+				"computer.press-key",
+				"computer.scroll",
+				"computer.move-cursor",
+				"computer.tool.list",
+				"computer.tool.describe",
+				"computer.tool.call",
+			) &&
+			hasCommandInputs(input.commandCapabilities, "computer.screenshot", "pid", "window-id") &&
+			hasCommandInputs(input.commandCapabilities, "computer.click", "pid", "window-id", "x", "y") &&
+			hasCommandInputs(input.commandCapabilities, "computer.double-click", "pid", "window-id", "x", "y") &&
+			hasCommandInputs(input.commandCapabilities, "computer.right-click", "pid", "window-id", "x", "y") &&
+			hasCommandInputs(input.commandCapabilities, "computer.type", "pid", "window-id", "text") &&
+			hasCommandInputs(input.commandCapabilities, "computer.press-key", "pid", "window-id", "key") &&
+			hasCommandInputs(input.commandCapabilities, "computer.scroll", "pid", "window-id", "x", "y", "direction", "amount") &&
+			hasCommandInputs(input.commandCapabilities, "computer.move-cursor", "x", "y") &&
+			hasCommandInputs(input.commandCapabilities, "computer.tool.describe", "name") &&
+			hasCommandInputs(input.commandCapabilities, "computer.tool.call", "name", "arguments-json")
+		if !enabled {
+			return CapabilityContribution{Enabled: false}, nil
+		}
+		skill, err := computerUseSkill(input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
+		policy, err := renderPolicyTemplate("policy_templates/computer-use.md", input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
 		return CapabilityContribution{Enabled: enabled,
-			Skills:         []SkillSpec{{ID: "tutti/computer-use", Name: computerUseSkillName, Files: map[string]string{"SKILL.md": computerUseSkill(input)}}},
-			PolicySections: []PolicySection{{Anchor: PolicyAnchorTools, Key: "handoff", Body: computerUseHandoffPolicyLines(input)}},
+			Skills:         []SkillSpec{{ID: "tutti/computer-use", Name: computerUseSkillName, Files: map[string]string{"SKILL.md": skill}}},
+			PolicySections: []PolicySection{{Anchor: PolicyAnchorTools, Key: "handoff", Body: policy}},
 			EnvOverlay:     computerUseEnv(enabled),
 		}, nil
 	}}
+}
+
+func hasCommandInputs(resolver *CommandResolver, id string, names ...string) bool {
+	if resolver == nil {
+		return false
+	}
+	for _, name := range names {
+		if !resolver.HasInput(id, name) {
+			return false
+		}
+	}
+	return true
 }
 
 func resolveCapabilities(ctx context.Context, input PrepareInput, profile DeploymentProfile, sources []SkillSource) (*resolvedCapabilities, error) {
 	if strings.TrimSpace(profile.Name) == "" && len(profile.Packs) == 0 {
 		profile = StandardProfile()
 	}
-	agentWorkflow, err := normalizeAgentWorkflowProfile(profile.AgentWorkflow)
+	hostFacts, err := normalizeHostFacts(profile.HostFacts)
 	if err != nil {
-		return nil, fmt.Errorf("resolve agent workflow profile: %w", err)
+		return nil, fmt.Errorf("resolve host facts: %w", err)
 	}
-	input.agentWorkflow = agentWorkflow
+	input.hostFacts = hostFacts
 	resolved := &resolvedCapabilities{
-		Title:         strings.TrimSpace(profile.Title),
-		Intro:         strings.TrimSpace(profile.Intro),
-		AgentWorkflow: agentWorkflow,
+		Title:     strings.TrimSpace(profile.Title),
+		Intro:     strings.TrimSpace(profile.Intro),
+		HostFacts: hostFacts,
 	}
 	if resolved.Title == "" {
 		resolved.Title = "Tutti Runtime"
@@ -233,6 +347,16 @@ func resolveCapabilities(ctx context.Context, input PrepareInput, profile Deploy
 			if section.Delivery != "" && section.Delivery != PolicyDeliveryProviderRuntime && section.Delivery != PolicyDeliverySkillBundle {
 				return nil, fmt.Errorf("capability pack %s uses unknown policy delivery %q", name, section.Delivery)
 			}
+			renderedBody, err := renderRuntimeTemplate(
+				fmt.Sprintf("policy-section:%s/%s", name, section.Key),
+				section.Body,
+				input,
+				nil,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("render capability pack %s policy section %s: %w", name, section.Key, err)
+			}
+			section.Body = renderedBody
 			section.Key = name + "/" + section.Key
 		}
 		resolved.Skills = append(resolved.Skills, contribution.Skills...)

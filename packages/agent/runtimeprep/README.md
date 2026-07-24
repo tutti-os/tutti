@@ -98,6 +98,14 @@ profile := runtimeprep.DeploymentProfile{
     Name:  "managed-vm",
     Title: "Managed VM Runtime",
     Intro: "This session runs inside the managed VM.",
+    HostFacts: runtimeprep.HostFacts{
+        TurnResources:  runtimeprep.AgentTurnResourcesReadPath,
+        WorkspaceScope: runtimeprep.AgentWorkspaceScopeRoom,
+        TargetContinuation: runtimeprep.AgentTargetContinuationProfile{
+            Mode: runtimeprep.AgentTargetContinuationExceptPrefixes,
+            UnsupportedTargetIDPrefixes: []string{"shared-agent:"},
+        },
+    },
     Packs: []runtimeprep.CapabilityPack{
         runtimeprep.CoreSkillsPack(),
         vmEnvironmentPack,
@@ -105,17 +113,37 @@ profile := runtimeprep.DeploymentProfile{
 }
 ```
 
-`DeploymentProfile.AgentWorkflow` selects the Agent CLI contract rendered into
-`tutti-cli`, `tutti-handoff`, runtime policy, and fallback command guides.
-Omitted fields keep Tutti's default progressive `agent get`, local turn
-resource paths, Turn cancellation, interaction responses, workspace
-environment scope, and continuation for every target. Hosts should set only
-real CLI differences. For example, a host can select
-`AgentSessionContextSummaryAndState`, `AgentTurnResourcesReadPath`,
-session-scoped cancellation, unavailable interaction responses, room scope,
-and `AgentTargetContinuationExceptPrefixes`. The latter takes explicit target
-id prefixes and documents those catalog targets as start-only without
-hard-coding host target kinds into shared templates.
+Every preparation requires `CommandCatalog`. Runtimeprep reads it once and
+builds one immutable, agent-facing command snapshot shared by Skills, policy,
+and `command-guide.md`. The host must remove trusted bindings such as room or
+workspace inputs before returning the catalog. Runtimeprep filters
+non-public/integration commands, preserves output metadata, and adds
+wrapper-owned invocation inputs such as wait timeouts. It does not synthesize a
+fallback catalog.
+
+Skill and policy Markdown use Go `text/template`. Runtimeprep exposes
+`has`, `hasAll`, `hasFamily`, `hasInput`, `inputValues`, `path`, `args`, and
+`command`. `command` resolves paths and flags from the snapshot, appends
+`--json` only when output metadata advertises JSON, and fails rendering for an
+unknown command, input, enum value, or malformed schema.
+
+```gotemplate
+{{if has "issue-manager.issue.task.create-batch"}}
+Persist tasks with
+`{{command "issue-manager.issue.task.create-batch"
+    (args "tasks-json" "'[{\"title\":\"<title>\"}]'")}}`.
+{{else if has "issue-manager.issue.task.create"}}
+Create tasks in order with
+`{{command "issue-manager.issue.task.create" (args "title" "<title>")}}`.
+{{end}}
+```
+
+`DeploymentProfile.HostFacts` contains only behavior that cannot be derived
+from command metadata: turn-resource path semantics, workspace scoping, and
+target continuation exceptions. Omitted fields use Tutti's local-path,
+workspace-environment, and continue-all defaults. Command presence, command
+paths, inputs, cancellation scope, response support, and conversation reads
+belong only in the command snapshot.
 
 ## Skill Injection
 

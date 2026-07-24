@@ -21,7 +21,11 @@ func (p InstructionFilePreparer) Prepare(_ context.Context, input ProviderPrepar
 		fileName = "AGENTS.md"
 	}
 	path := filepath.Join(input.Cwd, fileName)
-	writeResult, err := input.Store.WriteManagedBlock(path, tuttiCLIPolicy(input.PrepareInput))
+	policy, err := tuttiCLIPolicy(input.PrepareInput)
+	if err != nil {
+		return ProviderPrepareResult{}, err
+	}
+	writeResult, err := input.Store.WriteManagedBlock(path, policy)
 	if err != nil {
 		return ProviderPrepareResult{}, err
 	}

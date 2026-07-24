@@ -20,7 +20,6 @@ type PrepareInput struct {
 	Provider               string
 	Cwd                    string
 	CLICommand             string
-	CommandGuide           string
 	Title                  string
 	PermissionModeID       string
 	PlanMode               bool
@@ -47,8 +46,8 @@ type PrepareInput struct {
 	// logs, manifests, or generated instructions.
 	ModelEndpoint       *ModelEndpointConfig
 	resolved            *resolvedCapabilities
-	agentWorkflow       AgentWorkflowProfile
-	commandCapabilities *resolvedCommandCapabilities
+	hostFacts           HostFacts
+	commandCapabilities *CommandResolver
 	// ExternalRolloutSourcePath is the absolute path to the original provider
 	// CLI rollout/transcript file this session was imported from (Codex CLI's
 	// own on-disk conversation transcript under the user's real

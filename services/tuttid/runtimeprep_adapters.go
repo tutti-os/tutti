@@ -24,12 +24,29 @@ func (a runtimePrepCommandCatalog) Capabilities(ctx context.Context, input runti
 	})
 	out := make([]runtimeprep.CommandCapability, 0, len(capabilities))
 	for _, capability := range capabilities {
+		var table *runtimeprep.CommandTableOutput
+		if capability.Output.Table != nil {
+			columns := make([]runtimeprep.CommandTableColumn, 0, len(capability.Output.Table.Columns))
+			for _, column := range capability.Output.Table.Columns {
+				columns = append(columns, runtimeprep.CommandTableColumn{
+					Key:   column.Key,
+					Label: column.Label,
+				})
+			}
+			table = &runtimeprep.CommandTableOutput{Columns: columns}
+		}
 		out = append(out, runtimeprep.CommandCapability{
-			ID:            capability.ID,
-			Path:          append([]string(nil), capability.Path...),
-			Summary:       capability.Summary,
-			Description:   capability.Description,
-			InputSchema:   capability.InputSchema,
+			ID:          capability.ID,
+			Path:        append([]string(nil), capability.Path...),
+			Summary:     capability.Summary,
+			Description: capability.Description,
+			Visibility:  string(capability.Visibility),
+			InputSchema: capability.InputSchema,
+			Output: runtimeprep.CommandCapabilityOutput{
+				DefaultMode: string(capability.Output.DefaultMode),
+				JSON:        capability.Output.JSON,
+				Table:       table,
+			},
 			ExecutionMode: commandExecutionMode(capability.Execution),
 			Source: runtimeprep.CommandSource{
 				Kind:    runtimeprep.CommandSourceKind(capability.Source.Kind),

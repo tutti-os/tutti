@@ -45,8 +45,12 @@ func (p ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInpu
 	if err := os.MkdirAll(filepath.Dir(systemPromptPath), 0o700); err != nil {
 		return ProviderPrepareResult{}, fmt.Errorf("create claude system prompt directory: %w", err)
 	}
+	policy, err := tuttiCLIPolicy(input.PrepareInput)
+	if err != nil {
+		return ProviderPrepareResult{}, err
+	}
 	systemPrompt := joinPromptSections(
-		tuttiCLIPolicy(input.PrepareInput),
+		policy,
 		agentConversationDetailModeSystemPromptAppend(input.ConversationDetailMode),
 	)
 	if err := os.WriteFile(systemPromptPath, []byte(systemPrompt), 0o600); err != nil {

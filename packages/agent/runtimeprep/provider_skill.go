@@ -1,13 +1,15 @@
 package runtimeprep
 
 import (
+	"bytes"
 	"embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
+	"text/template"
 )
 
 const tuttiSkillName = "tutti-cli"
@@ -22,215 +24,193 @@ const commandGuideReferencePath = "command-guide.md"
 //go:embed skill_templates/*.md policy_templates/*.md
 var providerSkillTemplates embed.FS
 
-var unresolvedTemplatePlaceholder = regexp.MustCompile(`\{\{[A-Z0-9_]+\}\}`)
-
 type providerSkillSpec struct {
 	baseName string
 	files    map[string]string
 	skillID  string
 }
 
-func tuttiCLISkill(input PrepareInput) string {
-	return renderProviderSkillTemplate(
-		"skill_templates/tutti-cli.md",
-		map[string]string{
-			"{{COMMAND_SUMMARY}}":                commandGuideSummary(input),
-			"{{CLI_COMMAND}}":                    normalizeCLICommandName(input.CLICommand),
-			"{{AGENT_TARGET_ID}}":                strings.TrimSpace(input.AgentTargetID),
-			"{{AGENT_PROVIDER}}":                 strings.TrimSpace(input.Provider),
-			"{{AGENT_SESSION_ID}}":               strings.TrimSpace(input.AgentSessionID),
-			"{{AGENT_ROUTE_FIRST_GUIDANCE}}":     dynamicRouteFirstGuidance(input),
-			"{{AGENT_SESSION_MENTION_GUIDANCE}}": agentSessionMentionGuidance(input),
-			"{{AGENT_SESSION_CONTEXT_GUIDANCE}}": agentSessionContextSkillGuidance(input),
-			"{{APP_OPEN_GUIDANCE}}":              appOpenGuidance(input),
-			"{{FAMILY_REFERENCE}}":               dynamicFamilyReference(input),
-			"{{ISSUE_BREAKDOWN_GUIDANCE}}":       issueBreakdownPersistenceGuidance(input),
-			"{{ISSUE_RUN_METADATA_GUIDANCE}}":    issueRunMetadataGuidance(input),
-			"{{OUTPUT_RULES}}":                   commandOutputGuidance(input),
-		},
-	)
+func tuttiCLISkill(input PrepareInput) (string, error) {
+	return renderProviderSkillTemplate("skill_templates/tutti-cli.md", input, nil)
 }
 
-func tuttiHandoffSkill(input PrepareInput) string {
-	return renderProviderSkillTemplate(
-		"skill_templates/tutti-handoff.md",
-		map[string]string{
-			"{{CLI_COMMAND}}":                    normalizeCLICommandName(input.CLICommand),
-			"{{AGENT_SESSION_ID}}":               strings.TrimSpace(input.AgentSessionID),
-			"{{AGENT_IMAGE_HANDOFF_GUIDANCE}}":   agentImageHandoffGuidance(input),
-			"{{AGENT_FETCH_GUIDANCE}}":           agentFetchGuidance(input),
-			"{{AGENT_WAIT_DISCIPLINE_GUIDANCE}}": agentWaitDisciplineAndCommandGuidance(input),
-		},
-	)
+func tuttiHandoffSkill(input PrepareInput) (string, error) {
+	return renderProviderSkillTemplate("skill_templates/tutti-handoff.md", input, nil)
 }
 
-func issueManagerSkill(input PrepareInput) string {
-	return renderProviderSkillTemplate(
-		"skill_templates/issue-manager.md",
-		map[string]string{
-			"{{ISSUE_BREAKDOWN_GUIDANCE}}":    issueBreakdownPersistenceGuidance(input),
-			"{{ISSUE_GET_COMMAND}}":           firstNonEmptyText(issueGetInvocation(input), "No issue-get command is advertised by the current host."),
-			"{{ISSUE_REFERENCE_GUIDANCE}}":    issueReferenceGuidance(input),
-			"{{ISSUE_RUN_COMPLETE_GUIDANCE}}": issueRunCompleteGuidance(input),
-			"{{ISSUE_RUN_METADATA_GUIDANCE}}": issueRunMetadataGuidance(input),
-			"{{ISSUE_RUN_OPEN_GUIDANCE}}":     issueRunOpenGuidance(input),
-			"{{ISSUE_APP_OPEN_GUIDANCE}}":     issueAppOpenGuidance(input),
-			"{{ISSUE_EXTRA_READ_GUIDANCE}}":   issueExtraReadGuidance(input),
-		},
-	)
+func issueManagerSkill(input PrepareInput) (string, error) {
+	return renderProviderSkillTemplate("skill_templates/issue-manager.md", input, nil)
 }
 
-func workspaceAppSkill(input PrepareInput) string {
-	return renderProviderSkillTemplate(
-		"skill_templates/workspace-app.md",
-		map[string]string{
-			"{{CLI_COMMAND}}": normalizeCLICommandName(input.CLICommand),
-		},
-	)
+func workspaceAppSkill(input PrepareInput) (string, error) {
+	return renderProviderSkillTemplate("skill_templates/workspace-app.md", input, nil)
 }
 
-func referenceSkill(input PrepareInput) string {
-	return renderProviderSkillTemplate(
-		"skill_templates/reference.md",
-		map[string]string{
-			"{{REFERENCE_MENTION_CONTRACT}}": referenceMentionContract(input),
-			"{{REFERENCE_RESOLVE_GUIDANCE}}": referenceResolveGuidance(input),
-		},
-	)
+func referenceSkill(input PrepareInput) (string, error) {
+	return renderProviderSkillTemplate("skill_templates/reference.md", input, nil)
 }
 
-func browserUseSkill(input PrepareInput) string {
-	return renderProviderSkillTemplate(
-		"skill_templates/browser-use.md",
-		map[string]string{
-			"{{CLI_COMMAND}}": normalizeCLICommandName(input.CLICommand),
-		},
-	)
+func browserUseSkill(input PrepareInput) (string, error) {
+	return renderProviderSkillTemplate("skill_templates/browser-use.md", input, nil)
 }
 
-func computerUseSkill(input PrepareInput) string {
-	return renderProviderSkillTemplate(
-		"skill_templates/computer-use.md",
-		map[string]string{
-			"{{CLI_COMMAND}}": normalizeCLICommandName(input.CLICommand),
-		},
-	)
+func computerUseSkill(input PrepareInput) (string, error) {
+	return renderProviderSkillTemplate("skill_templates/computer-use.md", input, nil)
 }
 
-func renderProviderSkillTemplate(path string, replacements map[string]string) string {
+type runtimeTemplateData struct {
+	PrepareInput
+	HostFacts       HostFacts
+	CommandFamilies []string
+	OutputModes     []string
+	ProfileIntro    string
+	ProfileTitle    string
+}
+
+func renderProviderSkillTemplate(path string, input PrepareInput, replacements map[string]string) (string, error) {
 	content, err := providerSkillTemplates.ReadFile(path)
 	if err != nil {
-		panic(fmt.Sprintf("read provider skill template %s: %v", path, err))
+		return "", fmt.Errorf("read provider skill template %s: %w", path, err)
 	}
-	rendered, err := RenderTemplate(string(content), replacements)
+	return renderRuntimeTemplate(path, string(content), input, replacements)
+}
+
+func renderPolicyTemplate(path string, input PrepareInput) (string, error) {
+	rendered, err := renderProviderSkillTemplate(path, input, nil)
+	return strings.TrimSpace(rendered), err
+}
+
+func renderRuntimeTemplate(name string, content string, input PrepareInput, replacements map[string]string) (string, error) {
+	funcs := template.FuncMap{
+		"args":        commandTemplateArguments,
+		"command":     templateCommand(input),
+		"has":         templateHas(input),
+		"hasAll":      templateHasAll(input),
+		"hasFamily":   templateHasFamily(input),
+		"hasInput":    templateHasInput(input),
+		"inputValues": templateInputValues(input),
+		"path":        templateCommandPath(input),
+	}
+	for placeholder, replacement := range replacements {
+		name := strings.TrimSuffix(strings.TrimPrefix(placeholder, "{{"), "}}")
+		value := replacement
+		funcs[name] = func() string { return value }
+	}
+	parsed, err := template.New(name).Option("missingkey=error").Funcs(funcs).Parse(content)
 	if err != nil {
-		panic(fmt.Sprintf("render provider skill template %s: %v", path, err))
+		return "", fmt.Errorf("parse runtime template %s: %w", name, err)
 	}
-	return rendered
+	resolver := input.commandCapabilities
+	data := runtimeTemplateData{
+		PrepareInput: input,
+		HostFacts:    resolvedHostFacts(input),
+		ProfileIntro: resolvedProfileIntro(input),
+		ProfileTitle: resolvedProfileTitle(input),
+	}
+	if resolver != nil {
+		data.CommandFamilies = resolver.Families()
+		data.OutputModes = resolver.OutputModes()
+	}
+	var rendered bytes.Buffer
+	if err := parsed.Execute(&rendered, data); err != nil {
+		return "", fmt.Errorf("render runtime template %s: %w", name, err)
+	}
+	return rendered.String(), nil
 }
 
-// RenderTemplate renders runtime preparation Markdown using the canonical
-// placeholder syntax and rejects unresolved placeholders.
-func RenderTemplate(template string, replacements map[string]string) (string, error) {
-	for _, placeholder := range unresolvedTemplatePlaceholder.FindAllString(template, -1) {
-		if _, ok := replacements[placeholder]; !ok {
-			return "", fmt.Errorf("unresolved template placeholder %s", placeholder)
+func templateCommand(input PrepareInput) func(string, ...commandArguments) (string, error) {
+	return func(id string, args ...commandArguments) (string, error) {
+		if input.commandCapabilities == nil {
+			return "", fmt.Errorf("agent command %q cannot be rendered without a command snapshot", id)
 		}
+		return input.commandCapabilities.Command(id, args...)
 	}
-	keys := make([]string, 0, len(replacements))
-	for placeholder := range replacements {
-		keys = append(keys, placeholder)
-	}
-	sort.Strings(keys)
-	parts := make([]string, 0, len(keys)*2)
-	for _, placeholder := range keys {
-		parts = append(parts, placeholder, replacements[placeholder])
-	}
-	rendered := template
-	if len(parts) > 0 {
-		rendered = strings.NewReplacer(parts...).Replace(template)
-	}
-	return rendered, nil
 }
 
-func providerSkills(input PrepareInput) []providerSkillSpec {
-	if input.resolved != nil {
-		skills := make([]providerSkillSpec, 0, len(input.resolved.Skills))
-		for _, skill := range input.resolved.Skills {
-			if !skillSupportsProvider(skill, input.Provider) {
-				continue
-			}
-			id := strings.TrimSpace(skill.ID)
-			if id == "" {
-				id = "tutti/" + strings.TrimSpace(skill.Name)
-			}
-			skills = append(skills, providerSkillSpec{
-				baseName: strings.TrimSpace(skill.Name),
-				files:    copySkillBundleFiles(skill.Files),
-				skillID:  id,
-			})
+func templateCommandPath(input PrepareInput) func(string) (string, error) {
+	return func(id string) (string, error) {
+		if input.commandCapabilities == nil {
+			return "", fmt.Errorf("agent command %q cannot be rendered without a command snapshot", id)
 		}
-		return skills
+		return input.commandCapabilities.Path(id)
 	}
-	skills := []providerSkillSpec{
-		{
-			baseName: tuttiSkillName,
-			files: map[string]string{
-				"SKILL.md":                tuttiCLISkill(input),
-				commandGuideReferencePath: commandGuideReference(input),
-			},
-		},
-		{
-			baseName: tuttiHandoffSkillName,
-			files:    map[string]string{"SKILL.md": tuttiHandoffSkill(input)},
-		},
-		{
-			baseName: issueManagerSkillName,
-			files:    map[string]string{"SKILL.md": issueManagerSkill(input)},
-		},
-		{
-			baseName: workspaceAppSkillName,
-			files:    map[string]string{"SKILL.md": workspaceAppSkill(input)},
-		},
-		{
-			baseName: referenceSkillName,
-			files:    map[string]string{"SKILL.md": referenceSkill(input)},
-		},
+}
+
+func templateHas(input PrepareInput) func(string) bool {
+	return func(id string) bool {
+		return input.commandCapabilities != nil && input.commandCapabilities.Has(id)
 	}
-	// Browser use is a daemon-owned `tutti browser` CLI; inject its skill only
-	// when enabled for this session (capability gate).
-	if input.BrowserUse && BrowserUseDefaultEnabled() {
+}
+
+func templateHasAll(input PrepareInput) func(...string) bool {
+	return func(ids ...string) bool {
+		return input.commandCapabilities != nil && input.commandCapabilities.HasAll(ids...)
+	}
+}
+
+func templateHasFamily(input PrepareInput) func(string) bool {
+	return func(family string) bool {
+		return input.commandCapabilities != nil && input.commandCapabilities.HasFamily(family)
+	}
+}
+
+func templateHasInput(input PrepareInput) func(string, string) bool {
+	return func(id string, name string) bool {
+		return input.commandCapabilities != nil && input.commandCapabilities.HasInput(id, name)
+	}
+}
+
+func templateInputValues(input PrepareInput) func(string, string) []string {
+	return func(id string, name string) []string {
+		if input.commandCapabilities == nil {
+			return nil
+		}
+		return input.commandCapabilities.InputValues(id, name)
+	}
+}
+
+func providerSkills(input PrepareInput) ([]providerSkillSpec, error) {
+	if input.resolved == nil {
+		return nil, errors.New("provider skills require resolved runtime capabilities")
+	}
+	skills := make([]providerSkillSpec, 0, len(input.resolved.Skills))
+	for _, skill := range input.resolved.Skills {
+		if !skillSupportsProvider(skill, input.Provider) {
+			continue
+		}
+		id := strings.TrimSpace(skill.ID)
+		if id == "" {
+			id = "tutti/" + strings.TrimSpace(skill.Name)
+		}
 		skills = append(skills, providerSkillSpec{
-			baseName: browserUseSkillName,
-			files:    map[string]string{"SKILL.md": browserUseSkill(input)},
+			baseName: strings.TrimSpace(skill.Name),
+			files:    copySkillBundleFiles(skill.Files),
+			skillID:  id,
 		})
 	}
-	// Computer use is a daemon-owned `tutti computer` CLI; inject its skill only
-	// when enabled and locally runnable for this session (capability gate).
-	if input.ComputerUse && ComputerUseDefaultEnabled() {
-		skills = append(skills, providerSkillSpec{
-			baseName: computerUseSkillName,
-			files:    map[string]string{"SKILL.md": computerUseSkill(input)},
-		})
-	}
-	for _, extra := range input.ExtraSkills {
-		skills = append(skills, providerSkillSpec{
-			baseName: extra.Name,
-			files:    copySkillBundleFiles(extra.Files),
-		})
-	}
-	return skills
+	return skills, nil
 }
 
 func installProviderNativeSkills(root string, input PrepareInput) ([]string, error) {
-	return installProviderNativeSkillSpecs(root, providerSkills(input))
+	skills, err := providerSkills(input)
+	if err != nil {
+		return nil, err
+	}
+	return installProviderNativeSkillSpecs(root, skills)
 }
 
-func renderProviderSkillBundle(input PrepareInput) SkillBundle {
-	skills := providerSkills(input)
+func renderProviderSkillBundle(input PrepareInput) (SkillBundle, error) {
+	skills, err := providerSkills(input)
+	if err != nil {
+		return SkillBundle{}, err
+	}
 	records := make([]SkillMaterializationRecord, 0, len(skills))
 	for _, skill := range skills {
 		records = append(records, providerSkillSpecRecord(skill))
+	}
+	prompt, err := recommendedSystemPrompt(input)
+	if err != nil {
+		return SkillBundle{}, err
 	}
 	return SkillBundle{
 		SchemaVersion:           2,
@@ -238,20 +218,24 @@ func renderProviderSkillBundle(input PrepareInput) SkillBundle {
 		Provider:                strings.TrimSpace(input.Provider),
 		AgentSessionID:          strings.TrimSpace(input.AgentSessionID),
 		CLICommand:              normalizeCLICommandName(input.CLICommand),
-		RecommendedSystemPrompt: recommendedSystemPrompt(input),
+		RecommendedSystemPrompt: prompt,
 		Skills:                  records,
-	}
+	}, nil
 }
 
-func recommendedSystemPrompt(input PrepareInput) *RecommendedSystemPrompt {
-	content := strings.TrimSpace(tuttiSkillBundleRecommendedPolicy(input))
+func recommendedSystemPrompt(input PrepareInput) (*RecommendedSystemPrompt, error) {
+	rendered, err := tuttiSkillBundleRecommendedPolicy(input)
+	if err != nil {
+		return nil, err
+	}
+	content := strings.TrimSpace(rendered)
 	if content == "" {
-		return nil
+		return nil, nil
 	}
 	return &RecommendedSystemPrompt{
 		Format:  "text/markdown",
 		Content: content,
-	}
+	}, nil
 }
 
 func providerSkillSpecRecord(spec providerSkillSpec) SkillMaterializationRecord {

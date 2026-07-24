@@ -28,12 +28,12 @@ func TestTuttiAgentPreparerUsesExplicitAuthSourceAndInstallsSkills(t *testing.T)
 	}
 	store := LocalStore{StateDir: t.TempDir()}
 	result, err := preparer.Prepare(context.Background(), ProviderPrepareInput{
-		PrepareInput: PrepareInput{
+		PrepareInput: testResolvedInput(t, PrepareInput{
 			AgentSessionID: "session-1",
 			AgentTargetID:  "local:tutti-agent",
 			Provider:       "tutti-agent",
 			CLICommand:     "tutti",
-		},
+		}),
 		RuntimeRoot: runtimeRoot,
 		Store:       store,
 	})
@@ -71,7 +71,7 @@ func TestTuttiAgentPreparerRejectsRelativeAuthSource(t *testing.T) {
 		},
 	}
 	_, err := preparer.Prepare(context.Background(), ProviderPrepareInput{
-		PrepareInput: PrepareInput{Provider: "tutti-agent"},
+		PrepareInput: testResolvedInput(t, PrepareInput{Provider: "tutti-agent"}),
 		RuntimeRoot:  t.TempDir(),
 		Store:        LocalStore{StateDir: t.TempDir()},
 	})
@@ -97,7 +97,7 @@ func TestTuttiAgentPreparerDoesNotFallbackWhenExplicitAuthSourceIsEmpty(t *testi
 	runtimeRoot := t.TempDir()
 	preparer := TuttiAgentPreparer{ResolveAuthSource: func(context.Context, PrepareInput) (string, error) { return "", nil }}
 	_, err := preparer.Prepare(context.Background(), ProviderPrepareInput{
-		PrepareInput: PrepareInput{Provider: "tutti-agent"},
+		PrepareInput: testResolvedInput(t, PrepareInput{Provider: "tutti-agent"}),
 		RuntimeRoot:  runtimeRoot,
 		Store:        LocalStore{StateDir: t.TempDir()},
 	})

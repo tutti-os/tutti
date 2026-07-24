@@ -1,0 +1,1 @@
+- For browser tasks — visiting URLs, reading pages, clicking, filling forms, or screenshots — use `$browser-use` only; do not use provider-native browser skills or direct CDP automation.

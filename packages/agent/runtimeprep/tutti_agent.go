@@ -45,9 +45,16 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 	if err := prepareTuttiAgentHome(home, input.PrepareInput, authSource, authSourceConfigured); err != nil {
 		return ProviderPrepareResult{}, err
 	}
+	if _, err := installProviderNativeSkills(filepath.Join(home, "skills"), input.PrepareInput); err != nil {
+		return ProviderPrepareResult{}, fmt.Errorf("install tutti-agent native skills: %w", err)
+	}
 	logRuntimePrepareTrace("runtime_prepare.tutti_agent.home_prepared", input.PrepareInput, nil)
 	instructionsPath := filepath.Join(home, "AGENTS.md")
-	writeResult, err := input.Store.WriteManagedBlock(instructionsPath, tuttiCLIPolicy(input.PrepareInput))
+	policy, err := tuttiCLIPolicy(input.PrepareInput)
+	if err != nil {
+		return ProviderPrepareResult{}, err
+	}
+	writeResult, err := input.Store.WriteManagedBlock(instructionsPath, policy)
 	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
@@ -67,7 +74,8 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 }
 
 // PrepareTuttiAgentHome materializes a TUTTI_AGENT_HOME with the user's auth
-// exposed and a session-safe config pinned to the Tutti LLM gateway.
+// exposed and a session-safe config pinned to the Tutti LLM gateway. Session
+// Skills are installed only by TuttiAgentPreparer after capabilities resolve.
 func PrepareTuttiAgentHome(home string, input PrepareInput) error {
 	return prepareTuttiAgentHome(home, input, "", false)
 }
@@ -79,13 +87,7 @@ func prepareTuttiAgentHome(home string, input PrepareInput, authSource string, a
 	if err := exposeUserTuttiAgentFiles(home, authSource, authSourceConfigured); err != nil {
 		return err
 	}
-	if err := ensureTuttiAgentSessionConfig(filepath.Join(home, "config.toml"), input); err != nil {
-		return err
-	}
-	if _, err := installProviderNativeSkills(filepath.Join(home, "skills"), input); err != nil {
-		return fmt.Errorf("install tutti-agent native skills: %w", err)
-	}
-	return nil
+	return ensureTuttiAgentSessionConfig(filepath.Join(home, "config.toml"), input)
 }
 
 func exposeUserTuttiAgentFiles(home string, explicitAuthSource string, explicitAuthSourceConfigured bool) error {

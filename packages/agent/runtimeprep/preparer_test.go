@@ -57,7 +57,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatal(err)
 	}
 
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		AgentTargetID:  "local:codex",
@@ -148,7 +148,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if got, want := string(sharedModelsCache), `{"models":["refreshed"]}`; got != want {
 		t.Fatalf("shared codex models cache = %q, want %q", got, want)
 	}
-	secondPrepared, err := NewDefaultPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+	secondPrepared, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-2",
 		AgentTargetID:  "local:codex",
@@ -270,7 +270,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatalf("tutti command guide reference missing: %v", err)
 	}
 	if !strings.Contains(string(commandGuideReference), "tutti agent sessions") ||
-		!strings.Contains(string(commandGuideReference), "tutti issue list --topic-id <topic-id>") {
+		!strings.Contains(string(commandGuideReference), "tutti issue get --issue-id <issue-id> --json") {
 		t.Fatalf("tutti command guide reference = %q", string(commandGuideReference))
 	}
 	if !strings.Contains(string(skill), "local Tutti daemon") ||
@@ -294,11 +294,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		!strings.Contains(string(issueSkill), "command-guide.md") ||
 		!strings.Contains(string(issueSkill), "## Inspection Mode") ||
 		!strings.Contains(string(issueSkill), "Create the run yourself before doing the work") ||
-		!strings.Contains(string(issueSkill), "inspect issue tasks before creating a run") ||
-		!strings.Contains(string(issueSkill), "execute each child task in issue order") ||
-		!strings.Contains(string(issueSkill), "--agent-target-id local:codex --json") ||
-		!strings.Contains(string(issueSkill), "current AgentGUI session from the runtime context") ||
-		!strings.Contains(string(issueSkill), "complete that same run") ||
+		!strings.Contains(string(issueSkill), "tutti issue run create --issue-id <issue-id> --agent-provider codex --json") ||
+		!strings.Contains(string(issueSkill), "with child tasks execute them in order") ||
+		!strings.Contains(string(issueSkill), "Complete that same run") ||
 		!strings.Contains(string(issueSkill), "Do not edit code, do not execute the task, and do not create or complete runs in breakdown mode") ||
 		!strings.Contains(string(issueSkill), "**Done when:**") {
 		t.Fatalf("issue-manager skill content = %q", string(issueSkill))
@@ -324,7 +322,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		!strings.Contains(string(workspaceAppSkill), "use injected `$tutti-cli`") ||
 		!strings.Contains(string(workspaceAppSkill), "command-guide.md") ||
 		!strings.Contains(string(workspaceAppSkill), "Do not derive filesystem paths from the plugin directory, plugin name, or skill slug") ||
-		!strings.Contains(string(workspaceAppSkill), "inherits the caller agent session working directory") {
+		!strings.Contains(string(workspaceAppSkill), "inherit the caller agent session working directory") {
 		t.Fatalf("workspace-app skill content = %q", string(workspaceAppSkill))
 	}
 	if strings.Contains(string(workspaceAppSkill), "turn-resources") || strings.Contains(string(workspaceAppSkill), "--image <localPath>") {
@@ -434,7 +432,7 @@ func TestDefaultPreparerCodexRefreshesRunConfigFromCurrentUserConfig(t *testing.
 		Provider:       "codex",
 		Cwd:            t.TempDir(),
 	}
-	first, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), input)
+	first, err := newTestPreparer(stateDir).Prepare(t.Context(), input)
 	if err != nil {
 		t.Fatalf("first Prepare() error = %v", err)
 	}
@@ -457,7 +455,7 @@ func TestDefaultPreparerCodexRefreshesRunConfigFromCurrentUserConfig(t *testing.
 	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	second, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), input)
+	second, err := newTestPreparer(stateDir).Prepare(t.Context(), input)
 	if err != nil {
 		t.Fatalf("second Prepare() error = %v", err)
 	}
@@ -498,7 +496,7 @@ func TestDefaultPreparerCodexRemovesRunConfigWhenUserConfigDisappears(t *testing
 		Provider:       "codex",
 		Cwd:            t.TempDir(),
 	}
-	first, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), input)
+	first, err := newTestPreparer(stateDir).Prepare(t.Context(), input)
 	if err != nil {
 		t.Fatalf("first Prepare() error = %v", err)
 	}
@@ -506,7 +504,7 @@ func TestDefaultPreparerCodexRemovesRunConfigWhenUserConfigDisappears(t *testing
 	if err := os.Remove(userConfigPath); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), input); err != nil {
+	if _, err := newTestPreparer(stateDir).Prepare(t.Context(), input); err != nil {
 		t.Fatalf("second Prepare() error = %v", err)
 	}
 	config, err := os.ReadFile(codexConfigPath)
@@ -576,7 +574,7 @@ func TestDefaultPreparerCodexExposesRelativeModelCatalogJSON(t *testing.T) {
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-catalog",
 		AgentTargetID:  "local:codex",
@@ -621,7 +619,7 @@ func TestDefaultPreparerCodexUserSkillNameWinsBeforeTuttiInjection(t *testing.T)
 	writeSidecarTestFile(t, filepath.Join(userCodexHome, "skills", "tutti-cli", "SKILL.md"), "---\nname: tutti-cli\n---\nUser tutti skill\n")
 
 	stateDir := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "codex",
@@ -670,7 +668,7 @@ func TestDefaultPreparerCodexWritesProjectRootMarkersDisabledConfigWithoutUserCo
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "codex",
@@ -703,7 +701,7 @@ func TestDefaultPreparerCodexWritesGeneralConversationDetailModeToSessionConfig(
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:            "workspace-1",
 		AgentSessionID:         "session-1",
 		Provider:               "codex",
@@ -950,7 +948,7 @@ func TestDefaultPreparerUsesStateRootCLIShimName(t *testing.T) {
 	}
 	cwd := t.TempDir()
 
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "codex",
@@ -990,7 +988,7 @@ func TestDefaultPreparerCleanupRemovesManagedBlocksAndRuntimeRoot(t *testing.T) 
 	if err := os.WriteFile(agentsPath, []byte("user guidance\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	preparer := NewDefaultPreparer(stateDir)
+	preparer := newTestPreparer(stateDir)
 	_, err := preparer.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
@@ -1026,7 +1024,7 @@ func TestDefaultPreparerCleanupRemovesManagedBlocksAndRuntimeRoot(t *testing.T) 
 func TestDefaultPreparerCodexUsesSessionScopedInstructionFile(t *testing.T) {
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	preparer := NewDefaultPreparer(stateDir)
+	preparer := newTestPreparer(stateDir)
 	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
@@ -1059,7 +1057,7 @@ func TestDefaultPreparerRejectsMissingCwd(t *testing.T) {
 	stateDir := t.TempDir()
 	missingCwd := filepath.Join(t.TempDir(), "deleted-project")
 
-	_, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	_, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "codex",
@@ -1088,7 +1086,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:            "workspace-1",
 		AgentSessionID:         "session-1",
 		Provider:               "claude-code",
@@ -1146,14 +1144,14 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 	if !strings.Contains(string(systemPrompt), "## Mention Routing") ||
 		!strings.Contains(string(systemPrompt), "| URI") ||
-		!strings.Contains(string(systemPrompt), "Fallback CLI Command") ||
+		!strings.Contains(string(systemPrompt), "Fallback") ||
 		!strings.Contains(string(systemPrompt), "`mention://workspace-issue/<issueId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "`mention://workspace-app/<appId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "`mention://workspace-reference/<id>?source=...&workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "`mention://agent-session/<sessionId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "`mention://agent-target/<targetId>?workspaceId=...`") ||
-		!strings.Contains(string(systemPrompt), "Provider Skill tool exists -> call exact visible name for matching `$...` skill") ||
-		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
+		!strings.Contains(string(systemPrompt), "If a provider Skill tool exists, call the exact visible name") ||
+		!strings.Contains(string(systemPrompt), "If the Skill is unavailable, read its materialized `SKILL.md`") ||
 		!strings.Contains(string(systemPrompt), "Claude Code mention routing") ||
 		!strings.Contains(string(systemPrompt), "Claude Code skill names may be namespaced") ||
 		!strings.Contains(string(systemPrompt), "`tutti-cli:tutti-handoff`") ||
@@ -1174,7 +1172,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "bounded shell/script") ||
 		!strings.Contains(string(systemPrompt), "agent wait --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "agent get --session-id <session-id> --json") ||
-		!strings.Contains(string(systemPrompt), "verify with `agent list`; hand off, do not do it yourself") {
+		!strings.Contains(string(systemPrompt), "Agent handoff decisions belong to `$tutti-handoff`") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
 	}
 	if !strings.Contains(string(systemPrompt), "# Host App Context") ||
@@ -1190,11 +1188,10 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 	if !strings.Contains(string(systemPrompt), "Claude Code skill names may be namespaced") ||
 		!strings.Contains(string(systemPrompt), "Claude Code skill listings can omit descriptions") ||
-		!strings.Contains(string(systemPrompt), "Provider Skill tool exists -> call exact visible name for matching `$...` skill") ||
-		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
-		!strings.Contains(string(systemPrompt), "`mention://...` = internal data. Not URL/path.") ||
+		!strings.Contains(string(systemPrompt), "If a provider Skill tool exists, call the exact visible name") ||
+		!strings.Contains(string(systemPrompt), "If the Skill is unavailable, read its materialized `SKILL.md`") ||
+		!strings.Contains(string(systemPrompt), "`mention://...` is internal data, not a URL or path") ||
 		!strings.Contains(string(systemPrompt), "`mention://agent-target/<targetId>?workspaceId=...`") ||
-		!strings.Contains(string(systemPrompt), "does not fetch execution messages") ||
 		!strings.Contains(string(systemPrompt), "agent get --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") {
 		t.Fatalf("claude system prompt content = %q, want strict Tutti mention routing", string(systemPrompt))
@@ -1267,7 +1264,7 @@ func TestDefaultPreparerClaudeCodeSetsFallbackExecutableFromPath(t *testing.T) {
 	t.Setenv("PATH", binDir)
 	t.Setenv("CLAUDE_CODE_EXECUTABLE", "")
 
-	prepared, err := NewDefaultPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "claude-code",
@@ -1300,7 +1297,7 @@ func TestDefaultPreparerClaudeCodePrefersManagedBinaryOverPath(t *testing.T) {
 	writeFakeExecutable(t, managed)
 	writeManagedClaudePointer(t, stateDir, managed)
 
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "claude-code",
@@ -1328,7 +1325,7 @@ func TestDefaultPreparerCursorUsesRuntimePluginDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	preparer := NewDefaultPreparer(stateDir)
+	preparer := newTestPreparer(stateDir)
 	preparer.CLICommand = "tutti-dev"
 	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
@@ -1418,7 +1415,7 @@ func TestDefaultPreparerClaudePlanModeDoesNotOverrideConfigDir(t *testing.T) {
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
 
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "claude-code",
@@ -1464,7 +1461,7 @@ func TestTuttiAgentConfigWithLLMProviderPinsExistingRootProvider(t *testing.T) {
 func TestDefaultPreparerCleanupRemovesClaudeSystemPromptRuntimeRoot(t *testing.T) {
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	preparer := NewDefaultPreparer(stateDir)
+	preparer := newTestPreparer(stateDir)
 	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
@@ -1526,7 +1523,7 @@ func TestCodexPreparerSkipsUserBrowserSkillWhenBrowserUseEnabled(t *testing.T) {
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		Provider:       "codex",
@@ -1645,7 +1642,7 @@ func TestDefaultPreparerCodexExposesImportedRolloutFileFromPrepareInput(t *testi
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:               "workspace-1",
 		AgentSessionID:            "session-1",
 		AgentTargetID:             "local:codex",
@@ -1675,7 +1672,7 @@ func TestDefaultPreparerCodexSkipsRolloutExposureForNonImportedSession(t *testin
 	t.Setenv("HOME", home)
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		AgentTargetID:  "local:codex",
