@@ -118,6 +118,10 @@ The directory purpose is a constrained use of the same source architecture:
 - a source that declares `directoryCreatable` implements `createDirectory()`;
   it owns path-segment validation, parent-boundary checks, persistence, and the
   canonical node returned after refreshing the parent;
+- a host header mutation may ask the picker to select a newly created or
+  uploaded directory through a `ReferenceLocateTarget`; the source owns
+  translating that durable target into opaque node ids, while the picker owns
+  loading the resolved path and updating its selection;
 - picker/controller code routes creation by `sourceId` and may update selection
   and loaded child state, but never constructs paths from opaque node ids.
 

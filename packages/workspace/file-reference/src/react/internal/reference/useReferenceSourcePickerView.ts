@@ -977,6 +977,30 @@ export function useReferenceSourcePickerView({
       }
       controller.refreshChildren(currentNode);
     },
+    selectTarget: async (target: ReferenceLocateTarget): Promise<boolean> => {
+      const path = await controller.locatePath(target);
+      const targetNode = path.at(-1);
+      if (!targetNode || !isSelectable(targetNode)) {
+        return false;
+      }
+      const parentPath = path.slice(0, -1);
+      const parentNode = parentPath.at(-1) ?? null;
+      controller.setActiveSource(target.sourceId);
+      controller.setSearchScope(null);
+      controller.clearSelection();
+      controller.toggleSelection(targetNode);
+      setBreadcrumbBySource((current) => ({
+        ...current,
+        [target.sourceId]: parentPath
+      }));
+      if (parentNode) {
+        controller.ensureChildren(parentNode);
+      } else {
+        controller.ensureSourceRoot(target.sourceId);
+      }
+      setFocusedNode(targetNode);
+      return true;
+    },
     isSelectable,
     isSelected,
     isOpeningReference,

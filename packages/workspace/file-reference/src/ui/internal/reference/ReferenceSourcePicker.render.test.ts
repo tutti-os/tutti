@@ -923,6 +923,7 @@ function createFolderOnlyView(node: ReferenceNode) {
     revealNode: async () => {},
     searchQuery: "",
     searchResults: [],
+    selectTarget: async () => false,
     selectGroup: () => {},
     selectedGroupKey: "workspace:root",
     selection: [],

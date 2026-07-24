@@ -696,9 +696,9 @@ otherwise recover interactively.
 Do not restore flat compatibility props or hide workflow inside a render slot.
 The optional `renderSlots.projectDirectoryPickerHeaderActions` slot is limited
 to host presentation beside the directory picker's title. AgentGUI owns picker
-state and supplies a refresh callback after host mutations; the host owns the
-action's side effects and must not duplicate picker navigation or selection
-state.
+state and supplies refresh plus source-located target selection after host
+mutations; the host owns the action's side effects and must not duplicate
+picker navigation or selection state.
 Hosts that render capabilities owned by another device set
 `hostCapabilities.capabilityControlsReadOnly`; AgentGUI keeps owner-supported
 Browser/Computer entries visible but disables their mutation and setup actions.

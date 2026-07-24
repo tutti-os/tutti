@@ -412,6 +412,10 @@ test("single-selection picker uses the source heading as root and selects sideba
         ]
       }
     );
+    aggregator.locateTarget = async (_scope, _sourceId, params) =>
+      params.path === documentsOnlyProject.ref.nodeId
+        ? [documentsOnlyProject.ref]
+        : null;
     let latestView: PickerView | null = null;
 
     function Harness() {
@@ -489,6 +493,19 @@ test("single-selection picker uses the source heading as root and selects sideba
       view.currentEntries.map((entry) => entry.displayName),
       ["proj-1", "photo.png"]
     );
+
+    let selectedUploadedDirectory = false;
+    await act(async () => {
+      selectedUploadedDirectory = await view.selectTarget({
+        sourceId: "workspace-file",
+        params: { path: documentsOnlyProject.ref.nodeId }
+      });
+    });
+    view = requireLatestView(latestView);
+    assert.equal(selectedUploadedDirectory, true);
+    assert.deepEqual(view.selection, [documentsOnlyProject]);
+    assert.equal(view.currentNode, null);
+    assert.equal(view.focusedNode, documentsOnlyProject);
   } finally {
     if (root) {
       await act(async () => {
