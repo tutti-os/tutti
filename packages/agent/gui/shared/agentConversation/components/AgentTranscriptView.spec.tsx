@@ -117,6 +117,193 @@ describe("AgentTranscriptView", () => {
     ).toBe(false);
   });
 
+  it("renders each participant header once per turn across tool progress rows", () => {
+    const baseConversation = projectAgentConversationVM(
+      detailViewModel({
+        session: normalizeAgentActivitySession({
+          ...detailViewModel().session,
+          activeTurnId: "turn-1"
+        }),
+        sessionTurns: [canonicalTurn()]
+      })
+    );
+    const message = (
+      id: string,
+      body: string,
+      presentationKind: "content" | "specific-progress" = "content"
+    ) => ({
+      kind: "message-content" as const,
+      id,
+      turnId: "turn-1",
+      body,
+      presentationKind,
+      occurredAtUnixMs: 1
+    });
+    const conversation = {
+      ...baseConversation,
+      rows: [
+        {
+          kind: "message" as const,
+          id: "user-row",
+          turnId: "turn-1",
+          speaker: "user" as const,
+          messages: [message("user-message", "Please inspect the files")],
+          thinking: [],
+          occurredAtUnixMs: 1
+        },
+        {
+          kind: "tool-group" as const,
+          id: "tool-group-1",
+          turnId: "turn-1",
+          grouped: true,
+          calls: [],
+          entries: [],
+          occurredAtUnixMs: 2
+        },
+        {
+          kind: "message" as const,
+          id: "assistant-progress-1",
+          turnId: "turn-1",
+          speaker: "assistant" as const,
+          messages: [
+            message(
+              "assistant-progress-message-1",
+              "Reading files",
+              "specific-progress"
+            )
+          ],
+          thinking: [],
+          occurredAtUnixMs: 3
+        },
+        {
+          kind: "tool-group" as const,
+          id: "tool-group-2",
+          turnId: "turn-1",
+          grouped: true,
+          calls: [],
+          entries: [],
+          occurredAtUnixMs: 4
+        },
+        {
+          kind: "message" as const,
+          id: "assistant-progress-2",
+          turnId: "turn-1",
+          speaker: "assistant" as const,
+          messages: [
+            message(
+              "assistant-progress-message-2",
+              "Checking tests",
+              "specific-progress"
+            )
+          ],
+          thinking: [],
+          occurredAtUnixMs: 5
+        },
+        {
+          kind: "message" as const,
+          id: "assistant-final",
+          turnId: "turn-1",
+          speaker: "assistant" as const,
+          messages: [message("assistant-final-message", "Done")],
+          thinking: [],
+          occurredAtUnixMs: 6
+        }
+      ]
+    };
+    const participantPresentation = {
+      enabled: true,
+      status: "ready",
+      user: { name: "Alice", avatarUrl: "user.png" },
+      agent: { name: "Codex", avatarUrl: "agent.png" }
+    } as const;
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+
+    const { container, rerender } = render(
+      <AgentTranscriptView
+        conversation={conversation}
+        participantPresentation={participantPresentation}
+        labels={labels}
+      />
+    );
+
+    expect(
+      container.querySelectorAll(
+        '[data-agent-conversation-participant-header="user"]'
+      )
+    ).toHaveLength(1);
+    expect(
+      container.querySelectorAll(
+        '[data-agent-conversation-participant-header="assistant"]'
+      )
+    ).toHaveLength(1);
+    expect(
+      container
+        .querySelector(
+          '[data-agent-conversation-participant-header="assistant"]'
+        )
+        ?.closest("[data-agent-transcript-row]")
+    ).toHaveAttribute("data-agent-transcript-row", "assistant-progress-1");
+    expect(screen.getByText("Reading files")).toBeInTheDocument();
+    expect(screen.getByText("Checking tests")).toBeInTheDocument();
+    expect(screen.getByText("Done")).toBeInTheDocument();
+
+    rerender(
+      <AgentTranscriptView
+        conversation={{
+          ...conversation,
+          rows: conversation.rows.map((row) =>
+            row.kind === "message" && row.id === "assistant-final"
+              ? {
+                  ...row,
+                  messages: row.messages.map((finalMessage) => ({
+                    ...finalMessage,
+                    isTurnFinalText: true as const
+                  }))
+                }
+              : row
+          ),
+          sourceDetail: {
+            ...conversation.sourceDetail,
+            session: normalizeAgentActivitySession({
+              ...conversation.sourceDetail.session,
+              activeTurnId: null
+            }),
+            sessionTurns: [
+              canonicalTurn({
+                phase: "settled",
+                outcome: "completed",
+                settledAtUnixMs: 12_000
+              })
+            ]
+          }
+        }}
+        participantPresentation={participantPresentation}
+        labels={labels}
+      />
+    );
+
+    expect(
+      container.querySelectorAll(
+        '[data-agent-conversation-participant-header="assistant"]'
+      )
+    ).toHaveLength(1);
+    expect(
+      container
+        .querySelector(
+          '[data-agent-conversation-participant-header="assistant"]'
+        )
+        ?.closest("[data-agent-transcript-row]")
+    ).toHaveAttribute(
+      "data-agent-transcript-row",
+      "assistant-final:turn-final"
+    );
+  });
+
   it("rerenders when canonical turn timing changes", () => {
     const labels = {
       thinkingLabel: "Thought process",

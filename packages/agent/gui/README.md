@@ -144,6 +144,12 @@ package renders fixed-size circular loading slots. In the `ready` state, each
 participant requires a non-empty `name`; `avatarUrl` is optional and the shared
 UI System `Avatar` falls back to the name's initial.
 
+Participant headers are turn-scoped. Agent GUI renders at most one header for
+each speaker in a presentation turn, even when thinking, tool progress, or
+turn-work disclosure splits that turn into multiple message rows. A completed
+collapsed turn anchors the Agent header to visible reply content instead of the
+hidden work section.
+
 The host owns identity lookup and lifecycle. Agent GUI owns placement, sizing,
 loading treatment, image fallback, and left/right message alignment. The
 contract is presentation-only and must not be copied into canonical Session,

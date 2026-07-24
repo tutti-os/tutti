@@ -69,6 +69,7 @@ interface AgentMessageBlockProps {
   showRawTimelineJson?: boolean;
   rawTimelineJsonLabel?: string;
   participantPresentation?: AgentConversationParticipantPresentation;
+  showParticipantHeader?: boolean;
 }
 
 export function AgentMessageBlock({
@@ -84,7 +85,8 @@ export function AgentMessageBlock({
   workspaceAppIcons,
   showRawTimelineJson = false,
   rawTimelineJsonLabel = "",
-  participantPresentation
+  participantPresentation,
+  showParticipantHeader = true
 }: AgentMessageBlockProps): JSX.Element {
   "use memo";
   const agentHostApi = useOptionalAgentHostApi();
@@ -269,7 +271,9 @@ export function AgentMessageBlock({
   const enabledParticipantPresentation =
     participantPresentation?.enabled === true ? participantPresentation : null;
   const showParticipant =
-    enabledParticipantPresentation !== null && row.messages.length > 0;
+    enabledParticipantPresentation !== null &&
+    showParticipantHeader &&
+    row.messages.length > 0;
 
   return (
     <div

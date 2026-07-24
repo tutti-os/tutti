@@ -18,7 +18,10 @@ import type { AgentConversationParticipantPresentation } from "../contracts/agen
 import { AgentTranscriptItemView } from "./AgentTranscriptItemView";
 import { useAgentTurnDisclosureStore } from "./AgentTurnDisclosureContext";
 import { AgentTurnWorkSection } from "./AgentTurnWorkSection";
-import { buildAgentTurnWorkSectionModel } from "./agentTurnWorkSectionModel";
+import {
+  buildAgentTurnWorkSectionModel,
+  findParticipantHeaderRenderKeys
+} from "./agentTurnWorkSectionModel";
 import { assessAgentTranscriptComplexity } from "./agentTranscriptComplexity";
 import { useTurnDisclosureMotion } from "./useTurnDisclosureMotion";
 import {
@@ -312,6 +315,13 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
       ] as const;
     })
   );
+  const participantHeaderRenderKeys = participantHeadersEnabled
+    ? findParticipantHeaderRenderKeys(
+        turnGroups,
+        rowKeys,
+        turnWorkSectionModelByKey
+      )
+    : null;
   const basePath = conversation.sourceDetail.cwd;
   const workspaceRoot = conversation.workspaceRoot;
   const provider = conversation.activity.agentProvider;
@@ -440,6 +450,9 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           workspaceAppIcons={workspaceAppIcons}
           showRawTimelineJson={showRawTimelineJson}
           participantPresentation={participantPresentation}
+          showParticipantHeader={
+            participantHeaderRenderKeys?.has(rowKey) ?? false
+          }
           toolGroupExpanded={
             row.kind === "tool-group"
               ? expandedToolRows[rowKey] === true

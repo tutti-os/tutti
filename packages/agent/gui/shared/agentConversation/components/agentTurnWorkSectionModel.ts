@@ -31,6 +31,55 @@ export interface AgentTurnWorkSectionModel {
   collapseEligible: boolean;
 }
 
+/**
+ * Selects at most one participant header per speaker in each presentation
+ * turn. Completed collapsed turns prefer a visible message so the Agent header
+ * does not disappear into the hidden work section.
+ */
+export function findParticipantHeaderRenderKeys(
+  groups: readonly AgentTranscriptTurnGroup[],
+  rowKeys: readonly string[],
+  modelByGroupKey: ReadonlyMap<string, AgentTurnWorkSectionModel | null>
+): ReadonlySet<string> {
+  const headerKeys = new Set<string>();
+
+  for (const group of groups) {
+    const model = modelByGroupKey.get(group.key);
+    const renderedRows: readonly AgentTurnWorkSectionRow[] = model
+      ? model.collapseEligible
+        ? [
+            ...model.leadingRows,
+            ...model.sections.flatMap((section) =>
+              section.kind === "visible" ? section.rows : []
+            ),
+            ...model.sections.flatMap((section) =>
+              section.kind === "work" ? section.rows : []
+            )
+          ]
+        : [
+            ...model.leadingRows,
+            ...model.sections.flatMap((section) => section.rows)
+          ]
+      : group.rows;
+    const seenSpeakers = new Set<AgentMessageRowVM["speaker"]>();
+
+    for (const entry of renderedRows) {
+      const row = entry.row;
+      if (
+        row.kind !== "message" ||
+        row.messages.length === 0 ||
+        seenSpeakers.has(row.speaker)
+      ) {
+        continue;
+      }
+      seenSpeakers.add(row.speaker);
+      headerKeys.add(entry.renderKey ?? rowKeys[entry.rowIndex] ?? row.id);
+    }
+  }
+
+  return headerKeys;
+}
+
 interface AgentTurnWorkSectionOptions {
   collapseIntermediateAssistantReplies?: boolean;
 }
