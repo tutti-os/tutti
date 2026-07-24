@@ -133,6 +133,32 @@ build_macos_universal_go_binary() {
   rm -rf "${staging_dir}"
 }
 
+# Smoke-checks that a packaged Go binary matches the variant's executable
+# format, so a mis-targeted build fails packaging instead of shipping inside
+# an installer. Uses the format magic bytes rather than file(1), which is not
+# guaranteed to exist and whose output wording varies across platforms.
+assert_packaged_binary_format() {
+  local binary_path="$1"
+  local magic
+  magic="$(od -An -N4 -tx1 "${binary_path}" | tr -d ' \n')"
+
+  case "${VARIANT}" in
+    win)
+      # Windows executables are PE files, which start with the "MZ" DOS header.
+      if [[ "${magic}" != 4d5a* ]]; then
+        echo "Packaged binary ${binary_path} is not a Windows PE executable (magic: ${magic:-unreadable})." >&2
+        return 1
+      fi
+      ;;
+    linux)
+      if [[ "${magic}" != "7f454c46" ]]; then
+        echo "Packaged binary ${binary_path} is not a Linux ELF executable (magic: ${magic:-unreadable})." >&2
+        return 1
+      fi
+      ;;
+  esac
+}
+
 prepare_packaged_daemon() {
   rm -rf "${DAEMON_BUNDLE_DIR}" "${CLI_BUNDLE_DIR}"
   mkdir -p "${DAEMON_BUNDLE_DIR}" "${CLI_BUNDLE_DIR}"
@@ -159,14 +185,29 @@ prepare_packaged_daemon() {
     return
   fi
 
+  # Force the Go target OS to match the packaging variant so that running
+  # build:win / build:linux on another host OS cross-compiles instead of
+  # silently bundling a host-OS binary under the target name. GOARCH is
+  # inherited from the environment so it stays aligned with the arch
+  # electron-builder targets by default (the host arch) and remains
+  # overridable.
+  local go_target_os
+  case "${VARIANT}" in
+    win) go_target_os="windows" ;;
+    linux) go_target_os="linux" ;;
+    *) go_target_os="$(go env GOOS)" ;;
+  esac
+
   (
     cd "${ROOT_DIR}/services/tuttid"
-    go build -o "${DAEMON_BUNDLE_DIR}/${daemon_output_name}" .
-  )
+    GOOS="${go_target_os}" go build -o "${DAEMON_BUNDLE_DIR}/${daemon_output_name}" .
+  ) || return
   (
     cd "${ROOT_DIR}/apps/cli"
-    go build -o "${CLI_BUNDLE_DIR}/${cli_output_name}" ./cmd/tutti
-  )
+    GOOS="${go_target_os}" go build -o "${CLI_BUNDLE_DIR}/${cli_output_name}" ./cmd/tutti
+  ) || return
+  assert_packaged_binary_format "${DAEMON_BUNDLE_DIR}/${daemon_output_name}" || return
+  assert_packaged_binary_format "${CLI_BUNDLE_DIR}/${cli_output_name}"
 }
 
 prepare_builtin_apps() {
