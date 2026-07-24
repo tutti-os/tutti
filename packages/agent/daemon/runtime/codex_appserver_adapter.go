@@ -311,6 +311,7 @@ type codexAppServerActiveTurn struct {
 	session        Session
 	ctx            context.Context
 	normalizer     *acpTurnNormalizer
+	diagnostics    *codexAppServerTurnDiagnostics
 	emit           func([]activityshared.Event)
 	emitCommands   CommandSnapshotSink
 	kind           codexAppServerTurnKind

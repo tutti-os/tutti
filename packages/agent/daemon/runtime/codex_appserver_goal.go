@@ -572,6 +572,7 @@ func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, provid
 		session:     session,
 		ctx:         context.Background(),
 		normalizer:  normalizer,
+		diagnostics: newCodexAppServerTurnDiagnostics(nil, turnID),
 		emit:        emitEvents,
 		kind:        codexAppServerTurnKindGoalAdopted,
 		phase:       codexAppServerTurnPhaseRunning,
@@ -584,6 +585,8 @@ func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, provid
 		// A registered turn won the race; leave tracking to it.
 		return false
 	}
+	trace := newCodexAppServerTurnTrace(session, turnID, nil)
+	appTurn.diagnostics.Start(trace)
 	slog.Info("agent session app-server goal turn adopted",
 		"event", "agent_session.app_server.goal.turn_adopted",
 		"agent_session_id", session.AgentSessionID,

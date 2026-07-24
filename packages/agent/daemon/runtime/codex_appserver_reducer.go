@@ -51,6 +51,7 @@ func (r codexAppServerReducer) reduceNotification(
 		a.bufferPendingGoalTurnNotification(session.AgentSessionID, providerTurnID, message) {
 		return codexAppServerReduction{}
 	}
+	diagnosticTurn := a.activeTurnForNormalizer(rootAgentSessionID, normalizer)
 	route := a.appServerNotificationRoute(session, turnID, message.Method, params)
 	if route.drop {
 		return codexAppServerReduction{Events: route.events}
@@ -69,6 +70,9 @@ func (r codexAppServerReducer) reduceNotification(
 		// child threads. No transcript/progress from the canceled execution is
 		// projected after the durable cancel boundary.
 		return codexAppServerReduction{}
+	}
+	if diagnosticTurn != nil {
+		diagnosticTurn.diagnostics.ObserveNotification(message.Method, params)
 	}
 	emit := func(events []activityshared.Event) codexAppServerReduction {
 		events = appServerEventsForChild(events, route.child)

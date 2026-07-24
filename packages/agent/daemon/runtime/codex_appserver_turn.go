@@ -131,6 +131,8 @@ func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTu
 	if a == nil || appTurn == nil || appTurn.emitTerminal == nil {
 		return
 	}
+	providerTurnID := firstNonEmpty(asString(terminal.turn["id"]), appTurn.providerTurnID)
+	appTurn.diagnostics.Finish(string(terminal.phase), providerTurnID)
 	appTurn.processMu.Lock()
 	appTurn.settleFinalized.Store(true)
 	session := appTurn.session
@@ -330,6 +332,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 		session:      session,
 		ctx:          ctx,
 		normalizer:   normalizer,
+		diagnostics:  newCodexAppServerTurnDiagnostics(nil, turnID),
 		emit:         emitEvents,
 		emitCommands: emitCommands,
 		kind:         codexAppServerTurnKindNormal,
@@ -357,6 +360,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 
 	execMetadata := execMetadataFromContext(ctx)
 	trace := newCodexAppServerTurnTrace(session, turnID, execMetadata)
+	appTurn.diagnostics.Start(trace)
 	turnParams := appServerTurnStartParams(
 		session,
 		appSession.threadID,
@@ -379,6 +383,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 	result, err := appSession.client.TurnStart(ctx, turnStartAckTimeout, turnParams)
 	if err != nil {
 		durationMS := time.Since(turnStartedAt).Milliseconds()
+		appTurn.diagnostics.Finish("failed", "")
 		trace.Log("turn.start.failed", map[string]any{
 			"duration_ms": durationMS,
 			"error":       err.Error(),
@@ -452,6 +457,15 @@ func (a *CodexAppServerAdapter) execBlocking(
 		"agent_session_id", session.AgentSessionID,
 		"turn_id", turnID,
 	)
+	if finishErr != nil {
+		outcome := "failed"
+		if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) || a.turnForceCanceled(appTurn) {
+			outcome = "canceled"
+		}
+		appTurn.diagnostics.Finish(outcome, appTurn.providerTurnID)
+	} else {
+		appTurn.diagnostics.Finish("completed", appTurn.providerTurnID)
+	}
 	if finishErr != nil {
 		if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) || a.turnForceCanceled(appTurn) {
 			terminalEvents := a.pendingRequestFailureEvents(session, turnID, errPermissionRequestCanceled)
