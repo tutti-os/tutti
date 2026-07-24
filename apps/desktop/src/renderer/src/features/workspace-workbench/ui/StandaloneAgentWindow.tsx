@@ -113,7 +113,10 @@ const standaloneAgentDefaultConversationRailWidthPx = 280;
 function renderStandaloneAgentSidebarFooter(workspaceId: string): ReactNode {
   return (
     <Suspense fallback={null}>
-      <LazyWorkspaceAccountMenu workspaceId={workspaceId} />
+      <LazyWorkspaceAccountMenu
+        showLeadingDivider={false}
+        workspaceId={workspaceId}
+      />
     </Suspense>
   );
 }
