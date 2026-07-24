@@ -315,6 +315,43 @@ describe("AgentGUINode memoization", () => {
     );
   });
 
+  it("passes project directory picker header actions through the memo boundary", () => {
+    mockViewModel = createViewModel();
+    const firstRenderer = vi.fn();
+    const secondRenderer = vi.fn();
+    const initial = createProps();
+    const props = {
+      ...initial,
+      renderSlots: {
+        ...initial.renderSlots,
+        projectDirectoryPickerHeaderActions: firstRenderer
+      }
+    };
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0]
+        .renderProjectDirectoryPickerHeaderActions
+    ).toBe(firstRenderer);
+
+    agentGuiNodeViewSpy.mockClear();
+    rerender(
+      <AgentGUINode
+        {...props}
+        renderSlots={{
+          ...props.renderSlots,
+          projectDirectoryPickerHeaderActions: secondRenderer
+        }}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0]
+        .renderProjectDirectoryPickerHeaderActions
+    ).toBe(secondRenderer);
+  });
+
   it("keeps rail labels stable when provider-facing labels change", () => {
     mockViewModel = createViewModel();
     const props = createProps();

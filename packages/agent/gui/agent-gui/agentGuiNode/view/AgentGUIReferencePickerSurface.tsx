@@ -19,6 +19,7 @@ export interface AgentGUIReferencePickerSurfaceProps {
   isNodeSelectable: ReferenceSourcePickerProps["isNodeSelectable"];
   open: boolean;
   purpose: "directory" | "reference";
+  renderDirectoryHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
   resolveContentErrorAction: ReferenceSourcePickerProps["resolveContentErrorAction"];
   resolveEntryIconUrl: ReferenceSourcePickerProps["resolveEntryIconUrl"];
   workspaceId: string;
@@ -37,6 +38,7 @@ export function AgentGUIReferencePickerSurface({
   isNodeSelectable,
   open,
   purpose,
+  renderDirectoryHeaderActions,
   resolveContentErrorAction,
   resolveEntryIconUrl,
   workspaceId,
@@ -53,6 +55,9 @@ export function AgentGUIReferencePickerSurface({
       fileManagerCopy={fileManagerCopy ?? undefined}
       open={open}
       purpose={purpose}
+      renderHeaderActions={
+        purpose === "directory" ? renderDirectoryHeaderActions : undefined
+      }
       resolveContentErrorAction={resolveContentErrorAction}
       resolveEntryIconUrl={resolveEntryIconUrl}
       workspaceId={workspaceId}

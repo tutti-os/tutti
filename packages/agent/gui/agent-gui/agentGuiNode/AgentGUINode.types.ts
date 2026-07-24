@@ -190,6 +190,7 @@ export interface AgentGUINodeHostActions {
 }
 
 export interface AgentGUINodeRenderSlots {
+  projectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
   providerRailEmpty?: AgentGUIAgentsEmptyRenderer;
   providerUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
   sidebarFooter?: (ctx: AgentGUISidebarFooterContext) => ReactNode;
@@ -406,6 +407,8 @@ export function areAgentGUINodePropsEqual(
     pa.onConversationRailLayoutChange === na.onConversationRailLayoutChange &&
     ps.providerRailEmpty === ns.providerRailEmpty &&
     ps.providerUnavailableState === ns.providerUnavailableState &&
+    ps.projectDirectoryPickerHeaderActions ===
+      ns.projectDirectoryPickerHeaderActions &&
     ps.sidebarFooter === ns.sidebarFooter
   );
 }

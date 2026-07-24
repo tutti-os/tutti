@@ -156,6 +156,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     onConversationRailLayoutChange
   } = hostActions;
   const {
+    projectDirectoryPickerHeaderActions:
+      renderProjectDirectoryPickerHeaderActions,
     providerRailEmpty: renderProviderRailEmpty,
     providerUnavailableState: renderProviderUnavailableState,
     sidebarFooter: renderSidebarFooter
@@ -554,6 +556,9 @@ export const AgentGUINode = memo(function AgentGUINode({
               workspaceFileReferenceCopy={workspaceFileReferenceCopy}
               workspaceAppIcons={workspaceAppIcons}
               referenceProvenanceFilter={referenceProvenanceFilter}
+              renderProjectDirectoryPickerHeaderActions={
+                renderProjectDirectoryPickerHeaderActions
+              }
             />
           );
         }}

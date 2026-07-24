@@ -84,6 +84,7 @@ import {
 export interface ReferenceSourcePickerProps {
   aggregator: ReferenceSourceAggregator;
   copy: WorkspaceFileReferenceCopy;
+  renderHeaderActions?: (context: { refresh: () => void }) => ReactNode;
   resolveContentErrorAction?: (
     error: Error
   ) => ReferenceSourceContentErrorAction | null;
@@ -183,6 +184,7 @@ export function ReferenceSourcePicker({
   onConfirmBundles,
   open,
   purpose = "reference",
+  renderHeaderActions,
   resolveContentErrorAction,
   resolveEntryIconUrl,
   resolveOpenWithApplicationIcon,
@@ -577,16 +579,19 @@ export function ReferenceSourcePicker({
                   : "referencePicker.title"
               )}
             </CardTitle>
-            <Button
-              aria-label={copy.t("actions.cancel")}
-              disabled={view.isConfirming}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-              onClick={requestClose}
-            >
-              <CloseIcon size={16} />
-            </Button>
+            <div className="flex items-center gap-2">
+              {renderHeaderActions?.({ refresh: view.retryContent })}
+              <Button
+                aria-label={copy.t("actions.cancel")}
+                disabled={view.isConfirming}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+                onClick={requestClose}
+              >
+                <CloseIcon size={16} />
+              </Button>
+            </div>
           </div>
         </CardHeader>
 

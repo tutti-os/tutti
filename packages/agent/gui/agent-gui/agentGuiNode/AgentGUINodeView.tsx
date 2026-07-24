@@ -79,6 +79,7 @@ import { useAgentGUIExternalRequests } from "./view/useAgentGUIExternalRequests"
 export function AgentGUINodeView({
   viewModel,
   referenceProvenanceFilter = null,
+  renderProjectDirectoryPickerHeaderActions,
   renderSidebarFooter,
   renderProviderRailEmpty,
   renderProviderUnavailableState,
@@ -755,6 +756,9 @@ export function AgentGUINodeView({
           isNodeSelectable={isWorkspaceReferencePickerNodeSelectable}
           open={workspaceReferencePickerOpen}
           purpose={workspaceReferencePickerPurpose}
+          renderDirectoryHeaderActions={
+            renderProjectDirectoryPickerHeaderActions
+          }
           resolveContentErrorAction={resolveReferenceContentErrorAction}
           resolveEntryIconUrl={resolveWorkspaceReferenceEntryIconUrl}
           workspaceId={viewModel.shell.workspaceId}
