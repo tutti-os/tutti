@@ -364,6 +364,7 @@ export function useAgentToolSidebarLayout({
     handleResizePointerMove,
     isActivePanelExpanded,
     resetContainerResizeBaseline,
+    resetPanelExpansion,
     resizeForPanel,
     stopResizing,
     togglePanelExpansion

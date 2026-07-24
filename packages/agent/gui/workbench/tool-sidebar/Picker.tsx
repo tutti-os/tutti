@@ -13,7 +13,7 @@ export function AgentToolSidebarPicker({
   return (
     <div
       className="flex h-full min-h-0 items-center justify-center overflow-auto px-6 py-10"
-      data-standalone-agent-tool-sidebar-picker="true"
+      data-agent-tool-sidebar-picker="true"
     >
       <div className="flex w-full max-w-[340px] flex-col gap-2">
         {panels.map((panel) => (

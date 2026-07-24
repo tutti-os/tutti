@@ -10,6 +10,28 @@ type StandaloneAgentWindowLayoutApi = Pick<
   "onLayout" | "resizeContentWidth"
 >;
 
+interface StandaloneAgentWindowResizeTarget {
+  addEventListener(type: "resize", listener: () => void): void;
+  removeEventListener(type: "resize", listener: () => void): void;
+}
+
+export function subscribeStandaloneAgentWindowLayout(input: {
+  commitWindowFrame: () => void;
+  hostWindowApi: Pick<StandaloneAgentWindowLayoutApi, "onLayout">;
+  resizeTarget: StandaloneAgentWindowResizeTarget;
+  setIsWindowMaximized: (maximized: boolean) => void;
+}): () => void {
+  const disposeHostLayout = input.hostWindowApi.onLayout(({ maximized }) => {
+    input.commitWindowFrame();
+    input.setIsWindowMaximized(maximized);
+  });
+  input.resizeTarget.addEventListener("resize", input.commitWindowFrame);
+  return () => {
+    input.resizeTarget.removeEventListener("resize", input.commitWindowFrame);
+    disposeHostLayout();
+  };
+}
+
 export function useStandaloneAgentWindowLayout(
   hostWindowApi: StandaloneAgentWindowLayoutApi
 ) {
@@ -29,9 +51,11 @@ export function useStandaloneAgentWindowLayout(
 
   useEffect(
     () =>
-      hostWindowApi.onLayout(({ maximized }) => {
-        commitWindowFrame();
-        setIsWindowMaximized(maximized);
+      subscribeStandaloneAgentWindowLayout({
+        commitWindowFrame,
+        hostWindowApi,
+        resizeTarget: window,
+        setIsWindowMaximized
       }),
     [commitWindowFrame, hostWindowApi]
   );

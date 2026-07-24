@@ -91,7 +91,12 @@ export interface AgentGUINodeFrameLayout {
   /** Host-projected presentation visibility. Independent from node focus. */
   isVisible?: boolean;
   embedded?: boolean;
-  conversationRailAutoCollapseWidthPx?: number | null;
+  /**
+   * Standalone windows preserve the middle conversation width and collapse
+   * the conversation Rail before it can be compressed. Other surfaces retain
+   * the default responsive policy.
+   */
+  conversationRailAutoCollapseMode?: "preserve-middle-content";
 }
 
 export type AgentGUISessionActionRequest =
@@ -190,6 +195,7 @@ export interface AgentGUINodeHostActions {
 }
 
 export interface AgentGUINodeRenderSlots {
+  projectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
   providerRailEmpty?: AgentGUIAgentsEmptyRenderer;
   providerUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
   sidebarFooter?: (ctx: AgentGUISidebarFooterContext) => ReactNode;
@@ -363,8 +369,8 @@ export function areAgentGUINodePropsEqual(
     pf.isActive === nf.isActive &&
     pf.isVisible === nf.isVisible &&
     pf.embedded === nf.embedded &&
-    pf.conversationRailAutoCollapseWidthPx ===
-      nf.conversationRailAutoCollapseWidthPx &&
+    pf.conversationRailAutoCollapseMode ===
+      nf.conversationRailAutoCollapseMode &&
     pr.composerFocusSequence === nr.composerFocusSequence &&
     pr.composerAppend === nr.composerAppend &&
     pr.newConversationSequence === nr.newConversationSequence &&
@@ -407,6 +413,8 @@ export function areAgentGUINodePropsEqual(
     pa.onConversationRailLayoutChange === na.onConversationRailLayoutChange &&
     ps.providerRailEmpty === ns.providerRailEmpty &&
     ps.providerUnavailableState === ns.providerUnavailableState &&
+    ps.projectDirectoryPickerHeaderActions ===
+      ns.projectDirectoryPickerHeaderActions &&
     ps.sidebarFooter === ns.sidebarFooter
   );
 }

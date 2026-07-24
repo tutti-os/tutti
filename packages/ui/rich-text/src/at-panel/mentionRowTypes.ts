@@ -51,7 +51,7 @@ export interface MentionRowAppFactoryItem {
 
 export interface MentionRowSessionItem {
   kind: "session";
-  /** The "Initiator & Agent" participant line. */
+  /** The Agent participant line. */
   participant: string;
   /** Participant entities that truncate independently before the fixed suffix. */
   participantTruncatableSegments?: readonly string[] | null;

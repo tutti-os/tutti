@@ -87,7 +87,6 @@ function DesktopAgentGUISurfaceImpl({
   surface,
   computerUseApi,
   composerAppendRequest = null,
-  conversationRailAutoCollapseWidthPx = null,
   dockPreviewCache,
   onLinkAction,
   onCapabilitySettingsRequest,
@@ -672,6 +671,8 @@ function DesktopAgentGUISurfaceImpl({
         identity={agentGUIHostProps.identity}
         workspace={agentGUIHostProps.workspace}
         frame={{
+          conversationRailAutoCollapseMode:
+            surface.conversationRailAutoCollapseMode,
           position: DESKTOP_AGENT_GUI_POSITION,
           width: frame.width,
           height: frame.height,
@@ -681,8 +682,7 @@ function DesktopAgentGUISurfaceImpl({
           isVisible:
             surface.presentationMode !== "mission-control" &&
             surface.isMinimized !== true,
-          embedded: true,
-          conversationRailAutoCollapseWidthPx
+          embedded: true
         }}
         state={nodeState}
         runtimeRequests={agentGUIHostProps.runtimeRequests}

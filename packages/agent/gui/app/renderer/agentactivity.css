@@ -4678,16 +4678,13 @@ aside.workspace-agents-status-panel
   transition: none;
 }
 
-.workbench-window[data-window-header-layout="overlay"],
-.workbench-window[data-agent-gui-standalone-window="true"] {
+.workbench-window[data-window-header-layout="overlay"] {
   --agent-gui-workbench-header-height: 44px;
 
   grid-template-rows: minmax(0, 1fr);
 }
 
 .workbench-window[data-window-header-layout="overlay"]
-  .workbench-window__header,
-.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__header {
   position: absolute !important;
   top: 0 !important;
@@ -4716,19 +4713,12 @@ aside.workspace-agents-status-panel
   cursor: grabbing !important;
 }
 
-.workbench-window[data-agent-gui-standalone-window="true"]
+.workbench-window[data-window-header-layout="overlay"]
   .workbench-window__header {
   z-index: calc(var(--z-panel) + 1);
 }
 
-.workbench-window[data-agent-gui-standalone-window="true"]
-  .agent-gui-workbench-header::after {
-  display: none;
-}
-
-.workbench-window[data-window-header-layout="overlay"] .workbench-window__body,
-.workbench-window[data-agent-gui-standalone-window="true"]
-  .workbench-window__body {
+.workbench-window[data-window-header-layout="overlay"] .workbench-window__body {
   grid-row: 1;
   overflow: hidden;
 }
@@ -4796,8 +4786,6 @@ aside.workspace-agents-status-panel
 }
 
 .workbench-window[data-window-header-layout="overlay"]
-  .agent-gui-node__provider-rail-panel,
-.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__provider-rail-panel {
   padding-top: var(--agent-gui-workbench-header-height);
 }
@@ -4807,28 +4795,20 @@ aside.workspace-agents-status-panel
    toolbar has no such wrapper, so fold the same 2px into its offset to keep the
    search field top aligned with the provider tiles. */
 .workbench-window[data-window-header-layout="overlay"]
-  .agent-gui-node__rail-toolbar,
-.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__rail-toolbar {
   padding-top: calc(var(--agent-gui-workbench-header-height) + 2px);
 }
 
 .workbench-window[data-window-header-layout="overlay"]
-  .agent-gui-node__detail-panel,
-.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__detail-panel {
   position: relative;
 }
 
-.workbench-window[data-window-header-layout="overlay"] .agent-gui-node__detail,
-.workbench-window[data-agent-gui-standalone-window="true"]
-  .agent-gui-node__detail {
+.workbench-window[data-window-header-layout="overlay"] .agent-gui-node__detail {
   padding-top: var(--agent-gui-workbench-header-height);
 }
 
 .workbench-window[data-window-header-layout="overlay"]
-  .agent-gui-node__timeline-with-composer,
-.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__timeline-with-composer {
   padding-top: 20px;
 }
@@ -4890,12 +4870,6 @@ aside.workspace-agents-status-panel
   --agent-gui-workbench-header-title-max-width: calc(100% - 32px);
   --agent-gui-workbench-header-text: var(--text-primary);
   --agent-gui-workbench-header-muted: var(--text-secondary);
-  --agent-gui-workbench-header-divider: color-mix(
-    in srgb,
-    var(--text-primary) 4%,
-    transparent
-  );
-
   position: relative;
   display: grid;
   width: 100%;
@@ -4913,27 +4887,12 @@ aside.workspace-agents-status-panel
   user-select: none;
 }
 
-.agent-gui-workbench-header[data-agent-gui-workbench-header-has-session="true"]::after {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: var(--agent-gui-workbench-header-rail-width);
-  height: 1px;
-  background: var(--agent-gui-workbench-header-divider);
-  content: "";
-  pointer-events: none;
-}
-
 .agent-gui-workbench-header:active {
   cursor: grabbing;
 }
 
 .agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"] {
   grid-template-columns: minmax(0, 0px) minmax(0, 1fr);
-}
-
-.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"]::after {
-  left: 0;
 }
 
 .agent-gui-workbench-header__primary {
@@ -4957,10 +4916,11 @@ aside.workspace-agents-status-panel
 }
 
 /*
- * The standalone window's tool actions belong to native-window chrome, so
- * collapsing the conversation rail must not pull them into the 720px content
- * cap. Let the primary row span the window and keep the same trailing inset as
- * the expanded detail row.
+ * Tool-sidebar actions belong to the single Agent window header regardless of
+ * whether that header is owned by the native window or an embedding host.
+ * Collapsing the conversation rail must not pull them into the 720px content
+ * cap. Let the primary row span the host header and keep the same trailing
+ * inset as the expanded detail row.
  *
  * The tool actions are absolutely positioned against the window's right edge,
  * so they no longer occupy space in the flex row. In the collapsed primary row
@@ -4970,7 +4930,7 @@ aside.workspace-agents-status-panel
  * trailing padding on the row itself so the title flex-grows and truncates
  * before it can reach them, regardless of what precedes it.
  */
-.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"][data-agent-gui-workbench-header-collapsed="true"]
+.agent-gui-workbench-header[data-agent-gui-workbench-header-tool-sidebar="true"][data-agent-gui-workbench-header-collapsed="true"]
   .agent-gui-workbench-header__primary {
   width: 100%;
   padding-inline-end: calc(
@@ -4979,18 +4939,18 @@ aside.workspace-agents-status-panel
   );
 }
 
-.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+.agent-gui-workbench-header[data-agent-gui-workbench-header-tool-sidebar="true"]
   .agent-gui-workbench-header__secondary-accessory {
   padding-right: 0;
 }
 
-/* Keep the standalone tool header on the same right edge as its body panel.
+/* Keep the tool header on the same right edge as its body panel.
    The body panel is right-anchored independently of the Agent header's rail
    grid; leaving this accessory in the grid makes its left edge drift when the
    panel expands to the available width. */
-.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+.agent-gui-workbench-header[data-agent-gui-workbench-header-tool-sidebar="true"]
   .agent-gui-workbench-header__secondary-accessory:has(
-    [data-standalone-agent-tool-sidebar-header="true"]
+    [data-agent-tool-sidebar-header="true"]
   ) {
   position: absolute;
   top: 0;
@@ -4999,13 +4959,13 @@ aside.workspace-agents-status-panel
 }
 
 /*
- * In the collapsed empty state there is no session title to anchor the control
- * cluster, so the detached-window button's margin-left:auto would strand the
- * icons at the far window edge. Drop the auto push so those window controls sit
- * as a compact group right after the traffic lights instead. Secondary tool
- * actions retain their own right alignment across the full header width.
+ * The detached-window button pushes the detail controls to the far edge while
+ * the conversation rail is expanded. Once the rail collapses, every primary
+ * control and the session title share one full-width row, so keep that group
+ * anchored immediately after the traffic lights. Secondary tool actions retain
+ * their own right alignment across the full header width.
  */
-.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"][data-agent-gui-workbench-header-has-session="false"]
+.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"]
   .agent-gui-workbench-header__detached-window {
   margin-left: 0;
 }
@@ -5321,9 +5281,9 @@ aside.workspace-agents-status-panel
   pointer-events: auto;
 }
 
-.workbench-window[data-agent-gui-standalone-window="true"]
+.agent-gui-workbench-header[data-agent-gui-workbench-header-tool-sidebar="true"]
   .agent-gui-workbench-header__session-title,
-.workbench-window[data-agent-gui-standalone-window="true"]
+.agent-gui-workbench-header[data-agent-gui-workbench-header-tool-sidebar="true"]
   .agent-gui-workbench-header__detail-title {
   box-sizing: border-box;
   width: auto;
@@ -5342,7 +5302,7 @@ aside.workspace-agents-status-panel
  * max-width here so the reservation is not counted twice, which would strand
  * the title far short of the actions.
  */
-.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"][data-agent-gui-workbench-header-collapsed="true"]
+.agent-gui-workbench-header[data-agent-gui-workbench-header-tool-sidebar="true"][data-agent-gui-workbench-header-collapsed="true"]
   .agent-gui-workbench-header__session-title {
   max-width: 100%;
 }
@@ -5606,8 +5566,6 @@ aside.workspace-agents-status-panel
 }
 
 .workbench-window[data-window-header-layout="overlay"]
-  .agent-gui-node__provider-rail-panel::after,
-.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__provider-rail-panel::after {
   top: var(--agent-gui-workbench-header-height);
 }

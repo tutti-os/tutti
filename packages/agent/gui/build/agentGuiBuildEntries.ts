@@ -5,6 +5,7 @@ export const agentGUIBuildEntries = {
   agents: "agents.ts",
   "custom-mention": "custom-mention.ts",
   "dock-icons": "dockIcons.ts",
+  layout: "layout.ts",
   "mention-search": "agent-gui/agentGuiNode/AgentMentionSearchController.ts",
   "agent-message-center/index": "agent-message-center/index.ts",
   "agent-conversation/index": "agent-conversation/index.ts",
@@ -68,6 +69,7 @@ export const agentGUIDtsEntryGroups = [
   ],
   [
     "dock-icons",
+    "layout",
     "workbench/index",
     "workbench/contribution",
     "workbench/launch",

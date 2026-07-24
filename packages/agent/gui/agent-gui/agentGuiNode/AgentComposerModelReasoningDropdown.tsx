@@ -524,16 +524,23 @@ function ComposerMenuOptionItems({
                 ? "text-[var(--tutti-purple)] opacity-100 hover:text-[var(--tutti-purple)]"
                 : "opacity-0 group-hover/composer-option:opacity-100 group-data-[highlighted]/composer-option:opacity-100"
             )}
-            // Stop before the DropdownMenuItem's pointerdown-apply handler:
-            // starring an option must not also select it or close the menu.
-            onPointerDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
+            // Pointer activation is applied on pointerup because embedded
+            // Radix menu controls do not reliably receive a compatibility
+            // click. The parent row ignores this control below.
+            onPointerUp={(event) => {
+              const shouldToggle = event.button === 0 && !event.ctrlKey;
+              if (shouldToggle) {
+                event.stopPropagation();
+                onToggleFavorite(option.value);
+              }
             }}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              onToggleFavorite(option.value);
+              const isKeyboardActivation = event.detail === 0;
+              if (isKeyboardActivation) {
+                onToggleFavorite(option.value);
+              }
             }}
           >
             <Star
@@ -556,6 +563,14 @@ function ComposerMenuOptionItems({
             )}
             data-agent-model-option={showModelTooltip ? "true" : undefined}
             onPointerDown={(event) => {
+              if (
+                event.target instanceof Element &&
+                event.target.closest(
+                  '[data-agent-model-favorite-toggle="true"]'
+                )
+              ) {
+                return;
+              }
               if (event.button === 0 && !event.ctrlKey) {
                 event.preventDefault();
                 onSelect(option.value);

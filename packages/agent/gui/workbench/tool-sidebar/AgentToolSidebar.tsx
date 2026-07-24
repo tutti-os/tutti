@@ -2,8 +2,6 @@ import {
   forwardRef,
   useImperativeHandle,
   type CSSProperties,
-  type MouseEventHandler,
-  type PointerEventHandler,
   type ReactNode
 } from "react";
 import { CloseIcon, cn } from "@tutti-os/ui-system";
@@ -20,35 +18,30 @@ import {
   type AgentToolSidebarCopy,
   type AgentToolSidebarReminderCounts
 } from "./Toolbar.tsx";
+import type {
+  AgentToolSidebarHeaderContract,
+  AgentToolSidebarHeaderLayout
+} from "./headerLayout.ts";
 import { useAgentToolSidebarController } from "./useAgentToolSidebarController.ts";
 
 export interface AgentToolSidebarHandle {
   addPanel(panel: AgentToolPanelId, resourceId?: string): string | null;
   close(): void;
+  collapseForContainerConstraint(): void;
   closeTab(tabId: string): void;
   ensurePanel(panel: AgentToolPanelId, resourceId?: string): string | null;
   openPanel(panel: AgentToolPanelId, resourceId?: string): string | null;
 }
 
-export type AgentToolSidebarHeaderDrag =
-  | { mode?: "native-window" }
-  | {
-      mode: "host";
-      onDoubleClick?: MouseEventHandler<HTMLDivElement>;
-      onPointerDown?: PointerEventHandler<HTMLDivElement>;
-    };
-
 export interface AgentToolSidebarProps {
   children: ReactNode;
   containerWidth: number;
   copy: AgentToolSidebarCopy;
-  headerDrag?: AgentToolSidebarHeaderDrag;
-  headerPlacement?: "inline" | "external" | "panel";
+  header: AgentToolSidebarHeaderContract;
   mainContentMinWidthPx?: number;
   panels: readonly AgentToolPanelDefinition[];
   quickActionPanels?: readonly AgentToolPanelId[];
   reminders?: AgentToolSidebarReminderCounts;
-  renderHeader: (toolActions: ReactNode) => ReactNode;
   renderLoading?: (tab: AgentToolTab) => ReactNode;
   renderPanel: (input: {
     active: boolean;
@@ -76,13 +69,11 @@ export const AgentToolSidebar = forwardRef<
     children,
     containerWidth,
     copy,
-    headerDrag,
-    headerPlacement = "inline",
+    header,
     mainContentMinWidthPx,
     panels: unfilteredPanels,
     quickActionPanels,
     reminders,
-    renderHeader,
     renderLoading,
     renderPanel,
     renderTabIcon,
@@ -114,6 +105,7 @@ export const AgentToolSidebar = forwardRef<
     bindLayoutWidthProjection,
     bindLifecycle,
     closePanel,
+    collapseSidebarForContainerConstraint,
     closePanelTab,
     contentReadyTabIds,
     ensurePanel,
@@ -147,58 +139,40 @@ export const AgentToolSidebar = forwardRef<
     () => ({
       addPanel,
       close: closePanel,
+      collapseForContainerConstraint: collapseSidebarForContainerConstraint,
       closeTab: closePanelTab,
       ensurePanel,
       openPanel
     }),
-    [addPanel, closePanel, closePanelTab, ensurePanel, openPanel]
+    [
+      addPanel,
+      closePanel,
+      closePanelTab,
+      collapseSidebarForContainerConstraint,
+      ensurePanel,
+      openPanel
+    ]
   );
 
-  const isHostHeaderDrag = headerDrag?.mode === "host";
-  const handleHeaderDoubleClick: MouseEventHandler<HTMLDivElement> = (
-    event
-  ) => {
-    if (isAgentToolSidebarHeaderControl(event.target)) {
-      event.stopPropagation();
-      return;
-    }
-    if (headerDrag?.mode === "host") {
-      event.stopPropagation();
-      headerDrag.onDoubleClick?.(event);
-    }
-  };
-  const handleHeaderPointerDown: PointerEventHandler<HTMLDivElement> = (
-    event
-  ) => {
-    if (isAgentToolSidebarHeaderControl(event.target)) {
-      event.stopPropagation();
-      return;
-    }
-    if (headerDrag?.mode === "host") {
-      event.stopPropagation();
-      headerDrag.onPointerDown?.(event);
-    }
-  };
+  const isHostOwnedHeader = header.owner === "host";
 
   const toolActions = (
     <div
       className={cn(
         "flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 max-w-full shrink-0 cursor-grab items-center pr-[var(--agent-gui-workbench-header-padding-x)] active:cursor-grabbing",
-        isHostHeaderDrag
+        isHostOwnedHeader
           ? "[-webkit-app-region:no-drag]"
           : "[-webkit-app-region:drag]",
         isSidebarOpen && "border-b border-[var(--border-1)]"
       )}
-      data-standalone-agent-tool-sidebar-drag-region="true"
-      data-standalone-agent-tool-sidebar-header="true"
+      data-agent-tool-sidebar-drag-region="true"
+      data-agent-tool-sidebar-header="true"
       ref={measureToolActions}
       style={
         isSidebarOpen
           ? { width: `${activePanelWidth}px`, maxWidth: "100%" }
           : undefined
       }
-      onDoubleClick={isHostHeaderDrag ? handleHeaderDoubleClick : undefined}
-      onPointerDown={isHostHeaderDrag ? handleHeaderPointerDown : undefined}
     >
       {activeTabId ? (
         <ToolSidebarTabBar
@@ -229,31 +203,33 @@ export const AgentToolSidebar = forwardRef<
       />
     </div>
   );
+  const headerLayout: AgentToolSidebarHeaderLayout = {
+    actions: toolActions,
+    isSidebarOpen,
+    layoutWidthPx: isSidebarOpen ? activePanelLayoutWidth : toolActionsWidth
+  };
+  const renderedHeader = header.render(headerLayout);
 
   return (
     <>
-      {headerPlacement === "external" || headerPlacement === "panel" ? (
-        renderHeader(
-          headerPlacement === "panel" && isSidebarOpen ? null : toolActions
-        )
+      {header.owner === "host" ? (
+        renderedHeader
       ) : (
         <div
           className="workbench-window__header workbench-window__header--custom"
           style={
             {
-              "--agent-gui-tool-sidebar-layout-width": isSidebarOpen
-                ? `${activePanelLayoutWidth}px`
-                : `${toolActionsWidth}px`
+              "--agent-gui-tool-sidebar-layout-width": `${headerLayout.layoutWidthPx}px`
             } as CSSProperties
           }
         >
-          {renderHeader(toolActions)}
+          {renderedHeader}
         </div>
       )}
       <div
         className={cn(
           "flex h-full min-h-0 min-w-0 flex-col overflow-hidden",
-          headerPlacement === "inline" && "workbench-window__body"
+          header.owner === "window" && "workbench-window__body"
         )}
         ref={bindLifecycle}
       >
@@ -270,7 +246,7 @@ export const AgentToolSidebar = forwardRef<
               isActivePanelExpanded && "border-l border-[var(--line-1)]",
               !isSidebarOpen && "pointer-events-none"
             )}
-            data-standalone-agent-tool-sidebar="true"
+            data-agent-tool-sidebar="true"
             ref={bindLayoutWidthProjection}
             style={{
               width: isSidebarOpen ? `${activePanelLayoutWidth}px` : "0px",
@@ -301,7 +277,7 @@ export const AgentToolSidebar = forwardRef<
                   aria-valuemin={activePanelMinWidth}
                   aria-valuenow={activePanelWidth}
                   className="absolute top-0 left-0 z-20 h-full w-2 cursor-col-resize touch-none outline-none before:absolute before:left-0 before:h-full before:w-px before:bg-transparent hover:before:bg-[var(--border-focus)] focus-visible:before:bg-[var(--border-focus)]"
-                  data-standalone-agent-tool-sidebar-resize-handle="true"
+                  data-agent-tool-sidebar-resize-handle="true"
                   role="separator"
                   tabIndex={0}
                   onKeyDown={handleResizeKeyDown}
@@ -311,14 +287,11 @@ export const AgentToolSidebar = forwardRef<
                   onPointerUp={stopResizing}
                 />
               ) : null}
-              {isSidebarOpen && headerPlacement === "panel"
-                ? toolActions
-                : null}
-              {isSidebarOpen && headerPlacement === "inline" ? (
+              {isSidebarOpen && header.layout === "overlay" ? (
                 <div
                   aria-hidden
                   className="shrink-0"
-                  data-standalone-agent-tool-sidebar-header-spacer="true"
+                  data-agent-tool-sidebar-header-spacer="true"
                   style={{
                     height: "var(--agent-gui-workbench-header-height, 44px)"
                   }}
@@ -391,7 +364,7 @@ function ToolSidebarTabBar({
     <div
       aria-label={copy.tool}
       className="flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 flex-1 cursor-grab items-center gap-1 overflow-hidden px-2 active:cursor-grabbing"
-      data-standalone-agent-tool-tab-list="true"
+      data-agent-tool-tab-list="true"
       role="tablist"
     >
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -411,11 +384,13 @@ function ToolSidebarTabBar({
               <button
                 aria-selected={activeTabId === tab.id}
                 className="nodrag flex h-full min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-2 text-left outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
-                data-standalone-agent-tool-tab={tab.panel}
-                data-standalone-agent-tool-tab-id={tab.id}
+                data-agent-tool-tab={tab.panel}
+                data-agent-tool-tab-id={tab.id}
                 role="tab"
                 type="button"
                 onClick={() => onOpenPanel(tab)}
+                onDoubleClick={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
               >
                 {renderTabIcon?.(tab) ?? (
                   <AgentToolPanelIcon
@@ -431,6 +406,8 @@ function ToolSidebarTabBar({
                 className="nodrag mr-1 rounded p-0.5 opacity-100 hover:bg-[var(--transparency-block)] [-webkit-app-region:no-drag]"
                 type="button"
                 onClick={() => onClosePanel(tab.id)}
+                onDoubleClick={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
               >
                 <CloseIcon aria-hidden className="size-3" />
               </button>
@@ -439,14 +416,5 @@ function ToolSidebarTabBar({
         })}
       </div>
     </div>
-  );
-}
-
-function isAgentToolSidebarHeaderControl(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element &&
-    target.closest(
-      '.nodrag, button, a, input, textarea, select, option, [role="button"], [role="menuitem"], [contenteditable="true"]'
-    ) !== null
   );
 }

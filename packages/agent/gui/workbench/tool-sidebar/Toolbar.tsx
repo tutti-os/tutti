@@ -99,7 +99,7 @@ export function AgentToolSidebarToolbar({
           "nodrag pointer-events-auto flex h-[var(--agent-gui-workbench-header-height,44px)] items-center gap-1 [-webkit-app-region:no-drag]",
           activePanel === null && isOpen && "ml-auto"
         )}
-        data-standalone-agent-tool-sidebar-toolbar="true"
+        data-agent-tool-sidebar-toolbar="true"
         onDoubleClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
       >
@@ -147,7 +147,7 @@ export function AgentToolSidebarToolbar({
                   aria-label={labelByPanel.get(panel) ?? panel}
                   aria-pressed={false}
                   className="relative text-[var(--text-secondary)]"
-                  data-standalone-agent-tool-sidebar-quick-action={panel}
+                  data-agent-tool-sidebar-quick-action={panel}
                   size="icon-sm"
                   type="button"
                   variant="chrome"
@@ -186,7 +186,7 @@ export function AgentToolSidebarToolbar({
               aria-label={label}
               aria-pressed={isOpen}
               className="relative"
-              data-standalone-agent-tool-sidebar-toggle="true"
+              data-agent-tool-sidebar-toggle="true"
               size="icon-sm"
               type="button"
               variant={isOpen && activePanel !== null ? "secondary" : "chrome"}

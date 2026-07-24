@@ -11,6 +11,7 @@
     "./agents": "./agents.ts",
     "./custom-mention": "./custom-mention.ts",
     "./dock-icons": "./dockIcons.ts",
+    "./layout": "./layout.ts",
     "./mention-search": "./agent-gui/agentGuiNode/AgentMentionSearchController.ts",
     "./agent-message-center": "./agent-message-center/index.ts",
     "./agent-conversation": "./agent-conversation/index.ts",
@@ -148,6 +149,10 @@
         "types": "./dist/dock-icons.d.ts",
         "import": "./dist/dock-icons.js"
       },
+      "./layout": {
+        "types": "./dist/layout.d.ts",
+        "import": "./dist/layout.js"
+      },
       "./mention-search": {
         "types": "./dist/mention-search.d.ts",
         "import": "./dist/mention-search.js"
@@ -274,6 +279,9 @@
         ],
         "dock-icons": [
           "./dist/dock-icons.d.ts"
+        ],
+        "layout": [
+          "./dist/layout.d.ts"
         ],
         "mention-search": [
           "./dist/mention-search.d.ts"

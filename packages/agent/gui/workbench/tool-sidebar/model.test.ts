@@ -5,6 +5,7 @@ import {
   filterAgentToolPanels,
   reduceAgentToolSidebarState,
   resolveAgentToolPanelExpansionTransfer,
+  shouldAutoCollapseAgentToolSidebar,
   type AgentToolPanelDefinition
 } from "./model.ts";
 
@@ -71,6 +72,23 @@ describe("agent tool sidebar model", () => {
         width: 900
       })
     ).toBe(620);
+  });
+
+  it("collapses a sidebar only after it crosses the main-content boundary", () => {
+    expect(
+      shouldAutoCollapseAgentToolSidebar({
+        containerWidth: 1470,
+        mainContentMinWidth: 750,
+        sidebarWidth: 720
+      })
+    ).toBe(false);
+    expect(
+      shouldAutoCollapseAgentToolSidebar({
+        containerWidth: 1469,
+        mainContentMinWidth: 750,
+        sidebarWidth: 720
+      })
+    ).toBe(true);
   });
 
   it("ensures a background panel without changing the active tab", () => {

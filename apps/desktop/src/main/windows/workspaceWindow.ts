@@ -1,6 +1,7 @@
 import { BrowserWindow, app, screen, session, shell } from "electron";
 import type { DesktopAgentDirectorySnapshot } from "../../shared/contracts/agentDirectory.ts";
 import type { DesktopAgentProviderStatusSnapshot } from "../../shared/contracts/ipc";
+import { AGENT_GUI_COLLAPSED_MIN_WIDTH_PX } from "@tutti-os/agent-gui/layout";
 import {
   installBrowserWebviewSecurity,
   isBrowserNodeWebviewAttach
@@ -63,7 +64,7 @@ const workspaceWindowMacTrafficLightSizePx = 12;
 const workspaceWindowMacTrafficLightPositionY =
   (workspaceWindowHeaderHeightPx - workspaceWindowMacTrafficLightSizePx) / 2;
 const workspaceWindowDockHeightPx = 64;
-const agentWindowMinWidthPx = 420;
+const agentWindowMinWidthPx = AGENT_GUI_COLLAPSED_MIN_WIDTH_PX;
 const agentWindowMinHeightPx = 520;
 const agentWindowWorkAreaScale = 0.9;
 const agentWindowDuplicateOffsetPx = 25;

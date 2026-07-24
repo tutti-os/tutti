@@ -509,12 +509,11 @@ describe("AgentFileMentionPalette", () => {
     expect(selectedOption).not.toHaveTextContent("Alice & Codex");
   });
 
-  it("truncates Session participants independently while preserving the Agent suffix", () => {
+  it("omits the grouped initiator while preserving the shared Agent owner and suffix", () => {
     const initiatorLabel = "A session initiator with a very long display name";
     const ownerLabel = "A member with a very long display name";
     const agentLabel = "Codex (Shared)";
     const agentName = `${ownerLabel} · ${agentLabel}`;
-    const participant = `${initiatorLabel} & ${agentName}`;
     const state: AgentMentionSearchState = {
       status: "ready",
       query: "",
@@ -587,12 +586,12 @@ describe("AgentFileMentionPalette", () => {
     expect(participantElement).toHaveClass(
       "rich-text-at-mention-row__session-participant--structured"
     );
-    expect(participantElement).toHaveAttribute("title", participant);
-    expect(entities).toHaveLength(2);
-    expect(segments[0]).toHaveTextContent(initiatorLabel);
-    expect(segments[1]).toHaveTextContent(ownerLabel);
-    expect(separator?.textContent).toBe(" & ");
+    expect(participantElement).toHaveAttribute("title", agentName);
+    expect(entities).toHaveLength(1);
+    expect(segments[0]).toHaveTextContent(ownerLabel);
+    expect(separator).toBeNull();
     expect(suffix?.textContent).toBe(` · ${agentLabel}`);
+    expect(participantElement).not.toHaveTextContent(initiatorLabel);
     expect(screen.getByText("Build result")).toBeVisible();
     expect(screen.getByText("已完成")).toBeVisible();
   });

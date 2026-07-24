@@ -40,6 +40,7 @@ export type DesktopAgentGUIConversationRailToggleDetail =
 
 export interface DesktopAgentGUISurfaceContext {
   activation: WorkbenchHostNodeBodyContext["activation"];
+  conversationRailAutoCollapseMode?: "preserve-middle-content";
   displayMode: WorkbenchHostNodeBodyContext["displayMode"];
   frame: WorkbenchHostNodeBodyContext["node"]["frame"];
   host: WorkbenchHostNodeBodyContext["host"];
@@ -65,7 +66,6 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   context: WorkbenchHostNodeBodyContext;
   computerUseApi?: Pick<DesktopComputerUseApi, "checkStatus">;
   composerAppendRequest?: AgentGUIComposerAppendRequest | null;
-  conversationRailAutoCollapseWidthPx?: number | null;
   dockPreviewCache: WorkbenchDockPreviewCache;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onCapabilitySettingsRequest?: AgentGUIProps["hostActions"]["onCapabilitySettingsRequest"];
@@ -162,8 +162,6 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.agentProviderStatusService === next.agentProviderStatusService &&
     previous.computerUseApi === next.computerUseApi &&
     previous.composerAppendRequest === next.composerAppendRequest &&
-    previous.conversationRailAutoCollapseWidthPx ===
-      next.conversationRailAutoCollapseWidthPx &&
     previous.dockPreviewCache === next.dockPreviewCache &&
     previous.onLinkAction === next.onLinkAction &&
     previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&

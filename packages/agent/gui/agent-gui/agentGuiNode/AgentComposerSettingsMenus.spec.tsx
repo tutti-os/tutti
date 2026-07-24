@@ -2,8 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentPermissionModeDropdown } from "./AgentComposerSettingsMenus";
+import {
+  AgentModelReasoningDropdown,
+  AgentPermissionModeDropdown
+} from "./AgentComposerSettingsMenus";
 import type { AgentGUIComposerSettingsVM } from "./model/agentGuiNodeTypes";
+import type { AgentComposerSettingsMenuLabels } from "./model/composerSettingsMenuModel";
 import {
   CODEX_FULL_ACCESS_WARNING_ACKNOWLEDGEMENT_STORAGE_KEY,
   isCodexFullAccessWarningAcknowledged
@@ -19,6 +23,83 @@ beforeAll(() => {
 
 beforeEach(() => {
   globalThis.localStorage.clear();
+});
+
+describe("AgentModelReasoningDropdown", () => {
+  it("favorites a model without selecting the parent menu item", async () => {
+    const onSettingsChange = vi.fn();
+    render(
+      <AgentModelReasoningDropdown
+        composerSettings={composerModelSettings()}
+        labels={modelSettingsLabels}
+        modelHistoryTargetId="target-1"
+        onSettingsChange={onSettingsChange}
+      />
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Model / Reasoning" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+    const favoriteToggle = (
+      await screen.findAllByRole("button", { name: "Add to favorites" })
+    )[1]!;
+
+    fireEvent.pointerDown(favoriteToggle, {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse"
+    });
+    fireEvent.pointerUp(favoriteToggle, {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse"
+    });
+
+    expect(onSettingsChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Remove from favorites" })
+    ).toHaveAttribute("data-favorited", "true");
+    expect(
+      globalThis.localStorage.getItem(
+        "agent-gui:composer-model-favorites:target-1"
+      )
+    ).toBe('["gpt-5.4"]');
+    expect(screen.getByText("Model selection")).toBeInTheDocument();
+  });
+
+  it("favorites a model through keyboard click activation", async () => {
+    const onSettingsChange = vi.fn();
+    render(
+      <AgentModelReasoningDropdown
+        composerSettings={composerModelSettings()}
+        labels={modelSettingsLabels}
+        modelHistoryTargetId="target-1"
+        onSettingsChange={onSettingsChange}
+      />
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Model / Reasoning" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+    const favoriteToggle = (
+      await screen.findAllByRole("button", { name: "Add to favorites" })
+    )[1]!;
+
+    fireEvent.click(favoriteToggle, { detail: 0 });
+
+    expect(onSettingsChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Remove from favorites" })
+    ).toHaveAttribute("data-favorited", "true");
+    expect(
+      globalThis.localStorage.getItem(
+        "agent-gui:composer-model-favorites:target-1"
+      )
+    ).toBe('["gpt-5.4"]');
+    expect(screen.getByText("Model selection")).toBeInTheDocument();
+  });
 });
 
 describe("AgentPermissionModeDropdown", () => {
@@ -267,3 +348,56 @@ function composerSettings(): AgentGUIComposerSettingsVM {
     supportsSpeed: false
   };
 }
+
+function composerModelSettings(): AgentGUIComposerSettingsVM {
+  return {
+    ...composerSettings(),
+    availableModels: [
+      { label: "GPT-5.5", value: "gpt-5.5" },
+      { label: "GPT-5.4", value: "gpt-5.4" }
+    ],
+    draftSettings: {
+      ...composerSettings().draftSettings,
+      model: "gpt-5.5"
+    },
+    modelUnavailable: false,
+    selectedModelValue: "gpt-5.5",
+    supportsModel: true
+  };
+}
+
+const modelSettingsLabels: AgentComposerSettingsMenuLabels = {
+  modelLabel: "Model",
+  modelSelectionLabel: "Model selection",
+  modelContextWindowSuffix: "context window",
+  modelTooltipVersionLabel: "Version",
+  defaultModel: "Default model",
+  loadingOptions: "Loading…",
+  inheritedUnavailable: "Unavailable",
+  reasoningLabel: "Reasoning",
+  reasoningDegreeLabel: "Reasoning degree",
+  reasoningOptionDefault: "Default",
+  reasoningOptionMinimal: "Minimal",
+  reasoningOptionLow: "Low",
+  reasoningOptionMedium: "Medium",
+  reasoningOptionHigh: "High",
+  reasoningOptionXHigh: "X-High",
+  reasoningOptionMax: "Max",
+  reasoningOptionUltra: "Ultra",
+  speedLabel: "Speed",
+  speedSelectionLabel: "Speed",
+  speedOptionStandard: "Standard",
+  speedOptionStandardDescription: "Standard speed",
+  speedOptionFast: "Fast",
+  speedOptionFastDescription: "Fast speed",
+  permissionLabel: "Permission",
+  planModeLabel: "Plan mode",
+  modelDescriptions: {
+    frontierComplexCoding: "Frontier",
+    everydayCoding: "Everyday",
+    smallFastCostEfficient: "Small",
+    codingOptimized: "Coding",
+    ultraFastCoding: "Ultra",
+    professionalLongRunning: "Professional"
+  }
+};

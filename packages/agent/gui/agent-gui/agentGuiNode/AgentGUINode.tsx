@@ -27,10 +27,10 @@ import {
   AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX,
   AGENT_GUI_DETAIL_MIN_WIDTH_PX,
   clampAgentGUIConversationRailWidthPx,
+  resolveAgentGUIConversationRailPresentation,
   resolveAgentGUIExpandedWindowFrame,
   resolveNextAgentGUIConversationRailWidthPx,
-  resolveAgentGUIConversationRailMaxWidthPx,
-  shouldAutoCollapseAgentGUIConversationRail
+  resolveAgentGUIConversationRailMaxWidthPx
 } from "./model/agentGuiRailLayout";
 import { resolveAgentGUIReferenceProvenanceFilterCatalog } from "./model/agentReferenceProvenanceCatalog";
 import type { AgentGUINodeProps } from "./AgentGUINode.types";
@@ -89,11 +89,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     isMaximized = false,
     isActive,
     isVisible = true,
-    embedded = false,
-    conversationRailAutoCollapseWidthPx = null
+    embedded = false
   } = frame;
-  const railAutoCollapseWidthPx =
-    conversationRailAutoCollapseWidthPx ?? undefined;
   const widthRef = useRef(width);
   widthRef.current = width;
   const {
@@ -158,6 +155,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     onConversationRailLayoutChange
   } = hostActions;
   const {
+    projectDirectoryPickerHeaderActions:
+      renderProjectDirectoryPickerHeaderActions,
     providerRailEmpty: renderProviderRailEmpty,
     providerUnavailableState: renderProviderUnavailableState,
     sidebarFooter: renderSidebarFooter
@@ -224,12 +223,16 @@ export const AgentGUINode = memo(function AgentGUINode({
     },
     [onUpdateNode]
   );
-  const isConversationRailManuallyCollapsed =
-    state.conversationRailCollapsed === true;
+  const conversationRailPresentation =
+    resolveAgentGUIConversationRailPresentation({
+      autoCollapseMode: frame.conversationRailAutoCollapseMode,
+      containerWidthPx: width,
+      conversationRailCollapsed: state.conversationRailCollapsed,
+      conversationRailWidthPx: state.conversationRailWidthPx
+    });
   const isConversationRailAutoCollapsed =
-    shouldAutoCollapseAgentGUIConversationRail(width, railAutoCollapseWidthPx);
-  const isConversationRailCollapsed =
-    isConversationRailManuallyCollapsed || isConversationRailAutoCollapsed;
+    conversationRailPresentation.isAutoCollapsed;
+  const isConversationRailCollapsed = conversationRailPresentation.isCollapsed;
   const minSize = useMemo(
     () => ({
       ...resolveCanonicalNodeMinSize("agentGui"),
@@ -435,10 +438,12 @@ export const AgentGUINode = memo(function AgentGUINode({
           const renderedWidth = renderFrame.size.width;
           const isRenderedConversationRailCollapsed =
             isConversationRailCollapsed ||
-            shouldAutoCollapseAgentGUIConversationRail(
-              renderedWidth,
-              railAutoCollapseWidthPx
-            );
+            resolveAgentGUIConversationRailPresentation({
+              autoCollapseMode: frame.conversationRailAutoCollapseMode,
+              containerWidthPx: renderedWidth,
+              conversationRailCollapsed: state.conversationRailCollapsed,
+              conversationRailWidthPx: state.conversationRailWidthPx
+            }).isCollapsed;
 
           return (
             <AgentGUINodeView
@@ -536,6 +541,9 @@ export const AgentGUINode = memo(function AgentGUINode({
               workspaceFileReferenceCopy={workspaceFileReferenceCopy}
               workspaceAppIcons={workspaceAppIcons}
               referenceProvenanceFilter={referenceProvenanceFilter}
+              renderProjectDirectoryPickerHeaderActions={
+                renderProjectDirectoryPickerHeaderActions
+              }
             />
           );
         }}

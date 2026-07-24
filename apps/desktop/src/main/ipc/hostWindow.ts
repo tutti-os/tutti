@@ -193,6 +193,7 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
       ).workArea;
       const nextBounds = resolveStandaloneAgentWindowContentWidth({
         currentBounds,
+        minWidth: ownerWindow.getMinimumSize()[0] ?? 1,
         requestedWidth: input.width,
         workArea
       });

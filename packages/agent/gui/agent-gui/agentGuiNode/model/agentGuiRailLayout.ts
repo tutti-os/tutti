@@ -9,22 +9,34 @@ export const AGENT_GUI_CONVERSATION_RAIL_MAX_WIDTH_PX = 520;
 export const AGENT_GUI_DETAIL_MIN_WIDTH_PX = 220;
 export const AGENT_GUI_HOME_COMPOSER_MIN_WIDTH_PX = 320;
 export const AGENT_GUI_RAIL_RESIZE_HANDLE_WIDTH_PX = 10;
+export const AGENT_GUI_PROVIDER_RAIL_WIDTH_PX = 52;
 export const AGENT_GUI_COLLAPSED_MIN_WIDTH_PX = 460;
+export const AGENT_GUI_STANDALONE_MIDDLE_CONTENT_MIN_WIDTH_PX =
+  AGENT_GUI_COLLAPSED_MIN_WIDTH_PX - AGENT_GUI_PROVIDER_RAIL_WIDTH_PX;
 export const AGENT_GUI_EXPANDED_MIN_WIDTH_PX =
   AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX +
   AGENT_GUI_DETAIL_MIN_WIDTH_PX +
   AGENT_GUI_RAIL_RESIZE_HANDLE_WIDTH_PX;
-export const AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX = 610;
-// The standalone agent window keeps the conversation rail visible until the
-// home composer reaches its actual minimum width. Include the provider rail in
-// this host-specific threshold: 248px conversation rail + 320px composer +
-// 10px resize handle + 52px provider rail = 630px.
-export const AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX =
+// One package-owned responsive threshold applies to every Agent GUI surface:
+// 248px conversation rail + 320px composer + 10px resize handle + 52px
+// provider rail = 630px. Hosts project container width and persisted user
+// preference only; they do not replace this layout policy.
+export const AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX =
   AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX +
   AGENT_GUI_HOME_COMPOSER_MIN_WIDTH_PX +
   AGENT_GUI_RAIL_RESIZE_HANDLE_WIDTH_PX +
-  52;
+  AGENT_GUI_PROVIDER_RAIL_WIDTH_PX;
 export const AGENT_GUI_EXPANDED_TARGET_WIDTH_PX = 800;
+
+export interface AgentGUIConversationRailPresentation {
+  conversationRailWidthPx: number;
+  isAutoCollapsed: boolean;
+  isCollapsed: boolean;
+}
+
+export type AgentGUIConversationRailAutoCollapseMode =
+  | "default"
+  | "preserve-middle-content";
 
 export interface AgentGUIExpandedWindowFrameInput {
   position: { x: number; y: number };
@@ -36,12 +48,66 @@ export interface AgentGUIExpandedWindowFrameInput {
 
 export function shouldAutoCollapseAgentGUIConversationRail(
   containerWidthPx: number,
-  autoCollapseWidthPx: number = AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX
+  options?: {
+    mode?: AgentGUIConversationRailAutoCollapseMode;
+    conversationRailWidthPx?: number | null;
+  }
 ): boolean {
+  if (
+    options?.mode === "preserve-middle-content" &&
+    Number.isFinite(containerWidthPx) &&
+    containerWidthPx > 0
+  ) {
+    return (
+      containerWidthPx <
+      resolveStandaloneAgentGUIViewportMinimumWidthPx({
+        conversationRailCollapsed: false,
+        conversationRailWidthPx: options.conversationRailWidthPx
+      })
+    );
+  }
   return (
     Number.isFinite(containerWidthPx) &&
     containerWidthPx > 0 &&
-    containerWidthPx <= autoCollapseWidthPx
+    containerWidthPx <= AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX
+  );
+}
+
+export function resolveAgentGUIConversationRailPresentation(input: {
+  autoCollapseMode?: AgentGUIConversationRailAutoCollapseMode;
+  containerWidthPx: number;
+  conversationRailCollapsed?: boolean | null;
+  conversationRailWidthPx?: number | null;
+}): AgentGUIConversationRailPresentation {
+  const isAutoCollapsed = shouldAutoCollapseAgentGUIConversationRail(
+    input.containerWidthPx,
+    {
+      mode: input.autoCollapseMode,
+      conversationRailWidthPx: input.conversationRailWidthPx
+    }
+  );
+  return {
+    conversationRailWidthPx: clampAgentGUIConversationRailWidthPx(
+      input.conversationRailWidthPx,
+      input.containerWidthPx
+    ),
+    isAutoCollapsed,
+    isCollapsed: input.conversationRailCollapsed === true || isAutoCollapsed
+  };
+}
+
+export function resolveStandaloneAgentGUIViewportMinimumWidthPx(input: {
+  conversationRailCollapsed?: boolean | null;
+  conversationRailWidthPx?: number | null;
+}): number {
+  if (input.conversationRailCollapsed === true) {
+    return AGENT_GUI_COLLAPSED_MIN_WIDTH_PX;
+  }
+  return (
+    AGENT_GUI_PROVIDER_RAIL_WIDTH_PX +
+    resolvePreferredConversationRailWidthPx(input.conversationRailWidthPx) +
+    AGENT_GUI_RAIL_RESIZE_HANDLE_WIDTH_PX +
+    AGENT_GUI_STANDALONE_MIDDLE_CONTENT_MIN_WIDTH_PX
   );
 }
 
@@ -70,15 +136,24 @@ export function clampAgentGUIConversationRailWidthPx(
   widthPx: number | null | undefined,
   containerWidthPx: number
 ): number {
+  return clamp(
+    resolvePreferredConversationRailWidthPx(widthPx),
+    AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX,
+    resolveAgentGUIConversationRailMaxWidthPx(containerWidthPx)
+  );
+}
+
+function resolvePreferredConversationRailWidthPx(
+  widthPx: number | null | undefined
+): number {
   const preferredWidthPx =
     typeof widthPx === "number" && Number.isFinite(widthPx)
       ? Math.round(widthPx)
-      : null;
-
+      : AGENT_GUI_CONVERSATION_RAIL_DEFAULT_WIDTH_PX;
   return clamp(
-    preferredWidthPx ?? AGENT_GUI_CONVERSATION_RAIL_DEFAULT_WIDTH_PX,
+    preferredWidthPx,
     AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX,
-    resolveAgentGUIConversationRailMaxWidthPx(containerWidthPx)
+    AGENT_GUI_CONVERSATION_RAIL_MAX_WIDTH_PX
   );
 }
 

@@ -22,6 +22,7 @@ import {
   normalizeAgentGUIAgents,
   projectAgentGUIAgentsToTargets
 } from "../agents.ts";
+import { AGENT_GUI_PROVIDER_RAIL_WIDTH_PX } from "../agent-gui/agentGuiNode/model/agentGuiRailLayout.ts";
 import type {
   AgentGUIAgentDirectoryPort,
   AgentGUIAgentTarget
@@ -43,7 +44,8 @@ export const agentGuiWorkbenchDefaultUsableWidthRatio = 0.9;
 export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.9;
 export const agentGuiWorkbenchCompactVisibleAreaRatio = 0.9;
 export const agentGuiWorkbenchNewWindowCascadeOffset = { x: 180, y: 88 };
-export const agentGuiWorkbenchProviderRailWidthPx = 52;
+export const agentGuiWorkbenchProviderRailWidthPx =
+  AGENT_GUI_PROVIDER_RAIL_WIDTH_PX;
 const agentGuiWorkbenchUnifiedDockTileProviders = [
   "codex",
   "claude-code",

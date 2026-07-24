@@ -11,10 +11,9 @@ import {
   type ReactNode
 } from "react";
 import {
-  AGENT_GUI_DETAIL_MIN_WIDTH_PX,
   AGENT_GUI_EXPANDED_TARGET_WIDTH_PX,
-  AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
-  shouldAutoCollapseAgentGUIConversationRail
+  resolveAgentGUIConversationRailPresentation,
+  resolveStandaloneAgentGUIViewportMinimumWidthPx
 } from "@tutti-os/agent-gui";
 import type { AgentGUIComposerAppendRequest } from "@tutti-os/agent-gui";
 import { RichTextMentionServiceProvider } from "@tutti-os/ui-rich-text/editor";
@@ -114,7 +113,10 @@ const standaloneAgentDefaultConversationRailWidthPx = 280;
 function renderStandaloneAgentSidebarFooter(workspaceId: string): ReactNode {
   return (
     <Suspense fallback={null}>
-      <LazyWorkspaceAccountMenu workspaceId={workspaceId} />
+      <LazyWorkspaceAccountMenu
+        showLeadingDivider={false}
+        workspaceId={workspaceId}
+      />
     </Suspense>
   );
 }
@@ -343,6 +345,7 @@ export function StandaloneAgentWindow({
   }, [agents, launchAgentTargetId, launchProvider]);
   const { frame, isWindowMaximized, resizeContentWidth } =
     useStandaloneAgentWindowLayout(hostWindowApi);
+  const [toolSidebarLayoutWidthPx, setToolSidebarLayoutWidthPx] = useState(0);
   const [nodeState, setNodeState] = useState<DesktopAgentGUIWorkbenchState>(
     () => ({
       agentTargetId: defaultAgentTargetId,
@@ -528,14 +531,28 @@ export function StandaloneAgentWindow({
     Number.isFinite(nodeState.conversationRailWidthPx)
       ? nodeState.conversationRailWidthPx
       : standaloneAgentDefaultConversationRailWidthPx;
+  const agentGuiFrame = useMemo(
+    () => ({
+      ...frame,
+      width: Math.max(1, frame.width - toolSidebarLayoutWidthPx)
+    }),
+    [frame, toolSidebarLayoutWidthPx]
+  );
+  const conversationRailPresentation =
+    resolveAgentGUIConversationRailPresentation({
+      autoCollapseMode: "preserve-middle-content",
+      containerWidthPx: agentGuiFrame.width,
+      conversationRailCollapsed: nodeState.conversationRailCollapsed,
+      conversationRailWidthPx: nodeState.conversationRailWidthPx
+    });
   const isConversationRailAutoCollapsed =
-    shouldAutoCollapseAgentGUIConversationRail(
-      frame.width,
-      AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
-    );
-  const isConversationRailCollapsed =
-    nodeState.conversationRailCollapsed === true ||
-    isConversationRailAutoCollapsed;
+    conversationRailPresentation.isAutoCollapsed;
+  const isConversationRailCollapsed = conversationRailPresentation.isCollapsed;
+  const minimumAgentGuiViewportWidthPx =
+    resolveStandaloneAgentGUIViewportMinimumWidthPx({
+      conversationRailCollapsed: nodeState.conversationRailCollapsed === true,
+      conversationRailWidthPx: nodeState.conversationRailWidthPx
+    });
   const host = useMemo(
     () =>
       createStandaloneAgentHost({
@@ -556,8 +573,9 @@ export function StandaloneAgentWindow({
   const surface = useMemo<DesktopAgentGUISurfaceContext>(
     () => ({
       activation,
+      conversationRailAutoCollapseMode: "preserve-middle-content",
       displayMode: "floating",
-      frame,
+      frame: agentGuiFrame,
       host,
       instanceId,
       isDragging: false,
@@ -570,7 +588,7 @@ export function StandaloneAgentWindow({
       presentationMode: undefined,
       state: nodeState
     }),
-    [activation, frame, host, i18n, instanceId, nodeState]
+    [activation, agentGuiFrame, host, i18n, instanceId, nodeState]
   );
 
   useEffect(() => {
@@ -578,8 +596,20 @@ export function StandaloneAgentWindow({
   }, [agentsService]);
   const handleConversationRailToggle = useCallback(
     (collapsed: boolean) => {
-      if (!collapsed && frame.width < 640) {
-        void resizeContentWidth(AGENT_GUI_EXPANDED_TARGET_WIDTH_PX);
+      if (!collapsed) {
+        const expandedAgentGuiWidth =
+          resolveStandaloneAgentGUIViewportMinimumWidthPx({
+            conversationRailCollapsed: false,
+            conversationRailWidthPx: nodeState.conversationRailWidthPx
+          });
+        if (agentGuiFrame.width < expandedAgentGuiWidth) {
+          void resizeContentWidth(
+            Math.max(
+              AGENT_GUI_EXPANDED_TARGET_WIDTH_PX,
+              expandedAgentGuiWidth
+            ) + toolSidebarLayoutWidthPx
+          );
+        }
       }
       setNodeState((current) => ({
         ...current,
@@ -597,7 +627,13 @@ export function StandaloneAgentWindow({
         )
       );
     },
-    [frame.width, instanceId, resizeContentWidth]
+    [
+      agentGuiFrame.width,
+      instanceId,
+      nodeState.conversationRailWidthPx,
+      resizeContentWidth,
+      toolSidebarLayoutWidthPx
+    ]
   );
   const handleCreateConversation = useCallback(() => {
     window.dispatchEvent(
@@ -686,6 +722,8 @@ export function StandaloneAgentWindow({
         data-agent-gui-standalone-window="true"
         data-display-mode="floating"
         data-focused="true"
+        data-window-header-border="none"
+        data-window-header-layout="overlay"
         style={{
           border: 0,
           borderRadius: 0,
@@ -706,13 +744,9 @@ export function StandaloneAgentWindow({
           contributions={toolWorkbench.contributions}
           fileOpenRequest={fileOpenRequest}
           issueManagerOpenRequest={issueManagerOpenRequest}
-          mainContentMinWidthPx={
-            isConversationRailCollapsed
-              ? AGENT_GUI_DETAIL_MIN_WIDTH_PX
-              : headerConversationRailWidthPx +
-                agentGuiWorkbenchProviderRailWidthPx
-          }
-          renderHeader={(toolActions) => (
+          mainContentMinWidthPx={minimumAgentGuiViewportWidthPx}
+          onLayoutWidthChange={setToolSidebarLayoutWidthPx}
+          renderHeader={(toolSidebar) => (
             <StandaloneAgentWindowHeader
               copy={{
                 collapseConversationRail: i18n.t(
@@ -755,7 +789,7 @@ export function StandaloneAgentWindow({
               nodeId={standaloneAgentNodeId}
               providerRailWidthPx={agentGuiWorkbenchProviderRailWidthPx}
               primaryAccessory={<AppUpdateStatus presentation="standalone" />}
-              secondaryAccessory={isContentLoading ? null : toolActions}
+              toolSidebar={isContentLoading ? null : toolSidebar}
               showConversationRailToggle={!isContentLoading}
               showAppTitle
               title={i18n.t("workspace.agentGui.fallbackAgentLabel")}
@@ -800,9 +834,6 @@ export function StandaloneAgentWindow({
               surface={surface}
               computerUseApi={desktopApi.computerUse}
               composerAppendRequest={composerAppendRequest}
-              conversationRailAutoCollapseWidthPx={
-                AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
-              }
               dockPreviewCache={dockPreviewCache}
               onLinkAction={handleLinkAction}
               onCapabilitySettingsRequest={handleCapabilitySettingsRequest}
