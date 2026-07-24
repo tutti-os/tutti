@@ -529,8 +529,7 @@ authoritative ready target projection and retains launch orchestration in
 observe the portaled menu DOM, or infer target identity from provider or
 visible text. The current conversation's composer input availability is
 independent from this launch surface: a target connection may disable input
-while Handoff remains available when the host supplies a ready destination and
-the launch callback.
+while Handoff remains available when the host supplies the launch callback.
 
 For a signed Agent Extension, package `icon` is the primary identity and
 optional package `maskIcon` is the conversation-row glyph. All assets remain

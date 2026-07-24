@@ -100,8 +100,7 @@ export function useComposerProviderTargets(input: Input) {
     providerSelectReadonly || composerControlsHardDisabled || inputDisabled;
   const handoffDisabled = resolveComposerHandoffDisabled({
     composerControlsHardDisabled,
-    hasHandoffConversation: onHandoffConversation !== undefined,
-    handoffMenuTargetCount: handoffMenuTargets.length
+    hasHandoffConversation: onHandoffConversation !== undefined
   });
   const showProviderSelect =
     !isHeroLayout &&
@@ -127,15 +126,9 @@ export function useComposerProviderTargets(input: Input) {
   };
 }
 
-
 export function resolveComposerHandoffDisabled(input: {
   composerControlsHardDisabled: boolean;
   hasHandoffConversation: boolean;
-  handoffMenuTargetCount: number;
 }): boolean {
-  return (
-    input.composerControlsHardDisabled ||
-    !input.hasHandoffConversation ||
-    input.handoffMenuTargetCount === 0
-  );
+  return input.composerControlsHardDisabled || !input.hasHandoffConversation;
 }

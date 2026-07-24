@@ -6,22 +6,19 @@ describe("resolveComposerHandoffDisabled", () => {
     expect(
       resolveComposerHandoffDisabled({
         composerControlsHardDisabled: false,
-        hasHandoffConversation: true,
-        handoffMenuTargetCount: 1
+        hasHandoffConversation: true
       })
     ).toBe(false);
   });
 
   it.each([
     ["hard-disabled composer", { composerControlsHardDisabled: true }],
-    ["missing handoff callback", { hasHandoffConversation: false }],
-    ["no ready handoff target", { handoffMenuTargetCount: 0 }]
+    ["missing handoff callback", { hasHandoffConversation: false }]
   ])("disables handoff when %s", (_reason, override) => {
     expect(
       resolveComposerHandoffDisabled({
         composerControlsHardDisabled: false,
         hasHandoffConversation: true,
-        handoffMenuTargetCount: 1,
         ...override
       })
     ).toBe(true);
