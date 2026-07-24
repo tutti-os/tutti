@@ -1,6 +1,11 @@
 import { selectEngineSession } from "@tutti-os/agent-activity-core";
 import { useCallback } from "react";
+import { translate } from "../../../i18n/index";
 import { textPromptContent } from "../model/agentComposerDraft";
+import {
+  requestAgentGUINewConversation,
+  type AgentGUINewConversationRequestOptions
+} from "./agentGuiNewConversationRequest";
 import { resolveConversationSummaryById } from "./useAgentConversationSelection";
 import { useAgentGUIComposerSettingsActions } from "./useAgentGUIComposerSettingsActions";
 import { useAgentGUIContinueConversation } from "./useAgentGUIContinueConversation";
@@ -52,18 +57,44 @@ export function useAgentGUIOperationActions(
     getCachedComposerOptions: () => input.providerComposerOptions
   });
 
-  const { createConversation } = useAgentGUIConversationHome({
-    ...input,
-    submitPrefillPrompt: (prompt) => {
-      queueMicrotask(() => {
-        input.submitPromptRef.current(textPromptContent(prompt));
-      });
-    }
-  });
+  const { createConversation: enterConversationHome } =
+    useAgentGUIConversationHome({
+      ...input,
+      submitPrefillPrompt: (prompt) => {
+        queueMicrotask(() => {
+          input.submitPromptRef.current(textPromptContent(prompt));
+        });
+      }
+    });
+  const createConversation = useCallback(
+    (options?: AgentGUINewConversationRequestOptions) => {
+      if (
+        requestAgentGUINewConversation({
+          activeConversationId: input.activeConversationIdRef.current,
+          conversations: input.conversationsRef.current,
+          createConversation: enterConversationHome,
+          options,
+          transientConversation: input.transientConversation
+        })
+      ) {
+        return;
+      }
+      input.setDetailError(
+        translate("agentHost.agentGui.sessionActivationFailed")
+      );
+    },
+    [
+      enterConversationHome,
+      input.activeConversationIdRef,
+      input.conversationsRef,
+      input.setDetailError,
+      input.transientConversation
+    ]
+  );
 
   const continueInNewConversation = useAgentGUIContinueConversation({
     ...input,
-    createConversation
+    createConversation: enterConversationHome
   });
 
   const isSessionMarkedNonResumable = useCallback(

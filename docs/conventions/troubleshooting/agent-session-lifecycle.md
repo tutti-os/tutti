@@ -1515,6 +1515,44 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [agentGuiConversationProjectResolver.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationProjectResolver.ts)
   [useAgentGuiConversationList.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList.ts)
 
+### AgentGUI new conversation does nothing after leaving a Chats session
+
+- Symptom:
+  After using an ordinary Chats Session, the toolbar new-conversation action
+  opens the home composer but submitting by Enter or the send button creates no
+  visible Session and produces no `session/activate` command. Enabling Tutti
+  Mode before submitting can make the problem look mode-specific even though
+  activation is blocked before provider or Tutti Mode execution starts.
+- Quick checks:
+  Inspect the active conversation projection before the new-conversation
+  request. If `railSectionKey` is `conversations` while `cwd` is a generated
+  runtime directory, confirm that directory is not copied into the home
+  composer's selected project. A subsequent activation that resolves the path
+  against user projects and returns no placement explains the missing
+  `session/activate`.
+- Root cause:
+  Composer presentation intentionally exposes the active Session `cwd` for
+  file mentions, Git operations, and missing-directory checks. Treating that
+  presentation field as the user's home project selection conflates runtime
+  working directory with rail placement. The generated Chats directory then
+  enters project resolution and fails closed because it has no canonical
+  project section.
+- Fix:
+  Normalize default project selection at the AgentGUI controller's
+  new-conversation command. Explicit section actions remain authoritative; an
+  active Chats Session replaces the home selection with no project, an active
+  project Session keeps its working directory, and an action already on Home
+  preserves the user's explicit selection. Views forward the intent without
+  interpreting composer presentation fields.
+- Validation:
+  Cover the command through final `session/activate` for three P0 scenarios:
+  active Chats clears a generated cwd, active Project preserves its cwd and
+  canonical placement, and Home preserves an explicit project selection.
+- References:
+  [agentGuiNewConversationRequest.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiNewConversationRequest.ts)
+  [useAgentGUIOperationActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIOperationActions.ts)
+  [agentGuiNewConversationRequest.spec.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiNewConversationRequest.spec.tsx)
+
 ### Extension history becomes non-resumable after daemon restart
 
 - Symptom:
