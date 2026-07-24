@@ -403,9 +403,6 @@ func (c *scriptedACPConnection) handleAppServerMessage(line string, id json.RawM
 	case appServerMethodModelList:
 		c.sendJSON(map[string]any{"id": id, "result": map[string]any{"data": []any{}}})
 		return true
-	case appServerMethodConfigRead:
-		c.sendJSON(map[string]any{"id": id, "result": map[string]any{"config": map[string]any{}}})
-		return true
 	case appServerMethodCollaborationModeList:
 		c.sendJSON(map[string]any{"id": id, "result": map[string]any{"data": []any{}}})
 		return true
