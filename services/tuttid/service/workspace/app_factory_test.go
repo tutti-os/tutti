@@ -565,6 +565,9 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	if len(mentionContext.Constraints) == 0 || !strings.Contains(constraints, "Do not assume hidden Tutti daemon internals") {
 		t.Fatalf("context constraints = %#v", mentionContext.Constraints)
 	}
+	if !strings.Contains(strings.Join(mentionContext.Constraints, "\n"), "overflow") {
+		t.Fatalf("context constraints should include overflow prevention: %#v", mentionContext.Constraints)
+	}
 	for _, want := range []string{
 		"Default new apps to a Node server",
 		"@tutti-os/agent-acp-kit",
