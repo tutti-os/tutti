@@ -75,6 +75,13 @@ export const repositoryCheckDefinitions = [
   },
   {
     group: "generated",
+    key: "generated:agent-live-protocol",
+    label: "generated Agent live protocol",
+    script: "check:agent-live-protocol-generated",
+    matches: isAgentLiveProtocolContractRelevant
+  },
+  {
+    group: "generated",
     key: "generated:workbench-go-contract",
     label: "generated workbench Go contract",
     script: "check:workbench-go-contract",
@@ -271,6 +278,18 @@ function isEventProtocolContractRelevant(file) {
     file === "packages/configs/prettier/base.mjs" ||
     file === "tools/scripts/generate-event-protocol.mjs" ||
     file === "tools/scripts/check-agent-protocol-enums.mjs"
+  );
+}
+
+function isAgentLiveProtocolContractRelevant(file) {
+  return (
+    file ===
+      "packages/agent/daemon/liveprotocol/schema/agent-activity-live-event.schema.json" ||
+    file === "packages/agent/daemon/liveprotocol/protocol_revision.gen.go" ||
+    file === "packages/agent/activity-core/src/liveProtocolRevision.gen.ts" ||
+    file ===
+      "packages/events/protocol/definitions/agent/activity.updated.event.json" ||
+    file === "tools/scripts/generate-agent-live-protocol.mjs"
   );
 }
 

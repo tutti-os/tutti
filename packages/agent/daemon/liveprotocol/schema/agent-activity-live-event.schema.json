@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tutti.dev/schemas/agent-activity-live-event.json",
+  "title": "AgentActivityLiveEvent",
+  "description": "Lossy optimistic AgentGUI event contract. Canonical cloud agent.activity.updated remains unchanged.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/messageDelta"
+    },
+    {
+      "$ref": "#/$defs/turnUpdate"
+    },
+    {
+      "$ref": "#/$defs/interactionUpdate"
+    },
+    {
+      "$ref": "#/$defs/sessionAudit"
+    }
+  ],
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agentSessionId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "messageDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agentSessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventType": {
+          "const": "message_delta"
+        },
+        "data": {
+          "$ref": "#/$defs/messageDeltaData"
+        }
+      }
+    },
+    "messageDeltaData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceId",
+        "agentSessionId",
+        "messageId",
+        "role",
+        "kind",
+        "occurredAtUnixMs"
+      ],
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agentSessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "messageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turnId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "occurredAtUnixMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "content": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["operation", "text"],
+              "properties": {
+                "operation": {
+                  "const": "append_text"
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["operation", "value"],
+              "properties": {
+                "operation": {
+                  "const": "set"
+                },
+                "value": true
+              }
+            }
+          ]
+        },
+        "payloadSet": {
+          "type": "object"
+        },
+        "payloadUnset": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "status": {
+          "type": "string"
+        },
+        "semantics": {
+          "type": "object"
+        },
+        "startedAtUnixMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completedAtUnixMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "anyOf": [
+        {
+          "required": ["content"]
+        },
+        {
+          "required": ["payloadSet"]
+        },
+        {
+          "required": ["payloadUnset"]
+        },
+        {
+          "required": ["status"]
+        },
+        {
+          "required": ["semantics"]
+        },
+        {
+          "required": ["startedAtUnixMs"]
+        },
+        {
+          "required": ["completedAtUnixMs"]
+        }
+      ]
+    },
+    "turnUpdate": {
+      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/4"
+    },
+    "interactionUpdate": {
+      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/5"
+    },
+    "sessionAudit": {
+      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/3"
+    }
+  }
+}

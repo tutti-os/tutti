@@ -1,9 +1,11 @@
 package agentruntime
 
 import (
+	"encoding/json"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 )
 
 // ApplyStreamingThinkingSnapshot replaces the open thinking segment with a full
@@ -24,7 +26,10 @@ func (n *acpTurnNormalizer) ApplyStreamingThinkingSnapshot(
 	}
 	n.thinkingContent.Reset()
 	_, _ = n.thinkingContent.WriteString(text)
-	return []activityshared.Event{n.thinkingSnapshotEvent(session, turnID, messageStreamStateStreaming)}
+	event := n.thinkingSnapshotEvent(session, turnID, messageStreamStateStreaming)
+	value, _ := json.Marshal(text)
+	attachTextLiveOperation(&event, &liveprotocol.MessageContentOperation{Operation: "set", Value: value}, RoleAssistantThinking, "reasoning")
+	return []activityshared.Event{event}
 }
 
 // CompleteThinkingSnapshot finalizes thinking from an authoritative full-text
@@ -72,7 +77,10 @@ func (n *acpTurnNormalizer) ApplyStreamingAssistantSnapshot(
 	}
 	n.assistantContent.Reset()
 	_, _ = n.assistantContent.WriteString(text)
-	return []activityshared.Event{n.assistantSnapshotEvent(session, turnID, messageStreamStateStreaming)}
+	event := n.assistantSnapshotEvent(session, turnID, messageStreamStateStreaming)
+	value, _ := json.Marshal(text)
+	attachTextLiveOperation(&event, &liveprotocol.MessageContentOperation{Operation: "set", Value: value}, RoleAssistant, "text")
+	return []activityshared.Event{event}
 }
 
 // CompleteAssistantSnapshot finalizes assistant text from an authoritative
