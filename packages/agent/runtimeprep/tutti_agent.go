@@ -81,7 +81,7 @@ func prepareTuttiAgentHome(home string, input PrepareInput, authSource string, a
 	if err := exposeUserTuttiAgentFiles(home, authSource, authSourceConfigured); err != nil {
 		return err
 	}
-	return ensureTuttiAgentSessionConfig(filepath.Join(home, "config.toml"), input, authSourceConfigured)
+	return ensureTuttiAgentSessionConfig(filepath.Join(home, "config.toml"), input)
 }
 
 func exposeUserTuttiAgentFiles(home string, explicitAuthSource string, explicitAuthSourceConfigured bool) error {
@@ -139,7 +139,7 @@ func exposeTuttiAgentAuth(home string, source string, allowMissingSource bool) e
 	return nil
 }
 
-func ensureTuttiAgentSessionConfig(configPath string, input PrepareInput, managedHome bool) error {
+func ensureTuttiAgentSessionConfig(configPath string, input PrepareInput) error {
 	contentBytes, err := os.ReadFile(configPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read tutti-agent config: %w", err)
@@ -153,11 +153,9 @@ func ensureTuttiAgentSessionConfig(configPath string, input PrepareInput, manage
 		next = detailModeNext
 		changed = true
 	}
-	if managedHome {
-		if cleaned, cleanedChanged := tuttiAgentConfigWithoutLegacyPinnedProvider(next); cleanedChanged {
-			next = cleaned
-			changed = true
-		}
+	if cleaned, cleanedChanged := tuttiAgentConfigWithoutLegacyPinnedProvider(next); cleanedChanged {
+		next = cleaned
+		changed = true
 	}
 	if planNext, planChanged := codexConfigWithModelPlanEndpoint(next, input.ModelEndpoint); planChanged {
 		next = planNext
