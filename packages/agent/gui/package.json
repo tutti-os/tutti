@@ -58,7 +58,6 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-virtual": "^3.13.12",
     "@tutti-os/agent-activity-core": "workspace:*",
     "@tutti-os/browser-node": "workspace:*",
@@ -77,6 +76,7 @@
     "framer-motion": "^12.40.0",
     "lodash": "^4.17.21",
     "lucide-react": "^0.511.0",
+    "monaco-editor": "^0.55.1",
     "react-markdown": "^10.1.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
