@@ -720,7 +720,6 @@ export function useAgentGUINodeController({
     currentUserId,
     codeFor: activation.codeFor,
     composerTargetProvider: composerTargetData.provider,
-    conversationListInitialized: conversationListState?.initialized === true,
     data,
     defaultAgentTargetId,
     errorFor: activation.errorFor,
