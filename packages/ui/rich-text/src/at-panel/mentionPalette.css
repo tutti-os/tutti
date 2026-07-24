@@ -699,6 +699,7 @@
 
 .rich-text-at-mention-row__file-name {
   flex: 0 0 auto;
+  max-width: 100%;
   color: var(--rich-text-at-mention-text-primary);
   font-size: 13px;
   font-weight: 600;

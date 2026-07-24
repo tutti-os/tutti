@@ -33,6 +33,15 @@ describe("providerItemToAgentMentionItem", () => {
     expect(createFile("../outside/README.md")).not.toHaveProperty(
       "relativePath"
     );
+    for (const unsafePath of [
+      "file:C:/Users/alice/README.md",
+      "C:private/README.md",
+      "C:/Users/alice/README.md",
+      String.raw`\\server\share\README.md`,
+      "https://example.com/README.md"
+    ]) {
+      expect(createFile(unsafePath)).not.toHaveProperty("relativePath");
+    }
   });
 
   it("preserves Agent Target identity in session mention metadata", () => {

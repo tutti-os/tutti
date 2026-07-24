@@ -33,6 +33,7 @@ import {
   AGENT_MENTION_FILTER_TAB_ORDER,
   mentionGroupExpandCount
 } from "./agentMentionSearchHelpers";
+import { mentionFileDisambiguationPrefixSegments } from "./agentMentionFileProjection";
 import {
   type AgentMentionGroup,
   type AgentMentionBrowseCategory,
@@ -272,6 +273,9 @@ export function AgentFileMentionPalette({
         mode: state.mode,
         query: state.query
       });
+  const visibleFileCandidates = shellState.groups.flatMap(
+    (group) => group.items
+  );
 
   return (
     <MentionPaletteFromState<AgentContextMentionItem>
@@ -280,22 +284,25 @@ export function AgentFileMentionPalette({
       getItemKey={agentMentionItemKey}
       isItemDisabled={isAgentMentionItemDisabled}
       renderItem={(item) =>
-        renderMentionRow(agentMentionItemToRowItem(item), {
-          classNames: AGENT_MENTION_ROW_CLASS_NAMES,
-          dataAttributeMode: "agent",
-          ...(onNavigateIntoItem && canNavigateIntoMentionItem(item)
-            ? {
-                onNavigateInto: () => onNavigateIntoItem(item),
-                navigateIntoLabel
-              }
-            : {}),
-          ...(onOpenReferences && isReferenceableMentionItem(item)
-            ? {
-                onOpenReferences: () => onOpenReferences(item),
-                openReferencesLabel
-              }
-            : {})
-        })
+        renderMentionRow(
+          agentMentionItemToRowItem(item, visibleFileCandidates),
+          {
+            classNames: AGENT_MENTION_ROW_CLASS_NAMES,
+            dataAttributeMode: "agent",
+            ...(onNavigateIntoItem && canNavigateIntoMentionItem(item)
+              ? {
+                  onNavigateInto: () => onNavigateIntoItem(item),
+                  navigateIntoLabel
+                }
+              : {}),
+            ...(onOpenReferences && isReferenceableMentionItem(item)
+              ? {
+                  onOpenReferences: () => onOpenReferences(item),
+                  openReferencesLabel
+                }
+              : {})
+          }
+        )
       }
       labels={{
         loading: loadingLabel,
@@ -452,7 +459,8 @@ function shouldRenderMentionGroupLabel(input: {
  * issue status labels — are resolved here so the shared renderer stays pure.
  */
 function agentMentionItemToRowItem(
-  item: AgentContextMentionItem
+  item: AgentContextMentionItem,
+  candidates: readonly AgentContextMentionItem[]
 ): MentionRowItem {
   if (item.kind === "file") {
     const visualKind = resolveAgentMentionFileVisualKind({
@@ -475,6 +483,10 @@ function agentMentionItemToRowItem(
       kind: "file",
       name: item.name,
       relativePath: item.relativePath,
+      disambiguationPrefixSegments: mentionFileDisambiguationPrefixSegments(
+        item,
+        candidates
+      ),
       visualKind,
       thumbnailUrl: resolveAgentMentionFileThumbnailUrl(item) ?? null,
       childCountLabel,
