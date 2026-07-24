@@ -63,6 +63,100 @@ vi.mock("../../i18n/index", async () => {
 });
 
 describe("AgentFileMentionPalette", () => {
+  it("disambiguates same-named files with safe relative paths without changing selection identity", () => {
+    const files = [
+      {
+        kind: "file" as const,
+        href: "/workspace/docs/README.md",
+        path: "/workspace/docs/README.md",
+        relativePath: "docs/README.md",
+        name: "README.md",
+        entryKind: "file" as const,
+        directoryPath: "/workspace/docs"
+      },
+      {
+        kind: "file" as const,
+        href: "/workspace/apps/desktop/README.md",
+        path: "/workspace/apps/desktop/README.md",
+        relativePath: "apps/desktop/README.md",
+        name: "README.md",
+        entryKind: "file" as const,
+        directoryPath: "/workspace/apps/desktop"
+      },
+      {
+        kind: "file" as const,
+        href: "/workspace/packages/agent/gui/agentGuiNode/README.md",
+        path: "/workspace/packages/agent/gui/agentGuiNode/README.md",
+        relativePath: "packages/agent/gui/agentGuiNode/README.md",
+        name: "README.md",
+        entryKind: "file" as const,
+        directoryPath: "/workspace/packages/agent/gui/agentGuiNode"
+      }
+    ] satisfies AgentContextMentionItem[];
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "read",
+      mode: "results",
+      filter: "file",
+      categories: [],
+      groups: [
+        {
+          id: "files",
+          items: files,
+          totalCount: files.length,
+          visibleCount: files.length,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+    const onSelectItem = vi.fn();
+
+    render(
+      <div style={{ width: 180 }}>
+        <AgentFileMentionPalette
+          state={state}
+          highlightedKey="files:file:/workspace/apps/desktop/README.md"
+          label="mention palette"
+          loadingLabel="loading"
+          emptyLabel="empty"
+          errorLabel="error"
+          tabHintLabel="hint"
+          maxHeightPx={320}
+          onHighlightChange={vi.fn()}
+          onSelectItem={onSelectItem}
+          onSelectCategory={vi.fn()}
+          onSelectFilter={vi.fn()}
+          onExpandGroup={vi.fn()}
+        />
+      </div>
+    );
+
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(3);
+    const [shortPathOption, mediumPathOption, longPathOption] = options;
+    if (!shortPathOption || !mediumPathOption || !longPathOption) {
+      throw new Error("Expected three file mention options");
+    }
+    expect(shortPathOption).toHaveTextContent("docs/README.md");
+    expect(shortPathOption).not.toHaveTextContent("…");
+    expect(mediumPathOption).toHaveTextContent("apps/desktop/README.md");
+    expect(longPathOption).toHaveTextContent(
+      "packages/…/gui/agentGuiNode/README.md"
+    );
+    expect(
+      within(longPathOption).getByTitle(
+        "packages/agent/gui/agentGuiNode/README.md"
+      )
+    ).toBeVisible();
+    expect(within(longPathOption).getByText("README.md")).toHaveClass(
+      "rich-text-at-mention-row__file-name"
+    );
+
+    fireEvent.click(mediumPathOption);
+    expect(onSelectItem).toHaveBeenCalledWith(files[1]);
+  });
+
   it("shows unavailable agent targets but prevents selecting them", () => {
     const unavailableAgent = {
       kind: "agent-target" as const,

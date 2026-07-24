@@ -372,6 +372,10 @@ function MentionFileRow({
   navigateIntoLabel?: string;
   onNavigateInto?: () => void;
 }): React.JSX.Element {
+  const pathPresentation = mentionFilePathPresentation(
+    item.relativePath,
+    item.name
+  );
   return (
     <span
       className="rich-text-at-mention-row rich-text-at-mention-row--file"
@@ -401,8 +405,14 @@ function MentionFileRow({
         classNames={classNames}
         dataAttributeMode={dataAttributeMode}
       />
-      <span className="rich-text-at-mention-row__file-text">
-        <span className="rich-text-at-mention-row__title">{item.name}</span>
+      <span
+        className="rich-text-at-mention-row__file-text"
+        title={pathPresentation?.fullPath}
+      >
+        {pathPresentation?.directory ? (
+          <MentionFileDirectory presentation={pathPresentation.directory} />
+        ) : null}
+        <span className="rich-text-at-mention-row__file-name">{item.name}</span>
       </span>
       {item.childCountLabel ? (
         <span className="rich-text-at-mention-row__file-count">
@@ -418,6 +428,77 @@ function MentionFileRow({
       ) : null}
     </span>
   );
+}
+
+interface MentionFileDirectoryPresentation {
+  head: string;
+  tail: string | null;
+}
+
+function MentionFileDirectory({
+  presentation
+}: {
+  presentation: MentionFileDirectoryPresentation;
+}): React.JSX.Element {
+  if (!presentation.tail) {
+    return (
+      <span className="rich-text-at-mention-row__file-directory">
+        {presentation.head}
+      </span>
+    );
+  }
+  return (
+    <span className="rich-text-at-mention-row__file-directory rich-text-at-mention-row__file-directory--condensed">
+      <span className="rich-text-at-mention-row__file-directory-head">
+        {presentation.head}
+      </span>
+      <span className="rich-text-at-mention-row__file-directory-middle">
+        /…/
+      </span>
+      <span className="rich-text-at-mention-row__file-directory-tail">
+        {presentation.tail}
+      </span>
+    </span>
+  );
+}
+
+function mentionFilePathPresentation(
+  relativePath: string | null | undefined,
+  fileName: string
+): {
+  directory: MentionFileDirectoryPresentation | null;
+  fullPath: string;
+} | null {
+  const normalized = relativePath
+    ?.trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\/+/, "")
+    .replace(/\/{2,}/g, "/")
+    .replace(/\/+$/, "");
+  if (!normalized) {
+    return null;
+  }
+  const segments = normalized.split("/").filter(Boolean);
+  if (segments.at(-1) !== fileName) {
+    return null;
+  }
+  const directories = segments.slice(0, -1);
+  if (directories.length === 0) {
+    return { directory: null, fullPath: normalized };
+  }
+  if (directories.length <= 3) {
+    return {
+      directory: { head: `${directories.join("/")}/`, tail: null },
+      fullPath: normalized
+    };
+  }
+  return {
+    directory: {
+      head: directories[0] ?? "",
+      tail: `${directories.slice(-2).join("/")}/`
+    },
+    fullPath: normalized
+  };
 }
 
 function MentionFileIcon({

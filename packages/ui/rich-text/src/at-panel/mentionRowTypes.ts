@@ -26,6 +26,8 @@ export interface MentionRowStatusTag {
 export interface MentionRowFileItem {
   kind: "file";
   name: string;
+  /** Safe source-relative path used for candidate disambiguation and its title. */
+  relativePath?: string | null;
   visualKind: MentionFileVisualKind;
   thumbnailUrl?: string | null;
   childCountLabel?: string | null;

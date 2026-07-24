@@ -661,6 +661,47 @@
 
 .rich-text-at-mention-row__file-text {
   flex: 1 1 0;
+  gap: 0;
+}
+
+.rich-text-at-mention-row__file-directory,
+.rich-text-at-mention-row__file-directory-head,
+.rich-text-at-mention-row__file-directory-tail,
+.rich-text-at-mention-row__file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rich-text-at-mention-row__file-directory {
+  flex: 0 1 auto;
+  color: var(--rich-text-at-mention-text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.rich-text-at-mention-row__file-directory--condensed {
+  display: flex;
+}
+
+.rich-text-at-mention-row__file-directory-head {
+  flex: 1 1 auto;
+}
+
+.rich-text-at-mention-row__file-directory-middle {
+  flex: 0 0 auto;
+}
+
+.rich-text-at-mention-row__file-directory-tail {
+  flex: 0 1 auto;
+}
+
+.rich-text-at-mention-row__file-name {
+  flex: 0 0 auto;
+  color: var(--rich-text-at-mention-text-primary);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .rich-text-at-mention-row__app-text,
