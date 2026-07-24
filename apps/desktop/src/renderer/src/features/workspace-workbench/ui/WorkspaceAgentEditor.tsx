@@ -19,17 +19,10 @@ import type {
   WorkspaceAgentHarnessTargetOption,
   WorkspaceModelPlan
 } from "../services/workspaceSettingsTypes";
-import {
-  workspaceSettingsInputClass,
-  workspaceSettingsSelectContentClass,
-  workspaceSettingsSelectTriggerClass
-} from "./workspaceSettingsFieldStyles";
 
 const NO_HARNESS_VALUE = "__no_harness__";
 const NO_PLAN_VALUE = "__no_plan__";
 const PLAN_DEFAULT_MODEL_VALUE = "__plan_default__";
-const textareaClass =
-  "min-h-[88px] resize-y border-[var(--border-1)] bg-[var(--transparency-block)] text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] hover:bg-[var(--transparency-hover)] focus-visible:border-[var(--border-focus)] focus-visible:ring-0";
 
 /**
  * Simplified Agent editor: name, Agent Runtime, model plan + default model,
@@ -92,7 +85,7 @@ export function WorkspaceAgentEditor({
   const editing = draft.agentId !== null;
 
   return (
-    <section className="flex w-full flex-col gap-4 rounded-[10px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-4">
+    <section className="flex w-full flex-col gap-4 rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
@@ -123,7 +116,6 @@ export function WorkspaceAgentEditor({
             {t("workspace.settings.apps.agents.nameLabel")}
           </span>
           <Input
-            className={workspaceSettingsInputClass}
             placeholder={t("workspace.settings.apps.agents.namePlaceholder")}
             type="text"
             value={draft.name}
@@ -150,14 +142,11 @@ export function WorkspaceAgentEditor({
           >
             <SelectTrigger
               aria-label={t("workspace.settings.apps.agents.harnessLabel")}
-              className={workspaceSettingsSelectTriggerClass}
+              className="w-full rounded-[6px]"
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent
-              className={workspaceSettingsSelectContentClass}
-              style={{ zIndex: "var(--z-panel-popover)" }}
-            >
+            <SelectContent style={{ zIndex: "var(--z-panel-popover)" }}>
               {harnessOptions.length === 0 ? (
                 <SelectItem disabled value={NO_HARNESS_VALUE}>
                   {t("workspace.settings.apps.agents.noHarnesses")}
@@ -190,14 +179,11 @@ export function WorkspaceAgentEditor({
           >
             <SelectTrigger
               aria-label={t("workspace.settings.apps.agents.modelPlanLabel")}
-              className={workspaceSettingsSelectTriggerClass}
+              className="w-full rounded-[6px]"
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent
-              className={workspaceSettingsSelectContentClass}
-              style={{ zIndex: "var(--z-panel-popover)" }}
-            >
+            <SelectContent style={{ zIndex: "var(--z-panel-popover)" }}>
               <SelectItem value={NO_PLAN_VALUE}>
                 {t("workspace.settings.apps.agents.noModelPlan")}
               </SelectItem>
@@ -231,14 +217,11 @@ export function WorkspaceAgentEditor({
           >
             <SelectTrigger
               aria-label={t("workspace.settings.apps.agents.defaultModelLabel")}
-              className={workspaceSettingsSelectTriggerClass}
+              className="w-full rounded-[6px]"
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent
-              className={workspaceSettingsSelectContentClass}
-              style={{ zIndex: "var(--z-panel-popover)" }}
-            >
+            <SelectContent style={{ zIndex: "var(--z-panel-popover)" }}>
               <SelectItem value={PLAN_DEFAULT_MODEL_VALUE}>
                 {t("workspace.settings.apps.agents.planDefaultModel")}
               </SelectItem>
@@ -257,7 +240,6 @@ export function WorkspaceAgentEditor({
           {t("workspace.settings.apps.agents.descriptionLabel")}
         </span>
         <Input
-          className={workspaceSettingsInputClass}
           placeholder={t(
             "workspace.settings.apps.agents.descriptionPlaceholder"
           )}
@@ -269,50 +251,40 @@ export function WorkspaceAgentEditor({
         />
       </label>
 
-      <details
-        className="group rounded-[8px] border border-[var(--border-1)] p-3"
-        open
-      >
-        <summary className="cursor-pointer text-[11px] font-medium text-[var(--text-secondary)]">
-          {t("workspace.settings.apps.agents.behaviorDetailsTitle")}
-        </summary>
-        <div className="mt-3 grid gap-3">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-              {t("workspace.settings.apps.agents.instructionsLabel")}
-            </span>
-            <Textarea
-              className={textareaClass}
-              placeholder={t(
-                "workspace.settings.apps.agents.instructionsPlaceholder"
-              )}
-              value={draft.instructions}
-              onChange={(event) =>
-                onUpdate({ instructions: event.currentTarget.value })
-              }
-            />
-          </label>
+      <div className="grid gap-3">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+            {t("workspace.settings.apps.agents.instructionsLabel")}
+          </span>
+          <Textarea
+            placeholder={t(
+              "workspace.settings.apps.agents.instructionsPlaceholder"
+            )}
+            value={draft.instructions}
+            onChange={(event) =>
+              onUpdate({ instructions: event.currentTarget.value })
+            }
+          />
+        </label>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-              {t("workspace.settings.apps.agents.callConditionsLabel")}
-            </span>
-            <Textarea
-              className={textareaClass}
-              placeholder={t(
-                "workspace.settings.apps.agents.callConditionsPlaceholder"
-              )}
-              value={draft.callConditions}
-              onChange={(event) =>
-                onUpdate({ callConditions: event.currentTarget.value })
-              }
-            />
-            <span className="text-[10px] leading-[1.3] text-[var(--text-tertiary)]">
-              {t("workspace.settings.apps.agents.onePerLine")}
-            </span>
-          </label>
-        </div>
-      </details>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+            {t("workspace.settings.apps.agents.callConditionsLabel")}
+          </span>
+          <Textarea
+            placeholder={t(
+              "workspace.settings.apps.agents.callConditionsPlaceholder"
+            )}
+            value={draft.callConditions}
+            onChange={(event) =>
+              onUpdate({ callConditions: event.currentTarget.value })
+            }
+          />
+          <span className="text-[10px] leading-[1.3] text-[var(--text-tertiary)]">
+            {t("workspace.settings.apps.agents.onePerLine")}
+          </span>
+        </label>
+      </div>
 
       <div className="flex items-center justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onCancel}>

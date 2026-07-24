@@ -392,11 +392,7 @@ export function WorkspaceAgentsSettingsTab({
   }
 
   return (
-    <div
-      className="pb-[22px]"
-      data-testid="workspace-settings-agents-list"
-      role="table"
-    >
+    <div className="pb-[22px]" data-testid="workspace-settings-agents-list">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[var(--transparency-block)] px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
           <Switch
@@ -431,227 +427,249 @@ export function WorkspaceAgentsSettingsTab({
         </Button>
       </div>
       <div
-        className={cn(
-          agentsTableColumnsClass,
-          "items-center border-b border-[var(--border-1)] px-2 pb-2 text-[12px] font-medium text-[var(--text-tertiary)]"
-        )}
-        role="row"
+        className="overflow-hidden rounded-[12px] border border-[var(--line-1)]"
+        role="table"
       >
-        <div role="columnheader">
-          {t("workspace.workbenchDesktop.agentProviders.manageColumnAgent")}
+        <div
+          className={cn(
+            agentsTableColumnsClass,
+            "items-center border-b border-[var(--border-1)] px-2 pb-2 text-[12px] font-medium text-[var(--text-tertiary)]"
+          )}
+          role="row"
+        >
+          <div role="columnheader">
+            {t("workspace.workbenchDesktop.agentProviders.manageColumnAgent")}
+          </div>
+          <div className="max-[560px]:hidden" role="columnheader">
+            {t("workspace.settings.agent.agents.environmentColumn")}
+          </div>
+          <div className="text-right" role="columnheader">
+            {t("workspace.settings.agent.agents.enabledColumn")}
+          </div>
         </div>
-        <div className="max-[560px]:hidden" role="columnheader">
-          {t("workspace.settings.agent.agents.environmentColumn")}
-        </div>
-        <div className="text-right" role="columnheader">
-          {t("workspace.settings.agent.agents.enabledColumn")}
-        </div>
-      </div>
-      <div role="rowgroup">
-        {visibleProviders.map((provider) => {
-          const row = rowByProvider.get(provider);
-          const status = row?.status ?? "unknown";
-          const label = resolveWorkspaceAgentGuiLabel(provider);
-          const targetID = agentTargetId(provider);
-          const agentTarget = targetID ? agentTargetByID.get(targetID) : null;
-          const iconUrl = resolveAgentSettingsIconUrl(provider, agentTarget);
-          const agentEnabled = agentTarget?.enabled ?? false;
-          const agentEnabledPending = targetID
-            ? pendingAgentTargetIDs.has(targetID)
-            : false;
-          const isEarlyAccess =
-            isWorkspaceAgentGuiEarlyAccessProvider(provider);
-          const environmentLabel = t("workspace.agentEnv.configTitle", {
-            provider: label
-          });
-          const providerStatus = snapshot.statuses.find(
-            (item) => item.provider === provider
-          );
-          const updatePresentation =
-            resolveAgentProviderUpdateRowPresentation(providerStatus);
-          const updateSummary = formatAgentProviderUpdateSummary({
-            checkFailed: updatePresentation.checkFailed,
-            currentVersion: updatePresentation.currentVersion,
-            latestVersion: updatePresentation.latestVersion,
-            t,
-            updateAvailable: updatePresentation.updateAvailable
-          });
-          return (
-            <div
-              key={provider}
-              ref={(element) => {
-                if (element) {
-                  rowRefs.current.set(provider, element);
-                } else {
-                  rowRefs.current.delete(provider);
-                }
-              }}
-              className={cn(
-                agentsTableColumnsClass,
-                "items-center border-b border-[var(--border-1)] px-2 py-2.5 text-[13px] transition-colors duration-150 last:border-b-0",
-                highlightedProvider === provider
-                  ? "bg-[var(--transparency-block)]"
-                  : "bg-transparent"
-              )}
-              data-agent-provider={provider}
-              role="row"
-            >
-              <div className="flex min-w-0 items-center gap-2.5" role="cell">
-                {iconUrl ? (
-                  <img
-                    alt=""
-                    aria-hidden="true"
-                    className="size-7 shrink-0 rounded-[6px]"
-                    src={iconUrl}
-                  />
-                ) : (
-                  <span className="size-7 shrink-0 rounded-[6px] bg-[var(--transparency-block)]" />
+        <div role="rowgroup">
+          {visibleProviders.map((provider) => {
+            const row = rowByProvider.get(provider);
+            const status = row?.status ?? "unknown";
+            const label = resolveWorkspaceAgentGuiLabel(provider);
+            const targetID = agentTargetId(provider);
+            const agentTarget = targetID ? agentTargetByID.get(targetID) : null;
+            const iconUrl = resolveAgentSettingsIconUrl(provider, agentTarget);
+            const agentEnabled = agentTarget?.enabled ?? false;
+            const agentEnabledPending = targetID
+              ? pendingAgentTargetIDs.has(targetID)
+              : false;
+            const isEarlyAccess =
+              isWorkspaceAgentGuiEarlyAccessProvider(provider);
+            const environmentLabel = t("workspace.agentEnv.configTitle", {
+              provider: label
+            });
+            const providerStatus = snapshot.statuses.find(
+              (item) => item.provider === provider
+            );
+            const updatePresentation =
+              resolveAgentProviderUpdateRowPresentation(providerStatus);
+            const updateSummary = formatAgentProviderUpdateSummary({
+              checkFailed: updatePresentation.checkFailed,
+              currentVersion: updatePresentation.currentVersion,
+              latestVersion: updatePresentation.latestVersion,
+              t,
+              updateAvailable: updatePresentation.updateAvailable
+            });
+            return (
+              <div
+                key={provider}
+                ref={(element) => {
+                  if (element) {
+                    rowRefs.current.set(provider, element);
+                  } else {
+                    rowRefs.current.delete(provider);
+                  }
+                }}
+                className={cn(
+                  agentsTableColumnsClass,
+                  "items-center border-b border-[var(--border-1)] px-2 py-2.5 text-[13px] transition-colors duration-150 last:border-b-0",
+                  highlightedProvider === provider
+                    ? "bg-[var(--transparency-block)]"
+                    : "bg-transparent"
                 )}
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="truncate font-semibold text-[var(--text-primary)]">
-                      {label}
+                data-agent-provider={provider}
+                role="row"
+              >
+                <div className="flex min-w-0 items-center gap-2.5" role="cell">
+                  {iconUrl ? (
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="size-7 shrink-0 rounded-[6px]"
+                      src={iconUrl}
+                    />
+                  ) : (
+                    <span className="size-7 shrink-0 rounded-[6px] bg-[var(--transparency-block)]" />
+                  )}
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-semibold text-[var(--text-primary)]">
+                        {label}
+                      </span>
+                      {isEarlyAccess ? (
+                        <span className="shrink-0 rounded-full border border-[var(--border-1)] px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-[var(--text-secondary)]">
+                          {t(
+                            "workspace.settings.agent.agents.earlyAccessBadge"
+                          )}
+                        </span>
+                      ) : null}
                     </span>
-                    {isEarlyAccess ? (
-                      <span className="shrink-0 rounded-full border border-[var(--border-1)] px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-[var(--text-secondary)]">
-                        {t("workspace.settings.agent.agents.earlyAccessBadge")}
+                    {updateSummary ? (
+                      <span
+                        className="truncate text-[11px] text-[var(--text-tertiary)]"
+                        data-testid={`workspace-settings-agents-update-summary-${provider}`}
+                      >
+                        {updateSummary}
                       </span>
                     ) : null}
+                    <AgentConnectionStatus
+                      className="hidden w-fit text-[11px] text-[var(--text-secondary)] max-[560px]:flex"
+                      environmentLabel={environmentLabel}
+                      label={t(statusLabelKeys[status])}
+                      status={status}
+                      onOpenEnvironment={() => onOpenEnvironment(provider)}
+                    />
                   </span>
-                  {updateSummary ? (
-                    <span
-                      className="truncate text-[11px] text-[var(--text-tertiary)]"
-                      data-testid={`workspace-settings-agents-update-summary-${provider}`}
-                    >
-                      {updateSummary}
-                    </span>
-                  ) : null}
+                </div>
+                <div
+                  className="flex min-w-0 items-center gap-1.5 max-[560px]:hidden"
+                  role="cell"
+                >
                   <AgentConnectionStatus
-                    className="hidden w-fit text-[11px] text-[var(--text-secondary)] max-[560px]:flex"
+                    className="flex"
                     environmentLabel={environmentLabel}
                     label={t(statusLabelKeys[status])}
                     status={status}
                     onOpenEnvironment={() => onOpenEnvironment(provider)}
                   />
-                </span>
-              </div>
-              <div
-                className="flex min-w-0 items-center gap-1.5 max-[560px]:hidden"
-                role="cell"
-              >
-                <AgentConnectionStatus
-                  className="flex"
-                  environmentLabel={environmentLabel}
-                  label={t(statusLabelKeys[status])}
-                  status={status}
-                  onOpenEnvironment={() => onOpenEnvironment(provider)}
-                />
-              </div>
-              <div className="flex items-center justify-end gap-2" role="cell">
-                <span className="text-[11px] text-[var(--text-secondary)]">
-                  {agentEnabled
-                    ? t("workspace.settings.agent.agents.enabled")
-                    : t("workspace.settings.agent.agents.disabled")}
-                </span>
-                <Switch
-                  aria-label={t("workspace.settings.agent.agents.enableAgent", {
-                    agent: label
-                  })}
-                  checked={agentEnabled}
-                  disabled={
-                    agentsSnapshot.status === "loading" ||
-                    !agentTarget ||
-                    agentEnabledPending
-                  }
-                  size="sm"
-                  onCheckedChange={(next) => {
-                    void toggleAgentEnabled(provider, next);
-                  }}
-                />
-              </div>
-            </div>
-          );
-        })}
-        {extensionRows.map((row) => {
-          const label = t(row.labelKey);
-          const environmentLabel = t("workspace.agentEnv.configTitle", {
-            provider: label
-          });
-          const statusLabel = row.enabled
-            ? row.status === "unknown"
-              ? t("workspace.settings.agent.agents.extensionPreparing")
-              : t(statusLabelKeys[row.status])
-            : t("workspace.settings.agent.agents.extensionEnableToSetUp");
-          return (
-            <div
-              key={row.key}
-              className={cn(
-                agentsTableColumnsClass,
-                "items-center border-b border-[var(--border-1)] px-2 py-2.5 text-[13px] last:border-b-0"
-              )}
-              data-agent-target={row.agentTargetId}
-              role="row"
-            >
-              <div className="flex min-w-0 items-center gap-2.5" role="cell">
-                {row.iconUrl ? (
-                  <img
-                    alt=""
-                    aria-hidden="true"
-                    className="size-7 shrink-0 rounded-[6px]"
-                    src={row.iconUrl}
-                  />
-                ) : (
-                  <span className="size-7 shrink-0 rounded-[6px] bg-[var(--transparency-block)]" />
-                )}
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="truncate font-semibold text-[var(--text-primary)]">
-                      {label}
-                    </span>
-                    <span className="shrink-0 rounded-full border border-[var(--border-1)] px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-[var(--text-secondary)]">
-                      {t("workspace.settings.agent.agents.earlyAccessBadge")}
-                    </span>
+                </div>
+                <div
+                  className="flex items-center justify-end gap-2"
+                  role="cell"
+                >
+                  <span className="text-[11px] text-[var(--text-secondary)]">
+                    {agentEnabled
+                      ? t("workspace.settings.agent.agents.enabled")
+                      : t("workspace.settings.agent.agents.disabled")}
                   </span>
+                  <Switch
+                    aria-label={t(
+                      "workspace.settings.agent.agents.enableAgent",
+                      {
+                        agent: label
+                      }
+                    )}
+                    checked={agentEnabled}
+                    disabled={
+                      agentsSnapshot.status === "loading" ||
+                      !agentTarget ||
+                      agentEnabledPending
+                    }
+                    size="sm"
+                    onCheckedChange={(next) => {
+                      void toggleAgentEnabled(provider, next);
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+          {extensionRows.map((row) => {
+            const label = t(row.labelKey);
+            const environmentLabel = t("workspace.agentEnv.configTitle", {
+              provider: label
+            });
+            const statusLabel = row.enabled
+              ? row.status === "unknown"
+                ? t("workspace.settings.agent.agents.extensionPreparing")
+                : t(statusLabelKeys[row.status])
+              : t("workspace.settings.agent.agents.extensionEnableToSetUp");
+            return (
+              <div
+                key={row.key}
+                className={cn(
+                  agentsTableColumnsClass,
+                  "items-center border-b border-[var(--border-1)] px-2 py-2.5 text-[13px] last:border-b-0"
+                )}
+                data-agent-target={row.agentTargetId}
+                role="row"
+              >
+                <div className="flex min-w-0 items-center gap-2.5" role="cell">
+                  {row.iconUrl ? (
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="size-7 shrink-0 rounded-[6px]"
+                      src={row.iconUrl}
+                    />
+                  ) : (
+                    <span className="size-7 shrink-0 rounded-[6px] bg-[var(--transparency-block)]" />
+                  )}
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-semibold text-[var(--text-primary)]">
+                        {label}
+                      </span>
+                      <span className="shrink-0 rounded-full border border-[var(--border-1)] px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-[var(--text-secondary)]">
+                        {t("workspace.settings.agent.agents.earlyAccessBadge")}
+                      </span>
+                    </span>
+                    <AgentConnectionStatus
+                      className="hidden w-fit text-[11px] text-[var(--text-secondary)] max-[560px]:flex"
+                      environmentLabel={environmentLabel}
+                      label={statusLabel}
+                      status={row.status}
+                    />
+                  </span>
+                </div>
+                <div
+                  className="flex min-w-0 items-center gap-1.5 max-[560px]:hidden"
+                  role="cell"
+                >
                   <AgentConnectionStatus
-                    className="hidden w-fit text-[11px] text-[var(--text-secondary)] max-[560px]:flex"
+                    className="flex"
                     environmentLabel={environmentLabel}
                     label={statusLabel}
                     status={row.status}
                   />
-                </span>
+                </div>
+                <div
+                  className="flex items-center justify-end gap-2"
+                  role="cell"
+                >
+                  <span className="text-[11px] text-[var(--text-secondary)]">
+                    {row.enabled
+                      ? t("workspace.settings.agent.agents.enabled")
+                      : t("workspace.settings.agent.agents.disabled")}
+                  </span>
+                  <Switch
+                    aria-label={t(
+                      "workspace.settings.agent.agents.enableAgent",
+                      {
+                        agent: label
+                      }
+                    )}
+                    checked={row.enabled}
+                    disabled={featureFlagsPending}
+                    size="sm"
+                    onCheckedChange={(enabled) => {
+                      void onExtensionEnabledChange(
+                        row.activationFlag,
+                        enabled
+                      );
+                    }}
+                  />
+                </div>
               </div>
-              <div
-                className="flex min-w-0 items-center gap-1.5 max-[560px]:hidden"
-                role="cell"
-              >
-                <AgentConnectionStatus
-                  className="flex"
-                  environmentLabel={environmentLabel}
-                  label={statusLabel}
-                  status={row.status}
-                />
-              </div>
-              <div className="flex items-center justify-end gap-2" role="cell">
-                <span className="text-[11px] text-[var(--text-secondary)]">
-                  {row.enabled
-                    ? t("workspace.settings.agent.agents.enabled")
-                    : t("workspace.settings.agent.agents.disabled")}
-                </span>
-                <Switch
-                  aria-label={t("workspace.settings.agent.agents.enableAgent", {
-                    agent: label
-                  })}
-                  checked={row.enabled}
-                  disabled={featureFlagsPending}
-                  size="sm"
-                  onCheckedChange={(enabled) => {
-                    void onExtensionEnabledChange(row.activationFlag, enabled);
-                  }}
-                />
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

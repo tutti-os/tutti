@@ -19,6 +19,7 @@
 
   --background: oklch(0.986 0.004 84);
   --background-panel: rgb(248 250 252);
+  --background-1: rgb(244 245 247);
   --background-session-flow: rgb(252 253 255);
   --background-session-sidepanel: rgb(244 245 247);
   --background-fronted: rgb(255 255 255 / 1);
@@ -208,6 +209,7 @@
 :root[data-theme="dark"] {
   --background: oklch(0.192 0.008 255);
   --background-panel: rgb(42 42 43);
+  --background-1: rgb(24 24 24);
   --background-session-flow: rgb(24 24 24);
   --background-session-sidepanel: rgb(42 42 43);
   --background-fronted: rgb(51 51 51 / 1);
@@ -387,6 +389,7 @@
   :root:not([data-theme="light"]) {
     --background: oklch(0.192 0.008 255);
     --background-panel: rgb(42 42 43);
+    --background-1: rgb(24 24 24);
     --background-session-flow: rgb(24 24 24);
     --background-session-sidepanel: rgb(42 42 43);
     --background-fronted: rgb(51 51 51 / 1);

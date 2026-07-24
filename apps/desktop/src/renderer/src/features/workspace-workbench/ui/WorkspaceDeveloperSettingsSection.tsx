@@ -594,15 +594,20 @@ export function WorkspaceDeveloperSettingsSection() {
               <Button
                 variant="secondary"
                 type="button"
+                className="group"
                 disabled={developerLogs.exporting}
               >
                 {developerLogs.exporting
                   ? t("workspace.settings.developer.exportingLogs")
                   : t("workspace.settings.developer.exportLogs")}
-                <ChevronDownIcon className="size-3.5" />
+                <ChevronDownIcon className="size-3.5 transition-transform duration-200 group-data-[state=open]:rotate-180" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuContent
+              align="end"
+              className="w-64"
+              style={{ zIndex: "var(--z-panel-popover)" }}
+            >
               <DropdownMenuItem
                 onSelect={() =>
                   onExportLogs({
@@ -717,7 +722,7 @@ function AppCatalogChannelControl({
               className={cn(
                 "min-w-[92px] rounded-[5px] border-0 px-3 text-[13px] font-semibold leading-none outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--border-focus)]",
                 selected
-                  ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-none"
+                  ? "bg-[var(--background-board-card)] text-[var(--text-primary)] shadow-none"
                   : "bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               )}
               disabled={changingAppCatalogChannel !== null}
@@ -780,7 +785,7 @@ function ReleaseChannelControl({
               className={cn(
                 "min-w-[92px] rounded-[5px] border-0 px-3 text-[13px] font-semibold leading-none outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--border-focus)]",
                 selected
-                  ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-none"
+                  ? "bg-[var(--background-board-card)] text-[var(--text-primary)] shadow-none"
                   : "bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               )}
               disabled={changingUpdateChannel !== null}

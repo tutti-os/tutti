@@ -126,7 +126,7 @@ export function BrowserNodeChrome({
   return (
     <div
       className={cn(
-        "relative z-[1] flex h-[76px] min-h-[76px] flex-col overflow-visible bg-[var(--background-panel)]",
+        "relative z-[1] flex h-[76px] min-h-[76px] flex-col overflow-visible bg-[var(--background-fronted)]",
         withBorder ? "border-b border-border" : null,
         className
       )}
@@ -137,6 +137,7 @@ export function BrowserNodeChrome({
         {...restDragHandleProps}
         className={cn(
           "flex h-[38px] min-h-[38px] items-center gap-1.5 px-2 cursor-grab active:cursor-grabbing",
+          "bg-[var(--background-1)]",
           dragClassName
         )}
         data-browser-node-tab-strip="true"
