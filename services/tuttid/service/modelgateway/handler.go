@@ -94,7 +94,7 @@ func (g *Gateway) handleResponses(writer http.ResponseWriter, request *http.Requ
 		mediaType, _, _ := mime.ParseMediaType(upstreamResponse.Header.Get("Content-Type"))
 		if mediaType == "application/json" {
 			var chatOutput chatCompletionResponse
-			if err := json.NewDecoder(upstreamResponse.Body).Decode(&chatOutput); err != nil {
+			if err := json.NewDecoder(io.LimitReader(upstreamResponse.Body, g.maxRequestBytes+1)).Decode(&chatOutput); err != nil {
 				writeResponsesError(writer, http.StatusBadGateway, "server_error", "upstream_error", "", "Upstream returned invalid Chat JSON")
 				return
 			}
