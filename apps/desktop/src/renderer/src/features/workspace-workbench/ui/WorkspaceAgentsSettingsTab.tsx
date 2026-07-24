@@ -433,7 +433,7 @@ export function WorkspaceAgentsSettingsTab({
         <div
           className={cn(
             agentsTableColumnsClass,
-            "items-center border-b border-[var(--border-1)] px-2 pb-2 text-[12px] font-medium text-[var(--text-tertiary)]"
+            "items-center border-b border-[var(--border-1)] px-2 pb-2 pt-2 text-[12px] font-medium text-[var(--text-tertiary)]"
           )}
           role="row"
         >
