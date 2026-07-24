@@ -364,6 +364,7 @@ export interface AgentGUIViewLabels {
   slashStatusContext: string;
   slashStatusLimits: string;
   slashStatusAccount: string;
+  slashStatusProviderAccount: (provider: string) => string | null;
   slashStatusClose: string;
   slashStatusContextValue: (input: {
     percentLeft: number;

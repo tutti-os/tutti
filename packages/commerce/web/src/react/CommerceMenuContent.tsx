@@ -3,7 +3,7 @@ import {
   BillingIcon,
   CreditsIcon,
   LaunchIcon,
-  SettingsIcon
+  UserLinedIcon
 } from "@tutti-os/ui-system";
 import { resolveMembershipAction, type CommerceMenuState } from "../index";
 
@@ -88,11 +88,15 @@ export function CommerceMenuContent({
         disabled={!state.links.settingsUrl.trim()}
         onClick={() => openExternal(state.links.settingsUrl)}
       >
-        <SettingsIcon aria-hidden="true" size={15} />
+        <UserLinedIcon aria-hidden="true" size={15} />
         <span className="min-w-0 flex-1 truncate text-left">
           {labels.accountCenter}
         </span>
-        <LaunchIcon aria-hidden="true" size={14} />
+        <LaunchIcon
+          aria-hidden="true"
+          className="text-[var(--text-secondary)]"
+          size={14}
+        />
       </button>
       {state.dataUnavailable ? (
         <span className="px-2 py-1 text-[11px] leading-4 text-[var(--text-danger)]">

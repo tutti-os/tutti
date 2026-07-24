@@ -4619,7 +4619,7 @@ aside.workspace-agents-status-panel
     --background-session-sidepanel,
     rgb(244 245 247)
   );
-  --agent-gui-detail-padding-x: 32px;
+  --agent-gui-detail-padding-x: 48px;
   width: 100%;
   height: 100%;
   container: agent-gui-node / inline-size;
@@ -5630,7 +5630,9 @@ aside.workspace-agents-status-panel
   align-items: center;
   gap: 10px;
   min-width: 0;
-  padding: 2px 16px 16px;
+  /* Right inset mirrors the conversation list's 4px padding + 8px native
+     scrollbar gutter so the toolbar controls end flush with the row edges. */
+  padding: 2px 12px 16px 12px;
 }
 
 .agent-gui-node__project-rail-header {
@@ -5970,7 +5972,10 @@ aside.workspace-agents-status-panel
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 0 10px 18px 12px;
+  /* Right inset stays 4px because the always-visible native scrollbar already
+     reserves an 8px gutter, keeping the visual right inset at 12px like the
+     left side. */
+  padding: 0 4px 18px 12px;
 }
 
 .agent-gui-node__conversation-section {
@@ -6934,7 +6939,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   --agent-message-locator-dot-size: 6px;
   --agent-message-locator-hit-size: 36px;
   --agent-message-locator-center-offset: 18px;
-  --agent-message-locator-inline-shift: 4px;
+  --agent-message-locator-inline-shift: 8px;
   --agent-message-locator-scrollbar-gap: 8px;
   --agent-message-locator-visible-height: 100vh;
   --agent-message-locator-visible-top-offset: 0px;
@@ -10846,4 +10851,65 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   padding: 8px 12px;
   font-size: 11px;
   line-height: 1.5;
+}
+
+/* Tutti intensity slider: stars pour out of the handle towards the left end
+   of the track. The stream container is sized from React (track start to the
+   handle's left edge); per-star duration/delay/drift come from CSS vars so a
+   fixed pool can run continuously while intensity changes only toggle
+   visibility. Stacking: the stream sits above the track (z-index 1) and below
+   the handle (the slider thumb rules raise it to z-index 2). */
+.agent-gui-intensity-star-stream {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 0;
+  width: max(0px, var(--agent-gui-star-stream-width, 0px));
+  height: 28px;
+  transform: translateY(calc(-50% - 2px));
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.agent-gui-intensity-star-stream__star {
+  position: absolute;
+  left: 100%;
+  opacity: 0;
+  filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 6px currentColor);
+  animation: agent-gui-intensity-star-stream-flow
+    var(--agent-gui-star-duration, 2s) linear infinite;
+  animation-delay: var(--agent-gui-star-delay, 0s);
+}
+
+@keyframes agent-gui-intensity-star-stream-flow {
+  0% {
+    left: 100%;
+    opacity: 0;
+    transform: translateY(0) scale(0.5);
+  }
+
+  10% {
+    opacity: 0.95;
+  }
+
+  50% {
+    transform: translateY(var(--agent-gui-star-drift, 0px)) scale(1);
+  }
+
+  85% {
+    opacity: 0.95;
+  }
+
+  100% {
+    left: -16px;
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-intensity-star-stream__star {
+    animation: none;
+    opacity: 0;
+  }
 }
