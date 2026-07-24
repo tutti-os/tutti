@@ -453,6 +453,10 @@ presentation has distinct `loading` and `ready` states, so the renderer never
 infers identity readiness from a missing image URL. The host supplies user and
 Agent names and optional avatar URLs; AgentGUI owns the UI System Avatar,
 fixed-size loading slot, fallback initial, and user-right/Agent-left layout.
+Participant-header placement is projected from presentation turns rather than
+individual message or tool-progress rows: each speaker renders at most one
+header per turn, and a collapsed completed turn keeps the Agent header on
+visible reply content.
 This presentation input is view data only and must not enter canonical Session,
 Turn, Message, activity-runtime, or workspace-engine state.
 
@@ -527,7 +531,9 @@ target, plus temporary disclosure/icon-motion state; a host supplies its
 authoritative ready target projection and retains launch orchestration in
 `onSelect`. Host surfaces must not reconstruct a second handoff row model,
 observe the portaled menu DOM, or infer target identity from provider or
-visible text.
+visible text. The current conversation's composer input availability is
+independent from this launch surface: a target connection may disable input
+while Handoff remains available when the host supplies the launch callback.
 
 For a signed Agent Extension, package `icon` is the primary identity and
 optional package `maskIcon` is the conversation-row glyph. All assets remain

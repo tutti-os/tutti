@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const laneFingerprintVersion = 1;
-const gitFingerprintMaxBuffer = 64 * 1024 * 1024;
+export const gitFingerprintMaxBuffer = 128 * 1024 * 1024;
 
 export class LaneCacheError extends Error {}
 

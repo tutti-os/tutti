@@ -17,6 +17,10 @@ type ModelEndpointConfig struct {
 	Protocol string
 	BaseURL  string
 	APIKey   string
+	// WireAPI is the provider-facing endpoint shape. Codex accepts "chat" or
+	// "responses"; daemon gateways set "responses" while legacy/direct
+	// callers retain "chat" when this field is empty.
+	WireAPI string
 	// Model is the default model id for the session; providers may still
 	// switch models within the plan on later calls.
 	Model string
@@ -138,7 +142,7 @@ func codexConfigWithModelPlanEndpoint(content string, endpoint *ModelEndpointCon
 		"name = " + strconv.Quote(planProviderDisplayName(endpoint)) + "\n" +
 		"base_url = " + strconv.Quote(strings.TrimSpace(endpoint.BaseURL)) + "\n" +
 		"env_key = " + strconv.Quote(codexModelPlanAPIKeyEnv) + "\n" +
-		"wire_api = \"chat\"\n"
+		"wire_api = " + strconv.Quote(codexModelEndpointWireAPI(endpoint)) + "\n"
 	if !strings.Contains(next, "[model_providers."+codexModelPlanProviderID+"]") {
 		if strings.TrimSpace(next) == "" {
 			next = table
@@ -147,6 +151,13 @@ func codexConfigWithModelPlanEndpoint(content string, endpoint *ModelEndpointCon
 		}
 	}
 	return next, next != content
+}
+
+func codexModelEndpointWireAPI(endpoint *ModelEndpointConfig) string {
+	if endpoint != nil && strings.TrimSpace(endpoint.WireAPI) == "responses" {
+		return "responses"
+	}
+	return "chat"
 }
 
 func planProviderDisplayName(endpoint *ModelEndpointConfig) string {

@@ -98,11 +98,9 @@ export function useComposerProviderTargets(input: Input) {
     isSelectedProjectMissing || (disabled && !canQueueWhileBusy);
   const providerSelectDisabled =
     providerSelectReadonly || composerControlsHardDisabled || inputDisabled;
-  const handoffDisabled =
-    composerControlsHardDisabled ||
-    inputDisabled ||
-    !onHandoffConversation ||
-    handoffMenuTargets.length === 0;
+  const handoffDisabled = resolveComposerHandoffDisabled({
+    hasHandoffConversation: onHandoffConversation !== undefined
+  });
   const showProviderSelect =
     !isHeroLayout &&
     selectedProviderSwitchTarget !== null &&
@@ -125,4 +123,10 @@ export function useComposerProviderTargets(input: Input) {
     showHandoffSelect,
     showProviderSelect
   };
+}
+
+export function resolveComposerHandoffDisabled(input: {
+  hasHandoffConversation: boolean;
+}): boolean {
+  return !input.hasHandoffConversation;
 }

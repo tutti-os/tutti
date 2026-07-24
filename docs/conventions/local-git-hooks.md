@@ -37,6 +37,7 @@ Current behavior:
 - `pnpm check:ui-boundaries:staged`
 - `pnpm check:renderer-boundaries:staged`
 - `pnpm check:agent-gui-degradation:staged`
+- `pnpm check:runtime-image-budgets:staged`
 
 Rules:
 
@@ -99,6 +100,7 @@ That full validation currently includes:
 - `pnpm check:agent-host-boundary`
 - `pnpm check:agent-provider-strategy-boundaries`
 - `pnpm check:agent-gui-degradation`
+- `pnpm check:runtime-image-budgets`
 - `pnpm lint`
 - `pnpm typecheck`
 - `pnpm test:ts`
@@ -235,3 +237,15 @@ The agent GUI degradation ratchet is enforced in two modes:
 
 Details of the metrics and baseline mechanism live in
 [Static Analysis](static-analysis.md).
+
+## Runtime Image Budget Enforcement
+
+Bounded runtime raster assets are enforced in two modes:
+
+- `pnpm check:runtime-image-budgets:staged` for `pre-commit`
+- `pnpm check:runtime-image-budgets` for `check:full`, pull-request CI, and the
+  `check:changed` lane selected by governed runtime assets
+
+The check reads PNG dimensions directly, so it stays fast and does not depend
+on a platform image tool. Pixel and byte ceilings are documented in
+[Runtime Image Assets](runtime-image-assets.md).

@@ -51,6 +51,8 @@
     "check:workbench-openapi-schema": "node ./tools/scripts/sync-workbench-openapi-schema.mjs --check",
     "check:renderer-boundaries": "node ./tools/scripts/check-renderer-feature-boundaries.mjs",
     "check:renderer-boundaries:staged": "node ./tools/scripts/check-renderer-feature-boundaries.mjs --staged",
+    "check:runtime-image-budgets": "node ./tools/scripts/check-runtime-image-budgets.mjs",
+    "check:runtime-image-budgets:staged": "node ./tools/scripts/check-runtime-image-budgets.mjs --staged",
     "dev": "pnpm dev:desktop",
     "dev:cli": "node ./tools/scripts/install-dev-cli.mjs",
     "dev:desktop": "pnpm --filter @tutti-os/desktop dev",

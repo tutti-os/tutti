@@ -125,3 +125,13 @@ test("stylesheet changes select the CSS :has() performance policy", () => {
 
   assert.ok(checks.some((check) => check.key === "policy:css-has-performance"));
 });
+
+test("bounded runtime image changes select the image budget policy", () => {
+  const checks = selectRepositoryChecks([
+    "apps/desktop/src/renderer/src/assets/workspace-canvas/dock/default/codex.png"
+  ]);
+
+  assert.ok(
+    checks.some((check) => check.key === "policy:runtime-image-budgets")
+  );
+});

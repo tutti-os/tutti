@@ -16,6 +16,17 @@ test("pre-commit runs the staged CSS :has() performance policy", () => {
   assert.ok(hook.split("\n").includes("pnpm check:css-has-performance:staged"));
 });
 
+test("pre-commit runs the staged runtime image budget policy", () => {
+  const hook = readFileSync(
+    join(workspaceRoot, ".husky", "pre-commit"),
+    "utf8"
+  );
+
+  assert.ok(
+    hook.split("\n").includes("pnpm check:runtime-image-budgets:staged")
+  );
+});
+
 test("pre-push uses changed-aware push-ready validation", () => {
   const hook = readFileSync(join(workspaceRoot, ".husky", "pre-push"), "utf8");
 

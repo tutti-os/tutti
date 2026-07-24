@@ -5,3 +5,4 @@ pnpm check:electron-runtime-boundaries:staged
 pnpm check:ui-boundaries:staged
 pnpm check:renderer-boundaries:staged
 pnpm check:agent-gui-degradation:staged
+pnpm check:runtime-image-budgets:staged
