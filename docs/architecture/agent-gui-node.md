@@ -255,7 +255,7 @@ Host owns recovery for runtime operations, Goal operations, and the reconcile in
 
 On daemon restart, Host recovery first restores durable operations, then settles unrecoverable active Turns as `settled/interrupted` and supersedes pending Interactions.
 
-Codex's restored Full access warning is presentation-only, device-local safety chrome. Show it only when an empty home composer restores an unacknowledged Full access target default; do not show it for another provider or permission mode, an active or historical Session, or while defaults are loading. Explicit Full access confirmation and “Don't show again” persist the same browser-local acknowledgement, while the close action affects only the current mount. This acknowledgement must not enter Session lifecycle, target defaults, Workbench node data, or `AgentActivityRuntime` state.
+Codex's restored Full access warning is presentation-only, device-local safety chrome. Show it only when an empty home composer restores an unacknowledged Full access target default; do not show it for another provider or permission mode, an active or historical Session, preview chrome, or while defaults are loading. Explicit Full access confirmation and “Don't show again” persist the same browser-local acknowledgement, while the close action affects only the current mount. This acknowledgement must not enter Session lifecycle, target defaults, Workbench node data, or `AgentActivityRuntime` state.
 
 ### 3.5 Messages and ordering
 
@@ -392,10 +392,6 @@ Scroll, section collapse, visible limits, and search query belong to mounted vie
 
 Rail scroll memory is captured by scroll events and explicit navigation. Effect cleanup must not synchronously read `scrollTop`: React may already have dirtied the document, turning that read into a full layout inside the interaction task.
 
-An empty bounded Rail result must not unactivate an active or persisted Session.
-Only an explicit Agent target selection may move the detail to that target's
-Home composer.
-
 Contain selection and presentation identity at the Rail boundary. Each section receives the active ID only when it owns the canonical or overlay row; unrelated sections receive `null` so their memoized props remain equal. Rail pane, section, and row receive a dedicated Rail-label projection whose identity changes for locale changes, not provider-specific detail copy. Event handlers shared by every section keep stable identities and read the current scope and lock state when invoked.
 
 Keep section header/action chrome independent from changing item collections. A memoized header receives scalar presentation fields and stable event-time actions; it must not receive the section object or rebuild project/session semantics. Split the header into narrow render islands. Frequently changing derived booleans such as project drag disabled, project action locked, and batch deletion disabled may cross the Section presentation boundary through separate primitive Context projections. The Rail pane owns those providers outside the memoized Section so a projection-only update does not execute item projection; only the frame, forwarded-ref button leaf, or open menu content that renders the value may consume it. Do not combine those values into one Context object or copy them into persistent state. Menu disclosure is view-local state: keep each Radix root and trigger mounted for focus and keyboard behavior, but instantiate portaled content only while that menu is open. A closed menu has no availability-state consumer. The project header remains the native drag source, each project section updates the insertion position across its full area, and the Rail scroll viewport owns the final drop so section gaps cannot discard an already visible insertion target. This is a presentation boundary, not a second Rail or lifecycle store; stable event-time guards remain authoritative for action delivery.
@@ -407,16 +403,8 @@ Relative time uses one renderer-realm minute clock. Timestamp leaves subscribe d
 Rail selection, detail hydration, older-page loading, and transcript projection are separate states.
 
 A focused controller may own detail paging/loading/error. Canonical messages, Turns, Interactions, and optimistic prompts still come from the engine. An empty message list means neither hydrated nor not-found.
-Selecting an already hydrated Session must not start another detail reconcile;
-the selection controller alone decides whether hydration is missing. Composer
-option synchronization does not own Session detail reloads.
 
 Timeline projection is pure, deterministic, and provider-neutral. React views render rows/cards and dispatch actions.
-Canonical reducers preserve entity and collection references when an accepted
-Session snapshot is semantically unchanged, while still merging changed Turns
-and Interactions at the same Session version. The legacy activity snapshot
-projector preserves each unchanged domain-slice projection so reconcile
-bookkeeping or composer-option updates do not rebuild transcript inputs.
 
 Turn elapsed-time presentation starts at the client submission timestamp carried
 by the canonical user-message payload, not at provider runtime start. Historical
@@ -439,7 +427,7 @@ replacement may rebuild the document.
 
 A virtualized transcript derives message-locator selection from the virtualizer's measured turn positions and explicit transcript identity. The currently mounted DOM window is rendering output, not a selection source; range changes must not make the locator temporarily select a neighboring message.
 
-Historical rich text renders from the canonical Tiptap document through a static schema renderer. Only interactive composer surfaces own a Tiptap Editor/ProseMirror EditorView; read-only transcript surfaces reuse the same mention/token presentation without mounting editor lifecycle. Settled transcript messages reuse a bounded cache of pure Markdown ASTs and Tiptap JSON documents keyed by message identity and exact parser input; rendered React elements are never cached, and streaming Markdown bypasses this cache. Conversation titles are a separate plain-text projection: Markdown mention links are normalized to their `@label` text and never render mention SVGs or interactive rich-text tokens.
+Historical rich text renders from the canonical Tiptap document through a static schema renderer. Only interactive composer surfaces own a Tiptap Editor/ProseMirror EditorView; read-only transcript surfaces reuse the same mention/token presentation without mounting editor lifecycle. Conversation titles are a separate plain-text projection: Markdown mention links are normalized to their `@label` text and never render mention SVGs or interactive rich-text tokens.
 
 Attachment-only fallback labels such as `[Image]` may provide title or summary
 text, but they are not an additional transcript text block when the canonical
@@ -469,10 +457,6 @@ Use `agentTargetId` for:
 - Agent mentions and handoff targets
 
 `provider` is execution metadata, not UI identity. Multiple Agents may share a provider; UI must not group, deduplicate, cache, or fall back by provider.
-Ordinary Session selection reads composer options through the existing
-target/cwd/settings request cache. It does not force a refresh; force is
-reserved for explicit invalidation, completed Session creation, and documented
-provider prewarm behavior.
 
 Trusted host/daemon code resolves a target-backed request through `agent_targets`, then derives provider and runtime reference. If a client supplies both target and provider, daemon rejects a mismatch.
 
@@ -527,7 +511,10 @@ target, plus temporary disclosure/icon-motion state; a host supplies its
 authoritative ready target projection and retains launch orchestration in
 `onSelect`. Host surfaces must not reconstruct a second handoff row model,
 observe the portaled menu DOM, or infer target identity from provider or
-visible text.
+visible text. The current conversation's composer input availability is
+independent from this launch surface: a target connection may disable input
+while Handoff remains available when the host supplies a ready destination and
+the launch callback.
 
 For a signed Agent Extension, package `icon` is the primary identity and
 optional package `maskIcon` is the conversation-row glyph. All assets remain
@@ -620,9 +607,8 @@ composer or refreshing the project list cannot restore a previous project.
 
 A locked Session cwd existence check is UI-local observation, not Session
 truth. AgentGUI starts it only after pending creation has resolved, scopes its
-result to the normalized selected path, and discards callbacks from a previous
-path. Switching between Sessions that share the same cwd must not repeat the
-same mounted probe. A host probe failure leaves existence unknown; only a
+result to the exact Session composer identity, and discards callbacks from a
+previous selection. A host probe failure leaves existence unknown; only a
 successful check that confirms absence may render missing-project chrome.
 
 The empty-home carousel may measure its placeholder synchronously when live
@@ -738,12 +724,6 @@ client-local until the user explicitly saves them through the CRUD capability.
 AgentGUI, Message Center, dock/header, workspace window, and standalone Agent window consume the same workspace engine.
 
 Opening a panel/window creates presentation state only. It does not clone a Session, copy engine entities, or start another event stream. Standalone tools are Desktop chrome, not AgentGUI lifecycle.
-
-Workbench previews must not mount a second AgentGUI tree. Genie capture clones the
-visible node DOM into a texture, while Dock popup cards and minimized slots use
-the captured image and its cache. If no captured image exists, those Dock
-surfaces show their placeholder; they do not mount AgentGUI as a fallback.
-AgentGUI therefore has no preview-mode rendering contract.
 
 The shared Workbench Header owns conversation-identity visibility. When no
 Conversation exists, it ignores conversation titles, Agent titles, primary
