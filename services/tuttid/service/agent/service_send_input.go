@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
@@ -15,6 +16,11 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	if input.ClientSubmitID == "" {
 		legacyClientSubmitID, _ := input.Metadata["clientSubmitId"].(string)
 		input.ClientSubmitID = strings.TrimSpace(legacyClientSubmitID)
+	}
+	if input.ClientSubmitID == "" {
+		// 同 CreateWithResult：调用方未提供提交幂等标识时生成一个，满足下游
+		// submit provenance 对 ClientSubmitID 非空的要求。
+		input.ClientSubmitID = uuid.NewString()
 	}
 	logAgentSubmitTrace("service.send.entered", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, nil)
 	nodeStartedAt := time.Now()

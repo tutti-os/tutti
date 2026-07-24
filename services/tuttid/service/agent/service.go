@@ -93,6 +93,13 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		legacyClientSubmitID, _ := input.Metadata["clientSubmitId"].(string)
 		input.ClientSubmitID = strings.TrimSpace(legacyClientSubmitID)
 	}
+	if input.ClientSubmitID == "" {
+		// 调用方未提供提交幂等标识时生成一个。下游 submit provenance 要求
+		// ClientSubmitID 非空（用于派生活动消息 id），缺失会让已创建的会话误报
+		// ErrSubmitDeliveryUnknown（agent start/send 即因此确定性失败）。与
+		// agentSessionIDOrNew 同构。
+		input.ClientSubmitID = uuid.NewString()
+	}
 	logAgentSubmitTrace("service.create.entered", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"provider": provider})
 	var normalizedContent []PromptContentBlock
 	if len(input.InitialContent) > 0 {
