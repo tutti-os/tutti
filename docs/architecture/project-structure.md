@@ -275,6 +275,9 @@ Current packages:
   `WorkbenchSnapshot*` component schemas are synchronized from this package.
 - `packages/workbench/service`: shared Go Workbench snapshot service, validation,
   canonicalization, and persistence seam for daemon hosts.
+- `packages/workbench/electron`: Electron main-process Dock preview capture and
+  bounded filesystem cache mechanics. Desktop hosts still own IPC
+  authorization, BrowserWindow ownership, cache paths, and logging.
 - `packages/workbench/surface`: reusable workbench controller, reducer,
   placement, stacking, `WorkbenchHost`, React surface primitives, shell snapshot
   wiring, intent resolution, external-state render plumbing, and host/session
@@ -286,6 +289,9 @@ Rules:
 - keep snapshot compatibility behavior in `snapshot`, not in app renderers
 - keep shared Go Workbench validation, canonicalization, and storage seams in
   `service`, not in host daemons
+- keep shared Electron Dock preview capture and bounded cache mechanics in
+  `electron`; keep host window authorization and product diagnostics in the
+  consuming desktop app
 - keep reusable workbench interaction mechanics in `surface`, not in
   product-specific feature UI
 - when `surface` exposes derived external-store snapshots through

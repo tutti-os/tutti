@@ -109,6 +109,7 @@
     "@tutti-os/ui-rich-text": "workspace:*",
     "@tutti-os/ui-react-hooks": "workspace:*",
     "@tutti-os/ui-system": "workspace:*",
+    "@tutti-os/workbench-electron": "workspace:*",
     "@tutti-os/workbench-host": "workspace:*",
     "@tutti-os/workbench-launchpad": "workspace:*",
     "@tutti-os/workbench-snapshot": "workspace:*",

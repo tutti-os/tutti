@@ -31,6 +31,7 @@ The current fixed release group is:
 @tutti-os/browser-node
 @tutti-os/workspace-file-preview
 @tutti-os/workbench-snapshot
+@tutti-os/workbench-electron
 @tutti-os/workbench-host
 @tutti-os/workbench-launchpad
 @tutti-os/workbench-surface
@@ -161,6 +162,7 @@ pnpm add @tutti-os/workspace-file-manager@beta
 pnpm add @tutti-os/workspace-issue-manager@beta
 pnpm add @tutti-os/workspace-app-center@beta
 pnpm add @tutti-os/workspace-terminal@beta
+pnpm add @tutti-os/workbench-electron@beta
 pnpm add @tutti-os/workbench-host@beta
 pnpm add @tutti-os/workbench-surface@beta
 pnpm add @tutti-os/workbench-snapshot@beta
@@ -333,6 +335,7 @@ The stable package entrypoints are:
 @tutti-os/workspace-terminal/workbench
 @tutti-os/workbench-snapshot
 @tutti-os/workbench-snapshot/schema.json
+@tutti-os/workbench-electron
 @tutti-os/workbench-host
 @tutti-os/workbench-host/conformance
 @tutti-os/workbench-surface

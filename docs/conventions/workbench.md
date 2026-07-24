@@ -19,6 +19,8 @@ Current ownership:
   migrations, normalization, validation, and JSON Schema.
 - `packages/workbench/service` owns shared Go snapshot validation,
   canonicalization, and the storage-facing service contract.
+- `packages/workbench/electron` owns product-neutral Electron main-process Dock
+  preview capture and bounded filesystem cache mechanics.
 - `packages/workbench/surface` owns reusable Workbench mechanics:
   controller commands, host/session reconciliation, placement, stacking,
   dock rendering, window chrome, render context plumbing, and shell snapshot
@@ -37,8 +39,12 @@ Current ownership:
 
 Rules:
 
-- keep product-specific node bodies, daemon clients, preload calls, filesystem
-  access, and workflow policy out of shared Workbench packages
+- keep product-specific node bodies, daemon clients, preload calls, host path
+  selection, unrestricted filesystem access, and workflow policy out of shared
+  Workbench packages
+- let `@tutti-os/workbench-electron` accept a host-selected cache directory and
+  Electron `webContents`; IPC authorization, BrowserWindow ownership, product
+  logging, and `app.getPath("userData")` stay in the consuming desktop app
 - keep product-specific CSS selectors and host globals out of
   `@tutti-os/workbench-surface`
 - keep window chrome hit zones unambiguous; floating-window resize handles

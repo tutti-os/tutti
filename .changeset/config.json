@@ -23,6 +23,7 @@
       "@tutti-os/browser-node",
       "@tutti-os/workspace-file-preview",
       "@tutti-os/workbench-snapshot",
+      "@tutti-os/workbench-electron",
       "@tutti-os/workbench-host",
       "@tutti-os/workbench-launchpad",
       "@tutti-os/workbench-surface",

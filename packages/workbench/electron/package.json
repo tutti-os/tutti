@@ -1,0 +1,43 @@
+{
+  "name": "@tutti-os/workbench-electron",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/workbench/electron"
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "test": "node --test --experimental-strip-types ./src/*.test.ts",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+  },
+  "devDependencies": {
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@types/node": "^24.0.1",
+    "electron": "^35.7.5",
+    "typescript": "^5.8.3"
+  },
+  "peerDependencies": {
+    "electron": "^35.7.5"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    },
+    "types": "./dist/index.d.ts"
+  }
+}

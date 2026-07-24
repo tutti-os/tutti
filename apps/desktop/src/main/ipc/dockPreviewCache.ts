@@ -1,15 +1,17 @@
 import path from "node:path";
 import { app } from "electron";
+import { createWorkbenchDockPreviewCacheStore } from "@tutti-os/workbench-electron";
 import {
   desktopIpcChannels,
   type DesktopReadDockPreviewInput,
   type DesktopWriteDockPreviewInput
 } from "../../shared/contracts/ipc";
-import { createWorkspaceDockPreviewCacheStore } from "../host/workspaceDockPreviewCacheStore";
+import { getDesktopLogger } from "../logging";
 import { registerDesktopIpcHandler } from "./handle";
 
 export function registerDockPreviewCacheIpc(): void {
-  const store = createWorkspaceDockPreviewCacheStore({
+  const logger = getDesktopLogger();
+  const store = createWorkbenchDockPreviewCacheStore({
     directory: path.join(app.getPath("userData"), "workspace-dock-previews")
   });
 
@@ -20,7 +22,11 @@ export function registerDockPreviewCacheIpc(): void {
   registerDesktopIpcHandler(
     desktopIpcChannels.dockPreviewCache.write,
     (_event, payload: DesktopWriteDockPreviewInput) => {
-      store.enqueueWrite(payload);
+      void store.write(payload).catch((error) => {
+        logger.warn("workspace dock preview cache write failed", {
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
     }
   );
 }
