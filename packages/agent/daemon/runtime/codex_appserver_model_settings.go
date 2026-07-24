@@ -73,42 +73,6 @@ func cloneCodexAppServerModels(models []map[string]any) []map[string]any {
 	return cloned
 }
 
-func codexAppServerModelsForEffectiveConfig(
-	models []map[string]any,
-	config codexAppServerEffectiveConfig,
-) []map[string]any {
-	effectiveModel := strings.TrimSpace(asString(config.settings["model"]))
-	if effectiveModel == "" {
-		return models
-	}
-	if provider := strings.ToLower(strings.TrimSpace(config.modelProvider)); provider != "" && provider != "openai" {
-		return []map[string]any{{
-			"id":          effectiveModel,
-			"model":       effectiveModel,
-			"displayName": effectiveModel,
-			"isDefault":   true,
-			"hidden":      false,
-		}}
-	}
-	reconciled := cloneCodexAppServerModels(models)
-	found := false
-	for _, model := range reconciled {
-		isEffective := codexAppServerModelValue(model) == effectiveModel
-		model["isDefault"] = isEffective
-		found = found || isEffective
-	}
-	if found {
-		return reconciled
-	}
-	return append([]map[string]any{{
-		"id":          effectiveModel,
-		"model":       effectiveModel,
-		"displayName": effectiveModel,
-		"isDefault":   true,
-		"hidden":      false,
-	}}, reconciled...)
-}
-
 // codexAppServerSessionWithConfig applies every present live config key,
 // including empty-string tombstones. Presence matters while model/list is
 // loading: an explicit clear must override the stale startup session value.
@@ -149,43 +113,19 @@ func codexAppServerExecSessionWithConfig(session Session, config map[string]any)
 	return session
 }
 
-func codexAppServerConfigWithEffectiveSettings(
-	config map[string]any,
-	settings SessionSettings,
-) map[string]any {
-	effective := clonePayloadDeep(config)
-	if effective == nil {
-		effective = map[string]any{}
-	}
-	if model := strings.TrimSpace(settings.Model); model != "" {
-		effective["model"] = model
-	}
-	if reasoning := strings.TrimSpace(settings.ReasoningEffort); reasoning != "" {
-		effective["reasoning_effort"] = reasoning
-	}
-	if speed := strings.TrimSpace(settings.Speed); speed != "" {
-		effective["service_tier"] = speed
-	}
-	return effective
-}
-
 func (a *CodexAppServerAdapter) applyStartupModels(
 	agentSessionID string,
 	session Session,
 	threadResult json.RawMessage,
 	models []map[string]any,
 ) bool {
+	if len(models) == 0 {
+		return false
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession == nil {
-		return false
-	}
-	models = codexAppServerModelsForEffectiveConfig(models, codexAppServerEffectiveConfig{
-		settings:      appSession.configOptions,
-		modelProvider: appSession.modelProvider,
-	})
-	if len(models) == 0 {
 		return false
 	}
 	effectiveSession := codexAppServerSessionWithConfig(session, appSession.configOptions)

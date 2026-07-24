@@ -168,6 +168,12 @@ pnpm mobile:test
 `pnpm mobile:start` 启动 Metro，`pnpm mobile:check` 运行移动端 TypeScript 和
 Jest 检查。
 
+需要在没有本机开发环境的真机上测试时，可从 GitHub Actions 手动运行
+`Android Internal Build`。它只上传保留 14 天的内部 artifact
+`tutti-mobile-internal-<commit>`，其中的 `tutti-mobile-internal.apk` 已嵌入
+JavaScript bundle，可直接侧载；不会创建 GitHub Release 或公开下载链接。每次
+运行使用新的临时签名 key，安装新构建前可能需要先卸载手机上的旧内部构建。
+
 ## 6. 调试时先判断问题属于哪一层
 
 | 现象                           | 首先检查                                                   |

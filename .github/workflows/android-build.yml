@@ -1,0 +1,110 @@
+name: Android Internal Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-internal-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build internal Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.5"
+          cache-dependency-path: |
+            go.work
+            go.work.sum
+            packages/device-link/go.mod
+            packages/device-link/go.sum
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build dependencies
+        shell: bash
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.3.13750724"
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Android release APK
+        run: |
+          pnpm --filter @tutti-os/mobile android:aar
+          cd apps/mobile/android
+          ./gradlew app:assembleRelease
+
+      - name: Sign internal APK
+        shell: bash
+        run: |
+          signing_dir="${RUNNER_TEMP}/tutti-android-signing"
+          unsigned_apk="apps/mobile/android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          aligned_apk="${signing_dir}/app-release-aligned.apk"
+          signed_apk="apps/mobile/android/app/build/outputs/apk/release/tutti-mobile-internal.apk"
+          build_tools="${ANDROID_HOME}/build-tools/36.0.0"
+
+          test -f "${unsigned_apk}"
+          mkdir -p "${signing_dir}"
+          keytool -genkeypair \
+            -keystore "${signing_dir}/internal.keystore" \
+            -storepass android \
+            -keypass android \
+            -alias tutti-internal \
+            -dname "CN=Tutti Internal,O=Tutti,C=US" \
+            -keyalg RSA \
+            -validity 7300 \
+            >/dev/null 2>&1
+          "${build_tools}/zipalign" -p -f 4 "${unsigned_apk}" "${aligned_apk}"
+          "${build_tools}/apksigner" sign \
+            --ks "${signing_dir}/internal.keystore" \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out "${signed_apk}" \
+            "${aligned_apk}"
+          "${build_tools}/apksigner" verify --verbose "${signed_apk}"
+
+      - name: Generate APK checksum
+        working-directory: apps/mobile/android/app/build/outputs/apk/release
+        run: sha256sum tutti-mobile-internal.apk > SHA256SUMS
+
+      - name: Upload internal Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tutti-mobile-internal-${{ github.sha }}
+          path: |
+            apps/mobile/android/app/build/outputs/apk/release/tutti-mobile-internal.apk
+            apps/mobile/android/app/build/outputs/apk/release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
