@@ -504,8 +504,10 @@ test("single-selection picker uses the source heading as root and selects sideba
     view = requireLatestView(latestView);
     assert.equal(selectedUploadedDirectory, true);
     assert.deepEqual(view.selection, [documentsOnlyProject]);
-    assert.equal(view.currentNode, null);
-    assert.equal(view.focusedNode, documentsOnlyProject);
+    assert.deepEqual(view.activeFilters, []);
+    assert.equal(view.currentNode, documentsOnlyProject);
+    assert.equal(view.selectedGroupKey, nodeRefKey(documentsOnlyProject.ref));
+    assert.equal(view.focusedNode, null);
   } finally {
     if (root) {
       await act(async () => {

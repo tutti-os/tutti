@@ -451,6 +451,39 @@
 - References:
   [useAgentGUINodeController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
 
+### AgentGUI crashes while unmounting a Monaco diff
+
+- Symptom:
+  AgentGUI's React subtree crashes while a file diff is being hidden, replaced,
+  or removed. Renderer logs repeatedly report
+  `TextModel got disposed before DiffEditorWidget model got reset`. Long
+  histories with many expanded edit tools make the failure easier to trigger.
+- Quick checks:
+  Confirm the exception occurs during a diff component cleanup rather than
+  while parsing the patch. Inspect whether either Monaco text model is disposed
+  while the diff editor still returns it from `getModel()`. Repeatedly mounting
+  and unmounting one diff is a focused reproduction.
+- Root cause:
+  A diff wrapper disposed its owned original and modified text models before
+  detaching them from `DiffEditorWidget`. Monaco listens for model disposal and
+  deliberately throws while a disposed model is still attached. Keeping the
+  models alive avoids the exception but leaks one pair per diff.
+- Fix:
+  Let the Agent GUI package own the diff editor and both models. On cleanup,
+  call `diffEditor.setModel(null)` first, dispose the diff editor second, and
+  dispose the owned original and modified models last. Cancel asynchronous
+  Monaco loading on unmount so a late module resolution cannot create detached
+  resources.
+- Validation:
+  Keep a component test that records the exact detach/editor/model disposal
+  order, a test for unmount before Monaco finishes loading, and a test proving
+  content changes reuse the mounted editor. Run the Agent GUI package test and
+  typecheck lanes.
+- References:
+  [AgentMonacoDiffViewer.tsx](../../../packages/agent/gui/shared/agentConversation/components/tool-renderers/file-diff/AgentMonacoDiffViewer.tsx)
+  [monaco-react issue 647](https://github.com/suren-atoyan/monaco-react/issues/647)
+  [monaco-editor issue 4779](https://github.com/microsoft/monaco-editor/issues/4779)
+
 ### Workbench node body warns about updating WorkbenchNodeLayer during render
 
 - Symptom:

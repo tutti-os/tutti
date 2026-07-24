@@ -60,6 +60,7 @@ React rendering, Workbench state, external stores, input composition, and UI per
 - [Dense list panel stutters when mounted or resized](./workbench-renderer.md#dense-list-panel-stutters-when-mounted-or-resized)
 - [Adjacent sidebar animation repeatedly reflows its content and message flow](./workbench-renderer.md#adjacent-sidebar-animation-repeatedly-reflows-its-content-and-message-flow)
 - [Effect cleanup leaves mounted refs false in React development](./workbench-renderer.md#effect-cleanup-leaves-mounted-refs-false-in-react-development)
+- [AgentGUI crashes while unmounting a Monaco diff](./workbench-renderer.md#agentgui-crashes-while-unmounting-a-monaco-diff)
 - [Workbench node body warns about updating WorkbenchNodeLayer during render](./workbench-renderer.md#workbench-node-body-warns-about-updating-workbenchnodelayer-during-render)
 - [Renderer component repeatedly re-renders without visible changes](./workbench-renderer.md#renderer-component-repeatedly-re-renders-without-visible-changes)
 - [Renderer services initialize twice and consume one event twice](./workbench-renderer.md#renderer-services-initialize-twice-and-consume-one-event-twice)

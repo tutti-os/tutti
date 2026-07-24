@@ -983,22 +983,21 @@ export function useReferenceSourcePickerView({
       if (!targetNode || !isSelectable(targetNode)) {
         return false;
       }
-      const parentPath = path.slice(0, -1);
-      const parentNode = parentPath.at(-1) ?? null;
-      controller.setActiveSource(target.sourceId);
-      controller.setSearchScope(null);
+      const rootGroupNode = path[0] ?? null;
+      controller.setActiveSource(
+        target.sourceId,
+        rootGroupNode?.ref.nodeId ?? null
+      );
+      controller.setSearchQuery("", rootGroupNode?.ref.nodeId ?? null);
+      controller.setSearchFilters([], rootGroupNode?.ref.nodeId ?? null);
       controller.clearSelection();
       controller.toggleSelection(targetNode);
       setBreadcrumbBySource((current) => ({
         ...current,
-        [target.sourceId]: parentPath
+        [target.sourceId]: path
       }));
-      if (parentNode) {
-        controller.ensureChildren(parentNode);
-      } else {
-        controller.ensureSourceRoot(target.sourceId);
-      }
-      setFocusedNode(targetNode);
+      controller.ensureChildren(targetNode);
+      setFocusedNode(null);
       return true;
     },
     isSelectable,
