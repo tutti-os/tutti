@@ -41,7 +41,7 @@ export function ComposerTuttiModeChip({
       className={cn(
         styles.composerMenuTrigger,
         "group w-auto !gap-1.5",
-        updating ? "cursor-wait opacity-70" : "cursor-pointer"
+        updating ? "cursor-wait" : "cursor-pointer"
       )}
     >
       <span

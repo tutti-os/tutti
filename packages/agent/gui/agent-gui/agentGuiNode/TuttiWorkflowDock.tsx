@@ -218,14 +218,6 @@ export function TuttiWorkflowDock({
     reviewDisplayIntensity !== null
       ? projectTuttiIntensityPreview(reviewDisplayIntensity).tier
       : null;
-  const reviewTierLabel =
-    reviewTier !== null
-      ? {
-          cost: intensityPopoverLabels.previewCost,
-          balance: intensityPopoverLabels.previewBalance,
-          powerful: intensityPopoverLabels.previewPowerful
-        }[reviewTier]
-      : null;
 
   const actions =
     review !== null ? (
@@ -244,15 +236,38 @@ export function TuttiWorkflowDock({
             data-testid="agent-gui-tutti-workflow-intensity"
             className={cn(
               "flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors",
-              "hover:bg-[var(--transparency-hover)]",
               "data-[state=open]:bg-[color-mix(in_srgb,var(--tutti-purple)_12%,transparent)] data-[state=open]:text-[var(--tutti-purple)]"
             )}
           >
             <Gauge aria-hidden className="size-3.5" />
             <span className="flex items-center gap-0.5">
-              {reviewTierLabel !== null ? (
-                <span className="text-[11px]">{reviewTierLabel}</span>
-              ) : null}
+              {/*
+                All tier labels occupy the same grid cell so the chip width is
+                always the longest label's width; switching tiers while the
+                slider moves no longer resizes the chip or shifts the anchored
+                popover.
+              */}
+              <span className="grid text-[11px]">
+                {(
+                  [
+                    ["cost", intensityPopoverLabels.previewCost],
+                    ["balance", intensityPopoverLabels.previewBalance],
+                    ["powerful", intensityPopoverLabels.previewPowerful]
+                  ] as const
+                ).map(([tier, label]) => (
+                  <span
+                    key={tier}
+                    aria-hidden={tier !== reviewTier}
+                    className={
+                      tier === reviewTier
+                        ? "[grid-area:1/1]"
+                        : "invisible [grid-area:1/1]"
+                    }
+                  >
+                    {label}
+                  </span>
+                ))}
+              </span>
               <span className="inline-block w-[3ch] text-left text-[11px] tabular-nums">
                 {reviewDisplayIntensity ?? review.intensity}
               </span>

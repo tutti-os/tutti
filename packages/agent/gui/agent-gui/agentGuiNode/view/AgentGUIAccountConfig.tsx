@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Gauge, Wrench } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@tutti-os/ui-system";
+import { MoreHorizontalIcon } from "@tutti-os/ui-system/icons";
 import { AgentProbeUsageFreshness } from "../AgentProbeUsageFreshness";
 import { AgentUsageMeter } from "../AgentUsageMeter";
 import { SettingsLinedIcon } from "../../../app/renderer/components/icons/SettingsLinedIcon";
@@ -50,6 +51,10 @@ export function AgentGUIConfigMenu({
   const providerFlatIconUrl = resolveAgentGuiSessionProviderFlatIconUrl(
     provider ?? undefined
   );
+  const providerDisplayTitle = provider?.trim()
+    ? labels.slashStatusProviderAccount(provider.trim())
+    : null;
+  const accountTitle = providerDisplayTitle ?? labels.slashStatusAccount;
   return (
     <Popover
       open={open}
@@ -72,7 +77,7 @@ export function AgentGUIConfigMenu({
           className={`${styles.providerRailConfigButton} nodrag tsh-desktop-no-drag`}
           title={labels.agentConfig}
         >
-          <SettingsLinedIcon aria-hidden="true" width={18} height={18} />
+          <MoreHorizontalIcon aria-hidden="true" width={18} height={18} />
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -97,7 +102,7 @@ export function AgentGUIConfigMenu({
                     />
                   ) : null}
                   <span className="text-[13px] font-semibold leading-4">
-                    {labels.slashStatusAccount}
+                    {accountTitle}
                   </span>
                 </div>
                 <span className="text-[13px] leading-5 text-[var(--text-secondary)]">

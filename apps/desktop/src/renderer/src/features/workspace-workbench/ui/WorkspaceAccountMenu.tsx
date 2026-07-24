@@ -11,6 +11,7 @@ import {
   RegistrationCreditsToast,
   type CommerceMenuLabels
 } from "@tutti-os/commerce/react";
+import { userAvatarPlaceholderUrl } from "@tutti-os/agent-gui/agent-message-center";
 import { useService } from "@tutti-os/infra/di";
 import { INotificationService } from "@tutti-os/ui-notifications";
 import {
@@ -38,11 +39,13 @@ const registrationCreditsToastAutoDismissMs = 120_000;
 
 export interface WorkspaceAccountMenuProps {
   showLeadingDivider?: boolean;
+  signedOutPresentation?: "signInButton" | "placeholderAvatar";
   workspaceId: string;
 }
 
 export function WorkspaceAccountMenu({
   showLeadingDivider = true,
+  signedOutPresentation = "signInButton",
   workspaceId
 }: WorkspaceAccountMenuProps) {
   const { state: workspaceSettingsState } = useWorkspaceSettingsService();
@@ -53,6 +56,7 @@ export function WorkspaceAccountMenu({
     <WorkspaceAccountMenuEnabled
       commerceEnabled={commerceEnabled}
       showLeadingDivider={showLeadingDivider}
+      signedOutPresentation={signedOutPresentation}
       workspaceId={workspaceId}
     />
   );
@@ -61,6 +65,7 @@ export function WorkspaceAccountMenu({
 function WorkspaceAccountMenuEnabled({
   commerceEnabled,
   showLeadingDivider,
+  signedOutPresentation,
   workspaceId
 }: Required<WorkspaceAccountMenuProps> & { commerceEnabled: boolean }) {
   const accountMenuState = useWorkspaceAccountMenuState(
@@ -74,6 +79,7 @@ function WorkspaceAccountMenuEnabled({
       accountMenuState={accountMenuState}
       labels={labels}
       showLeadingDivider={showLeadingDivider}
+      signedOutPresentation={signedOutPresentation}
     />
   );
 }
@@ -142,7 +148,9 @@ function useWorkspaceAccountMenuState(
       summary?.membership?.display_name?.trim() ||
       summary?.membership?.tier_key?.trim() ||
       "";
-    const membershipTierKey = summary?.membership?.tier_key?.trim() || null;
+    const membershipTierKey =
+      summary?.membership?.tier_key?.trim() ||
+      (summary?.membership_access === "free" ? "free" : null);
     const creditsLabel = formatCreditsLabel(
       summary?.credits?.available_credits,
       locale
@@ -313,11 +321,13 @@ function useWorkspaceAccountMenuLabels(): WorkspaceAccountMenuLabels {
 const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
   accountMenuState,
   labels,
-  showLeadingDivider
+  showLeadingDivider,
+  signedOutPresentation
 }: {
   accountMenuState: WorkspaceAccountMenuState;
   labels: WorkspaceAccountMenuLabels;
   showLeadingDivider: boolean;
+  signedOutPresentation: "signInButton" | "placeholderAvatar";
 }) {
   "use memo";
   const userLabel =
@@ -340,17 +350,35 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
     return (
       <div className="relative flex min-w-0 items-center gap-1.5">
         {showLeadingDivider ? <WorkspaceAccountMenuDivider /> : null}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label={labels.signIn}
-          onClick={accountMenuState.onLogin}
-          className="rounded-[4px] px-2.5 text-[13px] font-semibold text-[var(--workbench-chrome-foreground)] [-webkit-app-region:no-drag]"
-          data-account-signin-trigger="true"
-        >
-          {labels.signIn}
-        </Button>
+        {signedOutPresentation === "placeholderAvatar" ? (
+          <button
+            type="button"
+            aria-label={labels.signIn}
+            onClick={accountMenuState.onLogin}
+            className="relative grid size-8 cursor-pointer place-items-center rounded-full border border-transparent bg-transparent p-0 shadow-none [-webkit-app-region:no-drag]"
+            data-account-signin-trigger="true"
+          >
+            <span className="grid size-7 place-items-center overflow-hidden rounded-full border-[0.5px] border-[var(--line-2)] bg-[var(--transparency-block)]">
+              <img
+                alt=""
+                className="size-full object-cover"
+                src={userAvatarPlaceholderUrl}
+              />
+            </span>
+          </button>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={labels.signIn}
+            onClick={accountMenuState.onLogin}
+            className="rounded-[4px] px-2.5 text-[13px] font-semibold text-[var(--workbench-chrome-foreground)] [-webkit-app-region:no-drag]"
+            data-account-signin-trigger="true"
+          >
+            {labels.signIn}
+          </Button>
+        )}
       </div>
     );
   }
@@ -434,7 +462,7 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
                 </span>
                 {composition.showCommerce ? (
                   <MembershipBadge
-                    className="mt-1"
+                    className="mt-0.5"
                     label={membershipLabel}
                     tierKey={accountMenuState.membershipTierKey}
                   />
@@ -443,7 +471,7 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
             </div>
             <span
               aria-hidden="true"
-              className="mx-2 h-px bg-[var(--border-1)]"
+              className="mx-2 mb-1 h-px bg-[var(--border-1)]"
             />
             {composition.showCommerce ? (
               <CommerceMenuContent
