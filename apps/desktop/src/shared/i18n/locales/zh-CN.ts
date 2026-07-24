@@ -403,6 +403,9 @@ export const zhCN = {
       scanning: "正在扫描本机 Agent 历史...",
       selectProvider: "选择 {{label}}",
       selectImportOption: "选择 {{label}}",
+      selectProject: "选择 {{label}}",
+      projectSelectionDescription: "选择要包含的项目",
+      projectSessionCount: "{{count}} 个会话 · {{messages}} 条消息",
       settingsAction: "导入",
       settingsDescription:
         "将本机 Codex、Claude Code 历史或 Claude 导出对话导入 Tutti",
