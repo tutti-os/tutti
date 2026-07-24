@@ -5,6 +5,7 @@ export const enAgentGuiUsageStatus = {
   slashStatusContext: "Context",
   slashStatusLimits: "Usage Limits",
   slashStatusAccount: "Account",
+  slashStatusProviderAccount: "{{provider}} Account",
   slashStatusClose: "Close",
   slashStatusFiveHourLimit: "5h limit",
   slashStatusWeeklyLimit: "7d limit",

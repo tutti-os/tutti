@@ -12,6 +12,7 @@ import {
   projectTuttiIntensityPreview,
   type TuttiIntensityTier
 } from "./tuttiIntensityPreview";
+import { TuttiIntensityStarStream } from "./TuttiIntensityStarStream";
 
 export interface TuttiBudgetPopoverLabels {
   title: string;
@@ -136,26 +137,32 @@ export function TuttiBudgetPopover({
             </span>
           </div>
           <div className="mt-3">
-            <Slider
-              aria-label={labels.intensityLabel}
-              className={`-mx-1 w-[calc(100%_+_8px)] [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-track]]:mx-1 [&_[data-slot=slider-track]]:h-5 [&_[data-slot=slider-track]]:bg-[linear-gradient(90deg,var(--state-success)_0%,var(--accent-codex)_50%,var(--tutti-purple)_100%)] [&_[data-slot=slider-thumb]]:size-10 [&_[data-slot=slider-thumb]]:border-transparent [&_[data-slot=slider-thumb]]:bg-transparent [&_[data-slot=slider-thumb]]:bg-[image:var(--tutti-intensity-handle-url)] [&_[data-slot=slider-thumb]]:bg-contain [&_[data-slot=slider-thumb]]:bg-center [&_[data-slot=slider-thumb]]:bg-no-repeat [&_[data-slot=slider-thumb]]:shadow-none [&_[data-slot=slider-thumb]]:hover:ring-0 [&_[data-slot=slider-thumb]]:focus-visible:ring-0 [&_[data-slot=slider-thumb]]:-translate-y-1 [&_[data-slot=slider-thumb]]:cursor-grab [&_[data-slot=slider-thumb]]:active:cursor-grabbing`}
-              style={
-                {
-                  "--tutti-intensity-handle-url": `url("${previewTone.sliderHandleUrl}")`
-                } as CSSProperties
-              }
-              data-agent-tutti-budget-intensity-slider="true"
-              data-agent-tutti-budget-slider-tone={preview.tier}
-              max={100}
-              min={0}
-              step={1}
-              value={[draftIntensity]}
-              onValueChange={(values) => {
-                const next = values[0] ?? draftIntensity;
-                setDraftIntensity(next);
-                onChange(next);
-              }}
-            />
+            <div className="relative">
+              <TuttiIntensityStarStream
+                intensity={draftIntensity}
+                tier={preview.tier}
+              />
+              <Slider
+                aria-label={labels.intensityLabel}
+                className={`-mx-1 w-[calc(100%_+_8px)] [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-track]]:mx-1 [&_[data-slot=slider-track]]:h-5 [&_[data-slot=slider-track]]:bg-[linear-gradient(90deg,var(--state-success)_0%,var(--accent-codex)_50%,var(--tutti-purple)_100%)] [&_[data-slot=slider-thumb]]:size-10 [&_[data-slot=slider-thumb]]:border-transparent [&_[data-slot=slider-thumb]]:bg-transparent [&_[data-slot=slider-thumb]]:bg-[image:var(--tutti-intensity-handle-url)] [&_[data-slot=slider-thumb]]:bg-contain [&_[data-slot=slider-thumb]]:bg-center [&_[data-slot=slider-thumb]]:bg-no-repeat [&_[data-slot=slider-thumb]]:shadow-none [&_[data-slot=slider-thumb]]:hover:ring-0 [&_[data-slot=slider-thumb]]:focus-visible:ring-0 [&_[data-slot=slider-thumb]]:-translate-y-1 [&_[data-slot=slider-thumb]]:cursor-grab [&_[data-slot=slider-thumb]]:active:cursor-grabbing [&_[data-slot=slider-thumb]]:z-[2]`}
+                style={
+                  {
+                    "--tutti-intensity-handle-url": `url("${previewTone.sliderHandleUrl}")`
+                  } as CSSProperties
+                }
+                data-agent-tutti-budget-intensity-slider="true"
+                data-agent-tutti-budget-slider-tone={preview.tier}
+                max={100}
+                min={0}
+                step={1}
+                value={[draftIntensity]}
+                onValueChange={(values) => {
+                  const next = values[0] ?? draftIntensity;
+                  setDraftIntensity(next);
+                  onChange(next);
+                }}
+              />
+            </div>
             <div className="mt-3 flex items-center justify-between gap-2 text-[11px] font-medium">
               <span className="text-[var(--state-success)]">
                 {labels.previewCost}
