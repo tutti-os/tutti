@@ -345,7 +345,7 @@ func (s *Service) applyHarnessFromSessionRuntimeSnapshot(
 		return fmt.Errorf("%w: harness launch reference is invalid", ErrSessionRuntimeSnapshotUnavailable)
 	}
 	provider, _ := providerTargetRef["provider"].(string)
-	if agentprovider.Normalize(provider) != snapshot.Provider {
+	if agentprovider.NormalizeOpen(provider) != snapshot.Provider {
 		return fmt.Errorf("%w: harness provider does not match", ErrSessionRuntimeSnapshotUnavailable)
 	}
 	input.HarnessAgentTargetID = snapshot.HarnessAgentTargetID
