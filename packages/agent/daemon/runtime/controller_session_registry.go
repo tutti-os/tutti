@@ -319,8 +319,19 @@ func (c *Controller) store(session Session) {
 		return
 	}
 	c.mu.Lock()
-	c.sessions[sessionKey(session.RoomID, session.AgentSessionID)] = session
+	key := sessionKey(session.RoomID, session.AgentSessionID)
+	c.sessions[key] = session
+	c.notifySessionAvailableLocked(key)
 	c.mu.Unlock()
+}
+
+func (c *Controller) notifySessionAvailableLocked(key string) {
+	waiter := c.sessionAvailabilityWaiters[key]
+	if waiter == nil {
+		return
+	}
+	delete(c.sessionAvailabilityWaiters, key)
+	close(waiter.changed)
 }
 
 func (c *Controller) publishPendingConfigOptionsUpdates(session Session) {

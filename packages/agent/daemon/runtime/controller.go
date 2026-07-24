@@ -27,6 +27,7 @@ type Controller struct {
 	startMu                     sync.Mutex
 	mu                          sync.Mutex
 	sessions                    map[string]Session
+	sessionAvailabilityWaiters  map[string]*sessionAvailabilityWaiter
 	adapters                    map[string]Adapter
 	adapterResolver             AdapterResolver
 	turns                       map[string]activeTurn
@@ -45,6 +46,11 @@ type Controller struct {
 type sessionLifecycleLock struct {
 	gate chan struct{}
 	refs int
+}
+
+type sessionAvailabilityWaiter struct {
+	changed chan struct{}
+	refs    int
 }
 
 type activeTurn struct {
@@ -109,6 +115,7 @@ func NewControllerWithAdapterResolver(adapters []Adapter, reporter DurableActivi
 	}
 	controller := &Controller{
 		sessions:                    make(map[string]Session),
+		sessionAvailabilityWaiters:  make(map[string]*sessionAvailabilityWaiter),
 		adapters:                    byProvider,
 		adapterResolver:             resolver,
 		turns:                       make(map[string]activeTurn),
