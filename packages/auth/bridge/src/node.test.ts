@@ -186,7 +186,8 @@ test("node login preserves a typed cancellation without reopening the app", asyn
       cookie: "session_id=existing-session",
       userId: "existing-user",
       name: "Existing User",
-      avatar: "",
+      assetUrl: "",
+      assetRef: "",
       email: "",
       updatedAt: 123
     });
