@@ -33,7 +33,6 @@ func NewDefaultPreparer(stateDir string) *DefaultPreparer {
 	preparer.RegisterProvider(CursorPreparer{})
 	preparer.RegisterProvider(OpenCodePreparer{})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "nexight", FileName: "AGENTS.md"})
-	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "hermes", FileName: "AGENTS.md"})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "openclaw", FileName: "AGENTS.md"})
 	return preparer
 }
@@ -211,7 +210,23 @@ func (p *DefaultPreparer) provider(providerID string) ProviderPreparer {
 	if p == nil {
 		return nil
 	}
-	return p.providers[strings.TrimSpace(providerID)]
+	providerID = strings.TrimSpace(providerID)
+	if provider := p.providers[providerID]; provider != nil {
+		return provider
+	}
+	// hermes loads skills from $HERMES_HOME/skills/ (not .agent_context/skills/)
+	// and anchors config.yaml/auth.json to HERMES_HOME, so it needs a dedicated
+	// preparer that injects a per-session HERMES_HOME. See HermesPreparer.
+	if providerID == "acp:hermes" {
+		return HermesPreparer{}
+	}
+	// Other acp: extensions share a generic instruction+skill preparer; their
+	// skill roots arrive via PrepareInput.ExtensionSkillRoots from the
+	// extension composer profile, so they need no per-key entry.
+	if strings.HasPrefix(providerID, "acp:") {
+		return InstructionFilePreparer{}
+	}
+	return nil
 }
 
 func (p *DefaultPreparer) runtimeStore() RuntimeStore {

@@ -165,6 +165,70 @@ func TestServiceCreateSynchronouslyPersistsRailSectionKey(t *testing.T) {
 	}
 }
 
+// TestServiceCreateGeneratesClientSubmitIDForSubmitProvenance 守住 agent start
+// 的回归：调用方未提供 ClientSubmitID 时，service 层必须兜底生成一个，否则下游
+// submit provenance（要求 ClientSubmitID 非空，见 controller_submit_provenance.go）
+// 会让已创建的会话误报 ErrSubmitDeliveryUnknown。provenanceHook 复刻真实 Controller
+// 的四元组非空校验。
+func TestServiceCreateGeneratesClientSubmitIDForSubmitProvenance(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-provenance", Name: "Provenance"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	projectPath := t.TempDir()
+	if canonical, ok := canonicalExistingDir(projectPath); ok {
+		projectPath = canonical
+	}
+	if _, err := store.PutUserProject(ctx, userprojectbiz.Project{
+		ID:         "project-provenance",
+		Path:       projectPath,
+		Label:      "Project",
+		SectionKey: userprojectbiz.SectionKeyFromPath(projectPath),
+	}); err != nil {
+		t.Fatalf("PutUserProject error = %v", err)
+	}
+	runtime := newFakeRuntime()
+	runtime.provenanceHook = func(input RuntimeSubmitProvenanceInput) error {
+		if input.WorkspaceID == "" || input.AgentSessionID == "" || input.TurnID == "" || input.ClientSubmitID == "" {
+			return errors.New("workspace id, agent session id, turn id, and client submit id are required")
+		}
+		return nil
+	}
+	service := newTestService(runtime)
+	projection := NewActivityProjection(store)
+	service.SessionInitializer = projection
+	service.SessionReader = projection
+
+	created, err := service.CreateWithResult(ctx, "ws-provenance", CreateSessionInput{
+		AgentSessionID: "33333333-3333-4333-8333-333333333333",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		Provider:       "codex",
+		Cwd:            stringRef(projectPath),
+		InitialContent: TextPromptContent("hello"),
+		// 故意不传 ClientSubmitID，也不传 legacy metadata
+	})
+	if err != nil {
+		t.Fatalf("CreateWithResult returned error: %v (兜底生成的 ClientSubmitID 应让 submit provenance 通过)", err)
+	}
+	if created.TurnID == "" {
+		t.Fatal("CreateWithResult returned an empty turnId")
+	}
+	if len(runtime.provenanceCalls) != 1 {
+		t.Fatalf("provenance calls = %d, want 1", len(runtime.provenanceCalls))
+	}
+	submitID := runtime.provenanceCalls[0].ClientSubmitID
+	if submitID == "" {
+		t.Fatal("provenance 收到空 ClientSubmitID，service 层兜底未生效")
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
+	}
+	if runtime.execCalls[0].ClientSubmitID != submitID {
+		t.Fatalf("exec ClientSubmitID = %q, provenance ClientSubmitID = %q, 应一致", runtime.execCalls[0].ClientSubmitID, submitID)
+	}
+}
+
 func TestServiceCreateClosesRuntimeWhenSessionInitializationFails(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
@@ -2521,6 +2585,40 @@ func TestServiceSendInputDoesNotExecuteDuplicateClientSubmitID(t *testing.T) {
 	}
 	if len(runtime.execCalls) != 1 {
 		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
+	}
+}
+
+// TestServiceSendInputGeneratesClientSubmitIDForSubmitProvenance 守住 agent send
+// 的回归（与 Create 对称）：调用方未提供 ClientSubmitID 时 service 层兜底生成，
+// 否则 SendInput 路径的 submit provenance（lifecycle.go SendInput）会让已派发的
+// turn 误报 ErrSubmitDeliveryUnknown。
+func TestServiceSendInputGeneratesClientSubmitIDForSubmitProvenance(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.provenanceHook = func(input RuntimeSubmitProvenanceInput) error {
+		if input.WorkspaceID == "" || input.AgentSessionID == "" || input.TurnID == "" || input.ClientSubmitID == "" {
+			return errors.New("workspace id, agent session id, turn id, and client submit id are required")
+		}
+		return nil
+	}
+	service := newTestService(runtime)
+	store := openAgentServiceSQLiteStore(t)
+	service.SubmitClaimStore = store
+	if _, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "session-provenance", AgentTargetID: agenttargetbiz.IDLocalCodex,
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	// 故意不传 ClientSubmitID，也不传 legacy metadata
+	if _, err := service.SendInput(context.Background(), "ws-1", "session-provenance", SendInput{
+		Content: TextPromptContent("hello"),
+	}); err != nil {
+		t.Fatalf("SendInput error = %v (兜底生成的 ClientSubmitID 应让 submit provenance 通过)", err)
+	}
+	if len(runtime.provenanceCalls) != 1 {
+		t.Fatalf("provenance calls = %d, want 1", len(runtime.provenanceCalls))
+	}
+	if runtime.provenanceCalls[0].ClientSubmitID == "" {
+		t.Fatal("provenance 收到空 ClientSubmitID，service 层兜底未生效")
 	}
 }
 
