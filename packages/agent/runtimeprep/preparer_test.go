@@ -521,8 +521,17 @@ func TestDefaultPreparerCodexRemovesRunConfigWhenUserConfigDisappears(t *testing
 	}
 }
 
-func TestExposeUserCodexModelsCachePreservesExistingRunCache(t *testing.T) {
+func TestExposeUserCodexModelsCacheDropsUnfencedRunCache(t *testing.T) {
 	userCodexHome := filepath.Join(t.TempDir(), ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(`model_provider = "custom"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "models_cache.json"), []byte(`{"models":["shared-stale"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	codexHome := t.TempDir()
 	target := filepath.Join(codexHome, "models_cache.json")
 	if err := os.WriteFile(target, []byte(`{"models":["session-local"]}`), 0o600); err != nil {
@@ -535,15 +544,97 @@ func TestExposeUserCodexModelsCachePreservesExistingRunCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		t.Fatalf("existing run cache mode = %v, want regular file", info.Mode())
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("run cache mode = %v, want authority-scoped shared-cache symlink", info.Mode())
 	}
-	content, err := os.ReadFile(target)
+	if _, err := os.Stat(filepath.Join(userCodexHome, "models_cache.json")); !os.IsNotExist(err) {
+		t.Fatalf("unfenced shared cache should be removed, err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(userCodexHome, codexModelsCacheAuthorityFile)); err != nil {
+		t.Fatalf("models cache authority fence missing: %v", err)
+	}
+}
+
+func TestExposeUserCodexModelsCacheInvalidatesWhenGlobalConfigChanges(t *testing.T) {
+	userCodexHome := filepath.Join(t.TempDir(), ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(userCodexHome, "config.toml")
+	if err := os.WriteFile(configPath, []byte("model_provider = \"first\"\nmodel = \"first-model\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	firstCodexHome := t.TempDir()
+	if err := exposeUserCodexModelsCache(firstCodexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(firstCodexHome, "models_cache.json"), []byte(`{"models":["first"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(configPath, []byte("model_provider = \"second\"\nmodel = \"second-model\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secondCodexHome := t.TempDir()
+	if err := exposeUserCodexModelsCache(secondCodexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(userCodexHome, "models_cache.json")); !os.IsNotExist(err) {
+		t.Fatalf("cache from previous global config should be removed, err = %v", err)
+	}
+	if info, err := os.Lstat(filepath.Join(secondCodexHome, "models_cache.json")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("second run cache link missing after config invalidation: info=%#v err=%v", info, err)
+	}
+}
+
+func TestExposeUserCodexModelsCacheInvalidatesWhenGlobalCatalogChanges(t *testing.T) {
+	home := t.TempDir()
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(userCodexHome, "config.toml")
+	catalogPath := filepath.Join(userCodexHome, "catalog.json")
+	if err := os.WriteFile(configPath, []byte("model_provider = \"first\"\nmodel_catalog_json = \"catalog.json\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(catalogPath, []byte(`{"models":[{"slug":"first"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	firstCodexHome := t.TempDir()
+	if err := exposeUserCodexModelsCache(firstCodexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+	firstCache := filepath.Join(firstCodexHome, "models_cache.json")
+	if err := os.WriteFile(firstCache, []byte(`{"models":["first"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	firstFence, err := os.ReadFile(filepath.Join(userCodexHome, codexModelsCacheAuthorityFile))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(content), `{"models":["session-local"]}`; got != want {
-		t.Fatalf("existing run cache = %q, want %q", got, want)
+
+	if err := os.WriteFile(catalogPath, []byte(`{"models":[{"slug":"second"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secondCodexHome := t.TempDir()
+	if err := exposeUserCodexModelsCache(secondCodexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(userCodexHome, "models_cache.json")); !os.IsNotExist(err) {
+		t.Fatalf("cache from previous global catalog should be removed, err = %v", err)
+	}
+	secondFence, err := os.ReadFile(filepath.Join(userCodexHome, codexModelsCacheAuthorityFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(firstFence) == string(secondFence) {
+		t.Fatalf("models cache authority fence did not change after global catalog update")
+	}
+	if info, err := os.Lstat(filepath.Join(secondCodexHome, "models_cache.json")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("second run cache link missing after invalidation: info=%#v err=%v", info, err)
 	}
 }
 
