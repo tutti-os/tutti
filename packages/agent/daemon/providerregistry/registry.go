@@ -67,30 +67,6 @@ func ResolveProviderID(value string) (string, bool) {
 	return migratedDescriptors[index].Identity.ID, true
 }
 
-// ResolveModelPlanProtocol returns the model API protocol declared by a
-// migrated provider runtime. Providers without endpoint injection support are
-// intentionally unresolved.
-func ResolveModelPlanProtocol(value string) (ModelPlanProtocol, bool) {
-	index, ok := providerDescriptorIndex[normalize(value)]
-	if !ok {
-		return "", false
-	}
-	protocol := migratedDescriptors[index].Runtime.Endpoint.ModelPlanProtocol
-	return protocol, protocol != ""
-}
-
-// ResolveModelPlanModelAddressing returns the composer/settings addressing a
-// migrated provider runtime declares for bound plan models. The empty value
-// (raw plan model ids) resolves as unset.
-func ResolveModelPlanModelAddressing(value string) (ModelPlanModelAddressing, bool) {
-	index, ok := providerDescriptorIndex[normalize(value)]
-	if !ok {
-		return "", false
-	}
-	addressing := migratedDescriptors[index].Runtime.Endpoint.ModelPlanModelAddressing
-	return addressing, addressing != ""
-}
-
 // EventProvider describes the small immutable event-normalization projection
 // consumed on per-event hot paths.
 type EventProvider struct {
@@ -103,64 +79,6 @@ type EventProvider struct {
 func ResolveEventProvider(value string) (EventProvider, bool) {
 	resolved, ok := eventProviderIndex[normalize(value)]
 	return resolved, ok
-}
-
-func ValidateMigrated() error {
-	if err := validateNativeSubscriptions(Migrated()); err != nil {
-		return err
-	}
-	providerKeys := map[string]string{}
-	eventKeys := map[string]string{}
-	targetIDs := map[string]string{}
-	defaultProviderPriorities := map[int]string{}
-	statusProbePriorities := map[int]string{}
-	managedOrders := map[int]string{}
-	for _, descriptor := range Migrated() {
-		if err := Validate(descriptor); err != nil {
-			return err
-		}
-		providerID := normalize(descriptor.Identity.ID)
-		for _, key := range append([]string{providerID}, descriptor.Identity.Aliases...) {
-			normalizedKey := normalize(key)
-			if owner, exists := providerKeys[normalizedKey]; exists {
-				return fmt.Errorf("provider key %q is shared by %q and %q", normalizedKey, owner, providerID)
-			}
-			providerKeys[normalizedKey] = providerID
-		}
-		if descriptor.Events.Enabled {
-			for _, key := range append([]string{providerID}, descriptor.Events.Aliases...) {
-				normalizedKey := normalize(key)
-				if owner, exists := eventKeys[normalizedKey]; exists {
-					return fmt.Errorf("event provider key %q is shared by %q and %q", normalizedKey, owner, providerID)
-				}
-				eventKeys[normalizedKey] = providerID
-			}
-		}
-		targetID := strings.TrimSpace(descriptor.Target.ID)
-		if owner, exists := targetIDs[targetID]; exists {
-			return fmt.Errorf("target id %q is shared by %q and %q", targetID, owner, providerID)
-		}
-		targetIDs[targetID] = providerID
-		if priority := descriptor.Desktop.DefaultProviderPriority; priority > 0 {
-			if owner, exists := defaultProviderPriorities[priority]; exists {
-				return fmt.Errorf("desktop default provider priority %d is shared by %q and %q", priority, owner, providerID)
-			}
-			defaultProviderPriorities[priority] = providerID
-		}
-		if priority := descriptor.Desktop.StatusProbePriority; priority > 0 {
-			if owner, exists := statusProbePriorities[priority]; exists {
-				return fmt.Errorf("desktop status probe priority %d is shared by %q and %q", priority, owner, providerID)
-			}
-			statusProbePriorities[priority] = providerID
-		}
-		if order := descriptor.Desktop.ManagedOrder; order > 0 {
-			if owner, exists := managedOrders[order]; exists {
-				return fmt.Errorf("desktop managed order %d is shared by %q and %q", order, owner, providerID)
-			}
-			managedOrders[order] = providerID
-		}
-	}
-	return nil
 }
 
 func Validate(descriptor ProviderDescriptor) error {
@@ -298,6 +216,15 @@ func Validate(descriptor ProviderDescriptor) error {
 	}
 	if descriptor.Runtime.Endpoint.ModelPlanModelAddressing != "" && descriptor.Runtime.Endpoint.ModelPlanProtocol == "" {
 		return fmt.Errorf("provider %q model plan model addressing requires a model plan protocol", providerID)
+	}
+	switch descriptor.Runtime.Endpoint.ModelPlanEndpointAdapter {
+	case "", ModelPlanEndpointAdapterResponsesToChatGateway:
+	default:
+		return fmt.Errorf("provider %q model plan endpoint adapter %q is unsupported", providerID, descriptor.Runtime.Endpoint.ModelPlanEndpointAdapter)
+	}
+	if descriptor.Runtime.Endpoint.ModelPlanEndpointAdapter != "" &&
+		descriptor.Runtime.Endpoint.ModelPlanProtocol != ModelPlanProtocolOpenAI {
+		return fmt.Errorf("provider %q model plan endpoint adapter requires the OpenAI protocol", providerID)
 	}
 	hasModelPlanProtocol := descriptor.Runtime.Endpoint.ModelPlanProtocol != ""
 	hasModelPlanCapability := containsNormalized(descriptor.ComposerProfile.Capabilities, normalize(CapabilityModelPlanBinding))

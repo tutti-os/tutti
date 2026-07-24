@@ -47,6 +47,7 @@ import (
 	managedcredentialsservice "github.com/tutti-os/tutti/services/tuttid/service/managedcredentials"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 	modelbindingservice "github.com/tutti-os/tutti/services/tuttid/service/modelbinding"
+	modelgatewayservice "github.com/tutti-os/tutti/services/tuttid/service/modelgateway"
 	modelplanservice "github.com/tutti-os/tutti/services/tuttid/service/modelplan"
 	modelpolicyservice "github.com/tutti-os/tutti/services/tuttid/service/modelpolicy"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
@@ -76,7 +77,7 @@ func configureWorkspaceAgentResolution(
 	}
 }
 
-func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service, computerService *computersvc.Service) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, *agentservice.ProviderAuthWatcher, error) {
+func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service, computerService *computersvc.Service, modelGateway *modelgatewayservice.Gateway) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, *agentservice.ProviderAuthWatcher, error) {
 	workspaceStore, _ := store.(workspacedata.WorkbenchStore)
 	issueStore, _ := store.(workspaceissues.Store)
 	preferencesStore, _ := store.(workspacedata.PreferencesStore)
@@ -292,6 +293,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller())
 	agentSessionService := agentservice.NewService(agentRuntimeController)
+	agentSessionService.ModelGateway = modelGateway
 	if browserService != nil {
 		agentSessionService.AgentSessionResourceReleaser = browserService
 	}

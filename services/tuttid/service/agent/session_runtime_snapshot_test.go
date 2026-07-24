@@ -11,6 +11,7 @@ import (
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	modelgatewayservice "github.com/tutti-os/tutti/services/tuttid/service/modelgateway"
 )
 
 type revisionPlanSource struct {
@@ -173,6 +174,15 @@ func TestPrepareRuntimeForResumeUsesExactModelPlanRevision(t *testing.T) {
 	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
 	var preparedInput runtimeprep.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{input: &preparedInput}
+	var registeredRoute modelgatewayservice.Route
+	service.ModelGateway = fakeModelGateway{
+		endpoint: modelgatewayservice.ClientEndpoint{
+			BaseURL: "http://127.0.0.1:43123/v1",
+			Token:   "temporary-gateway-token",
+			WireAPI: "responses",
+		},
+		registeredRoute: &registeredRoute,
+	}
 	service.ConfigureModelPlanBinding(staticBindingSource{binding: modelbindingbiz.Binding{
 		WorkspaceID:   "ws",
 		AgentTargetID: "workspace-agent:writer",
@@ -211,8 +221,14 @@ func TestPrepareRuntimeForResumeUsesExactModelPlanRevision(t *testing.T) {
 	if preparedInput.ModelEndpoint == nil {
 		t.Fatal("prepared model endpoint is nil")
 	}
-	if preparedInput.ModelEndpoint.APIKey != oldPlan.APIKey || preparedInput.ModelEndpoint.BaseURL != oldPlan.BaseURL || preparedInput.ModelEndpoint.Model != resumedModel {
-		t.Fatalf("prepared endpoint = %#v, want exact old revision", preparedInput.ModelEndpoint)
+	if registeredRoute.UpstreamAPIKey != oldPlan.APIKey || registeredRoute.UpstreamURL != oldPlan.BaseURL {
+		t.Fatalf("registered route = %#v, want exact old revision", registeredRoute)
+	}
+	if preparedInput.ModelEndpoint.APIKey != "temporary-gateway-token" ||
+		preparedInput.ModelEndpoint.BaseURL != "http://127.0.0.1:43123/v1" ||
+		preparedInput.ModelEndpoint.WireAPI != "responses" ||
+		preparedInput.ModelEndpoint.Model != resumedModel {
+		t.Fatalf("prepared endpoint = %#v, want temporary gateway endpoint", preparedInput.ModelEndpoint)
 	}
 	if preparedInput.AgentInstructions != "old instructions" || len(preparedInput.AgentSkills) != 1 || preparedInput.AgentSkills[0] != "old-skill" {
 		t.Fatalf("prepared agent definition = %#v", preparedInput)

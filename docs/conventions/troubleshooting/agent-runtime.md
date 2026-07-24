@@ -36,6 +36,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Claude Code logs out after sending a message (invalid_grant, credentials wiped)](./agent-provider-setup.md#claude-code-logs-out-after-sending-a-message-invalidgrant-credentials-wiped)
 - [Claude Code `Not logged in` renders as a file link instead of sign-in guidance](./agent-provider-setup.md#claude-code-not-logged-in-renders-as-a-file-link-instead-of-sign-in-guidance)
 - [Model Plan check succeeds but Kimi Claude Code turns wait and then return 401](./agent-provider-setup.md#model-plan-check-succeeds-but-kimi-claude-code-turns-wait-and-then-return-401)
+- [Codex Model Plan turns fail or stay waiting against a Chat-only endpoint](./agent-provider-setup.md#codex-model-plan-turns-fail-or-stay-waiting-against-a-chat-only-endpoint)
 - [Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used](./agent-provider-setup.md#claude-code-sessions-fail-with-effectivesource-none-when-cc-switch-or-similar-proxy-tools-are-used)
 - [Tutti Agent retries a 402 and shows generic provider setup](./agent-provider-setup.md#tutti-agent-retries-a-402-and-shows-generic-provider-setup)
 - [OpenCode effort changes fail with `effort not found`](./agent-provider-setup.md#opencode-effort-changes-fail-with-effort-not-found)
