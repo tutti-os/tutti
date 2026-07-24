@@ -530,11 +530,10 @@ function ComposerMenuOptionItems({
                 ? "text-[var(--tutti-purple)] opacity-100 hover:text-[var(--tutti-purple)]"
                 : "opacity-0 group-hover/composer-option:opacity-100 group-data-[highlighted]/composer-option:opacity-100"
             )}
-            // Stop before the DropdownMenuItem's pointerdown-apply handler:
-            // starring an option must not also select it or close the menu.
+            // Keep focus on the menu item, but let Radix observe the complete
+            // pointer sequence. The parent row ignores this control below.
             onPointerDown={(event) => {
               event.preventDefault();
-              event.stopPropagation();
             }}
             onClick={(event) => {
               event.preventDefault();
@@ -562,6 +561,14 @@ function ComposerMenuOptionItems({
             )}
             data-agent-model-option={showModelTooltip ? "true" : undefined}
             onPointerDown={(event) => {
+              if (
+                event.target instanceof Element &&
+                event.target.closest(
+                  '[data-agent-model-favorite-toggle="true"]'
+                )
+              ) {
+                return;
+              }
               if (event.button === 0 && !event.ctrlKey) {
                 event.preventDefault();
                 onSelect(option.value);
