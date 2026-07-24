@@ -175,45 +175,82 @@ func ensureTuttiAgentSessionConfig(configPath string, input PrepareInput) error 
 // User-owned provider/model settings are otherwise preserved.
 func tuttiAgentConfigWithoutLegacyPinnedProvider(content string) (string, bool) {
 	normalized := strings.ReplaceAll(content, "\r\n", "\n")
-	for _, signature := range []string{
-		`model_provider = "tutti-llm"`,
-		`model = "gpt-5.4"`,
-		`[model_providers.tutti-llm]`,
-		`name = "Tutti LLM"`,
-		`base_url = "https://llm-api.tutti.sh/v1"`,
-		`wire_api = "responses"`,
-	} {
-		if !strings.Contains(normalized, signature) {
+	lines := strings.Split(normalized, "\n")
+	rootProviderLine := -1
+	rootModelLine := -1
+	legacySectionStart := -1
+	legacySectionEnd := len(lines)
+	firstSection := len(lines)
+	for index, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			if firstSection == len(lines) {
+				firstSection = index
+			}
+			if trimmed == `[model_providers.tutti-llm]` {
+				if legacySectionStart >= 0 {
+					return content, false
+				}
+				legacySectionStart = index
+				continue
+			}
+			if legacySectionStart >= 0 && legacySectionEnd == len(lines) {
+				legacySectionEnd = index
+			}
+			continue
+		}
+		if index >= firstSection {
+			continue
+		}
+		switch trimmed {
+		case `model_provider = "tutti-llm"`:
+			if rootProviderLine >= 0 {
+				return content, false
+			}
+			rootProviderLine = index
+		case `model = "gpt-5.4"`:
+			if rootModelLine >= 0 {
+				return content, false
+			}
+			rootModelLine = index
+		}
+	}
+	if rootProviderLine < 0 || rootModelLine < 0 || legacySectionStart < 0 {
+		return content, false
+	}
+	legacyKeys := map[string]bool{
+		`name = "Tutti LLM"`:                       false,
+		`base_url = "https://llm-api.tutti.sh/v1"`: false,
+		`wire_api = "responses"`:                   false,
+	}
+	for _, line := range lines[legacySectionStart+1 : legacySectionEnd] {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if _, ok := legacyKeys[trimmed]; !ok || legacyKeys[trimmed] {
+			return content, false
+		}
+		legacyKeys[trimmed] = true
+	}
+	for _, found := range legacyKeys {
+		if !found {
 			return content, false
 		}
 	}
-	if strings.Count(normalized, `[model_providers.tutti-llm]`) != 1 {
-		return content, false
-	}
-	lines := strings.Split(normalized, "\n")
 	result := make([]string, 0, len(lines))
-	inLegacyProvider := false
-	changed := false
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[") {
-			inLegacyProvider = trimmed == `[model_providers.tutti-llm]`
-			if inLegacyProvider {
-				changed = true
-				continue
-			}
-		}
-		if inLegacyProvider {
+	for index, line := range lines {
+		if index == rootProviderLine || index == rootModelLine {
 			continue
 		}
-		if trimmed == `model_provider = "tutti-llm"` || trimmed == `model = "gpt-5.4"` {
-			changed = true
+		if index >= legacySectionStart && index < legacySectionEnd {
 			continue
 		}
 		result = append(result, line)
 	}
-	if !changed {
-		return content, false
+	next := strings.Join(result, "\n")
+	if strings.HasSuffix(normalized, "\n") && !strings.HasSuffix(next, "\n") {
+		next += "\n"
 	}
-	return strings.TrimSpace(strings.Join(result, "\n")) + "\n", true
+	return next, true
 }

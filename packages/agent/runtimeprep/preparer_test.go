@@ -1535,18 +1535,31 @@ func TestTuttiAgentManagedConfigRemovesOnlyLegacyPinnedProvider(t *testing.T) {
 		``,
 		`[model_providers.custom]`,
 		`name = "Custom"`,
+		``,
+		`[profiles.custom]`,
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
 	}, "\n")
 
 	next, changed := tuttiAgentConfigWithoutLegacyPinnedProvider(input)
 	if !changed {
 		t.Fatalf("changed = false, want true")
 	}
-	for _, removed := range []string{`model_provider = "tutti-llm"`, `model = "gpt-5.4"`, `[model_providers.tutti-llm]`} {
+	for _, removed := range []string{`[model_providers.tutti-llm]`} {
 		if strings.Contains(next, removed) {
 			t.Fatalf("next retained %q: %s", removed, next)
 		}
 	}
-	for _, want := range []string{`custom_root = "preserved"`, `[model_providers.custom]`} {
+	if !strings.HasPrefix(next, `custom_root = "preserved"`) {
+		t.Fatalf("next retained legacy root assignments: %s", next)
+	}
+	for _, want := range []string{
+		`custom_root = "preserved"`,
+		`[model_providers.custom]`,
+		`[profiles.custom]`,
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
+	} {
 		if !strings.Contains(next, want) {
 			t.Fatalf("next removed %q: %s", want, next)
 		}
@@ -1570,6 +1583,47 @@ func TestTuttiAgentManagedConfigPreservesPartialLegacyLookalike(t *testing.T) {
 	}
 	if next != input {
 		t.Fatalf("next changed partial legacy lookalike:\n%s", next)
+	}
+}
+
+func TestTuttiAgentManagedConfigPreservesCommentedLegacySignature(t *testing.T) {
+	input := strings.Join([]string{
+		`# model_provider = "tutti-llm"`,
+		`# model = "gpt-5.4"`,
+		``,
+		`[model_providers.tutti-llm]`,
+		`name = "Tutti LLM"`,
+		`base_url = "https://llm-api.tutti.sh/v1"`,
+		`wire_api = "responses"`,
+	}, "\n")
+
+	next, changed := tuttiAgentConfigWithoutLegacyPinnedProvider(input)
+	if changed {
+		t.Fatalf("changed = true, want false: %s", next)
+	}
+	if next != input {
+		t.Fatalf("next changed commented legacy lookalike:\n%s", next)
+	}
+}
+
+func TestTuttiAgentManagedConfigPreservesLegacyProviderWithExtraKey(t *testing.T) {
+	input := strings.Join([]string{
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
+		``,
+		`[model_providers.tutti-llm]`,
+		`name = "Tutti LLM"`,
+		`base_url = "https://llm-api.tutti.sh/v1"`,
+		`wire_api = "responses"`,
+		`http_headers = { X-Custom = "preserve" }`,
+	}, "\n")
+
+	next, changed := tuttiAgentConfigWithoutLegacyPinnedProvider(input)
+	if changed {
+		t.Fatalf("changed = true, want false: %s", next)
+	}
+	if next != input {
+		t.Fatalf("next changed customized legacy provider:\n%s", next)
 	}
 }
 

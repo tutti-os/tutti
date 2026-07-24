@@ -5842,6 +5842,34 @@ func TestTuttiAgentAppServerAdapterStartRestoresGoalWithoutMetadataFetch(t *test
 	}
 }
 
+func TestTuttiAgentAppServerAdapterResumeRestoresGoalWithoutMetadataFetch(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(transport, LegacyHostMetadata())
+	adapter.SetSessionEventSink(func(string, []activityshared.Event) {})
+	transport.conn.mu.Lock()
+	transport.conn.goal = map[string]any{
+		"threadId":  "codex-thread-1",
+		"objective": "finish it",
+		"status":    "active",
+	}
+	transport.conn.mu.Unlock()
+	session := testAppServerSession()
+	session.Provider = ProviderTuttiAgent
+	session.ProviderSessionID = "codex-thread-1"
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return asString(adapter.sessionGoal(session.AgentSessionID)["status"]) == "active"
+	})
+	goalGet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalGet)
+	if asString(goalGet["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/get params = %#v", goalGet)
+	}
+}
+
 func TestCodexAppServerAdapterSlashGoalReadsCurrentGoal(t *testing.T) {
 	t.Parallel()
 
