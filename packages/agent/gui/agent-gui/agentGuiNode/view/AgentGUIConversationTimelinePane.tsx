@@ -28,7 +28,6 @@ interface AgentGUIConversationTimelinePaneProps {
   onAuthLogin?: (provider?: string | null) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  previewMode?: boolean;
   labels: {
     thinkingLabel: string;
     toolCallsLabel: (count: number) => string;
@@ -52,7 +51,6 @@ export const AgentGUIConversationTimelinePane = memo(
     onAuthLogin,
     availableSkills,
     workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
-    previewMode = false,
     labels
   }: AgentGUIConversationTimelinePaneProps): React.JSX.Element {
     "use memo";
@@ -80,7 +78,6 @@ export const AgentGUIConversationTimelinePane = memo(
           onAuthLogin={onAuthLogin}
           availableSkills={availableSkills}
           workspaceAppIcons={workspaceAppIcons}
-          previewMode={previewMode}
           labels={labels}
         />
       </>

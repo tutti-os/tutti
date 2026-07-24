@@ -188,11 +188,9 @@ pnpm check:agent-activity-runtime-boundaries
 `hostCapabilities`, `hostActions`, and `renderSlots`. Extend the owning object;
 do not restore flat compatibility props.
 
-Workbench hosts with custom Dock entry projections can import
-`createAgentGuiWorkbenchPreviewContent` from
-`@tutti-os/agent-gui/workbench`. The helper owns AgentGUI preview identity,
-revision, and render-context construction; hosts continue to own their Agent
-directory, product-specific Dock grouping, and preview body renderer.
+Workbench hosts capture Dock and minimize previews from the mounted AgentGUI
+node. AgentGUI does not expose a second-tree preview renderer or preview-mode
+contract.
 
 ## Reference Provenance Filtering
 

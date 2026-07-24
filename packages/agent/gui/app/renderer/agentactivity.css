@@ -2,30 +2,6 @@
 
 /* Restored agent activity renderer styles from the TSH desktop source during the GUI migration. */
 
-[data-agent-gui-preview="true"] {
-  pointer-events: none !important;
-  user-select: none;
-  -webkit-user-select: none;
-  cursor: default !important;
-  caret-color: transparent;
-}
-
-[data-agent-gui-preview="true"],
-[data-agent-gui-preview="true"] *,
-[data-agent-gui-preview="true"] *::before,
-[data-agent-gui-preview="true"] *::after {
-  animation: none !important;
-  transition: none !important;
-  scroll-behavior: auto !important;
-}
-
-[data-agent-gui-preview="true"] *,
-[data-agent-gui-preview="true"] *::before,
-[data-agent-gui-preview="true"] *::after {
-  caret-color: transparent !important;
-  cursor: default !important;
-}
-
 .workspace-agents-status-panel__detail-tool-code,
 .workspace-agents-status-panel__detail-tool-terminal,
 .workspace-agents-status-panel__detail-tool-diff,

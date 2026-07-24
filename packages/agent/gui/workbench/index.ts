@@ -5,7 +5,6 @@ export {
   agentGuiWorkbenchDefaultNodeFrame,
   buildAgentGuiDockEntries,
   createAgentGuiWorkbenchContribution,
-  createAgentGuiWorkbenchPreviewContent,
   resolveAgentGuiUnifiedDockLaunchPayload,
   resolveAgentGuiWorkbenchContributionCopy
 } from "./contribution.ts";

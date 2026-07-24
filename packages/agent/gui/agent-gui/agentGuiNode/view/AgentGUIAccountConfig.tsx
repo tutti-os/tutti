@@ -12,7 +12,6 @@ import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 interface AgentGUIConfigMenuProps {
   environmentSetupVisible: boolean;
   labels: AgentGUIViewLabels;
-  previewMode: boolean;
   providerScopedActionsVisible: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
@@ -32,7 +31,6 @@ interface AgentGUIConfigMenuProps {
 export function AgentGUIConfigMenu({
   environmentSetupVisible,
   labels,
-  previewMode,
   providerScopedActionsVisible,
   slashStatusLimits,
   slashStatusLimitsLoading,
@@ -73,7 +71,6 @@ export function AgentGUIConfigMenu({
           aria-label={labels.agentConfig}
           className={`${styles.providerRailConfigButton} nodrag tsh-desktop-no-drag`}
           title={labels.agentConfig}
-          disabled={previewMode}
         >
           <SettingsLinedIcon aria-hidden="true" width={18} height={18} />
         </button>
@@ -150,7 +147,7 @@ export function AgentGUIConfigMenu({
                     capturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
                     isLoading={slashStatusLimitsLoading}
                     didFail={slashStatusUsageDidFail}
-                    disabled={previewMode || !onAgentUsageRefresh}
+                    disabled={!onAgentUsageRefresh}
                     onRefresh={() => onAgentUsageRefresh?.()}
                     labels={{
                       justUpdated: labels.slashStatusUsageJustUpdated,
@@ -189,7 +186,6 @@ export function AgentGUIConfigMenu({
                 type="button"
                 data-testid="agent-gui-config-env-setup"
                 className="nodrag flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
-                disabled={previewMode}
                 onClick={() => onOpenAgentEnvSetup()}
               >
                 <Wrench aria-hidden="true" size={16} strokeWidth={1.8} />
@@ -200,7 +196,6 @@ export function AgentGUIConfigMenu({
               type="button"
               data-testid="agent-gui-config-settings"
               className="nodrag flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
-              disabled={previewMode}
               onClick={() => onOpenAgentSettings()}
             >
               <SettingsLinedIcon aria-hidden="true" width={16} height={16} />

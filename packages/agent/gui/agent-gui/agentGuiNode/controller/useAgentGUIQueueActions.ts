@@ -22,7 +22,6 @@ import { createAgentGUIConversationId } from "./agentGuiController.promptHelpers
 export interface UseAgentGUIQueueActionsInput {
   activeConversationIdRef: RefObject<string | null>;
   agentActivityRuntime: AgentActivityRuntime;
-  previewMode: boolean;
   sessionEngine: AgentSessionEngine;
   setDraftByScopeKey: Dispatch<
     SetStateAction<Record<string, AgentComposerDraft>>
@@ -34,16 +33,12 @@ export interface UseAgentGUIQueueActionsInput {
 export function useAgentGUIQueueActions({
   activeConversationIdRef,
   agentActivityRuntime,
-  previewMode,
   sessionEngine,
   setDraftByScopeKey,
   workspaceId
 }: UseAgentGUIQueueActionsInput) {
   const removeQueuedPrompt = useCallback(
     (queuedPromptId: string) => {
-      if (previewMode) {
-        return;
-      }
       const agentSessionId = activeConversationIdRef.current;
       const normalizedQueuedPromptId = queuedPromptId.trim();
       if (!agentSessionId || !normalizedQueuedPromptId) {
@@ -68,14 +63,14 @@ export function useAgentGUIQueueActions({
             }
       );
     },
-    [activeConversationIdRef, previewMode, sessionEngine]
+    [activeConversationIdRef, sessionEngine]
   );
 
   const editQueuedPrompt = useCallback(
     (queuedPromptId: string) => {
       const agentSessionId = activeConversationIdRef.current;
       const normalizedQueuedPromptId = queuedPromptId.trim();
-      if (previewMode || !agentSessionId || !normalizedQueuedPromptId) {
+      if (!agentSessionId || !normalizedQueuedPromptId) {
         return;
       }
       const queuedPrompt = selectEngineQueuedPrompt(
@@ -170,7 +165,6 @@ export function useAgentGUIQueueActions({
     [
       activeConversationIdRef,
       agentActivityRuntime,
-      previewMode,
       sessionEngine,
       setDraftByScopeKey,
       workspaceId
@@ -181,7 +175,7 @@ export function useAgentGUIQueueActions({
     (queuedPromptId: string) => {
       const agentSessionId = activeConversationIdRef.current;
       const normalizedQueuedPromptId = queuedPromptId.trim();
-      if (previewMode || !agentSessionId || !normalizedQueuedPromptId) {
+      if (!agentSessionId || !normalizedQueuedPromptId) {
         return;
       }
       sessionEngine.dispatch({
@@ -193,7 +187,7 @@ export function useAgentGUIQueueActions({
         type: "queue/sendNowRequested"
       });
     },
-    [activeConversationIdRef, previewMode, sessionEngine]
+    [activeConversationIdRef, sessionEngine]
   );
 
   return {

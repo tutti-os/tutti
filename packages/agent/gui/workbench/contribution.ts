@@ -124,20 +124,6 @@ export interface CreateAgentGuiWorkbenchContributionInput {
     >,
     helpers: AgentGuiWorkbenchRenderBodyHelpers
   ): ReactNode;
-  renderPreview?(
-    context: WorkbenchHostNodeBodyContext<
-      AgentGuiWorkbenchState | null,
-      unknown
-    >,
-    helpers: AgentGuiWorkbenchRenderBodyHelpers
-  ): ReactNode;
-  renderMinimizedPreview(
-    context: WorkbenchHostNodeBodyContext<
-      AgentGuiWorkbenchState | null,
-      unknown
-    >,
-    helpers: AgentGuiWorkbenchRenderBodyHelpers
-  ): ReactNode;
   resolveDockPopupTitle?: (
     state: AgentGuiWorkbenchState | null
   ) => string | null;
@@ -170,7 +156,6 @@ export function createAgentGuiWorkbenchContribution(
       dockIconUrls: input.dockIconUrls,
       label: copy.nodeTitle,
       providerAvailability: input.providerAvailability,
-      renderPreview: input.renderPreview,
       resolveDockPopupIdentity: input.resolveDockPopupIdentity,
       resolveDockPopupTitle: input.resolveDockPopupTitle,
       sectionId: input.dockSectionId ?? "agents",
@@ -437,16 +422,7 @@ export function createAgentGuiWorkbenchContribution(
           header: {
             layout: "overlay"
           },
-          minimizedDock: {
-            kind: "component",
-            providePreview: (item) =>
-              createAgentGuiWorkbenchPreviewContent({
-                agentDirectory: input.agentDirectory,
-                item,
-                renderPreview: input.renderMinimizedPreview,
-                resolveDockPopupTitle: input.resolveDockPopupTitle
-              })
-          },
+          minimizedDock: { kind: "snapshot" },
           minimizable: true
         }
       }
@@ -606,7 +582,6 @@ import {
   agentGuiWorkbenchNewWindowCascadeOffset,
   agentGuiWorkbenchProviderRailWidthPx,
   buildAgentGuiDockEntries,
-  createAgentGuiWorkbenchPreviewContent,
   isAgentGuiWorkbenchCompactVisibleFrame,
   providerFromState,
   providerTargetLaunchPayloadFromRequest,
@@ -624,7 +599,6 @@ export {
   agentGuiWorkbenchNewWindowCascadeOffset,
   agentGuiWorkbenchProviderRailWidthPx,
   buildAgentGuiDockEntries,
-  createAgentGuiWorkbenchPreviewContent,
   resolveAgentGuiUnifiedDockLaunchPayload,
   resolveAgentGuiWorkbenchContributionCopy,
   resolveAgentGuiWorkbenchDefaultLaunchFrame

@@ -111,7 +111,6 @@ export function AgentGUINodeView({
   onSlashStatusOpen,
   onSlashStatusClose,
   onSlashStatusRefresh,
-  previewMode = false,
   onAgentProviderLogin,
   onAgentEnvPanelOpen,
   actions,
@@ -153,7 +152,6 @@ export function AgentGUINodeView({
     isActive,
     isVisible,
     onEvent: onEngagementEvent,
-    previewMode,
     viewModel
   });
   const [providerManagerOpen, setProviderManagerOpen] = useState(false);
@@ -180,7 +178,6 @@ export function AgentGUINodeView({
     workspaceReferencePickerTarget
   } = useAgentGUIWorkspaceReferencePicker({
     onWorkspaceFileReferencesAdded,
-    previewMode,
     projectDirectorySourceAggregator,
     referenceSourceAggregator,
     resolveMentionReferenceTarget,
@@ -234,9 +231,6 @@ export function AgentGUINodeView({
   }, []);
   const requestCreateConversation = useStableEventCallback(
     (options?: { projectPath?: string | null; source?: string }) => {
-      if (previewMode) {
-        return;
-      }
       const source = options?.source;
       if (options && "projectPath" in options) {
         createConversationAction(options);
@@ -276,9 +270,6 @@ export function AgentGUINodeView({
 
   const handleConversationRailResizePointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>): void => {
-      if (previewMode) {
-        return;
-      }
       if (conversationRailCollapsed || event.button !== 0) {
         return;
       }
@@ -294,7 +285,7 @@ export function AgentGUINodeView({
       setRailResizeWidthPx(conversationRailWidthPx);
       setIsRailResizing(true);
     },
-    [conversationRailCollapsed, conversationRailWidthPx, previewMode]
+    [conversationRailCollapsed, conversationRailWidthPx]
   );
 
   const handleConversationRailResizePointerMove =
@@ -302,7 +293,6 @@ export function AgentGUINodeView({
       clampConversationRailWidth,
       layoutElementRef,
       onConversationRailLayoutChange,
-      previewMode,
       providerRailWidthPx,
       railResizeInteractionRef
     });
@@ -349,9 +339,6 @@ export function AgentGUINodeView({
 
   const handleConversationRailResizeKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>): void => {
-      if (previewMode) {
-        return;
-      }
       if (conversationRailCollapsed) {
         return;
       }
@@ -372,8 +359,7 @@ export function AgentGUINodeView({
       clampConversationRailWidth,
       conversationRailCollapsed,
       conversationRailWidthPx,
-      onConversationRailWidthChanged,
-      previewMode
+      onConversationRailWidthChanged
     ]
   );
 
@@ -462,7 +448,6 @@ export function AgentGUINodeView({
     createConversationDisabled,
     labels,
     newConversationRequestSequence,
-    previewMode,
     requestCreateConversation,
     requestRenameConversation,
     sessionActionRequest,
@@ -485,7 +470,6 @@ export function AgentGUINodeView({
       labels: conversationRailLabels,
       workspaceUserProjectI18n,
       uiLanguage,
-      previewMode,
       createConversationDisabled,
       isCollapsed: conversationRailCollapsed,
       agentTargets: viewModel.rail.agentTargets,
@@ -523,7 +507,6 @@ export function AgentGUINodeView({
       openProjectFiles,
       actions.markConversationUnread,
       actions.updateConversationFilter,
-      previewMode,
       removeProject,
       moveProject,
       toggleProjectPinned,
@@ -572,9 +555,7 @@ export function AgentGUINodeView({
         <div
           ref={layoutElementRef}
           className={styles.layout}
-          data-agent-gui-preview={previewMode ? "true" : undefined}
           data-rail-resizing={isRailResizing ? "true" : undefined}
-          inert={previewMode ? true : undefined}
           style={layoutStyle}
         >
           <aside
@@ -589,7 +570,6 @@ export function AgentGUINodeView({
               conversationFilter={viewModel.rail.conversationFilter}
               conversations={viewModel.rail.conversations}
               labels={labels}
-              previewMode={previewMode}
               selectedAgentTarget={viewModel.rail.selectedAgentTarget}
               agentTargets={viewModel.rail.agentTargets}
               agentTargetsLoading={viewModel.rail.agentTargetsLoading}
@@ -627,7 +607,6 @@ export function AgentGUINodeView({
                 <AgentGUIConfigMenu
                   environmentSetupVisible={environmentSetupVisible}
                   labels={labels}
-                  previewMode={previewMode}
                   providerScopedActionsVisible={
                     viewModel.rail.conversationFilter.kind !== "all"
                   }
@@ -739,7 +718,6 @@ export function AgentGUINodeView({
               workspaceAppIcons={effectiveWorkspaceAppIcons}
               workspaceUserProjectI18n={workspaceUserProjectI18n}
               renderProviderUnavailableState={renderProviderUnavailableState}
-              previewMode={previewMode}
             />
           </section>
         </div>
@@ -783,5 +761,5 @@ export function AgentGUINodeView({
       </AgentTargetSetupRoot>
     </AgentTargetPresentationProvider>
   );
-  return previewMode ? content : <TooltipProvider>{content}</TooltipProvider>;
+  return <TooltipProvider>{content}</TooltipProvider>;
 }

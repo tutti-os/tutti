@@ -120,7 +120,6 @@ interface AgentMessageMarkdownProps {
   inline?: boolean;
   normalizePlainIssueMentionTitle?: boolean;
   enableImageZoom?: boolean;
-  previewMode?: boolean;
   streaming?: boolean;
 }
 
@@ -160,7 +159,6 @@ export function AgentMessageMarkdown({
   inline = false,
   normalizePlainIssueMentionTitle = false,
   enableImageZoom = false,
-  previewMode = false,
   streaming = false
 }: AgentMessageMarkdownProps): JSX.Element {
   "use memo";
@@ -256,7 +254,6 @@ export function AgentMessageMarkdown({
           onLinkClick={handleLinkClick}
           workspaceAppIcons={workspaceAppIcons}
           agentTargets={effectiveAgentTargets}
-          previewMode={previewMode}
         />
       ),
       code: (props: MarkdownDomProps<"code">) => <MarkdownCode {...props} />,
@@ -276,7 +273,6 @@ export function AgentMessageMarkdown({
       enableImageZoom,
       handleLinkClick,
       inline,
-      previewMode,
       workspaceAppIcons
     ]
   );
@@ -397,14 +393,12 @@ function MarkdownLink({
   onLinkClick,
   workspaceAppIcons,
   agentTargets,
-  previewMode,
   href,
   ...props
 }: MarkdownDomProps<"a"> & {
   onLinkClick?: (href: string) => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
-  previewMode?: boolean;
 }): JSX.Element {
   "use memo";
   const { t } = useTranslation();
@@ -425,7 +419,6 @@ function MarkdownLink({
         href={targetHref}
         mention={mention}
         onLinkClick={onLinkClick}
-        previewMode={previewMode === true}
       />
     );
   }
@@ -619,13 +612,11 @@ function MentionLink({
   onLinkClick,
   href,
   mention,
-  previewMode,
   ...props
 }: AnchorHTMLAttributes<HTMLAnchorElement> & {
   href: string;
   mention: ParsedMentionLink;
   onLinkClick?: (href: string) => void;
-  previewMode: boolean;
 }): JSX.Element {
   "use memo";
   const snapshot = useResolvedRichTextMention({
@@ -695,8 +686,8 @@ function MentionLink({
         kind={pillKind}
         label={<span className="tsh-agent-object-token__main">{label}</span>}
         removable={false}
-        tooltipEnabled={!previewMode}
-        withTooltipProvider={!previewMode}
+        tooltipEnabled
+        withTooltipProvider
       />
     </a>
   );

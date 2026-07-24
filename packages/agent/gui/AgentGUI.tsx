@@ -167,9 +167,7 @@ export const AgentGUI = memo(function AgentGUI({
       </TuttiModePlanReviewRuntimeProvider>
     </AgentGuiI18nProvider>
   );
-  return props.frame.previewMode ? (
-    content
-  ) : (
+  return (
     <TooltipProvider delayDuration={120} skipDelayDuration={0}>
       {content}
     </TooltipProvider>

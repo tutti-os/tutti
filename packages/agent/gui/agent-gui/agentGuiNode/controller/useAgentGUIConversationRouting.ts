@@ -28,7 +28,6 @@ interface UseAgentGUIConversationRoutingInput {
   intent: ConversationIntent;
   openSessionRequest: AgentGUIOpenSessionRequest | null | undefined;
   pendingOpenSessionRequestRef: RefObject<AgentGUIOpenSessionRequest | null>;
-  previewMode: boolean;
   selectConversation(
     agentSessionId: string,
     options?: AgentGUIConversationSelectionOptions
@@ -52,7 +51,6 @@ export function useAgentGUIConversationRouting(
     intent,
     openSessionRequest,
     pendingOpenSessionRequestRef,
-    previewMode,
     selectConversation,
     sessionEngine,
     setIntent,
@@ -104,7 +102,6 @@ export function useAgentGUIConversationRouting(
     const normalizedOpenSessionRequest =
       normalizeAgentGUIOpenSessionRequest(openSessionRequest);
     if (
-      !previewMode &&
       normalizedOpenSessionRequest &&
       handledOpenSessionSequenceRef.current !==
         normalizedOpenSessionRequest.sequence
@@ -183,7 +180,6 @@ export function useAgentGUIConversationRouting(
     hasLoadedConversations,
     intent,
     openSessionRequest,
-    previewMode,
     selectConversation,
     transientConversation
   ]);

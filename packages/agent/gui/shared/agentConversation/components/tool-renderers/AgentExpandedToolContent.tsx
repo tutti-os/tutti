@@ -13,25 +13,20 @@ import { AgentSkillContent } from "./AgentSkillContent";
 import { AgentTaskContent } from "./AgentTaskContent";
 import { AgentTodoWriteContent } from "./AgentTodoWriteContent";
 import { AgentToolSearchContent } from "./AgentToolSearchContent";
-import {
-  AgentDefaultToolContent,
-  AgentToolPreviewModeProvider
-} from "./agentToolContentShared";
+import { AgentDefaultToolContent } from "./agentToolContentShared";
 import { AgentWebFetchContent } from "./AgentWebFetchContent";
 import { AgentWebSearchContent } from "./AgentWebSearchContent";
 import { AgentWriteContent } from "./AgentWriteContent";
 
 export function AgentExpandedToolContent({
   call,
-  onLinkClick,
-  previewMode = false
+  onLinkClick
 }: {
   call: AgentToolCallVM;
   onLinkClick?: (href: string) => void;
-  previewMode?: boolean;
 }): JSX.Element | null {
   "use memo";
-  const props = { call, onLinkClick, previewMode };
+  const props = { call, onLinkClick };
   let content: JSX.Element | null;
   switch (call.rendererKind) {
     case "approval":
@@ -89,9 +84,5 @@ export function AgentExpandedToolContent({
   if (!content) {
     return null;
   }
-  return (
-    <AgentToolPreviewModeProvider previewMode={previewMode}>
-      {content}
-    </AgentToolPreviewModeProvider>
-  );
+  return content;
 }

@@ -18,7 +18,6 @@ export type DesktopAgentGUISessionActionRequest =
 export function useDesktopAgentGUIWorkbenchEvents(input: {
   instanceId: string;
   onConversationRailToggle(collapsed: boolean): void;
-  previewMode: boolean;
 }): {
   newConversationSequence: number;
   sessionActionRequest: DesktopAgentGUISessionActionRequest | null;
@@ -30,9 +29,6 @@ export function useDesktopAgentGUIWorkbenchEvents(input: {
   onConversationRailToggleRef.current = input.onConversationRailToggle;
 
   useEffect(() => {
-    if (input.previewMode) {
-      return;
-    }
     const handleConversationRailToggle = (event: Event) => {
       const detail = (event as CustomEvent<unknown>).detail;
       if (!detail || typeof detail !== "object") {
@@ -100,7 +96,7 @@ export function useDesktopAgentGUIWorkbenchEvents(input: {
         handleSessionAction
       );
     };
-  }, [input.instanceId, input.previewMode]);
+  }, [input.instanceId]);
 
   return { newConversationSequence, sessionActionRequest };
 }

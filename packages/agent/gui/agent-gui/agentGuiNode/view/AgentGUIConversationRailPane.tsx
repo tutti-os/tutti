@@ -76,7 +76,6 @@ export interface AgentGUIConversationRailControllerProps {
   labels: AgentGUIConversationRailLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   uiLanguage: UiLanguage;
-  previewMode: boolean;
   createConversationDisabled: boolean;
   isCollapsed: boolean;
   agentTargets: AgentGUINodeViewModel["rail"]["agentTargets"];
@@ -174,7 +173,6 @@ export const AgentGUIConversationRailPane = memo(
     labels,
     workspaceUserProjectI18n,
     uiLanguage,
-    previewMode,
     createConversationDisabled,
     isCollapsed,
     conversationFilter,
@@ -250,8 +248,7 @@ export const AgentGUIConversationRailPane = memo(
       isUserProjectMutationPending ||
       pendingDeleteConversationId !== null ||
       pendingProjectAction !== null ||
-      projectMenuOpen ||
-      previewMode;
+      projectMenuOpen;
     const backendSearchConversations = backendSearchActive
       ? railSearch.sessionIds.flatMap((id) => {
           const conversation = railConversationEntitiesById.get(id);
@@ -714,7 +711,6 @@ export const AgentGUIConversationRailPane = memo(
                         pendingDeleteConversationId={
                           pendingDeleteConversationId
                         }
-                        previewMode={previewMode}
                         projectLabel={projectLabel}
                         projectPath={projectPath}
                         registerItemElement={

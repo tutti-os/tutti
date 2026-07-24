@@ -310,7 +310,6 @@ function renderRailItem(overrides: {
         ...overrides.item
       }}
       labels={RAIL_ITEM_LABELS}
-      previewMode={false}
       registerItemElement={() => {}}
       uiLanguage="en"
       workspaceId="workspace-1"

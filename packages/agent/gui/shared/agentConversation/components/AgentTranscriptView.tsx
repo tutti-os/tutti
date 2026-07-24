@@ -68,7 +68,6 @@ export interface AgentTranscriptViewProps {
   onAuthLogin?: (provider?: string | null) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  previewMode?: boolean;
   showRawTimelineJson?: boolean;
   participantPresentation?: AgentConversationParticipantPresentation;
   labels: {
@@ -198,7 +197,6 @@ export function areAgentTranscriptViewPropsEqual(
     previous.turnAttachmentLocatorRef === next.turnAttachmentLocatorRef &&
     previous.onTurnAttachmentVisibilityChange ===
       next.onTurnAttachmentVisibilityChange &&
-    previous.previewMode === next.previewMode &&
     previous.showRawTimelineJson === next.showRawTimelineJson &&
     participantPresentationEqual(
       previous.participantPresentation,
@@ -217,7 +215,6 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   onAuthLogin,
   availableSkills,
   workspaceAppIcons,
-  previewMode = false,
   showRawTimelineJson = false,
   participantPresentation,
   labels
@@ -443,7 +440,6 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           provider={provider}
           availableSkills={availableSkills}
           workspaceAppIcons={workspaceAppIcons}
-          previewMode={previewMode}
           showRawTimelineJson={showRawTimelineJson}
           participantPresentation={participantPresentation}
           toolGroupExpanded={

@@ -32,7 +32,7 @@ function createAgentGUIProps(locale: AgentGUIProps["locale"]): AgentGUIProps {
       status: "ready"
     },
     locale,
-    frame: { previewMode: false }
+    frame: {}
   } as unknown as AgentGUIProps;
 }
 

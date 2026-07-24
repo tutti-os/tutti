@@ -144,7 +144,6 @@ function renderProviderHome(input: {
       normalizedProviderTargets: input.targets,
       onDataChangeRef: { current: onDataChange },
       persistActiveConversation,
-      previewMode: false,
       providerReadinessGates: null,
       selectedComposerTargetDataRef: {
         current: {

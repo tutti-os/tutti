@@ -69,7 +69,6 @@ interface AgentGUIConversationRailItemProps {
   isDeletingConversation: boolean;
   isRailInteractionLocked: () => boolean;
   labels: AgentGUIConversationRailLabels;
-  previewMode: boolean;
   uiLanguage: UiLanguage;
   workspaceId: string;
   registerItemElement: (itemId: string, element: HTMLDivElement | null) => void;
@@ -93,7 +92,6 @@ export const AgentGUIConversationRailItem = memo(
     isDeletingConversation,
     isRailInteractionLocked,
     labels,
-    previewMode,
     uiLanguage,
     workspaceId,
     registerItemElement,
@@ -158,7 +156,6 @@ export const AgentGUIConversationRailItem = memo(
       }
     };
     const canMarkUnread = Boolean(
-      !previewMode &&
       !item.hasUnreadCompletion &&
       item.isImported !== true &&
       (item.unreadCompletionKey ||
@@ -232,7 +229,7 @@ export const AgentGUIConversationRailItem = memo(
           </span>
           <AgentGUIConversationRailRelativeTime item={item} labels={labels} />
         </button>
-        {previewMode ? null : (
+        {
           <div className={styles.conversationActions}>
             {isPendingDeleteConversation ? (
               <button
@@ -322,12 +319,10 @@ export const AgentGUIConversationRailItem = memo(
               </>
             )}
           </div>
-        )}
+        }
       </div>
     );
-    if (previewMode) {
-      return row;
-    }
+
     return (
       <AgentGUIConversationActionsContextMenu menu={menu}>
         {row}

@@ -2,12 +2,9 @@ import { createElement, type ReactNode } from "react";
 import {
   createMultiInstanceDockEntryOptions,
   getWorkbenchLayoutFrame,
-  type WorkbenchDockPreviewContent,
   type WorkbenchFrame,
   type WorkbenchHostDockEntry,
-  type WorkbenchHostDockPopupItemInput,
-  type WorkbenchHostLaunchRequest,
-  type WorkbenchHostNodeBodyContext
+  type WorkbenchHostLaunchRequest
 } from "@tutti-os/workbench-surface";
 import { agentGuiDockIconUrls } from "../dockIcons.ts";
 import {
@@ -18,13 +15,9 @@ import {
 import { normalizeAgentGuiWorkbenchState } from "./state.ts";
 import {
   agentGuiWorkbenchDefaultDockProviders,
-  isAgentGuiWorkbenchProvider,
-  resolveAgentGuiWorkbenchProviderLabel
+  isAgentGuiWorkbenchProvider
 } from "./providerCatalog.ts";
-import type {
-  AgentGuiWorkbenchProvider,
-  AgentGuiWorkbenchState
-} from "./types.ts";
+import type { AgentGuiWorkbenchProvider } from "./types.ts";
 import {
   normalizeAgentGUIAgents,
   projectAgentGUIAgentsToTargets
@@ -93,7 +86,6 @@ export interface BuildAgentGuiDockEntriesInput {
   label?: string;
   order?: number;
   providerAvailability?: AgentGuiWorkbenchProviderAvailability;
-  renderPreview?: CreateAgentGuiWorkbenchContributionInput["renderPreview"];
   resolveDockPopupIdentity?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupIdentity"];
   resolveDockPopupTitle?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupTitle"];
   sectionId?: string;
@@ -124,7 +116,6 @@ export function buildAgentGuiDockEntries(
       launchPayload,
       order: input.order ?? 0,
       provider,
-      renderPreview: input.renderPreview,
       resolveDockPopupIdentity: input.resolveDockPopupIdentity,
       resolveDockPopupTitle: input.resolveDockPopupTitle,
       sectionId,
@@ -205,7 +196,6 @@ function createAgentGuiWorkbenchDockEntry(input: {
   launchPayload?: Record<string, unknown>;
   order: number;
   provider: AgentGuiWorkbenchProvider;
-  renderPreview?: CreateAgentGuiWorkbenchContributionInput["renderPreview"];
   resolveDockPopupIdentity?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupIdentity"];
   resolveDockPopupTitle?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupTitle"];
   sectionId: string;
@@ -221,18 +211,6 @@ function createAgentGuiWorkbenchDockEntry(input: {
     id: input.dockEntryId,
     label: input.label,
     order: input.order,
-    providePopupItemPreview: (item) =>
-      input.renderPreview
-        ? createAgentGuiWorkbenchPreviewContent({
-            agentDirectory: input.agentDirectory,
-            item,
-            label: input.label,
-            provider: input.provider,
-            renderPreview: input.renderPreview,
-            resolveDockPopupIdentity: input.resolveDockPopupIdentity,
-            resolveDockPopupTitle: input.resolveDockPopupTitle
-          })
-        : null,
     resolvePopupItem: ({ externalNodeState }) => {
       const state = normalizeAgentGuiWorkbenchState(externalNodeState);
       const title =
@@ -522,72 +500,5 @@ export function providerTargetLaunchPayloadFromRequest(
         : typeof providerTargetId === "string" && providerTargetId.trim()
           ? providerTargetId.trim()
           : null
-  };
-}
-
-export function createAgentGuiWorkbenchPreviewContent(input: {
-  agentDirectory: AgentGUIAgentDirectoryPort;
-  item: WorkbenchHostDockPopupItemInput;
-  label?: string;
-  provider?: AgentGuiWorkbenchProvider;
-  renderPreview: NonNullable<
-    CreateAgentGuiWorkbenchContributionInput["renderPreview"]
-  >;
-  resolveDockPopupIdentity?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupIdentity"];
-  resolveDockPopupTitle?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupTitle"];
-}): WorkbenchDockPreviewContent {
-  const { externalNodeState, node } = input.item;
-  const state = normalizeAgentGuiWorkbenchState(externalNodeState);
-  const title =
-    input.resolveDockPopupIdentity?.(state)?.title ??
-    input.resolveDockPopupTitle?.(state) ??
-    node.title;
-  const agentTargetId = state.agentTargetId?.trim() ?? "";
-  const agent = input.agentDirectory
-    .getSnapshot()
-    .agents.find((candidate) => candidate.agentTargetId === agentTargetId);
-  const provider = input.provider ?? agent?.provider ?? null;
-  const label =
-    input.label ??
-    agent?.name ??
-    (provider ? resolveAgentGuiWorkbenchProviderLabel(provider) : node.title);
-  const lines = [label, state.lastActiveAgentSessionId].filter(
-    (line): line is string => Boolean(line?.trim())
-  );
-  return {
-    element: input.renderPreview(
-      createAgentGuiWorkbenchPreviewBodyContext(input.item),
-      {
-        agentDirectory: input.agentDirectory,
-        nodeTypeId: agentGuiWorkbenchTypeId,
-        onStateChange: () => undefined,
-        agentTargetId: agentTargetId || null,
-        provider
-      }
-    ),
-    kind: "component",
-    revision: `${agentTargetId}\n${provider ?? ""}\n${title}\n${lines.join("\n")}`
-  };
-}
-
-function createAgentGuiWorkbenchPreviewBodyContext(
-  input: WorkbenchHostDockPopupItemInput
-): WorkbenchHostNodeBodyContext<AgentGuiWorkbenchState | null, unknown> {
-  return {
-    activation: null,
-    displayMode: input.node.displayMode,
-    externalNodeState: input.externalNodeState as AgentGuiWorkbenchState | null,
-    externalWorkspaceState: input.externalWorkspaceState,
-    focus: () => undefined,
-    host: input.host,
-    instanceId: input.node.data.instanceId,
-    instanceKey: input.node.data.instanceKey ?? null,
-    isDragging: false,
-    isFocused: false,
-    isResizing: false,
-    node: input.node,
-    previewViewport: input.previewViewport,
-    setNodeRuntimeState: () => undefined,
-    setSnapshotNodeState: () => undefined
   };
 }

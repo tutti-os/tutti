@@ -39,7 +39,6 @@ export function useAgentGUIComposerOptionsSync(input: {
   loadDraftComposerOptionsRef: RefObject<() => void>;
   loadSessionState(agentSessionId: string, cause?: unknown): void;
   onComposerDefaultsAuthorityReloadedRef: RefObject<AgentGUIComposerDefaultsAuthorityReconciler>;
-  previewMode: boolean;
   providerComposerOptions:
     | { behavior?: { prewarmDraftSession?: boolean } | null }
     | null
@@ -173,7 +172,6 @@ export function useAgentGUIComposerOptionsSync(input: {
   input.loadDraftComposerOptionsRef.current = loadDraftComposerOptions;
 
   useEffect(() => {
-    if (input.previewMode) return undefined;
     return subscribeCoalesced(
       "agent-model-catalog-invalidated",
       {
@@ -204,10 +202,9 @@ export function useAgentGUIComposerOptionsSync(input: {
         });
       }
     );
-  }, [input.loadSessionState, input.previewMode, loadDraftComposerOptions]);
+  }, [input.loadSessionState, loadDraftComposerOptions]);
 
   useEffect(() => {
-    if (input.previewMode) return undefined;
     return subscribe("agent-composer-defaults-invalidated", (event) => {
       const selectedTarget = composerTargetDataForConversation({
         activeConversationId: input.activeConversationIdRef.current,
@@ -237,12 +234,10 @@ export function useAgentGUIComposerOptionsSync(input: {
   }, [
     input.defaultReasoningEffort,
     input.onComposerDefaultsAuthorityReloadedRef,
-    input.previewMode,
     loadComposerOptionsForTarget
   ]);
 
   useEffect(() => {
-    if (input.previewMode) return;
     // Session creation can finish after an earlier request cached the
     // provider's selected-model-only fallback. Once creation settles, bypass
     // request-signature deduplication so runtime-discovered
@@ -265,14 +260,13 @@ export function useAgentGUIComposerOptionsSync(input: {
     input.composerTargetData.provider,
     input.isComposerHome,
     input.isCreatingConversation,
-    input.previewMode,
     input.providerComposerOptions?.behavior?.prewarmDraftSession,
     input.selectedProjectPath,
     loadDraftComposerOptions
   ]);
 
   useEffect(() => {
-    if (!input.previewMode) {
+    {
       void input.syncConversationListProjection(
         input.dataRef.current.lastActiveAgentSessionId
       );
@@ -281,7 +275,6 @@ export function useAgentGUIComposerOptionsSync(input: {
     input.conversationFilter,
     input.currentUserId,
     input.data.provider,
-    input.previewMode,
     input.syncConversationListProjection
   ]);
 

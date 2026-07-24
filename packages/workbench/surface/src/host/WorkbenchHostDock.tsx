@@ -2230,10 +2230,12 @@ export function WorkbenchHostDock({
               : null
           }
           capturePreview={
-            popupEntry.entry.capturePopupItemPreview
+            popupEntry.entry.capturePopupItemPreview || captureNodePreviewImage
               ? async (item) => {
                   const previewImageUrl = await Promise.resolve(
-                    popupEntry.entry.capturePopupItemPreview?.(item) ?? null
+                    popupEntry.entry.capturePopupItemPreview
+                      ? popupEntry.entry.capturePopupItemPreview(item)
+                      : (captureNodePreviewImage?.(item.node) ?? null)
                   ).catch(() => null);
                   return previewImageUrl
                     ? {
@@ -2554,13 +2556,16 @@ function WorkbenchHostDockMinimizedNodePreview({
     WorkbenchDockPreviewContent | null | undefined
   >(undefined);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(() =>
-    deferPreview || providePreview
-      ? null
-      : readCachedWorkbenchNodePreviewImage(node.id)
+    deferPreview ? null : readCachedWorkbenchNodePreviewImage(node.id)
   );
 
   useEffect(() => {
-    if (deferPreview || !providePreview || componentPreview !== undefined) {
+    if (
+      deferPreview ||
+      !providePreview ||
+      componentPreview !== undefined ||
+      previewImageUrl
+    ) {
       return undefined;
     }
 
@@ -2623,11 +2628,12 @@ function WorkbenchHostDockMinimizedNodePreview({
     node.data.typeId,
     node.id,
     node.minimizedAtUnixMs,
+    previewImageUrl,
     providePreview
   ]);
 
   useEffect(() => {
-    if (deferPreview || providePreview) {
+    if (deferPreview) {
       return undefined;
     }
 
@@ -2692,10 +2698,6 @@ function WorkbenchHostDockMinimizedNodePreview({
     return renderMinimizedDockPreviewPlaceholder(className);
   }
 
-  if (componentPreview) {
-    return renderMinimizedDockPreviewContent(componentPreview, className);
-  }
-
   if (previewImageUrl) {
     return (
       <span
@@ -2716,6 +2718,10 @@ function WorkbenchHostDockMinimizedNodePreview({
         />
       </span>
     );
+  }
+
+  if (componentPreview) {
+    return renderMinimizedDockPreviewContent(componentPreview, className);
   }
 
   return renderMinimizedDockPreviewPlaceholder(className);

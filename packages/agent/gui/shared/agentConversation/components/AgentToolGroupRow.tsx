@@ -18,7 +18,6 @@ interface AgentToolGroupRowProps {
   label: (count: number) => string;
   thinkingLabel: string;
   onLinkClick?: (href: string) => void;
-  previewMode?: boolean;
   expanded?: boolean;
   expansionKey?: string;
   onExpandedChange?: (key: string, expanded: boolean) => void;
@@ -31,7 +30,6 @@ export const AgentToolGroupRow = memo(function AgentToolGroupRow({
   label,
   thinkingLabel,
   onLinkClick,
-  previewMode = false,
   expanded,
   expansionKey,
   onExpandedChange,
@@ -56,7 +54,6 @@ export const AgentToolGroupRow = memo(function AgentToolGroupRow({
     return renderToolCard(
       singleCall,
       onLinkClick,
-      previewMode,
       showRawTimelineJson,
       rawTimelineJsonLabel
     );
@@ -110,7 +107,6 @@ export const AgentToolGroupRow = memo(function AgentToolGroupRow({
                     thinking={entry.thinking}
                     label={thinkingLabel}
                     onLinkClick={onLinkClick}
-                    previewMode={previewMode}
                     showRawTimelineJson={showRawTimelineJson}
                     rawTimelineJsonLabel={rawTimelineJsonLabel}
                   />
@@ -123,7 +119,6 @@ export const AgentToolGroupRow = memo(function AgentToolGroupRow({
                   {renderToolCard(
                     entry.call,
                     onLinkClick,
-                    previewMode,
                     showRawTimelineJson,
                     rawTimelineJsonLabel
                   )}
@@ -165,11 +160,10 @@ function renderToolCountLabel(label: string): JSX.Element {
 function renderToolCard(
   call: AgentToolCallVM,
   onLinkClick?: (href: string) => void,
-  previewMode = false,
   showRawTimelineJson = false,
   rawTimelineJsonLabel = ""
 ): JSX.Element {
-  const props = { call, onLinkClick, previewMode };
+  const props = { call, onLinkClick };
   // A delegated sub-agent renders as its own first-class card - no tool-row
   // chrome, no prompt echo; identity/status belong to the sub-agent itself.
   if (call.task?.subAgents?.length) {

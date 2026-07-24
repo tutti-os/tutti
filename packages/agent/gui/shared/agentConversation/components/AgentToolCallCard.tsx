@@ -8,7 +8,6 @@ import { hasAgentToolContent } from "./tool-renderers/agentToolContentShared";
 export interface AgentToolCallCardProps {
   call: AgentToolCallVM;
   onLinkClick?: (href: string) => void;
-  previewMode?: boolean;
   defaultExpanded?: boolean;
   nonCollapsible?: boolean;
   variantClassName?: string;
@@ -17,7 +16,6 @@ export interface AgentToolCallCardProps {
 export function AgentToolCallCard({
   call,
   onLinkClick,
-  previewMode = false,
   defaultExpanded = false,
   nonCollapsible = false,
   variantClassName
@@ -53,19 +51,11 @@ export function AgentToolCallCard({
         </div>
       )}
       {hasDetail && nonCollapsible ? (
-        <AgentExpandedToolContent
-          call={call}
-          onLinkClick={onLinkClick}
-          previewMode={previewMode}
-        />
+        <AgentExpandedToolContent call={call} onLinkClick={onLinkClick} />
       ) : null}
       {hasDetail && !nonCollapsible ? (
         <CollapsibleReveal expanded={expanded}>
-          <AgentExpandedToolContent
-            call={call}
-            onLinkClick={onLinkClick}
-            previewMode={previewMode}
-          />
+          <AgentExpandedToolContent call={call} onLinkClick={onLinkClick} />
         </CollapsibleReveal>
       ) : null}
     </div>

@@ -41,7 +41,6 @@ interface Props {
   provider: AgentComposerProps["provider"];
   composerSettings: AgentComposerProps["composerSettings"];
   usage: AgentComposerUsage | null;
-  previewMode: boolean;
   compactSupported: boolean | null;
   hasCompactableContext: boolean;
   composerControlsHardDisabled: boolean;
@@ -88,7 +87,6 @@ export function ComposerFooter({
   provider,
   composerSettings,
   usage,
-  previewMode,
   compactSupported,
   hasCompactableContext,
   composerControlsHardDisabled,
@@ -134,31 +132,7 @@ export function ComposerFooter({
       <div className={styles.composerFooter}>
         <div className={composerStyles.footerGroup}>
           <div className="inline-flex shrink-0 items-center gap-1">
-            {previewMode ? (
-              <TooltipProvider delayDuration={120}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={labels.referenceWorkspaceFiles}
-                      className={cn(
-                        styles.composerMenuTrigger,
-                        styles.composerReferenceTrigger,
-                        "group w-auto justify-center text-[var(--agent-gui-text-secondary)]"
-                      )}
-                    >
-                      <AgentComposerMaskIcon
-                        iconUrl={addLinedIconUrl}
-                        marker="reference-add"
-                      />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    {labels.addContent}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
+            {
               <Select
                 open={false}
                 value={workspaceReferenceSelectValue}
@@ -202,7 +176,7 @@ export function ComposerFooter({
                   </Tooltip>
                 </TooltipProvider>
               </Select>
-            )}
+            }
             <TooltipProvider delayDuration={120}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -395,7 +369,7 @@ export function ComposerFooter({
               percentUsed={usage.percentUsed}
               usedTokens={usage.usedTokens}
               totalTokens={usage.totalTokens}
-              tooltipsEnabled={!previewMode}
+              tooltipsEnabled
               compactSupported={compactSupported ?? false}
               // Only guard against compacting mid-turn: isSendingTurn is
               // the narrow "a turn is actively executing right now"
@@ -429,7 +403,6 @@ export function ComposerFooter({
                   : undefined
               }
               onLinkAction={onLinkAction}
-              previewMode={previewMode}
               provider={provider}
               labels={{
                 permissionLabel: labels.permissionLabel,
@@ -444,7 +417,6 @@ export function ComposerFooter({
             <AgentModelReasoningDropdown
               composerSettings={composerSettings}
               disabled={settingsControlsDisabled}
-              previewMode={previewMode}
               labels={{
                 modelLabel: labels.modelLabel,
                 modelSelectionLabel: labels.modelSelectionLabel,

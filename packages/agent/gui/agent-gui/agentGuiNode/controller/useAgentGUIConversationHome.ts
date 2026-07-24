@@ -72,7 +72,6 @@ export interface UseAgentGUIConversationHomeInput {
   submitPrefillPrompt: (prompt: string) => void;
   persistActiveConversation: (agentSessionId: string | null) => void;
   prefillPromptRequest: AgentGUIPrefillPromptRequest | null;
-  previewMode: boolean;
   reportActiveConversationCleared: (input: {
     details: Record<string, unknown>;
     previousAgentSessionId: string | null;
@@ -123,7 +122,6 @@ export function useAgentGUIConversationHome({
   submitPrefillPrompt,
   persistActiveConversation,
   prefillPromptRequest,
-  previewMode,
   reportActiveConversationCleared,
   selectedComposerTargetDataRef,
   selectedProjectPathRef,
@@ -243,9 +241,6 @@ export function useAgentGUIConversationHome({
   );
 
   useEffect(() => {
-    if (previewMode) {
-      return;
-    }
     const resolvedAppendRequest = resolveAgentGUIComposerAppendRequest({
       activeConversationId: activeConversationIdRef.current,
       draftByScopeKey: draftByScopeKeyRef.current,
@@ -369,7 +364,6 @@ export function useAgentGUIConversationHome({
     onDataChangeRef,
     persistActiveConversation,
     prefillPromptRequest,
-    previewMode,
     selectedComposerTargetDataRef,
     selectedProjectPathRef,
     setConversationFilter,

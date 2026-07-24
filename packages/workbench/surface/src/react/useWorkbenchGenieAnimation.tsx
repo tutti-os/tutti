@@ -20,7 +20,6 @@ import type {
 } from "./dockPreviewCache.ts";
 import {
   centerPointFromRect,
-  cloneMeaningfulGenieElement,
   easeInQuadratic,
   isUsableGenieRect,
   renderGenieScanlines,
@@ -29,6 +28,10 @@ import {
   type WorkbenchGenieMeaningfulImageClone,
   type WorkbenchGenieViewportRect
 } from "./genieAnimation.ts";
+import {
+  prepareGenieTextureCapture,
+  type PreparedGenieTextureCapture
+} from "./genieTextureCapture.ts";
 
 const genieDurationMs = 400;
 const previewCaptureRaceTimeoutMs = 120;
@@ -49,12 +52,6 @@ const inlineImageResourceByUrl = new Map<string, Promise<string | null>>();
 
 interface CapturedGenieTexture {
   canvas: HTMLCanvasElement;
-  rect: WorkbenchGenieViewportRect;
-}
-
-interface PreparedGenieTextureCapture {
-  clone: HTMLElement;
-  images: WorkbenchGenieMeaningfulImageClone[];
   rect: WorkbenchGenieViewportRect;
 }
 
@@ -361,36 +358,6 @@ async function resizeInlineImageResourceForGenieTexture(
   }
 }
 
-function prepareElementTextureCapture(
-  element: HTMLElement
-): PreparedGenieTextureCapture | null {
-  const windowRect = viewportRectFromElement(element);
-  if (!isUsableGenieRect(windowRect)) {
-    return null;
-  }
-
-  const clonedElement = cloneMeaningfulGenieElement(element, windowRect);
-  if (!clonedElement) {
-    return null;
-  }
-  const { clone, images } = clonedElement;
-  clone.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
-  clone.style.position = "relative";
-  clone.style.left = "0";
-  clone.style.top = "0";
-  clone.style.width = `${windowRect.width}px`;
-  clone.style.height = `${windowRect.height}px`;
-  clone.style.transform = "none";
-  clone.style.opacity = "1";
-  clone.style.visibility = "visible";
-  clone.style.pointerEvents = "none";
-  return {
-    clone,
-    images,
-    rect: windowRect
-  };
-}
-
 function prepareRenderedGeniePreviewCloneForTexture(
   clone: HTMLElement,
   textureRect: WorkbenchGenieViewportRect
@@ -445,7 +412,7 @@ async function renderPreparedElementTexture({
 async function captureElementTexture(
   element: HTMLElement
 ): Promise<CapturedGenieTexture | null> {
-  const preparedCapture = prepareElementTextureCapture(element);
+  const preparedCapture = prepareGenieTextureCapture(element);
   return preparedCapture ? renderPreparedElementTexture(preparedCapture) : null;
 }
 
@@ -921,7 +888,7 @@ export function useWorkbenchGenieAnimation<TData>({
           return null;
         }
 
-        const preparedCapture = prepareElementTextureCapture(element);
+        const preparedCapture = prepareGenieTextureCapture(element);
         if (!preparedCapture) {
           return null;
         }
@@ -1683,7 +1650,7 @@ export function useWorkbenchGenieAnimation<TData>({
 
         const captureTarget = resolveWorkbenchCaptureElement(nodeElement);
         const preparedTexture = shouldCapturePreview
-          ? prepareElementTextureCapture(captureTarget)
+          ? prepareGenieTextureCapture(captureTarget)
           : null;
         if (!preparedTexture) {
           if (!componentPreviewTexture) {

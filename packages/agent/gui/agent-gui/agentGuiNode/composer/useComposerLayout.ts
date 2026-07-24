@@ -57,7 +57,6 @@ interface UseComposerLayoutInput {
   projectMissingProbeEnabled: boolean;
   showFileMentionPalette: boolean;
   showFloatingCommandMenu: boolean;
-  previewMode: boolean;
   promptTips: readonly { id: string; label: string; prompt: string }[];
   promptTipsPrefix: string;
   composerSettings: AgentGUIComposerSettingsVM;
@@ -77,7 +76,6 @@ export function useComposerLayout({
   projectMissingProbeEnabled,
   showFileMentionPalette,
   showFloatingCommandMenu,
-  previewMode,
   promptTips,
   promptTipsPrefix,
   composerSettings,
@@ -125,10 +123,6 @@ export function useComposerLayout({
         } as CSSProperties)
       : undefined;
   useLayoutEffect(() => {
-    if (previewMode) {
-      setIsPromptTipOverflowing(false);
-      return;
-    }
     if (!activePromptTipId) {
       setIsPromptTipOverflowing(false);
       return;
@@ -155,7 +149,7 @@ export function useComposerLayout({
     return () => {
       resizeObserver?.disconnect();
     };
-  }, [activePromptTipId, activePromptTipText, previewMode]);
+  }, [activePromptTipId, activePromptTipText]);
   const measureDockComposer = useCallback((): void => {
     composerMeasurementFrameRef.current = null;
     if (isHeroLayout) {

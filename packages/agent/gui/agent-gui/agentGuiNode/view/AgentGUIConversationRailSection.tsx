@@ -23,7 +23,6 @@ interface AgentGUIConversationRailSectionProps {
   isSectionCollapsed: boolean;
   activeConversationId: string | null;
   pendingDeleteConversationId: string | null;
-  previewMode: boolean;
   isDeletingConversation: boolean;
   isLoadingMoreConversations: boolean;
   isRailInteractionLocked: () => boolean;
@@ -82,7 +81,6 @@ export const AgentGUIConversationRailSection = memo(
     isSectionCollapsed,
     activeConversationId,
     pendingDeleteConversationId,
-    previewMode,
     isDeletingConversation,
     isLoadingMoreConversations,
     isRailInteractionLocked,
@@ -312,7 +310,6 @@ export const AgentGUIConversationRailSection = memo(
           onRequestBatchDeletion={handleRequestBatchDeletion}
           onToggleCollapsed={handleToggleCollapsed}
           onToggleProjectPinned={handleToggleProjectPinned}
-          previewMode={previewMode}
           projectPinned={projectPinned}
           sectionLabel={section.label}
         />
@@ -337,7 +334,6 @@ export const AgentGUIConversationRailSection = memo(
                 isRailInteractionLocked={isRailInteractionLocked}
                 item={item}
                 labels={labels}
-                previewMode={previewMode}
                 registerItemElement={registerItemElement}
                 uiLanguage={uiLanguage}
                 workspaceId={workspaceId}

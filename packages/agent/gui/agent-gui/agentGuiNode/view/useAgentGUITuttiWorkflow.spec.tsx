@@ -145,7 +145,6 @@ function renderWorkflow(initial: PlanPanelsProjection) {
     ({ activeConversationId }: { activeConversationId: string }) =>
       useAgentGUITuttiWorkflow({
         viewModel: viewModel(activeConversationId),
-        previewMode: false,
         labels,
         stableLinkAction: undefined,
         setTuttiModeActive: vi.fn(),

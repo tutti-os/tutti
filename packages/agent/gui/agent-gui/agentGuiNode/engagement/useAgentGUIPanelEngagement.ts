@@ -18,7 +18,6 @@ interface AgentGUIPanelEngagementInput {
   isActive: boolean;
   isVisible: boolean;
   onEvent?: AgentGUIEngagementEventSink;
-  previewMode: boolean;
 }
 
 export function useAgentGUIPanelEngagement(
@@ -41,7 +40,7 @@ export function useAgentGUIPanelEngagement(
     };
   }
 
-  const engagementEnabled = Boolean(input.onEvent) && !input.previewMode;
+  const engagementEnabled = Boolean(input.onEvent);
   useEffect(() => {
     const element = input.elementRef.current;
     if (!engagementEnabled || !element) return undefined;

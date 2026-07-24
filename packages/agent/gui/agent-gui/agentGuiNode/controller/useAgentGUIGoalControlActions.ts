@@ -27,7 +27,6 @@ interface UseAgentGUIGoalControlActionsInput {
   draftByScopeKeyRef: RefObject<Record<string, AgentComposerDraft>>;
   isCurrentConversation(agentSessionId: string): boolean;
   optimisticGoalControl: AgentGUIOptimisticGoalControl | null;
-  previewMode: boolean;
   sessionEngine: AgentSessionEngine;
   setDetailError: Dispatch<SetStateAction<string | null>>;
   setDraftByScopeKey: Dispatch<
@@ -97,7 +96,6 @@ export function useAgentGUIGoalControlActions(
       objective?: string,
       submittedDraftScopeKey?: string
     ) => {
-      if (input.previewMode) return;
       const agentSessionId = input.activeConversationIdRef.current;
       if (!agentSessionId) return;
       const submittedDraftSnapshot = submittedDraftScopeKey
@@ -157,7 +155,6 @@ export function useAgentGUIGoalControlActions(
       input.agentActivityRuntime,
       input.draftByScopeKeyRef,
       input.isCurrentConversation,
-      input.previewMode,
       input.setDetailError,
       input.setDraftByScopeKey,
       input.setGoalClearNoticeSequence,
