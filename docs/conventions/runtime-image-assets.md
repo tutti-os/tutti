@@ -40,6 +40,10 @@ the runtime asset. Preserve alpha, color profile, aspect ratio, and the
 existing file path when practical. If the runtime format changes, update every
 reference and package-asset check in the same change.
 
+Convert indexed-color PNG sources to RGBA before resizing when they contain
+gradients or transparency. Scaling them as a palette can introduce visible
+dithering and can drop the `tRNS` transparency chunk.
+
 ## Images that should not be reduced by this rule
 
 Do not apply the icon budget to images whose rendered size follows the window

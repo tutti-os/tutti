@@ -8,12 +8,13 @@ import {
   runtimeImageBudgetForPath
 } from "./check-runtime-image-budgets.mjs";
 
-function pngHeader(width, height, byteLength = 24) {
+function pngHeader(width, height, byteLength = 26, colorType = 6) {
   const content = Buffer.alloc(byteLength);
   Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(content);
   content.write("IHDR", 12, "ascii");
   content.writeUInt32BE(width, 16);
   content.writeUInt32BE(height, 20);
+  content[25] = colorType;
   return content;
 }
 
@@ -71,6 +72,19 @@ test("accepts an image inside both budgets", () => {
   });
 
   assert.deepEqual(diagnostics, []);
+});
+
+test("rejects indexed-color output for gradient assets that require RGBA", () => {
+  const path =
+    "apps/desktop/src/renderer/src/assets/workspace-canvas/dock/default/tutti.png";
+  const diagnostics = analyzeRuntimeImage({
+    path,
+    content: pngHeader(192, 192, 32 * 1024, 3)
+  });
+
+  assert.deepEqual(diagnostics, [
+    `${path}: uses PNG color type 3; requires RGBA color type 6 to preserve gradients and transparency`
+  ]);
 });
 
 test("rejects invalid PNG content", () => {

@@ -40,9 +40,21 @@ const exactBudgets = new Map(
       512 * 1024
     ],
     [
+      "apps/desktop/src/renderer/src/assets/workspace-canvas/dock/default/tutti.png",
+      192,
+      96 * 1024,
+      6
+    ],
+    [
       "packages/agent/gui/app/renderer/assets/icons/agent-vinyl-player-chassis.png",
       192,
       96 * 1024
+    ],
+    [
+      "packages/agent/gui/app/renderer/assets/icons/agents/manage-agent-tutti.png",
+      192,
+      96 * 1024,
+      6
     ],
     [
       "packages/agent/gui/app/renderer/assets/icons/agent-vinyl-tonearm.png",
@@ -123,7 +135,14 @@ const exactBudgets = new Map(
       128,
       64 * 1024
     ]
-  ].map(([path, maxLongEdge, maxBytes]) => [path, { maxLongEdge, maxBytes }])
+  ].map(([path, maxLongEdge, maxBytes, requiredPngColorType]) => [
+    path,
+    {
+      maxLongEdge,
+      maxBytes,
+      ...(requiredPngColorType === undefined ? {} : { requiredPngColorType })
+    }
+  ])
 );
 
 export function runtimeImageBudgetForPath(path) {
@@ -185,6 +204,14 @@ export function analyzeRuntimeImage({ path, content }) {
   if (content.length > budget.maxBytes) {
     diagnostics.push(
       `${path}: ${formatBytes(content.length)} exceeds ${formatBytes(budget.maxBytes)} file budget`
+    );
+  }
+  if (
+    budget.requiredPngColorType !== undefined &&
+    content[25] !== budget.requiredPngColorType
+  ) {
+    diagnostics.push(
+      `${path}: uses PNG color type ${content[25] ?? "unknown"}; requires RGBA color type 6 to preserve gradients and transparency`
     );
   }
   return diagnostics;
