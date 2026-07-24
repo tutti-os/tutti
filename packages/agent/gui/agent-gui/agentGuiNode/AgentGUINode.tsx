@@ -27,10 +27,10 @@ import {
   AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX,
   AGENT_GUI_DETAIL_MIN_WIDTH_PX,
   clampAgentGUIConversationRailWidthPx,
+  resolveAgentGUIConversationRailPresentation,
   resolveAgentGUIExpandedWindowFrame,
   resolveNextAgentGUIConversationRailWidthPx,
-  resolveAgentGUIConversationRailMaxWidthPx,
-  shouldAutoCollapseAgentGUIConversationRail
+  resolveAgentGUIConversationRailMaxWidthPx
 } from "./model/agentGuiRailLayout";
 import { resolveAgentGUIReferenceProvenanceFilterCatalog } from "./model/agentReferenceProvenanceCatalog";
 import type { AgentGUINodeProps } from "./AgentGUINode.types";
@@ -90,11 +90,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     isActive,
     isVisible = true,
     embedded = false,
-    previewMode = false,
-    conversationRailAutoCollapseWidthPx = null
+    previewMode = false
   } = frame;
-  const railAutoCollapseWidthPx =
-    conversationRailAutoCollapseWidthPx ?? undefined;
   const widthRef = useRef(width);
   widthRef.current = width;
   const {
@@ -231,12 +228,15 @@ export const AgentGUINode = memo(function AgentGUINode({
     },
     [onUpdateNode, previewMode]
   );
-  const isConversationRailManuallyCollapsed =
-    state.conversationRailCollapsed === true;
+  const conversationRailPresentation =
+    resolveAgentGUIConversationRailPresentation({
+      containerWidthPx: width,
+      conversationRailCollapsed: state.conversationRailCollapsed,
+      conversationRailWidthPx: state.conversationRailWidthPx
+    });
   const isConversationRailAutoCollapsed =
-    shouldAutoCollapseAgentGUIConversationRail(width, railAutoCollapseWidthPx);
-  const isConversationRailCollapsed =
-    isConversationRailManuallyCollapsed || isConversationRailAutoCollapsed;
+    conversationRailPresentation.isAutoCollapsed;
+  const isConversationRailCollapsed = conversationRailPresentation.isCollapsed;
   const minSize = useMemo(
     () => ({
       ...resolveCanonicalNodeMinSize("agentGui"),
@@ -451,10 +451,11 @@ export const AgentGUINode = memo(function AgentGUINode({
           const renderedWidth = renderFrame.size.width;
           const isRenderedConversationRailCollapsed =
             isConversationRailCollapsed ||
-            shouldAutoCollapseAgentGUIConversationRail(
-              renderedWidth,
-              railAutoCollapseWidthPx
-            );
+            resolveAgentGUIConversationRailPresentation({
+              containerWidthPx: renderedWidth,
+              conversationRailCollapsed: state.conversationRailCollapsed,
+              conversationRailWidthPx: state.conversationRailWidthPx
+            }).isCollapsed;
 
           return (
             <AgentGUINodeView

@@ -8,9 +8,10 @@ import {
   AGENT_GUI_DETAIL_MIN_WIDTH_PX,
   AGENT_GUI_EXPANDED_MIN_WIDTH_PX,
   AGENT_GUI_EXPANDED_TARGET_WIDTH_PX,
+  AGENT_GUI_PROVIDER_RAIL_WIDTH_PX,
   AGENT_GUI_RAIL_RESIZE_HANDLE_WIDTH_PX,
-  AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
   clampAgentGUIConversationRailWidthPx,
+  resolveAgentGUIConversationRailPresentation,
   resolveAgentGUIExpandedWindowFrame,
   resolveNextAgentGUIConversationRailWidthPx,
   shouldAutoCollapseAgentGUIConversationRail
@@ -62,7 +63,8 @@ describe("agentGuiRailLayout", () => {
   });
 
   it("auto-collapses the rail at and below the compact conversation width", () => {
-    expect(AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX).toBe(610);
+    expect(AGENT_GUI_PROVIDER_RAIL_WIDTH_PX).toBe(52);
+    expect(AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX).toBe(630);
     expect(
       shouldAutoCollapseAgentGUIConversationRail(
         AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX
@@ -86,32 +88,29 @@ describe("agentGuiRailLayout", () => {
     expect(shouldAutoCollapseAgentGUIConversationRail(0)).toBe(false);
   });
 
-  it("auto-collapses against a host-provided threshold", () => {
-    expect(AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX).toBe(630);
+  it("resolves width and collapsed state from the same package policy", () => {
     expect(
-      shouldAutoCollapseAgentGUIConversationRail(
-        AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
-        AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
-      )
-    ).toBe(true);
+      resolveAgentGUIConversationRailPresentation({
+        containerWidthPx: AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX,
+        conversationRailCollapsed: false,
+        conversationRailWidthPx: 360
+      })
+    ).toEqual({
+      conversationRailWidthPx: 360,
+      isAutoCollapsed: true,
+      isCollapsed: true
+    });
     expect(
-      shouldAutoCollapseAgentGUIConversationRail(
-        AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX + 1,
-        AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
-      )
-    ).toBe(false);
-    expect(
-      shouldAutoCollapseAgentGUIConversationRail(
-        AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX - 1,
-        AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
-      )
-    ).toBe(true);
-    expect(
-      shouldAutoCollapseAgentGUIConversationRail(
-        0,
-        AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
-      )
-    ).toBe(false);
+      resolveAgentGUIConversationRailPresentation({
+        containerWidthPx: AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX + 1,
+        conversationRailCollapsed: true,
+        conversationRailWidthPx: null
+      })
+    ).toEqual({
+      conversationRailWidthPx: AGENT_GUI_CONVERSATION_RAIL_DEFAULT_WIDTH_PX,
+      isAutoCollapsed: false,
+      isCollapsed: true
+    });
   });
 
   it("keeps an untouched rail width unpersisted when it still matches the default", () => {

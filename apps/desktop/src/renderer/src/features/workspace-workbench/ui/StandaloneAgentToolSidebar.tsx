@@ -13,6 +13,7 @@ import {
   type AgentToolBrowserController,
   type AgentToolPanelDefinition,
   type AgentToolPanelId,
+  type AgentToolSidebarHeaderLayout,
   type AgentToolSidebarCopy,
   type AgentToolSidebarHandle,
   type AgentToolTab
@@ -54,7 +55,7 @@ interface StandaloneAgentToolSidebarProps {
   fileOpenRequest?: StandaloneAgentFileOpenRequest | null;
   issueManagerOpenRequest?: StandaloneAgentIssueManagerOpenRequest | null;
   mainContentMinWidthPx?: number;
-  renderHeader: (toolActions: ReactNode) => ReactNode;
+  renderHeader: (layout: AgentToolSidebarHeaderLayout) => ReactNode;
   onOpenMessageCenterChat: (input: {
     agentSessionId: string;
     provider: string;
@@ -416,6 +417,11 @@ export function StandaloneAgentToolSidebar({
         ref={sidebarRef}
         containerWidth={containerWidth}
         copy={copy}
+        header={{
+          layout: "overlay",
+          owner: "window",
+          render: renderHeader
+        }}
         mainContentMinWidthPx={mainContentMinWidthPx}
         panels={panels}
         quickActionPanels={[
@@ -428,7 +434,6 @@ export function StandaloneAgentToolSidebar({
           browser: automationBrowserCount,
           messages: messageCenterWorkingCount
         }}
-        renderHeader={renderHeader}
         renderLoading={() => (
           <StandaloneAgentToolLoadingState label={i18n.t("common.loading")} />
         )}

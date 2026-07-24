@@ -726,7 +726,36 @@ The shared Workbench Header owns conversation-identity visibility. When no
 Conversation exists, it ignores conversation titles, Agent titles, primary
 icons, and fallback icons even if a host supplies them.
 
-The reusable standalone-tool sidebar contract lives in `packages/agent/gui/workbench/tool-sidebar`. Hosts provide the supported panel catalog and render adapters; the shared component owns tab selection, picker, sizing, toolbar mechanics, and the boundary between draggable header space and interactive controls. Native Electron hosts keep the default native-window drag mode, while embedded Workbench hosts select host drag mode and provide their pointer and double-click handlers. The shared component disables native app-region handling in host mode so one header never has two competing drag owners.
+The reusable tool-sidebar contract lives in
+`packages/agent/gui/workbench/tool-sidebar`. Hosts provide the supported panel
+catalog and render adapters; the shared component owns tab selection, picker,
+sizing, toolbar mechanics, and a structured `AgentToolSidebarHeaderLayout`.
+That layout carries the actions, open state, and reserved width into the one
+authoritative `AgentGuiWorkbenchHeader`.
+
+Header ownership is explicit. A native standalone window selects the
+window-owned contract, so the shared sidebar composes the Workbench Header and
+body frame. An embedded Workbench selects the host-owned contract and projects
+the same header layout into its existing Header. The sidebar never creates a
+second visible panel Header. Interactive controls stop host drag gestures,
+while blank host-owned Header space bubbles to the host drag owner; native
+window ownership alone uses Electron app-region dragging.
+
+Header layout is independent from ownership. `overlay` means the Header is
+layered above a full-height body, so open tool-panel content reserves the shared
+Header height and the Header stacks above `--z-panel`. `stacked` means the host
+has already placed the body below the Header and no panel spacer is added.
+
+The package owns one responsive Rail presentation policy for every surface.
+`resolveAgentGUIConversationRailPresentation` derives the effective Rail width,
+automatic collapse, and combined collapsed state from container width plus the
+persisted user preference. Hosts must not supply an alternative breakpoint,
+copy Rail dimension constants, or restyle `AgentGuiWorkbenchHeader` to move its
+controls. The shared Workbench contribution selects an overlay Header with no
+bottom border, and native standalone composition projects that same explicit
+window presentation state. Standalone identity remains relevant only to native
+window ownership such as Electron drag regions and full-viewport sizing; it is
+not a Header layout or separator switch.
 
 ## 7. Key flows
 

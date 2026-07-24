@@ -48,4 +48,40 @@ describe("AgentGuiWorkbenchHeader conversation identity", () => {
       expect(screen.getByText("Session-independent accessory")).toBeTruthy();
     }
   );
+
+  it("owns tool-sidebar layout independently from the native window shell", () => {
+    const { container } = render(
+      <AgentGuiWorkbenchHeader
+        copy={{
+          collapseConversationRail: "Collapse",
+          expandConversationRail: "Expand",
+          fallbackAgentLabel: "Agent",
+          newConversation: "New conversation"
+        }}
+        isConversationRailAutoCollapsed={false}
+        isConversationRailCollapsed={false}
+        nodeId="host-owned-agent-gui"
+        showConversationRailToggle={false}
+        showWindowControls={false}
+        toolSidebar={{
+          actions: <span>Host-owned tools</span>,
+          isSidebarOpen: true,
+          layoutWidthPx: 432
+        }}
+        onToggleConversationRail={vi.fn()}
+      />
+    );
+
+    const header = container.querySelector<HTMLElement>(
+      "[data-agent-gui-workbench-header]"
+    );
+    expect(header).toHaveAttribute(
+      "data-agent-gui-workbench-header-tool-sidebar",
+      "true"
+    );
+    expect(
+      header?.style.getPropertyValue("--agent-gui-tool-sidebar-layout-width")
+    ).toBe("432px");
+    expect(screen.getByText("Host-owned tools")).toBeTruthy();
+  });
 });

@@ -157,6 +157,15 @@ Agent-only windows toggle fullscreen because native zoom is disabled, while OS
 workspace windows toggle BrowserWindow maximize and unmaximize.
 The Agent-only shell places Browser and other desktop-owned auxiliary tools in
 a right sidebar, while Terminal opens in a bottom tray below the conversation.
+The sidebar projects a structured Header layout into the shared
+`AgentGuiWorkbenchHeader`; native Agent windows and embedded Workbench hosts
+therefore keep one authoritative Header row rather than moving open-panel
+controls into a second panel Header. Header owner and body layout are separate
+contract dimensions: both current surfaces use `overlay`, even though one is
+window-owned and the other is host-owned. Both surfaces also consume the one
+AgentGUI-owned Rail breakpoint and borderless Header presentation; Desktop does
+not provide a standalone-only collapse threshold or use window mode to select
+Header spacing and separators.
 When the sidebar is closed, its Apps and Message Center quick actions expose
 localized hover tooltips alongside the Tasks action.
 Opening a right-sidebar tool expands the native content width first so the

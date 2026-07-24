@@ -29,6 +29,7 @@ import type {
   AgentGuiWorkbenchSessionMenuCopy
 } from "./sessionActions.ts";
 import type { AgentGuiWorkbenchSessionMenuAdditionalAction } from "./AgentGuiWorkbenchSessionMenu.tsx";
+import type { AgentToolSidebarHeaderLayout } from "./tool-sidebar/headerLayout.ts";
 
 const LazyAgentRichTextReadonly = lazy(() =>
   import("../shared/AgentRichTextReadonly.tsx").then((module) => ({
@@ -75,6 +76,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   providerRailWidthPx?: number | null;
   primaryAccessory?: ReactNode;
   secondaryAccessory?: ReactNode;
+  toolSidebar?: AgentToolSidebarHeaderLayout | null;
   sessionMenuAdditionalActions?: readonly AgentGuiWorkbenchSessionMenuAdditionalAction[];
   sessionMenuActions?: readonly AgentGuiWorkbenchSessionAction[];
   conversationTitle?: string | null;
@@ -109,6 +111,7 @@ export function AgentGuiWorkbenchHeader({
   providerRailWidthPx,
   primaryAccessory,
   secondaryAccessory,
+  toolSidebar,
   sessionMenuAdditionalActions,
   sessionMenuActions,
   conversationTitle,
@@ -153,6 +156,7 @@ export function AgentGuiWorkbenchHeader({
   const hasExpandedIdentity = Boolean(
     collapsedTitle || sessionIconUrl || sessionIconFallbackUrl
   );
+  const resolvedSecondaryAccessory = toolSidebar?.actions ?? secondaryAccessory;
   const sessionMenu =
     onSessionAction && copy.sessionMenu && sessionTitle && !hasBodyRenderError
       ? createElement(AgentGuiWorkbenchSessionMenu, {
@@ -185,6 +189,14 @@ export function AgentGuiWorkbenchHeader({
                 : 0)
           )}px`
         }
+      : {}),
+    ...(toolSidebar
+      ? {
+          "--agent-gui-tool-sidebar-layout-width": `${Math.max(
+            0,
+            Math.round(toolSidebar.layoutWidthPx)
+          )}px`
+        }
       : {})
   } as CSSProperties;
 
@@ -201,6 +213,9 @@ export function AgentGuiWorkbenchHeader({
         ? "true"
         : "false",
       "data-agent-gui-workbench-header-has-session": sessionTitle
+        ? "true"
+        : "false",
+      "data-agent-gui-workbench-header-tool-sidebar": toolSidebar
         ? "true"
         : "false",
       style: headerStyle
@@ -305,17 +320,18 @@ export function AgentGuiWorkbenchHeader({
             sessionMenu
           )
         : null,
-      isConversationRailCollapsed && secondaryAccessory
+      isConversationRailCollapsed && resolvedSecondaryAccessory
         ? createElement(
             "div",
             {
               className: "agent-gui-workbench-header__secondary-accessory"
             },
-            secondaryAccessory
+            resolvedSecondaryAccessory
           )
         : null
     ),
-    !isConversationRailCollapsed && (hasExpandedIdentity || secondaryAccessory)
+    !isConversationRailCollapsed &&
+      (hasExpandedIdentity || resolvedSecondaryAccessory)
       ? createElement(
           "div",
           {
@@ -365,13 +381,13 @@ export function AgentGuiWorkbenchHeader({
                 sessionMenu
               )
             : null,
-          secondaryAccessory
+          resolvedSecondaryAccessory
             ? createElement(
                 "div",
                 {
                   className: "agent-gui-workbench-header__secondary-accessory"
                 },
-                secondaryAccessory
+                resolvedSecondaryAccessory
               )
             : null
         )

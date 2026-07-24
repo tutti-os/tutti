@@ -547,6 +547,7 @@ describe("agent GUI workbench contribution copy", () => {
     expect(contribution).toBe(contributionIdentity);
     expect(contribution.nodes?.[0]).toBe(nodeDefinition);
     expect(nodeDefinition?.window?.header).toEqual({
+      border: "none",
       layout: "overlay"
     });
     expect(renderedAgentTargetIds).toEqual([
@@ -1934,17 +1935,12 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
-  it("draws a subtle divider below the workbench detail titlebar only for an active session", () => {
+  it("keeps the shared workbench header continuous with the conversation body", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
-    expect(css).toMatch(
-      /--agent-gui-workbench-header-divider:\s*color-mix\(\s*in srgb,\s*var\(--text-primary\)\s+4%,\s*transparent\s*\);/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-has-session="true"\]::after\s*{[^}]*left:\s*var\(--agent-gui-workbench-header-rail-width\);[^}]*height:\s*1px;[^}]*background:\s*var\(--agent-gui-workbench-header-divider\);/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]::after\s*{[^}]*left:\s*0;/s
+    expect(css).not.toContain("--agent-gui-workbench-header-divider");
+    expect(css).not.toContain(
+      '.agent-gui-workbench-header[data-agent-gui-workbench-header-has-session="true"]::after'
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]\s*\.agent-gui-workbench-header__primary\s*{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;/s
@@ -1986,41 +1982,44 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
-  it("keeps standalone tool actions pinned to the window edge when the conversation rail collapses", () => {
+  it("keeps shared tool actions pinned to the header edge when the conversation rail collapses", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\[data-agent-gui-workbench-header-collapsed="true"\]\s*\.agent-gui-workbench-header__primary\s*\{[^}]*width:\s*100%;/s
+      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-tool-sidebar="true"\]\[data-agent-gui-workbench-header-collapsed="true"\]\s*\.agent-gui-workbench-header__primary\s*\{[^}]*width:\s*100%;/s
     );
     expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\s*\.agent-gui-workbench-header__secondary-accessory\s*\{[^}]*padding-right:\s*0;/s
+      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-tool-sidebar="true"\]\s*\.agent-gui-workbench-header__secondary-accessory\s*\{[^}]*padding-right:\s*0;/s
     );
   });
 
-  it("anchors the standalone tool header to the same edge as the body panel", () => {
+  it("anchors the shared tool header to the same edge as the body panel", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\s*\.agent-gui-workbench-header__secondary-accessory:has\(\s*\[data-standalone-agent-tool-sidebar-header="true"\]\s*\)\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;[^}]*right:\s*0;[^}]*margin-left:\s*0;/s
+      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-tool-sidebar="true"\]\s*\.agent-gui-workbench-header__secondary-accessory:has\(\s*\[data-agent-tool-sidebar-header="true"\]\s*\)\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;[^}]*right:\s*0;[^}]*margin-left:\s*0;/s
     );
   });
 
-  it("keeps the image preview modal above standalone Agent window chrome", () => {
+  it("keeps image previews and overlay headers above Agent panels", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
       /\.tsh-zoom-dialog\[data-rmiz-modal\]\s*{[^}]*z-index:\s*var\(--z-dialog\);/s
     );
     expect(css).toMatch(
-      /\.workbench-window\[data-agent-gui-standalone-window="true"\]\s*\.workbench-window__header\s*{[^}]*z-index:\s*calc\(var\(--z-panel\) \+ 1\);/s
+      /\.workbench-window\[data-window-header-layout="overlay"\]\s*\.workbench-window__header\s*{[^}]*z-index:\s*calc\(var\(--z-panel\) \+ 1\);/s
     );
   });
 
-  it("uses explicit window presentation state instead of root relational selectors", () => {
+  it("uses one explicit overlay presentation state instead of surface-mode selectors", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.workbench-window\[data-window-header-layout="overlay"\],\s*\.workbench-window\[data-agent-gui-standalone-window="true"\]\s*{/s
+      /\.workbench-window\[data-window-header-layout="overlay"\]\s*{/s
+    );
+    expect(css).not.toMatch(
+      /\[data-agent-gui-standalone-window="true"\][^{,]*,\s*\.workbench-window\[data-window-header-layout="overlay"\]/
     );
     expect(css).not.toMatch(/\.workbench-window:has\(/);
   });

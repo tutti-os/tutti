@@ -13,8 +13,7 @@ import {
 import {
   AGENT_GUI_DETAIL_MIN_WIDTH_PX,
   AGENT_GUI_EXPANDED_TARGET_WIDTH_PX,
-  AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
-  shouldAutoCollapseAgentGUIConversationRail
+  resolveAgentGUIConversationRailPresentation
 } from "@tutti-os/agent-gui";
 import type { AgentGUIComposerAppendRequest } from "@tutti-os/agent-gui";
 import { RichTextMentionServiceProvider } from "@tutti-os/ui-rich-text/editor";
@@ -528,14 +527,15 @@ export function StandaloneAgentWindow({
     Number.isFinite(nodeState.conversationRailWidthPx)
       ? nodeState.conversationRailWidthPx
       : standaloneAgentDefaultConversationRailWidthPx;
+  const conversationRailPresentation =
+    resolveAgentGUIConversationRailPresentation({
+      containerWidthPx: frame.width,
+      conversationRailCollapsed: nodeState.conversationRailCollapsed,
+      conversationRailWidthPx: nodeState.conversationRailWidthPx
+    });
   const isConversationRailAutoCollapsed =
-    shouldAutoCollapseAgentGUIConversationRail(
-      frame.width,
-      AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
-    );
-  const isConversationRailCollapsed =
-    nodeState.conversationRailCollapsed === true ||
-    isConversationRailAutoCollapsed;
+    conversationRailPresentation.isAutoCollapsed;
+  const isConversationRailCollapsed = conversationRailPresentation.isCollapsed;
   const host = useMemo(
     () =>
       createStandaloneAgentHost({
@@ -686,6 +686,8 @@ export function StandaloneAgentWindow({
         data-agent-gui-standalone-window="true"
         data-display-mode="floating"
         data-focused="true"
+        data-window-header-border="none"
+        data-window-header-layout="overlay"
         style={{
           border: 0,
           borderRadius: 0,
@@ -712,7 +714,7 @@ export function StandaloneAgentWindow({
               : headerConversationRailWidthPx +
                 agentGuiWorkbenchProviderRailWidthPx
           }
-          renderHeader={(toolActions) => (
+          renderHeader={(toolSidebar) => (
             <StandaloneAgentWindowHeader
               copy={{
                 collapseConversationRail: i18n.t(
@@ -755,7 +757,7 @@ export function StandaloneAgentWindow({
               nodeId={standaloneAgentNodeId}
               providerRailWidthPx={agentGuiWorkbenchProviderRailWidthPx}
               primaryAccessory={<AppUpdateStatus presentation="standalone" />}
-              secondaryAccessory={isContentLoading ? null : toolActions}
+              toolSidebar={isContentLoading ? null : toolSidebar}
               showConversationRailToggle={!isContentLoading}
               showAppTitle
               title={i18n.t("workspace.agentGui.fallbackAgentLabel")}
@@ -800,9 +802,6 @@ export function StandaloneAgentWindow({
               surface={surface}
               computerUseApi={desktopApi.computerUse}
               composerAppendRequest={composerAppendRequest}
-              conversationRailAutoCollapseWidthPx={
-                AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
-              }
               dockPreviewCache={dockPreviewCache}
               onLinkAction={handleLinkAction}
               onCapabilitySettingsRequest={handleCapabilitySettingsRequest}

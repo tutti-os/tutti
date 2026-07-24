@@ -90,16 +90,19 @@ describe("AgentToolSidebar", () => {
     );
   });
 
-  it("registers actions externally without reserving an inline header spacer", () => {
+  it("registers one host-owned header without adding window chrome or a panel header", () => {
     const { container } = render(
       <AgentToolSidebar
         containerWidth={900}
         copy={copy}
-        headerPlacement="external"
+        header={{
+          layout: "overlay",
+          owner: "host",
+          render: (layout) => (
+            <div data-testid="host-header-actions">{layout.actions}</div>
+          )
+        }}
         panels={panels}
-        renderHeader={(actions) => (
-          <div data-testid="external-header-actions">{actions}</div>
-        )}
         renderPanel={({ tab }) => <div>{tab.panel} content</div>}
         resizeContainerContentWidth={async (width) => ({ width })}
       >
@@ -107,17 +110,50 @@ describe("AgentToolSidebar", () => {
       </AgentToolSidebar>
     );
 
-    expect(screen.getByTestId("external-header-actions")).toBeInTheDocument();
+    const hostHeader = screen.getByTestId("host-header-actions");
+    fireEvent.click(within(hostHeader).getByLabelText("Open right panel"));
+
     expect(
-      container.querySelector(
-        '[data-standalone-agent-tool-sidebar-header-spacer="true"]'
-      )
-    ).not.toBeInTheDocument();
+      within(hostHeader).getByLabelText("Close right panel")
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector('[data-agent-tool-sidebar-header-spacer="true"]')
+    ).toBeInTheDocument();
     expect(
       container.querySelector(".workbench-window__header")
     ).not.toBeInTheDocument();
     expect(
       container.querySelector(".workbench-window__body")
+    ).not.toBeInTheDocument();
+    expect(
+      container.querySelector(
+        '[data-agent-tool-sidebar="true"] [data-agent-tool-sidebar-header="true"]'
+      )
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not reserve header space when the host stacks the body below it", () => {
+    const { container } = render(
+      <AgentToolSidebar
+        containerWidth={900}
+        copy={copy}
+        header={{
+          layout: "stacked",
+          owner: "host",
+          render: (layout) => <div>{layout.actions}</div>
+        }}
+        panels={panels}
+        renderPanel={({ tab }) => <div>{tab.panel} content</div>}
+        resizeContainerContentWidth={async (width) => ({ width })}
+      >
+        <main>Agent content</main>
+      </AgentToolSidebar>
+    );
+
+    fireEvent.click(screen.getByLabelText("Open right panel"));
+
+    expect(
+      container.querySelector('[data-agent-tool-sidebar-header-spacer="true"]')
     ).not.toBeInTheDocument();
   });
 
@@ -132,56 +168,9 @@ describe("AgentToolSidebar", () => {
     ).toBe("132px");
   });
 
-  it("moves the open sidebar header and collapse action into the panel", async () => {
-    const { container } = render(
-      <AgentToolSidebar
-        containerWidth={900}
-        copy={copy}
-        headerPlacement="panel"
-        panels={panels}
-        renderHeader={(actions) => (
-          <div data-testid="host-header-actions">{actions}</div>
-        )}
-        renderPanel={({ tab }) => <div>{tab.panel} content</div>}
-        resizeContainerContentWidth={async (width) => ({ width })}
-      >
-        <main>Agent content</main>
-      </AgentToolSidebar>
-    );
-
-    const hostHeader = screen.getByTestId("host-header-actions");
-    fireEvent.click(within(hostHeader).getByLabelText("Open right panel"));
-
-    const sidebar = container.querySelector(
-      '[data-standalone-agent-tool-sidebar="true"]'
-    );
-    expect(sidebar).not.toBeNull();
-    expect(
-      within(hostHeader).queryByLabelText("Close right panel")
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar as HTMLElement).getByLabelText("Close right panel")
-    ).toBeInTheDocument();
-    expect(
-      sidebar?.querySelector(
-        '[data-standalone-agent-tool-sidebar-header="true"]'
-      )
-    ).toBeInTheDocument();
-
-    fireEvent.click(
-      within(sidebar as HTMLElement).getByLabelText("Close right panel")
-    );
-
-    expect(
-      within(hostHeader).getByLabelText("Open right panel")
-    ).toBeInTheDocument();
-  });
-
-  it("routes host-owned panel-header drag gestures while controls remain interactive", () => {
-    const handleDoubleClick = vi.fn();
+  it("lets host-owned blank header gestures bubble while controls remain interactive", () => {
     const handleParentDoubleClick = vi.fn();
     const handleParentPointerDown = vi.fn();
-    const handlePointerDown = vi.fn();
     const { container } = render(
       <div
         onDoubleClick={handleParentDoubleClick}
@@ -190,14 +179,12 @@ describe("AgentToolSidebar", () => {
         <AgentToolSidebar
           containerWidth={900}
           copy={copy}
-          headerDrag={{
-            mode: "host",
-            onDoubleClick: handleDoubleClick,
-            onPointerDown: handlePointerDown
+          header={{
+            layout: "overlay",
+            owner: "host",
+            render: (layout) => <div>{layout.actions}</div>
           }}
-          headerPlacement="panel"
           panels={panels}
-          renderHeader={(actions) => <div>{actions}</div>}
           renderPanel={({ tab }) => <div>{tab.panel} content</div>}
           resizeContainerContentWidth={async (width) => ({ width })}
         >
@@ -210,17 +197,17 @@ describe("AgentToolSidebar", () => {
     fireEvent.click(screen.getByText("Files"));
 
     const header = container.querySelector(
-      '[data-standalone-agent-tool-sidebar-header="true"]'
+      '[data-agent-tool-sidebar-header="true"]'
     );
     const tabList = container.querySelector(
-      '[data-standalone-agent-tool-tab-list="true"]'
+      '[data-agent-tool-tab-list="true"]'
     );
     const toolbar = container.querySelector(
-      '[data-standalone-agent-tool-sidebar-toolbar="true"]'
+      '[data-agent-tool-sidebar-toolbar="true"]'
     );
 
     expect(header).toHaveAttribute(
-      "data-standalone-agent-tool-sidebar-drag-region",
+      "data-agent-tool-sidebar-drag-region",
       "true"
     );
     expect(header).not.toHaveClass("nodrag");
@@ -233,26 +220,22 @@ describe("AgentToolSidebar", () => {
 
     fireEvent.pointerDown(tabList as HTMLElement);
     fireEvent.doubleClick(tabList as HTMLElement);
-    expect(handlePointerDown).toHaveBeenCalledOnce();
-    expect(handleDoubleClick).toHaveBeenCalledOnce();
-    expect(handleParentPointerDown).not.toHaveBeenCalled();
-    expect(handleParentDoubleClick).not.toHaveBeenCalled();
+    expect(handleParentPointerDown).toHaveBeenCalledOnce();
+    expect(handleParentDoubleClick).toHaveBeenCalledOnce();
 
     fireEvent.pointerDown(screen.getByRole("tab", { name: "Files" }));
     fireEvent.doubleClick(screen.getByRole("tab", { name: "Files" }));
     fireEvent.pointerDown(toolbar as HTMLElement);
     fireEvent.doubleClick(toolbar as HTMLElement);
 
-    expect(handlePointerDown).toHaveBeenCalledOnce();
-    expect(handleDoubleClick).toHaveBeenCalledOnce();
-    expect(handleParentPointerDown).not.toHaveBeenCalled();
-    expect(handleParentDoubleClick).not.toHaveBeenCalled();
+    expect(handleParentPointerDown).toHaveBeenCalledOnce();
+    expect(handleParentDoubleClick).toHaveBeenCalledOnce();
   });
 
-  it("keeps native-window header dragging as the default", () => {
+  it("keeps native-window header dragging for a window-owned header", () => {
     const { container } = renderSidebar();
     const header = container.querySelector(
-      '[data-standalone-agent-tool-sidebar-header="true"]'
+      '[data-agent-tool-sidebar-header="true"]'
     );
 
     expect(header?.className).toContain("[-webkit-app-region:drag]");
@@ -274,8 +257,12 @@ function renderSidebar(
       ref={ref}
       containerWidth={900}
       copy={copy}
+      header={{
+        layout: "overlay",
+        owner: "window",
+        render: (layout) => <header>{layout.actions}</header>
+      }}
       panels={panels}
-      renderHeader={(actions) => <header>{actions}</header>}
       renderPanel={({ tab }) => <div>{tab.panel} content</div>}
       resizeContainerContentWidth={resizeContainerContentWidth}
     >

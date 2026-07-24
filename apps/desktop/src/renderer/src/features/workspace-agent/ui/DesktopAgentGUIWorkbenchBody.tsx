@@ -87,7 +87,6 @@ function DesktopAgentGUISurfaceImpl({
   surface,
   computerUseApi,
   composerAppendRequest = null,
-  conversationRailAutoCollapseWidthPx = null,
   dockPreviewCache,
   onLinkAction,
   onCapabilitySettingsRequest,
@@ -728,8 +727,7 @@ function DesktopAgentGUISurfaceImpl({
             surface.presentationMode !== "mission-control" &&
             surface.isMinimized !== true,
           embedded: true,
-          previewMode,
-          conversationRailAutoCollapseWidthPx
+          previewMode
         }}
         state={nodeState}
         runtimeRequests={agentGUIHostProps.runtimeRequests}

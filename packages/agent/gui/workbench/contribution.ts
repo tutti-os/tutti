@@ -6,9 +6,8 @@ import {
   type WorkbenchHostNodeBodyContext
 } from "@tutti-os/workbench-surface";
 import {
-  clampAgentGUIConversationRailWidthPx,
-  resolveAgentGUIExpandedWindowFrame,
-  shouldAutoCollapseAgentGUIConversationRail
+  resolveAgentGUIConversationRailPresentation,
+  resolveAgentGUIExpandedWindowFrame
 } from "../agent-gui/agentGuiNode/model/agentGuiRailLayout.ts";
 import { AgentGuiWorkbenchReactiveHeader } from "./AgentGuiWorkbenchReactiveHeader.tsx";
 import { setAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
@@ -193,19 +192,15 @@ export function createAgentGuiWorkbenchContribution(
           const workbenchState = normalizeAgentGuiWorkbenchState(
             migrateLegacyAgentGuiWorkbenchState(rawWorkbenchState)
           );
-          const isAutoCollapsed = shouldAutoCollapseAgentGUIConversationRail(
-            context.node.frame.width
-          );
-          if (
-            workbenchState.conversationRailCollapsed === true ||
-            isAutoCollapsed
-          ) {
+          const railPresentation = resolveAgentGUIConversationRailPresentation({
+            containerWidthPx: context.node.frame.width,
+            conversationRailCollapsed: workbenchState.conversationRailCollapsed,
+            conversationRailWidthPx: workbenchState.conversationRailWidthPx
+          });
+          if (railPresentation.isCollapsed) {
             return "collapsed";
           }
-          return `expanded:${clampAgentGUIConversationRailWidthPx(
-            workbenchState.conversationRailWidthPx,
-            context.node.frame.width
-          )}`;
+          return `expanded:${railPresentation.conversationRailWidthPx}`;
         },
         instance: { mode: "multi" },
         onBodyRenderErrorChange: ({ hasError, node }) => {
@@ -277,15 +272,16 @@ export function createAgentGuiWorkbenchContribution(
             migratedWorkbenchState,
             provider
           );
+          const railPresentation = resolveAgentGUIConversationRailPresentation({
+            containerWidthPx: node.frame.width,
+            conversationRailCollapsed: nodeState.conversationRailCollapsed,
+            conversationRailWidthPx: nodeState.conversationRailWidthPx
+          });
           const isConversationRailAutoCollapsed =
-            shouldAutoCollapseAgentGUIConversationRail(node.frame.width);
-          const isConversationRailCollapsed =
-            nodeState.conversationRailCollapsed === true ||
-            isConversationRailAutoCollapsed;
-          const conversationRailWidthPx = clampAgentGUIConversationRailWidthPx(
-            nodeState.conversationRailWidthPx,
-            node.frame.width
-          );
+            railPresentation.isAutoCollapsed;
+          const isConversationRailCollapsed = railPresentation.isCollapsed;
+          const conversationRailWidthPx =
+            railPresentation.conversationRailWidthPx;
           const conversationIdentity = input.sessionEngine
             ? null
             : (input.resolveDockPopupIdentity?.(workbenchState) ?? null);
@@ -435,6 +431,7 @@ export function createAgentGuiWorkbenchContribution(
           closable: true,
           defaultOpen: false,
           header: {
+            border: "none",
             layout: "overlay"
           },
           minimizedDock: {
