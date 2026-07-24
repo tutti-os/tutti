@@ -212,6 +212,36 @@ describe("Avatar", () => {
     expect(onError).toHaveBeenCalledOnce();
   });
 
+  it("uses an independent fallback after transformed and original delivery fail", () => {
+    render(
+      <Avatar
+        data-testid="avatar"
+        fallbackSrc="https://original.example.test/avatar.png"
+        label="Jun Sun"
+        src="https://images.example.test/capability?Policy=signed"
+      />
+    );
+
+    expectDeliveryUrl(preloadedImages.at(-1)?.src ?? "", {
+      height: "64",
+      width: "64"
+    });
+    finishPreload("error");
+    expect(preloadedImages.at(-1)?.src).toBe(
+      "https://images.example.test/capability?Policy=signed"
+    );
+    finishPreload("error");
+    expect(preloadedImages.at(-1)?.src).toBe(
+      "https://original.example.test/avatar.png"
+    );
+    finishPreload("loaded");
+
+    expect(screen.getByTestId("avatar")).toHaveAttribute(
+      "data-avatar-state",
+      "image"
+    );
+  });
+
   it("supports an intentionally empty fallback and numeric sizing", () => {
     render(
       <Avatar

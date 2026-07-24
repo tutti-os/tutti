@@ -32,6 +32,7 @@ interface AvatarProps extends Omit<
   delivery?: AvatarDeliveryMode;
   fallback?: AvatarFallback;
   fallbackColor?: string;
+  fallbackSrc?: string | null;
   imageClassName?: string;
   imageProps?: Omit<
     ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>,
@@ -119,6 +120,7 @@ function Avatar({
   delivery = "auto",
   fallback = "initial",
   fallbackColor,
+  fallbackSrc,
   imageClassName,
   imageProps,
   initial,
@@ -131,6 +133,7 @@ function Avatar({
   ...rootProps
 }: AvatarProps): React.JSX.Element {
   const normalizedSrc = src?.trim() ?? "";
+  const normalizedFallbackSrc = fallbackSrc?.trim() ?? "";
   const initialSize = avatarSizePixels(size);
   const surfaceRef = useRef<HTMLSpanElement>(null);
   const [renderedDimensions, setRenderedDimensions] = useState<{
@@ -138,6 +141,7 @@ function Avatar({
     width: number;
   } | null>(null);
   const [failedDeliveryUrl, setFailedDeliveryUrl] = useState("");
+  const [failedOriginalUrl, setFailedOriginalUrl] = useState("");
   const deliveryImageSrc =
     delivery === "auto"
       ? avatarDeliveryUrl(
@@ -148,11 +152,17 @@ function Avatar({
   const shouldRetryOriginal =
     deliveryImageSrc !== normalizedSrc &&
     failedDeliveryUrl === deliveryImageSrc;
+  const originalCandidateSrc = shouldRetryOriginal
+    ? normalizedSrc
+    : deliveryImageSrc;
+  const shouldUseFallback =
+    originalCandidateSrc === normalizedSrc &&
+    failedOriginalUrl === normalizedSrc;
   const effectiveImageSrc = loading
     ? ""
-    : shouldRetryOriginal
-      ? normalizedSrc
-      : deliveryImageSrc;
+    : shouldUseFallback
+      ? normalizedFallbackSrc
+      : originalCandidateSrc;
   const [imageState, setImageState] = useState<{
     src: string;
     status: AvatarImageStatus;
@@ -185,7 +195,8 @@ function Avatar({
 
   useEffect(() => {
     setFailedDeliveryUrl("");
-  }, [normalizedSrc]);
+    setFailedOriginalUrl("");
+  }, [normalizedFallbackSrc, normalizedSrc]);
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -230,6 +241,12 @@ function Avatar({
       if (deliveryImageSrc !== normalizedSrc) {
         setFailedDeliveryUrl(deliveryImageSrc);
       }
+    } else if (
+      effectiveImageSrc === normalizedSrc &&
+      normalizedFallbackSrc !== "" &&
+      normalizedFallbackSrc !== normalizedSrc
+    ) {
+      setFailedOriginalUrl(normalizedSrc);
     }
     setImageState({ src: effectiveImageSrc, status: "error" });
   };

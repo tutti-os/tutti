@@ -48,7 +48,19 @@ relative, and other non-HTTP(S) sources are left unchanged.
   CloudFront cache-query allowlist.
 
 If transformed delivery fails, `Avatar` retries the unmodified `src` once.
-When the original also fails, it uses the requested initial or empty fallback.
+Pass the independently consumable original URL as `fallbackSrc` when the
+delivery service supplies one:
+
+```tsx
+<Avatar
+  fallbackSrc={user.avatarFallbackUrl}
+  label={user.displayName}
+  src={user.avatarUrl}
+/>
+```
+
+When the unmodified capability also fails, `Avatar` tries `fallbackSrc`, then
+uses the requested initial or empty fallback.
 
 ## Component Boundary
 
