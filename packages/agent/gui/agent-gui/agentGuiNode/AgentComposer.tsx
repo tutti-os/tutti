@@ -520,8 +520,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   );
 
   const providerState = useComposerProviderTargets({
-    workspaceId,
-    agentActivityRuntime,
     layoutMode,
     provider,
     agentTargets,
