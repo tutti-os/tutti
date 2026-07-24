@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
   buildLaneInputFingerprint,
+  gitFingerprintMaxBuffer,
   mergeLaneResults,
   resolveRetryPushReady,
   selectFailedOnlyLanes
@@ -159,6 +160,10 @@ test("lane input fingerprints support diffs larger than the spawnSync default bu
   });
 
   assert.match(fingerprint, /^[a-f0-9]{64}$/u);
+});
+
+test("lane fingerprint buffer covers repository-managed binary source assets", () => {
+  assert.equal(gitFingerprintMaxBuffer, 128 * 1024 * 1024);
 });
 
 test("failed-only reuses only passed lanes with unchanged inputs", () => {

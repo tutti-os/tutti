@@ -32,6 +32,7 @@ Repository entrypoints:
 - `pnpm check:agent-gui-provider-catalog-generated`
 - `pnpm check:agent-host-boundary`
 - `pnpm check:agent-provider-strategy-boundaries`
+- `pnpm check:runtime-image-budgets`
 
 `pnpm check:full` remains the full local validation command and includes
 linting, typechecking, repository checks, and blocking tests. PR CI selects the
@@ -61,7 +62,7 @@ package-manager shims can differ from the repository pin.
 
 Changed-aware lane fingerprints include base, staged, working-tree, and
 untracked content for each lane. Git subprocess buffers must accommodate large
-binary or generated diffs; the runner uses a bounded 64 MiB buffer so a normal
+binary or generated diffs; the runner uses a bounded 128 MiB buffer so a normal
 large pull request does not fail before its validation lanes start.
 
 Tests and checks that create temporary Git repositories must also isolate
@@ -157,6 +158,12 @@ package logs under `.tmp/typecheck-runs`.
 TypeScript package `tsconfig.json` files must not use `baseUrl`; use explicit relative `paths` entries when aliases are needed so the configuration stays compatible with native TypeScript.
 
 The repository-specific UI boundary policy remains in `pnpm check:ui-boundaries`.
+
+Bounded raster UI assets are checked by
+`pnpm check:runtime-image-budgets`. The policy reads image headers and file
+sizes without decoding pixels or invoking platform tools. It excludes design
+masters and window-sized media; the governed paths and resolution rationale
+are documented in [Runtime Image Assets](runtime-image-assets.md).
 
 ## Backdrop Filter Build Contract
 

@@ -32,6 +32,13 @@ export const repositoryCheckDefinitions = [
     matches: isCssHasPerformanceRelevant
   },
   {
+    group: "policy",
+    key: "policy:runtime-image-budgets",
+    label: "runtime image budgets",
+    script: "check:runtime-image-budgets",
+    matches: isRuntimeImageBudgetRelevant
+  },
+  {
     group: "contracts",
     key: "contracts:tool-tests",
     label: "repository tool contracts",
@@ -203,6 +210,32 @@ function isCssHasPerformanceRelevant(file) {
     file === "tools/scripts/check-css-has-performance.mjs" ||
     file === "tools/scripts/css-has-performance-policy.mjs" ||
     file === "tools/scripts/css-has-performance-policy.test.mjs"
+  );
+}
+
+function isRuntimeImageBudgetRelevant(file) {
+  return (
+    file.startsWith(
+      "apps/desktop/src/renderer/src/assets/workspace-canvas/dock/"
+    ) ||
+    file.startsWith(
+      "apps/desktop/src/renderer/src/features/app-update/assets/"
+    ) ||
+    file ===
+      "apps/desktop/src/renderer/src/assets/account-plans/reward-toast-bg.png" ||
+    file.startsWith("packages/agent/gui/app/renderer/assets/icons/") ||
+    file ===
+      "packages/browser/workbench-node/src/assets/workspace-dock-website.png" ||
+    file ===
+      "packages/workspace/issue-manager/src/assets/workspace-dock-task.png" ||
+    file ===
+      "packages/workspace/file-manager/src/assets/workspace-archive-fallback.png" ||
+    file.startsWith("packages/commerce/web/src/assets/") ||
+    file.startsWith(
+      "services/tuttid/builtin-apps/tutti-onboarding/public/assets/"
+    ) ||
+    file === "tools/scripts/check-runtime-image-budgets.mjs" ||
+    file === "tools/scripts/check-runtime-image-budgets.test.mjs"
   );
 }
 
