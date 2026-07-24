@@ -784,7 +784,10 @@
   width: auto;
   height: var(--desktop-dock-frame-size, auto);
   max-width: none;
-  max-height: calc(100vh - 48px);
+  max-height: calc(
+    100vh - var(--workbench-left-dock-top-inset) -
+      var(--workbench-left-dock-bottom-inset)
+  );
   padding: var(--desktop-dock-plate-padding-inline-start)
     var(--desktop-dock-plate-padding-inline-end)
     var(--desktop-dock-plate-padding-inline-start)
