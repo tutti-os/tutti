@@ -63,6 +63,192 @@ vi.mock("../../i18n/index", async () => {
 });
 
 describe("AgentFileMentionPalette", () => {
+  it("disambiguates same-named files with safe relative paths without changing selection identity", () => {
+    const files = [
+      {
+        kind: "file" as const,
+        href: "/workspace/docs/README.md",
+        path: "/workspace/docs/README.md",
+        relativePath: "docs/README.md",
+        name: "README.md",
+        entryKind: "file" as const,
+        directoryPath: "/workspace/docs"
+      },
+      {
+        kind: "file" as const,
+        href: "/workspace/apps/desktop/README.md",
+        path: "/workspace/apps/desktop/README.md",
+        relativePath: "apps/desktop/README.md",
+        name: "README.md",
+        entryKind: "file" as const,
+        directoryPath: "/workspace/apps/desktop"
+      },
+      {
+        kind: "file" as const,
+        href: "/workspace/packages/group/feature-a/src/components/README.md",
+        path: "/workspace/packages/group/feature-a/src/components/README.md",
+        relativePath: "packages/group/feature-a/src/components/README.md",
+        name: "README.md",
+        entryKind: "file" as const,
+        directoryPath: "/workspace/packages/group/feature-a/src/components"
+      },
+      {
+        kind: "file" as const,
+        href: "/workspace/packages/group/feature-b/src/components/README.md",
+        path: "/workspace/packages/group/feature-b/src/components/README.md",
+        relativePath: "packages/group/feature-b/src/components/README.md",
+        name: "README.md",
+        entryKind: "file" as const,
+        directoryPath: "/workspace/packages/group/feature-b/src/components"
+      }
+    ] satisfies AgentContextMentionItem[];
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "read",
+      mode: "results",
+      filter: "file",
+      categories: [],
+      groups: [
+        {
+          id: "files",
+          items: files,
+          totalCount: files.length,
+          visibleCount: files.length,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+    const onSelectItem = vi.fn();
+
+    render(
+      <div style={{ width: 180 }}>
+        <AgentFileMentionPalette
+          state={state}
+          highlightedKey="files:file:/workspace/apps/desktop/README.md"
+          label="mention palette"
+          loadingLabel="loading"
+          emptyLabel="empty"
+          errorLabel="error"
+          tabHintLabel="hint"
+          maxHeightPx={320}
+          onHighlightChange={vi.fn()}
+          onSelectItem={onSelectItem}
+          onSelectCategory={vi.fn()}
+          onSelectFilter={vi.fn()}
+          onExpandGroup={vi.fn()}
+        />
+      </div>
+    );
+
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(4);
+    const [shortPathOption, mediumPathOption, featureAOption, featureBOption] =
+      options;
+    if (
+      !shortPathOption ||
+      !mediumPathOption ||
+      !featureAOption ||
+      !featureBOption
+    ) {
+      throw new Error("Expected four file mention options");
+    }
+    expect(shortPathOption).toHaveTextContent("docs/README.md");
+    expect(shortPathOption).not.toHaveTextContent("…");
+    expect(mediumPathOption).toHaveTextContent("apps/desktop/README.md");
+    expect(featureAOption).toHaveTextContent(
+      "packages/group/feature-a/…/components/README.md"
+    );
+    expect(featureBOption).toHaveTextContent(
+      "packages/group/feature-b/…/components/README.md"
+    );
+    expect(
+      within(featureAOption).getByTitle(
+        "packages/group/feature-a/src/components/README.md"
+      )
+    ).toBeVisible();
+    const featureAFileName = within(featureAOption).getByText("README.md");
+    expect(featureAFileName).toHaveClass("rich-text-at-mention-row__file-name");
+
+    fireEvent.click(mediumPathOption);
+    expect(onSelectItem).toHaveBeenCalledWith(files[1]);
+  });
+
+  it("disambiguates same-named files across hidden file subgroups", () => {
+    const openedFile = {
+      kind: "file" as const,
+      href: "/workspace/packages/group/feature-a/src/components/README.md",
+      path: "/workspace/packages/group/feature-a/src/components/README.md",
+      relativePath: "packages/group/feature-a/src/components/README.md",
+      name: "README.md",
+      entryKind: "file" as const,
+      directoryPath: "/workspace/packages/group/feature-a/src/components"
+    };
+    const generatedFile = {
+      kind: "file" as const,
+      href: "/workspace/packages/group/feature-b/src/components/README.md",
+      path: "/workspace/packages/group/feature-b/src/components/README.md",
+      relativePath: "packages/group/feature-b/src/components/README.md",
+      name: "README.md",
+      entryKind: "file" as const,
+      directoryPath: "/workspace/packages/group/feature-b/src/components"
+    };
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "read",
+      mode: "results",
+      filter: "file",
+      categories: [],
+      groups: [
+        {
+          id: "opened_files",
+          items: [openedFile],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        },
+        {
+          id: "agent_generated_files",
+          items: [generatedFile],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+
+    render(
+      <div style={{ width: 180 }}>
+        <AgentFileMentionPalette
+          state={state}
+          highlightedKey={null}
+          label="mention palette"
+          loadingLabel="loading"
+          emptyLabel="empty"
+          errorLabel="error"
+          tabHintLabel="hint"
+          maxHeightPx={320}
+          onHighlightChange={vi.fn()}
+          onSelectItem={vi.fn()}
+          onSelectCategory={vi.fn()}
+          onSelectFilter={vi.fn()}
+          onExpandGroup={vi.fn()}
+        />
+      </div>
+    );
+
+    const [openedOption, generatedOption] = screen.getAllByRole("option");
+    expect(openedOption).toHaveTextContent(
+      "packages/group/feature-a/…/components/README.md"
+    );
+    expect(generatedOption).toHaveTextContent(
+      "packages/group/feature-b/…/components/README.md"
+    );
+    expect(screen.queryByText("我打开的文件")).toBeNull();
+    expect(screen.queryByText("近期 Agent 生成的文件")).toBeNull();
+  });
+
   it("shows unavailable agent targets but prevents selecting them", () => {
     const unavailableAgent = {
       kind: "agent-target" as const,

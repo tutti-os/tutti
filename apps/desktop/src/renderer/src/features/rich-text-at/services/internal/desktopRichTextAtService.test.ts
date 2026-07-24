@@ -107,6 +107,12 @@ test("desktop rich text @ service assembles workspace file providers by capabili
             name: "README.md",
             path: "/Users/test/project/tutti/README.md",
             score: 1
+          },
+          {
+            kind: "file",
+            name: "README.md",
+            path: "/Users/test/project/tutti/docs/README.md",
+            score: 1
           }
         ].filter((entry) => {
           const query = input.query.toLowerCase();
@@ -140,10 +146,19 @@ test("desktop rich text @ service assembles workspace file providers by capabili
   assert.deepEqual(items, [
     {
       displayName: "README.md",
+      displayPath: "README.md",
       kind: "file",
       path: "/Users/test/project/tutti/README.md"
+    },
+    {
+      displayName: "README.md",
+      displayPath: "docs/README.md",
+      kind: "file",
+      path: "/Users/test/project/tutti/docs/README.md"
     }
   ]);
+  assert.equal(provider.getItemSubtitle?.(items[0]), "README.md");
+  assert.equal(provider.getItemSubtitle?.(items[1]), "docs/README.md");
   assert.equal(provider.getItemIconUrl?.(items[0]), tuttiFileAssetUrls.default);
   assert.deepEqual(provider.toInsertResult(items[0]), {
     href: "/Users/test/project/tutti/README.md",
@@ -155,10 +170,18 @@ test("desktop rich text @ service assembles workspace file providers by capabili
   assert.deepEqual(folderItems, [
     {
       displayName: "docs",
+      displayPath: "docs",
       kind: "directory",
       path: "/Users/test/project/tutti/docs"
+    },
+    {
+      displayName: "README.md",
+      displayPath: "docs/README.md",
+      kind: "file",
+      path: "/Users/test/project/tutti/docs/README.md"
     }
   ]);
+  assert.equal(provider.getItemSubtitle?.(folderItems[0]), "docs");
   assert.equal(
     provider.getItemIconUrl?.(folderItems[0]),
     tuttiFolderAssetUrls.default

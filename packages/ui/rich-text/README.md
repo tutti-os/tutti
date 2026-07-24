@@ -387,6 +387,15 @@ Minimum integration checklist:
    />;
    ```
 
+   `MentionRowFileItem.relativePath` is optional, source-relative presentation
+   metadata for disambiguating same-named file candidates. Callers must not
+   provide absolute paths, URI values, traversal segments, or other
+   host-sensitive paths. When sibling rows need more than the default leading
+   context, `disambiguationPrefixSegments` may specify how many leading
+   directory segments must remain visible before middle omission. Both values
+   only affect the visible row label and its title; selection identity and
+   mention serialization continue to use the existing item fields.
+
 6. Wire keyboard handling to the state adapter or to `makeAtPanelKeyDown`.
    External apps should keep the exact shortcut policy local; the shared shell
    supports moving selection, cycling categories, expanding groups, and

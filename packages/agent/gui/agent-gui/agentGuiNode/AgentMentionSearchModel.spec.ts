@@ -6,6 +6,44 @@ import {
 } from "./AgentMentionSearchModel";
 
 describe("providerItemToAgentMentionItem", () => {
+  it("preserves only safe source-relative paths for file presentation", () => {
+    const createFile = (subtitle: string) =>
+      providerItemToAgentMentionItem({
+        currentUserId: "user-1",
+        providerId: "file",
+        insertResult: {
+          kind: "markdown-link",
+          href: "/Users/test/project/tutti/docs/README.md",
+          label: "README.md"
+        },
+        label: "README.md",
+        subtitle,
+        workspaceId: "workspace-1"
+      });
+
+    expect(createFile("docs/README.md")).toMatchObject({
+      href: "/Users/test/project/tutti/docs/README.md",
+      kind: "file",
+      name: "README.md",
+      relativePath: "docs/README.md"
+    });
+    expect(
+      createFile("/Users/test/project/tutti/docs/README.md")
+    ).not.toHaveProperty("relativePath");
+    expect(createFile("../outside/README.md")).not.toHaveProperty(
+      "relativePath"
+    );
+    for (const unsafePath of [
+      "file:C:/Users/alice/README.md",
+      "C:private/README.md",
+      "C:/Users/alice/README.md",
+      String.raw`\\server\share\README.md`,
+      "https://example.com/README.md"
+    ]) {
+      expect(createFile(unsafePath)).not.toHaveProperty("relativePath");
+    }
+  });
+
   it("preserves Agent Target identity in session mention metadata", () => {
     expect(
       providerItemToAgentMentionItem({

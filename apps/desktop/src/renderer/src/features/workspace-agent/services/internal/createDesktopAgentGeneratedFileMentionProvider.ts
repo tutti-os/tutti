@@ -16,6 +16,7 @@ const { agentGeneratedFile: AGENT_GENERATED_FILE_PROVIDER_ID } =
 interface AgentGeneratedFileMentionItem {
   displayName: string;
   path: string;
+  relativePath: string;
 }
 
 export function createDesktopAgentGeneratedFileMentionProvider(input: {
@@ -59,14 +60,20 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
       if (searchInput.abortSignal?.aborted) {
         return [];
       }
-      return result.entries.map((file) => ({
+      const relativePaths = generatedFileRelativePaths(
+        result.entries,
+        metadataString(searchInput.context.metadata, "sessionCwd", "") ||
+          projectRootFromSectionKey(sectionKey)
+      );
+      return result.entries.map((file, index) => ({
         displayName: file.label,
-        path: file.path
+        path: file.path,
+        relativePath: relativePaths[index] ?? file.label
       }));
     },
     getItemKey: (item) => item.path,
     getItemLabel: (item) => item.displayName,
-    getItemSubtitle: (item) => item.path,
+    getItemSubtitle: (item) => item.relativePath,
     getItemIconUrl: (item) =>
       item.path.endsWith("/")
         ? tuttiFolderAssetUrls.default
@@ -78,6 +85,56 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
       );
     }
   };
+}
+
+function projectRootFromSectionKey(sectionKey: string): string {
+  return sectionKey.startsWith("project:")
+    ? sectionKey.slice("project:".length).trim()
+    : "";
+}
+
+function generatedFileRelativePaths(
+  files: readonly { label: string; path: string }[],
+  root: string
+): string[] {
+  const normalizedRoot = normalizeHostPath(root);
+  return files.map(
+    (file) =>
+      relativePathInsideRoot(
+        normalizeHostPath(file.path),
+        normalizedRoot,
+        file.label
+      ) ?? file.label
+  );
+}
+
+function relativePathInsideRoot(
+  path: string,
+  root: string,
+  fileName: string
+): string | undefined {
+  if (!isAbsoluteHostPath(path) || !isAbsoluteHostPath(root)) {
+    return undefined;
+  }
+  const comparablePath = comparableHostPath(path);
+  const comparableRoot = comparableHostPath(root);
+  if (!comparablePath.startsWith(`${comparableRoot}/`)) {
+    return undefined;
+  }
+  const relativePath = path.slice(root.length + 1);
+  return relativePath.split("/").at(-1) === fileName ? relativePath : undefined;
+}
+
+function normalizeHostPath(value: string): string {
+  return value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function comparableHostPath(value: string): string {
+  return /^[A-Za-z]:\//.test(value) ? value.toLowerCase() : value;
+}
+
+function isAbsoluteHostPath(value: string): boolean {
+  return value.startsWith("/") || /^[A-Za-z]:\//.test(value);
 }
 
 function metadataReferenceProvenanceFilter(
