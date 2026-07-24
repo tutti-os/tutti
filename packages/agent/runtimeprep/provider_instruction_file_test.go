@@ -19,8 +19,8 @@ func TestDefaultPreparerACPExtensionMaterializesSkillsToDeclaredRoot(t *testing.
 	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:         "workspace-1",
 		AgentSessionID:      "session-1",
-		AgentTargetID:       "local:hermes",
-		Provider:            "acp:hermes",
+		AgentTargetID:       "local:extension-test",
+		Provider:            "acp:extension-test",
 		Cwd:                 cwd,
 		ExtensionSkillRoots: []string{".agent_context/skills"},
 	})
@@ -51,8 +51,8 @@ func TestDefaultPreparerACPExtensionWithoutSkillRootsSkipsSkillMaterialization(t
 	if _, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
-		AgentTargetID:  "local:hermes",
-		Provider:       "acp:hermes",
+		AgentTargetID:  "local:extension-test",
+		Provider:       "acp:extension-test",
 		Cwd:            cwd,
 	}); err != nil {
 		t.Fatalf("Prepare() error = %v", err)

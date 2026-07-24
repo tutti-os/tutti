@@ -214,9 +214,15 @@ func (p *DefaultPreparer) provider(providerID string) ProviderPreparer {
 	if provider := p.providers[providerID]; provider != nil {
 		return provider
 	}
-	// Agent extensions (provider id "acp:<key>") share a generic instruction
-	// preparer; their skill roots arrive via PrepareInput.ExtensionSkillRoots
-	// from the extension composer profile, so they need no per-key entry.
+	// hermes loads skills from $HERMES_HOME/skills/ (not .agent_context/skills/)
+	// and anchors config.yaml/auth.json to HERMES_HOME, so it needs a dedicated
+	// preparer that injects a per-session HERMES_HOME. See HermesPreparer.
+	if providerID == "acp:hermes" {
+		return HermesPreparer{}
+	}
+	// Other acp: extensions share a generic instruction+skill preparer; their
+	// skill roots arrive via PrepareInput.ExtensionSkillRoots from the
+	// extension composer profile, so they need no per-key entry.
 	if strings.HasPrefix(providerID, "acp:") {
 		return InstructionFilePreparer{}
 	}

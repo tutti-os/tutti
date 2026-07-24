@@ -131,18 +131,6 @@ export function encodeDesktopWindowIntent(
     if (intent.userProjectPath) {
       params.set("userProjectPath", intent.userProjectPath);
     }
-    if (intent.agentDirectorySnapshot) {
-      params.set(
-        "agentDirectorySnapshot",
-        JSON.stringify(intent.agentDirectorySnapshot)
-      );
-    }
-    if (intent.providerStatusSnapshot) {
-      params.set(
-        "agentProviderStatusSnapshot",
-        JSON.stringify(intent.providerStatusSnapshot)
-      );
-    }
   } else {
     params.set("view", "workspace");
     if (intent.kind === "workspace") {
