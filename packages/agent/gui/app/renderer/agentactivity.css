@@ -3797,6 +3797,17 @@ aside.workspace-agents-status-panel
   margin-right: -36px;
 }
 
+/*
+ * Participant headers render once per visible turn. Later assistant-owned
+ * transcript rows are siblings of that header row, so carry the same
+ * avatar-and-gap inset onto their content without changing host row padding.
+ */
+.agent-gui-transcript-row[data-agent-transcript-row-participant-content="assistant"]
+  > * {
+  box-sizing: border-box;
+  padding-left: 36px;
+}
+
 .agent-gui-conversation__participant-name {
   overflow: hidden;
   font-size: 13px;
