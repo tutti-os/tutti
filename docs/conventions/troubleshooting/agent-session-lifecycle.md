@@ -1596,6 +1596,42 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
   [agent-extensions.md](../../architecture/agent-extensions.md)
 
+### An authorized observer loops unavailable while a session is resuming
+
+- Symptom:
+  A remote or local observer has a durable Agent session ID and passes
+  authorization, but immediately receives `session not found` or
+  `Unavailable`. Its caller reconnects rapidly even though Agent Host restores
+  the provider session shortly afterward.
+- Quick checks:
+  Separate durable identity from the Controller registry. Confirm the session
+  exists in canonical persistence while `Controller.Session` is temporarily
+  absent, then correlate the observer attempt with the later Host
+  `EnsureRuntimeSession`, runtime `Start`, or runtime `Resume`. If observation
+  itself launches the provider, lifecycle authority is inverted.
+- Root cause:
+  A durable session record proves that work may be resumed; it does not prove a
+  live provider or runtime registry entry exists after daemon restart. A
+  one-shot `Controller.Subscribe` therefore turns a normal restore race into a
+  transport failure, and caller reconnect loops cannot know when the local
+  lifecycle owner has finished restoring ACP.
+- Fix:
+  Use `Controller.SubscribeWhenAvailable` when the consumer already has an
+  authorized durable session identity and must observe the next live runtime.
+  It waits on a per-session Controller notification and atomically subscribes
+  with the initial state snapshot once `Start` or `Resume` registers the
+  session. Keep provider launch and resume in Agent Host; the observation
+  method must never call those lifecycle operations.
+- Validation:
+  Start the observation against a missing runtime, assert that it neither
+  returns nor creates a session, then perform a real Controller `Resume` and
+  verify the observer receives the initial state snapshot. Also cancel a
+  missing-session wait and verify no waiter or runtime session remains, and
+  cover concurrent observers under the race detector.
+- References:
+  [controller_stream.go](../../../packages/agent/daemon/runtime/controller_stream.go)
+  [controller_stream_wait_test.go](../../../packages/agent/daemon/runtime/controller_stream_wait_test.go)
+
 ### Agent session restore breaks when durable snapshot ownership is split
 
 - Symptom:

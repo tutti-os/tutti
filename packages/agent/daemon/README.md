@@ -27,6 +27,13 @@ if err != nil {
 controller := runtime.Controller()
 ```
 
+`Controller.SubscribeWhenAvailable` is the observation-only stream attachment
+for consumers that already have durable session identity but may race runtime
+resume after a daemon restart. It waits for `Start`, `Resume`, or
+`Host.EnsureRuntimeSession` to repopulate the runtime registry and then
+subscribes with the current state snapshot. It never starts or resumes a
+provider itself; lifecycle authority stays with Agent Host.
+
 Hosts that need to prepare a provider launch immediately before process spawn
 can set `ProviderLaunchPreparer`. The hook receives the provider, session,
 command, environment, cwd, and direct-start mode; it returns the command,
