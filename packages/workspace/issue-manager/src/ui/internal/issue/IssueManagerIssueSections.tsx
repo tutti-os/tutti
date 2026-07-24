@@ -5,6 +5,7 @@ import {
   Button,
   FileCreateIcon,
   FileIcon,
+  SegmentBar,
   ScrollArea,
   cn
 } from "@tutti-os/ui-system";
@@ -383,38 +384,22 @@ function IssueManagerSubtaskViewModeSwitch({
   onChange: (value: IssueManagerSubtaskViewMode) => void;
   value: IssueManagerSubtaskViewMode;
 }): JSX.Element {
-  const modes: readonly IssueManagerSubtaskViewMode[] = ["list", "board"];
-
   return (
-    <div
-      aria-label={copy.t("labels.subtaskViewMode")}
-      className="relative inline-grid h-8 shrink-0 grid-cols-2 items-center rounded-md bg-[var(--transparency-block)] p-0.5"
-      role="group"
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "absolute top-0.5 bottom-0.5 left-0.5 w-[calc((100%-4px)/2)] rounded-[5px] bg-[var(--background-board-card)] transition-transform duration-150 ease-out",
-          value === "board" && "translate-x-full"
-        )}
-      />
-      {modes.map((mode) => (
-        <button
-          aria-pressed={value === mode}
-          className={cn(
-            "relative z-[1] inline-flex h-7 w-14 items-center justify-center rounded-[5px] px-2.5 text-[12px] font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
-            value === mode
-              ? "text-[var(--text-primary)]"
-              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          )}
-          key={mode}
-          type="button"
-          onClick={() => onChange(mode)}
-        >
-          {copy.t(mode === "list" ? "labels.listView" : "labels.boardView")}
-        </button>
-      ))}
-    </div>
+    <SegmentBar
+      ariaLabel={copy.t("labels.subtaskViewMode")}
+      segments={[
+        {
+          label: copy.t("labels.listView"),
+          value: "list"
+        },
+        {
+          label: copy.t("labels.boardView"),
+          value: "board"
+        }
+      ]}
+      value={value}
+      onValueChange={onChange}
+    />
   );
 }
 

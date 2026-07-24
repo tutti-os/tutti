@@ -5647,8 +5647,6 @@ aside.workspace-agents-status-panel
   align-items: center;
   gap: 10px;
   min-width: 0;
-  /* Right inset mirrors the conversation list's 4px padding + 8px native
-     scrollbar gutter so the toolbar controls end flush with the row edges. */
   padding: 2px 12px 16px 12px;
 }
 
@@ -5989,10 +5987,9 @@ aside.workspace-agents-status-panel
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  /* Right inset stays 4px because the always-visible native scrollbar already
-     reserves an 8px gutter, keeping the visual right inset at 12px like the
-     left side. */
-  padding: 0 4px 18px 12px;
+  /* The native overlay scrollbar does not reserve a gutter on macOS, so the
+     right inset must match the left side explicitly. */
+  padding: 0 12px 18px 12px;
 }
 
 .agent-gui-node__conversation-section {
@@ -8909,6 +8906,64 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-handoff-icon-animated[data-active="true"] {
   opacity: 1;
+}
+
+.agent-gui-node__composer-tutti-mode-icon {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  /* Inherit color from the chip label so the mark tracks every state:
+     text-secondary at rest, text-primary on hover, tutti-purple when armed. */
+  contain: layout paint;
+}
+
+.agent-gui-node__composer-tutti-mode-icon-static,
+.agent-gui-node__composer-tutti-mode-icon-animated {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.agent-gui-node__composer-tutti-mode-icon-static {
+  background-color: currentColor;
+  opacity: 1;
+}
+
+.agent-gui-node__composer-tutti-mode-icon:has(
+    .agent-gui-node__composer-tutti-mode-icon-animated[data-active="true"]
+  )
+  .agent-gui-node__composer-tutti-mode-icon-static {
+  opacity: 0;
+}
+
+.agent-gui-node__composer-tutti-mode-icon-animated {
+  position: absolute;
+  inset: 0;
+  /* Match the 16px static mark exactly; the APNG canvas already pads the
+    snapping hand and bursting stars, so no enlargement is applied. */
+  transform: translateZ(0);
+  opacity: 0;
+  pointer-events: none;
+  backface-visibility: hidden;
+  will-change: opacity, transform;
+}
+
+.agent-gui-node__composer-tutti-mode-icon-animated[data-active="true"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-node__composer-tutti-mode-icon-animated {
+    display: none;
+  }
+
+  .agent-gui-node__composer-tutti-mode-icon-static {
+    opacity: 1 !important;
+  }
 }
 
 .agent-gui-node__composer-handoff-icon[data-disabled="true"]

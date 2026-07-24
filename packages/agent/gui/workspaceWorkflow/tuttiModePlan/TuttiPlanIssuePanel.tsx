@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { ExternalLink, ListChecks, Square } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, cn } from "@tutti-os/ui-system";
-import composerStyles from "../../agent-gui/agentGuiNode/AgentGUINode.styles";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  SegmentBar,
+  cn
+} from "@tutti-os/ui-system";
 import type {
   TuttiPlanIssueSnapshot,
   TuttiPlanIssueTaskSnapshot
@@ -226,25 +232,22 @@ export function TuttiPlanIssuePanel({
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <div className="flex items-center gap-0.5">
-              {(["list", "board"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  aria-pressed={viewMode === mode}
-                  className={cn(
-                    "w-auto",
-                    composerStyles.composerMenuTrigger,
-                    viewMode === mode &&
-                      "text-[var(--tutti-purple)] hover:text-[var(--tutti-purple)]"
-                  )}
-                  data-testid={`tutti-plan-issue-view-${mode}`}
-                  onClick={() => setViewMode(mode)}
-                >
-                  {mode === "list" ? labels.listView : labels.boardView}
-                </button>
-              ))}
-            </div>
+            <SegmentBar
+              segments={[
+                {
+                  label: labels.listView,
+                  testId: "tutti-plan-issue-view-list",
+                  value: "list"
+                },
+                {
+                  label: labels.boardView,
+                  testId: "tutti-plan-issue-view-board",
+                  value: "board"
+                }
+              ]}
+              value={viewMode}
+              onValueChange={setViewMode}
+            />
             {stopExecution ? (
               <Button
                 type="button"
@@ -415,7 +418,7 @@ function TuttiPlanIssueBoard({
       <div
         className="grid gap-2"
         style={{
-          gridTemplateColumns: `repeat(${columns.length}, minmax(170px, 1fr))`
+          gridTemplateColumns: `repeat(${columns.length}, minmax(280px, 1fr))`
         }}
       >
         {columns.map((status) => {
@@ -423,7 +426,7 @@ function TuttiPlanIssueBoard({
           return (
             <div
               key={status}
-              className="min-h-[220px] rounded-lg border border-[var(--line-2)] bg-muted/30 px-2 py-2"
+              className="min-h-[220px] min-w-0 rounded-lg border border-[var(--line-2)] bg-muted/30 px-2 py-2"
               data-testid={`tutti-plan-issue-column-${status}`}
             >
               <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -453,7 +456,7 @@ function TuttiPlanIssueBoard({
                       tabIndex={openable ? 0 : undefined}
                       data-testid={`tutti-plan-issue-task-${task.taskId}`}
                       className={cn(
-                        "rounded-md bg-background px-2 py-1.5",
+                        "min-w-0 overflow-hidden rounded-md bg-[var(--background-board-card)] px-2 py-1.5",
                         openable &&
                           "cursor-pointer transition-colors hover:bg-muted/60"
                       )}
@@ -470,7 +473,7 @@ function TuttiPlanIssueBoard({
                           : undefined
                       }
                     >
-                      <span className="line-clamp-2 text-xs font-medium text-foreground">
+                      <span className="line-clamp-2 text-[13px] font-medium text-foreground">
                         {task.title}
                       </span>
                       <span className="mt-1 block empty:hidden">
@@ -514,7 +517,7 @@ function TuttiPlanIssueList({
     ? groupTuttiPlanIssueTasksIntoStages(issue.tasks)
     : [{ kind: "sequential" as const, tasks: [...issue.tasks] }];
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--line-2)]">
+    <div className="overflow-hidden rounded-lg border border-[var(--line-2)] bg-[var(--background-board-card)]">
       {stages.map((stage, index) => (
         <div key={`stage-${index}`}>
           {showStages ? (
@@ -559,7 +562,7 @@ function TuttiPlanIssueList({
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                    <span className="truncate text-xs font-medium text-foreground">
+                    <span className="truncate text-[13px] font-medium text-foreground">
                       {task.title}
                     </span>
                     <TaskStructureChips labels={labels} task={task} />

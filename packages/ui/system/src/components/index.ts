@@ -21,6 +21,7 @@ export * from "./scroll-area";
 export * from "./select";
 export * from "./separator";
 export * from "./section-tabs";
+export * from "./segment-bar";
 export * from "./shortcut-badge";
 export * from "./slider";
 export * from "./sonner";

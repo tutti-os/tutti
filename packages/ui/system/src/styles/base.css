@@ -174,3 +174,22 @@
     font-weight: 500;
   }
 }
+
+.issue-manager-board-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--transparency-block) transparent;
+}
+
+.issue-manager-board-scroll::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.issue-manager-board-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.issue-manager-board-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: var(--transparency-block);
+}
