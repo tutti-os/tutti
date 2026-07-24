@@ -821,6 +821,14 @@ The pending activation carries the same resolved project section key as the
 create command. Exact rail projection therefore shows the conversation as soon
 as the intent is accepted; it does not wait for provider startup or invent a
 temporary catch-all section.
+The controller's new-conversation command must distinguish rail placement from
+the active Session's runtime working directory before entering the home
+composer. A Session in the Chats section may have a generated `cwd`, but that
+path is not a selected user project and must be cleared. A Session in a
+canonical project section keeps its working directory, while a command already
+on the home composer preserves the user's explicit project selection. Views
+only forward new-conversation intent; unresolved active rail membership fails
+closed rather than guessing from composer presentation fields.
 For delegated/shared execution, the initiating caller remains the placement
 authority: the adapter forwards that caller-selected `RailPlacement` through
 the binding to the owner Host. The owner persists the same section key and does
