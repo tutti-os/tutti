@@ -1,9 +1,13 @@
 import { useMemo } from "react";
 import { cn } from "../../../app/renderer/lib/utils";
+import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import styles from "../AgentGUINode.styles";
 import type { AgentGUIAgentTarget } from "../../../types";
+import { reportAgentComposerDiagnostic } from "./agentComposerDiagnostics";
 
 interface Input {
+  workspaceId: string;
+  agentActivityRuntime?: AgentActivityRuntime | null;
   layoutMode: "dock" | "hero";
   provider: string;
   agentTargets: readonly AgentGUIAgentTarget[];
@@ -23,6 +27,8 @@ interface Input {
 
 export function useComposerProviderTargets(input: Input) {
   const {
+    workspaceId,
+    agentActivityRuntime,
     layoutMode,
     provider,
     agentTargets,
@@ -107,6 +113,39 @@ export function useComposerProviderTargets(input: Input) {
     selectedProviderSwitchTarget !== null &&
     providerMenuTargets.length > 0;
   const showHandoffSelect = showProviderSelect && providerSelectReadonly;
+
+  useMemo(() => {
+    reportAgentComposerDiagnostic(agentActivityRuntime ?? null, {
+      event: "agent.gui.composer.handoff.state",
+      level: "debug",
+      workspaceId,
+      details: {
+        composerControlsHardDisabled,
+        hasHandoffConversation: onHandoffConversation !== undefined,
+        inputDisabled,
+        providerTargetCount: providerMenuTargets.length,
+        providerTargetIds: providerMenuTargets.map((target) => target.targetId),
+        handoffTargetCount: handoffMenuTargets.length,
+        handoffTargetIds: handoffMenuTargets.map((target) => target.targetId),
+        selectedTargetId: selectedProviderSwitchTarget?.targetId ?? null,
+        showProviderSelect,
+        showHandoffSelect,
+        handoffDisabled
+      }
+    });
+  }, [
+    agentActivityRuntime,
+    composerControlsHardDisabled,
+    handoffDisabled,
+    handoffMenuTargets,
+    inputDisabled,
+    onHandoffConversation,
+    providerMenuTargets,
+    selectedProviderSwitchTarget,
+    showHandoffSelect,
+    showProviderSelect,
+    workspaceId
+  ]);
 
   return {
     composerClassName,
