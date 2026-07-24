@@ -36,7 +36,11 @@ func (HermesPreparer) Provider() string {
 
 func (HermesPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (ProviderPrepareResult, error) {
 	agentsPath := filepath.Join(input.Cwd, "AGENTS.md")
-	writeResult, err := input.Store.WriteManagedBlock(agentsPath, tuttiCLIPolicy(input.PrepareInput))
+	policy, err := tuttiCLIPolicy(input.PrepareInput)
+	if err != nil {
+		return ProviderPrepareResult{}, err
+	}
+	writeResult, err := input.Store.WriteManagedBlock(agentsPath, policy)
 	if err != nil {
 		return ProviderPrepareResult{}, err
 	}

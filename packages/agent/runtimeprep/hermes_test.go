@@ -32,7 +32,9 @@ func TestHermesPreparerMaterializesSkillsToPerSessionHermesHome(t *testing.T) {
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prep := NewDefaultPreparer(stateDir)
+	prep.CommandCatalog = staticCommandCatalog(nil)
+	prepared, err := prep.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		AgentTargetID:  "local:hermes",
@@ -86,7 +88,9 @@ func TestHermesPreparerDoesNotMaterializeToAgentContextSkills(t *testing.T) {
 	t.Setenv("HERMES_HOME", t.TempDir())
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	if _, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prep := NewDefaultPreparer(stateDir)
+	prep.CommandCatalog = staticCommandCatalog(nil)
+	if _, err := prep.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		AgentTargetID:  "local:hermes",

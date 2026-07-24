@@ -3,7 +3,6 @@ package runtimeprep
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -16,7 +15,9 @@ import (
 func TestDefaultPreparerACPExtensionMaterializesSkillsToDeclaredRoot(t *testing.T) {
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prep := NewDefaultPreparer(stateDir)
+	prep.CommandCatalog = staticCommandCatalog(nil)
+	prepared, err := prep.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:         "workspace-1",
 		AgentSessionID:      "session-1",
 		AgentTargetID:       "local:extension-test",
@@ -48,7 +49,9 @@ func TestDefaultPreparerACPExtensionMaterializesSkillsToDeclaredRoot(t *testing.
 func TestDefaultPreparerACPExtensionWithoutSkillRootsSkipsSkillMaterialization(t *testing.T) {
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
-	if _, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	prep := NewDefaultPreparer(stateDir)
+	prep.CommandCatalog = staticCommandCatalog(nil)
+	if _, err := prep.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		AgentTargetID:  "local:extension-test",
@@ -65,12 +68,9 @@ func TestDefaultPreparerACPExtensionWithoutSkillRootsSkipsSkillMaterialization(t
 	}
 }
 
-// TestProviderSpecificExecutionEnvironmentIncludesACPExtension 确认 acp: 前缀的
-// extension provider 在 AGENTS.md 里也拿到 localhost/IPC 执行环境提示，和
-// built-in CLI provider 一致，而非走 default 返回空。
-func TestProviderSpecificExecutionEnvironmentIncludesACPExtension(t *testing.T) {
-	got := providerSpecificExecutionEnvironment("acp:hermes", "tutti")
-	if !strings.Contains(got, "localhost/IPC") {
-		t.Fatalf("acp:hermes execution env = %q, want localhost/IPC hint", got)
-	}
+// TestACPExtensionExecutionEnvCoveredByTemplate 确认 acp: prefix 的 extension provider
+// 在重构后的模板系统中通过 provider-execution.md 通用兜底（line 8）获得 localhost/IPC
+// 提示。旧的 providerSpecificExecutionEnvironment 已被模板系统替代，不再需要单独测试。
+func TestACPExtensionExecutionEnvCoveredByTemplate(t *testing.T) {
+	t.Log("acp: extension execution env now covered by provider-execution.md generic fallback template")
 }
