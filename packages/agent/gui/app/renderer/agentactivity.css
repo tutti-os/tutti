@@ -7362,6 +7362,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   width: 100%;
   margin-top: auto;
   padding-top: 0;
+  padding-bottom: 8px;
   background: transparent;
   border-top: 0;
   pointer-events: none;
