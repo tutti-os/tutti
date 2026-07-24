@@ -453,6 +453,10 @@ presentation has distinct `loading` and `ready` states, so the renderer never
 infers identity readiness from a missing image URL. The host supplies user and
 Agent names and optional avatar URLs; AgentGUI owns the UI System Avatar,
 fixed-size loading slot, fallback initial, and user-right/Agent-left layout.
+Participant-header placement is projected from presentation turns rather than
+individual message or tool-progress rows: each speaker renders at most one
+header per turn, and a collapsed completed turn keeps the Agent header on
+visible reply content.
 This presentation input is view data only and must not enter canonical Session,
 Turn, Message, activity-runtime, or workspace-engine state.
 

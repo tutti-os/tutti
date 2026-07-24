@@ -30,6 +30,7 @@ interface AgentTranscriptItemViewProps {
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   showRawTimelineJson?: boolean;
   participantPresentation?: AgentConversationParticipantPresentation;
+  showParticipantHeader?: boolean;
   toolGroupExpanded?: boolean;
   toolGroupExpansionKey?: string;
   onToolGroupExpandedChange?: (key: string, expanded: boolean) => void;
@@ -47,6 +48,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
   workspaceAppIcons,
   showRawTimelineJson = false,
   participantPresentation,
+  showParticipantHeader,
   toolGroupExpanded,
   toolGroupExpansionKey,
   onToolGroupExpandedChange
@@ -94,6 +96,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           showRawTimelineJson={showRawTimelineJson}
           rawTimelineJsonLabel={labels.rawTimelineJson}
           participantPresentation={participantPresentation}
+          showParticipantHeader={showParticipantHeader}
         />
       );
     case "tool-group":
