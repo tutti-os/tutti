@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/commerce",
-  "version": "0.1.0",
+  "version": "0.0.216",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -53,7 +53,7 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@tutti-os/ui-system": "workspace:*"
+    "@tutti-os/ui-system": "0.0.216"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
