@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/workspace-file-manager",
-  "version": "0.1.0",
+  "version": "0.0.218",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -36,9 +36,9 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@tutti-os/ui-i18n-runtime": "workspace:*",
-    "@tutti-os/ui-system": "workspace:*",
-    "@tutti-os/workspace-file-preview": "workspace:*"
+    "@tutti-os/ui-i18n-runtime": "0.0.218",
+    "@tutti-os/ui-system": "0.0.218",
+    "@tutti-os/workspace-file-preview": "0.0.218"
   },
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",
