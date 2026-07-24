@@ -61,6 +61,7 @@ const externalizeRuntimeDeps = externalizeDepsPlugin({
     "@tutti-os/agent-gui",
     "@tutti-os/ui-i18n-runtime",
     "@tutti-os/ui-system",
+    "@tutti-os/workbench-electron",
     "@tutti-os/workspace-file-manager",
     "@tutti-os/workspace-external-core",
     "@tutti-os/workspace-file-preview",

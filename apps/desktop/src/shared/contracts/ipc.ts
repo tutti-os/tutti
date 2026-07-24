@@ -577,6 +577,7 @@ export interface DesktopDockPreviewCacheKey {
   instanceId: string;
   instanceKey?: string | null;
   nodeId: string;
+  revision?: string | null;
   typeId: string;
   workspaceId: string;
 }
