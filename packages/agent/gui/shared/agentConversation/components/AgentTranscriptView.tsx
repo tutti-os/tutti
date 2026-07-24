@@ -27,10 +27,12 @@ import {
   scrollTranscriptRowIntoView
 } from "./AgentMessageLocatorRail";
 import {
+  attachLeadingToolRowsToFollowingMessages,
   buildAgentTranscriptTurnGroups,
   buildTurnGroupIndexByRowIndex,
   buildUserMessageLocatorItems,
   escapeCssString,
+  findParticipantTurnDividerRowIndexes,
   findTurnDividerRowIndexes,
   transcriptRowKey,
   useEnteringTranscriptRows,
@@ -230,13 +232,23 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   const virtualizerHostRef = useRef<HTMLDivElement | null>(null);
   const [virtualScrollElement, setVirtualScrollElement] =
     useState<HTMLElement | null>(null);
-  const rowKeys = useMemo(
-    () => conversation.rows.map(transcriptRowKey),
-    [conversation.rows]
-  );
+  const participantHeadersEnabled = participantPresentation?.enabled === true;
+  // Participant-header presentation (Agent board session detail): tool-group
+  // rows attach to the assistant message that follows them instead of sitting
+  // after the previous message, and turn dividers key off user messages. Rows
+  // and their keys share a single projection so this component stays within
+  // the degradation-check memo budget.
+  const transcriptRowSet = useMemo(() => {
+    const rows = participantHeadersEnabled
+      ? attachLeadingToolRowsToFollowingMessages(conversation.rows)
+      : conversation.rows;
+    return { rows, rowKeys: rows.map(transcriptRowKey) };
+  }, [conversation.rows, participantHeadersEnabled]);
+  const displayRows = transcriptRowSet.rows;
+  const rowKeys = transcriptRowSet.rowKeys;
   const turnGroups = useMemo(
-    () => buildAgentTranscriptTurnGroups(conversation.rows, rowKeys),
-    [conversation.rows, rowKeys]
+    () => buildAgentTranscriptTurnGroups(displayRows, rowKeys),
+    [displayRows, rowKeys]
   );
   const turnGroupIndexByRowIndex = useMemo(
     () => buildTurnGroupIndexByRowIndex(turnGroups),
@@ -245,11 +257,11 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   const userMessageLocatorItems = useMemo(
     () =>
       buildUserMessageLocatorItems(
-        conversation.rows,
+        displayRows,
         rowKeys,
         turnGroupIndexByRowIndex
       ),
-    [conversation.rows, rowKeys, turnGroupIndexByRowIndex]
+    [displayRows, rowKeys, turnGroupIndexByRowIndex]
   );
   const enteringRowKeys = useEnteringTranscriptRows(rowKeys);
   const handleToolGroupExpandedChange = useCallback(
@@ -274,8 +286,11 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
     [conversation.sourceDetail.turns]
   );
   const dividerRowIndexes = useMemo(
-    () => findTurnDividerRowIndexes(turnIndexById, conversation.rows),
-    [conversation.rows, turnIndexById]
+    () =>
+      participantHeadersEnabled
+        ? findParticipantTurnDividerRowIndexes(displayRows)
+        : findTurnDividerRowIndexes(turnIndexById, displayRows),
+    [displayRows, turnIndexById, participantHeadersEnabled]
   );
   const canonicalTurnById = new Map(
     (conversation.sourceDetail.sessionTurns ?? []).map((turn) => [
@@ -383,7 +398,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   ): JSX.Element => {
     const rowKey =
       renderKey ??
-      (conversation.rows[rowIndex] === row
+      (displayRows[rowIndex] === row
         ? (rowKeys[rowIndex] ?? transcriptRowKey(row))
         : transcriptRowKey(row));
     const shouldAnimateEnter =

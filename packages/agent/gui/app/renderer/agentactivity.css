@@ -3774,16 +3774,78 @@ aside.workspace-agents-status-panel
   display: grid;
   width: 100%;
   min-width: 0;
-  column-gap: 10px;
-  align-items: start;
 }
 
-.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="assistant"] {
-  grid-template-columns: 32px minmax(0, 1fr);
+.agent-gui-conversation__participant-message-header {
+  display: flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  column-gap: 8px;
 }
 
-.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="user"] {
-  grid-template-columns: minmax(0, 1fr) 32px;
+/* The participant header sits directly above the thinking/tool-call info and
+   the message content, so it uses a tighter gap than the default 24px flow
+   spacing. */
+.agent-gui-conversation__assistant-message-flow
+  > .agent-gui-conversation__participant-message-header
+  + * {
+  margin-top: 8px;
+}
+
+/* Content below the header aligns with the participant name: assistant
+   content insets to the name's left edge, user content to the name's right
+   edge (28px avatar + 8px gap). The header is pulled back over the padding so
+   it stays flush with the flow edge. */
+.agent-gui-conversation__assistant-message-flow[data-agent-message-flow-participant="true"] {
+  padding-left: 36px;
+}
+
+.agent-gui-conversation__assistant-message-flow[data-agent-message-flow-participant="true"]
+  > .agent-gui-conversation__participant-message-header {
+  margin-left: -36px;
+}
+
+.agent-gui-conversation__user-message-flow[data-agent-message-flow-participant="true"] {
+  padding-right: 36px;
+}
+
+.agent-gui-conversation__user-message-flow[data-agent-message-flow-participant="true"]
+  > .agent-gui-conversation__participant-message-header {
+  margin-right: -36px;
+}
+
+.agent-gui-conversation__participant-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hairline ring + crisp circular edge for participant avatars. The ring is
+   painted on the avatar root (paint, anti-aliased on composited layers); the
+   radial-gradient mask on the surface keeps the clipped image edge smooth in
+   virtualized/composited lists where border-radius clipping is not
+   anti-aliased. */
+.agent-gui-conversation__participant-avatar {
+  border-radius: 50%;
+  box-shadow: 0 0 0 0.5px var(--line-2);
+}
+
+.agent-gui-conversation__participant-avatar [data-slot="avatar-surface"] {
+  -webkit-mask-image: radial-gradient(
+    circle closest-side,
+    #000 calc(100% - 1px),
+    transparent
+  );
+  mask-image: radial-gradient(
+    circle closest-side,
+    #000 calc(100% - 1px),
+    transparent
+  );
 }
 
 .agent-gui-conversation__participant-message-content {
@@ -3796,10 +3858,6 @@ aside.workspace-agents-status-panel
   > .agent-gui-conversation__participant-message-content {
   row-gap: 14px;
   justify-items: end;
-}
-
-.agent-gui-conversation__participant-avatar {
-  margin-top: 2px;
 }
 
 .agent-gui-conversation__message-group {

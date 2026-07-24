@@ -37,6 +37,9 @@ const styles = {
   assistantMessageFlow: "agent-gui-conversation__assistant-message-flow",
   participantMessageLayout:
     "agent-gui-conversation__participant-message-layout",
+  participantMessageHeader:
+    "agent-gui-conversation__participant-message-header",
+  participantName: "agent-gui-conversation__participant-name",
   participantMessageContent:
     "agent-gui-conversation__participant-message-content",
   participantAvatar: "agent-gui-conversation__participant-avatar",

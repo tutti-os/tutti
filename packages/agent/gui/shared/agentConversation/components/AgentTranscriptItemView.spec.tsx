@@ -368,7 +368,7 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(screen.getByText("User asks for a fix")).toBeInTheDocument();
   });
 
-  it("places the agent avatar left and the user avatar right from external identity data", () => {
+  it("renders the avatar and sender name in a header row above the message", () => {
     const participantPresentation = {
       enabled: true,
       status: "ready",
@@ -400,17 +400,82 @@ describe("AgentTranscriptItemView render stability", () => {
     const userLayout = container.querySelector(
       '.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="user"]'
     );
-    expect(assistantLayout?.firstElementChild).toHaveAttribute(
-      "aria-label",
-      "Codex"
+    const assistantHeader = container.querySelector(
+      '[data-agent-conversation-participant-header="assistant"]'
     );
-    expect(assistantLayout?.lastElementChild).toHaveClass(
-      "agent-gui-conversation__participant-message-content"
+    expect(assistantHeader).toHaveClass(
+      "agent-gui-conversation__participant-message-header"
     );
-    expect(userLayout?.firstElementChild).toHaveClass(
-      "agent-gui-conversation__participant-message-content"
+    expect(
+      assistantHeader?.querySelector(
+        '[data-agent-conversation-participant-avatar="assistant"]'
+      )
+    ).toHaveAttribute("aria-label", "Codex");
+    expect(assistantHeader).toHaveTextContent("Codex");
+    // The header row renders above the thinking/tool-call info and the
+    // message content.
+    expect(
+      assistantHeader?.compareDocumentPosition(assistantLayout as Element)
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const userHeader = container.querySelector(
+      '[data-agent-conversation-participant-header="user"]'
     );
-    expect(userLayout?.lastElementChild).toHaveAttribute("aria-label", "Alice");
+    expect(userHeader).toHaveClass(
+      "agent-gui-conversation__participant-message-header"
+    );
+    expect(
+      userHeader?.querySelector(
+        '[data-agent-conversation-participant-avatar="user"]'
+      )
+    ).toHaveAttribute("aria-label", "Alice");
+    expect(userHeader).toHaveTextContent("Alice");
+    expect(
+      userHeader?.compareDocumentPosition(userLayout as Element)
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("renders leading tool rows under the participant header above the message", () => {
+    const participantPresentation = {
+      enabled: true,
+      status: "ready",
+      agent: { name: "Codex" },
+      user: { name: "Alice" }
+    } as const;
+    const leadingToolGroup: AgentToolGroupRowVM = {
+      kind: "tool-group",
+      id: "leading-tools-1",
+      turnId: "turn-1",
+      grouped: true,
+      calls: [toolCall(), toolCall()],
+      entries: [],
+      occurredAtUnixMs: 1
+    };
+    const row: AgentMessageRowVM = {
+      ...assistantMessageRow(),
+      leadingToolRows: [leadingToolGroup]
+    };
+    const { container, getByText } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={row}
+        thinkingLabel="Thought process"
+        participantPresentation={participantPresentation}
+      />
+    );
+
+    const header = container.querySelector(
+      '[data-agent-conversation-participant-header="assistant"]'
+    );
+    const toolContent = getByText("Tool group");
+    const messageContent = getByText(/Assistant answer/);
+    expect(header).not.toBeNull();
+    expect(header?.compareDocumentPosition(toolContent)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(toolContent.compareDocumentPosition(messageContent)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
   });
 
   it("copies user message text through the agent host clipboard", async () => {

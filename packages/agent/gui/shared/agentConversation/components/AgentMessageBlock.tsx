@@ -30,6 +30,7 @@ import type {
   AgentConversationParticipantPresentation
 } from "../contracts/agentConversationParticipantPresentation";
 import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
+import { AgentToolGroupRow } from "./AgentToolGroupRow";
 import {
   AgentVisibleErrorMessage,
   recoverVisibleErrorFromMessage
@@ -42,6 +43,8 @@ import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentat
 import { AgentUserImageGrid } from "./AgentMessageImages";
 
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
+const DEFAULT_TOOL_CALLS_LABEL = (count: number): string =>
+  `${count} tool calls`;
 const TRANSPORT_RETRY_PROGRESS_PATTERN =
   /\b(reconnect(?:ing)?(?:\s*(?:\.\.\.|…|[.。]+|:|-))?\s*\(?\d+\s*\/\s*\d+\)?)/i;
 // All system-notice banners use the light-red danger surface. Yellow/warning
@@ -56,6 +59,7 @@ interface AgentMessageBlockProps {
   row: AgentMessageRowVM;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   thinkingLabel: string;
+  toolCallsLabel?: (count: number) => string;
   onAuthLogin?: (provider?: string | null) => void;
   // The conversation's provider, so a failed message recovered as an env error
   // routes its wizard CTA to the right provider.
@@ -74,6 +78,7 @@ export function AgentMessageBlock({
   row,
   onLinkAction,
   thinkingLabel,
+  toolCallsLabel = DEFAULT_TOOL_CALLS_LABEL,
   onAuthLogin,
   provider,
   availableSkills,
@@ -140,6 +145,22 @@ export function AgentMessageBlock({
       ))
     : null;
 
+  const leadingToolContent =
+    !isUser && row.leadingToolRows && row.leadingToolRows.length > 0
+      ? row.leadingToolRows.map((toolRow) => (
+          <AgentToolGroupRow
+            key={toolRow.id}
+            row={toolRow}
+            label={toolCallsLabel}
+            thinkingLabel={thinkingLabel}
+            onLinkClick={handleLinkClick}
+            previewMode={previewMode}
+            showRawTimelineJson={showRawTimelineJson}
+            rawTimelineJsonLabel={rawTimelineJsonLabel}
+          />
+        ))
+      : null;
+
   const messageContent = row.messages.map((message) => {
     const rawTimelineJson =
       showRawTimelineJson &&
@@ -163,6 +184,7 @@ export function AgentMessageBlock({
       ) : isUser ? (
         <AgentRichTextReadonly
           value={message.body}
+          documentCacheKey={message.id}
           className={`workspace-agents-status-panel__detail-user-message ${styles.userMessageBubble}`}
           editorClassName="text-[inherit]"
           onLinkClick={handleLinkClick}
@@ -204,6 +226,7 @@ export function AgentMessageBlock({
       ) : (
         <AgentMessageMarkdown
           content={message.body}
+          documentCacheKey={message.id}
           className={styles.assistantMarkdown}
           onLinkAction={onLinkAction}
           workspaceLinkContext={{
@@ -266,31 +289,74 @@ export function AgentMessageBlock({
           ? "true"
           : undefined
       }
+      data-agent-message-flow-participant={
+        showParticipant ? "true" : undefined
+      }
     >
+      {showParticipant ? (
+        <AgentConversationParticipantHeader
+          presentation={enabledParticipantPresentation}
+          speaker={row.speaker}
+        />
+      ) : null}
       {thinkingContent}
+      {leadingToolContent}
       {showParticipant ? (
         <div
           className={styles.participantMessageLayout}
           data-agent-message-speaker={row.speaker}
         >
-          {!isUser ? (
-            <AgentConversationParticipantAvatar
-              presentation={enabledParticipantPresentation}
-              speaker="assistant"
-            />
-          ) : null}
           <div className={styles.participantMessageContent}>
             {messageContent}
           </div>
-          {isUser ? (
-            <AgentConversationParticipantAvatar
-              presentation={enabledParticipantPresentation}
-              speaker="user"
-            />
-          ) : null}
         </div>
       ) : (
         messageContent
+      )}
+    </div>
+  );
+}
+
+function AgentConversationParticipantHeader({
+  presentation,
+  speaker
+}: {
+  presentation: Extract<
+    AgentConversationParticipantPresentation,
+    { enabled: true }
+  >;
+  speaker: AgentMessageRowVM["speaker"];
+}): JSX.Element {
+  const participant: AgentConversationParticipantIdentity | null =
+    presentation.status === "loading"
+      ? null
+      : speaker === "user"
+        ? presentation.user
+        : presentation.agent;
+  const nameContent = participant ? (
+    <span className={styles.participantName}>{participant.name}</span>
+  ) : null;
+  const avatarContent = (
+    <AgentConversationParticipantAvatar
+      presentation={presentation}
+      speaker={speaker}
+    />
+  );
+  return (
+    <div
+      className={styles.participantMessageHeader}
+      data-agent-conversation-participant-header={speaker}
+    >
+      {speaker === "user" ? (
+        <>
+          {nameContent}
+          {avatarContent}
+        </>
+      ) : (
+        <>
+          {avatarContent}
+          {nameContent}
+        </>
       )}
     </div>
   );
@@ -314,7 +380,7 @@ function AgentConversationParticipantAvatar({
         data-agent-conversation-participant-avatar={speaker}
         label=""
         loading
-        size="md"
+        size={28}
       />
     );
   }
@@ -327,7 +393,7 @@ function AgentConversationParticipantAvatar({
       className={styles.participantAvatar}
       data-agent-conversation-participant-avatar={speaker}
       label={participant.name}
-      size="md"
+      size={28}
       src={participant.avatarUrl}
     />
   );

@@ -95,16 +95,21 @@ export function DeviceScreen({
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
-      if (nextState !== "active") {
-        connectionRun.current += 1;
-        void deviceLink.closeLink().catch(() => undefined);
-        setConnectingPairingID(null);
-        if (!scannerOpen.current) {
-          pairingRun.current += 1;
-          setPairingState((current) =>
-            current === "claiming" || current === "waiting" ? "idle" : current
-          );
-        }
+      if (nextState === "active") {
+        // A backgrounded app stops the in-flight pairing poll. Rehydrate the
+        // list on resume so a pairing confirmed while we were suspended is
+        // visible without requiring a process restart.
+        void refresh();
+        return;
+      }
+      connectionRun.current += 1;
+      void deviceLink.closeLink().catch(() => undefined);
+      setConnectingPairingID(null);
+      if (!scannerOpen.current) {
+        pairingRun.current += 1;
+        setPairingState((current) =>
+          current === "claiming" || current === "waiting" ? "idle" : current
+        );
       }
     });
     return () => {
@@ -112,7 +117,7 @@ export function DeviceScreen({
       connectionRun.current += 1;
       subscription.remove();
     };
-  }, []);
+  }, [refresh]);
 
   const devicesByID = useMemo(
     () => new Map(devices.map((device) => [device.userDeviceId, device])),

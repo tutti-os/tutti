@@ -93,6 +93,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           workspaceAppIcons={workspaceAppIcons}
           previewMode={previewMode}
           thinkingLabel={labels.thinkingLabel}
+          toolCallsLabel={labels.toolCallsLabel}
           showRawTimelineJson={showRawTimelineJson}
           rawTimelineJsonLabel={labels.rawTimelineJson}
           participantPresentation={participantPresentation}

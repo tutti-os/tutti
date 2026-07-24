@@ -217,3 +217,65 @@ export function findTurnDividerRowIndexes(
 
   return dividerRowIndexes;
 }
+
+/**
+ * Participant-header presentation (Agent board session detail): a new user
+ * message always starts the next turn, so the divider goes between the
+ * previous turn's last row and every user message row — regardless of whether
+ * the rebuilt session carries canonical turn ids.
+ */
+export function findParticipantTurnDividerRowIndexes(
+  rows: ReadonlyArray<AgentConversationVM["rows"][number]>
+): ReadonlySet<number> {
+  const dividerRowIndexes = new Set<number>();
+  rows.forEach((row, rowIndex) => {
+    if (rowIndex > 0 && row.kind === "message" && row.speaker === "user") {
+      dividerRowIndexes.add(rowIndex);
+    }
+  });
+  return dividerRowIndexes;
+}
+
+/**
+ * Participant-header presentation: standalone tool-group rows belong to the
+ * work that produced the NEXT assistant message, so they attach to that
+ * message (rendered inside its block) instead of sitting after the previous
+ * one. Trailing tool rows with no following assistant message stay standalone.
+ */
+export function attachLeadingToolRowsToFollowingMessages(
+  rows: ReadonlyArray<AgentConversationVM["rows"][number]>
+): AgentConversationVM["rows"] {
+  const result: AgentConversationVM["rows"] = [];
+  let pendingToolRows: Extract<
+    AgentConversationVM["rows"][number],
+    { kind: "tool-group" }
+  >[] = [];
+  for (const row of rows) {
+    if (row.kind === "tool-group") {
+      pendingToolRows.push(row);
+      continue;
+    }
+    if (row.kind === "message" && row.speaker === "assistant") {
+      if (pendingToolRows.length > 0) {
+        result.push({
+          ...row,
+          leadingToolRows: [
+            ...(row.leadingToolRows ?? []),
+            ...pendingToolRows
+          ]
+        });
+        pendingToolRows = [];
+        continue;
+      }
+      result.push(row);
+      continue;
+    }
+    if (pendingToolRows.length > 0) {
+      result.push(...pendingToolRows);
+      pendingToolRows = [];
+    }
+    result.push(row);
+  }
+  result.push(...pendingToolRows);
+  return result;
+}

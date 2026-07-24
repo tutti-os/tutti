@@ -220,15 +220,15 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   );
   const [fileMentionSuggestion, setFileMentionSuggestion] =
     useState<AgentFileMentionSuggestionState | null>(null);
+  const selectedProjectPath =
+    composerSettings.selectedProjectPath?.trim() ?? "";
   const [isSelectedProjectMissing, setIsSelectedProjectMissing] =
-    useScopedProjectMissingState(draftScopeKey);
+    useScopedProjectMissingState(selectedProjectPath);
   const [isSlashStatusPanelOpen, setIsSlashStatusPanelOpen] = useState(false);
   const slashStatusAgentSessionId = slashStatus?.agentSessionId ?? null;
   const previousSlashStatusAgentSessionIdRef = useRef<string | null>(
     slashStatusAgentSessionId
   );
-  const selectedProjectPath =
-    composerSettings.selectedProjectPath?.trim() ?? "";
   const selectedProjectSectionKey =
     composerSettings.selectedProjectSectionKey?.trim() ?? "";
   const previousSelectedProjectPathRef = useRef(selectedProjectPath);

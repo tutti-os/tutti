@@ -403,8 +403,16 @@ Relative time uses one renderer-realm minute clock. Timestamp leaves subscribe d
 Rail selection, detail hydration, older-page loading, and transcript projection are separate states.
 
 A focused controller may own detail paging/loading/error. Canonical messages, Turns, Interactions, and optimistic prompts still come from the engine. An empty message list means neither hydrated nor not-found.
+Selecting an already hydrated Session must not start another detail reconcile;
+the selection controller alone decides whether hydration is missing. Composer
+option synchronization does not own Session detail reloads.
 
 Timeline projection is pure, deterministic, and provider-neutral. React views render rows/cards and dispatch actions.
+Canonical reducers preserve entity and collection references when an accepted
+Session snapshot is semantically unchanged, while still merging changed Turns
+and Interactions at the same Session version. The legacy activity snapshot
+projector preserves each unchanged domain-slice projection so reconcile
+bookkeeping or composer-option updates do not rebuild transcript inputs.
 
 Turn elapsed-time presentation starts at the client submission timestamp carried
 by the canonical user-message payload, not at provider runtime start. Historical
@@ -427,7 +435,7 @@ replacement may rebuild the document.
 
 A virtualized transcript derives message-locator selection from the virtualizer's measured turn positions and explicit transcript identity. The currently mounted DOM window is rendering output, not a selection source; range changes must not make the locator temporarily select a neighboring message.
 
-Historical rich text renders from the canonical Tiptap document through a static schema renderer. Only interactive composer surfaces own a Tiptap Editor/ProseMirror EditorView; read-only transcript surfaces reuse the same mention/token presentation without mounting editor lifecycle. Conversation titles are a separate plain-text projection: Markdown mention links are normalized to their `@label` text and never render mention SVGs or interactive rich-text tokens.
+Historical rich text renders from the canonical Tiptap document through a static schema renderer. Only interactive composer surfaces own a Tiptap Editor/ProseMirror EditorView; read-only transcript surfaces reuse the same mention/token presentation without mounting editor lifecycle. Settled transcript messages reuse a bounded cache of pure Markdown ASTs and Tiptap JSON documents keyed by message identity and exact parser input; rendered React elements are never cached, and streaming Markdown bypasses this cache. Conversation titles are a separate plain-text projection: Markdown mention links are normalized to their `@label` text and never render mention SVGs or interactive rich-text tokens.
 
 Attachment-only fallback labels such as `[Image]` may provide title or summary
 text, but they are not an additional transcript text block when the canonical
@@ -457,6 +465,10 @@ Use `agentTargetId` for:
 - Agent mentions and handoff targets
 
 `provider` is execution metadata, not UI identity. Multiple Agents may share a provider; UI must not group, deduplicate, cache, or fall back by provider.
+Ordinary Session selection reads composer options through the existing
+target/cwd/settings request cache. It does not force a refresh; force is
+reserved for explicit invalidation, completed Session creation, and documented
+provider prewarm behavior.
 
 Trusted host/daemon code resolves a target-backed request through `agent_targets`, then derives provider and runtime reference. If a client supplies both target and provider, daemon rejects a mismatch.
 
@@ -604,8 +616,9 @@ composer or refreshing the project list cannot restore a previous project.
 
 A locked Session cwd existence check is UI-local observation, not Session
 truth. AgentGUI starts it only after pending creation has resolved, scopes its
-result to the exact Session composer identity, and discards callbacks from a
-previous selection. A host probe failure leaves existence unknown; only a
+result to the normalized selected path, and discards callbacks from a previous
+path. Switching between Sessions that share the same cwd must not repeat the
+same mounted probe. A host probe failure leaves existence unknown; only a
 successful check that confirms absence may render missing-project chrome.
 
 The empty-home carousel may measure its placeholder synchronously when live
