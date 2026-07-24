@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -887,6 +888,71 @@ exit 0
 		t.Fatalf("WriteFile(managed npm) error = %v", err)
 	}
 	return runtimeRoot
+}
+
+func TestAppRunnerWaitForHealthVerifiesInstanceToken(t *testing.T) {
+	const token = "instance-token-abc"
+
+	newServer := func(status int, echo string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if echo != "" {
+				w.Header().Set(appInstanceHeader, echo)
+			}
+			w.WriteHeader(status)
+		}))
+	}
+
+	t.Run("verified when app echoes the token", func(t *testing.T) {
+		server := newServer(http.StatusOK, token)
+		defer server.Close()
+		runner := &AppRunner{HealthcheckTimeout: 2 * time.Second}
+		verified, err := runner.waitForHealth(context.Background(), server.URL, "/healthz", token)
+		if err != nil {
+			t.Fatalf("waitForHealth error = %v", err)
+		}
+		if !verified {
+			t.Fatal("verified = false, want true when the app echoes the token")
+		}
+	})
+
+	t.Run("accepts legacy app without token but reports unverified", func(t *testing.T) {
+		server := newServer(http.StatusNoContent, "")
+		defer server.Close()
+		runner := &AppRunner{HealthcheckTimeout: 2 * time.Second}
+		verified, err := runner.waitForHealth(context.Background(), server.URL, "/healthz", token)
+		if err != nil {
+			t.Fatalf("waitForHealth error = %v", err)
+		}
+		if verified {
+			t.Fatal("verified = true, want false for a legacy app that omits the token")
+		}
+	})
+
+	t.Run("times out when responder returns a wrong token", func(t *testing.T) {
+		server := newServer(http.StatusOK, "not-the-token")
+		defer server.Close()
+		runner := &AppRunner{HealthcheckTimeout: 300 * time.Millisecond}
+		verified, err := runner.waitForHealth(context.Background(), server.URL, "/healthz", token)
+		if err == nil {
+			t.Fatal("waitForHealth error = nil, want a timeout for a mismatched token")
+		}
+		if verified {
+			t.Fatal("verified = true, want false for a mismatched token")
+		}
+	})
+
+	t.Run("strict mode rejects a legacy app without token", func(t *testing.T) {
+		server := newServer(http.StatusOK, "")
+		defer server.Close()
+		runner := &AppRunner{HealthcheckTimeout: 300 * time.Millisecond, RequireInstanceIdentity: true}
+		verified, err := runner.waitForHealth(context.Background(), server.URL, "/healthz", token)
+		if err == nil {
+			t.Fatal("waitForHealth error = nil, want a timeout in strict mode")
+		}
+		if verified {
+			t.Fatal("verified = true, want false in strict mode")
+		}
+	})
 }
 
 func pythonAppReadyServerScript(healthcheckPath string, writeProbe bool) string {

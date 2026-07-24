@@ -2,6 +2,9 @@ package workspace
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,11 +29,28 @@ import (
 
 const defaultAppHealthcheckTimeout = 30 * time.Second
 
+const (
+	// appInstanceTokenEnv carries a per-start random token to the app process.
+	// The app is expected to echo it back in appInstanceHeader on its
+	// healthcheck response so the daemon can confirm the server answering on
+	// the loopback port is the process it launched, rather than another local
+	// process that grabbed the port during the allocate/bind window.
+	appInstanceTokenEnv = "TUTTI_APP_INSTANCE_TOKEN"
+	appInstanceHeader   = "X-Tutti-App-Instance"
+)
+
 type AppRunner struct {
 	HealthcheckTimeout time.Duration
 	HTTPClient         *http.Client
 	OnStateChanged     AppRunnerStateChanged
 	RuntimeResolver    AppRuntimeResolver
+
+	// RequireInstanceIdentity rejects a healthcheck responder that does not
+	// echo the per-start TUTTI_APP_INSTANCE_TOKEN. It defaults to false so
+	// existing apps that only return 2xx keep working (their identity is
+	// logged as unverified). Enable it once apps echo the token to fully
+	// close the loopback-port hijack window.
+	RequireInstanceIdentity bool
 
 	mu        sync.Mutex
 	processes map[string]*appProcess
@@ -211,6 +231,13 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 	tuttiCLIShim := tuttiCLIShimPath()
 	tuttiAPIBaseURL := tuttiAPIBaseURLFromEnv()
 	appToolchainRoot := tuttiAppToolchainRoot()
+	instanceToken, err := newAppInstanceToken()
+	if err != nil {
+		_ = logFile.Close()
+		logAppRuntimeControl("workspace_app_runtime_start_failed", input, port, "startup", err)
+		r.setFailed(key, "startup", err)
+		return
+	}
 	envOverrides := []string{
 		"TUTTI_APP_ID=" + input.AppID,
 		"TUTTI_WORKSPACE_ID=" + input.WorkspaceID,
@@ -227,6 +254,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		"TUTTI_API_BASE_URL=" + tuttiAPIBaseURL,
 		"TUTTI_APP_INSTALLATION_ID=" + input.WorkspaceID + ":" + input.AppID,
 		"TUTTI_APP_SERVER_TOKEN=" + appServerToken(input.WorkspaceID, input.AppID),
+		appInstanceTokenEnv + "=" + instanceToken,
 		"TUTTI_CLI=" + tuttiCLIShim,
 	}
 	envOverrides = append(envOverrides, appRuntime.EnvOverrides...)
@@ -266,7 +294,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 
 	go r.waitForProcess(key, process)
 
-	healthErr := r.waitForHealth(ctx, launchURL, input.HealthcheckPath)
+	identityVerified, healthErr := r.waitForHealth(ctx, launchURL, input.HealthcheckPath, instanceToken)
 	if healthErr != nil {
 		if errors.Is(healthErr, context.Canceled) {
 			_, _ = r.stopProcess(context.Background(), key, process)
@@ -276,6 +304,15 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		logAppRuntimeControl("workspace_app_runtime_healthcheck_failed", input, port, "healthcheck", healthErr)
 		r.setFailed(key, "healthcheck", healthErr)
 		return
+	}
+
+	if !identityVerified {
+		slog.Warn("workspace_app_runtime_identity_unverified",
+			"workspaceId", input.WorkspaceID,
+			"appId", input.AppID,
+			"port", port,
+			"detail", "healthcheck responder did not echo TUTTI_APP_INSTANCE_TOKEN; cannot confirm the server on this port is this app",
+		)
 	}
 
 	logAppRuntimeControl("workspace_app_runtime_running", input, port, "", nil)
@@ -640,7 +677,14 @@ func (r *AppRunner) finishStart(key string, ctx context.Context, start *appStart
 	}
 }
 
-func (r *AppRunner) waitForHealth(ctx context.Context, launchURL string, healthcheckPath string) error {
+// waitForHealth polls the app healthcheck until it succeeds, times out, or the
+// context is cancelled. The bool return reports whether the responder proved it
+// is the process we launched by echoing expectedInstanceToken in
+// appInstanceHeader. A responder that returns 2xx with a wrong token is never
+// accepted (a port squatter cannot know the token), and under
+// RequireInstanceIdentity a responder that omits the token is not accepted
+// either.
+func (r *AppRunner) waitForHealth(ctx context.Context, launchURL string, healthcheckPath string, expectedInstanceToken string) (bool, error) {
 	timeout := r.HealthcheckTimeout
 	if timeout <= 0 {
 		timeout = defaultAppHealthcheckTimeout
@@ -650,27 +694,41 @@ func (r *AppRunner) waitForHealth(ctx context.Context, launchURL string, healthc
 
 	for {
 		if time.Now().After(deadline) {
-			return errors.New("app healthcheck timed out")
+			return false, errors.New("app healthcheck timed out")
 		}
 		if err := ctx.Err(); err != nil {
-			return err
+			return false, err
 		}
 
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, launchURL+healthcheckPath, nil)
 		if err != nil {
-			return fmt.Errorf("create app healthcheck request: %w", err)
+			return false, fmt.Errorf("create app healthcheck request: %w", err)
 		}
 		response, err := r.httpClient().Do(request)
 		if err == nil {
+			instanceEcho := response.Header.Get(appInstanceHeader)
 			_ = response.Body.Close()
 			if response.StatusCode >= 200 && response.StatusCode < 300 {
-				return nil
+				switch {
+				case expectedInstanceToken != "" && subtle.ConstantTimeCompare([]byte(instanceEcho), []byte(expectedInstanceToken)) == 1:
+					// The responder holds the token we handed the app: confirmed identity.
+					return true, nil
+				case instanceEcho == "" && !r.RequireInstanceIdentity:
+					// Legacy app that does not echo the token. Accept for backward
+					// compatibility, but report the identity as unverified.
+					return false, nil
+				default:
+					// A mismatched token (definitely not our app), or a missing
+					// token under strict mode. Keep polling: a squatter cannot
+					// start echoing a secret it never received, so this converges
+					// to a healthcheck timeout.
+				}
 			}
 		}
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return false, ctx.Err()
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
@@ -762,6 +820,14 @@ func uniqueRuntimeKeys(keys []string) []string {
 		result = append(result, key)
 	}
 	return result
+}
+
+func newAppInstanceToken() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate app instance token: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 func allocateLoopbackPort() (int, error) {
