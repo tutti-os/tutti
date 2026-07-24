@@ -14,6 +14,44 @@ func textPrompt(text string) []PromptContentBlock {
 	return []PromptContentBlock{{Type: "text", Text: text}}
 }
 
+func TestACPPromptImageSupportedReadsStandardInitializeShape(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		raw  string
+		want bool
+	}{
+		"standard agentCapabilities.promptCapabilities.image true": {
+			raw:  `{"protocolVersion":1,"agentCapabilities":{"promptCapabilities":{"audio":false,"embeddedContext":true,"image":true}}}`,
+			want: true,
+		},
+		"standard agentCapabilities.promptCapabilities.image false": {
+			raw:  `{"protocolVersion":1,"agentCapabilities":{"promptCapabilities":{"image":false}}}`,
+			want: false,
+		},
+		"standard agentCapabilities without promptCapabilities": {
+			raw:  `{"protocolVersion":1,"agentCapabilities":{"loadSession":true}}`,
+			want: false,
+		},
+		"legacy top-level promptCapabilities.image true": {
+			raw:  `{"protocolVersion":1,"promptCapabilities":{"image":true}}`,
+			want: true,
+		},
+		"legacy agentCapabilities.image true": {
+			raw:  `{"protocolVersion":1,"agentCapabilities":{"image":true}}`,
+			want: true,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if got := acpPromptImageSupported(json.RawMessage(test.raw)); got != test.want {
+				t.Fatalf("acpPromptImageSupported(%s) = %v, want %v", test.raw, got, test.want)
+			}
+		})
+	}
+}
+
 func TestNormalizeRuntimePromptContentPreservesURLOnlyImage(t *testing.T) {
 	signedURL := "https://bucket.example/image.webp?token=secret"
 	content := normalizeRuntimePromptContent([]PromptContentBlock{{Type: "image", MimeType: " image/webp ", URL: " " + signedURL + " ", Name: " image.webp "}})

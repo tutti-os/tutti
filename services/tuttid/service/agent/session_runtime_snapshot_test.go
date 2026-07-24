@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -254,6 +255,50 @@ func TestPrepareRuntimeForResumeProviderNativeSnapshotIgnoresNewBinding(t *testi
 	}
 	if preparedInput.ModelEndpoint != nil {
 		t.Fatalf("provider-native resume used new binding endpoint %#v", preparedInput.ModelEndpoint)
+	}
+}
+
+// Extension-owned harness providers (for example KimiCode via agent
+// extension) persist open provider identities in the runtime snapshot. The
+// resume path must compare them with open normalization; registered-only
+// normalization resolves them to "" and wrongly rejects the resume.
+func TestPrepareRuntimeForResumeAcceptsExtensionHarnessProvider(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{}
+	service.AgentTargetStore = fakeAgentTargetStore{targets: map[string]agenttargetbiz.Target{
+		"extension:codebuddy": {
+			ID:            "extension:codebuddy",
+			Provider:      "acp:codebuddy",
+			LaunchRefJSON: `{"type":"agent_extension","extensionInstallationId":"codebuddy@1.0.0"}`,
+			Name:          "CodeBuddy",
+			Enabled:       true,
+			Source:        agenttargetbiz.SourceUser,
+		},
+	}}
+	var preparedInput runtimeprep.PrepareInput
+	service.RuntimePreparer = fakeRuntimePreparer{input: &preparedInput}
+
+	model := "codebuddy-native"
+	runtimeContext := runtimeContextWithSessionRuntimeSnapshot(nil, CreateSessionInput{
+		AgentTargetID: "extension:codebuddy",
+		Model:         &model,
+	}, "acp:codebuddy", modelPlanResolution{ModelConfiguration: newProviderNativeModelConfiguration("acp:codebuddy", "extension:codebuddy")})
+	_, err := service.prepareRuntimeForResume(context.Background(), PersistedSession{
+		ID:                     "session-extension",
+		WorkspaceID:            "ws",
+		AgentTargetID:          "extension:codebuddy",
+		Provider:               "acp:codebuddy",
+		Settings:               ComposerSettings{Model: model},
+		InternalRuntimeContext: runtimeContext,
+	})
+	if err != nil {
+		t.Fatalf("prepareRuntimeForResume() error = %v", err)
+	}
+	if preparedInput.ProviderTargetRef["provider"] != "acp:codebuddy" ||
+		preparedInput.ProviderTargetRef["targetId"] != "extension:codebuddy" ||
+		preparedInput.ProviderTargetRef["extensionInstallationId"] != "codebuddy@1.0.0" {
+		t.Fatalf("prepared provider target ref = %#v, want extension harness binding", preparedInput.ProviderTargetRef)
 	}
 }
 
