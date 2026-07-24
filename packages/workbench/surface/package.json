@@ -20,7 +20,7 @@
   },
   "scripts": {
     "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/styles dist/styles",
-    "test": "node --test --experimental-strip-types ./src/**/*.test.ts && vitest run ./src/host/WorkbenchHostDock.render.test.tsx ./src/host/WorkbenchHost.render.test.tsx ./src/react/WorkbenchDockComponentPreviewFrame.test.tsx --environment jsdom",
+    "test": "node --test --experimental-strip-types ./src/**/*.test.ts && vitest run ./src/host/WorkbenchHostDock.render.test.tsx ./src/host/WorkbenchHost.render.test.tsx ./src/react/WorkbenchDockComponentPreviewFrame.test.tsx ./src/react/genieTextureCapture.test.tsx --environment jsdom",
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "devDependencies": {
