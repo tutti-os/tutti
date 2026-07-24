@@ -231,17 +231,7 @@ export function AgentGUINodeView({
   }, []);
   const requestCreateConversation = useStableEventCallback(
     (options?: { projectPath?: string | null; source?: string }) => {
-      const source = options?.source;
-      if (options && "projectPath" in options) {
-        createConversationAction(options);
-      } else if (viewModel.composer.composerSettings.selectedProjectPath) {
-        createConversationAction({
-          projectPath: viewModel.composer.composerSettings.selectedProjectPath,
-          source: source ?? "selected_project"
-        });
-      } else {
-        createConversationAction({ source: source ?? "rail_toolbar" });
-      }
+      createConversationAction(options);
       requestComposerFocus();
     }
   );
