@@ -22,6 +22,45 @@ class MockImage extends EventTarget {
 }
 
 let preloadedImages: MockImage[] = [];
+let resizeObservers: MockResizeObserver[] = [];
+
+class MockResizeObserver {
+  constructor(private callback: ResizeObserverCallback) {
+    resizeObservers.push(this);
+  }
+
+  disconnect(): void {}
+
+  observe(): void {}
+
+  resize(width: number, height: number): void {
+    this.callback(
+      [
+        {
+          contentRect: { height, width }
+        } as ResizeObserverEntry
+      ],
+      this as unknown as ResizeObserver
+    );
+  }
+
+  unobserve(): void {}
+}
+
+function expectDeliveryUrl(
+  source: string,
+  expected: {
+    format?: string;
+    height: string;
+    width: string;
+  }
+): void {
+  const url = new URL(source);
+  expect(url.searchParams.get("width")).toBe(expected.width);
+  expect(url.searchParams.get("height")).toBe(expected.height);
+  expect(url.searchParams.get("format")).toBe(expected.format ?? "webp");
+  expect(url.searchParams.get("fit")).toBe("inside");
+}
 
 function finishPreload(status: "error" | "loaded"): void {
   const image = preloadedImages.at(-1);
@@ -42,6 +81,7 @@ function finishPreload(status: "error" | "loaded"): void {
 describe("Avatar", () => {
   beforeEach(() => {
     preloadedImages = [];
+    resizeObservers = [];
     vi.stubGlobal(
       "Image",
       class extends MockImage {
@@ -51,6 +91,7 @@ describe("Avatar", () => {
         }
       }
     );
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
   });
 
   afterEach(() => {
@@ -109,6 +150,8 @@ describe("Avatar", () => {
     );
 
     finishPreload("error");
+    expect(preloadedImages.at(-1)?.src).toBe("https://example.test/avatar.png");
+    finishPreload("error");
 
     expect(screen.getByTestId("avatar")).toHaveAttribute(
       "data-avatar-state",
@@ -139,6 +182,7 @@ describe("Avatar", () => {
     ).toHaveClass("bg-transparent");
 
     finishPreload("error");
+    finishPreload("error");
     expect(screen.getByTestId("avatar")).toHaveTextContent("J");
   });
 
@@ -156,6 +200,8 @@ describe("Avatar", () => {
 
     finishPreload("loaded");
     fireEvent.error(screen.getByTestId("avatar-image"));
+    expect(preloadedImages.at(-1)?.src).toBe("https://example.test/avatar.png");
+    finishPreload("error");
 
     expect(screen.getByTestId("avatar")).toHaveAttribute(
       "data-avatar-state",
@@ -238,7 +284,80 @@ describe("Avatar", () => {
 
     expect(screen.getByTestId("avatar-image")).toHaveAttribute(
       "src",
-      "https://example.test/a.png"
+      expect.stringContaining("https://example.test/a.png?")
+    );
+  });
+
+  it("requests a bucketed 2x WebP image and preserves unrelated query params", () => {
+    render(
+      <Avatar
+        label="Jun Sun"
+        size="lg"
+        src="https://cdn.example.test/avatar.png?token=preserved"
+      />
+    );
+
+    const source = preloadedImages.at(-1)?.src;
+    expect(source).toBeDefined();
+    expectDeliveryUrl(source ?? "", { height: "96", width: "96" });
+    expect(new URL(source ?? "").searchParams.get("token")).toBe("preserved");
+  });
+
+  it("updates delivery dimensions from the rendered avatar box", () => {
+    render(
+      <Avatar label="Jun Sun" src="https://cdn.example.test/avatar.png" />
+    );
+
+    act(() => {
+      resizeObservers.at(-1)?.resize(88, 40);
+    });
+
+    expectDeliveryUrl(preloadedImages.at(-1)?.src ?? "", {
+      height: "96",
+      width: "192"
+    });
+  });
+
+  it("supports requesting the original source without delivery params", () => {
+    render(
+      <Avatar
+        delivery="original"
+        label="Jun Sun"
+        src="https://cdn.example.test/avatar.png?token=preserved"
+      />
+    );
+
+    expect(preloadedImages.at(-1)?.src).toBe(
+      "https://cdn.example.test/avatar.png?token=preserved"
+    );
+  });
+
+  it("does not transform non-HTTP image sources", () => {
+    render(<Avatar label="Jun Sun" src="data:image/png;base64,cHJldmlldw==" />);
+
+    expect(preloadedImages.at(-1)?.src).toBe(
+      "data:image/png;base64,cHJldmlldw=="
+    );
+  });
+
+  it("retries the original URL when image delivery fails", () => {
+    render(
+      <Avatar
+        imageProps={{ "data-testid": "avatar-image" }}
+        label="Jun Sun"
+        src="https://cdn.example.test/avatar.png?token=preserved"
+      />
+    );
+
+    finishPreload("error");
+    expect(preloadedImages.at(-1)?.src).toBe(
+      "https://cdn.example.test/avatar.png?token=preserved"
+    );
+    finishPreload("loaded");
+
+    expect(screen.getByTestId("avatar-image")).toHaveAttribute(
+      "src",
+      "https://cdn.example.test/avatar.png?token=preserved"
     );
   });
 
