@@ -67,6 +67,7 @@ export type {
   AgentComposerGitBranches,
   AgentComposerPromptTip,
   AgentComposerReferenceProvenanceFilter,
+  AgentComposerReferenceProvenanceFilters,
   AgentComposerProps,
   AgentComposerSlashStatus,
   AgentComposerSlashStatusLimit,
@@ -144,7 +145,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     prepareExternalPromptFiles = null,
     promptAssetLimit = null,
     onRequestGitBranches = null,
-    referenceProvenanceFilter = null
+    referenceProvenanceFilters = null
   } = props;
   const draftPrompt = agentComposerDraftPrompt(draftContent);
   const goalDraftObjective = canGoalControl
@@ -246,7 +247,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   draftByScopeKeyRef.current[draftScopeKey] = draftContent;
   const promptTipRef = useRef<HTMLSpanElement | null>(null);
   const { mentionControllerRef, mentionSearchState } =
-    useAgentMentionSearchController(referenceProvenanceFilter);
+    useAgentMentionSearchController(referenceProvenanceFilters);
   const editorHandleRef = useRef<AgentRichTextEditorHandle | null>(null);
   const wasActiveRef = useRef(isActive);
   const lastComposerFocusRequestRef = useRef<number | null>(null);

@@ -226,7 +226,10 @@ The controller owns only ephemeral selection state. The host injects the
 catalog, and concrete providers or `ReferenceSourceService.search()` own the
 actual filtering. An active filter is part of the query and cache identity and
 must be applied before pagination. Picker result grouping remains source-owned;
-the filter option list itself is flat.
+the filter option list itself is flat. The compact AgentGUI palette keeps an
+independent filter selection for each mention tab. A tab that has not been
+filtered starts at All, while returning to a previously filtered tab restores
+only that tab's selection.
 
 AgentGUI exposes that host boundary as the optional complete
 `referenceProvenanceFilterCatalog` capability. Omitting it keeps the public
