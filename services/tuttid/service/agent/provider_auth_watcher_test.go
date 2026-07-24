@@ -141,8 +141,11 @@ func TestDefaultProviderAuthWatchEntriesCoverCodexClaudeAndOpenCode(t *testing.T
 	}
 	for _, want := range []string{
 		configPath,
+		filepath.Join(home, ".config", "opencode", "config.json"),
+		filepath.Join(home, ".config", "opencode", "opencode.json"),
+		filepath.Join(home, ".config", "opencode", "opencode.jsonc"),
 		filepath.Join(configDir, "opencode.json"),
-		filepath.Join(configDir, "config.json"),
+		filepath.Join(configDir, "opencode.jsonc"),
 		filepath.Join(dataDir, "opencode", "auth.json"),
 	} {
 		if !containsString(opencodePaths, want) {

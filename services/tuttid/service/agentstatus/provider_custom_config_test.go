@@ -253,6 +253,98 @@ base_url = "https://gateway.mycorp.com/v1"
 	}
 }
 
+func TestProviderHasAPICredentialOpenCodeJSONCAPIKey(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".config", "opencode", "opencode.jsonc"), `{
+		// OpenCode accepts comments and trailing commas.
+		"provider": {
+			"openai": {
+				"options": {
+					"apiKey": "sk-test",
+				},
+			},
+		},
+	}`)
+	svc := customConfigService(home)
+	if !svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("expected OpenCode JSONC provider apiKey to count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeResolvesEnvReference(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"),
+		`{"provider":{"openai":{"options":{"apiKey":"{env:OPENAI_API_KEY}"}}}}`)
+	svc := customConfigService(home)
+	if svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("unset OpenCode env reference must not count as an API credential")
+	}
+	svc.Environ = func() []string { return []string{"OPENAI_API_KEY=sk-test"} }
+	if !svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("resolved OpenCode env reference should count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeResolvesRelativeFileReference(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, ".config", "opencode")
+	writeFile(t, filepath.Join(configDir, "secrets", "openai-key"), "sk-test\n")
+	writeFile(t, filepath.Join(configDir, "opencode.json"),
+		`{"provider":{"openai":{"options":{"apiKey":"{file:secrets/openai-key}"}}}}`)
+	svc := customConfigService(home)
+	if !svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("resolved OpenCode file reference should count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeRejectsMissingFileReference(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"),
+		`{"provider":{"openai":{"options":{"apiKey":"prefix-{file:missing-key}"}}}}`)
+	svc := customConfigService(home)
+	if svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("missing OpenCode file reference must invalidate the apiKey declaration")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeHonorsConfigPrecedence(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, ".config", "opencode")
+	writeFile(t, filepath.Join(configDir, "opencode.json"),
+		`{"provider":{"openai":{"options":{"apiKey":"sk-lower"}}}}`)
+	writeFile(t, filepath.Join(configDir, "opencode.jsonc"),
+		`{"provider":{"openai":{"options":{"apiKey":""}}}}`)
+	svc := customConfigService(home)
+	if svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("later empty OpenCode JSONC apiKey must override an earlier credential")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeCustomConfig(t *testing.T) {
+	home := t.TempDir()
+	configPath := filepath.Join(home, "custom", "opencode.jsonc")
+	writeFile(t, configPath,
+		`{"provider":{"anthropic":{"options":{"apiKey":"sk-test"}}}}`)
+	svc := customConfigService(home)
+	svc.Environ = func() []string { return []string{"OPENCODE_CONFIG=" + configPath} }
+	if !svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("expected OPENCODE_CONFIG provider apiKey to count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeBaseURLOnlyIsNotCredential(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"),
+		`{"provider":{"openai":{"options":{"baseURL":"https://gw.local/v1"}}}}`)
+	svc := customConfigService(home)
+	if svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("OpenCode baseURL without apiKey must not count as an API credential")
+	}
+	if !svc.providerUsesCustomConfig(agentprovider.OpenCode) {
+		t.Fatal("OpenCode baseURL should still count as custom config")
+	}
+}
+
 func TestProviderHasAPICredentialNone(t *testing.T) {
 	svc := customConfigService(t.TempDir())
 	if svc.providerHasAPICredential(agentprovider.ClaudeCode) {
@@ -260,5 +352,8 @@ func TestProviderHasAPICredentialNone(t *testing.T) {
 	}
 	if svc.providerHasAPICredential(agentprovider.Codex) {
 		t.Fatal("no env and no config should not have an API credential")
+	}
+	if svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("no env and no config should not have an OpenCode API credential")
 	}
 }

@@ -385,7 +385,8 @@ func TestMigratedReturnsOpenCodeNestedClones(t *testing.T) {
 	first.Runtime.StandardACP.SettingsEnvironment.JSONFields[0].JSONKey = "mutated"
 	first.Status.AuthWatch.Sources[0].PathEnvVars[0] = "MUTATED"
 	first.Status.AuthWatch.Sources[1].RootCandidates[0].EnvVar = "MUTATED"
-	first.Status.AuthWatch.Sources[1].Paths[0] = "mutated"
+	first.Status.AuthWatch.Sources[2].RootCandidates[0].EnvVar = "MUTATED"
+	first.Status.AuthWatch.Sources[2].Paths[0] = "mutated"
 
 	second, ok := Find(OpenCodeProviderID)
 	if !ok {
@@ -396,8 +397,10 @@ func TestMigratedReturnsOpenCodeNestedClones(t *testing.T) {
 		t.Fatalf("Runtime.StandardACP leaked mutation: %#v", second.Runtime.StandardACP)
 	}
 	if second.Status.AuthWatch.Sources[0].PathEnvVars[0] != "OPENCODE_CONFIG" ||
-		second.Status.AuthWatch.Sources[1].RootCandidates[0].EnvVar != "OPENCODE_CONFIG_DIR" ||
-		second.Status.AuthWatch.Sources[1].Paths[0] != "opencode.json" {
+		second.Status.AuthWatch.Sources[1].RootCandidates[0].EnvVar != "XDG_CONFIG_HOME" ||
+		second.Status.AuthWatch.Sources[1].Paths[0] != "config.json" ||
+		second.Status.AuthWatch.Sources[2].RootCandidates[0].EnvVar != "OPENCODE_CONFIG_DIR" ||
+		second.Status.AuthWatch.Sources[2].Paths[0] != "opencode.json" {
 		t.Fatalf("Status.AuthWatch leaked mutation: %#v", second.Status.AuthWatch)
 	}
 }

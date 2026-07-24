@@ -63,11 +63,16 @@ func openCodeDescriptor() ProviderDescriptor {
 					{PathEnvVars: []string{"OPENCODE_CONFIG"}},
 					{
 						RootCandidates: []AuthWatchRootCandidateDescriptor{
-							{EnvVar: "OPENCODE_CONFIG_DIR"},
 							{EnvVar: "XDG_CONFIG_HOME", Suffix: "opencode"},
 						},
 						DefaultRoot: "~/.config/opencode",
-						Paths:       []string{"opencode.json", "config.json"},
+						Paths:       []string{"config.json", "opencode.json", "opencode.jsonc"},
+					},
+					{
+						RootCandidates: []AuthWatchRootCandidateDescriptor{
+							{EnvVar: "OPENCODE_CONFIG_DIR"},
+						},
+						Paths: []string{"opencode.json", "opencode.jsonc"},
 					},
 					{
 						RootCandidates: []AuthWatchRootCandidateDescriptor{

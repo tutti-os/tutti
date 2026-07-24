@@ -645,6 +645,40 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   API-key-without-login readiness, then run
   `cd services/tuttid && go test ./service/agentstatus`.
 
+### OpenCode shows login required when `provider.options.apiKey` is configured
+
+- Symptom:
+  OpenCode sessions work from the CLI, but Tutti marks OpenCode as
+  `auth_required`. Clicking Login from a standalone Agent window can then show
+  a generic internal-service error even though no interactive login is needed.
+- Quick checks:
+  Run `opencode auth list`. If it has no stored login, inspect the effective
+  global or explicit OpenCode config for a non-empty
+  `provider.<id>.options.apiKey` declaration. Check all supported global names
+  in merge order: `config.json`, `opencode.json`, and `opencode.jsonc`. When the
+  declaration uses `{env:NAME}` or `{file:path}`, verify that the reference
+  resolves without printing the credential.
+- Root cause:
+  `opencode auth list` and `~/.local/share/opencode/auth.json` describe
+  OpenCode's stored auth records. OpenCode can also authenticate directly from
+  provider config, including JSONC and environment/file substitutions. A
+  detector that checks only the auth store reports a false login requirement;
+  omitting `opencode.jsonc` from the auth/config watcher can also leave the
+  false result cached after the config changes.
+- Fix:
+  Provider status must merge the global, `OPENCODE_CONFIG`,
+  `OPENCODE_CONFIG_DIR`, and `OPENCODE_CONFIG_CONTENT` sources in OpenCode
+  precedence order. Resolve only the winning `apiKey` declarations and report
+  `apiKey` / `API Usage Billing` when at least one resolves non-empty. Watch all
+  three global file names, including JSONC. Do not log or return credential
+  values. Project-local config remains outside shared provider readiness
+  because the status snapshot has no workspace cwd.
+- Validation:
+  Cover literal, `{env:...}`, `{file:...}`, JSONC, empty higher-precedence
+  overrides, and the final `ready` status in `agentstatus` tests. Also assert
+  that the provider auth watcher includes `opencode.jsonc`, then run
+  `cd services/tuttid && go test ./service/agentstatus ./service/agent`.
+
 ### Codex session fails with not connected when model_catalog_json is relative
 
 - Symptom:
