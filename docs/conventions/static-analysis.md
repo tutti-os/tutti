@@ -29,6 +29,7 @@ Repository entrypoints:
 - `pnpm lint:go`
 - `pnpm typecheck`
 - `pnpm check:codexproto-generated`
+- `pnpm check:agent-live-protocol-generated`
 - `pnpm check:agent-gui-provider-catalog-generated`
 - `pnpm check:agent-host-boundary`
 - `pnpm check:agent-provider-strategy-boundaries`
@@ -101,6 +102,14 @@ The codexproto generator runs during `pnpm check:full` alongside full-repository
 boundary scanners. Generator scratch files must stay outside the repository
 tree, even when they are removed before the generator exits, so parallel checks
 cannot observe transient files and fail nondeterministically.
+
+The optimistic AgentGUI live fast lane is schema-backed separately from the
+canonical cloud event. `pnpm check:agent-live-protocol-generated` hashes the
+live `message_delta` schema together with the reused canonical
+`turn_update`, `interaction_update`, and `session_audit` variants, then checks
+the committed Go and TypeScript revision constants. Change either schema and
+run `pnpm generate:agent-live-protocol`; do not hand-edit the generated
+revision files.
 
 The Agent GUI provider identity catalog under
 `packages/agent/gui/generated/providerIdentityCatalog.ts` is generated from the

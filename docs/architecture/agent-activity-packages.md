@@ -770,13 +770,16 @@ launchers must re-authenticate and resolve it before using any concrete provider
 invocation. UI packages must keep `provider` as the real provider identity and
 must not synthesize providers for shared or remote targets.
 
-The desktop service owns the event-stream connection. Its reconcile bridge
-maps normalized events to engine intents: continuous versions of mutable message
-snapshots are folded inline, while a message-version gap or recovered connection
-schedules authoritative incremental message reconciliation through the engine
-command port. Turn, interaction, and state changes also schedule their
-authoritative HTTP reconciliation through that port. UI consumers never retain
-a second per-session stream or merge canonical entities themselves.
+The desktop service owns the event-stream connection. Canonical
+`message_update` snapshots remain the hydration and cloud-reconcile contract.
+The local/shared optimistic fast lane instead carries schema-backed
+`message_delta` events produced by the provider normalizer: the transport must
+never derive deltas by comparing snapshots. A host materializes these deltas in
+the activity-core optimistic overlay, projects that overlay over its latest
+canonical message base, and dispatches ordinary messages to the engine. A
+sequence gap, discontinuity, recovered connection, or unanchored append
+schedules authoritative reconciliation. UI consumers never retain transport
+epoch/sequence state or distinguish local from shared activity sources.
 
 Hosts may accept older provider/runtime reports with missing transcript
 ownership or ordering fields, but those gaps must be filled before events enter
@@ -798,7 +801,12 @@ Realtime transport lifecycle belongs to the host. Engine semantics define how
 the normalized event is applied:
 
 - keep one workspace event-stream subscription independent of mounted panels
-- apply `message_update` messages inline and batch them by engine frame
+- hydrate canonical `message_update` snapshots into the host-owned base
+- materialize optimistic `message_delta` events before dispatching ordinary
+  messages into the engine; never replay an append operation log over a newer
+  canonical base
+- keep a newer optimistic terminal projection over a cloud nonterminal, and
+  clear it when canonical terminal truth arrives
 - reconcile `turn_update` and `interaction_update` through a full session pull
 - preserve whether a reconcile was realtime-triggered until its authoritative
   session is applied; if the authoritative fetch fails, restore that provenance

@@ -1,10 +1,12 @@
 package agentruntime
 
 import (
+	"encoding/json"
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
@@ -38,6 +40,16 @@ func ProjectActivityEventsToStreamEvents(session Session, events []activityshare
 				Data:      patch,
 			})
 		}
+		if delta, ok := liveMessageDeltaFromSessionEvent(session, event, timestamp); ok {
+			out = append(out, StreamEvent{
+				EventType: StreamEventMessageDelta,
+				Data:      delta,
+			})
+			continue
+		}
+		if isPrecommitTerminalTextMessage(event) {
+			continue
+		}
 		if update, ok := messageUpdateFromSessionEvent(source, event, sessionID, timestamp); ok {
 			out = append(out, StreamEvent{
 				EventType: StreamEventMessageUpdate,
@@ -57,6 +69,54 @@ func ProjectActivityEventsToStreamEvents(session Session, events []activityshare
 		}
 	}
 	return out
+}
+
+func liveMessageDeltaFromSessionEvent(session Session, event activityshared.Event, timestamp int64) (liveprotocol.Event, bool) {
+	operation, ok := event.Payload.Metadata[liveContentOperationMetadataKey].(*liveprotocol.MessageContentOperation)
+	if !ok || operation == nil {
+		return liveprotocol.Event{}, false
+	}
+	messageID := firstNonEmptyString(stringFromPayload(event.Payload.Metadata, "messageId"), event.EventID)
+	if messageID == "" || strings.TrimSpace(event.Payload.TurnID) == "" || timestamp <= 0 {
+		return liveprotocol.Event{}, false
+	}
+	operationCopy := *operation
+	operationCopy.Value = append(json.RawMessage(nil), operation.Value...)
+	status := strings.TrimSpace(stringFromPayload(event.Payload.Metadata, "streamState"))
+	data := liveprotocol.MessageDeltaData{
+		WorkspaceID:      strings.TrimSpace(session.RoomID),
+		AgentSessionID:   strings.TrimSpace(event.AgentSessionID),
+		MessageID:        messageID,
+		TurnID:           strings.TrimSpace(event.Payload.TurnID),
+		Role:             strings.TrimSpace(stringFromPayload(event.Payload.Metadata, liveMessageRoleMetadataKey)),
+		Kind:             strings.TrimSpace(stringFromPayload(event.Payload.Metadata, liveMessageKindMetadataKey)),
+		OccurredAtUnixMS: timestamp,
+		Content:          &operationCopy,
+	}
+	if status != "" {
+		data.Status = &status
+	}
+	delta, err := liveprotocol.NewMessageDeltaEvent(data)
+	return delta, err == nil
+}
+
+func isPrecommitTerminalTextMessage(event activityshared.Event) bool {
+	if event.Type != activityshared.EventMessageAppended && event.Type != activityshared.EventMessageCreated {
+		return false
+	}
+	role := strings.TrimSpace(string(event.Payload.Role))
+	if role != RoleAssistant && role != RoleAssistantThinking {
+		return false
+	}
+	if stringFromPayload(event.Payload.Metadata, "contentMode") != messageContentModeSnapshot {
+		return false
+	}
+	switch stringFromPayload(event.Payload.Metadata, "streamState") {
+	case messageStreamStateCompleted, messageStreamStateFailed:
+		return true
+	default:
+		return false
+	}
 }
 
 func eventSourceFromSession(session Session) canonical.EventSource {

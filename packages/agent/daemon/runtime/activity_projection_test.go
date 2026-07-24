@@ -1,11 +1,65 @@
 package agentruntime
 
 import (
+	"encoding/json"
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 )
+
+func TestACPNormalizerProjectsSemanticMessageDeltaWithoutSnapshotDiff(t *testing.T) {
+	t.Parallel()
+	session := reportTestSession()
+	normalizer := newACPTurnNormalizer()
+
+	first := normalizer.AppendAssistantChunk(session, "turn-1", "Hel")
+	second := normalizer.AppendAssistantChunk(session, "turn-1", "Hello")
+	stream := ProjectActivityEventsToStreamEvents(session, append(first, second...))
+	if len(stream) != 2 || stream[0].EventType != StreamEventMessageDelta || stream[1].EventType != StreamEventMessageDelta {
+		t.Fatalf("stream = %#v, want two message deltas", stream)
+	}
+	firstDelta := stream[0].Data.(liveprotocol.Event)
+	secondDelta := stream[1].Data.(liveprotocol.Event)
+	var firstData, secondData liveprotocol.MessageDeltaData
+	if err := json.Unmarshal(firstDelta.Data, &firstData); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(secondDelta.Data, &secondData); err != nil {
+		t.Fatal(err)
+	}
+	if firstData.Content == nil || firstData.Content.Operation != "set" || string(firstData.Content.Value) != `"Hel"` {
+		t.Fatalf("first delta = %#v", firstData)
+	}
+	if secondData.Content == nil || secondData.Content.Operation != "append_text" || secondData.Content.Text != "lo" {
+		t.Fatalf("second delta = %#v", secondData)
+	}
+
+	terminal := normalizer.FinishCompleted(session, "turn-1")
+	if got := ProjectActivityEventsToStreamEvents(session, terminal); len(got) != 0 {
+		t.Fatalf("precommit terminal leaked to live stream: %#v", got)
+	}
+}
+
+func TestThinkingDeltaPreservesAssistantThinkingRole(t *testing.T) {
+	t.Parallel()
+	session := reportTestSession()
+	normalizer := newACPTurnNormalizer()
+	events := normalizer.AppendThinkingChunk(session, "turn-1", "inspect")
+	stream := ProjectActivityEventsToStreamEvents(session, events)
+	if len(stream) != 1 {
+		t.Fatalf("stream = %#v", stream)
+	}
+	event := stream[0].Data.(liveprotocol.Event)
+	var data liveprotocol.MessageDeltaData
+	if err := json.Unmarshal(event.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.Role != RoleAssistantThinking || data.Kind != "reasoning" {
+		t.Fatalf("thinking delta = %#v", data)
+	}
+}
 
 func TestExtensionProviderProjectsTurnLifecycleEvents(t *testing.T) {
 	t.Parallel()
