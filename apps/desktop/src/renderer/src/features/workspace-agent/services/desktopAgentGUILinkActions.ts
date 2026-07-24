@@ -86,7 +86,7 @@ export async function runDesktopAgentGUILinkAction(
       });
     case "open-url":
       return dependencies.openBrowserUrl({
-        reuseIfOpen: false,
+        reuseIfOpen: true,
         source: "agent_command",
         url: action.url,
         workspaceId: dependencies.workspaceId
