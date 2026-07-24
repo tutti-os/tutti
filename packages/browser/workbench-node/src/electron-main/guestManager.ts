@@ -49,6 +49,34 @@ import {
   resolveBrowserNodeUrlError
 } from "./guestNavigation.ts";
 
+const guestCursorFixCss = [
+  '[contenteditable=""], [contenteditable="true"], .ProseMirror {',
+  "  position: relative;",
+  "  z-index: 0;",
+  "}",
+  '[contenteditable=""] img, [contenteditable="true"] img, .ProseMirror img {',
+  "  position: relative;",
+  "  z-index: 0;",
+  "}"
+].join("\n");
+
+async function injectGuestCursorFixCss(
+  contents: BrowserGuestWebContents,
+  logger?: BrowserGuestManagerInput["logger"]
+): Promise<void> {
+  if (!contents.insertCSS || contents.isDestroyed()) {
+    return;
+  }
+
+  try {
+    await contents.insertCSS(guestCursorFixCss);
+  } catch (error) {
+    logger?.warn?.("Browser Node failed to inject cursor fix CSS", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
 interface BrowserGuestSession {
   appliedColorScheme: BrowserPreferredColorScheme | null;
   automationTarget: BrowserNodeAutomationTargetMetadata | null;
@@ -262,6 +290,7 @@ export function createBrowserGuestManager({
       const statusCode = typeof args[2] === "number" ? args[2] : undefined;
       const statusText = typeof args[3] === "string" ? args[3] : undefined;
       publishState(session);
+      void injectGuestCursorFixCss(contents, logger);
       if (!isHttpErrorStatusCode(statusCode)) {
         return;
       }
@@ -822,6 +851,7 @@ export function createBrowserGuestManager({
         preferredColorScheme
       );
       await loadDesiredUrl(session);
+      await injectGuestCursorFixCss(contents, logger);
     },
     reload(input) {
       const contents = sessions.get(input.nodeId)?.contents;

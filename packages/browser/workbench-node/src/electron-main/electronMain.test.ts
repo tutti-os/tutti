@@ -1284,6 +1284,53 @@ test("registerBrowserNodeElectronMain opens devtools from a native context menu 
   assert.equal(contents.openDevToolsCalls, 1);
 });
 
+test("injects cursor fix CSS when Browser Node guests register and navigate", async () => {
+  const contents = new MockBrowserGuestWebContents(11);
+  const manager = createBrowserGuestManager({
+    emit: () => undefined,
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+
+  await manager.prepareSession({
+    nodeId: "browser-css",
+    profileId: null,
+    sessionMode: "shared"
+  });
+  await manager.activate({
+    nodeId: "browser-css",
+    profileId: null,
+    sessionMode: "shared",
+    url: "example.com"
+  });
+  await manager.registerGuest({
+    nodeId: "browser-css",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: 11
+  });
+
+  assert.ok(contents.injectedCssChunks.length >= 1, "CSS should be injected on registration");
+  assert.ok(
+    contents.injectedCssChunks[0]!.includes("contenteditable"),
+    "Injected CSS should target contentEditable elements"
+  );
+  assert.ok(
+    contents.injectedCssChunks[0]!.includes("ProseMirror"),
+    "Injected CSS should target ProseMirror editors"
+  );
+
+  const injectCountBeforeNavigation = contents.injectedCssChunks.length;
+  contents.emit("did-navigate", {}, "https://example.com/page2", 200, "OK");
+
+  assert.ok(
+    contents.injectedCssChunks.length > injectCountBeforeNavigation,
+    "CSS should be re-injected after navigation"
+  );
+
+  await manager.close({ nodeId: "browser-css" });
+});
+
 test("syncs the preferred color scheme to Browser Node guests", async () => {
   const contents = new MockBrowserGuestWebContents(10);
   let currentScheme: "dark" | "light" = "dark";
@@ -1699,6 +1746,12 @@ class MockBrowserGuestWebContents
 
   openDevToolsCalls = 0;
   openDevToolsOptions: unknown[] = [];
+  injectedCssChunks: string[] = [];
+
+  async insertCSS(css: string): Promise<string> {
+    this.injectedCssChunks.push(css);
+    return "inject-key";
+  }
 
   openDevTools(options?: unknown): void {
     this.openDevToolsCalls += 1;
