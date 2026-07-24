@@ -20,6 +20,7 @@ export const en = {
     download: "Download",
     copyImage: "Copy image",
     downloadImage: "Download image",
+    imageDownloadStarted: "Downloading image",
     expandImage: "Zoom image",
     imageZoomPercent: "Image zoom {{percent}}%",
     error: "Error",

@@ -22,6 +22,7 @@ export const zhCN = {
     download: "下载",
     copyImage: "复制图片",
     downloadImage: "下载图片",
+    imageDownloadStarted: "正在下载图片",
     expandImage: "放大图片",
     imageZoomPercent: "图片缩放 {{percent}}%",
     error: "错误",
