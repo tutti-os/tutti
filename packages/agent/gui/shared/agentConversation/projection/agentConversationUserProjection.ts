@@ -52,7 +52,13 @@ function projectUserMessageContentParts(
         name: image.name,
         data: image.data,
         url: image.url,
-        path: image.path
+        path: image.path,
+        uri: image.uri,
+        hostPath: image.hostPath,
+        assetId: image.assetId,
+        kind: image.kind,
+        uploadStatus: image.uploadStatus,
+        storagePolicy: image.storagePolicy
       })),
       occurredAtUnixMs: message.occurredAtUnixMs ?? null,
       sourceTimelineItems: message.sourceTimelineItems
@@ -107,6 +113,12 @@ interface UserPromptImageBlock {
   data?: string | null;
   url?: string | null;
   path?: string | null;
+  uri?: string | null;
+  hostPath?: string | null;
+  assetId?: string | null;
+  kind?: string | null;
+  uploadStatus?: string | null;
+  storagePolicy?: string | null;
 }
 
 function userPromptContentBlocks(
@@ -158,7 +170,13 @@ function userPromptContentBlocks(
         name: optionalString(block.name),
         data: optionalString(block.data),
         url: optionalString(block.url),
-        path: optionalString(block.path)
+        path: optionalString(block.path),
+        uri: optionalString(block.uri),
+        hostPath: optionalString(block.hostPath),
+        assetId: optionalString(block.assetId),
+        kind: optionalString(block.kind),
+        uploadStatus: optionalString(block.uploadStatus),
+        storagePolicy: optionalString(block.storagePolicy)
       }
     ];
   });

@@ -7,6 +7,12 @@ export interface QueuedPromptImageLoadRequest {
   mimeType: string;
   name: string;
   path: string;
+  uri: string;
+  hostPath: string;
+  assetId: string;
+  kind: string;
+  uploadStatus: string;
+  storagePolicy: string;
   remoteUrl: string;
   runtime: AgentActivityRuntime;
   workspaceId: string;
@@ -21,6 +27,12 @@ export function queuedPromptImageLoadRequestIdentity(
     request.agentSessionId,
     request.attachmentId,
     request.path,
+    request.uri,
+    request.hostPath,
+    request.assetId,
+    request.kind,
+    request.uploadStatus,
+    request.storagePolicy,
     request.mimeType,
     request.name,
     request.remoteUrl
@@ -56,6 +68,12 @@ export class QueuedPromptImageLoadOwner {
       mimeType,
       name,
       path,
+      uri,
+      hostPath,
+      assetId,
+      kind,
+      uploadStatus,
+      storagePolicy,
       runtime,
       workspaceId
     } = this.request;
@@ -74,7 +92,13 @@ export class QueuedPromptImageLoadOwner {
         agentSessionId,
         mimeType,
         name,
-        path
+        path,
+        uri,
+        hostPath,
+        assetId,
+        kind,
+        uploadStatus,
+        storagePolicy
       });
     };
     void readAsset()

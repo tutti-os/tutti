@@ -194,6 +194,12 @@ class AgentQueuedPromptImage extends Component<
       mimeType: props.image.mimeType,
       name: props.image.name?.trim() ?? "",
       path: props.image.path?.trim() ?? "",
+      uri: props.image.uri?.trim() ?? "",
+      hostPath: props.image.hostPath?.trim() ?? "",
+      assetId: props.image.assetId?.trim() ?? "",
+      kind: props.image.kind?.trim() ?? "",
+      uploadStatus: props.image.uploadStatus?.trim() ?? "",
+      storagePolicy: props.image.storagePolicy?.trim() ?? "",
       remoteUrl: props.image.url?.trim() ?? "",
       workspaceId: props.workspaceId?.trim() ?? ""
     });
@@ -229,6 +235,12 @@ class AgentQueuedPromptImage extends Component<
         mimeType: image.mimeType,
         name: image.name?.trim() ?? "",
         path,
+        uri: image.uri?.trim() ?? "",
+        hostPath: image.hostPath?.trim() ?? "",
+        assetId: image.assetId?.trim() ?? "",
+        kind: image.kind?.trim() ?? "",
+        uploadStatus: image.uploadStatus?.trim() ?? "",
+        storagePolicy: image.storagePolicy?.trim() ?? "",
         remoteUrl,
         runtime,
         workspaceId

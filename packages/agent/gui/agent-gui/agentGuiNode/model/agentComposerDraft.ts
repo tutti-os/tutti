@@ -21,6 +21,7 @@ import {
   materializeAgentComposerFileMentions
 } from "./agentExternalPromptFiles";
 import { agentComposerFileMentionReferences } from "../agentRichText/agentMentionMarkdown";
+import { normalizeAgentPromptAssetRestoreMetadata } from "./agentPromptAssetRestoreMetadata";
 
 const PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS = 10;
 
@@ -301,7 +302,8 @@ export function normalizeAgentPromptContentBlocks(
             : imagePath
               ? { path: imagePath }
               : {}),
-        ...(block.name?.trim() ? { name: block.name.trim() } : {})
+        ...(block.name?.trim() ? { name: block.name.trim() } : {}),
+        ...normalizeAgentPromptAssetRestoreMetadata(block)
       });
       continue;
     }
@@ -464,7 +466,8 @@ export function agentComposerDraftToPromptContent(input: {
           : image.path
             ? { path: image.path }
             : { data: image.data }),
-        name: image.name
+        name: image.name,
+        ...normalizeAgentPromptAssetRestoreMetadata(image)
       })),
     ...largeTextPromptContent(agentComposerDraftLargeTexts(input.draft))
   ]);
@@ -772,6 +775,7 @@ function agentPromptImageBlockToDraftImage(
     ...(image.data ? { data: image.data } : {}),
     ...(image.url ? { url: image.url } : {}),
     ...(image.path ? { path: image.path } : {}),
+    ...normalizeAgentPromptAssetRestoreMetadata(image),
     previewUrl:
       typeof image.data === "string" && image.data
         ? image.data.startsWith("data:")

@@ -634,7 +634,13 @@ describe("AgentTranscriptItemView render stability", () => {
           agentSessionId: "session-1",
           mimeType: "image/png",
           name: "screen.png",
-          path: "/prompt-assets/screen.png"
+          path: "/prompt-assets/screen.png",
+          uri: "workspace/user/local-assets/sha.png",
+          hostPath: "/Users/me/screen.png",
+          assetId: "asset-1",
+          kind: "image",
+          uploadStatus: "uploaded",
+          storagePolicy: "cloud-backed"
         }
       ],
       occurredAtUnixMs: 1
@@ -684,6 +690,19 @@ describe("AgentTranscriptItemView render stability", () => {
     );
     expect(screen.queryByTestId("agent-gui-message-image-loading")).toBeNull();
     expect(readPromptAsset).toHaveBeenCalledTimes(1);
+    expect(readPromptAsset).toHaveBeenCalledWith({
+      workspaceId: "room-1",
+      agentSessionId: "session-1",
+      mimeType: "image/png",
+      name: "screen.png",
+      path: "/prompt-assets/screen.png",
+      uri: "workspace/user/local-assets/sha.png",
+      hostPath: "/Users/me/screen.png",
+      assetId: "asset-1",
+      kind: "image",
+      uploadStatus: "uploaded",
+      storagePolicy: "cloud-backed"
+    });
     expect(readSessionAttachment).not.toHaveBeenCalled();
 
     delete (window as { agentActivityRuntime?: unknown }).agentActivityRuntime;

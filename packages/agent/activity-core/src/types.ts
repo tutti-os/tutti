@@ -547,6 +547,7 @@ export interface AgentPromptContentBlock {
   uri?: string;
   hostPath?: string;
   uploadStatus?: string;
+  storagePolicy?: string;
   assetId?: string;
   kind?: string;
   sizeBytes?: number;

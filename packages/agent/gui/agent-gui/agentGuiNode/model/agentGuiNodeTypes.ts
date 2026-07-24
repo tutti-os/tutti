@@ -134,6 +134,12 @@ export interface AgentComposerImageBlock {
   data?: string;
   url?: string;
   path?: string;
+  uri?: string;
+  hostPath?: string;
+  assetId?: string;
+  kind?: string;
+  uploadStatus?: string;
+  storagePolicy?: string;
   previewUrl: string;
   uploading?: boolean;
   uploadError?: string;

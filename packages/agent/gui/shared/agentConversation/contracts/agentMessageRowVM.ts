@@ -49,6 +49,12 @@ export interface AgentMessageImageVM {
   data?: string | null;
   url?: string | null;
   path?: string | null;
+  uri?: string | null;
+  hostPath?: string | null;
+  assetId?: string | null;
+  kind?: string | null;
+  uploadStatus?: string | null;
+  storagePolicy?: string | null;
 }
 
 export interface AgentThinkingContentVM {
