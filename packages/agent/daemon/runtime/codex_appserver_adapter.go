@@ -94,6 +94,7 @@ type appServerAdapterConfig struct {
 	clientInfoName       string
 	authRequiredMessage  string
 	commandNetworkAccess bool
+	rateLimits           bool
 }
 
 // CodexAppServerAdapterOptions controls host-owned app-server execution policy

@@ -1522,30 +1522,54 @@ func TestDefaultPreparerClaudePlanModeDoesNotOverrideConfigDir(t *testing.T) {
 	}
 }
 
-func TestTuttiAgentConfigWithLLMProviderPinsExistingRootProvider(t *testing.T) {
+func TestTuttiAgentManagedConfigRemovesOnlyLegacyPinnedProvider(t *testing.T) {
 	input := strings.Join([]string{
-		`model_provider = "custom"`,
-		`model = "custom-model"`,
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
+		`custom_root = "preserved"`,
+		``,
+		`[model_providers.tutti-llm]`,
+		`name = "Tutti LLM"`,
+		`base_url = "https://llm-api.tutti.sh/v1"`,
+		`wire_api = "responses"`,
 		``,
 		`[model_providers.custom]`,
 		`name = "Custom"`,
-		`base_url = "https://example.invalid/v1"`,
 	}, "\n")
 
-	next, changed := tuttiAgentConfigWithLLMProvider(input)
+	next, changed := tuttiAgentConfigWithoutLegacyPinnedProvider(input)
 	if !changed {
 		t.Fatalf("changed = false, want true")
 	}
-	if strings.Contains(next, `model_provider = "custom"`) {
-		t.Fatalf("next retained custom provider: %s", next)
+	for _, removed := range []string{`model_provider = "tutti-llm"`, `model = "gpt-5.4"`, `[model_providers.tutti-llm]`} {
+		if strings.Contains(next, removed) {
+			t.Fatalf("next retained %q: %s", removed, next)
+		}
 	}
-	if !strings.Contains(next, `model_provider = "tutti-llm"`) ||
-		!strings.Contains(next, `model = "gpt-5.4"`) ||
-		!strings.Contains(next, `[model_providers.tutti-llm]`) {
-		t.Fatalf("next did not pin Tutti LLM provider: %s", next)
+	for _, want := range []string{`custom_root = "preserved"`, `[model_providers.custom]`} {
+		if !strings.Contains(next, want) {
+			t.Fatalf("next removed %q: %s", want, next)
+		}
 	}
-	if !strings.Contains(next, `[model_providers.custom]`) {
-		t.Fatalf("next removed user provider block: %s", next)
+}
+
+func TestTuttiAgentManagedConfigPreservesPartialLegacyLookalike(t *testing.T) {
+	input := strings.Join([]string{
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
+		``,
+		`[model_providers.tutti-llm]`,
+		`name = "Custom Tutti Gateway"`,
+		`base_url = "https://llm-api.tutti.sh/v1"`,
+		`wire_api = "responses"`,
+	}, "\n")
+
+	next, changed := tuttiAgentConfigWithoutLegacyPinnedProvider(input)
+	if changed {
+		t.Fatalf("changed = true, want false: %s", next)
+	}
+	if next != input {
+		t.Fatalf("next changed partial legacy lookalike:\n%s", next)
 	}
 }
 
