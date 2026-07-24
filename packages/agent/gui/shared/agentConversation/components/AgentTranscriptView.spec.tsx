@@ -117,7 +117,7 @@ describe("AgentTranscriptView", () => {
     ).toBe(false);
   });
 
-  it("renders each participant header once per turn across tool progress rows", () => {
+  it("renders each participant header once per turn across tool progress rows", async () => {
     const baseConversation = projectAgentConversationVM(
       detailViewModel({
         session: normalizeAgentActivitySession({
@@ -329,6 +329,10 @@ describe("AgentTranscriptView", () => {
         '[data-agent-transcript-row="assistant-final:turn-final"]'
       )
     ).not.toHaveAttribute("data-agent-transcript-row-participant-content");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand task details" })
+    );
+    await flushCollapsibleRevealFrames();
     expect(
       container.querySelector(
         '[data-agent-transcript-row="assistant-progress-1"]'
