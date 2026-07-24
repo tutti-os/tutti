@@ -39,6 +39,13 @@ export const repositoryCheckDefinitions = [
     matches: isToolContractRelevant
   },
   {
+    group: "contracts",
+    key: "contracts:device-link-android",
+    label: "DeviceLink Android contract",
+    script: "check:device-link-android",
+    matches: (file) => file.startsWith("packages/device-link/")
+  },
+  {
     group: "generated",
     key: "generated:defaults",
     label: "generated defaults",

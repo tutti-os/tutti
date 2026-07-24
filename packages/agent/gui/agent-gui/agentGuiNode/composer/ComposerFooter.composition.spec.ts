@@ -66,6 +66,29 @@ describe("ComposerFooter trigger composition", () => {
     expect(slotIndex).toBeLessThan(planIndex);
   });
 
+  it("places the Tutti Mode chip between the mention trigger and handoff", () => {
+    const mentionIndex = source.indexOf(
+      'data-testid="agent-gui-composer-mention-trigger"'
+    );
+    const chipIndex = source.indexOf("<ComposerTuttiModeChip");
+    const handoffIndex = source.indexOf("showHandoffSelect ?");
+
+    expect(mentionIndex).toBeGreaterThan(-1);
+    expect(chipIndex).toBeGreaterThan(mentionIndex);
+    expect(chipIndex).toBeLessThan(handoffIndex);
+  });
+
+  it("gates the Tutti Mode chip on the host capability and callback", () => {
+    expect(source).toContain("tuttiModeSupported={tuttiModeSupported}");
+    expect(source).toContain("onTuttiModeChange={onTuttiModeChange}");
+    expect(composerViewSource).toContain(
+      "input.props.capabilityMenuState?.tuttiMode?.enabled === true"
+    );
+    expect(composerViewSource).toContain(
+      "onTuttiModeChange={input.props.onTuttiModeChange}"
+    );
+  });
+
   it("closes every competing composer disclosure before quick prompts open", () => {
     expect(composerSource).toMatch(
       /closeQuickPromptCompetingDisclosure[\s\S]*closeFileMentionPalette\(\)[\s\S]*closeSlashFloatingMenu\(\)/u
@@ -75,26 +98,15 @@ describe("ComposerFooter trigger composition", () => {
     );
   });
 
-  it("keeps Plan removable while Tutti separates intensity editing from removal", () => {
+  it("keeps Plan removable while Tutti Mode toggles through the footer chip", () => {
     expect(source).not.toContain('data-testid="agent-composer-execution-mode"');
     expect(source).toContain('data-agent-plan-mode-badge="true"');
-    expect(source).toContain('data-agent-tutti-mode-badge="true"');
-    expect(source).toContain('data-agent-tutti-mode-remove="true"');
-    expect(source).toContain("<TuttiBudgetPopover");
-    expect(source).toContain(
-      "onConfirm={onTuttiModeOrchestrationIntensityChange}"
-    );
+    // The active-state Tutti badge row was removed: the chip's switch owns
+    // arming/disarming, so the footer must not render a second Tutti control.
+    expect(source).not.toContain('data-agent-tutti-mode-badge="true"');
+    expect(source).not.toContain('data-agent-tutti-mode-remove="true"');
+    expect(source).not.toContain("<TuttiBudgetPopover");
     expect(source).toContain("isPlanModeActive ?");
-    expect(source).toContain("isTuttiModeActive ?");
-    expect(source).toContain("disabled={isTuttiModeUpdating}");
-    const tuttiBadgeButton = source.match(
-      /<button[\s\S]*?data-agent-tutti-mode-badge="true"[\s\S]*?<\/button>/u
-    )?.[0];
-    expect(tuttiBadgeButton).not.toContain("onClick={onClearTuttiMode}");
-    expect(composerSource).toContain("onTuttiModeOrchestrationIntensityChange");
-    expect(composerViewSource).toContain(
-      "onTuttiModeOrchestrationIntensityChange={"
-    );
   });
 
   it("uses the host Tutti feature gate for typed slash-command submits", () => {

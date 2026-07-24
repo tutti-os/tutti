@@ -5,6 +5,7 @@ import type {
 } from "../core/types.ts";
 import { importPreparedBrowserGuestCookies } from "./cookieImport.ts";
 import type {
+  BrowserGuestCookieStore,
   BrowserGuestElectronSession,
   BrowserGuestWebContents,
   BrowserNodeChromeCookiePreparationResult
@@ -16,6 +17,21 @@ export function getBrowserGuestCookieImportSession(
   return contents && !contents.isDestroyed()
     ? (contents.session ?? null)
     : null;
+}
+
+function isBrowserGuestCookieReloadUrl(
+  url: string | null | undefined
+): boolean {
+  const trimmed = url?.trim() ?? "";
+  if (trimmed.length === 0 || trimmed === "about:blank") {
+    return false;
+  }
+  try {
+    const protocol = new URL(trimmed).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 export function reloadBrowserGuestsForCookieSession(
@@ -33,7 +49,8 @@ export function reloadBrowserGuestsForCookieSession(
       browserSession.sessionPartition === null &&
       contents &&
       !contents.isDestroyed() &&
-      contents.session === target
+      contents.session === target &&
+      isBrowserGuestCookieReloadUrl(contents.getURL?.() ?? null)
     ) {
       contents.reload();
     }
@@ -42,6 +59,7 @@ export function reloadBrowserGuestsForCookieSession(
 
 export async function importChromeCookiesIntoBrowserGuest(input: {
   contents: BrowserGuestWebContents | null | undefined;
+  cookieStore?: BrowserGuestCookieStore | null;
   importInput: BrowserNodeChromeCookieImportInput;
   prepareChromeCookieImport?: (
     profileId: BrowserNodeChromeCookieImportInput["profileId"],
@@ -51,10 +69,13 @@ export async function importChromeCookiesIntoBrowserGuest(input: {
   sessionMode: BrowserNodeSessionMode;
   sessionPartition: string | null;
 }): Promise<BrowserNodeCookieImportResult> {
-  const store = input.contents?.session?.cookies;
+  const store =
+    input.cookieStore ??
+    (input.contents && !input.contents.isDestroyed()
+      ? (input.contents.session?.cookies ?? null)
+      : null);
   if (
     !store ||
-    input.contents?.isDestroyed() ||
     input.sessionMode === "incognito" ||
     input.sessionPartition !== null ||
     !input.prepareChromeCookieImport

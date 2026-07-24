@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
+import type { AgentTarget, WorkspaceAgent } from "@tutti-os/client-tuttid-ts";
+import {
+  normalizeAgentGUIAgents,
+  projectAgentGUIAgentsToTargets
+} from "@tutti-os/agent-gui/agents";
 import {
   DesktopAgentsService,
   mapAgentTargetsToPresentations,
@@ -187,6 +191,74 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
   ]);
 });
 
+test("desktop agents service lists a custom Agent with its Harness target catalog icon", async () => {
+  let listedWorkspaceId = "";
+  const service = new DesktopAgentsService({
+    resolveAgentTargetIconUrl: ({ iconKey, provider }) =>
+      iconKey ? `catalog://${iconKey}` : `catalog://provider/${provider}`,
+    tuttidClient: {
+      async listAgentTargets() {
+        return {
+          targets: [
+            createAgentTarget({
+              iconKey: "codex-target",
+              iconUrl: null,
+              id: "local:codex",
+              name: "Codex",
+              provider: "codex",
+              sortOrder: 10
+            })
+          ]
+        };
+      },
+      async listWorkspaceAgents(workspaceId) {
+        listedWorkspaceId = workspaceId;
+        return {
+          agents: [
+            createWorkspaceAgent({
+              harness: {
+                agentTargetId: "local:codex",
+                available: true,
+                enabled: true,
+                iconKey: null,
+                name: "Codex",
+                provider: "codex"
+              }
+            })
+          ]
+        };
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  const snapshot = await service.load();
+  const customAgent = snapshot.agents.find(
+    (agent) => agent.agentTargetId === "workspace-agent:reviewer"
+  );
+  const normalizedAgents = normalizeAgentGUIAgents(snapshot.agents);
+  const customTarget = projectAgentGUIAgentsToTargets(normalizedAgents).find(
+    (target) => target.agentTargetId === "workspace-agent:reviewer"
+  );
+
+  assert.equal(listedWorkspaceId, "workspace-1");
+  assert.equal(customAgent?.iconUrl, "catalog://codex-target");
+  assert.deepEqual(customTarget, {
+    agentTargetId: "workspace-agent:reviewer",
+    availability: { status: "ready" },
+    description: "Reviews workspace changes",
+    iconUrl: "catalog://codex-target",
+    label: "Reviewer",
+    provider: "codex",
+    ref: {
+      agentTargetId: "workspace-agent:reviewer",
+      kind: "agent-directory",
+      provider: "codex"
+    },
+    targetId: "workspace-agent:reviewer"
+  });
+});
+
 test("desktop agents service preserves Extension primary and mask icons", () => {
   const presentations = mapAgentTargetsToPresentations([
     {
@@ -297,7 +369,10 @@ function createAgentTarget(input: {
     createdAtUnixMs: 1780272000000,
     enabled: input.enabled ?? true,
     iconKey: input.iconKey ?? null,
-    iconUrl: input.iconUrl ?? `tutti-asset://agent/${input.provider}.png`,
+    iconUrl:
+      "iconUrl" in input
+        ? (input.iconUrl ?? null)
+        : `tutti-asset://agent/${input.provider}.png`,
     heroImageUrl: input.heroImageUrl ?? null,
     maskIconUrl: input.maskIconUrl ?? null,
     id: input.id,
@@ -310,6 +385,39 @@ function createAgentTarget(input: {
     sortOrder: input.sortOrder,
     source: "system",
     updatedAtUnixMs: 1780272000000
+  };
+}
+
+function createWorkspaceAgent(
+  overrides: Partial<WorkspaceAgent> = {}
+): WorkspaceAgent {
+  return {
+    agentTargetId: "workspace-agent:reviewer",
+    capabilitiesExplicit: false,
+    callConditions: ["Use for workspace reviews"],
+    createdAt: "2026-07-23T00:00:00Z",
+    defaultModel: null,
+    description: "Reviews workspace changes",
+    harness: {
+      agentTargetId: "local:codex",
+      available: true,
+      enabled: true,
+      iconKey: "codex",
+      name: "Codex",
+      provider: "codex"
+    },
+    id: "workspace-agent:reviewer",
+    instructions: "Review carefully",
+    modelFallbacks: [],
+    modelPlanId: null,
+    name: "Reviewer",
+    revision: 1,
+    skills: [],
+    source: "user",
+    tools: [],
+    updatedAt: "2026-07-23T00:00:00Z",
+    workspaceId: "workspace-1",
+    ...overrides
   };
 }
 

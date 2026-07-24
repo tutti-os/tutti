@@ -187,6 +187,21 @@ test("maps context-menu state without depending on unrelated fields", () => {
   assert.equal(contextMenuView.isLoading, true);
 });
 
+test("avoids duplicate breadcrumb when placeholder root is / and path is /workspace", () => {
+  const store = createStore();
+  store.root = "/";
+  store.currentDirectoryPath = "/workspace";
+
+  const toolbarView = resolveWorkspaceFileManagerToolbarViewState({
+    copy: createCopy(),
+    state: store
+  });
+  assert.deepEqual(
+    toolbarView.breadcrumbs.map((crumb) => crumb.path),
+    ["/workspace"]
+  );
+});
+
 function createCopy() {
   return createWorkspaceFileManagerI18nRuntime(
     createI18nRuntime({

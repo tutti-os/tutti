@@ -9,6 +9,14 @@ const aliases = {
   "@app/renderer": resolve("../../packages/agent/gui/app/renderer"),
   "@contexts": resolve("../../packages/agent/gui/contexts"),
   "@main": resolve("src/main"),
+  "@tutti-os/workspace-file-manager/assets/workspace-archive-fallback.png":
+    resolve(
+      "../../packages/workspace/file-manager/src/assets/workspace-archive-fallback.png"
+    ),
+  "@tutti-os/workspace-file-manager/assets/workspace-folder-fallback.png":
+    resolve(
+      "../../packages/workspace/file-manager/src/assets/workspace-folder-fallback.png"
+    ),
   "@tutti-os/workspace-file-manager/services": resolve(
     "../../packages/workspace/file-manager/src/services/index.ts"
   ),

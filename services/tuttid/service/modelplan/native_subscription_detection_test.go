@@ -62,8 +62,4 @@ func TestDetectOfficialSubscriptionUsesProviderNativeProbe(t *testing.T) {
 			t.Fatalf("stage %q = %#v, %v", stage, outcome, ok)
 		}
 	}
-	agentRuntime, ok := result.Detection.StageOutcome(modelplanbiz.StageAgentRuntime)
-	if !ok || agentRuntime.Status != modelplanbiz.StagePending {
-		t.Fatalf("agent runtime stage = %#v, %v", agentRuntime, ok)
-	}
 }

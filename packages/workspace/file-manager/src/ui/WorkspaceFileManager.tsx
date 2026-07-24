@@ -94,6 +94,12 @@ export interface WorkspaceFileManagerProps {
   ) => ReactElement | null;
   i18n: WorkspaceFileManagerI18nRuntime;
   session: WorkspaceFileManagerSession;
+  /**
+   * When false, hide the locations sidebar even if the session has location
+   * sections. Hosts with a single workspace root (for example TSH embedded
+   * Files) can turn this off. Defaults to true.
+   */
+  showLocationSidebar?: boolean;
   showPreviewPanel?: boolean;
   surface?: "card" | "embedded";
 }
@@ -110,6 +116,7 @@ export function WorkspaceFileManager({
   resolveEntryIconUrl,
   renderExternalLocationContent,
   session,
+  showLocationSidebar = true,
   showPreviewPanel = true,
   surface = "card"
 }: WorkspaceFileManagerProps): ReactElement {
@@ -136,9 +143,9 @@ export function WorkspaceFileManager({
     );
     return location?.kind === "external" ? location : null;
   }, [rootView.locationSections, rootView.selectedLocationId]);
-  const hasLocationSidebar = rootView.locationSections.some(
-    (section) => section.locations.length > 0
-  );
+  const hasLocationSidebar =
+    showLocationSidebar &&
+    rootView.locationSections.some((section) => section.locations.length > 0);
   const sidebarContentMinWidth = showPreviewPanel
     ? workspaceFileManagerContentMinWidth
     : workspaceFileManagerContentWithoutPreviewMinWidth;
@@ -388,21 +395,19 @@ export function WorkspaceFileManager({
     event.preventDefault();
     event.stopPropagation();
 
-    const rootBounds = rootRef.current?.getBoundingClientRect();
-    if (!rootBounds) {
-      return;
-    }
-
+    // Store viewport (client) coordinates. The menu renders with
+    // positionMode="viewport" / fixed so overflow:hidden ancestors in host
+    // shells (e.g. TSH workbench nodes) cannot clip or mis-stack it.
     const menuWidth = 220;
     const menuHeight = 280;
     const x = clampContextMenuCoordinate(
-      event.clientX - rootBounds.left,
-      rootBounds.width,
+      event.clientX,
+      window.innerWidth,
       menuWidth
     );
     const y = clampContextMenuCoordinate(
-      event.clientY - rootBounds.top,
-      rootBounds.height,
+      event.clientY,
+      window.innerHeight,
       menuHeight
     );
 
@@ -425,19 +430,29 @@ export function WorkspaceFileManager({
       data-slot="viewport-menu-boundary"
       data-workspace-file-manager=""
       ref={rootRef}
+      style={
+        {
+          // Owned by the root so context menus (siblings of the panels pane)
+          // can resolve overlay stacking instead of falling back to invalid
+          // `calc(var(--undefined) - 1)`.
+          "--workspace-file-manager-dialog-overlay-z-index": "20"
+        } as CSSProperties
+      }
     >
-      <WorkspaceFileManagerSidebar
-        disabled={rootView.isBusy || panelsState.isLoading}
-        locationSections={rootView.locationSections}
-        selectedLocationId={rootView.selectedLocationId}
-        width={sidebarWidth}
-        onSelectLocation={(location) => {
-          if (location.kind === "directory") {
-            onDirectoryExpanded?.(location.path);
-          }
-          void session.selectLocation(location.id);
-        }}
-      />
+      {hasLocationSidebar ? (
+        <WorkspaceFileManagerSidebar
+          disabled={rootView.isBusy || panelsState.isLoading}
+          locationSections={rootView.locationSections}
+          selectedLocationId={rootView.selectedLocationId}
+          width={sidebarWidth}
+          onSelectLocation={(location) => {
+            if (location.kind === "directory") {
+              onDirectoryExpanded?.(location.path);
+            }
+            void session.selectLocation(location.id);
+          }}
+        />
+      ) : null}
       {hasLocationSidebar ? (
         <div
           aria-label={i18n.t("resizeLocationsSidebar")}
@@ -469,14 +484,7 @@ export function WorkspaceFileManager({
               onLayoutModeChange={setLayoutMode}
               session={session}
             />
-            <div
-              className="@max-[600px]/workspace-file-manager:flex-col @max-[600px]/workspace-file-manager:gap-3 flex min-h-0 min-w-0 flex-1 overflow-hidden"
-              style={
-                {
-                  "--workspace-file-manager-dialog-overlay-z-index": "20"
-                } as CSSProperties
-              }
-            >
+            <div className="@max-[600px]/workspace-file-manager:flex-col @max-[600px]/workspace-file-manager:gap-3 flex min-h-0 min-w-0 flex-1 overflow-hidden">
               <WorkspaceFileManagerPanelsContainer
                 dateLocale={dateLocale}
                 entryDragMode={entryDragMode}

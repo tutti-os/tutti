@@ -668,6 +668,13 @@
 
 ## Wave 4-⑤（P1 回派：純內建 Codex 首頁裸方案模型 create 400——Wave 3 門禁漏網路徑）
 
+> 2026-07-23 后续修订：create 边界不再通过
+> `enforceComposerModelBindingForCreate` 改写提交参数。权威模型目录完成读取后，
+> composer defaults authority reconciler 会同步清理内存 ref、React state 和
+> node 持久化中的失效默认值；create 只读取已完成 reconciliation 的默认值。
+> 下文关于 create 门禁及 unverifiable 窗口摘除模型的内容保留为历史决策记录，
+> 不再描述当前实现。
+
 ### W4⑤-1 W2⑤-3 的「models 名單為空放行」例外撤銷（門禁語義修訂）
 
 - 根因（live 復現定位 + 對抗 review 修正）：Wave 3 的 create 門禁

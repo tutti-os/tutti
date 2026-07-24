@@ -22,6 +22,7 @@ const (
 	appServerMethodAccountRead    = "account/read"
 	appServerMethodRateLimitsRead = "account/rateLimits/read"
 	appServerMethodModelList      = "model/list"
+	appServerMethodConfigRead     = "config/read"
 	// Experimental: collaboration mode presets (plan/pair/execute). Absence of
 	// the method on older binaries downgrades planMode capability gracefully.
 	appServerMethodCollaborationModeList = "collaborationMode/list"
@@ -233,6 +234,7 @@ type codexAppServerSession struct {
 	// direct control, reconcile and delayed continuation nudges for this thread.
 	goalMutationMu         sync.Mutex
 	models                 []map[string]any
+	modelProvider          string
 	startupModelsReady     bool
 	startupRateLimitsReady bool
 	// lifecycleSeq numbers the adapter's TurnLifecycle snapshots (ADR 0008):
@@ -391,6 +393,26 @@ func NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(
 // provider through the shared app-server adapter with Tutti-branded command,
 // client identity, and auth messaging.
 func NewTuttiAgentAppServerAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *CodexAppServerAdapter {
+	return newTuttiAgentAppServerAdapterWithHostMetadata(transport, host)
+}
+
+// NewTuttiAgentAppServerAdapterWithHostMetadataAndOptions serves the
+// tutti-agent provider through the shared app-server adapter while applying
+// host-owned command execution policy.
+func NewTuttiAgentAppServerAdapterWithHostMetadataAndOptions(
+	transport ProcessTransport,
+	host HostMetadata,
+	options CodexAppServerAdapterOptions,
+) *CodexAppServerAdapter {
+	adapter := newTuttiAgentAppServerAdapterWithHostMetadata(transport, host)
+	adapter.config.commandNetworkAccess = options.CommandNetworkAccess
+	return adapter
+}
+
+func newTuttiAgentAppServerAdapterWithHostMetadata(
+	transport ProcessTransport,
+	host HostMetadata,
+) *CodexAppServerAdapter {
 	descriptor, ok := providerregistry.Find(ProviderTuttiAgent)
 	if !ok {
 		panic("tutti-agent provider descriptor is missing")

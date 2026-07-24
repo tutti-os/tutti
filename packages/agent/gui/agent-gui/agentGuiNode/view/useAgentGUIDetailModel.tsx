@@ -17,6 +17,7 @@ import {
   isAgentGUITransportNoticeVisible,
   resolveActiveConversationBusyStatus,
   resolveConversationDetailStatus,
+  resolveAgentGUIComposerDisabled,
   resolveAgentGUIHomeNoticeChrome,
   resolveAgentGUIStopControl,
   resolveSlashStatus,
@@ -257,16 +258,18 @@ export function useAgentGUIDetailModel(input: Input) {
     isCollaboratorConversation ||
     runtimeBlocked ||
     (!viewModel.composer.canSubmit && !canQueueWhileBusy);
-  const composerDisabled =
-    isCollaboratorConversation ||
-    (!runtimeBlocked &&
-      (hasNonRetryableRecoveryFailure ||
-        (!canQueueWhileBusy &&
-          (viewModel.interaction.pendingApproval !== null ||
-            viewModel.interaction.pendingInteractivePrompt !== null ||
-            viewModel.composer.isSubmitting ||
-            viewModel.composer.isInterrupting ||
-            viewModel.composer.isCreatingConversation))));
+  const composerDisabled = resolveAgentGUIComposerDisabled({
+    canQueueWhileBusy,
+    hasNonRetryableRecoveryFailure,
+    isCollaboratorConversation,
+    isCreatingConversation: viewModel.composer.isCreatingConversation,
+    isInterrupting: viewModel.composer.isInterrupting,
+    isSubmitting: viewModel.composer.isSubmitting,
+    pendingApproval: viewModel.interaction.pendingApproval !== null,
+    pendingInteractivePrompt:
+      viewModel.interaction.pendingInteractivePrompt !== null,
+    runtimeBlocked
+  });
   const stopControl = resolveAgentGUIStopControl({
     hasPendingApproval: viewModel.interaction.pendingApproval !== null,
     hasPendingInteractivePrompt:
@@ -466,8 +469,6 @@ export function useAgentGUIDetailModel(input: Input) {
       tuttiBudgetAgentCountCost: labels.tuttiBudgetAgentCountCost,
       tuttiBudgetAgentCountBalance: labels.tuttiBudgetAgentCountBalance,
       tuttiBudgetAgentCountPowerful: labels.tuttiBudgetAgentCountPowerful,
-      tuttiBudgetConfirm: labels.tuttiBudgetConfirm,
-      tuttiBudgetCancel: labels.tuttiBudgetCancel,
       planModeDescription: labels.planModeDescription,
       planModeOnLabel: labels.planModeOnLabel,
       planModeOffLabel: labels.planModeOffLabel,
@@ -634,8 +635,6 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.tuttiBudgetAgentCountCost,
       labels.tuttiBudgetAgentCountBalance,
       labels.tuttiBudgetAgentCountPowerful,
-      labels.tuttiBudgetConfirm,
-      labels.tuttiBudgetCancel,
       labels.planModeDescription,
       labels.planModeOffLabel,
       labels.planModeOnLabel,

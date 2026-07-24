@@ -11,6 +11,7 @@ const GO_MODULE_ROOTS = [
   "packages/agent/store-sqlite/canonical",
   "packages/appcli/core",
   "packages/auth/bridge-go",
+  "packages/device-link",
   "packages/events/stream-go",
   "packages/workbench/service",
   "packages/workspace/files",

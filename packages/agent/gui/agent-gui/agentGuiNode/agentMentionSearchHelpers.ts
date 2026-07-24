@@ -92,6 +92,7 @@ export function buildSessionMentionItem(input: {
     name: `${initiatorName} & ${agentName} ${mentionTitle}`.trim(),
     title: mentionTitle,
     scope,
+    ...(sessionUserId ? { initiatorUserId: sessionUserId } : {}),
     initiatorName,
     ...(userProfile?.avatar ? { initiatorAvatarUrl: userProfile.avatar } : {}),
     agentName,

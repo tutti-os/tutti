@@ -295,6 +295,97 @@ test("Browser Node controller preserves same-origin in-app navigation after atta
   controller.release();
 });
 
+test("Browser Node controller does not fight same-origin auth redirects when default URL follows runtime", async () => {
+  const activateCalls: string[] = [];
+  const runtimeStore = createBrowserNodeRuntimeStore();
+  const feature = createBrowserNodeFeature({
+    hostApi: createBrowserNodeHostApi({
+      activate(payload) {
+        activateCalls.push(payload.url);
+        return Promise.resolve();
+      }
+    }),
+    runtimeStore
+  });
+  runtimeStore.applyEvent({
+    canGoBack: false,
+    canGoForward: false,
+    isAttachedToWindow: true,
+    isLoading: false,
+    isOccluded: false,
+    lifecycle: "active",
+    nodeId: "auth-redirect",
+    title: null,
+    type: "state",
+    url: "https://app.example/"
+  });
+
+  const controller = acquireBrowserNodeController({
+    defaultUrl: "https://app.example/",
+    feature,
+    nodeId: "auth-redirect",
+    syncDefaultUrl: true
+  });
+  controller.retain();
+  await Promise.resolve();
+  assert.deepEqual(activateCalls, []);
+
+  // Guest redirected to /dashboard; host defaultUrl catches up to the runtime page.
+  runtimeStore.applyEvent({
+    canGoBack: true,
+    canGoForward: false,
+    isAttachedToWindow: true,
+    isLoading: false,
+    isOccluded: false,
+    lifecycle: "active",
+    nodeId: "auth-redirect",
+    title: "Dashboard",
+    type: "state",
+    url: "https://app.example/dashboard"
+  });
+  acquireBrowserNodeController({
+    defaultUrl: "https://app.example/dashboard",
+    feature,
+    nodeId: "auth-redirect",
+    syncDefaultUrl: true
+  }).sync();
+  await Promise.resolve();
+  assert.deepEqual(activateCalls, []);
+
+  // Redirect chain still in flight: committed /dashboard while guest is briefly on /.
+  runtimeStore.applyEvent({
+    canGoBack: false,
+    canGoForward: false,
+    isAttachedToWindow: true,
+    isLoading: false,
+    isOccluded: false,
+    lifecycle: "active",
+    nodeId: "auth-redirect",
+    title: null,
+    type: "state",
+    url: "https://app.example/"
+  });
+  acquireBrowserNodeController({
+    defaultUrl: "https://app.example/dashboard",
+    feature,
+    nodeId: "auth-redirect",
+    syncDefaultUrl: true
+  }).sync();
+  await Promise.resolve();
+  assert.deepEqual(activateCalls, []);
+
+  // Cross-origin host URL changes must still force navigation.
+  acquireBrowserNodeController({
+    defaultUrl: "https://example.com/",
+    feature,
+    nodeId: "auth-redirect",
+    syncDefaultUrl: true
+  }).sync();
+  await Promise.resolve();
+  assert.deepEqual(activateCalls, ["https://example.com/"]);
+  controller.release();
+});
+
 test("Browser Node controller shares retain lifecycle across consumers of the same node", () => {
   let connectCount = 0;
   let disconnectCount = 0;

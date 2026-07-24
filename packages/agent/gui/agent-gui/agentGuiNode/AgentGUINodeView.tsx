@@ -25,10 +25,7 @@ import {
   useOptionalStableEventCallback,
   useStableEventCallback
 } from "./view/agentGUIViewUtils";
-import {
-  AgentGUIAccountRailMenu,
-  AgentGUIConfigMenu
-} from "./view/AgentGUIAccountConfig";
+import { AgentGUIConfigMenu } from "./view/AgentGUIAccountConfig";
 import { AgentGUIProviderRail } from "./view/AgentGUIProviderRail";
 import { type AgentGUIConversationRailState } from "./view/AgentGUIConversationRailPane";
 import { AgentGUIConversationRailController } from "./controller/AgentGUIConversationRailController";
@@ -51,7 +48,6 @@ import {
   useAgentGUIConversationRailResizePointerMove,
   type AgentGUIConversationRailResizeInteraction
 } from "./view/useAgentGUIConversationRailResizePointerMove";
-
 export type {
   AgentGUINodeViewProps,
   AgentGUIAgentsEmptyRenderer,
@@ -115,7 +111,6 @@ export function AgentGUINodeView({
   onSlashStatusOpen,
   onSlashStatusClose,
   onSlashStatusRefresh,
-  accountMenuState = null,
   previewMode = false,
   onAgentProviderLogin,
   onAgentEnvPanelOpen,
@@ -143,6 +138,7 @@ export function AgentGUINodeView({
   onRequestGitBranches = null,
   projectDirectorySourceAggregator = null,
   referenceSourceAggregator = null,
+  resolveReferenceContentErrorAction,
   resolveWorkspaceReferenceEntryIconUrl,
   resolveMentionReferenceTarget = null,
   resolveWorkspaceReferenceInitialTarget = null,
@@ -671,15 +667,6 @@ export function AgentGUINodeView({
               registerInteractionLockProbe={registerRailInteractionLockProbe}
               userProjects={viewModel.rail.userProjects}
               workspaceId={viewModel.shell.workspaceId}
-              footer={
-                accountMenuState?.user ? (
-                  <AgentGUIAccountRailMenu
-                    accountMenuState={accountMenuState}
-                    labels={labels}
-                    previewMode={previewMode}
-                  />
-                ) : null
-              }
             />
           </aside>
           <div
@@ -768,6 +755,7 @@ export function AgentGUINodeView({
           isNodeSelectable={isWorkspaceReferencePickerNodeSelectable}
           open={workspaceReferencePickerOpen}
           purpose={workspaceReferencePickerPurpose}
+          resolveContentErrorAction={resolveReferenceContentErrorAction}
           resolveEntryIconUrl={resolveWorkspaceReferenceEntryIconUrl}
           workspaceId={viewModel.shell.workspaceId}
           onClose={closeWorkspaceReferencePicker}
@@ -795,6 +783,5 @@ export function AgentGUINodeView({
       </AgentTargetSetupRoot>
     </AgentTargetPresentationProvider>
   );
-
   return previewMode ? content : <TooltipProvider>{content}</TooltipProvider>;
 }

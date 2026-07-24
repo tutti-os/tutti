@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from "react";
 import type { AgentAskUserQuestionVM } from "../contracts/agentAskUserQuestionItemVM";
 import {
   buildAskUserAnswerPayload,
+  readOwnAnswer,
+  writeOwnAnswer,
   type InteractiveAnswerPayload
 } from "../interactiveAnswerPayload";
 
@@ -18,29 +20,6 @@ export interface AskUserAnswerFlow {
   goToPreviousQuestion: () => void;
   setFreeText: (value: string) => void;
   toggleOption: (optionLabel: string) => void;
-}
-
-function readOwnValue<T>(
-  values: Record<string, T>,
-  key: string,
-  fallback: T
-): T {
-  return Object.prototype.hasOwnProperty.call(values, key)
-    ? values[key]!
-    : fallback;
-}
-
-function writeOwnValue<T>(
-  values: Record<string, T>,
-  key: string,
-  value: T
-): void {
-  Object.defineProperty(values, key, {
-    configurable: true,
-    enumerable: true,
-    value,
-    writable: true
-  });
 }
 
 export function useAskUserAnswerFlow({
@@ -60,10 +39,10 @@ export function useAskUserAnswerFlow({
 
   const currentQuestion = questions[currentIndex] ?? null;
   const selectedOptions = currentQuestion
-    ? readOwnValue(selectedByQuestionId, currentQuestion.id, [])
+    ? readOwnAnswer(selectedByQuestionId, currentQuestion.id, [])
     : [];
   const freeText = currentQuestion
-    ? readOwnValue(freeTextByQuestionId, currentQuestion.id, "")
+    ? readOwnAnswer(freeTextByQuestionId, currentQuestion.id, "")
     : "";
   const currentQuestionAnswered =
     currentQuestion !== null &&
@@ -73,8 +52,8 @@ export function useAskUserAnswerFlow({
   const answerPayload = useMemo(() => {
     const answersByQuestionId: Record<string, string | string[]> = {};
     for (const question of questions) {
-      const selected = readOwnValue(selectedByQuestionId, question.id, []);
-      const customAnswer = readOwnValue(
+      const selected = readOwnAnswer(selectedByQuestionId, question.id, []);
+      const customAnswer = readOwnAnswer(
         freeTextByQuestionId,
         question.id,
         ""
@@ -82,13 +61,13 @@ export function useAskUserAnswerFlow({
       if (question.multiSelect) {
         const answers = customAnswer ? [...selected, customAnswer] : selected;
         if (answers.length > 0) {
-          writeOwnValue(answersByQuestionId, question.id, answers);
+          writeOwnAnswer(answersByQuestionId, question.id, answers);
         }
         continue;
       }
       const answer = customAnswer || selected[0];
       if (answer) {
-        writeOwnValue(answersByQuestionId, question.id, answer);
+        writeOwnAnswer(answersByQuestionId, question.id, answer);
       }
     }
     return buildAskUserAnswerPayload(answersByQuestionId);
@@ -107,7 +86,7 @@ export function useAskUserAnswerFlow({
     (optionLabel: string) => {
       if (isSubmitting || !currentQuestion) return;
       setSelectedByQuestionId((current) => {
-        const existing = readOwnValue(current, currentQuestion.id, []);
+        const existing = readOwnAnswer(current, currentQuestion.id, []);
         const next = currentQuestion.multiSelect
           ? existing.includes(optionLabel)
             ? existing.filter((value) => value !== optionLabel)
@@ -116,7 +95,7 @@ export function useAskUserAnswerFlow({
             ? []
             : [optionLabel];
         const updated = { ...current };
-        writeOwnValue(updated, currentQuestion.id, next);
+        writeOwnAnswer(updated, currentQuestion.id, next);
         return updated;
       });
     },
@@ -128,7 +107,7 @@ export function useAskUserAnswerFlow({
       if (isSubmitting || !currentQuestion) return;
       setFreeTextByQuestionId((current) => {
         const updated = { ...current };
-        writeOwnValue(updated, currentQuestion.id, value);
+        writeOwnAnswer(updated, currentQuestion.id, value);
         return updated;
       });
     },

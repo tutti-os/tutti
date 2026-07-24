@@ -266,6 +266,14 @@ A durable message has two independent ordering values:
 
 Lifecycle timestamps describe occurrence time; they do not replace durable sequence. A live message with unknown Turn ownership must be completed or rejected at the boundary, never assigned an owner in GUI.
 
+Neither value is a history-coverage signal. A newest-to-oldest message read
+projects an explicit Session message window into the frontend engine:
+`oldestLoadedVersion` is the next paging cursor and the response's `hasMore`
+becomes `hasOlderMessages`. AgentGUI may request an older page only from that
+authoritative window. It must not infer older history from a non-one minimum
+version, a version gap, `sequence`, timestamps, or transcript shape; streaming
+updates can raise a message version without creating any older row.
+
 ## 4. Workspace frontend engine
 
 One `(workspaceId, runtime origin)` maps to one `AgentSessionEngine`. Panel unmount, Workbench node reconstruction, and standalone window switching must not change its lifecycle.
@@ -286,11 +294,11 @@ Runtime command availability is session-scoped whenever one workspace engine
 can contain Sessions backed by different transports. The host projects
 `available`, `transport_reconnecting`, or `transport_unavailable`; the engine
 uses that single fact to gate sends, cancellation, settings, and Interaction or
-plan responses. AgentGUI preserves an editable composer draft, disables
-runtime-dependent actions, and keeps an active Stop control visible but disabled
-until the transport recovers. It must not reuse the engine-wide connection state
-for this case, because one remote Session losing its owner must not disable Local
-Agent or another remote Session.
+plan responses. AgentGUI preserves the composer draft content but disables
+editing and runtime-dependent actions, and keeps an active Stop control visible
+but disabled until the transport recovers. It must not reuse the engine-wide
+connection state for this case, because one remote Session losing its owner must
+not disable Local Agent or another remote Session.
 
 Device connection presentation is target-scoped rather than Session-scoped.
 The host exposes a target connection source keyed by `agentTargetId` with the
@@ -325,6 +333,8 @@ notice does not offer a manual retry because transport recovery is host-owned.
 ### 4.2 Historical pull and realtime push
 
 - list/history reads use `session/snapshotReceived` and do not create unread completion
+- newest-to-oldest reads attach their authoritative message-window coverage to
+  the same snapshot intent; incremental/realtime updates preserve that coverage
 - realtime authoritative entities use upsert intents
 - message updates fold inline only when unseen versions are continuous
 - version gaps and reconnects trigger incremental message reconciliation for hydrated Sessions
@@ -403,6 +413,10 @@ timestamp.
 
 High-frequency transcript updates must not pair DOM mutation with unconditional synchronous reads of the timeline's full scroll geometry. Conversation switches, explicit submit-to-bottom requests, skeleton transitions, and older-page prepend restoration may perform pre-paint scroll correction; ordinary content growth preserves bottom lock and user scroll-away state from observed content and viewport geometry after layout.
 
+Virtualizer- or layout-driven scroll events do not release the bottom lock or
+trigger older-page loading without explicit user scroll-away intent. A settled
+timeline that is too short to fill its viewport may still request older pages.
+
 Composer draft updates cross the view boundary through the stable `shell`,
 `rail`, `detail`, `composer`, `interaction`, `readiness`, and `operations`
 projections rather than one aggregate Detail prop. The active Timeline
@@ -413,12 +427,22 @@ replacement may rebuild the document.
 
 A virtualized transcript derives message-locator selection from the virtualizer's measured turn positions and explicit transcript identity. The currently mounted DOM window is rendering output, not a selection source; range changes must not make the locator temporarily select a neighboring message.
 
-Historical rich text renders from the canonical Tiptap document through a static schema renderer. Only interactive composer surfaces own a Tiptap Editor/ProseMirror EditorView; read-only transcript and title surfaces reuse the same mention/token presentation without mounting editor lifecycle.
+Historical rich text renders from the canonical Tiptap document through a static schema renderer. Only interactive composer surfaces own a Tiptap Editor/ProseMirror EditorView; read-only transcript surfaces reuse the same mention/token presentation without mounting editor lifecycle. Conversation titles are a separate plain-text projection: Markdown mention links are normalized to their `@label` text and never render mention SVGs or interactive rich-text tokens.
 
 Attachment-only fallback labels such as `[Image]` may provide title or summary
 text, but they are not an additional transcript text block when the canonical
 structured content already renders the same image. Explicit display prompts
 remain transcript content and continue to replace expanded rich prompt text.
+
+Standalone hosts may opt a transcript into participant avatars through the
+`agent-conversation` entrypoint's explicit presentation contract. Omitted or
+disabled presentation preserves the existing transcript DOM. Enabled
+presentation has distinct `loading` and `ready` states, so the renderer never
+infers identity readiness from a missing image URL. The host supplies user and
+Agent names and optional avatar URLs; AgentGUI owns the UI System Avatar,
+fixed-size loading slot, fallback initial, and user-right/Agent-left layout.
+This presentation input is view data only and must not enter canonical Session,
+Turn, Message, activity-runtime, or workspace-engine state.
 
 ## 5. Agent identity and provider architecture
 
@@ -447,6 +471,13 @@ provider ID
 
 An unknown provider produces explicit unsupported behavior. Provider adapters normalize their own wire; shared renderers consume canonical message/tool/notice contracts only.
 
+Skill invocation follows the same boundary. Filesystem and runtime adapters
+discover skill identity, source, and plugin ownership; `providerregistry`
+projects the provider-authored trigger and invocation strategy. Composer and
+host adapters consume that projection and must not rebuild `$` versus `/`,
+plugin namespaces, or prompt-item versus text-trigger behavior from provider
+names.
+
 ### 5.3 Agent Directory and setup
 
 The host provides a complete, ordered Agent Directory with this load lifecycle:
@@ -458,10 +489,14 @@ idle | loading | ready | error
 `ready` may contain an authoritative empty list. `error` may retain the last successful snapshot. Components must not infer loading from `agents.length`.
 
 The directory owns Agent presentation. `agents[].iconUrl` is the primary
-identity used by conversation identity, Message Center, mentions, and the
-empty-home carousel and Provider Rail. `maskIconUrl` may supply the monochrome
-conversation-row glyph. Host projections preserve these roles independently
-and do not create provider-specific renderer catalogs.
+presentation asset used by conversation identity, Message Center, mentions,
+and the empty-home carousel and Provider Rail. It is decorative metadata:
+an Agent with an exact `agentTargetId` and name remains selectable when the
+icon is absent. `maskIconUrl` may supply the monochrome conversation-row glyph.
+Desktop Workspace Agent projections first inherit the resolved icon of their
+Harness target by exact target ID, then use the provider/icon catalog fallback.
+Host projections preserve these roles independently and do not create
+provider-specific renderer catalogs.
 
 When the Desktop host projects built-in Agent mentions into a workspace app,
 it replaces host-local file URLs with bounded 64px WebP data URLs. The external
@@ -482,7 +517,7 @@ For a signed Agent Extension, package `icon` is the primary identity and
 optional package `maskIcon` is the conversation-row glyph. All assets remain
 pinned to the verified active installation.
 
-Target-managed setup uses exact `agentTargetId`; daemon persists its state and actions. Setup gates only the empty new-conversation surface. Active/history conversations follow Session recovery and capability.
+Target-managed setup uses exact `agentTargetId`; daemon persists its state and actions. Setup gates only the empty new-conversation surface. Active/history conversations follow host-projected Session runtime availability for exact-target capability and transport reachability. A blocked Session runtime disables both composer editing and submit until the host reports the Session available again.
 
 The built-in managed-environment wizard and Agent Extension setup have different owners. Shared UI must not combine their lifecycles by provider name.
 
@@ -542,19 +577,21 @@ banner.
 
 An active Tutti Mode composer badge is an intensity-settings entry, not a
 destructive toggle. Clicking it opens the UI-local `TuttiBudgetPopover`, seeded
-from the engine-projected orchestration intensity. Cancel discards the draft;
-Confirm sends the selected intensity through the existing Tutti Mode activation
-command. Turning Tutti Mode off remains a separate adjacent action, and both
-controls stay disabled while an activation update is unresolved.
+from the engine-projected orchestration intensity. Every slider movement sends
+the selected intensity directly through the existing Tutti Mode activation
+command -- there is no draft/confirm step. Turning Tutti Mode off remains a
+separate adjacent action, and both controls stay disabled while an activation
+update is unresolved.
 The Desktop command host and HTTP adapter must preserve both the optimistic
 CAS revision and the optional orchestration intensity; dropping either field
 turns a valid UI intent into a stale or semantically mismatched response.
 
-The intensity popup uses one interactive Cost-to-Balance-to-Powerful gradient
-slider and projects its local draft into equal tendency bands while it moves.
+The intensity popup uses one interactive Economical-to-Balanced-to-Powerful
+gradient slider and projects its local draft into equal tendency bands while it
+moves.
 That projection is explanatory UI, not a model or task assignment: it previews
-economical, balanced, or most-capable model strength and 1, 2–3, or up to 4
-parallel Agents. Four is the current hard workspace-wide Issue execution
+Economical, Balanced, or Powerful model strength (matching the slider bands)
+and 1, 2–3, or up to 4 parallel Agents. Four is the current hard workspace-wide Issue execution
 ceiling, not a cap on the total planned Agent or task count. The planning Agent
 still derives the exact model, total task graph, and safe parallelism from the
 request, selected Skills, available composer catalog, and workspace state.
@@ -617,6 +654,13 @@ External OS file paste and drop enter one host-injected classification boundary 
 
 Workspace picker results and internal workspace-reference drags remain live references. They enter the rich-text document as mentions and never pass through external-file preparation. A picker source whose selected locator is not yet consumer-readable may perform source-owned confirmation preparation before the mention is inserted; the picker waits in a loading state, publishes no partial result on failure, and remains open for retry. This confirmation transaction belongs to the reference source contract and is distinct from the external OS file preparation pipeline. Removing an inline external-file mention removes its draft intent; a later async result must not revive it or lose its error reason when the draft is in another scope.
 
+A host may map a reference-source content error to a labeled recovery action
+through the optional workspace contract. AgentGUI passes that policy through to
+the shared picker without copying error state. The picker owns centered error
+presentation and retries the failed browse or search; the host remains the
+authority for deciding which structured errors can request authorization or
+otherwise recover interactively.
+
 ### 6.2 Public node contract
 
 `AgentGUINodeProps` groups fields by semantic responsibility:
@@ -639,11 +683,14 @@ Browser/Computer entries visible but disables their mutation and setup actions.
 Unsupported capabilities remain absent according to the authoritative composer
 capability descriptor. A caller host must not open its local device settings as
 a fallback for a remote owner.
-`hostCapabilities.accountMenuState` is a sanitized presentation projection.
-The host owns Account/Commerce requests, login/logout, external navigation,
-reward receipt persistence, clipboard writes, and notifications. AgentGUI may
-render those values and invoke optional actions such as `onCopyUserId`, but it
-must never receive a Cookie or start a Commerce request.
+Account and Commerce UI is Host chrome rendered through
+`@tutti-os/commerce/react`; it is not an AgentGUI node capability. AgentGUI
+accepts only generic `hostCapabilities.visibleErrorPresentationOverrides` for
+structured product errors. The host owns Account/Commerce requests,
+login/logout, external navigation, reward receipt persistence, clipboard
+writes, notifications, localization, feature gating, and menu lifecycle.
+Neither AgentGUI nor the frontend Commerce package may receive a Cookie or
+start a Commerce request.
 Host chrome that aligns to AgentGUI's internal layout must consume explicit
 package signals such as `hostActions.onConversationRailLayoutChange`; it must
 not observe package DOM, CSS variables, or class names with
@@ -713,6 +760,10 @@ The pending activation carries the same resolved project section key as the
 create command. Exact rail projection therefore shows the conversation as soon
 as the intent is accepted; it does not wait for provider startup or invent a
 temporary catch-all section.
+For delegated/shared execution, the initiating caller remains the placement
+authority: the adapter forwards that caller-selected `RailPlacement` through
+the binding to the owner Host. The owner persists the same section key and does
+not recompute it from the owner's user-project list.
 
 ### 7.2 Existing conversation submit
 
@@ -743,6 +794,11 @@ Every surface shares the exact interaction identity
 `(workspaceId, agentSessionId, turnId, requestId)` and submitting state.
 Provider request ids remain unchanged and may repeat across Turns; no adapter
 may recover a missing Turn by scanning for a session-wide request-id match.
+Non-DOM hosts such as React Native reuse the pure
+`agent-conversation/interactive-answer` entrypoint for canonical ask-user
+payload construction and own-property-safe question-id access. Presentation
+components remain platform-specific, but they must not copy or reinterpret
+this cross-provider answer contract.
 
 A synthesized plan decision uses a durable `plan_decision` operation. A provider-native plan Interaction continues through `interactive_response`. Similar UI does not justify merging their write paths.
 

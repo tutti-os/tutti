@@ -11,6 +11,7 @@
 @source "../../../../../packages/workspace/issue-manager/src";
 @source "../../../../../packages/workspace/terminal/src";
 @source "../../../../../packages/workspace/user-project/src";
+@source "../../../../../packages/commerce/web/src";
 @import "@tutti-os/ui-system/styles.css";
 @import "@tutti-os/workbench-surface/styles.css";
 @import "@tutti-os/workbench-launchpad/styles.css";

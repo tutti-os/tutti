@@ -1,12 +1,13 @@
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import {
-  Badge,
-  Button,
   Popover,
   PopoverContent,
   PopoverTrigger,
   Slider
 } from "@tutti-os/ui-system";
+import tuttiIntensityHandleBalanceUrl from "../../../app/renderer/assets/icons/tutti-intensity-handle-balance.png";
+import tuttiIntensityHandleCostUrl from "../../../app/renderer/assets/icons/tutti-intensity-handle-cost.png";
+import tuttiIntensityHandlePowerfulUrl from "../../../app/renderer/assets/icons/tutti-intensity-handle-powerful.png";
 import {
   projectTuttiIntensityPreview,
   type TuttiIntensityTier
@@ -28,65 +29,57 @@ export interface TuttiBudgetPopoverLabels {
   agentCountCost: string;
   agentCountBalance: string;
   agentCountPowerful: string;
-  confirm: string;
-  cancel: string;
 }
 
 const tierTone: Record<
   TuttiIntensityTier,
   {
-    badgeVariant: "success" | "warning" | "pending";
-    sliderClassName: string;
+    sliderHandleUrl: string;
+    valueClassName: string;
   }
 > = {
   cost: {
-    badgeVariant: "success",
-    sliderClassName:
-      "[&_[data-slot=slider-thumb]]:border-[var(--state-success)]"
+    sliderHandleUrl: tuttiIntensityHandleCostUrl,
+    valueClassName: "text-[var(--state-success)]"
   },
   balance: {
-    badgeVariant: "warning",
-    sliderClassName:
-      "[&_[data-slot=slider-thumb]]:border-[var(--state-warning)]"
+    sliderHandleUrl: tuttiIntensityHandleBalanceUrl,
+    valueClassName: "text-[var(--accent-codex)]"
   },
   powerful: {
-    badgeVariant: "pending",
-    sliderClassName: "[&_[data-slot=slider-thumb]]:border-[var(--tutti-purple)]"
+    sliderHandleUrl: tuttiIntensityHandlePowerfulUrl,
+    valueClassName: "text-[var(--tutti-purple)]"
   }
 };
 
 /**
  * Modal-like Tutti budget popup anchored to the composer's Tutti chip.
  *
- * The popup edits a local orchestration-intensity draft seeded from the
- * effective value on open; only Confirm commits it via `onConfirm`. Outside
- * clicks never dismiss it, and Escape settles inside the popup (close +
- * preventDefault) so it cannot leak into surrounding composer containers --
- * same contract as the confirmation-dialog precedent in
+ * Slider movement applies immediately through `onChange` -- there is no
+ * confirm/cancel step. The local draft only keeps the thumb smooth while the
+ * caller propagates the new value, and is reseeded from the effective value
+ * on every open. Escape settles inside the popup (close + preventDefault) so
+ * it cannot leak into surrounding composer containers -- same contract as the
+ * confirmation-dialog precedent in
  * packages/ui/system/src/components/confirmation-dialog/confirmation-dialog.tsx.
  */
 export function TuttiBudgetPopover({
   children,
   intensity,
   labels,
-  onConfirm
+  onChange
 }: {
   /** Trigger chip; rendered through `PopoverTrigger asChild`. */
   children: ReactNode;
   /** Effective orchestration intensity (0-100) used to seed the draft. */
   intensity: number;
   labels: TuttiBudgetPopoverLabels;
-  onConfirm: (value: number) => void;
+  onChange: (value: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [draftIntensity, setDraftIntensity] = useState(intensity);
   const preview = projectTuttiIntensityPreview(draftIntensity);
   const previewTone = tierTone[preview.tier];
-  const previewLabel = {
-    cost: labels.previewCost,
-    balance: labels.previewBalance,
-    powerful: labels.previewPowerful
-  }[preview.tier];
   const modelStrength = {
     economical: labels.modelStrengthCost,
     balanced: labels.modelStrengthBalance,
@@ -125,8 +118,6 @@ export function TuttiBudgetPopover({
           event.preventDefault();
           setOpen(false);
         }}
-        onInteractOutside={(event) => event.preventDefault()}
-        onPointerDownOutside={(event) => event.preventDefault()}
       >
         <div className="text-[13px] font-semibold text-[var(--text-primary)]">
           {labels.title}
@@ -144,25 +135,32 @@ export function TuttiBudgetPopover({
               {draftIntensity}
             </span>
           </div>
-          <div className="mt-2">
+          <div className="mt-3">
             <Slider
               aria-label={labels.intensityLabel}
-              className={`[&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-track]]:bg-[linear-gradient(90deg,var(--state-success)_0%,var(--state-warning)_50%,var(--tutti-purple)_100%)] ${previewTone.sliderClassName}`}
+              className={`-mx-1 w-[calc(100%_+_8px)] [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-track]]:mx-1 [&_[data-slot=slider-track]]:h-5 [&_[data-slot=slider-track]]:bg-[linear-gradient(90deg,var(--state-success)_0%,var(--accent-codex)_50%,var(--tutti-purple)_100%)] [&_[data-slot=slider-thumb]]:size-10 [&_[data-slot=slider-thumb]]:border-transparent [&_[data-slot=slider-thumb]]:bg-transparent [&_[data-slot=slider-thumb]]:bg-[image:var(--tutti-intensity-handle-url)] [&_[data-slot=slider-thumb]]:bg-contain [&_[data-slot=slider-thumb]]:bg-center [&_[data-slot=slider-thumb]]:bg-no-repeat [&_[data-slot=slider-thumb]]:shadow-none [&_[data-slot=slider-thumb]]:hover:ring-0 [&_[data-slot=slider-thumb]]:focus-visible:ring-0 [&_[data-slot=slider-thumb]]:-translate-y-1 [&_[data-slot=slider-thumb]]:cursor-grab [&_[data-slot=slider-thumb]]:active:cursor-grabbing`}
+              style={
+                {
+                  "--tutti-intensity-handle-url": `url("${previewTone.sliderHandleUrl}")`
+                } as CSSProperties
+              }
               data-agent-tutti-budget-intensity-slider="true"
               data-agent-tutti-budget-slider-tone={preview.tier}
               max={100}
               min={0}
               step={1}
               value={[draftIntensity]}
-              onValueChange={(values) =>
-                setDraftIntensity(values[0] ?? draftIntensity)
-              }
+              onValueChange={(values) => {
+                const next = values[0] ?? draftIntensity;
+                setDraftIntensity(next);
+                onChange(next);
+              }}
             />
-            <div className="mt-1 flex items-center justify-between gap-2 text-[10px] font-medium">
+            <div className="mt-3 flex items-center justify-between gap-2 text-[11px] font-medium">
               <span className="text-[var(--state-success)]">
                 {labels.previewCost}
               </span>
-              <span className="text-[var(--state-warning)]">
+              <span className="text-[var(--accent-codex)]">
                 {labels.previewBalance}
               </span>
               <span className="text-[var(--tutti-purple)]">
@@ -172,22 +170,19 @@ export function TuttiBudgetPopover({
           </div>
           <div
             aria-live="polite"
-            className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--line-2)] pt-2"
+            className="mt-2 border-t border-[var(--line-2)] pt-2"
           >
-            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+            <span className="text-[12px] font-medium text-[var(--text-secondary)]">
               {labels.previewTitle}
             </span>
-            <Badge size="sm" variant={previewTone.badgeVariant}>
-              {previewLabel}
-            </Badge>
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
             <div className="min-w-0">
               <div className="text-[var(--text-tertiary)]">
                 {labels.modelStrengthLabel}
               </div>
               <div
-                className="truncate font-medium text-[var(--text-primary)]"
+                className={`truncate text-[13px] font-medium ${previewTone.valueClassName}`}
                 data-agent-tutti-budget-model-strength="true"
               >
                 {modelStrength}
@@ -198,38 +193,16 @@ export function TuttiBudgetPopover({
                 {labels.agentCountLabel}
               </div>
               <div
-                className="truncate font-medium text-[var(--text-primary)]"
+                className="truncate text-[13px] font-medium text-[var(--text-primary)]"
                 data-agent-tutti-budget-agent-count="true"
               >
                 {agentCount}
               </div>
             </div>
           </div>
-          <p className="mt-2 mb-0 text-[10px] leading-[1.35] text-[var(--text-tertiary)]">
+          <p className="mt-2 mb-0 text-[11px] leading-[1.35] text-[var(--text-tertiary)]">
             {labels.previewHint}
           </p>
-        </div>
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            data-agent-tutti-budget-cancel="true"
-            size="sm"
-            type="button"
-            variant="secondary"
-            onClick={() => setOpen(false)}
-          >
-            {labels.cancel}
-          </Button>
-          <Button
-            data-agent-tutti-budget-confirm="true"
-            size="sm"
-            type="button"
-            onClick={() => {
-              onConfirm(draftIntensity);
-              setOpen(false);
-            }}
-          >
-            {labels.confirm}
-          </Button>
         </div>
       </PopoverContent>
     </Popover>

@@ -50,6 +50,13 @@ interface TimelineGeometry {
   scrollHeight: number;
 }
 
+interface BottomDockSafeArea {
+  bottomDock: HTMLDivElement;
+  floatingOverflowHeight: number;
+  revision: string;
+  timelineOverflowHeight: number;
+}
+
 function readTimelineGeometry(timeline: HTMLElement): TimelineGeometry {
   const scrollHeight = timeline.scrollHeight;
   const clientHeight = timeline.clientHeight;
@@ -58,6 +65,75 @@ function readTimelineGeometry(timeline: HTMLElement): TimelineGeometry {
     maxScrollTop: Math.max(0, scrollHeight - clientHeight),
     scrollHeight
   };
+}
+
+function readBottomDockSafeArea(bottomDock: HTMLDivElement): {
+  floatingOverflowHeight: number;
+  timelineOverflowHeight: number;
+} {
+  const bottomDockRect = bottomDock.getBoundingClientRect();
+  let timelineVisualTop = bottomDockRect.top;
+  let floatingVisualTop = bottomDockRect.top;
+  bottomDock.querySelectorAll("*").forEach((element) => {
+    if (element.closest(`.${styles.bottomDockScrollToBottom}`)) {
+      return;
+    }
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+    // The prompt input box expands upward past the dock top while the
+    // user drafts a long prompt. That transient overhang must not grow
+    // the timeline's reserved bottom space: reserving for it re-pins the
+    // scroll position and visibly pushes the message stream up. Only the
+    // input area's own box contributes to the floating controls' offset;
+    // clipped editor descendants can have layout positions above that box
+    // and would otherwise create an oversized gap.
+    if (element.closest(`.${styles.composerInputShell}`)) {
+      if (element.matches(".agent-gui-node__composer-prompt-input-area")) {
+        floatingVisualTop = Math.min(floatingVisualTop, rect.top);
+      }
+      return;
+    }
+    // Composer disclosure panels (e.g. Tutti mode plan review) are
+    // absolutely-positioned overlays that expand upward from their banner.
+    // They must not inflate the timeline's bottom safe-area — doing so
+    // would push the conversation stream up — but they do affect where
+    // floating controls (scroll-to-bottom) should anchor.
+    if (element.closest(`.${styles.composerDisclosurePanel}`)) {
+      floatingVisualTop = Math.min(floatingVisualTop, rect.top);
+      return;
+    }
+    floatingVisualTop = Math.min(floatingVisualTop, rect.top);
+    timelineVisualTop = Math.min(timelineVisualTop, rect.top);
+  });
+  return {
+    timelineOverflowHeight: Math.max(
+      0,
+      Math.ceil(bottomDockRect.top - timelineVisualTop)
+    ),
+    floatingOverflowHeight: Math.max(
+      0,
+      Math.ceil(bottomDockRect.top - floatingVisualTop)
+    )
+  };
+}
+
+function writeBottomDockSafeArea(
+  timeline: HTMLDivElement,
+  safeArea: Pick<
+    BottomDockSafeArea,
+    "bottomDock" | "floatingOverflowHeight" | "timelineOverflowHeight"
+  >
+): void {
+  timeline.style.setProperty(
+    "--agent-gui-bottom-dock-safe-area",
+    `${safeArea.timelineOverflowHeight}px`
+  );
+  safeArea.bottomDock.style.setProperty(
+    "--agent-gui-bottom-dock-floating-safe-area",
+    `${safeArea.floatingOverflowHeight}px`
+  );
 }
 
 export function useAgentGUIDetailScroll(input: Input) {
@@ -79,8 +155,10 @@ export function useAgentGUIDetailScroll(input: Input) {
   const [isTimelineScrolledToBottom, setIsTimelineScrolledToBottom] =
     useState(true);
   const bottomLockOwnerRef = useRef<string | null>(null);
+  const pointerScrollConversationRef = useRef<string | null>(null);
   const userScrollAwayIntentConversationRef = useRef<string | null>(null);
   const lastShowTimelineSkeletonRef = useRef(showTimelineSkeleton);
+  const bottomDockSafeAreaRef = useRef<BottomDockSafeArea | null>(null);
   useLayoutEffect(() => {
     const timelineSkeletonChanged =
       lastShowTimelineSkeletonRef.current !== showTimelineSkeleton;
@@ -94,10 +172,15 @@ export function useAgentGUIDetailScroll(input: Input) {
       timelineScrollAnchorRef.current = null;
       bottomLockOwnerRef.current = null;
       pendingPrependScrollAnchorRef.current = null;
+      pointerScrollConversationRef.current = null;
       submittedPromptScrollConversationRef.current = null;
       userScrollAwayIntentConversationRef.current = null;
       setIsTimelineScrolledToTop(true);
       setIsTimelineScrolledToBottom(true);
+      return;
+    }
+    if (activeConversationId !== viewModel.rail.activeConversationId) {
+      bottomLockOwnerRef.current = null;
       return;
     }
 
@@ -111,6 +194,22 @@ export function useAgentGUIDetailScroll(input: Input) {
       prependAnchor?.conversationId === activeConversationId;
     if (
       !conversationChanged &&
+      bottomLockOwnerRef.current === null &&
+      anchor.scrollHeight - anchor.scrollTop - anchor.clientHeight <=
+        AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX
+    ) {
+      bottomLockOwnerRef.current = activeConversationId;
+    }
+    if (conversationChanged && showTimelineSkeleton) {
+      bottomLockOwnerRef.current = activeConversationId;
+      pointerScrollConversationRef.current = null;
+      userScrollAwayIntentConversationRef.current = null;
+      setIsTimelineScrolledToTop(true);
+      setIsTimelineScrolledToBottom(true);
+      return;
+    }
+    if (
+      !conversationChanged &&
       !shouldScrollSubmittedPromptToBottom &&
       !shouldRestorePrependAnchor &&
       !timelineSkeletonChanged
@@ -122,6 +221,7 @@ export function useAgentGUIDetailScroll(input: Input) {
     let nextScrollTop: number;
     if (conversationChanged || shouldScrollSubmittedPromptToBottom) {
       bottomLockOwnerRef.current = activeConversationId;
+      pointerScrollConversationRef.current = null;
       userScrollAwayIntentConversationRef.current = null;
     }
     const shouldKeepBottomLocked =
@@ -156,6 +256,7 @@ export function useAgentGUIDetailScroll(input: Input) {
       const distanceFromBottom =
         anchor.scrollHeight - anchor.scrollTop - anchor.clientHeight;
       if (distanceFromBottom <= AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX) {
+        bottomLockOwnerRef.current = activeConversationId;
         setTimelineScrollTopInstantly(timeline, maxScrollTop);
         nextScrollTop = maxScrollTop;
       } else {
@@ -180,84 +281,54 @@ export function useAgentGUIDetailScroll(input: Input) {
     conversation,
     showTimelineSkeleton,
     timelineConversationId,
+    viewModel.rail.activeConversationId,
     viewModel.detail.isLoadingOlderMessages
   ]);
 
+  const hasTimelineConversation = timelineConversationId !== null;
   useLayoutEffect(() => {
     const timeline = timelineRef.current;
     const bottomDock = bottomDockRef.current;
-    const activeConversationId = timelineConversationId;
-    if (!timeline || !bottomDock || !activeConversationId) {
+    if (!hasTimelineConversation || !timeline || !bottomDock) {
       return;
     }
 
     let animationFrameId: number | null = null;
-
-    const syncBottomDockSafeArea = (): void => {
-      const bottomDockRect = bottomDock.getBoundingClientRect();
-      let timelineVisualTop = bottomDockRect.top;
-      let floatingVisualTop = bottomDockRect.top;
-      bottomDock.querySelectorAll("*").forEach((element) => {
-        if (element.closest(`.${styles.bottomDockScrollToBottom}`)) {
-          return;
-        }
-        const rect = element.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) {
-          return;
-        }
-        // The prompt input box expands upward past the dock top while the
-        // user drafts a long prompt. That transient overhang must not grow
-        // the timeline's reserved bottom space: reserving for it re-pins the
-        // scroll position and visibly pushes the message stream up. Only the
-        // input area's own box contributes to the floating controls' offset;
-        // clipped editor descendants can have layout positions above that box
-        // and would otherwise create an oversized gap.
-        if (element.closest(`.${styles.composerInputShell}`)) {
-          if (element.matches(".agent-gui-node__composer-prompt-input-area")) {
-            floatingVisualTop = Math.min(floatingVisualTop, rect.top);
-          }
-          return;
-        }
-        floatingVisualTop = Math.min(floatingVisualTop, rect.top);
-        timelineVisualTop = Math.min(timelineVisualTop, rect.top);
-      });
-      const timelineOverflowHeight = Math.max(
-        0,
-        Math.ceil(bottomDockRect.top - timelineVisualTop)
-      );
-      const floatingOverflowHeight = Math.max(
-        0,
-        Math.ceil(bottomDockRect.top - floatingVisualTop)
-      );
-      timeline.style.setProperty(
-        "--agent-gui-bottom-dock-safe-area",
-        `${timelineOverflowHeight}px`
-      );
-      bottomDock.style.setProperty(
-        "--agent-gui-bottom-dock-floating-safe-area",
-        `${floatingOverflowHeight}px`
-      );
+    const resolveBottomLockConversation = (): string | null => {
+      const activeConversationId = bottomLockOwnerRef.current;
+      if (!activeConversationId) {
+        return null;
+      }
+      const anchor = timelineScrollAnchorRef.current;
+      if (!anchor || anchor.conversationId !== activeConversationId) {
+        return null;
+      }
+      return activeConversationId;
     };
 
-    const syncBottomDockSpace = (): void => {
-      syncBottomDockSafeArea();
-
-      if (activeConversationId !== viewModel.rail.activeConversationId) {
-        return;
-      }
-
-      const anchor = timelineScrollAnchorRef.current;
-      const bottomLocked = bottomLockOwnerRef.current === activeConversationId;
-      if (!anchor || anchor.conversationId !== activeConversationId) {
-        return;
-      }
-
-      const distanceFromBottom =
-        anchor.scrollHeight - anchor.scrollTop - anchor.clientHeight;
+    const syncBottomDockSafeArea = (forceMeasurement: boolean): void => {
+      const cachedSafeArea = bottomDockSafeAreaRef.current;
       if (
-        !bottomLocked &&
-        distanceFromBottom > AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX
+        !forceMeasurement &&
+        cachedSafeArea?.bottomDock === bottomDock &&
+        cachedSafeArea.revision === bottomDockStoreRevision
       ) {
+        writeBottomDockSafeArea(timeline, cachedSafeArea);
+        return;
+      }
+      const measuredSafeArea = readBottomDockSafeArea(bottomDock);
+      const nextSafeArea: BottomDockSafeArea = {
+        bottomDock,
+        revision: bottomDockStoreRevision,
+        ...measuredSafeArea
+      };
+      bottomDockSafeAreaRef.current = nextSafeArea;
+      writeBottomDockSafeArea(timeline, nextSafeArea);
+    };
+
+    const syncConversationBottomLock = (): void => {
+      const scheduledConversationId = resolveBottomLockConversation();
+      if (!scheduledConversationId) {
         return;
       }
 
@@ -266,22 +337,9 @@ export function useAgentGUIDetailScroll(input: Input) {
       }
       animationFrameId = window.requestAnimationFrame(() => {
         animationFrameId = null;
-        const latestAnchor = timelineScrollAnchorRef.current;
         if (
-          !latestAnchor ||
-          latestAnchor.conversationId !== activeConversationId
-        ) {
-          return;
-        }
-        const latestDistanceFromBottom =
-          latestAnchor.scrollHeight -
-          latestAnchor.scrollTop -
-          latestAnchor.clientHeight;
-        const latestBottomLocked =
-          bottomLockOwnerRef.current === activeConversationId;
-        if (
-          !latestBottomLocked &&
-          latestDistanceFromBottom > AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX
+          resolveBottomLockConversation() !== scheduledConversationId ||
+          timelineRef.current !== timeline
         ) {
           return;
         }
@@ -289,7 +347,7 @@ export function useAgentGUIDetailScroll(input: Input) {
         const maxScrollTop = geometry.maxScrollTop;
         timeline.scrollTop = maxScrollTop;
         timelineScrollAnchorRef.current = {
-          conversationId: activeConversationId,
+          conversationId: scheduledConversationId,
           scrollHeight: geometry.scrollHeight,
           scrollTop: maxScrollTop,
           clientHeight: geometry.clientHeight
@@ -301,7 +359,8 @@ export function useAgentGUIDetailScroll(input: Input) {
       });
     };
 
-    syncBottomDockSpace();
+    syncBottomDockSafeArea(false);
+    syncConversationBottomLock();
     if (typeof ResizeObserver === "undefined") {
       return () => {
         timeline.style.removeProperty("--agent-gui-bottom-dock-safe-area");
@@ -314,7 +373,10 @@ export function useAgentGUIDetailScroll(input: Input) {
       };
     }
 
-    const observer = new ResizeObserver(syncBottomDockSpace);
+    const observer = new ResizeObserver(() => {
+      syncBottomDockSafeArea(true);
+      syncConversationBottomLock();
+    });
     observer.observe(bottomDock);
     const promptInputArea = bottomDock.querySelector(
       ".agent-gui-node__composer-prompt-input-area"
@@ -332,11 +394,7 @@ export function useAgentGUIDetailScroll(input: Input) {
       }
       observer.disconnect();
     };
-  }, [
-    bottomDockStoreRevision,
-    timelineConversationId,
-    viewModel.rail.activeConversationId
-  ]);
+  }, [bottomDockStoreRevision, hasTimelineConversation]);
 
   useEffect(() => {
     const timeline = timelineRef.current;
@@ -348,12 +406,17 @@ export function useAgentGUIDetailScroll(input: Input) {
 
     const loadOlderMessagesNearTop = (
       scrollTop: number,
-      scrollHeight: number
+      scrollHeight: number,
+      clientHeight: number
     ): void => {
+      const bottomLocked = bottomLockOwnerRef.current === activeConversationId;
+      const needsMoreContentToFillViewport = scrollHeight <= clientHeight;
       if (
         activeConversationId === viewModel.rail.activeConversationId &&
         viewModel.detail.hasOlderMessages &&
         !viewModel.detail.isLoadingOlderMessages &&
+        !showTimelineSkeleton &&
+        (!bottomLocked || needsMoreContentToFillViewport) &&
         scrollTop <= AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX
       ) {
         pendingPrependScrollAnchorRef.current = {
@@ -373,13 +436,28 @@ export function useAgentGUIDetailScroll(input: Input) {
       ) {
         return;
       }
-      const scrollTop = timeline.scrollTop;
-      const inferredUserScrollAway = scrollTop < previousAnchor.scrollTop - 1;
+      let scrollTop = timeline.scrollTop;
+      const pointerDrivenScrollAway =
+        pointerScrollConversationRef.current === activeConversationId &&
+        scrollTop < previousAnchor.scrollTop - 1;
       const explicitUserScrollAway =
         userScrollAwayIntentConversationRef.current === activeConversationId;
-      if (explicitUserScrollAway || inferredUserScrollAway) {
+      if (explicitUserScrollAway || pointerDrivenScrollAway) {
         bottomLockOwnerRef.current = null;
         userScrollAwayIntentConversationRef.current = null;
+      }
+      const bottomLocked = bottomLockOwnerRef.current === activeConversationId;
+      const anchoredMaxScrollTop = Math.max(
+        0,
+        previousAnchor.scrollHeight - previousAnchor.clientHeight
+      );
+      if (
+        bottomLocked &&
+        anchoredMaxScrollTop - scrollTop >
+          AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX
+      ) {
+        setTimelineScrollTopInstantly(timeline, anchoredMaxScrollTop);
+        scrollTop = anchoredMaxScrollTop;
       }
       timelineScrollAnchorRef.current = {
         conversationId: activeConversationId,
@@ -399,7 +477,11 @@ export function useAgentGUIDetailScroll(input: Input) {
         scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
       );
       setIsTimelineScrolledToBottom(effectiveAtBottom);
-      loadOlderMessagesNearTop(scrollTop, previousAnchor.scrollHeight);
+      loadOlderMessagesNearTop(
+        scrollTop,
+        previousAnchor.scrollHeight,
+        previousAnchor.clientHeight
+      );
     };
 
     const syncObservedTimelineGeometry = (): void => {
@@ -447,17 +529,42 @@ export function useAgentGUIDetailScroll(input: Input) {
         userScrollAwayIntentConversationRef.current = activeConversationId;
       }
     };
+    const captureSemanticScrollAwayIntent = (event: MouseEvent): void => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-agent-transcript-scroll-away-intent]")
+      ) {
+        userScrollAwayIntentConversationRef.current = activeConversationId;
+      }
+    };
+    const capturePointerIntent = (): void => {
+      pointerScrollConversationRef.current = activeConversationId;
+    };
+    const clearPointerIntent = (): void => {
+      if (pointerScrollConversationRef.current === activeConversationId) {
+        pointerScrollConversationRef.current = null;
+      }
+    };
 
     const initialAnchor = timelineScrollAnchorRef.current;
     if (initialAnchor?.conversationId === activeConversationId) {
       loadOlderMessagesNearTop(
         initialAnchor.scrollTop,
-        initialAnchor.scrollHeight
+        initialAnchor.scrollHeight,
+        initialAnchor.clientHeight
       );
     }
     timeline.addEventListener("scroll", captureScrollAnchor, { passive: true });
     timeline.addEventListener("wheel", captureWheelIntent, { passive: true });
     timeline.addEventListener("keydown", captureKeyboardIntent);
+    timeline.addEventListener("click", captureSemanticScrollAwayIntent);
+    timeline.addEventListener("pointerdown", capturePointerIntent, {
+      passive: true
+    });
+    window.addEventListener("pointerup", clearPointerIntent, { passive: true });
+    window.addEventListener("pointercancel", clearPointerIntent, {
+      passive: true
+    });
     const geometryObserver =
       timelineContent && typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(syncObservedTimelineGeometry)
@@ -471,10 +578,15 @@ export function useAgentGUIDetailScroll(input: Input) {
       timeline.removeEventListener("scroll", captureScrollAnchor);
       timeline.removeEventListener("wheel", captureWheelIntent);
       timeline.removeEventListener("keydown", captureKeyboardIntent);
+      timeline.removeEventListener("click", captureSemanticScrollAwayIntent);
+      timeline.removeEventListener("pointerdown", capturePointerIntent);
+      window.removeEventListener("pointerup", clearPointerIntent);
+      window.removeEventListener("pointercancel", clearPointerIntent);
     };
   }, [
     actions,
     timelineConversationId,
+    showTimelineSkeleton,
     viewModel.rail.activeConversationId,
     viewModel.detail.hasOlderMessages,
     viewModel.detail.isLoadingOlderMessages

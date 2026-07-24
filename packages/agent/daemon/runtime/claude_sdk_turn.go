@@ -131,6 +131,31 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKAssistantEvents(
 	return stampClaudeSDKAdapterMetadata(events)
 }
 
+func (a *ClaudeCodeSDKAdapter) claudeSDKAssistantFailedEvents(
+	adapterSession *claudeSDKAdapterSession,
+	session Session,
+	turnID string,
+	messageID string,
+	content string,
+) []activityshared.Event {
+	if a == nil || adapterSession == nil {
+		return nil
+	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	normalizer := adapterSession.ensureClaudeSDKTurnNormalizerLocked(turnID)
+	if normalizer == nil {
+		return nil
+	}
+	return stampClaudeSDKAdapterMetadata(
+		normalizer.FailAssistantSnapshot(session, turnID, content, messageID),
+	)
+}
+
 func stampClaudeSDKAdapterMetadata(events []activityshared.Event) []activityshared.Event {
 	if len(events) == 0 {
 		return events

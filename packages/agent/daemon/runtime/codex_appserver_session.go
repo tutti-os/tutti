@@ -67,9 +67,14 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 			"authMessage":      a.config.authRequiredMessage,
 		})}, nil
 	}
+	effectiveConfig := a.fetchEffectiveConfig(ctx, client, session, trace)
+	configOptions := effectiveConfig.settings
+	session = codexAppServerExecSessionWithConfig(session, configOptions)
+	effectiveConfig.settings = codexAppServerConfigWithEffectiveSettings(configOptions, session.SettingsValue())
 	models := []map[string]any(nil)
 	if codexAppServerNeedsSynchronousModels(session) {
 		models = a.fetchModels(ctx, client, session, trace)
+		models = codexAppServerModelsForEffectiveConfig(models, effectiveConfig)
 	}
 	if len(models) > 0 {
 		effectiveSettings := codexAppServerEffectiveSettings(models, session, nil)
@@ -130,6 +135,8 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 	liveState.currentMode = codexACPEffectiveModeID(session)
 	liveState.availableCommands = codexAppServerCommands()
 	liveState.commandsKnown = true
+	configOptions = codexAppServerConfigWithEffectiveSettings(effectiveConfig.settings, session.SettingsValue())
+	liveState.configOptions = clonePayloadDeep(configOptions)
 	applyACPConfigOptionDescriptors(&liveState, codexAppServerConfigOptionDescriptors(models, session, threadResult))
 
 	started = true
@@ -140,6 +147,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 		serverInfo:             serverInfo,
 		account:                account,
 		models:                 cloneCodexAppServerModels(models),
+		modelProvider:          effectiveConfig.modelProvider,
 		startupModelsReady:     len(models) > 0,
 		startupRateLimitsReady: false,
 		planModeMask:           planModeMask,
@@ -214,9 +222,14 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 		keepSession = true
 		return nil
 	}
+	effectiveConfig := a.fetchEffectiveConfig(ctx, client, session, trace)
+	configOptions := effectiveConfig.settings
+	session = codexAppServerExecSessionWithConfig(session, configOptions)
+	effectiveConfig.settings = codexAppServerConfigWithEffectiveSettings(configOptions, session.SettingsValue())
 	models := []map[string]any(nil)
 	if codexAppServerNeedsSynchronousModels(session) {
 		models = a.fetchModels(ctx, client, session, trace)
+		models = codexAppServerModelsForEffectiveConfig(models, effectiveConfig)
 	}
 	if len(models) > 0 && strings.TrimSpace(session.SettingsValue().ReasoningEffort) != "" {
 		hasExplicitModel := strings.TrimSpace(session.SettingsValue().Model) != ""
@@ -269,6 +282,8 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 	liveState.currentMode = codexACPEffectiveModeID(session)
 	liveState.availableCommands = codexAppServerCommands()
 	liveState.commandsKnown = true
+	configOptions = codexAppServerConfigWithEffectiveSettings(effectiveConfig.settings, session.SettingsValue())
+	liveState.configOptions = clonePayloadDeep(configOptions)
 	applyACPConfigOptionDescriptors(&liveState, codexAppServerConfigOptionDescriptors(models, session, threadResult))
 	if replayedUsageKnown {
 		liveState.usage = mergeACPUsageState(liveState.usage, replayedUsage)
@@ -282,6 +297,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 		serverInfo:             serverInfo,
 		account:                account,
 		models:                 cloneCodexAppServerModels(models),
+		modelProvider:          effectiveConfig.modelProvider,
 		startupModelsReady:     len(models) > 0,
 		startupRateLimitsReady: false,
 		planModeMask:           planModeMask,

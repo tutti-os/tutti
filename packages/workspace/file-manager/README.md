@@ -43,6 +43,15 @@ drag movement.
 Hosts now provide one app-level i18n runtime and scope it into the file-manager
 namespace, rather than hand-assembling package-local message objects.
 
+The React surface renders its default archive and folder fallbacks with
+code-owned `@tutti-os/ui-system` SVG icon components. Keep the package root free
+of fallback image imports: browser-conditioned test environments may select a
+raw image export and then externalize the package for Node execution, which
+cannot evaluate `.png` modules. The legacy
+`@tutti-os/workspace-file-manager/assets/workspace-*-fallback.png` subpaths
+remain available to browser consumers that explicitly need the artwork, but
+the shared runtime does not depend on them.
+
 What stays outside this package is concrete host integration: desktop preload
 calls, tuttid transport wiring, host absolute paths, import/export/upload
 flows, share/exposure flows, and other product-specific integration details

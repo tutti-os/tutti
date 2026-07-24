@@ -59,6 +59,11 @@ Validation runners that spawn nested pnpm commands should read the root
 let runner-spawned lanes resolve a bare `pnpm` from `PATH`, because local
 package-manager shims can differ from the repository pin.
 
+Changed-aware lane fingerprints include base, staged, working-tree, and
+untracked content for each lane. Git subprocess buffers must accommodate large
+binary or generated diffs; the runner uses a bounded 64 MiB buffer so a normal
+large pull request does not fail before its validation lanes start.
+
 Tests and checks that create temporary Git repositories must also isolate
 repository-local Git environment variables before invoking Git. In particular,
 remove inherited `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, index/object
@@ -390,6 +395,7 @@ The current root entrypoint runs the linter from:
 - `packages/agent/host`
 - `packages/agent/store-sqlite/canonical`
 - `packages/appcli/core`
+- `packages/device-link`
 - `packages/agent/runtimeprep`
 - `packages/workspace/files`
 - `packages/workbench/service`
@@ -408,10 +414,19 @@ Changed-aware Go validation includes the nested
 `packages/agent/activity-replication`, `packages/agent/daemon`,
 `packages/agent/host`,
 `packages/agent/runtimeprep`, `packages/agent/store-sqlite`, and
-`packages/agent/store-sqlite/canonical` modules.
+`packages/agent/store-sqlite/canonical`, and `packages/device-link` modules.
 Codex app-server protocol changes should also run
 `pnpm check:codexproto-generated` when schema, generator, or generated protocol
 files are touched.
+
+Every change under `packages/device-link/**`, including Makefiles, Java probe
+sources, and Android manifests, also selects
+`pnpm check:device-link-android`. That contract runs the Go suite, Android
+arm64 cross-compile, and Java gomobile binding generation. AAR assembly remains
+an explicit Android-SDK validation locally. The manually dispatched Android
+Internal Build workflow installs the pinned SDK/NDK versions, assembles the AAR
+and the internal mobile APK, and uploads a private validation artifact; it does
+not publish this currently provisional module.
 
 Local runs resolve `golangci-lint` from `$(go env GOPATH)/bin` first and fall
 back to `PATH`. This matches the repository install command without requiring a

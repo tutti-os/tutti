@@ -5,6 +5,7 @@ import {
   type AgentActivityInitialGoalControl,
   type AgentActivityInitialTuttiModeActivation,
   type AgentActivitySubmitDiagnostics,
+  type AgentActivityRailPlacement,
   type PendingActivationIntentRecord,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
@@ -26,6 +27,7 @@ interface AgentGUIActivateInputBase {
   initialTurnExpected?: boolean;
   initialGoalControl?: AgentActivityInitialGoalControl;
   railSectionKey?: string;
+  railPlacement?: AgentActivityRailPlacement;
   initialDisplayPrompt?: string;
   runtimeContent?: AgentPromptContentBlock[];
   submitDiagnostics?: AgentActivitySubmitDiagnostics;
@@ -138,6 +140,9 @@ export function useAgentGUIActivation({
           : {}),
         ...(input.railSectionKey?.trim()
           ? { railSectionKey: input.railSectionKey.trim() }
+          : {}),
+        ...(input.railPlacement
+          ? { railPlacement: { ...input.railPlacement } }
           : {}),
         ...(input.initialDisplayPrompt
           ? { initialDisplayPrompt: input.initialDisplayPrompt }

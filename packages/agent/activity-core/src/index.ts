@@ -1,5 +1,7 @@
 export type { AgentActivityAdapter } from "./adapter.ts";
 export type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
+export type { AgentActivityDisplayStatus } from "./displayStatus.types.ts";
+export type { AgentActivityRailPlacement } from "./railPlacement.types.ts";
 export { normalizeAgentActivityCapabilityReferences } from "./capabilityReferences.ts";
 export {
   normalizeAgentActivitySession,
@@ -23,8 +25,10 @@ export {
   latestAgentActivityMessageVersion,
   mergeAgentActivityMessages
 } from "./merge.ts";
+export type { AgentActivitySessionMessageWindow } from "./messageWindow.types.ts";
 export { parseInlineActivityMessages } from "./inlineActivityMessages.ts";
 export {
+  agentActivitySessionMessageWindowFromDescendingPage,
   loadAllAgentSessionMessages,
   type AgentActivityMessagePageLike,
   type LoadAllAgentSessionMessagesInput,
@@ -262,7 +266,6 @@ export type {
   AgentActivityActivateSessionResult,
   AgentActivityActivationMode,
   AgentActivityActivationStatus,
-  AgentActivityDisplayStatus,
   AgentActivityCancelTurnInput,
   AgentActivityGoalControlAction,
   AgentActivityInitialGoalControl,

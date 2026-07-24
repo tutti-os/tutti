@@ -69,7 +69,12 @@ export function useAgentGUISessionDetailTransport(input: {
     sessionViewRef(activeConversationId),
     activeConversationId
       ? (agentActivitySnapshot.sessionMessagesById[activeConversationId] ?? [])
-      : []
+      : [],
+    activeConversationId
+      ? (agentActivitySnapshot.sessionMessageWindowsById?.[
+          activeConversationId
+        ] ?? null)
+      : null
   );
   const resolveSessionMessages = useCallback(
     (agentSessionId: string | null | undefined) => {
@@ -160,7 +165,10 @@ export function useAgentGUISessionDetailTransport(input: {
     runtime: agentActivityRuntime,
     sessionViewRef,
     view: {
-      get: state.getAgentSessionView,
+      get: (ref) =>
+        ref.agentSessionId?.trim() === activeConversationIdRef.current
+          ? state.activeSessionView
+          : state.getAgentSessionView(ref),
       mergeOlder: state.mergeAgentSessionViewOlderMessages,
       setOlderMessagesLoading: state.setAgentSessionViewOlderMessagesLoading
     },

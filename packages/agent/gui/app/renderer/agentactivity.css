@@ -3175,6 +3175,20 @@ aside.workspace-agents-status-panel
   color: var(--agent-gui-text-primary, var(--text-primary));
 }
 
+/* Tutti workflow intensity button: tint icon + tier label + value by tier.
+   Needs the extra attribute hook to outrank the goal-actions button rule. */
+.agent-gui-chrome__goal-actions button[data-agent-tutti-tier="cost"] {
+  color: var(--state-success);
+}
+
+.agent-gui-chrome__goal-actions button[data-agent-tutti-tier="balance"] {
+  color: var(--accent-codex);
+}
+
+.agent-gui-chrome__goal-actions button[data-agent-tutti-tier="powerful"] {
+  color: var(--tutti-purple);
+}
+
 .agent-gui-chrome__composer-disclosure {
   display: grid;
   min-width: 0;
@@ -3184,12 +3198,37 @@ aside.workspace-agents-status-panel
   box-sizing: border-box;
   max-height: min(52vh, 520px);
   overflow: auto;
+  /* The translateY below fuses the panel with its own banner by painting
+     over the banner's top edge; the matching negative margin keeps the
+     panel flush with any card stacked above it instead of leaving a gap. */
+  margin-top: -12px;
   border: 1px solid var(--agent-gui-border-subtle, var(--line-2));
   border-bottom: 0;
   border-radius: 12px 12px 0 0;
   padding: 12px;
   background: var(--agent-gui-surface-strong, var(--background-panel));
   pointer-events: auto;
+  transform: translateY(12px);
+}
+
+/* Tutti workflow plan-review surfaces: --background-fronted base with an 8%
+   tutti-purple wash. Geometry (fused panel/banner overlap, radii, borders)
+   stays identical to the generic disclosure card. */
+.agent-gui-chrome__tutti-workflow-panel {
+  padding: 8px;
+  background: color-mix(
+    in srgb,
+    var(--tutti-purple) 8%,
+    var(--background-fronted)
+  );
+}
+
+.agent-gui-chrome__tutti-workflow-banner {
+  background: color-mix(
+    in srgb,
+    var(--tutti-purple) 8%,
+    var(--background-fronted)
+  );
 }
 
 .agent-gui-chrome__composer-disclosure[data-expanded="true"]
@@ -3729,6 +3768,38 @@ aside.workspace-agents-status-panel
 .agent-gui-conversation__user-message-flow {
   row-gap: 14px;
   justify-items: end;
+}
+
+.agent-gui-conversation__participant-message-layout {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  column-gap: 10px;
+  align-items: start;
+}
+
+.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="assistant"] {
+  grid-template-columns: 32px minmax(0, 1fr);
+}
+
+.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="user"] {
+  grid-template-columns: minmax(0, 1fr) 32px;
+}
+
+.agent-gui-conversation__participant-message-content {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="user"]
+  > .agent-gui-conversation__participant-message-content {
+  row-gap: 14px;
+  justify-items: end;
+}
+
+.agent-gui-conversation__participant-avatar {
+  margin-top: 2px;
 }
 
 .agent-gui-conversation__message-group {
@@ -5896,36 +5967,6 @@ aside.workspace-agents-status-panel
     var(--agent-gui-danger) 44%,
     var(--agent-gui-border)
   );
-}
-
-.agent-gui-node__account-reward-toast {
-  border: 1px solid rgba(218, 233, 255, 0.62);
-  background:
-    linear-gradient(
-      90deg,
-      rgba(18, 60, 142, 0.08),
-      rgba(20, 66, 160, 0.2) 58%,
-      rgba(12, 32, 92, 0.34)
-    ),
-    url("./assets/commercial/registration-credits-bg.png") center / cover
-      no-repeat;
-  box-shadow:
-    0 14px 28px rgba(0, 0, 0, 0.2),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.24);
-}
-
-.agent-gui-node__account-reward-toast::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      circle at 17% 28%,
-      rgba(255, 255, 255, 0.5),
-      transparent 24%
-    ),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 54%);
 }
 
 .agent-gui-node__conversation-list {
@@ -9085,6 +9126,13 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   line-height: 1.2;
 }
 
+/* Plan-task assignment rows space items with the row gap instead of each
+   trigger's own horizontal padding. */
+.tutti-plan-task-assignment-row .agent-gui-node__composer-menu-trigger {
+  padding-right: 0;
+  padding-left: 0;
+}
+
 .agent-gui-node__composer-menu-item > span:last-child {
   min-width: 0;
   flex: 1 1 auto;
@@ -9104,6 +9152,10 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--tutti-purple);
 }
 
+/* Active Tutti Mode chip: icon (bg-current) and label both go tutti-purple. */
+.agent-gui-node__composer-menu-trigger[data-agent-tutti-mode-active="true"] {
+  color: var(--tutti-purple);
+}
 .agent-gui-node__composer-menu-trigger:hover:not(:disabled) {
   color: var(--agent-gui-text-primary);
 }

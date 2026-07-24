@@ -1,0 +1,130 @@
+{
+  "name": "@tutti-os/commerce",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react/index.ts",
+    "./assets/star-free.png": {
+      "types": "./src/assets/star-free.png.d.ts",
+      "browser": "./src/assets/star-free.png",
+      "node": "./src/runtime-assets/star-free-url.ts",
+      "default": "./src/assets/star-free.png"
+    },
+    "./assets/star-lite.png": {
+      "types": "./src/assets/star-lite.png.d.ts",
+      "browser": "./src/assets/star-lite.png",
+      "node": "./src/runtime-assets/star-lite-url.ts",
+      "default": "./src/assets/star-lite.png"
+    },
+    "./assets/star-pro.png": {
+      "types": "./src/assets/star-pro.png.d.ts",
+      "browser": "./src/assets/star-pro.png",
+      "node": "./src/runtime-assets/star-pro-url.ts",
+      "default": "./src/assets/star-pro.png"
+    },
+    "./assets/star-ultra.png": {
+      "types": "./src/assets/star-ultra.png.d.ts",
+      "browser": "./src/assets/star-ultra.png",
+      "node": "./src/runtime-assets/star-ultra-url.ts",
+      "default": "./src/assets/star-ultra.png"
+    },
+    "./assets/registration-credits-bg.png": {
+      "types": "./src/assets/registration-credits-bg.png.d.ts",
+      "browser": "./src/assets/registration-credits-bg.png",
+      "node": "./src/runtime-assets/registration-credits-bg-url.ts",
+      "default": "./src/assets/registration-credits-bg.png"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/commerce/web"
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs src/assets dist/assets",
+    "test": "vitest run --environment jsdom",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+  },
+  "dependencies": {
+    "@tutti-os/ui-system": "workspace:*"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@types/node": "^24.0.1",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "jsdom": "^27.2.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tsup": "8.5.1",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.13"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "tutti": {
+    "tailwindSourceRoot": "src"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./react": {
+        "types": "./dist/react/index.d.ts",
+        "import": "./dist/react/index.js"
+      },
+      "./assets/star-free.png": {
+        "types": "./dist/assets/star-free.png.d.ts",
+        "browser": "./dist/assets/star-free.png",
+        "node": "./dist/runtime-assets/star-free-url.js",
+        "default": "./dist/assets/star-free.png"
+      },
+      "./assets/star-lite.png": {
+        "types": "./dist/assets/star-lite.png.d.ts",
+        "browser": "./dist/assets/star-lite.png",
+        "node": "./dist/runtime-assets/star-lite-url.js",
+        "default": "./dist/assets/star-lite.png"
+      },
+      "./assets/star-pro.png": {
+        "types": "./dist/assets/star-pro.png.d.ts",
+        "browser": "./dist/assets/star-pro.png",
+        "node": "./dist/runtime-assets/star-pro-url.js",
+        "default": "./dist/assets/star-pro.png"
+      },
+      "./assets/star-ultra.png": {
+        "types": "./dist/assets/star-ultra.png.d.ts",
+        "browser": "./dist/assets/star-ultra.png",
+        "node": "./dist/runtime-assets/star-ultra-url.js",
+        "default": "./dist/assets/star-ultra.png"
+      },
+      "./assets/registration-credits-bg.png": {
+        "types": "./dist/assets/registration-credits-bg.png.d.ts",
+        "browser": "./dist/assets/registration-credits-bg.png",
+        "node": "./dist/runtime-assets/registration-credits-bg-url.js",
+        "default": "./dist/assets/registration-credits-bg.png"
+      }
+    },
+    "types": "./dist/index.d.ts",
+    "typesVersions": {
+      "*": {
+        "react": [
+          "./dist/react/index.d.ts"
+        ]
+      }
+    }
+  }
+}

@@ -7225,6 +7225,7 @@ type fakeSessionInitializer struct {
 func (f fakeSessionInitializer) InitializeRuntimeSession(
 	_ context.Context,
 	session ProviderRuntimeSession,
+	railPlacement *agenthost.RailPlacement,
 ) (PersistedSession, error) {
 	if f.err != nil {
 		return PersistedSession{}, f.err
@@ -7239,6 +7240,7 @@ func (f fakeSessionInitializer) InitializeRuntimeSession(
 		Provider:               strings.TrimSpace(session.Provider),
 		ProviderSessionID:      strings.TrimSpace(session.ProviderSessionID),
 		Cwd:                    strings.TrimSpace(session.Cwd),
+		RailSectionKind:        "conversations",
 		RailSectionKey:         "conversations",
 		Settings:               settings,
 		Metadata:               agentactivitybiz.SessionMetadata{Visible: session.Visible, Capabilities: []string{}},
@@ -7249,6 +7251,11 @@ func (f fakeSessionInitializer) InitializeRuntimeSession(
 		StartedAtUnixMS:        session.CreatedAtUnixMS,
 		CreatedAtUnixMS:        session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:        session.UpdatedAtUnixMS,
+	}
+	if railPlacement != nil {
+		persisted.RailSectionKind = strings.TrimSpace(string(railPlacement.Kind))
+		persisted.RailProjectPath = strings.TrimSpace(railPlacement.ProjectPath)
+		persisted.RailSectionKey = strings.TrimSpace(railPlacement.SectionKey)
 	}
 	if f.reader != nil {
 		f.reader.sessions[persisted.WorkspaceID+":"+persisted.ID] = persisted

@@ -581,6 +581,11 @@ test("reloads only ordinary Browser nodes sharing the imported Electron Session"
     sessionMode: "profile",
     webContentsId: isolated.id
   });
+  sharedOne.currentUrl = "https://example.test/one";
+  sharedTwo.currentUrl = "https://example.test/two";
+  isolated.currentUrl = "https://example.test/isolated";
+  incognito.currentUrl = "https://example.test/incognito";
+  workspaceApp.currentUrl = "https://example.test/app";
 
   manager.reloadCookieImportSession(sharedSession);
   assert.equal(sharedOne.reloadCalls, 1);
@@ -681,6 +686,10 @@ test("Cookie imports refresh ordinary nodes across windows and exclude custom Se
     sessionMode: "profile",
     webContentsId: isolated.id
   });
+  first.currentUrl = "https://example.test/first";
+  second.currentUrl = "https://example.test/second";
+  custom.currentUrl = "https://example.test/custom";
+  isolated.currentUrl = "https://example.test/isolated";
 
   await handlers.get("browser:importCookies")?.(firstEvent, {
     nodeId: "first"

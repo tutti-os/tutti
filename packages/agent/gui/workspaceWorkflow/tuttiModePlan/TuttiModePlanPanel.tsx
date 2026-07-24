@@ -107,7 +107,7 @@ export function TuttiModePlanPanel({
               {panel.tasks.map((task) => (
                 <li
                   key={task.id}
-                  className="rounded-md bg-muted/60 px-3 py-2 text-sm"
+                  className="rounded-lg border border-[var(--line-2)] bg-[var(--background-board-card)] px-4 pt-3 pb-2 text-sm"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="font-medium text-foreground">
@@ -185,7 +185,7 @@ function TaskAssignmentSummary({
     return null;
   }
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-0.5 border-t border-border/70 pt-2">
+    <div className="tutti-plan-task-assignment-row mt-3 flex flex-wrap items-center gap-3 border-t border-[var(--line-2)] pt-2">
       {chips.map((chip) => (
         <span
           key={chip.label}

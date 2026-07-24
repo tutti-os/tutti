@@ -64,6 +64,7 @@ React rendering, Workbench state, external stores, input composition, and UI per
 - [Dialog action reacts to Enter but ignores pointer clicks](./workbench-renderer.md#dialog-action-reacts-to-enter-but-ignores-pointer-clicks)
 - [Daemon validation error appears as untranslated developer text](./workbench-renderer.md#daemon-validation-error-appears-as-untranslated-developer-text)
 - [Mask-backed icon renders as a solid color block](./workbench-renderer.md#mask-backed-icon-renders-as-a-solid-color-block)
+- [Restored fullscreen window overflows after the host surface becomes smaller](./workbench-renderer.md#restored-fullscreen-window-overflows-after-the-host-surface-becomes-smaller)
 
 ## [Workspace Apps And Files](./workspace-apps-files.md)
 
@@ -85,6 +86,7 @@ App Center, workspace-app lifecycle, App Factory, file references, and File Mana
 CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 
 - [Go-only PR skips a repository contract that later fails](./toolchain-browser-terminal.md#go-only-pr-skips-a-repository-contract-that-later-fails)
+- [gomobile Android AAR fails after Go compilation succeeds](./toolchain-browser-terminal.md#gomobile-android-aar-fails-after-go-compilation-succeeds)
 - [Dynamic CLI input rejects plausible flags](./toolchain-browser-terminal.md#dynamic-cli-input-rejects-plausible-flags)
 - [GitHub Actions pnpm setup fails with ERR_PNPM_BAD_PM_VERSION](./toolchain-browser-terminal.md#github-actions-pnpm-setup-fails-with-errpnpmbadpmversion)
 - [Multi-entry tsup declaration build exhausts its worker heap](./toolchain-browser-terminal.md#multi-entry-tsup-declaration-build-exhausts-its-worker-heap)
@@ -101,6 +103,13 @@ CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 - [New release CDN namespace returns an S3 403](./toolchain-browser-terminal.md#new-release-cdn-namespace-returns-an-s3-403)
 - [Browser Node focus pings miss iframe-hosted editors](./toolchain-browser-terminal.md#browser-node-focus-pings-miss-iframe-hosted-editors)
 - [Temporary Git fixture turns a linked worktree bare](./toolchain-browser-terminal.md#temporary-git-fixture-turns-a-linked-worktree-bare)
+
+## [Mobile](./mobile.md)
+
+Android app login, native bridge, secure identity, and mobile transport diagnostics.
+
+- [Browser login returns to the App but remains signed out](./mobile.md#browser-login-returns-to-the-app-but-remains-signed-out)
+- [Android DeviceLink opens a session and then repeatedly restarts](./mobile.md#android-devicelink-opens-a-session-and-then-repeatedly-restarts)
 
 ## [Computer Use](./computer-use.md)
 

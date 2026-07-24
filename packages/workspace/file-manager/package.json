@@ -6,6 +6,18 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./assets/workspace-archive-fallback.png": {
+      "types": "./src/assets/workspace-archive-fallback.png.d.ts",
+      "browser": "./src/assets/workspace-archive-fallback.png",
+      "node": "./src/runtime-assets/workspace-archive-fallback-url.ts",
+      "default": "./src/assets/workspace-archive-fallback.png"
+    },
+    "./assets/workspace-folder-fallback.png": {
+      "types": "./src/assets/workspace-folder-fallback.png.d.ts",
+      "browser": "./src/assets/workspace-folder-fallback.png",
+      "node": "./src/runtime-assets/workspace-folder-fallback-url.ts",
+      "default": "./src/assets/workspace-folder-fallback.png"
+    },
     "./i18n": "./src/i18n/index.ts",
     "./services": "./src/services/index.ts"
   },
@@ -54,6 +66,18 @@
       ".": {
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js"
+      },
+      "./assets/workspace-archive-fallback.png": {
+        "types": "./dist/assets/workspace-archive-fallback.png.d.ts",
+        "browser": "./dist/assets/workspace-archive-fallback.png",
+        "node": "./dist/runtime-assets/workspace-archive-fallback-url.js",
+        "default": "./dist/assets/workspace-archive-fallback.png"
+      },
+      "./assets/workspace-folder-fallback.png": {
+        "types": "./dist/assets/workspace-folder-fallback.png.d.ts",
+        "browser": "./dist/assets/workspace-folder-fallback.png",
+        "node": "./dist/runtime-assets/workspace-folder-fallback-url.js",
+        "default": "./dist/assets/workspace-folder-fallback.png"
       },
       "./i18n": {
         "types": "./dist/i18n/index.d.ts",

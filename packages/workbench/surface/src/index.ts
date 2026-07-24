@@ -19,6 +19,7 @@ export type {
 export {
   createWorkbenchNode,
   createWorkbenchNodeFromSnapshot,
+  createWorkbenchSnapshotLayoutBasis,
   createWorkbenchSnapshotFromState,
   createWorkbenchStateFromSnapshot,
   type CreateWorkbenchNodeInput,

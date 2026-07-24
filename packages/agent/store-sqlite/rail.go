@@ -3,12 +3,15 @@ package storesqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+var ErrRailSectionConflict = errors.New("workspace agent session rail section conflicts with canonical state")
 
 // Rail section classification buckets sessions in the conversation rail:
 // sessions rooted in a known project path land in that project's section,
@@ -53,8 +56,13 @@ func (s *Store) resolveAgentSessionRailSectionTx(
 	finalCWD string,
 	runtimeContext map[string]any,
 	importProjectPath string,
+	explicitPlacement *RailSection,
 ) (RailSection, error) {
 	existingRail, err := getExistingAgentSessionRailSectionTx(ctx, tx, workspaceID, agentSessionID)
+	if err != nil {
+		return RailSection{}, err
+	}
+	explicitRail, hasExplicitRail, err := explicitAgentSessionRailSection(explicitPlacement)
 	if err != nil {
 		return RailSection{}, err
 	}
@@ -69,15 +77,32 @@ func (s *Store) resolveAgentSessionRailSectionTx(
 	// repair an older ancestor assignment when the same import supplies its
 	// exact selected project path.
 	if existingRail.Found && existingRail.Valid {
+		if hasExplicitRail && existingRail.Section != explicitRail {
+			return RailSection{}, ErrRailSectionConflict
+		}
 		if hasImportRail && shouldRepairImportedAgentSessionRailSection(existingRail.Section, importRail) {
 			return importRail, nil
 		}
 		return existingRail.Section, nil
 	}
+	if hasExplicitRail {
+		return explicitRail, nil
+	}
 	if hasImportRail {
 		return importRail, nil
 	}
 	return s.classifyAgentSessionRailSectionTx(ctx, tx, finalCWD, runtimeContext)
+}
+
+func explicitAgentSessionRailSection(placement *RailSection) (RailSection, bool, error) {
+	if placement == nil {
+		return RailSection{}, false, nil
+	}
+	section := normalizeAgentSessionRailSection(*placement)
+	if !isValidAgentSessionRailSection(section) {
+		return RailSection{}, false, fmt.Errorf("invalid explicit workspace agent rail section")
+	}
+	return section, true, nil
 }
 
 func importedAgentSessionRailSection(
@@ -134,6 +159,33 @@ WHERE workspace_id = ? AND agent_session_id = ?
 		Found:   true,
 		Valid:   isValidAgentSessionRailSection(section),
 	}, nil
+}
+
+func (s *Store) getAgentSessionRailSection(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+) (RailSection, bool, error) {
+	row := s.db.QueryRowContext(ctx, `
+SELECT rail_section_kind, rail_project_path, rail_section_key
+FROM workspace_agent_sessions
+WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
+`, workspaceID, agentSessionID)
+	var section RailSection
+	if err := row.Scan(&section.Kind, &section.ProjectPath, &section.Key); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return RailSection{}, false, nil
+		}
+		return RailSection{}, false, fmt.Errorf("get workspace agent session rail section: %w", err)
+	}
+	section = normalizeAgentSessionRailSection(section)
+	if !isValidAgentSessionRailSection(section) {
+		return RailSection{}, false, fmt.Errorf(
+			"workspace agent session %q has an invalid rail section",
+			agentSessionID,
+		)
+	}
+	return section, true, nil
 }
 
 // ClassifyRailSection classifies a session working directory against the
@@ -324,7 +376,9 @@ func isValidAgentSessionRailSection(section RailSection) bool {
 	case RailSectionKindConversations:
 		return section.ProjectPath == "" && section.Key == RailSectionKeyConversations
 	case RailSectionKindProject:
-		return section.ProjectPath != "" && section.Key == RailSectionKeyForProject(section.ProjectPath)
+		return section.ProjectPath != "" &&
+			section.Key != "" &&
+			section.Key != RailSectionKeyConversations
 	default:
 		return false
 	}

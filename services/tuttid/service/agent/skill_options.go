@@ -148,17 +148,34 @@ func extensionSkillTrigger(prefix string) skillTriggerFunc {
 
 func composerSkillDiscoveryPlan(provider string, cwd string, env []string) ([]composerSkillRoot, skillTriggerFunc) {
 	profile := composerProfileFor(provider)
+	triggerFor := providerComposerSkillTrigger(provider)
+	if triggerFor == nil {
+		return nil, nil
+	}
 	switch providerregistry.SkillKind(profile.SkillKind) {
 	case providerregistry.SkillKindCodex:
-		return codexComposerSkillRoots(cwd, env), codexSkillTrigger
+		return codexComposerSkillRoots(cwd, env), triggerFor
 	case providerregistry.SkillKindClaudeCode:
-		return claudeCodeComposerSkillRoots(cwd, env), claudeCodeSkillTrigger
+		return claudeCodeComposerSkillRoots(cwd, env), triggerFor
 	case providerregistry.SkillKindCursor:
-		return cursorComposerSkillRoots(cwd, env), cursorSkillTrigger
+		return cursorComposerSkillRoots(cwd, env), triggerFor
 	case providerregistry.SkillKindOpenCode:
-		return openCodeComposerSkillRoots(cwd, env, profile.SkillConfigDirSuffix), openCodeSkillTrigger
+		return openCodeComposerSkillRoots(cwd, env, profile.SkillConfigDirSuffix), triggerFor
 	default:
 		return nil, nil
+	}
+}
+
+func providerComposerSkillTrigger(provider string) skillTriggerFunc {
+	if _, ok := providerregistry.Find(provider); !ok {
+		return nil
+	}
+	return func(root composerSkillRoot, name string) string {
+		projection, ok := providerregistry.ProjectComposerSkill(provider, name, root.pluginName)
+		if !ok {
+			return ""
+		}
+		return projection.Trigger
 	}
 }
 
@@ -629,33 +646,6 @@ func readYAMLBlockScalar(lines []string, start int, scalar string) (string, int)
 		return strings.Join(values, "\n"), index
 	}
 	return strings.Join(values, " "), index
-}
-
-func codexSkillTrigger(_ composerSkillRoot, name string) string {
-	return "$" + strings.TrimSpace(name)
-}
-
-func cursorSkillTrigger(_ composerSkillRoot, name string) string {
-	return "$" + strings.TrimSpace(name)
-}
-
-func claudeCodeSkillTrigger(root composerSkillRoot, name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return ""
-	}
-	if root.sourceKind == composerSkillSourcePlugin && strings.TrimSpace(root.pluginName) != "" {
-		return "/" + strings.TrimSpace(root.pluginName) + ":" + name
-	}
-	return "/" + name
-}
-
-func openCodeSkillTrigger(_ composerSkillRoot, name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return ""
-	}
-	return "/" + name
 }
 
 func shouldHideComposerSkill(root composerSkillRoot, name string) bool {

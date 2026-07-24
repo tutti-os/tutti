@@ -322,10 +322,12 @@ function BrowserNodeContent({
     ? formatBrowserNodeErrorStatus(feature, runtime.error)
     : null;
   const isShowingLoadError = errorMessage !== null;
+  // Keep home mounted across about:blank loading flickers. Hiding home while the
+  // bootstrap webview reports isLoading makes the empty state flash on every
+  // guest reload/attach (including Cookie-import session refreshes).
   const isShowingHome =
     renderHome !== undefined &&
     !isShowingLoadError &&
-    !runtime.isLoading &&
     isBrowserNodeHomeUrl(runtime.url ?? state.displayUrl);
   const openExternalUrl = resolveBrowserNodeOpenExternalUrl(feature, state);
   const {

@@ -58,6 +58,9 @@ import type {
   CompleteWorkspaceIssueTaskRunData,
   CompleteWorkspaceIssueTaskRunErrors,
   CompleteWorkspaceIssueTaskRunResponses,
+  ConfirmMobileRemotePairingData,
+  ConfirmMobileRemotePairingErrors,
+  ConfirmMobileRemotePairingResponses,
   CopyWorkspaceFileEntryData,
   CopyWorkspaceFileEntryErrors,
   CopyWorkspaceFileEntryResponses,
@@ -220,6 +223,9 @@ import type {
   GetHealthData,
   GetHealthErrors,
   GetHealthResponses,
+  GetMobileRemotePairingChallengeData,
+  GetMobileRemotePairingChallengeErrors,
+  GetMobileRemotePairingChallengeResponses,
   GetModelPlanData,
   GetModelPlanErrors,
   GetModelPlanResponses,
@@ -325,6 +331,9 @@ import type {
   ListCollaborationRunsData,
   ListCollaborationRunsErrors,
   ListCollaborationRunsResponses,
+  ListMobileRemotePairingsData,
+  ListMobileRemotePairingsErrors,
+  ListMobileRemotePairingsResponses,
   ListModelPlanReferencesData,
   ListModelPlanReferencesErrors,
   ListModelPlanReferencesResponses,
@@ -496,6 +505,9 @@ import type {
   RetryWorkspaceAppFactoryJobValidationErrors,
   RetryWorkspaceAppFactoryJobValidationResponses,
   RetryWorkspaceAppResponses,
+  RevokeMobileRemotePairingData,
+  RevokeMobileRemotePairingErrors,
+  RevokeMobileRemotePairingResponses,
   RollbackWorkspaceAppData,
   RollbackWorkspaceAppErrors,
   RollbackWorkspaceAppResponses,
@@ -541,6 +553,9 @@ import type {
   StartEnabledWorkspaceAppsData,
   StartEnabledWorkspaceAppsErrors,
   StartEnabledWorkspaceAppsResponses,
+  StartMobileRemotePairingData,
+  StartMobileRemotePairingErrors,
+  StartMobileRemotePairingResponses,
   StopAllWorkspaceAppsData,
   StopAllWorkspaceAppsErrors,
   StopAllWorkspaceAppsResponses,
@@ -1387,7 +1402,7 @@ export const listModelPlans = <ThrowOnError extends boolean = false>(
 /**
  * Create one named model access plan
  *
- * Creates a plan for one access scheme (official subscription, coding plan, relay, or custom compatible endpoint). Multiple named plans may share one protocol. New plans start undetected and pending first use.
+ * Creates a plan for one access scheme (official subscription, coding plan, relay, or custom compatible endpoint). Multiple named plans may share one protocol. New plans start undetected.
  */
 export const createModelPlan = <ThrowOnError extends boolean = false>(
   options: Options<CreateModelPlanData, ThrowOnError>
@@ -1409,7 +1424,7 @@ export const createModelPlan = <ThrowOnError extends boolean = false>(
 /**
  * Run the staged connection detection for a plan or draft
  *
- * Runs the network, auth, model discovery, and minimal real inference stages in order and reports one structured result per stage. The agent_runtime stage stays pending until the plan completes its first real agent call. With planId the outcome persists onto the stored plan; omitted fields fall back to stored values. Without planId the request verifies an unsaved draft.
+ * Runs the network, auth, model discovery, and minimal real inference stages in order and reports one structured result per stage. With planId the outcome persists onto the stored plan; omitted fields fall back to stored values. Without planId the request verifies an unsaved draft.
  */
 export const detectModelPlan = <ThrowOnError extends boolean = false>(
   options: Options<DetectModelPlanData, ThrowOnError>
@@ -1465,7 +1480,7 @@ export const getModelPlan = <ThrowOnError extends boolean = false>(
 /**
  * Update one model access plan
  *
- * Replaces the mutable plan fields. Omitting apiKey keeps the stored credential. Changing the credential, base URL, or protocol resets detection and first-use state, so the plan must be re-verified before it reads as usable. Changes affect only calls that have not started yet.
+ * Replaces the mutable plan fields. Omitting apiKey keeps the stored credential. Changing the credential, base URL, or protocol resets detection state. Changes affect only calls that have not started yet.
  */
 export const updateModelPlan = <ThrowOnError extends boolean = false>(
   options: Options<UpdateModelPlanData, ThrowOnError>
@@ -4529,4 +4544,88 @@ export const completeWorkspaceIssueTaskRun = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Register this desktop device and create a short-lived pairing challenge
+ */
+export const startMobileRemotePairing = <ThrowOnError extends boolean = false>(
+  options?: Options<StartMobileRemotePairingData, ThrowOnError>
+) =>
+  (options?.client ?? client).post<
+    StartMobileRemotePairingResponses,
+    StartMobileRemotePairingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairing-challenges",
+    ...options
+  });
+
+/**
+ * Read the latest pairing challenge state
+ */
+export const getMobileRemotePairingChallenge = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetMobileRemotePairingChallengeData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetMobileRemotePairingChallengeResponses,
+    GetMobileRemotePairingChallengeErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}",
+    ...options
+  });
+
+/**
+ * Confirm a claimed challenge with the daemon-held target device key
+ */
+export const confirmMobileRemotePairing = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ConfirmMobileRemotePairingData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ConfirmMobileRemotePairingResponses,
+    ConfirmMobileRemotePairingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm",
+    ...options
+  });
+
+/**
+ * List pairings for this desktop device
+ */
+export const listMobileRemotePairings = <ThrowOnError extends boolean = false>(
+  options?: Options<ListMobileRemotePairingsData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    ListMobileRemotePairingsResponses,
+    ListMobileRemotePairingsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairings",
+    ...options
+  });
+
+/**
+ * Revoke an active pairing
+ */
+export const revokeMobileRemotePairing = <ThrowOnError extends boolean = false>(
+  options: Options<RevokeMobileRemotePairingData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    RevokeMobileRemotePairingResponses,
+    RevokeMobileRemotePairingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/mobile-remote-access/pairings/{pairingID}",
+    ...options
   });

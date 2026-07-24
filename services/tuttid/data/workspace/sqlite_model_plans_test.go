@@ -61,7 +61,6 @@ func TestSQLiteStoreModelPlanRoundTrip(t *testing.T) {
 				{Stage: modelplanbiz.StageNetwork, Status: modelplanbiz.StagePassed, CheckedAt: now},
 			},
 		},
-		FirstUse:  modelplanbiz.FirstUse{Status: modelplanbiz.FirstUsePending},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -200,9 +199,6 @@ INSERT INTO managed_model_provider_credentials (
 	}
 	if len(plan.Models) != 1 || plan.Models[0].ID != "claude-x" || plan.Models[0].Name != "Claude X" {
 		t.Fatalf("migrated plan models = %#v", plan.Models)
-	}
-	if plan.FirstUse.Status != modelplanbiz.FirstUsePending {
-		t.Fatalf("migrated plan first use = %q, want pending", plan.FirstUse.Status)
 	}
 	if plan.Revision != 1 {
 		t.Fatalf("migrated plan revision = %d, want 1", plan.Revision)
@@ -370,7 +366,7 @@ func TestListAgentModelBindingsByModelPolicy(t *testing.T) {
 	}
 }
 
-func TestModelPlanBindingForeignKeysAndFirstUseCandidates(t *testing.T) {
+func TestModelPlanBindingForeignKeys(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -380,7 +376,7 @@ func TestModelPlanBindingForeignKeysAndFirstUseCandidates(t *testing.T) {
 	plan := modelplanbiz.Plan{
 		ID: "mp-bound", WorkspaceID: "ws-bindings", Name: "Bound", TemplateKind: modelplanbiz.TemplateCustom,
 		Protocol: modelplanbiz.ProtocolOpenAI, Models: []modelplanbiz.Model{{ID: "gpt-test", Name: "GPT Test"}},
-		Enabled: true, FirstUse: modelplanbiz.FirstUse{Status: modelplanbiz.FirstUsePending}, CreatedAt: now, UpdatedAt: now,
+		Enabled: true, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := store.PutModelPlan(ctx, plan); err != nil {
 		t.Fatalf("PutModelPlan() error = %v", err)
@@ -396,18 +392,6 @@ func TestModelPlanBindingForeignKeysAndFirstUseCandidates(t *testing.T) {
 		t.Fatalf("DeleteModelPlan(referenced) error = %v, want ErrModelPlanReferenced", err)
 	}
 
-	candidate := modelplanbiz.FirstUseCandidate{
-		WorkspaceID: "ws-bindings", AgentSessionID: "session-1", PlanID: "mp-bound",
-		AgentTargetID: agenttargetbiz.IDLocalCodex, Model: "gpt-test", PlanUpdatedAt: now, CreatedAt: now,
-	}
-	if err := store.PutModelPlanFirstUseCandidate(ctx, candidate); err != nil {
-		t.Fatalf("PutModelPlanFirstUseCandidate() error = %v", err)
-	}
-	loaded, err := store.GetModelPlanFirstUseCandidate(ctx, "ws-bindings", "session-1")
-	if err != nil || loaded.PlanID != "mp-bound" || loaded.Model != "gpt-test" {
-		t.Fatalf("GetModelPlanFirstUseCandidate() = %#v, error = %v", loaded, err)
-	}
-
 	if err := store.DeleteAgentTarget(ctx, agenttargetbiz.IDLocalCodex); err != nil {
 		t.Fatalf("DeleteAgentTarget() error = %v", err)
 	}
@@ -416,9 +400,6 @@ func TestModelPlanBindingForeignKeysAndFirstUseCandidates(t *testing.T) {
 	}
 	if err := store.DeleteModelPlan(ctx, "ws-bindings", "mp-bound"); err != nil {
 		t.Fatalf("DeleteModelPlan(after target cascade) error = %v", err)
-	}
-	if _, err := store.GetModelPlanFirstUseCandidate(ctx, "ws-bindings", "session-1"); !errors.Is(err, ErrModelPlanFirstUseCandidateNotFound) {
-		t.Fatalf("GetModelPlanFirstUseCandidate() after plan delete error = %v, want not found", err)
 	}
 }
 

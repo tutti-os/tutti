@@ -107,6 +107,40 @@ test("reference source picker renders shared folder icons and content errors", a
       "referencePicker.loadError"
     );
 
+    let retryContentCount = 0;
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...createFolderOnlyView(folderNode),
+      contentError: new Error("host access denied"),
+      currentEntries: [],
+      retryContent() {
+        retryContentCount += 1;
+      }
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          onClose() {},
+          onConfirm() {},
+          open: true,
+          resolveContentErrorAction: () => ({ label: "Authorize again" }),
+          workspaceId: "workspace-reference-content-error-action-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+
+    const retryContentButton = Array.from(
+      dom.window.document.querySelectorAll("button")
+    ).find((button) => button.textContent === "Authorize again");
+    assert.ok(retryContentButton);
+    await act(async () => {
+      retryContentButton.click();
+    });
+    assert.equal(retryContentCount, 1);
+
     (
       globalThis as { __referenceSourcePickerView?: unknown }
     ).__referenceSourcePickerView = {

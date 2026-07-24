@@ -40,6 +40,23 @@ test("does not notify subscribers when focusing the focused visible node", () =>
   unsubscribe();
 });
 
+test("reports surface measurements even when the measured size is unchanged", () => {
+  let measurements = 0;
+  const controller = createWorkbenchController(
+    {},
+    {
+      onSurfaceSizeMeasured() {
+        measurements += 1;
+      }
+    }
+  );
+
+  controller.commands.setSurfaceSize({ width: 1024, height: 720 });
+  controller.commands.setSurfaceSize({ width: 1280, height: 800 });
+
+  assert.equal(measurements, 2);
+});
+
 test("commands match dispatch paths", () => {
   const viaCommand = createWorkbenchController();
   const viaDispatch = createWorkbenchController();

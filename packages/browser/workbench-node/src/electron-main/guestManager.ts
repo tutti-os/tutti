@@ -10,6 +10,7 @@ import {
   resolveHostBrowserNavigationUrl
 } from "../core/url.ts";
 import type {
+  BrowserGuestCookieStore,
   BrowserGuestManager,
   BrowserGuestManagerInput,
   BrowserPreferredColorScheme,
@@ -109,6 +110,8 @@ export function createBrowserGuestManager({
   openExternal,
   prepareSession,
   prepareChromeCookieImport,
+  resolveOrdinaryCookieStore,
+  resolveOrdinaryCookieSession,
   resolveWebContents,
   saveScreenshot,
   selectCookieImport,
@@ -598,18 +601,71 @@ export function createBrowserGuestManager({
     },
     async importChromeCookies(input, signal) {
       const browserSession = sessions.get(input.nodeId);
+      const sessionMode = browserSession?.sessionMode ?? "shared";
+      const sessionPartition = browserSession?.sessionPartition ?? null;
+      const profileId = browserSession?.profileId ?? null;
+      const contents = browserSession?.contents ?? null;
+      let cookieStore: BrowserGuestCookieStore | null =
+        contents && !contents.isDestroyed()
+          ? (contents.session?.cookies ?? null)
+          : null;
+      if (
+        !cookieStore &&
+        sessionMode !== "incognito" &&
+        sessionPartition === null &&
+        resolveOrdinaryCookieStore
+      ) {
+        await prepareSession?.({
+          nodeId: input.nodeId,
+          profileId,
+          sessionMode,
+          sessionPartition,
+          url: undefined
+        });
+        cookieStore =
+          (await resolveOrdinaryCookieStore({
+            profileId,
+            sessionMode,
+            sessionPartition
+          })) ?? null;
+      }
       return importChromeCookiesIntoBrowserGuest({
-        contents: browserSession?.contents,
+        contents,
+        cookieStore,
         importInput: input,
         prepareChromeCookieImport,
         signal,
-        sessionMode: browserSession?.sessionMode ?? "incognito",
-        sessionPartition: browserSession?.sessionPartition ?? null
+        sessionMode,
+        sessionPartition
       });
     },
     getCookieImportSession(input) {
-      return getBrowserGuestCookieImportSession(
+      const browserSession = sessions.get(input.nodeId);
+      return getBrowserGuestCookieImportSession(browserSession?.contents);
+    },
+    async resolveCookieImportSession(input) {
+      const fromGuest = getBrowserGuestCookieImportSession(
         sessions.get(input.nodeId)?.contents
+      );
+      if (fromGuest) {
+        return fromGuest;
+      }
+      const browserSession = sessions.get(input.nodeId);
+      const sessionMode = browserSession?.sessionMode ?? "shared";
+      const sessionPartition = browserSession?.sessionPartition ?? null;
+      if (
+        sessionMode === "incognito" ||
+        sessionPartition !== null ||
+        !resolveOrdinaryCookieSession
+      ) {
+        return null;
+      }
+      return (
+        (await resolveOrdinaryCookieSession({
+          profileId: browserSession?.profileId ?? null,
+          sessionMode,
+          sessionPartition
+        })) ?? null
       );
     },
     reloadCookieImportSession(target) {

@@ -105,4 +105,13 @@ test("preserves spaces and restore frames from canonical contract fixtures", () 
     height: 480
   });
   assert.equal(normalized.activeSpaceId, "space-1");
+  assert.deepEqual(normalized.layoutBasis, {
+    surfaceSize: { width: 1440, height: 900 },
+    layoutConstraints: {
+      minWidth: 280,
+      minHeight: 160,
+      surfacePadding: 0,
+      safeArea: { top: 52, right: 0, bottom: 88, left: 0 }
+    }
+  });
 });

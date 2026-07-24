@@ -1,0 +1,2 @@
+-keep class dev.tutti.devicelink.** { *; }
+-keep class go.** { *; }

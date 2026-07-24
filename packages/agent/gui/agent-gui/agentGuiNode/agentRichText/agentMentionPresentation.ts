@@ -4,12 +4,17 @@ import { agentSessionTargetIdFromHref } from "./agentMentionMarkdown";
 
 export function resolveAgentSessionMentionIconUrl(input: {
   agentIconUrl?: string | null;
+  agentProviderId?: string | null;
   agentTargetId?: string | null;
   href?: string | null;
 }): string | undefined {
   const explicitIconUrl = input.agentIconUrl?.trim() ?? "";
   if (explicitIconUrl) {
     return explicitIconUrl;
+  }
+  const agentProviderId = input.agentProviderId?.trim() ?? "";
+  if (agentProviderId) {
+    return managedAgentRoundedIconUrl(agentProviderId);
   }
   const agentTargetId =
     input.agentTargetId?.trim() ||

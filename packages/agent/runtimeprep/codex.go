@@ -224,18 +224,22 @@ func exposeUserCodexPluginState(codexHome string, userCodexHome string) error {
 func exposeUserCodexConfig(codexHome string, userCodexHome string) error {
 	target := filepath.Join(codexHome, "config.toml")
 	if targetInfo, err := os.Lstat(target); err == nil {
-		if targetInfo.Mode()&os.ModeSymlink == 0 {
-			return nil
-		}
-		if err := os.Remove(target); err != nil {
-			return fmt.Errorf("replace codex config symlink: %w", err)
+		if targetInfo.Mode()&os.ModeSymlink != 0 {
+			if err := os.Remove(target); err != nil {
+				return fmt.Errorf("replace codex config symlink: %w", err)
+			}
 		}
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("inspect codex config: %w", err)
 	}
 	source := filepath.Join(userCodexHome, "config.toml")
-	if _, err := os.Stat(source); err != nil {
+	if _, err := os.Stat(source); os.IsNotExist(err) {
+		if removeErr := os.Remove(target); removeErr != nil && !os.IsNotExist(removeErr) {
+			return fmt.Errorf("remove stale codex config: %w", removeErr)
+		}
 		return nil
+	} else if err != nil {
+		return fmt.Errorf("inspect user codex config: %w", err)
 	}
 	if err := copyFile(source, target, 0o600); err != nil {
 		return fmt.Errorf("copy codex config: %w", err)

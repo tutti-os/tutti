@@ -113,6 +113,16 @@ func (s *Service) GetUserInfo(ctx context.Context) (*authbridge.UserInfo, error)
 	return client.GetUserInfo(ctx)
 }
 
+// ReadSession exposes the daemon-owned account session to trusted service
+// adapters without returning credentials through the local HTTP API.
+func (s *Service) ReadSession() (*authbridge.Session, error) {
+	client, err := s.authClient()
+	if err != nil {
+		return nil, err
+	}
+	return client.ReadSession()
+}
+
 func (s *Service) GetProductSummary(ctx context.Context) (ProductSummary, error) {
 	return s.productSummary(ctx)
 }

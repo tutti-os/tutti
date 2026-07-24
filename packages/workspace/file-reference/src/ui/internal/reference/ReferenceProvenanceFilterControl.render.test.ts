@@ -330,6 +330,18 @@ function buildFilterControlRenderModule(tempDir: string): string {
       export function referenceProvenanceFilterIsActive(value) {
         return value.agentTargetIds !== null || value.memberIds !== null;
       }
+      export function resolveReferenceProvenanceAgentLabelParts(
+        option,
+        memberOptionsById
+      ) {
+        if (!option.parentMemberId) return null;
+        const ownerLabel = memberOptionsById.get(option.parentMemberId)?.label;
+        if (!ownerLabel) return null;
+        const prefix = \`\${ownerLabel} · \`;
+        if (!option.label.startsWith(prefix)) return null;
+        const agentLabel = option.label.slice(prefix.length);
+        return agentLabel ? { agentLabel, ownerLabel } : null;
+      }
     `
   );
 
@@ -355,7 +367,8 @@ function buildFilterControlRenderModule(tempDir: string): string {
       /import \{\s*referenceProvenanceFilterIds,[\s\S]*?\} from "\.\.\/\.\.\/\.\.\/core\/referenceProvenance\.ts";/,
       `import {
         referenceProvenanceFilterIds,
-        referenceProvenanceFilterIsActive
+        referenceProvenanceFilterIsActive,
+        resolveReferenceProvenanceAgentLabelParts
       } from "${coreUrl}";`
     );
 

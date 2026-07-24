@@ -4,6 +4,8 @@ import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 export interface CanonicalSubmitAvailability {
   reason?:
     | "active_turn"
+    | "agent_capability_checking"
+    | "agent_capability_unavailable"
     | "waiting"
     | "transport_reconnecting"
     | "transport_unavailable";

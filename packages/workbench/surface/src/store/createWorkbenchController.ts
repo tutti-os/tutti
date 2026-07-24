@@ -8,7 +8,10 @@ import type {
 
 export function createWorkbenchController<TData = unknown>(
   initialState: Partial<WorkbenchState<TData>> = {},
-  options: { debugDiagnostics?: WorkbenchDebugDiagnostics } = {}
+  options: {
+    debugDiagnostics?: WorkbenchDebugDiagnostics;
+    onSurfaceSizeMeasured?: () => void;
+  } = {}
 ): WorkbenchController<TData> {
   const store = createWorkbenchStore(initialState, options);
 

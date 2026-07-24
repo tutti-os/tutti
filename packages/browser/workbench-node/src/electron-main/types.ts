@@ -17,6 +17,7 @@ import type {
   BrowserNodeRegisterGuestInput,
   BrowserNodeScreenshotSaveResult,
   BrowserNodeSaveScreenshotInput,
+  BrowserNodeSessionMode,
   BrowserNodeSetDeviceEmulationInput,
   BrowserNodeSetZoomFactorInput,
   BrowserNodeShowDevToolsContextMenuInput,
@@ -48,6 +49,9 @@ export interface BrowserGuestManager {
   getCookieImportSession(
     input: BrowserNodeNodeIdInput
   ): BrowserGuestElectronSession | null;
+  resolveCookieImportSession(
+    input: BrowserNodeNodeIdInput
+  ): Promise<BrowserGuestElectronSession | null>;
   reloadCookieImportSession(target: BrowserGuestElectronSession): void;
   handleGuestOpenUrl(
     webContentsId: number,
@@ -95,6 +99,22 @@ export interface BrowserGuestManagerInput {
   prepareSession?: (
     input: BrowserNodePrepareSessionInput
   ) => Promise<void> | void;
+  resolveOrdinaryCookieStore?: (input: {
+    profileId: string | null;
+    sessionMode: BrowserNodeSessionMode;
+    sessionPartition: string | null;
+  }) =>
+    | Promise<BrowserGuestCookieStore | null>
+    | BrowserGuestCookieStore
+    | null;
+  resolveOrdinaryCookieSession?: (input: {
+    profileId: string | null;
+    sessionMode: BrowserNodeSessionMode;
+    sessionPartition: string | null;
+  }) =>
+    | Promise<BrowserGuestElectronSession | null>
+    | BrowserGuestElectronSession
+    | null;
   resolveWebContents: (webContentsId: number) => BrowserGuestWebContents | null;
   saveScreenshot?: (
     input: BrowserNodeScreenshotCapture

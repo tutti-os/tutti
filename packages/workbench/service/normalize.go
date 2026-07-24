@@ -92,6 +92,11 @@ func normalizeWorkbenchSnapshot(snapshot WorkbenchSnapshot) (json.RawMessage, in
 			}
 		}
 	}
+	if snapshot.LayoutBasis != nil {
+		if err := validateWorkbenchLayoutBasis(*snapshot.LayoutBasis); err != nil {
+			return nil, 0, fmt.Errorf("workbench snapshot layout basis: %w", err)
+		}
+	}
 
 	canonicalSnapshot := canonicalizeWorkbenchSnapshot(snapshot)
 	normalizedJSON, err := json.Marshal(canonicalSnapshot)
@@ -112,6 +117,7 @@ type canonicalWorkbenchSnapshot struct {
 	ActiveNodeID  *string                            `json:"activeNodeId"`
 	Spaces        *[]canonicalWorkbenchSnapshotSpace `json:"spaces,omitempty"`
 	ActiveSpaceID *string                            `json:"activeSpaceId"`
+	LayoutBasis   *WorkbenchSnapshotLayoutBasis      `json:"layoutBasis,omitempty"`
 	Metadata      map[string]interface{}             `json:"metadata,omitempty"`
 }
 
@@ -186,6 +192,7 @@ func canonicalizeWorkbenchSnapshot(snapshot WorkbenchSnapshot) canonicalWorkbenc
 		ActiveNodeID:  canonicalActiveNodeID(snapshot.ActiveNodeID, filteredNodeStack, nodeIDs),
 		Spaces:        spaces,
 		ActiveSpaceID: canonicalActiveSpaceID(snapshot.ActiveSpaceID, spaces, spaceIDs),
+		LayoutBasis:   canonicalizeWorkbenchLayoutBasis(snapshot.LayoutBasis),
 		Metadata:      snapshot.Metadata,
 	}
 }
@@ -221,6 +228,32 @@ func canonicalizeWorkbenchFrame(frame WorkbenchSnapshotFrame) WorkbenchSnapshotF
 		Y:      canonicalizeWorkbenchNumber(frame.Y),
 		Width:  math.Max(workbenchSnapshotContractMinFrameWidth, canonicalizeWorkbenchNumber(frame.Width)),
 		Height: math.Max(workbenchSnapshotContractMinFrameHeight, canonicalizeWorkbenchNumber(frame.Height)),
+	}
+}
+
+func canonicalizeWorkbenchLayoutBasis(
+	layoutBasis *WorkbenchSnapshotLayoutBasis,
+) *WorkbenchSnapshotLayoutBasis {
+	if layoutBasis == nil {
+		return nil
+	}
+
+	return &WorkbenchSnapshotLayoutBasis{
+		SurfaceSize: WorkbenchSnapshotSize{
+			Width:  canonicalizeWorkbenchNumber(layoutBasis.SurfaceSize.Width),
+			Height: canonicalizeWorkbenchNumber(layoutBasis.SurfaceSize.Height),
+		},
+		LayoutConstraints: WorkbenchSnapshotLayoutConstraints{
+			MinWidth:       canonicalizeWorkbenchNumber(layoutBasis.LayoutConstraints.MinWidth),
+			MinHeight:      canonicalizeWorkbenchNumber(layoutBasis.LayoutConstraints.MinHeight),
+			SurfacePadding: canonicalizeWorkbenchNumber(layoutBasis.LayoutConstraints.SurfacePadding),
+			SafeArea: WorkbenchSnapshotSafeArea{
+				Top:    canonicalizeWorkbenchNumber(layoutBasis.LayoutConstraints.SafeArea.Top),
+				Right:  canonicalizeWorkbenchNumber(layoutBasis.LayoutConstraints.SafeArea.Right),
+				Bottom: canonicalizeWorkbenchNumber(layoutBasis.LayoutConstraints.SafeArea.Bottom),
+				Left:   canonicalizeWorkbenchNumber(layoutBasis.LayoutConstraints.SafeArea.Left),
+			},
+		},
 	}
 }
 
@@ -354,6 +387,34 @@ func validateWorkbenchFrame(frame WorkbenchSnapshotFrame) error {
 	}
 
 	return nil
+}
+
+func validateWorkbenchLayoutBasis(layoutBasis WorkbenchSnapshotLayoutBasis) error {
+	if !isPositiveFinite(layoutBasis.SurfaceSize.Width) || !isPositiveFinite(layoutBasis.SurfaceSize.Height) {
+		return errors.New("surface size must contain positive finite numbers")
+	}
+	constraints := layoutBasis.LayoutConstraints
+	if !isNonNegativeFinite(constraints.MinWidth) ||
+		!isNonNegativeFinite(constraints.MinHeight) ||
+		!isNonNegativeFinite(constraints.SurfacePadding) {
+		return errors.New("layout constraints must contain non-negative finite numbers")
+	}
+	safeArea := constraints.SafeArea
+	if !isNonNegativeFinite(safeArea.Top) ||
+		!isNonNegativeFinite(safeArea.Right) ||
+		!isNonNegativeFinite(safeArea.Bottom) ||
+		!isNonNegativeFinite(safeArea.Left) {
+		return errors.New("safe area must contain non-negative finite numbers")
+	}
+	return nil
+}
+
+func isPositiveFinite(value float64) bool {
+	return isFinite(value) && value > 0
+}
+
+func isNonNegativeFinite(value float64) bool {
+	return isFinite(value) && value >= 0
 }
 
 func isFinite(value float64) bool {

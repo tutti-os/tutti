@@ -1,0 +1,232 @@
+tags:
+  - name: mobile-remote-access
+    description: Desktop-owned device pairing lifecycle for authenticated mobile remote access
+paths:
+  /v1/mobile-remote-access/pairing-challenges:
+    post:
+      operationId: startMobileRemotePairing
+      tags:
+        - mobile-remote-access
+      summary: Register this desktop device and create a short-lived pairing challenge
+      responses:
+        "200":
+          description: Pairing challenge created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MobileRemotePairingStartResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/mobile-remote-access/pairing-challenges/{challengeID}:
+    get:
+      operationId: getMobileRemotePairingChallenge
+      tags:
+        - mobile-remote-access
+      summary: Read the latest pairing challenge state
+      parameters:
+        - $ref: "#/components/parameters/MobileRemoteChallengeID"
+      responses:
+        "200":
+          description: Current pairing challenge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MobileRemotePairingChallengeResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm:
+    post:
+      operationId: confirmMobileRemotePairing
+      tags:
+        - mobile-remote-access
+      summary: Confirm a claimed challenge with the daemon-held target device key
+      parameters:
+        - $ref: "#/components/parameters/MobileRemoteChallengeID"
+      responses:
+        "200":
+          description: Pairing confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MobileRemotePairingConfirmResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/mobile-remote-access/pairings:
+    get:
+      operationId: listMobileRemotePairings
+      tags:
+        - mobile-remote-access
+      summary: List pairings for this desktop device
+      responses:
+        "200":
+          description: Pairings for this desktop device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MobileRemotePairingListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/mobile-remote-access/pairings/{pairingID}:
+    delete:
+      operationId: revokeMobileRemotePairing
+      tags:
+        - mobile-remote-access
+      summary: Revoke an active pairing
+      parameters:
+        - $ref: "#/components/parameters/MobileRemotePairingID"
+      responses:
+        "200":
+          description: Pairing revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MobileRemotePairingResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+components:
+  parameters:
+    MobileRemoteChallengeID:
+      name: challengeID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    MobileRemotePairingID:
+      name: pairingID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+  schemas:
+    MobileRemotePairingChallenge:
+      type: object
+      additionalProperties: false
+      required:
+        - challengeId
+        - targetUserDeviceId
+        - state
+        - revision
+        - expiresAt
+      properties:
+        challengeId:
+          type: string
+        targetUserDeviceId:
+          type: string
+        controllerUserDeviceId:
+          type: string
+        state:
+          type: string
+        pairingId:
+          type: string
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        expiresAt:
+          type: string
+          format: date-time
+    MobileRemoteDevicePairing:
+      type: object
+      additionalProperties: false
+      required:
+        - pairingId
+        - controllerUserDeviceId
+        - targetUserDeviceId
+        - state
+        - revision
+        - confirmedAt
+      properties:
+        pairingId:
+          type: string
+        controllerUserDeviceId:
+          type: string
+        targetUserDeviceId:
+          type: string
+        state:
+          type: string
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        confirmedAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+    MobileRemotePairingStartResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - challenge
+        - qrPayload
+      properties:
+        challenge:
+          $ref: "#/components/schemas/MobileRemotePairingChallenge"
+        qrPayload:
+          type: string
+    MobileRemotePairingChallengeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - challenge
+      properties:
+        challenge:
+          $ref: "#/components/schemas/MobileRemotePairingChallenge"
+    MobileRemotePairingResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - pairing
+      properties:
+        pairing:
+          $ref: "#/components/schemas/MobileRemoteDevicePairing"
+    MobileRemotePairingConfirmResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - pairing
+        - challenge
+      properties:
+        pairing:
+          $ref: "#/components/schemas/MobileRemoteDevicePairing"
+        challenge:
+          $ref: "#/components/schemas/MobileRemotePairingChallenge"
+    MobileRemotePairingListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - pairings
+      properties:
+        pairings:
+          type: array
+          items:
+            $ref: "#/components/schemas/MobileRemoteDevicePairing"

@@ -44,6 +44,9 @@ export function createAgentActivitySnapshotProjector(
           ([agentSessionId, messages]) => [agentSessionId, [...messages]]
         )
       ),
+      sessionMessageWindowsById: {
+        ...state.sessionMessages.windowsBySessionId
+      },
       composerOptionsByTargetKey: {
         ...state.composerOptions.optionsByTargetKey
       },
@@ -67,6 +70,7 @@ export function createEmptyAgentActivitySnapshot(
     sessions: [],
     presences: [],
     sessionMessagesById: {},
+    sessionMessageWindowsById: {},
     composerOptionsByTargetKey: {},
     composerOptionsLoadStatusByTargetKey: {}
   };

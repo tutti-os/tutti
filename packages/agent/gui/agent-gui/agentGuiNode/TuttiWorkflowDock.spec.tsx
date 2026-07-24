@@ -73,19 +73,17 @@ const intensityPopoverLabels = {
   intensityLabel: "Intensity",
   previewTitle: "Planner tendency",
   previewHint: "Derived from the request and Skills.",
-  previewCost: "Cost",
-  previewBalance: "Balance",
+  previewCost: "Economical",
+  previewBalance: "Balanced",
   previewPowerful: "Powerful",
   modelStrengthLabel: "Model strength",
   modelStrengthCost: "Economical",
   modelStrengthBalance: "Balanced",
-  modelStrengthPowerful: "Most capable",
+  modelStrengthPowerful: "Powerful",
   agentCountLabel: "Parallel Agents",
   agentCountCost: "1",
   agentCountBalance: "2–3",
-  agentCountPowerful: "Up to 4",
-  confirm: "Confirm",
-  cancel: "Cancel"
+  agentCountPowerful: "Up to 4"
 };
 
 const plan: TuttiModePlanPanelViewModel = {

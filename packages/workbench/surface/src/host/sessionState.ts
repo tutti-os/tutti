@@ -2,8 +2,7 @@ import type { WorkbenchSnapshot } from "@tutti-os/workbench-snapshot";
 import {
   clampWorkbenchRect,
   getWorkbenchFullscreenRect,
-  getWorkbenchLayoutFrame,
-  rectsEqual
+  getWorkbenchLayoutFrame
 } from "../core/geometry.ts";
 import { resolveWorkbenchCascadedRect } from "../core/placement.ts";
 import {
@@ -375,66 +374,6 @@ export function resolveCompactWorkbenchPreferredFrame(input: {
   );
 }
 
-export function compactRestoredWorkbenchHostNodes(input: {
-  constraints: WorkbenchState<WorkbenchHostNodeData>["layoutConstraints"];
-  nodeDefinitionByType: Map<string, WorkbenchHostNodeDefinition>;
-  nodes: readonly WorkbenchNode<WorkbenchHostNodeData>[];
-  surfaceSize: WorkbenchState<WorkbenchHostNodeData>["surfaceSize"];
-}): WorkbenchNode<WorkbenchHostNodeData>[] {
-  if (!shouldUseCompactWorkbenchFrame(input.surfaceSize)) {
-    return [...input.nodes];
-  }
-
-  return input.nodes.map((node) => {
-    const sizeConstraints =
-      node.sizeConstraints ??
-      input.nodeDefinitionByType.get(node.data.typeId)?.sizeConstraints ??
-      null;
-    if (node.displayMode === "fullscreen") {
-      return {
-        ...node,
-        frame: getWorkbenchFullscreenRect(
-          input.surfaceSize,
-          input.constraints,
-          sizeConstraints
-        )
-      };
-    }
-
-    const defaultFrame =
-      input.nodeDefinitionByType.get(node.data.typeId)?.frame ?? node.frame;
-    const compactWidth = Math.round(
-      defaultFrame.width * COMPACT_LAUNCH_FRAME_SCALE
-    );
-    const compactHeight = Math.round(
-      defaultFrame.height * COMPACT_LAUNCH_FRAME_SCALE
-    );
-    const width = Math.min(node.frame.width, compactWidth);
-    const height = Math.min(node.frame.height, compactHeight);
-    const sizeChanged =
-      width !== node.frame.width || height !== node.frame.height;
-    const layoutFrame = getWorkbenchLayoutFrame(
-      input.surfaceSize,
-      input.constraints
-    );
-    const frame = clampWorkbenchRect(
-      sizeChanged
-        ? {
-            height,
-            width,
-            x: Math.round(layoutFrame.x + (layoutFrame.width - width) / 2),
-            y: Math.round(layoutFrame.y + (layoutFrame.height - height) / 2)
-          }
-        : node.frame,
-      input.surfaceSize,
-      input.constraints,
-      sizeConstraints
-    );
-
-    return rectsEqual(node.frame, frame) ? node : { ...node, frame };
-  });
-}
-
 function shouldUseCompactWorkbenchFrame(
   surfaceSize: WorkbenchState<WorkbenchHostNodeData>["surfaceSize"]
 ): boolean {
@@ -449,10 +388,17 @@ export function createProjectedNodeID(
 }
 
 export function persistedWorkbenchState(
-  state: Pick<WorkbenchState<WorkbenchHostNodeData>, "nodeStack" | "nodes">,
+  state: Pick<
+    WorkbenchState<WorkbenchHostNodeData>,
+    "layoutConstraints" | "nodeStack" | "nodes" | "surfaceSize"
+  >,
   nodeDefinitionByType: Map<string, WorkbenchHostNodeDefinition>
-): Pick<WorkbenchState<WorkbenchHostNodeData>, "nodeStack" | "nodes"> {
+): Pick<
+  WorkbenchState<WorkbenchHostNodeData>,
+  "layoutConstraints" | "nodeStack" | "nodes" | "surfaceSize"
+> {
   return {
+    layoutConstraints: state.layoutConstraints,
     nodeStack: state.nodeStack,
     nodes: state.nodes
       .filter((node) => {
@@ -472,7 +418,8 @@ export function persistedWorkbenchState(
           ...(node.data.isProjected === true ? { isProjected: true } : {}),
           typeId: node.data.typeId
         }
-      }))
+      })),
+    surfaceSize: state.surfaceSize
   };
 }
 

@@ -190,9 +190,6 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.runtime_prepared", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"cwd": prepared.Cwd, "env_count": len(prepared.Env)})
-	if err := s.preparePlanFirstUse(ctx, workspaceID, input.AgentSessionID, planResolution.Endpoint, input.AgentTargetID); err != nil {
-		return CreateSessionResult{}, err
-	}
 	ctx = withServicePreparedRuntime(ctx, s, prepared)
 	runtimeSettings := ComposerSettings{
 		Model:            clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
@@ -217,6 +214,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		RuntimeContext:         stampAgentExtensionComposerScope(input.RuntimeContext, input.ProviderTargetRef, cwd, runtimeSettings),
 		Speed:                  stringPointer(runtimeSettings.Speed),
 		ConversationDetailMode: input.ConversationDetailMode, Visible: input.Visible,
+		RailPlacement: input.RailPlacement,
 	}
 	if err := s.applyInitialTuttiModeActivation(ctx, workspaceID, input.AgentSessionID, input.InitialTuttiModeActivation); err != nil {
 		return CreateSessionResult{}, err

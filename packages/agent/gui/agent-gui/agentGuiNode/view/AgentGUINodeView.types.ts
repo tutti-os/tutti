@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { AgentActivityGoalControlAction } from "@tutti-os/agent-activity-core";
 import type { AgentGuiWorkbenchSessionActionRequest } from "../../../workbench/sessionActions";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
+import type { ReferenceSourcePickerProps } from "@tutti-os/workspace-file-reference/ui";
 import type {
   ReferenceLocateTarget,
   WorkspaceFileReference,
@@ -21,7 +22,6 @@ import type {
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type { PlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
-import type { AgentGUIAccountMenuState } from "../accountMenuState";
 import type {
   AgentComposerGitBranchLoader,
   AgentComposerProps,
@@ -146,8 +146,6 @@ export interface AgentGUIViewLabels {
   tuttiBudgetAgentCountCost: string;
   tuttiBudgetAgentCountBalance: string;
   tuttiBudgetAgentCountPowerful: string;
-  tuttiBudgetConfirm: string;
-  tuttiBudgetCancel: string;
   tuttiModeUpdateFailed: string;
   tuttiModeUpdateUncertain: string;
   tuttiModePlanPanel: TuttiModePlanPanelLabels;
@@ -186,23 +184,6 @@ export interface AgentGUIViewLabels {
   homeSuggestionsClose?: string;
   conversations: string;
   newConversation: string;
-  accountMenuTitle: string;
-  accountMenuMember: string;
-  accountMenuUpgrade: string;
-  accountMenuCreditsBalance: string;
-  accountMenuAccountCenter: string;
-  accountMenuSettings: string;
-  accountMenuFree: string;
-  accountMenuSignIn: string;
-  accountMenuSignOut: string;
-  accountMenuCopyUserId: string;
-  accountMenuLoading: string;
-  accountMenuUnavailable: string;
-  accountMenuDataUnavailable: string;
-  accountRewardToastTitle: string;
-  accountRewardToastCreditsUnit: string;
-  accountRewardToastDescription: string;
-  accountRewardToastClose: string;
   agentConfig: string;
   agentSettingsMenu: string;
   agentEnvSetup: string;
@@ -584,7 +565,6 @@ export interface AgentGUINodeViewProps {
   onSlashStatusOpen?: AgentComposerProps["onSlashStatusOpen"];
   onSlashStatusClose?: AgentComposerProps["onSlashStatusClose"];
   onSlashStatusRefresh?: AgentComposerProps["onSlashStatusRefresh"];
-  accountMenuState?: AgentGUIAccountMenuState | null;
   previewMode?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
   onAgentEnvPanelOpen?: (input?: OpenAgentEnvPanelInput) => void;
@@ -699,6 +679,7 @@ export interface AgentGUINodeViewProps {
   workspaceFileReferenceCopy?: WorkspaceFileReferenceCopy | null;
   projectDirectorySourceAggregator?: ReferenceSourceAggregator | null;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
+  resolveReferenceContentErrorAction?: ReferenceSourcePickerProps["resolveContentErrorAction"];
   resolveWorkspaceReferenceEntryIconUrl?: (
     entry: WorkspaceFileEntry
   ) => Promise<string | null | undefined>;

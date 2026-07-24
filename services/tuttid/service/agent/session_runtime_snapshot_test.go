@@ -179,7 +179,7 @@ func TestPrepareRuntimeForResumeUsesExactModelPlanRevision(t *testing.T) {
 		AgentTargetID: "workspace-agent:writer",
 		ModelPlanID:   currentPlan.ID,
 		DefaultModel:  "gpt-new",
-	}}, plans, nil)
+	}}, plans)
 
 	model := "gpt-old"
 	resolution, err := resolveProvidedModelPlan("codex", "workspace-agent:writer", oldPlan, model, model)
@@ -235,7 +235,7 @@ func TestPrepareRuntimeForResumeProviderNativeSnapshotIgnoresNewBinding(t *testi
 		WorkspaceID:   "ws",
 		AgentTargetID: "local:codex",
 		ModelPlanID:   currentPlan.ID,
-	}}, revisionPlanSource{current: currentPlan, revisions: map[uint64]modelplanbiz.Plan{2: currentPlan}}, nil)
+	}}, revisionPlanSource{current: currentPlan, revisions: map[uint64]modelplanbiz.Plan{2: currentPlan}})
 
 	model := "gpt-native"
 	runtimeContext := runtimeContextWithSessionRuntimeSnapshot(nil, CreateSessionInput{
@@ -309,7 +309,7 @@ func TestPrepareRuntimeForResumeFailsWhenExactRevisionIsMissing(t *testing.T) {
 	service := &Service{}
 	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
 	service.RuntimePreparer = fakeRuntimePreparer{}
-	service.ConfigureModelPlanBinding(staticBindingSource{}, revisionPlanSource{current: plan, revisions: map[uint64]modelplanbiz.Plan{}}, nil)
+	service.ConfigureModelPlanBinding(staticBindingSource{}, revisionPlanSource{current: plan, revisions: map[uint64]modelplanbiz.Plan{}})
 	model := "gpt-old"
 	resolution, err := resolveProvidedModelPlan("codex", "local:codex", plan, model, model)
 	if err != nil {
@@ -352,7 +352,7 @@ func TestPrepareRuntimeForResumeRejectsMismatchedRevisionFingerprint(t *testing.
 	service.ConfigureModelPlanBinding(staticBindingSource{}, revisionPlanSource{
 		current:   launchPlan,
 		revisions: map[uint64]modelplanbiz.Plan{1: corruptedRevision},
-	}, nil)
+	})
 
 	_, err = service.prepareRuntimeForResume(context.Background(), PersistedSession{
 		ID:                     "session-fingerprint-mismatch",
@@ -398,7 +398,7 @@ func TestPrepareRuntimeForResumeRejectsRevokedCurrentPlan(t *testing.T) {
 			service.ConfigureModelPlanBinding(staticBindingSource{}, revisionPlanSource{
 				current:   test.current,
 				revisions: map[uint64]modelplanbiz.Plan{1: oldPlan},
-			}, nil)
+			})
 			_, err := service.prepareRuntimeForResume(context.Background(), PersistedSession{
 				ID:                     "session-revoked",
 				WorkspaceID:            "ws",
@@ -442,7 +442,7 @@ func TestUpdateSettingsValidatesModelAgainstSnapshottedPlanRevision(t *testing.T
 	service.ConfigureModelPlanBinding(staticBindingSource{}, revisionPlanSource{
 		current:   currentPlan,
 		revisions: map[uint64]modelplanbiz.Plan{1: oldPlan, 2: currentPlan},
-	}, nil)
+	})
 
 	invalid := "gpt-new"
 	_, err = service.UpdateSettings(context.Background(), "ws", "session-1", ComposerSettingsPatch{Model: &invalid})

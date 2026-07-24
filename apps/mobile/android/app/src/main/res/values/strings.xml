@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Tutti</string>
+    <string name="scan_pairing_qr">Scan the pairing QR code shown on your computer</string>
+</resources>

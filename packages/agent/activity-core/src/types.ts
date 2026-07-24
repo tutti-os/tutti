@@ -1,4 +1,6 @@
 import type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
+import type { AgentActivitySessionMessageWindow } from "./messageWindow.types.ts";
+import type { AgentActivityRailPlacement } from "./railPlacement.types.ts";
 import type {
   AgentActivityCapabilityReference,
   AgentActivityInitialTuttiModeActivation,
@@ -15,14 +17,6 @@ export type {
   AgentActivityUpdateTuttiModeActivationInput,
   AgentActivityUpdateTuttiModeActivationResult
 } from "./tuttiMode.types.ts";
-
-export type AgentActivityDisplayStatus =
-  | "working"
-  | "waiting"
-  | "idle"
-  | "completed"
-  | "canceled"
-  | "failed";
 
 export type AgentActivitySessionKind = "root" | "child";
 
@@ -317,11 +311,8 @@ export interface AgentActivitySnapshot {
   sessions: AgentActivitySession[];
   presences: AgentActivityPresence[];
   sessionMessagesById: Record<string, AgentActivityMessage[]>;
-  /**
-   * Composer options cache, keyed by the opaque targetKey passed to
-   * loadComposerOptions. Single key space: the key is round-tripped verbatim and
-   * never parsed or rewritten.
-   */
+  sessionMessageWindowsById?: Record<string, AgentActivitySessionMessageWindow>;
+  /** Composer options keyed by the opaque, verbatim loadComposerOptions targetKey. */
   composerOptionsByTargetKey?: Record<string, AgentActivityComposerOptions>;
   /** Request lifecycle for composer options, keyed by the same opaque target. */
   composerOptionsLoadStatusByTargetKey?: Record<
@@ -481,6 +472,7 @@ export interface AgentActivityCreateSessionInput {
   noProject?: boolean | null;
   capabilityRefs?: readonly AgentActivityCapabilityReference[] | null;
   initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation | null;
+  railPlacement?: AgentActivityRailPlacement;
   initialContent?: AgentPromptContentBlock[] | null;
   /** 仅展示用的首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;

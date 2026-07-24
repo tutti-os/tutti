@@ -8,6 +8,8 @@ import type {
   AgentActivitySubmitSettingsPatch,
   AgentPromptContentBlock
 } from "../types.ts";
+import type { AgentActivitySessionMessageWindow } from "../messageWindow.types.ts";
+import type { AgentActivityRailPlacement } from "../railPlacement.types.ts";
 
 export type PendingActivationStatus =
   | "requested"
@@ -40,6 +42,7 @@ interface PendingActivationIntentRecordBase {
   initialTurnExpected: boolean;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   railSectionKey?: string;
+  railPlacement?: AgentActivityRailPlacement;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   pendingSettingsPatch?: Readonly<Record<string, unknown>>;
   settingsUpdateStatus?: "failed" | "inFlight" | "unknown";
@@ -109,6 +112,7 @@ interface SessionActivationRequestedIntentBase {
   initialTurnExpected?: boolean;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   railSectionKey?: string;
+  railPlacement?: AgentActivityRailPlacement;
   initialDisplayPrompt?: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
@@ -180,6 +184,7 @@ interface SessionActivateCommandBase {
   initialDisplayPrompt?: string;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
+  railPlacement?: AgentActivityRailPlacement;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   settings?: AgentActivitySessionSettings;
   timeoutMs?: number;
@@ -246,6 +251,9 @@ export interface SubmitCanceledIntent {
 export interface ActivityMessagesReceivedIntent {
   type: "message/snapshotReceived";
   messages: readonly AgentActivityMessage[];
+  sessionMessageWindows?: readonly (AgentActivitySessionMessageWindow & {
+    agentSessionId: string;
+  })[];
   workspaceId?: string;
 }
 

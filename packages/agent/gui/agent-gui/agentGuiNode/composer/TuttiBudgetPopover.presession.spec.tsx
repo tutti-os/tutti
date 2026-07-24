@@ -15,19 +15,17 @@ const labels = {
   previewTitle: "Planner tendency",
   previewHint:
     "The exact model, total task count, and safe parallelism are inferred from the request and selected Skills.",
-  previewCost: "Cost",
-  previewBalance: "Balance",
+  previewCost: "Economical",
+  previewBalance: "Balanced",
   previewPowerful: "Powerful",
   modelStrengthLabel: "Model strength",
   modelStrengthCost: "Economical",
   modelStrengthBalance: "Balanced",
-  modelStrengthPowerful: "Most capable",
+  modelStrengthPowerful: "Powerful",
   agentCountLabel: "Parallel Agents",
   agentCountCost: "1",
   agentCountBalance: "2–3",
-  agentCountPowerful: "Up to 4",
-  confirm: "Confirm",
-  cancel: "Cancel"
+  agentCountPowerful: "Up to 4"
 };
 
 function createTestEngine() {
@@ -54,7 +52,7 @@ function PreSessionHarness({
     <TuttiBudgetPopover
       intensity={tuttiMode.orchestrationIntensity}
       labels={labels}
-      onConfirm={tuttiMode.setOrchestrationIntensity}
+      onChange={tuttiMode.setOrchestrationIntensity}
     >
       <button className="nodrag" type="button">
         Tutti
@@ -81,17 +79,23 @@ describe("TuttiBudgetPopover pre-session loop", () => {
     const popover = document.querySelector("[data-agent-tutti-budget-popover]");
     expect(popover?.classList.contains("nodrag")).toBe(true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    const slider = screen.getByRole("slider", {
+      name: "Orchestration intensity"
+    });
+    fireEvent.click(slider);
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    // Slider movement applies immediately through the workbench
+    // click-capture guard and the popup stays open.
     const draftKey = resolveAgentGUITuttiModeDraftKey("node-1");
     expect(
       engine.getSnapshot().tuttiModeActivation.draftsByKey[draftKey]
-    ).toMatchObject({ active: true, orchestrationIntensity: 50 });
+    ).toMatchObject({ active: true, orchestrationIntensity: 51 });
     expect(
       document.querySelector("[data-agent-tutti-budget-popover]")
-    ).toBeNull();
+    ).not.toBeNull();
   });
 
-  it("keeps a confirmed pre-session intensity and preview across reopen", () => {
+  it("keeps a committed pre-session intensity and preview across reopen", () => {
     const engine = createTestEngine();
     render(<PreSessionHarness engine={engine} />);
 
@@ -106,13 +110,13 @@ describe("TuttiBudgetPopover pre-session loop", () => {
     expect(
       document.querySelector("[data-agent-tutti-budget-preview]")
     ).toHaveAttribute("data-agent-tutti-budget-preview", "powerful");
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
 
     const draftKey = resolveAgentGUITuttiModeDraftKey("node-1");
     expect(
       engine.getSnapshot().tuttiModeActivation.draftsByKey[draftKey]
     ).toMatchObject({ active: true, orchestrationIntensity: 100 });
 
+    fireEvent.keyDown(document.body, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Tutti" }));
     expect(
       screen.getByRole("slider", { name: "Orchestration intensity" })

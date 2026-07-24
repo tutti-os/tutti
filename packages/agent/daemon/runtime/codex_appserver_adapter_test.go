@@ -75,6 +75,7 @@ type scriptedAppServerConnection struct {
 	closed chan struct{}
 
 	modelList                       []any
+	config                          map[string]any
 	requiresAuth                    bool
 	collaborationModeUnsupported    bool
 	emitPlanItem                    bool
@@ -393,6 +394,16 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 					"data": models,
 				},
 			})
+		case appServerMethodConfigRead:
+			c.mu.Lock()
+			config := clonePayloadDeep(c.config)
+			c.mu.Unlock()
+			c.sendJSON(map[string]any{
+				"id": message.ID,
+				"result": map[string]any{
+					"config": config,
+				},
+			})
 		case appServerMethodRateLimitsRead:
 			c.sendJSON(map[string]any{
 				"id": message.ID,
@@ -430,11 +441,12 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 					},
 				})
 			}
+			responseModel := firstNonEmpty(asString(message.Params["model"]), "gpt-5.1-codex")
 			c.sendJSON(map[string]any{
 				"id": message.ID,
 				"result": map[string]any{
 					"thread":          map[string]any{"id": "codex-thread-1"},
-					"model":           "gpt-5.1-codex",
+					"model":           responseModel,
 					"reasoningEffort": "medium",
 					"cwd":             "/workspace",
 					"approvalPolicy":  "on-request",
@@ -1076,6 +1088,92 @@ func TestCodexAppServerAdapterStartClampsProviderDefaultReasoning(t *testing.T) 
 	}
 }
 
+func TestCodexAppServerAdapterStartUsesEffectiveConfigModelOverStaleCatalogDefault(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	transport.conn.config = map[string]any{
+		"model":                  "glm-5",
+		"model_provider":         "custom",
+		"model_reasoning_effort": "high",
+	}
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	configRead := appServerRequestParams(t, transport.conn, appServerMethodConfigRead)
+	if got := asString(configRead["cwd"]); got != "/workspace" {
+		t.Fatalf("config/read cwd = %q, want /workspace", got)
+	}
+	threadStart := appServerRequestParams(t, transport.conn, appServerMethodThreadStart)
+	if got := asString(threadStart["model"]); got != "glm-5" {
+		t.Fatalf("thread/start model = %q, want effective config model glm-5", got)
+	}
+	threadConfig, _ := threadStart["config"].(map[string]any)
+	if got := asString(threadConfig["model_reasoning_effort"]); got != "high" {
+		t.Fatalf("thread/start reasoning effort = %q, want effective config effort high", got)
+	}
+
+	state := adapter.SessionState(session)
+	if state.Settings == nil || state.Settings.Model != "glm-5" {
+		t.Fatalf("session settings = %#v, want effective config model glm-5", state.Settings)
+	}
+	options, _ := state.RuntimeContext["configOptions"].([]map[string]any)
+	modelOption := configOptionByID(options, "model")
+	if got := asString(modelOption["currentValue"]); got != "glm-5" {
+		t.Fatalf("model option = %#v, want effective config model glm-5", modelOption)
+	}
+	modelOptions, _ := modelOption["options"].([]any)
+	if len(modelOptions) != 1 || asString(modelOptions[0].(map[string]any)["value"]) != "glm-5" {
+		t.Fatalf("model options = %#v, want only effective custom-provider model glm-5", modelOptions)
+	}
+
+	if !adapter.applyStartupModels(
+		session.AgentSessionID,
+		session,
+		nil,
+		[]map[string]any{{
+			"id":        "gpt-5.6-sol",
+			"model":     "gpt-5.6-sol",
+			"isDefault": true,
+		}},
+	) {
+		t.Fatal("applyStartupModels = false, want stale catalog refresh applied")
+	}
+	refreshed := adapter.SessionState(session)
+	if refreshed.Settings == nil || refreshed.Settings.Model != "glm-5" {
+		t.Fatalf("settings after catalog refresh = %#v, want config model glm-5", refreshed.Settings)
+	}
+	refreshedOptions, _ := refreshed.RuntimeContext["configOptions"].([]map[string]any)
+	refreshedModelOption := configOptionByID(refreshedOptions, "model")
+	refreshedModelOptions, _ := refreshedModelOption["options"].([]any)
+	if len(refreshedModelOptions) != 1 || asString(refreshedModelOptions[0].(map[string]any)["value"]) != "glm-5" {
+		t.Fatalf("model options after catalog refresh = %#v, want only glm-5", refreshedModelOptions)
+	}
+}
+
+func TestCodexAppServerAdapterStartExplicitModelOverridesEffectiveConfig(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	transport.conn.config = map[string]any{
+		"model":          "glm-5",
+		"model_provider": "custom",
+	}
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	session.Settings = &SessionSettings{Model: "requested-model"}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	threadStart := appServerRequestParams(t, transport.conn, appServerMethodThreadStart)
+	if got := asString(threadStart["model"]); got != "requested-model" {
+		t.Fatalf("thread/start model = %q, want explicit requested-model", got)
+	}
+}
+
 func TestCodexAppServerAdapterStartClampsPersistedReasoningForExplicitModel(t *testing.T) {
 	t.Parallel()
 
@@ -1348,6 +1446,38 @@ func TestCodexAppServerAdapterStartAppliesSettingsAndPermissionMode(t *testing.T
 func TestCodexAppServerAdapterCommandNetworkAccessPreservesPermissionModes(t *testing.T) {
 	t.Parallel()
 
+	testAppServerAdapterCommandNetworkAccessPreservesPermissionModes(
+		t,
+		func(transport ProcessTransport) *CodexAppServerAdapter {
+			return NewCodexAppServerAdapterWithHostMetadataAndOptions(
+				transport,
+				LegacyHostMetadata(),
+				CodexAppServerAdapterOptions{CommandNetworkAccess: true},
+			)
+		},
+	)
+}
+
+func TestTuttiAgentAppServerAdapterCommandNetworkAccessPreservesPermissionModes(t *testing.T) {
+	t.Parallel()
+
+	testAppServerAdapterCommandNetworkAccessPreservesPermissionModes(
+		t,
+		func(transport ProcessTransport) *CodexAppServerAdapter {
+			return NewTuttiAgentAppServerAdapterWithHostMetadataAndOptions(
+				transport,
+				LegacyHostMetadata(),
+				CodexAppServerAdapterOptions{CommandNetworkAccess: true},
+			)
+		},
+	)
+}
+
+func testAppServerAdapterCommandNetworkAccessPreservesPermissionModes(
+	t *testing.T,
+	newAdapter func(ProcessTransport) *CodexAppServerAdapter,
+) {
+	t.Helper()
 	tests := []struct {
 		mode              string
 		threadSandbox     string
@@ -1381,11 +1511,7 @@ func TestCodexAppServerAdapterCommandNetworkAccessPreservesPermissionModes(t *te
 			t.Parallel()
 
 			transport := newScriptedAppServerTransport()
-			adapter := NewCodexAppServerAdapterWithHostMetadataAndOptions(
-				transport,
-				LegacyHostMetadata(),
-				CodexAppServerAdapterOptions{CommandNetworkAccess: true},
-			)
+			adapter := newAdapter(transport)
 			session := testAppServerSession()
 			session.PermissionModeID = test.mode
 			session.Settings = &SessionSettings{PermissionModeID: test.mode}
@@ -1428,6 +1554,28 @@ func TestCodexAppServerAdapterDefaultCommandNetworkAccessRemainsDisabled(t *test
 
 	transport := newScriptedAppServerTransport()
 	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	session.PermissionModeID = "read-only"
+	session.Settings = &SessionSettings{PermissionModeID: "read-only"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("go"), "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	policy, _ := turnStart["sandboxPolicy"].(map[string]any)
+	if _, ok := policy["networkAccess"]; ok {
+		t.Fatalf("turn/start sandboxPolicy = %#v, want legacy network default", policy)
+	}
+}
+
+func TestTuttiAgentAppServerAdapterDefaultCommandNetworkAccessRemainsDisabled(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(transport, LegacyHostMetadata())
 	session := testAppServerSession()
 	session.PermissionModeID = "read-only"
 	session.Settings = &SessionSettings{PermissionModeID: "read-only"}
@@ -1607,6 +1755,37 @@ func TestCodexAppServerAdapterResume(t *testing.T) {
 	}
 	if !adapter.CanResume(session) {
 		t.Fatalf("CanResume = false, want true")
+	}
+}
+
+func TestCodexAppServerAdapterResumeUsesEffectiveCustomProviderConfig(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	transport.conn.config = map[string]any{
+		"model":          "glm-5",
+		"model_provider": "custom",
+	}
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	session.ProviderSessionID = "codex-thread-1"
+
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	resume := appServerRequestParams(t, transport.conn, appServerMethodThreadResume)
+	if got := asString(resume["model"]); got != "glm-5" {
+		t.Fatalf("thread/resume model = %q, want effective config model glm-5", got)
+	}
+	state := adapter.SessionState(session)
+	if state.Settings == nil || state.Settings.Model != "glm-5" {
+		t.Fatalf("resumed settings = %#v, want effective config model glm-5", state.Settings)
+	}
+	options, _ := state.RuntimeContext["configOptions"].([]map[string]any)
+	modelOption := configOptionByID(options, "model")
+	modelOptions, _ := modelOption["options"].([]any)
+	if len(modelOptions) != 1 || asString(modelOptions[0].(map[string]any)["value"]) != "glm-5" {
+		t.Fatalf("resumed model options = %#v, want only glm-5", modelOptions)
 	}
 }
 

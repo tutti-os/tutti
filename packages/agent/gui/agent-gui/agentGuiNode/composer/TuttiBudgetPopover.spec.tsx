@@ -9,33 +9,31 @@ const labels = {
   previewTitle: "Planner tendency",
   previewHint:
     "The exact model, total task count, and safe parallelism are inferred from the request and selected Skills.",
-  previewCost: "Cost",
-  previewBalance: "Balance",
+  previewCost: "Economical",
+  previewBalance: "Balanced",
   previewPowerful: "Powerful",
   modelStrengthLabel: "Model strength",
   modelStrengthCost: "Economical",
   modelStrengthBalance: "Balanced",
-  modelStrengthPowerful: "Most capable",
+  modelStrengthPowerful: "Powerful",
   agentCountLabel: "Parallel Agents",
   agentCountCost: "1",
   agentCountBalance: "2–3",
-  agentCountPowerful: "Up to 4",
-  confirm: "Confirm",
-  cancel: "Cancel"
+  agentCountPowerful: "Up to 4"
 };
 
 function renderPopover({ intensity = 50 } = {}) {
-  const onConfirm = vi.fn();
+  const onChange = vi.fn();
   render(
     <TuttiBudgetPopover
       intensity={intensity}
       labels={labels}
-      onConfirm={onConfirm}
+      onChange={onChange}
     >
       <button type="button">Tutti</button>
     </TuttiBudgetPopover>
   );
-  return { onConfirm };
+  return { onChange };
 }
 
 function openPopover() {
@@ -56,8 +54,8 @@ describe("TuttiBudgetPopover", () => {
     expect(
       screen.getAllByRole("slider", { name: "Orchestration intensity" })
     ).toHaveLength(1);
-    expect(screen.getByText("Cost")).toBeInTheDocument();
-    expect(screen.getAllByText("Balance").length).toBeGreaterThan(0);
+    expect(screen.getByText("Economical")).toBeInTheDocument();
+    expect(screen.getAllByText("Balanced").length).toBeGreaterThan(0);
     expect(screen.getByText("Powerful")).toBeInTheDocument();
   });
 
@@ -94,7 +92,7 @@ describe("TuttiBudgetPopover", () => {
       "data-agent-tutti-budget-slider-tone",
       "balance"
     );
-    expect(preview).toHaveTextContent("Balance");
+    expect(preview).toHaveTextContent("Balanced");
     expect(
       document.querySelector("[data-agent-tutti-budget-model-strength]")
     ).toHaveTextContent("Balanced");
@@ -118,69 +116,56 @@ describe("TuttiBudgetPopover", () => {
     expect(preview).toHaveTextContent("Powerful");
     expect(
       document.querySelector("[data-agent-tutti-budget-model-strength]")
-    ).toHaveTextContent("Most capable");
+    ).toHaveTextContent("Powerful");
     expect(
       document.querySelector("[data-agent-tutti-budget-agent-count]")
     ).toHaveTextContent("Up to 4");
   });
 
-  it("cancel closes without committing the draft", () => {
-    const { onConfirm } = renderPopover();
+  it("applies slider movement immediately and keeps the popup open", () => {
+    const { onChange } = renderPopover({ intensity: 50 });
     openPopover();
+
+    expect(onChange).not.toHaveBeenCalled();
 
     fireEvent.keyDown(
       screen.getByRole("slider", { name: "Orchestration intensity" }),
       { key: "ArrowRight" }
     );
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    expect(screen.queryByText("Tutti orchestration")).toBeNull();
-    expect(onConfirm).not.toHaveBeenCalled();
-  });
-
-  it("confirm commits the edited draft value and closes", () => {
-    const { onConfirm } = renderPopover({ intensity: 50 });
-    openPopover();
-
-    fireEvent.keyDown(
-      screen.getByRole("slider", { name: "Orchestration intensity" }),
-      { key: "ArrowRight" }
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
-
-    expect(onConfirm).toHaveBeenCalledTimes(1);
-    expect(onConfirm).toHaveBeenCalledWith(51);
-    expect(screen.queryByText("Tutti orchestration")).toBeNull();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(51);
+    expect(screen.getByText("Tutti orchestration")).toBeInTheDocument();
   });
 
   it("reseeds the draft from the effective value on every open", () => {
-    const { onConfirm } = renderPopover({ intensity: 50 });
+    const { onChange } = renderPopover({ intensity: 50 });
     openPopover();
     fireEvent.keyDown(
       screen.getByRole("slider", { name: "Orchestration intensity" }),
       { key: "ArrowRight" }
     );
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.keyDown(document.body, { key: "Escape" });
 
     openPopover();
 
     expect(
       screen.getByRole("slider", { name: "Orchestration intensity" })
     ).toHaveAttribute("aria-valuenow", "50");
-    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 
-  it("does not close on outside pointerdown", () => {
+  it("clicking the trigger again closes the popup", () => {
     renderPopover();
     openPopover();
 
-    fireEvent.pointerDown(document.body);
+    fireEvent.click(screen.getByRole("button", { name: "Tutti" }));
 
-    expect(screen.getByText("Tutti orchestration")).toBeInTheDocument();
+    expect(screen.queryByText("Tutti orchestration")).toBeNull();
   });
 
   it("escape closes only the popup and prevents the default so it cannot leak", () => {
-    const { onConfirm } = renderPopover();
+    const { onChange } = renderPopover();
     openPopover();
 
     const defaultAllowed = fireEvent.keyDown(document.body, {
@@ -189,6 +174,6 @@ describe("TuttiBudgetPopover", () => {
 
     expect(defaultAllowed).toBe(false);
     expect(screen.queryByText("Tutti orchestration")).toBeNull();
-    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

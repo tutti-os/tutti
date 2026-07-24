@@ -392,7 +392,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     availableSkills,
     composerSettings,
     // Host-gated product capability: omit or enabled:false must hide Tutti Mode
-    // entries (hero toggle, badge activation, /tutti). Fail closed like other
+    // entries (footer chip, badge activation, /tutti). Fail closed like other
     // unsupported host capabilities — do not treat a missing flag as enabled.
     tuttiModeSupported: capabilityMenuState?.tuttiMode?.enabled === true,
     capabilityControlsReadOnly,

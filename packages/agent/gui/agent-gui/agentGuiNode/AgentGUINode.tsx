@@ -72,6 +72,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     promptAssetLimit = null,
     projectDirectorySourceAggregator = null,
     referenceSourceAggregator = null,
+    resolveReferenceContentErrorAction:
+      resolveWorkspaceReferenceContentErrorAction,
     resolveReferenceEntryIconUrl: resolveWorkspaceReferenceEntryIconUrl,
     resolveMentionReferenceTarget = null,
     resolveReferenceInitialTarget:
@@ -107,7 +109,6 @@ export const AgentGUINode = memo(function AgentGUINode({
   const {
     capabilityMenuState,
     capabilityControlsReadOnly = false,
-    accountMenuState = null,
     agentTargets,
     agentTargetsLoading = false,
     handoffAgentTargets,
@@ -502,7 +503,6 @@ export const AgentGUINode = memo(function AgentGUINode({
                 onAgentProviderLogin ? handleAgentProviderLogin : undefined
               }
               onAgentEnvPanelOpen={onAgentEnvPanelOpen}
-              accountMenuState={accountMenuState}
               conversationRailCollapsed={isRenderedConversationRailCollapsed}
               conversationRailWidthPx={clampAgentGUIConversationRailWidthPx(
                 state.conversationRailWidthPx,
@@ -540,6 +540,9 @@ export const AgentGUINode = memo(function AgentGUINode({
                 projectDirectorySourceAggregator
               }
               referenceSourceAggregator={referenceSourceAggregator}
+              resolveReferenceContentErrorAction={
+                resolveWorkspaceReferenceContentErrorAction
+              }
               resolveWorkspaceReferenceEntryIconUrl={
                 resolveWorkspaceReferenceEntryIconUrl
               }

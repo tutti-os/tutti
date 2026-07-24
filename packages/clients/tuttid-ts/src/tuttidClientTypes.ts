@@ -82,6 +82,11 @@ import type {
   ListAgentTargetsResponse,
   AgentTarget,
   ListWorkspacesResponse,
+  MobileRemoteDevicePairing,
+  MobileRemotePairingChallengeResponse,
+  MobileRemotePairingConfirmResponse,
+  MobileRemotePairingListResponse,
+  MobileRemotePairingStartResponse,
   CopyWorkspaceFileEntryRequest,
   MoveWorkspaceFileEntryRequest,
   MoveUserProjectRequest,
@@ -167,6 +172,20 @@ export type TuttidRequestOptions = Omit<
 
 export type TuttidTrackEvent = TrackEvent;
 export type TuttidTrackEventsRequest = TrackEventsRequest;
+
+export interface MobileRemoteAccessClient {
+  startMobileRemotePairing(): Promise<MobileRemotePairingStartResponse>;
+  getMobileRemotePairingChallenge(
+    challengeID: string
+  ): Promise<MobileRemotePairingChallengeResponse>;
+  confirmMobileRemotePairing(
+    challengeID: string
+  ): Promise<MobileRemotePairingConfirmResponse>;
+  listMobileRemotePairings(): Promise<MobileRemotePairingListResponse>;
+  revokeMobileRemotePairing(
+    pairingID: string
+  ): Promise<MobileRemoteDevicePairing>;
+}
 
 export interface TuttidClient
   extends WorkspaceAgentConfigurationClient, WorkspaceIssueOrchestrationClient {

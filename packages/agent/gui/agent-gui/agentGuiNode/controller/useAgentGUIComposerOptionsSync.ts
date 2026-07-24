@@ -18,6 +18,7 @@ import {
 } from "./agentGuiController.composerPresentation";
 import {
   composerDefaultsPatchFromSettings,
+  composerOptionsForTarget,
   mergeAgentModelCatalogInvalidationEvents,
   withoutAcknowledgedComposerDefaults
 } from "./agentGuiController.providerHelpers";
@@ -116,6 +117,16 @@ export function useAgentGUIComposerOptionsSync(input: {
           settings: requestSettings
         })
       ).then(() => {
+        const loadedOptions = composerOptionsForTarget({
+          snapshot: input.agentActivityRuntime.getSnapshot(input.workspaceId),
+          target: targetData
+        });
+        if (loadedOptions) {
+          input.onComposerDefaultsAuthorityReloadedRef.current.reconcileHomeDefaults(
+            targetData,
+            loadedOptions
+          );
+        }
         if (options?.reconcileAcknowledgedDefaults) {
           input.onComposerDefaultsAuthorityReloadedRef.current.reloaded(
             authorityRead.receipt

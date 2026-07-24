@@ -5,11 +5,6 @@ import {
   CopyIcon,
   DeleteIcon,
   EditIcon,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   StatusDot,
   Switch
 } from "@tutti-os/ui-system";
@@ -20,18 +15,12 @@ import {
   type WorkspaceModelPlanTemplateGroup
 } from "../services/workspaceModelPlanTemplates";
 import type {
-  WorkspaceAgentHarnessTargetOption,
   WorkspaceModelPlan,
   WorkspaceModelPlanReferenceKind,
   WorkspaceModelPlanStatus,
   WorkspaceSettingsModelPlansSnapshotState
 } from "../services/workspaceSettingsTypes";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
-import { compatibleWorkspaceModelPlanFirstUseTargets } from "../services/workspaceModelPlanFirstUse.ts";
-import {
-  workspaceSettingsSelectContentClass,
-  workspaceSettingsSelectTriggerClass
-} from "./workspaceSettingsFieldStyles.ts";
 import {
   WorkspaceModelPlanEditor,
   WorkspaceModelPlanFeedbackLine
@@ -42,8 +31,6 @@ const planStatusLabelKeys: Record<WorkspaceModelPlanStatus, DesktopI18nKey> = {
   undetected: "workspace.settings.apps.modelPlans.statusLabels.undetected",
   detection_failed:
     "workspace.settings.apps.modelPlans.statusLabels.detectionFailed",
-  pending_first_use:
-    "workspace.settings.apps.modelPlans.statusLabels.pendingFirstUse",
   ready: "workspace.settings.apps.modelPlans.statusLabels.ready"
 };
 
@@ -54,7 +41,6 @@ const planStatusTones: Record<
   disabled: "neutral",
   undetected: "blue",
   detection_failed: "red",
-  pending_first_use: "amber",
   ready: "green"
 };
 
@@ -167,12 +153,6 @@ export function WorkspaceModelPlansSection() {
             draft && draft.planId === plan.id ? (
               <WorkspaceModelPlanEditor
                 key={plan.id}
-                detecting={modelPlans.detecting}
-                detection={
-                  modelPlans.detecting
-                    ? modelPlans.draftDetection
-                    : (modelPlans.draftDetection ?? plan.detection)
-                }
                 discoveredModels={modelPlans.draftDiscoveredModels}
                 draft={draft}
                 feedback={modelPlans.draftFeedback}
@@ -180,9 +160,6 @@ export function WorkspaceModelPlansSection() {
                 saveImpact={modelPlans.draftSaveImpact}
                 saving={modelPlans.saving}
                 onCancel={() => service.modelPlans.cancelDraft()}
-                onDetect={() => {
-                  void service.modelPlans.detectDraft();
-                }}
                 onFetchModels={() => {
                   void service.modelPlans.fetchDraftModels();
                 }}
@@ -194,7 +171,6 @@ export function WorkspaceModelPlansSection() {
             ) : (
               <WorkspaceModelPlanRow
                 key={plan.id}
-                harnessTargets={state.agents.harnessTargets}
                 modelPlans={modelPlans}
                 plan={plan}
               />
@@ -202,8 +178,6 @@ export function WorkspaceModelPlansSection() {
           )}
           {draft && draft.planId === null ? (
             <WorkspaceModelPlanEditor
-              detecting={modelPlans.detecting}
-              detection={modelPlans.draftDetection}
               discoveredModels={modelPlans.draftDiscoveredModels}
               draft={draft}
               feedback={modelPlans.draftFeedback}
@@ -211,9 +185,6 @@ export function WorkspaceModelPlansSection() {
               saveImpact={modelPlans.draftSaveImpact}
               saving={modelPlans.saving}
               onCancel={() => service.modelPlans.cancelDraft()}
-              onDetect={() => {
-                void service.modelPlans.detectDraft();
-              }}
               onFetchModels={() => {
                 void service.modelPlans.fetchDraftModels();
               }}
@@ -230,25 +201,21 @@ export function WorkspaceModelPlansSection() {
 }
 
 function WorkspaceModelPlanRow({
-  harnessTargets,
   modelPlans,
   plan
 }: {
-  harnessTargets: readonly WorkspaceAgentHarnessTargetOption[];
   modelPlans: WorkspaceSettingsModelPlansSnapshotState;
   plan: WorkspaceModelPlan;
 }) {
   const { t } = useTranslation();
   const { service } = useWorkspaceSettingsService();
-  const [firstUseTargetID, setFirstUseTargetID] = useState("");
-  const firstUseLaunching = modelPlans.firstUseLaunchingPlanID === plan.id;
-  const firstUseLaunchFailed =
-    modelPlans.firstUseLaunchFailedPlanID === plan.id;
+  const detecting = modelPlans.detectingPlanID === plan.id;
   const confirmingDelete = modelPlans.confirmingDeletePlanID === plan.id;
   const deleteBlock =
     modelPlans.deleteBlock?.planID === plan.id ? modelPlans.deleteBlock : null;
   const deleting = modelPlans.deletingPlanID === plan.id;
   const busy =
+    modelPlans.detectingPlanID !== null ||
     modelPlans.togglingPlanID !== null ||
     modelPlans.duplicatingPlanID !== null ||
     deleting;
@@ -256,14 +223,6 @@ function WorkspaceModelPlanRow({
     (group) => group.kind === plan.templateKind
   );
   const checkedAt = plan.detection.checkedAt;
-  const compatibleTargets = compatibleWorkspaceModelPlanFirstUseTargets({
-    plan,
-    targets: harnessTargets
-  });
-  const firstUseTarget =
-    compatibleTargets.find((target) => target.id === firstUseTargetID) ??
-    compatibleTargets[0] ??
-    null;
 
   return (
     <section className="flex w-full flex-col gap-3 rounded-[10px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-4">
@@ -327,6 +286,19 @@ function WorkspaceModelPlanRow({
         ) : (
           <div className="flex shrink-0 items-center gap-1">
             <Button
+              disabled={busy || modelPlans.draft !== null}
+              size="sm"
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                void service.modelPlans.detectPlan(plan.id);
+              }}
+            >
+              {detecting
+                ? t("workspace.settings.apps.modelPlans.detecting")
+                : t("workspace.settings.apps.modelPlans.detect")}
+            </Button>
+            <Button
               aria-label={t("workspace.settings.apps.modelPlans.edit")}
               className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               disabled={modelPlans.draft !== null}
@@ -379,70 +351,6 @@ function WorkspaceModelPlanRow({
           </div>
         )}
       </div>
-
-      {plan.status === "pending_first_use" ? (
-        <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-3">
-          <p className="m-0 text-[12px] leading-[1.4] text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.modelPlans.pendingFirstUseGuide")}
-          </p>
-          {compatibleTargets.length > 0 ? (
-            <div className="flex items-center gap-2 max-[640px]:flex-col max-[640px]:items-stretch">
-              <Select
-                value={firstUseTarget?.id}
-                onValueChange={(targetID) => {
-                  setFirstUseTargetID(targetID);
-                }}
-              >
-                <SelectTrigger
-                  aria-label={t(
-                    "workspace.settings.apps.modelPlans.firstUseAgentLabel"
-                  )}
-                  className={workspaceSettingsSelectTriggerClass}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent
-                  className={workspaceSettingsSelectContentClass}
-                  style={{ zIndex: "var(--z-panel-popover)" }}
-                >
-                  {compatibleTargets.map((target) => (
-                    <SelectItem key={target.id} value={target.id}>
-                      {target.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                disabled={!firstUseTarget || firstUseLaunching}
-                size="sm"
-                type="button"
-                onClick={() => {
-                  if (!firstUseTarget) return;
-                  void service.modelPlans.launchFirstUse(
-                    plan.id,
-                    firstUseTarget.id
-                  );
-                }}
-              >
-                {firstUseLaunching
-                  ? t("workspace.settings.apps.modelPlans.firstUseLaunching")
-                  : t("workspace.settings.apps.modelPlans.firstUseAction")}
-              </Button>
-            </div>
-          ) : (
-            <p className="m-0 text-[12px] text-[var(--state-warning)]">
-              {t(
-                "workspace.settings.apps.modelPlans.noCompatibleFirstUseAgent"
-              )}
-            </p>
-          )}
-          {firstUseLaunchFailed ? (
-            <p className="m-0 text-[12px] text-[var(--state-danger)]">
-              {t("workspace.settings.apps.modelPlans.firstUseLaunchFailed")}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
 
       {deleteBlock ? (
         <div className="flex flex-col gap-1.5 rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-3">

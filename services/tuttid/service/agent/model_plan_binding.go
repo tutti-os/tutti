@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
@@ -36,19 +35,10 @@ type AgentModelPlanRevisionSource interface {
 	GetModelPlanRevision(ctx context.Context, workspaceID string, planID string, revision uint64) (modelplanbiz.Plan, error)
 }
 
-// ModelPlanFirstUseMarker completes a plan's pending-first-use lifecycle
-// after the first successful agent turn through that plan.
-type ModelPlanFirstUseMarker interface {
-	PrepareFirstUse(context.Context, modelplanbiz.FirstUseCandidate) error
-	CompleteFirstUse(ctx context.Context, workspaceID string, agentSessionID string) error
-	ListPendingFirstUses(context.Context) ([]modelplanbiz.FirstUseCandidate, error)
-}
-
 // modelPlanBindingRuntime holds the optional model plan integration wiring.
 type modelPlanBindingRuntime struct {
 	Bindings AgentModelBindingSource
 	Plans    AgentModelPlanSource
-	FirstUse ModelPlanFirstUseMarker
 }
 
 const (
@@ -190,10 +180,9 @@ func (s *Service) modelPlanRuntime() *modelPlanBindingRuntime {
 }
 
 // ConfigureModelPlanBinding wires the optional model plan integration.
-func (s *Service) ConfigureModelPlanBinding(bindings AgentModelBindingSource, plans AgentModelPlanSource, firstUse ModelPlanFirstUseMarker) {
+func (s *Service) ConfigureModelPlanBinding(bindings AgentModelBindingSource, plans AgentModelPlanSource) {
 	s.modelPlanBinding.Bindings = bindings
 	s.modelPlanBinding.Plans = plans
-	s.modelPlanBinding.FirstUse = firstUse
 }
 
 // modelPlanProtocolForProvider reads the endpoint-injection strategy declared
@@ -365,85 +354,6 @@ func resolvePlanDefaultModel(plan modelplanbiz.Plan, binding modelbindingbiz.Bin
 		return strings.TrimSpace(plan.Models[0].ID)
 	}
 	return ""
-}
-
-func (s *Service) preparePlanFirstUse(ctx context.Context, workspaceID string, agentSessionID string, endpoint *runtimeprep.ModelEndpointConfig, agentTargetID string) error {
-	if endpoint == nil {
-		return nil
-	}
-	runtime := s.modelPlanRuntime()
-	if runtime.FirstUse == nil {
-		return nil
-	}
-	return runtime.FirstUse.PrepareFirstUse(ctx, modelplanbiz.FirstUseCandidate{
-		WorkspaceID:    strings.TrimSpace(workspaceID),
-		AgentSessionID: strings.TrimSpace(agentSessionID),
-		PlanID:         endpoint.PlanID,
-		AgentTargetID:  strings.TrimSpace(agentTargetID),
-		// The marker records the plan-domain model id; composer values may
-		// carry a provider namespace (OpenCode), which strips as a no-op for
-		// raw ids.
-		Model:         runtimeprep.OpenCodePlanModelID(endpoint.Model),
-		PlanUpdatedAt: time.UnixMilli(endpoint.PlanUpdatedAtUnixMS).UTC(),
-	})
-}
-
-// ObserveAgentSessionState completes pending plan first uses when a session's
-// turn settles with a completed outcome: that is the first verified real
-// agent-runtime call through the bound plan.
-func (s *Service) ObserveAgentSessionState(ctx context.Context, input canonical.ReportSessionStateInput, _ canonical.ReportSessionStateReply) {
-	if s == nil {
-		return
-	}
-	lifecycle := input.State.TurnLifecycle
-	if lifecycle == nil || strings.TrimSpace(lifecycle.Phase) != "settled" || lifecycle.Outcome == nil || strings.TrimSpace(*lifecycle.Outcome) != "completed" {
-		return
-	}
-	runtime := s.modelPlanRuntime()
-	if runtime.FirstUse == nil {
-		return
-	}
-	if err := runtime.FirstUse.CompleteFirstUse(ctx, strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.AgentSessionID)); err != nil {
-		slog.Warn("mark model plan first use failed",
-			"event", "agent.model_plan.first_use_mark_failed",
-			"workspace_id", strings.TrimSpace(input.WorkspaceID),
-			"agent_session_id", strings.TrimSpace(input.AgentSessionID),
-			"error", err,
-		)
-	}
-}
-
-// ReconcilePendingModelPlanFirstUses recovers first-use projections that were
-// committed by Host but whose best-effort observer did not finish before a
-// shutdown or transient storage error.
-func (s *Service) ReconcilePendingModelPlanFirstUses(ctx context.Context) error {
-	runtime := s.modelPlanRuntime()
-	if runtime.FirstUse == nil || s.TurnStore == nil {
-		return nil
-	}
-	candidates, err := runtime.FirstUse.ListPendingFirstUses(ctx)
-	if err != nil {
-		return err
-	}
-	for _, candidate := range candidates {
-		turns, err := s.TurnStore.ListSessionTurns(ctx, candidate.WorkspaceID, candidate.AgentSessionID)
-		if err != nil {
-			return err
-		}
-		completed := false
-		for _, turn := range turns {
-			if turn.Phase == canonical.TurnPhaseSettled && turn.Outcome == canonical.TurnOutcomeCompleted {
-				completed = true
-				break
-			}
-		}
-		if completed {
-			if err := runtime.FirstUse.CompleteFirstUse(ctx, candidate.WorkspaceID, candidate.AgentSessionID); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 // applyModelPlanComposerOverlay replaces the provider-native model options

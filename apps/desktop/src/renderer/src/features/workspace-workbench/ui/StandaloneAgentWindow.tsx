@@ -111,10 +111,10 @@ const LazyStandaloneAgentWindowPanelHosts = lazy(() =>
 
 const standaloneAgentNodeId = "standalone-agent-window-node";
 const standaloneAgentDefaultConversationRailWidthPx = 280;
-function renderStandaloneAgentSidebarFooter(): ReactNode {
+function renderStandaloneAgentSidebarFooter(workspaceId: string): ReactNode {
   return (
     <Suspense fallback={null}>
-      <LazyWorkspaceAccountMenu />
+      <LazyWorkspaceAccountMenu workspaceId={workspaceId} />
     </Suspense>
   );
 }
@@ -674,6 +674,10 @@ export function StandaloneAgentWindow({
     nodeState.lastActiveAgentSessionId,
     workspaceId
   ]);
+  const renderSidebarFooter = useCallback(
+    () => renderStandaloneAgentSidebarFooter(workspaceId),
+    [workspaceId]
+  );
 
   return (
     <RichTextMentionServiceProvider service={mentionService}>
@@ -848,7 +852,7 @@ export function StandaloneAgentWindow({
               referenceSourceAggregator={
                 agentGuiHostInput.referenceSourceAggregator
               }
-              renderSidebarFooter={renderStandaloneAgentSidebarFooter}
+              renderSidebarFooter={renderSidebarFooter}
               resolveWorkspaceReferenceEntryIconUrl={
                 agentGuiHostInput.resolveWorkspaceReferenceEntryIconUrl
               }

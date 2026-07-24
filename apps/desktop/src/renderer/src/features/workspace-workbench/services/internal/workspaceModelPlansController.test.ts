@@ -28,70 +28,7 @@ test("WorkspaceModelPlansController refreshes Plans without legacy bindings", as
   );
 });
 
-test("WorkspaceModelPlansController owns first-use launch assembly and state", async () => {
-  const launches: Parameters<
-    NonNullable<WorkspaceModelPlansControllerDependencies["launchAgentGui"]>
-  >[0][] = [];
-  const { controller, store } = createController(
-    {
-      listModelPlans: async () => [
-        {
-          ...createPlan("plan-1", "openai"),
-          defaultModel: "gpt-5.5",
-          name: "OpenAI Plan"
-        }
-      ]
-    },
-    async (input) => {
-      launches.push(input);
-      assert.equal(store.modelPlans.firstUseLaunchingPlanID, "plan-1");
-      return true;
-    }
-  );
-
-  await controller.refreshPlans();
-  store.agents.harnessTargets = [
-    {
-      enabled: true,
-      id: "local:codex",
-      name: "Codex",
-      provider: "codex"
-    },
-    {
-      enabled: true,
-      id: "local:claude",
-      name: "Claude Code",
-      provider: "claude_code"
-    }
-  ];
-  await controller.launchFirstUse("plan-1", "local:codex");
-
-  assert.equal(launches.length, 1);
-  assert.deepEqual(
-    {
-      ...launches[0],
-      draftPrompt: undefined
-    },
-    {
-      agentTargetId: "local:codex",
-      draftPrompt: undefined,
-      model: "gpt-5.5",
-      modelPlanId: "plan-1",
-      openInNewWindow: true,
-      provider: "codex",
-      workspaceId: "workspace-1"
-    }
-  );
-  assert.match(launches[0]?.draftPrompt ?? "", /OpenAI Plan/);
-  assert.equal(store.modelPlans.firstUseLaunchingPlanID, null);
-  assert.equal(store.modelPlans.firstUseLaunchFailedPlanID, null);
-
-  await controller.launchFirstUse("plan-1", "local:claude");
-  assert.equal(launches.length, 1);
-  assert.equal(store.modelPlans.firstUseLaunchFailedPlanID, "plan-1");
-});
-
-test("WorkspaceModelPlansController saves a new plan draft", async () => {
+test("WorkspaceModelPlansController saves a new plan draft without forcing detection", async () => {
   const created: unknown[] = [];
   const detectRequests: unknown[] = [];
   const { controller, store } = createController({
@@ -141,7 +78,6 @@ test("WorkspaceModelPlansController saves a new plan draft", async () => {
       }
     ]
   });
-  await controller.detectDraft();
   await controller.saveDraft();
 
   assert.deepEqual(created, [
@@ -163,23 +99,14 @@ test("WorkspaceModelPlansController saves a new plan draft", async () => {
     }
   ]);
   assert.equal(store.modelPlans.draft, null);
-  assert.deepEqual(detectRequests, [
-    {
-      apiKey: "sk-test",
-      baseUrl: "https://api.deepseek.com",
-      model: "deepseek-chat",
-      models: [{ id: "deepseek-chat", name: "deepseek-chat" }],
-      protocol: "openai"
-    },
-    { planId: "plan-new" }
-  ]);
+  assert.deepEqual(detectRequests, []);
   assert.deepEqual(
     store.modelPlans.plans.map((plan) => plan.id),
     ["plan-new"]
   );
 });
 
-test("WorkspaceModelPlansController requires a successful connection check before creating", async () => {
+test("WorkspaceModelPlansController blocks saving an endpoint plan without models", async () => {
   let createCalls = 0;
   const { controller, store } = createController({
     createModelPlan: async () => {
@@ -194,40 +121,7 @@ test("WorkspaceModelPlansController requires a successful connection check befor
     protocol: "openai",
     templateKind: "custom"
   });
-  controller.updateDraft({
-    apiKey: "sk-test",
-    models: [{ id: "example-model", name: "Example model" }]
-  });
-  await controller.saveDraft();
-
-  assert.equal(createCalls, 0);
-  assert.equal(store.modelPlans.draftFeedback?.kind, "detectionRequired");
-  assert.notEqual(store.modelPlans.draft, null);
-});
-
-test("WorkspaceModelPlansController blocks saving an endpoint plan without models", async () => {
-  let createCalls = 0;
-  const { controller, store } = createController({
-    createModelPlan: async () => {
-      createCalls += 1;
-      throw new Error("unexpected");
-    },
-    detectModelPlan: async () => ({
-      // The daemon can pass detection for a model-less draft by probing the
-      // first discovered candidate; that must not make the draft saveable.
-      detection: passedCoreDetection(),
-      discoveredModels: [{ id: "candidate", name: "Candidate" }]
-    })
-  });
-
-  controller.beginDraft({
-    baseUrl: "https://api.example.com/v1",
-    name: "Example",
-    protocol: "openai",
-    templateKind: "custom"
-  });
   controller.updateDraft({ apiKey: "sk-test" });
-  await controller.detectDraft();
   await controller.saveDraft();
 
   assert.equal(createCalls, 0);
@@ -325,7 +219,7 @@ test("WorkspaceModelPlansController previews references before saving a changed 
   assert.equal(store.modelPlans.draft, null);
 });
 
-test("WorkspaceModelPlansController keeps 100 discovered models out of the draft selection", async () => {
+test("WorkspaceModelPlansController keeps 100 fetched models out of the draft selection", async () => {
   const detectRequests: unknown[] = [];
   const discoveredModels = Array.from({ length: 100 }, (_, index) => ({
     id: `gpt-${index + 1}`,
@@ -349,7 +243,7 @@ test("WorkspaceModelPlansController keeps 100 discovered models out of the draft
     protocol: "openai",
     templateKind: "official_subscription"
   });
-  await controller.detectDraft();
+  await controller.fetchDraftModels();
 
   assert.deepEqual(detectRequests, [
     {
@@ -357,7 +251,6 @@ test("WorkspaceModelPlansController keeps 100 discovered models out of the draft
       templateKind: "official_subscription"
     }
   ]);
-  assert.equal(store.modelPlans.draftDetection?.stages.length, 1);
   assert.deepEqual(store.modelPlans.draft?.models, [{ id: "", name: "" }]);
   assert.equal(store.modelPlans.draft?.defaultModel, "");
   assert.equal(store.modelPlans.draftDiscoveredModels.length, 100);
@@ -399,8 +292,6 @@ test("WorkspaceModelPlansController fetches draft models into the candidate cata
     store.modelPlans.draftDiscoveredModels.map((model) => model.id),
     ["model-a", "model-b"]
   );
-  // Discovery must never stand in for the final connection check gate.
-  assert.equal(store.modelPlans.draftDetection, null);
   assert.deepEqual(store.modelPlans.draft?.models, [{ id: "", name: "" }]);
   assert.equal(store.modelPlans.fetchingDraftModels, false);
   assert.equal(store.modelPlans.draftFeedback, null);
@@ -472,50 +363,6 @@ test("WorkspaceModelPlansController flags a fetch whose discovery stage failed",
 
   assert.equal(store.modelPlans.draftFeedback?.kind, "fetchModelsFailed");
   assert.deepEqual(store.modelPlans.draftDiscoveredModels, []);
-});
-
-test("WorkspaceModelPlansController discards an in-flight detection when the draft changes", async () => {
-  let resolveDetect!: (value: {
-    detection: ReturnType<typeof passedCoreDetection>;
-    discoveredModels: { id: string; name: string }[];
-  }) => void;
-  const pendingDetect = new Promise<{
-    detection: ReturnType<typeof passedCoreDetection>;
-    discoveredModels: { id: string; name: string }[];
-  }>((resolve) => {
-    resolveDetect = resolve;
-  });
-  const { controller, store } = createController({
-    detectModelPlan: async () => await pendingDetect
-  });
-
-  controller.beginDraft({
-    baseUrl: "https://api.example.com/v1",
-    name: "First",
-    protocol: "openai",
-    templateKind: "custom"
-  });
-  controller.updateDraft({ apiKey: "sk-test" });
-  const inFlight = controller.detectDraft();
-
-  // The user abandons the endpoint draft for a native-login draft while the
-  // check is still in flight. A stale passed detection must not attach to
-  // the new draft, where it would unlock the save gate.
-  controller.beginDraft({
-    name: "Codex subscription",
-    protocol: "openai",
-    templateKind: "official_subscription"
-  });
-  resolveDetect({
-    detection: passedCoreDetection(),
-    discoveredModels: [{ id: "stale-model", name: "Stale model" }]
-  });
-  await inFlight;
-
-  assert.equal(store.modelPlans.draftDetection, null);
-  assert.deepEqual(store.modelPlans.draftDiscoveredModels, []);
-  assert.equal(store.modelPlans.detecting, false);
-  assert.equal(store.modelPlans.draftFeedback, null);
 });
 
 test("WorkspaceModelPlansController discards an in-flight model fetch when the draft changes", async () => {
@@ -697,8 +544,7 @@ test("WorkspaceModelPlansController detects a saved plan through its plan id", a
   });
 
   await controller.refreshPlans();
-  controller.beginEditPlan("plan-1");
-  await controller.detectDraft();
+  await controller.detectPlan("plan-1");
 
   assert.equal(detectRequests[0]?.planId, "plan-1");
 });
@@ -740,7 +586,7 @@ test("WorkspaceModelPlansController saves an official subscription without endpo
     protocol: "openai",
     templateKind: "official_subscription"
   });
-  await controller.detectDraft();
+  await controller.fetchDraftModels();
   // The editor resolves the discovered model into an explicit slot selection.
   controller.updateDraft({
     models: [{ id: "gpt-native", name: "GPT Native", tier: "flagship" }]
@@ -864,10 +710,7 @@ test("WorkspaceModelPlansController records a failed enable toggle inline", asyn
   assert.equal(store.modelPlans.plans[0]?.enabled, true);
 });
 
-function createController(
-  overrides: Partial<ModelPlansClient>,
-  launchAgentGui?: WorkspaceModelPlansControllerDependencies["launchAgentGui"]
-): {
+function createController(overrides: Partial<ModelPlansClient>): {
   controller: WorkspaceModelPlansController;
   notifications: string[];
   store: ReturnType<typeof createWorkspaceSettingsStore>;
@@ -877,7 +720,6 @@ function createController(
   const notifications: string[] = [];
   const controller = new WorkspaceModelPlansController({
     client: createModelPlansClient(overrides),
-    launchAgentGui,
     notifications: createNotificationRecorder(notifications),
     store
   });
@@ -924,13 +766,12 @@ function createPlan(
     defaultModel: null,
     detection: { stages: [] },
     enabled: true,
-    firstUse: { status: "pending" },
     hasApiKey: true,
     id,
     models: [],
     name: id,
     protocol,
-    status: "pending_first_use",
+    status: "undetected",
     templateKind: "official_subscription",
     updatedAt: "2026-07-12T00:00:00Z",
     workspaceId: "workspace-1"
@@ -944,8 +785,7 @@ function passedCoreDetection() {
       { stage: "network" as const, status: "passed" as const },
       { stage: "auth" as const, status: "passed" as const },
       { stage: "model_discovery" as const, status: "passed" as const },
-      { stage: "inference" as const, status: "passed" as const },
-      { stage: "agent_runtime" as const, status: "pending" as const }
+      { stage: "inference" as const, status: "passed" as const }
     ]
   };
 }

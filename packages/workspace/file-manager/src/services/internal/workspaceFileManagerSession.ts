@@ -57,6 +57,11 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   readonly store: WorkspaceFileManagerState;
   private readonly host: WorkspaceFileManagerHost;
   private hasInitialized = false;
+  /**
+   * True after a directory listing attempt finished without leaving the session
+   * mid-flight. Empty folders set this too — "no entries" is not "not loaded".
+   */
+  private hasSettledDirectoryListing = false;
   private initializePromise: Promise<void> | null = null;
   private isActive = false;
   private isDisposed = false;
@@ -310,6 +315,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   dispose(): void {
     this.isDisposed = true;
     this.hasInitialized = false;
+    this.hasSettledDirectoryListing = false;
     this.initializePromise = null;
     this.isActive = false;
     this.searchRequestSeq += 1;
@@ -351,6 +357,8 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     this.initializePromise = (async () => {
       this.observeStore();
       if (!this.hasLoadedDirectoryState()) {
+        // loadDirectory owns isLoading true→false. Do not latch isLoading here:
+        // a host that primes loading and then aborts initialize would stick.
         await this.loadSelectedLocationOrDirectory();
       }
       await this.previewController.syncPreviewState();
@@ -360,12 +368,20 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
       await this.initializePromise;
     } finally {
       this.initializePromise = null;
+      // If init aborted/failed before a listing settled, never leave the UI
+      // spinning on a stale loading latch.
+      if (!this.hasSettledDirectoryListing && this.store.isLoading) {
+        this.store.isLoading = false;
+      }
     }
   }
 
   async loadDirectory(path = this.store.currentDirectoryPath): Promise<void> {
     this.clearSearchState();
     await this.navigationController.loadDirectory(path);
+    if (!this.store.isLoading) {
+      this.hasSettledDirectoryListing = true;
+    }
     this.syncSelectedDirectoryLocation();
   }
 
@@ -661,7 +677,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
       await this.loadRecentLocation(location);
       return;
     }
-    await this.navigationController.loadDirectory(location.path);
+    await this.loadDirectory(location.path);
   }
 
   setActive(active: boolean): void {
@@ -670,6 +686,15 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     }
     this.isActive = active;
     if (active) {
+      // Recover only when initialize finished without ever settling a listing
+      // (superseded/remount race). A settled empty folder must not reload.
+      if (
+        this.hasInitialized &&
+        !this.hasSettledDirectoryListing &&
+        !this.store.isLoading
+      ) {
+        void this.loadSelectedLocationOrDirectory();
+      }
       return;
     }
     this.store.contextMenu = null;
@@ -740,23 +765,27 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   private hasLoadedDirectoryState(): boolean {
+    // selectedPath alone is not a listing — persistence can restore a selection
+    // before any directory.list runs. Skipping load left the panel empty/stuck.
     return (
+      this.hasSettledDirectoryListing ||
       this.store.error !== null ||
-      this.store.entries.length > 0 ||
-      this.store.selectedPath !== null
+      this.store.entries.length > 0
     );
   }
 
   private async loadSelectedLocationOrDirectory(): Promise<void> {
     const selectedLocation = this.selectedLocation();
     if (isWorkspaceFileExternalLocation(selectedLocation)) {
+      this.hasSettledDirectoryListing = true;
+      this.store.isLoading = false;
       return;
     }
     if (selectedLocation?.kind === "recent") {
       await this.loadRecentLocation(selectedLocation);
       return;
     }
-    await this.navigationController.loadDirectory(
+    await this.loadDirectory(
       this.resolveInitialDirectoryPath(selectedLocation)
     );
   }
@@ -786,6 +815,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
       this.store.error = this.resolveErrorMessage(error);
     } finally {
       this.store.isLoading = false;
+      this.hasSettledDirectoryListing = true;
     }
   }
 

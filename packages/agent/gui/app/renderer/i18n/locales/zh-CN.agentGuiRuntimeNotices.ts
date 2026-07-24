@@ -20,13 +20,13 @@ export const zhCNAgentGuiRuntimeNotices = {
     "{{provider}} 的响应在完成前被中断。请稍后重试。",
   visibleErrorConcurrencyLimit:
     "{{provider}} 当前处理的请求过多。请在其他任务完成后再试。",
-  visibleErrorInsufficientCredits: "Tutti 积分不足，无法继续此请求。",
+  visibleErrorInsufficientCreditsUnknown:
+    "Tutti 积分不足，请查看积分方案后继续",
   visibleErrorActionInstall: "去连接",
   visibleErrorActionUpgrade: "去升级",
   visibleErrorActionRelogin: "登录",
   visibleErrorActionCheckNetwork: "检测网络",
   visibleErrorActionDetect: "打开检测",
-  visibleErrorActionViewPlans: "查看订阅方案",
   systemNoticeTransportRetry: "Agent 连接中断，正在重连",
   systemNoticeTransportFallback: "Agent 已切换到 HTTPS 传输",
   systemNoticePlanImplementationPendingConfirmation: "计划实现正在等待确认",

@@ -219,9 +219,7 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
                 agentCountBalance:
                   composerProps.labels.tuttiBudgetAgentCountBalance,
                 agentCountPowerful:
-                  composerProps.labels.tuttiBudgetAgentCountPowerful,
-                confirm: composerProps.labels.tuttiBudgetConfirm,
-                cancel: composerProps.labels.tuttiBudgetCancel
+                  composerProps.labels.tuttiBudgetAgentCountPowerful
               }}
               labels={tuttiWorkflowDockLabels}
               phase={workflowPhase}

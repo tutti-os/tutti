@@ -58,6 +58,53 @@ func runCreateWithInitialContent(ctx context.Context, driver Driver) error {
 	return nil
 }
 
+func runCreateWithRailPlacement(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, Fixture{}); err != nil {
+		return err
+	}
+	input := agenthost.CreateSessionInput{
+		AgentSessionID: "session-rail-placement",
+		AgentTargetID:  "target-1",
+		Provider:       "codex",
+		InitialContent: []agenthost.PromptContentBlock{{Type: "text", Text: "build in caller project"}},
+		ClientSubmitID: "create-rail-placement-1",
+		RailPlacement: &agenthost.RailPlacement{
+			Version:     1,
+			Kind:        agenthost.RailPlacementKindProject,
+			ProjectPath: "/workspace/project",
+			SectionKey:  "project:workspace-1:/workspace/project",
+		},
+	}
+	session, turnID, err := driver.Create(ctx, "workspace-1", input)
+	if err != nil {
+		return fmt.Errorf("create with explicit rail placement: %w", err)
+	}
+	if turnID == "" {
+		return fmt.Errorf("create with explicit rail placement turn is empty")
+	}
+	if session.RailSectionKey != input.RailPlacement.SectionKey {
+		return fmt.Errorf(
+			"create with explicit rail placement key=%q, want %q",
+			session.RailSectionKey,
+			input.RailPlacement.SectionKey,
+		)
+	}
+	if err := verifyRetriedInitialCreate(ctx, driver, input, session, turnID); err != nil {
+		return err
+	}
+	conflictingRetry := input
+	conflictingPlacement := *input.RailPlacement
+	conflictingPlacement.ProjectPath = "/workspace/other-project"
+	conflictingRetry.RailPlacement = &conflictingPlacement
+	if _, _, err := driver.Create(ctx, "workspace-1", conflictingRetry); !errors.Is(
+		err,
+		agenthost.ErrRailPlacementConflict,
+	) {
+		return fmt.Errorf("retry with conflicting rail placement error=%v", err)
+	}
+	return nil
+}
+
 func runResumePersistedSession(ctx context.Context, driver Driver) error {
 	fixture := Fixture{Session: &SessionSeed{
 		WorkspaceID: "workspace-1", AgentSessionID: "session-resume", Provider: "codex",

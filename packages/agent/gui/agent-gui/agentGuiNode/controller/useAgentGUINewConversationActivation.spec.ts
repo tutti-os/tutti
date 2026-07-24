@@ -1,5 +1,54 @@
 import { describe, expect, it } from "vitest";
-import { resolveInitialTuttiModeActivation } from "./useAgentGUINewConversationActivation";
+import {
+  resolveInitialRailPlacement,
+  resolveInitialTuttiModeActivation
+} from "./useAgentGUINewConversationActivation";
+
+describe("resolveInitialRailPlacement", () => {
+  it("uses the selected caller project section", () => {
+    expect(
+      resolveInitialRailPlacement({
+        selectedProjectPath: "/workspace",
+        userProjects: [
+          {
+            id: "project-1",
+            label: "Workspace",
+            path: "/workspace",
+            pinnedAtUnixMs: 0,
+            sectionKey: "project:/workspace"
+          }
+        ]
+      })
+    ).toEqual({
+      version: 1,
+      kind: "project",
+      projectPath: "/workspace",
+      sectionKey: "project:/workspace"
+    });
+  });
+
+  it("uses conversations only when no project is selected", () => {
+    expect(
+      resolveInitialRailPlacement({
+        selectedProjectPath: null,
+        userProjects: []
+      })
+    ).toEqual({
+      version: 1,
+      kind: "conversations",
+      sectionKey: "conversations"
+    });
+  });
+
+  it("fails closed when the selected project has no canonical section", () => {
+    expect(
+      resolveInitialRailPlacement({
+        selectedProjectPath: "/workspace",
+        userProjects: []
+      })
+    ).toBeNull();
+  });
+});
 
 describe("resolveInitialTuttiModeActivation", () => {
   it("prefers the composer submit snapshot over a stale inactive draft", () => {

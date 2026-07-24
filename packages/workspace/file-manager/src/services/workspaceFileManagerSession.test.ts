@@ -1467,6 +1467,49 @@ test("initialize preserves directory state already loaded by a reveal intent", a
   session.dispose();
 });
 
+test("initialize still lists when only selectedPath is restored", async () => {
+  const listedPaths: string[] = [];
+  const session = createWorkspaceFileManagerService().createSession({
+    host: {
+      async listDirectory(input) {
+        listedPaths.push(input.path);
+        return {
+          directoryPath: "/Users/demo/project",
+          entries: [
+            {
+              hasChildren: false,
+              kind: "file",
+              mtimeMs: null,
+              name: "README.md",
+              path: "/Users/demo/project/README.md",
+              sizeBytes: 12
+            }
+          ],
+          root: "/Users/demo/project",
+          workspaceID: input.workspaceID
+        };
+      }
+    },
+    i18n: createTestI18nRuntime(),
+    initialDirectoryPath: "/Users/demo/project",
+    workspaceID: "workspace-1"
+  });
+  session.store.root = "/Users/demo/project";
+  session.store.currentDirectoryPath = "/Users/demo/project";
+  session.store.selectedPath = "/Users/demo/project/README.md";
+  session.store.entries = [];
+  session.store.isLoading = true;
+
+  await session.initialize();
+
+  assert.deepEqual(listedPaths, ["/Users/demo/project"]);
+  assert.equal(session.store.isLoading, false);
+  assert.equal(session.store.entries.length, 1);
+  assert.equal(session.store.entries[0]?.name, "README.md");
+
+  session.dispose();
+});
+
 test("invalid persisted state is ignored", () => {
   const session = createWorkspaceFileManagerService().createSession({
     host: {

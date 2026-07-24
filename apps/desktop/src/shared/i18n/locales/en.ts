@@ -193,21 +193,32 @@ export const en = {
     accountMenu: {
       title: "Tutti Agent",
       member: "Manage subscription",
+      upgradeMembership: "Upgrade",
+      rechargeCredits: "Recharge credits",
+      viewCreditPlans: "View credit options",
       creditsBalance: "Credits",
       accountCenter: "Account settings",
+      settings: "Settings",
       free: "Free",
       signIn: "Sign in",
       signOut: "Sign out",
       copyUserId: "Copy user ID",
       copyUserIdSuccess: "User ID copied",
       copyUserIdFailed: "Couldn't copy user ID",
+      openExternalFailed: "Couldn't open account link",
       loading: "Loading",
       unavailable: "--",
       dataUnavailable: "Some account data is unavailable",
       rewardToastTitle: "New user credits",
       rewardToastCreditsUnit: "credits",
       rewardToastDescription: "Added to account balance",
-      rewardToastClose: "Close credits reward notification"
+      rewardToastClose: "Close credits reward notification",
+      insufficientCreditsUpgradeMessage:
+        "Your available credits are exhausted. Upgrade your membership for more credits",
+      insufficientCreditsRechargeMessage:
+        "Your Tutti credits are insufficient. Recharge credits to continue",
+      insufficientCreditsUnknownMessage:
+        "Your Tutti credits are insufficient. Review credit options to continue"
     },
     agentEnv: {
       configTitle: "{{provider}} environment",
@@ -822,7 +833,36 @@ export const en = {
         reopenLogin: "Open sign-in again",
         signedOutTitle: "Not signed in",
         signingIn: "Signing in...",
-        signingOut: "Signing out..."
+        signingOut: "Signing out...",
+        mobileRemote: {
+          cancel: "Cancel pairing",
+          confirming: "Confirming this phone...",
+          copyPairingCode: "Copy pairing code",
+          copyPairingCodeFailed: "Pairing code could not be copied.",
+          description:
+            "Pair a phone signed in to the same Tutti account, then use it to access Agent sessions on this computer.",
+          empty: "No phones are paired with this computer.",
+          errors: {
+            list: "Paired phones could not be loaded.",
+            revoke: "This phone could not be removed.",
+            start: "Pairing could not be started.",
+            status: "Pairing status could not be updated."
+          },
+          mobileDevice: "Mobile device",
+          pairedDevices: "Paired phones",
+          pairingCodeCopied: "Pairing code copied",
+          qrAlt: "Mobile pairing QR code",
+          qrError: "QR code unavailable",
+          remove: "Remove",
+          removing: "Removing...",
+          revoked: "Removed",
+          scanHint:
+            "Open Tutti on your phone and scan this code. This code expires shortly and only works for your account.",
+          start: "Pair a phone",
+          starting: "Starting...",
+          title: "Mobile remote access",
+          waitingForScan: "Waiting for your phone to scan"
+        }
       },
       apps: {
         appCatalogChannelDescription:
@@ -943,8 +983,6 @@ export const en = {
         modelPlans: {
           addModel: "Add model",
           addPlan: "Add plan",
-          agentRuntimePendingHint:
-            "Save the plan, then pick a compatible agent below and finish one real call to complete verification.",
           apiKey: "API key",
           baseUrl: "Base URL",
           defaultMarker: "Default",
@@ -962,9 +1000,6 @@ export const en = {
           detect: "Test connection",
           detectFailed: "Couldn't run the connection check — try again.",
           detecting: "Checking...",
-          detectionRequired:
-            "Complete a successful connection check before saving this plan.",
-          detectionTitle: "Connection check",
           duplicate: "Duplicate",
           duplicateFailed: "Couldn't duplicate — try again.",
           edit: "Edit",
@@ -973,20 +1008,6 @@ export const en = {
             "Click \u201cAdd plan\u201d to connect a subscription, relay, or custom endpoint with your API key",
           emptyTitle: "No model plans yet",
           enabled: "Enable {{plan}}",
-          failureReasons: {
-            connectionFailed: "Couldn't reach the endpoint.",
-            inferenceFailed: "The test call failed.",
-            modelCatalogDecodeFailed:
-              "The model list response couldn't be read.",
-            modelCatalogUnavailable: "The model list isn't available.",
-            modelRejected: "The endpoint rejected the model.",
-            noModelSelected: "No model selected for the test call.",
-            providerAuthRequired: "The provider needs you to sign in.",
-            providerRuntimeUnavailable:
-              "The provider's Agent Runtime isn't available.",
-            unauthorized: "The endpoint rejected the credentials.",
-            unknown: "The check failed."
-          },
           fetchModels: "Fetch models",
           fetchModelsEmpty:
             "The endpoint returned no models. You can still type a model ID manually.",
@@ -1014,16 +1035,6 @@ export const en = {
           nameLabel: "Name",
           namePlaceholder: "My model plan",
           neverDetected: "Not checked yet",
-          pendingFirstUseGuide:
-            "Choose a compatible Agent and finish one real call to make this plan fully usable.",
-          firstUseAction: "Try with this Agent",
-          firstUseAgentLabel: "Compatible Agent",
-          firstUseLaunchFailed: "Couldn't open the first-use session.",
-          firstUseLaunching: "Opening...",
-          firstUsePrompt:
-            "Use the {{plan}} model plan for this real first call. Briefly introduce the selected model and confirm it can respond in this workspace.",
-          noCompatibleFirstUseAgent:
-            "No compatible Agent is enabled for this plan's protocol.",
           presetLabel: "Provider preset",
           presets: {
             agnes: "Agnes",
@@ -1052,16 +1063,6 @@ export const en = {
             workspaceAgent: "Workspace agent",
             workspaceApp: "App"
           },
-          remedies: {
-            addModelsManually: "Add models manually.",
-            checkApiKey: "Check the API key.",
-            checkModelId: "Check the model ID.",
-            checkNetworkOrBaseUrl: "Check the network or Base URL.",
-            enableProvider: "Install or enable the Agent Runtime.",
-            loginProvider: "Sign in from Agent Runtime settings.",
-            retryCompatibleAgent: "Retry with the provider's Agent Runtime.",
-            selectModel: "Select a model first."
-          },
           removeModel: "Remove model",
           setDefaultModel: "Set {{model}} as the default model",
           requiredFieldsMissing:
@@ -1070,24 +1071,9 @@ export const en = {
           saveFailed: "Couldn't save — try again.",
           saving: "Saving...",
           showApiKey: "Show key",
-          stageLatency: "{{ms}} ms",
-          stageStatus: {
-            failed: "Failed",
-            passed: "Passed",
-            pending: "Pending",
-            skipped: "Skipped"
-          },
-          stages: {
-            agentRuntime: "Agent first call",
-            auth: "Authentication",
-            inference: "Real call",
-            modelDiscovery: "Model list",
-            network: "Network"
-          },
           statusLabels: {
             detectionFailed: "Check failed",
             disabled: "Disabled",
-            pendingFirstUse: "Awaiting first use",
             ready: "Ready",
             undetected: "Not checked"
           },
@@ -1182,6 +1168,11 @@ export const en = {
         logsSizeLabel: "Log size",
         logsSummary: "{{count}} files, {{size}} total",
         logsTitle: "Logs",
+        mobileRemoteAccessSettingsDescription:
+          "Show phone pairing and remote access controls in Account settings.",
+        mobileRemoteAccessSettingsLabel: "Show mobile remote access settings",
+        mobileRemoteAccessSettingsSaveFailed:
+          "We couldn't update mobile remote access visibility.",
         openDaemonLog: "Open daemon log",
         openDesktopLog: "Open desktop log",
         openLogsDirectory: "Open logs folder",
