@@ -5,6 +5,7 @@ import type { AgentGUIAgentTarget } from "../../../types";
 
 interface Input {
   layoutMode: "dock" | "hero";
+  previewMode: boolean;
   provider: string;
   agentTargets: readonly AgentGUIAgentTarget[];
   handoffAgentTargets?: readonly AgentGUIAgentTarget[];
@@ -24,6 +25,7 @@ interface Input {
 export function useComposerProviderTargets(input: Input) {
   const {
     layoutMode,
+    previewMode,
     provider,
     agentTargets,
     handoffAgentTargets,
@@ -98,16 +100,17 @@ export function useComposerProviderTargets(input: Input) {
     isSelectedProjectMissing || (disabled && !canQueueWhileBusy);
   const providerSelectDisabled =
     providerSelectReadonly || composerControlsHardDisabled || inputDisabled;
-  const handoffDisabled =
-    composerControlsHardDisabled ||
-    inputDisabled ||
-    !onHandoffConversation ||
-    handoffMenuTargets.length === 0;
+  const handoffDisabled = resolveComposerHandoffDisabled({
+    composerControlsHardDisabled,
+    hasHandoffConversation: onHandoffConversation !== undefined,
+    handoffMenuTargetCount: handoffMenuTargets.length
+  });
   const showProviderSelect =
     !isHeroLayout &&
     selectedProviderSwitchTarget !== null &&
     providerMenuTargets.length > 0;
-  const showHandoffSelect = showProviderSelect && providerSelectReadonly;
+  const showHandoffSelect =
+    showProviderSelect && providerSelectReadonly && !previewMode;
 
   return {
     composerClassName,
@@ -125,4 +128,16 @@ export function useComposerProviderTargets(input: Input) {
     showHandoffSelect,
     showProviderSelect
   };
+}
+
+export function resolveComposerHandoffDisabled(input: {
+  composerControlsHardDisabled: boolean;
+  hasHandoffConversation: boolean;
+  handoffMenuTargetCount: number;
+}): boolean {
+  return (
+    input.composerControlsHardDisabled ||
+    !input.hasHandoffConversation ||
+    input.handoffMenuTargetCount === 0
+  );
 }
