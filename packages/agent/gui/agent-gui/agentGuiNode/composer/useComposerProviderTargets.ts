@@ -105,7 +105,6 @@ export function useComposerProviderTargets(input: Input) {
   const providerSelectDisabled =
     providerSelectReadonly || composerControlsHardDisabled || inputDisabled;
   const handoffDisabled = resolveComposerHandoffDisabled({
-    composerControlsHardDisabled,
     hasHandoffConversation: onHandoffConversation !== undefined
   });
   const showProviderSelect =
@@ -166,8 +165,7 @@ export function useComposerProviderTargets(input: Input) {
 }
 
 export function resolveComposerHandoffDisabled(input: {
-  composerControlsHardDisabled: boolean;
   hasHandoffConversation: boolean;
 }): boolean {
-  return input.composerControlsHardDisabled || !input.hasHandoffConversation;
+  return !input.hasHandoffConversation;
 }

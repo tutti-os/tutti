@@ -2,24 +2,18 @@ import { describe, expect, it } from "vitest";
 import { resolveComposerHandoffDisabled } from "./useComposerProviderTargets";
 
 describe("resolveComposerHandoffDisabled", () => {
-  it("does not couple handoff availability to the current composer input", () => {
+  it("stays enabled when the current composer is disabled", () => {
     expect(
       resolveComposerHandoffDisabled({
-        composerControlsHardDisabled: false,
         hasHandoffConversation: true
       })
     ).toBe(false);
   });
 
-  it.each([
-    ["hard-disabled composer", { composerControlsHardDisabled: true }],
-    ["missing handoff callback", { hasHandoffConversation: false }]
-  ])("disables handoff when %s", (_reason, override) => {
+  it("disables handoff when the callback is missing", () => {
     expect(
       resolveComposerHandoffDisabled({
-        composerControlsHardDisabled: false,
-        hasHandoffConversation: true,
-        ...override
+        hasHandoffConversation: false
       })
     ).toBe(true);
   });
