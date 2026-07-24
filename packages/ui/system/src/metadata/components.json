@@ -103,7 +103,7 @@
       "category": "primitive",
       "status": "stable",
       "source": "src/components/avatar/index.tsx",
-      "description": "High-level identity image primitive with initial, empty, loading, and broken-image fallback states.",
+      "description": "High-level identity image primitive with rendered-size-aware CloudFront delivery and resilient fallback states.",
       "propsType": "AvatarProps",
       "useCases": [
         "People and account identity",
@@ -112,6 +112,8 @@
       ],
       "migrationHints": [
         "Pass a stable label even when src is available so broken images have a meaningful fallback.",
+        "Pass a directly consumable CloudFront URL; Avatar defaults to a bucketed 2x WebP request and retries the original URL if delivery fails.",
+        "Use delivery=\"original\" only when the source must be requested without image-delivery parameters.",
         "Use children for caller-owned presence badges and other overlays."
       ],
       "storyboard": true
