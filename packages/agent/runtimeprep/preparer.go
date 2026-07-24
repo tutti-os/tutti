@@ -33,7 +33,6 @@ func NewDefaultPreparer(stateDir string) *DefaultPreparer {
 	preparer.RegisterProvider(CursorPreparer{})
 	preparer.RegisterProvider(OpenCodePreparer{})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "nexight", FileName: "AGENTS.md"})
-	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "hermes", FileName: "AGENTS.md"})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "openclaw", FileName: "AGENTS.md"})
 	return preparer
 }
@@ -211,7 +210,17 @@ func (p *DefaultPreparer) provider(providerID string) ProviderPreparer {
 	if p == nil {
 		return nil
 	}
-	return p.providers[strings.TrimSpace(providerID)]
+	providerID = strings.TrimSpace(providerID)
+	if provider := p.providers[providerID]; provider != nil {
+		return provider
+	}
+	// Agent extensions (provider id "acp:<key>") share a generic instruction
+	// preparer; their skill roots arrive via PrepareInput.ExtensionSkillRoots
+	// from the extension composer profile, so they need no per-key entry.
+	if strings.HasPrefix(providerID, "acp:") {
+		return InstructionFilePreparer{}
+	}
+	return nil
 }
 
 func (p *DefaultPreparer) runtimeStore() RuntimeStore {

@@ -39,7 +39,14 @@ type PrepareInput struct {
 	AgentSkills               []string
 	AgentTools                []string
 	ExtraSkills               []ProviderSkillBundle
-	Metadata                  map[string]any
+	// ExtensionSkillRoots carries the skill root paths declared by an agent
+	// extension's composer profile (Skills.Roots[].Path). When non-empty,
+	// native tutti skills materialize into these roots instead of the
+	// hard-coded providerSkillRoot, so acp: extension agents (hermes and
+	// future ones) load tutti-handoff/tutti-cli. Paths are safe relative
+	// paths validated by the extension profile and resolved against Cwd.
+	ExtensionSkillRoots []string
+	Metadata            map[string]any
 	// ModelEndpoint routes the session through a managed model access plan
 	// endpoint when the agent target is bound to one. Nil keeps the
 	// provider's native credential source. Credentials must never reach

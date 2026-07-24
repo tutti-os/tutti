@@ -19,6 +19,28 @@ func (s *Service) extensionComposerProfileForLaunch(ctx context.Context, provide
 	return s.ExtensionComposerProfiles.ResolveExtensionComposerProfile(ctx, installationID)
 }
 
+// resolveExtensionSkillRoots returns the workspace-scope skill root paths an
+// agent extension declared in its composer profile. Native tutti skills are
+// materialized into these roots so acp: extension agents load the same
+// tutti-handoff/tutti-cli content as built-in providers. Returns nil for
+// non-extension providers or profiles without skills.
+func (s *Service) resolveExtensionSkillRoots(ctx context.Context, providerTargetRef map[string]any) []string {
+	profile, err := s.extensionComposerProfileForLaunch(ctx, providerTargetRef)
+	if err != nil || profile.Skills == nil {
+		return nil
+	}
+	roots := make([]string, 0, len(profile.Skills.Roots))
+	for _, root := range profile.Skills.Roots {
+		if strings.TrimSpace(root.Scope) != "workspace" {
+			continue
+		}
+		if path := strings.TrimSpace(root.Path); path != "" {
+			roots = append(roots, path)
+		}
+	}
+	return roots
+}
+
 func composerProviderCapabilities(provider string, computerUseAvailable bool) []string {
 	if !composerProfileKnown(provider) {
 		return nil
