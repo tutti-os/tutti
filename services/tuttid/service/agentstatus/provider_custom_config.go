@@ -48,6 +48,8 @@ func (s Service) providerUsesCustomConfig(provider string) bool {
 			return s.codexConfigDeclares("base_url", "chatgpt_base_url", "api_key") || s.codexAuthJSONHasAPIKey()
 		case providerregistry.StatusKindClaudeCLI:
 			return s.claudeSettingsDeclares(claudeCustomConfigKeys, true)
+		case providerregistry.StatusKindOpenCodeCLI:
+			return s.openCodeConfigDeclaresProviderOption("apiKey", "baseURL")
 		}
 	}
 	return false
@@ -71,6 +73,8 @@ func (s Service) providerHasAPICredential(provider string) bool {
 			return s.codexConfigDeclares("api_key") || s.codexAuthJSONHasAPIKey()
 		case providerregistry.StatusKindClaudeCLI:
 			return s.claudeSettingsDeclares(claudeAPICredentialKeys, true)
+		case providerregistry.StatusKindOpenCodeCLI:
+			return s.openCodeConfigHasAPICredential()
 		}
 	}
 	return false

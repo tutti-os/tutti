@@ -192,9 +192,13 @@ An ordinary read may reuse the full provider snapshot. A forced read bypasses
 that snapshot and rechecks current authentication/readiness, including the
 provider credential marker, but may reuse a successful CLI version or adapter
 launch result while the resolved executable fingerprint is unchanged. Failed
-version reads and failed adapter launches are never cached. OpenCode and
-Tutti Agent use their validated local credential files as the primary auth
-signal; malformed files may fall back to one CLI check. Cursor's single
+version reads and failed adapter launches are never cached. Tutti Agent uses
+its validated local credential file as the primary auth signal; malformed
+files may fall back to one CLI check. OpenCode additionally treats an effective
+`provider.*.options.apiKey` from its global or explicit JSON/JSONC config as
+authenticated, resolving environment/file references without exposing their
+values. Project-local OpenCode credentials are not projected into shared
+provider readiness because that snapshot has no workspace cwd. Cursor's single
 `about --format json` result supplies both auth and version when available.
 
 ## 3. Domain model

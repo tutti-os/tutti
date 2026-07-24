@@ -196,6 +196,16 @@ func isClaudeStatusSpec(spec ProviderSpec) bool {
 	return kind == providerregistry.StatusKindClaudeCLI
 }
 
+func isOpenCodeStatusSpec(spec ProviderSpec) bool {
+	kind := spec.Kind
+	if kind == "" {
+		if status, ok := migratedProviderStatus(spec.Provider); ok {
+			kind = status.Kind
+		}
+	}
+	return kind == providerregistry.StatusKindOpenCodeCLI
+}
+
 func migratedProviderStatus(provider string) (providerregistry.StatusDescriptor, bool) {
 	descriptor, ok := providerregistry.Find(provider)
 	if !ok {
