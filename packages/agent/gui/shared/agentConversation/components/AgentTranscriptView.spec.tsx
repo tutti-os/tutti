@@ -117,7 +117,7 @@ describe("AgentTranscriptView", () => {
     ).toBe(false);
   });
 
-  it("renders each participant header once per turn across tool progress rows", () => {
+  it("renders each participant header once per turn across tool progress rows", async () => {
     const baseConversation = projectAgentConversationVM(
       detailViewModel({
         session: normalizeAgentActivitySession({
@@ -248,6 +248,28 @@ describe("AgentTranscriptView", () => {
         )
         ?.closest("[data-agent-transcript-row]")
     ).toHaveAttribute("data-agent-transcript-row", "assistant-progress-1");
+    expect(
+      container.querySelector(
+        '[data-agent-transcript-row="assistant-progress-1"]'
+      )
+    ).not.toHaveAttribute("data-agent-transcript-row-participant-content");
+    expect(
+      container.querySelector(
+        '[data-agent-transcript-row="assistant-progress-2"]'
+      )
+    ).toHaveAttribute(
+      "data-agent-transcript-row-participant-content",
+      "assistant"
+    );
+    expect(
+      container.querySelector('[data-agent-transcript-row="assistant-final"]')
+    ).toHaveAttribute(
+      "data-agent-transcript-row-participant-content",
+      "assistant"
+    );
+    expect(
+      container.querySelector('[data-agent-transcript-row="user-row"]')
+    ).not.toHaveAttribute("data-agent-transcript-row-participant-content");
     expect(screen.getByText("Reading files")).toBeInTheDocument();
     expect(screen.getByText("Checking tests")).toBeInTheDocument();
     expect(screen.getByText("Done")).toBeInTheDocument();
@@ -301,6 +323,23 @@ describe("AgentTranscriptView", () => {
     ).toHaveAttribute(
       "data-agent-transcript-row",
       "assistant-final:turn-final"
+    );
+    expect(
+      container.querySelector(
+        '[data-agent-transcript-row="assistant-final:turn-final"]'
+      )
+    ).not.toHaveAttribute("data-agent-transcript-row-participant-content");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand task details" })
+    );
+    await flushCollapsibleRevealFrames();
+    expect(
+      container.querySelector(
+        '[data-agent-transcript-row="assistant-progress-1"]'
+      )
+    ).toHaveAttribute(
+      "data-agent-transcript-row-participant-content",
+      "assistant"
     );
   });
 

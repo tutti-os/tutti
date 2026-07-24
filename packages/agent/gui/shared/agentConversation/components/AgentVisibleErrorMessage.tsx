@@ -90,7 +90,7 @@ export function AgentVisibleErrorMessage({
       role={isPlanOrQuotaLimit ? "status" : "alert"}
       className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${ERROR_BANNER_CLASS_NAME}`}
     >
-      <div className="flex min-w-0 items-start gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="font-medium text-[var(--text-primary)]">
             {headline}
@@ -107,7 +107,7 @@ export function AgentVisibleErrorMessage({
             type="button"
             variant="ghost"
             size="sm"
-            className="mt-0.5 shrink-0"
+            className="shrink-0"
             onClick={() => {
               if (externalAction?.url) {
                 onExternalLink?.(externalAction.url);

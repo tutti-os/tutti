@@ -109,6 +109,22 @@ function participantPresentationEqual(
   );
 }
 
+function isAssistantParticipantContentRow(
+  row: AgentConversationVM["rows"][number]
+): boolean {
+  switch (row.kind) {
+    case "message":
+      return row.speaker === "assistant";
+    case "generated-image":
+    case "processing":
+    case "tool-group":
+    case "turn-summary":
+      return true;
+    case "goal-control":
+      return false;
+  }
+}
+
 function transcriptLabelsEqual(
   previous: AgentTranscriptViewProps["labels"],
   next: AgentTranscriptViewProps["labels"]
@@ -410,6 +426,14 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
         : transcriptRowKey(row));
     const shouldAnimateEnter =
       row.kind !== "processing" && enteringRowKeys.has(rowKey);
+    const showParticipantHeader =
+      participantHeaderRenderKeys?.has(rowKey) ?? false;
+    const participantContent =
+      participantHeadersEnabled &&
+      !showParticipantHeader &&
+      isAssistantParticipantContentRow(row)
+        ? "assistant"
+        : undefined;
 
     return (
       <div
@@ -436,6 +460,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
             : undefined
         }
         data-agent-transcript-row-index={rowIndex}
+        data-agent-transcript-row-participant-content={participantContent}
         data-agent-transcript-row-enter={
           shouldAnimateEnter ? "true" : undefined
         }
@@ -452,9 +477,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           workspaceAppIcons={workspaceAppIcons}
           showRawTimelineJson={showRawTimelineJson}
           participantPresentation={participantPresentation}
-          showParticipantHeader={
-            participantHeaderRenderKeys?.has(rowKey) ?? false
-          }
+          showParticipantHeader={showParticipantHeader}
           toolGroupExpanded={
             row.kind === "tool-group"
               ? expandedToolRows[rowKey] === true
