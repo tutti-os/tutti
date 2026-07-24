@@ -457,7 +457,7 @@ export const zhCNAgentGui = {
   projectRailLinkExistingProject: "关联已有项目文件",
   removeProject: "移除",
   removeProjectConfirmDescription:
-    "这只会从列表中移除「{{project}}」，不会删除本地文件。",
+    "将会从列表中移除「{{project}}」及项目下全部会话，不会删除本地文件，是否确认移除？",
   removeProjectConfirmTitle: "移除项目？",
   batchDeleteProjectSessions: "批量删除会话",
   batchDeleteProjectSessionsTitle: "删除项目会话？",

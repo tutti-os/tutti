@@ -437,7 +437,7 @@ export const enAgentGui = {
   projectRailLinkExistingProject: "Link existing project folder",
   removeProject: "Remove",
   removeProjectConfirmDescription:
-    "This only removes “{{project}}” from this list. Local files are not deleted.",
+    "This will remove “{{project}}” and all its sessions from this list. Local files are not deleted. Continue?",
   removeProjectConfirmTitle: "Remove project?",
   batchDeleteProjectSessions: "Batch delete sessions",
   batchDeleteProjectSessionsTitle: "Delete project sessions?",
