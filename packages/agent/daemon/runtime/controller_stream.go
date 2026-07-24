@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"context"
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
@@ -11,13 +12,68 @@ import (
 func (c *Controller) Subscribe(roomID, agentSessionID string) (<-chan StreamEvent, func(), bool) {
 	roomID = strings.TrimSpace(roomID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
-	if roomID == "" || agentSessionID == "" {
-		ch := make(chan StreamEvent)
-		close(ch)
-		return ch, func() {}, false
+	if c == nil || roomID == "" || agentSessionID == "" {
+		return closedStreamSubscription()
+	}
+	c.mu.Lock()
+	events, unsubscribe, ok := c.subscribeLocked(roomID, agentSessionID)
+	c.mu.Unlock()
+	return events, unsubscribe, ok
+}
+
+// SubscribeWhenAvailable waits for a runtime session to enter the Controller
+// registry and then subscribes atomically with its initial state snapshot.
+// It is observation-only: it never starts or resumes a provider. The lifecycle
+// owner must call Start, Resume, or Host.EnsureRuntimeSession.
+func (c *Controller) SubscribeWhenAvailable(
+	ctx context.Context,
+	roomID string,
+	agentSessionID string,
+) (<-chan StreamEvent, func(), error) {
+	roomID = strings.TrimSpace(roomID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if c == nil || roomID == "" || agentSessionID == "" {
+		events, unsubscribe, _ := closedStreamSubscription()
+		return events, unsubscribe, ErrSessionNotFound
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	key := sessionKey(roomID, agentSessionID)
-	c.mu.Lock()
+	for {
+		if err := ctx.Err(); err != nil {
+			events, unsubscribe, _ := closedStreamSubscription()
+			return events, unsubscribe, err
+		}
+		c.mu.Lock()
+		if events, unsubscribe, ok := c.subscribeLocked(roomID, agentSessionID); ok {
+			c.mu.Unlock()
+			return events, unsubscribe, nil
+		}
+		if c.sessionAvailabilityWaiters == nil {
+			c.sessionAvailabilityWaiters = make(map[string]*sessionAvailabilityWaiter)
+		}
+		waiter := c.sessionAvailabilityWaiters[key]
+		if waiter == nil {
+			waiter = &sessionAvailabilityWaiter{changed: make(chan struct{})}
+			c.sessionAvailabilityWaiters[key] = waiter
+		}
+		waiter.refs++
+		c.mu.Unlock()
+
+		select {
+		case <-ctx.Done():
+			c.releaseSessionAvailabilityWaiter(key, waiter)
+			events, unsubscribe, _ := closedStreamSubscription()
+			return events, unsubscribe, ctx.Err()
+		case <-waiter.changed:
+			c.releaseSessionAvailabilityWaiter(key, waiter)
+		}
+	}
+}
+
+func (c *Controller) subscribeLocked(roomID, agentSessionID string) (<-chan StreamEvent, func(), bool) {
+	key := sessionKey(roomID, agentSessionID)
 	session, ok := c.sessions[key]
 	var initial []StreamEvent
 	if ok {
@@ -31,14 +87,29 @@ func (c *Controller) Subscribe(roomID, agentSessionID string) (<-chan StreamEven
 		initial = append(initial, configOptionsUpdateStreamEvent(update))
 	}
 	if !ok {
-		c.mu.Unlock()
-		ch := make(chan StreamEvent)
-		close(ch)
-		return ch, func() {}, false
+		return closedStreamSubscription()
 	}
 	events, unsubscribe := c.hub.SubscribeWithInitial(roomID, agentSessionID, initial)
-	c.mu.Unlock()
 	return events, unsubscribe, true
+}
+
+func (c *Controller) releaseSessionAvailabilityWaiter(key string, waiter *sessionAvailabilityWaiter) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	current := c.sessionAvailabilityWaiters[key]
+	if current != waiter {
+		return
+	}
+	waiter.refs--
+	if waiter.refs == 0 {
+		delete(c.sessionAvailabilityWaiters, key)
+	}
+}
+
+func closedStreamSubscription() (<-chan StreamEvent, func(), bool) {
+	ch := make(chan StreamEvent)
+	close(ch)
+	return ch, func() {}, false
 }
 
 func sessionStateSnapshotStreamEvent(session Session) StreamEvent {

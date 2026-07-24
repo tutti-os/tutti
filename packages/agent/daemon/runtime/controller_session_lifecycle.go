@@ -91,9 +91,11 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	}
 	session = applySessionEvents(session, events)
 	c.mu.Lock()
-	c.sessions[sessionKey(roomID, agentSessionID)] = session
+	key := sessionKey(roomID, agentSessionID)
+	c.sessions[key] = session
+	c.notifySessionAvailableLocked(key)
 	if input.Provisional {
-		c.provisionalSessions[sessionKey(roomID, agentSessionID)] = true
+		c.provisionalSessions[key] = true
 	}
 	c.mu.Unlock()
 	if input.Provisional {
