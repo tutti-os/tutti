@@ -1,55 +1,16 @@
-import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  Badge,
-  FileCodeIcon,
-  FileTextIcon,
-  FolderIcon,
-  ImageFileIcon,
-  ProductIcon,
-  StatusDot,
-  VideoFileIcon,
-  cn,
-  type IconProps
-} from "@tutti-os/ui-system";
+import { Badge, StatusDot, cn } from "@tutti-os/ui-system";
 import { Fragment } from "react";
-import type { MentionFileVisualKind } from "./mentionFileVisualKind.ts";
+import { MentionFileRow } from "./MentionFileRow.tsx";
 import {
   mentionRowDataAttribute,
-  mentionRowRootDataAttributes,
   type MentionRowDataAttributeMode
 } from "./mentionRowDataAttributes.ts";
 import type {
-  MentionRowFileItem,
   MentionRowItem,
   MentionRowSessionItem,
   MentionRowStatusTag
 } from "./mentionRowTypes.ts";
 import { mentionStatusBadgeClassName } from "./mentionStatusTone.ts";
-
-/**
- * Default file kind-icon shapes for surfaces that do NOT ship the agent's
- * CSS-masked glyph stylesheet. These mirror the agent's mask glyph shapes
- * (`agentactivity.css`: folder-filled / doc-filled / code-filled / image-filled
- * / video-filled / arrow-left-filled) using ui-system icon components, so a
- * file row renders a real glyph without `agentactivity.css`. The agent composer
- * passes its own `fileIcon` class and keeps rendering masked `<span>` glyphs,
- * except `back` rows which always use {@link ArrowLeftIcon}.
- */
-const MENTION_FILE_VISUAL_KIND_ICON: Record<
-  MentionFileVisualKind,
-  (props: IconProps) => React.JSX.Element
-> = {
-  back: ArrowLeftIcon,
-  folder: FolderIcon,
-  document: FileTextIcon,
-  // The agent maps markdown to `product-filled.svg`; ProductIcon is the
-  // matching boundary-safe ui-system glyph.
-  markdown: ProductIcon,
-  code: FileCodeIcon,
-  image: ImageFileIcon,
-  video: VideoFileIcon
-};
 
 /**
  * Structural class-name hooks for the elements a {@link MentionRow} renders that
@@ -189,6 +150,9 @@ export function renderMentionRow(
         dataAttributeMode={dataAttributeMode}
         navigateIntoLabel={navigateIntoLabel}
         onNavigateInto={onNavigateInto}
+        usesDefaultFileIcon={
+          resolved.fileIcon === DEFAULT_MENTION_ROW_CLASS_NAMES.fileIcon
+        }
       />
     );
   }
@@ -324,189 +288,6 @@ function MentionOpenReferencesButton({
     >
       {resolvedLabel}
     </span>
-  );
-}
-
-function MentionNavigateIntoButton({
-  label,
-  onNavigateInto,
-  dataAttributeMode
-}: {
-  label?: string;
-  onNavigateInto: () => void;
-  dataAttributeMode: MentionRowDataAttributeMode;
-}): React.JSX.Element {
-  return (
-    <span
-      role="button"
-      tabIndex={-1}
-      aria-label={label}
-      title={label}
-      className="rich-text-at-mention-row__navigate-into"
-      {...mentionRowDataAttribute(dataAttributeMode, "navigateInto", "true")}
-      onMouseDown={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onNavigateInto();
-      }}
-    >
-      <ArrowRightIcon size={16} />
-    </span>
-  );
-}
-
-function MentionFileRow({
-  item,
-  classNames,
-  dataAttributeMode,
-  navigateIntoLabel,
-  onNavigateInto
-}: {
-  item: MentionRowFileItem;
-  classNames: Required<MentionRowClassNames>;
-  dataAttributeMode: MentionRowDataAttributeMode;
-  navigateIntoLabel?: string;
-  onNavigateInto?: () => void;
-}): React.JSX.Element {
-  return (
-    <span
-      className="rich-text-at-mention-row rich-text-at-mention-row--file"
-      {...mentionRowRootDataAttributes(dataAttributeMode, "file")}
-      {...(item.entryKind
-        ? mentionRowDataAttribute(
-            dataAttributeMode,
-            "fileEntryKind",
-            item.entryKind
-          )
-        : {})}
-      {...mentionRowDataAttribute(
-        dataAttributeMode,
-        "fileVisualKind",
-        item.visualKind
-      )}
-      {...(item.mentionNavigation
-        ? mentionRowDataAttribute(
-            dataAttributeMode,
-            "navigation",
-            item.mentionNavigation
-          )
-        : {})}
-    >
-      <MentionFileIcon
-        item={item}
-        classNames={classNames}
-        dataAttributeMode={dataAttributeMode}
-      />
-      <span className="rich-text-at-mention-row__file-text">
-        <span className="rich-text-at-mention-row__title">{item.name}</span>
-      </span>
-      {item.childCountLabel ? (
-        <span className="rich-text-at-mention-row__file-count">
-          {item.childCountLabel}
-        </span>
-      ) : null}
-      {onNavigateInto ? (
-        <MentionNavigateIntoButton
-          label={navigateIntoLabel}
-          onNavigateInto={onNavigateInto}
-          dataAttributeMode={dataAttributeMode}
-        />
-      ) : null}
-    </span>
-  );
-}
-
-function MentionFileIcon({
-  item,
-  classNames,
-  dataAttributeMode
-}: {
-  item: MentionRowFileItem;
-  classNames: Required<MentionRowClassNames>;
-  dataAttributeMode: MentionRowDataAttributeMode;
-}): React.JSX.Element {
-  const thumbnailUrl =
-    item.visualKind === "image" ? item.thumbnailUrl?.trim() || "" : "";
-  if (thumbnailUrl) {
-    return (
-      <span
-        className={classNames.fileThumb}
-        {...mentionRowDataAttribute(dataAttributeMode, "fileThumb", "true")}
-        aria-hidden="true"
-      >
-        <img
-          src={thumbnailUrl}
-          alt=""
-          className="rich-text-at-mention-row__media"
-          decoding="async"
-          loading="lazy"
-          draggable={false}
-        />
-      </span>
-    );
-  }
-
-  // Back navigation always renders the ui-system back glyph so every surface
-  // (including the agent composer's CSS-masked file icons) shares one source.
-  if (item.visualKind === "back") {
-    return (
-      <span
-        className={cn(
-          classNames.fileIcon,
-          "rich-text-at-mention-file-icon--glyph"
-        )}
-        {...mentionRowDataAttribute(
-          dataAttributeMode,
-          "fileVisualKind",
-          item.visualKind
-        )}
-        aria-hidden="true"
-      >
-        <ArrowLeftIcon size={16} />
-      </span>
-    );
-  }
-
-  // Surfaces that ship a custom file-icon stylesheet (e.g. the agent composer
-  // via `agentactivity.css`) render the empty CSS-masked `<span>` so their DOM
-  // stays byte-identical. Surfaces using the package default class have no such
-  // stylesheet, so render a real ui-system kind glyph instead of an empty box.
-  const usesDefaultFileIcon =
-    classNames.fileIcon === DEFAULT_MENTION_ROW_CLASS_NAMES.fileIcon;
-  if (usesDefaultFileIcon) {
-    const Icon = MENTION_FILE_VISUAL_KIND_ICON[item.visualKind];
-    return (
-      <span
-        className={cn(
-          classNames.fileIcon,
-          "rich-text-at-mention-file-icon--glyph"
-        )}
-        {...mentionRowDataAttribute(
-          dataAttributeMode,
-          "fileVisualKind",
-          item.visualKind
-        )}
-        aria-hidden="true"
-      >
-        <Icon size={16} />
-      </span>
-    );
-  }
-
-  return (
-    <span
-      className={classNames.fileIcon}
-      {...mentionRowDataAttribute(
-        dataAttributeMode,
-        "fileVisualKind",
-        item.visualKind
-      )}
-      aria-hidden="true"
-    />
   );
 }
 

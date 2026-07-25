@@ -24,6 +24,8 @@ export interface AgentMentionFileItem {
   path: string;
   href: string;
   name: string;
+  /** Safe source-relative path used only by mention candidate presentation. */
+  relativePath?: string;
   entryKind: AgentFileMentionKind;
   directoryPath: string;
   /** Present only for a regular file attached from the local composer. */

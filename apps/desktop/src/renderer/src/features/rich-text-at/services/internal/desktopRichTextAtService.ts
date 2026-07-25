@@ -65,6 +65,7 @@ export interface DesktopRichTextAtServiceDependencies {
 
 interface WorkspaceFileAtItem {
   displayName?: string | null;
+  displayPath: string;
   kind?: "directory" | "file" | (string & {});
   name?: string | null;
   path: string;
@@ -573,13 +574,18 @@ function createWorkspaceFileAtContributor(
               )
               .map((entry) => ({
                 displayName: entry.name,
+                displayPath: workspaceRelativeDisplayPath(
+                  entry.path,
+                  response.root,
+                  entry.name
+                ),
                 kind: entry.kind,
                 path: entry.path
               }));
           },
           getItemKey: (item) => item.path,
           getItemLabel: resolveWorkspaceFileLabel,
-          getItemSubtitle: (item) => item.path.trim(),
+          getItemSubtitle: (item) => item.displayPath,
           getItemIconUrl: workspaceFileIconUrl,
           toInsertResult(item) {
             return createRichTextMarkdownLinkInsertResult(
@@ -591,6 +597,26 @@ function createWorkspaceFileAtContributor(
       ];
     }
   };
+}
+
+function workspaceRelativeDisplayPath(
+  path: string,
+  root: string,
+  fallbackName: string
+): string {
+  const normalizedPath = path.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedRoot = root.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (
+    normalizedRoot &&
+    (normalizedPath === normalizedRoot ||
+      normalizedPath.startsWith(`${normalizedRoot}/`))
+  ) {
+    return (
+      normalizedPath.slice(normalizedRoot.length).replace(/^\/+/, "") ||
+      fallbackName
+    );
+  }
+  return fallbackName;
 }
 
 function workspaceFileReferenceHref(item: WorkspaceFileAtItem): string {

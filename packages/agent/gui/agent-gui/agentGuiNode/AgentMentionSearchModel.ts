@@ -40,6 +40,11 @@ import {
   shouldShowEmptyGroup
 } from "./agentMentionSearchHelpers";
 import { resolveReferenceProvenanceAgentLabelParts } from "@tutti-os/workspace-file-reference/core";
+import {
+  dirnameFromProviderWorkspaceFileHref,
+  normalizeMentionDirectoryChildCount,
+  normalizeMentionFileRelativePath
+} from "./agentMentionFileProjection";
 
 type AgentProvenanceMentionItem = Extract<
   AgentContextMentionItem,
@@ -568,11 +573,16 @@ export function providerItemToAgentMentionItem(input: {
   if (input.insertResult.kind === "markdown-link") {
     const href = input.insertResult.href.trim();
     const directoryPath = input.directory?.path.trim() ?? "";
+    const relativePath = normalizeMentionFileRelativePath(
+      input.subtitle,
+      label
+    );
     return {
       kind: "file",
       href,
       path: directoryPath || href,
       name: label,
+      ...(relativePath ? { relativePath } : {}),
       entryKind: directoryPath || href.endsWith("/") ? "directory" : "unknown",
       directoryPath: dirnameFromProviderWorkspaceFileHref(
         directoryPath || href
@@ -604,6 +614,10 @@ export function providerItemToAgentMentionItem(input: {
     input.providerId === AGENT_GENERATED_FILE_PROVIDER_ID
   ) {
     const directoryPath = input.directory?.path.trim() ?? "";
+    const relativePath = normalizeMentionFileRelativePath(
+      input.subtitle,
+      label
+    );
     return {
       kind: "file",
       href: createRichTextMentionHref({
@@ -614,6 +628,7 @@ export function providerItemToAgentMentionItem(input: {
       }),
       path: directoryPath || targetId,
       name: label,
+      ...(relativePath ? { relativePath } : {}),
       entryKind:
         directoryPath || targetId.endsWith("/") ? "directory" : "unknown",
       directoryPath: dirnameFromProviderWorkspaceFileHref(
@@ -746,15 +761,6 @@ export function providerItemToAgentMentionItem(input: {
   return null;
 }
 
-function normalizeMentionDirectoryChildCount(
-  value: number | null | undefined
-): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    return undefined;
-  }
-  return Math.floor(value);
-}
-
 export function normalizeMentionScope(
   scope?: Readonly<Record<string, string>>
 ): Record<string, string> {
@@ -785,13 +791,4 @@ export function mentionSessionScope(input: {
     return "my_sessions";
   }
   return userId === currentUserId ? "my_sessions" : "collab_sessions";
-}
-
-export function dirnameFromProviderWorkspaceFileHref(href: string): string {
-  const normalized = href.replace(/\/+$/, "");
-  const index = normalized.lastIndexOf("/");
-  if (index <= 0) {
-    return "/";
-  }
-  return normalized.slice(0, index);
 }
