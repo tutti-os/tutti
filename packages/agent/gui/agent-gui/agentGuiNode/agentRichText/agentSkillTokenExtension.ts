@@ -53,7 +53,7 @@ export function createAgentSkillTokenExtension(
         "span",
         mergeAttributes(HTMLAttributes, {
           "aria-label": attrs.label,
-          contenteditable: "false",
+          contentEditable: "false",
           "data-agent-skill-token": "true",
           "data-agent-skill-trigger": attrs.trigger,
           "data-agent-mention-kind": "skill",

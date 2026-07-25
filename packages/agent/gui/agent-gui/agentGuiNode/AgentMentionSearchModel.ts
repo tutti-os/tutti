@@ -647,6 +647,7 @@ export function providerItemToAgentMentionItem(input: {
       topicId: scope.topicId,
       name: label,
       title: label,
+      iconUrl: presentation.iconUrl?.trim() || undefined,
       status: presentation.status?.trim() || undefined,
       contentPreview:
         compactText(presentation.description) ||

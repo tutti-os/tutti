@@ -54,6 +54,7 @@ const (
 	appServerNotifyTurnStarted           = "turn/started"
 	appServerNotifyTurnCompleted         = "turn/completed"
 	appServerNotifyAgentMessageDelta     = "item/agentMessage/delta"
+	appServerNotifyCommandOutputDelta    = "item/commandExecution/outputDelta"
 	appServerNotifyReasoningDelta        = "item/reasoning/textDelta"
 	appServerNotifyReasoningSummary      = "item/reasoning/summaryTextDelta"
 	appServerNotifyReasoningSummaryPart  = "item/reasoning/summaryPartAdded"
@@ -94,6 +95,7 @@ type appServerAdapterConfig struct {
 	clientInfoName       string
 	authRequiredMessage  string
 	commandNetworkAccess bool
+	rateLimits           bool
 }
 
 // CodexAppServerAdapterOptions controls host-owned app-server execution policy

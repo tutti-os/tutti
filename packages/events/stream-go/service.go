@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+// defaultSessionEventBufferSize absorbs short local producer bursts without
+// making a slow renderer an unbounded memory sink. A provider completion may
+// publish dozens of optimistic and canonical events in one scheduler slice, so
+// this queue must be materially larger than an ordinary per-request buffer.
+// When it still fills, Service closes the session and the WebSocket adapter
+// must make that closure visible so the client reconnects and reconciles.
+const defaultSessionEventBufferSize = 128
+
 // Session is one connected client. S is the product scope type.
 type Session[S comparable] struct {
 	id string
@@ -82,7 +90,7 @@ func (s *Service[S]) OpenSession() *Session[S] {
 	session := &Session[S]{
 		id:            fmt.Sprintf("session-%d", atomic.AddUint64(&s.nextSessionID, 1)),
 		subscriptions: make(map[subscriptionKey[S]]struct{}),
-		events:        make(chan PublishedEvent[S], 32),
+		events:        make(chan PublishedEvent[S], defaultSessionEventBufferSize),
 	}
 
 	s.mu.Lock()

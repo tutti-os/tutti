@@ -123,12 +123,14 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
 }: AgentGUIEmptyHomePaneProps): React.JSX.Element {
   "use memo";
 
+  const presentedSelectedAgentTarget =
+    selectedAgentTarget?.ref.kind === "loading" ? null : selectedAgentTarget;
   const runtimeProviderLabel =
     labels.emptyProviderForProvider?.(provider) ?? labels.emptyProvider ?? "";
-  const providerLabel = selectedAgentTarget
+  const providerLabel = presentedSelectedAgentTarget
     ? projectAgentGUIAgentTargetName({
         ownerSeparator: labels.sharedAgentOwnerSeparator,
-        target: selectedAgentTarget
+        target: presentedSelectedAgentTarget
       }).fullLabel
     : runtimeProviderLabel;
   const baseLabel = labels.emptyForProvider?.(provider) ?? labels.empty;
@@ -139,22 +141,23 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
     () =>
       agentTargets.length
         ? agentTargets.map(projectAgentGUIAgentTargetAvatar)
-        : selectedAgentTarget
-          ? [projectAgentGUIAgentTargetAvatar(selectedAgentTarget)]
+        : presentedSelectedAgentTarget
+          ? [projectAgentGUIAgentTargetAvatar(presentedSelectedAgentTarget)]
           : [
               createFallbackAgentGUIAgentAvatar({
                 provider,
                 label: providerLabel
               })
             ],
-    [agentTargets, provider, providerLabel, selectedAgentTarget]
+    [agentTargets, presentedSelectedAgentTarget, provider, providerLabel]
   );
   const carouselMountedExternally = avatarPresentations.length > 1;
 
   return (
     <AgentGUIEmptyHeroCarouselStage
       activeAgentTargetId={
-        selectedAgentTarget?.agentTargetId ?? selectedAgentTarget?.targetId
+        presentedSelectedAgentTarget?.agentTargetId ??
+        presentedSelectedAgentTarget?.targetId
       }
       items={avatarPresentations}
       onProviderSelect={onProviderSelect}
@@ -175,7 +178,7 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
             onProviderSelect={onProviderSelect}
             providerLabel={providerLabel}
             providerSelectLabel={labels.providerSwitchLabel}
-            selectedAgentTarget={selectedAgentTarget}
+            selectedAgentTarget={presentedSelectedAgentTarget}
             labels={labels}
           />
         ) : (
@@ -188,7 +191,7 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
             carouselMountedExternally={carouselMountedExternally}
             onProviderSelect={onProviderSelect}
             agentTargets={agentTargets}
-            selectedAgentTarget={selectedAgentTarget}
+            selectedAgentTarget={presentedSelectedAgentTarget}
             providerSelectLabel={labels.providerSwitchLabel}
             sharedAgentOwnerSeparator={labels.sharedAgentOwnerSeparator}
           />

@@ -50,6 +50,7 @@ Electron startup, daemon supervision, macOS packaging, updates, and performance 
 React rendering, Workbench state, external stores, input composition, and UI performance.
 
 - [Renderer body requests fail with `ERR_H2_OR_QUIC_REQUIRED`](./workbench-renderer.md#renderer-body-requests-fail-with-err_h2_or_quic_required)
+- [Renderer `fetch()` rejects an Electron image protocol that `<img>` can load](./workbench-renderer.md#renderer-fetch-rejects-an-electron-image-protocol-that-img-can-load)
 - [Renderer tile memory warnings from hidden autoplay animation](./workbench-renderer.md#renderer-tile-memory-warnings-from-hidden-autoplay-animation)
 - [Standalone Agent dev window stays black during cold startup](./workbench-renderer.md#standalone-agent-dev-window-stays-black-during-cold-startup)
 - [IME composition breaks fuzzy search or controlled search inputs](./workbench-renderer.md#ime-composition-breaks-fuzzy-search-or-controlled-search-inputs)

@@ -174,7 +174,7 @@ unrelated Sessions sharing the engine.
 
 ## Event Shape
 
-Live streams emit `AgentActivitySessionEventEnvelope`:
+Canonical streams emit a versioned `message_update`:
 
 ```ts
 {
@@ -182,19 +182,43 @@ Live streams emit `AgentActivitySessionEventEnvelope`:
   agentSessionId: "session-1",
   eventType: "message_update",
   data: {
-    messageId: "message-1",
-    version: 12,
-    role: "assistant",
-    kind: "ask_user_question",
-    status: "waiting",
-    payload: { title: "Choose a plan" }
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "message_update",
+    latestVersion: 12,
+    acceptedCount: 1,
+    messages: [/* canonical message snapshots */]
   }
 }
 ```
 
-The retained controller stream accepts `message_update` and upserts the message
-into `sessionMessagesById`. The session engine's generated
-`AgentActivityUpdatedEvent` input additionally accepts:
+Normalized provider text/reasoning streams may precede that confirmation with
+an optimistic `message_delta`:
+
+```ts
+{
+  workspaceId: "workspace-1",
+  agentSessionId: "session-1",
+  eventType: "message_delta",
+  data: {
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    messageId: "message-1",
+    turnId: "turn-1",
+    role: "assistant",
+    kind: "text",
+    occurredAtUnixMs: 100,
+    content: { operation: "append_text", text: "hello" },
+    status: "streaming"
+  }
+}
+```
+
+Hosts clean `message_delta` at the transport boundary, apply it through
+`createAgentActivityOptimisticMessageOverlay`, and project it over canonical
+`sessionMessagesById`. A canonical read calls `reconcile`; only Session removal
+or rebinding calls `reset`. The generated `AgentActivityUpdatedEvent` input
+additionally accepts:
 
 - `turn_update`: updates the canonical durable turn projection
 - `interaction_update`: updates the canonical durable interaction projection

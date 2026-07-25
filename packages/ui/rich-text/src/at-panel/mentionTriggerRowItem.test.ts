@@ -74,6 +74,41 @@ test("maps workspace-app matches to app rows with optional tutti icon fallback",
   assert.equal(isMentionTriggerRowProviderId("unknown-provider"), false);
 });
 
+test("maps workspace-issue matches to issue rows with their provider icon", () => {
+  const row = richTextTriggerQueryMatchToMentionRowItem(
+    match({
+      insertResult: {
+        kind: "mention",
+        mention: {
+          entityId: "issue-1",
+          label: "Fix task icon",
+          presentation: {
+            iconUrl: "tutti-asset://issue/default.png",
+            statusLabel: "In progress"
+          }
+        }
+      },
+      key: "issue-1",
+      label: "Fix task icon",
+      providerId: "workspace-issue"
+    })
+  );
+
+  assert.deepEqual(row, {
+    kind: "issue",
+    creatorName: null,
+    iconUrl: "tutti-asset://issue/default.png",
+    statusTag: {
+      dataStatus: undefined,
+      label: "In progress",
+      pulse: false,
+      tone: "neutral",
+      variant: "issue"
+    },
+    title: "Fix task icon"
+  });
+});
+
 test("maps file matches with inferred image visual kind and icon thumbnail source", () => {
   const row = richTextTriggerQueryMatchToMentionRowItem(
     match({

@@ -9,24 +9,25 @@ import (
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
-func TestDeleteRetryConvergesTuttiModeCleanupForOrphanState(t *testing.T) {
+func TestDeleteRetryIsIdempotentForMissingSession(t *testing.T) {
 	t.Parallel()
-	wantErr := errors.New("temporary activation cleanup failure")
 	reader := &fakeSessionReader{sessions: map[string]PersistedSession{}}
-	coordinator := &fakeTuttiModeActivationCoordinator{deleteErrors: []error{wantErr, nil}}
+	coordinator := &fakeTuttiModeActivationCoordinator{}
 	service := NewService(&fakeRuntime{sessions: map[string]ProviderRuntimeSession{}})
 	service.SessionReader = reader
 	service.TuttiModeActivations = coordinator
 	configureTestApplicationHost(service)
 
-	if _, err := service.Delete(context.Background(), "workspace-1", "session-1"); !errors.Is(err, wantErr) {
-		t.Fatalf("first Delete() error = %v", err)
+	first, err := service.Delete(context.Background(), "workspace-1", "session-1")
+	if err != nil || first.Removed {
+		t.Fatalf("first Delete() result=%#v error=%v, want successful no-op", first, err)
 	}
-	if _, err := service.Delete(context.Background(), "workspace-1", "session-1"); !errors.Is(err, ErrSessionNotFound) {
-		t.Fatalf("retry Delete() error = %v, want ErrSessionNotFound after cleanup", err)
+	second, err := service.Delete(context.Background(), "workspace-1", "session-1")
+	if err != nil || second.Removed {
+		t.Fatalf("retry Delete() result=%#v error=%v, want successful no-op", second, err)
 	}
-	if !slices.Equal(coordinator.deleteSessionIDs, []string{"session-1", "session-1"}) {
-		t.Fatalf("cleanup calls = %#v", coordinator.deleteSessionIDs)
+	if len(coordinator.deleteSessionIDs) != 0 {
+		t.Fatalf("cleanup calls = %#v, want none for a missing session", coordinator.deleteSessionIDs)
 	}
 }
 

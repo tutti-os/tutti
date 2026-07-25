@@ -152,9 +152,6 @@ func (h *Host) DeleteSession(ctx context.Context, ref SessionRef) (DeleteSession
 		CanonicalRemoved: containsSessionID(batch.RemovedSessionIDs, ref.AgentSessionID),
 		CleanupFailed:    len(batch.CleanupFailedIDs) > 0,
 	}
-	if !result.Deleted {
-		return DeleteSessionResult{}, ErrSessionNotFound
-	}
 	return result, nil
 }
 
@@ -246,11 +243,11 @@ func (h *Host) DeleteSessions(ctx context.Context, input DeleteSessionsInput) (D
 		}
 	}
 	return DeleteSessionsResult{
-		RemovedSessionIDs: append([]string(nil), deleted.RemovedSessionIDs...),
+		RemovedSessionIDs: copySessionIDs(deleted.RemovedSessionIDs),
 		RemovedSessions:   deleted.RemovedSessions,
 		RemovedMessages:   deleted.RemovedMessages,
-		RuntimeClosedIDs:  runtimeClosedIDs,
-		CleanupFailedIDs:  cleanupFailedIDs,
+		RuntimeClosedIDs:  copySessionIDs(runtimeClosedIDs),
+		CleanupFailedIDs:  copySessionIDs(cleanupFailedIDs),
 	}, nil
 }
 
@@ -283,6 +280,13 @@ func containsSessionID(values []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+func copySessionIDs(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+	return append([]string(nil), values...)
 }
 
 func normalizedUniqueSessionIDs(values []string) []string {

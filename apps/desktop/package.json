@@ -99,6 +99,7 @@
   "devDependencies": {
     "@babel/core": "^7.29.0",
     "@tutti-os/agent-activity-core": "workspace:*",
+    "@tutti-os/agent-activity-tuttid-adapter": "workspace:*",
     "@tutti-os/agent-gui": "workspace:*",
     "@tutti-os/browser-node": "workspace:*",
     "@tutti-os/client-tuttid-ts": "workspace:*",

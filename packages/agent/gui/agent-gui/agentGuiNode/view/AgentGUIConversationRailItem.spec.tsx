@@ -207,6 +207,10 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
   it("keeps pin and delete as direct row actions outside the menu", () => {
     renderRailItem({ isRailInteractionLocked: () => false });
 
+    expect(screen.queryByRole("button", { name: "Pin" })).toBeNull();
+    fireEvent.pointerEnter(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
     expect(screen.getByRole("button", { name: "Pin" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
   });
@@ -214,6 +218,9 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
   it("uses the same shared actions for the more button and context menu", async () => {
     renderRailItem({ isRailInteractionLocked: () => false });
 
+    fireEvent.pointerEnter(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "More actions" }),
       { button: 0 }
@@ -263,6 +270,18 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
 
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menuitem")).toBeNull());
+  });
+
+  it("mounts row actions before keyboard focus advances past the row", () => {
+    renderRailItem({ isRailInteractionLocked: () => false });
+
+    expect(screen.queryByRole("button", { name: "Pin" })).toBeNull();
+    fireEvent.focus(screen.getByRole("button", { name: /Session 1/ }));
+
+    expect(screen.getByRole("button", { name: "Pin" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "More actions" })
+    ).toBeInTheDocument();
   });
 
   it("runs an unlocked action before lazy menu content unmounts", async () => {

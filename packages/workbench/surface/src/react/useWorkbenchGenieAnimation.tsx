@@ -45,14 +45,24 @@ const dockPreviewMaxWidth = 260;
 const dockPreviewMaxHeight = 170;
 const dockPreviewImageCacheMaxEntries = 96;
 const inlineImageResourceCacheMaxEntries = 160;
+const inlineImageResizeTargetCacheMaxEntries = 4;
 const dockAnchorFallbackSizePx = 43.2;
 const genieInlineImageMaxDevicePixelRatio = 2;
 const dockPreviewImageByNodeID = new Map<string, string>();
 const inlineImageResourceByUrl = new Map<string, Promise<string | null>>();
+const resizedInlineImageResourceByUrl = new Map<
+  string,
+  Map<string, Promise<string | null>>
+>();
 
 interface CapturedGenieTexture {
   canvas: HTMLCanvasElement;
   rect: WorkbenchGenieViewportRect;
+}
+
+interface GenieTextureOutputLimits {
+  maxHeight: number;
+  maxWidth: number;
 }
 
 interface PendingRenderedGeniePreviewCapture {
@@ -280,7 +290,8 @@ async function inlineCloneImageResources({
       }
       const inlineImageUrl =
         (await readInlineImageResource(imageUrl)) ?? imageUrl;
-      const resizedImageUrl = await resizeInlineImageResourceForGenieTexture(
+      const resizedImageUrl = await readResizedInlineImageResource(
+        imageUrl,
         inlineImageUrl,
         imageInfo
       );
@@ -322,13 +333,8 @@ function resolveGenieInlineImageTargetSize({
 
 async function resizeInlineImageResourceForGenieTexture(
   imageUrl: string,
-  imageInfo: WorkbenchGenieMeaningfulImageClone
+  targetSize: { height: number; width: number }
 ): Promise<string | null> {
-  const targetSize = resolveGenieInlineImageTargetSize(imageInfo);
-  if (!targetSize) {
-    return null;
-  }
-
   const image = new Image();
   image.src = imageUrl;
   try {
@@ -358,6 +364,65 @@ async function resizeInlineImageResourceForGenieTexture(
   }
 }
 
+function readResizedInlineImageResource(
+  sourceImageUrl: string,
+  inlineImageUrl: string,
+  imageInfo: WorkbenchGenieMeaningfulImageClone
+): Promise<string | null> {
+  const targetSize = resolveGenieInlineImageTargetSize(imageInfo);
+  if (!targetSize) {
+    return Promise.resolve(null);
+  }
+  if (
+    imageInfo.naturalWidth > 0 &&
+    imageInfo.naturalHeight > 0 &&
+    imageInfo.naturalWidth <= targetSize.width &&
+    imageInfo.naturalHeight <= targetSize.height
+  ) {
+    return Promise.resolve(null);
+  }
+
+  let resizedByTarget = resizedInlineImageResourceByUrl.get(sourceImageUrl);
+  if (resizedByTarget) {
+    resizedInlineImageResourceByUrl.delete(sourceImageUrl);
+    resizedInlineImageResourceByUrl.set(sourceImageUrl, resizedByTarget);
+  } else {
+    resizedByTarget = new Map();
+    resizedInlineImageResourceByUrl.set(sourceImageUrl, resizedByTarget);
+  }
+
+  const targetKey = `${targetSize.width}x${targetSize.height}`;
+  const cached = resizedByTarget.get(targetKey);
+  if (cached) {
+    resizedByTarget.delete(targetKey);
+    resizedByTarget.set(targetKey, cached);
+    return cached;
+  }
+
+  const promise = resizeInlineImageResourceForGenieTexture(
+    inlineImageUrl,
+    targetSize
+  );
+  resizedByTarget.set(targetKey, promise);
+  while (resizedByTarget.size > inlineImageResizeTargetCacheMaxEntries) {
+    const oldestTarget = resizedByTarget.keys().next().value;
+    if (typeof oldestTarget !== "string") {
+      break;
+    }
+    resizedByTarget.delete(oldestTarget);
+  }
+  while (
+    resizedInlineImageResourceByUrl.size > inlineImageResourceCacheMaxEntries
+  ) {
+    const oldestImageUrl = resizedInlineImageResourceByUrl.keys().next().value;
+    if (typeof oldestImageUrl !== "string") {
+      break;
+    }
+    resizedInlineImageResourceByUrl.delete(oldestImageUrl);
+  }
+  return promise;
+}
+
 function prepareRenderedGeniePreviewCloneForTexture(
   clone: HTMLElement,
   textureRect: WorkbenchGenieViewportRect
@@ -383,22 +448,35 @@ function prepareRenderedGeniePreviewCloneForTexture(
   previewElement.style.transform = `translateY(${renderedGeniePreviewHeaderOffsetPx}px)`;
 }
 
-async function renderPreparedElementTexture({
-  clone,
-  images,
-  rect
-}: PreparedGenieTextureCapture): Promise<CapturedGenieTexture | null> {
+function resolveGenieTextureOutputSize(
+  rect: WorkbenchGenieViewportRect,
+  limits?: GenieTextureOutputLimits
+): { height: number; width: number } {
+  const scale = limits
+    ? Math.min(1, limits.maxWidth / rect.width, limits.maxHeight / rect.height)
+    : genieSnapshotScale;
+  return {
+    height: Math.max(1, Math.round(rect.height * scale)),
+    width: Math.max(1, Math.round(rect.width * scale))
+  };
+}
+
+async function renderPreparedElementTexture(
+  { clone, images, rect }: PreparedGenieTextureCapture,
+  outputLimits?: GenieTextureOutputLimits
+): Promise<CapturedGenieTexture | null> {
   await inlineCloneImageResources({
     cloneRoot: clone,
     images
   });
 
-  const svgTexture = createGenieSvgTexture(clone, rect);
+  const outputSize = resolveGenieTextureOutputSize(rect, outputLimits);
+  const svgTexture = createGenieSvgTexture(clone, rect, outputSize);
   const image = await loadImageFromSvg(svgTexture);
 
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(rect.width * genieSnapshotScale));
-  canvas.height = Math.max(1, Math.round(rect.height * genieSnapshotScale));
+  canvas.width = outputSize.width;
+  canvas.height = outputSize.height;
   const context = canvas.getContext("2d");
   if (!context) {
     return null;
@@ -410,10 +488,13 @@ async function renderPreparedElementTexture({
 }
 
 async function captureElementTexture(
-  element: HTMLElement
+  element: HTMLElement,
+  outputLimits?: GenieTextureOutputLimits
 ): Promise<CapturedGenieTexture | null> {
   const preparedCapture = prepareGenieTextureCapture(element);
-  return preparedCapture ? renderPreparedElementTexture(preparedCapture) : null;
+  return preparedCapture
+    ? renderPreparedElementTexture(preparedCapture, outputLimits)
+    : null;
 }
 
 function createDockPreviewDataUrl(canvas: HTMLCanvasElement): string | null {
@@ -426,6 +507,9 @@ function createDockPreviewDataUrl(canvas: HTMLCanvasElement): string | null {
     dockPreviewMaxWidth / canvas.width,
     dockPreviewMaxHeight / canvas.height
   );
+  if (scale === 1) {
+    return canvas.toDataURL("image/png");
+  }
   const output = document.createElement("canvas");
   output.width = Math.max(1, Math.round(canvas.width * scale));
   output.height = Math.max(1, Math.round(canvas.height * scale));
@@ -548,7 +632,10 @@ export async function captureWorkbenchNodePreviewImage(
     return null;
   }
 
-  const texture = await captureElementTexture(captureTarget).catch(() => null);
+  const texture = await captureElementTexture(captureTarget, {
+    maxHeight: dockPreviewMaxHeight,
+    maxWidth: dockPreviewMaxWidth
+  }).catch(() => null);
   const previewImageUrl = texture
     ? createDockPreviewDataUrl(texture.canvas)
     : null;
@@ -595,7 +682,11 @@ function persistWorkbenchNodePreviewImage<TData>(
 
 function createGenieSvgTexture(
   element: HTMLElement,
-  rect: WorkbenchGenieViewportRect
+  rect: WorkbenchGenieViewportRect,
+  outputSize: { height: number; width: number } = {
+    height: rect.height,
+    width: rect.width
+  }
 ): string {
   const svgNamespace = "http://www.w3.org/2000/svg";
   const svgDocument = document.implementation.createDocument(
@@ -605,16 +696,16 @@ function createGenieSvgTexture(
   );
   const svg = svgDocument.documentElement;
   svg.setAttribute("xmlns", svgNamespace);
-  svg.setAttribute("width", String(rect.width));
-  svg.setAttribute("height", String(rect.height));
+  svg.setAttribute("width", String(outputSize.width));
+  svg.setAttribute("height", String(outputSize.height));
   svg.setAttribute("viewBox", `0 0 ${rect.width} ${rect.height}`);
 
   const foreignObject = svgDocument.createElementNS(
     svgNamespace,
     "foreignObject"
   );
-  foreignObject.setAttribute("width", "100%");
-  foreignObject.setAttribute("height", "100%");
+  foreignObject.setAttribute("width", String(rect.width));
+  foreignObject.setAttribute("height", String(rect.height));
   foreignObject.setAttribute("x", "0");
   foreignObject.setAttribute("y", "0");
   foreignObject.appendChild(svgDocument.importNode(element, true));

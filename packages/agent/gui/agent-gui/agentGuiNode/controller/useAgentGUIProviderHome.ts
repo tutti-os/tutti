@@ -280,6 +280,19 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
   );
 
   useEffect(() => {
+    const effectiveAgentTargetId =
+      input.effectiveSelectedProviderTarget.agentTargetId?.trim() ?? "";
+    if (
+      input.activeConversationId === null &&
+      input.conversationFilter.kind === "agentTarget" &&
+      effectiveAgentTargetId &&
+      effectiveAgentTargetId !== input.conversationFilter.agentTargetId.trim()
+    ) {
+      input.setConversationFilter({
+        kind: "agentTarget",
+        agentTargetId: effectiveAgentTargetId
+      });
+    }
     if (
       input.activeConversationId !== null ||
       input.conversationFilter.kind !== "all" ||
@@ -318,12 +331,13 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
     });
   }, [
     input.activeConversationId,
-    input.conversationFilter.kind,
+    input.conversationFilter,
     input.data,
     input.effectiveSelectedProviderTarget,
     input.firstReadyHomeComposerProviderTarget,
     input.homeComposerTargetOverride,
     input.providerReadinessGates,
+    input.setConversationFilter,
     selectHomeComposerAgentTarget
   ]);
 

@@ -59,6 +59,11 @@ func TestTuttiAgentPreparerUsesExplicitAuthSourceAndInstallsSkills(t *testing.T)
 	if strings.Contains(string(config), "must-not-be-copied") {
 		t.Fatal("explicit auth source unexpectedly imported the VM user's config")
 	}
+	for _, unexpected := range []string{`model_provider =`, `model = "gpt-5.4"`, `[model_providers.tutti-llm]`} {
+		if strings.Contains(string(config), unexpected) {
+			t.Fatalf("managed config unexpectedly pinned %q: %s", unexpected, config)
+		}
+	}
 	if len(result.Env) == 0 || result.Env[0] != "TUTTI_AGENT_HOME="+home {
 		t.Fatalf("Prepare() env = %#v", result.Env)
 	}
@@ -114,5 +119,41 @@ func TestTuttiAgentPreparerDoesNotFallbackWhenExplicitAuthSourceIsEmpty(t *testi
 	}
 	if strings.Contains(string(config), `model = "old"`) {
 		t.Fatal("explicit empty auth source imported the VM user's config")
+	}
+}
+
+func TestPrepareTuttiAgentHomeRemovesLegacyPinnedProvider(t *testing.T) {
+	home := t.TempDir()
+	configPath := filepath.Join(home, "config.toml")
+	legacyConfig := strings.Join([]string{
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
+		``,
+		`[model_providers.tutti-llm]`,
+		`name = "Tutti LLM"`,
+		`base_url = "https://llm-api.tutti.sh/v1"`,
+		`wire_api = "responses"`,
+		``,
+	}, "\n")
+	if err := os.WriteFile(configPath, []byte(legacyConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := PrepareTuttiAgentHome(home, testResolvedInput(t, PrepareInput{Provider: "tutti-agent"})); err != nil {
+		t.Fatalf("PrepareTuttiAgentHome() error = %v", err)
+	}
+
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, removed := range []string{
+		`model_provider = "tutti-llm"`,
+		`model = "gpt-5.4"`,
+		`[model_providers.tutti-llm]`,
+	} {
+		if strings.Contains(string(config), removed) {
+			t.Fatalf("legacy pinned config still contains %q:\n%s", removed, config)
+		}
 	}
 }

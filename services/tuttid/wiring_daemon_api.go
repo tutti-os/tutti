@@ -292,6 +292,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Publisher: eventstreamservice.AgentQuickPromptPublisher{Service: events},
 	}
 	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller())
+	agentRuntime.Controller().SetStreamEventObserver(agentRuntimeActivityEventBridge{
+		publisher: eventstreamservice.AgentActivityPublisher{Service: events},
+	})
 	agentSessionService := agentservice.NewService(agentRuntimeController)
 	agentSessionService.ModelGateway = modelGateway
 	if browserService != nil {

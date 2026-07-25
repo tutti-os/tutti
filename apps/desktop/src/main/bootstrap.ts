@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, protocol } from "electron";
 import {
   initializeDesktopEnvironment,
   resolveDesktopDevelopmentAppName,
@@ -37,15 +37,10 @@ import { getSystemDesktopLocale } from "./desktopLocale";
 import { openDesktopWorkspaceAppFolder } from "./host/workspaceAppFolderAccess";
 import { openPerfMonitorDevToolsWindow } from "./windows/perfMonitorDevToolsWindow.ts";
 import { createTranslator } from "../shared/i18n/index.ts";
-import {
-  registerTuttiAssetProtocol,
-  registerTuttiAssetProtocolScheme
-} from "./host/tuttiAssetProtocol.ts";
+import { registerTuttiAssetProtocol } from "./host/tuttiAssetProtocol.ts";
+import { desktopCustomProtocolSchemes } from "./host/desktopCustomProtocolSchemes.ts";
 import { createWorkspaceFileIconCacheStore } from "./host/workspaceFileIconCacheStore.ts";
-import {
-  registerWorkspaceFileIconProtocol,
-  registerWorkspaceFileIconProtocolScheme
-} from "./host/workspaceFileIconProtocol.ts";
+import { registerWorkspaceFileIconProtocol } from "./host/workspaceFileIconProtocol.ts";
 
 function envFlagEnabled(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/iu.test(value?.trim() ?? "");
@@ -84,8 +79,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
     appVersion: app.getVersion(),
     isPackaged: app.isPackaged
   });
-  registerTuttiAssetProtocolScheme();
-  registerWorkspaceFileIconProtocolScheme();
+  protocol.registerSchemesAsPrivileged(desktopCustomProtocolSchemes);
   const loginCallbackUrl = resolveDesktopLoginCallbackUrl();
   const protocolClientRegistration =
     resolveDesktopLoginProtocolClientRegistration({

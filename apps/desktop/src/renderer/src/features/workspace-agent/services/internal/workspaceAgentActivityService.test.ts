@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  AgentActivityUpdatedEventV1,
+  TuttidClient
+} from "@tutti-os/client-tuttid-ts";
 import { TuttidProtocolError } from "@tutti-os/client-tuttid-ts";
 import {
   selectEnginePromptQueue,
@@ -1351,6 +1354,131 @@ test("WorkspaceAgentActivityService reconciles cached messages after reconnect w
       )?.semantics?.noticeCommandStatus,
     "completed"
   );
+});
+
+test("WorkspaceAgentActivityService projects WebSocket message deltas and yields to terminal canonical truth", async () => {
+  const listenersByTopic = new Map<
+    string,
+    (event: AgentActivityUpdatedEventV1) => void
+  >();
+  const service = new WorkspaceAgentActivityService({
+    eventStreamClient: {
+      connect: async () => {},
+      dispose: () => {},
+      publishIntent: async () => {},
+      subscribe: (
+        topic: string,
+        listener: (event: AgentActivityUpdatedEventV1) => void
+      ) => {
+        listenersByTopic.set(topic, listener);
+        return () => listenersByTopic.delete(topic);
+      },
+      subscribeConnectionState: () => () => {}
+    } as never,
+    tuttidClient: {
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [workspaceAgentSession({ status: "working" })],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+  await service.load("ws-1");
+  const activityEvent = (
+    payload: AgentActivityUpdatedEventV1["payload"]
+  ): AgentActivityUpdatedEventV1 => ({
+    emittedAt: "2026-07-25T00:00:00.000Z",
+    id: "event-1",
+    payload,
+    scope: { workspaceId: "ws-1" },
+    topic: "agent.activity.updated",
+    version: 2
+  });
+  let notifications = 0;
+  const unsubscribe = service.subscribe("ws-1", () => {
+    notifications += 1;
+  });
+  const activityUpdated = listenersByTopic.get("agent.activity.updated");
+  assert.ok(activityUpdated);
+
+  activityUpdated(
+    activityEvent({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      eventType: "message_delta",
+      data: {
+        workspaceId: "ws-1",
+        agentSessionId: "session-1",
+        messageId: "message-1",
+        turnId: "turn-1",
+        role: "assistant",
+        kind: "text",
+        occurredAtUnixMs: 100,
+        content: { operation: "set", value: "Hel" },
+        status: "streaming"
+      }
+    })
+  );
+  activityUpdated(
+    activityEvent({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      eventType: "message_delta",
+      data: {
+        workspaceId: "ws-1",
+        agentSessionId: "session-1",
+        messageId: "message-1",
+        turnId: "turn-1",
+        role: "assistant",
+        kind: "text",
+        occurredAtUnixMs: 101,
+        content: { operation: "append_text", text: "lo" },
+        status: "streaming"
+      }
+    })
+  );
+  let message =
+    service.getSnapshot("ws-1").sessionMessagesById["session-1"]?.[0];
+  assert.equal(message?.payload.text, "Hello");
+  assert.equal(message?.version, 0);
+
+  activityUpdated(
+    activityEvent({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      eventType: "message_update",
+      data: {
+        workspaceId: "ws-1",
+        agentSessionId: "session-1",
+        eventType: "message_update",
+        acceptedCount: 1,
+        latestVersion: 1,
+        messages: [
+          {
+            agentSessionId: "session-1",
+            kind: "text",
+            messageId: "message-1",
+            occurredAtUnixMs: 102,
+            payload: { content: "Hello", text: "Hello" },
+            role: "assistant",
+            sequence: 1,
+            status: "completed",
+            turnId: "turn-1",
+            version: 1
+          }
+        ]
+      }
+    })
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+
+  message = service.getSnapshot("ws-1").sessionMessagesById["session-1"]?.[0];
+  assert.equal(message?.payload.text, "Hello");
+  assert.equal(message?.status, "completed");
+  assert.equal(message?.version, 1);
+  assert.ok(notifications >= 3);
+  unsubscribe();
 });
 
 test("WorkspaceAgentActivityService dispose releases every event stream subscription", () => {

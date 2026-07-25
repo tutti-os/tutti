@@ -26,12 +26,13 @@ func (r *batchRuntime) Close(_ context.Context, input RuntimeCloseInput) error {
 }
 
 type batchManagementStore struct {
-	runtime      *batchRuntime
-	plan         []string
-	input        storesqlite.DeleteSessionsBatchInput
-	changes      int
-	calls        int
-	useExactPlan bool
+	runtime              *batchRuntime
+	plan                 []string
+	input                storesqlite.DeleteSessionsBatchInput
+	changes              int
+	calls                int
+	useExactPlan         bool
+	clearPlanAfterDelete bool
 }
 
 type batchCleanup struct {
@@ -95,11 +96,55 @@ func (s *batchManagementStore) DeleteSessionsBatch(_ context.Context, input stor
 		panic("canonical batch delete ran before all live runtimes closed")
 	}
 	s.input = input
+	if s.clearPlanAfterDelete {
+		s.plan = nil
+	}
 	return storesqlite.DeleteSessionsBatchResult{
 		RemovedSessionIDs: append([]string(nil), input.SessionIDs...),
 		RemovedSessions:   len(input.SessionIDs),
 		RemovedMessages:   3,
 	}, nil
+}
+
+func TestDeleteSessionIsIdempotentWhenCanonicalSessionIsAlreadyGone(t *testing.T) {
+	runtime := &batchRuntime{live: map[string]bool{}}
+	store := &batchManagementStore{
+		runtime:              runtime,
+		plan:                 []string{"session-replay"},
+		useExactPlan:         true,
+		clearPlanAfterDelete: true,
+	}
+	host := New(Config{Runtime: runtime, SessionBatchManagement: store})
+	ref := SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-replay"}
+
+	first, err := host.DeleteSession(t.Context(), ref)
+	if err != nil {
+		t.Fatalf("first DeleteSession() error = %v", err)
+	}
+	if !first.Deleted || !first.CanonicalRemoved {
+		t.Fatalf("first DeleteSession() result = %#v", first)
+	}
+
+	second, err := host.DeleteSession(t.Context(), ref)
+	if err != nil {
+		t.Fatalf("replayed DeleteSession() error = %v", err)
+	}
+	if second.Deleted || second.RuntimeClosed || second.CanonicalRemoved || second.CleanupFailed {
+		t.Fatalf("replayed DeleteSession() result = %#v, want a successful no-op", second)
+	}
+	if store.calls != 1 {
+		t.Fatalf("canonical delete calls = %d, want one committed delete", store.calls)
+	}
+
+	batch, err := host.DeleteSessions(t.Context(), DeleteSessionsInput{
+		WorkspaceID: "workspace-1", SessionIDs: []string{"session-replay"},
+	})
+	if err != nil {
+		t.Fatalf("replayed DeleteSessions() error = %v", err)
+	}
+	if batch.RemovedSessionIDs == nil || batch.RuntimeClosedIDs == nil || batch.CleanupFailedIDs == nil {
+		t.Fatalf("replayed DeleteSessions() result = %#v, want non-nil empty arrays", batch)
+	}
 }
 
 func TestDeleteSessionsUsesOneCanonicalBatchAfterClosingRuntimes(t *testing.T) {

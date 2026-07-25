@@ -1,9 +1,7 @@
 import { controlPlaneBaseURL, mobileClientVersion } from "../config";
-import {
-  deviceLink,
-  mobileSecurity,
-  type DeviceIdentity
-} from "../native/mobileNative";
+import { deviceLink, mobileSecurity } from "../native/mobileNative";
+import type { DeviceIdentity, DevicePairing, UserDevice } from "./mobileDomain";
+export type { DevicePairing, UserDevice } from "./mobileDomain";
 import { accountCookie, readJSON } from "./http";
 import {
   base64URLToStandard,
@@ -15,22 +13,6 @@ import {
 } from "./pairingProtocol";
 
 export { parsePairingQR } from "./pairingProtocol";
-
-export interface DevicePairing {
-  confirmedAt?: string;
-  controllerUserDeviceId: string;
-  pairingId: string;
-  revision: string;
-  state: string;
-  targetUserDeviceId: string;
-}
-
-export interface UserDevice {
-  displayName: string;
-  platform: string;
-  reportedName: string;
-  userDeviceId: string;
-}
 
 interface RegisteredDevice {
   userDeviceId: string;

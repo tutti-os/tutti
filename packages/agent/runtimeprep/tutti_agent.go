@@ -5,14 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-)
-
-const (
-	tuttiAgentLLMProviderID     = "tutti-llm"
-	tuttiAgentDefaultLLMBaseURL = "https://llm-api.tutti.sh/v1"
-	tuttiAgentDefaultModel      = "gpt-5.4"
 )
 
 // TuttiAgentPreparer materializes the session-scoped TUTTI_AGENT_HOME for the
@@ -74,8 +67,9 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 }
 
 // PrepareTuttiAgentHome materializes a TUTTI_AGENT_HOME with the user's auth
-// exposed and a session-safe config pinned to the Tutti LLM gateway. Session
-// Skills are installed only by TuttiAgentPreparer after capabilities resolve.
+// exposed and session-safe host policy. Provider and model selection remain
+// owned by tutti-agent and the per-session launch request. Session Skills are
+// installed only by TuttiAgentPreparer after capabilities resolve.
 func PrepareTuttiAgentHome(home string, input PrepareInput) error {
 	return prepareTuttiAgentHome(home, input, "", false)
 }
@@ -159,8 +153,8 @@ func ensureTuttiAgentSessionConfig(configPath string, input PrepareInput) error 
 		next = detailModeNext
 		changed = true
 	}
-	if providerNext, providerChanged := tuttiAgentConfigWithLLMProvider(next); providerChanged {
-		next = providerNext
+	if cleaned, cleanedChanged := tuttiAgentConfigWithoutLegacyPinnedProvider(next); cleanedChanged {
+		next = cleaned
 		changed = true
 	}
 	if planNext, planChanged := codexConfigWithModelPlanEndpoint(next, input.ModelEndpoint); planChanged {
@@ -176,56 +170,87 @@ func ensureTuttiAgentSessionConfig(configPath string, input PrepareInput) error 
 	return nil
 }
 
-func tuttiAgentConfigWithLLMProvider(content string) (string, bool) {
-	changed := false
-	content, changed = tuttiAgentConfigWithRootValue(content, "model_provider", tuttiAgentLLMProviderID, changed)
-	content, changed = tuttiAgentConfigWithRootValue(content, "model", tuttiAgentDefaultModel, changed)
-	sectionHeader := "[model_providers." + tuttiAgentLLMProviderID + "]"
-	if !strings.Contains(content, sectionHeader) {
-		block := sectionHeader + "\n" +
-			`name = "Tutti LLM"` + "\n" +
-			`base_url = ` + strconv.Quote(tuttiAgentLLMBaseURL()) + "\n" +
-			`wire_api = "responses"` + "\n"
-		if strings.TrimSpace(content) == "" {
-			content = block
-		} else {
-			content = strings.TrimRight(content, "\r\n") + "\n\n" + block
-		}
-		changed = true
-	}
-	return content, changed
-}
-
-func tuttiAgentConfigWithRootValue(content string, key string, value string, changed bool) (string, bool) {
-	line := key + " = " + strconv.Quote(value)
+// tuttiAgentConfigWithoutLegacyPinnedProvider removes only the exact
+// host-generated provider signature shipped by older runtimeprep releases.
+// User-owned provider/model settings are otherwise preserved.
+func tuttiAgentConfigWithoutLegacyPinnedProvider(content string) (string, bool) {
 	normalized := strings.ReplaceAll(content, "\r\n", "\n")
 	lines := strings.Split(normalized, "\n")
-	for index, current := range lines {
-		trimmed := strings.TrimSpace(current)
+	rootProviderLine := -1
+	rootModelLine := -1
+	legacySectionStart := -1
+	legacySectionEnd := len(lines)
+	firstSection := len(lines)
+	for index, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			if firstSection == len(lines) {
+				firstSection = index
+			}
+			if trimmed == `[model_providers.tutti-llm]` {
+				if legacySectionStart >= 0 {
+					return content, false
+				}
+				legacySectionStart = index
+				continue
+			}
+			if legacySectionStart >= 0 && legacySectionEnd == len(lines) {
+				legacySectionEnd = index
+			}
+			continue
+		}
+		if index >= firstSection {
+			continue
+		}
+		switch trimmed {
+		case `model_provider = "tutti-llm"`:
+			if rootProviderLine >= 0 {
+				return content, false
+			}
+			rootProviderLine = index
+		case `model = "gpt-5.4"`:
+			if rootModelLine >= 0 {
+				return content, false
+			}
+			rootModelLine = index
+		}
+	}
+	if rootProviderLine < 0 || rootModelLine < 0 || legacySectionStart < 0 {
+		return content, false
+	}
+	legacyKeys := map[string]bool{
+		`name = "Tutti LLM"`:                       false,
+		`base_url = "https://llm-api.tutti.sh/v1"`: false,
+		`wire_api = "responses"`:                   false,
+	}
+	for _, line := range lines[legacySectionStart+1 : legacySectionEnd] {
+		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		if strings.HasPrefix(trimmed, "[") {
-			lines = append(lines[:index], append([]string{line}, lines[index:]...)...)
-			return strings.Join(lines, "\n"), true
+		if _, ok := legacyKeys[trimmed]; !ok || legacyKeys[trimmed] {
+			return content, false
 		}
-		if codexConfigLineHasKey(trimmed, key) {
-			if strings.TrimSpace(current) == line {
-				return content, changed
-			}
-			lines[index] = line
-			return strings.Join(lines, "\n"), true
+		legacyKeys[trimmed] = true
+	}
+	for _, found := range legacyKeys {
+		if !found {
+			return content, false
 		}
 	}
-	if strings.TrimSpace(content) == "" {
-		return line + "\n", true
+	result := make([]string, 0, len(lines))
+	for index, line := range lines {
+		if index == rootProviderLine || index == rootModelLine {
+			continue
+		}
+		if index >= legacySectionStart && index < legacySectionEnd {
+			continue
+		}
+		result = append(result, line)
 	}
-	return line + "\n" + strings.TrimLeft(normalized, "\n"), true
-}
-
-func tuttiAgentLLMBaseURL() string {
-	if value := strings.TrimSpace(os.Getenv("TUTTI_AGENT_LLM_BASE_URL")); value != "" {
-		return value
+	next := strings.Join(result, "\n")
+	if strings.HasSuffix(normalized, "\n") && !strings.HasSuffix(next, "\n") {
+		next += "\n"
 	}
-	return tuttiAgentDefaultLLMBaseURL
+	return next, true
 }

@@ -1,7 +1,7 @@
 import type {
-  WorkspaceAgentInteraction,
-  WorkspaceAgentSessionMessage
-} from "@tutti-os/client-tuttid-ts";
+  AgentActivityInteraction,
+  AgentActivityMessage
+} from "@tutti-os/agent-activity-core";
 import {
   buildAskUserAnswerPayload,
   readOwnAnswer,
@@ -16,7 +16,7 @@ import { theme } from "../theme";
 export function MobileMessageRow({
   message
 }: {
-  message: WorkspaceAgentSessionMessage;
+  message: AgentActivityMessage;
 }) {
   const body = messageText(message);
   const user = message.role === "user";
@@ -41,7 +41,7 @@ export function MobileMessageRow({
 }
 
 interface MobileInteractionCardProps {
-  interaction: WorkspaceAgentInteraction;
+  interaction: AgentActivityInteraction;
   onSubmit(input: {
     action?: string;
     optionId?: string;
@@ -215,7 +215,7 @@ export function MobileInteractionCard({
   );
 }
 
-function messageText(message: WorkspaceAgentSessionMessage): string {
+function messageText(message: AgentActivityMessage): string {
   const payload = message.payload ?? {};
   for (const value of [
     payload.text,
@@ -247,7 +247,7 @@ function messageText(message: WorkspaceAgentSessionMessage): string {
   return "";
 }
 
-function interactionSummary(interaction: WorkspaceAgentInteraction): string {
+function interactionSummary(interaction: AgentActivityInteraction): string {
   const input = interaction.input ?? {};
   for (const value of [
     input.displayPrompt,

@@ -2,12 +2,14 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 )
 
 func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
@@ -565,6 +567,21 @@ func TestClaudeCodeSDKAdapterControllerPublishesUIActivityWithSidecarTestDriver(
 	for !sawUserStream || !sawAssistantStream {
 		select {
 		case event := <-events:
+			if event.EventType == StreamEventMessageDelta {
+				liveEvent, ok := event.Data.(liveprotocol.Event)
+				if !ok {
+					continue
+				}
+				var delta liveprotocol.MessageDeltaData
+				if json.Unmarshal(liveEvent.Data, &delta) == nil &&
+					delta.Role == "assistant" &&
+					delta.Content != nil &&
+					(delta.Content.Text == "Echo: say hello" ||
+						strings.Contains(string(delta.Content.Value), "Echo: say hello")) {
+					sawAssistantStream = true
+				}
+				continue
+			}
 			update, ok := event.Data.(agentsessionstore.WorkspaceAgentMessageUpdate)
 			if !ok || event.EventType != StreamEventMessageUpdate {
 				continue

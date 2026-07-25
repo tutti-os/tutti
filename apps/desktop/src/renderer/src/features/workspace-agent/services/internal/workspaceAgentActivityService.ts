@@ -176,8 +176,7 @@ export class WorkspaceAgentActivityService
     workspaceId: string,
     listener: (snapshot: AgentActivitySnapshot) => void
   ): () => void {
-    const entry = this.entry(workspaceId);
-    return entry.engine.subscribe(() =>
+    return this.subscribeActivitySnapshot(workspaceId, () =>
       listener(this.activitySnapshot(workspaceId))
     );
   }
@@ -300,6 +299,7 @@ export class WorkspaceAgentActivityService
             type: "message/snapshotReceived",
             workspaceId
           });
+          this.reconcileOptimisticMessages(workspaceId, input.agentSessionId);
         }
         return page;
       });

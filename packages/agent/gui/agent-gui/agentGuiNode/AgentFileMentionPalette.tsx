@@ -558,6 +558,7 @@ function agentMentionItemToRowItem(
     kind: "issue",
     title: item.title,
     creatorName: item.creatorName ?? null,
+    iconUrl: item.iconUrl ?? null,
     statusTag: agentIssueStatusTag(item.status)
   };
 }

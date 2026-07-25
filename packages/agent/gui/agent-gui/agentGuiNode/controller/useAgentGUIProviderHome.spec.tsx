@@ -6,6 +6,110 @@ import type { AgentGUIConversationSummary } from "../model/agentGuiConversationM
 import { useAgentGUIProviderHome } from "./useAgentGUIProviderHome";
 
 describe("useAgentGUIProviderHome", () => {
+  it("syncs a scoped rail filter to an externally changed home composer target", () => {
+    const codexTarget = target("codex", "agent:codex", "provider-target:codex");
+    const claudeTarget = target(
+      "claude-code",
+      "agent:claude-code",
+      "provider-target:claude-code"
+    );
+    const fixture = renderProviderHome({
+      activeConversationId: null,
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: "agent:codex"
+      },
+      conversations: [],
+      data: {
+        agentTargetId: "agent:claude-code",
+        lastActiveAgentSessionId: null,
+        provider: "claude-code"
+      },
+      selectedTarget: claudeTarget,
+      targets: [codexTarget, claudeTarget]
+    });
+
+    expect(fixture.setConversationFilter).toHaveBeenCalledWith({
+      kind: "agentTarget",
+      agentTargetId: "agent:claude-code"
+    });
+  });
+
+  it("does not narrow the all-agents rail filter when the home composer target changes", () => {
+    const claudeTarget = target(
+      "claude-code",
+      "agent:claude-code",
+      "provider-target:claude-code"
+    );
+    const fixture = renderProviderHome({
+      activeConversationId: null,
+      conversationFilter: { kind: "all" },
+      conversations: [],
+      data: {
+        agentTargetId: "agent:claude-code",
+        lastActiveAgentSessionId: null,
+        provider: "claude-code"
+      },
+      selectedTarget: claudeTarget,
+      targets: [claudeTarget]
+    });
+
+    expect(fixture.setConversationFilter).not.toHaveBeenCalled();
+  });
+
+  it("does not change the rail filter for an open conversation", () => {
+    const codexTarget = target("codex", "agent:codex", "provider-target:codex");
+    const claudeTarget = target(
+      "claude-code",
+      "agent:claude-code",
+      "provider-target:claude-code"
+    );
+    const fixture = renderProviderHome({
+      activeConversationId: "codex-session",
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: "agent:codex"
+      },
+      conversations: [conversation("codex-session", "codex", "agent:codex")],
+      data: {
+        agentTargetId: "agent:claude-code",
+        lastActiveAgentSessionId: null,
+        provider: "claude-code"
+      },
+      selectedTarget: claudeTarget,
+      targets: [codexTarget, claudeTarget]
+    });
+
+    expect(fixture.setConversationFilter).not.toHaveBeenCalled();
+  });
+
+  it("does not change the rail filter while the home composer target is unresolved", () => {
+    const loadingTarget: AgentGUIAgentTarget = {
+      disabled: true,
+      label: "Loading",
+      provider: "claude-code",
+      ref: { kind: "loading", provider: "claude-code" },
+      targetId: "__loading__"
+    };
+    const fixture = renderProviderHome({
+      activeConversationId: null,
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: "agent:codex"
+      },
+      conversations: [],
+      data: {
+        agentTargetId: "agent:claude-code",
+        lastActiveAgentSessionId: null,
+        provider: "claude-code"
+      },
+      selectedTarget: loadingTarget,
+      targets: []
+    });
+
+    expect(fixture.setConversationFilter).not.toHaveBeenCalled();
+  });
+
   it("restores the selected target's last session in the current node", () => {
     const codexTarget = target("codex", "agent:codex", "provider-target:codex");
     const claudeTarget = target(
@@ -98,6 +202,14 @@ describe("useAgentGUIProviderHome", () => {
 
 function renderProviderHome(input: {
   activeConversationId: string | null;
+  conversationFilter?:
+    | {
+        kind: "all";
+      }
+    | {
+        kind: "agentTarget";
+        agentTargetId: string;
+      };
   conversations: readonly AgentGUIConversationSummary[];
   data: AgentGUINodeData;
   selectedTarget: AgentGUIAgentTarget;
@@ -120,6 +232,10 @@ function renderProviderHome(input: {
     }
   );
   const agentTargetId = input.selectedTarget.agentTargetId!;
+  const conversationFilter = input.conversationFilter ?? {
+    kind: "agentTarget" as const,
+    agentTargetId
+  };
   const { result } = renderHook(() =>
     useAgentGUIProviderHome({
       activeConversationId: activeConversationIdRef.current,
@@ -127,10 +243,8 @@ function renderProviderHome(input: {
       activePendingActivation: null,
       agentActivityRuntime: {} as never,
       clearRailRevealRequest: vi.fn(),
-      conversationFilter: { kind: "agentTarget", agentTargetId },
-      conversationFilterRef: {
-        current: { kind: "agentTarget", agentTargetId }
-      },
+      conversationFilter,
+      conversationFilterRef: { current: conversationFilter },
       conversationsRef: { current: input.conversations },
       data,
       dataRef,

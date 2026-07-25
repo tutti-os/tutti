@@ -72,6 +72,7 @@ export interface MentionRowIssueItem {
   kind: "issue";
   title: string;
   creatorName?: string | null;
+  iconUrl?: string | null;
   statusTag?: MentionRowStatusTag | null;
 }
 

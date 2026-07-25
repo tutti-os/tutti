@@ -790,6 +790,127 @@ export const agentActivityUpdatedPayloadSchema = {
           minLength: 1
         },
         eventType: {
+          const: "message_delta"
+        },
+        data: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "workspaceId",
+            "agentSessionId",
+            "messageId",
+            "turnId",
+            "role",
+            "kind",
+            "occurredAtUnixMs"
+          ],
+          properties: {
+            workspaceId: {
+              type: "string",
+              minLength: 1
+            },
+            agentSessionId: {
+              type: "string",
+              minLength: 1
+            },
+            messageId: {
+              type: "string",
+              minLength: 1
+            },
+            turnId: {
+              type: "string",
+              minLength: 1
+            },
+            role: {
+              type: "string",
+              minLength: 1
+            },
+            kind: {
+              type: "string",
+              minLength: 1
+            },
+            occurredAtUnixMs: {
+              type: "integer",
+              minimum: 1
+            },
+            content: {
+              type: "object",
+              additionalProperties: false,
+              required: ["operation"],
+              properties: {
+                operation: {
+                  type: "string",
+                  enum: ["append_text", "set"]
+                },
+                text: {
+                  type: "string"
+                },
+                value: true
+              }
+            },
+            toolOutput: {
+              type: "object",
+              additionalProperties: false,
+              required: ["operation", "text"],
+              properties: {
+                operation: {
+                  type: "string",
+                  enum: ["append_text", "set"]
+                },
+                text: {
+                  type: "string"
+                },
+                offsetBytes: {
+                  type: "integer",
+                  minimum: 0
+                }
+              }
+            },
+            payloadSet: {
+              type: "object",
+              minProperties: 1
+            },
+            payloadUnset: {
+              type: "array",
+              minItems: 1,
+              uniqueItems: true,
+              items: {
+                type: "string",
+                minLength: 1
+              }
+            },
+            status: {
+              type: "string"
+            },
+            semantics: {
+              type: "object"
+            },
+            startedAtUnixMs: {
+              type: "integer",
+              minimum: 0
+            },
+            completedAtUnixMs: {
+              type: "integer",
+              minimum: 0
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["workspaceId", "agentSessionId", "eventType", "data"],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        agentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        eventType: {
           const: "session_deleted"
         },
         data: {
@@ -1310,6 +1431,7 @@ export const agentActivityUpdatedPayloadSchema = {
         "session_reconcile_required",
         "session_deleted",
         "session_audit",
+        "message_delta",
         "message_update",
         "turn_update",
         "interaction_update"

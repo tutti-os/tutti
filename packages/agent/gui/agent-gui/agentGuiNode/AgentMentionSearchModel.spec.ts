@@ -6,6 +6,34 @@ import {
 } from "./AgentMentionSearchModel";
 
 describe("providerItemToAgentMentionItem", () => {
+  it("preserves workspace issue icon presentation", () => {
+    expect(
+      providerItemToAgentMentionItem({
+        currentUserId: "user-1",
+        providerId: "workspace-issue",
+        insertResult: {
+          kind: "mention",
+          mention: {
+            entityId: "issue-1",
+            label: "Fix task icon",
+            scope: {
+              workspaceId: "workspace-1"
+            },
+            presentation: {
+              iconUrl: "tutti-asset://issue/default.png"
+            }
+          }
+        },
+        label: "Fix task icon",
+        subtitle: "",
+        workspaceId: "workspace-1"
+      })
+    ).toMatchObject({
+      iconUrl: "tutti-asset://issue/default.png",
+      kind: "workspace-issue"
+    });
+  });
+
   it("preserves Agent Target identity in session mention metadata", () => {
     expect(
       providerItemToAgentMentionItem({

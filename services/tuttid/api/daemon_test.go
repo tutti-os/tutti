@@ -1232,6 +1232,36 @@ func TestDaemonAPIGeneratedRoutesDeleteAgentSessionsBatchForwardsExactIDs(t *tes
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesDeleteAgentSessionsBatchKeepsEmptyIDArrays(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			deleteSessionsBatchFn: func(context.Context, string, agentservice.DeleteSessionsBatchInput) (agentservice.DeleteSessionsBatchResult, error) {
+				return agentservice.DeleteSessionsBatchResult{}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodDelete,
+		"/v1/workspaces/ws-1/agent-sessions/batch",
+		tuttigenerated.DeleteWorkspaceAgentSessionsBatchRequest{SessionIds: []string{"already-absent"}},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response tuttigenerated.DeleteWorkspaceAgentSessionsBatchResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.RemovedSessionIds == nil || response.CleanupFailedSessionIds == nil {
+		t.Fatalf("response = %#v, want empty arrays", response)
+	}
+	if len(response.RemovedSessionIds) != 0 || len(response.CleanupFailedSessionIds) != 0 {
+		t.Fatalf("response = %#v, want empty arrays", response)
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesDeleteAgentSessionsBatchRejectsInvalidIDs(t *testing.T) {
 	deleteCalls := 0
 	mux := http.NewServeMux()

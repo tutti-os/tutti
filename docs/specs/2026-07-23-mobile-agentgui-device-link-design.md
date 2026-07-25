@@ -2,7 +2,7 @@
 
 Status: accepted product direction; Personal direct-lane MVP in implementation
 
-## Implementation progress (2026-07-23)
+## Implementation progress (2026-07-25)
 
 The provisional `packages/device-link` core now preserves the production ICE,
 QUIC, certificate-pinning, candidate filtering and privacy behavior extracted
@@ -13,6 +13,15 @@ build/install/start and authenticated loopback integration pass. Real-account
 physical-device network transitions, Relay fallback and event streaming remain
 acceptance work. The module is not yet a stable released cross-repository
 contract.
+
+The Mobile shell now uses mutually exclusive unauthenticated/authenticated DI
+children and one active workspace child. Login, pairing, DeviceLink lifecycle,
+workspace catalog, Agent Target directory, navigation identity, drafts,
+polling, and command execution live in pure TypeScript services rather than
+screen effects. Workspace state is projected from one
+`AgentSessionEngine`; Desktop and Mobile share generated-tuttid DTO mapping
+through `@tutti-os/agent-activity-tuttid-adapter`. Conversation-list visual
+alignment remains the next UI milestone.
 
 ## 1. 背景
 
@@ -125,6 +134,19 @@ mobile account session
 ```
 
 Agent 请求和响应不经过 tsh-server 业务存储。Relay 只转发已认证的加密字节流。
+
+### 6.1 Mobile DI 和页面边界
+
+Mobile 使用稳定 Bootstrap container。未登录 child 与登录后 child 互斥；账号变化
+销毁并重建完整登录后子树。登录后 child 同时拥有账号会话、单个 DeviceLink、
+动态 Agent Target 目录和 workspace catalog，不再增加语义重复的 Device child。
+它下面最多持有一个 workspace child，后者拥有唯一
+`AgentSessionEngine`、会话导航和进程内草稿。
+
+`services/**` 是不依赖 React 的纯 TypeScript 服务。页面 binding 通过
+`useSyncExternalStore` 订阅服务快照，props-only View 只持有抽屉、滚动、焦点、
+键盘和 Interaction 输入等 UI 状态。数据加载、轮询、重连、DI scope、会话命令和
+快照复制不得由页面 `useEffect` 驱动。
 
 ## 7. DeviceLink 边界
 
@@ -516,8 +538,9 @@ snapshot polling。
 
 当前进度：bare React Native 0.86 Android 工程、系统浏览器 GitHub 登录、邮箱验证码登录、Keystore
 Ed25519 identity、扫码/粘贴配对码、配对设备列表、Native DeviceLink bridge、移动端 i18n
-和 semantic theme mapping 已完成。workspace 单项自动进入/多项选择、设备连接、
-Native 15 秒后台 grace 后断开也已接入。当前最低版本为 Android 13/API 33，
+和 semantic theme mapping 已完成。账号、设备、workspace 和前后台生命周期已迁入
+纯 TypeScript DI service；页面只保留 binding 与 Native presentation。workspace
+选择、设备连接、Native 15 秒后台 grace 后断开也已接入。当前最低版本为 Android 13/API 33，
 以使用系统 Ed25519 provider；prepare/connect 使用 native generation token
 隔离取消后晚到的连接任务。TypeScript/Jest、Metro、Kotlin/Java/CMake、
 四 ABI APK 构建，以及 Android 15 ARM64 模拟器安装启动均通过；前台自动重连和
@@ -538,13 +561,16 @@ Native 15 秒后台 grace 后断开也已接入。当前最低版本为 Android 
 
 当前进度：会话抽屉、动态 Agent Target 新建会话、切换、canonical message
 增量读取、纯文本 Composer、发送、停止，以及 Approval/Question/Plan
-Interaction 提交已接入。当前 Native renderer 是 `apps/mobile` 内的 MVP
-presentation adapter；它不定义 Session/Message DTO，并直接消费生成契约。
+Interaction 提交已接入。Mobile 已接入 workspace `AgentSessionEngine`；create、
+send、stop 和 Interaction response 统一通过 Engine intent/command port，Session
+和 Message 快照映射后进入同一 canonical state。Desktop 与 Mobile 的生成契约
+映射由 `@tutti-os/agent-activity-tuttid-adapter` 复用。当前 Native renderer 是
+`apps/mobile` 内的 MVP presentation adapter；它不定义 Session/Message DTO。
 Interaction answer payload 与原型安全的 question-id 读写已从
 `@tutti-os/agent-gui` 的无 DOM 子路径复用；轮询为 single-flight，超时重试保留
-原始 session/submit identity。共享
-Agent conversation projection/native renderer、事件 reconcile、Markdown/code、
-unsupported fallback 的完整视觉语义仍是剩余项。
+原始 session/submit identity；不明确的写入会先做 workspace 权威校准，再使用同一
+identity 进入显式 Retry。事件流 reconcile、Markdown/code、unsupported fallback
+的完整视觉语义和会话列表视觉对齐仍是剩余项。
 
 ### M6 — 稳定性和第二阶段准备
 

@@ -149,6 +149,44 @@ test("delete result emits removals for requested and cascaded sessions", () => {
   ]);
 });
 
+test("delete result accepts an idempotent no-op", () => {
+  const requested = sessionMutationsReducer(
+    createInitialSessionMutationsState(),
+    {
+      agentSessionIds: ["session-1"],
+      mutationId: "delete-replay-1",
+      type: "sessions/deleteRequested",
+      workspaceId: "workspace-1"
+    },
+    { deletedSessionIds: {}, sessionsById: { "session-1": session } }
+  );
+  const succeeded = sessionMutationsReducer(
+    requested.state,
+    {
+      commandId: "delete-replay-1",
+      commandType: "sessions/delete",
+      correlationId: "delete-replay-1",
+      outcome: "succeeded",
+      type: "engine/commandResult",
+      value: {
+        cleanupFailedSessionIds: [],
+        removedMessages: 0,
+        removedSessionIds: [],
+        removedSessions: 0
+      }
+    },
+    { deletedSessionIds: {}, sessionsById: { "session-1": session } }
+  );
+
+  assert.equal(
+    succeeded.state.byMutationId["delete-replay-1"]?.status,
+    "succeeded"
+  );
+  assert.deepEqual(succeeded.followUpIntents, [
+    { agentSessionId: "session-1", type: "session/removed" }
+  ]);
+});
+
 test("settled mutation history stays bounded across unique sessions", () => {
   let state = createInitialSessionMutationsState();
   for (let index = 0; index < 200; index += 1) {

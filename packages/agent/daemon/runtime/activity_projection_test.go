@@ -1,11 +1,290 @@
 package agentruntime
 
 import (
+	"encoding/json"
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 )
+
+func TestACPNormalizerProjectsSemanticMessageDeltaWithoutSnapshotDiff(t *testing.T) {
+	t.Parallel()
+	session := reportTestSession()
+	normalizer := newACPTurnNormalizer()
+
+	first := normalizer.AppendAssistantChunk(session, "turn-1", "Hel")
+	second := normalizer.AppendAssistantChunk(session, "turn-1", "Hello")
+	stream := ProjectActivityEventsToStreamEvents(session, append(first, second...))
+	if len(stream) != 2 || stream[0].EventType != StreamEventMessageDelta || stream[1].EventType != StreamEventMessageDelta {
+		t.Fatalf("stream = %#v, want two message deltas", stream)
+	}
+	firstDelta := stream[0].Data.(liveprotocol.Event)
+	secondDelta := stream[1].Data.(liveprotocol.Event)
+	var firstData, secondData liveprotocol.MessageDeltaData
+	if err := json.Unmarshal(firstDelta.Data, &firstData); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(secondDelta.Data, &secondData); err != nil {
+		t.Fatal(err)
+	}
+	if firstData.Content == nil || firstData.Content.Operation != "set" || string(firstData.Content.Value) != `"Hel"` {
+		t.Fatalf("first delta = %#v", firstData)
+	}
+	if secondData.Content == nil || secondData.Content.Operation != "append_text" || secondData.Content.Text != "lo" {
+		t.Fatalf("second delta = %#v", secondData)
+	}
+
+	terminal := normalizer.FinishCompleted(session, "turn-1")
+	if got := ProjectActivityEventsToStreamEvents(session, terminal); len(got) != 0 {
+		t.Fatalf("precommit terminal leaked to live stream: %#v", got)
+	}
+}
+
+func TestSnapshotNormalizerProjectsSuffixAppendAndFullRewrite(t *testing.T) {
+	t.Parallel()
+	session := reportTestSession()
+
+	tests := []struct {
+		name  string
+		apply func(*acpTurnNormalizer, string) []activityshared.Event
+		role  string
+		kind  string
+	}{
+		{
+			name: "assistant",
+			apply: func(normalizer *acpTurnNormalizer, snapshot string) []activityshared.Event {
+				return normalizer.ApplyStreamingAssistantSnapshot(
+					session,
+					"turn-1",
+					snapshot,
+					"assistant-1",
+				)
+			},
+			role: RoleAssistant,
+			kind: "text",
+		},
+		{
+			name: "thinking",
+			apply: func(normalizer *acpTurnNormalizer, snapshot string) []activityshared.Event {
+				return normalizer.ApplyStreamingThinkingSnapshot(
+					session,
+					"turn-1",
+					snapshot,
+					"thinking-1",
+				)
+			},
+			role: RoleAssistantThinking,
+			kind: "reasoning",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			normalizer := newACPTurnNormalizer()
+
+			assertSnapshotLiveOperation(
+				t,
+				test.apply(normalizer, "Hel"),
+				test.role,
+				test.kind,
+				"set",
+				"Hel",
+			)
+			assertSnapshotLiveOperation(
+				t,
+				test.apply(normalizer, "Hello"),
+				test.role,
+				test.kind,
+				"append_text",
+				"lo",
+			)
+			if duplicate := test.apply(normalizer, "Hello"); len(duplicate) != 0 {
+				t.Fatalf("duplicate snapshot events = %#v, want none", duplicate)
+			}
+			assertSnapshotLiveOperation(
+				t,
+				test.apply(normalizer, "Help"),
+				test.role,
+				test.kind,
+				"set",
+				"Help",
+			)
+		})
+	}
+}
+
+func assertSnapshotLiveOperation(
+	t *testing.T,
+	events []activityshared.Event,
+	wantRole string,
+	wantKind string,
+	wantOperation string,
+	wantContent string,
+) {
+	t.Helper()
+	if len(events) != 1 {
+		t.Fatalf("events = %#v, want one snapshot event", events)
+	}
+	event := events[0]
+	if string(event.Payload.Role) != wantRole ||
+		event.Payload.Metadata[liveMessageKindMetadataKey] != wantKind {
+		t.Fatalf("snapshot identity = role %q metadata %#v", event.Payload.Role, event.Payload.Metadata)
+	}
+	operation, ok := event.Payload.Metadata[liveContentOperationMetadataKey].(*liveprotocol.MessageContentOperation)
+	if !ok || operation == nil || operation.Operation != wantOperation {
+		t.Fatalf("live operation = %#v, want %q", operation, wantOperation)
+	}
+	switch wantOperation {
+	case "append_text":
+		if operation.Text != wantContent || len(operation.Value) != 0 {
+			t.Fatalf("append operation = %#v, want suffix %q", operation, wantContent)
+		}
+	case "set":
+		var content string
+		if err := json.Unmarshal(operation.Value, &content); err != nil {
+			t.Fatal(err)
+		}
+		if content != wantContent || operation.Text != "" {
+			t.Fatalf("set operation = %#v content %q, want %q", operation, content, wantContent)
+		}
+	}
+}
+
+func TestThinkingDeltaPreservesAssistantThinkingRole(t *testing.T) {
+	t.Parallel()
+	session := reportTestSession()
+	normalizer := newACPTurnNormalizer()
+	events := normalizer.AppendThinkingChunk(session, "turn-1", "inspect")
+	stream := ProjectActivityEventsToStreamEvents(session, events)
+	if len(stream) != 1 {
+		t.Fatalf("stream = %#v", stream)
+	}
+	event := stream[0].Data.(liveprotocol.Event)
+	var data liveprotocol.MessageDeltaData
+	if err := json.Unmarshal(event.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.Role != RoleAssistantThinking || data.Kind != "reasoning" {
+		t.Fatalf("thinking delta = %#v", data)
+	}
+}
+
+func TestExplicitToolOutputDeltaPersistsSnapshotAndProjectsOffsetAppend(t *testing.T) {
+	t.Parallel()
+	session := reportTestSession()
+	normalizer := newACPTurnNormalizer()
+	started, ok := normalizer.ToolCallEvents(session, "turn-1", map[string]any{
+		"sessionUpdate": "tool_call",
+		"toolCallId":    "command-1",
+		"title":         "printf",
+		"kind":          "execute",
+		"status":        "in_progress",
+		"rawInput":      map[string]any{"command": "printf"},
+	})
+	if !ok || len(started) != 1 {
+		t.Fatalf("started = %#v, ok = %v", started, ok)
+	}
+
+	first := normalizer.AppendToolOutputDelta(session, "turn-1", "command-1", "你")
+	second := normalizer.AppendToolOutputDelta(session, "turn-1", "command-1", "好\n")
+	stream := ProjectActivityEventsToStreamEvents(session, append(first, second...))
+	if len(stream) != 2 {
+		t.Fatalf("stream = %#v, want two tool output deltas", stream)
+	}
+	var firstDelta, secondDelta liveprotocol.MessageDeltaData
+	for index, target := range []*liveprotocol.MessageDeltaData{&firstDelta, &secondDelta} {
+		event, ok := stream[index].Data.(liveprotocol.Event)
+		if !ok {
+			t.Fatalf("stream[%d] data = %T", index, stream[index].Data)
+		}
+		if err := json.Unmarshal(event.Data, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if firstDelta.ToolOutput == nil ||
+		firstDelta.ToolOutput.Operation != "set" ||
+		firstDelta.ToolOutput.Text != "你" ||
+		firstDelta.ToolOutput.OffsetBytes != nil {
+		t.Fatalf("first tool output = %#v", firstDelta.ToolOutput)
+	}
+	if secondDelta.ToolOutput == nil ||
+		secondDelta.ToolOutput.Operation != "append_text" ||
+		secondDelta.ToolOutput.Text != "好\n" ||
+		secondDelta.ToolOutput.OffsetBytes == nil ||
+		*secondDelta.ToolOutput.OffsetBytes != int64(len("你")) {
+		t.Fatalf("second tool output = %#v", secondDelta.ToolOutput)
+	}
+
+	report := reportActivityInput(session, second)
+	if len(report.MessageUpdates) != 1 {
+		t.Fatalf("report = %#v, want one cumulative tool snapshot", report)
+	}
+	startReport := reportActivityInput(session, started)
+	if len(startReport.MessageUpdates) != 1 {
+		t.Fatalf("start report = %#v, want one canonical tool anchor", startReport)
+	}
+	if firstDelta.MessageID != startReport.MessageUpdates[0].MessageID ||
+		secondDelta.MessageID != startReport.MessageUpdates[0].MessageID ||
+		report.MessageUpdates[0].MessageID != startReport.MessageUpdates[0].MessageID {
+		t.Fatalf(
+			"tool message identity = start:%q first:%q second:%q snapshot:%q, want one canonical anchor",
+			startReport.MessageUpdates[0].MessageID,
+			firstDelta.MessageID,
+			secondDelta.MessageID,
+			report.MessageUpdates[0].MessageID,
+		)
+	}
+	output, _ := report.MessageUpdates[0].Payload["output"].(map[string]any)
+	if output["text"] != "你好\n" {
+		t.Fatalf("persisted output = %#v", output)
+	}
+}
+
+func TestToolOutputDeltaWaitsForKnownStartAnchor(t *testing.T) {
+	t.Parallel()
+	session := reportTestSession()
+	normalizer := newACPTurnNormalizer()
+	if events := normalizer.AppendToolOutputDelta(
+		session,
+		"turn-1",
+		"missing-command",
+		"first",
+	); len(events) != 0 {
+		t.Fatalf("pre-anchor output events = %#v, want no invented anchor", events)
+	}
+	started, ok := normalizer.ToolCallEvents(session, "turn-1", map[string]any{
+		"sessionUpdate": "tool_call",
+		"toolCallId":    "missing-command",
+		"title":         "printf",
+		"kind":          "execute",
+		"status":        "in_progress",
+	})
+	if !ok || len(started) != 2 {
+		t.Fatalf("started = %#v, ok = %v, want anchor followed by buffered output", started, ok)
+	}
+	if started[0].Type != activityshared.EventCallStarted ||
+		started[1].Type != activityshared.EventCallStarted {
+		t.Fatalf("started events = %#v", started)
+	}
+	stream := ProjectActivityEventsToStreamEvents(session, started)
+	if len(stream) != 2 ||
+		stream[0].EventType != StreamEventMessageUpdate ||
+		stream[1].EventType != StreamEventMessageDelta {
+		t.Fatalf("stream = %#v, want canonical anchor then live output", stream)
+	}
+	var delta liveprotocol.MessageDeltaData
+	if err := json.Unmarshal(stream[1].Data.(liveprotocol.Event).Data, &delta); err != nil {
+		t.Fatal(err)
+	}
+	if delta.ToolOutput == nil ||
+		delta.ToolOutput.Operation != "set" ||
+		delta.ToolOutput.Text != "first" {
+		t.Fatalf("buffered tool output = %#v", delta.ToolOutput)
+	}
+}
 
 func TestExtensionProviderProjectsTurnLifecycleEvents(t *testing.T) {
 	t.Parallel()

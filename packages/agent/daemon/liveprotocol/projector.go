@@ -1,0 +1,120 @@
+package liveprotocol
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+type RecipientProjector struct {
+	context ProjectionContext
+}
+
+func NewRecipientProjector(context ProjectionContext) (*RecipientProjector, error) {
+	if strings.TrimSpace(context.RecipientWorkspaceID) == "" ||
+		strings.TrimSpace(context.RecipientAgentSessionID) == "" {
+		return nil, fmt.Errorf("%w: recipient projection identity", ErrInvalidLiveEvent)
+	}
+	return &RecipientProjector{context: context}, nil
+}
+
+// Project rewrites only AgentGUI identity fields. Typed projection keeps
+// arbitrary business payloads in json.RawMessage fields so numeric values and
+// nested content are not coerced while the closed identities are rewritten.
+func (p *RecipientProjector) Project(event Event) (Event, error) {
+	if p == nil {
+		return Event{}, fmt.Errorf("%w: nil projector", ErrInvalidLiveEvent)
+	}
+	if err := validateEvent(event); err != nil {
+		return Event{}, err
+	}
+	if owner := strings.TrimSpace(p.context.OwnerWorkspaceID); owner != "" && event.WorkspaceID != owner {
+		return Event{}, fmt.Errorf("%w: unexpected owner workspace", ErrInvalidLiveEvent)
+	}
+	if owner := strings.TrimSpace(p.context.OwnerAgentSessionID); owner != "" && event.AgentSessionID != owner {
+		return Event{}, fmt.Errorf("%w: unexpected owner session", ErrInvalidLiveEvent)
+	}
+	raw, err := projectEventData(event, p.context)
+	if err != nil {
+		return Event{}, err
+	}
+	event.WorkspaceID = p.context.RecipientWorkspaceID
+	event.AgentSessionID = p.context.RecipientAgentSessionID
+	event.Data = raw
+	if err := validateEvent(event); err != nil {
+		return Event{}, err
+	}
+	return event, nil
+}
+
+func projectEventData(event Event, context ProjectionContext) ([]byte, error) {
+	var data any
+	switch event.EventType {
+	case EventTypeMessageDelta:
+		var value MessageDeltaData
+		if err := json.Unmarshal(event.Data, &value); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidLiveEvent, err)
+		}
+		value.WorkspaceID = projectedString(value.WorkspaceID, context.OwnerWorkspaceID, context.RecipientWorkspaceID)
+		value.AgentSessionID = projectedString(value.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
+		value.TurnID = projectedString(value.TurnID, context.CanonicalTurnID, context.CallerTurnID)
+		data = value
+	case EventTypeTurnUpdate:
+		var value TurnUpdateData
+		if err := json.Unmarshal(event.Data, &value); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidLiveEvent, err)
+		}
+		value.WorkspaceID = projectedString(value.WorkspaceID, context.OwnerWorkspaceID, context.RecipientWorkspaceID)
+		value.AgentSessionID = projectedString(value.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
+		value.ActiveTurnID = projectedStringPointer(value.ActiveTurnID, context.CanonicalTurnID, context.CallerTurnID)
+		value.Turn.AgentSessionID = projectedString(value.Turn.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
+		value.Turn.TurnID = projectedString(value.Turn.TurnID, context.CanonicalTurnID, context.CallerTurnID)
+		data = value
+	case EventTypeInteractionUpdate:
+		var value InteractionUpdateData
+		if err := json.Unmarshal(event.Data, &value); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidLiveEvent, err)
+		}
+		value.WorkspaceID = projectedString(value.WorkspaceID, context.OwnerWorkspaceID, context.RecipientWorkspaceID)
+		value.AgentSessionID = projectedString(value.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
+		value.Interaction.AgentSessionID = projectedString(value.Interaction.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
+		value.Interaction.TurnID = projectedString(value.Interaction.TurnID, context.CanonicalTurnID, context.CallerTurnID)
+		// Turn-scoped provider requests may use the canonical turn identity
+		// itself. Only that exact identity is projected.
+		value.Interaction.RequestID = projectedString(value.Interaction.RequestID, context.CanonicalTurnID, context.CallerTurnID)
+		data = value
+	case EventTypeSessionAudit:
+		var value SessionAuditData
+		if err := json.Unmarshal(event.Data, &value); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidLiveEvent, err)
+		}
+		value.WorkspaceID = projectedString(value.WorkspaceID, context.OwnerWorkspaceID, context.RecipientWorkspaceID)
+		value.AgentSessionID = projectedString(value.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
+		data = value
+	default:
+		return nil, fmt.Errorf("%w: unsupported event type %q", ErrInvalidLiveEvent, event.EventType)
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidLiveEvent, err)
+	}
+	return raw, nil
+}
+
+func projectedString(current, expected, replacement string) string {
+	if replacement == "" || (expected != "" && current != expected) {
+		return current
+	}
+	return replacement
+}
+
+func projectedStringPointer(current *string, expected, replacement string) *string {
+	if current == nil {
+		return nil
+	}
+	projected := projectedString(*current, expected, replacement)
+	if projected == *current {
+		return current
+	}
+	return &projected
+}

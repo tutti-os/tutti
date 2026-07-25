@@ -17,7 +17,7 @@ func (c *Controller) PublishStreamEvent(roomID, agentSessionID string, event Str
 	if c == nil || roomID == "" || agentSessionID == "" || event.EventType == "" {
 		return
 	}
-	c.hub.Publish(roomID, agentSessionID, []StreamEvent{event})
+	c.publishStreamEvents(roomID, agentSessionID, []StreamEvent{event})
 }
 
 func (c *Controller) publishSessionStatePatch(session Session, patch agentsessionstore.WorkspaceAgentStatePatch) {
@@ -29,7 +29,7 @@ func (c *Controller) publishSessionStatePatch(session Session, patch agentsessio
 	if roomID == "" || agentSessionID == "" || strings.TrimSpace(patch.AgentSessionID) == "" {
 		return
 	}
-	c.hub.Publish(roomID, agentSessionID, []StreamEvent{{
+	c.publishStreamEvents(roomID, agentSessionID, []StreamEvent{{
 		EventType: StreamEventStatePatch,
 		Data:      patch,
 	}})
@@ -359,7 +359,7 @@ func (c *Controller) publishPendingConfigOptionsUpdates(session Session) {
 		c.recordConfigOptionsUpdate(session, update)
 		events = append(events, configOptionsUpdateStreamEvent(update))
 	}
-	c.hub.Publish(roomID, agentSessionID, events)
+	c.publishStreamEvents(roomID, agentSessionID, events)
 	c.enqueueSessionSnapshotReport(context.Background(), session)
 }
 
@@ -380,7 +380,7 @@ func (c *Controller) publish(session Session, events []activityshared.Event) {
 		"projected_event_count", len(projected),
 		"projected_event_type_counts", streamEventTypeCounts(projected),
 	)
-	c.hub.Publish(session.RoomID, session.AgentSessionID, projected)
+	c.publishStreamEvents(session.RoomID, session.AgentSessionID, projected)
 }
 
 func streamEventTypeCounts(events []StreamEvent) []string {
@@ -446,7 +446,7 @@ func (c *Controller) applyCommandSnapshot(session Session, snapshot AgentSession
 	}
 	c.commands[key] = snapshot
 	c.mu.Unlock()
-	c.hub.Publish(roomID, agentSessionID, []StreamEvent{commandSnapshotStreamEvent(snapshot)})
+	c.publishStreamEvents(roomID, agentSessionID, []StreamEvent{commandSnapshotStreamEvent(snapshot)})
 }
 
 func (c *Controller) applyTurnCommandSnapshot(session Session, turnID string, snapshot AgentSessionCommandSnapshot) {
@@ -474,7 +474,7 @@ func (c *Controller) applyTurnCommandSnapshot(session Session, turnID string, sn
 	}
 	c.commands[key] = snapshot
 	c.mu.Unlock()
-	c.hub.Publish(roomID, agentSessionID, []StreamEvent{commandSnapshotStreamEvent(snapshot)})
+	c.publishStreamEvents(roomID, agentSessionID, []StreamEvent{commandSnapshotStreamEvent(snapshot)})
 }
 
 func (c *Controller) applyCommandSnapshotByAgentSessionID(snapshot AgentSessionCommandSnapshot) {
@@ -635,7 +635,7 @@ func (c *Controller) applyConfigOptionsUpdateByAgentSessionID(update AgentSessio
 	c.mu.Unlock()
 	update = c.completeConfigOptionsUpdate(session, update)
 	c.recordConfigOptionsUpdate(session, update)
-	c.hub.Publish(session.RoomID, session.AgentSessionID, []StreamEvent{
+	c.publishStreamEvents(session.RoomID, session.AgentSessionID, []StreamEvent{
 		configOptionsUpdateStreamEvent(update),
 	})
 	c.enqueueSessionSnapshotReport(context.Background(), session)

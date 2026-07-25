@@ -233,10 +233,11 @@ export function renderMentionRow(
   if (item.kind === "app") {
     return (
       <span className="rich-text-at-mention-row rich-text-at-mention-row--app">
-        <MentionWorkspaceAppIcon
+        <MentionEntityIcon
           iconUrl={item.iconUrl}
           kindIconClassName={resolved.kindIcon}
           dataAttributeMode={dataAttributeMode}
+          dataAttributeKey="appIcon"
         />
         <span className="rich-text-at-mention-row__entity-text rich-text-at-mention-row__app-text">
           <span className="rich-text-at-mention-row__entity-name rich-text-at-mention-row__app-name">
@@ -269,6 +270,14 @@ export function renderMentionRow(
 
   return (
     <span className="rich-text-at-mention-row rich-text-at-mention-row--issue">
+      {item.iconUrl ? (
+        <MentionEntityIcon
+          iconUrl={item.iconUrl}
+          kindIconClassName={resolved.kindIcon}
+          dataAttributeMode={dataAttributeMode}
+          dataAttributeKey="issueIcon"
+        />
+      ) : null}
       <span className="rich-text-at-mention-row__text-stack rich-text-at-mention-row__text-stack--fill">
         <span className="rich-text-at-mention-row__inline">
           <span className="rich-text-at-mention-row__title">{item.title}</span>
@@ -510,20 +519,22 @@ function MentionFileIcon({
   );
 }
 
-function MentionWorkspaceAppIcon({
+function MentionEntityIcon({
   iconUrl,
   kindIconClassName,
-  dataAttributeMode
+  dataAttributeMode,
+  dataAttributeKey
 }: {
   iconUrl?: string | null;
   kindIconClassName: string;
   dataAttributeMode: MentionRowDataAttributeMode;
+  dataAttributeKey: "appIcon" | "issueIcon";
 }): React.JSX.Element {
   const normalizedIconUrl = iconUrl?.trim() ?? "";
   return (
     <span
       className="rich-text-at-mention-app-icon"
-      {...mentionRowDataAttribute(dataAttributeMode, "appIcon", "true")}
+      {...mentionRowDataAttribute(dataAttributeMode, dataAttributeKey, "true")}
       data-workspace-app-icon="true"
       aria-hidden="true"
     >

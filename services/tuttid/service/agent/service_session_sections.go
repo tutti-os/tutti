@@ -394,8 +394,8 @@ func (s *Service) DeleteSessionsBatch(
 	return DeleteSessionsBatchResult{
 		RemovedMessages:         hostResult.RemovedMessages,
 		RemovedSessions:         hostResult.RemovedSessions,
-		RemovedSessionIDs:       hostResult.RemovedSessionIDs,
-		CleanupFailedSessionIDs: hostResult.CleanupFailedIDs,
+		RemovedSessionIDs:       append([]string{}, hostResult.RemovedSessionIDs...),
+		CleanupFailedSessionIDs: append([]string{}, hostResult.CleanupFailedIDs...),
 	}, nil
 }
 

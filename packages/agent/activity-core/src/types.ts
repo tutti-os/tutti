@@ -1,4 +1,8 @@
 import type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
+import type {
+  AgentActivityMessage,
+  AgentActivityMessageDeltaEvent
+} from "./message.types.ts";
 import type { AgentActivitySessionMessageWindow } from "./messageWindow.types.ts";
 import type { AgentActivityRailPlacement } from "./railPlacement.types.ts";
 import type {
@@ -6,6 +10,12 @@ import type {
   AgentActivityInitialTuttiModeActivation,
   AgentActivityTuttiModeActivation
 } from "./tuttiMode.types.ts";
+
+export type {
+  AgentActivityMessage,
+  AgentActivityMessageDeltaEvent,
+  AgentActivityMessageSemantics
+} from "./message.types.ts";
 
 export type {
   AgentActivityCapabilityReference,
@@ -95,24 +105,6 @@ export interface AgentActivityInteractivePrompt {
   output?: Record<string, unknown>;
   error?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
-}
-
-export interface AgentActivityMessage {
-  workspaceId?: string;
-  agentSessionId: string;
-  messageId: string;
-  version: number;
-  turnId: string | null;
-  role: string;
-  kind: string;
-  status?: string | null;
-  semantics?: AgentActivityMessageSemantics;
-  payload: Record<string, unknown>;
-  sequence?: number;
-  occurredAtUnixMs: number;
-  createdAtUnixMs?: number;
-  startedAtUnixMs?: number;
-  completedAtUnixMs?: number;
 }
 
 export interface AgentActivitySessionList {
@@ -329,6 +321,7 @@ export type AgentActivityUpdatedEvent =
   | AgentActivitySessionReconcileRequiredEvent
   | AgentActivitySessionDeletedEvent
   | AgentActivitySessionAuditEvent
+  | AgentActivityMessageDeltaEvent
   | AgentActivityMessageUpdatedEvent
   | AgentActivityTurnUpdatedEvent
   | AgentActivityInteractionUpdatedEvent;
@@ -512,13 +505,6 @@ export interface AgentActivitySubmitDiagnostics {
   promptLength?: number;
   queued?: boolean;
   source?: string;
-}
-
-export interface AgentActivityMessageSemantics {
-  userVisibleAssistantResponse?: boolean;
-  turnSettling?: boolean;
-  noticeCommand?: "compact" | "review" | "undo" | "goal";
-  noticeCommandStatus?: "running" | "completed" | "failed" | "canceled";
 }
 
 export type AgentActivitySendInputResult =

@@ -176,6 +176,16 @@ func (r codexAppServerReducer) reduceNotification(
 			return codexAppServerReduction{}
 		}
 		return emit(normalizer.AppendAssistantChunk(session, turnID, asStringRaw(params["delta"])))
+	case appServerNotifyCommandOutputDelta:
+		if normalizer == nil {
+			return codexAppServerReduction{}
+		}
+		return emit(normalizer.AppendToolOutputDelta(
+			session,
+			turnID,
+			asString(params["itemId"]),
+			asStringRaw(params["delta"]),
+		))
 	case appServerNotifyReasoningSummaryPart, appServerNotifyThreadSettingsUpdated:
 		return codexAppServerReduction{}
 	case appServerNotifyReasoningDelta, appServerNotifyReasoningSummary:

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -68,16 +69,35 @@ func (api DaemonAPI) attachEventStreamWebSocket(w http.ResponseWriter, r *http.R
 	defer conn.Close(websocket.StatusNormalClosure, "event stream detached")
 
 	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
 
 	session := api.EventStreamService.OpenSession()
-	defer api.EventStreamService.CloseSession(session)
+	defer func() {
+		// Cancel first so the forwarder can distinguish ordinary handler
+		// teardown from a registry-initiated close after queue overflow.
+		cancel()
+		api.EventStreamService.CloseSession(session)
+	}()
 
 	outbound := make(chan any, 64)
 	writeErr := make(chan error, 1)
 
 	go writeEventStreamFrames(ctx, conn, outbound, writeErr)
-	go forwardEventStreamEvents(ctx, api.EventStreamService, session, outbound)
+	go forwardEventStreamEvents(
+		ctx,
+		api.EventStreamService,
+		session,
+		outbound,
+		func() {
+			slog.Warn(
+				"event stream subscription closed after outbound queue overflow",
+				"event", "event_stream.subscription.overflow",
+			)
+			_ = conn.Close(
+				websocket.StatusTryAgainLater,
+				"event stream consumer fell behind; reconnect required",
+			)
+		},
+	)
 
 	if !enqueueEventStreamFrame(ctx, outbound, readyEventStreamFrame()) {
 		return
@@ -221,6 +241,7 @@ func forwardEventStreamEvents(
 	service EventStreamService,
 	session *eventstreamservice.Session,
 	outbound chan<- any,
+	onSubscriptionClosed func(),
 ) {
 	for {
 		select {
@@ -228,6 +249,14 @@ func forwardEventStreamEvents(
 			return
 		case event, ok := <-service.Events(session):
 			if !ok {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				if onSubscriptionClosed != nil {
+					onSubscriptionClosed()
+				}
 				return
 			}
 			if !enqueueEventStreamFrame(ctx, outbound, eventprotocol.ServerEventFrame{

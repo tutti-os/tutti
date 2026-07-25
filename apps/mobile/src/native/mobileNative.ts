@@ -1,24 +1,12 @@
 import { NativeModules } from "react-native";
-
-export interface AccountSession {
-  email: string;
-  name: string;
-  sessionId: string;
-  userId: string;
-}
+import type { AccountSession, DeviceIdentity } from "../services/mobileDomain";
+export type { AccountSession, DeviceIdentity } from "../services/mobileDomain";
 
 export interface BrowserLoginCompletion {
   attemptId: string;
   bridgeToken: string;
   deviceId: string;
   transferCode: string;
-}
-
-export interface DeviceIdentity {
-  arch: string;
-  deviceId: string;
-  deviceName: string;
-  publicKey: string;
 }
 
 interface MobileSecurityNative {

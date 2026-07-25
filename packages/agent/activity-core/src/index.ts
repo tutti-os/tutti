@@ -1,4 +1,7 @@
 export type { AgentActivityAdapter } from "./adapter.ts";
+export { AGENT_ACTIVITY_LIVE_PROTOCOL_REVISION } from "./liveProtocolRevision.gen.ts";
+export type { AgentActivityLiveEvent } from "./liveEvent.types.ts";
+export { parseAgentActivityMessageDeltaEvent } from "./liveEventParsing.ts";
 export type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
 export type { AgentActivityDisplayStatus } from "./displayStatus.types.ts";
 export type { AgentActivityRailPlacement } from "./railPlacement.types.ts";
@@ -27,6 +30,12 @@ export {
 } from "./merge.ts";
 export type { AgentActivitySessionMessageWindow } from "./messageWindow.types.ts";
 export { parseInlineActivityMessages } from "./inlineActivityMessages.ts";
+export {
+  createAgentActivityOptimisticMessageOverlay,
+  type AgentActivityOptimisticApplyResult,
+  type AgentActivityOptimisticMessageOverlay,
+  type AgentActivityOptimisticMessageScope
+} from "./optimisticMessageOverlay.ts";
 export {
   agentActivitySessionMessageWindowFromDescendingPage,
   loadAllAgentSessionMessages,
@@ -299,6 +308,7 @@ export type {
   AgentActivitySetCollaborationAdoptionInput,
   AgentActivityCompletedCommand,
   AgentActivityMessage,
+  AgentActivityMessageDeltaEvent,
   AgentActivityMessageSemantics,
   AgentActivityLoadComposerOptionsInput,
   AgentActivityMessageOrder,

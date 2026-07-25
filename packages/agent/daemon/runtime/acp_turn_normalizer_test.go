@@ -50,11 +50,8 @@ func TestAppendAssistantChunkIgnoresDuplicateSnapshotChunk(t *testing.T) {
 	}
 
 	events := normalizer.AppendAssistantChunk(session, "turn-1", fullText)
-	if len(events) != 1 {
-		t.Fatalf("duplicate snapshot chunk events = %d, want 1", len(events))
-	}
-	if got := events[0].Payload.Content; got != fullText {
-		t.Fatalf("content = %q, want single authoritative snapshot without duplication", got)
+	if len(events) != 0 {
+		t.Fatalf("duplicate snapshot chunk events = %d, want suppressed no-op", len(events))
 	}
 
 	normalizer.ApplyAssistantFinalText(fullText)

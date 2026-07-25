@@ -213,6 +213,13 @@ func runDeleteSession(ctx context.Context, driver Driver) error {
 	if _, err := driver.GetSession(ctx, agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-delete"}); !errors.Is(err, agenthost.ErrSessionNotFound) {
 		return fmt.Errorf("get deleted session error=%v", err)
 	}
+	replay, err := driver.DeleteSession(ctx, agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-delete"})
+	if err != nil {
+		return fmt.Errorf("replay delete session: %w", err)
+	}
+	if replay.Deleted || replay.RuntimeClosed || replay.CanonicalRemoved || replay.CleanupFailed {
+		return fmt.Errorf("replay delete result=%#v, want a successful no-op", replay)
+	}
 	return nil
 }
 

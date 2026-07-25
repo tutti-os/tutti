@@ -2,13 +2,75 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentComposerProps } from "../AgentComposer";
-import { AgentGUIEmptyHeroPane } from "./AgentGUIEmptyState";
+import type { AgentGUIViewLabels } from "../AgentGUINodeView";
+import {
+  AgentGUIEmptyHeroPane,
+  AgentGUIEmptyHomePane
+} from "./AgentGUIEmptyState";
 
 vi.mock("../AgentComposer", () => ({
   AgentComposer: () => <div data-testid="agent-composer" />
 }));
 
+vi.mock("./AgentGUIEmptyHeroCarouselStage", () => ({
+  AgentGUIEmptyHeroCarouselStage: ({
+    children
+  }: {
+    children: React.ReactNode;
+  }) => <>{children}</>
+}));
+
+vi.mock("./AgentTargetSetupGate.tsx", () => ({
+  AgentTargetSetupGate: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  )
+}));
+
 describe("AgentGUIEmptyHeroPane notices", () => {
+  it("does not render an unresolved target label in the Home title", () => {
+    render(
+      <AgentGUIEmptyHomePane
+        provider="unknown"
+        providerReadinessGate={null}
+        showAllProviders={false}
+        agentTargets={[]}
+        selectedAgentTarget={{
+          disabled: true,
+          label: "unknown",
+          provider: "unknown",
+          ref: { kind: "loading", provider: "unknown" },
+          targetId: "__loading__"
+        }}
+        labels={
+          {
+            empty: "需要 Agent 帮你做些什么？",
+            emptyForProvider: () => "需要 Agent 帮你做些什么？",
+            emptyProvider: "Agent",
+            emptyProviderForProvider: () => "Agent",
+            providerSwitchLabel: "选择 Agent",
+            sharedAgentOwnerSeparator: "的"
+          } as unknown as AgentGUIViewLabels
+        }
+        noticeChrome={null}
+        isRespondingApproval={false}
+        onSubmitApprovalOption={vi.fn()}
+        onRetryActivation={vi.fn()}
+        onContinueInNewConversation={vi.fn()}
+        chromeLabels={{} as never}
+        composerProps={{} as AgentComposerProps}
+        suggestions={[]}
+        onSelectSuggestion={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole("heading", {
+        name: "需要 Agent 帮你做些什么？"
+      })
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/unknown/i)).not.toBeInTheDocument();
+  });
+
   it("renders target connection chrome above the Home composer", () => {
     render(
       <AgentGUIEmptyHeroPane

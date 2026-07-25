@@ -205,6 +205,39 @@
   [createRestartAwareFetch.ts](../../../apps/desktop/src/renderer/src/platform/tuttid/createRestartAwareFetch.ts)
   [desktop-transport.md](../../architecture/desktop-transport.md)
 
+### Renderer `fetch()` rejects an Electron image protocol that `<img>` can load
+
+- Symptom:
+  An image rendered from a Desktop custom protocol remains visible, but
+  renderer code that inlines or resizes the same image logs
+  `Fetch API cannot load` and `URL scheme ... is not supported`. Catching the
+  rejected promise does not suppress Chromium's console message.
+- Quick checks:
+  Find the scheme passed to `fetch()`. Confirm its privileged registration
+  enables both `supportFetchAPI` and `corsEnabled`, runs before Electron
+  `ready`, and its handler is installed on the renderer's exact `Session`.
+  A working `<img>` only proves the no-CORS subresource path and protocol
+  handler; it does not prove that renderer JavaScript may read the response.
+- Root cause:
+  The renderer page and custom protocol have different origins. Electron
+  permits `<img>` to load a no-CORS custom-protocol response, but blocks a
+  cross-origin `fetch()` from reading it when the scheme is not CORS-enabled.
+- Fix:
+  For fixed, non-sensitive image routes that renderer code must inline, register
+  the scheme with `supportFetchAPI: true` and `corsEnabled: true`. Register all
+  privileged Desktop schemes together in the single pre-`ready` call, then
+  install handlers on every intended Session. Do not enable cross-origin reads
+  for protocols that expose arbitrary or sensitive local files.
+- Validation:
+  Keep a contract test over every fetchable image scheme, run the Desktop
+  Electron boundary checks and typecheck, and build the production Desktop
+  bundle. Verify the renderer can read the response body, not only display the
+  URL in an image element.
+- References:
+  [desktopCustomProtocolSchemes.ts](../../../apps/desktop/src/main/host/desktopCustomProtocolSchemes.ts)
+  [tuttiAssetProtocol.ts](../../../apps/desktop/src/main/host/tuttiAssetProtocol.ts)
+  [workspaceFileIconProtocol.ts](../../../apps/desktop/src/main/host/workspaceFileIconProtocol.ts)
+
 ### Renderer tile memory warnings from hidden autoplay animation
 
 - Symptom:

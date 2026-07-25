@@ -13,9 +13,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tutti-os/agent-activity-core": "workspace:*",
+    "@tutti-os/agent-activity-tuttid-adapter": "workspace:*",
     "@tutti-os/agent-gui": "workspace:*",
     "@tutti-os/auth-bridge": "workspace:*",
     "@tutti-os/client-tuttid-ts": "workspace:*",
+    "@tutti-os/infra": "0.1.0",
     "react": "19.2.6",
     "react-native": "0.86.0",
     "react-native-safe-area-context": "5.6.2"

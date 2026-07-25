@@ -43,11 +43,55 @@ func (p AgentActivityPublisher) PublishAgentActivityUpdated(
 	if err != nil {
 		return fmt.Errorf("marshal agent activity updated data: %w", err)
 	}
+	return p.publishAgentActivityUpdatedJSON(
+		ctx,
+		workspaceID,
+		agentSessionID,
+		eventType,
+		dataPayload,
+	)
+}
+
+// PublishAgentActivityUpdatedJSON preserves an already-validated live
+// projection byte-for-byte. This avoids decoding opaque payload values through
+// map[string]any merely to wrap them in the public WebSocket event envelope.
+func (p AgentActivityPublisher) PublishAgentActivityUpdatedJSON(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	eventType string,
+	data json.RawMessage,
+) error {
+	if p.Service == nil {
+		return nil
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	eventType = strings.TrimSpace(eventType)
+	if workspaceID == "" || agentSessionID == "" || eventType == "" || len(data) == 0 {
+		return nil
+	}
+	return p.publishAgentActivityUpdatedJSON(
+		ctx,
+		workspaceID,
+		agentSessionID,
+		eventType,
+		append(json.RawMessage(nil), data...),
+	)
+}
+
+func (p AgentActivityPublisher) publishAgentActivityUpdatedJSON(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	eventType string,
+	data json.RawMessage,
+) error {
 	payload, err := json.Marshal(agentActivityUpdatedPayload{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 		EventType:      eventType,
-		Data:           dataPayload,
+		Data:           data,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal agent activity updated payload: %w", err)

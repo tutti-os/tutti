@@ -1,30 +1,30 @@
 import {
   workspaceAgentSessionStatus,
   type AgentActivityAdapter,
-  type AgentActivityMessage,
   type AgentActivitySession,
-  type AgentActivityTurn,
   type AgentPromptContentBlock
 } from "@tutti-os/agent-activity-core";
+import {
+  agentActivityMessageFromTuttidMessage,
+  agentActivitySessionFromTuttidSession as mapAgentActivitySessionFromTuttidSession,
+  agentActivityTuttiModeActivationFromTuttid
+} from "@tutti-os/agent-activity-tuttid-adapter";
+export {
+  agentActivityMessageFromTuttidMessage,
+  agentActivityTurnFromTuttidTurn
+} from "@tutti-os/agent-activity-tuttid-adapter";
 import type {
   TuttidClient,
   AgentSubmitDiagnostics,
   AgentPromptContentBlock as TuttidAgentPromptContentBlock,
   CreateWorkspaceAgentSessionRequest,
   SendWorkspaceAgentSessionInputRequest,
-  TuttiModeActivation,
-  WorkspaceAgentProvider,
   WorkspaceAgentSession,
-  WorkspaceAgentSessionMessage,
-  WorkspaceAgentTurn
+  WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
 import { getActiveLocale } from "../../../i18n/runtime.ts";
 import { wrapLocalizedTuttidErrorIfSpecific } from "../../../lib/desktopErrors.ts";
-import {
-  normalizedTuttidMessageOccurredAtUnixMs,
-  normalizedTuttidMessageTurnId
-} from "./desktopAgentActivityMessageNormalization.ts";
 import { agentActivityComposerOptionsFromTuttidResult } from "../../../lib/agentComposerOptionsProjection.ts";
 import { reportAgentSubmitTraceDiagnostic as reportDesktopAgentSubmitTrace } from "./desktopAgentRuntimeSubmitDiagnostics.ts";
 import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "./desktopAgentGuiIdentity.ts";
@@ -37,6 +37,15 @@ export interface CreateDesktopAgentActivityAdapterInput {
 
 const defaultComposerOptionsRequestTimeoutMs = 15_000;
 const agentActivitySessionListLimit = 100;
+
+export function agentActivitySessionFromTuttidSession(
+  workspaceId: string,
+  session: WorkspaceAgentSession
+): AgentActivitySession {
+  return mapAgentActivitySessionFromTuttidSession(workspaceId, session, {
+    currentUserId: DESKTOP_AGENT_GUI_CURRENT_USER_ID
+  });
+}
 
 export function createDesktopAgentActivityAdapter({
   composerOptionsRequestTimeoutMs = defaultComposerOptionsRequestTimeoutMs,
@@ -606,198 +615,6 @@ function toTuttidPromptContentBlocks(
     }
     return [nextBlock];
   });
-}
-
-export function agentActivitySessionFromTuttidSession(
-  workspaceId: string,
-  session: WorkspaceAgentSession
-): AgentActivitySession {
-  assertProtocolV2SessionContract(session);
-  const createdAtUnixMs = session.createdAtUnixMs;
-  const updatedAtUnixMs = session.updatedAtUnixMs;
-  return {
-    workspaceId,
-    agentSessionId: session.id,
-    kind: session.kind,
-    rootAgentSessionId: session.rootAgentSessionId,
-    rootTurnId: session.rootTurnId,
-    parentAgentSessionId: session.parentAgentSessionId,
-    parentTurnId: session.parentTurnId,
-    parentToolCallId: session.parentToolCallId,
-    agentTargetId: session.agentTargetId ?? null,
-    provider: session.provider,
-    providerSessionId: session.providerSessionId ?? session.id,
-    userId: DESKTOP_AGENT_GUI_CURRENT_USER_ID,
-    cwd: session.cwd ?? "/",
-    railSectionKey: session.railSectionKey,
-    title: session.title ?? "",
-    activeTurnId: session.activeTurnId,
-    activeTurn: session.activeTurn ?? null,
-    latestTurn: session.latestTurn ?? null,
-    latestTurnInteractions: session.latestTurnInteractions,
-    pendingInteractions: session.pendingInteractions,
-    settings: structuredClone(session.settings),
-    permissionConfig: structuredClone(session.permissionConfig),
-    capabilities: session.capabilities
-      ? structuredClone(session.capabilities)
-      : null,
-    usage: session.usage ? structuredClone(session.usage) : null,
-    goal: session.goal ? structuredClone(session.goal) : null,
-    tuttiModeActivation: session.tuttiModeActivation
-      ? agentActivityTuttiModeActivationFromTuttid(session.tuttiModeActivation)
-      : null,
-    imported: session.imported ?? false,
-    visible: session.visible ?? true,
-    resumable: session.resumable ?? false,
-    messageVersion: 0,
-    lastEventUnixMs: updatedAtUnixMs,
-    pinnedAtUnixMs: session.pinnedAtUnixMs ?? null,
-    startedAtUnixMs: createdAtUnixMs,
-    endedAtUnixMs: session.endedAtUnixMs ?? null,
-    createdAtUnixMs,
-    updatedAtUnixMs
-  };
-}
-
-export function agentActivityTurnFromTuttidTurn(
-  turn: WorkspaceAgentTurn
-): AgentActivityTurn {
-  return {
-    agentSessionId: turn.agentSessionId,
-    completedCommand: turn.completedCommand,
-    error: turn.error,
-    fileChanges: turn.fileChanges,
-    outcome: turn.outcome,
-    origin: turn.origin,
-    phase: turn.phase,
-    ...(turn.sourceGoalOperationId !== undefined
-      ? { sourceGoalOperationId: turn.sourceGoalOperationId }
-      : {}),
-    ...(turn.sourceGoalRevision !== undefined
-      ? { sourceGoalRevision: turn.sourceGoalRevision }
-      : {}),
-    ...(turn.sourceGoalRepairEpoch !== undefined
-      ? { sourceGoalRepairEpoch: turn.sourceGoalRepairEpoch }
-      : {}),
-    settledAtUnixMs: turn.settledAtUnixMs,
-    startedAtUnixMs: turn.startedAtUnixMs,
-    turnId: turn.turnId,
-    updatedAtUnixMs: turn.updatedAtUnixMs
-  };
-}
-
-function assertProtocolV2SessionContract(session: WorkspaceAgentSession): void {
-  const value = session as unknown as Record<string, unknown>;
-  const missing = [
-    "activeTurnId",
-    "latestTurnInteractions",
-    "pendingInteractions",
-    "railSectionKey",
-    "tuttiModeActivation"
-  ].filter((field) => !Object.prototype.hasOwnProperty.call(value, field));
-  if (missing.length > 0) {
-    throw new Error(
-      `Protocol v2 contract error: workspace agent session is missing required field(s): ${missing.join(", ")}`
-    );
-  }
-  if (
-    !Array.isArray(value.latestTurnInteractions) ||
-    !Array.isArray(value.pendingInteractions)
-  ) {
-    throw new Error(
-      "Protocol v2 contract error: workspace agent interaction collections must be arrays"
-    );
-  }
-  if (
-    typeof value.railSectionKey !== "string" ||
-    value.railSectionKey.trim().length === 0
-  ) {
-    throw new Error(
-      "Protocol v2 contract error: workspace agent railSectionKey must be a non-empty string"
-    );
-  }
-}
-
-function agentActivityTuttiModeActivationFromTuttid(
-  activation: TuttiModeActivation
-) {
-  return {
-    ...activation,
-    currentRevision: { ...activation.currentRevision }
-  };
-}
-
-export function agentActivityMessageFromTuttidMessage(
-  workspaceId: string,
-  message: WorkspaceAgentSessionMessage
-): AgentActivityMessage {
-  return {
-    workspaceId,
-    agentSessionId: message.agentSessionId,
-    completedAtUnixMs: message.completedAtUnixMs ?? undefined,
-    kind: message.kind,
-    messageId: message.messageId,
-    occurredAtUnixMs: normalizedTuttidMessageOccurredAtUnixMs(message),
-    payload: recordValue(message.payload),
-    role: message.role,
-    sequence: message.sequence,
-    ...(message.semantics != null
-      ? {
-          semantics: {
-            ...(message.semantics.userVisibleAssistantResponse !== undefined
-              ? {
-                  userVisibleAssistantResponse:
-                    message.semantics.userVisibleAssistantResponse
-                }
-              : {}),
-            ...(message.semantics.turnSettling !== undefined
-              ? { turnSettling: message.semantics.turnSettling }
-              : {}),
-            ...(isNoticeCommand(message.semantics.noticeCommand)
-              ? { noticeCommand: message.semantics.noticeCommand }
-              : {}),
-            ...(isNoticeCommandStatus(message.semantics.noticeCommandStatus)
-              ? { noticeCommandStatus: message.semantics.noticeCommandStatus }
-              : {})
-          }
-        }
-      : {}),
-    startedAtUnixMs: message.startedAtUnixMs ?? undefined,
-    createdAtUnixMs: message.createdAtUnixMs ?? undefined,
-    status: message.status ?? undefined,
-    turnId: normalizedTuttidMessageTurnId(message),
-    version: message.version
-  };
-}
-
-function isNoticeCommand(
-  value: string | undefined
-): value is "compact" | "review" | "undo" | "goal" {
-  return (
-    value === "compact" ||
-    value === "review" ||
-    value === "undo" ||
-    value === "goal"
-  );
-}
-
-function isNoticeCommandStatus(
-  value: string | undefined
-): value is "running" | "completed" | "failed" | "canceled" {
-  return (
-    value === "running" ||
-    value === "completed" ||
-    value === "failed" ||
-    value === "canceled"
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function recordValue(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? { ...value } : {};
 }
 
 function withAbortableRequestTimeout<T>(

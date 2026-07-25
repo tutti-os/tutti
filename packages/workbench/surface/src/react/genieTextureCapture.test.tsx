@@ -83,9 +83,22 @@ describe("prepareGenieTextureCapture", () => {
         {
           displayHeight: 40,
           displayWidth: 40,
+          naturalHeight: 0,
+          naturalWidth: 0,
           url: new URL("/avatar.png", document.baseURI).href
         }
       ]);
+
+      stylesheet.textContent = `
+        .preview { color: rgb(0, 0, 255); opacity: 0.75; }
+        .preview-child { padding: 4px; }
+      `;
+      const refreshed = prepareGenieTextureCapture(source);
+      expect(
+        refreshed?.clone
+          .querySelector("style[data-workbench-genie-stylesheet]")
+          ?.textContent?.includes("rgb(0, 0, 255)")
+      ).toBe(true);
     } finally {
       getComputedStyle.mockRestore();
       source.remove();

@@ -23,6 +23,8 @@ export interface WorkbenchGenieScanlineFrame {
 export interface WorkbenchGenieMeaningfulImageClone {
   displayHeight: number;
   displayWidth: number;
+  naturalHeight: number;
+  naturalWidth: number;
   url: string | null;
 }
 

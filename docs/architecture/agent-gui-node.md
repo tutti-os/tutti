@@ -60,8 +60,13 @@ AgentGUI, Message Center, composer, and shared services must not choose behavior
 
 Realtime events reduce latency but are not automatically complete truth:
 
+- normalized provider text/reasoning streams and explicitly appendable textual
+  tool output arrive as optimistic `message_delta` payloads on the
+  `/v1/events/ws` business-event WebSocket
 - continuous, version-complete `message_update` events may merge inline
-- message version gaps, reconnects, Turn, Interaction, and state changes trigger authoritative reconciliation
+- terminal `message_update` is the durable confirmation; message version gaps,
+  invalid/unanchored deltas, reconnects, Turn, Interaction, and state changes
+  trigger authoritative reconciliation
 - event publication or observer failure cannot roll back a committed canonical transaction
 
 ### 1.6 Identity and correlation are explicit
@@ -130,7 +135,7 @@ provider runtime observation
 | tuttid `ActivityProjection`     | canonical read projection, commit observation, event publication/repair                    | lifecycle decisions, React state            |
 | `agent-activity-core`           | workspace engine, canonical frontend entities, pending intents, queue, selectors           | HTTP, Electron, React                       |
 | `agent-gui`                     | runtime contract, projections, controllers, views, UI-local state                          | daemon truth, a second session store        |
-| `apps/desktop`                  | tuttid client, SSE, preload, Workbench, windows, file/OS capabilities, runtime injection   | a second Agent business core                |
+| `apps/desktop`                  | tuttid client, business-event WebSocket, preload, Workbench, windows, file/OS capabilities | a second Agent business core                |
 
 `services/tuttid/api/openapi/tuttid.v1.yaml` is authoritative for HTTP request/response contracts. It projects the canonical domain; it does not replace `store-sqlite/canonical`.
 
@@ -390,6 +395,12 @@ When runtime sections are enabled, projection unions IDs from the current sectio
 
 Scroll, section collapse, visible limits, and search query belong to mounted view scope. Non-search state is isolated by `workspaceId + agentTargetId/all`; search creates a temporary navigation scope. `activeConversationId` expresses selection only. Scrolling requires an explicit reveal intent.
 
+On the Home composer, a single-Agent Rail filter follows the effective composer
+Agent Target whether the change originates inside AgentGUI or from host-owned
+node data. The `all` filter remains broad, an open Session keeps its current
+Rail filter, and unresolved/loading targets neither rewrite presentation state
+nor expose placeholder target labels in Home chrome.
+
 Rail scroll memory is captured by scroll events and explicit navigation. Effect cleanup must not synchronously read `scrollTop`: React may already have dirtied the document, turning that read into a full layout inside the interaction task.
 
 An empty bounded Rail result must not unactivate an active or persisted Session.
@@ -398,7 +409,7 @@ Home composer.
 
 Contain selection and presentation identity at the Rail boundary. Each section receives the active ID only when it owns the canonical or overlay row; unrelated sections receive `null` so their memoized props remain equal. Rail pane, section, and row receive a dedicated Rail-label projection whose identity changes for locale changes, not provider-specific detail copy. Event handlers shared by every section keep stable identities and read the current scope and lock state when invoked.
 
-Keep section header/action chrome independent from changing item collections. A memoized header receives scalar presentation fields and stable event-time actions; it must not receive the section object or rebuild project/session semantics. Split the header into narrow render islands. Frequently changing derived booleans such as project drag disabled, project action locked, and batch deletion disabled may cross the Section presentation boundary through separate primitive Context projections. The Rail pane owns those providers outside the memoized Section so a projection-only update does not execute item projection; only the frame, forwarded-ref button leaf, or open menu content that renders the value may consume it. Do not combine those values into one Context object or copy them into persistent state. Menu disclosure is view-local state: keep each Radix root and trigger mounted for focus and keyboard behavior, but instantiate portaled content only while that menu is open. A closed menu has no availability-state consumer. The project header remains the native drag source, each project section updates the insertion position across its full area, and the Rail scroll viewport owns the final drop so section gaps cannot discard an already visible insertion target. This is a presentation boundary, not a second Rail or lifecycle store; stable event-time guards remain authoritative for action delivery.
+Keep section header/action chrome independent from changing item collections. A memoized header receives scalar presentation fields and stable event-time actions; it must not receive the section object or rebuild project/session semantics. Split the header into narrow render islands. Frequently changing derived booleans such as project drag disabled, project action locked, and batch deletion disabled may cross the Section presentation boundary through separate primitive Context projections. The Rail pane owns those providers outside the memoized Section so a projection-only update does not execute item projection; only the frame, forwarded-ref button leaf, or open menu content that renders the value may consume it. Do not combine those values into one Context object or copy them into persistent state. Menu disclosure is view-local state. A conversation row keeps its context-menu root mounted so right-click remains immediate, but may defer its normally hidden direct actions and dropdown root until the row is first hovered, focused, or opened by context menu. Once activated, those controls stay mounted for stable focus and keyboard behavior. Portaled menu content exists only while that menu is open, and a closed menu has no availability-state consumer. The project header remains the native drag source, each project section updates the insertion position across its full area, and the Rail scroll viewport owns the final drop so section gaps cannot discard an already visible insertion target. This is a presentation boundary, not a second Rail or lifecycle store; stable event-time guards remain authoritative for action delivery.
 
 Relative time uses one renderer-realm minute clock. Timestamp leaves subscribe directly; do not thread a tick prop through Rail pane/section/row and rerender the interactive subtree every minute.
 
@@ -675,6 +686,14 @@ header; message footer, speaker, thinking-edge, and row-kind state are projected
 onto the owning message flow or transcript row. Small, self-contained controls
 may still use local relational selectors when their subject and mutation scope
 are bounded.
+
+Composer mention providers own entity presentation metadata, including an
+optional `iconUrl`, through their insertion result. AgentGUI mention
+projections must preserve that metadata for every supported entity kind, and
+the shared mention row renders the icon only when supplied. A provider-level
+icon assertion is not sufficient coverage: presentation changes require both a
+projection assertion and a consuming-row DOM assertion so an intermediate
+view-model cannot silently discard the icon.
 
 External OS file paste and drop enter one host-injected classification boundary before draft attachment creation. The synchronous `resolveExternalPromptEntries` port classifies each source index as a live `WorkspaceFileReference` or a snapshot requiring preparation. AgentGUI owns ordered mention insertion and draft reconciliation: references become ordinary file/folder mentions and never consume prompt-asset slots, while only `prepare` entries create pending attachment state and enter `prepareExternalPromptFiles`. A host without the resolver prepares every external entry. The preparer owns native-path or byte lookup, size enforcement, persistence, and remote transport; each prepared input has one `sourceIndex` result, one failure must not fail siblings, successful results include a provider-readable `path` or `url`, and failures carry typed error codes. Hosts that classify path-backed entries as references must reject any such entry that unexpectedly reaches preparation, so classification failure cannot silently create a duplicate snapshot.
 

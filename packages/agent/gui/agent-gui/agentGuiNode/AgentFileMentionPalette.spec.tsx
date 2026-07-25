@@ -137,6 +137,7 @@ describe("AgentFileMentionPalette", () => {
               name: "写一个文件",
               title: "写一个文件",
               creatorName: "Alice",
+              iconUrl: "tutti-asset://issue/default.png",
               status: "not_started"
             },
             {
@@ -227,6 +228,11 @@ describe("AgentFileMentionPalette", () => {
     );
 
     expect(screen.getByText("待开始")).toBeVisible();
+    expect(
+      screen
+        .getByRole("option", { name: /写一个文件/ })
+        .querySelector('[data-agent-mention-issue-icon="true"] img')
+    ).toHaveAttribute("src", "tutti-asset://issue/default.png");
     expect(screen.getAllByText("执行中")).toHaveLength(2);
     expect(screen.getByText("待验收")).toBeVisible();
     expect(screen.getByText("已完成")).toBeVisible();

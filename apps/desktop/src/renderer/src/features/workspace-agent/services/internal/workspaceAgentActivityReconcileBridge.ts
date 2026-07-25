@@ -6,6 +6,7 @@ import {
 import {
   agentActivitySessionMessageWindowFromDescendingPage,
   createAgentActivitySnapshotProjector,
+  parseAgentActivityMessageDeltaEvent,
   parseInlineActivityMessages,
   selectEngineSession
 } from "@tutti-os/agent-activity-core";
@@ -33,6 +34,7 @@ import type {
   WorkspaceAgentActivityReconcileDependencies
 } from "./workspaceAgentActivityReconcileTypes.ts";
 import { WorkspaceAgentComposerOptionsInvalidationCoordinator } from "./workspaceAgentComposerOptionsInvalidationCoordinator.ts";
+import { WorkspaceAgentActivityOptimisticProjection } from "./workspaceAgentActivityOptimisticProjection.ts";
 
 export abstract class WorkspaceAgentActivityReconcileBridge {
   private readonly reconcileDependencies: WorkspaceAgentActivityReconcileDependencies;
@@ -42,6 +44,8 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     string,
     ReturnType<typeof createAgentActivitySnapshotProjector>
   >();
+  private readonly optimisticProjection =
+    new WorkspaceAgentActivityOptimisticProjection();
   private readonly liveReconcileSessionKeys = new Set<string>();
   private readonly liveReconcileInFlightSessionKeys = new Set<string>();
   private readonly sessionEventListenersByWorkspaceId = new Map<
@@ -102,7 +106,44 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       projector = createAgentActivitySnapshotProjector(normalizedWorkspaceId);
       this.snapshotProjectors.set(normalizedWorkspaceId, projector);
     }
-    return projector(this.entry(normalizedWorkspaceId).engine.getSnapshot());
+    const canonical = projector(
+      this.entry(normalizedWorkspaceId).engine.getSnapshot()
+    );
+    return this.optimisticProjection.project(normalizedWorkspaceId, canonical);
+  }
+
+  protected subscribeActivitySnapshot(
+    workspaceId: string,
+    listener: () => void
+  ): () => void {
+    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    const entry = this.entry(normalizedWorkspaceId);
+    const unsubscribeEngine = entry.engine.subscribe(listener);
+    const unsubscribeOptimistic = this.optimisticProjection.subscribe(
+      normalizedWorkspaceId,
+      listener
+    );
+    return () => {
+      unsubscribeEngine();
+      unsubscribeOptimistic();
+    };
+  }
+
+  protected reconcileOptimisticMessages(
+    workspaceId: string,
+    agentSessionId: string
+  ): void {
+    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    const normalizedAgentSessionId = agentSessionId.trim();
+    if (!normalizedAgentSessionId) return;
+    const canonicalMessages =
+      this.entry(normalizedWorkspaceId).engine.getSnapshot().sessionMessages
+        .messagesBySessionId[normalizedAgentSessionId] ?? [];
+    this.optimisticProjection.reconcile(
+      normalizedWorkspaceId,
+      normalizedAgentSessionId,
+      canonicalMessages
+    );
   }
 
   ensureSessionSynchronized(
@@ -174,6 +215,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     this.sessionEventListenersByWorkspaceId.clear();
     this.composerOptionsInvalidation.dispose();
     this.snapshotProjectors.clear();
+    this.optimisticProjection.dispose();
     this.liveReconcileSessionKeys.clear();
     this.liveReconcileInFlightSessionKeys.clear();
     this.latestStateEventBySessionKey.clear();
@@ -299,6 +341,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     if (!agentSessionId) return;
     const entry = this.entry(workspaceId);
     entry.engine.dispatch({ agentSessionId, type: "session/removed" });
+    this.optimisticProjection.reset(workspaceId, agentSessionId);
     this.liveReconcileSessionKeys.delete(
       this.sessionKey(workspaceId, agentSessionId)
     );
@@ -399,6 +442,29 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         (event) => {
           const payload = event.payload;
           if (payload.workspaceId.trim() !== workspaceId) return;
+          if (payload.eventType === "message_delta") {
+            const delta = parseAgentActivityMessageDeltaEvent(payload);
+            if (!delta) {
+              const agentSessionId = payload.agentSessionId.trim();
+              this.reportReconcileTrace({
+                agentSessionId: agentSessionId || null,
+                traceEvent: "realtime.message_delta_invalid",
+                workspaceId
+              });
+              if (agentSessionId) {
+                this.entry(workspaceId).engine.dispatch({
+                  agentSessionId,
+                  needsMessages: true,
+                  needsState: false,
+                  type: "session/reconcileRequested",
+                  workspaceId
+                });
+              }
+              return;
+            }
+            this.scheduleAgentActivityUpdate(delta);
+            return;
+          }
           this.scheduleAgentActivityUpdate(payload);
         },
         { scope: { workspaceId } }
@@ -519,6 +585,35 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       });
       return;
     }
+    if (input.eventType === "message_delta") {
+      const applied = this.optimisticProjection.apply(input);
+      if (applied.applied) {
+        const message = (
+          this.activitySnapshot(workspaceId).sessionMessagesById[
+            agentSessionId
+          ] ?? []
+        ).find((candidate) => candidate.messageId === input.data.messageId);
+        if (message) {
+          this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
+        }
+      }
+      if (applied.needsReconcile) {
+        this.reportReconcileTrace({
+          agentSessionId,
+          traceEvent: "realtime.message_delta_reconcile_required",
+          workspaceId,
+          fields: { reason: applied.reason ?? "unknown" }
+        });
+        this.entry(workspaceId).engine.dispatch({
+          agentSessionId,
+          needsMessages: true,
+          needsState: !this.hasCachedSession(workspaceId, agentSessionId),
+          type: "session/reconcileRequested",
+          workspaceId
+        });
+      }
+      return;
+    }
     const hasCachedSession = this.hasCachedSession(workspaceId, agentSessionId);
     const messages = parseInlineActivityMessages(input);
     const cachedMessages =
@@ -542,6 +637,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       for (const message of messages) {
         this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
       }
+      this.reconcileOptimisticMessages(workspaceId, agentSessionId);
     } else if (messages.length > 0) {
       this.reportReconcileTrace({
         agentSessionId,
@@ -709,6 +805,9 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       type: "message/snapshotReceived",
       workspaceId
     });
+    for (const { agentSessionId: reconciledSessionId } of pages) {
+      this.reconcileOptimisticMessages(workspaceId, reconciledSessionId);
+    }
     this.emitLatestStateEvent(workspaceId, agentSessionId);
   }
 
@@ -817,6 +916,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       type: "message/snapshotReceived",
       workspaceId
     });
+    this.reconcileOptimisticMessages(workspaceId, agentSessionId);
   }
 
   private async reconcileAgentSessionState(

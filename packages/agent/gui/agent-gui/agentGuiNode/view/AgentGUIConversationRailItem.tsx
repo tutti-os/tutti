@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { NewWorkspaceLinedIcon, cn } from "@tutti-os/ui-system";
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
@@ -106,6 +106,7 @@ export const AgentGUIConversationRailItem = memo(
   }: AgentGUIConversationRailItemProps): React.JSX.Element {
     "use memo";
     const pinned = (item.pinnedAtUnixMs ?? 0) > 0;
+    const [actionsActivated, setActionsActivated] = useState(false);
     const agentTargets = useAgentTargetPresentations();
     const conversationIcon = agentGUIConversationIconPresentation(
       item.provider,
@@ -185,9 +186,13 @@ export const AgentGUIConversationRailItem = memo(
           if (isRailInteractionLocked()) {
             event.preventDefault();
             event.stopPropagation();
+            return;
           }
+          setActionsActivated(true);
         }}
+        onFocusCapture={() => setActionsActivated(true)}
         onMouseLeave={handleMouseLeave}
+        onPointerEnter={() => setActionsActivated(true)}
       >
         <button
           type="button"
@@ -229,7 +234,7 @@ export const AgentGUIConversationRailItem = memo(
           </span>
           <AgentGUIConversationRailRelativeTime item={item} labels={labels} />
         </button>
-        {
+        {actionsActivated || isPendingDeleteConversation ? (
           <div className={styles.conversationActions}>
             {isPendingDeleteConversation ? (
               <button
@@ -319,7 +324,7 @@ export const AgentGUIConversationRailItem = memo(
               </>
             )}
           </div>
-        }
+        ) : null}
       </div>
     );
 

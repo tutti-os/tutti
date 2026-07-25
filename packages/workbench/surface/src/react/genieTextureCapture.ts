@@ -11,18 +11,82 @@ export interface PreparedGenieTextureCapture {
   rect: WorkbenchGenieViewportRect;
 }
 
+interface ReadableStylesheetFingerprint {
+  disabled: boolean;
+  ownerText: string | null;
+  ruleCount: number;
+  stylesheet: CSSStyleSheet;
+}
+
+interface CachedReadableStylesheetText {
+  fingerprints: ReadableStylesheetFingerprint[];
+  text: string;
+}
+
+const readableStylesheetTextByDocument = new WeakMap<
+  Document,
+  CachedReadableStylesheetText
+>();
+
+function hasSameStylesheetFingerprints(
+  left: ReadableStylesheetFingerprint[],
+  right: ReadableStylesheetFingerprint[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((fingerprint, index) => {
+      const candidate = right[index];
+      return (
+        candidate?.stylesheet === fingerprint.stylesheet &&
+        candidate.disabled === fingerprint.disabled &&
+        candidate.ruleCount === fingerprint.ruleCount &&
+        candidate.ownerText === fingerprint.ownerText
+      );
+    })
+  );
+}
+
 function collectReadableStylesheetText(document: Document): string {
-  const rules: string[] = [];
+  const readableStylesheets: {
+    fingerprint: ReadableStylesheetFingerprint;
+    rules: CSSRuleList;
+  }[] = [];
   for (const stylesheet of Array.from(document.styleSheets)) {
     try {
-      for (const rule of Array.from(stylesheet.cssRules)) {
-        rules.push(rule.cssText);
-      }
+      const rules = stylesheet.cssRules;
+      readableStylesheets.push({
+        fingerprint: {
+          disabled: stylesheet.disabled,
+          ownerText:
+            stylesheet.ownerNode instanceof HTMLStyleElement
+              ? stylesheet.ownerNode.textContent
+              : null,
+          ruleCount: rules.length,
+          stylesheet
+        },
+        rules
+      });
     } catch {
       // Browsers do not expose rules from cross-origin stylesheets.
     }
   }
-  return rules.join("\n");
+
+  const fingerprints = readableStylesheets.map(
+    ({ fingerprint }) => fingerprint
+  );
+  const cached = readableStylesheetTextByDocument.get(document);
+  if (
+    cached &&
+    hasSameStylesheetFingerprints(cached.fingerprints, fingerprints)
+  ) {
+    return cached.text;
+  }
+
+  const text = readableStylesheets
+    .flatMap(({ rules }) => Array.from(rules, (rule) => rule.cssText))
+    .join("\n");
+  readableStylesheetTextByDocument.set(document, { fingerprints, text });
+  return text;
 }
 
 function collectImageClones(
@@ -33,6 +97,8 @@ function collectImageClones(
     return {
       displayHeight: rect.height,
       displayWidth: rect.width,
+      naturalHeight: image.naturalHeight,
+      naturalWidth: image.naturalWidth,
       url: image.currentSrc || image.src || image.getAttribute("src") || null
     };
   });

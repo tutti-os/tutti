@@ -53,6 +53,7 @@ const (
 	messageStreamStateFailed    = "failed"
 
 	StreamEventMessageUpdate     = "message_update"
+	StreamEventMessageDelta      = "message_delta"
 	StreamEventStatePatch        = "state_patch"
 	StreamEventAvailableCommands = "available_commands_update"
 	StreamEventConfigOptions     = "config_options_update"

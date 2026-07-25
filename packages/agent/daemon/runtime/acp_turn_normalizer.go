@@ -1,11 +1,13 @@
 package agentruntime
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"sync"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
 )
 
 type pendingToolCallSnapshot struct {
@@ -24,6 +26,9 @@ type acpTurnNormalizer struct {
 	toolItemIDs               map[string]string
 	toolCallsSeen             map[string]bool
 	pendingToolCalls          map[string]pendingToolCallSnapshot
+	toolOutputText            map[string]string
+	earlyToolOutput           map[string]earlyToolOutputSnapshot
+	earlyToolOutputBytes      int
 	fileChanges               map[string]any
 	compactionMu              sync.Mutex
 	compactionMessageID       string
@@ -112,6 +117,8 @@ func newACPTurnNormalizer() *acpTurnNormalizer {
 		toolItemIDs:      make(map[string]string),
 		toolCallsSeen:    make(map[string]bool),
 		pendingToolCalls: make(map[string]pendingToolCallSnapshot),
+		toolOutputText:   make(map[string]string),
+		earlyToolOutput:  make(map[string]earlyToolOutputSnapshot),
 	}
 }
 
@@ -127,15 +134,24 @@ func (n *acpTurnNormalizer) AppendAssistantChunk(session Session, turnID string,
 		n.assistantContent.Reset()
 		n.assistantSegmentCompleted = false
 	}
-	n.mergeAssistantText(chunk)
-	return []activityshared.Event{n.assistantSnapshotEvent(session, turnID, messageStreamStateStreaming)}
+	liveOperation := n.mergeAssistantText(chunk)
+	if liveOperation == nil {
+		// Duplicate and backtracking provider snapshots do not change the
+		// normalized message. Suppress them here so they cannot fall through
+		// the stream projection as full precommit message_update snapshots.
+		return nil
+	}
+	event := n.assistantSnapshotEvent(session, turnID, messageStreamStateStreaming)
+	attachTextLiveOperation(&event, liveOperation, RoleAssistant, "text")
+	return []activityshared.Event{event}
 }
 
 func (n *acpTurnNormalizer) AppendThinkingChunk(session Session, turnID string, chunk string) []activityshared.Event {
 	if n == nil || chunk == "" {
 		return nil
 	}
-	if n.thinkingMessageID == "" || n.thinkingSegmentCompleted {
+	firstChunk := n.thinkingMessageID == "" || n.thinkingSegmentCompleted
+	if firstChunk {
 		n.thinkingMessageID = newID()
 		n.thinkingContent.Reset()
 		n.thinkingSegmentCompleted = false
@@ -146,7 +162,14 @@ func (n *acpTurnNormalizer) AppendThinkingChunk(session Session, turnID string, 
 		// Defer emission until item/completed supplies the authoritative summary.
 		return nil
 	}
-	return []activityshared.Event{n.thinkingSnapshotEvent(session, turnID, messageStreamStateStreaming)}
+	event := n.thinkingSnapshotEvent(session, turnID, messageStreamStateStreaming)
+	operation := &liveprotocol.MessageContentOperation{Operation: "append_text", Text: chunk}
+	if firstChunk {
+		value, _ := json.Marshal(chunk)
+		operation = &liveprotocol.MessageContentOperation{Operation: "set", Value: value}
+	}
+	attachTextLiveOperation(&event, operation, RoleAssistantThinking, "reasoning")
+	return []activityshared.Event{event}
 }
 
 // CurrentAssistantText returns the text of the assistant segment currently
@@ -281,9 +304,9 @@ func (n *acpTurnNormalizer) FailAssistantSnapshot(
 	return n.Finish(session, turnID, messageStreamStateFailed)
 }
 
-func (n *acpTurnNormalizer) mergeAssistantText(next string) {
+func (n *acpTurnNormalizer) mergeAssistantText(next string) *liveprotocol.MessageContentOperation {
 	if n == nil || next == "" {
-		return
+		return nil
 	}
 	current := n.assistantContent.String()
 	trimmedCurrent := strings.TrimSpace(current)
@@ -291,15 +314,25 @@ func (n *acpTurnNormalizer) mergeAssistantText(next string) {
 	switch {
 	case current == "":
 		_, _ = n.assistantContent.WriteString(next)
+		value, _ := json.Marshal(next)
+		return &liveprotocol.MessageContentOperation{Operation: "set", Value: value}
 	case next == current || trimmedNext == trimmedCurrent:
-		return
-	case strings.HasPrefix(next, current) || strings.HasPrefix(trimmedNext, trimmedCurrent):
+		return nil
+	case strings.HasPrefix(next, current):
+		suffix := strings.TrimPrefix(next, current)
 		n.assistantContent.Reset()
 		_, _ = n.assistantContent.WriteString(next)
+		return &liveprotocol.MessageContentOperation{Operation: "append_text", Text: suffix}
+	case strings.HasPrefix(trimmedNext, trimmedCurrent):
+		n.assistantContent.Reset()
+		_, _ = n.assistantContent.WriteString(next)
+		value, _ := json.Marshal(next)
+		return &liveprotocol.MessageContentOperation{Operation: "set", Value: value}
 	case strings.HasPrefix(current, next) || strings.HasPrefix(trimmedCurrent, trimmedNext):
-		return
+		return nil
 	default:
 		_, _ = n.assistantContent.WriteString(next)
+		return &liveprotocol.MessageContentOperation{Operation: "append_text", Text: next}
 	}
 }
 
@@ -389,6 +422,7 @@ func (n *acpTurnNormalizer) ToolCallEvents(session Session, turnID string, updat
 		}
 		return appendTurnFileChangesEvent(nil, []activityshared.Event{event}, event), true
 	}
+	rawToolCallID := firstNonEmpty(asString(update["toolCallId"]), asString(update["id"]))
 	eventID := n.toolItemID(update)
 	if eventID == "" {
 		return nil, false
@@ -400,6 +434,7 @@ func (n *acpTurnNormalizer) ToolCallEvents(session Session, turnID string, updat
 	n.trackToolCallEvent(event)
 	events := n.Finish(session, turnID, messageStreamStateCompleted)
 	events = append(events, event)
+	events = append(events, n.consumeEarlyToolOutput(session, turnID, rawToolCallID)...)
 	events = appendTurnFileChangesEvent(n, events, event)
 	return events, true
 }
@@ -451,12 +486,14 @@ func (n *acpTurnNormalizer) StandardToolCallEvents(session Session, turnID strin
 		}
 		return appendTurnFileChangesEvent(nil, []activityshared.Event{event}, event), true
 	}
+	rawToolCallID := firstNonEmpty(asString(update["toolCallId"]), asString(update["callId"]), asString(update["id"]))
 	event, ok := n.StandardToolCallEvent(session, turnID, updateType, update)
 	if !ok {
 		return nil, false
 	}
 	events := n.Finish(session, turnID, messageStreamStateCompleted)
 	events = append(events, event)
+	events = append(events, n.consumeEarlyToolOutput(session, turnID, rawToolCallID)...)
 	events = appendTurnFileChangesEvent(n, events, event)
 	return events, true
 }
@@ -513,6 +550,13 @@ func (n *acpTurnNormalizer) toolItemID(update map[string]any) string {
 	return id
 }
 
+func (n *acpTurnNormalizer) knownToolItemID(rawToolCallID string) string {
+	if n == nil {
+		return ""
+	}
+	return n.toolItemIDs[strings.TrimSpace(rawToolCallID)]
+}
+
 // KnownToolCallInput returns the last recorded normalized input for a raw ACP
 // toolCallId, if the normalizer has already seen a `tool_call`/`tool_call_update`
 // for it in this turn. Some ACP providers (Cursor) omit `rawInput` on the
@@ -565,6 +609,7 @@ func (n *acpTurnNormalizer) trackToolCallEvent(event activityshared.Event) {
 		}
 	case activityshared.EventCallCompleted, activityshared.EventCallFailed:
 		delete(n.pendingToolCalls, event.EventID)
+		delete(n.toolOutputText, event.EventID)
 	}
 }
 
@@ -759,11 +804,12 @@ func (n *acpTurnNormalizer) assistantSnapshotEvent(session Session, turnID strin
 	case messageStreamStateFailed:
 		status = messageStreamStateFailed
 	}
-	return newTurnActivityEventWithID(session, n.assistantMessageID, EventMessage, turnID, status, RoleAssistant, n.assistantContent.String(), map[string]any{
+	event := newTurnActivityEventWithID(session, n.assistantMessageID, EventMessage, turnID, status, RoleAssistant, n.assistantContent.String(), map[string]any{
 		"messageId":   n.assistantMessageID,
 		"contentMode": messageContentModeSnapshot,
 		"streamState": status,
 	})
+	return event
 }
 
 func (n *acpTurnNormalizer) thinkingSnapshotEvent(session Session, turnID string, streamState string) activityshared.Event {
@@ -782,5 +828,45 @@ func (n *acpTurnNormalizer) thinkingSnapshotEvent(session Session, turnID string
 	if messageKind := strings.TrimSpace(n.thinkingMessageKind); messageKind != "" {
 		metadata["messageKind"] = messageKind
 	}
-	return newTurnActivityEventWithID(session, n.thinkingMessageID, EventMessage, turnID, status, RoleAssistantThinking, n.thinkingContent.String(), metadata)
+	event := newTurnActivityEventWithID(session, n.thinkingMessageID, EventMessage, turnID, status, RoleAssistantThinking, n.thinkingContent.String(), metadata)
+	return event
+}
+
+const (
+	liveContentOperationMetadataKey    = "_tuttiLiveContentOperation"
+	liveToolOutputOperationMetadataKey = "_tuttiLiveToolOutputOperation"
+	liveMessageRoleMetadataKey         = "_tuttiLiveMessageRole"
+	liveMessageKindMetadataKey         = "_tuttiLiveMessageKind"
+)
+
+func attachTextLiveOperation(
+	event *activityshared.Event,
+	operation *liveprotocol.MessageContentOperation,
+	role string,
+	kind string,
+) {
+	if event == nil || operation == nil {
+		return
+	}
+	if event.Payload.Metadata == nil {
+		event.Payload.Metadata = map[string]any{}
+	}
+	event.Payload.Metadata[liveContentOperationMetadataKey] = operation
+	event.Payload.Metadata[liveMessageRoleMetadataKey] = role
+	event.Payload.Metadata[liveMessageKindMetadataKey] = kind
+}
+
+func attachToolOutputLiveOperation(
+	event *activityshared.Event,
+	operation *liveprotocol.MessageToolOutputOperation,
+) {
+	if event == nil || operation == nil {
+		return
+	}
+	if event.Payload.Metadata == nil {
+		event.Payload.Metadata = map[string]any{}
+	}
+	event.Payload.Metadata[liveToolOutputOperationMetadataKey] = operation
+	event.Payload.Metadata[liveMessageRoleMetadataKey] = RoleAssistant
+	event.Payload.Metadata[liveMessageKindMetadataKey] = "tool_call"
 }

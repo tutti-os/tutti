@@ -1,4 +1,7 @@
-import type { AgentActivityUpdatedEvent } from "@tutti-os/agent-activity-core";
+import {
+  parseAgentActivityMessageDeltaEvent,
+  type AgentActivityUpdatedEvent
+} from "@tutti-os/agent-activity-core";
 import type { TuttidEventStreamClient } from "@tutti-os/client-tuttid-ts";
 import type { WorkspaceAgentSessionEngineHost } from "./workspaceAgentSessionEngineHost.ts";
 
@@ -16,6 +19,24 @@ export function subscribeWorkspaceAgentScopedEvents(input: {
     (event) => {
       const payload = event.payload;
       if (payload.workspaceId.trim() !== input.workspaceId) return;
+      if (payload.eventType === "message_delta") {
+        const delta = parseAgentActivityMessageDeltaEvent(payload);
+        if (delta) {
+          input.onAgentActivityUpdated(delta);
+        } else {
+          const agentSessionId = payload.agentSessionId.trim();
+          if (agentSessionId) {
+            input.sessionEngineHost?.engine.dispatch({
+              agentSessionId,
+              needsMessages: true,
+              needsState: false,
+              type: "session/reconcileRequested",
+              workspaceId: input.workspaceId
+            });
+          }
+        }
+        return;
+      }
       input.onAgentActivityUpdated(payload);
     },
     { scope: { workspaceId: input.workspaceId } }

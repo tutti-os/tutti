@@ -123,6 +123,7 @@ export function richTextTriggerQueryMatchToMentionRowItem<
     return {
       kind: "issue",
       creatorName: description,
+      iconUrl,
       statusTag: resolveMentionRowStatusTag(match, "issue", options),
       title: label
     };

@@ -70,7 +70,8 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 func appServerNotificationUsesNormalizer(method string) bool {
 	switch method {
 	case appServerNotifyAgentMessageDelta, appServerNotifyReasoningDelta, appServerNotifyReasoningSummary,
-		appServerNotifyItemStarted, appServerNotifyItemCompleted, appServerNotifyPlanUpdated:
+		appServerNotifyItemStarted, appServerNotifyItemCompleted, appServerNotifyCommandOutputDelta,
+		appServerNotifyPlanUpdated:
 		return true
 	default:
 		return false
