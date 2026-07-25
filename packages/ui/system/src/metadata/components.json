@@ -113,7 +113,7 @@
       "migrationHints": [
         "Pass a stable label even when src is available so broken images have a meaningful fallback.",
         "Pass a directly consumable CloudFront URL; Avatar defaults to a bucketed 2x WebP request and retries the original URL if delivery fails.",
-        "Use delivery=\"original\" only when the source must be requested without image-delivery parameters.",
+        "Sources are requested unchanged by default; pass transform only when the caller knows the URL supports image-delivery query parameters.",
         "Use children for caller-owned presence badges and other overlays."
       ],
       "storyboard": true

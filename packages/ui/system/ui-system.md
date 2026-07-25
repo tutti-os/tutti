@@ -52,14 +52,15 @@ disabled, keyboard-focus, and overlay states.
 ## Avatar foundation
 
 `Avatar` is the single high-level identity-image primitive. It owns decorative
-image loading, rendered-box-aware CloudFront image delivery, broken-image
-fallback, initial or empty fallback modes, loading presentation, named or
-numeric sizing, and a caller-owned overlay slot through `children`. By default,
-HTTP(S) sources request a bucketed two-times-size WebP variant with
-`fit=inside`; `delivery="original"` leaves the source unchanged. A failed
-variant retries the original source once. Consumers own identity resolution,
-directly consumable image URLs, labels, fallback colors, presence semantics,
-and overlay content. They never pass buckets or object keys to the component.
+image loading, rendered-box-aware image transformation, broken-image fallback,
+initial or empty fallback modes, loading presentation, named or numeric sizing,
+and a caller-owned overlay slot through `children`. Sources are requested
+unchanged by default. When the caller passes `transform`, HTTP(S) sources
+request a bucketed two-times-size WebP variant with `fit=inside`, while
+preserving the original query string. A failed variant retries the original
+source once. Consumers own identity resolution, directly consumable image URLs,
+transformation capability, labels, fallback colors, presence semantics, and
+overlay content. They never pass buckets or object keys to the component.
 The underlying Radix/shadcn parts are intentionally not public. `fallbackColor`
 is the narrow exception for caller-owned dynamic identity data; component
 defaults still use semantic tokens. Initial fallback content appears only when

@@ -150,8 +150,6 @@ describe("Avatar", () => {
     );
 
     finishPreload("error");
-    expect(preloadedImages.at(-1)?.src).toBe("https://example.test/avatar.png");
-    finishPreload("error");
 
     expect(screen.getByTestId("avatar")).toHaveAttribute(
       "data-avatar-state",
@@ -182,7 +180,6 @@ describe("Avatar", () => {
     ).toHaveClass("bg-transparent");
 
     finishPreload("error");
-    finishPreload("error");
     expect(screen.getByTestId("avatar")).toHaveTextContent("J");
   });
 
@@ -200,8 +197,6 @@ describe("Avatar", () => {
 
     finishPreload("loaded");
     fireEvent.error(screen.getByTestId("avatar-image"));
-    expect(preloadedImages.at(-1)?.src).toBe("https://example.test/avatar.png");
-    finishPreload("error");
 
     expect(screen.getByTestId("avatar")).toHaveAttribute(
       "data-avatar-state",
@@ -219,6 +214,7 @@ describe("Avatar", () => {
         fallbackSrc="https://original.example.test/avatar.png"
         label="Jun Sun"
         src="https://images.example.test/capability?Policy=signed"
+        transform
       />
     );
 
@@ -314,28 +310,29 @@ describe("Avatar", () => {
 
     expect(screen.getByTestId("avatar-image")).toHaveAttribute(
       "src",
-      expect.stringContaining("https://example.test/a.png?")
+      "https://example.test/a.png"
     );
   });
 
-  it("requests a bucketed 2x WebP image and preserves unrelated query params", () => {
-    render(
-      <Avatar
-        label="Jun Sun"
-        size="lg"
-        src="https://cdn.example.test/avatar.png?token=preserved"
-      />
-    );
+  it("requests a bucketed 2x WebP image and preserves the original query string", () => {
+    const original =
+      "https://cdn.example.test/avatar.png?Policy=a%2Bb&Signature=c%20d";
+
+    render(<Avatar label="Jun Sun" size="lg" src={original} transform />);
 
     const source = preloadedImages.at(-1)?.src;
     expect(source).toBeDefined();
     expectDeliveryUrl(source ?? "", { height: "96", width: "96" });
-    expect(new URL(source ?? "").searchParams.get("token")).toBe("preserved");
+    expect(source?.startsWith(`${original}&`)).toBe(true);
   });
 
-  it("updates delivery dimensions from the rendered avatar box", () => {
+  it("updates transform dimensions from the rendered avatar box", () => {
     render(
-      <Avatar label="Jun Sun" src="https://cdn.example.test/avatar.png" />
+      <Avatar
+        label="Jun Sun"
+        src="https://cdn.example.test/avatar.png"
+        transform
+      />
     );
 
     act(() => {
@@ -348,10 +345,9 @@ describe("Avatar", () => {
     });
   });
 
-  it("supports requesting the original source without delivery params", () => {
+  it("requests the original source by default", () => {
     render(
       <Avatar
-        delivery="original"
         label="Jun Sun"
         src="https://cdn.example.test/avatar.png?token=preserved"
       />
@@ -363,7 +359,13 @@ describe("Avatar", () => {
   });
 
   it("does not transform non-HTTP image sources", () => {
-    render(<Avatar label="Jun Sun" src="data:image/png;base64,cHJldmlldw==" />);
+    render(
+      <Avatar
+        label="Jun Sun"
+        src="data:image/png;base64,cHJldmlldw=="
+        transform
+      />
+    );
 
     expect(preloadedImages.at(-1)?.src).toBe(
       "data:image/png;base64,cHJldmlldw=="
@@ -376,6 +378,7 @@ describe("Avatar", () => {
         imageProps={{ "data-testid": "avatar-image" }}
         label="Jun Sun"
         src="https://cdn.example.test/avatar.png?token=preserved"
+        transform
       />
     );
 

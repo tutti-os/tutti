@@ -15,23 +15,31 @@ URL:
 <Avatar label={user.displayName} size={40} src={user.avatarUrl} />
 ```
 
-For an HTTP(S) URL, the default `delivery="auto"` mode:
+By default, `Avatar` requests `src` unchanged. Pass `transform` when the caller
+knows that the URL supports image-delivery query parameters:
+
+```tsx
+<Avatar
+  label={user.displayName}
+  size={40}
+  src={user.avatarUrl}
+  transform={user.avatarClientTransform}
+/>
+```
+
+When `transform` is true, `Avatar`:
 
 - measures the rendered avatar box
 - requests twice its width and height
 - rounds each requested dimension up to
   `32, 48, 64, 96, 128, 192, 256, 384, or 512`
 - sets `format=webp` and `fit=inside`
-- preserves unrelated query parameters
+- appends the delivery parameters without rewriting, reordering, or removing
+  the source query string
 
-Use `delivery="original"` when the source must be requested unchanged:
-
-```tsx
-<Avatar delivery="original" label={user.displayName} src={user.avatarUrl} />
-```
-
-No delivery parameters means the original image. `data:`, `blob:`, `file:`,
-relative, and other non-HTTP(S) sources are left unchanged.
+When `transform` is false or omitted, no delivery parameters are added.
+`data:`, `blob:`, `file:`, relative, and other non-HTTP(S) sources are left
+unchanged even when `transform` is true.
 
 ## URL Contract
 
@@ -39,6 +47,8 @@ relative, and other non-HTTP(S) sources are left unchanged.
 - Production avatar URLs must point to the CloudFront image-delivery domain.
 - The URL must identify the original image and allow the browser to append the
   `width`, `height`, `format`, and `fit` query parameters.
+- Callers must pass `transform` only when their resource descriptor or delivery
+  metadata declares client-side transformation support.
 - Callers must never pass a bucket, object key, storage credential, or
   business-specific resource locator to this component.
 - Do not persist the generated transformed URL. Persist only the resource
@@ -83,7 +93,7 @@ When changing this component, cover:
 - WebP and `fit=inside` query parameters
 - preservation of unrelated query parameters
 - rendered-size updates through `ResizeObserver`
-- explicit original mode and non-HTTP(S) sources
+- default original mode and non-HTTP(S) sources
 - transformed-image failure, original retry, and final fallback
 
 Run:
