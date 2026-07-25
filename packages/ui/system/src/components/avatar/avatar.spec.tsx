@@ -238,6 +238,26 @@ describe("Avatar", () => {
     );
   });
 
+  it("does not request the fallback image when no source was provided", () => {
+    render(
+      <Avatar
+        data-testid="avatar"
+        fallbackSrc="https://fallback.example.test/avatar.png"
+        initial="J"
+        label="Jun Sun"
+      />
+    );
+
+    expect(preloadedImages.map((image) => image.src)).not.toContain(
+      "https://fallback.example.test/avatar.png"
+    );
+    expect(screen.getByTestId("avatar")).toHaveAttribute(
+      "data-avatar-state",
+      "initial"
+    );
+    expect(screen.getByTestId("avatar")).toHaveTextContent("J");
+  });
+
   it("supports an intentionally empty fallback and numeric sizing", () => {
     render(
       <Avatar

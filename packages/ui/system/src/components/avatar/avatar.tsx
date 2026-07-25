@@ -159,6 +159,7 @@ function Avatar({
     ? normalizedSrc
     : transformedImageSrc;
   const shouldUseFallback =
+    normalizedSrc.length > 0 &&
     originalCandidateSrc === normalizedSrc &&
     failedOriginalUrl === normalizedSrc;
   const effectiveImageSrc = loading
