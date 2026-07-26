@@ -110,6 +110,53 @@ type AsyncExecAdapter interface {
 	ExecAsync(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) error
 }
 
+type EffectiveHistoryTurn struct {
+	ID                  string
+	Status              string
+	ClientUserMessageID string
+}
+
+// EffectiveHistorySnapshot is the provider's authoritative thread membership
+// after a read or rollback. Canonical messages remain store-owned.
+type EffectiveHistorySnapshot struct {
+	ProviderSessionID string
+	Turns             []EffectiveHistoryTurn
+}
+
+type HistoryMutationResult struct {
+	Disposition DispatchDisposition
+	Snapshot    *EffectiveHistorySnapshot
+}
+
+type HistoryReplacementExecInput struct {
+	Content       []PromptContentBlock
+	DisplayPrompt string
+	TurnID        string
+}
+
+// ProviderDispatchSink reports the provider's direct replacement-start
+// outcome. Implementations must report exactly once before
+// ExecHistoryReplacement returns.
+type ProviderDispatchSink func(ProviderDispatchResult)
+
+// EffectiveHistoryAdapter is the complete provider capability required by
+// edit-retry: authoritative history reads, rollback, and a fresh replacement
+// turn start with typed acceptance evidence. Shared code fails closed unless
+// the provider implements the entire seam.
+type EffectiveHistoryAdapter interface {
+	Adapter
+	ReadEffectiveHistory(context.Context, Session) (EffectiveHistorySnapshot, error)
+	RollbackLatestTurn(context.Context, Session) (HistoryMutationResult, error)
+	ExecHistoryReplacement(
+		context.Context,
+		Session,
+		HistoryReplacementExecInput,
+		EventSink,
+		CommandSnapshotSink,
+		ProviderDispatchSink,
+	) ([]activityshared.Event, error)
+}
+
 // RootProviderTurnLifecycleAdapter reports provider-turn lifecycle facts
 // without claiming the canonical root WorkspaceAgentTurn is terminal. The
 // durable daemon settles that root turn after checking every child turn.

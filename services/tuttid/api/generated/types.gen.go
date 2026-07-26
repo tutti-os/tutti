@@ -2398,6 +2398,117 @@ func (e WorkspaceAgentCompletedCommandStatus) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentEditRetryAvailabilityRecoveryState.
+const (
+	WorkspaceAgentEditRetryAvailabilityRecoveryStateCompleted        WorkspaceAgentEditRetryAvailabilityRecoveryState = "completed"
+	WorkspaceAgentEditRetryAvailabilityRecoveryStatePrepared         WorkspaceAgentEditRetryAvailabilityRecoveryState = "prepared"
+	WorkspaceAgentEditRetryAvailabilityRecoveryStateRecoveryRequired WorkspaceAgentEditRetryAvailabilityRecoveryState = "recovery_required"
+	WorkspaceAgentEditRetryAvailabilityRecoveryStateResendPending    WorkspaceAgentEditRetryAvailabilityRecoveryState = "resend_pending"
+	WorkspaceAgentEditRetryAvailabilityRecoveryStateRollingBack      WorkspaceAgentEditRetryAvailabilityRecoveryState = "rolling_back"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentEditRetryAvailabilityRecoveryState enum.
+func (e WorkspaceAgentEditRetryAvailabilityRecoveryState) Valid() bool {
+	switch e {
+	case WorkspaceAgentEditRetryAvailabilityRecoveryStateCompleted:
+		return true
+	case WorkspaceAgentEditRetryAvailabilityRecoveryStatePrepared:
+		return true
+	case WorkspaceAgentEditRetryAvailabilityRecoveryStateRecoveryRequired:
+		return true
+	case WorkspaceAgentEditRetryAvailabilityRecoveryStateResendPending:
+		return true
+	case WorkspaceAgentEditRetryAvailabilityRecoveryStateRollingBack:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentEditRetryReasonCode.
+const (
+	WorkspaceAgentEditRetryReasonCodeHistoryRevisionConflict    WorkspaceAgentEditRetryReasonCode = "history_revision_conflict"
+	WorkspaceAgentEditRetryReasonCodeOperationConflict          WorkspaceAgentEditRetryReasonCode = "operation_conflict"
+	WorkspaceAgentEditRetryReasonCodeProviderOutcomeUnknown     WorkspaceAgentEditRetryReasonCode = "provider_outcome_unknown"
+	WorkspaceAgentEditRetryReasonCodeProviderUnsupported        WorkspaceAgentEditRetryReasonCode = "provider_unsupported"
+	WorkspaceAgentEditRetryReasonCodeRecoveryRequired           WorkspaceAgentEditRetryReasonCode = "recovery_required"
+	WorkspaceAgentEditRetryReasonCodeReplacementNotProvenAbsent WorkspaceAgentEditRetryReasonCode = "replacement_not_proven_absent"
+	WorkspaceAgentEditRetryReasonCodeTurnNotFound               WorkspaceAgentEditRetryReasonCode = "turn_not_found"
+	WorkspaceAgentEditRetryReasonCodeTurnNotLatest              WorkspaceAgentEditRetryReasonCode = "turn_not_latest"
+	WorkspaceAgentEditRetryReasonCodeTurnNotSettled             WorkspaceAgentEditRetryReasonCode = "turn_not_settled"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentEditRetryReasonCode enum.
+func (e WorkspaceAgentEditRetryReasonCode) Valid() bool {
+	switch e {
+	case WorkspaceAgentEditRetryReasonCodeHistoryRevisionConflict:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeOperationConflict:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeProviderOutcomeUnknown:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeProviderUnsupported:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeRecoveryRequired:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeReplacementNotProvenAbsent:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeTurnNotFound:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeTurnNotLatest:
+		return true
+	case WorkspaceAgentEditRetryReasonCodeTurnNotSettled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentEditRetryRecoveryAction.
+const (
+	WorkspaceAgentEditRetryRecoveryActionReconcile        WorkspaceAgentEditRetryRecoveryAction = "reconcile"
+	WorkspaceAgentEditRetryRecoveryActionRetryReplacement WorkspaceAgentEditRetryRecoveryAction = "retry_replacement"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentEditRetryRecoveryAction enum.
+func (e WorkspaceAgentEditRetryRecoveryAction) Valid() bool {
+	switch e {
+	case WorkspaceAgentEditRetryRecoveryActionReconcile:
+		return true
+	case WorkspaceAgentEditRetryRecoveryActionRetryReplacement:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentEditRetryResponseState.
+const (
+	WorkspaceAgentEditRetryResponseStateCompleted        WorkspaceAgentEditRetryResponseState = "completed"
+	WorkspaceAgentEditRetryResponseStatePrepared         WorkspaceAgentEditRetryResponseState = "prepared"
+	WorkspaceAgentEditRetryResponseStateRecoveryRequired WorkspaceAgentEditRetryResponseState = "recovery_required"
+	WorkspaceAgentEditRetryResponseStateResendPending    WorkspaceAgentEditRetryResponseState = "resend_pending"
+	WorkspaceAgentEditRetryResponseStateRollingBack      WorkspaceAgentEditRetryResponseState = "rolling_back"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentEditRetryResponseState enum.
+func (e WorkspaceAgentEditRetryResponseState) Valid() bool {
+	switch e {
+	case WorkspaceAgentEditRetryResponseStateCompleted:
+		return true
+	case WorkspaceAgentEditRetryResponseStatePrepared:
+		return true
+	case WorkspaceAgentEditRetryResponseStateRecoveryRequired:
+		return true
+	case WorkspaceAgentEditRetryResponseStateResendPending:
+		return true
+	case WorkspaceAgentEditRetryResponseStateRollingBack:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentInteractionKind.
 const (
 	Approval WorkspaceAgentInteractionKind = "approval"
@@ -5234,6 +5345,13 @@ type DuplicateModelPlanRequest struct {
 	Name *string `json:"name,omitempty"`
 }
 
+// EditRetryWorkspaceAgentTurnRequest defines model for EditRetryWorkspaceAgentTurnRequest.
+type EditRetryWorkspaceAgentTurnRequest struct {
+	ClientOperationId       string `json:"clientOperationId"`
+	EditedText              string `json:"editedText"`
+	ExpectedHistoryRevision int64  `json:"expectedHistoryRevision"`
+}
+
 // EstimateIssueManagerAutoTokenBudgetRequest defines model for EstimateIssueManagerAutoTokenBudgetRequest.
 type EstimateIssueManagerAutoTokenBudgetRequest struct {
 	ExecutionProfile IssueManagerExecutionProfile           `json:"executionProfile"`
@@ -6150,6 +6268,11 @@ type PutWorkspaceWorkbenchRequest struct {
 	Snapshot WorkbenchSnapshot `json:"snapshot"`
 }
 
+// RecoverWorkspaceAgentEditRetryRequest defines model for RecoverWorkspaceAgentEditRetryRequest.
+type RecoverWorkspaceAgentEditRetryRequest struct {
+	Action WorkspaceAgentEditRetryRecoveryAction `json:"action"`
+}
+
 // ReloadLocalWorkspaceAppRequest defines model for ReloadLocalWorkspaceAppRequest.
 type ReloadLocalWorkspaceAppRequest struct {
 	// RestartRunning Restart the app runtime if it is already running.
@@ -6798,6 +6921,40 @@ type WorkspaceAgentCompletedCommandKind string
 // WorkspaceAgentCompletedCommandStatus defines model for WorkspaceAgentCompletedCommand.Status.
 type WorkspaceAgentCompletedCommandStatus string
 
+// WorkspaceAgentEditRetryAvailability defines model for WorkspaceAgentEditRetryAvailability.
+type WorkspaceAgentEditRetryAvailability struct {
+	AvailableActions []WorkspaceAgentEditRetryRecoveryAction          `json:"availableActions"`
+	Eligible         bool                                             `json:"eligible"`
+	HistoryRevision  int64                                            `json:"historyRevision"`
+	OperationId      *string                                          `json:"operationId,omitempty"`
+	ReasonCode       *WorkspaceAgentEditRetryReasonCode               `json:"reasonCode,omitempty"`
+	RecoveryState    WorkspaceAgentEditRetryAvailabilityRecoveryState `json:"recoveryState"`
+	Supported        bool                                             `json:"supported"`
+	TurnId           *string                                          `json:"turnId,omitempty"`
+}
+
+// WorkspaceAgentEditRetryAvailabilityRecoveryState defines model for WorkspaceAgentEditRetryAvailability.RecoveryState.
+type WorkspaceAgentEditRetryAvailabilityRecoveryState string
+
+// WorkspaceAgentEditRetryReasonCode defines model for WorkspaceAgentEditRetryReasonCode.
+type WorkspaceAgentEditRetryReasonCode string
+
+// WorkspaceAgentEditRetryRecoveryAction defines model for WorkspaceAgentEditRetryRecoveryAction.
+type WorkspaceAgentEditRetryRecoveryAction string
+
+// WorkspaceAgentEditRetryResponse defines model for WorkspaceAgentEditRetryResponse.
+type WorkspaceAgentEditRetryResponse struct {
+	HistoryRevision   int64                                `json:"historyRevision"`
+	OperationId       string                               `json:"operationId"`
+	ReasonCode        *WorkspaceAgentEditRetryReasonCode   `json:"reasonCode,omitempty"`
+	ReplacementTurnId *string                              `json:"replacementTurnId,omitempty"`
+	RetractedTurnId   string                               `json:"retractedTurnId"`
+	State             WorkspaceAgentEditRetryResponseState `json:"state"`
+}
+
+// WorkspaceAgentEditRetryResponseState defines model for WorkspaceAgentEditRetryResponse.State.
+type WorkspaceAgentEditRetryResponseState string
+
 // WorkspaceAgentGeneratedFileEntry defines model for WorkspaceAgentGeneratedFileEntry.
 type WorkspaceAgentGeneratedFileEntry struct {
 	Label string `json:"label"`
@@ -6992,7 +7149,8 @@ type WorkspaceAgentSessionDetailProjection string
 // WorkspaceAgentSessionDetailResponse defines model for WorkspaceAgentSessionDetailResponse.
 type WorkspaceAgentSessionDetailResponse struct {
 	// ChildSessions Flat collection of every nested child session below session. Clients reconstruct the tree from the immutable parent fields.
-	ChildSessions []WorkspaceAgentSession `json:"childSessions"`
+	ChildSessions []WorkspaceAgentSession             `json:"childSessions"`
+	EditRetry     WorkspaceAgentEditRetryAvailability `json:"editRetry"`
 
 	// LifecycleCapabilitiesProjected Whether provider-backed lifecycle capability projection ran for session and childSessions. A full projection reports true even when a provider probe fails closed, because false then means the action is unavailable for this response. When false, projection was intentionally skipped and capability values must not be applied as authoritative.
 	LifecycleCapabilitiesProjected bool `json:"lifecycleCapabilitiesProjected"`
@@ -8443,6 +8601,9 @@ type ScanWorkspaceExternalAgentSessionImportsJSONRequestBody = ExternalAgentImpo
 // SetAgentSessionAutomationRuleOverrideJSONRequestBody defines body for SetAgentSessionAutomationRuleOverride for application/json ContentType.
 type SetAgentSessionAutomationRuleOverrideJSONRequestBody = SetAgentSessionAutomationRuleOverrideRequest
 
+// RecoverWorkspaceAgentEditRetryJSONRequestBody defines body for RecoverWorkspaceAgentEditRetry for application/json ContentType.
+type RecoverWorkspaceAgentEditRetryJSONRequestBody = RecoverWorkspaceAgentEditRetryRequest
+
 // ForkWorkspaceAgentSessionJSONRequestBody defines body for ForkWorkspaceAgentSession for application/json ContentType.
 type ForkWorkspaceAgentSessionJSONRequestBody = ForkWorkspaceAgentSessionRequest
 
@@ -8466,6 +8627,9 @@ type UpdateWorkspaceAgentSessionSettingsJSONRequestBody = AgentSessionComposerSe
 
 // UpdateWorkspaceAgentSessionTitleJSONRequestBody defines body for UpdateWorkspaceAgentSessionTitle for application/json ContentType.
 type UpdateWorkspaceAgentSessionTitleJSONRequestBody = UpdateWorkspaceAgentSessionTitleRequest
+
+// EditRetryWorkspaceAgentTurnJSONRequestBody defines body for EditRetryWorkspaceAgentTurn for application/json ContentType.
+type EditRetryWorkspaceAgentTurnJSONRequestBody = EditRetryWorkspaceAgentTurnRequest
 
 // SubmitWorkspaceAgentPlanDecisionJSONRequestBody defines body for SubmitWorkspaceAgentPlanDecision for application/json ContentType.
 type SubmitWorkspaceAgentPlanDecisionJSONRequestBody = SubmitWorkspaceAgentPlanDecisionRequest

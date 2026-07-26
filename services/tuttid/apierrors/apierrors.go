@@ -18,6 +18,7 @@ import (
 const (
 	StatusInvalidRequest             = 400
 	StatusMethodNotAllowed           = 405
+	StatusConflict                   = 409
 	StatusWorkspaceIssueExists       = 409
 	StatusWorkspaceNotFound          = 404
 	StatusWorkspaceFileNotFound      = 404

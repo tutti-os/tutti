@@ -205,6 +205,9 @@ import type {
   DuplicateModelPlanData,
   DuplicateModelPlanErrors,
   DuplicateModelPlanResponses,
+  EditRetryWorkspaceAgentTurnData,
+  EditRetryWorkspaceAgentTurnErrors,
+  EditRetryWorkspaceAgentTurnResponses,
   EstimateWorkspaceIssueAutoTokenBudgetData,
   EstimateWorkspaceIssueAutoTokenBudgetErrors,
   EstimateWorkspaceIssueAutoTokenBudgetResponses,
@@ -535,6 +538,9 @@ import type {
   ReconcileWorkspaceAgentSessionGoalData,
   ReconcileWorkspaceAgentSessionGoalErrors,
   ReconcileWorkspaceAgentSessionGoalResponses,
+  RecoverWorkspaceAgentEditRetryData,
+  RecoverWorkspaceAgentEditRetryErrors,
+  RecoverWorkspaceAgentEditRetryResponses,
   RefreshWorkspaceAppCatalogData,
   RefreshWorkspaceAppCatalogErrors,
   RefreshWorkspaceAppCatalogResponses,
@@ -3626,6 +3632,54 @@ export const cancelWorkspaceAgentTurn = <ThrowOnError extends boolean = false>(
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/cancel",
     ...options
+  });
+
+/**
+ * Edit and retry the latest completed user turn
+ *
+ * Starts or resumes one idempotent durable edit-retry operation. The operation retracts exactly one latest completed user turn from the effective provider history and submits its edited replacement while preserving non-text input. A completed operation returns 200; a durable operation that still needs confirmation or explicit recovery returns 202.
+ */
+export const editRetryWorkspaceAgentTurn = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<EditRetryWorkspaceAgentTurnData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    EditRetryWorkspaceAgentTurnResponses,
+    EditRetryWorkspaceAgentTurnErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/edit-retry",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Reconcile or safely retry one durable edit-retry operation
+ *
+ * Reconcile is provider-read-only. retry_replacement is accepted only after Host proves from authoritative provider history that the prior replacement was not dispatched.
+ */
+export const recoverWorkspaceAgentEditRetry = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<RecoverWorkspaceAgentEditRetryData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    RecoverWorkspaceAgentEditRetryResponses,
+    RecoverWorkspaceAgentEditRetryErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/edit-retry-operations/{operationID}/recover",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**

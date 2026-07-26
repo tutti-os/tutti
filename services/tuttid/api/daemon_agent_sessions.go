@@ -148,6 +148,7 @@ func (api DaemonAPI) GetWorkspaceAgentSession(ctx context.Context, request tutti
 		Turns:                          generatedAgentTurns(detail.Turns),
 		Projection:                     tuttigenerated.WorkspaceAgentSessionDetailProjection(projection),
 		LifecycleCapabilitiesProjected: projection == agentservice.SessionDetailProjectionFull,
+		EditRetry:                      generatedAgentEditRetryAvailability(detail.EditRetry),
 	}, nil
 }
 

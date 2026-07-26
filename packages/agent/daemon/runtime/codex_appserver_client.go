@@ -590,6 +590,23 @@ func (c *codexAppServerClient) ThreadRollback(
 	return caller.rawResult, nil
 }
 
+func (c *codexAppServerClient) ThreadRollbackNoHandler(
+	ctx context.Context,
+	timeout time.Duration,
+	params map[string]any,
+) (json.RawMessage, error) {
+	typedParams, err := codexProtoParams[codexproto.ThreadRollbackParams](params)
+	if err != nil {
+		return nil, err
+	}
+	client, caller := c.typed(timeout, nil, true)
+	_, err = client.ThreadRollback(ctx, typedParams)
+	if err != nil {
+		return nil, err
+	}
+	return caller.rawResult, nil
+}
+
 func (c *codexAppServerClient) ReviewStart(
 	ctx context.Context,
 	params map[string]any,

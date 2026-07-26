@@ -172,3 +172,31 @@ func TestPlanDecisionPendingOutboxProjectsDurableNoticeBeforeCompletion(t *testi
 		t.Fatalf("events=%#v", publisher.events)
 	}
 }
+
+func TestEditRetryOutboxProjectsSessionReconcileForEveryDurableState(t *testing.T) {
+	for _, kind := range []string{
+		agentactivitybiz.RuntimeOperationEventEditRetryPending,
+		agentactivitybiz.RuntimeOperationEventEditRetryRollback,
+		agentactivitybiz.RuntimeOperationEventEditRetryCompleted,
+		agentactivitybiz.RuntimeOperationEventEditRetryRecovery,
+	} {
+		t.Run(kind, func(t *testing.T) {
+			publisher := &activityUpdatePublisherStub{}
+			projection := NewActivityProjection(&activityProjectionRepoStub{})
+			projection.SetPublisher(publisher)
+			err := projection.PublishRuntimeOperationEvent(t.Context(), agentactivitybiz.RuntimeOperationEvent{
+				WorkspaceID: "ws-1", AgentSessionID: "session-1",
+				Kind: kind, CreatedAtUnixMS: 10,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(publisher.events) != 1 ||
+				publisher.events[0].eventType != "session_reconcile_required" ||
+				publisher.events[0].payload["eventType"] != "session_reconcile_required" ||
+				publisher.events[0].payload["lastEventUnixMs"] != int64(10) {
+				t.Fatalf("events=%#v", publisher.events)
+			}
+		})
+	}
+}

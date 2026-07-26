@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -10,7 +11,16 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, error) {
+func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResult, err error) {
+	if input.HistoryReplacement {
+		defer func() {
+			if err != nil && result.ProviderDispatch == nil {
+				result.ProviderDispatch = &ProviderDispatchResult{
+					Disposition: DispatchDispositionNotDispatched,
+				}
+			}
+		}()
+	}
 	releaseLifecycleLock := c.acquireLifecycleLock(input.RoomID, input.AgentSessionID)
 	defer releaseLifecycleLock()
 
@@ -28,6 +38,25 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	if canonicalSubmit.occurredAtUnixMS > 0 {
 		observeEventUnixMS(canonicalSubmit.occurredAtUnixMS)
 		ctx = withCanonicalSubmitFact(ctx, canonicalSubmit)
+	}
+	var historyAdapter EffectiveHistoryAdapter
+	if input.HistoryReplacement {
+		if input.Guidance {
+			return ExecResult{
+				ProviderDispatch: &ProviderDispatchResult{
+					Disposition: DispatchDispositionNotDispatched,
+				},
+			}, errors.New("history replacement cannot guide an active turn")
+		}
+		var ok bool
+		historyAdapter, ok = adapter.(EffectiveHistoryAdapter)
+		if !ok {
+			return ExecResult{
+				ProviderDispatch: &ProviderDispatchResult{
+					Disposition: DispatchDispositionNotDispatched,
+				},
+			}, ErrEffectiveHistoryUnsupported
+		}
 	}
 	metadata := cloneExecMetadata(input.Metadata)
 	delete(metadata, "clientSubmitId")
@@ -92,6 +121,10 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	runCtx = withCanonicalSubmitFact(runCtx, canonicalSubmit)
 	tuttiModeSnapshot := normalizeTuttiModeTurnSnapshot(input.TuttiModeSnapshot)
 	runCtx = withTuttiModeTurnSnapshot(runCtx, tuttiModeSnapshot)
+	var dispatchObserver *providerDispatchObserver
+	if historyAdapter != nil {
+		dispatchObserver = newProviderDispatchObserver()
+	}
 	// beginTurn returns the zero session on failure; keep the real session
 	// for the goal-control fallback below.
 	startedSession, err := c.beginTurnWithTuttiModeSnapshot(session, turnID, cancel, tuttiModeSnapshot)
@@ -133,8 +166,22 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	logAgentSubmitTrace("runtime.submitted", session, turnID, metadata, map[string]any{
 		"phase": "submitted",
 	})
-	go c.runExecTurn(runCtx, session, adapter, content, displayPrompt, turnID)
-	return ExecResult{
+	if historyAdapter != nil {
+		go c.runHistoryReplacementTurn(
+			runCtx,
+			session,
+			historyAdapter,
+			HistoryReplacementExecInput{
+				Content:       content,
+				DisplayPrompt: displayPrompt,
+				TurnID:        turnID,
+			},
+			dispatchObserver.Report,
+		)
+	} else {
+		go c.runExecTurn(runCtx, session, adapter, content, displayPrompt, turnID)
+	}
+	result = ExecResult{
 		AgentSessionID:     session.AgentSessionID,
 		Status:             ExecStatusStarted,
 		TurnID:             turnID,
@@ -142,7 +189,26 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 		SessionStatus:      session.Status,
 		TurnLifecycle:      *session.TurnLifecycle,
 		SubmitAvailability: *session.SubmitAvailability,
-	}, nil
+	}
+	if dispatchObserver == nil {
+		return result, nil
+	}
+	select {
+	case dispatch := <-dispatchObserver.result:
+		dispatch, confirmErr := c.confirmProviderDispatchDurable(
+			runCtx,
+			session,
+			turnID,
+			dispatch,
+		)
+		result.ProviderDispatch = &dispatch
+		return result, confirmErr
+	case <-ctx.Done():
+		result.ProviderDispatch = &ProviderDispatchResult{
+			Disposition: DispatchDispositionOutcomeUnknown,
+		}
+		return result, ctx.Err()
+	}
 }
 
 func (c *Controller) guideActiveTurn(

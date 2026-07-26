@@ -317,6 +317,7 @@ func (p serviceHostRuntimeOperationEventPublisher) PublishRuntimeOperationEvent(
 
 type ApplicationHostRuntime interface {
 	agenthost.RuntimeController
+	agenthost.RuntimeHistoryController
 	agenthost.GoalRuntimeController
 }
 
@@ -326,6 +327,8 @@ type ApplicationHostCanonicalPorts interface {
 	agenthost.CanonicalStore
 	agenthost.SessionManagementStore
 	agenthost.SessionBatchManagementStore
+	agenthost.TurnSubmissionStore
+	agenthost.EffectiveHistoryStore
 }
 
 func NewApplicationHostWithPorts(
@@ -364,6 +367,9 @@ func composeApplicationHost(
 		sessionForkRecovery, _ = canonical.(agenthost.SessionForkRecoveryStore)
 	}
 	sessionForkRuntime, _ := runtime.(agenthost.SessionForkRuntime)
+	turnSubmissions, _ := canonical.(agenthost.TurnSubmissionStore)
+	effectiveHistory, _ := canonical.(agenthost.EffectiveHistoryStore)
+	historyRuntime, _ := runtime.(agenthost.RuntimeHistoryController)
 	return agenthost.New(agenthost.Config{
 		CanonicalStore: canonical, SessionManagement: sessionManagement,
 		SessionBatchManagement: sessionBatchManagement, SessionPurge: s.SessionPurgeStore,
@@ -372,8 +378,9 @@ func composeApplicationHost(
 		SessionForkContext:   serviceHostSessionForkContextPolicy{service: s},
 		SessionForkState:     serviceHostSessionForkProviderStateBinder{service: s},
 		SessionDeletionGuard: s.SessionDeletionGuard,
-		Runtime:              runtime,
-		RuntimePreparation:   serviceHostPreparation{service: s}, Attachments: s.PromptAttachmentStore,
+		TurnSubmissions:      turnSubmissions, EffectiveHistory: effectiveHistory,
+		Runtime: runtime, HistoryRuntime: historyRuntime,
+		RuntimePreparation: serviceHostPreparation{service: s}, Attachments: s.PromptAttachmentStore,
 		SettingsPolicy: serviceHostSettingsPolicy{service: s},
 		Clock:          serviceHostClock{service: s}, SessionLocker: serviceHostLocker{service: s},
 		RuntimeStartGate:  serviceHostStartupGate{service: s},

@@ -196,6 +196,7 @@ const (
 	RuntimeOperationKindInteractiveResponse    = agentstore.RuntimeOperationKindInteractiveResponse
 	RuntimeOperationKindCancelTurn             = agentstore.RuntimeOperationKindCancelTurn
 	RuntimeOperationKindPlanDecision           = agentstore.RuntimeOperationKindPlanDecision
+	RuntimeOperationKindEditRetry              = agentstore.RuntimeOperationKindEditRetry
 	RuntimeOperationStatusPrepared             = agentstore.RuntimeOperationStatusPrepared
 	RuntimeOperationStatusLeased               = agentstore.RuntimeOperationStatusLeased
 	RuntimeOperationStatusCompleted            = agentstore.RuntimeOperationStatusCompleted
@@ -210,6 +211,10 @@ const (
 	RuntimeOperationEventTurnCanceled          = agentstore.RuntimeOperationEventTurnCanceled
 	RuntimeOperationEventPlanDecisionPending   = agentstore.RuntimeOperationEventPlanDecisionPending
 	RuntimeOperationEventPlanDecisionCompleted = agentstore.RuntimeOperationEventPlanDecisionCompleted
+	RuntimeOperationEventEditRetryPending      = agentstore.RuntimeOperationEventEditRetryPending
+	RuntimeOperationEventEditRetryRollback     = agentstore.RuntimeOperationEventEditRetryRollback
+	RuntimeOperationEventEditRetryCompleted    = agentstore.RuntimeOperationEventEditRetryCompleted
+	RuntimeOperationEventEditRetryRecovery     = agentstore.RuntimeOperationEventEditRetryRecovery
 
 	GoalSyncStatusPending         = agentstore.GoalSyncStatusPending
 	GoalSyncStatusApplying        = agentstore.GoalSyncStatusApplying
