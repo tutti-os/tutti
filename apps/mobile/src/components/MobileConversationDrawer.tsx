@@ -345,6 +345,7 @@ export function MobileConversationDrawer({
 
       {dialog && actionSession ? (
         <NativeSheet
+          closeAccessibilityLabel={t("closeSheet")}
           onOpenChange={(open) => {
             if (!open && !actionPending) setDialog(null);
           }}

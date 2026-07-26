@@ -112,9 +112,10 @@ export function NativeComponentGallery({ onClose }: { onClose(): void }) {
       </ScrollView>
 
       <NativeSheet
+        closeAccessibilityLabel={t("closeSheet")}
+        height="50%"
         onOpenChange={setSheetOpen}
         open={sheetOpen}
-        snapPoints={["50%"]}
       >
         <View style={styles.sheetContent}>
           <Text style={styles.sheetTitle}>{t("nativeGallerySheet")}</Text>

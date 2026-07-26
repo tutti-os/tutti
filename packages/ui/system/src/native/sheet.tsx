@@ -1,17 +1,13 @@
 import type { ReactNode } from "react";
-import {
-  type DimensionValue,
-  Modal,
-  Pressable,
-  StyleSheet
-} from "react-native";
+import { Modal, Pressable, StyleSheet, View } from "react-native";
 import { useNativeTheme } from "./theme-provider";
 
 export interface NativeSheetProps {
   children: ReactNode;
+  closeAccessibilityLabel: string;
+  height?: number | `${number}%`;
   onOpenChange(open: boolean): void;
   open: boolean;
-  snapPoints?: readonly (number | `${number}%`)[];
 }
 
 /**
@@ -22,49 +18,48 @@ export interface NativeSheetProps {
  */
 export function NativeSheet({
   children,
+  closeAccessibilityLabel,
+  height,
   onOpenChange,
-  open,
-  snapPoints
+  open
 }: NativeSheetProps) {
   const theme = useNativeTheme();
   const styles = createStyles(theme);
-  const height = resolveSheetHeight(snapPoints);
+  const dismiss = () => onOpenChange(false);
 
   return (
     <Modal
       animationType="fade"
-      onRequestClose={() => onOpenChange(false)}
+      onRequestClose={dismiss}
       presentationStyle="overFullScreen"
       statusBarTranslucent
       transparent
       visible={open}
     >
-      <Pressable
+      <View
         accessible={false}
-        onPress={() => onOpenChange(false)}
+        onAccessibilityEscape={dismiss}
         style={styles.backdrop}
-        testID="native-sheet-backdrop"
       >
         <Pressable
+          accessibilityLabel={closeAccessibilityLabel}
+          accessibilityRole="button"
+          accessible
+          onPress={dismiss}
+          style={StyleSheet.absoluteFill}
+          testID="native-sheet-backdrop"
+        />
+        <Pressable
           accessible={false}
-          onPress={(event) => event.stopPropagation()}
-          style={[styles.sheet, height === null ? null : { height }]}
+          onPress={() => undefined}
+          style={[styles.sheet, height === undefined ? null : { height }]}
+          testID="native-sheet-panel"
         >
           {children}
         </Pressable>
-      </Pressable>
+      </View>
     </Modal>
   );
-}
-
-function resolveSheetHeight(
-  snapPoints: NativeSheetProps["snapPoints"]
-): DimensionValue | null {
-  if (!snapPoints) return null;
-  const first = snapPoints[0];
-  return typeof first === "number" || typeof first === "string"
-    ? (first as DimensionValue)
-    : null;
 }
 
 function createStyles(theme: ReturnType<typeof useNativeTheme>) {

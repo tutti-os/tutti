@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NativeSheet } from "./sheet";
 
 const nativeModal = vi.hoisted(() => ({
-  onRequestClose: null as (() => void) | null
+  onAccessibilityEscape: null as (() => void) | null,
+  onRequestClose: null as (() => void) | null,
+  panelStyle: null as unknown
 }));
 
 vi.mock("react-native", () => ({
@@ -21,28 +23,51 @@ vi.mock("react-native", () => ({
     return visible ? <div>{children}</div> : null;
   },
   Pressable: ({
+    accessibilityLabel,
+    accessibilityRole,
     accessible,
     children,
     onPress,
+    style,
     testID
+  }: {
+    accessibilityLabel?: string;
+    accessibilityRole?: "button";
+    accessible?: boolean;
+    children?: ReactNode;
+    onPress(): void;
+    style?: unknown;
+    testID?: string;
+  }) => {
+    if (testID === "native-sheet-panel") {
+      nativeModal.panelStyle = style;
+    }
+    return (
+      <div
+        aria-label={accessibilityLabel}
+        data-accessible={String(accessible)}
+        data-testid={testID}
+        onClick={onPress}
+        role={accessibilityRole}
+      >
+        {children}
+      </div>
+    );
+  },
+  StyleSheet: { create: (styles: unknown) => styles },
+  View: ({
+    accessible,
+    children,
+    onAccessibilityEscape
   }: {
     accessible?: boolean;
     children: ReactNode;
-    onPress(event: { stopPropagation(): void }): void;
-    testID?: string;
-  }) => (
-    <div
-      data-accessible={String(accessible)}
-      data-testid={testID}
-      onClick={(event) =>
-        onPress({ stopPropagation: () => event.stopPropagation() })
-      }
-    >
-      {children}
-    </div>
-  ),
-  StyleSheet: { create: (styles: unknown) => styles },
-  View: ({ children }: { children: ReactNode }) => <div>{children}</div>
+    onAccessibilityEscape?(): void;
+  }) => {
+    nativeModal.onAccessibilityEscape =
+      onAccessibilityEscape ?? nativeModal.onAccessibilityEscape;
+    return <div data-accessible={String(accessible)}>{children}</div>;
+  }
 }));
 
 vi.mock("./theme-provider", () => ({
@@ -59,12 +84,18 @@ vi.mock("./theme-provider", () => ({
 
 describe("NativeSheet", () => {
   beforeEach(() => {
+    nativeModal.onAccessibilityEscape = null;
     nativeModal.onRequestClose = null;
+    nativeModal.panelStyle = null;
   });
 
   it("renders its content only while open", () => {
     const { rerender } = render(
-      <NativeSheet onOpenChange={() => undefined} open={false}>
+      <NativeSheet
+        closeAccessibilityLabel="Close sheet"
+        onOpenChange={() => undefined}
+        open={false}
+      >
         content
       </NativeSheet>
     );
@@ -72,14 +103,22 @@ describe("NativeSheet", () => {
     expect(screen.queryByText("content")).not.toBeInTheDocument();
 
     rerender(
-      <NativeSheet onOpenChange={() => undefined} open>
+      <NativeSheet
+        closeAccessibilityLabel="Close sheet"
+        onOpenChange={() => undefined}
+        open
+      >
         content
       </NativeSheet>
     );
     expect(screen.getByText("content")).toBeInTheDocument();
 
     rerender(
-      <NativeSheet onOpenChange={() => undefined} open={false}>
+      <NativeSheet
+        closeAccessibilityLabel="Close sheet"
+        onOpenChange={() => undefined}
+        open={false}
+      >
         content
       </NativeSheet>
     );
@@ -89,7 +128,11 @@ describe("NativeSheet", () => {
   it("reports backdrop and system dismissals to the controlled owner", () => {
     const onOpenChange = vi.fn();
     const { container } = render(
-      <NativeSheet onOpenChange={onOpenChange} open>
+      <NativeSheet
+        closeAccessibilityLabel="Close sheet"
+        onOpenChange={onOpenChange}
+        open
+      >
         content
       </NativeSheet>
     );
@@ -101,11 +144,36 @@ describe("NativeSheet", () => {
     fireEvent.click(screen.getByText("content"));
     expect(onOpenChange).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId("native-sheet-backdrop"));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Close sheet"
+      })
+    );
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    onOpenChange.mockClear();
+    nativeModal.onAccessibilityEscape?.();
     expect(onOpenChange).toHaveBeenCalledWith(false);
 
     onOpenChange.mockClear();
     nativeModal.onRequestClose?.();
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("applies one explicit fixed height", () => {
+    render(
+      <NativeSheet
+        closeAccessibilityLabel="Close sheet"
+        height="50%"
+        onOpenChange={() => undefined}
+        open
+      >
+        content
+      </NativeSheet>
+    );
+
+    expect(nativeModal.panelStyle).toEqual(
+      expect.arrayContaining([{ height: "50%" }])
+    );
   });
 });

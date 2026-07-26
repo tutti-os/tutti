@@ -103,6 +103,7 @@ export function MobileComposerSettingsSheet({
       </View>
 
       <NativeSheet
+        closeAccessibilityLabel={t("closeSheet")}
         onOpenChange={(open) => !open && setMenu(null)}
         open={menu !== null}
       >

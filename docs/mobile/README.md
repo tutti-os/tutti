@@ -261,7 +261,9 @@ screen composition and product-specific interaction.
   and dynamic-height sheets; wrap it behind a UI System Native component when
   it becomes a reusable product pattern. The shared compact `NativeSheet` uses
   React Native's window-level `Modal` instead, so its controlled open state does
-  not pass through `@gorhom/portal`.
+  not pass through `@gorhom/portal`. Callers provide its localized accessible
+  close label and may set one fixed height; multi-snap behavior remains outside
+  the compact primitive.
 - Agent message Markdown is rendered natively with
   `react-native-enriched-markdown`; it consumes the existing AgentGUI
   conversation VM and maps every color, radius, and spacing decision back to

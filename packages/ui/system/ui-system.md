@@ -325,10 +325,12 @@ component implementation.
 
 `NativeSheet` uses React Native's window-level `Modal` for its controlled
 overlay and does not require a portal provider. It owns the semantic scrim,
-bottom-aligned panel, system-back dismissal, backdrop dismissal, and
-optional initial height. Keep `@gorhom/bottom-sheet` app-owned for genuinely
-complex gesture, keyboard, or multi-snap-point sheets rather than routing the
-shared compact sheet through its React 19-incompatible portal.
+bottom-aligned panel, system-back dismissal, screen-reader escape gesture,
+accessible backdrop dismissal, and optional fixed `height`. Callers must supply
+the localized `closeAccessibilityLabel`; one fixed height replaces the former
+single-value `snapPoints` usage. Keep `@gorhom/bottom-sheet` app-owned for
+genuinely complex gesture, keyboard, or multi-snap-point sheets rather than
+routing the shared compact sheet through its React 19-incompatible portal.
 
 For cross-surface stacking, use shared semantic `z-index` tokens instead of
 local magic numbers. Current global layer tokens live in

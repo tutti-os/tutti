@@ -21,6 +21,7 @@ const messages = {
     copyAsMarkdown: "Copy as Markdown",
     copyImageUrl: "Copy image URL",
     changedFiles: "{count} changed files",
+    closeSheet: "Close sheet",
     collapseSection: "Collapse section",
     connecting: "Connecting securely…",
     connectionFailed:
@@ -161,6 +162,7 @@ const messages = {
     copyAsMarkdown: "复制为 Markdown",
     copyImageUrl: "复制图片链接",
     changedFiles: "已变更 {count} 个文件",
+    closeSheet: "关闭面板",
     collapseSection: "收起分组",
     connecting: "正在建立安全连接…",
     connectionFailed: "无法连接这台电脑，请确认 Tutti 正在运行后重试",

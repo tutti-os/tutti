@@ -76,13 +76,17 @@
   current React 19 Native renderer and recursively republishes the modal node
   instead of presenting it.
 - **Fix:** Keep the shared compact `NativeSheet` on React Native's window-level
-  `Modal`, with UI System scrim and panel tokens. Reserve
+  `Modal`, with UI System scrim and panel tokens. Require a caller-localized
+  close label, expose backdrop dismissal as an accessibility button, handle the
+  iOS accessibility escape gesture, and represent an optional fixed height as
+  one value rather than silently accepting multiple snap points. Reserve
   `@gorhom/bottom-sheet` for app-owned complex sheets that genuinely need its
   gesture, keyboard, or multi-snap-point behavior.
 - **Validation:** Open and dismiss the model, speed, and permission sheets more
   than once, select the already active option without changing Session state,
-  and confirm there is no maximum-update-depth error. Also verify backdrop and
-  Android system-back dismissal.
+  and confirm there is no maximum-update-depth error. Also verify touch
+  backdrop, Android system-back, VoiceOver escape, and screen-reader close
+  button dismissal without hiding the sheet's interactive descendants.
 - **References:** `packages/ui/system/src/native/sheet.tsx`,
   `apps/mobile/src/components/MobileComposerSettingsSheet.tsx`
 

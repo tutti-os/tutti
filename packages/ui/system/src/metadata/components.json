@@ -3478,7 +3478,9 @@
       "propsType": "NativeSheetProps",
       "description": "Controlled compact sheet backed by React Native Modal with a token-backed scrim and panel.",
       "useCases": ["Row actions", "Confirmation flows", "Compact forms"],
-      "migrationHints": [],
+      "migrationHints": [
+        "Provide a localized closeAccessibilityLabel and replace a single snapPoints value with height; keep multi-snap sheets app-owned."
+      ],
       "nativePreview": true
     },
     {
