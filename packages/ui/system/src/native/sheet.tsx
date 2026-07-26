@@ -46,6 +46,7 @@ export function NativeSheet({
         testID="native-sheet-backdrop"
       >
         <Pressable
+          accessible={false}
           onPress={(event) => event.stopPropagation()}
           style={[styles.sheet, height === null ? null : { height }]}
         >

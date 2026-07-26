@@ -21,15 +21,18 @@ vi.mock("react-native", () => ({
     return visible ? <div>{children}</div> : null;
   },
   Pressable: ({
+    accessible,
     children,
     onPress,
     testID
   }: {
+    accessible?: boolean;
     children: ReactNode;
     onPress(event: { stopPropagation(): void }): void;
     testID?: string;
   }) => (
     <div
+      data-accessible={String(accessible)}
       data-testid={testID}
       onClick={(event) =>
         onPress({ stopPropagation: () => event.stopPropagation() })
@@ -85,11 +88,15 @@ describe("NativeSheet", () => {
 
   it("reports backdrop and system dismissals to the controlled owner", () => {
     const onOpenChange = vi.fn();
-    render(
+    const { container } = render(
       <NativeSheet onOpenChange={onOpenChange} open>
         content
       </NativeSheet>
     );
+
+    expect(
+      container.querySelectorAll('[data-accessible="false"]')
+    ).toHaveLength(2);
 
     fireEvent.click(screen.getByText("content"));
     expect(onOpenChange).not.toHaveBeenCalled();

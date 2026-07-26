@@ -3476,7 +3476,7 @@
       "status": "experimental",
       "source": "src/native/sheet.tsx",
       "propsType": "NativeSheetProps",
-      "description": "Controlled modal sheet backed by the shared Bottom Sheet dependency.",
+      "description": "Controlled compact sheet backed by React Native Modal with a token-backed scrim and panel.",
       "useCases": ["Row actions", "Confirmation flows", "Compact forms"],
       "migrationHints": [],
       "nativePreview": true

@@ -95,8 +95,8 @@ The visual language that this package should serve is defined in [Desktop Visual
 - `@tutti-os/ui-system/native`
   React Native primitive and semantic-token entry; this is separate from the
   DOM component entry and must not be imported by desktop renderers. Native
-  consumers provide React Native and the documented Bottom Sheet runtime;
-  `react-dom` is optional for this platform-specific entry.
+  consumers provide React Native; `react-dom` is optional for this
+  platform-specific entry.
 - `@tutti-os/ui-system/components`
   Stable component barrel for tooling and rare category-focused imports
 - `@tutti-os/ui-system/icons`

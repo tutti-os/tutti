@@ -116,6 +116,7 @@ Android app login, native bridge, secure identity, and mobile transport diagnost
 
 - [Mobile quick prompts are missing from the plus menu](./mobile.md#mobile-quick-prompts-are-missing-from-the-plus-menu)
 - [Mobile composer model and permission controls are missing](./mobile.md#mobile-composer-model-and-permission-controls-are-missing)
+- [Mobile composer option chips do not open](./mobile.md#mobile-composer-option-chips-do-not-open)
 - [Browser login returns to the App but remains signed out](./mobile.md#browser-login-returns-to-the-app-but-remains-signed-out)
 - [Android DeviceLink opens a session and then repeatedly restarts](./mobile.md#android-devicelink-opens-a-session-and-then-repeatedly-restarts)
 - [React Native Pressable rows stack their children vertically](./mobile.md#react-native-pressable-rows-stack-their-children-vertically)
