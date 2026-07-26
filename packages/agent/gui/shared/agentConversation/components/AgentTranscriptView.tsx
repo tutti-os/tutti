@@ -15,6 +15,7 @@ import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNod
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentConversationParticipantPresentation } from "../contracts/agentConversationParticipantPresentation";
 import type { AgentConversationFollowEndMode } from "../agentConversationFollowEndController";
+import type { AgentUserMessageEditRetryControl } from "./AgentUserMessageEditRetry";
 import { AgentTranscriptItemView } from "./AgentTranscriptItemView";
 import {
   AgentForkThroughTurnButton,
@@ -56,6 +57,7 @@ import {
   useAgentTranscriptVirtualizer,
   type AgentTranscriptVirtualScrollController
 } from "./useAgentTranscriptVirtualizer";
+import { useAgentTranscriptEditRetryRowId } from "./useAgentTranscriptEditRetryProjection";
 
 const AGENT_TRANSCRIPT_DISCLOSURE_TURN_GAP_PX = 24;
 const AGENT_TRANSCRIPT_LEGACY_TURN_GAP_PX = 12;
@@ -85,10 +87,15 @@ export type {
   AgentTranscriptTurnAttachment
 } from "./useAgentTranscriptTurnAttachments";
 export type { AgentTranscriptVirtualScrollController } from "./useAgentTranscriptVirtualizer";
+export interface AgentTranscriptEditRetryControl extends AgentUserMessageEditRetryControl {
+  agentSessionId: string;
+  eligibleTurnId: string;
+}
 
 export interface AgentTranscriptViewProps {
   conversation: AgentConversationVM;
   isVisible?: boolean;
+  editRetry?: AgentTranscriptEditRetryControl;
   turnAttachments?: readonly AgentTranscriptTurnAttachment[];
   turnAttachmentLocatorRef?: Ref<AgentTranscriptAttachmentLocator>;
   onTurnAttachmentVisibilityChange?: (
@@ -270,6 +277,7 @@ export function areAgentTranscriptViewPropsEqual(
     previous.turnAttachmentLocatorRef === next.turnAttachmentLocatorRef &&
     previous.onTurnAttachmentVisibilityChange ===
       next.onTurnAttachmentVisibilityChange &&
+    editRetryControlsEqual(previous.editRetry, next.editRetry) &&
     previous.showRawTimelineJson === next.showRawTimelineJson &&
     previous.followEndMode === next.followEndMode &&
     previous.virtualListLayoutRevision === next.virtualListLayoutRevision &&
@@ -282,9 +290,26 @@ export function areAgentTranscriptViewPropsEqual(
   );
 }
 
+function editRetryControlsEqual(
+  previous: AgentTranscriptViewProps["editRetry"],
+  next: AgentTranscriptViewProps["editRetry"]
+): boolean {
+  return (
+    previous === next ||
+    (previous?.agentSessionId === next?.agentSessionId &&
+      previous?.eligibleTurnId === next?.eligibleTurnId &&
+      previous?.pending === next?.pending &&
+      previous?.onSubmit === next?.onSubmit &&
+      previous?.labels.edit === next?.labels.edit &&
+      previous?.labels.cancel === next?.labels.cancel &&
+      previous?.labels.submit === next?.labels.submit)
+  );
+}
+
 export const AgentTranscriptView = memo(function AgentTranscriptView({
   conversation,
   isVisible = true,
+  editRetry,
   turnAttachments = [],
   turnAttachmentLocatorRef,
   onTurnAttachmentVisibilityChange,
@@ -315,6 +340,11 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
     setVirtualListOffsetFromScrollOrigin
   ] = useState(0);
   const participantHeadersEnabled = participantPresentation?.enabled === true;
+  const scopedEditRetry =
+    editRetry?.agentSessionId.trim() ===
+    conversation.sourceDetail.session.agentSessionId.trim()
+      ? editRetry
+      : undefined;
   // Participant-header presentation (Agent board session detail): tool-group
   // rows attach to the assistant message that follows them instead of sitting
   // after the previous message, and presentation turns key off user messages.
@@ -327,6 +357,10 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   );
   const displayRows = transcriptRowSet.rows;
   const rowKeys = transcriptRowSet.rowKeys;
+  const editableUserMessageRowId = useAgentTranscriptEditRetryRowId(
+    displayRows,
+    scopedEditRetry?.eligibleTurnId
+  );
   const participantTurnProjection = transcriptRowSet.participantTurnProjection;
   const turnGroups = useMemo(
     () => buildAgentTranscriptTurnGroups(displayRows, rowKeys),
@@ -557,6 +591,9 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           workspaceRoot={workspaceRoot}
           basePath={basePath}
           row={row}
+          editRetry={
+            row.id === editableUserMessageRowId ? scopedEditRetry : undefined
+          }
           labels={labels}
           onLinkAction={onLinkAction}
           onAuthLogin={onAuthLogin}

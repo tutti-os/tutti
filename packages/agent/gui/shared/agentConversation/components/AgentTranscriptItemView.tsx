@@ -11,11 +11,13 @@ import { AgentMessageBlock } from "./AgentMessageBlock";
 import { AgentProcessingRow } from "./AgentProcessingRow";
 import { AgentToolGroupRow } from "./AgentToolGroupRow";
 import { AgentTurnSummaryRow } from "./AgentTurnSummaryRow";
+import type { AgentUserMessageEditRetryControl } from "./AgentUserMessageEditRetry";
 
 interface AgentTranscriptItemViewProps {
   workspaceRoot: string | null;
   basePath: string;
   row: AgentTranscriptRowVM;
+  editRetry?: AgentUserMessageEditRetryControl;
   labels: {
     toolCallsLabel: (count: number) => string;
     thinkingLabel: string;
@@ -42,6 +44,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
   workspaceRoot,
   basePath,
   row,
+  editRetry,
   labels,
   onLinkAction,
   onAuthLogin,
@@ -90,6 +93,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           workspaceRoot={workspaceRoot}
           basePath={basePath}
           row={row}
+          editRetry={editRetry}
           onLinkAction={onLinkAction}
           onAuthLogin={onAuthLogin}
           provider={provider}

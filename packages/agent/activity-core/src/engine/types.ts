@@ -109,6 +109,7 @@ export type EngineIntent =
   | SessionCommandsIntent
   | SessionLifecycleIntent
   | ComposerOptionsIntent
+  | EditRetryIntent
   | TuttiModeActivationIntent;
 
 // ---------------------------------------------------------------------------
@@ -183,6 +184,7 @@ export type EngineExternalCommand =
   | SessionMutationCommand
   | TurnCancelCommand
   | ComposerOptionsCommand
+  | EditRetryCommand
   | TuttiModeActivationCommand;
 
 export type EngineExternalCommandExceptPlanDecision = Exclude<
@@ -245,6 +247,7 @@ export interface EngineRuntimeState {
 
 export interface AgentSessionEngineState {
   attentionReadState: AttentionReadState;
+  editRetry: EditRetryState;
   engineRuntime: EngineRuntimeState;
   pendingIntents: PendingIntentsState;
   planDecisions: PlanDecisionState;
@@ -493,3 +496,8 @@ import type {
   AgentActivityCapabilityReference,
   AgentActivityInitialTuttiModeActivation
 } from "../tuttiMode.types.ts";
+import type {
+  EditRetryCommand,
+  EditRetryIntent,
+  EditRetryState
+} from "./editRetry.types.ts";

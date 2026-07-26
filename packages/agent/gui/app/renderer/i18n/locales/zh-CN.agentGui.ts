@@ -354,6 +354,13 @@ export const zhCNAgentGui = {
   continuedFromTask: "接续自任务",
   sourceConversationNotFound: "原会话无法找到",
   copyImage: "复制图片",
+  editRetryEditMessage: "编辑消息",
+  editRetryCancel: "取消",
+  editRetrySubmit: "保存并重试",
+  editRetryProcessing: "正在更新会话历史并重试…",
+  editRetryNeedsAction: "会话历史已更新，但编辑后的消息仍需恢复",
+  editRetryReconcile: "核对状态",
+  editRetryRetryReplacement: "重试消息",
   messageCopied: "已复制",
   promptTipsPrefix: "Tips：",
   reviewPicker: {

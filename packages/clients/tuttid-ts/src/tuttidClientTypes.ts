@@ -61,6 +61,7 @@ import type {
   DeleteAgentQuickPromptRequest,
   DesktopPreferencesStateResponse,
   DeletedAgentConversationPurgeResult,
+  EditRetryWorkspaceAgentTurnRequest,
   ExportWorkspaceAppRequest,
   ExportWorkspaceAppResponse,
   ExternalAgentImportResultResponse,
@@ -108,6 +109,7 @@ import type {
   PreflightUploadWorkspaceFilesResponse,
   PutDesktopPreferencesRequest,
   ImportWorkspaceAppRequest,
+  RecoverWorkspaceAgentEditRetryRequest,
   ReplaceWorkspaceAppIconRequest,
   ReloadLocalWorkspaceAppRequest,
   ResizeWorkspaceTerminalRequest,
@@ -136,6 +138,7 @@ import type {
   DecideWorkspaceWorkflowCheckpointRequest,
   WorkspaceAgentSession,
   WorkspaceAgentSessionDetailProjection,
+  WorkspaceAgentEditRetryResponse,
   TuttiModeActivation,
   WorkspaceAgentSessionDetailResponse,
   WorkspaceAgentPlanDecisionResponse,
@@ -861,6 +864,20 @@ export interface TuttidClient
     turnID: string,
     requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentTurnCancelResponse>;
+  editRetry(
+    workspaceID: string,
+    agentSessionID: string,
+    turnID: string,
+    request: EditRetryWorkspaceAgentTurnRequest,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceAgentEditRetryResponse>;
+  recoverEditRetry(
+    workspaceID: string,
+    agentSessionID: string,
+    operationID: string,
+    request: RecoverWorkspaceAgentEditRetryRequest,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceAgentEditRetryResponse>;
   goalControlWorkspaceAgentSession(
     workspaceID: string,
     agentSessionID: string,

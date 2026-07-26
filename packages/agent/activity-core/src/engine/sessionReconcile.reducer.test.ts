@@ -41,6 +41,29 @@ test("inline-applied activity does not schedule redundant transport work", () =>
   assert.equal(result.commands.length, 0);
 });
 
+test("terminal turn observation always verifies state and messages", () => {
+  const result = reduce(createInitialSessionReconcileState(), {
+    type: "session/activityObserved",
+    agentSessionId: "session-1",
+    eventType: "turn_update",
+    hasCachedSession: true,
+    hasInlineMessages: true,
+    inlineApplied: true,
+    terminalTurn: true,
+    workspaceId: "workspace-1"
+  });
+  assert.deepEqual(result.commands, [
+    {
+      agentSessionId: "session-1",
+      commandId: "session:reconcile:session-1:1",
+      scope: "state_and_messages",
+      timeoutMs: 30_000,
+      type: "session/reconcile",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("reconcile requests merge while one command is in flight and rerun once", () => {
   let state = reduce(createInitialSessionReconcileState(), {
     type: "session/reconcileRequested",

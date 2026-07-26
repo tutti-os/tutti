@@ -16,10 +16,32 @@ export function projectConversationUserRow(
     id: `message:user:${message.id}`,
     turnId,
     speaker: "user",
+    rawFirstTextBlock: firstRawUserPromptTextBlock(message),
     messages: projectUserMessageContentParts(message, turnId, workspaceId),
     thinking: [],
     occurredAtUnixMs: message.occurredAtUnixMs ?? null
   };
+}
+
+function firstRawUserPromptTextBlock(
+  message: WorkspaceAgentSessionDetailTurn["userMessages"][number]
+): string | null {
+  for (const item of message.sourceTimelineItems ?? []) {
+    const content = item.payload?.content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    for (const raw of content) {
+      const block =
+        raw && typeof raw === "object" && !Array.isArray(raw)
+          ? (raw as Record<string, unknown>)
+          : null;
+      if (block?.type === "text" && typeof block.text === "string") {
+        return block.text;
+      }
+    }
+  }
+  return null;
 }
 
 function projectUserMessageContentParts(

@@ -66,6 +66,7 @@ test("WorkspaceAgentActivityService applies authoritative Session detail in one 
       ) => ({
         ...sessionDetailProjection(args[2]),
         childSessions: [childSession],
+        editRetry: workspaceAgentEditRetryAvailability(),
         session: rootSession,
         turns: [workspaceAgentTurn()]
       }),
@@ -710,6 +711,7 @@ test("WorkspaceAgentActivityService reads existing session settings from the dae
         ...sessionDetailProjection(args[2]),
         session: loadedSession,
         childSessions: [],
+        editRetry: workspaceAgentEditRetryAvailability(),
         turns: []
       }),
       sendWorkspaceAgentSessionInput: async () => ({ session: loadedSession }),
@@ -758,6 +760,7 @@ test("WorkspaceAgentActivityService does not reinterpret a failed Turn as activa
         return {
           ...sessionDetailProjection(args[2]),
           childSessions: [],
+          editRetry: workspaceAgentEditRetryAvailability(),
           session: failedSession,
           turns: []
         };
@@ -1064,6 +1067,7 @@ test("WorkspaceAgentActivityService starts session-event streams and forwards ca
           }
         }),
         childSessions: [],
+        editRetry: workspaceAgentEditRetryAvailability(),
         turns: []
       })
     } as unknown as TuttidClient,
@@ -1206,6 +1210,7 @@ test("WorkspaceAgentActivityService reconciles a realtime message version gap be
         ...sessionDetailProjection(args[2]),
         session,
         childSessions: [],
+        editRetry: workspaceAgentEditRetryAvailability(),
         turns: []
       }),
       listWorkspaceAgentSessionMessages: async (
@@ -1366,6 +1371,7 @@ test("WorkspaceAgentActivityService reconciles cached messages after reconnect w
         ...sessionDetailProjection(args[2]),
         session,
         childSessions: [],
+        editRetry: workspaceAgentEditRetryAvailability(),
         turns: []
       }),
       listWorkspaceAgentSessionMessages: async (
@@ -1587,6 +1593,7 @@ test("WorkspaceAgentActivityService dispose releases every event stream subscrip
 
 test("WorkspaceAgentActivityService preserves realtime turn provenance for attention", async () => {
   const listenersByTopic = new Map<string, (event: unknown) => void>();
+  let messageReconcileCalls = 0;
   const running = workspaceAgentSession({
     status: "working",
     updatedAt: "2026-07-14T00:00:01.000Z"
@@ -1613,8 +1620,13 @@ test("WorkspaceAgentActivityService preserves realtime turn provenance for atten
         ...sessionDetailProjection(args[2]),
         session: settled,
         childSessions: [],
+        editRetry: workspaceAgentEditRetryAvailability(),
         turns: []
       }),
+      listWorkspaceAgentSessionMessages: async () => {
+        messageReconcileCalls += 1;
+        return { hasMore: false, latestVersion: 0, messages: [] };
+      },
       listWorkspaceAgentSessions: async () => ({
         hasMore: false,
         sessions: [running],
@@ -1642,8 +1654,15 @@ test("WorkspaceAgentActivityService preserves realtime turn provenance for atten
       workspaceId: "ws-1"
     }
   });
-  await new Promise((resolve) => setImmediate(resolve));
+  for (
+    let attempt = 0;
+    attempt < 10 && messageReconcileCalls === 0;
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 
+  assert.equal(messageReconcileCalls > 0, true);
   assert.equal(
     selectSessionAttention(
       service.getSessionEngine("ws-1").getSnapshot(),
@@ -1713,6 +1732,7 @@ test("WorkspaceAgentActivityService preserves live provenance across a transient
           ...sessionDetailProjection(args[2]),
           session: getCalls === 1 ? running : settled,
           childSessions: [],
+          editRetry: workspaceAgentEditRetryAvailability(),
           turns: []
         };
       },
@@ -1936,6 +1956,7 @@ test("WorkspaceAgentActivityService fetches detail before combined message recon
           ...sessionDetailProjection(args[2]),
           session: messagesResolved ? finalSession : staleSession,
           childSessions: [],
+          editRetry: workspaceAgentEditRetryAvailability(),
           turns: []
         };
       },
@@ -2041,6 +2062,7 @@ test("WorkspaceAgentActivityService reconciles child sessions and their messages
         ...sessionDetailProjection(args[2]),
         session: root,
         childSessions: [child],
+        editRetry: workspaceAgentEditRetryAvailability(),
         turns: [
           {
             agentSessionId: "session-1",
@@ -2308,6 +2330,7 @@ test("WorkspaceAgentActivityService loads the newest history page first", async 
         ...sessionDetailProjection(args[2]),
         session,
         childSessions: [],
+        editRetry: workspaceAgentEditRetryAvailability(),
         turns: []
       }),
       listWorkspaceAgentSessions: async () => ({
@@ -2389,6 +2412,7 @@ test("WorkspaceAgentActivityService drains child incremental pages from its dura
         ...sessionDetailProjection(args[2]),
         session,
         childSessions: [],
+        editRetry: workspaceAgentEditRetryAvailability(),
         turns: []
       }),
       listWorkspaceAgentSessions: async () => ({
@@ -3426,6 +3450,16 @@ function workspaceAgentTurn(
   };
 }
 
+function workspaceAgentEditRetryAvailability() {
+  return {
+    availableActions: [],
+    eligible: false,
+    historyRevision: 0,
+    recoveryState: "completed" as const,
+    supported: false
+  };
+}
+
 function planDecisionResponse(
   status: "prepared" | "leased" | "completed" | "failed"
 ) {
@@ -3608,4 +3642,133 @@ test("WorkspaceAgentActivityService.setCollaborationAdoption posts the adoption 
   );
   assert.deepEqual(observedRequests[0]?.body, { adoption: "adopted" });
   assert.equal(run.adoption, "adopted");
+});
+
+test("WorkspaceAgentActivityService engine owns edit retry and authoritative reconcile", async () => {
+  const editRetryCalls: Parameters<TuttidClient["editRetry"]>[] = [];
+  let detailCalls = 0;
+  let messageCalls = 0;
+  const session = workspaceAgentSession({
+    latestTurn: workspaceAgentTurn({
+      outcome: "completed",
+      phase: "settled"
+    }),
+    status: "completed"
+  });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      editRetry: async (...args: Parameters<TuttidClient["editRetry"]>) => {
+        editRetryCalls.push(args);
+        return {
+          historyRevision: 2,
+          operationId: "operation-1",
+          replacementTurnId: "turn-replacement",
+          retractedTurnId: "turn-1",
+          state: "completed"
+        };
+      },
+      getWorkspaceAgentSession: async () => {
+        detailCalls += 1;
+        return {
+          childSessions: [],
+          editRetry: {
+            availableActions: [],
+            eligible: false,
+            historyRevision: 2,
+            recoveryState: "completed",
+            supported: true
+          },
+          session,
+          turns: []
+        };
+      },
+      listWorkspaceAgentSessionMessages: async () => {
+        messageCalls += 1;
+        return {
+          hasMore: false,
+          latestVersion: 1,
+          messages: [
+            {
+              agentSessionId: "session-1",
+              kind: "text",
+              messageId: "replacement-answer",
+              occurredAtUnixMs: 2,
+              payload: { text: "replacement answer" },
+              role: "assistant",
+              turnId: "turn-replacement",
+              version: 1
+            }
+          ]
+        };
+      },
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [session],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const engine = service.getSessionEngine("ws-1");
+  engine.dispatch({
+    agentSessionId: "session-1",
+    availability: {
+      availableActions: [],
+      eligible: true,
+      historyRevision: 1,
+      recoveryState: "prepared",
+      supported: true,
+      turnId: "turn-1"
+    },
+    type: "editRetry/availabilityReceived",
+    workspaceId: "ws-1"
+  });
+  engine.dispatch({
+    agentSessionId: "session-1",
+    editedText: "edited prompt",
+    turnId: "turn-1",
+    type: "editRetry/requested",
+    workspaceId: "ws-1"
+  });
+  for (let attempt = 0; attempt < 20 && messageCalls === 0; attempt += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  const clientOperationId =
+    editRetryCalls[0]?.[3].clientOperationId ?? "missing";
+  assert.match(clientOperationId, /^edit-retry-[0-9a-f]{8}-[0-9a-f]{8}$/);
+  const commandSignal = editRetryCalls[0]?.[4]?.signal;
+  assert.equal(commandSignal?.aborted, false);
+
+  assert.deepEqual(editRetryCalls, [
+    [
+      "ws-1",
+      "session-1",
+      "turn-1",
+      {
+        clientOperationId,
+        editedText: "edited prompt",
+        expectedHistoryRevision: 1
+      },
+      { signal: commandSignal }
+    ]
+  ]);
+  assert.equal(detailCalls >= 1, true);
+  assert.equal(messageCalls, 1);
+  assert.equal(
+    engine.getSnapshot().editRetry.operationBySessionId["session-1"]?.status,
+    "succeeded"
+  );
+  assert.equal(
+    engine.getSnapshot().editRetry.availabilityBySessionId["session-1"]
+      ?.historyRevision,
+    2
+  );
+  assert.equal(
+    service.getSnapshot("ws-1").sessionMessagesById["session-1"]?.[0]
+      ?.messageId,
+    "replacement-answer"
+  );
 });

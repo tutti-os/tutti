@@ -2,6 +2,8 @@ import {
   AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
   createAgentSessionEngine,
   type AgentActivityAdapter,
+  type AgentActivityEditRetryInput,
+  type AgentActivityRecoverEditRetryInput,
   type AgentActivitySendInput,
   type AgentSessionEngine,
   type EngineExternalCommand,
@@ -45,6 +47,8 @@ interface CreateWorkspaceAgentSessionEngineHostInput {
     command: SessionReconcileCommand,
     signal?: AbortSignal
   ): Promise<unknown>;
+  editRetry(input: AgentActivityEditRetryInput): Promise<unknown>;
+  recoverEditRetry(input: AgentActivityRecoverEditRetryInput): Promise<unknown>;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   takePendingSessionRecording(workspaceId: string): string | null;
   restorePendingSessionRecording(
@@ -223,6 +227,24 @@ export function createWorkspaceAgentSessionEngineHost(
               ...(command.settings !== undefined
                 ? { settings: command.settings }
                 : {}),
+              signal: options?.signal,
+              workspaceId: command.workspaceId
+            });
+          case "turn/editRetry":
+            return input.editRetry({
+              agentSessionId: command.agentSessionId,
+              clientOperationId: command.clientOperationId,
+              editedText: command.editedText,
+              expectedHistoryRevision: command.expectedHistoryRevision,
+              signal: options?.signal,
+              turnId: command.turnId,
+              workspaceId: command.workspaceId
+            });
+          case "turn/recoverEditRetry":
+            return input.recoverEditRetry({
+              action: command.action,
+              agentSessionId: command.agentSessionId,
+              operationId: command.operationId,
               signal: options?.signal,
               workspaceId: command.workspaceId
             });

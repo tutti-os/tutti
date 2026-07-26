@@ -175,7 +175,7 @@ It owns:
 - agent activity contracts used by UI packages and host adapters
 - the host adapter interface
 - canonical session, turn, interaction, message, composer-option, prompt-queue,
-  and attention state inside one workspace engine
+  attention, and edit-retry command state inside one workspace engine
 - memoized projection from engine state to the `AgentActivitySnapshot` runtime
   contract
 - message merge, immutable presentation-sequence ordering, mutable version
@@ -200,6 +200,14 @@ It owns:
 The public seam is `AgentSessionEffectPort`. Prompt precondition ordering and
 its helper port are Engine implementation details and are not exported from the
 package root.
+
+Edit retry follows the same frontend command rule as pin, delete, cancel, and
+reconcile: the engine owns the stable client operation id, pending/failure
+record, typed recovery intent, and authoritative state-and-message follow-up.
+React may retain an unsent editor draft, but it must not subscribe to raw
+transport events or sequence edit-retry HTTP calls itself. The Desktop command
+port translates `turn/editRetry` and `turn/recoverEditRetry` to the injected
+`TuttidClient`; the result re-enters the reducer before reconciliation.
 
 It does not own:
 

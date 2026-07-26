@@ -4289,6 +4289,46 @@ aside.workspace-agents-status-panel
   box-shadow: none;
 }
 
+.workspace-agents-status-panel__detail-user-message.agent-gui-conversation__user-message-bubble.agent-gui-conversation__user-message-editor {
+  display: grid;
+  width: min(540px, 72%);
+  min-width: min(320px, 100%);
+  gap: 8px;
+  padding: 10px 12px 8px;
+}
+
+.agent-gui-conversation__user-message-editor:focus-within {
+  outline: 1px solid var(--tsh-shell-accent);
+  outline-offset: 1px;
+}
+
+.agent-gui-conversation__user-message-editor-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 72px;
+  max-height: 240px;
+  padding: 0;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  line-height: 1.55;
+}
+
+.agent-gui-conversation__user-message-editor-textarea:disabled {
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+.agent-gui-conversation__user-message-editor-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
 .workspace-agents-status-panel__detail-user-message[data-agent-mention-only="true"].agent-gui-conversation__user-message-bubble {
   max-width: min(100%, calc(var(--agent-mention-max-width, 16rem) + 24px));
 }

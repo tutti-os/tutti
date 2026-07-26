@@ -31,6 +31,7 @@ import { useAgentGUIComposerInputHistoryProps } from "./useAgentGUIComposerInput
 import { useAgentGUITuttiWorkflow } from "./useAgentGUITuttiWorkflow";
 import type { AgentTranscriptVirtualScrollController } from "../../../shared/agentConversation/components/AgentTranscriptView";
 import type { AgentGUIDetailPaneProps } from "./AgentGUINodeView.types";
+import { useAgentGUIDetailEditRetry } from "./useAgentGUIDetailEditRetry";
 export const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
 export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
@@ -155,6 +156,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const openForkSourceSession = useStableEventCallback(
     actions.openForkSourceConversation
   );
+  const editRetry = useAgentGUIDetailEditRetry({
+    agentSessionId: viewModel.rail.activeConversationId,
+    workspaceId: viewModel.shell.workspaceId
+  });
   const submitApprovalOption = useStableEventCallback(
     actions.submitApprovalOption
   );
@@ -737,6 +742,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       <AgentGUIDetailTimeline
         availableSkills={viewModel.composer.availableSkills}
         conversation={conversation}
+        editRetry={editRetry}
         conversationFlowEmpty={conversationFlowEmpty}
         conversationFlowLabels={conversationFlowLabels}
         followEndMode={followEndMode}

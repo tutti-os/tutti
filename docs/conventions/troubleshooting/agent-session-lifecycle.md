@@ -3124,6 +3124,39 @@ inline data URL instead`. Claude or standard ACP may instead receive no
 - References:
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
   [workspaceAgentActivityReconcileMessages.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileMessages.ts)
+
+### Completed agent output appears only after switching Sessions
+
+- Symptom:
+  A Turn finishes in the daemon, but the active AgentGUI timeline does not show
+  the final assistant output until the user selects another Session and returns.
+  This is especially visible after an edit-retry replacement Turn.
+- Quick checks:
+  Follow one exact `(workspaceId, agentSessionId, turnId)` through durable
+  `turn_update` publication, the business-event WebSocket, and
+  `WorkspaceAgentActivityReconcileBridge`. Distinguish a daemon publication
+  gap from a disconnected/stale subscription and from a renderer event that
+  updated Turn state without requesting authoritative messages. Compare the
+  cached message cursor with `listWorkspaceAgentSessionMessages`.
+- Root cause:
+  A terminal Turn event can be delivered while its final message event is
+  missed, reordered, or not folded into the active cache. Session navigation
+  performs a detail/message hydration and therefore hides the missing
+  reconcile trigger.
+- Fix:
+  Treat realtime events as hints. Every terminal `turn_update` requests one
+  combined state-and-message reconcile through the existing workspace engine.
+  Edit-retry completion and recovery commands await the same reconcile before
+  returning their projected state. Do not add a second WebSocket, component
+  store, or edit-retry-specific polling loop.
+- Validation:
+  Deliver a settled `turn_update` without the corresponding final
+  `message_update`; assert that the bridge fetches messages and updates the
+  mounted timeline without Session navigation. Repeat after edit retry and
+  after a transient reconcile failure.
+- References:
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceAgentEditRetry.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentEditRetry.ts)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
 ### AgentActivity replication repeatedly rejects message batches as invalid

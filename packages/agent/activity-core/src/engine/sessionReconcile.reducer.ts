@@ -36,14 +36,15 @@ export function sessionReconcileReducer(
       if (context.deletedSessionIds[intent.agentSessionId.trim()]) {
         return unchanged(state);
       }
-      if (intent.inlineApplied) {
+      if (intent.inlineApplied && intent.terminalTurn !== true) {
         return unchanged(state);
       }
       return requestReconcile(state, {
         agentSessionId: intent.agentSessionId,
         needsMessages:
           intent.eventType === "message_update" ||
-          intent.eventType === "session_audit",
+          intent.eventType === "session_audit" ||
+          intent.terminalTurn === true,
         needsState:
           !intent.hasCachedSession ||
           (intent.eventType !== "message_update" &&
@@ -82,6 +83,14 @@ function receiveDetailSnapshot(
   const followUpIntents: EngineIntent[] = [
     { session: intent.session, type: "session/upserted" }
   ];
+  if (intent.editRetry) {
+    followUpIntents.push({
+      agentSessionId: intent.session.agentSessionId,
+      availability: intent.editRetry,
+      type: "editRetry/availabilityReceived",
+      workspaceId: intent.workspaceId
+    });
+  }
   if (intent.live && intent.session.latestTurn) {
     followUpIntents.push({
       turn: intent.session.latestTurn,

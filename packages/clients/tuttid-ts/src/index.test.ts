@@ -1844,6 +1844,51 @@ test("shared tuttid client submits one scoped workspace agent plan decision", as
   assert.deepEqual(result, response);
 });
 
+test("shared tuttid client edits and recovers one workspace agent turn", async () => {
+  const completed = {
+    historyRevision: 8,
+    operationId: "operation-1",
+    replacementTurnId: "turn-2",
+    retractedTurnId: "turn-1",
+    state: "completed"
+  } as const;
+  const { client, requests } = captureClient(jsonResponse(completed));
+
+  assert.deepEqual(
+    await client.editRetry("ws-1", "session-1", "turn-1", {
+      clientOperationId: "client-operation-1",
+      editedText: "edited prompt",
+      expectedHistoryRevision: 7
+    }),
+    completed
+  );
+  assert.deepEqual(
+    await client.recoverEditRetry("ws-1", "session-1", "operation-1", {
+      action: "reconcile"
+    }),
+    completed
+  );
+
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: {
+      clientOperationId: "client-operation-1",
+      editedText: "edited prompt",
+      expectedHistoryRevision: 7
+    },
+    method: "POST",
+    path: "/v1/workspaces/ws-1/agent-sessions/session-1/turns/turn-1/edit-retry",
+    query: {}
+  });
+  assertRequest(requests[1]!, {
+    authorization: null,
+    body: { action: "reconcile" },
+    method: "POST",
+    path: "/v1/workspaces/ws-1/agent-sessions/session-1/edit-retry-operations/operation-1/recover",
+    query: {}
+  });
+});
+
 test("shared tuttid client submits workspace agent interactive responses", async () => {
   let requestBody: unknown = null;
   let requestMethod = "";

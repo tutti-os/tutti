@@ -28,6 +28,7 @@ import type {
   WorkspaceAgentActivityReconcileDependencies
 } from "./workspaceAgentActivityReconcileTypes.ts";
 import { WorkspaceAgentComposerOptionsInvalidationCoordinator } from "./workspaceAgentComposerOptionsInvalidationCoordinator.ts";
+import { editRetryAvailabilityFromTuttid } from "./workspaceAgentEditRetry.ts";
 
 export abstract class WorkspaceAgentActivityReconcileBridge {
   private readonly reconcileDependencies: WorkspaceAgentActivityReconcileDependencies;
@@ -251,7 +252,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         }
       });
     }
-    return mapped;
+    return {
+      ...mapped,
+      editRetry: editRetryAvailabilityFromTuttid(detail.editRetry)
+    };
   }
 
   protected upsertAuthoritativeSession(
@@ -297,6 +301,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     });
     this.entry(workspaceId).engine.dispatch({
       childSessions: detail.childSessions,
+      editRetry: detail.editRetry,
       ...(options.live ? { live: true } : {}),
       ...(options.messages ? { messages: options.messages } : {}),
       session: detail.session,
@@ -768,4 +773,21 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       throw error;
     }
   }
+}
+
+function isTerminalTurnUpdate(
+  input: WorkspaceAgentActivityBridgeEvent
+): boolean {
+  if (input.eventType !== "turn_update") {
+    return false;
+  }
+  const data =
+    input.data && typeof input.data === "object"
+      ? (input.data as Record<string, unknown>)
+      : null;
+  const turn =
+    data?.turn && typeof data.turn === "object"
+      ? (data.turn as Record<string, unknown>)
+      : null;
+  return turn?.phase === "settled";
 }

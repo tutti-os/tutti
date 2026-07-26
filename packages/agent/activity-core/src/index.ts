@@ -99,6 +99,32 @@ export type {
 export { AGENT_SESSION_ENGINE_LOCAL_ORIGIN } from "./engine/types.ts";
 export { selectWorkspaceReconcileState } from "./engine/engineRuntime.selectors.ts";
 export {
+  editRetryPresentationRecordsEqual,
+  selectEditRetryPresentation,
+  type EditRetryPresentationRecord
+} from "./engine/editRetry.selectors.ts";
+export {
+  dispatchEditRetry,
+  dispatchEditRetryRecovery
+} from "./engine/editRetry.command.ts";
+export type {
+  AgentActivityEditRetryAvailability,
+  AgentActivityEditRetryCommandResult,
+  AgentActivityEditRetryInput,
+  AgentActivityEditRetryReasonCode,
+  AgentActivityEditRetryRecoveryAction,
+  AgentActivityEditRetryRecoveryState,
+  AgentActivityEditRetryResult,
+  AgentActivityRecoverEditRetryInput,
+  EditRetryCommand,
+  EditRetryIntent,
+  EditRetryOperationRecord,
+  EditRetryOperationStatus,
+  EditRetryState,
+  TurnEditRetryCommand,
+  TurnRecoverEditRetryCommand
+} from "./engine/editRetry.types.ts";
+export {
   dispatchSessionForkThroughTurn,
   dispatchSessionMutation,
   type DispatchSessionForkThroughTurnInput
