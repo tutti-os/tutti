@@ -117,29 +117,12 @@ func editRetryReplacementInput(
 }
 
 func editRetryReasonFromOperation(operation storesqlite.RuntimeOperation) EditRetryReasonCode {
-	switch storesqlite.EditRetryReasonCode(strings.TrimSpace(operation.LastError)) {
-	case storesqlite.EditRetryReasonProviderUnsupported:
-		return EditRetryReasonCodeProviderUnsupported
-	case storesqlite.EditRetryReasonTurnNotFound:
-		return EditRetryReasonCodeTurnNotFound
-	case storesqlite.EditRetryReasonTurnNotLatest:
-		return EditRetryReasonCodeTurnNotLatest
-	case storesqlite.EditRetryReasonTurnNotSettled:
-		return EditRetryReasonCodeTurnNotSettled
-	case storesqlite.EditRetryReasonHistoryRevisionConflict:
-		return EditRetryReasonCodeHistoryRevisionConflict
-	case storesqlite.EditRetryReasonOperationConflict:
-		return EditRetryReasonCodeOperationConflict
-	case storesqlite.EditRetryReasonProviderOutcomeUnknown:
-		return EditRetryReasonCodeProviderOutcomeUnknown
-	case storesqlite.EditRetryReasonRecoveryRequired:
-		return EditRetryReasonCodeRecoveryRequired
-	case storesqlite.EditRetryReasonReplacementNotProvenAbsent:
-		return EditRetryReasonCodeReplacementNotProvenAbsent
-	default:
-		if operation.Status == storesqlite.RuntimeOperationStatusFailed {
-			return EditRetryReasonCodeRecoveryRequired
-		}
-		return ""
+	reason := EditRetryReasonCode(strings.TrimSpace(operation.LastError))
+	if reason.Validate() == nil {
+		return reason
 	}
+	if operation.Status == storesqlite.RuntimeOperationStatusFailed {
+		return EditRetryReasonCodeRecoveryRequired
+	}
+	return ""
 }

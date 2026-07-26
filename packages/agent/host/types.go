@@ -1,6 +1,9 @@
 package agenthost
 
-import storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+import (
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+)
 
 // SessionRef identifies one canonical session without carrying host transport
 // or authorization state.
@@ -587,20 +590,21 @@ const (
 	EditRetryRecoveryActionRetryReplacement EditRetryRecoveryAction = "retry_replacement"
 )
 
-// EditRetryReasonCode is a stable, coarse Host-owned classification. Provider
-// codes and diagnostics must not be exposed or persisted through this type.
-type EditRetryReasonCode string
+// EditRetryReasonCode is the stable, coarse provider-neutral classification
+// shared by Host projections and durable edit-retry operations. Provider codes
+// and diagnostics must not be exposed or persisted through this type.
+type EditRetryReasonCode = canonical.EditRetryReasonCode
 
 const (
-	EditRetryReasonCodeProviderUnsupported        EditRetryReasonCode = "provider_unsupported"
-	EditRetryReasonCodeTurnNotFound               EditRetryReasonCode = "turn_not_found"
-	EditRetryReasonCodeTurnNotLatest              EditRetryReasonCode = "turn_not_latest"
-	EditRetryReasonCodeTurnNotSettled             EditRetryReasonCode = "turn_not_settled"
-	EditRetryReasonCodeHistoryRevisionConflict    EditRetryReasonCode = "history_revision_conflict"
-	EditRetryReasonCodeOperationConflict          EditRetryReasonCode = "operation_conflict"
-	EditRetryReasonCodeRecoveryRequired           EditRetryReasonCode = "recovery_required"
-	EditRetryReasonCodeProviderOutcomeUnknown     EditRetryReasonCode = "provider_outcome_unknown"
-	EditRetryReasonCodeReplacementNotProvenAbsent EditRetryReasonCode = "replacement_not_proven_absent"
+	EditRetryReasonCodeProviderUnsupported        = canonical.EditRetryReasonProviderUnsupported
+	EditRetryReasonCodeTurnNotFound               = canonical.EditRetryReasonTurnNotFound
+	EditRetryReasonCodeTurnNotLatest              = canonical.EditRetryReasonTurnNotLatest
+	EditRetryReasonCodeTurnNotSettled             = canonical.EditRetryReasonTurnNotSettled
+	EditRetryReasonCodeHistoryRevisionConflict    = canonical.EditRetryReasonHistoryRevisionConflict
+	EditRetryReasonCodeOperationConflict          = canonical.EditRetryReasonOperationConflict
+	EditRetryReasonCodeRecoveryRequired           = canonical.EditRetryReasonRecoveryRequired
+	EditRetryReasonCodeProviderOutcomeUnknown     = canonical.EditRetryReasonProviderOutcomeUnknown
+	EditRetryReasonCodeReplacementNotProvenAbsent = canonical.EditRetryReasonReplacementNotProvenAbsent
 )
 
 type EditRetryInput struct {

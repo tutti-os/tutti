@@ -40,7 +40,10 @@ func (h *Host) GetEditRetryAvailability(ctx context.Context, ref SessionRef) (Ed
 	}
 	if h == nil || h.store == nil || h.operations == nil || h.effectiveHistory == nil ||
 		h.turnSubmissions == nil || h.historyRuntime == nil || h.runtime == nil {
-		return EditRetryAvailability{ReasonCode: EditRetryReasonCodeProviderUnsupported}, nil
+		return EditRetryAvailability{
+			RecoveryState: EditRetryStatePrepared,
+			ReasonCode:    EditRetryReasonCodeProviderUnsupported,
+		}, nil
 	}
 	history, found, err := h.effectiveHistory.GetSessionHistory(ctx, ref.WorkspaceID, ref.AgentSessionID)
 	if err != nil {

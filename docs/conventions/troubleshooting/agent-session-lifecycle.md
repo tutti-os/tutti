@@ -3146,9 +3146,11 @@ inline data URL instead`. Claude or standard ACP may instead receive no
 - Fix:
   Treat realtime events as hints. Every terminal `turn_update` requests one
   combined state-and-message reconcile through the existing workspace engine.
-  Edit-retry completion and recovery commands await the same reconcile before
-  returning their projected state. Do not add a second WebSocket, component
-  store, or edit-retry-specific polling loop.
+  An accepted edit-retry completion or recovery command remains `reconciling`
+  and blocks another edit until the same authoritative detail reconciliation
+  confirms its revision and recovery state. Never replace canonical
+  availability with recovery actions inferred by Desktop. Do not add a second
+  WebSocket, component store, or edit-retry-specific polling loop.
 - Validation:
   Deliver a settled `turn_update` without the corresponding final
   `message_update`; assert that the bridge fetches messages and updates the

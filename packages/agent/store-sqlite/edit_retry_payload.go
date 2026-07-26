@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 type EditRetryCheckpoint string
@@ -17,18 +19,18 @@ const (
 	EditRetryCheckpointRollbackAborted       EditRetryCheckpoint = "rollback_aborted"
 )
 
-type EditRetryReasonCode string
+type EditRetryReasonCode = canonical.EditRetryReasonCode
 
 const (
-	EditRetryReasonProviderUnsupported        EditRetryReasonCode = "provider_unsupported"
-	EditRetryReasonTurnNotFound               EditRetryReasonCode = "turn_not_found"
-	EditRetryReasonTurnNotLatest              EditRetryReasonCode = "turn_not_latest"
-	EditRetryReasonTurnNotSettled             EditRetryReasonCode = "turn_not_settled"
-	EditRetryReasonHistoryRevisionConflict    EditRetryReasonCode = "history_revision_conflict"
-	EditRetryReasonOperationConflict          EditRetryReasonCode = "operation_conflict"
-	EditRetryReasonRecoveryRequired           EditRetryReasonCode = "recovery_required"
-	EditRetryReasonProviderOutcomeUnknown     EditRetryReasonCode = "provider_outcome_unknown"
-	EditRetryReasonReplacementNotProvenAbsent EditRetryReasonCode = "replacement_not_proven_absent"
+	EditRetryReasonProviderUnsupported        = canonical.EditRetryReasonProviderUnsupported
+	EditRetryReasonTurnNotFound               = canonical.EditRetryReasonTurnNotFound
+	EditRetryReasonTurnNotLatest              = canonical.EditRetryReasonTurnNotLatest
+	EditRetryReasonTurnNotSettled             = canonical.EditRetryReasonTurnNotSettled
+	EditRetryReasonHistoryRevisionConflict    = canonical.EditRetryReasonHistoryRevisionConflict
+	EditRetryReasonOperationConflict          = canonical.EditRetryReasonOperationConflict
+	EditRetryReasonRecoveryRequired           = canonical.EditRetryReasonRecoveryRequired
+	EditRetryReasonProviderOutcomeUnknown     = canonical.EditRetryReasonProviderOutcomeUnknown
+	EditRetryReasonReplacementNotProvenAbsent = canonical.EditRetryReasonReplacementNotProvenAbsent
 )
 
 // EditRetryOperationPayload is the typed durable edit-retry checkpoint.
@@ -43,12 +45,9 @@ type EditRetryOperationPayload struct {
 	Checkpoint         EditRetryCheckpoint `json:"step"`
 	BeforeProviderIDs  []string            `json:"beforeProviderTurnIds,omitempty"`
 	ProviderSessionID  string              `json:"providerSessionId,omitempty"`
-	RedispatchAllowed  bool                `json:"recoveryRedispatchAuthorized,omitempty"`
-	RedispatchAt       int64               `json:"recoveryRedispatchAtUnixMs,omitempty"`
 	RedispatchProofIDs []string            `json:"recoveryRedispatchProofProviderTurnIds,omitempty"`
 	RedispatchProofSID string              `json:"recoveryRedispatchProofProviderSessionId,omitempty"`
 	RedispatchProofAt  int64               `json:"recoveryRedispatchProofAtUnixMs,omitempty"`
-	RedispatchReadyAt  int64               `json:"redispatchPreparedProofAtUnixMs,omitempty"`
 	DispatchAttempt    int64               `json:"replacementDispatchAttempt,omitempty"`
 	DiscardedMessages  int64               `json:"lastDiscardedLocalMessageCount,omitempty"`
 	DiscardedOutcome   string              `json:"lastDiscardedLocalOutcome,omitempty"`
@@ -80,23 +79,6 @@ func (payload EditRetryOperationPayload) Validate(operationID string) error {
 		return errors.New("edit retry checkpoint is invalid")
 	}
 	return nil
-}
-
-func (reason EditRetryReasonCode) Validate() error {
-	switch reason {
-	case EditRetryReasonProviderUnsupported,
-		EditRetryReasonTurnNotFound,
-		EditRetryReasonTurnNotLatest,
-		EditRetryReasonTurnNotSettled,
-		EditRetryReasonHistoryRevisionConflict,
-		EditRetryReasonOperationConflict,
-		EditRetryReasonRecoveryRequired,
-		EditRetryReasonProviderOutcomeUnknown,
-		EditRetryReasonReplacementNotProvenAbsent:
-		return nil
-	default:
-		return fmt.Errorf("unknown edit retry reason code %q", reason)
-	}
 }
 
 func EncodeEditRetryOperationPayload(payload EditRetryOperationPayload) (map[string]any, error) {

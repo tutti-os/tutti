@@ -22,8 +22,11 @@ func (s *Store) PrepareEditRetryReplacementRedispatch(
 	input.OperationID = strings.TrimSpace(input.OperationID)
 	input.LeaseOwner = strings.TrimSpace(input.LeaseOwner)
 	input.ReplacementTurnID = strings.TrimSpace(input.ReplacementTurnID)
+	input.ProviderSessionID = strings.TrimSpace(input.ProviderSessionID)
 	if input.WorkspaceID == "" || input.OperationID == "" ||
-		input.LeaseOwner == "" || input.ReplacementTurnID == "" || input.NowUnixMS <= 0 {
+		input.LeaseOwner == "" || input.ReplacementTurnID == "" ||
+		input.ProviderSessionID == "" || input.ProofAtUnixMS <= 0 ||
+		input.NowUnixMS <= 0 {
 		return RuntimeOperation{}, false, errors.New("valid edit retry redispatch input is required")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -47,7 +50,7 @@ func (s *Store) PrepareEditRetryReplacementRedispatch(
 	if err != nil {
 		return op, false, err
 	}
-	if err := validateEditRetryRedispatchProof(payload, input.ReplacementTurnID); err != nil {
+	if err := validateEditRetryRedispatchProof(payload, input); err != nil {
 		return op, false, err
 	}
 	var recoveryState, historyOperationID string
@@ -62,12 +65,21 @@ WHERE workspace_id = ? AND agent_session_id = ?
 		strings.TrimSpace(historyOperationID) != op.OperationID {
 		return op, false, ErrRuntimeOperationSubjectState
 	}
-	if payload.RedispatchReadyAt == payload.RedispatchProofAt {
-		if _, err := s.commitTransaction(ctx, tx, op.WorkspaceID, nil); err != nil {
-			return RuntimeOperation{}, false, err
+	if payload.RedispatchProofAt > 0 {
+		if !equalStringValues(payload.RedispatchProofIDs, input.ProviderTurnIDs) ||
+			payload.RedispatchProofSID != input.ProviderSessionID {
+			return op, false, ErrRuntimeOperationSubjectState
 		}
-		committed = true
-		return op, false, nil
+		if payload.RedispatchProofAt == input.ProofAtUnixMS {
+			if _, err := s.commitTransaction(ctx, tx, op.WorkspaceID, nil); err != nil {
+				return RuntimeOperation{}, false, err
+			}
+			committed = true
+			return op, false, nil
+		}
+		if input.ProofAtUnixMS < payload.RedispatchProofAt {
+			return op, false, ErrRuntimeOperationSubjectState
+		}
 	}
 
 	turn, turnFound, err := getAgentTurnTx(ctx, tx, op.WorkspaceID, op.AgentSessionID, input.ReplacementTurnID)
@@ -121,7 +133,9 @@ WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
 		return RuntimeOperation{}, false, err
 	}
 
-	payload.RedispatchReadyAt = payload.RedispatchProofAt
+	payload.RedispatchProofIDs = append([]string(nil), input.ProviderTurnIDs...)
+	payload.RedispatchProofSID = input.ProviderSessionID
+	payload.RedispatchProofAt = input.ProofAtUnixMS
 	if payload.DispatchAttempt < 1 {
 		payload.DispatchAttempt = 1
 	}
@@ -173,15 +187,19 @@ WHERE workspace_id = ? AND operation_id = ?
 	return op, true, nil
 }
 
-func validateEditRetryRedispatchProof(payload EditRetryOperationPayload, replacementTurnID string) error {
-	if !payload.RedispatchAllowed ||
-		payload.Checkpoint != EditRetryCheckpointReplacementDispatched ||
-		payload.ReplacementTurnID != replacementTurnID ||
+func validateEditRetryRedispatchProof(
+	payload EditRetryOperationPayload,
+	input PrepareEditRetryReplacementRedispatchInput,
+) error {
+	if payload.Checkpoint != EditRetryCheckpointReplacementDispatched ||
+		payload.ReplacementTurnID != input.ReplacementTurnID ||
 		len(payload.BeforeProviderIDs) == 0 ||
-		!equalStringValues(payload.BeforeProviderIDs[:len(payload.BeforeProviderIDs)-1], payload.RedispatchProofIDs) ||
 		strings.TrimSpace(payload.ProviderSessionID) == "" ||
-		payload.ProviderSessionID != payload.RedispatchProofSID ||
-		payload.RedispatchProofAt <= 0 {
+		payload.ProviderSessionID != input.ProviderSessionID ||
+		!equalStringValues(
+			payload.BeforeProviderIDs[:len(payload.BeforeProviderIDs)-1],
+			input.ProviderTurnIDs,
+		) {
 		return ErrRuntimeOperationSubjectState
 	}
 	return nil

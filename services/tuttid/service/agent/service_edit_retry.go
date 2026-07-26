@@ -11,11 +11,6 @@ type EditRetryInput = agenthost.EditRetryInput
 type EditRetryResult = agenthost.EditRetryResult
 type EditRetryRecoveryAction = agenthost.EditRetryRecoveryAction
 
-const (
-	EditRetryRecoveryActionReconcile        = agenthost.EditRetryRecoveryActionReconcile
-	EditRetryRecoveryActionRetryReplacement = agenthost.EditRetryRecoveryActionRetryReplacement
-)
-
 // GetEditRetryAvailability is an adapter-only projection of Host-owned
 // eligibility and recovery state.
 func (s *Service) GetEditRetryAvailability(

@@ -40,11 +40,6 @@ export interface AgentActivityEditRetryResult {
   reasonCode?: AgentActivityEditRetryReasonCode;
 }
 
-export interface AgentActivityEditRetryCommandResult {
-  availability: AgentActivityEditRetryAvailability;
-  result: AgentActivityEditRetryResult;
-}
-
 export interface AgentActivityEditRetryInput {
   agentSessionId: string;
   clientOperationId: string;
@@ -67,6 +62,7 @@ export type EditRetryOperationStatus =
   | "failed"
   | "idle"
   | "pending"
+  | "reconciling"
   | "succeeded";
 
 export interface EditRetryOperationRecord {
@@ -75,6 +71,7 @@ export interface EditRetryOperationRecord {
   errorCode: string | null;
   errorMessage: string | null;
   requestKey: string | null;
+  result: AgentActivityEditRetryResult | null;
   status: EditRetryOperationStatus;
   workspaceId: string | null;
 }

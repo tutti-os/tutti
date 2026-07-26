@@ -109,7 +109,6 @@ export {
 } from "./engine/editRetry.command.ts";
 export type {
   AgentActivityEditRetryAvailability,
-  AgentActivityEditRetryCommandResult,
   AgentActivityEditRetryInput,
   AgentActivityEditRetryReasonCode,
   AgentActivityEditRetryRecoveryAction,

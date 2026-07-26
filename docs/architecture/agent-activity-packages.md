@@ -207,7 +207,9 @@ record, typed recovery intent, and authoritative state-and-message follow-up.
 React may retain an unsent editor draft, but it must not subscribe to raw
 transport events or sequence edit-retry HTTP calls itself. The Desktop command
 port translates `turn/editRetry` and `turn/recoverEditRetry` to the injected
-`TuttidClient`; the result re-enters the reducer before reconciliation.
+`TuttidClient`; the result re-enters the reducer as `reconciling`, while only
+the authoritative session-detail projection may replace edit-retry
+availability and release that fence.
 
 It does not own:
 

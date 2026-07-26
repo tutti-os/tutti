@@ -175,6 +175,9 @@ type PrepareEditRetryReplacementRedispatchInput struct {
 	OperationID       string
 	LeaseOwner        string
 	ReplacementTurnID string
+	ProviderSessionID string
+	ProviderTurnIDs   []string
+	ProofAtUnixMS     int64
 	NowUnixMS         int64
 }
 

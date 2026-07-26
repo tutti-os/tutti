@@ -57,7 +57,10 @@ function waitForEditRetrySettlement(
         return;
       }
       unsubscribe();
-      if (operation?.status === "succeeded") {
+      if (
+        operation?.status === "succeeded" ||
+        operation?.status === "reconciling"
+      ) {
         resolve(operation);
         return;
       }

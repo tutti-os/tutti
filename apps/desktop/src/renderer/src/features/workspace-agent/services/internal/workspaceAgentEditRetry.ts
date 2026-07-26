@@ -1,14 +1,10 @@
 import type {
-  TuttidClient,
   WorkspaceAgentEditRetryAvailability,
   WorkspaceAgentEditRetryResponse
 } from "@tutti-os/client-tuttid-ts";
 import type {
   AgentActivityEditRetryAvailability,
-  AgentActivityEditRetryCommandResult,
-  AgentActivityEditRetryInput,
-  AgentActivityEditRetryResult,
-  AgentActivityRecoverEditRetryInput
+  AgentActivityEditRetryResult
 } from "@tutti-os/agent-activity-core";
 
 export function editRetryAvailabilityFromTuttid(
@@ -40,64 +36,5 @@ export function editRetryResultFromTuttid(
       : {}),
     historyRevision: result.historyRevision,
     ...(result.reasonCode ? { reasonCode: result.reasonCode } : {})
-  };
-}
-
-interface WorkspaceAgentEditRetryDependencies {
-  tuttidClient: Pick<TuttidClient, "editRetry" | "recoverEditRetry">;
-}
-
-export class WorkspaceAgentEditRetryOperations {
-  private readonly dependencies: WorkspaceAgentEditRetryDependencies;
-
-  constructor(dependencies: WorkspaceAgentEditRetryDependencies) {
-    this.dependencies = dependencies;
-  }
-
-  async editRetry(
-    input: AgentActivityEditRetryInput
-  ): Promise<AgentActivityEditRetryCommandResult> {
-    const response = await this.dependencies.tuttidClient.editRetry(
-      input.workspaceId.trim(),
-      input.agentSessionId.trim(),
-      input.turnId,
-      {
-        clientOperationId: input.clientOperationId,
-        editedText: input.editedText,
-        expectedHistoryRevision: input.expectedHistoryRevision
-      },
-      { signal: input.signal }
-    );
-    return commandResult(response);
-  }
-
-  async recoverEditRetry(
-    input: AgentActivityRecoverEditRetryInput
-  ): Promise<AgentActivityEditRetryCommandResult> {
-    const response = await this.dependencies.tuttidClient.recoverEditRetry(
-      input.workspaceId.trim(),
-      input.agentSessionId.trim(),
-      input.operationId,
-      { action: input.action },
-      { signal: input.signal }
-    );
-    return commandResult(response);
-  }
-}
-
-function commandResult(
-  response: WorkspaceAgentEditRetryResponse
-): AgentActivityEditRetryCommandResult {
-  const result = editRetryResultFromTuttid(response);
-  return {
-    availability: {
-      availableActions: [],
-      eligible: false,
-      historyRevision: result.historyRevision,
-      operationId: result.operationId,
-      recoveryState: result.state,
-      supported: true
-    },
-    result
   };
 }

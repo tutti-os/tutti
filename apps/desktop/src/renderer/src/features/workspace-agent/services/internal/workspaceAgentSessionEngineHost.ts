@@ -2,8 +2,6 @@ import {
   AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
   createAgentSessionEngine,
   type AgentActivityAdapter,
-  type AgentActivityEditRetryInput,
-  type AgentActivityRecoverEditRetryInput,
   type AgentActivitySendInput,
   type AgentSessionEngine,
   type EngineExternalCommand,
@@ -22,6 +20,7 @@ import {
   readDesktopWorkspaceAgentReadState,
   writeDesktopWorkspaceAgentReadState
 } from "../createDesktopAgentHostApi.ts";
+import { editRetryResultFromTuttid } from "./workspaceAgentEditRetry.ts";
 
 export interface WorkspaceAgentSessionEngineHost {
   adapter: AgentActivityAdapter;
@@ -47,8 +46,6 @@ interface CreateWorkspaceAgentSessionEngineHostInput {
     command: SessionReconcileCommand,
     signal?: AbortSignal
   ): Promise<unknown>;
-  editRetry(input: AgentActivityEditRetryInput): Promise<unknown>;
-  recoverEditRetry(input: AgentActivityRecoverEditRetryInput): Promise<unknown>;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   takePendingSessionRecording(workspaceId: string): string | null;
   restorePendingSessionRecording(
@@ -231,23 +228,29 @@ export function createWorkspaceAgentSessionEngineHost(
               workspaceId: command.workspaceId
             });
           case "turn/editRetry":
-            return input.editRetry({
-              agentSessionId: command.agentSessionId,
-              clientOperationId: command.clientOperationId,
-              editedText: command.editedText,
-              expectedHistoryRevision: command.expectedHistoryRevision,
-              signal: options?.signal,
-              turnId: command.turnId,
-              workspaceId: command.workspaceId
-            });
+            return input.tuttidClient
+              .editRetry(
+                command.workspaceId.trim(),
+                command.agentSessionId.trim(),
+                command.turnId,
+                {
+                  clientOperationId: command.clientOperationId,
+                  editedText: command.editedText,
+                  expectedHistoryRevision: command.expectedHistoryRevision
+                },
+                { signal: options?.signal }
+              )
+              .then(editRetryResultFromTuttid);
           case "turn/recoverEditRetry":
-            return input.recoverEditRetry({
-              action: command.action,
-              agentSessionId: command.agentSessionId,
-              operationId: command.operationId,
-              signal: options?.signal,
-              workspaceId: command.workspaceId
-            });
+            return input.tuttidClient
+              .recoverEditRetry(
+                command.workspaceId.trim(),
+                command.agentSessionId.trim(),
+                command.operationId,
+                { action: command.action },
+                { signal: options?.signal }
+              )
+              .then(editRetryResultFromTuttid);
           case "session/forkThroughTurn":
             return adapter.forkSession({
               requestId: command.requestId,

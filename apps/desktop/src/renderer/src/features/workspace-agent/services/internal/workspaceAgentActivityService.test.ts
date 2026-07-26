@@ -3675,7 +3675,7 @@ test("WorkspaceAgentActivityService engine owns edit retry and authoritative rec
             availableActions: [],
             eligible: false,
             historyRevision: 2,
-            recoveryState: "completed",
+            recoveryState: "prepared",
             supported: true
           },
           session,

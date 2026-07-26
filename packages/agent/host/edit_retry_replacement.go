@@ -62,6 +62,7 @@ func (h *Host) reconcileEditRetryReplacement(
 			ProviderTurnID:    replacement.ID,
 			Source:            RuntimeAcceptanceSourceHistoryRead,
 		},
+		nil,
 	)
 	if err != nil {
 		failed, failErr := h.failEditRetryRecovery(
@@ -96,19 +97,19 @@ func (h *Host) authorizeEditRetryRedispatch(
 		!equalEditRetryIDs(runtimeHistoryTurnIDs(snapshot), expectedPrefix) {
 		return operation, ErrEditRetryRecoveryRequired
 	}
-	payload.RedispatchAllowed = true
-	payload.RedispatchProofIDs = append([]string(nil), expectedPrefix...)
-	payload.RedispatchProofSID = payload.ProviderSessionID
-	payload.RedispatchProofAt = h.now().UnixMilli()
-	operation, err = h.checkpointEditRetry(ctx, operation, owner, payload)
-	if err != nil {
-		return operation, err
+	now := h.now().UnixMilli()
+	proofAt := now
+	if proofAt <= payload.RedispatchProofAt {
+		proofAt = payload.RedispatchProofAt + 1
 	}
 	prepared, _, err := h.effectiveHistory.PrepareEditRetryReplacementRedispatch(
 		ctx, storesqlite.PrepareEditRetryReplacementRedispatchInput{
 			WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID,
 			LeaseOwner: owner, ReplacementTurnID: payload.ReplacementTurnID,
-			NowUnixMS: h.now().UnixMilli(),
+			ProviderSessionID: payload.ProviderSessionID,
+			ProviderTurnIDs:   append([]string(nil), expectedPrefix...),
+			ProofAtUnixMS:     proofAt,
+			NowUnixMS:         now,
 		},
 	)
 	return prepared, err
@@ -208,17 +209,10 @@ func (h *Host) dispatchEditRetryReplacement(
 			ErrSubmitDeliveryUnknown,
 		)
 	}
-	if strings.TrimSpace(execResult.TurnID) == payload.ReplacementTurnID {
-		if err := h.recordEditRetryReplacementSubmission(ctx, operation, input); err != nil {
-			return h.failEditRetryRecovery(
-				ctx, operation, owner, storesqlite.EditRetryReasonRecoveryRequired, err,
-			)
-		}
-	}
 	if receipt := execResult.ProviderDispatch.Acceptance; receipt != nil &&
 		execResult.ProviderDispatch.Disposition == RuntimeDispatchDispositionApplied {
 		completed, completeErr := h.completeEditRetryAcceptance(
-			ctx, operation, owner, input, *receipt,
+			ctx, operation, owner, input, *receipt, hydrated,
 		)
 		if completeErr == nil {
 			return completed, nil
@@ -226,6 +220,13 @@ func (h *Host) dispatchEditRetryReplacement(
 		return h.failEditRetryRecovery(
 			ctx, operation, owner, storesqlite.EditRetryReasonRecoveryRequired, completeErr,
 		)
+	}
+	if strings.TrimSpace(execResult.TurnID) == payload.ReplacementTurnID {
+		if err := h.recordEditRetryReplacementSubmission(ctx, operation, input, hydrated); err != nil {
+			return h.failEditRetryRecovery(
+				ctx, operation, owner, storesqlite.EditRetryReasonRecoveryRequired, err,
+			)
+		}
 	}
 	if execResult.ProviderDispatch.Disposition == RuntimeDispatchDispositionRejected ||
 		execResult.ProviderDispatch.Disposition == RuntimeDispatchDispositionNotDispatched {
@@ -249,6 +250,7 @@ func (h *Host) completeEditRetryAcceptance(
 	owner string,
 	input SendInput,
 	receipt RuntimeProviderAcceptanceReceipt,
+	hydrated []PromptContentBlock,
 ) (storesqlite.RuntimeOperation, error) {
 	payload, err := storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
 	if err != nil {
@@ -258,7 +260,7 @@ func (h *Host) completeEditRetryAcceptance(
 		strings.TrimSpace(receipt.ProviderTurnID) == "" {
 		return operation, editRetryInvariant("provider acceptance receipt identity mismatch")
 	}
-	if err := h.recordEditRetryReplacementSubmission(ctx, operation, input); err != nil {
+	if err := h.recordEditRetryReplacementSubmission(ctx, operation, input, hydrated); err != nil {
 		return operation, err
 	}
 	replacement, found, err := h.store.GetTurn(
@@ -300,16 +302,6 @@ func (h *Host) completeEditRetryAcceptance(
 		); err != nil {
 			return operation, err
 		}
-		replacement, found, err = h.store.GetTurn(
-			ctx, operation.WorkspaceID, operation.AgentSessionID, payload.ReplacementTurnID,
-		)
-		if err != nil {
-			return operation, err
-		}
-	}
-	if !found ||
-		strings.TrimSpace(replacement.RootProviderTurnID) != strings.TrimSpace(receipt.ProviderTurnID) {
-		return operation, editRetryInvariant("canonical replacement acceptance is unavailable")
 	}
 	completion, _, err := h.effectiveHistory.CompleteEditRetryRuntimeOperation(
 		ctx, storesqlite.CompleteEditRetryRuntimeOperationInput{
@@ -331,19 +323,22 @@ func (h *Host) recordEditRetryReplacementSubmission(
 	ctx context.Context,
 	operation storesqlite.RuntimeOperation,
 	input SendInput,
+	hydrated []PromptContentBlock,
 ) error {
 	payload, err := storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
 	if err != nil {
 		return err
 	}
 	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
-		hydrated := append([]PromptContentBlock(nil), input.Content...)
-		if h.attachments != nil {
-			hydrated, err = h.attachments.HydrateRuntimeContent(
-				operation.WorkspaceID, operation.AgentSessionID, input.Content,
-			)
-			if err != nil {
-				return err
+		if hydrated == nil {
+			hydrated = append([]PromptContentBlock(nil), input.Content...)
+			if h.attachments != nil {
+				hydrated, err = h.attachments.HydrateRuntimeContent(
+					operation.WorkspaceID, operation.AgentSessionID, input.Content,
+				)
+				if err != nil {
+					return err
+				}
 			}
 		}
 		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{

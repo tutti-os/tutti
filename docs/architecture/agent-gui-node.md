@@ -523,6 +523,10 @@ needs-action. It may expose edit controls only on the exact eligible Turn.
 The workspace `AgentSessionEngine` owns command identity, pending/failure
 state, recovery-action dispatch, and command-result reconciliation; React keeps
 only the unsent editor draft and awaits the engine-owned command settlement.
+An accepted transport result enters an engine-owned `reconciling` state and
+does not overwrite canonical availability. Editing stays blocked until a
+session-detail read confirms the returned history revision and recovery state;
+Desktop must not manufacture recovery actions from the command response.
 `resend_pending` and `recovery_required` are explicit recovery states rather
 than indefinite loading. GUI recovery commands delegate to Host and never
 choose whether rollback or replacement should be repeated. Completion and

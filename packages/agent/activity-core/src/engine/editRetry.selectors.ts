@@ -15,6 +15,7 @@ const IDLE_OPERATION: EditRetryOperationRecord = {
   errorCode: null,
   errorMessage: null,
   requestKey: null,
+  result: null,
   status: "idle",
   workspaceId: null
 };

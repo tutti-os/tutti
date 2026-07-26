@@ -57,7 +57,6 @@ import {
   AgentSessionActivityEventRecorder,
   createTuttidAgentSessionActivityEventAppender
 } from "../../../agent-session-replay/services/agentSessionActivityEventRecorder.ts";
-import { WorkspaceAgentEditRetryOperations } from "./workspaceAgentEditRetry.ts";
 
 function waitForPromiseWithSignal<T>(
   promise: Promise<T>,
@@ -118,7 +117,6 @@ export class WorkspaceAgentActivityService
   private readonly analytics: WorkspaceAgentActivityAnalytics;
   private readonly dependencies: WorkspaceAgentActivityServiceDependencies;
   private readonly importOperations: WorkspaceAgentActivityImportOperations;
-  private readonly editRetryOperations: WorkspaceAgentEditRetryOperations;
   private readonly mutationOperations: WorkspaceAgentActivityMutationOperations;
   private readonly queryOperations: WorkspaceAgentActivityQueryOperations;
   private readonly workspaceLoadsInFlight = new Map<
@@ -183,9 +181,6 @@ export class WorkspaceAgentActivityService
       upsertAuthoritativeSession: (session, source) =>
         this.upsertAuthoritativeSession(session, source),
       workspaceUserProjectService: dependencies.workspaceUserProjectService
-    });
-    this.editRetryOperations = new WorkspaceAgentEditRetryOperations({
-      tuttidClient: dependencies.tuttidClient
     });
   }
 
@@ -1024,20 +1019,8 @@ export class WorkspaceAgentActivityService
         return activation;
       },
       cancelTurn: (input) => this.cancelTurn(input),
-      editRetry: (input) =>
-        this.editRetryOperations.editRetry({
-          ...input,
-          agentSessionId: input.agentSessionId.trim(),
-          workspaceId: normalizeWorkspaceId(input.workspaceId)
-        }),
       reconcileSession: (command, signal) =>
         this.executeSessionReconcileCommand(command, signal),
-      recoverEditRetry: (input) =>
-        this.editRetryOperations.recoverEditRetry({
-          ...input,
-          agentSessionId: input.agentSessionId.trim(),
-          workspaceId: normalizeWorkspaceId(input.workspaceId)
-        }),
       runtimeApi: this.dependencies.runtimeApi,
       takePendingSessionRecording: (workspaceId) =>
         this.takeNextSessionRecording(workspaceId),

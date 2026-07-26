@@ -106,6 +106,12 @@ proved its absence from authoritative history; a read-only `reconcile` command
 cannot dispatch provider work. While history is fenced in
 `rollback_pending`, `resend_pending`, or `recovery_required`, ordinary sends
 are rejected rather than appended to an uncertain model context.
+The authoritative absence proof is consumed in the same SQLite transaction
+that removes a discardable failed replacement placeholder and advances the
+stable replacement attempt. There is no separately committed redispatch
+authorization checkpoint. Replaying the same proof is idempotent; a later
+authoritative proof advances a new attempt only after the previous failed
+placeholder and claim are safely discarded.
 
 A provider-accepted Goal operation has crossed the delivery boundary. The
 steady-state worker waits for applied evidence and never resubmits that

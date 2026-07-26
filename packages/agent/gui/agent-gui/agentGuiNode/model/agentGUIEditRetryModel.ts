@@ -24,6 +24,7 @@ export function projectAgentGUIEditRetryPresentation(input: {
   const availability = input.availability;
   const processing =
     input.commandStatus === "pending" ||
+    input.commandStatus === "reconciling" ||
     availability?.recoveryState === "rolling_back";
   const needsAction =
     !processing &&

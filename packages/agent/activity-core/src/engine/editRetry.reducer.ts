@@ -6,7 +6,7 @@ import type {
 } from "./types.ts";
 import type {
   AgentActivityEditRetryAvailability,
-  AgentActivityEditRetryCommandResult,
+  AgentActivityEditRetryResult,
   EditRetryOperationRecord,
   EditRetryState
 } from "./editRetry.types.ts";
@@ -18,6 +18,7 @@ const IDLE_OPERATION: EditRetryOperationRecord = {
   errorCode: null,
   errorMessage: null,
   requestKey: null,
+  result: null,
   status: "idle",
   workspaceId: null
 };
@@ -62,18 +63,39 @@ function receiveAvailability(
     return unchanged(state);
   }
   const current = state.availabilityBySessionId[agentSessionId];
+  const operation = state.operationBySessionId[agentSessionId];
+  const confirmsOperation =
+    operation?.status === "reconciling" &&
+    operation.result &&
+    availabilityConfirmsResult(intent.availability, operation.result);
   if (availabilityEqual(current, intent.availability)) {
-    return unchanged(state);
+    return confirmsOperation
+      ? {
+          commands: NO_COMMANDS,
+          state: replaceOperation(state, agentSessionId, {
+            ...operation,
+            result: null,
+            status: "succeeded"
+          })
+        }
+      : unchanged(state);
   }
+  const nextState = {
+    ...state,
+    availabilityBySessionId: {
+      ...state.availabilityBySessionId,
+      [agentSessionId]: cloneAvailability(intent.availability)
+    }
+  };
   return {
     commands: NO_COMMANDS,
-    state: {
-      ...state,
-      availabilityBySessionId: {
-        ...state.availabilityBySessionId,
-        [agentSessionId]: cloneAvailability(intent.availability)
-      }
-    }
+    state: confirmsOperation
+      ? replaceOperation(nextState, agentSessionId, {
+          ...operation,
+          result: null,
+          status: "succeeded"
+        })
+      : nextState
   };
 }
 
@@ -132,6 +154,7 @@ function requestEditRetry(
           errorCode: null,
           errorMessage: null,
           requestKey,
+          result: null,
           status: "pending",
           workspaceId
         }
@@ -181,6 +204,7 @@ function requestRecovery(
           commandId,
           errorCode: null,
           errorMessage: null,
+          result: null,
           status: "pending",
           workspaceId
         }
@@ -201,11 +225,9 @@ function settleCommand(
   }
   const [agentSessionId, operation] = entry;
   const workspaceId = operation.workspaceId?.trim() ?? "";
-  const outcome =
-    intent.outcome === "succeeded"
-      ? parseEditRetryCommandResult(intent.value)
-      : null;
-  if (!outcome) {
+  const result =
+    intent.outcome === "succeeded" ? parseEditRetryResult(intent.value) : null;
+  if (!result) {
     return {
       commands: NO_COMMANDS,
       ...(workspaceId
@@ -230,6 +252,7 @@ function settleCommand(
           (intent.outcome === "succeeded"
             ? "agent_edit_retry_invalid_result"
             : "agent_edit_retry_command_failed"),
+        result: null,
         status: "failed"
       })
     };
@@ -245,49 +268,49 @@ function settleCommand(
         workspaceId
       }
     ],
-    state: replaceOperation(
-      {
-        ...state,
-        availabilityBySessionId: {
-          ...state.availabilityBySessionId,
-          [agentSessionId]: cloneAvailability(outcome.availability)
-        }
-      },
-      agentSessionId,
-      {
-        ...operation,
-        commandId: null,
-        errorCode: null,
-        errorMessage: null,
-        status: "succeeded"
-      }
-    )
+    state: replaceOperation(state, agentSessionId, {
+      ...operation,
+      commandId: null,
+      errorCode: null,
+      errorMessage: null,
+      result,
+      status: "reconciling"
+    })
   };
 }
 
-function parseEditRetryCommandResult(
+function parseEditRetryResult(
   value: unknown
-): AgentActivityEditRetryCommandResult | null {
+): AgentActivityEditRetryResult | null {
   if (!value || typeof value !== "object") {
     return null;
   }
-  const candidate = value as Partial<AgentActivityEditRetryCommandResult>;
-  const availability = candidate.availability;
-  const result = candidate.result;
+  const result = value as Partial<AgentActivityEditRetryResult>;
   if (
-    !availability ||
-    typeof availability.supported !== "boolean" ||
-    typeof availability.eligible !== "boolean" ||
-    typeof availability.historyRevision !== "number" ||
-    !Array.isArray(availability.availableActions) ||
-    !result ||
     typeof result.operationId !== "string" ||
+    typeof result.state !== "string" ||
     typeof result.retractedTurnId !== "string" ||
     typeof result.historyRevision !== "number"
   ) {
     return null;
   }
-  return candidate as AgentActivityEditRetryCommandResult;
+  return result as AgentActivityEditRetryResult;
+}
+
+function availabilityConfirmsResult(
+  availability: AgentActivityEditRetryAvailability,
+  result: AgentActivityEditRetryResult
+): boolean {
+  if (availability.historyRevision < result.historyRevision) {
+    return false;
+  }
+  if (result.state === "completed") {
+    return availability.recoveryState === "prepared";
+  }
+  return (
+    availability.operationId === result.operationId &&
+    availability.recoveryState === result.state
+  );
 }
 
 function cloneAvailability(

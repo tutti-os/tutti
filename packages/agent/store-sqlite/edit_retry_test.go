@@ -138,24 +138,11 @@ func TestEditRetryReplacementRedispatchConsumesProofAtomically(t *testing.T) {
 	}
 	acceptEditRetrySubmitClaim(t, store, payload.ClientSubmitID, payload.ReplacementTurnID, 31)
 
-	payload.RedispatchAllowed = true
-	payload.RedispatchProofAt = 35
-	payload.RedispatchProofSID = payload.ProviderSessionID
-	payload.RedispatchProofIDs = []string{}
-	payloadMap, err := EncodeEditRetryOperationPayload(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	op, changed, err := store.CheckpointRuntimeOperation(ctx, CheckpointRuntimeOperationInput{
+	op, changed, err := store.PrepareEditRetryReplacementRedispatch(ctx, PrepareEditRetryReplacementRedispatchInput{
 		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-a",
-		Payload: payloadMap, NowUnixMS: 35,
-	})
-	if err != nil || !changed {
-		t.Fatalf("proof checkpoint changed=%v error=%v", changed, err)
-	}
-	op, changed, err = store.PrepareEditRetryReplacementRedispatch(ctx, PrepareEditRetryReplacementRedispatchInput{
-		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-a",
-		ReplacementTurnID: payload.ReplacementTurnID, NowUnixMS: 36,
+		ReplacementTurnID: payload.ReplacementTurnID,
+		ProviderSessionID: payload.ProviderSessionID, ProviderTurnIDs: []string{},
+		ProofAtUnixMS: 35, NowUnixMS: 36,
 	})
 	if err != nil || !changed {
 		t.Fatalf("redispatch prepare changed=%v error=%v", changed, err)
@@ -167,14 +154,45 @@ func TestEditRetryReplacementRedispatchConsumesProofAtomically(t *testing.T) {
 		t.Fatalf("stale accepted claim found=%v error=%v", found, err)
 	}
 	stored := decodeEditRetryPayloadTest(t, op)
-	if stored.RedispatchReadyAt != stored.RedispatchProofAt || stored.DispatchAttempt != 2 {
+	if stored.RedispatchProofAt != 35 || stored.DispatchAttempt != 2 {
 		t.Fatalf("redispatch checkpoint=%#v", stored)
 	}
 	if _, changed, err := store.PrepareEditRetryReplacementRedispatch(ctx, PrepareEditRetryReplacementRedispatchInput{
 		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-a",
-		ReplacementTurnID: payload.ReplacementTurnID, NowUnixMS: 37,
+		ReplacementTurnID: payload.ReplacementTurnID,
+		ProviderSessionID: payload.ProviderSessionID, ProviderTurnIDs: []string{},
+		ProofAtUnixMS: 35, NowUnixMS: 37,
 	}); err != nil || changed {
 		t.Fatalf("duplicate proof consumption changed=%v error=%v", changed, err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: payload.ReplacementTurnID,
+		Phase: TurnPhaseSettled, Outcome: TurnOutcomeFailed, Origin: TurnOriginUserPrompt,
+		ErrorMessage: "second transport failure", OccurredAtUnixMS: 37,
+	}); err != nil || !accepted {
+		t.Fatalf("record second failed replacement accepted=%v error=%v", accepted, err)
+	}
+	if _, _, err := store.RecordTurnSubmission(ctx, TurnSubmission{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: payload.ReplacementTurnID,
+		ContentJSON: `[{"type":"text","text":"edited prompt"}]`, DisplayPrompt: "edited prompt",
+		CapabilityRefsJSON: `[]`, TuttiModeSnapshotJSON: `null`,
+		ClientSubmitID: payload.ClientSubmitID, CreatedAtUnixMS: 37, UpdatedAtUnixMS: 37,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	acceptEditRetrySubmitClaim(t, store, payload.ClientSubmitID, payload.ReplacementTurnID, 37)
+	op, changed, err = store.PrepareEditRetryReplacementRedispatch(ctx, PrepareEditRetryReplacementRedispatchInput{
+		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-a",
+		ReplacementTurnID: payload.ReplacementTurnID,
+		ProviderSessionID: payload.ProviderSessionID, ProviderTurnIDs: []string{},
+		ProofAtUnixMS: 38, NowUnixMS: 39,
+	})
+	if err != nil || !changed {
+		t.Fatalf("fresh proof consumption changed=%v error=%v", changed, err)
+	}
+	stored = decodeEditRetryPayloadTest(t, op)
+	if stored.RedispatchProofAt != 38 || stored.DispatchAttempt != 3 {
+		t.Fatalf("fresh redispatch checkpoint=%#v", stored)
 	}
 }
 
@@ -192,26 +210,13 @@ func TestEditRetryReplacementRedispatchReusesPreparedClaimWithoutLocalTurn(t *te
 		t.Fatalf("prepare claim created=%v claim=%#v error=%v", created, claim, err)
 	}
 
-	payload.RedispatchAllowed = true
-	payload.RedispatchProofAt = 35
-	payload.RedispatchProofSID = payload.ProviderSessionID
-	payload.RedispatchProofIDs = []string{}
-	payloadMap, err := EncodeEditRetryOperationPayload(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	op, changed, err := store.CheckpointRuntimeOperation(ctx, CheckpointRuntimeOperationInput{
-		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-a",
-		Payload: payloadMap, NowUnixMS: 35,
-	})
-	if err != nil || !changed {
-		t.Fatalf("proof checkpoint changed=%v error=%v", changed, err)
-	}
-	op, changed, err = store.PrepareEditRetryReplacementRedispatch(
+	op, changed, err := store.PrepareEditRetryReplacementRedispatch(
 		ctx,
 		PrepareEditRetryReplacementRedispatchInput{
 			WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-a",
-			ReplacementTurnID: payload.ReplacementTurnID, NowUnixMS: 36,
+			ReplacementTurnID: payload.ReplacementTurnID,
+			ProviderSessionID: payload.ProviderSessionID, ProviderTurnIDs: []string{},
+			ProofAtUnixMS: 35, NowUnixMS: 36,
 		},
 	)
 	if err != nil || !changed {
@@ -225,7 +230,7 @@ func TestEditRetryReplacementRedispatchReusesPreparedClaimWithoutLocalTurn(t *te
 		t.Fatalf("retained prepared claim=%#v found=%v error=%v", claim, found, err)
 	}
 	stored := decodeEditRetryPayloadTest(t, op)
-	if stored.RedispatchReadyAt != stored.RedispatchProofAt || stored.DispatchAttempt != 2 {
+	if stored.RedispatchProofAt != 35 || stored.DispatchAttempt != 2 {
 		t.Fatalf("redispatch checkpoint=%#v", stored)
 	}
 }

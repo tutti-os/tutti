@@ -67,7 +67,7 @@ test("edit retry owns stable identity and command settlement in the engine", () 
   assert.notEqual(changedCommand.clientOperationId, command.clientOperationId);
 });
 
-test("successful edit retry refreshes availability and requests authoritative reconcile", () => {
+test("successful edit retry waits for authoritative availability and requests reconcile", () => {
   let state = createInitialAgentSessionEngineState();
   state = rootEngineReducer(state, {
     agentSessionId: "session-1",
@@ -92,29 +92,91 @@ test("successful edit retry refreshes availability and requests authoritative re
     outcome: "succeeded",
     type: "engine/commandResult",
     value: {
-      availability: {
-        availableActions: [],
-        eligible: false,
-        historyRevision: 9,
-        recoveryState: "completed",
-        supported: true
-      },
-      result: {
-        historyRevision: 9,
-        operationId: "operation-1",
-        replacementTurnId: "turn-2",
-        retractedTurnId: "turn-1",
-        state: "completed"
-      }
+      historyRevision: 9,
+      operationId: "operation-1",
+      replacementTurnId: "turn-2",
+      retractedTurnId: "turn-1",
+      state: "completed"
     }
   });
   assert.equal(
     settled.state.editRetry.availabilityBySessionId["session-1"]
       ?.historyRevision,
-    9
+    7
+  );
+  assert.equal(
+    settled.state.editRetry.operationBySessionId["session-1"]?.status,
+    "reconciling"
   );
   assert.deepEqual(
     settled.followUpIntents?.map((intent) => intent.type),
     ["session/reconcileRequested"]
+  );
+
+  const reconciled = rootEngineReducer(settled.state, {
+    agentSessionId: "session-1",
+    availability: {
+      availableActions: [],
+      eligible: false,
+      historyRevision: 9,
+      recoveryState: "prepared",
+      supported: true
+    },
+    type: "editRetry/availabilityReceived",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(
+    reconciled.state.editRetry.operationBySessionId["session-1"]?.status,
+    "succeeded"
+  );
+});
+
+test("authoritative unchanged availability settles a read-only recovery", () => {
+  const recoveryAvailability = {
+    ...AVAILABLE,
+    availableActions: ["reconcile"] as const,
+    eligible: false,
+    operationId: "operation-1",
+    recoveryState: "resend_pending" as const,
+    turnId: undefined
+  };
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    availability: recoveryAvailability,
+    type: "editRetry/availabilityReceived",
+    workspaceId: "workspace-1"
+  }).state;
+  const requested = rootEngineReducer(state, {
+    action: "reconcile",
+    agentSessionId: "session-1",
+    type: "editRetry/recoveryRequested",
+    workspaceId: "workspace-1"
+  });
+  const command = requested.commands[0];
+  assert.equal(command?.type, "turn/recoverEditRetry");
+  if (command?.type !== "turn/recoverEditRetry") return;
+
+  const accepted = rootEngineReducer(requested.state, {
+    commandId: command.commandId,
+    commandType: command.type,
+    outcome: "succeeded",
+    type: "engine/commandResult",
+    value: {
+      historyRevision: 7,
+      operationId: "operation-1",
+      retractedTurnId: "turn-1",
+      state: "resend_pending"
+    }
+  });
+  const reconciled = rootEngineReducer(accepted.state, {
+    agentSessionId: "session-1",
+    availability: recoveryAvailability,
+    type: "editRetry/availabilityReceived",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(
+    reconciled.state.editRetry.operationBySessionId["session-1"]?.status,
+    "succeeded"
   );
 });

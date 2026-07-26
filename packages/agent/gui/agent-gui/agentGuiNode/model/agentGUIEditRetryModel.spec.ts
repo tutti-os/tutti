@@ -19,7 +19,7 @@ describe("projectAgentGUIEditRetryPresentation", () => {
     });
   });
 
-  it("maps only command submission and rollback to processing", () => {
+  it("maps command submission, authoritative reconciliation, and rollback to processing", () => {
     expect(
       projectAgentGUIEditRetryPresentation({
         availability: availability({ recoveryState: "rolling_back" }),
@@ -32,6 +32,19 @@ describe("projectAgentGUIEditRetryPresentation", () => {
         commandStatus: "pending"
       }).state
     ).toBe("processing");
+    expect(
+      projectAgentGUIEditRetryPresentation({
+        availability: availability({
+          eligible: true,
+          recoveryState: "prepared",
+          turnId: "turn-latest"
+        }),
+        commandStatus: "reconciling"
+      })
+    ).toMatchObject({
+      editableTurnId: null,
+      state: "processing"
+    });
   });
 
   it("maps resend_pending to explicit recovery after rollback is confirmed", () => {
@@ -89,7 +102,7 @@ function availability(
     supported: true,
     eligible: false,
     historyRevision: 1,
-    recoveryState: "completed",
+    recoveryState: "prepared",
     availableActions: [],
     ...overrides
   };

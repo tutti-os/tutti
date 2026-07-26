@@ -183,6 +183,80 @@ func TestEditRetrySagaRetriesReplacementOnlyAfterAuthoritativeAbsence(t *testing
 	}
 }
 
+func TestEditRetrySagaCanRetryReplacementAfterSecondAuthoritativeAbsence(t *testing.T) {
+	host, store, runtime := newHostEditRetryFixture(t)
+	runtime.mu.Lock()
+	runtime.execOutcomeUnknown = true
+	runtime.mu.Unlock()
+	first, err := host.EditRetry(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		"turn-original",
+		agenthost.EditRetryInput{
+			EditedText: "edited prompt", ClientOperationID: "edit-absent-twice",
+			ExpectedHistoryRevision: 0,
+		},
+	)
+	if !errors.Is(err, agenthost.ErrEditRetryResendPending) {
+		t.Fatalf("EditRetry() error = %v, want resend pending", err)
+	}
+	if _, err := host.RecoverEditRetry(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		first.OperationID,
+		agenthost.EditRetryRecoveryActionReconcile,
+	); !errors.Is(err, agenthost.ErrEditRetryResendPending) {
+		t.Fatalf("first reconcile error = %v, want resend pending", err)
+	}
+	runtime.mu.Lock()
+	runtime.execOutcomeUnknown = true
+	runtime.mu.Unlock()
+	if _, err := host.RecoverEditRetry(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		first.OperationID,
+		agenthost.EditRetryRecoveryActionRetryReplacement,
+	); !errors.Is(err, agenthost.ErrEditRetryResendPending) {
+		t.Fatalf("first retry error = %v, want resend pending", err)
+	}
+	if _, err := host.RecoverEditRetry(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		first.OperationID,
+		agenthost.EditRetryRecoveryActionReconcile,
+	); !errors.Is(err, agenthost.ErrEditRetryResendPending) {
+		t.Fatalf("second reconcile error = %v, want resend pending", err)
+	}
+	retried, err := host.RecoverEditRetry(
+		t.Context(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		first.OperationID,
+		agenthost.EditRetryRecoveryActionRetryReplacement,
+	)
+	if err != nil || retried.State != agenthost.EditRetryStateCompleted {
+		t.Fatalf("second retry result = %#v error=%v, want completed", retried, err)
+	}
+	operation, found, err := store.GetRuntimeOperation(
+		t.Context(), "workspace-1", first.OperationID,
+	)
+	if err != nil || !found {
+		t.Fatalf("GetRuntimeOperation() found=%v error=%v", found, err)
+	}
+	payload, err := storesqlite.DecodeEditRetryOperationPayload(operation.Payload)
+	if err != nil || payload.DispatchAttempt != 3 {
+		t.Fatalf("replacement dispatch attempt=%d error=%v, want 3", payload.DispatchAttempt, err)
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.execCalls != 3 || runtime.rollbackCalls != 1 {
+		t.Fatalf(
+			"provider exec=%d rollback=%d, want 3/1",
+			runtime.execCalls,
+			runtime.rollbackCalls,
+		)
+	}
+}
+
 func TestEditRetrySagaRetriesDefinitivelyNotDispatchedReplacement(t *testing.T) {
 	host, _, runtime := newHostEditRetryFixture(t)
 	runtime.mu.Lock()
