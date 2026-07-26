@@ -215,6 +215,8 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = ?
 		{"goal operations", `DELETE FROM workspace_agent_goal_control_operations WHERE workspace_id = ? AND agent_session_id = ?`},
 		{"goal state", `DELETE FROM workspace_agent_session_goals WHERE workspace_id = ? AND agent_session_id = ?`},
 		{"interactions", `DELETE FROM workspace_agent_interactions WHERE workspace_id = ? AND agent_session_id = ?`},
+		{"turn submissions", `DELETE FROM workspace_agent_turn_submissions WHERE workspace_id = ? AND agent_session_id = ?`},
+		{"turn history", `DELETE FROM workspace_agent_turn_history WHERE workspace_id = ? AND agent_session_id = ?`},
 	} {
 		if _, err := tx.ExecContext(ctx, statement.query, candidate.WorkspaceID, candidate.AgentSessionID); err != nil {
 			return 0, false, fmt.Errorf("purge deleted agent session %s: %w", statement.name, err)
@@ -226,6 +228,9 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = ?
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_turns WHERE workspace_id = ? AND agent_session_id = ?`, candidate.WorkspaceID, candidate.AgentSessionID); err != nil {
 		return 0, false, fmt.Errorf("purge deleted agent session turns: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_session_history WHERE workspace_id = ? AND agent_session_id = ?`, candidate.WorkspaceID, candidate.AgentSessionID); err != nil {
+		return 0, false, fmt.Errorf("purge deleted agent session history: %w", err)
 	}
 	sessionResult, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_sessions WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = ?`, candidate.WorkspaceID, candidate.AgentSessionID, candidate.DeletedAtUnixMS)
 	if err != nil {

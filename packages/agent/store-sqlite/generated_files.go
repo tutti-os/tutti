@@ -47,6 +47,13 @@ WITH recent_workspace_turns AS MATERIALIZED (
   WHERE workspace_id = ?
     AND phase = 'settled'
     AND settled_at_unix_ms IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM workspace_agent_turn_history history
+      WHERE history.workspace_id = workspace_agent_turns.workspace_id
+        AND history.agent_session_id = workspace_agent_turns.agent_session_id
+        AND history.turn_id = workspace_agent_turns.turn_id
+        AND history.history_state = 'retracted'
+    )
   ORDER BY settled_at_unix_ms DESC,
            agent_session_id DESC,
            turn_id DESC

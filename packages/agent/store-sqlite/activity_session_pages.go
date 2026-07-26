@@ -56,6 +56,13 @@ WITH session_rows AS (
              FROM workspace_agent_turns latest
              WHERE latest.workspace_id = workspace_agent_sessions.workspace_id
                AND latest.agent_session_id = workspace_agent_sessions.agent_session_id
+               AND NOT EXISTS (
+                 SELECT 1 FROM workspace_agent_turn_history history
+                 WHERE history.workspace_id = latest.workspace_id
+                   AND history.agent_session_id = latest.agent_session_id
+                   AND history.turn_id = latest.turn_id
+                   AND history.history_state = 'retracted'
+               )
              ORDER BY latest.updated_at_unix_ms DESC, latest.created_at_unix_ms DESC,
                       latest.started_at_unix_ms DESC, latest.turn_id DESC
              LIMIT 1

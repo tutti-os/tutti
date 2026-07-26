@@ -420,10 +420,28 @@ WHERE workspace_id = ?
 		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent interactions: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
+DELETE FROM workspace_agent_turn_submissions
+WHERE workspace_id = ?
+`, workspaceID); err != nil {
+		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent turn submissions: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM workspace_agent_turn_history
+WHERE workspace_id = ?
+`, workspaceID); err != nil {
+		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent turn history: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
 DELETE FROM workspace_agent_turns
 WHERE workspace_id = ?
 `, workspaceID); err != nil {
 		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent turns: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM workspace_agent_session_history
+WHERE workspace_id = ?
+`, workspaceID); err != nil {
+		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent session history: %w", err)
 	}
 	sessionResult, err := tx.ExecContext(ctx, `
 DELETE FROM workspace_agent_sessions

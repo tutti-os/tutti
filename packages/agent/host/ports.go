@@ -34,6 +34,29 @@ type CanonicalMessageStore interface {
 	ListSessionMessages(context.Context, storesqlite.ListSessionMessagesInput) (storesqlite.MessagePage, bool, error)
 }
 
+// TurnSubmissionStore persists the lossless request envelope after the
+// canonical Turn exists. Provider runtimes receive hydrated content, while
+// replay reads attachment-reference form from this port.
+type TurnSubmissionStore interface {
+	RecordTurnSubmission(context.Context, storesqlite.TurnSubmission) (storesqlite.TurnSubmission, bool, error)
+	GetTurnSubmission(context.Context, string, string, string) (storesqlite.TurnSubmission, bool, error)
+}
+
+// EffectiveHistoryStore owns the durable local half of an edit-retry saga.
+// Its compound transitions atomically fence the Session history projection,
+// the source/replacement Turns, and the runtime operation.
+type EffectiveHistoryStore interface {
+	GetSessionHistory(context.Context, string, string) (storesqlite.SessionHistory, bool, error)
+	GetTurnHistory(context.Context, string, string, string) (storesqlite.TurnHistory, bool, error)
+	ListEffectiveSessionTurns(context.Context, string, string) ([]storesqlite.Turn, error)
+	MarkEditRetryRollbackDispatched(context.Context, storesqlite.MarkEditRetryRollbackDispatchedInput) (storesqlite.RuntimeOperation, bool, error)
+	ConfirmEditRetryRollback(context.Context, storesqlite.ConfirmEditRetryRollbackInput) (storesqlite.RuntimeOperation, bool, error)
+	AbortEditRetryRollback(context.Context, storesqlite.AbortEditRetryRollbackInput) (storesqlite.RuntimeOperation, bool, error)
+	PrepareEditRetryReplacementRedispatch(context.Context, storesqlite.PrepareEditRetryReplacementRedispatchInput) (storesqlite.RuntimeOperation, bool, error)
+	CompleteEditRetryRuntimeOperation(context.Context, storesqlite.CompleteEditRetryRuntimeOperationInput) (storesqlite.RuntimeOperationCompletion, bool, error)
+	FailEditRetryRecovery(context.Context, storesqlite.FailEditRetryRecoveryInput) (storesqlite.RuntimeOperation, bool, error)
+}
+
 type CanonicalSubmitClaimStore interface {
 	PrepareSubmitClaim(context.Context, storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error)
 	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (storesqlite.SubmitClaim, bool, error)
@@ -175,6 +198,21 @@ type RuntimeController interface {
 // idle/offline Session merely to deliver deferred control work.
 type RuntimeSessionLiveness interface {
 	RuntimeSessionLive(workspaceID, agentSessionID string) bool
+}
+
+// RuntimeHistoryController is an optional semantic capability. Host lifecycle
+// code never invokes provider-specific history methods directly.
+type RuntimeHistoryController interface {
+	SupportsEffectiveHistory(context.Context, RuntimeHistoryInput) (bool, error)
+	ReadEffectiveHistory(context.Context, RuntimeHistoryInput) (RuntimeHistorySnapshot, error)
+	RollbackLatestTurn(context.Context, RuntimeHistoryInput) (RuntimeHistoryMutationResult, error)
+}
+
+// RuntimeProviderTurnAcceptanceReconciler persists provider-history evidence
+// through the runtime's ordinary activity projection. It is optional because
+// providers without authoritative history cannot safely synthesize acceptance.
+type RuntimeProviderTurnAcceptanceReconciler interface {
+	ReconcileProviderTurnAcceptance(context.Context, RuntimeProviderTurnAcceptanceInput) error
 }
 
 type RuntimeSubmitProvenanceReporter interface {

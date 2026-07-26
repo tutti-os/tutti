@@ -50,6 +50,14 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 	if err != nil {
 		return false, err
 	}
+	if removed {
+		if _, err := tx.ExecContext(ctx, `
+DELETE FROM workspace_agent_session_history
+WHERE workspace_id = ? AND agent_session_id = ?
+`, workspaceID, agentSessionID); err != nil {
+			return false, fmt.Errorf("rollback runtime session history initialization: %w", err)
+		}
+	}
 	mutations := []TransactionMutation{}
 	if removed {
 		mutations = sessionDeleteMutations(workspaceID, []string{agentSessionID}, 0)

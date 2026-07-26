@@ -39,9 +39,7 @@ func (s *Store) PrepareRuntimeOperation(ctx context.Context, input RuntimeOperat
 	}
 	requestID := any(nil)
 	switch input.Kind {
-	case RuntimeOperationKindInteractiveResponse:
-		requestID = input.RequestID
-	case RuntimeOperationKindPlanDecision:
+	case RuntimeOperationKindInteractiveResponse, RuntimeOperationKindPlanDecision, RuntimeOperationKindEditRetry:
 		requestID = input.RequestID
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -343,8 +341,8 @@ func (s *Store) ReleaseOrFailRuntimeOperation(ctx context.Context, input Release
 	status, resultValue, nextAttemptValue := RuntimeOperationStatusPrepared, any(nil), any(input.NextAttemptAtMS)
 	if input.Fail {
 		status, resultValue, nextAttemptValue = RuntimeOperationStatusFailed, RuntimeOperationResultFailed, nil
-	} else if input.NextAttemptAtMS <= input.NowUnixMS {
-		return RuntimeOperation{}, false, errors.New("runtime operation retry time must be after release time")
+	} else if input.NextAttemptAtMS < input.NowUnixMS {
+		return RuntimeOperation{}, false, errors.New("runtime operation retry time must not precede release time")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -405,9 +403,6 @@ func (s *Store) CheckpointRuntimeOperation(ctx context.Context, input Checkpoint
 	if input.WorkspaceID == "" || input.OperationID == "" || input.LeaseOwner == "" || input.NowUnixMS <= 0 {
 		return RuntimeOperation{}, false, errors.New("workspace, operation, owner, and checkpoint time are required")
 	}
-	if err := validatePlanDecisionOperationPayload(input.OperationID, input.Payload); err != nil {
-		return RuntimeOperation{}, false, err
-	}
 	payloadJSON, err := marshalJSONMap(input.Payload)
 	if err != nil {
 		return RuntimeOperation{}, false, err
@@ -426,10 +421,36 @@ func (s *Store) CheckpointRuntimeOperation(ctx context.Context, input Checkpoint
 	if err != nil {
 		return RuntimeOperation{}, false, err
 	}
-	if !found || current.Kind != RuntimeOperationKindPlanDecision || current.Status != RuntimeOperationStatusLeased || current.LeaseOwner != input.LeaseOwner {
+	if !found || current.Status != RuntimeOperationStatusLeased || current.LeaseOwner != input.LeaseOwner ||
+		current.LeaseExpiresAtMS <= input.NowUnixMS {
 		return current, false, ErrRuntimeOperationLeaseLost
 	}
-	if !planDecisionCheckpointIdentityEqual(current.Payload, input.Payload) || !planDecisionStepCanAdvance(payloadString(current.Payload, "step"), payloadString(input.Payload, "step")) {
+	switch current.Kind {
+	case RuntimeOperationKindPlanDecision:
+		if err := validatePlanDecisionOperationPayload(input.OperationID, input.Payload); err != nil {
+			return current, false, err
+		}
+		if !planDecisionCheckpointIdentityEqual(current.Payload, input.Payload) ||
+			!planDecisionStepCanAdvance(payloadString(current.Payload, "step"), payloadString(input.Payload, "step")) {
+			return current, false, ErrRuntimeOperationSubjectState
+		}
+	case RuntimeOperationKindEditRetry:
+		next, err := DecodeEditRetryOperationPayload(input.Payload)
+		if err != nil {
+			return current, false, err
+		}
+		if err := next.Validate(input.OperationID); err != nil {
+			return current, false, err
+		}
+		previous, err := DecodeEditRetryOperationPayload(current.Payload)
+		if err != nil {
+			return current, false, err
+		}
+		if !editRetryIdentityEqual(previous, next) ||
+			!editRetryCheckpointCanAdvance(previous.Checkpoint, next.Checkpoint) {
+			return current, false, ErrRuntimeOperationSubjectState
+		}
+	default:
 		return current, false, ErrRuntimeOperationSubjectState
 	}
 	result, err := tx.ExecContext(ctx, `
@@ -538,6 +559,14 @@ func planDecisionStepCanAdvance(current, next string) bool {
 		(current == "send_dispatched" && next == "send_confirmed")
 }
 
+func editRetryCheckpointCanAdvance(current, next EditRetryCheckpoint) bool {
+	if current == next {
+		return true
+	}
+	return current == EditRetryCheckpointRollbackConfirmed &&
+		next == EditRetryCheckpointReplacementDispatched
+}
+
 func (s *Store) FindTurnByClientSubmitID(ctx context.Context, workspaceID string, agentSessionID string, clientSubmitID string) (string, bool, error) {
 	if s == nil || s.db == nil {
 		return "", false, errors.New("workspace database is not initialized")
@@ -590,82 +619,6 @@ WHERE status = ?
 		return 0, fmt.Errorf("requeue startup runtime operation rows affected: %w", err)
 	}
 	return count, nil
-}
-
-func validateRuntimeOperationPrepare(input RuntimeOperationPrepare) error {
-	if input.OperationID == "" || input.WorkspaceID == "" || input.AgentSessionID == "" || input.TurnID == "" {
-		return errors.New("operation, workspace, session, and turn ids are required")
-	}
-	switch input.Kind {
-	case RuntimeOperationKindInteractiveResponse:
-		if input.RequestID == "" {
-			return errors.New("interactive runtime operation request id is required")
-		}
-	case RuntimeOperationKindCancelTurn:
-		if input.RequestID != "" {
-			return errors.New("cancel runtime operation must not have a request id")
-		}
-		if _, err := cancelTargetsFromPayload(input.AgentSessionID, input.TurnID, input.Payload); err != nil {
-			return err
-		}
-	case RuntimeOperationKindPlanDecision:
-		if input.RequestID == "" || input.RequestID != input.TurnID {
-			return errors.New("plan decision request id must equal its plan turn id")
-		}
-		if err := validatePlanDecisionOperationPayload(input.OperationID, input.Payload); err != nil {
-			return err
-		}
-		if payloadString(input.Payload, "step") != "prepared" {
-			return errors.New("new plan decision operation must start prepared")
-		}
-	default:
-		return fmt.Errorf("unknown runtime operation kind %q", input.Kind)
-	}
-	return nil
-}
-
-func cancelTargetsFromRuntimeOperation(operation RuntimeOperation) ([]runtimeCancelTarget, error) {
-	return cancelTargetsFromPayload(operation.AgentSessionID, operation.TurnID, operation.Payload)
-}
-
-func cancelTargetsFromPayload(agentSessionID string, turnID string, payload map[string]any) ([]runtimeCancelTarget, error) {
-	rootAgentSessionID := payloadString(payload, "rootAgentSessionId")
-	if rootAgentSessionID == "" {
-		return nil, errors.New("cancel runtime operation root agent session id is required")
-	}
-	rawTargets, ok := payload["targets"].([]any)
-	if !ok || len(rawTargets) == 0 {
-		return nil, errors.New("cancel runtime operation targets are required")
-	}
-	result := make([]runtimeCancelTarget, 0, len(rawTargets))
-	seen := make(map[string]struct{}, len(rawTargets))
-	subjectFound := false
-	for _, raw := range rawTargets {
-		value, ok := raw.(map[string]any)
-		if !ok {
-			return nil, errors.New("cancel runtime operation target must be an object")
-		}
-		target := runtimeCancelTarget{
-			AgentSessionID: payloadString(value, "agentSessionId"),
-			TurnID:         payloadString(value, "turnId"),
-		}
-		if target.AgentSessionID == "" || target.TurnID == "" {
-			return nil, errors.New("cancel runtime operation target session and turn ids are required")
-		}
-		key := target.AgentSessionID + "\x00" + target.TurnID
-		if _, exists := seen[key]; exists {
-			return nil, errors.New("cancel runtime operation targets must be unique")
-		}
-		seen[key] = struct{}{}
-		if target.AgentSessionID == agentSessionID && target.TurnID == turnID {
-			subjectFound = true
-		}
-		result = append(result, target)
-	}
-	if !subjectFound {
-		return nil, errors.New("cancel runtime operation targets must include the operation subject")
-	}
-	return result, nil
 }
 
 func validateRuntimeOperationSubjectTx(ctx context.Context, tx *sql.Tx, input RuntimeOperationPrepare) error {
@@ -738,6 +691,9 @@ SELECT EXISTS(
 		}
 		return nil
 	}
+	if input.Kind == RuntimeOperationKindEditRetry {
+		return validateEditRetryRuntimeOperationSubjectTx(ctx, tx, input, turn)
+	}
 	interaction, found, err := getAgentInteractionTx(ctx, tx, input.WorkspaceID, input.AgentSessionID, input.TurnID, input.RequestID)
 	if err != nil {
 		return err
@@ -751,28 +707,6 @@ SELECT EXISTS(
 func payloadString(payload map[string]any, key string) string {
 	value, _ := payload[key].(string)
 	return strings.TrimSpace(value)
-}
-
-func validatePlanDecisionOperationPayload(operationID string, payload map[string]any) error {
-	if payloadString(payload, "promptKind") != "plan-implementation" || payloadString(payload, "action") != "implement" {
-		return errors.New("plan decision prompt kind and action are invalid")
-	}
-	if payloadString(payload, "idempotencyKey") == "" || payloadString(payload, "clientSubmitId") != "plan-decision:"+strings.TrimSpace(operationID) {
-		return errors.New("plan decision identity payload is invalid")
-	}
-	switch payloadString(payload, "step") {
-	case "prepared", "settings_applied", "send_dispatched":
-		if payloadString(payload, "confirmedTurnId") != "" {
-			return errors.New("unconfirmed plan decision must not carry a confirmed turn")
-		}
-	case "send_confirmed":
-		if payloadString(payload, "confirmedTurnId") == "" {
-			return errors.New("confirmed plan decision turn is required")
-		}
-	default:
-		return errors.New("plan decision step is invalid")
-	}
-	return nil
 }
 
 func getRuntimeOperation(ctx context.Context, q rowQueryer, workspaceID string, operationID string) (RuntimeOperation, bool, error) {
@@ -793,6 +727,10 @@ func getRuntimeOperationByIdentityTx(ctx context.Context, tx *sql.Tx, input Runt
 	if input.Kind == RuntimeOperationKindCancelTurn {
 		query = runtimeOperationSelectSQL + ` WHERE workspace_id = ? AND agent_session_id = ? AND kind = ? AND turn_id = ? AND request_id IS NULL`
 		args = []any{input.WorkspaceID, input.AgentSessionID, input.Kind, input.TurnID}
+	}
+	if input.Kind == RuntimeOperationKindEditRetry {
+		query = runtimeOperationSelectSQL + ` WHERE workspace_id = ? AND agent_session_id = ? AND kind = ? AND request_id = ?`
+		args = []any{input.WorkspaceID, input.AgentSessionID, input.Kind, input.RequestID}
 	}
 	return scanRuntimeOperationRow(tx.QueryRowContext(ctx, query, args...))
 }
@@ -825,6 +763,11 @@ func scanRuntimeOperation(scanner rowScanner) (RuntimeOperation, error) {
 	op.Payload, err = unmarshalJSONMap(payloadJSON)
 	if err != nil {
 		return RuntimeOperation{}, fmt.Errorf("decode runtime operation payload: %w", err)
+	}
+	if op.Kind == RuntimeOperationKindEditRetry {
+		if err := validateEditRetryOperationPayload(op.OperationID, op.Payload); err != nil {
+			return RuntimeOperation{}, fmt.Errorf("validate stored edit retry operation payload: %w", err)
+		}
 	}
 	return op, nil
 }

@@ -43,6 +43,24 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 	}
 }
 
+func TestPublishedEditRetryScenarioCatalogHasUniqueNames(t *testing.T) {
+	t.Parallel()
+	scenarios := EditRetryScenarios()
+	if len(scenarios) != 8 {
+		t.Fatalf("edit retry scenario count=%d, want 8", len(scenarios))
+	}
+	seen := make(map[string]struct{}, len(scenarios))
+	for _, scenario := range scenarios {
+		if scenario.Name == "" {
+			t.Fatal("edit retry conformance scenario has an empty name")
+		}
+		if _, ok := seen[scenario.Name]; ok {
+			t.Fatalf("duplicate edit retry conformance scenario name %q", scenario.Name)
+		}
+		seen[scenario.Name] = struct{}{}
+	}
+}
+
 func TestScenarioOwnershipIsExplicit(t *testing.T) {
 	t.Parallel()
 	wantAdapterLifecycle := []string{
@@ -100,15 +118,36 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 	if got := scenarioNames(Scenarios()); !slices.Equal(got, wantAdapterLifecycle) {
 		t.Fatalf("adapter lifecycle scenarios=%v, want %v", got, wantAdapterLifecycle)
 	}
+	wantEditRetry := []string{
+		"edit retry rollback applied response loss is reconciled once",
+		"edit retry ambiguous rollback never redispatches",
+		"edit retry accepted replacement response loss does not duplicate",
+		"edit retry ambiguous replacement without absence proof does not resend",
+		"edit retry reconcile is read only",
+		"edit retry replacement retry requires proven absence",
+		"edit retry direct receipt bypasses acceptance polling",
+		"edit retry rollback-confirmed restart enters replacement only",
+	}
 	if got := scenarioNames(ApplicationCoreScenarios()); !slices.Equal(got, wantApplicationCore) {
 		t.Fatalf("application core scenarios=%v, want %v", got, wantApplicationCore)
 	}
 	if got := scenarioNames(CoordinatorScenarios()); !slices.Equal(got, wantCoordinator) {
 		t.Fatalf("coordinator scenarios=%v, want %v", got, wantCoordinator)
 	}
+	if got := editRetryScenarioNames(EditRetryScenarios()); !slices.Equal(got, wantEditRetry) {
+		t.Fatalf("edit retry scenarios=%v, want %v", got, wantEditRetry)
+	}
 }
 
 func scenarioNames(scenarios []Scenario) []string {
+	names := make([]string, 0, len(scenarios))
+	for _, scenario := range scenarios {
+		names = append(names, scenario.Name)
+	}
+	return names
+}
+
+func editRetryScenarioNames(scenarios []EditRetryScenario) []string {
 	names := make([]string, 0, len(scenarios))
 	for _, scenario := range scenarios {
 		names = append(names, scenario.Name)

@@ -19,6 +19,13 @@ func (s *Store) GetLatestTurn(ctx context.Context, workspaceID string, agentSess
 	}
 	row := s.db.QueryRowContext(ctx, agentTurnSelectSQL+`
 WHERE workspace_id = ? AND agent_session_id = ?
+  AND NOT EXISTS (
+    SELECT 1 FROM workspace_agent_turn_history history
+    WHERE history.workspace_id = workspace_agent_turns.workspace_id
+      AND history.agent_session_id = workspace_agent_turns.agent_session_id
+      AND history.turn_id = workspace_agent_turns.turn_id
+      AND history.history_state = 'retracted'
+  )
 ORDER BY updated_at_unix_ms DESC, created_at_unix_ms DESC, started_at_unix_ms DESC, turn_id DESC
 LIMIT 1
 `, workspaceID, agentSessionID)
@@ -61,6 +68,13 @@ func (s *Store) ListLatestTurns(ctx context.Context, workspaceID string, agentSe
 	}
 	rows, err := s.db.QueryContext(ctx, agentTurnSelectSQL+`
 WHERE workspace_id = ? AND agent_session_id IN (`+placeholders+`)
+  AND NOT EXISTS (
+    SELECT 1 FROM workspace_agent_turn_history history
+    WHERE history.workspace_id = workspace_agent_turns.workspace_id
+      AND history.agent_session_id = workspace_agent_turns.agent_session_id
+      AND history.turn_id = workspace_agent_turns.turn_id
+      AND history.history_state = 'retracted'
+  )
 ORDER BY agent_session_id ASC, updated_at_unix_ms DESC, created_at_unix_ms DESC, started_at_unix_ms DESC, turn_id DESC
 `, args...)
 	if err != nil {
@@ -104,6 +118,13 @@ func (s *Store) ListTurnsBySession(ctx context.Context, workspaceID string, turn
 	}
 	rows, err := s.db.QueryContext(ctx, agentTurnSelectSQL+`
 WHERE workspace_id = ? AND (`+strings.Join(clauses, " OR ")+`)
+  AND NOT EXISTS (
+    SELECT 1 FROM workspace_agent_turn_history history
+    WHERE history.workspace_id = workspace_agent_turns.workspace_id
+      AND history.agent_session_id = workspace_agent_turns.agent_session_id
+      AND history.turn_id = workspace_agent_turns.turn_id
+      AND history.history_state = 'retracted'
+  )
 `, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list active workspace agent turns: %w", err)
@@ -153,6 +174,13 @@ func (s *Store) ListPendingInteractionsBySession(ctx context.Context, workspaceI
 	args = append(args, InteractionStatusPending)
 	rows, err := s.db.QueryContext(ctx, agentInteractionSelectSQL+`
 WHERE workspace_id = ? AND agent_session_id IN (`+placeholders+`) AND status = ?
+  AND NOT EXISTS (
+    SELECT 1 FROM workspace_agent_turn_history history
+    WHERE history.workspace_id = workspace_agent_interactions.workspace_id
+      AND history.agent_session_id = workspace_agent_interactions.agent_session_id
+      AND history.turn_id = workspace_agent_interactions.turn_id
+      AND history.history_state = 'retracted'
+  )
 ORDER BY agent_session_id ASC, created_at_unix_ms ASC, request_id ASC
 `, args...)
 	if err != nil {
@@ -196,6 +224,13 @@ WHERE workspace_agent_interactions.workspace_id = ?
     FROM workspace_agent_turns latest
     WHERE latest.workspace_id = workspace_agent_interactions.workspace_id
       AND latest.agent_session_id = workspace_agent_interactions.agent_session_id
+      AND NOT EXISTS (
+        SELECT 1 FROM workspace_agent_turn_history history
+        WHERE history.workspace_id = latest.workspace_id
+          AND history.agent_session_id = latest.agent_session_id
+          AND history.turn_id = latest.turn_id
+          AND history.history_state = 'retracted'
+      )
     ORDER BY latest.updated_at_unix_ms DESC, latest.created_at_unix_ms DESC,
              latest.started_at_unix_ms DESC, latest.turn_id DESC
     LIMIT 1

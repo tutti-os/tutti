@@ -179,6 +179,25 @@ func (h *Host) processRuntimeOperation(ctx context.Context, operation storesqlit
 		return h.executeCancelRuntimeOperation(ctx, leased, owner)
 	case storesqlite.RuntimeOperationKindPlanDecision:
 		return h.executePlanDecisionRuntimeOperation(ctx, leased, owner)
+	case storesqlite.RuntimeOperationKindEditRetry:
+		if !editRetryActorHeld(ctx) {
+			var result storesqlite.RuntimeOperation
+			var executeErr error
+			actorErr := h.withSessionMutationActor(
+				ctx, leased.WorkspaceID, leased.AgentSessionID,
+				func(actorCtx context.Context) error {
+					result, executeErr = h.executeEditRetryRuntimeOperation(
+						withEditRetryActorHeld(actorCtx), leased, owner, recovering,
+					)
+					return executeErr
+				},
+			)
+			if actorErr != nil {
+				return result, actorErr
+			}
+			return result, executeErr
+		}
+		return h.executeEditRetryRuntimeOperation(ctx, leased, owner, recovering)
 	default:
 		return h.releaseRuntimeOperation(ctx, leased, owner, fmt.Errorf("unsupported runtime operation kind %q", leased.Kind), true)
 	}

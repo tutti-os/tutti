@@ -432,11 +432,18 @@ WHERE t.phase != ?
     SELECT 1 FROM workspace_agent_runtime_operations AS op
     WHERE op.workspace_id = t.workspace_id
       AND op.agent_session_id = t.agent_session_id
-      AND op.turn_id = t.turn_id
+      AND (
+        op.turn_id = t.turn_id
+        OR (
+          op.kind = ?
+          AND json_extract(op.payload_json, '$.replacementTurnId') = t.turn_id
+        )
+      )
       AND op.status IN (?, ?)
   )
 ORDER BY workspace_id ASC, agent_session_id ASC, turn_id ASC
-`, TurnPhaseSettled, RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased)
+`, TurnPhaseSettled, RuntimeOperationKindEditRetry,
+		RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased)
 	if err != nil {
 		return nil, fmt.Errorf("list stale workspace agent turns: %w", err)
 	}
@@ -472,10 +479,17 @@ WHERE phase != ?
     SELECT 1 FROM workspace_agent_runtime_operations AS op
     WHERE op.workspace_id = t.workspace_id
       AND op.agent_session_id = t.agent_session_id
-      AND op.turn_id = t.turn_id
+      AND (
+        op.turn_id = t.turn_id
+        OR (
+          op.kind = ?
+          AND json_extract(op.payload_json, '$.replacementTurnId') = t.turn_id
+        )
+      )
       AND op.status IN (?, ?)
   )
 `, TurnPhaseSettled, TurnOutcomeInterrupted, now, now, TurnPhaseSettled,
+		RuntimeOperationKindEditRetry,
 		RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased); err != nil {
 		return nil, fmt.Errorf("settle stale workspace agent turns: %w", err)
 	}
@@ -487,10 +501,17 @@ WHERE active_turn_id IS NOT NULL
     SELECT 1 FROM workspace_agent_runtime_operations AS op
     WHERE op.workspace_id = s.workspace_id
       AND op.agent_session_id = s.agent_session_id
-      AND op.turn_id = s.active_turn_id
+      AND (
+        op.turn_id = s.active_turn_id
+        OR (
+          op.kind = ?
+          AND json_extract(op.payload_json, '$.replacementTurnId') = s.active_turn_id
+        )
+      )
       AND op.status IN (?, ?)
   )
-`, now, RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased); err != nil {
+`, now, RuntimeOperationKindEditRetry,
+		RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased); err != nil {
 		return nil, fmt.Errorf("clear stale workspace agent session active turns: %w", err)
 	}
 	pendingInteractions, err := listStalePendingInteractionsTx(ctx, tx)
@@ -505,10 +526,17 @@ WHERE status = ?
     SELECT 1 FROM workspace_agent_runtime_operations AS op
     WHERE op.workspace_id = i.workspace_id
       AND op.agent_session_id = i.agent_session_id
-      AND op.turn_id = i.turn_id
+      AND (
+        op.turn_id = i.turn_id
+        OR (
+          op.kind = ?
+          AND json_extract(op.payload_json, '$.replacementTurnId') = i.turn_id
+        )
+      )
       AND op.status IN (?, ?)
   )
 `, InteractionStatusSuperseded, now, InteractionStatusPending,
+		RuntimeOperationKindEditRetry,
 		RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased); err != nil {
 		return nil, fmt.Errorf("supersede stale workspace agent interactions: %w", err)
 	}
@@ -566,11 +594,18 @@ WHERE i.status = ?
     SELECT 1 FROM workspace_agent_runtime_operations AS op
     WHERE op.workspace_id = i.workspace_id
       AND op.agent_session_id = i.agent_session_id
-      AND op.turn_id = i.turn_id
+      AND (
+        op.turn_id = i.turn_id
+        OR (
+          op.kind = ?
+          AND json_extract(op.payload_json, '$.replacementTurnId') = i.turn_id
+        )
+      )
       AND op.status IN (?, ?)
   )
 ORDER BY i.workspace_id, i.agent_session_id, i.turn_id, i.request_id
-`, InteractionStatusPending, RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased)
+`, InteractionStatusPending, RuntimeOperationKindEditRetry,
+		RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased)
 	if err != nil {
 		return nil, fmt.Errorf("list stale workspace agent interactions: %w", err)
 	}
@@ -708,7 +743,14 @@ func (s *Store) ListSessionInteractions(ctx context.Context, input ListSessionIn
 		return nil, nil
 	}
 	query := agentInteractionSelectSQL + `
-WHERE workspace_id = ? AND agent_session_id = ?`
+WHERE workspace_id = ? AND agent_session_id = ?
+  AND NOT EXISTS (
+    SELECT 1 FROM workspace_agent_turn_history history
+    WHERE history.workspace_id = workspace_agent_interactions.workspace_id
+      AND history.agent_session_id = workspace_agent_interactions.agent_session_id
+      AND history.turn_id = workspace_agent_interactions.turn_id
+      AND history.history_state = 'retracted'
+  )`
 	args := []any{workspaceID, agentSessionID}
 	turnID := strings.TrimSpace(input.TurnID)
 	requestID := strings.TrimSpace(input.RequestID)
