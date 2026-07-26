@@ -259,7 +259,9 @@ screen composition and product-specific interaction.
   consumes it. Apps must not acquire direct third-party component imports.
 - Keep `@gorhom/bottom-sheet` as the dependency for complex gesture, keyboard,
   and dynamic-height sheets; wrap it behind a UI System Native component when
-  it becomes a reusable product pattern.
+  it becomes a reusable product pattern. The shared compact `NativeSheet` uses
+  React Native's window-level `Modal` instead, so its controlled open state does
+  not pass through `@gorhom/portal`.
 - Agent message Markdown is rendered natively with
   `react-native-enriched-markdown`; it consumes the existing AgentGUI
   conversation VM and maps every color, radius, and spacing decision back to

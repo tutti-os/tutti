@@ -61,6 +61,31 @@
   `apps/mobile/src/services/workspaceActivityCommandAdapter.ts`,
   `apps/mobile/src/components/MobileComposerSettingsSheet.tsx`
 
+## Mobile composer option chips do not open
+
+- **Symptom:** Model, reasoning, speed, and permission chips are visible and
+  accessible above the composer, but tapping them does not show their option
+  sheet. The same model or permission options remain reachable through the `+`
+  menu.
+- **Quick checks:** Tap a chip on a real Android or iOS renderer and inspect the
+  JavaScript log. Repeated `BottomSheetModal::handlePortalRender` entries,
+  followed by a maximum-update-depth error, identify the overlay path; a
+  missing composer-options response is a different problem covered above.
+- **Root cause:** `@gorhom/bottom-sheet` delegates `BottomSheetModal` rendering
+  through `@gorhom/portal`. Its portal update path is incompatible with the
+  current React 19 Native renderer and recursively republishes the modal node
+  instead of presenting it.
+- **Fix:** Keep the shared compact `NativeSheet` on React Native's window-level
+  `Modal`, with UI System scrim and panel tokens. Reserve
+  `@gorhom/bottom-sheet` for app-owned complex sheets that genuinely need its
+  gesture, keyboard, or multi-snap-point behavior.
+- **Validation:** Open and dismiss the model, speed, and permission sheets more
+  than once, select the already active option without changing Session state,
+  and confirm there is no maximum-update-depth error. Also verify backdrop and
+  Android system-back dismissal.
+- **References:** `packages/ui/system/src/native/sheet.tsx`,
+  `apps/mobile/src/components/MobileComposerSettingsSheet.tsx`
+
 ## Browser login returns to the App but remains signed out
 
 - **Symptom:** Android opens the Tutti Web login page, completes the provider

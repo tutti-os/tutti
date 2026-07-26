@@ -6,7 +6,6 @@ const manifest = JSON.parse(readFileSync("package.json", "utf8"));
 
 test("marks native-only peers optional for web consumers", () => {
   expect(manifest.peerDependenciesMeta).toMatchObject({
-    "@gorhom/bottom-sheet": { optional: true },
     "react-native": { optional: true }
   });
 });

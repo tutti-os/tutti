@@ -1,22 +1,24 @@
+import type { ReactNode } from "react";
 import {
-  BottomSheetModal,
-  type BottomSheetModalProps
-} from "@gorhom/bottom-sheet";
-import { useEffect, useRef, type ReactNode } from "react";
+  type DimensionValue,
+  Modal,
+  Pressable,
+  StyleSheet
+} from "react-native";
 import { useNativeTheme } from "./theme-provider";
 
 export interface NativeSheetProps {
   children: ReactNode;
   onOpenChange(open: boolean): void;
   open: boolean;
-  snapPoints?: BottomSheetModalProps["snapPoints"];
+  snapPoints?: readonly (number | `${number}%`)[];
 }
 
 /**
- * Controlled modal sheet backed by @gorhom/bottom-sheet.
+ * Controlled sheet backed by React Native's window-level Modal.
  *
- * The app root owns BottomSheetModalProvider; callers own whether the sheet is
- * open and what product actions its content performs.
+ * Callers own whether the sheet is open and what product actions its content
+ * performs.
  */
 export function NativeSheet({
   children,
@@ -25,31 +27,58 @@ export function NativeSheet({
   snapPoints
 }: NativeSheetProps) {
   const theme = useNativeTheme();
-  const sheet = useRef<BottomSheetModal>(null);
-
-  useEffect(() => {
-    if (open) {
-      sheet.current?.present();
-      return;
-    }
-
-    sheet.current?.dismiss();
-  }, [open]);
+  const styles = createStyles(theme);
+  const height = resolveSheetHeight(snapPoints);
 
   return (
-    <BottomSheetModal
-      backgroundStyle={{
-        backgroundColor: theme.color.panelRaised,
-        borderTopLeftRadius: theme.radius.large,
-        borderTopRightRadius: theme.radius.large
-      }}
-      enableDynamicSizing={snapPoints === undefined}
-      handleIndicatorStyle={{ backgroundColor: theme.color.muted }}
-      onDismiss={() => onOpenChange(false)}
-      ref={sheet}
-      snapPoints={snapPoints}
+    <Modal
+      animationType="fade"
+      onRequestClose={() => onOpenChange(false)}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      transparent
+      visible={open}
     >
-      {children}
-    </BottomSheetModal>
+      <Pressable
+        accessible={false}
+        onPress={() => onOpenChange(false)}
+        style={styles.backdrop}
+        testID="native-sheet-backdrop"
+      >
+        <Pressable
+          onPress={(event) => event.stopPropagation()}
+          style={[styles.sheet, height === null ? null : { height }]}
+        >
+          {children}
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
+}
+
+function resolveSheetHeight(
+  snapPoints: NativeSheetProps["snapPoints"]
+): DimensionValue | null {
+  if (!snapPoints) return null;
+  const first = snapPoints[0];
+  return typeof first === "number" || typeof first === "string"
+    ? (first as DimensionValue)
+    : null;
+}
+
+function createStyles(theme: ReturnType<typeof useNativeTheme>) {
+  return StyleSheet.create({
+    backdrop: {
+      backgroundColor: theme.color.scrim,
+      flex: 1,
+      justifyContent: "flex-end"
+    },
+    sheet: {
+      backgroundColor: theme.color.panelRaised,
+      borderTopLeftRadius: theme.radius.large,
+      borderTopRightRadius: theme.radius.large,
+      maxHeight: "80%",
+      overflow: "hidden"
+    }
+  });
 }

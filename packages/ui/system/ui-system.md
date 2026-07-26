@@ -323,11 +323,12 @@ from experimental status. The gallery must import only the stable
 states; it is the Native counterpart of a DOM storyboard example, not a second
 component implementation.
 
-`NativeSheet` additionally requires the consuming app to install
-`@gorhom/bottom-sheet` and provide its `BottomSheetModalProvider` below a
-`GestureHandlerRootView`. Reanimated and Gesture Handler remain part of that
-Native renderer contract; application roots own provider placement, not the
-shared primitive.
+`NativeSheet` uses React Native's window-level `Modal` for its controlled
+overlay and does not require a portal provider. It owns the semantic scrim,
+bottom-aligned panel, system-back dismissal, backdrop dismissal, and
+optional initial height. Keep `@gorhom/bottom-sheet` app-owned for genuinely
+complex gesture, keyboard, or multi-snap-point sheets rather than routing the
+shared compact sheet through its React 19-incompatible portal.
 
 For cross-surface stacking, use shared semantic `z-index` tokens instead of
 local magic numbers. Current global layer tokens live in

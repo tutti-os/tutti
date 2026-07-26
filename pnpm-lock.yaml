@@ -861,9 +861,6 @@ importers:
         specifier: ^8.20.1
         version: 8.21.0
     devDependencies:
-      "@gorhom/bottom-sheet":
-        specifier: 5.2.14
-        version: 5.2.14(6f79d238c0d5e646a1f2d5fd6b392cdd)
       "@testing-library/jest-dom":
         specifier: ^6.9.1
         version: 6.9.1

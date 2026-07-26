@@ -68,7 +68,6 @@
     "ws": "^8.20.1"
   },
   "devDependencies": {
-    "@gorhom/bottom-sheet": "5.2.14",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@tutti-os/config-tsconfig": "workspace:*",
@@ -83,15 +82,11 @@
     "vitest": "^4.0.13"
   },
   "peerDependencies": {
-    "@gorhom/bottom-sheet": ">=5 <6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-native": ">=0.86 <0.87"
   },
   "peerDependenciesMeta": {
-    "@gorhom/bottom-sheet": {
-      "optional": true
-    },
     "react-dom": {
       "optional": true
     },
