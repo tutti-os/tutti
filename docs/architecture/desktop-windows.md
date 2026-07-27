@@ -252,6 +252,12 @@ App Center preparation, it has no reversible pending attempt, and reporting
 failure would trigger a duplicate system fallback. When presentation fails, its
 fallback notification policy also comes from the registration that started the
 attempt, rather than a replacement registered while the attempt was in flight.
+The OS Workbench preview Node keeps text-family files in its editable source
+surface. Markdown targets additionally expose an Edit/Preview toggle in the
+node header. Preview mode renders the current draft, including unsaved changes,
+with sanitized GFM; switching modes does not replace the controller or reset
+dirty/save state. The selected mode is runtime-only node presentation state and
+is not written to the durable Workbench snapshot.
 
 The App Center contribution keeps the catalog and one app-specific Browser Node
 for every id in `openAppIds` mounted in both shells. The catalog is a permanent

@@ -1272,7 +1272,9 @@ export const en = {
         terminal: "Terminal"
       },
       filePreview: {
+        edit: "Edit",
         loading: "Loading...",
+        preview: "Preview",
         revert: "Revert",
         save: "Save",
         saved: "Saved",

@@ -1191,7 +1191,9 @@ export const zhCN = {
         terminal: "终端"
       },
       filePreview: {
+        edit: "编辑",
         loading: "加载中...",
+        preview: "预览",
         revert: "还原",
         save: "保存",
         saved: "已保存",

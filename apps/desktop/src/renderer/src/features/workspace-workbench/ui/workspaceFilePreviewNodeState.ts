@@ -1,6 +1,7 @@
 import type { WorkspaceFilePreviewTarget } from "@tutti-os/workspace-file-preview";
 import type { WorkbenchHostNodeData } from "@tutti-os/workbench-surface";
-import { coerceWorkspaceFilePreviewTarget } from "../services/workspaceFilePreviewLaunch";
+import { coerceWorkspaceFilePreviewTarget } from "../services/workspaceFilePreviewLaunch.ts";
+import type { WorkspaceFilePreviewTextViewMode } from "../services/workspaceFilePreviewViewModeRequests.ts";
 
 export type WorkspaceFilePreviewTextHeaderStatus =
   | "error"
@@ -14,6 +15,7 @@ export interface WorkspaceFilePreviewTextHeaderState {
   dirty: boolean;
   message?: string;
   status: WorkspaceFilePreviewTextHeaderStatus;
+  viewMode?: WorkspaceFilePreviewTextViewMode;
 }
 
 export interface WorkspaceFilePreviewNodeRuntimeState {
@@ -92,7 +94,10 @@ export function resolveWorkspaceFilePreviewTextHeaderState(
     ...(typeof textHeader.message === "string"
       ? { message: textHeader.message }
       : {}),
-    status: textHeader.status
+    status: textHeader.status,
+    ...(textHeader.viewMode === "edit" || textHeader.viewMode === "preview"
+      ? { viewMode: textHeader.viewMode }
+      : {})
   };
 }
 
