@@ -448,6 +448,32 @@ test("developer logs service exports provider session records from tuttid snapsh
         },
         updatedAtUnixMS: 10,
         workspaceID
+      },
+      {
+        agentSessionID: "agent-tutti",
+        hasMoreMessages: false,
+        latestMessageVersion: 9,
+        messages: [
+          {
+            agentSessionId: "agent-tutti",
+            id: 3,
+            kind: "text",
+            messageId: "tutti-message",
+            role: "assistant",
+            version: 9
+          }
+        ],
+        provider: "tutti-agent",
+        providerSessionID: "provider-tutti",
+        session: {
+          id: "agent-tutti",
+          provider: "tutti-agent",
+          providerSessionId: "provider-tutti",
+          createdAt: "2026-06-10T00:00:00Z",
+          updatedAt: "2026-06-10T00:00:25Z"
+        },
+        updatedAtUnixMS: 25,
+        workspaceID
       }
     ],
     defaults: {
@@ -469,7 +495,7 @@ test("developer logs service exports provider session records from tuttid snapsh
 
   const result = await service.exportLogs();
 
-  assert.equal(result.fileCount, 6);
+  assert.equal(result.fileCount, 9);
   assert.ok(result.filePath);
   const zipText = (await readFile(result.filePath)).toString("utf8");
   assert.equal(
@@ -493,6 +519,12 @@ test("developer logs service exports provider session records from tuttid snapsh
   assert.equal(
     zipText.includes(
       "agent-sessions/claude-code/workspace-1/agent-claude/manifest.json"
+    ),
+    true
+  );
+  assert.equal(
+    zipText.includes(
+      "agent-sessions/tutti-agent/workspace-1/agent-tutti/manifest.json"
     ),
     true
   );
