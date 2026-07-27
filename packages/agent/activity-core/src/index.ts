@@ -100,6 +100,7 @@ export { AGENT_SESSION_ENGINE_LOCAL_ORIGIN } from "./engine/types.ts";
 export { selectWorkspaceReconcileState } from "./engine/engineRuntime.selectors.ts";
 export {
   editRetryPresentationRecordsEqual,
+  selectEditRetryAvailabilityIsNewer,
   selectEditRetryPresentation,
   type EditRetryPresentationRecord
 } from "./engine/editRetry.selectors.ts";
@@ -226,9 +227,11 @@ export {
   selectWorkspaceAgentRootConversationSessions
 } from "./engine/sessionLifecycle.selectors.ts";
 export {
+  selectEngineAuthoritativeHistoryRequirement,
   selectEngineSessionDetailHydrated,
   selectEngineSessionDetailLoading,
-  selectEngineSessionReconcile
+  selectEngineSessionReconcile,
+  type AuthoritativeHistoryRequirement
 } from "./engine/sessionReconcile.selectors.ts";
 export {
   canonicalInteractionKey,

@@ -774,20 +774,3 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     }
   }
 }
-
-function isTerminalTurnUpdate(
-  input: WorkspaceAgentActivityBridgeEvent
-): boolean {
-  if (input.eventType !== "turn_update") {
-    return false;
-  }
-  const data =
-    input.data && typeof input.data === "object"
-      ? (input.data as Record<string, unknown>)
-      : null;
-  const turn =
-    data?.turn && typeof data.turn === "object"
-      ? (data.turn as Record<string, unknown>)
-      : null;
-  return turn?.phase === "settled";
-}

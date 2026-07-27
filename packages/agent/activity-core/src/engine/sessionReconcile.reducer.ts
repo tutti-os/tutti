@@ -32,6 +32,16 @@ export function sessionReconcileReducer(
   switch (intent.type) {
     case "session/detailSnapshotReceived":
       return receiveDetailSnapshot(state, intent);
+    case "session/historyAuthoritativeSnapshotReceived":
+      if (context.deletedSessionIds[intent.agentSessionId.trim()]) {
+        return unchanged(state);
+      }
+      return receiveAuthoritativeHistorySnapshot(state, intent);
+    case "session/historyRevisionObserved":
+      if (context.deletedSessionIds[intent.agentSessionId.trim()]) {
+        return unchanged(state);
+      }
+      return applyHistoryCheckpoint(state, intent);
     case "session/activityObserved":
       if (context.deletedSessionIds[intent.agentSessionId.trim()]) {
         return unchanged(state);
@@ -44,6 +54,7 @@ export function sessionReconcileReducer(
         needsMessages:
           intent.eventType === "message_update" ||
           intent.eventType === "session_audit" ||
+          intent.eventType === "session_reconcile_required" ||
           intent.terminalTurn === true,
         needsState:
           !intent.hasCachedSession ||
@@ -118,6 +129,39 @@ function receiveDetailSnapshot(
   return { commands: NO_COMMANDS, followUpIntents, state };
 }
 
+function receiveAuthoritativeHistorySnapshot(
+  state: SessionReconcileState,
+  intent: Extract<
+    EngineIntent,
+    { type: "session/historyAuthoritativeSnapshotReceived" }
+  >
+): EngineReducerResult<SessionReconcileState> {
+  const detail = receiveDetailSnapshot(state, {
+    childSessions: intent.childSessions,
+    editRetry: intent.editRetry,
+    messages: intent.messages,
+    session: intent.session,
+    sessionMessageWindows: intent.sessionMessageWindows,
+    turns: intent.turns,
+    type: "session/detailSnapshotReceived",
+    workspaceId: intent.workspaceId
+  });
+  const checkpoint = applyHistoryCheckpoint(
+    state,
+    {
+      agentSessionId: intent.agentSessionId,
+      historyRevision: intent.historyRevision,
+      workspaceId: intent.workspaceId
+    },
+    true
+  );
+  return {
+    commands: checkpoint.commands,
+    followUpIntents: detail.followUpIntents,
+    state: checkpoint.state
+  };
+}
+
 function hydrateActiveRootSessions(
   state: SessionReconcileState,
   sessionsById: Readonly<Record<string, CanonicalAgentSession>>
@@ -153,22 +197,32 @@ function requestReconcile(
   input: {
     agentSessionId: string;
     live?: boolean;
+    authoritativeMessages?: boolean;
     needsMessages: boolean;
     needsState: boolean;
+    requiredHistoryRevision?: number;
     workspaceId: string;
   }
 ): EngineReducerResult<SessionReconcileState> {
   const agentSessionId = input.agentSessionId.trim();
   const workspaceId = input.workspaceId.trim();
+  const requiredHistoryRevision = normalizeHistoryRevision(
+    input.requiredHistoryRevision
+  );
   if (
     !agentSessionId ||
     !workspaceId ||
-    (!input.needsMessages && !input.needsState)
+    (!input.needsMessages &&
+      !input.needsState &&
+      input.authoritativeMessages !== true &&
+      requiredHistoryRevision === null)
   ) {
     return unchanged(state);
   }
   const current = state.recordsBySessionId[agentSessionId] ?? {
     agentSessionId,
+    appliedHistoryRevision: null,
+    authoritativeMessagesRequired: false,
     errorCode: null,
     errorMessage: null,
     inFlightCommandId: null,
@@ -178,18 +232,45 @@ function requestReconcile(
     pendingLive: false,
     pendingMessages: false,
     pendingState: false,
+    requiredHistoryRevision: null,
     workspaceId
   };
+  const authoritativeDemandArrivedWhileInFlight =
+    current.inFlightCommandId !== null &&
+    (input.authoritativeMessages === true ||
+      (requiredHistoryRevision !== null &&
+        requiredHistoryRevision >
+          (current.requiredHistoryRevision ??
+            current.appliedHistoryRevision ??
+            -1)));
   const record = {
     ...current,
+    authoritativeMessagesRequired:
+      current.authoritativeMessagesRequired ||
+      input.authoritativeMessages === true,
     errorCode: null,
     errorMessage: null,
     pendingLive: current.pendingLive || input.live === true,
-    pendingMessages: current.pendingMessages || input.needsMessages,
-    pendingState: current.pendingState || input.needsState
+    pendingMessages:
+      current.pendingMessages ||
+      input.needsMessages ||
+      authoritativeDemandArrivedWhileInFlight,
+    pendingLive: current.pendingLive || input.live === true,
+    pendingState: current.pendingState || input.needsState,
+    requiredHistoryRevision:
+      requiredHistoryRevision === null
+        ? current.requiredHistoryRevision
+        : Math.max(
+            current.requiredHistoryRevision ?? 0,
+            requiredHistoryRevision
+          )
   };
   const next = replaceRecord(state, record);
-  return record.inFlightCommandId
+  return record.inFlightCommandId ||
+    (!record.pendingMessages &&
+      !record.pendingState &&
+      !record.authoritativeMessagesRequired &&
+      !historyRevisionIsPending(record))
     ? { commands: NO_COMMANDS, state: next }
     : startReconcile(next, record);
 }
@@ -225,7 +306,11 @@ function settleReconcile(
       (intent.outcome !== "succeeded" && record.inFlightLive)
   };
   const next = replaceRecord(state, settled);
-  return settled.pendingMessages || settled.pendingState
+  return settled.pendingMessages ||
+    settled.pendingState ||
+    (intent.outcome === "succeeded" &&
+      (settled.authoritativeMessagesRequired ||
+        historyRevisionIsPending(settled)))
     ? startReconcile(next, settled)
     : { commands: NO_COMMANDS, state: next };
 }
@@ -235,19 +320,29 @@ function startReconcile(
   record: SessionReconcileRecord
 ): EngineReducerResult<SessionReconcileState> {
   const needsState = record.pendingState || record.pendingLive;
-  const scope = needsState
-    ? record.pendingMessages
-      ? "state_and_messages"
-      : "state"
-    : "messages";
+  const requiresAuthoritativeMessages =
+    record.authoritativeMessagesRequired || historyRevisionIsPending(record);
+  const scope = requiresAuthoritativeMessages
+    ? "state_and_messages"
+    : record.pendingState || record.pendingLive
+      ? record.pendingMessages
+        ? "state_and_messages"
+        : "state"
+      : "messages";
   const commandId = `session:reconcile:${record.agentSessionId}:${state.nextCommandSequence}`;
   const live = record.pendingLive;
   return {
     commands: [
       {
         agentSessionId: record.agentSessionId,
+        ...(requiresAuthoritativeMessages
+          ? { authoritativeMessages: true }
+          : {}),
         commandId,
         live,
+        ...(record.requiredHistoryRevision === null
+          ? {}
+          : { requiredHistoryRevision: record.requiredHistoryRevision }),
         scope,
         timeoutMs: 30_000,
         type: "session/reconcile",
@@ -269,6 +364,78 @@ function startReconcile(
       }
     )
   };
+}
+
+function applyHistoryCheckpoint(
+  state: SessionReconcileState,
+  input: {
+    agentSessionId: string;
+    historyRevision: number | undefined;
+    workspaceId: string;
+  },
+  authoritative = false
+): EngineReducerResult<SessionReconcileState> {
+  const agentSessionId = input.agentSessionId.trim();
+  const workspaceId = input.workspaceId.trim();
+  const historyRevision = normalizeHistoryRevision(input.historyRevision);
+  if (!agentSessionId || !workspaceId || historyRevision === null) {
+    return unchanged(state);
+  }
+  const current = state.recordsBySessionId[agentSessionId] ?? {
+    agentSessionId,
+    appliedHistoryRevision: null,
+    authoritativeMessagesRequired: false,
+    errorCode: null,
+    errorMessage: null,
+    inFlightCommandId: null,
+    inFlightScope: null,
+    messagesHydrated: false,
+    pendingMessages: false,
+    pendingState: false,
+    requiredHistoryRevision: null,
+    workspaceId
+  };
+  if (current.workspaceId !== workspaceId) {
+    return unchanged(state);
+  }
+  const appliedHistoryRevision = Math.max(
+    current.appliedHistoryRevision ?? 0,
+    historyRevision
+  );
+  const requiredHistoryRevisionRemainsPending =
+    current.requiredHistoryRevision !== null &&
+    appliedHistoryRevision < current.requiredHistoryRevision;
+  const next = {
+    ...current,
+    appliedHistoryRevision,
+    authoritativeMessagesRequired: authoritative
+      ? requiredHistoryRevisionRemainsPending
+      : current.authoritativeMessagesRequired,
+    errorCode: null,
+    errorMessage: null,
+    pendingMessages:
+      authoritative && !requiredHistoryRevisionRemainsPending
+        ? false
+        : current.pendingMessages
+  };
+  return {
+    commands: NO_COMMANDS,
+    state: replaceRecord(state, next)
+  };
+}
+
+function historyRevisionIsPending(record: SessionReconcileRecord): boolean {
+  return (
+    record.requiredHistoryRevision !== null &&
+    (record.appliedHistoryRevision === null ||
+      record.appliedHistoryRevision < record.requiredHistoryRevision)
+  );
+}
+
+function normalizeHistoryRevision(value: number | undefined): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
 }
 
 function replaceRecord(

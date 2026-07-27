@@ -38,6 +38,23 @@ export function sessionMessagesReducer(
   context: SessionMessagesReducerContext = { sessionsById: {} }
 ): EngineReducerResult<SessionMessagesState> {
   switch (intent.type) {
+    case "session/historyAuthoritativeSnapshotReceived":
+      if (
+        intent.agentSessionId.trim() !== intent.session.agentSessionId.trim() ||
+        intent.workspaceId.trim() !== intent.session.workspaceId.trim()
+      ) {
+        return unchanged(state);
+      }
+      return replaceSessionMessages(
+        state,
+        context,
+        intent.agentSessionId,
+        intent.messages,
+        intent.sessionMessageWindows?.find(
+          (window) =>
+            window.agentSessionId.trim() === intent.agentSessionId.trim()
+        )
+      );
     case "message/snapshotReceived":
       return mergeIncomingMessages(
         state,
@@ -57,6 +74,39 @@ export function sessionMessagesReducer(
     default:
       return unchanged(state);
   }
+}
+
+function replaceSessionMessages(
+  state: SessionMessagesState,
+  context: SessionMessagesReducerContext,
+  rawAgentSessionId: string,
+  messages: readonly AgentActivityMessage[],
+  window?: AgentActivitySessionMessageWindow & { agentSessionId: string }
+): EngineReducerResult<SessionMessagesState> {
+  const canonicalAgentSessionId = resolveCanonicalAgentSessionId(
+    context.sessionsById,
+    rawAgentSessionId
+  );
+  if (!canonicalAgentSessionId) return unchanged(state);
+  const replacement = canonicalizeMessages(messages, canonicalAgentSessionId);
+  const current = state.messagesBySessionId[canonicalAgentSessionId] ?? [];
+  const windowsBySessionId = window
+    ? mergeSessionMessageWindow(state.windowsBySessionId, context, window)
+    : state.windowsBySessionId;
+  if (
+    areAgentActivityMessageArraysEqual(current, replacement) &&
+    windowsBySessionId === state.windowsBySessionId
+  ) {
+    return unchanged(state);
+  }
+  return changed({
+    ...state,
+    messagesBySessionId: {
+      ...state.messagesBySessionId,
+      [canonicalAgentSessionId]: replacement
+    },
+    windowsBySessionId
+  });
 }
 
 function mergeIncomingMessages(

@@ -211,6 +211,24 @@ port translates `turn/editRetry` and `turn/recoverEditRetry` to the injected
 the authoritative session-detail projection may replace edit-retry
 availability and release that fence.
 
+Edit retry also requires deletion-capable history convergence. The engine keeps
+the required history revision separate from the applied revision. An empty
+cache may establish its initial revision through the ordinary detail-plus-page
+read; once messages are cached, a changed or explicitly required revision must
+use one composite authoritative snapshot that replaces Session, Turn, and
+Message projections instead of incrementally merging them. Desktop serializes
+same-Session events and reads, loads the complete descending history at a fixed
+newest-page anchor, drains the ascending tail, fences the read with session
+detail before and after, and retries transient projection failures while the
+event stream is connected. Reconnect rechecks every cached Session.
+
+That composite snapshot also reconciles settled optimistic submissions and
+completion attention. It removes an optimistic row only when its stable Turn
+and client-submit identity are both absent from effective history; unresolved
+requests and turnless controls remain. Historical Turns are projection truth,
+not live attention signals. Files changed by a retracted Turn remain real
+filesystem effects and are not compensated by this renderer replacement.
+
 It does not own:
 
 - HTTP path construction

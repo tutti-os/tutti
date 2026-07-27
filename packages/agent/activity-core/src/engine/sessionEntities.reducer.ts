@@ -249,6 +249,42 @@ export function upsertCanonicalTurn(
   };
 }
 
+export function replaceCanonicalTurnSnapshot(
+  state: SessionLifecycleState,
+  agentSessionId: string,
+  turns: readonly AgentActivityTurn[]
+): SessionLifecycleState {
+  const id = agentSessionId.trim();
+  if (!id || state.deletedSessionIds[id]) return state;
+  const turnsById = Object.fromEntries(
+    Object.entries(state.turnsById).filter(
+      ([, turn]) => turn.agentSessionId !== id
+    )
+  );
+  for (const turn of turns) {
+    if (turn.agentSessionId.trim() !== id || !turn.turnId.trim()) continue;
+    turnsById[canonicalTurnKey(id, turn.turnId)] = { ...turn };
+  }
+  const validTurnIds = new Set(
+    turns
+      .filter((turn) => turn.agentSessionId.trim() === id)
+      .map((turn) => turn.turnId.trim())
+      .filter(Boolean)
+  );
+  const interactionsById = Object.fromEntries(
+    Object.entries(state.interactionsById).filter(
+      ([, interaction]) =>
+        interaction.agentSessionId !== id ||
+        validTurnIds.has(interaction.turnId.trim())
+    )
+  );
+  return {
+    ...state,
+    interactionsById,
+    turnsById
+  };
+}
+
 export function upsertCanonicalInteraction(
   state: SessionLifecycleState,
   interaction: AgentActivityInteraction

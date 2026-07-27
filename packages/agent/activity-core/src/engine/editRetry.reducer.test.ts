@@ -108,10 +108,17 @@ test("successful edit retry waits for authoritative availability and requests re
     settled.state.editRetry.operationBySessionId["session-1"]?.status,
     "reconciling"
   );
-  assert.deepEqual(
-    settled.followUpIntents?.map((intent) => intent.type),
-    ["session/reconcileRequested"]
-  );
+  assert.deepEqual(settled.followUpIntents, [
+    {
+      agentSessionId: "session-1",
+      authoritativeMessages: true,
+      needsMessages: false,
+      needsState: false,
+      requiredHistoryRevision: 9,
+      type: "session/reconcileRequested",
+      workspaceId: "workspace-1"
+    }
+  ]);
 
   const reconciled = rootEngineReducer(settled.state, {
     agentSessionId: "session-1",

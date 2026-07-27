@@ -65,6 +65,7 @@ export function useAgentGUIActiveMessages(input: {
     const pendingActivationMessage =
       activePendingActivation?.mode === "new" &&
       isPendingActivationViable(activePendingActivation) &&
+      !activePendingActivation.initialPromptRetracted &&
       activePendingActivation.clientSubmitId &&
       activePendingActivation.content.length > 0
         ? activePendingActivation.initialGoalControl

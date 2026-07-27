@@ -655,6 +655,16 @@ disable submission, but must not change editor editability.
 - optimistic records define confirmation, rejection, timeout, and uncertain-delivery paths
 - business command completion returns to the engine as a result intent; controllers do not rebuild lifecycle with Promise/effect chains
 
+Edit-and-retry availability is an exact SessionEngine projection, not a fact
+inferred from transcript order. AgentGUI edits only the authoritative eligible
+latest Turn, preserves attachment and non-text blocks through the Host-owned
+submission envelope, and never optimistically splices the transcript. After
+the command is accepted, Desktop applies effective history through the
+composite authoritative snapshot; AgentGUI only renders that canonical result.
+An authoritatively retracted initial optimistic prompt is marked on its pending
+activation so it cannot be materialized again while activation metadata and
+turnless controls remain intact.
+
 ### 4.2 Historical pull and realtime push
 
 - list/history reads use `session/snapshotReceived` and do not create unread completion

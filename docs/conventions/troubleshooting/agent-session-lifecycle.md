@@ -3453,3 +3453,35 @@ convergence deadline`.
 - References:
   [run-agent-session-replay.mjs](../../../tools/scripts/run-agent-session-replay.mjs)
   [run-agent-session-replay.test.mjs](../../../tools/scripts/run-agent-session-replay.test.mjs)
+
+### Edited prompt remains after edit-and-retry
+
+- Symptom:
+  The replacement answer appears, but the original user prompt remains,
+  reappears after reconnect, or disappears only after switching Sessions.
+- Quick checks:
+  Compare the daemon effective Turn/message read with the renderer snapshot.
+  If SQLite marks the old Turn `retracted` and the effective read excludes it,
+  inspect the SessionEngine required/applied history revisions and pending
+  optimistic intents.
+- Root cause:
+  Incremental reconciliation can add or update rows but cannot delete a cached
+  Turn missed during disconnect. A second variant replaces canonical messages
+  while leaving a confirmed optimistic projection alive; a third lets a
+  realtime event race a full-history read.
+- Fix:
+  Serialize same-Session reads, require a full authoritative replacement for a
+  changed edit-retry revision, page backward from a newest-version anchor, then
+  drain its live tail and apply one composite Session/Turn/Message snapshot.
+  Reconcile pending intents and attention from that effective Turn set. Retry
+  transient projection failures while connected and recheck cached Sessions on
+  reconnect.
+- Validation:
+  Cover missed events plus reconnect, stale unknown messages, transient
+  failures, revision changes during paging, and optimistic initial prompts.
+  The final transcript must contain only effective Turns while preserving
+  attachments, non-text input, turnless controls, and real filesystem effects.
+- References:
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [sessionReconcileExecutor.ts](../../../packages/agent/activity-core/src/sessionReconcileExecutor.ts)
+  [pendingIntents.authoritativeHistory.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.authoritativeHistory.ts)

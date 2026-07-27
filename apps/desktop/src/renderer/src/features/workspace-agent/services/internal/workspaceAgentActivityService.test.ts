@@ -80,6 +80,32 @@ test("WorkspaceAgentActivityService applies authoritative Session detail in one 
   });
   await service.load("ws-1");
   const engine = service.getSessionEngine("ws-1");
+  engine.dispatch({
+    messages: [
+      {
+        agentSessionId: "session-1",
+        kind: "text",
+        messageId: "retracted-user",
+        occurredAtUnixMs: 0,
+        payload: { text: "original prompt" },
+        role: "user",
+        turnId: "turn-1",
+        version: 1
+      },
+      {
+        agentSessionId: "session-1",
+        kind: "text",
+        messageId: "retracted-answer",
+        occurredAtUnixMs: 1,
+        payload: { text: "old answer" },
+        role: "assistant",
+        turnId: "turn-1",
+        version: 2
+      }
+    ],
+    type: "message/snapshotReceived",
+    workspaceId: "ws-1"
+  });
   let notificationCount = 0;
   const unsubscribe = engine.subscribe(() => {
     notificationCount += 1;
@@ -1414,13 +1440,14 @@ test("WorkspaceAgentActivityService reconciles cached messages after reconnect w
 
   connectionListener("disconnected");
   connectionListener("connected");
-  for (let attempt = 0; attempt < 10 && messageRequests.length < 2; attempt++) {
+  for (let attempt = 0; attempt < 10 && messageRequests.length < 3; attempt++) {
     await new Promise((resolve) => setImmediate(resolve));
   }
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.equal(messageRequests.length, 2);
-  assert.equal(messageRequests[1]?.afterVersion, 2);
+  assert.equal(messageRequests.length, 3);
+  assert.equal(messageRequests[1]?.order, "desc");
+  assert.equal(messageRequests[2]?.afterVersion, 3);
   assert.equal(
     service
       .getSnapshot("ws-1")
@@ -1621,7 +1648,7 @@ test("WorkspaceAgentActivityService preserves realtime turn provenance for atten
         session: settled,
         childSessions: [],
         editRetry: workspaceAgentEditRetryAvailability(),
-        turns: []
+        turns: [workspaceAgentTurn({ outcome: "completed", phase: "settled" })]
       }),
       listWorkspaceAgentSessionMessages: async () => {
         messageReconcileCalls += 1;
@@ -1728,12 +1755,20 @@ test("WorkspaceAgentActivityService preserves live provenance across a transient
             statusCode: 404
           });
         }
+        const returnedSession = getCalls === 1 ? running : settled;
         return {
           ...sessionDetailProjection(args[2]),
-          session: getCalls === 1 ? running : settled,
           childSessions: [],
           editRetry: workspaceAgentEditRetryAvailability(),
-          turns: []
+          turns:
+            returnedSession === settled
+              ? [
+                  workspaceAgentTurn({
+                    outcome: "completed",
+                    phase: "settled"
+                  })
+                ]
+              : []
         };
       },
       listWorkspaceAgentSessionMessages: async () => ({
@@ -3756,7 +3791,7 @@ test("WorkspaceAgentActivityService engine owns edit retry and authoritative rec
     ]
   ]);
   assert.equal(detailCalls >= 1, true);
-  assert.equal(messageCalls, 1);
+  assert.equal(messageCalls, 2);
   assert.equal(
     engine.getSnapshot().editRetry.operationBySessionId["session-1"]?.status,
     "succeeded"
@@ -3766,9 +3801,121 @@ test("WorkspaceAgentActivityService engine owns edit retry and authoritative rec
       ?.historyRevision,
     2
   );
-  assert.equal(
-    service.getSnapshot("ws-1").sessionMessagesById["session-1"]?.[0]
-      ?.messageId,
-    "replacement-answer"
+  assert.deepEqual(
+    service
+      .getSnapshot("ws-1")
+      .sessionMessagesById["session-1"]?.map((message) => message.messageId),
+    ["replacement-answer"]
   );
+});
+
+test("WorkspaceAgentActivityService retries a transient edit-retry projection failure", async () => {
+  let detailCalls = 0;
+  let messageCalls = 0;
+  const replacementTurn = {
+    ...workspaceAgentTurn({ outcome: "completed", phase: "settled" }),
+    turnId: "turn-replacement"
+  };
+  const session = workspaceAgentSession({
+    latestTurn: replacementTurn,
+    status: "completed"
+  });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      editRetry: async () => ({
+        historyRevision: 2,
+        operationId: "operation-retry",
+        replacementTurnId: "turn-replacement",
+        retractedTurnId: "turn-1",
+        state: "completed"
+      }),
+      getWorkspaceAgentSession: async () => {
+        detailCalls += 1;
+        if (detailCalls === 1) throw new Error("temporary detail failure");
+        return {
+          childSessions: [],
+          editRetry: {
+            availableActions: [],
+            eligible: false,
+            historyRevision: 2,
+            recoveryState: "prepared",
+            supported: true
+          },
+          session,
+          turns: [replacementTurn]
+        };
+      },
+      listWorkspaceAgentSessionMessages: async () => {
+        messageCalls += 1;
+        return {
+          hasMore: false,
+          latestVersion: 1,
+          messages: [
+            {
+              agentSessionId: "session-1",
+              kind: "text",
+              messageId: "replacement-answer",
+              occurredAtUnixMs: 2,
+              payload: { text: "replacement answer" },
+              role: "assistant",
+              turnId: "turn-replacement",
+              version: 1
+            }
+          ]
+        };
+      },
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [session],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  const engine = service.getSessionEngine("ws-1");
+  engine.dispatch({
+    agentSessionId: "session-1",
+    availability: {
+      availableActions: [],
+      eligible: true,
+      historyRevision: 1,
+      recoveryState: "prepared",
+      supported: true,
+      turnId: "turn-1"
+    },
+    type: "editRetry/availabilityReceived",
+    workspaceId: "ws-1"
+  });
+  engine.dispatch({
+    agentSessionId: "session-1",
+    editedText: "edited prompt",
+    turnId: "turn-1",
+    type: "editRetry/requested",
+    workspaceId: "ws-1"
+  });
+
+  for (
+    let attempt = 0;
+    attempt < 30 &&
+    engine.getSnapshot().editRetry.operationBySessionId["session-1"]?.status !==
+      "succeeded";
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  assert.equal(
+    engine.getSnapshot().editRetry.operationBySessionId["session-1"]?.status,
+    "succeeded"
+  );
+  assert.equal(detailCalls >= 4, true);
+  assert.equal(messageCalls, 2);
+  assert.deepEqual(
+    service
+      .getSnapshot("ws-1")
+      .sessionMessagesById["session-1"]?.map((message) => message.messageId),
+    ["replacement-answer"]
+  );
+  service.dispose();
 });

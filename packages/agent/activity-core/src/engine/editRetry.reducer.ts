@@ -262,8 +262,10 @@ function settleCommand(
     followUpIntents: [
       {
         agentSessionId,
-        needsMessages: true,
-        needsState: true,
+        authoritativeMessages: true,
+        needsMessages: false,
+        needsState: false,
+        requiredHistoryRevision: result.historyRevision,
         type: "session/reconcileRequested",
         workspaceId
       }

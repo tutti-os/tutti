@@ -52,6 +52,89 @@ test("merges messages into the canonical session bucket", () => {
   );
 });
 
+test("authoritative history replaces the session bucket and removes retracted messages", () => {
+  let state = sessionMessagesReducer(
+    createInitialSessionMessagesState(),
+    {
+      type: "message/snapshotReceived",
+      messages: [
+        message({ messageId: "retracted", agentSessionId: "session-1" }),
+        message({
+          messageId: "effective",
+          agentSessionId: "session-1",
+          version: 2
+        })
+      ]
+    },
+    context
+  ).state;
+
+  state = sessionMessagesReducer(
+    state,
+    {
+      agentSessionId: "session-1",
+      childSessions: [],
+      historyRevision: 1,
+      messages: [
+        message({
+          messageId: "effective",
+          agentSessionId: "session-1",
+          version: 2
+        })
+      ],
+      session: authoritativeSession(),
+      turns: [],
+      type: "session/historyAuthoritativeSnapshotReceived",
+      workspaceId: "workspace-1"
+    },
+    context
+  ).state;
+
+  assert.deepEqual(
+    state.messagesBySessionId["session-1"]?.map((item) => item.messageId),
+    ["effective"]
+  );
+});
+
+function authoritativeSession() {
+  return {
+    activeTurn: null,
+    activeTurnId: null,
+    agentSessionId: "session-1",
+    agentTargetId: null,
+    capabilities: null,
+    createdAtUnixMs: 1,
+    cwd: "/workspace",
+    endedAtUnixMs: null,
+    goal: null,
+    imported: false,
+    kind: "root" as const,
+    lastEventUnixMs: 2,
+    latestTurn: null,
+    latestTurnInteractions: [],
+    messageVersion: 2,
+    parentAgentSessionId: null,
+    parentToolCallId: null,
+    parentTurnId: null,
+    pendingInteractions: [],
+    permissionConfig: { configurable: false, modes: [] },
+    pinnedAtUnixMs: null,
+    provider: "codex",
+    providerSessionId: "provider-1",
+    resumable: true,
+    rootAgentSessionId: null,
+    rootTurnId: null,
+    settings: {},
+    startedAtUnixMs: 1,
+    title: "Session",
+    tuttiModeActivation: null,
+    updatedAtUnixMs: 2,
+    usage: null,
+    visible: true,
+    workspaceId: "workspace-1"
+  };
+}
+
 test("stores authoritative message-window coverage without inferring from versions", () => {
   const state = sessionMessagesReducer(
     createInitialSessionMessagesState(),
