@@ -51,7 +51,6 @@ interface AgentTargetAtItem {
 export function createAgentTargetAtContributor(contributorInput: {
   agentsService?: Pick<IAgentsService, "load">;
   agentProviderStatuses?: () => readonly AgentProviderStatus[] | undefined;
-  isTuttiAgentSwitchEnabled?: () => boolean;
 }): DesktopRichTextAtContributor {
   return {
     capability: "agent-target",
@@ -68,8 +67,6 @@ export function createAgentTargetAtContributor(contributorInput: {
             if (searchInput.abortSignal?.aborted || !response) return [];
             return agentTargetAtItemsFromTargets({
               agentProviderStatuses: contributorInput.agentProviderStatuses?.(),
-              isTuttiAgentSwitchEnabled:
-                contributorInput.isTuttiAgentSwitchEnabled,
               keyword: searchInput.keyword,
               maxResults: searchInput.maxResults,
               targets: response.agentTargets,
@@ -99,8 +96,6 @@ export function createAgentTargetAtContributor(contributorInput: {
               const item = agentTargetAtItemsFromTargets({
                 agentProviderStatuses:
                   contributorInput.agentProviderStatuses?.(),
-                isTuttiAgentSwitchEnabled:
-                  contributorInput.isTuttiAgentSwitchEnabled,
                 keyword: "",
                 targets: response.agentTargets,
                 workspaceId
@@ -268,7 +263,6 @@ function resolveSessionAgentTarget(
 
 function agentTargetAtItemsFromTargets(input: {
   agentProviderStatuses?: readonly AgentProviderStatus[];
-  isTuttiAgentSwitchEnabled?: () => boolean;
   keyword: string;
   maxResults?: number;
   targets: readonly AgentTargetPresentation[];
@@ -281,12 +275,6 @@ function agentTargetAtItemsFromTargets(input: {
       const identity = resolveAgentGUIProviderCatalogIdentity(target.provider);
       const provider = target.provider.trim() as WorkspaceAgentProvider;
       if (!provider) return null;
-      if (
-        identity?.desktop.visibilityGate === "tutti_agent" &&
-        input.isTuttiAgentSwitchEnabled?.() !== true
-      ) {
-        return null;
-      }
       if (target.availability.status !== "ready") {
         return null;
       }
