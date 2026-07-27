@@ -1,170 +1,75 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
+  agentComposerDraftPrompt,
   buildAgentComposerDraft,
   emptyAgentComposerDraft
 } from "../model/agentComposerDraft";
-import type { AgentComposerInputHistoryEntry } from "../model/agentComposerInputHistory";
+import { createAgentComposerInputHistoryStore } from "../model/agentComposerInputHistory";
 import { useComposerInputHistory } from "./useComposerInputHistory";
 
 describe("useComposerInputHistory", () => {
-  it("supports repeated Up presses before the controlled draft rerenders", () => {
+  it("records submissions and supports repeated navigation before rerender", () => {
     const onDraftContentChange = vi.fn();
-    const entries = historyEntries("one", "two");
+    const inputHistoryStore = createAgentComposerInputHistoryStore();
     const draftByScopeKeyRef = {
-      current: { "session:session-1": emptyAgentComposerDraft() }
+      current: {
+        "session:session-1": buildAgentComposerDraft({
+          prompt: "current draft"
+        })
+      }
     };
     const { result } = renderHook(() =>
       useComposerInputHistory({
-        agentSessionId: "session-1",
-        currentDraft: emptyAgentComposerDraft(),
+        currentDraft: draftByScopeKeyRef.current["session:session-1"],
         draftByScopeKeyRef,
         draftScopeKey: "session:session-1",
-        entries,
-        hasOlderPage: false,
-        isLoadingOlderPage: false,
-        onDraftContentChange,
-        runtime: null,
-        workspaceId: "workspace-1"
+        inputHistoryStore,
+        onDraftContentChange
       })
     );
 
     act(() => {
+      result.current.recordSubmittedDraft(
+        buildAgentComposerDraft({ prompt: "one" })
+      );
+      result.current.recordSubmittedDraft(
+        buildAgentComposerDraft({ prompt: "two" })
+      );
       expect(result.current.onHistoryNavigation("older")).toBe(true);
       expect(result.current.onHistoryNavigation("older")).toBe(true);
+      expect(result.current.onHistoryNavigation("newer")).toBe(true);
+      expect(result.current.onHistoryNavigation("newer")).toBe(true);
     });
 
-    expect(onDraftContentChange).toHaveBeenNthCalledWith(
-      1,
-      entries[1]!.draft,
-      "session:session-1"
-    );
-    expect(onDraftContentChange).toHaveBeenNthCalledWith(
-      2,
-      entries[0]!.draft,
-      "session:session-1"
-    );
+    expect(
+      onDraftContentChange.mock.calls.map(([draft]) =>
+        agentComposerDraftPrompt(draft)
+      )
+    ).toEqual(["two", "one", "two", "current draft"]);
   });
 
-  it("recalls the next older entry after an older page is prepended", () => {
+  it("is inert when the host has not enabled input history", () => {
     const onDraftContentChange = vi.fn();
-    const onRequestOlderPage = vi.fn();
-    const current = historyEntries("current")[0]!;
-    const older = historyEntries("older")[0]!;
     const draftByScopeKeyRef = {
-      current: { "session:session-1": emptyAgentComposerDraft() }
+      current: { current: emptyAgentComposerDraft() }
     };
-    const { result, rerender } = renderHook(
-      ({ currentDraft, entries }) => {
-        draftByScopeKeyRef.current["session:session-1"] = currentDraft;
-        return useComposerInputHistory({
-          agentSessionId: "session-1",
-          currentDraft,
-          draftByScopeKeyRef,
-          draftScopeKey: "session:session-1",
-          entries,
-          hasOlderPage: true,
-          isLoadingOlderPage: false,
-          onDraftContentChange,
-          onRequestOlderPage,
-          runtime: null,
-          workspaceId: "workspace-1"
-        });
-      },
-      {
-        initialProps: {
-          currentDraft: emptyAgentComposerDraft(),
-          entries: [current]
-        }
-      }
+    const { result } = renderHook(() =>
+      useComposerInputHistory({
+        currentDraft: emptyAgentComposerDraft(),
+        draftByScopeKeyRef,
+        draftScopeKey: "current",
+        onDraftContentChange
+      })
     );
 
     act(() => {
-      result.current.onHistoryNavigation("older");
-      result.current.onHistoryNavigation("older");
-    });
-    expect(onRequestOlderPage).toHaveBeenCalledOnce();
-
-    rerender({
-      currentDraft: current.draft,
-      entries: [older, current]
-    });
-    act(() => {
-      result.current.settlePendingInputHistory();
+      result.current.recordSubmittedDraft(
+        buildAgentComposerDraft({ prompt: "one" })
+      );
+      expect(result.current.onHistoryNavigation("older")).toBe(false);
     });
 
-    expect(onDraftContentChange).toHaveBeenLastCalledWith(
-      older.draft,
-      "session:session-1"
-    );
-  });
-
-  it("does not overwrite edits made while an older page is loading", () => {
-    const onDraftContentChange = vi.fn();
-    const onRequestOlderPage = vi.fn();
-    const current = historyEntries("current")[0]!;
-    const older = historyEntries("older")[0]!;
-    const editedDraft = buildAgentComposerDraft({ prompt: "edited" });
-    const draftByScopeKeyRef = {
-      current: { "session:session-1": emptyAgentComposerDraft() }
-    };
-    const { result, rerender } = renderHook(
-      ({ currentDraft, entries, isLoadingOlderPage }) => {
-        draftByScopeKeyRef.current["session:session-1"] = currentDraft;
-        return useComposerInputHistory({
-          agentSessionId: "session-1",
-          currentDraft,
-          draftByScopeKeyRef,
-          draftScopeKey: "session:session-1",
-          entries,
-          hasOlderPage: true,
-          isLoadingOlderPage,
-          onDraftContentChange,
-          onRequestOlderPage,
-          runtime: null,
-          workspaceId: "workspace-1"
-        });
-      },
-      {
-        initialProps: {
-          currentDraft: emptyAgentComposerDraft(),
-          entries: [current],
-          isLoadingOlderPage: false
-        }
-      }
-    );
-
-    act(() => {
-      result.current.onHistoryNavigation("older");
-      result.current.onHistoryNavigation("older");
-    });
-    rerender({
-      currentDraft: editedDraft,
-      entries: [current],
-      isLoadingOlderPage: true
-    });
-    rerender({
-      currentDraft: editedDraft,
-      entries: [older, current],
-      isLoadingOlderPage: false
-    });
-    act(() => {
-      result.current.settlePendingInputHistory();
-    });
-
-    expect(onDraftContentChange).toHaveBeenCalledOnce();
-    expect(onDraftContentChange).toHaveBeenLastCalledWith(
-      current.draft,
-      "session:session-1"
-    );
+    expect(onDraftContentChange).not.toHaveBeenCalled();
   });
 });
-
-function historyEntries(
-  ...prompts: string[]
-): AgentComposerInputHistoryEntry[] {
-  return prompts.map((prompt) => ({
-    id: prompt,
-    draft: buildAgentComposerDraft({ prompt })
-  }));
-}

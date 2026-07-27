@@ -27,7 +27,7 @@ import type {
 } from "@tutti-os/workspace-file-reference/react";
 import type { AgentQuickPromptLabels } from "./quickPrompts/agentQuickPromptLabels";
 import type { AgentMentionFilterId } from "../AgentMentionSearchContracts";
-import type { AgentComposerInputHistoryEntry } from "../model/agentComposerInputHistory";
+import type { AgentComposerInputHistoryStore } from "../model/agentComposerInputHistory";
 
 export interface AgentComposerReferenceProvenanceFilter {
   snapshot: ReferenceProvenanceFilterSnapshot;
@@ -77,10 +77,7 @@ export interface AgentComposerProps {
   engagement?: AgentGUIComposerEngagement;
   /** Stable project/session owner for async draft attachment work. */
   draftScopeKey?: string;
-  inputHistory?: readonly AgentComposerInputHistoryEntry[];
-  inputHistoryHasOlderPage?: boolean;
-  inputHistoryIsLoadingOlderPage?: boolean;
-  onRequestOlderInputHistoryPage?: () => void;
+  inputHistoryStore?: AgentComposerInputHistoryStore;
   availableCommands: readonly AgentSessionCommand[];
   hasCompactableContext?: boolean;
   compactSupported?: boolean | null;

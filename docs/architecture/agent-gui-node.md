@@ -788,20 +788,21 @@ The editor recognizes stale controlled echoes from that transition so an older
 projection cannot overwrite newer local input; a value not emitted locally
 remains an authoritative external replacement.
 
-An existing-Session composer derives input history from that Session's
-canonical user-message projection; it does not persist a second history store.
-The host must opt in explicitly; Desktop maps the default-off
-`lab.agentInputHistory` Lab preference to that capability.
-Bare Up/Down recalls older/newer structured drafts only from an empty composer
-or an unchanged recalled entry, and only when the collapsed caret is at a
-whole-document boundary. Palette handling and IME composition take precedence,
-while editing a recalled draft exits history navigation. Moving past the newest
-entry clears the composer. Adjacent equivalent submissions collapse, persisted
-attachments are restored with exact workspace and Session identity, and
-reaching the oldest loaded entry requests the existing authoritative older-page
-read while preserving the timeline prepend scroll anchor. The history cursor
-is UI-local and resets when the draft Session scope changes; Home has no
-Session history.
+The mounted Agent GUI owns one in-memory composer input history store. The host
+must opt in explicitly; Desktop maps the default-off `lab.agentInputHistory`
+Lab preference to that capability. Every non-empty structured draft submitted
+while the GUI is open is appended, including equivalent consecutive inputs.
+The store is shared by the Home and Session composer presentations and is
+discarded when the Agent GUI closes.
+
+Bare Up/Down recalls older/newer structured drafts regardless of whether the
+composer currently has content, but only when the collapsed caret is at a
+whole-document boundary. Palette handling and IME composition take precedence.
+On first recall, the current structured draft is captured as the newest
+navigation entry, so moving past the newest submitted input restores the text
+and attachments that were being edited. Editing a recalled draft makes that
+edit the new current entry on the next recall. The history cursor is UI-local
+and resets when the draft Session scope changes.
 
 The dock observes geometry through one coalesced animation-frame measurement
 entry point. Editor document updates, attachment membership or intrinsic
