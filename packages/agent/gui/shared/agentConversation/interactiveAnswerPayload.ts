@@ -5,7 +5,9 @@
  * cross-language contract, not an internal detail.
  *
  * Consumers that MUST stay in sync with this shape:
- * - daemon (Go) standard ACP adapter — forwards `answersByQuestionId` verbatim.
+ * - daemon (Go) standard ACP adapter — preserves this canonical payload for
+ *   local projection and translates selected labels back to provider ACP
+ *   permission option IDs when the provider bridges questions that way.
  * - daemon (Go) codex app-server adapter — `appServerUserInputAnswers` reshapes
  *   `answersByQuestionId` into codex's `requestUserInput` response.
  *

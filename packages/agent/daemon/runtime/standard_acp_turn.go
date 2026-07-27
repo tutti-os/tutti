@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
@@ -46,15 +47,23 @@ func (a *standardACPAdapter) Exec(
 	)
 	normalizer := newACPTurnNormalizer()
 	var events []activityshared.Event
+	var eventsMu sync.Mutex
 	emitEvents := func(next []activityshared.Event) {
 		if len(next) == 0 {
 			return
 		}
+		eventsMu.Lock()
+		defer eventsMu.Unlock()
 		next = a.stampTurnLifecycleSnapshots(acpSession, next)
 		events = append(events, next...)
 		if emit != nil {
 			emit(next)
 		}
+	}
+	snapshotEvents := func() []activityshared.Event {
+		eventsMu.Lock()
+		defer eventsMu.Unlock()
+		return append([]activityshared.Event(nil), events...)
 	}
 
 	startEvents := []activityshared.Event{
@@ -132,6 +141,7 @@ execLoop:
 			return nil
 		})
 		if err != nil {
+			emittedEvents := snapshotEvents()
 			slog.Warn("agent session ACP exec call failed",
 				"event", "agent_session.acp.exec.call_failed",
 				"provider", a.config.provider,
@@ -140,8 +150,8 @@ execLoop:
 				"agent_session_id", session.AgentSessionID,
 				"provider_session_id", session.ProviderSessionID,
 				"turn_id", turnID,
-				"emitted_event_count", len(events),
-				"emitted_event_type_counts", activityEventTypeCounts(events),
+				"emitted_event_count", len(emittedEvents),
+				"emitted_event_type_counts", activityEventTypeCounts(emittedEvents),
 				"error", err.Error(),
 			)
 			if errors.Is(err, context.Canceled) || errors.Is(err, errPermissionRequestCanceled) {
@@ -180,11 +190,12 @@ execLoop:
 				}))
 				emitEvents(terminalEvents)
 			}
-			return events, nil
+			return snapshotEvents(), nil
 		}
 
 		stopReason := acpStopReason(result)
 		normalizer.ApplyAssistantFinalText(acpPromptResultAssistantText(result))
+		emittedEvents := snapshotEvents()
 		slog.Info("agent session ACP exec call completed",
 			"event", "agent_session.acp.exec.call_completed",
 			"provider", a.config.provider,
@@ -195,8 +206,8 @@ execLoop:
 			"turn_id", turnID,
 			"stop_reason", firstNonEmpty(stopReason, "end_turn"),
 			"auto_continue_attempts", autoContinueAttempts,
-			"emitted_event_count", len(events),
-			"emitted_event_type_counts", activityEventTypeCounts(events),
+			"emitted_event_count", len(emittedEvents),
+			"emitted_event_type_counts", activityEventTypeCounts(emittedEvents),
 		)
 		if a.config.autoContinueRetriableTurnError && acpStopReasonEndsTurnNormally(stopReason) {
 			assistantText := normalizer.CurrentAssistantText()
@@ -270,6 +281,7 @@ execLoop:
 		}
 		break execLoop
 	}
+	finalEvents := snapshotEvents()
 	slog.Info("agent session ACP exec finished",
 		"event", "agent_session.acp.exec.finished",
 		"provider", a.config.provider,
@@ -278,10 +290,10 @@ execLoop:
 		"agent_session_id", session.AgentSessionID,
 		"provider_session_id", session.ProviderSessionID,
 		"turn_id", turnID,
-		"final_event_count", len(events),
-		"final_event_type_counts", activityEventTypeCounts(events),
+		"final_event_count", len(finalEvents),
+		"final_event_type_counts", activityEventTypeCounts(finalEvents),
 	)
-	return events, nil
+	return finalEvents, nil
 }
 
 func (a *standardACPAdapter) Cancel(ctx context.Context, session Session, _ string) ([]activityshared.Event, error) {
@@ -397,6 +409,20 @@ func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Sess
 	action := strings.TrimSpace(input.Action)
 	payload := clonePayload(input.Payload)
 	result := acpInteractiveResponseResult(action, optionID, payload)
+	if err := ctx.Err(); err != nil {
+		return SubmitInteractiveResult{}, err
+	}
+	if pending.kind == "ask-user" && len(pending.options) > 0 {
+		resolvedOptionID, ok := acpAskUserPermissionOptionID(pending, optionID, action, payload)
+		if !ok {
+			return SubmitInteractiveResult{}, fmt.Errorf(
+				"ask-user answer does not match an available provider option for request %q",
+				requestID,
+			)
+		}
+		optionID = resolvedOptionID
+		result = acpPermissionResponseResult(resolvedOptionID)
+	}
 	if _, err := pending.dispatchResponse(ctx, pendingInteractiveResponse{
 		optionID: optionID,
 		action:   action,
