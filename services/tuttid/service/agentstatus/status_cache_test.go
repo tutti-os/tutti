@@ -187,3 +187,57 @@ func TestProviderStatusCacheInvalidatesWhenCredentialsChange(t *testing.T) {
 		t.Fatalf("auth probes after credential change = %d, want 2", got)
 	}
 }
+
+func TestProviderStatusCacheInvalidatesWhenRuntimeEnvironmentChanges(t *testing.T) {
+	var authCalls atomic.Int32
+	path := "/usr/bin"
+	service := testService(func(string) (string, error) {
+		return "/usr/bin/true", nil
+	}, map[string]bool{})
+	service.StatusCache = NewProviderStatusCache()
+	service.Environ = func() []string { return []string{"PATH=" + path} }
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		authCalls.Add(1)
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	for range 2 {
+		if _, err := service.List(context.Background(), ListInput{Providers: []string{"cursor"}}); err != nil {
+			t.Fatalf("List() error = %v", err)
+		}
+	}
+	if got := authCalls.Load(); got != 1 {
+		t.Fatalf("auth probes = %d, want cached 1", got)
+	}
+	path = "/bin"
+	if _, err := service.List(context.Background(), ListInput{Providers: []string{"cursor"}}); err != nil {
+		t.Fatalf("List() after environment change error = %v", err)
+	}
+	if got := authCalls.Load(); got != 2 {
+		t.Fatalf("auth probes = %d, want 2 after environment change", got)
+	}
+}
+
+func TestProviderStatusCacheDoesNotCacheFailedCodexRepairEvidence(t *testing.T) {
+	home := t.TempDir()
+	writeCodexBunInstall(t, home, codexBunReadyLauncher)
+	service := probeTestService(home)
+	service.StatusCache = NewProviderStatusCache()
+	var probes atomic.Int32
+	service.CodexProtocolProbe = func(context.Context, []string, []string) CodexProbeEvidence {
+		probes.Add(1)
+		return CodexProbeEvidence{CommandStarted: true, Category: "handshake_timeout"}
+	}
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	for range 2 {
+		if _, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}}); err != nil {
+			t.Fatalf("List() error = %v", err)
+		}
+	}
+	if got := probes.Load(); got != 2 {
+		t.Fatalf("failed Codex probes = %d, want fresh probe for each List", got)
+	}
+}

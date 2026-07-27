@@ -235,6 +235,7 @@ func buildDaemonAPI(
 		StatusCache:          agentstatusservice.NewProviderStatusCache(),
 		CLIVersionCache:      agentstatusservice.NewCLIVersionCache(),
 		AdapterProbeCache:    agentstatusservice.NewAdapterProbeCache(),
+		BunGlobalBinCache:    agentstatusservice.NewBunGlobalBinCache(),
 		DetectionCommands:    agentstatusservice.NewDetectionCommandLimiter(4),
 		UpdateCache:          agentstatusservice.NewProviderUpdateCache(),
 	}

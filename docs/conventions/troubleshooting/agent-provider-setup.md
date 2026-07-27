@@ -327,6 +327,54 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [main.test.ts](../../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
   [claude_sdk_adapter.go](../../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
 
+### Bun-installed Codex works in a terminal but Tutti cannot use it
+
+- Symptom:
+  `codex --version` works in an interactive terminal after `bun add -g
+@openai/codex`, while the desktop reports `cli_not_found`,
+  `codex_platform_pkg_incomplete`, or a generic app-server launch failure.
+- Quick checks:
+  Compare the terminal's `command -v codex` and `bun pm bin -g` with the
+  daemon's effective PATH. Then run the exact resolved command with
+  `app-server` and verify the formal `initialize` response followed by the
+  `initialized` notification. Do not infer runtime failure from the absence of
+  npm's nested `@openai/codex/node_modules/@openai/codex-<platform>` path:
+  inspect the package root and ancestor `node_modules` directories as well.
+- Root cause:
+  Desktop processes do not source interactive shell startup files. Bun's
+  default global binary directory is `~/.bun/bin`, `BUN_INSTALL` can relocate
+  the Bun installation, and `globalBinDir` can point somewhere else entirely.
+  Bun may also hoist the Codex platform package or place it behind an isolated
+  `.bun` store, so an npm-nested-only check can reject a working CLI. Finally,
+  the actionable missing-optional-dependency message is written to stderr after
+  the app-server process starts; classifying only the protocol error loses that
+  evidence.
+- Fix:
+  Resolve Codex from the effective PATH, `BUN_INSTALL/bin`, the default
+  `~/.bun/bin`, and, only when those fail, a bounded `bun pm bin -g` discovery.
+  Cache a successful configured-bin result by the Bun executable fingerprint.
+  Rewrite the provider command to the resolved absolute Codex launcher and pass
+  the same environment to status probes and real sessions. Treat a completed
+  app-server initialize handshake as the readiness source of truth. Scan the
+  package from the resolved launcher using Node-style ancestor `node_modules`
+  lookup across npm, Bun, and pnpm layouts; layout evidence must never override
+  a successful protocol probe. Classify the current platform package from
+  bounded stderr even when the message says `Missing optional dependency`
+  without an `ENOENT` token. Preserve Bun/pnpm provenance and never run npm
+  repair in those package-manager-owned directories.
+- Validation:
+  Use a minimal GUI PATH (`/usr/bin:/bin`) and cover default `~/.bun/bin`,
+  `BUN_INSTALL/bin`, and a custom `bun pm bin -g` result. Include a real
+  single-process initialize/initialized handshake, Bun hoisted and isolated
+  package layouts, missing optional-dependency stderr without `ENOENT`,
+  unsupported `app-server`, and a broken Bun install that must not invoke npm.
+- References:
+  [resolver.go](../../../packages/agent/daemon/runtimecmd/resolver.go)
+  [codex_bun_discovery.go](../../../services/tuttid/service/agentstatus/codex_bun_discovery.go)
+  [codex_layout_scan.go](../../../services/tuttid/service/agentstatus/codex_layout_scan.go)
+  [codex_protocol_probe.go](../../../services/tuttid/service/agentstatus/codex_protocol_probe.go)
+  [codex_appserver_probe.go](../../../packages/agent/daemon/runtime/codex_appserver_probe.go)
+
 ### Codex npm install misses the platform package
 
 - Symptom:
@@ -364,9 +412,14 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   `TUTTI_APP_NPM`, managed `PATH`) when user Node is missing. Ensure the Codex
   app-server adapter consumes that provider command resolution; otherwise status
   probes can pass while session startup still fails with `env: node: No such
-file or directory`. If the CLI path exists but `codex app-server` cannot
-  launch, treat the failed probe as a repair trigger so the install action does
-  not clear immediately without running an installer.
+file or directory`. A failed `codex app-server` probe is diagnostic evidence,
+  not repair authorization by itself. Require a fresh, platform-specific
+  missing-dependency classification plus a package-relative scan that confirms
+  the same package or binary is missing. Keep npm repair limited to npm-owned
+  layouts; Bun and pnpm installations must be repaired by their owning package
+  manager rather than overwritten in place by npm. If the supported CLI and
+  platform binary are complete but the formal protocol handshake still fails,
+  report a runtime bug and do not reinstall.
 - Validation:
   Reproduce in a temporary prefix/cache using the Tutti-managed npm. Confirm
   `codex --version`, the platform package metadata and vendor binary, and a

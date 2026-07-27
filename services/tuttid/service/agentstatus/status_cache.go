@@ -1,6 +1,9 @@
 package agentstatus
 
 import (
+	"context"
+	"crypto/sha256"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +25,7 @@ type ProviderStatusCache struct {
 type providerStatusCacheEntry struct {
 	cachedAt              time.Time
 	credentialFingerprint string
+	runtimeFingerprint    string
 	status                ProviderStatus
 }
 
@@ -29,20 +33,20 @@ func NewProviderStatusCache() *ProviderStatusCache {
 	return &ProviderStatusCache{entries: make(map[string]providerStatusCacheEntry)}
 }
 
-func (c *ProviderStatusCache) get(provider string, now time.Time, ttl time.Duration) (ProviderStatus, time.Time, string, bool) {
+func (c *ProviderStatusCache) get(provider string, now time.Time, ttl time.Duration) (ProviderStatus, time.Time, string, string, bool) {
 	if c == nil || ttl <= 0 {
-		return ProviderStatus{}, time.Time{}, "", false
+		return ProviderStatus{}, time.Time{}, "", "", false
 	}
 	c.mu.RLock()
 	entry, ok := c.entries[provider]
 	c.mu.RUnlock()
 	if !ok || now.Sub(entry.cachedAt) > ttl {
-		return ProviderStatus{}, time.Time{}, "", false
+		return ProviderStatus{}, time.Time{}, "", "", false
 	}
-	return cloneProviderStatus(entry.status), entry.cachedAt, entry.credentialFingerprint, true
+	return cloneProviderStatus(entry.status), entry.cachedAt, entry.credentialFingerprint, entry.runtimeFingerprint, true
 }
 
-func (c *ProviderStatusCache) set(provider string, cachedAt time.Time, credentialFingerprint string, status ProviderStatus) {
+func (c *ProviderStatusCache) set(provider string, cachedAt time.Time, credentialFingerprint, runtimeFingerprint string, status ProviderStatus) {
 	if c == nil {
 		return
 	}
@@ -50,9 +54,41 @@ func (c *ProviderStatusCache) set(provider string, cachedAt time.Time, credentia
 	c.entries[provider] = providerStatusCacheEntry{
 		cachedAt:              cachedAt,
 		credentialFingerprint: credentialFingerprint,
+		runtimeFingerprint:    runtimeFingerprint,
 		status:                cloneProviderStatus(status),
 	}
 	c.mu.Unlock()
+}
+
+// providerRuntimeFingerprint is intentionally opaque: it notices a changed
+// resolved launcher, real executable, command, or effective app-server
+// environment without storing environment values (which may contain secrets)
+// in the status cache or logs.
+func (s Service) providerRuntimeFingerprint(ctx context.Context, spec ProviderSpec) string {
+	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
+	command := runtimeResolution.AdapterCommand
+	if len(command) == 0 {
+		command = spec.AdapterCommand
+	}
+	env := s.commandResolver().Env(s.adapterCommandEnv(ctx, spec))
+	parts := []string{
+		spec.Provider,
+		providerRuntimeBinaryFingerprint(runtimeResolution.CLIPath),
+		providerRuntimeBinaryFingerprint(runtimeResolution.AdapterPath),
+		strings.Join(command, "\x00"),
+		strings.Join(env, "\x00"),
+	}
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func providerRuntimeBinaryFingerprint(path string) string {
+	fingerprint, ok := readExecutableFingerprint(path)
+	if !ok {
+		return "missing:" + strings.TrimSpace(path)
+	}
+	return fingerprint.resolvedPath + "\x00" +
+		fmt.Sprintf("%d\x00%d", fingerprint.info.Size(), fingerprint.info.ModTime().UnixNano())
 }
 
 func (c *ProviderStatusCache) invalidate(provider string) {
@@ -115,6 +151,13 @@ func cloneProviderStatus(status ProviderStatus) ProviderStatus {
 	if status.ActiveAction != nil {
 		activeAction := *status.ActiveAction
 		result.ActiveAction = &activeAction
+	}
+	if status.CodexDiagnostics != nil {
+		copy := *status.CodexDiagnostics
+		copy.Checks = append([]CodexDiagnosticCheck(nil), status.CodexDiagnostics.Checks...)
+		copy.Diagnosis.SecondaryDiagnosticCodes = append([]string(nil), status.CodexDiagnostics.Diagnosis.SecondaryDiagnosticCodes...)
+		copy.RepairPlan.SupportingEvidence = append([]string(nil), status.CodexDiagnostics.RepairPlan.SupportingEvidence...)
+		result.CodexDiagnostics = &copy
 	}
 	return result
 }

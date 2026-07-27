@@ -19,14 +19,15 @@ import (
 )
 
 type providerRuntimeResolution struct {
-	CLIPath        string
-	AdapterPath    string
-	AdapterVersion string
-	AdapterCommand []string
-	AdapterEnv     []string
-	ReasonCode     string
-	InstallDir     string
-	Env            []string
+	CLIPath         string
+	AdapterPath     string
+	AdapterVersion  string
+	AdapterCommand  []string
+	AdapterEnv      []string
+	ReasonCode      string
+	InstallDir      string
+	Env             []string
+	CodexRepairPlan *CodexRepairPlan
 }
 
 type installerExecutionSummary struct {
@@ -45,9 +46,18 @@ func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) 
 	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
 		return s.resolveExternalProviderRuntime(ctx, spec, resolver, env)
 	}
+	cliPath := resolveBinaryWithResolver(resolver, spec.BinaryNames, nil)
 	adapterPath := resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), spec.AdapterEnv)
+	if isCodexStatusSpec(spec) && len(spec.AdapterCommand) > 0 && s.executableFile(spec.AdapterCommand[0]) {
+		if cliPath == "" {
+			cliPath = spec.AdapterCommand[0]
+		}
+		if adapterPath == "" {
+			adapterPath = spec.AdapterCommand[0]
+		}
+	}
 	return providerRuntimeResolution{
-		CLIPath:        resolveBinaryWithResolver(resolver, spec.BinaryNames, nil),
+		CLIPath:        cliPath,
 		AdapterPath:    adapterPath,
 		AdapterVersion: resolveAdapterPackageVersion(adapterPath, spec.AdapterPackage),
 		AdapterCommand: cloneStrings(spec.AdapterCommand),
@@ -290,7 +300,15 @@ func (s Service) installMissingProviderRuntime(
 }
 
 func (s Service) nextMissingInstaller(spec ProviderSpec, runtime providerRuntimeResolution) (InstallerSpec, bool, string) {
-	if strings.TrimSpace(runtime.ReasonCode) == "acp_adapter_launch_failed" {
+	if isCodexStatusSpec(spec) && runtime.CodexRepairPlan != nil && runtime.CodexRepairPlan.Allowed {
+		if spec.AdapterInstall.Kind != "" {
+			return spec.AdapterInstall, true, "adapter"
+		}
+		if spec.Install.Kind != "" {
+			return spec.Install, true, "cli"
+		}
+	}
+	if legacyRuntimeFailureRequiresRepair(spec, runtime.ReasonCode) {
 		if spec.AdapterInstall.Kind != "" {
 			return spec.AdapterInstall, true, "adapter"
 		}
@@ -303,6 +321,14 @@ func (s Service) nextMissingInstaller(spec ProviderSpec, runtime providerRuntime
 			return InstallerSpec{}, false, ""
 		}
 		return spec.Install, true, "cli"
+	}
+	// A resolved Codex CLI is user-managed unless the current diagnostic
+	// snapshot has explicitly authorized a platform-package repair above. Do
+	// not let the generic version or adapter-install fallbacks turn an ordinary
+	// protocol failure (or an unsupported version) into an npm overwrite.
+	// Upgrade and refresh remain separate daemon actions.
+	if isCodexStatusSpec(spec) && isCodexAppServerCommand(runtime.AdapterCommand) {
+		return InstallerSpec{}, false, ""
 	}
 	if s.providerCLIRequiresInstall(spec, runtime) {
 		if spec.Install.Kind == "" {
@@ -335,6 +361,19 @@ func (s Service) nextMissingInstaller(spec ProviderSpec, runtime providerRuntime
 	return InstallerSpec{}, false, ""
 }
 
+func isCodexAppServerCommand(command []string) bool {
+	return len(command) >= 2 && strings.EqualFold(strings.TrimSpace(command[1]), "app-server")
+}
+
+func legacyRuntimeFailureRequiresRepair(spec ProviderSpec, reasonCode string) bool {
+	switch strings.TrimSpace(reasonCode) {
+	case "acp_adapter_launch_failed":
+		return !isCodexStatusSpec(spec)
+	default:
+		return false
+	}
+}
+
 func installNodeForTarget(target string) string {
 	if strings.TrimSpace(target) == "adapter" {
 		return "install_adapter"
@@ -343,9 +382,6 @@ func installNodeForTarget(target string) string {
 }
 
 func (s Service) providerCLIRequiresInstall(spec ProviderSpec, runtime providerRuntimeResolution) bool {
-	if isCodexStatusSpec(spec) && !s.codexPlatformBinaryOK(runtime.CLIPath) {
-		return true
-	}
 	if strings.TrimSpace(spec.MinVersion) == "" {
 		return false
 	}

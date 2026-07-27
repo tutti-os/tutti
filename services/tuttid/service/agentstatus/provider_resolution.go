@@ -179,17 +179,17 @@ func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpe
 		return spec
 	}
 	if s.userNodeRuntimeAvailable(spec.AdapterEnv) {
-		return spec
+		return s.resolveCodexProviderSpec(ctx, spec)
 	}
 	appRuntime, ok := s.resolveManagedNodeRuntimeForProvider(ctx, requireManagedRuntime)
 	if !ok {
 		if requireManagedRuntime {
 			spec.AdapterUnavailableReasonCode = ReasonManagedRuntimeUnavailable
 		}
-		return spec
+		return s.resolveCodexProviderSpec(ctx, spec)
 	}
 	spec.AdapterEnv = append(s.managedRuntimeAdapterEnv(appRuntime), spec.AdapterEnv...)
-	return spec
+	return s.resolveCodexProviderSpec(ctx, spec)
 }
 
 func (s Service) userNodeRuntimeAvailable(overrides []string) bool {

@@ -31,15 +31,17 @@ type acpClient struct {
 	doneErr             error
 	exitCode            *int
 	stderrTail          []byte
+	stderrTruncated     bool
 	stdoutTail          []byte
 	stdoutProtocolErrs  int
 	doneOnce            sync.Once
 }
 
 type acpClientDiagnostics struct {
-	ExitCode   *int
-	StderrTail string
-	StdoutTail string
+	ExitCode        *int
+	StderrTail      string
+	StderrTruncated bool
+	StdoutTail      string
 }
 
 type acpMessage struct {
@@ -171,8 +173,9 @@ func (c *acpClient) Diagnostics() acpClientDiagnostics {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	diag := acpClientDiagnostics{
-		StderrTail: strings.TrimSpace(string(c.stderrTail)),
-		StdoutTail: strings.TrimSpace(string(c.stdoutTail)),
+		StderrTail:      strings.TrimSpace(string(c.stderrTail)),
+		StderrTruncated: c.stderrTruncated,
+		StdoutTail:      strings.TrimSpace(string(c.stdoutTail)),
 	}
 	if c.exitCode != nil {
 		exitCode := *c.exitCode
@@ -424,6 +427,7 @@ func (c *acpClient) readLoop() {
 		if len(frame.Stderr) > 0 {
 			stderrTail = append(stderrTail, frame.Stderr...)
 			if len(stderrTail) > acpClientOutputTailLimit {
+				c.setStderrTruncated()
 				stderrTail = stderrTail[len(stderrTail)-acpClientOutputTailLimit:]
 			}
 			c.setStderrTail(stderrTail)
@@ -476,7 +480,15 @@ func (c *acpClient) readLoop() {
 func (c *acpClient) setStderrTail(tail []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.stderrTail = append(c.stderrTail[:0], tail...)
+	// Process frames can split UTF-8 runes. Diagnostics must remain valid text
+	// even after the bounded tail discards a prefix.
+	c.stderrTail = []byte(strings.ToValidUTF8(string(tail), "�"))
+}
+
+func (c *acpClient) setStderrTruncated() {
+	c.mu.Lock()
+	c.stderrTruncated = true
+	c.mu.Unlock()
 }
 
 func (c *acpClient) setStdoutTail(tail []byte) {

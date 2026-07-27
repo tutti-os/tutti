@@ -326,6 +326,21 @@ func (c *localProcessConnection) Close() error {
 	return nil
 }
 
+func (c *localProcessConnection) Wait(ctx context.Context) error {
+	if c == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	select {
+	case <-c.done:
+		return c.closeErr
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (c *localProcessConnection) CloseInput() error {
 	if c == nil || c.stdin == nil {
 		return nil

@@ -94,6 +94,22 @@ func TestAdapterProbeCacheStoresOnlyMatchingExecutable(t *testing.T) {
 	}
 }
 
+func TestAdapterProbeCacheExpiresPositiveHandshakeEvidence(t *testing.T) {
+	binaryPath := filepath.Join(t.TempDir(), "codex")
+	if err := os.WriteFile(binaryPath, []byte("codex"), 0o700); err != nil {
+		t.Fatalf("write binary: %v", err)
+	}
+	cache := NewAdapterProbeCache()
+	checkedAt := time.Unix(100, 0)
+	cache.markReadyAt("codex", binaryPath, checkedAt)
+	if !cache.readyWithin("codex", binaryPath, checkedAt.Add(time.Second), time.Minute) {
+		t.Fatal("fresh positive handshake cache = false, want true")
+	}
+	if cache.readyWithin("codex", binaryPath, checkedAt.Add(time.Minute+time.Nanosecond), time.Minute) {
+		t.Fatal("expired positive handshake cache = true, want false")
+	}
+}
+
 func TestDetectionCommandLimiterBoundsConcurrentCommands(t *testing.T) {
 	limiter := NewDetectionCommandLimiter(1)
 	release, acquired := limiter.acquire(context.Background())

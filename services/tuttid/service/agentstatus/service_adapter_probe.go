@@ -2,6 +2,8 @@ package agentstatus
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -16,9 +18,12 @@ func (s Service) probeAdapterRuntimeCommand(
 		Provider:   spec.Provider,
 		CheckedAt:  now,
 		BinaryPath: runtimeResolution.AdapterPath,
-		Command:    cloneStrings(spec.AdapterCommand),
+		Command:    cloneStrings(runtimeResolution.AdapterCommand),
 	}
-	command := cloneStrings(spec.AdapterCommand)
+	command := cloneStrings(runtimeResolution.AdapterCommand)
+	if len(command) == 0 {
+		command = cloneStrings(spec.AdapterCommand)
+	}
 	if len(command) == 0 {
 		command = cloneStrings(spec.BinaryNames)
 	}
@@ -29,8 +34,14 @@ func (s Service) probeAdapterRuntimeCommand(
 		return result
 	}
 
-	env := s.commandResolver().Env(s.adapterCommandEnv(ctx, spec))
+	env := runtimeResolution.Env
+	if len(env) == 0 {
+		env = s.commandResolver().Env(s.adapterCommandEnv(ctx, spec))
+	}
 	command[0] = s.commandResolver().Resolve(command[0], env)
+	if strings.TrimSpace(runtimeResolution.AdapterPath) != "" {
+		command[0] = runtimeResolution.AdapterPath
+	}
 	result.Command = cloneStrings(command)
 	if strings.TrimSpace(runtimeResolution.AdapterPath) != "" {
 		result.BinaryPath = runtimeResolution.AdapterPath
@@ -45,13 +56,39 @@ func (s Service) probeAdapterRuntimeCommand(
 		return result
 	}
 	defer release()
-	if isCodexStatusSpec(spec) && sameResolvedBinary(runtimeResolution.AdapterPath, runtimeResolution.CLIPath) {
-		// Codex has no separate adapter binary in production: `codex app-server`
-		// IS the CLI, so a real ACP handshake here directly answers "can Tutti
-		// actually launch this" instead of only checking the process didn't
-		// exit. Providers with a distinct adapter binary (e.g. the synthetic
-		// specs used to test that generic mechanism) keep the liveness probe.
-		result = s.probeCodexAppServerHandshake(ctx, result, command, env)
+	// Codex has a real, first-party app-server JSON-RPC/stdio protocol. Unlike
+	// generic adapter probes, a long-lived process alone is not readiness
+	// evidence: use the runtime package's single-process initialize handshake.
+	if isCodexStatusSpec(spec) {
+		evidence := s.probeCodexAppServer(ctx, command, env)
+		result.CommandStarted = evidence.CommandStarted
+		result.ProtocolReady = evidence.ProtocolReady
+		if evidence.CommandStarted {
+			result.ProtocolCategory = evidence.Category
+		} else {
+			result.CommandCategory = evidence.Category
+		}
+		result.ProtocolPackageName = evidence.PlatformPackageName
+		if evidence.ProtocolReady {
+			result.Status = ProbeReady
+			s.AdapterProbeCache.markReadyAt(
+				s.adapterProbeCacheKey(ctx, spec, runtimeResolution),
+				result.BinaryPath,
+				now,
+			)
+			return result
+		}
+		result.Status = ProbeFailed
+		result.Message = evidence.Message
+		result.ReasonCode = "acp_adapter_launch_failed"
+		if evidence.Category == "platform_package_enoent" {
+			result.LastError = &ProviderLastError{
+				Code:    string(CodexErrPlatformPkgIncomplete),
+				Message: evidence.Message,
+			}
+			result.ReasonCode = "codex_platform_pkg_incomplete"
+		}
+		return result
 	} else if isStandardACPStatusSpec(spec) && sameResolvedBinary(runtimeResolution.AdapterPath, runtimeResolution.CLIPath) {
 		// cursor-agent and opencode have the same "CLI is the adapter" shape as
 		// Codex (invoked as `<binary> acp`), so they get the same real
@@ -63,15 +100,9 @@ func (s Service) probeAdapterRuntimeCommand(
 	}
 	if result.Status == ProbeReady {
 		s.AdapterProbeCache.markReady(
-			adapterProbeCacheKey(spec, runtimeResolution),
+			s.adapterProbeCacheKey(ctx, spec, runtimeResolution),
 			result.BinaryPath,
 		)
-	}
-	if isCodexStatusSpec(spec) && result.Status == ProbeFailed {
-		if code, ok := classifyCodexRuntimeError(result.Message); ok {
-			result.LastError = &ProviderLastError{Code: string(code), Message: result.Message}
-			result.ReasonCode = codexReasonCodeFromErrorCode(string(code))
-		}
 	}
 	return result
 }
@@ -85,10 +116,19 @@ func sameResolvedBinary(a string, b string) bool {
 	return a != "" && a == b
 }
 
-func adapterProbeCacheKey(spec ProviderSpec, runtimeResolution providerRuntimeResolution) string {
+func (s Service) adapterProbeCacheKey(
+	ctx context.Context,
+	spec ProviderSpec,
+	runtimeResolution providerRuntimeResolution,
+) string {
 	command := runtimeResolution.AdapterCommand
 	if len(command) == 0 {
 		command = spec.AdapterCommand
 	}
-	return spec.Provider + "\x00" + strings.Join(command, "\x00")
+	// Hash the effective command environment rather than retaining it in the
+	// cache key. A PATH or other launch-environment change must not reuse a
+	// previously successful app-server handshake.
+	env := s.commandResolver().Env(s.adapterCommandEnv(ctx, spec))
+	sum := sha256.Sum256([]byte(strings.Join(env, "\x00")))
+	return spec.Provider + "\x00" + strings.Join(command, "\x00") + "\x00" + fmt.Sprintf("%x", sum[:])
 }

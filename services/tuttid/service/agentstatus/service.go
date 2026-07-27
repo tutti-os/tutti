@@ -112,15 +112,20 @@ type Snapshot struct {
 }
 
 type ProbeResult struct {
-	Provider   string
-	Status     ProbeStatus
-	CheckedAt  time.Time
-	ReasonCode string
-	Message    string
-	BinaryPath string
-	Command    []string
-	Checks     []ProviderCheck
-	LastError  *ProviderLastError
+	Provider            string
+	Status              ProbeStatus
+	CheckedAt           time.Time
+	ReasonCode          string
+	Message             string
+	BinaryPath          string
+	Command             []string
+	Checks              []ProviderCheck
+	LastError           *ProviderLastError
+	CommandStarted      bool
+	ProtocolReady       bool
+	CommandCategory     string
+	ProtocolCategory    string
+	ProtocolPackageName string
 }
 
 type RunActionResult struct {
@@ -149,6 +154,9 @@ type ProviderStatus struct {
 	Checks       []ProviderCheck
 	LastError    *ProviderLastError
 	ActiveAction *ActiveAction
+	// CodexDiagnostics is populated only for Codex. It is additive so existing
+	// providers and callers retain their status contract during migration.
+	CodexDiagnostics *CodexDiagnosticSnapshot
 }
 
 type UpdateStatus struct {
@@ -275,12 +283,16 @@ type Service struct {
 	// across concurrent requests.
 	CLIVersionCache   *CLIVersionCache
 	AdapterProbeCache *AdapterProbeCache
+	BunGlobalBinCache *BunGlobalBinCache
 	DetectionCommands *DetectionCommandLimiter
 	// UpdateCache is separate from readiness caching because remote release
 	// discovery is opt-in and must never make ordinary local status reads touch
 	// the network.
 	UpdateCache    *ProviderUpdateCache
 	UpdateCacheTTL time.Duration
+	// CodexProtocolProbe is injectable for deterministic status tests. Nil uses
+	// the production app-server transport and formal initialize handshake.
+	CodexProtocolProbe func(context.Context, []string, []string) CodexProbeEvidence
 }
 
 const authStatusCommandTimeout = 5 * time.Second
@@ -430,23 +442,33 @@ func (s Service) cachedStatusForSpec(ctx context.Context, spec ProviderSpec, for
 		return s.detectStatusForSpec(ctx, spec, forceRefresh)
 	}
 	if !forceRefresh {
-		if cached, cachedAt, credentialFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
-			s.cachedProviderStatusStillValid(spec, cachedAt, credentialFingerprint) {
+		runtimeFingerprint := s.providerRuntimeFingerprint(ctx, spec)
+		if cached, cachedAt, credentialFingerprint, cachedRuntimeFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
+			s.cachedProviderStatusStillValid(spec, cachedAt, credentialFingerprint, cachedRuntimeFingerprint, runtimeFingerprint) {
 			return cached
 		}
 	}
 
 	value, _, _ := cache.group.Do(spec.Provider, func() (any, error) {
 		if !forceRefresh {
-			if cached, cachedAt, credentialFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
-				s.cachedProviderStatusStillValid(spec, cachedAt, credentialFingerprint) {
+			runtimeFingerprint := s.providerRuntimeFingerprint(ctx, spec)
+			if cached, cachedAt, credentialFingerprint, cachedRuntimeFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
+				s.cachedProviderStatusStillValid(spec, cachedAt, credentialFingerprint, cachedRuntimeFingerprint, runtimeFingerprint) {
 				return cached, nil
 			}
 		}
 		status := s.detectStatusForSpec(ctx, spec, forceRefresh)
 		completedAt := s.now()
 		status.Availability.CheckedAt = &completedAt
-		cache.set(spec.Provider, completedAt, s.providerCredentialFingerprint(spec), status)
+		// Codex repair authorization is deliberately derived from a fresh failed
+		// protocol probe plus a fresh layout scan. Keep the application cache
+		// positive-only for Codex so a previous failure cannot keep presenting a
+		// stale RepairPlan to either the renderer or a later action request.
+		if isCodexStatusSpec(spec) && (status.CodexDiagnostics == nil || !status.CodexDiagnostics.Diagnosis.RuntimeReady) {
+			cache.invalidate(spec.Provider)
+			return status, nil
+		}
+		cache.set(spec.Provider, completedAt, s.providerCredentialFingerprint(spec), s.providerRuntimeFingerprint(ctx, spec), status)
 		return status, nil
 	})
 	return cloneProviderStatus(value.(ProviderStatus))
@@ -468,12 +490,13 @@ func (s Service) providerStatusCacheTTL() time.Duration {
 	return defaultProviderStatusCacheTTL
 }
 
-func (s Service) cachedProviderStatusStillValid(spec ProviderSpec, cachedAt time.Time, credentialFingerprint string) bool {
+func (s Service) cachedProviderStatusStillValid(spec ProviderSpec, cachedAt time.Time, credentialFingerprint, cachedRuntimeFingerprint, runtimeFingerprint string) bool {
 	failedAt, invalidated := s.RunOutcomes.AuthInvalidatedSince(spec.Provider)
 	if invalidated && failedAt.After(cachedAt) {
 		return false
 	}
-	return credentialFingerprint == s.providerCredentialFingerprint(spec)
+	return credentialFingerprint == s.providerCredentialFingerprint(spec) &&
+		cachedRuntimeFingerprint == runtimeFingerprint
 }
 
 func (s Service) invalidateProviderStatus(provider string) {
@@ -484,60 +507,6 @@ func (s Service) invalidateProviderStatus(provider string) {
 // real runtime proves that cached launch assumptions are no longer reliable.
 func (s Service) Invalidate(provider string) {
 	s.invalidateProviderStatus(strings.TrimSpace(provider))
-}
-
-func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, error) {
-	now := s.now()
-	specs, err := s.selectProviderSpecs(ctx, []string{input.Provider}, true)
-	if err != nil {
-		return ProbeResult{}, err
-	}
-	spec := specs[0]
-	if result, ok := unsupportedProviderProbeResult(spec, now); ok {
-		return result, nil
-	}
-	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
-	status := s.statusForSpec(ctx, spec, now, statusDetectionOptions{
-		forceRefresh:     true,
-		skipAdapterProbe: true,
-	})
-	result := ProbeResult{
-		Provider:   spec.Provider,
-		CheckedAt:  now,
-		BinaryPath: status.Adapter.BinaryPath,
-		Command:    cloneStrings(spec.AdapterCommand),
-		Checks:     cloneProviderChecks(status.Checks),
-		LastError:  cloneProviderLastError(status.LastError),
-	}
-	if !status.CLI.Installed {
-		result.Status = ProbeFailed
-		result.ReasonCode = "cli_not_found"
-		result.Message = "CLI binary not found"
-		return result, nil
-	}
-	if !status.Adapter.Installed {
-		if status.Availability.ReasonCode == "acp_adapter_launch_failed" {
-			return s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now), nil
-		}
-		result.Status = ProbeFailed
-		result.ReasonCode = firstNonBlank(status.Availability.ReasonCode, "acp_adapter_not_found")
-		result.Message = agentProviderProbeAdapterUnavailableMessage(result.ReasonCode)
-		return result, nil
-	}
-	if isCodexStatusSpec(spec) && status.LastError != nil {
-		result.Status = ProbeFailed
-		result.ReasonCode = codexReasonCodeFromErrorCode(status.LastError.Code)
-		result.Message = status.LastError.Message
-		return result, nil
-	}
-	if !providerCLIVersionMeetsMinimum(spec, status.CLI.Version) {
-		result.Status = ProbeFailed
-		result.ReasonCode = providerCLIVersionUnsupportedReasonCode(spec)
-		result.Message = "CLI version is below " + spec.MinVersion
-		return result, nil
-	}
-
-	return s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now), nil
 }
 
 func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunActionResult, error) {
@@ -588,6 +557,50 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 	})
 	defer clearActiveAction(installCtx, spec.Provider)
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
+	if isCodexStatusSpec(spec) && strings.TrimSpace(runtimeResolution.CLIPath) != "" {
+		probe := s.probeAdapterRuntimeCommand(installCtx, spec, runtimeResolution, s.now())
+		if probe.Status == ProbeReady && !s.providerCLIRequiresInstall(spec, runtimeResolution) {
+			result.Probe = &probe
+			result.Status = RunActionCompleted
+			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+				Node:      "install_post_probe",
+				Provider:  spec.Provider,
+				Result:    RunActionResult{Status: RunActionCompleted},
+				StartedAt: s.now(),
+			})
+			return result, nil
+		}
+		if probe.Status == ProbeReady {
+			// A present, protocol-capable Codex below Tutti's support floor needs
+			// an upgrade decision, never an install/repair action that could
+			// overwrite a user-managed Bun, pnpm, Homebrew, or standalone runtime.
+			result.Probe = &probe
+			result.Status = RunActionFailed
+			result.ReasonCode = "codex_version_unsupported"
+			result.Message = "Codex CLI version is below the supported version; upgrade it before retrying"
+			return result, nil
+		}
+		if probe.Status == ProbeFailed {
+			runtimeResolution.ReasonCode = firstNonBlank(probe.ReasonCode, "acp_adapter_launch_failed")
+			// A failed probe is not itself permission to overwrite a user-managed
+			// Codex installation. Re-evaluate the structured snapshot and only pass
+			// an explicit planner authorization into the installer.
+			status := s.statusForSpec(ctx, spec, s.now(), statusDetectionOptions{forceRefresh: true})
+			if status.CodexDiagnostics != nil && status.CodexDiagnostics.RepairPlan.Allowed {
+				plan := status.CodexDiagnostics.RepairPlan
+				runtimeResolution.CodexRepairPlan = &plan
+			}
+			if status.CodexDiagnostics != nil {
+				slog.Info(
+					"codex install action authorization evaluated",
+					"provider", spec.Provider,
+					"repairAllowed", status.CodexDiagnostics.RepairPlan.Allowed,
+					"repairReason", status.CodexDiagnostics.RepairPlan.ReasonCode,
+					"primaryDiagnosticCode", status.CodexDiagnostics.Diagnosis.PrimaryDiagnosticCode,
+				)
+			}
+		}
+	}
 	summary, updatedRuntime, err := s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)
 	result = applyInstallerExecutionSummary(result, summary)
 	if err != nil {
@@ -608,19 +621,21 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 		}
 		result.Probe = &probe
 		if probe.Status == ProbeFailed {
-			repairStatus := s.statusForSpec(ctx, spec, s.now(), statusDetectionOptions{
-				forceRefresh: true,
-			})
-			if repairStatus.Availability.ReasonCode == "acp_adapter_launch_failed" {
-				runtimeResolution.ReasonCode = "acp_adapter_launch_failed"
-				summary, updatedRuntime, err = s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)
-				result = applyInstallerExecutionSummary(result, summary)
-				result.Probe = nil
-				if err != nil {
-					return installActionErrorResult(result, err, s.installTimeout(), spec.Install), nil
-				}
-				if len(summary.Commands) > 0 {
-					goto postInstallProbe
+			if !isCodexStatusSpec(spec) {
+				repairStatus := s.statusForSpec(ctx, spec, s.now(), statusDetectionOptions{
+					forceRefresh: true,
+				})
+				if repairStatus.Availability.ReasonCode == "acp_adapter_launch_failed" {
+					runtimeResolution.ReasonCode = "acp_adapter_launch_failed"
+					summary, updatedRuntime, err = s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)
+					result = applyInstallerExecutionSummary(result, summary)
+					result.Probe = nil
+					if err != nil {
+						return installActionErrorResult(result, err, s.installTimeout(), spec.Install), nil
+					}
+					if len(summary.Commands) > 0 {
+						goto postInstallProbe
+					}
 				}
 			}
 			result.Status = RunActionFailed

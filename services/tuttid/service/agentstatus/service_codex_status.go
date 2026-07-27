@@ -1,46 +1,10 @@
 package agentstatus
 
 import (
-	"runtime"
 	"strings"
 
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
-
-func (s Service) codexPlatformBinaryOK(binaryPath string) bool {
-	pkgDir := codexPackageDirForBinary(binaryPath)
-	if pkgDir == "" {
-		return true
-	}
-	_, ok := s.codexPlatformBinaryComplete(pkgDir, runtime.GOOS, runtime.GOARCH)
-	return ok
-}
-
-func codexProviderChecks(status ProviderStatus, platformBinaryOK bool, nodeRuntime ProviderCheck) []ProviderCheck {
-	return []ProviderCheck{
-		{
-			Name:   "cli_present",
-			Passed: status.CLI.Installed,
-			Detail: firstNonBlank(status.CLI.BinaryPath, "CLI binary not found"),
-		},
-		{
-			Name:   "platform_binary",
-			Passed: platformBinaryOK,
-			Detail: codexPlatformBinaryDetail(status.CLI.BinaryPath, platformBinaryOK),
-		},
-		{
-			Name:   "version_floor",
-			Passed: cliVersionMeetsMinimumAllowUnknown(status.CLI.Version, status.CLI.MinVersion),
-			Detail: firstNonBlank(status.CLI.Version, "version unknown"),
-		},
-		nodeRuntime,
-		{
-			Name:   "auth",
-			Passed: status.Auth.Status == AuthAuthenticated,
-			Detail: providerAvailabilityAuthDetailForStatus(status.Auth),
-		},
-	}
-}
 
 func (s Service) codexNodeRuntimeCheck(spec ProviderSpec) ProviderCheck {
 	if nodePath := strings.TrimSpace(managedruntime.EnvValue(spec.AdapterEnv, "TUTTI_APP_NODE")); nodePath != "" {
@@ -70,8 +34,10 @@ func codexProviderLastError(status ProviderStatus) *ProviderLastError {
 		return &ProviderLastError{Code: string(CodexErrCLIMissing), Message: "CLI binary not found"}
 	case "codex_platform_pkg_incomplete":
 		return &ProviderLastError{Code: string(CodexErrPlatformPkgIncomplete), Message: "Codex platform package is incomplete"}
-	case "codex_version_too_old":
+	case "codex_version_too_old", "codex_version_unsupported":
 		return &ProviderLastError{Code: string(CodexErrVersionTooOld), Message: "Codex CLI version is below " + status.CLI.MinVersion}
+	case "codex_runtime_bug":
+		return &ProviderLastError{Code: string(CodexErrRuntimeBug), Message: "Codex app-server failed despite a complete supported runtime"}
 	case "auth_required", "auth_unknown":
 		return &ProviderLastError{Code: string(CodexErrAuthRequired), Message: "authentication required"}
 	default:
@@ -91,16 +57,11 @@ func codexReasonCodeFromErrorCode(code string) string {
 		return "auth_required"
 	case CodexErrNetwork:
 		return "network_error"
+	case CodexErrRuntimeBug:
+		return "codex_runtime_bug"
 	default:
 		return "codex_runtime_error"
 	}
-}
-
-func codexPlatformBinaryDetail(binaryPath string, ok bool) string {
-	if ok {
-		return firstNonBlank(binaryPath, "platform binary available")
-	}
-	return "Codex platform package is incomplete"
 }
 
 func providerAvailabilityAuthDetailForStatus(auth AuthInfo) string {

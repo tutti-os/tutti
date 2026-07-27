@@ -225,6 +225,37 @@ func TestResolverPrefersFnmNodeBinOverExistingPathNode(t *testing.T) {
 	}
 }
 
+func TestResolverFindsBunInstallBin(t *testing.T) {
+	home := t.TempDir()
+	bunInstall := filepath.Join(home, "custom-bun")
+	binDir := filepath.Join(bunInstall, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	codexPath := filepath.Join(binDir, "codex")
+	writeExecutable(t, codexPath)
+
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{
+				"PATH=/usr/bin:/bin",
+				"BUN_INSTALL=" + bunInstall,
+			}
+		},
+		HomeDir: func() (string, error) {
+			return home, nil
+		},
+		LookPath: func(string) (string, error) {
+			return "", os.ErrNotExist
+		},
+	}
+
+	env := resolver.Env(nil)
+	if got := resolver.Resolve("codex", env); got != codexPath {
+		t.Fatalf("Resolve() = %q, want BUN_INSTALL codex %q", got, codexPath)
+	}
+}
+
 func TestResolverReplacesPathEnv(t *testing.T) {
 	resolver := Resolver{
 		Environ: func() []string {

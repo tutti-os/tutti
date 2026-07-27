@@ -47,6 +47,7 @@ type ProviderSpec struct {
 	AdapterInstall               InstallerSpec
 	LoginArgs                    []string
 	LoginActionKind              ActionKind
+	resolvedCLIManager           string
 }
 
 type ProviderUpdateStrategy string
