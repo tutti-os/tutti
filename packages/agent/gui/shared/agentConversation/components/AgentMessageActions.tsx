@@ -5,7 +5,8 @@ import {
   type JSX,
   type ReactNode
 } from "react";
-import { CheckIcon, CopyIcon, EditIcon } from "@tutti-os/ui-system/icons";
+import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
+import { Pencil } from "lucide-react";
 import { formatAgentMessageTimestamp } from "../../../app/renderer/shell/utils/format";
 import { translate } from "../../../i18n";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
@@ -51,17 +52,17 @@ export function AgentCopyableMessageGroup({
           {timestamp ? (
             <span className={styles.messageTimestamp}>{timestamp}</span>
           ) : null}
+          {copyText ? (
+            <AgentMessageCopyButton
+              copyText={copyText}
+              onCopyMessageText={onCopyMessageText}
+            />
+          ) : null}
           {editAction ? (
             <AgentMessageEditButton
               disabled={editAction.disabled}
               label={editAction.label}
               onClick={editAction.onClick}
-            />
-          ) : null}
-          {copyText ? (
-            <AgentMessageCopyButton
-              copyText={copyText}
-              onCopyMessageText={onCopyMessageText}
             />
           ) : null}
           {footerAction}
@@ -88,7 +89,13 @@ function AgentMessageEditButton({
       disabled={disabled}
       onClick={onClick}
     >
-      <EditIcon width={14} height={14} aria-hidden="true" />
+      <Pencil
+        size={14}
+        aria-hidden="true"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+      />
     </CanvasNodeGhostIconButton>
   );
 }

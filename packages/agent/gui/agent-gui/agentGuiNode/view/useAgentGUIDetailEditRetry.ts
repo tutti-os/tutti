@@ -20,7 +20,7 @@ export function useAgentGUIDetailEditRetry(input: {
       labels: {
         edit: translate("agentHost.agentGui.editRetryEditMessage"),
         cancel: translate("agentHost.agentGui.editRetryCancel"),
-        submit: translate("agentHost.agentGui.editRetrySubmit")
+        submit: translate("agentHost.agentGui.send")
       },
       onSubmit: controller.submit
     };

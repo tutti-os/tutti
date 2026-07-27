@@ -1,7 +1,6 @@
 import type { JSX, KeyboardEvent } from "react";
-import { CheckIcon, CloseIcon } from "@tutti-os/ui-system/icons";
+import { Button } from "@tutti-os/ui-system";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
-import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentation/renderer/components/shared/CanvasNodeGhostIconButton";
 
 export interface AgentUserMessageEditRetryControl {
   pending: boolean;
@@ -49,20 +48,26 @@ export function AgentUserMessageEditor({
         onKeyDown={onKeyDown}
       />
       <div className={styles.userMessageEditorActions}>
-        <CanvasNodeGhostIconButton
-          aria-label={labels.cancel}
+        <Button
+          className="rounded-[var(--radius-xl)] border-[var(--line-2)] dark:border-[var(--line-2)]"
           disabled={pending}
+          size="sm"
+          type="button"
+          variant="outline"
           onClick={onCancel}
         >
-          <CloseIcon width={14} height={14} aria-hidden="true" />
-        </CanvasNodeGhostIconButton>
-        <CanvasNodeGhostIconButton
-          aria-label={labels.submit}
+          {labels.cancel}
+        </Button>
+        <Button
+          className="rounded-[var(--radius-xl)]"
           disabled={pending || value.trim() === ""}
+          size="sm"
+          type="button"
+          variant="default"
           onClick={() => void onSubmit()}
         >
-          <CheckIcon width={14} height={14} aria-hidden="true" />
-        </CanvasNodeGhostIconButton>
+          {labels.submit}
+        </Button>
       </div>
     </div>
   );

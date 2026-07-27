@@ -4094,7 +4094,7 @@ aside.workspace-agents-status-panel
   top: calc(100% + 4px);
   z-index: 1;
   display: flex;
-  gap: 10px;
+  gap: 6px;
   align-items: center;
   opacity: 0;
   pointer-events: none;
@@ -4105,6 +4105,9 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-conversation__message-timestamp {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
   font-size: 11px;
   line-height: 22px;
   color: var(
@@ -4121,6 +4124,9 @@ aside.workspace-agents-status-panel
   height: 22px;
   min-height: 22px;
   border-radius: 5px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
   opacity: 0;
   pointer-events: none;
   transform: translateY(-2px);
@@ -4291,10 +4297,12 @@ aside.workspace-agents-status-panel
 
 .workspace-agents-status-panel__detail-user-message.agent-gui-conversation__user-message-bubble.agent-gui-conversation__user-message-editor {
   display: grid;
-  width: min(540px, 72%);
-  min-width: min(320px, 100%);
+  width: calc(100% - 32px);
+  min-width: 0;
+  max-width: calc(100% - 32px);
   gap: 8px;
   padding: 10px 12px 8px;
+  border-radius: 16px;
 }
 
 .agent-gui-conversation__user-message-editor:focus-within {
@@ -4305,10 +4313,10 @@ aside.workspace-agents-status-panel
 .agent-gui-conversation__user-message-editor-textarea {
   box-sizing: border-box;
   width: 100%;
-  min-height: 72px;
-  max-height: 240px;
+  min-height: 48px;
+  max-height: 192px;
   padding: 0;
-  resize: vertical;
+  resize: none;
   border: 0;
   outline: 0;
   background: transparent;
@@ -4324,9 +4332,21 @@ aside.workspace-agents-status-panel
 
 .agent-gui-conversation__user-message-editor-actions {
   display: flex;
+  width: 100%;
   gap: 4px;
   justify-content: flex-end;
   align-items: center;
+}
+
+.workspace-agents-status-panel__detail-user-message.agent-gui-conversation__user-message-editor
+  > .agent-gui-conversation__user-message-editor-actions {
+  display: flex;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.agent-gui-conversation__user-message-editor-actions > [data-slot="button"] {
+  border-radius: 10px;
 }
 
 .workspace-agents-status-panel__detail-user-message[data-agent-mention-only="true"].agent-gui-conversation__user-message-bubble {
