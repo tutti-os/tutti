@@ -240,7 +240,7 @@ function toWorkspaceFilePreviewSurfaceState(
         status: "error"
       };
     case "text":
-      // Text editing uses WorkspaceTextFileEditor; this branch is unreachable
+      // Text editing uses WorkspaceTextFileContent; this branch is unreachable
       // for the shared surface path above.
       return {
         content: state.content,
