@@ -562,16 +562,9 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	if status.LastError == nil || status.LastError.Code != string(CodexErrVersionTooOld) {
 		t.Fatalf("LastError = %#v, CLI.BinaryPath=%q, packageDir=%q, want codex version too old", status.LastError, status.CLI.BinaryPath, codexPackageDirForBinary(status.CLI.BinaryPath))
 	}
-	if status.CodexDiagnostics == nil || !status.CodexDiagnostics.Diagnosis.RuntimeReady || status.CodexDiagnostics.Diagnosis.ProviderReady {
-		t.Fatalf("diagnostics = %#v, want runtime ready but provider unsupported", status.CodexDiagnostics)
-	}
 	if status.Availability.Status != AvailabilityUnsupported {
 		t.Fatalf("Availability.Status = %q, want unsupported", status.Availability.Status)
 	}
-	assertProviderCheck(t, status.Checks, "cli_present", true)
-	assertProviderCheck(t, status.Checks, "platform_binary", true)
-	assertProviderCheck(t, status.Checks, "version_floor", false)
-	assertProviderCheck(t, status.Checks, "auth", true)
 }
 
 // TestServiceListReportsCodexNotReadyWhenAppServerNeverRespondsToInitialize
@@ -1023,7 +1016,6 @@ func TestServiceProbeReportsCodexPlatformPackageIncomplete(t *testing.T) {
 	if result.LastError == nil || result.LastError.Code != string(CodexErrPlatformPkgIncomplete) {
 		t.Fatalf("LastError = %#v, want platform package incomplete", result.LastError)
 	}
-	assertProviderCheck(t, result.Checks, "platform_binary", false)
 }
 
 func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing.T) {
@@ -1134,12 +1126,7 @@ func TestServiceRunActionDoesNotRepairCodexForGenericAppServerFailure(t *testing
 	// A stale, previously repairable status cannot authorize a new repair. The
 	// install path always takes fresh structured probe/layout evidence.
 	service.StatusCache = NewProviderStatusCache()
-	service.StatusCache.set("codex", service.Now().Add(-time.Hour), "", "", ProviderStatus{
-		Provider: "codex",
-		CodexDiagnostics: &CodexDiagnosticSnapshot{RepairPlan: CodexRepairPlan{
-			Allowed: true, ReasonCode: "codex_platform_pkg_incomplete",
-		}},
-	})
+	service.StatusCache.set("codex", service.Now().Add(-time.Hour), "", ProviderStatus{Provider: "codex"})
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
@@ -1215,11 +1202,11 @@ func TestServiceListReportsRuntimeBugWhenCodexAppServerFails(t *testing.T) {
 	}
 
 	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityUnknown {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityUnknown)
+	if status.Availability.Status != AvailabilityNotInstalled {
+		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityNotInstalled)
 	}
-	if status.Availability.ReasonCode != "codex_runtime_bug" {
-		t.Fatalf("ReasonCode = %q, want codex_runtime_bug", status.Availability.ReasonCode)
+	if status.Availability.ReasonCode != "acp_adapter_launch_failed" {
+		t.Fatalf("ReasonCode = %q, want acp_adapter_launch_failed", status.Availability.ReasonCode)
 	}
 	if !status.CLI.Installed {
 		t.Fatal("CLI.Installed = false, want true")

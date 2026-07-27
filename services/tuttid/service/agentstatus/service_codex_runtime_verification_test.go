@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 )
@@ -68,39 +67,6 @@ func codexBunInstallStatus(t *testing.T, launcherScript string, probe CodexProbe
 const codexBunReadyLauncher = "#!/bin/sh\n" +
 	"if [ \"$1\" = \"--version\" ]; then echo 'codex 0.142.0'; exit 0; fi\nexit 1\n"
 
-// TestCodexAvailabilityBunHoistedInstallVerifiedByProbe is the core regression
-// (acceptance Cases 1, 2, 3): a Bun-installed codex (hoisted layout, npm-nested
-// platform binary absent) launches `codex app-server` successfully, so the
-// probe — not the npm layout — authorizes availability. Tutti must report
-// Ready, not codex_platform_pkg_incomplete. PATH is /usr/bin:/bin, so the CLI
-// is found via the ~/.bun/bin resolver fallback (the Electron launch case).
-func TestCodexAvailabilityBunHoistedInstallVerifiedByProbe(t *testing.T) {
-	status := codexBunInstallStatus(t, codexBunReadyLauncher, CodexProbeEvidence{CommandStarted: true, ProtocolReady: true})
-
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q (probe-verified runtime must not be blocked by npm layout); reasonCode=%q",
-			status.Availability.Status, AvailabilityReady, status.Availability.ReasonCode)
-	}
-	if status.Availability.ReasonCode != "" {
-		t.Fatalf("ReasonCode = %q, want empty for a ready provider", status.Availability.ReasonCode)
-	}
-	if !status.CLI.Installed {
-		t.Fatal("CLI.Installed = false, want true")
-	}
-	// The resolver must have discovered the CLI via the ~/.bun/bin fallback
-	// (PATH is /usr/bin:/bin), proving the Electron/minimal-PATH scenario.
-	if !strings.HasSuffix(filepath.ToSlash(status.CLI.BinaryPath), "/.bun/bin/codex") {
-		t.Fatalf("CLI.BinaryPath = %q, want it to resolve through ~/.bun/bin/codex", status.CLI.BinaryPath)
-	}
-	// `codex --version` must have succeeded (acceptance Case 3).
-	if status.CLI.Version != "0.142.0" {
-		t.Fatalf("CLI.Version = %q, want 0.142.0", status.CLI.Version)
-	}
-	// The platform-binary check must be reported as passed once the probe
-	// verified the runtime, even though the nested platform binary is absent.
-	assertProviderCheck(t, status.Checks, "platform_binary", true)
-}
-
 func TestCodexAvailabilityUnsupportedAppServerRequiresUpgrade(t *testing.T) {
 	status := codexBunInstallStatus(t, codexBunReadyLauncher, CodexProbeEvidence{
 		CommandStarted: true,
@@ -114,48 +80,6 @@ func TestCodexAvailabilityUnsupportedAppServerRequiresUpgrade(t *testing.T) {
 	}
 	if len(status.Actions) != 1 || status.Actions[0].ID != ActionUpdate {
 		t.Fatalf("actions = %#v, want update", status.Actions)
-	}
-}
-
-func TestCodexAvailabilityCompleteBunRuntimeProtocolFailureIsBug(t *testing.T) {
-	home := t.TempDir()
-	writeCodexBunInstall(t, home, codexBunReadyLauncher)
-	platform, platformOK := codexNpmPlatformDir(runtime.GOOS, runtime.GOARCH)
-	triple, tripleOK := codexPlatformTargetTriple(runtime.GOOS, runtime.GOARCH)
-	if !platformOK || !tripleOK {
-		t.Skip("unsupported platform")
-	}
-	platformRoot := filepath.Join(home, ".bun", "install", "global", "node_modules", "@openai", platform)
-	writePackageManifest(t, platformRoot, "@openai/"+platform, MinSupportedCodexVersion)
-	binaryName := "codex"
-	if runtime.GOOS == "windows" {
-		binaryName = "codex.exe"
-	}
-	writeExecutable(t, filepath.Join(platformRoot, "vendor", triple, "bin", binaryName), "#!/bin/sh\n")
-
-	service := probeTestService(home)
-	service.CodexProtocolProbe = codexProtocolFixture(CodexProbeEvidence{
-		CommandStarted: true,
-		Category:       "protocol_failure",
-		Message:        "initialize failed",
-	})
-	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
-		return AuthInfo{Status: AuthAuthenticated}, true
-	}
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityUnknown ||
-		status.Availability.ReasonCode != "codex_runtime_bug" {
-		t.Fatalf("availability = %#v, want runtime bug", status.Availability)
-	}
-	if status.LastError == nil || status.LastError.Code != string(CodexErrRuntimeBug) {
-		t.Fatalf("last error = %#v, want %s", status.LastError, CodexErrRuntimeBug)
-	}
-	if status.CodexDiagnostics == nil || status.CodexDiagnostics.RepairPlan.Allowed {
-		t.Fatalf("diagnostics = %#v, runtime bug must not authorize repair", status.CodexDiagnostics)
 	}
 }
 
@@ -186,8 +110,7 @@ func TestCodexAvailabilityBunInstallVerifiedByProductionProbe(t *testing.T) {
 		t.Fatalf("List() error = %v", err)
 	}
 	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady || status.CodexDiagnostics == nil ||
-		!status.CodexDiagnostics.Diagnosis.RuntimeReady {
+	if status.Availability.Status != AvailabilityReady {
 		t.Fatalf("status = %#v, want production app-server handshake to verify Bun runtime", status)
 	}
 }
@@ -349,48 +272,6 @@ func TestCodexInstallDoesNotNPMRepairBrokenBunInstall(t *testing.T) {
 	}
 	if result.Status != RunActionFailed || result.Command != "" {
 		t.Fatalf("result = %#v, want failed diagnosis without npm mutation", result)
-	}
-}
-
-func TestCodexStandaloneLayoutIsNotApplicableAndNeverRepairable(t *testing.T) {
-	for _, test := range []struct {
-		name  string
-		probe CodexProbeEvidence
-		ready bool
-	}{
-		{name: "protocol ready", probe: CodexProbeEvidence{CommandStarted: true, ProtocolReady: true}, ready: true},
-		{name: "protocol failure", probe: CodexProbeEvidence{CommandStarted: true, Category: "handshake_timeout", Message: "timed out"}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			home := t.TempDir()
-			bin := filepath.Join(home, "bin", "codex")
-			writeExecutable(t, bin, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex 0.142.0'; fi\n")
-			service := probeTestService(home)
-			service.Environ = func() []string { return []string{"PATH=" + filepath.Dir(bin)} }
-			service.CodexProtocolProbe = codexProtocolFixture(test.probe)
-			service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
-				return AuthInfo{Status: AuthAuthenticated}, true
-			}
-			result, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
-			if err != nil {
-				t.Fatalf("List() error = %v", err)
-			}
-			status := onlyStatus(t, result)
-			if (status.Availability.Status == AvailabilityReady) != test.ready {
-				t.Fatalf("availability = %#v, want ready=%v", status.Availability, test.ready)
-			}
-			if status.CodexDiagnostics == nil {
-				t.Fatal("CodexDiagnostics = nil")
-			}
-			for _, check := range status.CodexDiagnostics.Checks {
-				if check.ID == codexCheckPlatformBinary && check.Status != CodexCheckNotApplicable {
-					t.Fatalf("platform binary check = %#v, want not_applicable", check)
-				}
-			}
-			if status.CodexDiagnostics.RepairPlan.Allowed {
-				t.Fatalf("repair = %#v, want denied for standalone layout", status.CodexDiagnostics.RepairPlan)
-			}
-		})
 	}
 }
 

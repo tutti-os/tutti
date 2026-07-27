@@ -48,9 +48,6 @@ func TestCodexDiscoveryUsesBunConfiguredGlobalBinForStatusAndLaunch(t *testing.T
 	if status.Availability.Status != AvailabilityReady || status.CLI.BinaryPath != codexPath {
 		t.Fatalf("status = %#v, want configured Bun global Codex %q ready", status, codexPath)
 	}
-	if status.CodexDiagnostics == nil || status.CodexDiagnostics.PackageLayout.PackageManager != "bun" {
-		t.Fatalf("diagnostics = %#v, want Bun provenance preserved independently of path shape", status.CodexDiagnostics)
-	}
 
 	resolution, err := service.ResolveProviderCommand(context.Background(), "codex")
 	if err != nil {

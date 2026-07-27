@@ -154,9 +154,6 @@ type ProviderStatus struct {
 	Checks       []ProviderCheck
 	LastError    *ProviderLastError
 	ActiveAction *ActiveAction
-	// CodexDiagnostics is populated only for Codex. It is additive so existing
-	// providers and callers retain their status contract during migration.
-	CodexDiagnostics *CodexDiagnosticSnapshot
 }
 
 type UpdateStatus struct {
@@ -442,18 +439,16 @@ func (s Service) cachedStatusForSpec(ctx context.Context, spec ProviderSpec, for
 		return s.detectStatusForSpec(ctx, spec, forceRefresh)
 	}
 	if !forceRefresh {
-		runtimeFingerprint := s.providerRuntimeFingerprint(ctx, spec)
-		if cached, cachedAt, credentialFingerprint, cachedRuntimeFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
-			s.cachedProviderStatusStillValid(spec, cachedAt, credentialFingerprint, cachedRuntimeFingerprint, runtimeFingerprint) {
+		if cached, cachedAt, credentialFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
+			s.cachedProviderStatusStillValid(spec, cachedAt, credentialFingerprint) {
 			return cached
 		}
 	}
 
 	value, _, _ := cache.group.Do(spec.Provider, func() (any, error) {
 		if !forceRefresh {
-			runtimeFingerprint := s.providerRuntimeFingerprint(ctx, spec)
-			if cached, cachedAt, credentialFingerprint, cachedRuntimeFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
-				s.cachedProviderStatusStillValid(spec, cachedAt, credentialFingerprint, cachedRuntimeFingerprint, runtimeFingerprint) {
+			if cached, cachedAt, credentialFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
+				s.cachedProviderStatusStillValid(spec, cachedAt, credentialFingerprint) {
 				return cached, nil
 			}
 		}
@@ -464,11 +459,11 @@ func (s Service) cachedStatusForSpec(ctx context.Context, spec ProviderSpec, for
 		// protocol probe plus a fresh layout scan. Keep the application cache
 		// positive-only for Codex so a previous failure cannot keep presenting a
 		// stale RepairPlan to either the renderer or a later action request.
-		if isCodexStatusSpec(spec) && (status.CodexDiagnostics == nil || !status.CodexDiagnostics.Diagnosis.RuntimeReady) {
+		if isCodexStatusSpec(spec) && status.Availability.Status != AvailabilityReady && status.Availability.Status != AvailabilityAuthRequired {
 			cache.invalidate(spec.Provider)
 			return status, nil
 		}
-		cache.set(spec.Provider, completedAt, s.providerCredentialFingerprint(spec), s.providerRuntimeFingerprint(ctx, spec), status)
+		cache.set(spec.Provider, completedAt, s.providerCredentialFingerprint(spec), status)
 		return status, nil
 	})
 	return cloneProviderStatus(value.(ProviderStatus))
@@ -490,13 +485,12 @@ func (s Service) providerStatusCacheTTL() time.Duration {
 	return defaultProviderStatusCacheTTL
 }
 
-func (s Service) cachedProviderStatusStillValid(spec ProviderSpec, cachedAt time.Time, credentialFingerprint, cachedRuntimeFingerprint, runtimeFingerprint string) bool {
+func (s Service) cachedProviderStatusStillValid(spec ProviderSpec, cachedAt time.Time, credentialFingerprint string) bool {
 	failedAt, invalidated := s.RunOutcomes.AuthInvalidatedSince(spec.Provider)
 	if invalidated && failedAt.After(cachedAt) {
 		return false
 	}
-	return credentialFingerprint == s.providerCredentialFingerprint(spec) &&
-		cachedRuntimeFingerprint == runtimeFingerprint
+	return credentialFingerprint == s.providerCredentialFingerprint(spec)
 }
 
 func (s Service) invalidateProviderStatus(provider string) {
@@ -582,22 +576,10 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 		}
 		if probe.Status == ProbeFailed {
 			runtimeResolution.ReasonCode = firstNonBlank(probe.ReasonCode, "acp_adapter_launch_failed")
-			// A failed probe is not itself permission to overwrite a user-managed
-			// Codex installation. Re-evaluate the structured snapshot and only pass
-			// an explicit planner authorization into the installer.
-			status := s.statusForSpec(ctx, spec, s.now(), statusDetectionOptions{forceRefresh: true})
-			if status.CodexDiagnostics != nil && status.CodexDiagnostics.RepairPlan.Allowed {
-				plan := status.CodexDiagnostics.RepairPlan
+			assessment := s.assessCodexRuntime(spec, runtimeResolution.CLIPath, probe, true, false)
+			if assessment.RepairPlan.Allowed {
+				plan := assessment.RepairPlan
 				runtimeResolution.CodexRepairPlan = &plan
-			}
-			if status.CodexDiagnostics != nil {
-				slog.Info(
-					"codex install action authorization evaluated",
-					"provider", spec.Provider,
-					"repairAllowed", status.CodexDiagnostics.RepairPlan.Allowed,
-					"repairReason", status.CodexDiagnostics.RepairPlan.ReasonCode,
-					"primaryDiagnosticCode", status.CodexDiagnostics.Diagnosis.PrimaryDiagnosticCode,
-				)
 			}
 		}
 	}

@@ -57,13 +57,6 @@ type GracefulProcessConnection interface {
 	Kill() error
 }
 
-// WaitProcessConnection lets short-lived probes bound process reaping without
-// relying on a concrete local-process implementation.
-type WaitProcessConnection interface {
-	ProcessConnection
-	Wait(context.Context) error
-}
-
 type ProcessTransport interface {
 	Start(context.Context, ProcessSpec) (ProcessConnection, error)
 }

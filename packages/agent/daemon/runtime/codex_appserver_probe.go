@@ -31,11 +31,10 @@ type CodexAppServerProbeResult struct {
 	CommandCategory  string
 	ProtocolCategory string
 	// Category is the compatibility projection of the failing stage.
-	Category        string
-	Message         string
-	StderrTail      string
-	StderrTruncated bool
-	Duration        time.Duration
+	Category   string
+	Message    string
+	StderrTail string
+	Duration   time.Duration
 }
 
 const (
@@ -127,7 +126,6 @@ func ProbeCodexAppServer(ctx context.Context, input CodexAppServerProbeInput) (r
 		}
 		diagnostics := client.Diagnostics()
 		result.StderrTail = diagnostics.StderrTail
-		result.StderrTruncated = diagnostics.StderrTruncated
 	}()
 
 	handshakeTimeout := input.HandshakeTimeout
@@ -163,31 +161,11 @@ func ProbeCodexAppServer(ctx context.Context, input CodexAppServerProbeInput) (r
 	return result
 }
 
-func closeCodexProbeConnection(conn ProcessConnection, timeout time.Duration) {
+func closeCodexProbeConnection(conn ProcessConnection, _ time.Duration) {
 	if conn == nil {
 		return
 	}
-	if graceful, ok := conn.(GracefulProcessConnection); ok {
-		_ = graceful.CloseInput()
-		_ = graceful.Terminate()
-		if waitCodexProbeConnection(conn, timeout) {
-			_ = conn.Close()
-			return
-		}
-		_ = graceful.Kill()
-		_ = waitCodexProbeConnection(conn, timeout)
-	}
 	_ = conn.Close()
-}
-
-func waitCodexProbeConnection(conn ProcessConnection, timeout time.Duration) bool {
-	waitable, ok := conn.(WaitProcessConnection)
-	if !ok {
-		return false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), nonZeroDuration(timeout, 100*time.Millisecond))
-	defer cancel()
-	return waitable.Wait(ctx) == nil
 }
 
 func nonZeroDuration(value, fallback time.Duration) time.Duration {

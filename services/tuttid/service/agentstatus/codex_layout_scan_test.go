@@ -179,9 +179,6 @@ func TestScanCodexPackageLayoutSeparatesPackageBinaryAndExecutableEvidence(t *te
 			if scan.PlatformBinaryDetailCode != test.wantDetail {
 				t.Fatalf("detail = %q, want %q; scan=%#v", scan.PlatformBinaryDetailCode, test.wantDetail, scan)
 			}
-			if got := planCodexRepair(CodexDiagnosticSnapshot{EvidenceFresh: true, ProtocolProbe: CodexProbeEvidence{Category: "platform_package_enoent", PlatformPackageName: scan.PlatformPackageName}, PackageLayout: scan}).Allowed; got != test.wantRepair {
-				t.Fatalf("repair allowed = %v, want %v for %s", got, test.wantRepair, test.name)
-			}
 		})
 	}
 }

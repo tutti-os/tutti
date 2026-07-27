@@ -129,11 +129,6 @@ func (s Service) statusForSpec(
 	}
 	postChecksStartedAt := time.Now()
 
-	// Codex availability is projected from the diagnostic evaluator below. The
-	// preliminary variables remain for shared non-Codex status construction and
-	// structured logging only; no legacy package-layout predicate participates in
-	// the Codex decision path.
-	codexRuntimeVerified := adapterProbeCacheHit || (adapterProbeRan && adapterReady && !adapterLaunchFailed)
 	availability := Availability{
 		CheckedAt: &now,
 		Status:    AvailabilityReady,
@@ -254,29 +249,28 @@ func (s Service) statusForSpec(
 			"sdkSidecarInstalled", status.Adapter.Installed,
 		)
 	}
-	if isCodexStatusSpec(spec) {
-		diagnostics := s.codexDiagnosticsForStatus(spec, status, adapterProbe, adapterProbeRan, adapterProbeCacheHit, now)
-		status.CodexDiagnostics = &diagnostics
-		status.Checks = make([]ProviderCheck, 0, len(diagnostics.Checks))
-		for _, check := range diagnostics.Checks {
-			status.Checks = append(status.Checks, codexCheckToProviderCheck(check))
-		}
-		switch diagnostics.Diagnosis.OverallStatus {
-		case "ready":
+	if isCodexStatusSpec(spec) && status.CLI.Installed && adapterInstalled {
+		assessment := s.assessCodexRuntime(spec, runtimeResolution.CLIPath, adapterProbe, adapterProbeRan, adapterProbeCacheHit)
+		switch {
+		case assessment.RuntimeReady && status.Auth.Status == AuthAuthenticated && !cliBelowFloor:
 			status.Availability = Availability{Status: AvailabilityReady, CheckedAt: &now}
 			status.Actions = []Action{terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution))}
-		case "auth_required":
-			status.Availability = Availability{Status: AvailabilityAuthRequired, ReasonCode: diagnostics.Diagnosis.PrimaryDiagnosticCode, CheckedAt: &now}
-			status.Actions = []Action{terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution)), {ID: ActionRefresh, Kind: ActionKindRefresh}}
-		case "unsupported":
-			status.Availability = Availability{Status: AvailabilityUnsupported, ReasonCode: diagnostics.Diagnosis.PrimaryDiagnosticCode, CheckedAt: &now}
+		case assessment.RuntimeReady && cliBelowFloor:
+			status.Availability = Availability{Status: AvailabilityUnsupported, ReasonCode: "codex_version_unsupported", CheckedAt: &now}
 			status.Actions = []Action{daemonAction(ActionUpdate)}
-		case "runtime_bug":
-			status.Availability = Availability{Status: AvailabilityUnknown, ReasonCode: diagnostics.Diagnosis.PrimaryDiagnosticCode, CheckedAt: &now}
-			status.Actions = []Action{{ID: ActionRefresh, Kind: ActionKindRefresh}}
+		case assessment.RuntimeReady:
+			reason := "auth_required"
+			if status.Auth.Status == AuthUnknown {
+				reason = "auth_unknown"
+			}
+			status.Availability = Availability{Status: AvailabilityAuthRequired, ReasonCode: reason, CheckedAt: &now}
+			status.Actions = []Action{terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution)), {ID: ActionRefresh, Kind: ActionKindRefresh}}
+		case assessment.ReasonCode == "app_server_unsupported":
+			status.Availability = Availability{Status: AvailabilityUnsupported, ReasonCode: assessment.ReasonCode, CheckedAt: &now}
+			status.Actions = []Action{daemonAction(ActionUpdate)}
 		default:
-			status.Availability = Availability{Status: AvailabilityNotInstalled, ReasonCode: diagnostics.Diagnosis.PrimaryDiagnosticCode, CheckedAt: &now}
-			if diagnostics.RepairPlan.Allowed || diagnostics.Diagnosis.RecommendedAction == "install" {
+			status.Availability = Availability{Status: AvailabilityNotInstalled, ReasonCode: assessment.ReasonCode, CheckedAt: &now}
+			if assessment.RepairPlan.Allowed {
 				status.Actions = []Action{daemonAction(ActionInstall)}
 			} else {
 				status.Actions = []Action{{ID: ActionRefresh, Kind: ActionKindRefresh}}
@@ -296,23 +290,13 @@ func (s Service) statusForSpec(
 			"resolvedRealPath", resolvedRealPath,
 			"version", status.CLI.Version,
 			"lastErrorCode", providerLastErrorCode(status.LastError),
-			"runtimeVerified", codexRuntimeVerified,
-			"commandProbeResult", diagnostics.CommandProbe.Category,
-			"protocolProbeResult", diagnostics.ProtocolProbe.Category,
+			"runtimeVerified", assessment.RuntimeReady,
+			"commandProbeResult", adapterProbe.CommandCategory,
+			"protocolProbeResult", adapterProbe.ProtocolCategory,
 			"probeCacheHit", adapterProbeCacheHit,
 			"probeCacheAgeMs", adapterProbeCacheAge.Milliseconds(),
-			"layoutType", diagnostics.PackageLayout.LayoutType,
-			"packageRoot", diagnostics.PackageLayout.PackageRoot,
-			"platformPackagePath", diagnostics.PackageLayout.PlatformPackagePath,
-			"expectedBinaryPath", diagnostics.PackageLayout.ExpectedPlatformBinaryPath,
-			"packagePresence", diagnostics.PackageLayout.PlatformPackagePresence,
-			"binaryPresence", diagnostics.PackageLayout.PlatformBinaryPresence,
-			"binaryExists", diagnostics.PackageLayout.PlatformBinaryExists,
-			"binaryExecutable", diagnostics.PackageLayout.PlatformBinaryExecutable,
-			"providerReady", diagnostics.Diagnosis.ProviderReady,
-			"primaryDiagnosticCode", diagnostics.Diagnosis.PrimaryDiagnosticCode,
-			"repairAllowed", diagnostics.RepairPlan.Allowed,
-			"repairReason", diagnostics.RepairPlan.ReasonCode,
+			"repairAllowed", assessment.RepairPlan.Allowed,
+			"repairReason", assessment.RepairPlan.ReasonCode,
 		)
 	}
 	postChecksDuration = time.Since(postChecksStartedAt)

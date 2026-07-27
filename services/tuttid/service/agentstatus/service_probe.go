@@ -47,13 +47,9 @@ func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, erro
 	// before we collect that primary runtime evidence.
 	if isCodexStatusSpec(spec) {
 		probed := s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now)
-		diagnostics := s.codexDiagnosticsForStatus(spec, status, probed, true, false, now)
-		probed.Checks = make([]ProviderCheck, 0, len(diagnostics.Checks))
-		for _, check := range diagnostics.Checks {
-			probed.Checks = append(probed.Checks, codexCheckToProviderCheck(check))
-		}
-		if probed.Status == ProbeFailed && diagnostics.RepairPlan.Allowed {
-			probed.ReasonCode = diagnostics.RepairPlan.ReasonCode
+		assessment := s.assessCodexRuntime(spec, runtimeResolution.CLIPath, probed, true, false)
+		if probed.Status == ProbeFailed && assessment.RepairPlan.Allowed {
+			probed.ReasonCode = assessment.RepairPlan.ReasonCode
 			probed.LastError = &ProviderLastError{Code: string(CodexErrPlatformPkgIncomplete), Message: probed.Message}
 		}
 		return probed, nil

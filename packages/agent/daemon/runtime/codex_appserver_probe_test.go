@@ -52,20 +52,6 @@ func TestProbeCodexAppServerStartsExactlyOneProcess(t *testing.T) {
 	}
 }
 
-func TestProbeCodexAppServerOnlyPerformsInitializeHandshake(t *testing.T) {
-	t.Parallel()
-	transport := newScriptedAppServerTransport()
-	result := ProbeCodexAppServer(context.Background(), CodexAppServerProbeInput{
-		Command: []string{"codex", "app-server"}, Transport: transport,
-	})
-	if !result.ProtocolReady {
-		t.Fatalf("probe = %#v, want protocol ready", result)
-	}
-	if got, want := probeOutboundMethods(t, transport.conn), []string{appServerMethodInitialize, appServerMethodInitialized}; !equalStringSlices(got, want) {
-		t.Fatalf("outbound methods = %#v, want %#v", got, want)
-	}
-}
-
 func TestProbeCodexAppServerTimesOutDuringStart(t *testing.T) {
 	t.Parallel()
 	transport := &blockingStartProbeTransport{entered: make(chan struct{})}
@@ -109,21 +95,6 @@ func TestProbeCodexAppServerCancellationDuringHandshake(t *testing.T) {
 	assertScriptedProbeConnectionClosed(t, connection)
 }
 
-func TestProbeCodexAppServerForcesShutdownAfterTimeout(t *testing.T) {
-	t.Parallel()
-	connection := newForceShutdownProbeConnection()
-	result := ProbeCodexAppServer(context.Background(), CodexAppServerProbeInput{
-		Command: []string{"codex", "app-server"}, Transport: forceShutdownProbeTransport{conn: connection},
-		HandshakeTimeout: 20 * time.Millisecond, ShutdownTimeout: 10 * time.Millisecond,
-	})
-	if result.ProtocolReady || result.Category != CodexProbeHandshakeTimeout {
-		t.Fatalf("probe = %#v, want timeout", result)
-	}
-	if connection.closeInputCalls.Load() != 1 || connection.terminateCalls.Load() != 1 || connection.killCalls.Load() != 1 || connection.waitCalls.Load() < 2 {
-		t.Fatalf("shutdown calls = closeInput:%d terminate:%d kill:%d wait:%d", connection.closeInputCalls.Load(), connection.terminateCalls.Load(), connection.killCalls.Load(), connection.waitCalls.Load())
-	}
-}
-
 func TestProbeCodexAppServerBoundsStderr(t *testing.T) {
 	t.Parallel()
 	connection := newNoisyProbeConnection(10 << 20)
@@ -131,8 +102,8 @@ func TestProbeCodexAppServerBoundsStderr(t *testing.T) {
 		Command: []string{"codex", "app-server"}, Transport: noisyProbeTransport{conn: connection},
 		HandshakeTimeout: time.Second,
 	})
-	if !result.StderrTruncated || len(result.StderrTail) > acpClientOutputTailLimit {
-		t.Fatalf("stderr result = %#v, want bounded truncated tail", result)
+	if len(result.StderrTail) > acpClientOutputTailLimit {
+		t.Fatalf("stderr result = %#v, want bounded tail", result)
 	}
 	if !utf8.ValidString(result.StderrTail) {
 		t.Fatalf("stderr tail is not UTF-8: %q", result.StderrTail)
@@ -397,44 +368,6 @@ type cancellationProbeConnection struct {
 func (c *cancellationProbeConnection) Send(_ []byte) error {
 	c.once.Do(func() { close(c.initializeSent) })
 	return nil
-}
-
-type forceShutdownProbeTransport struct{ conn *forceShutdownProbeConnection }
-
-func (t forceShutdownProbeTransport) Start(context.Context, ProcessSpec) (ProcessConnection, error) {
-	return t.conn, nil
-}
-
-type forceShutdownProbeConnection struct {
-	*scriptedAppServerConnection
-	closeInputCalls atomic.Int32
-	terminateCalls  atomic.Int32
-	killCalls       atomic.Int32
-	waitCalls       atomic.Int32
-	done            chan struct{}
-}
-
-func newForceShutdownProbeConnection() *forceShutdownProbeConnection {
-	return &forceShutdownProbeConnection{scriptedAppServerConnection: newScriptedAppServerConnection(), done: make(chan struct{})}
-}
-
-func (*forceShutdownProbeConnection) Send([]byte) error { return nil }
-func (c *forceShutdownProbeConnection) CloseInput() error { c.closeInputCalls.Add(1); return nil }
-func (c *forceShutdownProbeConnection) Terminate() error  { c.terminateCalls.Add(1); return nil }
-func (c *forceShutdownProbeConnection) Kill() error {
-	c.killCalls.Add(1)
-	close(c.done)
-	_ = c.Close()
-	return nil
-}
-func (c *forceShutdownProbeConnection) Wait(ctx context.Context) error {
-	c.waitCalls.Add(1)
-	select {
-	case <-c.done:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
 }
 
 type noisyProbeTransport struct{ conn *noisyProbeConnection }
