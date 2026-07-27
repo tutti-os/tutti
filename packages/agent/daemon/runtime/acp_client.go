@@ -22,6 +22,7 @@ type acpClient struct {
 	nextID              atomic.Int64
 	callMu              sync.Mutex
 	sendMu              sync.Mutex
+	dispatchMu          sync.Mutex
 	mu                  sync.Mutex
 	pending             map[int64]*acpPendingCall
 	active              *acpActiveHandler
@@ -395,6 +396,29 @@ func (c *acpClient) Respond(ctx context.Context, id json.RawMessage, result any,
 	return c.sendJSON(ctx, message)
 }
 
+// respondWithDispatchFence keeps the response's local lifecycle publication
+// ahead of provider messages caused by that response. The ACP read loop is
+// otherwise free to receive those messages while the interactive responder
+// runs asynchronously.
+func (c *acpClient) respondWithDispatchFence(
+	ctx context.Context,
+	id json.RawMessage,
+	result any,
+	responseErr *acpError,
+	complete func(error),
+) error {
+	if c == nil {
+		return errors.New("acp client is nil")
+	}
+	c.dispatchMu.Lock()
+	defer c.dispatchMu.Unlock()
+	err := c.Respond(ctx, id, result, responseErr)
+	if complete != nil {
+		complete(err)
+	}
+	return err
+}
+
 func (c *acpClient) sendJSON(ctx context.Context, value any) error {
 	raw, err := json.Marshal(value)
 	if err != nil {
@@ -617,6 +641,8 @@ func benignACPStdoutLine(line []byte) bool {
 }
 
 func (c *acpClient) dispatchMessage(message acpMessage) {
+	c.dispatchMu.Lock()
+	defer c.dispatchMu.Unlock()
 	slog.Debug("agent session ACP message received",
 		"event", "agent_session.acp.message.received",
 		"method", message.Method,

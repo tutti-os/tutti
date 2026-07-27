@@ -265,6 +265,14 @@ pending -> answered | superseded
 
 Actionable UI reads canonical pending Interactions only. A transcript tool row showing `waiting_input` does not create answerable state.
 
+A provider adapter must publish `interaction.requested` with the complete
+immutable input required by the action surface. When a provider splits one
+request across ordered wire frames—for example permission identity and options
+first, then the matching question body in a tool update—the adapter correlates
+them by exact Turn and tool-call identity and delays Interaction publication
+until the input is complete. A later transcript tool update cannot repair an
+already-persisted incomplete Interaction.
+
 A child Interaction may appear in the root conversation, but submission carries the exact `(agentSessionId, turnId, requestId)` tuple.
 
 ### 3.4 Goal and operations
@@ -1163,6 +1171,17 @@ Every surface shares the exact interaction identity
 `(workspaceId, agentSessionId, turnId, requestId)` and submitting state.
 Provider request ids remain unchanged and may repeat across Turns; no adapter
 may recover a missing Turn by scanning for a session-wide request-id match.
+An interactive provider callback must not block the transport's message reader
+while waiting for user input. If the provider can emit follow-up frames during
+that wait, the adapter keeps reading and joins them before publishing the
+canonical Interaction. When the answer is delivered, local call resolution is
+serialized ahead of provider terminal messages caused by that answer.
+When a standard ACP provider bridges a structured question through
+`session/request_permission`, the adapter preserves the canonical answer
+payload for local projection but translates the chosen label back to the
+provider's opaque option ID. The wire response must remain ACP-native
+(`outcome=selected` plus `optionId`); renderer actions such as `submit` are not
+provider outcome values.
 Non-DOM hosts such as React Native reuse the pure
 `agent-conversation/interactive-answer` entrypoint for canonical ask-user
 payload construction and own-property-safe question-id access. Presentation

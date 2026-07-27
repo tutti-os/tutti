@@ -1906,6 +1906,134 @@ func TestStandardACPAdapterSessionStateExposesPendingAskUserPrompt(t *testing.T)
 	}
 }
 
+// Kimi Code sends session/request_permission before the matching tool_call
+// update. The first frame identifies AskUserQuestion and its selectable
+// outcomes; the next frame carries the question body. AgentGUI reads canonical
+// Interactions rather than transcript tool rows, so the adapter must join both
+// frames before publishing interaction.requested.
+func TestStandardACPAdapterJoinsKimiAskUserQuestionInputAfterPermission(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Kimi Code", "kimi-session-interactive-1")
+	transport.conn.promptKind = "ask-user-after-permission"
+	adapter := newHermesExtensionTestAdapter(transport)
+	session := standardTestSession(hermesExtensionTestProvider)
+	session.Provider = "acp:kimi-code"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "kimi-session-interactive-1"
+
+	var mu sync.Mutex
+	var emittedActivity []activityshared.Event
+	requested := make(chan activityshared.Event, 1)
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.Exec(context.Background(), session, textPrompt("ask how I feel"), "", "turn-kimi-ask-user", func(events []activityshared.Event) {
+			mu.Lock()
+			emittedActivity = append(emittedActivity, events...)
+			mu.Unlock()
+			for _, event := range events {
+				if event.Type == activityshared.EventInteractionRequested {
+					select {
+					case requested <- event:
+					default:
+					}
+				}
+			}
+		}, nil)
+		execDone <- err
+	}()
+
+	var interaction activityshared.Event
+	select {
+	case interaction = <-requested:
+	case <-time.After(2 * time.Second):
+		t.Fatal("AskUserQuestion interaction was not published after the tool input arrived")
+	}
+	if interaction.Payload.Interaction == nil {
+		t.Fatalf("interaction event = %#v, want canonical interaction payload", interaction)
+	}
+	questions := payloadArray(interaction.Payload.Interaction.Input["questions"])
+	if len(questions) != 1 ||
+		asString(questions[0]["question"]) != "你今天心情怎么样？" ||
+		len(payloadArray(questions[0]["options"])) != 3 {
+		t.Fatalf("interaction questions = %#v, want the complete Kimi question and options", questions)
+	}
+
+	snapshot := adapter.SessionState(session)
+	if snapshot.PendingInteractive == nil ||
+		len(payloadArray(snapshot.PendingInteractive.Input["questions"])) != 1 {
+		t.Fatalf("pending interactive = %#v, want the joined Kimi question input", snapshot.PendingInteractive)
+	}
+
+	if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		RoomID:         session.RoomID,
+		AgentSessionID: session.AgentSessionID,
+		TurnID:         "turn-kimi-ask-user",
+		RequestID:      "permission-1",
+		Action:         "submit",
+		Payload: map[string]any{
+			"answers":             []any{"很好"},
+			"answersByQuestionId": map[string]any{"question-1": "很好"},
+		},
+	}); err != nil {
+		t.Fatalf("SubmitInteractive: %v", err)
+	}
+	select {
+	case err := <-execDone:
+		if err != nil {
+			t.Fatalf("Exec after interactive submission: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Exec did not finish after the Kimi interactive response")
+	}
+
+	mu.Lock()
+	requestedEvents := eventsOfType(emittedActivity, activityshared.EventInteractionRequested)
+	mu.Unlock()
+	if len(requestedEvents) != 1 {
+		t.Fatalf("interaction.requested count = %d, want one complete canonical interaction", len(requestedEvents))
+	}
+	outcome := transport.conn.interactiveOutcome()
+	if got := asString(outcome["outcome"]); got != "selected" {
+		t.Fatalf("Kimi ACP outcome = %#v, want selected", outcome)
+	}
+	if got := asString(outcome["optionId"]); got != "q0_opt_0" {
+		t.Fatalf("Kimi ACP outcome = %#v, want optionId q0_opt_0", outcome)
+	}
+	if payload, _ := outcome["payload"].(map[string]any); len(payload) != 0 {
+		t.Fatalf("Kimi ACP outcome = %#v, want protocol-native selected response without payload", outcome)
+	}
+	callCompletedIndex := -1
+	providerCompletedIndex := -1
+	var callCompletedOutput map[string]any
+	for index, event := range emittedActivity {
+		if event.Type == activityshared.EventCallCompleted &&
+			event.Payload.CallID == "interactive-ask-1" {
+			callCompletedIndex = index
+			callCompletedOutput = event.Payload.Output
+		}
+		if event.Type == activityshared.EventRootProviderTurnCompleted {
+			providerCompletedIndex = index
+		}
+	}
+	if callCompletedIndex < 0 ||
+		providerCompletedIndex < 0 ||
+		callCompletedIndex >= providerCompletedIndex {
+		t.Fatalf(
+			"interactive call completed index=%d provider turn completed index=%d, want local resolution first",
+			callCompletedIndex,
+			providerCompletedIndex,
+		)
+	}
+	localPayload := payloadObject(callCompletedOutput["payload"])
+	localAnswers, _ := localPayload["answers"].([]any)
+	if len(localAnswers) != 1 || asString(localAnswers[0]) != "很好" {
+		t.Fatalf("local completed output = %#v, want the canonical answer preserved", callCompletedOutput)
+	}
+}
+
 func TestStandardACPAdapterSessionStateExposesPendingExitPlanPrompt(t *testing.T) {
 	t.Parallel()
 
@@ -3855,6 +3983,32 @@ func (c *standardACPConnection) Send(data []byte) error {
 						"options":  options,
 					},
 				})
+				if c.promptKind == "ask-user-after-permission" {
+					c.sendJSON(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  acpMethodUpdate,
+						"params": map[string]any{
+							"sessionId": c.sessionID,
+							"update": map[string]any{
+								"sessionUpdate": "tool_call",
+								"toolCallId":    "interactive-ask-1",
+								"title":         "AskUserQuestion",
+								"status":        "pending",
+								"rawInput": map[string]any{
+									"questions": []any{map[string]any{
+										"header":   "心情",
+										"question": "你今天心情怎么样？",
+										"options": []any{
+											map[string]any{"label": "很好", "description": "精神饱满，充满活力"},
+											map[string]any{"label": "一般", "description": "状态平稳，可以正常进行工作"},
+											map[string]any{"label": "不太好", "description": "有些疲惫或注意力分散，需要调整"},
+										},
+									}},
+								},
+							},
+						},
+					})
+				}
 				return nil
 			}
 			c.streamPromptResult(message.ID)
@@ -4106,6 +4260,16 @@ func (c *standardACPConnection) promptRequest() (map[string]any, []map[string]an
 				}},
 			},
 		}, nil
+	case "ask-user-after-permission":
+		return map[string]any{
+				"toolCallId": "interactive-ask-1",
+				"title":      "AskUserQuestion",
+			}, []map[string]any{
+				{"optionId": "q0_opt_0", "name": "很好", "kind": "allow_once"},
+				{"optionId": "q0_opt_1", "name": "一般", "kind": "allow_once"},
+				{"optionId": "q0_opt_2", "name": "不太好", "kind": "allow_once"},
+				{"optionId": "q0_skip", "name": "Skip", "kind": "reject_once"},
+			}
 	case "exit-plan":
 		return map[string]any{
 			"toolCallId": "interactive-plan-1",

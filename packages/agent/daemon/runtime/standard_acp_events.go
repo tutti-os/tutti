@@ -306,7 +306,10 @@ func standardACPPermissionRequested(
 	if requestID == "" {
 		return nil, nil, errors.New("permission request id is required")
 	}
-	interactivePrompt := normalizedInteractivePrompt(params.ToolCall, params.Options, requestID)
+	rawToolCallID := asString(params.ToolCall["toolCallId"])
+	knownInput := normalizer.KnownToolCallInput(rawToolCallID)
+	interactiveToolCall := standardACPInteractiveToolCallWithKnownInput(params.ToolCall, knownInput)
+	interactivePrompt := normalizedInteractivePrompt(interactiveToolCall, params.Options, requestID)
 	if len(params.Options) == 0 && interactivePrompt == nil {
 		return []activityshared.Event{newTurnActivityEvent(session, EventCallFailed, turnID, messageStreamStateFailed, "", "Permission requested", map[string]any{
 			"callId":   requestID,
@@ -328,8 +331,6 @@ func standardACPPermissionRequested(
 	callID := firstNonEmpty(asString(params.ToolCall["toolCallId"]), asString(params.ToolCall["id"]), newID())
 	callType := "approval"
 	status := string(activityshared.TurnPhaseWaitingApproval)
-	rawToolCallID := asString(params.ToolCall["toolCallId"])
-	knownInput := normalizer.KnownToolCallInput(rawToolCallID)
 	input := normalizedApprovalInput(params.ToolCall, params.Options, requestID, knownInput)
 	approvalPurpose := ""
 	if interactivePrompt == nil {
@@ -386,8 +387,9 @@ func standardACPPermissionRequested(
 		options:         params.Options,
 		response:        make(chan pendingInteractiveResponse, 1),
 	}
+	pending.interactionRequested = !standardACPAskUserQuestionInputMissing(pending)
 	adapter.storePendingApproval(pending)
-	return []activityshared.Event{
+	events := []activityshared.Event{
 		newTurnActivityEvent(session, EventTurnUpdated, turnID, SessionStatusWaiting, "", "", map[string]any{
 			"phase":     string(activityshared.TurnPhaseWaitingApproval),
 			"requestId": requestID,
@@ -402,6 +404,107 @@ func standardACPPermissionRequested(
 			title,
 			payload,
 		),
-		normalizedInteractionRequestedEvent(session, turnID, pending),
-	}, pending, nil
+	}
+	if pending.interactionRequested {
+		events = append(events, normalizedInteractionRequestedEvent(session, turnID, pending))
+	}
+	return events, pending, nil
+}
+
+func standardACPInteractiveToolCallWithKnownInput(toolCall map[string]any, knownInput map[string]any) map[string]any {
+	if len(knownInput) == 0 || normalizedInteractiveToolName(toolCall) == "" {
+		return toolCall
+	}
+	mergedInput := clonePayload(knownInput)
+	for key, value := range payloadObject(toolCall["input"]) {
+		mergedInput[key] = clonePayloadValue(value)
+	}
+	result := clonePayload(toolCall)
+	result["input"] = mergedInput
+	return result
+}
+
+func standardACPAskUserQuestionInputMissing(pending *pendingInteractiveRequest) bool {
+	if pending == nil || pending.kind != "ask-user" {
+		return false
+	}
+	for _, question := range payloadArray(pending.input["questions"]) {
+		if firstNonEmpty(asString(question["question"]), asString(question["header"])) != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// standardACPDeferredInteractionRequestedEvents joins providers that emit
+// session/request_permission before the matching tool_call input. The
+// Interaction is published only once its immutable canonical input contains a
+// renderable question, matching the complete user_input_requested event emitted
+// by the Claude Code SDK adapter.
+func (a *standardACPAdapter) standardACPDeferredInteractionRequestedEvents(
+	session Session,
+	turnID string,
+	raw json.RawMessage,
+	normalizer *acpTurnNormalizer,
+) []activityshared.Event {
+	if a == nil || normalizer == nil {
+		return nil
+	}
+	var params struct {
+		Update map[string]any `json:"update"`
+	}
+	if json.Unmarshal(raw, &params) != nil {
+		return nil
+	}
+	updateType := asString(params.Update["sessionUpdate"])
+	if updateType != "tool_call" && updateType != "tool_call_update" {
+		return nil
+	}
+	callID := firstNonEmpty(
+		asString(params.Update["toolCallId"]),
+		asString(params.Update["callId"]),
+		asString(params.Update["id"]),
+	)
+	if callID == "" {
+		return nil
+	}
+	knownInput := normalizer.KnownToolCallInput(callID)
+	if len(payloadArray(knownInput["questions"])) == 0 {
+		return nil
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	acpSession := a.sessions[strings.TrimSpace(session.AgentSessionID)]
+	if acpSession == nil {
+		return nil
+	}
+	for _, pending := range acpSession.pendingApprovals {
+		if pending == nil ||
+			pending.interactionRequested ||
+			pending.kind != "ask-user" ||
+			strings.TrimSpace(pending.turnID) != strings.TrimSpace(turnID) ||
+			strings.TrimSpace(pending.callID) != callID {
+			continue
+		}
+		mergedInput := clonePayload(pending.input)
+		if mergedInput == nil {
+			mergedInput = map[string]any{}
+		}
+		for key, value := range knownInput {
+			if _, exists := mergedInput[key]; !exists {
+				mergedInput[key] = clonePayloadValue(value)
+			}
+		}
+		pending.input = mergedInput
+		if pending.prompt != nil {
+			pending.prompt.Input = clonePayload(mergedInput)
+		}
+		if standardACPAskUserQuestionInputMissing(pending) {
+			continue
+		}
+		pending.interactionRequested = true
+		return []activityshared.Event{normalizedInteractionRequestedEvent(session, turnID, pending)}
+	}
+	return nil
 }
