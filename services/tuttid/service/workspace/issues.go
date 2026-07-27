@@ -13,14 +13,14 @@ import (
 const issueManagerLocalActorUserID = "local"
 
 type IssueManagerService struct {
-	RunLauncher                    IssueRunLauncher
-	RunReconciler                  IssueRunReconciler
-	SourceSessionDirectoryResolver IssueSourceSessionDirectoryResolver
-	Publisher                      IssueManagerEventPublisher
-	RunReconcileQueue              *IssueRunReconcileQueue
-	Store                          workspaceissues.Store
-	AgentTargetReader              IssueAssignmentAgentTargetReader
-	PlanningTimeline               IssuePlanningTimelineReporter
+	RunLauncher                  IssueRunLauncher
+	RunReconciler                IssueRunReconciler
+	SourceSessionContextResolver IssueSourceSessionContextResolver
+	Publisher                    IssueManagerEventPublisher
+	RunReconcileQueue            *IssueRunReconcileQueue
+	Store                        workspaceissues.Store
+	AgentTargetReader            IssueAssignmentAgentTargetReader
+	PlanningTimeline             IssuePlanningTimelineReporter
 	// TaskWorktreeRoot overrides where per-run task worktrees are created;
 	// empty falls back to <state dir>/task-worktrees.
 	TaskWorktreeRoot string

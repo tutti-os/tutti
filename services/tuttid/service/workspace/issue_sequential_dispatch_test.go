@@ -19,13 +19,27 @@ import (
 )
 
 type sequentialSessionCreatorRecorder struct {
-	inputs []agentservice.CreateSessionInput
+	inputs   []agentservice.CreateSessionInput
+	launches []IssueRunLaunch
 }
 
 func (r *sequentialSessionCreatorRecorder) Launch(_ context.Context, launch IssueRunLaunch) error {
 	input := createSessionInputFromLaunch(launch)
+	r.launches = append(r.launches, launch)
 	r.inputs = append(r.inputs, input)
 	return nil
+}
+
+type staticIssueSourceSessionContextResolver struct {
+	context IssueSourceSessionContext
+	ok      bool
+}
+
+func (r staticIssueSourceSessionContextResolver) ResolveSourceSessionContext(
+	_ string,
+	_ string,
+) (IssueSourceSessionContext, bool) {
+	return r.context, r.ok
 }
 
 func createSessionInputFromLaunch(launch IssueRunLaunch) agentservice.CreateSessionInput {
@@ -838,6 +852,60 @@ func TestSequentialIssueRunsParallelizableTasksInIsolatedWorktrees(t *testing.T)
 	}
 	if len(cwds) != 2 {
 		t.Fatalf("worktree cwds = %v, want two distinct directories", cwds)
+	}
+}
+
+func TestSequentialIssueWorktreeDelegatesKeepSourceProjectRailPlacement(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := initIssueTaskGitRepo(t)
+	service, creator, worktreeRoot := newParallelizableDispatchService(t, "ws-par-source-placement")
+	sectionKey := "project:" + repo
+	sourcePlacement := &IssueRunRailPlacement{
+		Kind:        "project",
+		ProjectPath: repo,
+		SectionKey:  sectionKey,
+	}
+	service.SourceSessionContextResolver = staticIssueSourceSessionContextResolver{
+		context: IssueSourceSessionContext{
+			WorkingDirectory: repo,
+			RailPlacement:    sourcePlacement,
+		},
+		ok: true,
+	}
+	if _, err := service.CreateIssueFromPlan(ctx, "ws-par-source-placement", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-source-placement",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Source placement issue",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SourceSessionID:     "planning-session",
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "p1", Title: "First parallel", AgentTargetID: agenttargetbiz.IDLocalCodex, Parallelizable: true},
+			{TaskID: "p2", Title: "Second parallel", AgentTargetID: agenttargetbiz.IDLocalCodex, Parallelizable: true},
+		},
+	}); err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	if len(creator.launches) != 2 {
+		t.Fatalf("launches = %d, want both parallelizable tasks", len(creator.launches))
+	}
+	for _, launch := range creator.launches {
+		if launch.ExecutionDirectory == repo || !strings.HasPrefix(launch.ExecutionDirectory, worktreeRoot) {
+			t.Fatalf(
+				"launch execution directory = %q, want isolated worktree under %q",
+				launch.ExecutionDirectory,
+				worktreeRoot,
+			)
+		}
+		if launch.RailPlacement == nil {
+			t.Fatalf("launch rail placement is nil")
+		}
+		if *launch.RailPlacement != *sourcePlacement {
+			t.Fatalf("launch rail placement = %#v, want %#v", launch.RailPlacement, sourcePlacement)
+		}
 	}
 }
 

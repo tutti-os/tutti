@@ -189,7 +189,11 @@ func (s IssueManagerService) claimIssueTaskRunLocked(
 ) (IssueRunLaunch, bool) {
 	agentSessionID := uuid.NewString()
 	runID := uuid.NewString()
-	executionDirectory := s.resolveIssueTaskBaseDirectory(issue, task)
+	sourceContext, _ := s.resolveIssueSourceSessionContext(issue)
+	executionDirectory := strings.TrimSpace(task.ExecutionDirectory)
+	if executionDirectory == "" {
+		executionDirectory = strings.TrimSpace(sourceContext.WorkingDirectory)
+	}
 	worktreeBranch := ""
 	worktreeBase := ""
 	if isolation.worktreeBase != "" {
@@ -226,7 +230,16 @@ func (s IssueManagerService) claimIssueTaskRunLocked(
 		PermissionModeID:   task.PermissionModeID,
 		WorktreeBase:       worktreeBase,
 		WorktreeBranch:     worktreeBranch,
+		RailPlacement:      cloneIssueRunRailPlacement(sourceContext.RailPlacement),
 	}, true
+}
+
+func cloneIssueRunRailPlacement(placement *IssueRunRailPlacement) *IssueRunRailPlacement {
+	if placement == nil {
+		return nil
+	}
+	cloned := *placement
+	return &cloned
 }
 
 func (s IssueManagerService) launchClaimedIssueRuns(ctx context.Context, launches []IssueRunLaunch) {

@@ -22,6 +22,13 @@ Dispatch is split into two phases:
    creates the Agent Session. A launch failure settles the claimed Run through
    the normal idempotent completion command.
 
+The source planning Session supplies two independent launch facts: its working
+directory is the fallback execution base, while its canonical rail placement
+is the delegate Session's logical project/conversation ownership. Preparing an
+isolated task worktree changes only the execution directory. Issue dispatch
+must carry the source `RailPlacement` unchanged into the Agent Host create
+contract and must never infer placement from the temporary worktree path.
+
 Stopping is also split:
 
 1. Under the Issue lock, set `dispatchPaused=true` and snapshot the Issue's
