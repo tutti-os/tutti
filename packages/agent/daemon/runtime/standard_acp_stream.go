@@ -59,6 +59,12 @@ func (a *standardACPAdapter) handleACPMessage(
 		}
 		a.emitConfigOptionsUpdate(session, message.Params)
 		events := standardACPUpdateEvents(a.config, session, turnID, message.Params, normalizer)
+		events = append(events, a.standardACPDeferredInteractionRequestedEvents(
+			session,
+			turnID,
+			message.Params,
+			normalizer,
+		)...)
 		if slog.Default().Enabled(ctx, slog.LevelDebug) {
 			slog.Debug("agent session ACP update projected events",
 				"event", "agent_session.acp.handle_message.update",
@@ -133,28 +139,12 @@ func (a *standardACPAdapter) handleACPMessage(
 		if len(events) > 0 && emit != nil {
 			emit(events)
 		}
-		selection, err := pending.wait(ctx)
-		if err != nil {
-			pending.finish(pendingInteractiveRequestStateInterrupted)
-			events := normalizedPermissionResolvedEvents(session, turnID, pending, pendingInteractiveResponse{}, err)
-			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32000, Message: err.Error()})
-			return events, err
-		}
-		result := selection.result
-		if result == nil {
-			result = acpPermissionResponseResult(selection.optionID)
-		}
-		if err := client.Respond(ctx, message.ID, result, nil); err != nil {
-			events := []activityshared.Event(nil)
-			if pending.finish(pendingInteractiveRequestStateSuperseded) {
-				events = normalizedPermissionResolvedEvents(session, turnID, pending, selection, err)
-			}
-			return events, err
-		}
-		if pending.finish(pendingInteractiveRequestStateAnswered) {
-			events = normalizedPermissionResolvedEvents(session, turnID, pending, selection, nil)
-		}
-		return events, nil
+		// Keep reading the prompt stream while the provider waits for the user's
+		// response. Kimi Code sends AskUserQuestion's complete tool input in the
+		// next session/update frame; blocking here prevents that frame from
+		// completing the canonical Interaction shown by AgentGUI.
+		go a.respondACPPermissionRequest(ctx, client, session, turnID, message.ID, pending, emit)
+		return nil, nil
 	default:
 		slog.Warn("agent session ACP ignored unsupported message",
 			"event", "agent_session.acp.handle_message.unsupported",
@@ -542,4 +532,57 @@ func (a *standardACPAdapter) getPendingApproval(agentSessionID string, turnID st
 		return nil
 	}
 	return pending
+}
+
+func (*standardACPAdapter) respondACPPermissionRequest(
+	ctx context.Context,
+	client *acpClient,
+	session Session,
+	turnID string,
+	requestID json.RawMessage,
+	pending *pendingACPApproval,
+	emit EventSink,
+) {
+	if pending == nil {
+		return
+	}
+	selection, err := pending.wait(ctx)
+	if err != nil {
+		pending.finish(pendingInteractiveRequestStateInterrupted)
+		resolved := normalizedPermissionResolvedEvents(session, turnID, pending, pendingInteractiveResponse{}, err)
+		// The shared error path emits only call.failed; append the
+		// back-to-running turn.updated so the lifecycle cannot strand in
+		// waiting_approval when a request is rejected or canceled.
+		resolved = append(resolved, newTurnActivityEvent(session, EventTurnUpdated, turnID, SessionStatusWorking, "", "", map[string]any{
+			"phase":     string(activityshared.TurnPhaseWorking),
+			"requestId": pending.requestID,
+		}))
+		if emit != nil {
+			emit(resolved)
+		}
+		_ = client.Respond(ctx, requestID, nil, &acpError{Code: -32000, Message: err.Error()})
+		return
+	}
+	if selection.outOfBandResolved {
+		resolved := acpPermissionOutOfBandResolvedEvents(session, turnID, pending)
+		if emit != nil {
+			emit(resolved)
+		}
+		return
+	}
+	result := selection.result
+	if result == nil {
+		result = acpPermissionResponseResult(selection.optionID)
+	}
+	_ = client.respondWithDispatchFence(ctx, requestID, result, nil, func(responseErr error) {
+		if responseErr != nil {
+			if pending.finish(pendingInteractiveRequestStateSuperseded) && emit != nil {
+				emit(normalizedPermissionResolvedEvents(session, turnID, pending, selection, responseErr))
+			}
+			return
+		}
+		if pending.finish(pendingInteractiveRequestStateAnswered) && emit != nil {
+			emit(normalizedPermissionResolvedEvents(session, turnID, pending, selection, nil))
+		}
+	})
 }

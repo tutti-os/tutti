@@ -91,6 +91,7 @@ Approval gates, plan exits, root/parent/child event attribution, child sessions,
 
 - [External PR review approvals do not refresh gate status](./agent-approvals-subagents.md#external-pr-review-approvals-do-not-refresh-gate-status)
 - [Cursor approval card shows only title and options, no command/path detail](./agent-approvals-subagents.md#cursor-approval-card-shows-only-title-and-options-no-commandpath-detail)
+- [Kimi Code AskUserQuestion waits without showing a question card](./agent-approvals-subagents.md#kimi-code-askuserquestion-waits-without-showing-a-question-card)
 - [Agent approval controls submit stale permission requests after restart](./agent-approvals-subagents.md#agent-approval-controls-submit-stale-permission-requests-after-restart)
 - [Claude SDK ExitPlanMode fails as interrupted after plan is ready](./agent-approvals-subagents.md#claude-sdk-exitplanmode-fails-as-interrupted-after-plan-is-ready)
 - [Codex app-server subagent output appears as the parent reply](./agent-approvals-subagents.md#codex-app-server-subagent-output-appears-as-the-parent-reply)
