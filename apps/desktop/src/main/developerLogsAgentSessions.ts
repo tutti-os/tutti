@@ -1,5 +1,13 @@
+export interface DeveloperLogsAgentSessionAttachment {
+  attachmentID: string;
+  dataBase64: string;
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  name?: string;
+}
+
 export interface DeveloperLogsAgentSessionRecord {
   agentSessionID: string;
+  attachments?: DeveloperLogsAgentSessionAttachment[];
   hasMoreMessages: boolean;
   latestMessageVersion: number;
   messages: unknown[];
@@ -7,6 +15,7 @@ export interface DeveloperLogsAgentSessionRecord {
   providerSessionID: string;
   session: unknown;
   updatedAtUnixMS: number;
+  unavailableAttachmentIDs?: string[];
   workspaceID: string;
 }
 
@@ -34,6 +43,23 @@ export function buildProviderAgentSessionRecordFiles(
       safeZipPathSegment(record.workspaceID),
       safeZipPathSegment(record.agentSessionID)
     );
+    const attachmentFiles = (record.attachments ?? []).flatMap((attachment) => {
+      const extension = imageExtension(attachment.mimeType);
+      if (!extension) return [];
+      const fileName = `${safeZipPathSegment(attachment.attachmentID)}${extension}`;
+      const content = Buffer.from(attachment.dataBase64, "base64");
+      return [
+        {
+          attachmentID: attachment.attachmentID,
+          archivePath: joinZipPath(sessionDir, "attachments", fileName),
+          content,
+          fileName: joinZipPath("attachments", fileName),
+          mimeType: attachment.mimeType,
+          ...(attachment.name ? { name: attachment.name } : {}),
+          sizeBytes: content.byteLength
+        }
+      ];
+    });
     const manifest = jsonBuffer({
       schemaVersion: 1,
       exportedAt,
@@ -44,9 +70,18 @@ export function buildProviderAgentSessionRecordFiles(
       latestMessageVersion: record.latestMessageVersion,
       hasMoreMessages: record.hasMoreMessages,
       messageCount: record.messages.length,
+      attachments: attachmentFiles.map((attachment) => ({
+        attachmentId: attachment.attachmentID,
+        mimeType: attachment.mimeType,
+        ...(attachment.name ? { name: attachment.name } : {}),
+        file: attachment.fileName,
+        sizeBytes: attachment.sizeBytes
+      })),
+      unavailableAttachmentIds: record.unavailableAttachmentIDs ?? [],
       files: {
         session: "session.json",
-        messages: "messages.jsonl"
+        messages: "messages.jsonl",
+        attachments: attachmentFiles.map((attachment) => attachment.fileName)
       }
     });
     const session = jsonBuffer({
@@ -82,9 +117,69 @@ export function buildProviderAgentSessionRecordFiles(
         sessionDir,
         "messages.jsonl",
         messages
-      )
+      ),
+      ...attachmentFiles.map((attachment) => ({
+        agentSessionID: record.agentSessionID,
+        archivePath: attachment.archivePath,
+        content: attachment.content,
+        path: `tuttid-attachment://${record.workspaceID}/${record.agentSessionID}/${attachment.attachmentID}`,
+        provider: record.provider,
+        sizeBytes: attachment.sizeBytes,
+        workspaceID: record.workspaceID
+      }))
     ];
   });
+}
+
+export async function loadDeveloperLogsAgentSessionAttachments(
+  messages: readonly unknown[],
+  readAttachment: (attachmentID: string) => Promise<{
+    attachmentId: string;
+    data: string;
+    mimeType: "image/png" | "image/jpeg" | "image/webp";
+    name?: string;
+  }>
+): Promise<{
+  attachments: DeveloperLogsAgentSessionAttachment[];
+  unavailableAttachmentIDs: string[];
+}> {
+  const references = collectImageAttachmentReferences(messages);
+  const results = await Promise.all(
+    references.map(
+      async (
+        reference
+      ): Promise<
+        | { attachment: DeveloperLogsAgentSessionAttachment }
+        | { unavailableAttachmentID: string }
+      > => {
+        try {
+          const attachment = await readAttachment(reference.attachmentID);
+          return {
+            attachment: {
+              attachmentID: reference.attachmentID,
+              dataBase64: attachment.data,
+              mimeType: attachment.mimeType,
+              ...((attachment.name ?? reference.name)
+                ? { name: attachment.name ?? reference.name }
+                : {})
+            } satisfies DeveloperLogsAgentSessionAttachment
+          };
+        } catch {
+          return { unavailableAttachmentID: reference.attachmentID };
+        }
+      }
+    )
+  );
+  return {
+    attachments: results.flatMap((result) =>
+      "attachment" in result ? [result.attachment] : []
+    ),
+    unavailableAttachmentIDs: results.flatMap((result) =>
+      "unavailableAttachmentID" in result
+        ? [result.unavailableAttachmentID]
+        : []
+    )
+  };
 }
 
 function createExportedAgentSessionFile(
@@ -145,4 +240,48 @@ function safeZipPathSegment(value: string): string {
     return "_";
   }
   return safe;
+}
+
+function collectImageAttachmentReferences(
+  values: readonly unknown[]
+): Array<{ attachmentID: string; name?: string }> {
+  const references = new Map<string, { attachmentID: string; name?: string }>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const candidate = value as Record<string, unknown>;
+    if (
+      candidate.type === "image" &&
+      typeof candidate.attachmentId === "string"
+    ) {
+      const attachmentID = candidate.attachmentId.trim();
+      if (attachmentID && !references.has(attachmentID)) {
+        const name =
+          typeof candidate.name === "string" ? candidate.name.trim() : "";
+        references.set(attachmentID, {
+          attachmentID,
+          ...(name ? { name } : {})
+        });
+      }
+    }
+    Object.values(candidate).forEach(visit);
+  };
+  values.forEach(visit);
+  return [...references.values()];
+}
+
+function imageExtension(
+  mimeType: DeveloperLogsAgentSessionAttachment["mimeType"]
+): ".jpg" | ".png" | ".webp" | null {
+  switch (mimeType) {
+    case "image/jpeg":
+      return ".jpg";
+    case "image/png":
+      return ".png";
+    case "image/webp":
+      return ".webp";
+  }
 }

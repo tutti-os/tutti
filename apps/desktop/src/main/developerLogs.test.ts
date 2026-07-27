@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 import { inflateRawSync } from "node:zlib";
 import { createDeveloperLogsService } from "./developerLogs.ts";
-import type { DeveloperLogsAgentSessionRecord } from "./developerLogsAgentSessions.ts";
+import {
+  loadDeveloperLogsAgentSessionAttachments,
+  type DeveloperLogsAgentSessionRecord
+} from "./developerLogsAgentSessions.ts";
 import { sanitizeDeveloperLogsTransportSnapshot } from "./developerLogsRuntimeContext.ts";
 import { workspaceAppScopeSegment } from "./host/workspaceAppFolderPaths.ts";
 
@@ -451,6 +454,14 @@ test("developer logs service exports provider session records from tuttid snapsh
       },
       {
         agentSessionID: "agent-tutti",
+        attachments: [
+          {
+            attachmentID: "attachment-screen",
+            dataBase64: Buffer.from("original-image-bytes").toString("base64"),
+            mimeType: "image/png",
+            name: "screen.png"
+          }
+        ],
         hasMoreMessages: false,
         latestMessageVersion: 9,
         messages: [
@@ -459,7 +470,17 @@ test("developer logs service exports provider session records from tuttid snapsh
             id: 3,
             kind: "text",
             messageId: "tutti-message",
-            role: "assistant",
+            payload: {
+              content: [
+                {
+                  attachmentId: "attachment-screen",
+                  mimeType: "image/png",
+                  name: "screen.png",
+                  type: "image"
+                }
+              ]
+            },
+            role: "user",
             version: 9
           }
         ],
@@ -495,9 +516,10 @@ test("developer logs service exports provider session records from tuttid snapsh
 
   const result = await service.exportLogs();
 
-  assert.equal(result.fileCount, 9);
+  assert.equal(result.fileCount, 10);
   assert.ok(result.filePath);
-  const zipText = (await readFile(result.filePath)).toString("utf8");
+  const zip = await readFile(result.filePath);
+  const zipText = zip.toString("utf8");
   assert.equal(
     zipText.includes(
       "agent-sessions/codex/workspace-1/agent-codex/manifest.json"
@@ -528,6 +550,98 @@ test("developer logs service exports provider session records from tuttid snapsh
     ),
     true
   );
+  const entries = readZipEntries(zip);
+  assert.equal(
+    entries
+      .get(
+        "agent-sessions/tutti-agent/workspace-1/agent-tutti/attachments/attachment-screen.png"
+      )
+      ?.toString("utf8"),
+    "original-image-bytes"
+  );
+  const manifest = JSON.parse(
+    entries
+      .get("agent-sessions/tutti-agent/workspace-1/agent-tutti/manifest.json")
+      ?.toString("utf8") ?? "{}"
+  ) as {
+    attachments?: unknown[];
+    files?: { attachments?: string[] };
+    unavailableAttachmentIds?: string[];
+  };
+  assert.deepEqual(manifest.attachments, [
+    {
+      attachmentId: "attachment-screen",
+      file: "attachments/attachment-screen.png",
+      mimeType: "image/png",
+      name: "screen.png",
+      sizeBytes: 20
+    }
+  ]);
+  assert.deepEqual(manifest.files?.attachments, [
+    "attachments/attachment-screen.png"
+  ]);
+  assert.deepEqual(manifest.unavailableAttachmentIds, []);
+});
+
+test("developer logs attachment loading deduplicates image references and records failures", async () => {
+  const requestedAttachmentIDs: string[] = [];
+  const result = await loadDeveloperLogsAgentSessionAttachments(
+    [
+      {
+        payload: {
+          content: [
+            {
+              attachmentId: "attachment-1",
+              mimeType: "image/png",
+              name: "screen.png",
+              type: "image"
+            },
+            {
+              attachmentId: "attachment-1",
+              mimeType: "image/png",
+              type: "image"
+            },
+            {
+              attachmentId: "attachment-file",
+              type: "file"
+            },
+            {
+              attachmentId: "attachment-missing",
+              mimeType: "image/webp",
+              type: "image"
+            }
+          ]
+        }
+      }
+    ],
+    async (attachmentID) => {
+      requestedAttachmentIDs.push(attachmentID);
+      if (attachmentID === "attachment-missing") {
+        throw new Error("attachment is unavailable");
+      }
+      return {
+        attachmentId: attachmentID,
+        data: Buffer.from("image").toString("base64"),
+        mimeType: "image/png"
+      };
+    }
+  );
+
+  assert.deepEqual(requestedAttachmentIDs, [
+    "attachment-1",
+    "attachment-missing"
+  ]);
+  assert.deepEqual(result, {
+    attachments: [
+      {
+        attachmentID: "attachment-1",
+        dataBase64: "aW1hZ2U=",
+        mimeType: "image/png",
+        name: "screen.png"
+      }
+    ],
+    unavailableAttachmentIDs: ["attachment-missing"]
+  });
 });
 
 test("developer logs service exports at most ten provider session records per provider", async () => {
