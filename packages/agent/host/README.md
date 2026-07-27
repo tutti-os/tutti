@@ -95,6 +95,8 @@ replacement Turn. The replacement keeps attachments, mentions, capability
 references, and the Tutti mode snapshot while replacing only the first text
 block. Retraction changes model-visible history and canonical projections; it
 does not compensate filesystem changes produced by the original Turn.
+Conversation timelines hide retracted Turns, while audit reads and generated
+file projections retain their submitted content and filesystem side effects.
 
 `operationId`, replacement `turnId`, and `clientSubmitId` remain stable across
 retries and process restarts. A direct provider acceptance receipt completes

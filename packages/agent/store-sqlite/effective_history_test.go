@@ -82,6 +82,15 @@ func TestEffectiveHistoryRetractedTurnIsHiddenButAuditable(t *testing.T) {
 		}); err != nil || !accepted {
 			t.Fatalf("seed %s accepted=%v error=%v", turnID, accepted, err)
 		}
+		if _, created, err := store.RecordTurnSubmission(ctx, TurnSubmission{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: turnID,
+			ContentJSON:   `[{"type":"text","text":"` + turnID + `"}]`,
+			DisplayPrompt: turnID, CapabilityRefsJSON: `[]`,
+			TuttiModeSnapshotJSON: `null`, ClientSubmitID: "submit-" + turnID,
+			CreatedAtUnixMS: occurred, UpdatedAtUnixMS: occurred,
+		}); err != nil || !created {
+			t.Fatalf("seed %s submission created=%v error=%v", turnID, created, err)
+		}
 		reportTestMessage(t, store, "session-1", "message-"+turnID, turnID, occurred+1)
 	}
 	if _, err := store.db.ExecContext(ctx, `
@@ -115,6 +124,9 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1' AND turn_id = 'tu
 	}
 	if audit, found, err := store.GetTurn(ctx, "ws-1", "session-1", "turn-2"); err != nil || !found || len(audit.FileChanges) == 0 {
 		t.Fatalf("audit turn=%#v found=%v error=%v", audit, found, err)
+	}
+	if submission, found, err := store.GetTurnSubmission(ctx, "ws-1", "session-1", "turn-2"); err != nil || !found || submission.DisplayPrompt != "turn-2" {
+		t.Fatalf("audit submission=%#v found=%v error=%v", submission, found, err)
 	}
 }
 

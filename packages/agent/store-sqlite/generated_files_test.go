@@ -54,6 +54,41 @@ func TestListWorkspaceGeneratedFileTurnsScopesAndOrdersSettledTurns(t *testing.T
 	}
 }
 
+func TestListWorkspaceGeneratedFileTurnsKeepsRetractedTurnSideEffects(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{paths: []string{"/workspace/project"}}))
+	ctx := context.Background()
+	const workspaceID = "workspace-retracted-generated-files"
+	const sessionID = "session-1"
+	const turnID = "turn-retracted"
+	seedGeneratedFileSession(t, ctx, store, workspaceID, sessionID, testTargetIDCodex, "/workspace/project")
+	recordGeneratedFileTurn(t, ctx, store, workspaceID, sessionID, turnID, 100, []any{
+		map[string]any{"path": "still-modified.md", "change": "added"},
+	})
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_turn_history
+SET history_state = 'retracted', retracted_by_operation_id = 'operation-1'
+WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
+`, workspaceID, sessionID, turnID); err != nil {
+		t.Fatal(err)
+	}
+
+	result, ok, err := store.ListWorkspaceGeneratedFileTurns(ctx, ListWorkspaceGeneratedFileTurnsInput{
+		WorkspaceID: workspaceID,
+		SectionKey:  RailSectionKeyForProject("/workspace/project"),
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListWorkspaceGeneratedFileTurns() ok=%v error=%v", ok, err)
+	}
+	if len(result.Turns) != 1 ||
+		result.Turns[0].TurnID != turnID ||
+		len(result.Turns[0].Changes) != 1 ||
+		result.Turns[0].Changes[0].Path != "still-modified.md" {
+		t.Fatalf("retracted turn side effects = %#v", result.Turns)
+	}
+}
+
 func TestListWorkspaceGeneratedFileTurnsCapsSectionAtOneHundred(t *testing.T) {
 	t.Parallel()
 
