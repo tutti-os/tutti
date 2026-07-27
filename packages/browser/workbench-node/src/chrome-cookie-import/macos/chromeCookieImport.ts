@@ -12,7 +12,7 @@ import { DatabaseSync, backup } from "node:sqlite";
 import { readChromeProfileAvatarDataUrl } from "./chromeProfileMetadata.ts";
 
 const CHROME_KEYCHAIN_SERVICE = "Chrome Safe Storage";
-const CHROME_KEYCHAIN_TIMEOUT_MS = 10_000;
+const CHROME_KEYCHAIN_TIMEOUT_MS = 60_000;
 const CHROME_COOKIE_EPOCH_OFFSET_SECONDS = 11_644_473_600;
 const CHROME_V10_PREFIX = Buffer.from("v10");
 const MACOS_CHROME_IV = Buffer.alloc(16, 0x20);

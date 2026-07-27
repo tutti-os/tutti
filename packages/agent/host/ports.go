@@ -11,9 +11,14 @@ type CanonicalSessionStore interface {
 	GetSession(context.Context, string, string) (storesqlite.Session, bool, error)
 	SessionDeleted(context.Context, string, string) (bool, error)
 	RollbackRuntimeSessionInitialization(context.Context, string, string) (bool, error)
-	InitializeRuntimeSession(context.Context, ProviderRuntimeSession) (storesqlite.Session, error)
+	InitializeRuntimeSession(context.Context, RuntimeSessionInitialization) (storesqlite.Session, error)
 	UpdateSessionTitle(context.Context, string, string, string) (storesqlite.Session, bool, error)
 	ListChildSessions(context.Context, string, string) ([]storesqlite.Session, error)
+}
+
+type RuntimeSessionInitialization struct {
+	Session       ProviderRuntimeSession
+	RailPlacement *RailPlacement
 }
 
 type CanonicalTurnStore interface {

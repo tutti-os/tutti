@@ -119,6 +119,8 @@ func (s *Store) upsertAgentSessionTx(
 				agentSessionID,
 			)
 		}
+		dto.RailSectionKind = existingRail.Section.Kind
+		dto.RailProjectPath = existingRail.Section.ProjectPath
 		dto.RailSectionKey = existingRail.Section.Key
 		return false, false, projected.LastEventUnixMS, dto, nil
 	}
@@ -147,6 +149,7 @@ func (s *Store) upsertAgentSessionTx(
 		session.CWD,
 		session.RuntimeContext,
 		input.ImportProjectPath,
+		input.RailPlacement,
 	)
 	if err != nil {
 		return false, false, 0, Session{}, err
@@ -205,6 +208,8 @@ WHERE workspace_agent_sessions.deleted_at_unix_ms = 0
 	if err != nil {
 		return false, false, 0, Session{}, err
 	}
+	dto.RailSectionKind = railSection.Kind
+	dto.RailProjectPath = railSection.ProjectPath
 	dto.RailSectionKey = railSection.Key
 	return accepted, sessionStateReportApplied(input, projected.Session), projected.LastEventUnixMS, dto, nil
 }

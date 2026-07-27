@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useExternalStoreSnapshot } from "@tutti-os/ui-react-hooks";
 import {
   acquireBrowserNodeWebviewController,
@@ -46,6 +46,12 @@ export function useBrowserNodeWebview({
   webviewPartition: string;
   webviewSrc: string;
 } {
+  const onGuestInteractionRef = useRef(onGuestInteraction);
+  onGuestInteractionRef.current = onGuestInteraction;
+  const stableOnGuestInteraction = useCallback(() => {
+    onGuestInteractionRef.current?.();
+  }, []);
+
   const controller = useMemo(
     () =>
       acquireBrowserNodeWebviewController({
@@ -55,7 +61,7 @@ export function useBrowserNodeWebview({
         lifecycle,
         navigationPolicy,
         nodeId,
-        onGuestInteraction,
+        onGuestInteraction: stableOnGuestInteraction,
         profileId,
         sessionMode,
         sessionPartition
@@ -67,7 +73,7 @@ export function useBrowserNodeWebview({
       lifecycle,
       navigationPolicy,
       nodeId,
-      onGuestInteraction,
+      stableOnGuestInteraction,
       profileId,
       sessionMode,
       sessionPartition
@@ -90,7 +96,6 @@ export function useBrowserNodeWebview({
     lifecycle,
     navigationPolicy,
     nodeId,
-    onGuestInteraction,
     profileId,
     sessionMode,
     sessionPartition

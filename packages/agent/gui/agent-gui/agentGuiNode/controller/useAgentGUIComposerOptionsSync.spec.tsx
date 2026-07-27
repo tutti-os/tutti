@@ -1,8 +1,4 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import {
-  createAgentSessionEngine,
-  type AgentSessionEngine
-} from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentGUIProvider, AgentGUINodeData } from "../../../types";
@@ -19,6 +15,12 @@ describe("useAgentGUIComposerOptionsSync", () => {
     const dataRef = { current: targetData("codex") };
     const selectedTargetRef = { current: composerTarget("codex") };
     const selectedProjectPathRef = { current: "/workspace/project" };
+    const authorityReconcilerRef =
+      createComposerDefaultsAuthorityReconcilerRef();
+    const composerOptionsByTargetKey = {
+      "local:codex": { provider: "codex" },
+      "local:claude-code": { provider: "claude-code" }
+    };
     const { result, rerender } = renderHook(
       ({ provider }) => {
         const target = composerTarget(provider);
@@ -28,7 +30,8 @@ describe("useAgentGUIComposerOptionsSync", () => {
           activeConversationId: null,
           activeConversationIdRef,
           agentActivityRuntime: {
-            getComposerOptions
+            getComposerOptions,
+            getSnapshot: () => ({ composerOptionsByTargetKey })
           } as unknown as AgentActivityRuntime,
           composerTargetData: target,
           conversationFilter: null,
@@ -42,17 +45,12 @@ describe("useAgentGUIComposerOptionsSync", () => {
           isCreatingConversation: false,
           loadDraftComposerOptionsRef: { current: () => {} },
           loadSessionState: vi.fn(),
-          onComposerDefaultsAuthorityReloadedRef:
-            createComposerDefaultsAuthorityReconcilerRef(),
+          onComposerDefaultsAuthorityReloadedRef: authorityReconcilerRef,
           previewMode: false,
           providerComposerOptions: null,
-          reloadSelectedConversation: vi.fn(),
           selectedComposerTargetDataRef: selectedTargetRef,
           selectedProjectPath: "/workspace/project",
           selectedProjectPathRef,
-          sessionEngine: {
-            getSnapshot: () => ({})
-          } as unknown as AgentSessionEngine,
           syncConversationListProjection: vi.fn(async () => {}),
           workspaceId: "workspace-1",
           workspacePath: "/workspace"
@@ -61,8 +59,17 @@ describe("useAgentGUIComposerOptionsSync", () => {
       { initialProps: { provider: "codex" as AgentGUIProvider } }
     );
 
-    await waitFor(() => expect(getComposerOptions).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(getComposerOptions).toHaveBeenCalledTimes(1);
+      expect(
+        authorityReconcilerRef.current.reconcileHomeDefaults
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ agentTargetId: "local:codex" }),
+        composerOptionsByTargetKey["local:codex"]
+      );
+    });
     getComposerOptions.mockClear();
+    vi.mocked(authorityReconcilerRef.current.reconcileHomeDefaults).mockClear();
 
     rerender({ provider: "claude-code" });
 
@@ -73,6 +80,12 @@ describe("useAgentGUIComposerOptionsSync", () => {
         force: undefined,
         provider: "claude-code"
       })
+    );
+    expect(
+      authorityReconcilerRef.current.reconcileHomeDefaults
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ agentTargetId: "local:claude-code" }),
+      composerOptionsByTargetKey["local:claude-code"]
     );
 
     getComposerOptions.mockClear();
@@ -113,7 +126,8 @@ describe("useAgentGUIComposerOptionsSync", () => {
           activeConversationId: null,
           activeConversationIdRef,
           agentActivityRuntime: {
-            getComposerOptions
+            getComposerOptions,
+            getSnapshot: () => ({})
           } as unknown as AgentActivityRuntime,
           composerTargetData: target,
           conversationFilter: null,
@@ -131,13 +145,9 @@ describe("useAgentGUIComposerOptionsSync", () => {
             createComposerDefaultsAuthorityReconcilerRef(),
           previewMode: false,
           providerComposerOptions: null,
-          reloadSelectedConversation: vi.fn(),
           selectedComposerTargetDataRef: selectedTargetRef,
           selectedProjectPath: "/workspace/project",
           selectedProjectPathRef,
-          sessionEngine: {
-            getSnapshot: () => ({})
-          } as unknown as AgentSessionEngine,
           syncConversationListProjection: vi.fn(async () => {}),
           workspaceId: "workspace-1",
           workspacePath: "/workspace"
@@ -160,6 +170,60 @@ describe("useAgentGUIComposerOptionsSync", () => {
         })
       );
     });
+  });
+
+  it("does not force composer options when switching hydrated sessions", async () => {
+    const getComposerOptions = vi.fn(async () => ({}));
+    const data = targetData("codex");
+    const target = composerTarget("codex");
+    const activeConversationIdRef = { current: "session-1" };
+
+    const { rerender } = renderHook(
+      ({ activeConversationId }) => {
+        activeConversationIdRef.current = activeConversationId;
+        return useAgentGUIComposerOptionsSync({
+          activeConversationId,
+          activeConversationIdRef,
+          agentActivityRuntime: {
+            getComposerOptions,
+            getSnapshot: () => ({})
+          } as unknown as AgentActivityRuntime,
+          composerTargetData: target,
+          conversationFilter: null,
+          currentUserId: "user-1",
+          data,
+          dataRef: { current: data },
+          defaultReasoningEffort: null,
+          draftSettingsBySessionIdRef: { current: {} },
+          isComposerHome: false,
+          isComposerHomeRef: { current: false },
+          isCreatingConversation: false,
+          loadDraftComposerOptionsRef: { current: () => {} },
+          loadSessionState: vi.fn(),
+          onComposerDefaultsAuthorityReloadedRef:
+            createComposerDefaultsAuthorityReconcilerRef(),
+          previewMode: false,
+          providerComposerOptions: null,
+          selectedComposerTargetDataRef: { current: target },
+          selectedProjectPath: "/workspace/project",
+          selectedProjectPathRef: { current: "/workspace/project" },
+          syncConversationListProjection: vi.fn(async () => {}),
+          workspaceId: "workspace-1",
+          workspacePath: "/workspace"
+        });
+      },
+      { initialProps: { activeConversationId: "session-1" } }
+    );
+
+    await waitFor(() => expect(getComposerOptions).toHaveBeenCalledTimes(1));
+    getComposerOptions.mockClear();
+
+    rerender({ activeConversationId: "session-2" });
+
+    await waitFor(() => expect(getComposerOptions).toHaveBeenCalledTimes(1));
+    expect(getComposerOptions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ force: undefined })
+    );
   });
 
   it("rereads target authority on invalidation without sending local persistent intent", async () => {
@@ -193,7 +257,8 @@ describe("useAgentGUIComposerOptionsSync", () => {
         activeConversationId: null,
         activeConversationIdRef: { current: null },
         agentActivityRuntime: {
-          getComposerOptions
+          getComposerOptions,
+          getSnapshot: () => ({})
         } as unknown as AgentActivityRuntime,
         composerTargetData: target,
         conversationFilter: null,
@@ -210,13 +275,9 @@ describe("useAgentGUIComposerOptionsSync", () => {
         onComposerDefaultsAuthorityReloadedRef: authorityReconcilerRef,
         previewMode: false,
         providerComposerOptions: null,
-        reloadSelectedConversation: vi.fn(),
         selectedComposerTargetDataRef: { current: target },
         selectedProjectPath: "/workspace/project",
         selectedProjectPathRef: { current: "/workspace/project" },
-        sessionEngine: {
-          getSnapshot: () => ({})
-        } as unknown as AgentSessionEngine,
         syncConversationListProjection: vi.fn(async () => {}),
         workspaceId: "workspace-1",
         workspacePath: "/workspace"
@@ -311,7 +372,8 @@ describe("useAgentGUIComposerOptionsSync", () => {
         activeConversationId: null,
         activeConversationIdRef: { current: null },
         agentActivityRuntime: {
-          getComposerOptions
+          getComposerOptions,
+          getSnapshot: () => ({})
         } as unknown as AgentActivityRuntime,
         composerTargetData: target,
         conversationFilter: null,
@@ -335,13 +397,9 @@ describe("useAgentGUIComposerOptionsSync", () => {
         onComposerDefaultsAuthorityReloadedRef: authorityReconcilerRef,
         previewMode: false,
         providerComposerOptions: null,
-        reloadSelectedConversation: vi.fn(),
         selectedComposerTargetDataRef: { current: target },
         selectedProjectPath: "/workspace/project",
         selectedProjectPathRef: { current: "/workspace/project" },
-        sessionEngine: {
-          getSnapshot: () => ({})
-        } as unknown as AgentSessionEngine,
         syncConversationListProjection: vi.fn(async () => {}),
         workspaceId: "workspace-1",
         workspacePath: "/workspace"
@@ -370,19 +428,13 @@ describe("useAgentGUIComposerOptionsSync", () => {
     const target = composerTarget("opencode");
     const authorityReconcilerRef =
       createComposerDefaultsAuthorityReconcilerRef();
-    const sessionEngine = createAgentSessionEngine({
-      clock: { nowUnixMs: () => 1 },
-      commandPort: { execute: vi.fn() },
-      identity: { origin: "test", workspaceId: "workspace-1" },
-      scheduler: { schedule: () => ({ cancel() {} }) }
-    });
-
     renderHook(() =>
       useAgentGUIComposerOptionsSync({
         activeConversationId: "session-1",
         activeConversationIdRef: { current: "session-1" },
         agentActivityRuntime: {
-          getComposerOptions
+          getComposerOptions,
+          getSnapshot: () => ({})
         } as unknown as AgentActivityRuntime,
         composerTargetData: target,
         conversationFilter: null,
@@ -399,11 +451,9 @@ describe("useAgentGUIComposerOptionsSync", () => {
         onComposerDefaultsAuthorityReloadedRef: authorityReconcilerRef,
         previewMode: false,
         providerComposerOptions: null,
-        reloadSelectedConversation: vi.fn(),
         selectedComposerTargetDataRef: { current: target },
         selectedProjectPath: "/workspace/project",
         selectedProjectPathRef: { current: "/workspace/project" },
-        sessionEngine,
         syncConversationListProjection: vi.fn(async () => {}),
         workspaceId: "workspace-1",
         workspacePath: "/workspace"
@@ -426,6 +476,7 @@ function createComposerDefaultsAuthorityReconcilerRef(): {
         receipt: null,
         settings
       })),
+      reconcileHomeDefaults: vi.fn(),
       reloaded: vi.fn()
     }
   };

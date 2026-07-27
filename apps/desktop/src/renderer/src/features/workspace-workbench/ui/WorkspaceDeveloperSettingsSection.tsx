@@ -36,7 +36,8 @@ import {
   AGENT_QUICK_PROMPT_LIBRARY_FLAG,
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   isFeatureEnabled,
-  LAB_ENABLED_FLAG
+  LAB_ENABLED_FLAG,
+  MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { formatWorkspaceSettingsBytes } from "../services/workspaceSettingsFormat";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
@@ -88,6 +89,10 @@ export function WorkspaceDeveloperSettingsSection() {
     pendingFeatureFlags,
     AGENT_QUICK_PROMPT_LIBRARY_FLAG
   );
+  const mobileRemoteAccessSettingsEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
+  );
   const featureFlagsUpdating =
     desktopPreferencesState.changingFeatureFlags !== null;
   const showAppDeveloperSources =
@@ -129,6 +134,12 @@ export function WorkspaceDeveloperSettingsSection() {
     void settingsService.changeFeatureFlags({
       ...pendingFeatureFlags,
       [LAB_ENABLED_FLAG]: enabled
+    });
+  };
+  const onMobileRemoteAccessSettingsEnabledChange = (enabled: boolean) => {
+    void settingsService.changeFeatureFlags({
+      ...pendingFeatureFlags,
+      [MOBILE_REMOTE_ACCESS_SETTINGS_FLAG]: enabled
     });
   };
   const onReferenceProvenanceFilterEnabledChange = (enabled: boolean) => {
@@ -286,6 +297,27 @@ export function WorkspaceDeveloperSettingsSection() {
           checked={quickPromptLibraryEnabled}
           disabled={featureFlagsUpdating}
           onCheckedChange={onQuickPromptLibraryEnabledChange}
+        />
+      </div>
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.developer.mobileRemoteAccessSettingsLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t(
+              "workspace.settings.developer.mobileRemoteAccessSettingsDescription"
+            )}
+          </p>
+        </div>
+        <Switch
+          aria-label={t(
+            "workspace.settings.developer.mobileRemoteAccessSettingsLabel"
+          )}
+          checked={mobileRemoteAccessSettingsEnabled}
+          disabled={featureFlagsUpdating}
+          onCheckedChange={onMobileRemoteAccessSettingsEnabledChange}
         />
       </div>
 

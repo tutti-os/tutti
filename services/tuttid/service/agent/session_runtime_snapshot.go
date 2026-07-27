@@ -65,7 +65,7 @@ func runtimeContextWithSessionRuntimeSnapshot(
 		"version":              sessionRuntimeSnapshotVersion,
 		"agentTargetId":        strings.TrimSpace(input.AgentTargetID),
 		"harnessAgentTargetId": harnessAgentTargetID,
-		"provider":             agentprovider.Normalize(provider),
+		"provider":             agentprovider.NormalizeOpen(provider),
 		"model":                strings.TrimSpace(value(input.Model)),
 		"modelConfiguration": map[string]any{
 			"source":       configuration.Source,
@@ -159,7 +159,7 @@ func sessionRuntimeSnapshotFromContext(runtimeContext map[string]any) (sessionRu
 		Version:                  int(version),
 		AgentTargetID:            snapshotString(payload["agentTargetId"]),
 		HarnessAgentTargetID:     snapshotString(payload["harnessAgentTargetId"]),
-		Provider:                 agentprovider.Normalize(snapshotString(payload["provider"])),
+		Provider:                 agentprovider.NormalizeOpen(snapshotString(payload["provider"])),
 		Model:                    snapshotString(payload["model"]),
 		ModelConfigurationSource: snapshotString(configuration["source"]),
 		ModelPlanID:              snapshotString(configuration["modelPlanId"]),
@@ -345,7 +345,7 @@ func (s *Service) applyHarnessFromSessionRuntimeSnapshot(
 		return fmt.Errorf("%w: harness launch reference is invalid", ErrSessionRuntimeSnapshotUnavailable)
 	}
 	provider, _ := providerTargetRef["provider"].(string)
-	if agentprovider.Normalize(provider) != snapshot.Provider {
+	if agentprovider.NormalizeOpen(provider) != snapshot.Provider {
 		return fmt.Errorf("%w: harness provider does not match", ErrSessionRuntimeSnapshotUnavailable)
 	}
 	input.HarnessAgentTargetID = snapshot.HarnessAgentTargetID

@@ -1,0 +1,19 @@
+{
+  "name": "@tutti-os/fixture-workspace-file-manager-external-vite",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "test": "pnpm --filter @tutti-os/workspace-file-manager build && node ./vite-dev-assets.test.mjs"
+  },
+  "dependencies": {
+    "@tutti-os/workspace-file-manager": "workspace:*",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "valtio": "^2.3.2"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
+}

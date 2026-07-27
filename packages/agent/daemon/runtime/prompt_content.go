@@ -367,5 +367,16 @@ func acpPromptImageSupported(raw json.RawMessage) bool {
 	}
 	return truthyNested(result, "promptCapabilities", "image") ||
 		truthyNested(result, "agentCapabilities", "promptImage") ||
-		truthyNested(result, "agentCapabilities", "image")
+		truthyNested(result, "agentCapabilities", "image") ||
+		acpAgentCapabilitiesPromptImageSupported(result)
+}
+
+// acpAgentCapabilitiesPromptImageSupported reads the standard ACP initialize
+// shape: agentCapabilities.promptCapabilities.image.
+func acpAgentCapabilitiesPromptImageSupported(result map[string]any) bool {
+	agentCapabilities, ok := result["agentCapabilities"].(map[string]any)
+	if !ok {
+		return false
+	}
+	return truthyNested(agentCapabilities, "promptCapabilities", "image")
 }

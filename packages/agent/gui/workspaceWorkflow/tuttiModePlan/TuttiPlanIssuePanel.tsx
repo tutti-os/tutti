@@ -322,7 +322,7 @@ function TaskStructureChips({
       ) : null}
       {dependencies.length > 0 ? (
         <span
-          className="min-w-0 truncate rounded-full border border-border/70 px-1.5 text-[10px] leading-4 text-muted-foreground"
+          className="min-w-0 truncate rounded-full border border-[var(--line-2)] px-1.5 text-[10px] leading-4 text-muted-foreground"
           title={dependencies.join(", ")}
         >
           {labels.dependencies}: {dependencies.join(", ")}
@@ -423,7 +423,7 @@ function TuttiPlanIssueBoard({
           return (
             <div
               key={status}
-              className="min-h-[220px] rounded-lg border border-border/70 bg-muted/30 px-2 py-2"
+              className="min-h-[220px] rounded-lg border border-[var(--line-2)] bg-muted/30 px-2 py-2"
               data-testid={`tutti-plan-issue-column-${status}`}
             >
               <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -514,12 +514,12 @@ function TuttiPlanIssueList({
     ? groupTuttiPlanIssueTasksIntoStages(issue.tasks)
     : [{ kind: "sequential" as const, tasks: [...issue.tasks] }];
   return (
-    <div className="overflow-hidden rounded-lg border border-border/70">
+    <div className="overflow-hidden rounded-lg border border-[var(--line-2)]">
       {stages.map((stage, index) => (
         <div key={`stage-${index}`}>
           {showStages ? (
             <div
-              className="border-b border-border/70 bg-muted/40 px-3 py-1 text-[10px] font-medium text-muted-foreground"
+              className="border-b border-[var(--line-2)] bg-muted/40 px-3 py-1 text-[10px] font-medium text-muted-foreground"
               data-testid={`tutti-plan-issue-stage-${stage.kind}`}
             >
               {stage.kind === "parallel"
@@ -540,7 +540,7 @@ function TuttiPlanIssueList({
                 tabIndex={openable ? 0 : undefined}
                 data-testid={`tutti-plan-issue-row-${task.taskId}`}
                 className={cn(
-                  "flex items-start justify-between gap-3 border-b border-border/70 px-3 py-2 last:border-b-0",
+                  "flex items-start justify-between gap-3 border-b border-[var(--line-2)] px-3 py-2 last:border-b-0",
                   openable &&
                     "cursor-pointer transition-colors hover:bg-muted/40"
                 )}

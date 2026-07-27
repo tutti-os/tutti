@@ -87,10 +87,9 @@ export interface IWorkspaceModelPlansController {
   cancelDeletePlan(): void;
   cancelDraft(): void;
   confirmDeletePlan(planID: string): Promise<void>;
-  detectDraft(): Promise<void>;
+  detectPlan(planID: string): Promise<void>;
   duplicatePlan(planID: string): Promise<void>;
   fetchDraftModels(): Promise<void>;
-  launchFirstUse(planID: string, agentTargetID: string): Promise<void>;
   refresh(): Promise<void>;
   refreshPlans(): Promise<void>;
   requestDeletePlan(planID: string): Promise<void>;

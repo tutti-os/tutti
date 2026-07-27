@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
@@ -69,6 +70,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		BrowserUse:                 request.Body.BrowserUse,
 		ReasoningEffort:            request.Body.ReasoningEffort,
 		RuntimeContext:             createSessionRuntimeContext(request.Body.NoProject),
+		RailPlacement:              railPlacementFromGenerated(request.Body.RailPlacement),
 		Speed:                      request.Body.Speed,
 		Title:                      request.Body.Title,
 		Visible:                    request.Body.Visible,
@@ -100,6 +102,18 @@ func tuttiModeActivationIntentFromGenerated(input *tuttigenerated.TuttiModeActiv
 		Source:                 string(input.Source),
 		OrchestrationIntensity: input.OrchestrationIntensity,
 	}, nil
+}
+
+func railPlacementFromGenerated(placement *tuttigenerated.WorkspaceAgentRailPlacement) *agenthost.RailPlacement {
+	if placement == nil {
+		return nil
+	}
+	return &agenthost.RailPlacement{
+		Version:     int(placement.Version),
+		Kind:        agenthost.RailPlacementKind(placement.Kind),
+		ProjectPath: stringPtrValue(placement.ProjectPath),
+		SectionKey:  placement.SectionKey,
+	}
 }
 
 func createSessionRuntimeContext(noProject *bool) map[string]any {

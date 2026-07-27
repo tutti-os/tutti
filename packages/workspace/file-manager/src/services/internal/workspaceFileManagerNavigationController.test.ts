@@ -8,6 +8,48 @@ import type {
 } from "../workspaceFileManagerTypes.ts";
 import type { WorkspaceFileManagerHost } from "../workspaceFileManagerHost.interface.ts";
 
+test("same-path concurrent loads share one host request and keep non-empty entries", async () => {
+  const store = createTestStore();
+  store.root = "/workspace";
+  store.currentDirectoryPath = "/workspace";
+  let calls = 0;
+  const slow =
+    createDeferred<
+      ReturnType<WorkspaceFileManagerHost["listDirectory"]> extends Promise<
+        infer T
+      >
+        ? T
+        : never
+    >();
+
+  const controller = new WorkspaceFileManagerNavigationController({
+    host: {
+      async listDirectory() {
+        calls += 1;
+        return slow.promise;
+      }
+    },
+    resolveErrorMessage: defaultResolveErrorMessage,
+    store
+  });
+
+  const first = controller.loadDirectory("/workspace");
+  const second = controller.loadDirectory("/workspace");
+  assert.equal(calls, 1);
+
+  slow.resolve({
+    directoryPath: "/workspace",
+    entries: [createFileEntry("/workspace/.tsh")],
+    root: "/workspace",
+    workspaceID: "workspace-1"
+  });
+  await Promise.all([first, second]);
+
+  assert.equal(calls, 1);
+  assert.equal(store.entries[0]?.name, ".tsh");
+  assert.equal(store.isLoading, false);
+});
+
 test("latest directory load wins over stale earlier requests", async () => {
   const store = createTestStore();
   store.root = "/Users/demo/project";
@@ -254,6 +296,61 @@ test("revealPath includes hidden entries when target file is hidden", async () =
 
   assert.equal(store.currentDirectoryPath, "/Users/demo/project");
   assert.equal(store.selectedPath, "/Users/demo/project/.env");
+});
+
+test("superseded directory load still clears isLoading when no loads remain", async () => {
+  const store = createTestStore();
+  store.root = "/Users/demo/project";
+  store.currentDirectoryPath = "/Users/demo/project";
+
+  let releaseFirst!: () => void;
+  let releaseSecond!: () => void;
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const secondGate = new Promise<void>((resolve) => {
+    releaseSecond = resolve;
+  });
+
+  const controller = new WorkspaceFileManagerNavigationController({
+    host: {
+      async listDirectory(input) {
+        if (input.path === "/Users/demo/project") {
+          await firstGate;
+          return {
+            directoryPath: input.path,
+            entries: [createFileEntry("/Users/demo/project/a.txt")],
+            root: "/Users/demo/project",
+            workspaceID: input.workspaceID
+          };
+        }
+        await secondGate;
+        return {
+          directoryPath: input.path,
+          entries: [createFileEntry("/Users/demo/project/docs/b.txt")],
+          root: "/Users/demo/project",
+          workspaceID: input.workspaceID
+        };
+      }
+    },
+    resolveErrorMessage: defaultResolveErrorMessage,
+    store
+  });
+
+  const first = controller.loadDirectory("/Users/demo/project");
+  const second = controller.loadDirectory("/Users/demo/project/docs");
+  await Promise.resolve();
+  assert.equal(store.isLoading, true);
+
+  // Winner finishes first; superseded request must not leave isLoading latched.
+  releaseSecond();
+  await second;
+  assert.equal(store.isLoading, false);
+  assert.equal(store.currentDirectoryPath, "/Users/demo/project/docs");
+
+  releaseFirst();
+  await first;
+  assert.equal(store.isLoading, false);
 });
 
 test("loadDirectory failure leaves existing selection in place and surfaces an error", async () => {

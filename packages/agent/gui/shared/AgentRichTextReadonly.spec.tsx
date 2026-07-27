@@ -6,9 +6,14 @@ import {
   registerAgentCustomMentionKind,
   resetAgentCustomMentionKindsForTests
 } from "./agentCustomMentionKinds";
+import {
+  parsedDocumentCacheStatsForTests,
+  resetParsedDocumentCacheForTests
+} from "./parsedDocumentCache";
 
 afterEach(() => {
   resetAgentCustomMentionKindsForTests();
+  resetParsedDocumentCacheForTests();
   vi.restoreAllMocks();
 });
 
@@ -20,6 +25,30 @@ describe("AgentRichTextReadonly", () => {
 
     expect(container).toHaveTextContent("First-frame user message");
     expect(container.querySelector(".ProseMirror")).not.toBeNull();
+  });
+
+  it("reuses the parsed document after a historical message remounts", () => {
+    resetParsedDocumentCacheForTests();
+    const first = render(
+      <AgentRichTextReadonly
+        value="Historical user message"
+        documentCacheKey="message-1:version-1"
+      />
+    );
+    first.unmount();
+
+    render(
+      <AgentRichTextReadonly
+        value="Historical user message"
+        documentCacheKey="message-1:version-1"
+      />
+    );
+
+    expect(parsedDocumentCacheStatsForTests()).toMatchObject({
+      entries: 1,
+      hits: 1,
+      misses: 1
+    });
   });
 
   it("mounts a transcript window without creating editable views or reading DOM selection", () => {

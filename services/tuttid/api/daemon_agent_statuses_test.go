@@ -124,7 +124,7 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 		t.Fatalf("activeAction.log = %#v, want split installer stdout", activeAction.Log)
 	}
 	update := response.Providers[0].Update
-	if update.Capability != tuttigenerated.Supported || update.Source == nil || *update.Source != tuttigenerated.AgentProviderUpdateSourceNpm ||
+	if update.Capability != tuttigenerated.AgentProviderUpdateCapabilitySupported || update.Source == nil || *update.Source != tuttigenerated.AgentProviderUpdateSourceNpm ||
 		update.CurrentVersion == nil || *update.CurrentVersion != "1.0.0" || update.LatestVersion == nil || *update.LatestVersion != "1.1.0" ||
 		update.UpdateAvailable == nil || !*update.UpdateAvailable || update.LastCheckedAt == nil {
 		t.Fatalf("update = %#v", update)

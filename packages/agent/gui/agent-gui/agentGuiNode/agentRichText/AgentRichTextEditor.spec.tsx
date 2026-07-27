@@ -142,6 +142,49 @@ describe("AgentRichTextEditor prompt insertion", () => {
     );
   });
 
+  it("does not mistake an old local value for an echo after the draft scope changes", async () => {
+    const ref = createRef<AgentRichTextEditorHandle>();
+    const props = {
+      disabled: false,
+      onChange: vi.fn(),
+      onSubmit: vi.fn(),
+      placeholder: "Prompt"
+    };
+    const rendered = render(
+      <AgentRichTextEditor
+        ref={ref}
+        contentScopeKey="session-a"
+        value="a"
+        {...props}
+      />
+    );
+    await waitFor(() => expect(ref.current).not.toBeNull());
+
+    act(() => {
+      ref.current?.focusAtEnd();
+      ref.current?.insertPlainTextAtSelection("b");
+      ref.current?.insertPlainTextAtSelection("c");
+    });
+    expect(
+      rendered.container.querySelector('[contenteditable="true"]')
+    ).toHaveTextContent("abc");
+
+    rendered.rerender(
+      <AgentRichTextEditor
+        ref={ref}
+        contentScopeKey="session-b"
+        value="ab"
+        {...props}
+      />
+    );
+
+    await waitFor(() =>
+      expect(
+        rendered.container.querySelector('[contenteditable="true"]')
+      ).toHaveTextContent("ab")
+    );
+  });
+
   it("invalidates layout after a programmatic document update", async () => {
     const onContentLayoutInvalidated = vi.fn();
     const rendered = render(

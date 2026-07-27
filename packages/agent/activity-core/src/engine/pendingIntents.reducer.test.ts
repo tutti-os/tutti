@@ -210,6 +210,12 @@ test("activation intent owns the transport command and confirmation deadline", (
   assert.equal(pendingActivation?.displayPrompt, "/browser");
   assert.equal(pendingActivation?.optimisticTitle, "Review browser flow");
   assert.equal(pendingActivation?.railSectionKey, "project:/workspace");
+  assert.deepEqual(pendingActivation?.railPlacement, {
+    version: 1,
+    kind: "project",
+    projectPath: "/workspace",
+    sectionKey: "project:/workspace"
+  });
   assert.deepEqual(pendingActivation?.content, [
     { type: "text", text: "hello" }
   ]);
@@ -228,6 +234,12 @@ test("activation intent owns the transport command and confirmation deadline", (
       cwd: "/workspace",
       initialContent: [{ type: "text", text: "runtime instructions" }],
       initialDisplayPrompt: "/browser",
+      railPlacement: {
+        version: 1,
+        kind: "project",
+        projectPath: "/workspace",
+        sectionKey: "project:/workspace"
+      },
       submitDiagnostics: { submittedAtUnixMs: 1 },
       mode: "new",
       settings: { model: "model-1" },
@@ -262,6 +274,12 @@ test("control activation can carry content without expecting a Turn", () => {
       initialContent: [{ type: "text", text: "/goal ship it" }],
       initialDisplayPrompt: "/browser",
       initialGoalControl: { action: "set", objective: "ship it" },
+      railPlacement: {
+        version: 1,
+        kind: "project",
+        projectPath: "/workspace",
+        sectionKey: "project:/workspace"
+      },
       submitDiagnostics: { submittedAtUnixMs: 1 },
       mode: "new",
       settings: { model: "model-1" },
@@ -639,6 +657,12 @@ function activation() {
     expiresAtUnixMs: 120_000,
     initialDisplayPrompt: "/browser",
     optimisticTitle: "Review browser flow",
+    railPlacement: {
+      version: 1 as const,
+      kind: "project" as const,
+      projectPath: "/workspace",
+      sectionKey: "project:/workspace"
+    },
     railSectionKey: "project:/workspace",
     runtimeContent: [{ type: "text" as const, text: "runtime instructions" }],
     submitDiagnostics: { submittedAtUnixMs: 1 },

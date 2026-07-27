@@ -1,5 +1,6 @@
 import {
   type AgentActivityInitialGoalControl,
+  type AgentActivityRailPlacement,
   isPendingActivationViable,
   selectLatestActivationForSession,
   selectTuttiModeDraftIsActive,
@@ -33,7 +34,10 @@ import {
   type UseAgentGUINewConversationActivationInput
 } from "./agentGuiNewConversationActivation.types";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
-import { resolveAgentGUIConversationProject } from "../model/agentGuiConversationProjectResolver";
+import {
+  type AgentGUIConversationUserProject,
+  resolveAgentGUIConversationProject
+} from "../model/agentGuiConversationProjectResolver";
 import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
 
 interface ResolvedInitialTuttiModeActivation {
@@ -69,6 +73,34 @@ export function resolveInitialTuttiModeActivation(input: {
 function normalizeOrchestrationIntensity(value: number | null | undefined) {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+export function resolveInitialRailPlacement(input: {
+  selectedProjectPath: string | null | undefined;
+  userProjects: readonly AgentGUIConversationUserProject[];
+}): AgentActivityRailPlacement | null {
+  const selectedProjectPath = input.selectedProjectPath?.trim() ?? "";
+  if (!selectedProjectPath) {
+    return {
+      version: 1,
+      kind: "conversations",
+      sectionKey: "conversations"
+    };
+  }
+  const selectedProject = resolveAgentGUIConversationProject(
+    selectedProjectPath,
+    input.userProjects
+  );
+  const sectionKey = selectedProject?.sectionKey?.trim() ?? "";
+  if (!sectionKey) {
+    return null;
+  }
+  return {
+    version: 1,
+    kind: "project",
+    projectPath: selectedProjectPath,
+    sectionKey
+  };
 }
 
 export function useAgentGUINewConversationActivation(
@@ -160,13 +192,14 @@ export function useAgentGUINewConversationActivation(
             }
       );
       const selectedProjectPath = selectedProjectPathRef.current;
-      const selectedProject = resolveAgentGUIConversationProject(
+      const railPlacement = resolveInitialRailPlacement({
         selectedProjectPath,
-        userProjectsRef.current
-      );
-      const railSectionKey = !selectedProjectPath?.trim()
-        ? "conversations"
-        : selectedProject?.sectionKey?.trim() || undefined;
+        userProjects: userProjectsRef.current
+      });
+      if (railPlacement === null) {
+        return null;
+      }
+      const railSectionKey = railPlacement.sectionKey;
       const initialNodeSettings = readNodeDefaultDraftSettings({
         data: targetData.data,
         defaultReasoningEffort,
@@ -241,7 +274,8 @@ export function useAgentGUINewConversationActivation(
           : {}),
         clientSubmitId: submitTrace.clientSubmitId,
         cwd: selectedProjectPath ?? "",
-        ...(railSectionKey ? { railSectionKey } : {}),
+        railPlacement,
+        railSectionKey,
         initialContent: normalizedInitialContent,
         ...(initialTurnExpected !== undefined ? { initialTurnExpected } : {}),
         ...(initialGoalControl ? { initialGoalControl } : {}),

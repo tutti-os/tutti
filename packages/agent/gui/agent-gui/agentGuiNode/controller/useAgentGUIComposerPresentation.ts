@@ -2,7 +2,7 @@ import type {
   AgentActivityComposerOptions,
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
-import { useMemo, type Dispatch, type SetStateAction } from "react";
+import { useMemo } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type {
   AgentSessionComposerSettings,
@@ -40,10 +40,6 @@ import {
   useStableComposerSettingsVM
 } from "./agentGuiController.stableHelpers";
 
-interface CurrentValue<T> {
-  current: T;
-}
-
 interface UseAgentGUIComposerPresentationInput {
   activeConversation: AgentGUIConversationSummary | null;
   activeConversationId: string | null;
@@ -56,20 +52,11 @@ interface UseAgentGUIComposerPresentationInput {
   data: AgentGUINodeData;
   defaultReasoningEffort: AgentSessionReasoningEffort | null;
   draftSettingsBySessionId: Record<string, AgentSessionComposerSettings>;
-  draftSettingsBySessionIdRef: CurrentValue<
-    Record<string, AgentSessionComposerSettings>
-  >;
-  onDataChangeRef: CurrentValue<
-    (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
-  >;
   providerComposerOptions: AgentActivityComposerOptions | null;
   selectedComposerTargetData: AgentGUIComposerTargetData;
   selectedProjectPath: string | null;
   shouldApplyPreparedProjectSelection: boolean;
   userProjects: readonly AgentGUIConversationUserProject[];
-  setDraftSettingsBySessionId: Dispatch<
-    SetStateAction<Record<string, AgentSessionComposerSettings>>
-  >;
 }
 
 export function useAgentGUIComposerPresentation(
@@ -91,9 +78,8 @@ export function useAgentGUIComposerPresentation(
   // Home defaults additionally refuse bare models the settled provider list
   // rejects (a plan model leaked bare into a provider bucket must fall back
   // to the provider default, not surface as the composer default). The
-  // write-back effect below persists this correction, which also stops the
-  // rejected model from riding along in composer-options requests where the
-  // daemon would echo it back as a selected-model-only bootstrap list.
+  // composer-options authority reconciliation persists the same correction,
+  // which also stops the rejected model from riding along in later requests.
   const targetSafeNodeDefaultSettings = useStableComposerSettings(
     input.activeConversationId === null
       ? enforceComposerModelBindingForHomeDefaults(

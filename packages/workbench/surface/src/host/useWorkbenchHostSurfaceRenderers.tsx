@@ -425,6 +425,12 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     [input.nodeDefinitionByType]
   );
 
+  const resolveWindowHeaderPresentation = useCallback(
+    ({ node }: { node: WorkbenchNode<WorkbenchHostNodeData> }) =>
+      input.nodeDefinitionByType.get(node.data.typeId)?.window?.header,
+    [input.nodeDefinitionByType]
+  );
+
   return {
     captureNodePreviewImage,
     renderBottomChrome,
@@ -439,6 +445,7 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     resolveDockAnchorKey,
     resolveDockPreviewCacheKey,
     resolveFullscreenHeaderMode,
+    resolveWindowHeaderPresentation,
     resolveWindowSurfaceLayer,
     resolveWindowZIndex,
     windowChromeMode

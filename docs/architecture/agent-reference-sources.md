@@ -151,6 +151,20 @@ separator, cached tree depth, or already loaded rows. Search results remain
 ordinary insertable mentions unless the provider explicitly marks them as
 navigable directories.
 
+Directory navigation owns a request lifecycle that is independent from
+keyword-search and root-browse provider queries. Entering another directory,
+going back, changing the query scope, closing the palette, or disposing the
+controller aborts the active directory request and advances its own response
+fence. A directory response applies only while its request id, workspace,
+active file filter, empty query, and browse-stack head still match.
+
+Directory reads do not inherit the short provider-search timeout or its
+partial-result fallback. They remain loading until the provider completes or
+the directory lifecycle explicitly cancels them. A successful authoritative
+empty result is the only state presented as an empty directory; provider
+failure remains an error, and a file provider without `queryDirectory()` fails
+closed instead of falling back to keyword search.
+
 The compact palette browse cache is presentation-only. Every user-opened `@`
 browse paints a matching cached entry synchronously when one exists and always
 starts a provider query in parallel, even while the cached entry is within its
@@ -220,6 +234,23 @@ surface disabled by default. Tutti's legacy boolean capability remains an
 Agent-only adapter over the current Agent directory and does not synthesize
 Member options; collaboration hosts explicitly inject both their enabled
 dimensions and catalogs.
+
+Session mention providers preserve the canonical initiator user id in the
+mention scope. The compact AgentGUI palette groups Session results by that
+initiator through the injected Member catalog; Agent results continue to group
+by the Agent target owner's `parentMemberId`. The matched Member catalog option
+also supplies the Session row's initiator label and avatar so an external
+mention provider does not need to duplicate member presentation in its mention
+payload. A collaboration host also owns the Session row's Agent display label,
+including an owner-qualified label for another member's shared Agent, and must
+project the same label used by its Agent filter option. The host also projects
+the Agent's provider identity separately as `agentProviderId`; AgentGUI resolves
+the provider icon from that identity and never infers it from an
+owner-qualified display label. AgentGUI also resolves that label's structured
+owner and Agent segments from the matching provenance catalog entries. Session
+rows truncate the initiator and Agent owner independently with a minimum visible
+segment, keep the Agent label fully visible, and reserve visible space for the
+Session title.
 
 Catalog option identity is host-owned and normalized at the shared-package
 boundary. Agent options require a durable `agentTargetId`; product-local target

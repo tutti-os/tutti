@@ -240,6 +240,9 @@ function requestActivation(
       intent.initialTurnExpected ?? runtimeContent.length > 0,
     ...pendingActivationGoalControlFields(intent),
     ...pendingActivationRailSectionKeyFields(intent),
+    ...(intent.railPlacement
+      ? { railPlacement: { ...intent.railPlacement } }
+      : {}),
     ...(intent.submitDiagnostics
       ? { submitDiagnostics: { ...intent.submitDiagnostics } }
       : {}),
@@ -300,6 +303,9 @@ function requestActivation(
               : {}),
             ...(displayPrompt ? { initialDisplayPrompt: displayPrompt } : {}),
             ...pendingActivationGoalControlFields(intent),
+            ...(intent.railPlacement
+              ? { railPlacement: { ...intent.railPlacement } }
+              : {}),
             ...(intent.submitDiagnostics
               ? { submitDiagnostics: { ...intent.submitDiagnostics } }
               : {}),

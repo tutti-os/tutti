@@ -6,7 +6,27 @@ import test from "node:test";
 import { inflateRawSync } from "node:zlib";
 import { createDeveloperLogsService } from "./developerLogs.ts";
 import type { DeveloperLogsAgentSessionRecord } from "./developerLogsAgentSessions.ts";
+import { sanitizeDeveloperLogsTransportSnapshot } from "./developerLogsRuntimeContext.ts";
 import { workspaceAppScopeSegment } from "./host/workspaceAppFolderPaths.ts";
+
+test("developer logs runtime context allowlists transport diagnostics", () => {
+  const snapshot = sanitizeDeveloperLogsTransportSnapshot({
+    accessToken: "must-not-export",
+    boundAddr: "127.0.0.1:4545",
+    listenerInfoPath: "/tmp/tuttid.listener.json",
+    pidPath: "/tmp/tuttid.pid",
+    requestedAddr: "127.0.0.1:0",
+    unknownField: "must-not-export-either"
+  });
+
+  assert.deepEqual(snapshot, {
+    boundAddr: "127.0.0.1:4545",
+    listenerInfoPath: "/tmp/tuttid.listener.json",
+    pidPath: "/tmp/tuttid.pid",
+    requestedAddr: "127.0.0.1:0"
+  });
+  assert.equal(JSON.stringify(snapshot).includes("must-not-export"), false);
+});
 
 test("developer logs service summarizes managed desktop and daemon logs", async () => {
   const root = join(tmpdir(), `tutti-developer-logs-${Date.now()}`);

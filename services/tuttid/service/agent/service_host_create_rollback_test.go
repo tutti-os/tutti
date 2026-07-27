@@ -82,7 +82,7 @@ func TestProvisionalRuntimeSessionShellIsHiddenAndUnpublished(t *testing.T) {
 	persisted, err := projection.InitializeRuntimeSession(context.Background(), ProviderRuntimeSession{
 		ID: "session-provisional", WorkspaceID: "ws-1", Provider: "codex",
 		Status: "ready", Visible: true, Provisional: true, CreatedAtUnixMS: 1, UpdatedAtUnixMS: 1,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("InitializeRuntimeSession() error=%v", err)
 	}

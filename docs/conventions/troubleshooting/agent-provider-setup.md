@@ -1138,6 +1138,43 @@ invalid_grant`. Search `tuttid.log` for
   [agentErrorPresentation.ts](../../../packages/agent/gui/shared/agentEnv/agentErrorPresentation.ts)
   [AgentMessageBlock.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentMessageBlock.tsx)
 
+### Model Plan check succeeds but Kimi Claude Code turns wait and then return 401
+
+- Symptom:
+  An Anthropic-protocol Model Plan using
+  `https://api.kimi.com/coding/` passes model discovery/inference checks, but a
+  custom Agent backed by Claude Code stays `running` for roughly three minutes
+  and then appends `Failed to authenticate. API Error: 401`.
+- Quick checks:
+  Confirm the submit claim is `accepted`, the user message exists, and the
+  runtime reached `runtime.turn_goroutine_started`. Inspect only environment
+  variable names and whether each is non-empty, never credential values. If
+  the child has a non-empty `ANTHROPIC_AUTH_TOKEN` but no non-empty
+  `ANTHROPIC_API_KEY`, the plan credential was injected with the wrong auth
+  shape.
+- Root cause:
+  Model Plan detection sends Anthropic requests with `x-api-key`. Runtime
+  preparation previously treated every non-`api.anthropic.com` endpoint as a
+  bearer-token relay and launched Claude Code with `ANTHROPIC_AUTH_TOKEN`.
+  Kimi Coding's Claude Code contract requires `ANTHROPIC_API_KEY`, so the same
+  valid credential passed detection and failed only in the real Agent process.
+- Fix:
+  Keep the existing bearer default for relay endpoints, but classify
+  `api.kimi.com` alongside the official Anthropic endpoint for
+  `ANTHROPIC_API_KEY` injection. Also preserve Claude SDK `assistant.error` and
+  `result.is_error` as failed message/turn state; a result subtype of `success`
+  is not authoritative when either error signal is present.
+- Validation:
+  Run `go test ./packages/agent/runtimeprep ./packages/agent/daemon/runtime`
+  and `pnpm --dir packages/agent/claude-sdk-sidecar test`. Verify a newly
+  created Kimi-backed session has a non-empty `ANTHROPIC_API_KEY`, an empty
+  `ANTHROPIC_AUTH_TOKEN`, and no 401. Existing running sessions retain their
+  launch environment and must be recreated.
+- References:
+  [Kimi Claude Code setup](https://www.kimi.com/code/docs/en/third-party-tools/claude-code.html)
+  [model_endpoint.go](../../../packages/agent/runtimeprep/model_endpoint.go)
+  [messageRouter.ts](../../../packages/agent/claude-sdk-sidecar/src/messageRouter.ts)
+
 ### Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used
 
 - Symptom:

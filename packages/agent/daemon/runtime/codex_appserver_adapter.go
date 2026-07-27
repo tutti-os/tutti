@@ -391,6 +391,26 @@ func NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(
 // provider through the shared app-server adapter with Tutti-branded command,
 // client identity, and auth messaging.
 func NewTuttiAgentAppServerAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *CodexAppServerAdapter {
+	return newTuttiAgentAppServerAdapterWithHostMetadata(transport, host)
+}
+
+// NewTuttiAgentAppServerAdapterWithHostMetadataAndOptions serves the
+// tutti-agent provider through the shared app-server adapter while applying
+// host-owned command execution policy.
+func NewTuttiAgentAppServerAdapterWithHostMetadataAndOptions(
+	transport ProcessTransport,
+	host HostMetadata,
+	options CodexAppServerAdapterOptions,
+) *CodexAppServerAdapter {
+	adapter := newTuttiAgentAppServerAdapterWithHostMetadata(transport, host)
+	adapter.config.commandNetworkAccess = options.CommandNetworkAccess
+	return adapter
+}
+
+func newTuttiAgentAppServerAdapterWithHostMetadata(
+	transport ProcessTransport,
+	host HostMetadata,
+) *CodexAppServerAdapter {
 	descriptor, ok := providerregistry.Find(ProviderTuttiAgent)
 	if !ok {
 		panic("tutti-agent provider descriptor is missing")

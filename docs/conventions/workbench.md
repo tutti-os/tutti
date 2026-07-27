@@ -75,6 +75,14 @@ Rules:
   `getSnapshotNodeState(...)`
 - snapshot sanitizers and session serialization must strip transient runtime
   render data before persistence
+- snapshot serialization must persist `layoutBasis` from the same Workbench
+  state as the frames. On initial restore, map `frame`, `restoreFrame`, space
+  frames, and reusable closed-window frames from that basis into the current
+  safe layout before exposing a restored floating frame
+- keep `layoutBasis` additive within schema version 1. Snapshots that predate it
+  remain valid and use conservative bounds normalization; do not invent a
+  historical surface size because that would turn unknown geometry into a
+  misleading proportional migration
 - adapter-specific durable state should remain behind generic contract fields
   unless the adapter detail is part of the shared snapshot contract
 - desktop-owned workspace Dock retention is product metadata in the workspace

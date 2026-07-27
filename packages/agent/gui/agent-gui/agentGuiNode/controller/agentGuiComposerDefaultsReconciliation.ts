@@ -1,3 +1,4 @@
+import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
@@ -57,6 +58,10 @@ export interface AgentGUIComposerDefaultsAuthorityReconciler {
     target: AgentGUIComposerTargetData,
     settings: AgentSessionComposerSettings
   ): AgentGUIComposerDefaultsAuthorityRead;
+  reconcileHomeDefaults(
+    target: AgentGUIComposerTargetData,
+    options: AgentActivityComposerOptions
+  ): void;
   reloaded(receipt: AgentGUIComposerDefaultsAuthorityReadReceipt | null): void;
 }
 

@@ -115,6 +115,14 @@ They do not look for a legacy binding whose key happens to equal the new Agent
 id. Plan and Agent mutations publish target-scoped configuration invalidation
 for the affected WorkspaceAgent ids.
 
+The daemon composition root must wire both sides of this workspace-scoped
+identity: `AgentSessionService.WorkspaceAgentResolver` resolves composer and
+launch requests through the WorkspaceAgent service, while
+`ActivityProjection.SetWorkspaceAgentTargetResolver` validates persisted
+session targets through the workspace store. Omitting the former turns valid
+composer/create requests into invalid requests; omitting the latter drops a
+successfully created WorkspaceAgent target from the projected session.
+
 Fallback resolution applies only while creating a new session. It does not
 mutate the Agent, and the actual selected Plan/model/revision is persisted in
 the immutable session snapshot. Editing fallback order affects later sessions

@@ -220,15 +220,15 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   );
   const [fileMentionSuggestion, setFileMentionSuggestion] =
     useState<AgentFileMentionSuggestionState | null>(null);
+  const selectedProjectPath =
+    composerSettings.selectedProjectPath?.trim() ?? "";
   const [isSelectedProjectMissing, setIsSelectedProjectMissing] =
-    useScopedProjectMissingState(draftScopeKey);
+    useScopedProjectMissingState(selectedProjectPath);
   const [isSlashStatusPanelOpen, setIsSlashStatusPanelOpen] = useState(false);
   const slashStatusAgentSessionId = slashStatus?.agentSessionId ?? null;
   const previousSlashStatusAgentSessionIdRef = useRef<string | null>(
     slashStatusAgentSessionId
   );
-  const selectedProjectPath =
-    composerSettings.selectedProjectPath?.trim() ?? "";
   const selectedProjectSectionKey =
     composerSettings.selectedProjectSectionKey?.trim() ?? "";
   const previousSelectedProjectPathRef = useRef(selectedProjectPath);
@@ -392,7 +392,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     availableSkills,
     composerSettings,
     // Host-gated product capability: omit or enabled:false must hide Tutti Mode
-    // entries (hero toggle, badge activation, /tutti). Fail closed like other
+    // entries (footer chip, badge activation, /tutti). Fail closed like other
     // unsupported host capabilities — do not treat a missing flag as enabled.
     tuttiModeSupported: capabilityMenuState?.tuttiMode?.enabled === true,
     capabilityControlsReadOnly,

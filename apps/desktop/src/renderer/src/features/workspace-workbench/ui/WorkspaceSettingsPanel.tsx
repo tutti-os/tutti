@@ -93,6 +93,7 @@ import {
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
   LAB_WORKSPACE_AGENTS_FLAG,
+  MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
   resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
@@ -132,6 +133,7 @@ import {
   workspaceWallpaperOptions
 } from "../services/workspaceWallpaper";
 import { WorkspaceModelPlansSection } from "./WorkspaceModelPlansSection";
+import { WorkspaceMobileRemoteSettingsSection } from "./WorkspaceMobileRemoteSettingsSection";
 import {
   workspaceSettingsInputClass,
   workspaceSettingsSelectContentClass,
@@ -600,7 +602,12 @@ export function WorkspaceSettingsPanel({
                 }}
               />
             ) : settingsState.activeSection === "account" ? (
-              <WorkspaceAccountSettingsSection />
+              <WorkspaceAccountSettingsSection
+                featureFlags={
+                  desktopPreferencesState.changingFeatureFlags ??
+                  desktopPreferencesState.featureFlags
+                }
+              />
             ) : settingsState.activeSection === "about" ? (
               <WorkspaceAboutSettingsSection
                 developerLogs={settingsState.developerLogs}
@@ -2771,9 +2778,17 @@ function WorkspaceGeneralSettingsSection({
   );
 }
 
-function WorkspaceAccountSettingsSection() {
+function WorkspaceAccountSettingsSection({
+  featureFlags
+}: {
+  featureFlags: DesktopFeatureFlags;
+}) {
   const { t } = useTranslation();
   const { service: accountService, state: accountState } = useAccountService();
+  const mobileRemoteAccessSettingsEnabled = isFeatureEnabled(
+    featureFlags,
+    MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
+  );
 
   useEffect(() => {
     void accountService.refreshUserInfo();
@@ -2873,6 +2888,9 @@ function WorkspaceAccountSettingsSection() {
         <p className="m-0 rounded-[6px] bg-[color-mix(in_srgb,var(--state-warning)_16%,transparent)] px-3 py-2 text-[13px] text-[var(--text-primary)]">
           {accountState.error}
         </p>
+      ) : null}
+      {user && mobileRemoteAccessSettingsEnabled ? (
+        <WorkspaceMobileRemoteSettingsSection />
       ) : null}
     </div>
   );

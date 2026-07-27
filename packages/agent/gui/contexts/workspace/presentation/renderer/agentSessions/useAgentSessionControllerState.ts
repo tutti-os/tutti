@@ -1,5 +1,8 @@
 import { useCallback } from "react";
-import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
+import type {
+  AgentActivityMessage,
+  AgentActivitySessionMessageWindow
+} from "@tutti-os/agent-activity-core";
 import { useAgentSessionPagingState } from "./useAgentSessionPagingState";
 import {
   useAgentSessionTransport,
@@ -8,7 +11,8 @@ import {
 
 export function useAgentSessionControllerState(
   activeRef: AgentSessionViewRef,
-  canonicalMessages: readonly AgentActivityMessage[] = []
+  canonicalMessages: readonly AgentActivityMessage[] = [],
+  canonicalWindow: AgentActivitySessionMessageWindow | null = null
 ) {
   const transport = useAgentSessionTransport();
   const paging = useAgentSessionPagingState();
@@ -53,15 +57,19 @@ export function useAgentSessionControllerState(
   void transport.entries;
   void paging.entries;
   const storedActiveView = getAgentSessionView(activeRef);
-  const canonicalOldestVersion = oldestVersion(canonicalMessages);
+  const canonicalOldestVersion =
+    canonicalWindow?.oldestLoadedVersion ?? oldestVersion(canonicalMessages);
+  const storedBoundaryIsAtLeastAsComplete =
+    storedActiveView !== null &&
+    storedActiveView.oldestLoadedVersion !== null &&
+    (canonicalOldestVersion === null ||
+      storedActiveView.oldestLoadedVersion <= canonicalOldestVersion);
   const activeSessionView = storedActiveView
     ? {
         ...storedActiveView,
-        hasOlderMessages:
-          storedActiveView.hasOlderMessages ||
-          (storedActiveView.oldestLoadedVersion === null &&
-            canonicalOldestVersion !== null &&
-            canonicalOldestVersion > 1),
+        hasOlderMessages: storedBoundaryIsAtLeastAsComplete
+          ? storedActiveView.hasOlderMessages
+          : (canonicalWindow?.hasOlderMessages ?? false),
         oldestLoadedVersion:
           storedActiveView.oldestLoadedVersion === null
             ? canonicalOldestVersion
@@ -76,7 +84,7 @@ export function useAgentSessionControllerState(
       ? null
       : {
           error: null,
-          hasOlderMessages: canonicalOldestVersion > 1,
+          hasOlderMessages: canonicalWindow?.hasOlderMessages ?? false,
           isLoadingMessages: false,
           isLoadingOlderMessages: false,
           olderMessages: [],

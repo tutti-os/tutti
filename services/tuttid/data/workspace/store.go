@@ -113,13 +113,6 @@ type ModelPlansStore interface {
 	PutModelPlan(context.Context, modelplanbiz.Plan) error
 }
 
-type ModelPlanFirstUseStore interface {
-	DeleteModelPlanFirstUseCandidate(context.Context, string, string) error
-	GetModelPlanFirstUseCandidate(context.Context, string, string) (modelplanbiz.FirstUseCandidate, error)
-	ListModelPlanFirstUseCandidates(context.Context) ([]modelplanbiz.FirstUseCandidate, error)
-	PutModelPlanFirstUseCandidate(context.Context, modelplanbiz.FirstUseCandidate) error
-}
-
 type AgentModelBindingsStore interface {
 	DeleteAgentModelBinding(context.Context, string, string) error
 	GetAgentModelBinding(context.Context, string, string) (modelbindingbiz.Binding, error)

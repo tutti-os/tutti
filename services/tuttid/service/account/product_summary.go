@@ -21,6 +21,7 @@ const (
 type ProductSummary struct {
 	User                      *authbridge.UserInfo
 	Membership                *MembershipSummary
+	MembershipAccess          commerce.MembershipAccessState
 	Credits                   *CreditsSummary
 	RegistrationCreditsReward *RegistrationCreditsReward
 	PartialError              *ProductSummaryPartialError
@@ -40,30 +41,36 @@ type ProductSummaryLinks struct {
 
 func (s *Service) productSummary(ctx context.Context) (ProductSummary, error) {
 	links := s.productSummaryLinks()
+	emptySummary := ProductSummary{
+		MembershipAccess: commerce.MembershipAccessUnknown,
+		Links:            links,
+	}
 	client, err := s.authClient()
 	if err != nil {
-		return ProductSummary{Links: links}, err
+		return emptySummary, err
 	}
 	session, err := client.ReadSession()
 	if err != nil || session == nil {
-		return ProductSummary{Links: links}, err
+		return emptySummary, err
 	}
 	user, err := client.GetUserInfo(ctx)
 	if err != nil {
-		return ProductSummary{Links: links}, err
+		return emptySummary, err
 	}
 	if user == nil {
-		return ProductSummary{Links: links}, nil
+		return emptySummary, nil
 	}
 
 	commerceService, err := s.commerceService()
 	if err != nil {
-		return ProductSummary{User: user, Links: links}, err
+		emptySummary.User = user
+		return emptySummary, err
 	}
 	remote := commerceService.ProductSummary(ctx, user.UserID)
 	summary := ProductSummary{
 		User:                      user,
 		Membership:                remote.Membership,
+		MembershipAccess:          remote.MembershipAccess,
 		Credits:                   remote.Credits,
 		RegistrationCreditsReward: remote.RegistrationCreditsReward,
 		PartialError:              remote.PartialError,

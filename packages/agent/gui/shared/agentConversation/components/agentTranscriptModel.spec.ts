@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { AgentTranscriptPresentationKind } from "../contracts/agentTranscriptPresentation";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
 import {
+  attachLeadingToolRowsToFollowingMessages,
   buildAgentTranscriptTurnGroups,
+  findParticipantTurnDividerRowIndexes,
   findTurnDividerRowIndexes,
   transcriptRowKey
 } from "./agentTranscriptModel";
@@ -114,3 +116,102 @@ function goalControlRow(): AgentTranscriptRowVM {
     occurredAtUnixMs: 2
   };
 }
+
+function userRow(turnId: string): AgentTranscriptRowVM {
+  return {
+    kind: "message",
+    id: `row:user:${turnId}`,
+    turnId,
+    speaker: "user",
+    messages: [
+      {
+        kind: "message-content",
+        id: `message:user:${turnId}`,
+        turnId,
+        body: "user question",
+        presentationKind: "content",
+        occurredAtUnixMs: 1
+      }
+    ],
+    thinking: [],
+    occurredAtUnixMs: 1
+  };
+}
+
+function toolGroupRow(id: string, turnId: string): AgentTranscriptRowVM {
+  return {
+    kind: "tool-group",
+    id: `tool-group:${id}`,
+    turnId,
+    grouped: true,
+    calls: [],
+    entries: [],
+    occurredAtUnixMs: 1
+  };
+}
+
+describe("findParticipantTurnDividerRowIndexes", () => {
+  it("marks every user message after the first row as a turn divider", () => {
+    expect([
+      ...findParticipantTurnDividerRowIndexes([
+        userRow("turn-1"),
+        row("turn-1"),
+        userRow("turn-2"),
+        row("turn-2")
+      ])
+    ]).toEqual([2]);
+  });
+
+  it("marks a user message that follows another user message", () => {
+    expect([
+      ...findParticipantTurnDividerRowIndexes([
+        userRow("turn-1"),
+        userRow("turn-2")
+      ])
+    ]).toEqual([1]);
+  });
+
+  it("never marks the first row", () => {
+    expect([
+      ...findParticipantTurnDividerRowIndexes([userRow("turn-1")])
+    ]).toEqual([]);
+  });
+});
+
+describe("attachLeadingToolRowsToFollowingMessages", () => {
+  it("moves tool-group rows into the assistant message that follows them", () => {
+    const rows = [
+      row("turn-1"),
+      toolGroupRow("a", "turn-1"),
+      toolGroupRow("b", "turn-1"),
+      row("turn-1")
+    ];
+    const result = attachLeadingToolRowsToFollowingMessages(rows);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]?.kind).toBe("message");
+    const merged = result[1];
+    expect(merged?.kind).toBe("message");
+    if (merged?.kind !== "message") {
+      throw new Error("Expected a message row");
+    }
+    expect(merged.leadingToolRows?.map((toolRow) => toolRow.id)).toEqual([
+      "tool-group:a",
+      "tool-group:b"
+    ]);
+  });
+
+  it("does not attach tool-group rows to user messages", () => {
+    const rows = [toolGroupRow("a", "turn-1"), userRow("turn-1")];
+    const result = attachLeadingToolRowsToFollowingMessages(rows);
+
+    expect(result.map((item) => item.kind)).toEqual(["tool-group", "message"]);
+  });
+
+  it("keeps trailing tool-group rows standalone", () => {
+    const rows = [row("turn-1"), toolGroupRow("a", "turn-1")];
+    const result = attachLeadingToolRowsToFollowingMessages(rows);
+
+    expect(result.map((item) => item.kind)).toEqual(["message", "tool-group"]);
+  });
+});

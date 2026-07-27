@@ -1348,6 +1348,38 @@ func TestCodexAppServerAdapterStartAppliesSettingsAndPermissionMode(t *testing.T
 func TestCodexAppServerAdapterCommandNetworkAccessPreservesPermissionModes(t *testing.T) {
 	t.Parallel()
 
+	testAppServerAdapterCommandNetworkAccessPreservesPermissionModes(
+		t,
+		func(transport ProcessTransport) *CodexAppServerAdapter {
+			return NewCodexAppServerAdapterWithHostMetadataAndOptions(
+				transport,
+				LegacyHostMetadata(),
+				CodexAppServerAdapterOptions{CommandNetworkAccess: true},
+			)
+		},
+	)
+}
+
+func TestTuttiAgentAppServerAdapterCommandNetworkAccessPreservesPermissionModes(t *testing.T) {
+	t.Parallel()
+
+	testAppServerAdapterCommandNetworkAccessPreservesPermissionModes(
+		t,
+		func(transport ProcessTransport) *CodexAppServerAdapter {
+			return NewTuttiAgentAppServerAdapterWithHostMetadataAndOptions(
+				transport,
+				LegacyHostMetadata(),
+				CodexAppServerAdapterOptions{CommandNetworkAccess: true},
+			)
+		},
+	)
+}
+
+func testAppServerAdapterCommandNetworkAccessPreservesPermissionModes(
+	t *testing.T,
+	newAdapter func(ProcessTransport) *CodexAppServerAdapter,
+) {
+	t.Helper()
 	tests := []struct {
 		mode              string
 		threadSandbox     string
@@ -1381,11 +1413,7 @@ func TestCodexAppServerAdapterCommandNetworkAccessPreservesPermissionModes(t *te
 			t.Parallel()
 
 			transport := newScriptedAppServerTransport()
-			adapter := NewCodexAppServerAdapterWithHostMetadataAndOptions(
-				transport,
-				LegacyHostMetadata(),
-				CodexAppServerAdapterOptions{CommandNetworkAccess: true},
-			)
+			adapter := newAdapter(transport)
 			session := testAppServerSession()
 			session.PermissionModeID = test.mode
 			session.Settings = &SessionSettings{PermissionModeID: test.mode}
@@ -1428,6 +1456,28 @@ func TestCodexAppServerAdapterDefaultCommandNetworkAccessRemainsDisabled(t *test
 
 	transport := newScriptedAppServerTransport()
 	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	session.PermissionModeID = "read-only"
+	session.Settings = &SessionSettings{PermissionModeID: "read-only"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("go"), "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	policy, _ := turnStart["sandboxPolicy"].(map[string]any)
+	if _, ok := policy["networkAccess"]; ok {
+		t.Fatalf("turn/start sandboxPolicy = %#v, want legacy network default", policy)
+	}
+}
+
+func TestTuttiAgentAppServerAdapterDefaultCommandNetworkAccessRemainsDisabled(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(transport, LegacyHostMetadata())
 	session := testAppServerSession()
 	session.PermissionModeID = "read-only"
 	session.Settings = &SessionSettings{PermissionModeID: "read-only"}

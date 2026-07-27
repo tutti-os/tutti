@@ -278,14 +278,22 @@
   workspace, Session, and `clientSubmitId`. Compare its immutable
   `canonical_turn_id` with `tutti_mode_turn_snapshots.turn_id` and with the
   Turn found by durable message provenance for that `clientSubmitId`. Do not
-  change the claim to a runtime-returned mismatched Turn ID.
+  change the claim to a runtime-returned mismatched Turn ID. If the barrier
+  reports `conflicts with durable submit provenance`, compare the JSON-encoded
+  existing and projected message payloads as well as their Go container types.
+  Identical JSON with `[]any` on the SQLite-decoded side and
+  `[]map[string]any` on the fresh-report side is an in-memory normalization
+  defect, not conflicting submit evidence.
 - **Root cause:** Provider handoff crossed an ambiguity boundary: the daemon
   reserved and snapshotted a canonical Turn before dispatch, but did not
   durably confirm the exact accepted Turn. The ordinary reporter may have
   persisted its Session/Turn state while the atomic client-submit message
   barrier failed, or the process may have stopped around that barrier. A host
   wired only to the compatibility `ActivityReporter` cannot satisfy the
-  runtime's required `DurableActivityReporter` contract. Retrying the provider
+  runtime's required `DurableActivityReporter` contract. The barrier can also
+  falsely reject an ordinary message replay when a fresh JSON payload retains
+  typed Go slices but the same payload decoded from SQLite uses `[]any`, and
+  idempotency compares those concrete types directly. Retrying the provider
   call would risk duplicate work.
 - **Fix:** Preserve the prepared submit claim, Tutti snapshot, activation, and
   Session. Ensure the host supplies `DurableActivityReporter`; decorators
@@ -293,6 +301,10 @@
   probing an optional capability. Its provenance barrier must run outside the
   Session lifecycle lock, after earlier same-FIFO reports, and atomically write
   the stable user message against an existing Turn.
+  Normalize every incoming message payload through the durable JSON
+  representation before projection, merge, and idempotency comparison so
+  fresh reports and SQLite-decoded rows share one in-memory shape. Do not
+  special-case individual typed slices or bypass genuine payload conflicts.
   Reconcile only from exact durable `clientSubmitId` provenance. If it resolves
   to the reserved Turn, idempotently accept the snapshot and claim; if it is
   absent or resolves elsewhere, keep delivery unknown and never re-dispatch
@@ -302,6 +314,9 @@
   and claim acceptance failures, message-write rollback, process interruption
   after snapshot binding, reporter re-entry, duplicate replay without a new
   message version, and multiple guidance submissions sharing one active Turn.
+  Include an ordinary-message-first replay whose payload contains nested typed
+  slices and integer values; assert the provenance barrier reuses the existing
+  message version while a real content change still conflicts.
   Assert the unknown paths execute the provider zero additional times and never
   close the provisional Session or delete its activation.
 - **References:**

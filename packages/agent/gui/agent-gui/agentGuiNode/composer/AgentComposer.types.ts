@@ -183,8 +183,6 @@ export interface AgentComposerProps {
     tuttiBudgetAgentCountCost: string;
     tuttiBudgetAgentCountBalance: string;
     tuttiBudgetAgentCountPowerful: string;
-    tuttiBudgetConfirm: string;
-    tuttiBudgetCancel: string;
     planModeDescription?: string;
     planModeOnLabel: string;
     planModeOffLabel: string;

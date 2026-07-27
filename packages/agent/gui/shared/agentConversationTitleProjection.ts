@@ -8,8 +8,7 @@ import {
 import {
   extractRichTextLinksFromContent,
   extractRichTextMentionsFromContent,
-  removeRichTextMentionFromContent,
-  type RichTextMentionRef
+  removeRichTextMentionFromContent
 } from "@tutti-os/ui-rich-text/core";
 import { translateInUiLanguage } from "../i18n/runtime.ts";
 import { resolveAgentGUIProviderCatalogIdentity } from "../providerIdentityCatalog.ts";
@@ -25,10 +24,6 @@ export type AgentGUIConversationTitleLeadingMentionKind =
   | "file"
   | "session"
   | "task";
-export type AgentGUIConversationTitleIconMentionKind = Extract<
-  AgentGUIConversationTitleLeadingMentionKind,
-  "file" | "task"
->;
 
 const AGENT_GUI_UNRESOLVED_PROVIDER: AgentGUIResolvedProvider = "unknown";
 const AGENT_GUI_MAX_OPTIMISTIC_TITLE_CODE_POINTS = 120;
@@ -147,7 +142,8 @@ export function resolveAgentGUIConversationTitleDisplayPrompt(input: {
   const prompt = resolveAgentGUIConversationTitlePrompt(input);
   if (
     !prompt ||
-    !isAgentGUIConversationTitleDisplayPromptEligible(prompt) ||
+    (extractRichTextMentionsFromContent(prompt).length === 0 &&
+      extractRichTextLinksFromContent(prompt).length === 0) ||
     !agentGUITitleMatchesDerivedPrompt(
       input.title,
       prompt,
@@ -156,7 +152,10 @@ export function resolveAgentGUIConversationTitleDisplayPrompt(input: {
   ) {
     return null;
   }
-  return prompt;
+  // Titles are presentation text, not an interactive rich-text surface. Keep
+  // the mention label but discard its Markdown href before handing it to the
+  // header/rail consumers so mention SVGs cannot leak into the chrome.
+  return normalizeAgentTitleText(prompt);
 }
 
 export function resolveAgentGUIConversationBrowserFreeTitle(input: {
@@ -189,77 +188,9 @@ export function resolveAgentGUIConversationBrowserFreeTitle(input: {
 }
 
 export function resolveAgentGUIConversationTitleLeadingMentionKind(
-  displayPrompt: string | null | undefined
+  _displayPrompt: string | null | undefined
 ): AgentGUIConversationTitleLeadingMentionKind | null {
-  const firstMention = extractRichTextMentionsFromContent(displayPrompt)[0];
-  const mentionKind = firstMention
-    ? agentGUIConversationTitleMentionKind(firstMention)
-    : null;
-  if (isAgentGUIConversationTitleIconMentionKind(mentionKind)) {
-    return mentionKind;
-  }
-  if (firstMention) return null;
-  return extractRichTextLinksFromContent(displayPrompt).length > 0
-    ? "file"
-    : null;
-}
-
-export function isAgentGUIConversationTitleIconMentionKind(
-  kind: AgentGUIConversationTitleLeadingMentionKind | null | undefined
-): kind is AgentGUIConversationTitleIconMentionKind {
-  return kind === "file" || kind === "task";
-}
-
-function agentGUIConversationTitleMentionKind(
-  mention: RichTextMentionRef
-): AgentGUIConversationTitleLeadingMentionKind | null {
-  if (
-    mention.providerId === "agent-session" ||
-    mention.providerId === "session"
-  ) {
-    return "session";
-  }
-  if (
-    mention.providerId === "workspace-issue" ||
-    mention.providerId === "issue" ||
-    mention.providerId === "task"
-  ) {
-    return "task";
-  }
-  if (mention.providerId === "workspace-app") return "app";
-  if (mention.providerId === "agent-target") return "agent";
-  if (mention.providerId === "workspace-reference") {
-    return mention.scope?.source === "task"
-      ? "task"
-      : mention.scope?.source === "app"
-        ? "app"
-        : null;
-  }
   return null;
-}
-
-function isAgentGUIConversationTitleDisplayPromptEligible(
-  displayPrompt: string
-): boolean {
-  const mentions = extractRichTextMentionsFromContent(displayPrompt);
-  if (
-    mentions.some(
-      (mention) => {
-        if (mention.providerId === "browser-element") {
-          return false;
-        }
-        return !isAgentGUIConversationTitleIconMentionKind(
-          agentGUIConversationTitleMentionKind(mention)
-        );
-      }
-    )
-  ) {
-    return false;
-  }
-  return (
-    mentions.length > 0 ||
-    extractRichTextLinksFromContent(displayPrompt).length > 0
-  );
 }
 
 function resolveAgentGUIConversationTitlePrompt(input: {

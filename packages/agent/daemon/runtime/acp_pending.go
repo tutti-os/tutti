@@ -64,6 +64,81 @@ func acpInteractiveResponseResult(action string, optionID string, payload map[st
 	return map[string]any{"outcome": outcome}
 }
 
+// ACP has no dedicated structured-question response. Providers such as Kimi
+// Code bridge AskUserQuestion through session/request_permission, where the
+// only valid affirmative response is a selected provider option ID. AgentGUI
+// submits the selected label in its canonical answer payload, so translate that
+// label back to the opaque option ID before replying to the provider.
+func acpAskUserPermissionOptionID(
+	pending *pendingInteractiveRequest,
+	optionID string,
+	action string,
+	payload map[string]any,
+) (string, bool) {
+	if pending == nil || pending.kind != "ask-user" || len(pending.options) == 0 {
+		return "", false
+	}
+	if resolvedOptionID, ok := pending.resolvePermissionOptionID(optionID); ok {
+		return resolvedOptionID, true
+	}
+	if answer := acpAskUserFirstAnswer(payload); answer != "" {
+		for _, option := range pending.options {
+			resolvedOptionID := firstNonEmpty(asString(option["optionId"]), asString(option["id"]))
+			if resolvedOptionID == "" {
+				continue
+			}
+			if answer == firstNonEmpty(asString(option["name"]), asString(option["label"])) {
+				return resolvedOptionID, true
+			}
+		}
+	}
+	switch normalizePermissionOptionToken(action) {
+	case "cancel", "cancelled", "dismiss", "dismissed", "skip":
+		return pending.resolvePermissionOptionID("deny")
+	default:
+		return "", false
+	}
+}
+
+func acpAskUserFirstAnswer(payload map[string]any) string {
+	if payload == nil {
+		return ""
+	}
+	answersByQuestionID := payloadObject(payload["answersByQuestionId"])
+	if len(answersByQuestionID) == 1 {
+		for _, answer := range answersByQuestionID {
+			return acpAskUserAnswerText(answer)
+		}
+	}
+	switch answers := payload["answers"].(type) {
+	case []any:
+		if len(answers) > 0 {
+			return acpAskUserAnswerText(answers[0])
+		}
+	case []string:
+		if len(answers) > 0 {
+			return strings.TrimSpace(answers[0])
+		}
+	}
+	return ""
+}
+
+func acpAskUserAnswerText(value any) string {
+	switch answer := value.(type) {
+	case string:
+		return strings.TrimSpace(answer)
+	case []any:
+		if len(answer) == 1 {
+			return asString(answer[0])
+		}
+	case []string:
+		if len(answer) == 1 {
+			return strings.TrimSpace(answer[0])
+		}
+	}
+	return ""
+}
+
 func acpPermissionOutOfBandResolvedEvents(session Session, turnID string, pending *pendingInteractiveRequest) []activityshared.Event {
 	if pending == nil {
 		return nil

@@ -232,6 +232,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       activationError: detail.activationError,
       activeConversationBusy: session.activeConversationBusy,
       sessionRuntimeBlocked: session.sessionRuntimeBlocked,
+      sessionRuntimeBlockedReason: session.sessionRuntimeBlockedReason,
       targetConnectionBlocked: session.targetConnectionBlocked,
       providerReadinessGate
     },

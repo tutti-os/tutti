@@ -146,7 +146,45 @@ test("enters and exits fullscreen with restore frame", () => {
 
   state = reduceWorkbenchState(state, { type: "exitFullscreen", nodeID: "a" });
   assert.equal(state.nodes[0]?.displayMode, "floating");
-  assert.deepEqual(state.nodes[0]?.frame, originalFrame);
+  assert.deepEqual(state.nodes[0]?.frame, {
+    ...originalFrame,
+    y: 52
+  });
+});
+
+test("clamps a stale fullscreen restore frame when exiting fullscreen", () => {
+  let state = createWorkbenchInitialState({
+    surfaceSize: { width: 1210, height: 759 },
+    layoutConstraints: {
+      minWidth: 280,
+      minHeight: 160,
+      surfacePadding: 0,
+      safeArea: { top: 52, right: 0, bottom: 88, left: 0 }
+    },
+    nodes: [
+      {
+        ...makeNode("fullscreen"),
+        displayMode: "fullscreen",
+        frame: { x: 0, y: 52, width: 1210, height: 707 },
+        restoreFrame: { x: 221, y: 83, width: 1480, height: 792 }
+      }
+    ],
+    nodeStack: ["fullscreen"]
+  });
+
+  state = reduceWorkbenchState(state, {
+    type: "exitFullscreen",
+    nodeID: "fullscreen"
+  });
+
+  assert.equal(state.nodes[0]?.displayMode, "floating");
+  assert.deepEqual(state.nodes[0]?.frame, {
+    x: 0,
+    y: 52,
+    width: 1210,
+    height: 619
+  });
+  assert.equal(state.nodes[0]?.restoreFrame, null);
 });
 
 test("applies quick layouts as floating focused windows", () => {

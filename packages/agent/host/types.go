@@ -292,6 +292,24 @@ type PromptAttachment struct {
 	Data         string
 }
 
+type RailPlacementKind string
+
+const (
+	RailPlacementKindConversations RailPlacementKind = "conversations"
+	RailPlacementKindProject       RailPlacementKind = "project"
+)
+
+// RailPlacement is the caller-selected canonical conversation-rail identity
+// for a newly created session. SectionKey is opaque to Host and is persisted
+// exactly; ProjectPath is the caller's logical project path, not a prepared
+// runtime or owner-host path.
+type RailPlacement struct {
+	Version     int               `json:"version"`
+	Kind        RailPlacementKind `json:"kind"`
+	ProjectPath string            `json:"projectPath,omitempty"`
+	SectionKey  string            `json:"sectionKey"`
+}
+
 // CreateSessionInput is the provider-neutral create contract. Adapter-only
 // import paths, workspace resolution, identity, and transport state are not
 // part of this type.
@@ -321,6 +339,7 @@ type CreateSessionInput struct {
 	Speed                  *string
 	ConversationDetailMode string
 	Visible                *bool
+	RailPlacement          *RailPlacement
 }
 
 type SendInput struct {

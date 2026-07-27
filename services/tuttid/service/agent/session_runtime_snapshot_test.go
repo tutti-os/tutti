@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -178,7 +179,7 @@ func TestPrepareRuntimeForResumeUsesExactModelPlanRevision(t *testing.T) {
 		AgentTargetID: "workspace-agent:writer",
 		ModelPlanID:   currentPlan.ID,
 		DefaultModel:  "gpt-new",
-	}}, plans, nil)
+	}}, plans)
 
 	model := "gpt-old"
 	resolution, err := resolveProvidedModelPlan("codex", "workspace-agent:writer", oldPlan, model, model)
@@ -234,7 +235,7 @@ func TestPrepareRuntimeForResumeProviderNativeSnapshotIgnoresNewBinding(t *testi
 		WorkspaceID:   "ws",
 		AgentTargetID: "local:codex",
 		ModelPlanID:   currentPlan.ID,
-	}}, revisionPlanSource{current: currentPlan, revisions: map[uint64]modelplanbiz.Plan{2: currentPlan}}, nil)
+	}}, revisionPlanSource{current: currentPlan, revisions: map[uint64]modelplanbiz.Plan{2: currentPlan}})
 
 	model := "gpt-native"
 	runtimeContext := runtimeContextWithSessionRuntimeSnapshot(nil, CreateSessionInput{
@@ -257,6 +258,50 @@ func TestPrepareRuntimeForResumeProviderNativeSnapshotIgnoresNewBinding(t *testi
 	}
 }
 
+// Extension-owned harness providers (for example KimiCode via agent
+// extension) persist open provider identities in the runtime snapshot. The
+// resume path must compare them with open normalization; registered-only
+// normalization resolves them to "" and wrongly rejects the resume.
+func TestPrepareRuntimeForResumeAcceptsExtensionHarnessProvider(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{}
+	service.AgentTargetStore = fakeAgentTargetStore{targets: map[string]agenttargetbiz.Target{
+		"extension:codebuddy": {
+			ID:            "extension:codebuddy",
+			Provider:      "acp:codebuddy",
+			LaunchRefJSON: `{"type":"agent_extension","extensionInstallationId":"codebuddy@1.0.0"}`,
+			Name:          "CodeBuddy",
+			Enabled:       true,
+			Source:        agenttargetbiz.SourceUser,
+		},
+	}}
+	var preparedInput runtimeprep.PrepareInput
+	service.RuntimePreparer = fakeRuntimePreparer{input: &preparedInput}
+
+	model := "codebuddy-native"
+	runtimeContext := runtimeContextWithSessionRuntimeSnapshot(nil, CreateSessionInput{
+		AgentTargetID: "extension:codebuddy",
+		Model:         &model,
+	}, "acp:codebuddy", modelPlanResolution{ModelConfiguration: newProviderNativeModelConfiguration("acp:codebuddy", "extension:codebuddy")})
+	_, err := service.prepareRuntimeForResume(context.Background(), PersistedSession{
+		ID:                     "session-extension",
+		WorkspaceID:            "ws",
+		AgentTargetID:          "extension:codebuddy",
+		Provider:               "acp:codebuddy",
+		Settings:               ComposerSettings{Model: model},
+		InternalRuntimeContext: runtimeContext,
+	})
+	if err != nil {
+		t.Fatalf("prepareRuntimeForResume() error = %v", err)
+	}
+	if preparedInput.ProviderTargetRef["provider"] != "acp:codebuddy" ||
+		preparedInput.ProviderTargetRef["targetId"] != "extension:codebuddy" ||
+		preparedInput.ProviderTargetRef["extensionInstallationId"] != "codebuddy@1.0.0" {
+		t.Fatalf("prepared provider target ref = %#v, want extension harness binding", preparedInput.ProviderTargetRef)
+	}
+}
+
 func TestPrepareRuntimeForResumeFailsWhenExactRevisionIsMissing(t *testing.T) {
 	t.Parallel()
 
@@ -264,7 +309,7 @@ func TestPrepareRuntimeForResumeFailsWhenExactRevisionIsMissing(t *testing.T) {
 	service := &Service{}
 	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
 	service.RuntimePreparer = fakeRuntimePreparer{}
-	service.ConfigureModelPlanBinding(staticBindingSource{}, revisionPlanSource{current: plan, revisions: map[uint64]modelplanbiz.Plan{}}, nil)
+	service.ConfigureModelPlanBinding(staticBindingSource{}, revisionPlanSource{current: plan, revisions: map[uint64]modelplanbiz.Plan{}})
 	model := "gpt-old"
 	resolution, err := resolveProvidedModelPlan("codex", "local:codex", plan, model, model)
 	if err != nil {
@@ -307,7 +352,7 @@ func TestPrepareRuntimeForResumeRejectsMismatchedRevisionFingerprint(t *testing.
 	service.ConfigureModelPlanBinding(staticBindingSource{}, revisionPlanSource{
 		current:   launchPlan,
 		revisions: map[uint64]modelplanbiz.Plan{1: corruptedRevision},
-	}, nil)
+	})
 
 	_, err = service.prepareRuntimeForResume(context.Background(), PersistedSession{
 		ID:                     "session-fingerprint-mismatch",
@@ -353,7 +398,7 @@ func TestPrepareRuntimeForResumeRejectsRevokedCurrentPlan(t *testing.T) {
 			service.ConfigureModelPlanBinding(staticBindingSource{}, revisionPlanSource{
 				current:   test.current,
 				revisions: map[uint64]modelplanbiz.Plan{1: oldPlan},
-			}, nil)
+			})
 			_, err := service.prepareRuntimeForResume(context.Background(), PersistedSession{
 				ID:                     "session-revoked",
 				WorkspaceID:            "ws",
@@ -397,7 +442,7 @@ func TestUpdateSettingsValidatesModelAgainstSnapshottedPlanRevision(t *testing.T
 	service.ConfigureModelPlanBinding(staticBindingSource{}, revisionPlanSource{
 		current:   currentPlan,
 		revisions: map[uint64]modelplanbiz.Plan{1: oldPlan, 2: currentPlan},
-	}, nil)
+	})
 
 	invalid := "gpt-new"
 	_, err = service.UpdateSettings(context.Background(), "ws", "session-1", ComposerSettingsPatch{Model: &invalid})

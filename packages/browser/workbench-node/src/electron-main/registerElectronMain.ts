@@ -199,6 +199,42 @@ export function registerBrowserNodeElectronMain(
             }
           : undefined,
       prepareChromeCookieImport: input.prepareChromeCookieImport,
+      async resolveOrdinaryCookieSession({
+        profileId,
+        sessionMode,
+        sessionPartition
+      }) {
+        if (sessionMode === "incognito" || sessionPartition !== null) {
+          return null;
+        }
+        const { session } = await import("electron");
+        return session.fromPartition(
+          resolveBrowserSessionPartition({
+            profileId,
+            sessionMode,
+            sessionPartition
+          })
+        );
+      },
+      async resolveOrdinaryCookieStore({
+        profileId,
+        sessionMode,
+        sessionPartition
+      }) {
+        if (sessionMode === "incognito" || sessionPartition !== null) {
+          return null;
+        }
+        const { session } = await import("electron");
+        return (
+          session.fromPartition(
+            resolveBrowserSessionPartition({
+              profileId,
+              sessionMode,
+              sessionPartition
+            })
+          ).cookies ?? null
+        );
+      },
       resolveWebContents: (webContentsId) =>
         input.resolveWebContents({
           event,
@@ -245,6 +281,9 @@ export function registerBrowserNodeElectronMain(
     target: import("./types.ts").BrowserGuestElectronSession | null,
     result: import("../core/types.ts").BrowserNodeCookieImportResult
   ): void => {
+    // Refresh only real navigable pages. Reloading blank/home guests (or doing a
+    // broad session refresh while the home UI is visible) races with URL sync and
+    // produces a visible flash / workspace update storm.
     if (!target || result.imported === 0) {
       return;
     }
@@ -304,8 +343,8 @@ export function registerBrowserNodeElectronMain(
       async (event, payload) => {
         const { manager, ownerWindow } = resolveOwnedManager(event);
         const nodeInput = payload as BrowserNodeNodeIdInput;
-        const target = manager.getCookieImportSession(nodeInput);
         const result = await manager.importCookies(nodeInput);
+        const target = await manager.resolveCookieImportSession(nodeInput);
         refreshCookieImportSession(target, result);
         input.notifyCookieImportResult?.({
           ownerWindow,
@@ -341,7 +380,6 @@ export function registerBrowserNodeElectronMain(
         }
         const controller = new AbortController();
         imports.set(chromeInput.operationId, controller);
-        const target = manager.getCookieImportSession(chromeInput);
         let result;
         try {
           result = await manager.importChromeCookies(
@@ -351,6 +389,7 @@ export function registerBrowserNodeElectronMain(
         } finally {
           imports.delete(chromeInput.operationId);
         }
+        const target = await manager.resolveCookieImportSession(chromeInput);
         refreshCookieImportSession(target, result);
         input.notifyCookieImportResult?.({
           ownerWindow,

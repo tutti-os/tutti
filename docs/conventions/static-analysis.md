@@ -22,6 +22,7 @@ Repository entrypoints:
 
 - `pnpm setup:dev`
 - `pnpm check:backdrop-filter-authoring`
+- `pnpm check:css-has-performance`
 - `pnpm check:golangci-version`
 - `pnpm lint`
 - `pnpm lint:ts`
@@ -57,6 +58,11 @@ Validation runners that spawn nested pnpm commands should read the root
 `packageManager` field and invoke that pinned version through Corepack. Do not
 let runner-spawned lanes resolve a bare `pnpm` from `PATH`, because local
 package-manager shims can differ from the repository pin.
+
+Changed-aware lane fingerprints include base, staged, working-tree, and
+untracked content for each lane. Git subprocess buffers must accommodate large
+binary or generated diffs; the runner uses a bounded 64 MiB buffer so a normal
+large pull request does not fail before its validation lanes start.
 
 Tests and checks that create temporary Git repositories must also isolate
 repository-local Git environment variables before invoking Git. In particular,
@@ -167,6 +173,27 @@ followed by the standard property; it rejects prefix-only output, reversed
 ordering, and a launchpad dismiss layer without a non-`none` standard filter.
 The React `WebkitBackdropFilter` inline-style property is outside this stylesheet
 optimization boundary and is not rejected by the authoring check.
+
+## CSS Relational Selector Performance
+
+`pnpm check:css-has-performance` scans production CSS under `apps/`,
+`packages/`, and `services/`. It rejects `:has()` when the selector subject is
+the document root, a Workbench window/surface, an AgentGUI root layout,
+timeline, transcript row, or another listed large dynamic surface.
+
+Those subjects contain editors, streamed transcript content, dock animation, or
+other frequently mutating descendants. Relational matching there can make the
+entire subject subtree a style-invalidation candidate. Project the semantic
+state onto the subject with a class or data attribute instead.
+
+The check intentionally permits bounded local subjects such as buttons, icons,
+dialogs, and individual conversation rows. Add a subject to the policy only
+when its descendant scope or mutation frequency makes relational invalidation
+structurally unsafe; do not turn this into a blanket ban on `:has()`.
+
+The staged form runs in `pre-commit`. The full form is selected by
+`check:changed` for production CSS or policy implementation changes and is part
+of `check:full`.
 
 Renderer feature implementation boundaries are checked by `pnpm check:renderer-boundaries`.
 That check also enforces the Workbench-specific rule that
@@ -305,13 +332,6 @@ probe utility in `packages/agent/gui/shared/testing/renderBudget.tsx` asserts
 React commit counts for typical interactions, and budget test cases are
 delivered with each feature-module slice.
 
-Fix-scope is soft-gated in pull-request CI by
-`tools/scripts/check-fix-scope.mjs`: a fix-titled PR changing more than 300
-implementation lines must answer "what is the root cause" and "why can this
-not be fixed at a lower layer" in the PR description. The count excludes docs,
-tests, fixtures, snapshots, and generated artifacts so the gate stays focused
-on production fix surface area.
-
 Electron `main` and `preload` runtime import graphs are checked by `pnpm check:electron-runtime-boundaries`.
 That script is intentionally narrow: it ignores type-only imports and test files, then follows reachable runtime imports to catch React/TSX leaks and Electron-externalized workspace packages that still resolve to raw source files.
 
@@ -375,6 +395,7 @@ The current root entrypoint runs the linter from:
 - `packages/agent/host`
 - `packages/agent/store-sqlite/canonical`
 - `packages/appcli/core`
+- `packages/device-link`
 - `packages/agent/runtimeprep`
 - `packages/workspace/files`
 - `packages/workbench/service`
@@ -393,10 +414,19 @@ Changed-aware Go validation includes the nested
 `packages/agent/activity-replication`, `packages/agent/daemon`,
 `packages/agent/host`,
 `packages/agent/runtimeprep`, `packages/agent/store-sqlite`, and
-`packages/agent/store-sqlite/canonical` modules.
+`packages/agent/store-sqlite/canonical`, and `packages/device-link` modules.
 Codex app-server protocol changes should also run
 `pnpm check:codexproto-generated` when schema, generator, or generated protocol
 files are touched.
+
+Every change under `packages/device-link/**`, including Makefiles, Java probe
+sources, and Android manifests, also selects
+`pnpm check:device-link-android`. That contract runs the Go suite, Android
+arm64 cross-compile, and Java gomobile binding generation. AAR assembly remains
+an explicit Android-SDK validation locally. The manually dispatched Android
+Internal Build workflow installs the pinned SDK/NDK versions, assembles the AAR
+and the internal mobile APK, and uploads a private validation artifact; it does
+not publish this currently provisional module.
 
 Local runs resolve `golangci-lint` from `$(go env GOPATH)/bin` first and fall
 back to `PATH`. This matches the repository install command without requiring a

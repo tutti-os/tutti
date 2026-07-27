@@ -54,13 +54,14 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 ## Account Remote Services
 
-| Variable                  | Owner document                                                                        | Purpose                                                                                           |
-| ------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `TUTTI_ACCOUNT_BASE_URL`  | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)           | Overrides the daemon account auth/user-info API base URL.                                         |
-| `TUTTI_AGENT_LLM_APP_ID`  | [Tutti Agent Readiness Bootstrap](../architecture/tutti-agent-readiness-bootstrap.md) | Overrides the Tutti LLM application id used when issuing provider auth tokens.                    |
-| `TUTTI_AUTH_LOGIN_URL`    | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)           | Overrides the desktop account login URL used by the auth bridge.                                  |
-| `TUTTI_COMMERCE_BASE_URL` | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)           | Overrides the Tutti commerce gateway base URL for session-cookie membership and credits fetches.  |
-| `TUTTI_WEB_BASE_URL`      | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)           | Overrides the Tutti web origin used by tuttid when returning account profile links to desktop UI. |
+| Variable                              | Owner document                                                                                     | Purpose                                                                                           |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `TUTTI_ACCOUNT_BASE_URL`              | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)                        | Overrides the daemon account auth/user-info API base URL.                                         |
+| `TUTTI_AGENT_LLM_APP_ID`              | [Tutti Agent Readiness Bootstrap](../architecture/tutti-agent-readiness-bootstrap.md)              | Overrides the Tutti LLM application id used when issuing provider auth tokens.                    |
+| `TUTTI_AUTH_LOGIN_URL`                | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)                        | Overrides the desktop account login URL used by the auth bridge.                                  |
+| `TUTTI_COMMERCE_BASE_URL`             | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)                        | Overrides the Tutti commerce gateway base URL for session-cookie membership and credits fetches.  |
+| `TUTTI_MOBILE_CONTROL_PLANE_BASE_URL` | [Mobile AgentGUI And DeviceLink Design](../specs/2026-07-23-mobile-agentgui-device-link-design.md) | Overrides the tsh-server desktop control-plane base URL used by Personal device pairing.          |
+| `TUTTI_WEB_BASE_URL`                  | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)                        | Overrides the Tutti web origin used by tuttid when returning account profile links to desktop UI. |
 
 ## Analytics
 

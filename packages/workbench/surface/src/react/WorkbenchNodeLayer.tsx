@@ -16,6 +16,7 @@ import type {
   WorkbenchResolveWindowSurfaceLayer,
   WorkbenchResolveWindowZIndex,
   WorkbenchResolveWindowChromeMode,
+  WorkbenchResolveWindowHeaderPresentation,
   WorkbenchWindowChromeMode
 } from "./types.ts";
 import type { WorkbenchGenieController } from "./useWorkbenchGenieAnimation.tsx";
@@ -36,6 +37,7 @@ export interface WorkbenchNodeLayerProps<TData = unknown> {
   renderWindowActions?: WorkbenchRenderWindowActions<TData>;
   renderWindowHeader?: WorkbenchRenderWindowHeader<TData>;
   resolveFullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
+  resolveWindowHeaderPresentation?: WorkbenchResolveWindowHeaderPresentation<TData>;
   resolveWindowSurfaceLayer?: WorkbenchResolveWindowSurfaceLayer<TData>;
   resolveWindowZIndex?: WorkbenchResolveWindowZIndex<TData>;
   windowChromeMode?:
@@ -54,6 +56,7 @@ export function WorkbenchNodeLayer<TData>({
   renderWindowActions,
   renderWindowHeader,
   resolveFullscreenHeaderMode,
+  resolveWindowHeaderPresentation,
   resolveWindowSurfaceLayer,
   resolveWindowZIndex,
   windowChromeMode,
@@ -120,6 +123,7 @@ export function WorkbenchNodeLayer<TData>({
         renderNode={renderNode}
         renderWindowActions={renderWindowActions}
         renderWindowHeader={renderWindowHeader}
+        resolveWindowHeaderPresentation={resolveWindowHeaderPresentation}
         resolveWindowZIndex={resolveWindowZIndex}
         windowChromeI18n={windowChromeI18n}
         windowChromeMode={windowChromeMode}
@@ -140,6 +144,7 @@ export function WorkbenchNodeLayer<TData>({
         renderNode={renderNode}
         renderWindowActions={renderWindowActions}
         renderWindowHeader={renderWindowHeader}
+        resolveWindowHeaderPresentation={resolveWindowHeaderPresentation}
         resolveWindowZIndex={resolveWindowZIndex}
         snapPreviewRect={snapPreviewRect}
         windowChromeI18n={windowChromeI18n}
@@ -166,6 +171,7 @@ interface WorkbenchNodeLayerGroupProps<TData = unknown> {
   renderNode: WorkbenchRenderNode<TData>;
   renderWindowActions?: WorkbenchRenderWindowActions<TData>;
   renderWindowHeader?: WorkbenchRenderWindowHeader<TData>;
+  resolveWindowHeaderPresentation?: WorkbenchResolveWindowHeaderPresentation<TData>;
   resolveWindowZIndex?: WorkbenchResolveWindowZIndex<TData>;
   snapPreviewRect?: ReturnType<typeof selectWorkbenchSnapPreviewRect>;
   windowChromeMode?:
@@ -186,6 +192,7 @@ function WorkbenchNodeLayerGroup<TData>({
   renderNode,
   renderWindowActions,
   renderWindowHeader,
+  resolveWindowHeaderPresentation,
   resolveWindowZIndex,
   snapPreviewRect,
   windowChromeI18n,
@@ -229,6 +236,7 @@ function WorkbenchNodeLayerGroup<TData>({
           renderNode={renderNode}
           renderWindowActions={renderWindowActions}
           renderWindowHeader={renderWindowHeader}
+          resolveWindowHeaderPresentation={resolveWindowHeaderPresentation}
           resolveWindowZIndex={resolveWindowZIndex}
           windowChromeI18n={windowChromeI18n}
           windowChromeMode={windowChromeMode}
@@ -248,6 +256,7 @@ interface WorkbenchNodeLayerItemProps<TData = unknown> {
   renderNode: WorkbenchRenderNode<TData>;
   renderWindowActions?: WorkbenchRenderWindowActions<TData>;
   renderWindowHeader?: WorkbenchRenderWindowHeader<TData>;
+  resolveWindowHeaderPresentation?: WorkbenchResolveWindowHeaderPresentation<TData>;
   resolveWindowZIndex?: WorkbenchResolveWindowZIndex<TData>;
   windowChromeMode?:
     | WorkbenchWindowChromeMode
@@ -265,6 +274,7 @@ function WorkbenchNodeLayerItem<TData>({
   renderNode,
   renderWindowActions,
   renderWindowHeader,
+  resolveWindowHeaderPresentation,
   resolveWindowZIndex,
   windowChromeI18n,
   windowChromeMode
@@ -305,6 +315,10 @@ function WorkbenchNodeLayerItem<TData>({
       })}
       renderActions={renderWindowActions}
       renderHeader={renderWindowHeader}
+      windowHeaderPresentation={resolveWindowHeaderPresentation?.({
+        controller,
+        node
+      })}
       windowChromeI18n={windowChromeI18n}
       windowChromeMode={resolveWorkbenchWindowChromeMode({
         controller,

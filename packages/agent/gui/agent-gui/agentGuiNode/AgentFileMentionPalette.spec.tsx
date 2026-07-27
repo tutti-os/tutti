@@ -509,6 +509,94 @@ describe("AgentFileMentionPalette", () => {
     expect(selectedOption).not.toHaveTextContent("Alice & Codex");
   });
 
+  it("truncates Session participants independently while preserving the Agent suffix", () => {
+    const initiatorLabel = "A session initiator with a very long display name";
+    const ownerLabel = "A member with a very long display name";
+    const agentLabel = "Codex (Shared)";
+    const agentName = `${ownerLabel} · ${agentLabel}`;
+    const participant = `${initiatorLabel} & ${agentName}`;
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "session",
+      categories: [],
+      groups: [
+        {
+          id: "member:user-1",
+          label: initiatorLabel,
+          items: [
+            {
+              kind: "session",
+              href: "mention://agent-session/session-1?workspaceId=room-1",
+              workspaceId: "room-1",
+              targetId: "session-1",
+              agentTargetId: "shared-agent:shared-codex",
+              name: "Build result",
+              title: "Build result",
+              scope: "collab_sessions",
+              initiatorName: initiatorLabel,
+              agentName,
+              agentOwnerLabel: ownerLabel,
+              agentLabel,
+              agentIconUrl: "data:image/png;base64,agent",
+              status: "completed"
+            }
+          ],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey={null}
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+      />
+    );
+
+    const participantElement = document.querySelector(
+      ".rich-text-at-mention-row__session-participant"
+    );
+    const entities = document.querySelectorAll(
+      ".rich-text-at-mention-row__session-participant-entity"
+    );
+    const segments = document.querySelectorAll(
+      ".rich-text-at-mention-row__session-participant-segment"
+    );
+    const separator = document.querySelector(
+      ".rich-text-at-mention-row__session-participant-separator"
+    );
+    const suffix = document.querySelector(
+      ".rich-text-at-mention-row__session-participant-suffix"
+    );
+    expect(participantElement).toHaveClass(
+      "rich-text-at-mention-row__session-participant--structured"
+    );
+    expect(participantElement).toHaveAttribute("title", participant);
+    expect(entities).toHaveLength(2);
+    expect(segments[0]).toHaveTextContent(initiatorLabel);
+    expect(segments[1]).toHaveTextContent(ownerLabel);
+    expect(separator?.textContent).toBe(" & ");
+    expect(suffix?.textContent).toBe(` · ${agentLabel}`);
+    expect(screen.getByText("Build result")).toBeVisible();
+    expect(screen.getByText("已完成")).toBeVisible();
+  });
+
   it("uses the session provider to resolve agent mention avatars", () => {
     const state: AgentMentionSearchState = {
       status: "ready",

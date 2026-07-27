@@ -130,6 +130,19 @@ func unmarshalJSONMap(input string) (map[string]any, error) {
 	return payload, nil
 }
 
+func normalizeJSONMap(payload map[string]any) (map[string]any, error) {
+	if len(payload) == 0 {
+		return nil, nil
+	}
+	// Round-trip through the durable JSON representation so fresh reports and
+	// rows decoded from SQLite use the same map, slice, and number types.
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	return unmarshalJSONMap(string(data))
+}
+
 func cloneJSONMap(payload map[string]any) map[string]any {
 	if len(payload) == 0 {
 		return nil

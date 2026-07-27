@@ -35,6 +35,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Claude SDK rejects live bypassPermissions mode](./agent-provider-setup.md#claude-sdk-rejects-live-bypasspermissions-mode)
 - [Claude Code logs out after sending a message (invalid_grant, credentials wiped)](./agent-provider-setup.md#claude-code-logs-out-after-sending-a-message-invalidgrant-credentials-wiped)
 - [Claude Code `Not logged in` renders as a file link instead of sign-in guidance](./agent-provider-setup.md#claude-code-not-logged-in-renders-as-a-file-link-instead-of-sign-in-guidance)
+- [Model Plan check succeeds but Kimi Claude Code turns wait and then return 401](./agent-provider-setup.md#model-plan-check-succeeds-but-kimi-claude-code-turns-wait-and-then-return-401)
 - [Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used](./agent-provider-setup.md#claude-code-sessions-fail-with-effectivesource-none-when-cc-switch-or-similar-proxy-tools-are-used)
 - [Tutti Agent retries a 402 and shows generic provider setup](./agent-provider-setup.md#tutti-agent-retries-a-402-and-shows-generic-provider-setup)
 - [OpenCode effort changes fail with `effort not found`](./agent-provider-setup.md#opencode-effort-changes-fail-with-effort-not-found)
@@ -90,6 +91,7 @@ Approval gates, plan exits, root/parent/child event attribution, child sessions,
 
 - [External PR review approvals do not refresh gate status](./agent-approvals-subagents.md#external-pr-review-approvals-do-not-refresh-gate-status)
 - [Cursor approval card shows only title and options, no command/path detail](./agent-approvals-subagents.md#cursor-approval-card-shows-only-title-and-options-no-commandpath-detail)
+- [Kimi Code AskUserQuestion waits without showing a question card](./agent-approvals-subagents.md#kimi-code-askuserquestion-waits-without-showing-a-question-card)
 - [Agent approval controls submit stale permission requests after restart](./agent-approvals-subagents.md#agent-approval-controls-submit-stale-permission-requests-after-restart)
 - [Claude SDK ExitPlanMode fails as interrupted after plan is ready](./agent-approvals-subagents.md#claude-sdk-exitplanmode-fails-as-interrupted-after-plan-is-ready)
 - [Codex app-server subagent output appears as the parent reply](./agent-approvals-subagents.md#codex-app-server-subagent-output-appears-as-the-parent-reply)

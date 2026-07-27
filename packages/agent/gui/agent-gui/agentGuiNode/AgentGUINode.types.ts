@@ -6,6 +6,7 @@ import type {
   ReferenceProvenanceCatalog
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
+import type { ReferenceSourcePickerProps } from "@tutti-os/workspace-file-reference/ui";
 import type { AgentGuiWorkbenchSessionActionRequest } from "../../workbench/sessionActions";
 import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
@@ -37,7 +38,7 @@ import type {
   AgentMentionReferenceTargetResolver,
   AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
-import type { AgentGUIAccountMenuState } from "./accountMenuState";
+import type { AgentVisibleErrorOverrides } from "../../shared/agentEnv/agentErrorPresentation";
 import type {
   AgentComposerCapabilityMenuState,
   AgentComposerCapabilitySettingsTarget,
@@ -67,6 +68,7 @@ export interface AgentGUINodeWorkspace {
   promptAssetLimit?: number | null;
   projectDirectorySourceAggregator?: ReferenceSourceAggregator | null;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
+  resolveReferenceContentErrorAction?: ReferenceSourcePickerProps["resolveContentErrorAction"];
   resolveReferenceEntryIconUrl?: (
     entry: WorkspaceFileEntry
   ) => Promise<string | null | undefined>;
@@ -128,7 +130,11 @@ export interface AgentGUINodeHostCapabilities {
    * preventing this host from mutating device-owned capability settings.
    */
   capabilityControlsReadOnly?: boolean;
-  accountMenuState?: AgentGUIAccountMenuState | null;
+  /**
+   * Host-owned product copy and external action for structured run errors.
+   * AgentGUI owns the generic card; product domains own product semantics.
+   */
+  visibleErrorPresentationOverrides?: AgentVisibleErrorOverrides | null;
   agentTargets?: readonly AgentGUIAgentTarget[];
   agentTargetsLoading?: boolean;
   /** Launch-only targets for active-conversation handoff. */
@@ -340,6 +346,8 @@ export function areAgentGUINodePropsEqual(
     pw.projectDirectorySourceAggregator ===
       nw.projectDirectorySourceAggregator &&
     pw.referenceSourceAggregator === nw.referenceSourceAggregator &&
+    pw.resolveReferenceContentErrorAction ===
+      nw.resolveReferenceContentErrorAction &&
     pw.resolveReferenceEntryIconUrl === nw.resolveReferenceEntryIconUrl &&
     pw.resolveMentionReferenceTarget === nw.resolveMentionReferenceTarget &&
     pw.resolveReferenceInitialTarget === nw.resolveReferenceInitialTarget &&
@@ -373,7 +381,6 @@ export function areAgentGUINodePropsEqual(
     pr.agentStatusController === nr.agentStatusController &&
     pc.capabilityMenuState === nc.capabilityMenuState &&
     pc.capabilityControlsReadOnly === nc.capabilityControlsReadOnly &&
-    pc.accountMenuState === nc.accountMenuState &&
     pc.agentTargets === nc.agentTargets &&
     pc.agentTargetsLoading === nc.agentTargetsLoading &&
     pc.handoffAgentTargets === nc.handoffAgentTargets &&

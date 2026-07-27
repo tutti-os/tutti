@@ -292,6 +292,30 @@ export function resolveAgentGUIStopControl(input: {
   };
 }
 
+export function resolveAgentGUIComposerDisabled(input: {
+  canQueueWhileBusy: boolean;
+  hasNonRetryableRecoveryFailure: boolean;
+  isCollaboratorConversation: boolean;
+  isCreatingConversation: boolean;
+  isInterrupting: boolean;
+  isSubmitting: boolean;
+  pendingApproval: boolean;
+  pendingInteractivePrompt: boolean;
+  runtimeBlocked: boolean;
+}): boolean {
+  return (
+    input.isCollaboratorConversation ||
+    input.runtimeBlocked ||
+    input.hasNonRetryableRecoveryFailure ||
+    (!input.canQueueWhileBusy &&
+      (input.pendingApproval ||
+        input.pendingInteractivePrompt ||
+        input.isSubmitting ||
+        input.isInterrupting ||
+        input.isCreatingConversation))
+  );
+}
+
 export function buildAgentConversationHandoffPrompt(input: {
   activeConversation: AgentGUINodeViewModel["rail"]["activeConversation"];
   currentUserId?: string | null;

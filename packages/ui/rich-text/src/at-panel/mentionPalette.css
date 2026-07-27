@@ -735,7 +735,35 @@
 }
 
 .rich-text-at-mention-row__session-summary {
+  min-width: 4em;
+}
+
+.rich-text-at-mention-row__session-participant--structured {
+  display: flex;
+  flex: 0 1 auto;
   min-width: 0;
+}
+
+.rich-text-at-mention-row__session-participant-entity {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 2em;
+  overflow: hidden;
+}
+
+.rich-text-at-mention-row__session-participant-segment {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rich-text-at-mention-row__session-participant-separator,
+.rich-text-at-mention-row__session-participant-suffix {
+  flex: 0 0 auto;
+  white-space: pre;
 }
 
 .rich-text-at-mention-row__media {

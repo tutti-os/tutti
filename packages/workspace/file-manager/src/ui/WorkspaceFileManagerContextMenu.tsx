@@ -15,6 +15,7 @@ import {
   type ReactElement,
   type RefObject
 } from "react";
+import { createPortal } from "react-dom";
 import {
   OPEN_WITH_SUBMENU_WIDTH_PX,
   clampContextMenuPosition,
@@ -54,7 +55,11 @@ export function WorkspaceFileManagerContextMenu({
     if (!contextMenu) {
       return;
     }
-    setPosition({ x: contextMenu.x, y: contextMenu.y });
+    setPosition((current) =>
+      current.x === contextMenu.x && current.y === contextMenu.y
+        ? current
+        : { x: contextMenu.x, y: contextMenu.y }
+    );
   }, [contextMenu?.x, contextMenu?.y]);
 
   useLayoutEffect(() => {
@@ -76,35 +81,46 @@ export function WorkspaceFileManagerContextMenu({
       return;
     }
     const boundaryRect = boundary?.getBoundingClientRect();
-    setPosition(
-      clampContextMenuPosition({
-        boundaryHeight: boundaryRect?.height ?? window.innerHeight,
-        boundaryWidth: boundaryRect?.width ?? window.innerWidth,
-        menuHeight: menuRect.height,
-        menuWidth: menuRect.width,
-        x: contextMenu.x,
-        y: contextMenu.y
-      })
+    const next = clampContextMenuPosition({
+      boundaryHeight: boundaryRect?.height ?? window.innerHeight,
+      boundaryWidth: boundaryRect?.width ?? window.innerWidth,
+      menuHeight: menuRect.height,
+      menuWidth: menuRect.width,
+      x: contextMenu.x,
+      y: contextMenu.y
+    });
+    // Bail out on identical coordinates — a fresh object every layout pass
+    // retriggers render and can exceed React's maximum update depth.
+    setPosition((current) =>
+      current.x === next.x && current.y === next.y ? current : next
     );
-  }, [contextMenu, contextMenuRef, items, positionMode]);
+  }, [contextMenu?.x, contextMenu?.y, contextMenuRef, items, positionMode]);
 
   if (!contextMenu || items.length === 0) {
     return null;
   }
 
-  return (
+  const menu = (
     <MenuSurface
       ref={contextMenuRef}
       data-workspace-file-manager-context-menu=""
       className={cn(
-        "w-[220px] overflow-visible p-1",
+        // `is-open` keeps host CSS that keys off the class (not only data-state)
+        // from leaving the surface at opacity:0.
+        "is-open w-[220px] overflow-visible p-1",
         positionMode === "viewport" ? "fixed" : "absolute"
       )}
       role="menu"
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
-        zIndex: "calc(var(--workspace-file-manager-dialog-overlay-z-index) - 1)"
+        // Prefer the host CSS var when present; fall back to a stable stacking
+        // value so an unset var cannot invalidate the entire z-index declaration.
+        // Viewport menus need to clear typical workbench chrome (≈ z-10..50).
+        zIndex:
+          positionMode === "viewport"
+            ? "var(--workspace-file-manager-dialog-overlay-z-index, 10050)"
+            : "var(--workspace-file-manager-dialog-overlay-z-index, 20)"
       }}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -115,6 +131,14 @@ export function WorkspaceFileManagerContextMenu({
       ))}
     </MenuSurface>
   );
+
+  // Viewport menus must leave overflow/contain ancestors (e.g. Agent tool
+  // sidebar `[contain:layout_paint]`) or fixed coords are clipped off-screen.
+  if (positionMode === "viewport" && typeof document !== "undefined") {
+    return createPortal(menu, document.body);
+  }
+
+  return menu;
 }
 
 function ContextMenuItemRenderer({

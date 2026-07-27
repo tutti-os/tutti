@@ -343,33 +343,6 @@ export function useAgentGUIViewLabels(input: {
       emptyProviderForProvider: (provider: string) =>
         resolveAgentGUIProviderDisplayLabel(provider, fallbackAgentTitle),
       conversations: t("agentHost.agentGui.conversations"),
-      accountMenuTitle: t("agentHost.agentGui.accountMenuTitle"),
-      accountMenuMember: t("agentHost.agentGui.accountMenuMember"),
-      accountMenuUpgrade: t("agentHost.agentGui.accountMenuUpgrade"),
-      accountMenuCreditsBalance: t(
-        "agentHost.agentGui.accountMenuCreditsBalance"
-      ),
-      accountMenuAccountCenter: t(
-        "agentHost.agentGui.accountMenuAccountCenter"
-      ),
-      accountMenuSettings: t("agentHost.agentGui.accountMenuSettings"),
-      accountMenuFree: t("agentHost.agentGui.accountMenuFree"),
-      accountMenuSignIn: t("agentHost.agentGui.accountMenuSignIn"),
-      accountMenuSignOut: t("agentHost.agentGui.accountMenuSignOut"),
-      accountMenuCopyUserId: t("agentHost.agentGui.accountMenuCopyUserId"),
-      accountMenuLoading: t("agentHost.agentGui.accountMenuLoading"),
-      accountMenuUnavailable: t("agentHost.agentGui.accountMenuUnavailable"),
-      accountMenuDataUnavailable: t(
-        "agentHost.agentGui.accountMenuDataUnavailable"
-      ),
-      accountRewardToastTitle: t("agentHost.agentGui.accountRewardToastTitle"),
-      accountRewardToastCreditsUnit: t(
-        "agentHost.agentGui.accountRewardToastCreditsUnit"
-      ),
-      accountRewardToastDescription: t(
-        "agentHost.agentGui.accountRewardToastDescription"
-      ),
-      accountRewardToastClose: t("agentHost.agentGui.accountRewardToastClose"),
       agentConfig: t("agentHost.agentGui.agentConfig"),
       agentSettingsMenu: t("agentHost.agentGui.agentSettingsMenu"),
       agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),

@@ -363,6 +363,7 @@ export function AgentMessageLocatorRail({
       ref={locatorRef}
       className="agent-gui-message-locator"
       aria-label={label ?? items[0]?.summary}
+      data-agent-transcript-scroll-away-intent
       data-testid="agent-message-locator"
       onBlurCapture={handleBlurCapture}
       onFocusCapture={openPanel}

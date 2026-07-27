@@ -10,7 +10,12 @@ import { createConnection, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createTuttiNodeAuthClient, readAuthJson, writeAuthJson } from "./node";
+import {
+  createTuttiNodeAuthClient,
+  isTuttiAuthUserCancelledError,
+  readAuthJson,
+  writeAuthJson
+} from "./node";
 import { DEFAULT_APP_ID } from "./shared";
 
 test("auth json read/write keeps desktop-compatible shape", async () => {
@@ -162,6 +167,111 @@ test("node login callback redirects to web result after writing auth json", asyn
       app_id: DEFAULT_APP_ID,
       device_id: accountServer.requests.redeem?.device_id
     });
+  } finally {
+    await accountServer.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("node login preserves a typed cancellation without reopening the app", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "tutti-auth-bridge-"));
+  const file = join(dir, "auth.json");
+  const accountServer = await startAccountStub();
+  try {
+    await writeAuthJson(file, {
+      sessionId: "existing-session",
+      cookie: "session_id=existing-session",
+      userId: "existing-user",
+      name: "Existing User",
+      avatar: "",
+      email: "",
+      updatedAt: 123
+    });
+    const authBase = `http://127.0.0.1:${accountServer.port}`;
+    const auth = createTuttiNodeAuthClient({
+      authJsonPath: file,
+      appCallbackUrl: "tutti://auth/login",
+      accountBaseUrl: authBase,
+      authLoginUrl: `${authBase}/auth/login`,
+      openUrl: async (loginUrl) => {
+        const state = new URL(loginUrl).searchParams.get("state") ?? "";
+        const decoded = decodeState(state);
+        const callbackUrl = new URL(
+          "/oauth/callback",
+          decoded.localServerOrigin
+        );
+        callbackUrl.searchParams.set("state", state);
+        callbackUrl.searchParams.set("error", "user_cancelled");
+        const callbackResponse = await fetch(callbackUrl, {
+          redirect: "manual"
+        });
+        assert.equal(callbackResponse.status, 302);
+        const location = callbackResponse.headers.get("location") ?? "";
+        const resultUrl = new URL(location);
+        assert.equal(
+          resultUrl.searchParams.get("desktopBridgeStatus"),
+          "error"
+        );
+        assert.equal(
+          resultUrl.searchParams.get("desktopBridgeError"),
+          "userCancelled"
+        );
+        assert.equal(resultUrl.searchParams.get("openAppUrl"), null);
+        assert.equal(location.includes("user_cancelled"), false);
+      }
+    });
+
+    await assert.rejects(
+      () => auth.login(),
+      (error: unknown) => isTuttiAuthUserCancelledError(error)
+    );
+    assert.equal((await readAuthJson(file))?.sessionId, "existing-session");
+    assert.equal(accountServer.requests.redeem, undefined);
+  } finally {
+    await accountServer.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("node compatibility completion preserves a typed cancellation", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "tutti-auth-bridge-"));
+  const file = join(dir, "auth.json");
+  const accountServer = await startAccountStub();
+  try {
+    const authBase = `http://127.0.0.1:${accountServer.port}`;
+    const auth = createTuttiNodeAuthClient({
+      authJsonPath: file,
+      appCallbackUrl: "tutti://auth/login",
+      accountBaseUrl: authBase,
+      authLoginUrl: `${authBase}/auth/login`,
+      openUrl: async (loginUrl) => {
+        const state = new URL(loginUrl).searchParams.get("state") ?? "";
+        const decoded = decodeState(state);
+        const response = await fetch(
+          new URL("/oauth/complete", decoded.localServerOrigin),
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Origin: authBase
+            },
+            body: JSON.stringify({ state, error: "user_cancelled" })
+          }
+        );
+        assert.equal(response.status, 400);
+        assert.deepEqual(await response.json(), {
+          ok: false,
+          error: { code: "USER_CANCELLED", message: "user_cancelled" }
+        });
+      }
+    });
+
+    await assert.rejects(
+      () => auth.login(),
+      (error: unknown) => isTuttiAuthUserCancelledError(error)
+    );
+    assert.equal(await readAuthJson(file), null);
+    assert.equal(accountServer.requests.redeem, undefined);
   } finally {
     await accountServer.close();
     await rm(dir, { recursive: true, force: true });

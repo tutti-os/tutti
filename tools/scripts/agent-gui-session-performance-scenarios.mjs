@@ -23,6 +23,7 @@ const sessionMarkers = {
 export const sessionSwitchScenario = {
   id: "session-switch",
   markers: sessionMarkers,
+  profileFunctionNames: ["readTimelineGeometry"],
   milestones: [
     {
       key: "selected",

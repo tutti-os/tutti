@@ -53,7 +53,6 @@ export {
   maxFiniteMessageVersion,
   minFiniteMessageVersion,
   sessionHasRenderableMessages,
-  sessionViewHasUnhydratedOlderDetailMessages,
   windowHasTurnMissingUserPrompt
 } from "./useAgentConversationMessagePaging";
 export function buildContinueInNewConversationPrompt(input: {

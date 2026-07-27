@@ -1,3 +1,4 @@
+import type { AgentActivitySessionMessageWindow } from "../messageWindow.types.ts";
 import type { AgentActivityMessage } from "../types.ts";
 import {
   areAgentActivityMessageArraysEqual,
@@ -28,7 +29,7 @@ export interface SessionMessagesReducerContext {
 }
 
 export function createInitialSessionMessagesState(): SessionMessagesState {
-  return { messagesBySessionId: {} };
+  return { messagesBySessionId: {}, windowsBySessionId: {} };
 }
 
 export function sessionMessagesReducer(
@@ -38,10 +39,15 @@ export function sessionMessagesReducer(
 ): EngineReducerResult<SessionMessagesState> {
   switch (intent.type) {
     case "message/snapshotReceived":
-      return mergeIncomingMessages(state, context, intent.messages);
+      return mergeIncomingMessages(
+        state,
+        context,
+        intent.messages,
+        intent.sessionMessageWindows ?? []
+      );
     case "session/snapshotReceived":
     case "session/upserted":
-      return canonicalizeMessageBuckets(state, context.sessionsById);
+      return canonicalizeSessionBuckets(state, context.sessionsById);
     case "session/removed":
       return dropSessionBuckets(
         state,
@@ -56,9 +62,11 @@ export function sessionMessagesReducer(
 function mergeIncomingMessages(
   state: SessionMessagesState,
   context: SessionMessagesReducerContext,
-  messages: readonly AgentActivityMessage[]
+  messages: readonly AgentActivityMessage[],
+  windows: readonly (AgentActivitySessionMessageWindow & {
+    agentSessionId: string;
+  })[]
 ): EngineReducerResult<SessionMessagesState> {
-  if (messages.length === 0) return unchanged(state);
   const bySessionId = new Map<string, AgentActivityMessage[]>();
   for (const message of messages) {
     const rawId = message.agentSessionId.trim();
@@ -71,9 +79,54 @@ function mergeIncomingMessages(
   for (const [rawId, sessionMessages] of bySessionId) {
     next = mergeSessionMessages(next, context, rawId, sessionMessages);
   }
-  return next === state.messagesBySessionId
+  let nextWindows = state.windowsBySessionId;
+  for (const window of windows) {
+    nextWindows = mergeSessionMessageWindow(nextWindows, context, window);
+  }
+  return next === state.messagesBySessionId &&
+    nextWindows === state.windowsBySessionId
     ? unchanged(state)
-    : changed({ messagesBySessionId: next });
+    : changed({
+        messagesBySessionId: next,
+        windowsBySessionId: nextWindows
+      });
+}
+
+function mergeSessionMessageWindow(
+  windowsBySessionId: Readonly<
+    Record<string, Readonly<AgentActivitySessionMessageWindow>>
+  >,
+  context: SessionMessagesReducerContext,
+  input: AgentActivitySessionMessageWindow & { agentSessionId: string }
+): Readonly<Record<string, Readonly<AgentActivitySessionMessageWindow>>> {
+  const rawAgentSessionId = input.agentSessionId.trim();
+  const canonicalAgentSessionId = resolveCanonicalAgentSessionId(
+    context.sessionsById,
+    rawAgentSessionId
+  );
+  if (!canonicalAgentSessionId) return windowsBySessionId;
+  const nextWindow = {
+    hasOlderMessages: input.hasOlderMessages,
+    oldestLoadedVersion: input.oldestLoadedVersion
+  };
+  const current = windowsBySessionId[canonicalAgentSessionId];
+  const hasAliasBucket =
+    rawAgentSessionId !== canonicalAgentSessionId &&
+    Object.prototype.hasOwnProperty.call(windowsBySessionId, rawAgentSessionId);
+  if (
+    current?.hasOlderMessages === nextWindow.hasOlderMessages &&
+    current.oldestLoadedVersion === nextWindow.oldestLoadedVersion
+  ) {
+    return hasAliasBucket
+      ? deleteBucket(windowsBySessionId, rawAgentSessionId)
+      : windowsBySessionId;
+  }
+  const next = {
+    ...windowsBySessionId,
+    [canonicalAgentSessionId]: nextWindow
+  };
+  if (hasAliasBucket) delete next[rawAgentSessionId];
+  return next;
 }
 
 /**
@@ -134,11 +187,11 @@ function mergeSessionMessages(
   return next;
 }
 
-function canonicalizeMessageBuckets(
+function canonicalizeSessionBuckets(
   state: SessionMessagesState,
   sessionsById: Readonly<Record<string, SessionMessagesSessionIdentity>>
 ): EngineReducerResult<SessionMessagesState> {
-  let next = state.messagesBySessionId;
+  let nextMessages = state.messagesBySessionId;
   for (const [rawAgentSessionId, messages] of Object.entries(
     state.messagesBySessionId
   )) {
@@ -153,20 +206,47 @@ function canonicalizeMessageBuckets(
       continue;
     }
     const merged = mergeAgentActivityMessages(
-      next[canonicalAgentSessionId] ?? [],
+      nextMessages[canonicalAgentSessionId] ?? [],
       canonicalizeMessages(messages, canonicalAgentSessionId)
     );
-    next = deleteBucket(
+    nextMessages = deleteBucket(
       {
-        ...next,
+        ...nextMessages,
         [canonicalAgentSessionId]: merged
       },
       rawAgentSessionId
     );
   }
-  return next === state.messagesBySessionId
+  let nextWindows = state.windowsBySessionId;
+  for (const [rawAgentSessionId, window] of Object.entries(
+    state.windowsBySessionId
+  )) {
+    const canonicalAgentSessionId = resolveCanonicalAgentSessionId(
+      sessionsById,
+      rawAgentSessionId
+    );
+    if (
+      !canonicalAgentSessionId ||
+      canonicalAgentSessionId === rawAgentSessionId
+    ) {
+      continue;
+    }
+    nextWindows = deleteBucket(
+      {
+        ...nextWindows,
+        [canonicalAgentSessionId]:
+          nextWindows[canonicalAgentSessionId] ?? window
+      },
+      rawAgentSessionId
+    );
+  }
+  return nextMessages === state.messagesBySessionId &&
+    nextWindows === state.windowsBySessionId
     ? unchanged(state)
-    : changed({ messagesBySessionId: next });
+    : changed({
+        messagesBySessionId: nextMessages,
+        windowsBySessionId: nextWindows
+      });
 }
 
 function dropSessionBuckets(
@@ -191,15 +271,23 @@ function dropSessionBuckets(
   ) {
     removableIds.add(providerSessionId);
   }
-  let next = state.messagesBySessionId;
+  let nextMessages = state.messagesBySessionId;
+  let nextWindows = state.windowsBySessionId;
   for (const removableId of removableIds) {
-    if (Object.prototype.hasOwnProperty.call(next, removableId)) {
-      next = deleteBucket(next, removableId);
+    if (Object.prototype.hasOwnProperty.call(nextMessages, removableId)) {
+      nextMessages = deleteBucket(nextMessages, removableId);
+    }
+    if (Object.prototype.hasOwnProperty.call(nextWindows, removableId)) {
+      nextWindows = deleteBucket(nextWindows, removableId);
     }
   }
-  return next === state.messagesBySessionId
+  return nextMessages === state.messagesBySessionId &&
+    nextWindows === state.windowsBySessionId
     ? unchanged(state)
-    : changed({ messagesBySessionId: next });
+    : changed({
+        messagesBySessionId: nextMessages,
+        windowsBySessionId: nextWindows
+      });
 }
 
 /**
@@ -242,13 +330,11 @@ function canonicalizeMessages(
   );
 }
 
-function deleteBucket(
-  messagesBySessionId: Readonly<
-    Record<string, readonly AgentActivityMessage[]>
-  >,
+function deleteBucket<T>(
+  bucketsBySessionId: Readonly<Record<string, T>>,
   agentSessionId: string
-): Record<string, readonly AgentActivityMessage[]> {
-  const next = { ...messagesBySessionId };
+): Record<string, T> {
+  const next = { ...bucketsBySessionId };
   delete next[agentSessionId];
   return next;
 }

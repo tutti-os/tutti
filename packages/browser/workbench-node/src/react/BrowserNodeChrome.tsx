@@ -132,8 +132,6 @@ export function BrowserNodeChrome({
       )}
       data-browser-node-header="true"
       data-browser-node-header-display-mode={displayMode}
-      data-workbench-custom-header-layout="browser-tabs"
-      data-workbench-custom-header-overflow="visible"
     >
       <div
         {...restDragHandleProps}
@@ -358,7 +356,7 @@ function BrowserNodeTabButton({
       className={cn(
         "group flex h-7 min-w-[104px] max-w-[220px] items-center gap-1.5 rounded-md border px-2 text-xs transition-colors",
         active
-          ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-sm"
+          ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
           : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
       )}
       data-browser-node-tab-active={active ? "true" : "false"}

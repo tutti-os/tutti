@@ -194,6 +194,9 @@ export function AgentGuiWorkbenchHeader({
       ...headerProps,
       className: cn("agent-gui-workbench-header", className),
       "data-agent-gui-workbench-header": "true",
+      "data-agent-gui-workbench-header-body-error": hasBodyRenderError
+        ? "true"
+        : "false",
       "data-agent-gui-workbench-header-collapsed": isConversationRailCollapsed
         ? "true"
         : "false",

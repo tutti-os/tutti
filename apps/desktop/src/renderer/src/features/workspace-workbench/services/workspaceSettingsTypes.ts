@@ -48,21 +48,15 @@ export type WorkspaceModelPlanStatus =
   | "disabled"
   | "undetected"
   | "detection_failed"
-  | "pending_first_use"
   | "ready";
 
 export type WorkspaceModelPlanDetectionStage =
   | "network"
   | "auth"
   | "model_discovery"
-  | "inference"
-  | "agent_runtime";
+  | "inference";
 
-export type WorkspaceModelPlanStageStatus =
-  | "passed"
-  | "failed"
-  | "skipped"
-  | "pending";
+export type WorkspaceModelPlanStageStatus = "passed" | "failed" | "skipped";
 
 /**
  * Billing metadata is optional: daemon plan contracts on this branch do not
@@ -101,14 +95,6 @@ export interface WorkspaceModelPlanDetection {
   readonly model?: string | null;
 }
 
-export interface WorkspaceModelPlanFirstUse {
-  readonly status: "pending" | "completed";
-  readonly agentTargetId?: string | null;
-  readonly agentSessionId?: string | null;
-  readonly model?: string | null;
-  readonly completedAt?: string | null;
-}
-
 export interface WorkspaceModelPlan {
   readonly id: string;
   readonly workspaceId: string;
@@ -122,7 +108,6 @@ export interface WorkspaceModelPlan {
   readonly enabled: boolean;
   readonly status: WorkspaceModelPlanStatus;
   readonly detection: WorkspaceModelPlanDetection;
-  readonly firstUse: WorkspaceModelPlanFirstUse;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -253,7 +238,6 @@ export interface WorkspaceModelPlanDraftSeed {
 export type WorkspaceModelPlanFeedbackKind =
   | "detectFailed"
   | "deleteFailed"
-  | "detectionRequired"
   | "duplicateFailed"
   | "fetchModelsEmpty"
   | "fetchModelsFailed"
@@ -280,16 +264,13 @@ export interface WorkspaceSettingsModelPlansMutableState {
   confirmingDeletePlanID: string | null;
   deleteBlock: WorkspaceModelPlanDeleteBlock | null;
   deletingPlanID: string | null;
-  detecting: boolean;
+  detectingPlanID: string | null;
   draft: WorkspaceModelPlanDraft | null;
-  draftDetection: WorkspaceModelPlanDetection | null;
   draftDiscoveredModels: readonly WorkspaceModelPlanModel[];
   draftFeedback: WorkspaceModelPlanFeedback | null;
   draftSaveImpact: WorkspaceModelPlanSaveImpact | null;
   duplicatingPlanID: string | null;
   fetchingDraftModels: boolean;
-  firstUseLaunchFailedPlanID: string | null;
-  firstUseLaunchingPlanID: string | null;
   loading: boolean;
   planFeedback: Record<string, WorkspaceModelPlanFeedback>;
   plans: WorkspaceModelPlan[];
@@ -301,16 +282,13 @@ export interface WorkspaceSettingsModelPlansSnapshotState {
   readonly confirmingDeletePlanID: string | null;
   readonly deleteBlock: WorkspaceModelPlanDeleteBlock | null;
   readonly deletingPlanID: string | null;
-  readonly detecting: boolean;
+  readonly detectingPlanID: string | null;
   readonly draft: Readonly<WorkspaceModelPlanDraft> | null;
-  readonly draftDetection: WorkspaceModelPlanDetection | null;
   readonly draftDiscoveredModels: readonly WorkspaceModelPlanModel[];
   readonly draftFeedback: Readonly<WorkspaceModelPlanFeedback> | null;
   readonly draftSaveImpact: Readonly<WorkspaceModelPlanSaveImpact> | null;
   readonly duplicatingPlanID: string | null;
   readonly fetchingDraftModels: boolean;
-  readonly firstUseLaunchFailedPlanID: string | null;
-  readonly firstUseLaunchingPlanID: string | null;
   readonly loading: boolean;
   readonly planFeedback: Readonly<
     Record<string, Readonly<WorkspaceModelPlanFeedback>>

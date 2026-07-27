@@ -17,6 +17,7 @@ const goModuleRoots = [
   join(workspaceRoot, "packages", "agent", "store-sqlite", "canonical"),
   join(workspaceRoot, "packages", "agent", "runtimeprep"),
   join(workspaceRoot, "packages", "appcli", "core"),
+  join(workspaceRoot, "packages", "device-link"),
   join(workspaceRoot, "packages", "workbench", "service"),
   join(workspaceRoot, "packages", "workspace", "files"),
   join(workspaceRoot, "services", "tuttid")

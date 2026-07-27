@@ -374,7 +374,7 @@ export function AgentComposerMaskIcon({
   return (
     <span
       aria-hidden
-      className="inline-block size-3.5 bg-[var(--text-secondary)] transition-colors group-hover:bg-[var(--text-primary)] group-focus-visible:bg-[var(--text-primary)]"
+      className="inline-block size-4 bg-[var(--text-secondary)] transition-colors group-hover:bg-[var(--text-primary)] group-focus-visible:bg-[var(--text-primary)]"
       data-agent-reference-add-icon={
         marker === "reference-add" ? "true" : undefined
       }

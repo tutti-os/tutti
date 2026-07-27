@@ -189,21 +189,31 @@ export const zhCN = {
     accountMenu: {
       title: "Tutti Agent",
       member: "管理订阅",
+      upgradeMembership: "升级",
+      rechargeCredits: "充值积分",
+      viewCreditPlans: "查看积分方案",
       creditsBalance: "积分余额",
       accountCenter: "账户设置",
+      settings: "设置",
       free: "Free",
       signIn: "登录",
       signOut: "退出登录",
       copyUserId: "复制用户 ID",
       copyUserIdSuccess: "已复制用户 ID",
       copyUserIdFailed: "复制用户 ID 失败",
+      openExternalFailed: "无法打开账户链接",
       loading: "加载中",
       unavailable: "--",
       dataUnavailable: "部分账号数据暂不可用",
       rewardToastTitle: "新用户积分",
       rewardToastCreditsUnit: "积分",
       rewardToastDescription: "已添加到账户余额",
-      rewardToastClose: "关闭积分奖励通知"
+      rewardToastClose: "关闭积分奖励通知",
+      insufficientCreditsUpgradeMessage:
+        "您账户下可用的积分额度已耗尽，升级会员可获取更多额度",
+      insufficientCreditsRechargeMessage:
+        "Tutti 积分不足，充值积分后可继续使用",
+      insufficientCreditsUnknownMessage: "Tutti 积分不足，请查看积分方案后继续"
     },
     agentEnv: {
       configTitle: "{{provider}} 环境",
@@ -775,7 +785,36 @@ export const zhCN = {
         reopenLogin: "重新打开登录页",
         signedOutTitle: "未登录",
         signingIn: "登录中...",
-        signingOut: "退出中..."
+        signingOut: "退出中...",
+        mobileRemote: {
+          cancel: "取消配对",
+          confirming: "正在确认这台手机...",
+          copyPairingCode: "复制配对码",
+          copyPairingCodeFailed: "暂时无法复制配对码",
+          description:
+            "与登录同一 Tutti 账号的手机配对，随后可在手机上访问这台电脑的 Agent 会话",
+          empty: "尚未有手机与这台电脑配对",
+          errors: {
+            list: "暂时无法读取已配对手机",
+            revoke: "暂时无法移除这台手机",
+            start: "暂时无法开始配对",
+            status: "暂时无法更新配对状态"
+          },
+          mobileDevice: "移动设备",
+          pairedDevices: "已配对手机",
+          pairingCodeCopied: "配对码已复制",
+          qrAlt: "手机配对二维码",
+          qrError: "二维码生成失败",
+          remove: "移除",
+          removing: "移除中...",
+          revoked: "已移除",
+          scanHint:
+            "在手机上打开 Tutti 并扫描此二维码，二维码将在短时间后过期且仅对当前账号有效",
+          start: "配对手机",
+          starting: "正在创建...",
+          title: "手机远程访问",
+          waitingForScan: "等待手机扫码"
+        }
       },
       apps: {
         appCatalogChannelDescription:
@@ -885,8 +924,6 @@ export const zhCN = {
         modelPlans: {
           addModel: "添加模型",
           addPlan: "添加方案",
-          agentRuntimePendingHint:
-            "保存方案后，在下方选择兼容的 Agent 完成第一次真实调用，即可完成验证",
           apiKey: "API 密钥",
           baseUrl: "Base URL",
           defaultMarker: "默认",
@@ -902,8 +939,6 @@ export const zhCN = {
           detect: "检测连接",
           detectFailed: "连接检测失败，请重试",
           detecting: "检测中...",
-          detectionRequired: "保存方案前，请先完成并通过连接检测",
-          detectionTitle: "连接检测",
           duplicate: "复制",
           duplicateFailed: "复制失败，请重试",
           edit: "编辑",
@@ -912,18 +947,6 @@ export const zhCN = {
             "点「添加方案」用你的 API 密钥接入订阅、中转或自定义接口",
           emptyTitle: "还没有模型方案",
           enabled: "启用 {{plan}}",
-          failureReasons: {
-            connectionFailed: "无法连接到接入点",
-            inferenceFailed: "测试调用失败",
-            modelCatalogDecodeFailed: "模型列表响应无法解析",
-            modelCatalogUnavailable: "模型列表不可用",
-            modelRejected: "接入点拒绝了该模型",
-            noModelSelected: "没有可用于测试调用的模型",
-            providerAuthRequired: "需要先登录模型提供商",
-            providerRuntimeUnavailable: "对应的 Agent Runtime 当前不可用",
-            unauthorized: "接入点拒绝了凭证",
-            unknown: "检测失败"
-          },
           fetchModels: "拉取模型",
           fetchModelsEmpty: "接口未返回可选模型，你仍可手动输入模型 ID",
           fetchModelsFailed: "拉取模型失败，请检查凭证与 Base URL 后重试",
@@ -949,15 +972,6 @@ export const zhCN = {
           nameLabel: "名称",
           namePlaceholder: "我的模型方案",
           neverDetected: "尚未检测",
-          pendingFirstUseGuide:
-            "选择兼容的 Agent 并完成一次真实调用后，方案才算可用",
-          firstUseAction: "用此 Agent 试用",
-          firstUseAgentLabel: "兼容 Agent",
-          firstUseLaunchFailed: "无法打开首次使用会话",
-          firstUseLaunching: "正在打开...",
-          firstUsePrompt:
-            "请使用 {{plan}} 模型方案完成这次真实首次调用，简要介绍所选模型并确认它能在当前工作区正常响应",
-          noCompatibleFirstUseAgent: "当前没有启用与此方案协议兼容的 Agent",
           presetLabel: "服务商预设",
           presets: {
             agnes: "Agnes",
@@ -986,16 +1000,6 @@ export const zhCN = {
             workspaceAgent: "工作区 Agent",
             workspaceApp: "应用"
           },
-          remedies: {
-            addModelsManually: "请手动添加模型",
-            checkApiKey: "请检查 API 密钥",
-            checkModelId: "请检查模型 ID",
-            checkNetworkOrBaseUrl: "请检查网络或 Base URL",
-            enableProvider: "请安装或启用对应的 Agent Runtime",
-            loginProvider: "请前往 Agent Runtime 设置完成登录",
-            retryCompatibleAgent: "请使用提供商对应的 Agent Runtime 重试",
-            selectModel: "请先选择模型"
-          },
           removeModel: "移除模型",
           setDefaultModel: "将 {{model}} 设为默认模型",
           requiredFieldsMissing:
@@ -1004,24 +1008,9 @@ export const zhCN = {
           saveFailed: "保存失败，请重试",
           saving: "保存中...",
           showApiKey: "显示密钥",
-          stageLatency: "{{ms}} ms",
-          stageStatus: {
-            failed: "失败",
-            passed: "通过",
-            pending: "待检测",
-            skipped: "已跳过"
-          },
-          stages: {
-            agentRuntime: "Agent 首次调用",
-            auth: "认证",
-            inference: "真实调用",
-            modelDiscovery: "模型列表",
-            network: "网络"
-          },
           statusLabels: {
             detectionFailed: "检测失败",
             disabled: "已停用",
-            pendingFirstUse: "待首次使用",
             ready: "可用",
             undetected: "待检测"
           },
@@ -1109,6 +1098,11 @@ export const zhCN = {
         logsSizeLabel: "日志大小",
         logsSummary: "{{count}} 个文件，共 {{size}}",
         logsTitle: "日志",
+        mobileRemoteAccessSettingsDescription:
+          "在账号设置中显示手机配对与远程访问控制项",
+        mobileRemoteAccessSettingsLabel: "显示手机远程访问设置",
+        mobileRemoteAccessSettingsSaveFailed:
+          "暂时无法更新手机远程访问显示设置",
         openDaemonLog: "打开 daemon 日志",
         openDesktopLog: "打开 desktop 日志",
         openLogsDirectory: "打开日志目录",

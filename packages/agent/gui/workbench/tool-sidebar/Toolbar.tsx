@@ -220,7 +220,7 @@ function ToolbarQuickActionTooltip({
 function ReminderBadge({ count }: { count?: number }): ReactNode {
   const label = formatAgentToolReminderCount(count);
   return label ? (
-    <span className="absolute -top-1 -right-1 inline-flex min-w-4 items-center justify-center rounded-full bg-[var(--state-danger)] px-1 text-[9px] leading-4 font-semibold text-[var(--white-stationary)]">
+    <span className="absolute -top-1 -right-1 inline-flex min-w-4 items-center justify-center rounded-full bg-[var(--accent-codex)] px-1 text-[9px] leading-4 font-semibold text-[var(--white-stationary)]">
       {label}
     </span>
   ) : null;

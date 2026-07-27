@@ -2,10 +2,11 @@ import { useMemo, type JSX } from "react";
 import type { WorkspaceLinkAction } from "../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import { translate } from "../i18n/index";
 import { AgentConversationFlow } from "./agentConversation/components/AgentConversationFlow";
+import type { AgentConversationParticipantPresentation } from "./agentConversation/contracts/agentConversationParticipantPresentation";
 import { useProjectedAgentConversation } from "./agentConversation/projection/useProjectedAgentConversation";
 import type { WorkspaceAgentSessionDetailViewModel } from "./workspaceAgentSessionDetailViewModel";
 
-interface WorkspaceAgentSessionDetailProps {
+export interface WorkspaceAgentSessionDetailProps {
   detail: WorkspaceAgentSessionDetailViewModel;
   avoidGroupingEdits?: boolean;
   isLoading: boolean;
@@ -16,6 +17,7 @@ interface WorkspaceAgentSessionDetailProps {
   loadingLabel?: string;
   rawTimelineJsonLabel?: string;
   showRawTimelineJson?: boolean;
+  participantPresentation?: AgentConversationParticipantPresentation;
 }
 
 export function WorkspaceAgentSessionDetail({
@@ -28,7 +30,8 @@ export function WorkspaceAgentSessionDetail({
   thinkingLabel = translate("agentHost.workspaceAgentSessionDetailThinking"),
   loadingLabel = translate("common.loading"),
   rawTimelineJsonLabel,
-  showRawTimelineJson = false
+  showRawTimelineJson = false,
+  participantPresentation
 }: WorkspaceAgentSessionDetailProps): JSX.Element {
   const conversation = useProjectedAgentConversation({
     detail,
@@ -72,6 +75,7 @@ export function WorkspaceAgentSessionDetail({
         empty={emptyState}
         onLinkAction={onLinkAction}
         showRawTimelineJson={showRawTimelineJson}
+        participantPresentation={participantPresentation}
         labels={flowLabels}
       />
     </div>

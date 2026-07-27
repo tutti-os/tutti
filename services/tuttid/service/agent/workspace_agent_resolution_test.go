@@ -82,6 +82,67 @@ func TestResolveCreateSessionLaunchHydratesWorkspaceAgentRuntimeConfiguration(t 
 	}
 }
 
+func TestGetComposerOptionsResolvesWorkspaceAgentModelPlan(t *testing.T) {
+	plan := modelplanbiz.Plan{
+		ID:           "mp-kimi",
+		WorkspaceID:  "ws",
+		Revision:     6,
+		Name:         "Kimi",
+		Protocol:     modelplanbiz.ProtocolAnthropic,
+		APIKey:       "secret",
+		BaseURL:      "https://api.kimi.example/coding/",
+		Models:       []modelplanbiz.Model{{ID: "k3", Name: "K3"}},
+		DefaultModel: "k3",
+		Enabled:      true,
+	}
+	service := NewService(newFakeRuntime())
+	service.WorkspaceAgentResolver = staticWorkspaceAgentResolver{resolved: workspaceagentbiz.Resolved{
+		Agent: workspaceagentbiz.Agent{
+			ID:                   "workspace-agent:kimi",
+			WorkspaceID:          "ws",
+			Name:                 "Kimi Agent",
+			HarnessAgentTargetID: "local:claude-code",
+			DefaultModel:         "k3",
+			Revision:             1,
+		},
+		HarnessTarget: agenttargetbiz.Target{
+			ID:            "local:claude-code",
+			Provider:      "claude-code",
+			LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("claude-code"),
+			Name:          "Claude Code",
+			Source:        agenttargetbiz.SourceSystem,
+			Enabled:       true,
+		},
+		ModelPlan:      &plan,
+		EffectiveModel: "k3",
+	}}
+	includeCapabilityCatalog := false
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		WorkspaceID:              "ws",
+		AgentTargetID:            "workspace-agent:kimi",
+		Provider:                 "claude-code",
+		IncludeCapabilityCatalog: &includeCapabilityCatalog,
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions() error = %v", err)
+	}
+	if options.EffectiveSettings.Model != "k3" ||
+		len(options.ModelConfig.Options) != 1 ||
+		options.ModelConfig.Options[0].ID != "k3" {
+		t.Fatalf("GetComposerOptions() model config = %#v", options.ModelConfig)
+	}
+	configuration, ok := options.RuntimeContext["modelConfiguration"].(map[string]any)
+	if !ok ||
+		configuration["agentTargetId"] != "workspace-agent:kimi" ||
+		configuration["modelPlanId"] != "mp-kimi" {
+		t.Fatalf(
+			"GetComposerOptions() model configuration = %#v",
+			options.RuntimeContext["modelConfiguration"],
+		)
+	}
+}
+
 func TestResolveCreateSessionLaunchPreservesExplicitWorkspaceAgentModel(t *testing.T) {
 	plan := modelplanbiz.Plan{ID: "mp-one", Revision: 2, Enabled: true}
 	service := &Service{

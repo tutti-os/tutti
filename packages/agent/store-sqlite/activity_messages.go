@@ -48,6 +48,10 @@ func (*Store) upsertAgentMessageTx(
 	if err != nil {
 		return Message{}, false, err
 	}
+	normalizedPayload, err := normalizeJSONMap(input.Payload)
+	if err != nil {
+		return Message{}, false, fmt.Errorf("normalize workspace agent message payload: %w", err)
+	}
 	message, accepted := agentactivityprojection.ProjectMessageUpdate(
 		messageProjectionSnapshot(existing),
 		ok,
@@ -58,7 +62,7 @@ func (*Store) upsertAgentMessageTx(
 			Kind:              input.Kind,
 			Status:            input.Status,
 			ContentDelta:      input.ContentDelta,
-			Payload:           input.Payload,
+			Payload:           normalizedPayload,
 			OccurredAtUnixMS:  input.OccurredAtUnixMS,
 			StartedAtUnixMS:   input.StartedAtUnixMS,
 			CompletedAtUnixMS: input.CompletedAtUnixMS,

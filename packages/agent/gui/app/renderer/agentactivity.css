@@ -3175,6 +3175,20 @@ aside.workspace-agents-status-panel
   color: var(--agent-gui-text-primary, var(--text-primary));
 }
 
+/* Tutti workflow intensity button: tint icon + tier label + value by tier.
+   Needs the extra attribute hook to outrank the goal-actions button rule. */
+.agent-gui-chrome__goal-actions button[data-agent-tutti-tier="cost"] {
+  color: var(--state-success);
+}
+
+.agent-gui-chrome__goal-actions button[data-agent-tutti-tier="balance"] {
+  color: var(--accent-codex);
+}
+
+.agent-gui-chrome__goal-actions button[data-agent-tutti-tier="powerful"] {
+  color: var(--tutti-purple);
+}
+
 .agent-gui-chrome__composer-disclosure {
   display: grid;
   min-width: 0;
@@ -3184,12 +3198,37 @@ aside.workspace-agents-status-panel
   box-sizing: border-box;
   max-height: min(52vh, 520px);
   overflow: auto;
+  /* The translateY below fuses the panel with its own banner by painting
+     over the banner's top edge; the matching negative margin keeps the
+     panel flush with any card stacked above it instead of leaving a gap. */
+  margin-top: -12px;
   border: 1px solid var(--agent-gui-border-subtle, var(--line-2));
   border-bottom: 0;
   border-radius: 12px 12px 0 0;
   padding: 12px;
   background: var(--agent-gui-surface-strong, var(--background-panel));
   pointer-events: auto;
+  transform: translateY(12px);
+}
+
+/* Tutti workflow plan-review surfaces: --background-fronted base with an 8%
+   tutti-purple wash. Geometry (fused panel/banner overlap, radii, borders)
+   stays identical to the generic disclosure card. */
+.agent-gui-chrome__tutti-workflow-panel {
+  padding: 8px;
+  background: color-mix(
+    in srgb,
+    var(--tutti-purple) 8%,
+    var(--background-fronted)
+  );
+}
+
+.agent-gui-chrome__tutti-workflow-banner {
+  background: color-mix(
+    in srgb,
+    var(--tutti-purple) 8%,
+    var(--background-fronted)
+  );
 }
 
 .agent-gui-chrome__composer-disclosure[data-expanded="true"]
@@ -3731,6 +3770,96 @@ aside.workspace-agents-status-panel
   justify-items: end;
 }
 
+.agent-gui-conversation__participant-message-layout {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-gui-conversation__participant-message-header {
+  display: flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  column-gap: 8px;
+}
+
+/* The participant header sits directly above the thinking/tool-call info and
+   the message content, so it uses a tighter gap than the default 24px flow
+   spacing. */
+.agent-gui-conversation__assistant-message-flow
+  > .agent-gui-conversation__participant-message-header
+  + * {
+  margin-top: 8px;
+}
+
+/* Content below the header aligns with the participant name: assistant
+   content insets to the name's left edge, user content to the name's right
+   edge (28px avatar + 8px gap). The header is pulled back over the padding so
+   it stays flush with the flow edge. */
+.agent-gui-conversation__assistant-message-flow[data-agent-message-flow-participant="true"] {
+  padding-left: 36px;
+}
+
+.agent-gui-conversation__assistant-message-flow[data-agent-message-flow-participant="true"]
+  > .agent-gui-conversation__participant-message-header {
+  margin-left: -36px;
+}
+
+.agent-gui-conversation__user-message-flow[data-agent-message-flow-participant="true"] {
+  padding-right: 36px;
+}
+
+.agent-gui-conversation__user-message-flow[data-agent-message-flow-participant="true"]
+  > .agent-gui-conversation__participant-message-header {
+  margin-right: -36px;
+}
+
+.agent-gui-conversation__participant-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hairline ring + crisp circular edge for participant avatars. The ring is
+   painted on the avatar root (paint, anti-aliased on composited layers); the
+   radial-gradient mask on the surface keeps the clipped image edge smooth in
+   virtualized/composited lists where border-radius clipping is not
+   anti-aliased. */
+.agent-gui-conversation__participant-avatar {
+  border-radius: 50%;
+  box-shadow: 0 0 0 0.5px var(--line-2);
+}
+
+.agent-gui-conversation__participant-avatar [data-slot="avatar-surface"] {
+  -webkit-mask-image: radial-gradient(
+    circle closest-side,
+    #000 calc(100% - 1px),
+    transparent
+  );
+  mask-image: radial-gradient(
+    circle closest-side,
+    #000 calc(100% - 1px),
+    transparent
+  );
+}
+
+.agent-gui-conversation__participant-message-content {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-gui-conversation__participant-message-layout[data-agent-message-speaker="user"]
+  > .agent-gui-conversation__participant-message-content {
+  row-gap: 14px;
+  justify-items: end;
+}
+
 .agent-gui-conversation__message-group {
   position: relative;
   display: grid;
@@ -3747,9 +3876,7 @@ aside.workspace-agents-status-panel
   content: "";
 }
 
-.agent-gui-conversation__message-group:has(
-  > .agent-gui-conversation__message-footer
-) {
+.agent-gui-conversation__message-group[data-agent-message-footer="true"] {
   margin-bottom: 26px;
 }
 
@@ -3870,9 +3997,7 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__timeline
-  > .agent-gui-conversation__assistant-message-flow:has(
-    > .workspace-agents-status-panel__detail-thinking-disclosure:last-child
-  )
+  > .agent-gui-conversation__assistant-message-flow[data-agent-message-flow-thinking-last="true"]
   + :is(
     .workspace-agents-status-panel__detail-tool-section,
     .workspace-agents-status-panel__detail-tool-row
@@ -3882,9 +4007,7 @@ aside.workspace-agents-status-panel
     .workspace-agents-status-panel__detail-tool-section,
     .workspace-agents-status-panel__detail-tool-row
   )
-  + .agent-gui-conversation__assistant-message-flow:has(
-    > .workspace-agents-status-panel__detail-thinking-disclosure:first-child
-  ),
+  + .agent-gui-conversation__assistant-message-flow[data-agent-message-flow-thinking-first="true"],
 .agent-gui-node__timeline
   > :is(
     .workspace-agents-status-panel__detail-tool-section,
@@ -3898,63 +4021,23 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > .agent-gui-conversation__assistant-message-flow
-      > .workspace-agents-status-panel__detail-thinking-disclosure:last-child
-  )
-  + .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  ),
+  > .agent-gui-transcript-row[data-agent-transcript-row-thinking-last="true"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"],
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  )
-  + .agent-gui-transcript-row:has(
-    > .agent-gui-conversation__assistant-message-flow
-      > .workspace-agents-status-panel__detail-thinking-disclosure:first-child
-  ),
+  > .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-thinking-first="true"],
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  )
-  + .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  ) {
+  > .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"] {
   margin-top: -8px;
 }
 
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > .agent-gui-conversation__assistant-message-flow
-  )
-  + .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  ),
+  > .agent-gui-transcript-row[data-agent-transcript-row-speaker="assistant"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"],
 .agent-gui-node__timeline
-  > .agent-gui-transcript-row:has(
-    > :is(
-      .workspace-agents-status-panel__detail-tool-section,
-      .workspace-agents-status-panel__detail-tool-row
-    )
-  )
-  + .agent-gui-transcript-row:has(
-    > .agent-gui-conversation__assistant-message-flow
-  ) {
+  > .agent-gui-transcript-row[data-agent-transcript-row-kind="tool-group"]
+  + .agent-gui-transcript-row[data-agent-transcript-row-speaker="assistant"] {
   margin-top: -12px;
 }
 
@@ -4619,17 +4702,16 @@ aside.workspace-agents-status-panel
   transition: none;
 }
 
-.workbench-window:has(
-  > .workbench-window__header [data-agent-gui-workbench-header="true"]
-) {
+.workbench-window[data-window-header-layout="overlay"],
+.workbench-window[data-agent-gui-standalone-window="true"] {
   --agent-gui-workbench-header-height: 44px;
 
   grid-template-rows: minmax(0, 1fr);
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
+  .workbench-window__header,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__header {
   position: absolute !important;
   top: 0 !important;
@@ -4648,50 +4730,34 @@ aside.workspace-agents-status-panel
   user-select: auto;
 }
 
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__header {
   cursor: grab !important;
 }
 
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__header:active {
   cursor: grabbing !important;
 }
 
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__header {
   z-index: calc(var(--z-panel) + 1);
 }
 
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-workbench-header::after {
   display: none;
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"] .workbench-window__body,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__body {
   grid-row: 1;
   overflow: hidden;
 }
 
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .workbench-window__body {
   display: flex;
   width: 100%;
@@ -4753,9 +4819,9 @@ aside.workspace-agents-status-panel
   overscroll-behavior: contain;
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
+  .agent-gui-node__provider-rail-panel,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__provider-rail-panel {
   padding-top: var(--agent-gui-workbench-header-height);
 }
@@ -4764,30 +4830,29 @@ aside.workspace-agents-status-panel
    breathing room on the inner rail, so the "All" tile sits at header + 2px. The
    toolbar has no such wrapper, so fold the same 2px into its offset to keep the
    search field top aligned with the provider tiles. */
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
+  .agent-gui-node__rail-toolbar,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__rail-toolbar {
   padding-top: calc(var(--agent-gui-workbench-header-height) + 2px);
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
+  .agent-gui-node__detail-panel,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__detail-panel {
   position: relative;
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"] .agent-gui-node__detail,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__detail {
   padding-top: var(--agent-gui-workbench-header-height);
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
+  .agent-gui-node__timeline-with-composer,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__timeline-with-composer {
   padding-top: 20px;
 }
@@ -5280,15 +5345,9 @@ aside.workspace-agents-status-panel
   pointer-events: auto;
 }
 
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-workbench-header__session-title,
-.workbench-window:has(
-    > .workbench-window__header
-      .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
-  )
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-workbench-header__detail-title {
   box-sizing: border-box;
   width: auto;
@@ -5389,7 +5448,7 @@ aside.workspace-agents-status-panel
   margin-left: -4px;
 }
 
-.workbench-window:has([data-workbench-node-render-error="true"])
+.agent-gui-workbench-header[data-agent-gui-workbench-header-body-error="true"]
   .agent-gui-workbench-header__rail-toggle {
   display: none !important;
 }
@@ -5570,9 +5629,9 @@ aside.workspace-agents-status-panel
   );
 }
 
-.workbench-window:has(
-    > .workbench-window__header [data-agent-gui-workbench-header="true"]
-  )
+.workbench-window[data-window-header-layout="overlay"]
+  .agent-gui-node__provider-rail-panel::after,
+.workbench-window[data-agent-gui-standalone-window="true"]
   .agent-gui-node__provider-rail-panel::after {
   top: var(--agent-gui-workbench-header-height);
 }
@@ -5966,36 +6025,6 @@ aside.workspace-agents-status-panel
     var(--agent-gui-danger) 44%,
     var(--agent-gui-border)
   );
-}
-
-.agent-gui-node__account-reward-toast {
-  border: 1px solid rgba(218, 233, 255, 0.62);
-  background:
-    linear-gradient(
-      90deg,
-      rgba(18, 60, 142, 0.08),
-      rgba(20, 66, 160, 0.2) 58%,
-      rgba(12, 32, 92, 0.34)
-    ),
-    url("./assets/commercial/registration-credits-bg.png") center / cover
-      no-repeat;
-  box-shadow:
-    0 14px 28px rgba(0, 0, 0, 0.2),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.24);
-}
-
-.agent-gui-node__account-reward-toast::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      circle at 17% 28%,
-      rgba(255, 255, 255, 0.5),
-      transparent 24%
-    ),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 54%);
 }
 
 .agent-gui-node__conversation-list {
@@ -9155,6 +9184,13 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   line-height: 1.2;
 }
 
+/* Plan-task assignment rows space items with the row gap instead of each
+   trigger's own horizontal padding. */
+.tutti-plan-task-assignment-row .agent-gui-node__composer-menu-trigger {
+  padding-right: 0;
+  padding-left: 0;
+}
+
 .agent-gui-node__composer-menu-item > span:last-child {
   min-width: 0;
   flex: 1 1 auto;
@@ -9174,6 +9210,10 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--tutti-purple);
 }
 
+/* Active Tutti Mode chip: icon (bg-current) and label both go tutti-purple. */
+.agent-gui-node__composer-menu-trigger[data-agent-tutti-mode-active="true"] {
+  color: var(--tutti-purple);
+}
 .agent-gui-node__composer-menu-trigger:hover:not(:disabled) {
   color: var(--agent-gui-text-primary);
 }

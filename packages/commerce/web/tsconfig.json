@@ -1,0 +1,9 @@
+{
+  "extends": "../../configs/tsconfig/base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "types": ["node", "react", "react-dom"]
+  },
+  "include": ["src/**/*", "tsup.config.ts"]
+}

@@ -2046,6 +2046,20 @@
       "iconVariant": "filled"
     },
     {
+      "id": "message-center-filled-icon",
+      "layer": "base",
+      "name": "MessageCenterIcon",
+      "export": "MessageCenterIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for the agent message center entry point.",
+      "useCases": ["Message center trigger"],
+      "migrationHints": [],
+      "iconVariant": "filled"
+    },
+    {
       "id": "minimize-lined-icon",
       "layer": "base",
       "name": "MinimizeIcon",
@@ -2458,6 +2472,20 @@
       "useCases": ["Code file items"],
       "migrationHints": [],
       "iconVariant": "filled"
+    },
+    {
+      "id": "file-archive-lined-icon",
+      "layer": "base",
+      "name": "FileArchiveIcon",
+      "export": "FileArchiveIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for archive and compressed files.",
+      "useCases": ["Archive file items", "Compressed file previews"],
+      "migrationHints": [],
+      "iconVariant": "lined"
     },
     {
       "id": "terminal-lined-icon",

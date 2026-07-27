@@ -95,8 +95,10 @@ export function useAgentGUIConversationDetail(
   const activeCanonicalLiveTurn = Boolean(
     input.activeTurn && input.activeTurn.phase !== "settled"
   );
-  const sessionTurns = useEngineSelector(input.sessionEngine, (state) =>
-    selectEngineTurnsForSession(state, input.activeConversationId)
+  const sessionTurns = useEngineSelector(
+    input.sessionEngine,
+    (state) => selectEngineTurnsForSession(state, input.activeConversationId),
+    referenceArrayEqual
   );
   const projectionConversation =
     useMemo<AgentGUIConversationProjectionSource | null>(() => {
@@ -326,4 +328,14 @@ export function useAgentGUIConversationDetail(
       ? null
       : rawPendingInteractivePrompt
   };
+}
+
+function referenceArrayEqual<T>(
+  left: readonly T[],
+  right: readonly T[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
 }

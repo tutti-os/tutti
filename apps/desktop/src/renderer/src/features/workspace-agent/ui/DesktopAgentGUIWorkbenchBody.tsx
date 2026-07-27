@@ -8,7 +8,12 @@ import {
   type JSX
 } from "react";
 import { AgentGUI } from "@tutti-os/agent-gui/agent-gui";
-import type { AgentGUIProps, AgentHostInputApi } from "@tutti-os/agent-gui";
+import type {
+  AgentGUIProps,
+  AgentHostInputApi,
+  AgentVisibleErrorOverrides
+} from "@tutti-os/agent-gui";
+import { resolveInsufficientCreditsSemantic } from "@tutti-os/commerce";
 import { useService } from "@tutti-os/infra/di";
 import { requestWorkspaceAgentGuiLaunch } from "../services/workspaceAgentGuiLaunchCoordinator.ts";
 import { registerWorkspaceAgentGuiOpenSession } from "../../workspace-workbench/services/workspaceAgentGuiOpenSessionCoordinator.ts";
@@ -16,6 +21,9 @@ import { workbenchFocusInputActivationType } from "@tutti-os/workbench-surface";
 import { useTranslation } from "@renderer/i18n";
 import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
+import { useAccountService } from "../../workspace-workbench/ui/useAccountService";
+import { useWorkspaceSettingsService } from "../../workspace-workbench/ui/useWorkspaceSettingsService";
+import { buildDesktopCommerceErrorPresentation } from "./desktopCommerceErrorPresentation";
 import { Toast } from "@renderer/lib/toast";
 import { isDesktopAgentProvider } from "@shared/preferences";
 import {
@@ -111,6 +119,8 @@ function DesktopAgentGUISurfaceImpl({
 }: DesktopAgentGUISurfaceProps): JSX.Element {
   const agents = agentDirectory.agents;
   const { i18n, locale } = useTranslation();
+  const { state: accountState } = useAccountService();
+  const { state: workspaceSettingsState } = useWorkspaceSettingsService();
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
   const rawWorkbenchState = normalizeDesktopAgentGUIWorkbenchState(
@@ -122,6 +132,42 @@ function DesktopAgentGUISurfaceImpl({
     agents.find((agent) => agent.agentTargetId === requestedAgentTargetId)
       ?.provider ?? null;
   const agentEnvService = useService(IAgentEnvService);
+  const visibleErrorPresentationOverrides =
+    useMemo<AgentVisibleErrorOverrides | null>(() => {
+      if (workspaceSettingsState.tuttiAgentSwitchEnabled !== true) {
+        return null;
+      }
+      const summary = accountState.productSummary;
+      return buildDesktopCommerceErrorPresentation({
+        semantic: resolveInsufficientCreditsSemantic(summary?.membership_access)
+          .message,
+        actionUrl: summary?.links.plan_url,
+        copy: {
+          upgradeMembership: {
+            message: i18n.t(
+              "workspace.accountMenu.insufficientCreditsUpgradeMessage"
+            ),
+            actionLabel: i18n.t("workspace.accountMenu.upgradeMembership")
+          },
+          rechargeCredits: {
+            message: i18n.t(
+              "workspace.accountMenu.insufficientCreditsRechargeMessage"
+            ),
+            actionLabel: i18n.t("workspace.accountMenu.rechargeCredits")
+          },
+          creditsUnavailable: {
+            message: i18n.t(
+              "workspace.accountMenu.insufficientCreditsUnknownMessage"
+            ),
+            actionLabel: i18n.t("workspace.accountMenu.viewCreditPlans")
+          }
+        }
+      });
+    }, [
+      accountState.productSummary,
+      i18n,
+      workspaceSettingsState.tuttiAgentSwitchEnabled
+    ]);
   const {
     computerUseStatus,
     handleAgentProviderLogin,
@@ -617,7 +663,7 @@ function DesktopAgentGUISurfaceImpl({
     hostCapabilities: {
       referenceProvenanceFilterEnabled,
       capabilityMenuState,
-      accountMenuState: null,
+      visibleErrorPresentationOverrides,
       comingSoonProviders: comingSoonAgentProviders,
       providerReadinessGates,
       defaultAgentTargetId,

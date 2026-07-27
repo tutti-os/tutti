@@ -1,4 +1,5 @@
 import {
+  agentActivitySessionMessageWindowFromDescendingPage,
   dispatchSessionMutation,
   type AgentActivityAdapter,
   type AgentActivityGoalControlResult,
@@ -284,6 +285,18 @@ export class WorkspaceAgentActivityService
         if (input.cache !== false) {
           entry.engine.dispatch({
             messages: page.messages,
+            ...(input.order === "desc"
+              ? {
+                  sessionMessageWindows: [
+                    {
+                      agentSessionId: input.agentSessionId,
+                      ...agentActivitySessionMessageWindowFromDescendingPage(
+                        page
+                      )
+                    }
+                  ]
+                }
+              : {}),
             type: "message/snapshotReceived",
             workspaceId
           });
@@ -508,6 +521,9 @@ export class WorkspaceAgentActivityService
         permissionModeId: resolveComposerPermissionMode(input.settings),
         reasoningEffort: input.settings?.reasoningEffort ?? null,
         ...(resolvedCwd?.noProject ? { noProject: true } : {}),
+        ...(input.railPlacement
+          ? { railPlacement: { ...input.railPlacement } }
+          : {}),
         speed: input.settings?.speed ?? null,
         title: input.title ?? null,
         visible: input.visible ?? true,

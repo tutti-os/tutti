@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const laneFingerprintVersion = 1;
+const gitFingerprintMaxBuffer = 64 * 1024 * 1024;
 
 export class LaneCacheError extends Error {}
 
@@ -18,7 +19,8 @@ export function buildLaneInputFingerprint(input) {
   const addGitOutput = (label, args) => {
     const result = spawnSync("git", args, {
       cwd: root,
-      encoding: null
+      encoding: null,
+      maxBuffer: gitFingerprintMaxBuffer
     });
     if (result.status !== 0) {
       throw new Error(
@@ -59,7 +61,11 @@ export function buildLaneInputFingerprint(input) {
   const untrackedResult = spawnSync(
     "git",
     ["ls-files", "--others", "--exclude-standard", "-z", "--", ...inputFiles],
-    { cwd: root, encoding: "utf8" }
+    {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: gitFingerprintMaxBuffer
+    }
   );
   if (untrackedResult.status !== 0) {
     throw new Error("check:changed failed to fingerprint untracked files");

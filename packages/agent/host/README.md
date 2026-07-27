@@ -26,6 +26,12 @@ eligibility is decided by `ResolveResumePolicy`: root sessions resume normally,
 explicit imports may recreate a missing provider session, and child,
 tombstoned, or non-resumable imports are rejected. Canonical titles may be
 empty; only an explicit title or the first eligible prompt establishes one.
+`CreateSessionInput.RailPlacement` optionally carries the caller-selected,
+versioned canonical rail identity. Host validates it before provider startup
+and persists its opaque `SectionKey` exactly on first creation. An idempotent
+retry that supplies a placement must use the same placement; project deletion
+or another adapter-side view change never reassigns an existing session to
+`conversations`.
 Cancellation exposes durable intent acceptance, provider confirmation, and
 canonical settlement as separate facts. `GoalControl`, `GetGoalState`, and
 `ReconcileGoal` are provider-neutral Host APIs; typed `/goal` commands enter the

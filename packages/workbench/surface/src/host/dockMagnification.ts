@@ -396,11 +396,13 @@ function isPointNearDockViewport({
 }
 
 export function useDockMagnification({
+  dockPlateRef,
   dockPlacement,
   dockRootRef,
   dockViewportRef,
   slotRefs
 }: {
+  dockPlateRef: RefObject<HTMLElement | null>;
   dockPlacement: "bottom" | "left";
   dockRootRef: RefObject<HTMLElement | null>;
   dockViewportRef: RefObject<HTMLElement | null>;
@@ -438,12 +440,14 @@ export function useDockMagnification({
       }
       magnifyActiveRef.current = active;
       if (active) {
+        dockPlateRef.current?.setAttribute("data-dock-pointer-active", "true");
         dockRootRef.current?.setAttribute("data-dock-pointer-active", "true");
       } else {
+        dockPlateRef.current?.removeAttribute("data-dock-pointer-active");
         dockRootRef.current?.removeAttribute("data-dock-pointer-active");
       }
     },
-    [dockRootRef]
+    [dockPlateRef, dockRootRef]
   );
 
   const stopAnimation = useCallback(() => {

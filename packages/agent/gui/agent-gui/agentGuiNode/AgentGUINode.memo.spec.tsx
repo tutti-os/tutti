@@ -187,6 +187,43 @@ describe("AgentGUINode memoization", () => {
     expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("passes reference content error recovery through the memo boundary", () => {
+    mockViewModel = createViewModel();
+    const firstResolver = vi.fn();
+    const secondResolver = vi.fn();
+    const initial = createProps();
+    const props = {
+      ...initial,
+      workspace: {
+        ...initial.workspace,
+        resolveReferenceContentErrorAction: firstResolver
+      }
+    };
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0]
+        .resolveReferenceContentErrorAction
+    ).toBe(firstResolver);
+
+    agentGuiNodeViewSpy.mockClear();
+    rerender(
+      <AgentGUINode
+        {...props}
+        workspace={{
+          ...props.workspace,
+          resolveReferenceContentErrorAction: secondResolver
+        }}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    expect(
+      agentGuiNodeViewSpy.mock.calls.at(-1)?.[0]
+        .resolveReferenceContentErrorAction
+    ).toBe(secondResolver);
+  });
+
   it("keeps the rail resize callback stable and reads the latest frame width", () => {
     mockViewModel = createViewModel();
     const onUpdateNode = vi.fn();

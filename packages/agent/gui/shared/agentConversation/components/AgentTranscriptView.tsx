@@ -14,6 +14,7 @@ import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentati
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMarkdown";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
+import type { AgentConversationParticipantPresentation } from "../contracts/agentConversationParticipantPresentation";
 import { AgentTranscriptItemView } from "./AgentTranscriptItemView";
 import { useAgentTurnDisclosureStore } from "./AgentTurnDisclosureContext";
 import { AgentTurnWorkSection } from "./AgentTurnWorkSection";
@@ -26,10 +27,12 @@ import {
   scrollTranscriptRowIntoView
 } from "./AgentMessageLocatorRail";
 import {
+  attachLeadingToolRowsToFollowingMessages,
   buildAgentTranscriptTurnGroups,
   buildTurnGroupIndexByRowIndex,
   buildUserMessageLocatorItems,
   escapeCssString,
+  findParticipantTurnDividerRowIndexes,
   findTurnDividerRowIndexes,
   transcriptRowKey,
   useEnteringTranscriptRows,
@@ -53,7 +56,7 @@ export type {
   AgentTranscriptAttachmentLocator,
   AgentTranscriptTurnAttachment
 } from "./useAgentTranscriptTurnAttachments";
-interface AgentTranscriptViewProps {
+export interface AgentTranscriptViewProps {
   conversation: AgentConversationVM;
   turnAttachments?: readonly AgentTranscriptTurnAttachment[];
   turnAttachmentLocatorRef?: Ref<AgentTranscriptAttachmentLocator>;
@@ -67,6 +70,7 @@ interface AgentTranscriptViewProps {
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   previewMode?: boolean;
   showRawTimelineJson?: boolean;
+  participantPresentation?: AgentConversationParticipantPresentation;
   labels: {
     toolCallsLabel: (count: number) => string;
     thinkingLabel: string;
@@ -75,6 +79,33 @@ interface AgentTranscriptViewProps {
     rawTimelineJson?: string;
     userMessageLocator?: string;
   };
+}
+
+function participantPresentationEqual(
+  previous: AgentConversationParticipantPresentation | undefined,
+  next: AgentConversationParticipantPresentation | undefined
+): boolean {
+  if (previous === next) {
+    return true;
+  }
+  if ((!previous || !previous.enabled) && (!next || !next.enabled)) {
+    return true;
+  }
+  if (!previous?.enabled || !next?.enabled) {
+    return false;
+  }
+  if (previous.status !== next.status) {
+    return false;
+  }
+  if (previous.status === "loading" || next.status === "loading") {
+    return true;
+  }
+  return (
+    previous.user.name === next.user.name &&
+    previous.user.avatarUrl === next.user.avatarUrl &&
+    previous.agent.name === next.agent.name &&
+    previous.agent.avatarUrl === next.agent.avatarUrl
+  );
 }
 
 function transcriptLabelsEqual(
@@ -169,6 +200,10 @@ export function areAgentTranscriptViewPropsEqual(
       next.onTurnAttachmentVisibilityChange &&
     previous.previewMode === next.previewMode &&
     previous.showRawTimelineJson === next.showRawTimelineJson &&
+    participantPresentationEqual(
+      previous.participantPresentation,
+      next.participantPresentation
+    ) &&
     transcriptLabelsEqual(previous.labels, next.labels)
   );
 }
@@ -184,6 +219,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   workspaceAppIcons,
   previewMode = false,
   showRawTimelineJson = false,
+  participantPresentation,
   labels
 }: AgentTranscriptViewProps): JSX.Element {
   "use memo";
@@ -196,13 +232,23 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   const virtualizerHostRef = useRef<HTMLDivElement | null>(null);
   const [virtualScrollElement, setVirtualScrollElement] =
     useState<HTMLElement | null>(null);
-  const rowKeys = useMemo(
-    () => conversation.rows.map(transcriptRowKey),
-    [conversation.rows]
-  );
+  const participantHeadersEnabled = participantPresentation?.enabled === true;
+  // Participant-header presentation (Agent board session detail): tool-group
+  // rows attach to the assistant message that follows them instead of sitting
+  // after the previous message, and turn dividers key off user messages. Rows
+  // and their keys share a single projection so this component stays within
+  // the degradation-check memo budget.
+  const transcriptRowSet = useMemo(() => {
+    const rows = participantHeadersEnabled
+      ? attachLeadingToolRowsToFollowingMessages(conversation.rows)
+      : conversation.rows;
+    return { rows, rowKeys: rows.map(transcriptRowKey) };
+  }, [conversation.rows, participantHeadersEnabled]);
+  const displayRows = transcriptRowSet.rows;
+  const rowKeys = transcriptRowSet.rowKeys;
   const turnGroups = useMemo(
-    () => buildAgentTranscriptTurnGroups(conversation.rows, rowKeys),
-    [conversation.rows, rowKeys]
+    () => buildAgentTranscriptTurnGroups(displayRows, rowKeys),
+    [displayRows, rowKeys]
   );
   const turnGroupIndexByRowIndex = useMemo(
     () => buildTurnGroupIndexByRowIndex(turnGroups),
@@ -211,11 +257,11 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   const userMessageLocatorItems = useMemo(
     () =>
       buildUserMessageLocatorItems(
-        conversation.rows,
+        displayRows,
         rowKeys,
         turnGroupIndexByRowIndex
       ),
-    [conversation.rows, rowKeys, turnGroupIndexByRowIndex]
+    [displayRows, rowKeys, turnGroupIndexByRowIndex]
   );
   const enteringRowKeys = useEnteringTranscriptRows(rowKeys);
   const handleToolGroupExpandedChange = useCallback(
@@ -240,8 +286,11 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
     [conversation.sourceDetail.turns]
   );
   const dividerRowIndexes = useMemo(
-    () => findTurnDividerRowIndexes(turnIndexById, conversation.rows),
-    [conversation.rows, turnIndexById]
+    () =>
+      participantHeadersEnabled
+        ? findParticipantTurnDividerRowIndexes(displayRows)
+        : findTurnDividerRowIndexes(turnIndexById, displayRows),
+    [displayRows, turnIndexById, participantHeadersEnabled]
   );
   const canonicalTurnById = new Map(
     (conversation.sourceDetail.sessionTurns ?? []).map((turn) => [
@@ -349,7 +398,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   ): JSX.Element => {
     const rowKey =
       renderKey ??
-      (conversation.rows[rowIndex] === row
+      (displayRows[rowIndex] === row
         ? (rowKeys[rowIndex] ?? transcriptRowKey(row))
         : transcriptRowKey(row));
     const shouldAnimateEnter =
@@ -361,6 +410,24 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
         className="agent-gui-transcript-row"
         data-agent-transcript-row={rowKey}
         data-agent-transcript-row-kind={row.kind}
+        data-agent-transcript-row-speaker={
+          row.kind === "message" ? row.speaker : undefined
+        }
+        data-agent-transcript-row-thinking-first={
+          row.kind === "message" &&
+          row.speaker === "assistant" &&
+          row.thinking.length > 0
+            ? "true"
+            : undefined
+        }
+        data-agent-transcript-row-thinking-last={
+          row.kind === "message" &&
+          row.speaker === "assistant" &&
+          row.thinking.length > 0 &&
+          row.messages.length === 0
+            ? "true"
+            : undefined
+        }
         data-agent-transcript-row-index={rowIndex}
         data-agent-transcript-row-enter={
           shouldAnimateEnter ? "true" : undefined
@@ -378,6 +445,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           workspaceAppIcons={workspaceAppIcons}
           previewMode={previewMode}
           showRawTimelineJson={showRawTimelineJson}
+          participantPresentation={participantPresentation}
           toolGroupExpanded={
             row.kind === "tool-group"
               ? expandedToolRows[rowKey] === true

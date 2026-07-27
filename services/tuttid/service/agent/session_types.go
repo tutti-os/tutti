@@ -362,6 +362,8 @@ type PersistedSession struct {
 	Provider               string
 	ProviderSessionID      string
 	Cwd                    string
+	RailSectionKind        string
+	RailProjectPath        string
 	RailSectionKey         string
 	Settings               ComposerSettings
 	Metadata               agentactivitybiz.SessionMetadata
@@ -414,7 +416,7 @@ type SessionPageReader interface {
 // every successful Create response must expose. In particular, it assigns the
 // immutable railSectionKey before the response leaves the daemon.
 type SessionInitializer interface {
-	InitializeRuntimeSession(context.Context, ProviderRuntimeSession) (PersistedSession, error)
+	InitializeRuntimeSession(context.Context, ProviderRuntimeSession, *agenthost.RailPlacement) (PersistedSession, error)
 }
 
 type ChildSessionReader interface {
@@ -604,6 +606,7 @@ type CreateSessionInput struct {
 	Speed                  *string
 	ConversationDetailMode string
 	Visible                *bool
+	RailPlacement          *agenthost.RailPlacement
 	ExtraSkills            []SessionSkillBundle
 	// ExternalRolloutSourcePath is the absolute path to the original provider
 	// CLI rollout/transcript file this session was imported from, when known.

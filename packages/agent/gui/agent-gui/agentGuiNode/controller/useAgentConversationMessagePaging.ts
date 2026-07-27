@@ -148,29 +148,6 @@ export function filterMessagesForDetailWindowOverlay(input: {
   );
 }
 
-export function sessionViewHasUnhydratedOlderDetailMessages(input: {
-  agentSessionId: string;
-  detailMessages: readonly AgentActivityMessage[];
-  hasLoadedInitialMessages: boolean;
-  hasOlderMessages: boolean;
-  oldestLoadedVersion: number | null;
-  snapshotMessagesById: Record<string, AgentActivityMessage[]>;
-}): boolean {
-  if (
-    input.hasLoadedInitialMessages ||
-    input.hasOlderMessages ||
-    input.detailMessages.length === 0
-  )
-    return false;
-  const oldest =
-    input.oldestLoadedVersion ?? minFiniteMessageVersion(input.detailMessages);
-  if (oldest === null) return false;
-  const snapshotOldest = minFiniteMessageVersion(
-    input.snapshotMessagesById[input.agentSessionId] ?? []
-  );
-  return oldest > 1 || (snapshotOldest !== null && snapshotOldest < oldest);
-}
-
 export function sessionHasRenderableMessages(input: {
   agentSessionId: string;
   snapshotMessagesById: Record<string, AgentActivityMessage[]>;
@@ -192,7 +169,10 @@ export interface ConversationMessagePagingViewPort {
   mergeOlder(
     ref: AgentSessionViewRef,
     messages: readonly AgentActivityMessage[],
-    options?: { hasOlderMessages?: boolean }
+    options?: {
+      hasOlderMessages?: boolean;
+      oldestLoadedVersion?: number | null;
+    }
   ): void;
   setOlderMessagesLoading(ref: AgentSessionViewRef, loading: boolean): void;
 }
@@ -271,16 +251,10 @@ export function useAgentConversationMessagePaging(
       if (!normalized) return;
       const ref = current.sessionViewRef(normalized);
       const view = current.view.get(ref);
-      const canonicalOldestVersion = current.projection.minVersion(
-        current.getCanonicalMessages(normalized)
-      );
       const oldestLoadedVersion =
-        view?.oldestLoadedVersion ?? canonicalOldestVersion;
-      const hasOlderMessages =
-        view?.hasOlderMessages === true ||
-        (view?.oldestLoadedVersion == null &&
-          canonicalOldestVersion !== null &&
-          canonicalOldestVersion > 1);
+        view?.oldestLoadedVersion ??
+        current.projection.minVersion(current.getCanonicalMessages(normalized));
+      const hasOlderMessages = view?.hasOlderMessages === true;
       if (
         !hasOlderMessages ||
         view?.isLoadingOlderMessages === true ||
@@ -385,7 +359,9 @@ export function useAgentConversationMessagePaging(
           return;
         }
         current.view.mergeOlder(ref, page.messages, {
-          hasOlderMessages: page.hasMore && page.messages.length > 0
+          hasOlderMessages: page.hasMore && page.messages.length > 0,
+          oldestLoadedVersion:
+            current.projection.minVersion(page.messages) ?? oldestLoadedVersion
         });
         current.view.setOlderMessagesLoading(ref, false);
       } catch (error) {

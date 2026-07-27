@@ -23,7 +23,7 @@ export type DesktopAgentGUIHostProps = {
     AgentGUIProps["hostCapabilities"],
     | "referenceProvenanceFilterEnabled"
     | "capabilityMenuState"
-    | "accountMenuState"
+    | "visibleErrorPresentationOverrides"
     | "comingSoonProviders"
     | "providerReadinessGates"
     | "defaultAgentTargetId"
@@ -96,7 +96,8 @@ export function useStableDesktopAgentGUIHostProps({
       referenceProvenanceFilterEnabled:
         nextHostCapabilities.referenceProvenanceFilterEnabled,
       capabilityMenuState: nextHostCapabilities.capabilityMenuState,
-      accountMenuState: nextHostCapabilities.accountMenuState,
+      visibleErrorPresentationOverrides:
+        nextHostCapabilities.visibleErrorPresentationOverrides,
       comingSoonProviders: nextHostCapabilities.comingSoonProviders,
       providerReadinessGates: nextHostCapabilities.providerReadinessGates,
       defaultAgentTargetId: nextHostCapabilities.defaultAgentTargetId,

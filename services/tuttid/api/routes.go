@@ -100,6 +100,46 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.LogoutAccount(w, r)
 	})
 
+	mux.HandleFunc("/v1/mobile-remote-access/pairing-challenges", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.StartMobileRemotePairing(w, r)
+	})
+
+	mux.HandleFunc("/v1/mobile-remote-access/pairing-challenges/{challengeID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetMobileRemotePairingChallenge(w, r)
+	})
+
+	mux.HandleFunc("/v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ConfirmMobileRemotePairing(w, r)
+	})
+
+	mux.HandleFunc("/v1/mobile-remote-access/pairings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListMobileRemotePairings(w, r)
+	})
+
+	mux.HandleFunc("/v1/mobile-remote-access/pairings/{pairingID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.RevokeMobileRemotePairing(w, r)
+	})
+
 	mux.HandleFunc("/v1/cli/capabilities", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)

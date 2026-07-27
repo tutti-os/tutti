@@ -95,7 +95,7 @@ describe("useAgentGuiConversationList", () => {
     ]);
   });
 
-  it("projects a task marker from a matching mention-rich initial prompt", () => {
+  it("projects a plain @ title from a matching mention-rich initial prompt", () => {
     const engine = createAgentSessionEngine({
       clock: { nowUnixMs: () => 1 },
       commandPort: { execute: async () => ({}) },
@@ -137,7 +137,7 @@ describe("useAgentGuiConversationList", () => {
       expect.objectContaining({
         railSectionKey: "project:/workspace",
         title: "@Task 看看",
-        titleLeadingMentionKind: "task"
+        titleLeadingMentionKind: null
       })
     );
   });

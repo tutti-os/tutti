@@ -16,7 +16,8 @@ import type {
 } from "../../../contracts/referenceProvenance.ts";
 import {
   referenceProvenanceFilterIds,
-  referenceProvenanceFilterIsActive
+  referenceProvenanceFilterIsActive,
+  resolveReferenceProvenanceAgentLabelParts
 } from "../../../core/referenceProvenance.ts";
 
 export interface ReferenceProvenanceFilterLabels {
@@ -43,39 +44,18 @@ export interface ReferenceProvenanceFilterControlProps {
   onToggleAll: (dimension: ReferenceProvenanceDimension) => void;
 }
 
-interface StructuredAgentOptionLabel {
-  agentLabel: string;
-  ownerLabel: string;
-}
-
-function resolveStructuredAgentOptionLabel(
-  option: ReferenceProvenanceOption,
-  memberLabelsById: ReadonlyMap<string, string>
-): StructuredAgentOptionLabel | null {
-  if (!option.parentMemberId) return null;
-
-  const ownerLabel = memberLabelsById.get(option.parentMemberId);
-  if (!ownerLabel) return null;
-
-  const prefix = `${ownerLabel} · `;
-  if (!option.label.startsWith(prefix)) return null;
-
-  const agentLabel = option.label.slice(prefix.length);
-  return agentLabel ? { agentLabel, ownerLabel } : null;
-}
-
 function ReferenceProvenanceOptionLabel({
   dimension,
-  memberLabelsById,
+  memberOptionsById,
   option
 }: {
   dimension: ReferenceProvenanceDimension;
-  memberLabelsById: ReadonlyMap<string, string>;
+  memberOptionsById: ReadonlyMap<string, ReferenceProvenanceOption>;
   option: ReferenceProvenanceOption;
 }) {
   const structuredAgentLabel =
     dimension === "agent"
-      ? resolveStructuredAgentOptionLabel(option, memberLabelsById)
+      ? resolveReferenceProvenanceAgentLabelParts(option, memberOptionsById)
       : null;
 
   return (
@@ -126,8 +106,8 @@ export function ReferenceProvenanceFilterControl({
   const [dimension, setDimension] = useState<ReferenceProvenanceDimension>(
     enabledDimensions[0] ?? "agent"
   );
-  const memberLabelsById = useMemo(
-    () => new Map(memberOptions.map((option) => [option.id, option.label])),
+  const memberOptionsById = useMemo(
+    () => new Map(memberOptions.map((option) => [option.id, option])),
     [memberOptions]
   );
   const activeDimension = enabledDimensions.includes(dimension)
@@ -231,7 +211,7 @@ export function ReferenceProvenanceFilterControl({
                 ) : null}
                 <ReferenceProvenanceOptionLabel
                   dimension={activeDimension}
-                  memberLabelsById={memberLabelsById}
+                  memberOptionsById={memberOptionsById}
                   option={option}
                 />
               </DropdownMenuCheckboxItem>

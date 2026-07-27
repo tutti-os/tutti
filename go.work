@@ -6,6 +6,8 @@ use ./services/tuttid
 
 use ./packages/events/stream-go
 
+use ./packages/device-link
+
 use ./apps/cli
 
 use ./packages/workbench/service

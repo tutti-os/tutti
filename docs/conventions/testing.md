@@ -139,6 +139,9 @@ at least one CPU sample so missing profiler data cannot pass as zero.
 Neither scenario launches or sends input to a developer's installed Agent provider.
 `rail-scope-reveal` asserts the exact active-row
 `scrollIntoView` call during a fresh Agent scope restore.
+`session-switch` also reports inclusive CPU samples for
+`readTimelineGeometry`; sample counts are diagnostic stack samples, not
+function-call counts.
 `composer-overflow-resize` maximizes the AgentGUI Workbench node, narrows the
 renderer viewport, asserts the hero prompt-tip's native `scrollWidth` and
 `clientWidth` getters were read after resize, then restores the original

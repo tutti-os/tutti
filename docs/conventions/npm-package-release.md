@@ -26,6 +26,7 @@ The current fixed release group is:
 @tutti-os/workspace-terminal
 @tutti-os/agent-activity-core
 @tutti-os/agent-gui
+@tutti-os/commerce
 @tutti-os/claude-sdk-sidecar
 @tutti-os/browser-node
 @tutti-os/workspace-file-preview
@@ -123,6 +124,11 @@ Adding a new `packages/**/go.mod` opts that module into this shared stable
 package release tag sequence. Do not add package Go modules that require an
 independent release cadence unless this convention and the release automation
 are updated together.
+
+`packages/device-link` is temporarily excluded while the Personal
+Android/Desktop path is still an unreleased transport spike. Remove the
+exclusion and add its stable Go tag only after that product path validates the
+authenticated connection lifecycle and AAR consumer build.
 
 ## Local Beta Releases
 
@@ -229,6 +235,11 @@ following:
   CSS-safe data URL or an absolute URL constructed relative to the module
 - every asset referenced through `new URL(relativePath, import.meta.url)` exists
   at that exact module-relative location inside the packed tarball
+- published code that may be dependency-prebundled must import fallback images
+  through explicit public asset subpaths; do not leave
+  `new URL("./assets/...", import.meta.url)` in a bundled runtime entrypoint,
+  because a consumer optimizer may relocate the JavaScript without relocating
+  the adjacent asset
 
 Emitting an SVG next to a bundled JavaScript file is not sufficient when the
 bundle only exports a string such as `./icon-HASH.svg`. CSS resolves that value
@@ -258,6 +269,13 @@ The stable package entrypoints are:
 @tutti-os/agent-gui/workbench/browser-element-context
 @tutti-os/agent-gui/workbench/tool-sidebar
 @tutti-os/agent-gui/workspace-settings-panel
+@tutti-os/commerce
+@tutti-os/commerce/react
+@tutti-os/commerce/assets/star-free.png
+@tutti-os/commerce/assets/star-lite.png
+@tutti-os/commerce/assets/star-pro.png
+@tutti-os/commerce/assets/star-ultra.png
+@tutti-os/commerce/assets/registration-credits-bg.png
 @tutti-os/browser-node
 @tutti-os/browser-node/assets/workspace-dock-website.png
 @tutti-os/browser-node/bridge
@@ -285,6 +303,8 @@ The stable package entrypoints are:
 @tutti-os/workspace-file-preview/core
 @tutti-os/workspace-file-preview/react
 @tutti-os/workspace-file-manager
+@tutti-os/workspace-file-manager/assets/workspace-archive-fallback.png
+@tutti-os/workspace-file-manager/assets/workspace-folder-fallback.png
 @tutti-os/workspace-file-manager/services
 @tutti-os/workspace-file-reference
 @tutti-os/workspace-file-reference/contracts

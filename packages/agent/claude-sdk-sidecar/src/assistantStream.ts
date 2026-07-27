@@ -85,6 +85,28 @@ export class AssistantStreamProjector {
     usedSegmentIds.add(segment.messageId);
   }
 
+  failContent(
+    kind: AssistantSegmentKind,
+    messageBase: string,
+    content: string,
+    usedSegmentIds: Set<string>
+  ): void {
+    if (!content) {
+      return;
+    }
+    const existing = this.segmentWithContent(
+      kind,
+      messageBase,
+      content,
+      usedSegmentIds
+    );
+    const segment =
+      existing ??
+      this.createSegment(kind, "fallback", messageBase || this.activeTurnId());
+    this.completeSegment(undefined, segment, content, true);
+    usedSegmentIds.add(segment.messageId);
+  }
+
   private emitDelta(segment: AssistantSegmentState, delta: string): void {
     if (!delta) {
       return;
@@ -156,12 +178,13 @@ export class AssistantStreamProjector {
   private completeSegment(
     index: number | undefined,
     segment: AssistantSegmentState,
-    fallbackText = ""
+    fallbackText = "",
+    failed = false
   ): void {
     if (typeof index === "number") {
       this.segmentKeyByIndex.delete(indexKey(segment.kind, index));
     }
-    if (segment.completed) {
+    if (segment.completed && !failed) {
       return;
     }
     const tail =
@@ -180,7 +203,9 @@ export class AssistantStreamProjector {
     this.emit({
       type:
         segment.kind === "assistant"
-          ? "assistant_completed"
+          ? failed
+            ? "assistant_failed"
+            : "assistant_completed"
           : "thinking_completed",
       payload: {
         turnId: this.activeTurnId(),

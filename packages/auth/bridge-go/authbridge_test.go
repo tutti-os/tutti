@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -186,6 +187,52 @@ func TestCompleteRejectsMismatchedStateOrigin(t *testing.T) {
 	waitForStatus(t, attempt, statusFailed)
 }
 
+func TestCompletePreservesUserCancellation(t *testing.T) {
+	account := newAccountServer(t)
+	defer account.Close()
+
+	client := newTestClient(t, account.URL)
+	attempt, err := client.StartLogin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := loginState(t, attempt.LoginURL)
+	body, _ := json.Marshal(map[string]string{
+		"state": attempt.state,
+		"error": "user_cancelled",
+	})
+	resp, err := http.Post(state.LocalServerOrigin+"/oauth/complete", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("complete status = %d", resp.StatusCode)
+	}
+	var payload struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Error.Code != "USER_CANCELLED" {
+		t.Fatalf("error code = %q, want USER_CANCELLED", payload.Error.Code)
+	}
+	waitForStatus(t, attempt, statusFailed)
+	if !IsUserCancelled(attempt.resultError()) {
+		t.Fatalf("attempt error = %v, want user cancellation", attempt.resultError())
+	}
+	session, err := client.ReadSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session != nil {
+		t.Fatalf("session = %#v, want nil", session)
+	}
+}
+
 func TestCallbackRedirectsProviderErrorWithoutLeakingSecrets(t *testing.T) {
 	account := newAccountServer(t)
 	defer account.Close()
@@ -229,6 +276,110 @@ func TestCallbackRedirectsProviderErrorWithoutLeakingSecrets(t *testing.T) {
 		t.Fatalf("redirect leaked sensitive value: %s", location)
 	}
 	waitForStatus(t, attempt, statusFailed)
+}
+
+func TestCallbackPreservesUserCancellationWithoutOpenAppURL(t *testing.T) {
+	account := newAccountServer(t)
+	defer account.Close()
+
+	client := newTestClient(t, account.URL)
+	if err := client.writeAuthJSON(sessionFromUser("existing-session", UserInfo{UserID: "existing-user"})); err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := client.StartLogin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := loginState(t, attempt.LoginURL)
+	callbackURL, err := url.Parse(state.LocalServerOrigin + "/oauth/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := callbackURL.Query()
+	query.Set("state", attempt.state)
+	query.Set("error", "user_cancelled")
+	callbackURL.RawQuery = query.Encode()
+
+	resp, err := noRedirectClient().Get(callbackURL.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("callback status = %d", resp.StatusCode)
+	}
+	location := resp.Header.Get("Location")
+	resultURL, err := url.Parse(location)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resultURL.Query().Get("desktopBridgeStatus"); got != "error" {
+		t.Fatalf("desktopBridgeStatus = %q", got)
+	}
+	if got := resultURL.Query().Get("desktopBridgeError"); got != "userCancelled" {
+		t.Fatalf("desktopBridgeError = %q", got)
+	}
+	if got := resultURL.Query().Get("openAppUrl"); got != "" {
+		t.Fatalf("openAppUrl = %q, want empty", got)
+	}
+	if strings.Contains(location, "user_cancelled") {
+		t.Fatalf("redirect leaked callback error: %s", location)
+	}
+	waitForStatus(t, attempt, statusFailed)
+	if !IsUserCancelled(attempt.resultError()) {
+		t.Fatalf("attempt error = %v, want user cancellation", attempt.resultError())
+	}
+	session, err := client.ReadSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session == nil || session.SessionID != "existing-session" {
+		t.Fatalf("session = %#v, want existing session", session)
+	}
+}
+
+func TestLoginReturnsUserCancelledSentinel(t *testing.T) {
+	account := newAccountServer(t)
+	defer account.Close()
+
+	client, err := NewClient(Config{
+		AccountBaseURL: account.URL,
+		AppCallbackURL: "tutti://login/callback",
+		AuthJSONPath:   filepath.Join(t.TempDir(), "account", "auth.json"),
+		AuthLoginURL:   "https://tutti.sh/auth/login",
+		OpenURL: func(_ context.Context, loginURL string) error {
+			state := loginState(t, loginURL)
+			parsedLoginURL, parseErr := url.Parse(loginURL)
+			if parseErr != nil {
+				return parseErr
+			}
+			callbackURL, parseErr := url.Parse(state.LocalServerOrigin + "/oauth/callback")
+			if parseErr != nil {
+				return parseErr
+			}
+			query := callbackURL.Query()
+			query.Set("state", parsedLoginURL.Query().Get("state"))
+			query.Set("error", "user_cancelled")
+			callbackURL.RawQuery = query.Encode()
+			response, requestErr := noRedirectClient().Get(callbackURL.String())
+			if requestErr != nil {
+				return requestErr
+			}
+			defer response.Body.Close()
+			if response.StatusCode != http.StatusFound {
+				return fmt.Errorf("callback status = %d", response.StatusCode)
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.Login(context.Background())
+	if !IsUserCancelled(err) {
+		t.Fatalf("Login error = %v, want user cancellation", err)
+	}
 }
 
 func TestBridgeResultOpenAppURLSchemeWhitelist(t *testing.T) {

@@ -95,7 +95,6 @@ export {
   maxFiniteMessageVersion,
   minFiniteMessageVersion,
   sessionHasRenderableMessages,
-  sessionViewHasUnhydratedOlderDetailMessages,
   windowHasTurnMissingUserPrompt
 } from "./useAgentConversationMessagePaging";
 export { resolveConversationSummaryById } from "./useAgentConversationSelection";
@@ -365,7 +364,6 @@ export function useAgentGUINodeController({
   const {
     loadSessionState,
     markSelectedConversationDetailPending,
-    reloadSelectedConversation,
     resolveSessionMessages
   } = sessionDetailTransport;
   const storedActiveMessages = activeConversationId
@@ -628,11 +626,9 @@ export function useAgentGUINodeController({
       onComposerDefaultsAuthorityReloadedRef,
       previewMode,
       providerComposerOptions,
-      reloadSelectedConversation,
       selectedComposerTargetDataRef,
       selectedProjectPath,
       selectedProjectPathRef,
-      sessionEngine,
       syncConversationListProjection,
       workspaceId,
       workspacePath

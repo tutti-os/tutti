@@ -56,15 +56,15 @@ The ordinary Browser surface and the Workbench Browser node render the same
 strip above a navigation row, so the broad top-row blank area is the window
 drag target while the address bar remains fully interactive below it. The
 Workbench adapter does not recreate either row: it renders the same component
-and opts its custom header into the Browser-owned 76-pixel layout through
-`data-workbench-custom-header-layout="browser-tabs"`.
+and declares the Browser-owned header presentation through the node definition:
+`window.header: { heightPx: 76, overflow: "visible" }`. Workbench projects the
+height to `--workbench-header-height` on the owning window.
 
 The menu stays inline so its Electron guest-overlay coordination is identical
-in both shells. The shared Browser header also marks itself with
-`data-workbench-custom-header-overflow="visible"`; Workbench honors that opt-in
-on its otherwise clipping custom-header row, allowing the menu to extend over
-the node body while the outer Workbench window still clips content to the
-window bounds.
+in both shells. Workbench projects the declared overflow policy to
+`data-window-header-overflow="visible"` on `.workbench-window` and allows the
+otherwise clipping custom-header row to extend over the node body. The outer
+Workbench window still clips content to the window bounds.
 
 Tabbed Browser surfaces keep a feature-owned tab store keyed by the Workbench
 surface node ID. Each tab receives a stable child Browser Node ID and owns its

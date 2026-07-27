@@ -21,6 +21,7 @@ import (
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
+	mobileremoteservice "github.com/tutti-os/tutti/services/tuttid/service/mobileremote"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
@@ -38,6 +39,7 @@ type tuttiWiring struct {
 	agentRuntime            *agentdaemon.Runtime
 	providerAuthWatcher     *agentservice.ProviderAuthWatcher
 	agentCLIUpdateScheduler *agentstatusservice.ProviderUpdateScheduler
+	mobileRemoteService     *mobileremoteservice.Service
 }
 
 type analyticsDebugEventPublisher struct {
@@ -113,7 +115,9 @@ func buildTuttiServer() (*http.Server, net.Listener, *tuttiWiring, error) {
 	}
 	wiring.startAgentCLIUpdateScheduler()
 
-	return tuttiserver.NewHTTPServer(listenerSpec, wiring.routes()), listener, wiring, nil
+	routes := wiring.routes()
+	wiring.mobileRemoteService.StartRemoteHost(tuttiserver.NewMux(routes))
+	return tuttiserver.NewHTTPServer(listenerSpec, routes), listener, wiring, nil
 }
 
 func (w *tuttiWiring) routes() tuttiserver.Routes {
@@ -150,6 +154,11 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	w.agentTargetSetup = agentTargetSetup
 	w.agentRuntime = agentRuntime
 	w.providerAuthWatcher = providerAuthWatcher
+	mobileRemoteService, mobileRemoteOK := api.MobileRemoteService.(*mobileremoteservice.Service)
+	if !mobileRemoteOK {
+		return errors.New("mobile remote service wiring is invalid")
+	}
+	w.mobileRemoteService = mobileRemoteService
 	preferencesService, preferencesOK := api.PreferencesService.(*preferencesservice.Service)
 	agentStatusService, agentStatusOK := api.AgentStatusService.(*agentstatusservice.Service)
 	if !preferencesOK || !agentStatusOK {
@@ -245,6 +254,9 @@ func (w *tuttiWiring) Close() error {
 	}
 
 	var closeErr error
+	if w.mobileRemoteService != nil {
+		w.mobileRemoteService.Close()
+	}
 	if w.agentCLIUpdateScheduler != nil {
 		w.agentCLIUpdateScheduler.Close()
 	}

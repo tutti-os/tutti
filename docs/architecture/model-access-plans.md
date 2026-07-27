@@ -3,7 +3,7 @@
 Model access plans are daemon-owned, per-workspace configurations for routing
 supported agent runtimes through a named model endpoint. A plan owns its wire
 protocol, endpoint, encrypted credential, model catalog, default model,
-detection state, enabled state, and first-successful-use state.
+detection state, and enabled state.
 
 This slice owns Plans. `WorkspaceAgent` is the user-facing configuration seam
 that combines one Harness AgentTarget with an optional Plan/default model and
@@ -18,7 +18,7 @@ configuration.
 - `services/tuttid/data/workspace` owns Plan persistence and retains legacy
   binding persistence during the compatibility window.
 - `services/tuttid/service/modelplan` owns CRUD, staged endpoint detection,
-  deletion protection, and first-use projection state.
+  and deletion protection.
 - `services/tuttid/service/workspaceagent` owns every new Harness-to-Plan
   mapping. `services/tuttid/service/modelbinding` is a legacy adapter and
   reference source; Desktop no longer calls its write routes.
@@ -30,10 +30,9 @@ configuration.
   OpenCode receives a session-scoped `opencode.json` provider block via
   `OPENCODE_CONFIG` (credential travels only as `TUTTI_MODEL_PLAN_API_KEY`
   with an `{env:…}` reference in the file).
-- `services/tuttid/service/agent` resolves the WorkspaceAgent, supplies its
-  Plan endpoint to runtime preparation, and projects the first completed turn
-  back to the Plan service. Unsnapshotted historical sessions may still use
-  the isolated legacy-binding fallback.
+- `services/tuttid/service/agent` resolves the WorkspaceAgent and supplies its
+  Plan endpoint to runtime preparation. Unsnapshotted historical sessions may
+  still use the isolated legacy-binding fallback.
 - Desktop settings and AgentGUI composer surfaces consume the daemon APIs
   behind the `lab.modelPlans` gate; they do not own plan credentials or
   detection state.
@@ -47,8 +46,9 @@ resolves protocols through the catalog instead of provider-identity switches.
 
 ## Request And Runtime Flow
 
-1. A client creates and detects a Plan through the OpenAPI-defined daemon
-   routes.
+1. A client creates a Plan through the OpenAPI-defined daemon route. Saving
+   does not require or trigger detection; the user may explicitly run the
+   connection check on any saved Plan.
 2. The user explicitly creates a WorkspaceAgent by choosing one Harness and,
    optionally, one Plan/default model. Saving a Plan never creates the Harness
    × Plan Cartesian product.
@@ -57,12 +57,6 @@ resolves protocols through the catalog instead of provider-identity switches.
 4. Runtime preparation injects the endpoint and credential only into the
    session-scoped provider environment/configuration. Credentials are never
    returned by the API or written into generated instructions and manifests.
-5. Before Host starts the provider runtime, tuttid durably records the
-   session-to-plan attribution. After the first completed runtime turn, tuttid
-   records the plan's first-use projection and removes that attribution.
-   Failed turns do not complete it. Startup reconciliation replays any
-   attribution whose completed canonical turn was committed before an
-   observer failure or process shutdown.
 
 Disabling a plan prevents new sessions from using it; existing running
 sessions are not interrupted. Deleting a plan is rejected while any consumer
@@ -93,17 +87,14 @@ gates the Custom Agents tab under Agent.
   results, or generated provider instructions. `runtimeprep` writes the Codex
   provider table with `env_key`, never the key value.
 
-## Staged Detection And First Use
+## Staged Detection
 
 `modelplan.Service.Detect` runs four daemon-verifiable stages in order —
 `network → auth → model_discovery → inference` — each with a machine-readable
-`failureReason`/`remedy` code that UI layers localize. The fifth stage,
-`agent_runtime`, stays `pending` until the first real agent call through the
-plan completes; a plan therefore reads `pending_first_use` after a successful
-save+detect and becomes `ready` only after
-`modelplan.Service.MarkFirstUse` fires. That marker is driven by the agent
-service session-state observer when a plan-bound session settles a turn with a
-completed outcome. Saving is never "fully usable"; only real use is.
+`failureReason`/`remedy` code. A Plan becomes `ready` when all four stages pass
+or are explicitly skipped. Saving a new or changed Plan never runs this check
+and never blocks on its result: a new Plan starts `undetected`, and connection
+changes reset it to `undetected` until the user runs the saved-row check.
 
 Providers without a `/models` catalog (404 on every candidate) keep working:
 discovery is `skipped` when manual models exist and the inference stage
@@ -141,12 +132,20 @@ Rules:
   `openai` plans, `claude-code` consumes `anthropic` plans. Cursor keeps
   provider-native credentials (no endpoint injection) — no fake UI entry
   points.
+- Anthropic-protocol credential injection follows the endpoint's Claude Code
+  contract, not a blanket “official versus relay” rule. `api.anthropic.com`
+  and Kimi Coding (`api.kimi.com`) require `ANTHROPIC_API_KEY`/`x-api-key`;
+  other relay-style endpoints keep the bearer `ANTHROPIC_AUTH_TOKEN` default.
+  Runtime preparation explicitly blanks the opposite credential variable so
+  inherited shell or Claude settings cannot override the Plan's auth shape.
+  Detection and the launched Agent must use equivalent authentication shapes,
+  or a plan can pass inference detection while every real Agent turn gets 401.
 - Model addressing is a second registry strategy
   (`ModelPlanModelAddressing`): OpenCode declares `provider_prefixed`, so its
   composer/settings values carry the injected `tutti-model-plan/<model>`
   namespace resolved against the session-scoped provider block. Other providers
-  consume raw plan model ids; validation and first-use markers strip the
-  namespace back to plan-domain ids.
+  consume raw plan model ids; validation strips the namespace back to
+  plan-domain ids.
 - Disabled or protocol-mismatched plans fall back to the provider-native
   credential source with a structured log, never a broken session.
 - A plan-bound session validates requested models against the plan's model
@@ -182,10 +181,6 @@ points, runtime commands, or timeline cards for it. The composer's `@` panel
 may still list enabled plan models as `workspace-model` mentions for prompt
 context; that chip is presentation-only and must not imply a consult runtime.
 
-Desktop first-use for a `pending_first_use` plan launches Agent GUI against a
-protocol-compatible harness target with the plan/model prefilled
-(`launchFirstUse` + `compatibleWorkspaceModelPlanFirstUseTargets`).
-
 ## Migration
 
 `model_plans_v1` backfills every legacy `managed_model_provider_credentials`
@@ -194,6 +189,11 @@ as-is. The WorkspaceAgent migration deterministically materializes legacy
 AgentTarget bindings as `source=legacy_binding` Agents. Legacy binding rows
 stay for rollback and pre-snapshot session recovery; new renderer writes are
 forbidden and the migration must remain idempotent.
+
+The retired `first_use_json` column and
+`model_plan_first_use_candidates_v1` table migration remain in the SQLite
+schema for downgrade compatibility. Current code does not expose, write, or
+reconcile first-use state.
 
 ## Reference Protection
 

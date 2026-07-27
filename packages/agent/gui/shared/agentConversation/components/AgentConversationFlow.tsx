@@ -2,6 +2,7 @@ import { memo, type ReactNode, type JSX, type Ref } from "react";
 import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMarkdown";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
+import type { AgentConversationParticipantPresentation } from "../contracts/agentConversationParticipantPresentation";
 import { AgentTranscriptSkeleton } from "./AgentTranscriptSkeleton";
 import {
   AgentTranscriptView,
@@ -11,7 +12,7 @@ import {
 import { AgentTurnDisclosureProvider } from "./AgentTurnDisclosureContext";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 
-interface AgentConversationFlowProps {
+export interface AgentConversationFlowProps {
   conversation: AgentConversationVM | null;
   turnAttachments?: readonly AgentTranscriptTurnAttachment[];
   turnAttachmentLocatorRef?: Ref<AgentTranscriptAttachmentLocator>;
@@ -29,6 +30,7 @@ interface AgentConversationFlowProps {
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   previewMode?: boolean;
   showRawTimelineJson?: boolean;
+  participantPresentation?: AgentConversationParticipantPresentation;
   labels: {
     toolCallsLabel: (count: number) => string;
     thinkingLabel: string;
@@ -54,6 +56,7 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
   workspaceAppIcons,
   previewMode = false,
   showRawTimelineJson = false,
+  participantPresentation,
   labels
 }: AgentConversationFlowProps): JSX.Element {
   "use memo";
@@ -82,6 +85,7 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
         previewMode={previewMode}
         labels={labels}
         showRawTimelineJson={showRawTimelineJson}
+        participantPresentation={participantPresentation}
       />
     );
   }

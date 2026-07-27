@@ -50,11 +50,13 @@
   clips descendants before stacking order can place the menu over the node
   body. Raising the menu z-index cannot escape ancestor overflow clipping.
 - Fix:
-  Keep the shared inline menu and mark only headers that own intentional inline
-  overlays with `data-workbench-custom-header-overflow="visible"`. Workbench
-  uses that semantic opt-in to allow overflow on the custom-header row; do not
-  copy the menu into the OS shell or globally disable clipping for every custom
-  header. The outer `.workbench-window` remains the window-bounds clip.
+  Keep the shared inline menu and declare the owning node's header presentation
+  as `window.header: { overflow: "visible" }` (plus its explicit `heightPx`
+  when it owns a non-default header height). Workbench projects that contract
+  to `data-window-header-overflow="visible"` on `.workbench-window` and allows
+  overflow only for that custom-header row. Do not copy the menu into the OS
+  shell or globally disable clipping for every custom header. The outer
+  `.workbench-window` remains the window-bounds clip.
 - Validation:
   Run the Browser Node and Workbench Surface package tests, typecheck the
   affected packages, and build the desktop renderer. In both Agent-only and OS
@@ -856,3 +858,37 @@
 - References:
   [AgentGUIConversationRailItem.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailItem.tsx)
   [agentactivity.css](../../../packages/agent/gui/app/renderer/agentactivity.css)
+
+### Restored fullscreen window overflows after the host surface becomes smaller
+
+- Symptom:
+  A Workbench node was fullscreen before restart. After the room or workspace
+  reopens on a smaller non-fullscreen host surface, exiting the node's
+  fullscreen mode restores a window wider or taller than the Workbench desktop.
+- Quick checks:
+  Inspect the persisted node's `displayMode`, `frame`, and `restoreFrame`.
+  Compare both frames with the current Workbench safe layout, not the native
+  Electron window bounds. Reproduce by dispatching `exitFullscreen` directly;
+  if the first invalid state appears in the reducer, CSS clipping is only the
+  final symptom.
+- Root cause:
+  Historical snapshots stored absolute node frames without the surface and safe
+  layout that produced them. Fullscreen restore recomputed the visible
+  fullscreen frame but kept a stale hidden `restoreFrame`, then copied it
+  directly back to `frame` on exit.
+- Fix:
+  Persist an additive snapshot `layoutBasis`, map all durable frame-bearing
+  state from the saved safe layout into the current safe layout during initial
+  host restore, and clamp the `exitFullscreen` transition as a final invariant.
+  Keep snapshots without a basis on a conservative bounds-only compatibility
+  path.
+- Validation:
+  Cover a fullscreen snapshot restored from a larger basis to a smaller
+  surface, an old snapshot with no basis, and direct reducer exit with a stale
+  restore frame. Verify the OpenAPI and generated Go contracts retain
+  `layoutBasis` through the daemon boundary.
+- References:
+  [schema.json](../../../packages/workbench/snapshot/src/schema.json)
+  [snapshotLayout.ts](../../../packages/workbench/surface/src/core/snapshotLayout.ts)
+  [session.ts](../../../packages/workbench/surface/src/host/session.ts)
+  [reducer.ts](../../../packages/workbench/surface/src/core/reducer.ts)

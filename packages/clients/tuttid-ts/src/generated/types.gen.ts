@@ -42,6 +42,12 @@ export type AccountMembershipSummary = {
   cancel_at_period_end?: boolean | null;
 };
 
+export type AccountMembershipAccessState =
+  | "free"
+  | "active"
+  | "inactive"
+  | "unknown";
+
 export type AccountCreditsSummary = {
   available_credits: string | null;
   expiring_credits_within_24h?: string | null;
@@ -71,6 +77,7 @@ export type AccountRegistrationCreditsReward = {
 export type AccountProductSummaryResponse = {
   user: AccountUserInfo | null;
   membership: AccountMembershipSummary | null;
+  membership_access: AccountMembershipAccessState;
   credits: AccountCreditsSummary | null;
   partial_error?: AccountProductSummaryPartialError | null;
   registration_credits_reward?: AccountRegistrationCreditsReward | null;
@@ -760,23 +767,21 @@ export type ModelPlanTemplateKind =
   | "custom";
 
 /**
- * Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+ * Derived plan lifecycle status. A plan is ready when its latest connection detection passed.
  */
 export type ModelPlanStatus =
   | "disabled"
   | "undetected"
   | "detection_failed"
-  | "pending_first_use"
   | "ready";
 
 export type ModelPlanDetectionStage =
   | "network"
   | "auth"
   | "model_discovery"
-  | "inference"
-  | "agent_runtime";
+  | "inference";
 
-export type ModelPlanStageStatus = "passed" | "failed" | "skipped" | "pending";
+export type ModelPlanStageStatus = "passed" | "failed" | "skipped";
 
 export type ModelPlanStageResult = {
   stage: ModelPlanDetectionStage;
@@ -803,14 +808,6 @@ export type ModelPlanDetection = {
   model?: string | null;
 };
 
-export type ModelPlanFirstUse = {
-  status: "pending" | "completed";
-  agentTargetId?: string | null;
-  agentSessionId?: string | null;
-  model?: string | null;
-  completedAt?: string | null;
-};
-
 export type ModelPlanModel = {
   id: string;
   name: string;
@@ -834,7 +831,6 @@ export type ModelPlan = {
   enabled: boolean;
   status: ModelPlanStatus;
   detection: ModelPlanDetection;
-  firstUse: ModelPlanFirstUse;
   createdAt: string;
   updatedAt: string;
 };
@@ -2707,6 +2703,7 @@ export type CreateWorkspaceAgentSessionRequest = {
    * Classifies a session that is intentionally not attached to a workspace project.
    */
   noProject?: boolean | null;
+  railPlacement?: WorkspaceAgentRailPlacement;
   speed?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;
@@ -2719,6 +2716,13 @@ export type CreateWorkspaceAgentSessionRequest = {
    */
   initialTuttiModeActivation?: TuttiModeActivationIntent | null;
   visible?: boolean | null;
+};
+
+export type WorkspaceAgentRailPlacement = {
+  version: 1;
+  kind: "conversations" | "project";
+  projectPath?: string;
+  sectionKey: string;
 };
 
 export type SendWorkspaceAgentSessionInputRequest = {
@@ -3114,6 +3118,30 @@ export type PreflightUploadWorkspaceFilesResponse = {
   conflicts: Array<WorkspaceFileUploadConflict>;
 };
 
+export type WorkbenchSize = {
+  width: number;
+  height: number;
+};
+
+export type WorkbenchSafeArea = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+export type WorkbenchLayoutConstraints = {
+  minWidth: number;
+  minHeight: number;
+  surfacePadding: number;
+  safeArea: WorkbenchSafeArea;
+};
+
+export type WorkbenchLayoutBasis = {
+  surfaceSize: WorkbenchSize;
+  layoutConstraints: WorkbenchLayoutConstraints;
+};
+
 export type WorkbenchFrame = {
   x: number;
   y: number;
@@ -3151,6 +3179,7 @@ export type WorkbenchSnapshot = {
   activeNodeId?: string | null;
   spaces?: Array<WorkbenchSnapshotSpace>;
   activeSpaceId?: string | null;
+  layoutBasis?: WorkbenchLayoutBasis;
   metadata?: {
     [key: string]: unknown;
   };
@@ -3880,6 +3909,48 @@ export type CancelIssueManagerExecutionResponse = {
   canceledRunCount: number;
 };
 
+export type MobileRemotePairingChallenge = {
+  challengeId: string;
+  targetUserDeviceId: string;
+  controllerUserDeviceId?: string;
+  state: string;
+  pairingId?: string;
+  revision: number;
+  expiresAt: string;
+};
+
+export type MobileRemoteDevicePairing = {
+  pairingId: string;
+  controllerUserDeviceId: string;
+  targetUserDeviceId: string;
+  state: string;
+  revision: number;
+  confirmedAt: string;
+  revokedAt?: string;
+};
+
+export type MobileRemotePairingStartResponse = {
+  challenge: MobileRemotePairingChallenge;
+  qrPayload: string;
+};
+
+export type MobileRemotePairingChallengeResponse = {
+  challenge: MobileRemotePairingChallenge;
+};
+
+export type MobileRemotePairingResponse = {
+  pairing: MobileRemoteDevicePairing;
+};
+
+export type MobileRemotePairingConfirmResponse = {
+  pairing: MobileRemoteDevicePairing;
+  challenge: MobileRemotePairingChallenge;
+};
+
+export type MobileRemotePairingListResponse = {
+  pairings: Array<MobileRemoteDevicePairing>;
+};
+
 export type CliCommandId = string;
 
 export type WorkspaceId = string;
@@ -3961,6 +4032,10 @@ export type IssueManagerStatusFilter2 = IssueManagerStatusFilter;
  * Case-insensitive substring search over the visible title only.
  */
 export type IssueManagerSearchQuery = string;
+
+export type MobileRemoteChallengeId = string;
+
+export type MobileRemotePairingId = string;
 
 export type GetHealthData = {
   body?: never;
@@ -13839,3 +13914,196 @@ export type CompleteWorkspaceIssueTaskRunResponses = {
 
 export type CompleteWorkspaceIssueTaskRunResponse =
   CompleteWorkspaceIssueTaskRunResponses[keyof CompleteWorkspaceIssueTaskRunResponses];
+
+export type StartMobileRemotePairingData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/mobile-remote-access/pairing-challenges";
+};
+
+export type StartMobileRemotePairingErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type StartMobileRemotePairingError =
+  StartMobileRemotePairingErrors[keyof StartMobileRemotePairingErrors];
+
+export type StartMobileRemotePairingResponses = {
+  /**
+   * Pairing challenge created
+   */
+  200: MobileRemotePairingStartResponse;
+};
+
+export type StartMobileRemotePairingResponse =
+  StartMobileRemotePairingResponses[keyof StartMobileRemotePairingResponses];
+
+export type GetMobileRemotePairingChallengeData = {
+  body?: never;
+  path: {
+    challengeID: string;
+  };
+  query?: never;
+  url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}";
+};
+
+export type GetMobileRemotePairingChallengeErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetMobileRemotePairingChallengeError =
+  GetMobileRemotePairingChallengeErrors[keyof GetMobileRemotePairingChallengeErrors];
+
+export type GetMobileRemotePairingChallengeResponses = {
+  /**
+   * Current pairing challenge
+   */
+  200: MobileRemotePairingChallengeResponse;
+};
+
+export type GetMobileRemotePairingChallengeResponse =
+  GetMobileRemotePairingChallengeResponses[keyof GetMobileRemotePairingChallengeResponses];
+
+export type ConfirmMobileRemotePairingData = {
+  body?: never;
+  path: {
+    challengeID: string;
+  };
+  query?: never;
+  url: "/v1/mobile-remote-access/pairing-challenges/{challengeID}/confirm";
+};
+
+export type ConfirmMobileRemotePairingErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ConfirmMobileRemotePairingError =
+  ConfirmMobileRemotePairingErrors[keyof ConfirmMobileRemotePairingErrors];
+
+export type ConfirmMobileRemotePairingResponses = {
+  /**
+   * Pairing confirmed
+   */
+  200: MobileRemotePairingConfirmResponse;
+};
+
+export type ConfirmMobileRemotePairingResponse =
+  ConfirmMobileRemotePairingResponses[keyof ConfirmMobileRemotePairingResponses];
+
+export type ListMobileRemotePairingsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/mobile-remote-access/pairings";
+};
+
+export type ListMobileRemotePairingsErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListMobileRemotePairingsError =
+  ListMobileRemotePairingsErrors[keyof ListMobileRemotePairingsErrors];
+
+export type ListMobileRemotePairingsResponses = {
+  /**
+   * Pairings for this desktop device
+   */
+  200: MobileRemotePairingListResponse;
+};
+
+export type ListMobileRemotePairingsResponse =
+  ListMobileRemotePairingsResponses[keyof ListMobileRemotePairingsResponses];
+
+export type RevokeMobileRemotePairingData = {
+  body?: never;
+  path: {
+    pairingID: string;
+  };
+  query?: never;
+  url: "/v1/mobile-remote-access/pairings/{pairingID}";
+};
+
+export type RevokeMobileRemotePairingErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type RevokeMobileRemotePairingError =
+  RevokeMobileRemotePairingErrors[keyof RevokeMobileRemotePairingErrors];
+
+export type RevokeMobileRemotePairingResponses = {
+  /**
+   * Pairing revoked
+   */
+  200: MobileRemotePairingResponse;
+};
+
+export type RevokeMobileRemotePairingResponse =
+  RevokeMobileRemotePairingResponses[keyof RevokeMobileRemotePairingResponses];

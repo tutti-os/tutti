@@ -1,7 +1,8 @@
 import type {
   AgentActivitySessionGoal,
   AgentActivityUsage,
-  CanonicalAgentSession
+  CanonicalAgentSession,
+  SessionRuntimeAvailability
 } from "@tutti-os/agent-activity-core";
 import type {
   AgentGUINodeData,
@@ -421,11 +422,17 @@ export interface AgentGUIInteractionViewModel {
   inlineNotice: AgentGUIInlineNotice | null;
 }
 
+export type AgentGUIRuntimeBlockedReason = Extract<
+  SessionRuntimeAvailability,
+  { state: "blocked" }
+>["reason"];
+
 export interface AgentGUIReadinessViewModel {
   activeLiveState: "inactive" | "activating" | "active" | "failed";
   activationError: string | null;
   activeConversationBusy: boolean;
   sessionRuntimeBlocked: boolean;
+  sessionRuntimeBlockedReason: AgentGUIRuntimeBlockedReason | null;
   targetConnectionBlocked: boolean;
   providerReadinessGate: AgentGUIProviderReadinessGate | null;
 }

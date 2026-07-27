@@ -3,6 +3,7 @@ import { getOptionalAgentHostApi } from "../../agentActivityHost";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
 import type { AgentContextMentionDirectoryDescriptor } from "./agentContextMentionProvider";
 import { normalizeAgentSessionMentionTitle } from "./agentRichText/agentFileMentionExtension";
+import { resolveAgentSessionMentionIconUrl } from "./agentRichText/agentMentionPresentation";
 import type { AgentContextMentionInsertResult } from "./agentContextMentionProvider";
 import type { AgentMentionProviderQueryDiagnostic } from "./agentMentionSearchDiagnostics";
 import type {
@@ -26,7 +27,8 @@ import {
 import { presentAgentGeneratedFileMentionItems } from "./agentMentionAgentGeneratedFilesPresentation";
 import type {
   ReferenceProvenanceCatalog,
-  ReferenceProvenanceFilter
+  ReferenceProvenanceFilter,
+  ReferenceProvenanceOption
 } from "@tutti-os/workspace-file-reference/contracts";
 import {
   buildEmptyGroup,
@@ -37,6 +39,7 @@ import {
   resolveMentionGroupTotalCount,
   shouldShowEmptyGroup
 } from "./agentMentionSearchHelpers";
+import { resolveReferenceProvenanceAgentLabelParts } from "@tutti-os/workspace-file-reference/core";
 
 type AgentProvenanceMentionItem = Extract<
   AgentContextMentionItem,
@@ -180,28 +183,39 @@ function buildAgentProvenanceGroups(input: {
   const selectedAgentTargetIds = input.provenanceFilter?.agentTargetIds ?? null;
   const selectedAgentTargetIdSet =
     selectedAgentTargetIds === null ? null : new Set(selectedAgentTargetIds);
-  const sourceItems = agentProvenanceItemsForFilter(input).filter((item) => {
-    if (selectedAgentTargetIdSet === null) {
-      return true;
-    }
-    const agentTargetId = agentTargetIdForMentionItem(item);
-    return (
-      agentTargetId !== null && selectedAgentTargetIdSet.has(agentTargetId)
-    );
-  });
-  const catalogAgentTargetIds = new Set(
-    input.provenanceCatalog.agentOptions.map((option) => option.id)
+  const memberOptionsById = new Map(
+    input.provenanceCatalog.memberOptions.map((member) => [member.id, member])
   );
+  const agentOptionsById = new Map(
+    input.provenanceCatalog.agentOptions.map((agent) => [agent.id, agent])
+  );
+  const sourceItems = agentProvenanceItemsForFilter(input)
+    .map((item) =>
+      projectAgentProvenanceMemberPresentation(
+        item,
+        memberOptionsById,
+        agentOptionsById
+      )
+    )
+    .filter((item) => {
+      if (selectedAgentTargetIdSet === null) {
+        return true;
+      }
+      const agentTargetId = agentTargetIdForMentionItem(item);
+      return (
+        agentTargetId !== null && selectedAgentTargetIdSet.has(agentTargetId)
+      );
+    });
+  const cataloguedItemIds = new Set<string>();
   const catalogGroups = agentProvenanceGroupSpecs(
+    input.currentFilter,
     input.provenanceCatalog
   ).flatMap((group) => {
-    const items = sourceItems.filter((item) => {
-      const agentTargetId = agentTargetIdForMentionItem(item);
-      return agentTargetId !== null && group.agentTargetIds.has(agentTargetId);
-    });
+    const items = sourceItems.filter(group.matches);
     if (items.length === 0) {
       return [];
     }
+    items.forEach((item) => cataloguedItemIds.add(item.targetId));
     return [
       buildAgentProvenanceGroup({
         currentFilter: input.currentFilter,
@@ -224,8 +238,7 @@ function buildAgentProvenanceGroups(input: {
     }
   >();
   for (const item of sourceItems) {
-    const agentTargetId = agentTargetIdForMentionItem(item);
-    if (agentTargetId && catalogAgentTargetIds.has(agentTargetId)) {
+    if (cataloguedItemIds.has(item.targetId)) {
       continue;
     }
     const identity = unmatchedAgentProvenanceIdentity(item);
@@ -253,11 +266,22 @@ function buildAgentProvenanceGroups(input: {
   ];
 }
 
-function agentProvenanceGroupSpecs(catalog: ReferenceProvenanceCatalog): Array<{
+function agentProvenanceGroupSpecs(
+  currentFilter: AgentMentionFilterId,
+  catalog: ReferenceProvenanceCatalog
+): Array<{
   id: AgentMentionGroupId;
   label: string;
-  agentTargetIds: ReadonlySet<string>;
+  matches: (item: AgentProvenanceMentionItem) => boolean;
 }> {
+  if (currentFilter === "session") {
+    return catalog.memberOptions.map((member) => ({
+      id: memberProvenanceMentionGroupId(member.id),
+      label: member.label,
+      matches: (item) =>
+        item.kind === "session" && item.initiatorUserId?.trim() === member.id
+    }));
+  }
   const groupedAgentTargetIds = new Set<string>();
   const memberGroups = catalog.memberOptions.flatMap((member) => {
     const agentTargetIds = catalog.agentOptions.flatMap((option) =>
@@ -273,7 +297,12 @@ function agentProvenanceGroupSpecs(catalog: ReferenceProvenanceCatalog): Array<{
       {
         id: memberProvenanceMentionGroupId(member.id),
         label: member.label,
-        agentTargetIds: new Set(agentTargetIds)
+        matches: (item: AgentProvenanceMentionItem) => {
+          const agentTargetId = agentTargetIdForMentionItem(item);
+          return (
+            agentTargetId !== null && agentTargetIds.includes(agentTargetId)
+          );
+        }
       }
     ];
   });
@@ -284,7 +313,8 @@ function agentProvenanceGroupSpecs(catalog: ReferenceProvenanceCatalog): Array<{
           {
             id: agentProvenanceMentionGroupId(option.id),
             label: option.label,
-            agentTargetIds: new Set([option.id])
+            matches: (item: AgentProvenanceMentionItem) =>
+              agentTargetIdForMentionItem(item) === option.id
           }
         ]
   );
@@ -313,16 +343,52 @@ function agentTargetIdForMentionItem(
   return null;
 }
 
+function projectAgentProvenanceMemberPresentation(
+  item: AgentProvenanceMentionItem,
+  memberOptionsById: ReadonlyMap<string, ReferenceProvenanceOption>,
+  agentOptionsById: ReadonlyMap<string, ReferenceProvenanceOption>
+): AgentProvenanceMentionItem {
+  if (item.kind !== "session") {
+    return item;
+  }
+  const initiatorUserId = item.initiatorUserId?.trim();
+  const member = initiatorUserId
+    ? memberOptionsById.get(initiatorUserId)
+    : undefined;
+  if (!member) {
+    return item;
+  }
+  const initiatorAvatarUrl =
+    member.iconUrl?.trim() || item.initiatorAvatarUrl?.trim();
+  const agentTargetId = item.agentTargetId?.trim();
+  const agentOption = agentTargetId
+    ? agentOptionsById.get(agentTargetId)
+    : undefined;
+  const agentLabelParts =
+    agentOption && agentOption.label === item.agentName
+      ? resolveReferenceProvenanceAgentLabelParts(
+          agentOption,
+          memberOptionsById
+        )
+      : null;
+  return {
+    ...item,
+    initiatorName: member.label,
+    ...(initiatorAvatarUrl ? { initiatorAvatarUrl } : {}),
+    ...(agentLabelParts
+      ? {
+          agentLabel: agentLabelParts.agentLabel,
+          agentOwnerLabel: agentLabelParts.ownerLabel
+        }
+      : {})
+  };
+}
+
 function unmatchedAgentProvenanceIdentity(
   item: AgentProvenanceMentionItem
 ): string {
   if (item.kind === "session") {
-    return (
-      item.agentTargetId?.trim() ||
-      item.agentName.trim() ||
-      item.initiatorName.trim() ||
-      item.targetId
-    );
+    return item.initiatorUserId?.trim() || item.targetId;
   }
   return item.targetId;
 }
@@ -332,9 +398,9 @@ function unmatchedAgentProvenanceLabel(
 ): string {
   if (item.kind === "session") {
     return (
-      item.agentName.trim() ||
       item.initiatorName.trim() ||
-      item.agentTargetId?.trim() ||
+      item.initiatorUserId?.trim() ||
+      item.agentName.trim() ||
       item.title
     );
   }
@@ -660,12 +726,17 @@ export function providerItemToAgentMentionItem(input: {
         rawScope: scope.scope,
         userId: scope.userId
       }),
+      ...(scope.userId ? { initiatorUserId: scope.userId } : {}),
       initiatorName: "",
       agentName,
-      agentIconUrl:
-        presentation.agentIconUrl?.trim() ||
-        presentation.iconUrl?.trim() ||
-        undefined,
+      agentIconUrl: resolveAgentSessionMentionIconUrl({
+        agentIconUrl:
+          presentation.agentIconUrl?.trim() ||
+          presentation.iconUrl?.trim() ||
+          undefined,
+        agentProviderId: presentation.agentProviderId,
+        agentTargetId: scope.agentTargetId
+      }),
       ...(scope.agentTargetId ? { agentTargetId: scope.agentTargetId } : {}),
       status: presentation.status?.trim() || undefined,
       inputPreview: description || undefined,

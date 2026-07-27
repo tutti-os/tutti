@@ -84,6 +84,7 @@ export function useAgentGUIControllerRefs(
         receipt: null,
         settings
       }),
+      reconcileHomeDefaults: () => {},
       reloaded: () => {}
     });
   const conversationIdsRef = useRef(

@@ -217,6 +217,9 @@ export function createDesktopAgentActivityAdapter({
           model: input.model ?? null,
           noProject:
             input.noProject ?? (normalizeText(input.cwd) ? null : true),
+          ...(input.railPlacement
+            ? { railPlacement: { ...input.railPlacement } }
+            : {}),
           planMode: input.planMode ?? null,
           permissionModeId: input.permissionModeId ?? null,
           reasoningEffort: input.reasoningEffort ?? null,

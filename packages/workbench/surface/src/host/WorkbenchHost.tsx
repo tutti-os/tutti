@@ -181,6 +181,9 @@ export function WorkbenchHost({
       }
       resolveDockPreviewCacheKey={surfaceRenderers.resolveDockPreviewCacheKey}
       resolveFullscreenHeaderMode={surfaceRenderers.resolveFullscreenHeaderMode}
+      resolveWindowHeaderPresentation={
+        surfaceRenderers.resolveWindowHeaderPresentation
+      }
       resolveWindowSurfaceLayer={surfaceRenderers.resolveWindowSurfaceLayer}
       resolveWindowZIndex={surfaceRenderers.resolveWindowZIndex}
       resolveDockAnchorKey={surfaceRenderers.resolveDockAnchorKey}

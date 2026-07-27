@@ -23,6 +23,7 @@ import {
   TuttiModePlanReviewRuntimeProvider,
   type TuttiModePlanReviewRuntime
 } from "./workspaceWorkflow";
+import { AgentVisibleErrorPresentationProvider } from "./shared/visibleError/AgentVisibleErrorPresentationContext";
 
 export type { AgentGUIHomeSuggestionId } from "./types";
 export type { ReferenceProvenanceCatalog as AgentGUIReferenceProvenanceFilterCatalog } from "@tutti-os/workspace-file-reference/contracts";
@@ -157,7 +158,11 @@ export const AgentGUI = memo(function AgentGUI({
           agentActivityRuntime={agentActivityRuntime}
           agentHostApi={agentHostApi}
         >
-          <AgentGUINode {...nodeProps} />
+          <AgentVisibleErrorPresentationProvider
+            value={props.hostCapabilities?.visibleErrorPresentationOverrides}
+          >
+            <AgentGUINode {...nodeProps} />
+          </AgentVisibleErrorPresentationProvider>
         </AgentActivityHostProvider>
       </TuttiModePlanReviewRuntimeProvider>
     </AgentGuiI18nProvider>

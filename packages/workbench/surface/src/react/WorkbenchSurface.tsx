@@ -35,6 +35,7 @@ import type {
   WorkbenchResolveWindowSurfaceLayer,
   WorkbenchResolveWindowZIndex,
   WorkbenchResolveWindowChromeMode,
+  WorkbenchResolveWindowHeaderPresentation,
   WorkbenchWindowChromeMode
 } from "./types.ts";
 import type {
@@ -68,6 +69,7 @@ export interface WorkbenchSurfaceProps<TData = unknown> {
   renderWindowHeader?: WorkbenchRenderWindowHeader<TData>;
   shouldKeepMinimizedNodeMounted?: WorkbenchKeepMinimizedNodeMounted<TData>;
   resolveFullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
+  resolveWindowHeaderPresentation?: WorkbenchResolveWindowHeaderPresentation<TData>;
   resolveWindowSurfaceLayer?: WorkbenchResolveWindowSurfaceLayer<TData>;
   resolveWindowZIndex?: WorkbenchResolveWindowZIndex<TData>;
   resolveDockAnchorKey?: (node: WorkbenchNode<TData>) => string;
@@ -123,6 +125,7 @@ export function WorkbenchSurface<TData>({
   renderWindowHeader,
   shouldKeepMinimizedNodeMounted,
   resolveFullscreenHeaderMode,
+  resolveWindowHeaderPresentation,
   resolveWindowSurfaceLayer,
   resolveWindowZIndex,
   resolveDockAnchorKey,
@@ -158,6 +161,7 @@ export function WorkbenchSurface<TData>({
         renderWindowHeader={renderWindowHeader}
         shouldKeepMinimizedNodeMounted={shouldKeepMinimizedNodeMounted}
         resolveFullscreenHeaderMode={resolveFullscreenHeaderMode}
+        resolveWindowHeaderPresentation={resolveWindowHeaderPresentation}
         resolveWindowSurfaceLayer={resolveWindowSurfaceLayer}
         resolveWindowZIndex={resolveWindowZIndex}
         resolveDockAnchorKey={resolveDockAnchorKey}
@@ -195,6 +199,7 @@ function WorkbenchSurfaceInner<TData>({
   renderWindowHeader,
   shouldKeepMinimizedNodeMounted,
   resolveFullscreenHeaderMode,
+  resolveWindowHeaderPresentation,
   resolveWindowSurfaceLayer,
   resolveWindowZIndex,
   resolveDockAnchorKey,
@@ -277,6 +282,7 @@ function WorkbenchSurfaceInner<TData>({
         renderWindowHeader={renderWindowHeader}
         shouldKeepMinimizedNodeMounted={shouldKeepMinimizedNodeMounted}
         resolveFullscreenHeaderMode={resolveFullscreenHeaderMode}
+        resolveWindowHeaderPresentation={resolveWindowHeaderPresentation}
         resolveWindowSurfaceLayer={resolveWindowSurfaceLayer}
         resolveWindowZIndex={resolveWindowZIndex}
         windowChromeMode={windowChromeMode}

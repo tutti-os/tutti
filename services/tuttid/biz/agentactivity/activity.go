@@ -68,6 +68,7 @@ func SplitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata,
 }
 
 type SessionStateReport = agentstore.SessionStateReport
+type RailSection = agentstore.RailSection
 
 type StateReportResult = agentstore.StateReportResult
 
