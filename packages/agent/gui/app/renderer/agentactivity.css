@@ -9735,7 +9735,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   height: 32px;
   place-items: center;
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-secondary);
   padding: 0;

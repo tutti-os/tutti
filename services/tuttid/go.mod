@@ -15,6 +15,7 @@ require (
 	github.com/tutti-os/tutti/packages/agent/runtimeprep v0.0.0
 	github.com/tutti-os/tutti/packages/agent/store-sqlite v0.0.0
 	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.0
+	github.com/tutti-os/tutti/packages/analytics/reporter-go v0.0.0
 	github.com/tutti-os/tutti/packages/appcli/core v0.0.0
 	github.com/tutti-os/tutti/packages/auth/bridge-go v0.0.0
 	github.com/tutti-os/tutti/packages/commerce v0.0.0
@@ -23,7 +24,6 @@ require (
 	github.com/tutti-os/tutti/packages/workbench/service v0.0.0
 	github.com/tutti-os/tutti/packages/workspace/files v0.0.0
 	github.com/tutti-os/tutti/packages/workspace/issues v0.0.0
-	github.com/volcengine/datarangers-sdk-go v1.1.8
 	golang.org/x/mod v0.33.0
 	golang.org/x/sync v0.19.0
 	golang.org/x/sys v0.41.0
@@ -32,6 +32,8 @@ require (
 )
 
 replace github.com/tutti-os/tutti/packages/events/stream-go => ../../packages/events/stream-go
+
+replace github.com/tutti-os/tutti/packages/analytics/reporter-go => ../../packages/analytics/reporter-go
 
 replace github.com/tutti-os/tutti/packages/workbench/service => ../../packages/workbench/service
 
@@ -98,6 +100,7 @@ require (
 	github.com/speakeasy-api/openapi v1.19.2 // indirect
 	github.com/tutti-os/tutti/packages/agent/activity-replication v0.0.0 // indirect
 	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect
+	github.com/volcengine/datarangers-sdk-go v1.1.8 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/woodsbury/decimal128 v1.4.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
@@ -110,6 +113,7 @@ require (
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	modernc.org/libc v1.67.6 // indirect

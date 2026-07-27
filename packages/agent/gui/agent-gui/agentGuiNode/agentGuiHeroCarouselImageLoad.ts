@@ -4,6 +4,10 @@ import cursorVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/cu
 import openclawVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/openclaw-vinyl.png";
 import opencodeVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/opencode-vinyl.png";
 import tuttiVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/tutti-vinyl.png";
+import {
+  agentGuiScheduler,
+  type AgentGuiScheduledTask
+} from "./agentGuiScheduler";
 import type { AgentGUIAgentAvatarPresentation } from "./model/agentGuiAgentAvatarPresentation";
 
 const AGENT_VINYL_COVER_BY_PROVIDER: Readonly<Record<string, string>> = {
@@ -14,6 +18,8 @@ const AGENT_VINYL_COVER_BY_PROVIDER: Readonly<Record<string, string>> = {
   opencode: opencodeVinylAssetUrl,
   "tutti-agent": tuttiVinylAssetUrl
 };
+
+const BADGE_IMAGE_RETRY_DELAYS_MS = [150, 500] as const;
 
 export interface AgentGuiHeroCarouselDecodedImages {
   badges: readonly (HTMLImageElement | null)[];
@@ -41,7 +47,7 @@ export class AgentGuiHeroCarouselImageLoad {
               AGENT_VINYL_COVER_BY_PROVIDER[item.provider] ||
               null
           ),
-          this.loadImage(item.badge?.iconUrl ?? null)
+          this.loadImage(item.badge?.iconUrl ?? null, true)
         ]);
         return { badge, cover, icon };
       })
@@ -63,16 +69,17 @@ export class AgentGuiHeroCarouselImageLoad {
     this.pendingLoads.clear();
   }
 
-  private loadImage(url: string | null): Promise<HTMLImageElement | null> {
+  private loadImage(
+    url: string | null,
+    retryTransientFailure = false
+  ): Promise<HTMLImageElement | null> {
     if (!url || this.canceled || typeof Image !== "function") {
       return Promise.resolve(null);
     }
-    const image = new Image();
-    image.crossOrigin = "anonymous";
-    image.decoding = "async";
-    image.loading = "eager";
-    image.setAttribute("fetchpriority", "high");
     let settled = false;
+    let image: HTMLImageElement | null = null;
+    let retryIndex = 0;
+    let retryTask: AgentGuiScheduledTask | null = null;
     let resolvePromise = (_value: HTMLImageElement | null): void => undefined;
     const pending: PendingImageLoad = {
       cancel: () => settle(null, true),
@@ -88,39 +95,94 @@ export class AgentGuiHeroCarouselImageLoad {
         return;
       }
       settled = true;
-      image.onload = null;
-      image.onerror = null;
+      if (retryTask !== null) {
+        retryTask.cancel();
+        retryTask = null;
+      }
+      if (image) {
+        image.onload = null;
+        image.onerror = null;
+      }
       this.pendingLoads.delete(pending);
-      if (clearSource) {
+      if (clearSource && image) {
         image.src = "";
       }
       resolvePromise(value);
     };
-    const settleDecoded = (): void => {
+    const settleDecoded = (loadedImage: HTMLImageElement): void => {
       let decode: Promise<void> | undefined;
       try {
-        decode = image.decode?.();
+        decode = loadedImage.decode?.();
       } catch {
-        settle(image);
+        settle(loadedImage);
         return;
       }
       if (decode) {
-        void decode.then(() => settle(image)).catch(() => settle(image));
+        void decode
+          .then(() => settle(loadedImage))
+          .catch(() => settle(loadedImage));
         return;
       }
-      settle(image);
+      settle(loadedImage);
     };
-    image.onload = settleDecoded;
-    image.onerror = () => settle(null);
-    this.pendingLoads.add(pending);
-    image.src = url;
-    if (image.complete) {
-      if (image.naturalWidth > 0) {
-        settleDecoded();
-      } else {
-        settle(null);
+    const retryOrSettle = (failedImage: HTMLImageElement): void => {
+      failedImage.onload = null;
+      failedImage.onerror = null;
+      if (
+        retryTransientFailure &&
+        retryIndex < BADGE_IMAGE_RETRY_DELAYS_MS.length &&
+        !this.canceled
+      ) {
+        failedImage.src = "";
+        const delay = BADGE_IMAGE_RETRY_DELAYS_MS[retryIndex]!;
+        retryIndex += 1;
+        retryTask = agentGuiScheduler.schedule(delay, () => {
+          retryTask = null;
+          startAttempt();
+        });
+        return;
       }
-    }
+      settle(null);
+    };
+    const startAttempt = (): void => {
+      if (settled || this.canceled) {
+        settle(null, true);
+        return;
+      }
+      const nextImage = new Image();
+      image = nextImage;
+      nextImage.crossOrigin = "anonymous";
+      nextImage.decoding = "async";
+      nextImage.loading = "eager";
+      nextImage.setAttribute("fetchpriority", "high");
+      let attemptFinished = false;
+      const handleLoaded = (): void => {
+        if (attemptFinished) {
+          return;
+        }
+        attemptFinished = true;
+        settleDecoded(nextImage);
+      };
+      const handleFailed = (): void => {
+        if (attemptFinished) {
+          return;
+        }
+        attemptFinished = true;
+        retryOrSettle(nextImage);
+      };
+      nextImage.onload = handleLoaded;
+      nextImage.onerror = handleFailed;
+      nextImage.src = url;
+      if (nextImage.complete) {
+        if (nextImage.naturalWidth > 0) {
+          handleLoaded();
+        } else {
+          handleFailed();
+        }
+      }
+    };
+    this.pendingLoads.add(pending);
+    startAttempt();
     return pending.promise;
   }
 }

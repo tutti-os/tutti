@@ -682,7 +682,6 @@ export const zhCNAgentGui = {
   provenanceFilterAgents: "智能体",
   provenanceFilterFilteredSources: "已筛选来源",
   provenanceFilterMembers: "成员",
-  provenanceFilterReset: "重置",
   mentionFilterSession: "会话",
   mentionFilterIssue: "任务",
   mentionKindAgent: "智能体",

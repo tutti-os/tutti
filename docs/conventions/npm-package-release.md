@@ -16,6 +16,7 @@ automation are updated together.
 The current fixed release group is:
 
 ```text
+@tutti-os/analytics
 @tutti-os/event-stream-core
 @tutti-os/workspace-file-manager
 @tutti-os/workspace-file-reference

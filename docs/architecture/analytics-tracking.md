@@ -229,16 +229,25 @@ present and not disabled, or a `NoopReporter` when reporting is disabled or
 production config is incomplete. No other part of tuttid is aware of which
 implementation is active.
 
-## Go Implementation: `service/reporter/`
+## Shared Go Implementation
 
 ```
+packages/analytics/reporter-go/
+  reporter.go         # Public Reporter, Event, and product-neutral config
+  tea_reporter.go     # datarangers-sdk-go implementation
+  debug_reporter.go   # Local debug events without remote reporting
+  noop_reporter.go    # No-op for tests, disabled, or incomplete config
+  tea_sdk_adapter.go  # Vendor SDK boundary and bounded SDK settings
+
 services/tuttid/service/reporter/
-  reporter.go        # Reporter interface and Event type
-  tea_reporter.go    # datarangers-sdk-go implementation
-  debug_reporter.go  # local analytics debug events without remote reporting
-  noop_reporter.go   # no-op for tests and disabled reporting
-  device_id.go       # load-or-create device_id from state dir
+  reporter.go         # Tutti config adapter and compatibility aliases
+  events/             # Tutti-owned typed daemon business events
 ```
+
+`github.com/tutti-os/tutti/packages/analytics/reporter-go` is a public Go
+module. It is the reusable lower SDK for Tutti products such as TSH. Product
+repositories own their event catalog, HTTP contract, configuration, and
+business emission points; they must not copy the DataFinder adapter.
 
 ### Reporter interface
 
@@ -256,9 +265,12 @@ type Reporter interface {
 ```
 
 `TeaReporter` wraps `github.com/volcengine/datarangers-sdk-go`. It injects
-common params on every `Track` call before handing events to the SDK. The SDK
-uses HTTP mode with SDK batch mode disabled, a bounded async queue wait, and
-controlled SDK log paths under the tutti state directory.
+common params on every `Track` call before handing events to the SDK. Hosts may
+supply an existing durable `DeviceID` and product-owned common parameters; the
+shared reporter always owns and protects `device_id`, `session_id`,
+`app_version`, and `os`. The SDK uses HTTP mode with SDK batch mode disabled, a
+bounded async queue wait, and controlled SDK log paths under the product state
+directory.
 
 `NoopReporter` is used in unit tests and when Tea credentials are absent (e.g.
 local development without credentials configured).
@@ -279,10 +291,10 @@ keeps the lifecycle hook but treats close as best-effort for HTTP reporting.
 
 ## TypeScript Implementation
 
-### `apps/desktop/src/renderer/src/features/analytics`
+### `@tutti-os/analytics`
 
-The desktop renderer exposes `IReporterService` as the business-facing
-analytics entrypoint:
+`packages/analytics/core` publishes the business-facing `IReporterService`,
+`ReporterService`, and renderer-to-daemon `AnalyticsTransport` contract:
 
 ```ts
 interface IReporterService {
@@ -291,16 +303,18 @@ interface IReporterService {
 }
 ```
 
-The service is registered in the workspace window DI container and depends on
-`TuttidClient.trackEvents()` for transport. Renderer business code should
-depend on `IReporterService`, not on the low-level tuttid client method.
+The desktop renderer registers the shared service in the workspace window DI
+container. Its local adapter implements `AnalyticsTransport` with
+`TuttidClient.trackEvents()`. Renderer business code depends on
+`IReporterService`, not on the low-level tuttid client method.
 
 `ReporterService` owns renderer-side reporting behavior:
 
 - `track()` wraps one business event
 - `trackEvents()` accepts a batch of renderer event inputs
-- `clientTS` defaults to `Date.now()` and is converted to the OpenAPI
-  `client_ts` field
+- `clientTS` defaults to `Date.now()`
+- a product adapter converts the shared transport event to its daemon OpenAPI
+  representation (`client_ts` for tuttid)
 - event `params` are copied before transport handoff
 - transport failures are swallowed because renderer analytics is best-effort
   and must not affect product flows
@@ -319,8 +333,8 @@ The method calls the generated OpenAPI SDK and reuses generated request types.
 ## Rules
 
 - Renderer must not initialize or reference any Tea SDK directly
-- Renderer business code should report through `IReporterService` rather than
-  calling `TuttidClient.trackEvents()` directly
+- Renderer business code must reuse `@tutti-os/analytics` and report through
+  `IReporterService` rather than calling daemon clients directly
 - `POST /v1/track` acknowledges local acceptance only; callers may await the
   local `202`, but must not wait for Tea/DataFinder delivery confirmation
 - `client_ts` must be set by the caller to the moment the event occurred, not

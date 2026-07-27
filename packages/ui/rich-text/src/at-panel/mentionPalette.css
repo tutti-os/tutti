@@ -142,8 +142,13 @@
   z-index: 1;
   display: flex;
   flex: 0 0 auto;
+  align-self: stretch;
   align-items: center;
+  box-sizing: border-box;
   padding-right: 12px;
+  /* 与左侧 tab 文本中线对齐:tab 行 h-8 带 pb-2,文本中线距盒顶 12px;
+     给等高的 header-actions 同样的底部内边距,使内容中线也落在 12px。 */
+  padding-bottom: 8px;
 }
 
 .rich-text-at-mention-palette__footer {

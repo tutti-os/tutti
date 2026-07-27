@@ -69,11 +69,9 @@ func newTeaSDKSysConf(config teaSDKConfig, logDir string) *sdk.SysConf {
 			Enable: false,
 		},
 		AsynConfig: sdk.AsynConfig{
-			Routine: 1,
-			// Keep /v1/track best-effort and bounded under SDK queue backpressure.
+			Routine:     1,
 			WaitTimeout: 50,
 		},
-		// Drop raw failed payload logging to avoid writing analytics params/device IDs to disk.
 		ErrHandler: func([]interface{}, error) error {
 			return nil
 		},
@@ -94,6 +92,5 @@ func (defaultTeaSDK) Send(appID int64, uuid string, events []teaSDKEvent, common
 }
 
 func (defaultTeaSDK) Close() error {
-	// DataFinder SDK v1.1.8 has no public HTTP flush/close hook in HTTP mode.
 	return nil
 }

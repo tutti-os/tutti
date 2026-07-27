@@ -75,6 +75,9 @@ importers:
       "@tutti-os/agent-gui":
         specifier: workspace:*
         version: link:../../packages/agent/gui
+      "@tutti-os/analytics":
+        specifier: workspace:*
+        version: link:../../packages/analytics/core
       "@tutti-os/browser-node":
         specifier: workspace:*
         version: link:../../packages/browser/workbench-node
@@ -593,6 +596,22 @@ importers:
       vitest:
         specifier: ^4.0.13
         version: 4.1.7(@types/node@24.12.4)(jsdom@27.4.0)(vite@6.4.2(@types/node@24.12.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  packages/analytics/core:
+    dependencies:
+      "@tutti-os/infra":
+        specifier: 0.1.0
+        version: 0.1.0(lodash-es@4.18.1)(react@19.2.6)
+    devDependencies:
+      "@tutti-os/config-tsconfig":
+        specifier: workspace:*
+        version: link:../../configs/tsconfig
+      "@types/node":
+        specifier: ^24.0.1
+        version: 24.12.4
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   packages/auth/bridge:
     devDependencies:

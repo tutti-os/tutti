@@ -708,6 +708,9 @@ observe the portaled menu DOM, or infer target identity from provider or
 visible text. The current conversation's composer input availability is
 independent from this launch surface: a target connection may disable input
 while Handoff remains available when the host supplies the launch callback.
+Handoff preserves canonical Rail placement: a source in the Chats section
+omits its runtime `cwd` from the destination project selection, while a source
+in a project section carries that project's path.
 AgentGUI DOM surfaces render the target's owner badge through the shared UI
 System Avatar primitive. A failed owner image falls back to the supplied owner
 label initial instead of exposing a browser broken-image glyph.

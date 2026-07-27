@@ -246,6 +246,33 @@
   [tuttiAssetProtocol.ts](../../../apps/desktop/src/main/host/tuttiAssetProtocol.ts)
   [workspaceFileIconProtocol.ts](../../../apps/desktop/src/main/host/workspaceFileIconProtocol.ts)
 
+### AgentGUI carousel owner avatar stays a solid badge
+
+- Symptom:
+  The DOM owner avatar and other identity surfaces show the expected image, but
+  the WebGL empty-home carousel keeps its solid programmatic owner marker until
+  the component remounts.
+- Quick checks:
+  Confirm the host projects a non-empty `owner.avatarUrl`, the same URL renders
+  in a normal anonymous `<img>`, and the asset response permits anonymous CORS.
+  If a restart or remount makes the carousel image appear without changing the
+  directory projection, inspect the carousel image loader rather than adding
+  another profile or daemon request.
+- Root cause:
+  A transient first network failure can be latched as a decoded `null` image.
+  Because the authoritative URL did not change, the carousel has no reason to
+  create a new image generation and the solid fallback remains.
+- Fix:
+  Keep one carousel image-load owner and retry anonymous owner badges a small,
+  bounded number of times. Cancellation must clear both the active image source
+  and any pending retry timer. Continue using the host's authoritative owner
+  projection; renderer code must not fetch a second avatar source.
+- Validation:
+  Inject one failed owner-image attempt, advance through the first retry delay,
+  and assert that the next anonymous image resolves while icon and cover loading
+  remain unchanged. Also assert that canceling a generation resolves it empty
+  and clears every active source.
+
 ### Renderer tile memory warnings from hidden autoplay animation
 
 - Symptom:

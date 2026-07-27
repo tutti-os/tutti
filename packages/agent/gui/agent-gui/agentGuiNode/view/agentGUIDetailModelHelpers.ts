@@ -347,6 +347,9 @@ export function buildAgentConversationHandoffPrompt(input: {
 export function handoffProjectPathForConversation(
   conversation: AgentGUINodeViewModel["rail"]["activeConversation"]
 ): string | null {
+  if (conversation?.railSectionKey?.trim() === "conversations") {
+    return null;
+  }
   return (
     conversation?.project?.path?.trim() || conversation?.cwd?.trim() || null
   );
