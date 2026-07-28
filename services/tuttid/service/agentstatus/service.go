@@ -582,7 +582,22 @@ func (s Service) probeAdapterRuntimeCommand(
 		return result
 	}
 	defer release()
-	result = s.probeCommandWithReadyAfter(ctx, result, command, env, s.probeReadyAfterForSpec(spec))
+	if isCodexStatusSpec(spec) && sameResolvedBinary(runtimeResolution.AdapterPath, runtimeResolution.CLIPath) {
+		// Codex has no separate adapter binary in production: `codex app-server`
+		// IS the CLI, so a real ACP handshake here directly answers "can Tutti
+		// actually launch this" instead of only checking the process didn't
+		// exit. Providers with a distinct adapter binary (e.g. the synthetic
+		// specs used to test that generic mechanism) keep the liveness probe.
+		result = s.probeCodexAppServerHandshake(ctx, result, command, env)
+	} else if isStandardACPStatusSpec(spec) && sameResolvedBinary(runtimeResolution.AdapterPath, runtimeResolution.CLIPath) {
+		// cursor-agent and opencode have the same "CLI is the adapter" shape as
+		// Codex (invoked as `<binary> acp`), so they get the same real
+		// initialize handshake instead of only checking the process didn't
+		// exit.
+		result = s.probeStandardACPHandshake(ctx, result, command, env)
+	} else {
+		result = s.probeCommandWithReadyAfter(ctx, result, command, env, s.probeReadyAfterForSpec(spec))
+	}
 	if result.Status == ProbeReady {
 		s.AdapterProbeCache.markReady(
 			adapterProbeCacheKey(spec, runtimeResolution),
@@ -596,6 +611,15 @@ func (s Service) probeAdapterRuntimeCommand(
 		}
 	}
 	return result
+}
+
+// sameResolvedBinary reports whether two resolved binary paths point at the
+// same on-disk binary. Empty paths never match: an unresolved binary must not
+// be treated as "same as" another unresolved one.
+func sameResolvedBinary(a string, b string) bool {
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	return a != "" && a == b
 }
 
 func adapterProbeCacheKey(spec ProviderSpec, runtimeResolution providerRuntimeResolution) string {
