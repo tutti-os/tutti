@@ -114,6 +114,8 @@ export interface AgentComposerProps {
   }) => void;
   onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
   showStopButton: boolean;
+  /** Lets typed input replace an aggregate-work Stop control with Send. */
+  draftOverridesStopButton?: boolean;
   stopDisabled: boolean;
   activePrompt: AgentConversationPromptVM | null;
   activePromptKeyboardShortcutsEnabled?: boolean;

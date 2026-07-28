@@ -40,7 +40,7 @@ func (err *ManagedIssueMutationError) Error() string {
 	return fmt.Sprintf("%s: issue %s", ErrManagedIssueMutation, err.IssueID)
 }
 
-func (_ *ManagedIssueMutationError) Unwrap() error {
+func (*ManagedIssueMutationError) Unwrap() error {
 	return ErrManagedIssueMutation
 }
 

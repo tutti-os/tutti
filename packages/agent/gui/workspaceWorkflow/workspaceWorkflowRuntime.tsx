@@ -31,10 +31,18 @@ export interface TuttiModePlanReviewSessionSettled {
   sourceSessionId: string;
 }
 
+/** Cached assignment catalogs changed for exact Agent Targets. */
+export interface TuttiModePlanAssignmentOptionsInvalidated {
+  kind: "assignment_options_invalidated";
+  workspaceId: string;
+  agentTargetIds: readonly string[];
+}
+
 export type TuttiModePlanReviewInvalidation =
   | TuttiModePlanReviewUpdate
   | TuttiModePlanReviewConnectionRestored
-  | TuttiModePlanReviewSessionSettled;
+  | TuttiModePlanReviewSessionSettled
+  | TuttiModePlanAssignmentOptionsInvalidated;
 
 export interface TuttiModePlanTaskAssignmentInput {
   taskId: string;
@@ -93,6 +101,8 @@ export interface TuttiPlanIssueSnapshot {
   issueId: string;
   topicId: string;
   title: string;
+  /** Durable Issue execution gate; paused graphs are not active work. */
+  dispatchPaused: boolean;
   tasks: TuttiPlanIssueTaskSnapshot[];
 }
 
@@ -165,9 +175,24 @@ export interface TuttiPlanIssueSource {
  * hardcodes providers or modes.
  */
 export interface TuttiModePlanAssignmentOptionsSource {
+  /**
+   * Returns the last successful workspace directory, including stale data.
+   * Hosts may omit this when they do not retain a query cache.
+   */
+  readAgents?(input: {
+    workspaceId: string;
+  }): readonly TuttiModePlanAssignmentAgentOption[] | null;
   listAgents(input: {
     workspaceId: string;
   }): Promise<readonly TuttiModePlanAssignmentAgentOption[]>;
+  /**
+   * Returns the last successful target catalog, including stale data, so a
+   * refresh never replaces usable selectors with a loading placeholder.
+   */
+  readAgentOptions?(input: {
+    workspaceId: string;
+    agentTargetId: string;
+  }): TuttiModePlanAssignmentAgentDetail | null;
   loadAgentOptions(input: {
     workspaceId: string;
     agentTargetId: string;

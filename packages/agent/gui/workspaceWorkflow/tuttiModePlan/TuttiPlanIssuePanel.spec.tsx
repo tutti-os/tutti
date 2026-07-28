@@ -10,7 +10,6 @@ import type { TuttiPlanIssueSnapshot } from "../workspaceWorkflowRuntime";
 
 const labels: TuttiPlanIssuePanelLabels = {
   openIssue: "Open Issue",
-  stopExecution: "Stop",
   listView: "List",
   boardView: "Board",
   parallelizable: "Parallel",
@@ -36,6 +35,7 @@ const issue: TuttiPlanIssueSnapshot = {
   issueId: "tutti-mode-plan-wf-1",
   topicId: "default",
   title: "Neon chase MVP",
+  dispatchPaused: false,
   tasks: [
     {
       taskId: "p1",
@@ -180,7 +180,7 @@ describe("TuttiPlanIssuePanel", () => {
     expect(onOpenIssue).toHaveBeenCalledTimes(1);
   });
 
-  it("offers stop only while runs are live and forwards the cascade", async () => {
+  it("does not expose a panel-local stop while runs are live", () => {
     const liveTask = {
       taskId: "live",
       title: "Working",
@@ -195,20 +195,10 @@ describe("TuttiPlanIssuePanel", () => {
       ...issue,
       tasks: [liveTask]
     };
-    const onCancelExecution = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(
-      <TuttiPlanIssuePanel
-        issue={runningIssue}
-        labels={labels}
-        onCancelExecution={onCancelExecution}
-      />
+      <TuttiPlanIssuePanel issue={runningIssue} labels={labels} />
     );
-    fireEvent.click(screen.getByTestId("tutti-plan-issue-stop"));
-    expect(onCancelExecution).toHaveBeenCalledTimes(1);
-    await waitFor(() =>
-      expect(screen.getByTestId("tutti-plan-issue-stop")).toBeEnabled()
-    );
-    // Once nothing runs anymore the stop affordance disappears.
+    expect(screen.queryByTestId("tutti-plan-issue-stop")).toBeNull();
     rerender(
       <TuttiPlanIssuePanel
         issue={{
@@ -216,7 +206,6 @@ describe("TuttiPlanIssuePanel", () => {
           tasks: [{ ...liveTask, status: "canceled" }]
         }}
         labels={labels}
-        onCancelExecution={onCancelExecution}
       />
     );
     expect(screen.queryByTestId("tutti-plan-issue-stop")).toBeNull();

@@ -121,7 +121,6 @@ export function TuttiWorkflowDock({
   intensityPopoverLabels,
   labels,
   onAssignmentDraftChange,
-  onCancelExecution,
   onCancelReview,
   onDecideTask,
   onIntensityChange,
@@ -141,7 +140,6 @@ export function TuttiWorkflowDock({
     taskId: string,
     patch: TuttiModePlanTaskAssignmentDraft
   ): void;
-  onCancelExecution?: () => Promise<void>;
   onCancelReview(): void;
   onDecideTask?: (
     taskId: string,
@@ -383,7 +381,6 @@ export function TuttiWorkflowDock({
           embedded={true}
           issue={execution.issue}
           labels={planIssuePanelLabels}
-          onCancelExecution={onCancelExecution}
           onDecideTask={onDecideTask}
           onOpenIssue={onOpenIssue}
           onOpenTask={onOpenTask}

@@ -284,6 +284,11 @@ UI and orchestration phases are derived from those facts. New boolean flags
 must not be used to simulate transactions or hide incomplete cross-domain
 operations.
 
+The public Issue projection includes `dispatchPaused`. Conversation surfaces
+must combine that durable gate with task terminality when presenting aggregate
+Tutti execution; Issue rollup status alone is insufficient because a stopped
+graph intentionally retains untouched `not_started` successors.
+
 ## Recovery
 
 The reconciliation queue is daemon-context-bound and retries transient

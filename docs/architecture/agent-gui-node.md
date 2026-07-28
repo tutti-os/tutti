@@ -954,6 +954,31 @@ plan panel starts with the plan title and body; it does not repeat mode,
 review-kind, or pending-state badges already communicated by the workflow
 banner.
 
+Task-assignment directories and target option catalogs are workspace query
+projections, not Plan, Session, or Turn state. The Desktop assignment source
+retains them in the shared bounded workspace query cache: directories are keyed
+by workspace, while target options use exact workspace, Agent Target, and
+provider identity. AgentGUI may synchronously reuse the last successful value,
+including a stale value, while the source performs a deduplicated refresh.
+Provider catalog and workspace model-configuration events invalidate only the
+affected target entries; a generation fence prevents a pre-invalidation
+response from becoming current. Composer options remain a separate
+cwd/settings-sensitive projection and do not share this cache instance.
+
+The materialized Issue is also a Tutti-owned aggregate-work projection for the
+source composer. While dispatch is not paused and any task is nonterminal, an
+empty composer shows the normal running Stop control even when the source
+Session has no active Turn; this is presentation state and must not manufacture
+an Agent Turn or change Host submit availability. Typed input replaces that
+aggregate Stop with Send. An exact active source Turn with
+`activeTurnGuidance` receives the input as guidance/steer; an idle source starts
+a normal Turn, and an active source without guidance support keeps the normal
+queue path instead of cancel-then-send. Stop durably pauses Issue dispatch and
+cancels its running task Sessions, and also sends the ordinary source-Session
+stop only when that Session has stoppable work. The two idempotent paths are
+independent because canceling an idle Session merely to trigger the Issue
+cascade could capture a later Turn.
+
 An independent-review failure is a distinct workflow presentation, not a
 generic retry loop. The dock may offer an explicitly user-triggered self-review
 fallback through an optional host command and shows its pending, success, or

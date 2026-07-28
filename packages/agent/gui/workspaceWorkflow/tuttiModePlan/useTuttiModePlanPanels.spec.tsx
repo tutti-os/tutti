@@ -64,6 +64,7 @@ function snapshot(sourceSessionId: string): TuttiModePlanReviewSnapshot {
               title: "Implement",
               content: "",
               priority: "medium",
+              agentTargetId: "codex",
               dependsOn: []
             }
           ]
@@ -287,6 +288,10 @@ describe("useTuttiModePlanPanels", () => {
     expect(rendered.result.current.assignmentCatalog.agents).toEqual([
       { agentTargetId: "codex", label: "Codex" }
     ]);
+    expect(
+      rendered.result.current.assignmentCatalog.optionsByAgentId["codex"]
+        ?.models
+    ).toEqual(["gpt-5.4"]);
 
     // "Request changes" -> agent revises -> revision_created invalidation.
     await act(async () => {
@@ -307,6 +312,76 @@ describe("useTuttiModePlanPanels", () => {
       { agentTargetId: "codex", label: "Codex" }
     ]);
     expect(listAgents).toHaveBeenCalledTimes(1);
+    expect(loadAgentOptions).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps stale assignment options visible while an invalidated target refreshes", async () => {
+    let invalidationListener:
+      | Parameters<TuttiModePlanReviewRuntime["subscribe"]>[1]
+      | undefined;
+    const refreshed = deferred<{
+      models: string[];
+      modelPlans: never[];
+      permissionModes: { id: string; label: string }[];
+      reasoningEfforts: string[];
+    }>();
+    const stale = {
+      models: ["gpt-5.4"],
+      modelPlans: [],
+      permissionModes: [{ id: "auto", label: "Auto" }],
+      reasoningEfforts: ["high"]
+    };
+    const loadAgentOptions = vi
+      .fn()
+      .mockResolvedValueOnce(stale)
+      .mockImplementationOnce(() => refreshed.promise);
+    const runtime: TuttiModePlanReviewRuntime = {
+      listPending: vi.fn(() => Promise.resolve([snapshot("session-a")])),
+      decide: vi.fn(),
+      subscribe: vi.fn((_workspaceId, listener) => {
+        invalidationListener = listener;
+        return () => undefined;
+      }),
+      assignmentOptions: {
+        readAgentOptions: vi.fn(() => stale),
+        listAgents: vi.fn(() =>
+          Promise.resolve([{ agentTargetId: "codex", label: "Codex" }])
+        ),
+        loadAgentOptions
+      }
+    };
+    const rendered = renderPanels(runtime);
+    await act(async () => undefined);
+    expect(
+      rendered.result.current.assignmentCatalog.optionsByAgentId["codex"]
+        ?.models
+    ).toEqual(["gpt-5.4"]);
+
+    act(() => {
+      invalidationListener?.({
+        kind: "assignment_options_invalidated",
+        workspaceId: "workspace-1",
+        agentTargetIds: ["codex"]
+      });
+    });
+    expect(loadAgentOptions).toHaveBeenCalledTimes(2);
+    expect(
+      rendered.result.current.assignmentCatalog.optionsByAgentId["codex"]
+        ?.models
+    ).toEqual(["gpt-5.4"]);
+
+    await act(async () =>
+      refreshed.resolve({
+        models: ["gpt-5.5"],
+        modelPlans: [],
+        permissionModes: [{ id: "auto", label: "Auto" }],
+        reasoningEfforts: ["xhigh"]
+      })
+    );
+    expect(
+      rendered.result.current.assignmentCatalog.optionsByAgentId["codex"]
+        ?.models
+    ).toEqual(["gpt-5.5"]);
   });
 
   it("retries a failed assignment directory load on the next refresh", async () => {

@@ -3665,6 +3665,10 @@ export type IssueManagerIssue = {
    * When true, the daemon dispatches every dependency-ready task whose execution directory is isolated; dependencies still require user acceptance.
    */
   parallelExecution: boolean;
+  /**
+   * When true, automatic task dispatch is durably paused and no successor task may launch.
+   */
+  dispatchPaused: boolean;
   executionProfile: IssueManagerExecutionProfile;
   budget: IssueManagerBudget;
   taskCount: number;

@@ -224,7 +224,6 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
               planPanelLabels={tuttiPlanPanelLabels}
               planIssuePanelLabels={tuttiPlanIssuePanelLabels}
               onAssignmentDraftChange={tuttiWorkflowDock.updateAssignment}
-              onCancelExecution={tuttiWorkflowDock.cancelExecution}
               onCancelReview={tuttiWorkflowDock.cancelReview}
               onDecideTask={tuttiWorkflowDock.decideTask}
               onIntensityChange={tuttiWorkflowDock.changeIntensity}

@@ -1336,6 +1336,7 @@ components:
         - sourceSessionId
         - sequentialExecution
         - parallelExecution
+        - dispatchPaused
         - executionProfile
         - budget
         - taskCount
@@ -1374,6 +1375,9 @@ components:
         parallelExecution:
           type: boolean
           description: When true, the daemon dispatches every dependency-ready task whose execution directory is isolated; dependencies still require user acceptance.
+        dispatchPaused:
+          type: boolean
+          description: When true, automatic task dispatch is durably paused and no successor task may launch.
         executionProfile:
           $ref: "#/components/schemas/IssueManagerExecutionProfile"
         budget:

@@ -5087,18 +5087,21 @@ type IssueManagerExecutionProfile struct {
 
 // IssueManagerIssue defines model for IssueManagerIssue.
 type IssueManagerIssue struct {
-	Budget             IssueManagerBudget           `json:"budget"`
-	CanceledCount      int                          `json:"canceledCount"`
-	CompletedCount     int                          `json:"completedCount"`
-	Content            string                       `json:"content"`
-	CreatedAtUnix      int64                        `json:"createdAtUnix"`
-	CreatorAvatarUrl   string                       `json:"creatorAvatarUrl"`
-	CreatorDisplayName string                       `json:"creatorDisplayName"`
-	CreatorUserId      string                       `json:"creatorUserId"`
-	ExecutionProfile   IssueManagerExecutionProfile `json:"executionProfile"`
-	FailedCount        int                          `json:"failedCount"`
-	IssueId            string                       `json:"issueId"`
-	NotStartedCount    int                          `json:"notStartedCount"`
+	Budget             IssueManagerBudget `json:"budget"`
+	CanceledCount      int                `json:"canceledCount"`
+	CompletedCount     int                `json:"completedCount"`
+	Content            string             `json:"content"`
+	CreatedAtUnix      int64              `json:"createdAtUnix"`
+	CreatorAvatarUrl   string             `json:"creatorAvatarUrl"`
+	CreatorDisplayName string             `json:"creatorDisplayName"`
+	CreatorUserId      string             `json:"creatorUserId"`
+
+	// DispatchPaused When true, automatic task dispatch is durably paused and no successor task may launch.
+	DispatchPaused   bool                         `json:"dispatchPaused"`
+	ExecutionProfile IssueManagerExecutionProfile `json:"executionProfile"`
+	FailedCount      int                          `json:"failedCount"`
+	IssueId          string                       `json:"issueId"`
+	NotStartedCount  int                          `json:"notStartedCount"`
 
 	// ParallelExecution When true, the daemon dispatches every dependency-ready task whose execution directory is isolated; dependencies still require user acceptance.
 	ParallelExecution      bool `json:"parallelExecution"`

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ExternalLink, ListChecks, RotateCcw, Square } from "lucide-react";
+import { ExternalLink, ListChecks, RotateCcw } from "lucide-react";
 import {
   Badge,
   Button,
@@ -16,7 +16,6 @@ import type {
 
 export interface TuttiPlanIssuePanelLabels {
   openIssue: string;
-  stopExecution: string;
   listView: string;
   boardView: string;
   parallelizable: string;
@@ -148,7 +147,6 @@ export function TuttiPlanIssuePanel({
   labels,
   onOpenIssue,
   onDecideTask,
-  onCancelExecution,
   onOpenTask
 }: {
   embedded?: boolean;
@@ -159,13 +157,11 @@ export function TuttiPlanIssuePanel({
     taskId: string,
     decision: TuttiPlanIssueTaskDecision
   ) => Promise<void>;
-  onCancelExecution?: () => Promise<void>;
   /** Jump into the delegate conversation of a task that has launched. */
   onOpenTask?: (taskId: string) => void | Promise<void>;
 }): React.JSX.Element {
   const [viewMode, setViewMode] = useState<TuttiPlanIssueViewMode>("board");
   const [decidingTaskIds, setDecidingTaskIds] = useState<readonly string[]>([]);
-  const [stopping, setStopping] = useState(false);
   const decideTask = onDecideTask
     ? (taskId: string, decision: TuttiPlanIssueTaskDecision): void => {
         setDecidingTaskIds((current) =>
@@ -189,23 +185,6 @@ export function TuttiPlanIssuePanel({
   const running = issue.tasks.filter(
     (task) => task.status === "running"
   ).length;
-  const stopExecution =
-    onCancelExecution && running > 0
-      ? (): void => {
-          setStopping(true);
-          void onCancelExecution()
-            .catch((error: unknown) => {
-              // Best-effort; the live issue stream re-syncs and the button
-              // returns for a retry while runs remain live. Keep the failure
-              // observable — a swallowed transport error (e.g. an unregistered
-              // daemon route answering 404) otherwise reads as a dead button.
-              console.error("tutti plan issue stop failed", error);
-            })
-            .finally(() => {
-              setStopping(false);
-            });
-        }
-      : undefined;
   return (
     <Card
       size="sm"
@@ -250,19 +229,6 @@ export function TuttiPlanIssuePanel({
               value={viewMode}
               onValueChange={setViewMode}
             />
-            {stopExecution ? (
-              <Button
-                type="button"
-                variant="secondary"
-                className="text-[var(--state-danger)] hover:text-[var(--state-danger)]"
-                disabled={stopping}
-                data-testid="tutti-plan-issue-stop"
-                onClick={stopExecution}
-              >
-                <Square aria-hidden className="size-3.5" />
-                {labels.stopExecution}
-              </Button>
-            ) : null}
             {onOpenIssue ? (
               <Button
                 type="button"

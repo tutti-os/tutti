@@ -9,7 +9,8 @@ import { updateAgentComposerDraft } from "../model/agentComposerDraft";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import {
   buildAgentConversationHandoffPrompt,
-  handoffProjectPathForConversation
+  handoffProjectPathForConversation,
+  resolveAgentGUITuttiStopTargets
 } from "./agentGUIDetailModelHelpers";
 import { AgentGUIBottomDockPane } from "./AgentGUIBottomDockPane";
 import {
@@ -143,9 +144,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     viewModel
   });
   const slashStatus = slashStatusOverride ?? derivedSlashStatus;
-  const handleInterruptCurrentTurn = useCallback(() => {
-    actions.interruptCurrentTurn(labels.noRunningResponse);
-  }, [actions.interruptCurrentTurn, labels.noRunningResponse]);
   const handleForkThroughTurn = useStableEventCallback((turnId: string) => {
     const agentSessionId =
       conversation?.sourceDetail.session.agentSessionId.trim() ?? "";
@@ -263,10 +261,32 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     setTuttiModeOrchestrationIntensity:
       actions.setTuttiModeOrchestrationIntensity,
     updateDraftContent: actions.updateDraftContent,
-    submitPromptPassthrough: submitPromptAndScrollToBottom
+    submitPromptPassthrough: submitPromptAndScrollToBottom,
+    submitGuidancePromptPassthrough: submitGuidancePromptAndScrollToBottom
   });
   const tuttiWorkflowComposer = tuttiWorkflow.composer;
   const tuttiWorkflowDock = tuttiWorkflow.workflowDock;
+  const sourceActiveTurn =
+    viewModel.detail.conversationDetail?.session.activeTurn ?? null;
+  const sourceHasStoppableWork =
+    Boolean(sourceActiveTurn && sourceActiveTurn.phase !== "settled") ||
+    viewModel.composer.isCreatingConversation;
+  const handleInterruptCurrentTurn = useStableEventCallback(() => {
+    const targets = resolveAgentGUITuttiStopTargets({
+      executionActive: tuttiWorkflowComposer.tuttiExecutionActive,
+      sourceHasStoppableWork
+    });
+    if (targets.stopExecution) {
+      void tuttiWorkflowComposer
+        .stopTuttiExecution()
+        .catch((error: unknown) => {
+          console.error("tutti plan execution stop failed", error);
+        });
+    }
+    if (targets.stopSession) {
+      actions.interruptCurrentTurn(labels.noRunningResponse);
+    }
+  });
   const stableRequestWorkspaceReferences = useOptionalStableEventCallback(
     onRequestWorkspaceReferences
   );
@@ -398,8 +418,13 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       placeholder: viewModel.detail.hasSentUserMessage
         ? labels.followupPlaceholder
         : labels.initialPlaceholder,
-      showStopButton,
-      stopDisabled: stopDisabled || timelineInteractionLocked,
+      showStopButton:
+        showStopButton || tuttiWorkflowComposer.tuttiExecutionActive,
+      draftOverridesStopButton: tuttiWorkflowComposer.tuttiExecutionActive,
+      stopDisabled:
+        stopDisabled ||
+        timelineInteractionLocked ||
+        tuttiWorkflowComposer.tuttiExecutionStopping,
       workspaceReferencePickerOpen,
       referenceProvenanceFilters,
       // Plan decisions replace the composer; approval / ask-user embed here.
@@ -413,7 +438,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       handoffLabel: labels.handoffConversation,
       handoffMenuLabel: labels.handoffConversationMenu,
       isInterrupting:
-        viewModel.composer.isInterrupting || viewModel.composer.isCancelPending,
+        viewModel.composer.isInterrupting ||
+        viewModel.composer.isCancelPending ||
+        tuttiWorkflowComposer.tuttiExecutionStopping,
       modelConsult:
         viewModel.rail.activeConversationId !== null
           ? {
@@ -519,6 +546,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       tuttiWorkflowComposer.submitPromptOrDecidePlan,
       tuttiWorkflowComposer.planReviewSendActive,
       tuttiWorkflowComposer.planReviewIntensityDiverged,
+      tuttiWorkflowComposer.tuttiExecutionActive,
+      tuttiWorkflowComposer.tuttiExecutionStopping,
       tuttiWorkflowDock.phase?.kind,
       labels.tuttiModePlanSendRequestChanges,
       tuttiWorkflowComposer.acceptPendingPlan,

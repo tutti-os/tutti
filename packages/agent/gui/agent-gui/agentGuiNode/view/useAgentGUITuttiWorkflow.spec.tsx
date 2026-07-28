@@ -83,14 +83,31 @@ function panel(
   };
 }
 
-function issue(workflowId = "workflow-a"): TuttiPlanIssueSnapshot {
+function issue(
+  workflowId = "workflow-a",
+  options: { dispatchPaused?: boolean; taskStatus?: string } = {}
+): TuttiPlanIssueSnapshot {
   return {
     workflowId,
     sourceTurnId: "turn-a",
     issueId: "issue-a",
     topicId: "topic-1",
     title: "Ship safely",
-    tasks: []
+    dispatchPaused: options.dispatchPaused ?? false,
+    tasks: options.taskStatus
+      ? [
+          {
+            taskId: "task-a",
+            title: "Build",
+            content: "",
+            status: options.taskStatus,
+            sortIndex: 1,
+            parallelizable: false,
+            autoAccept: false,
+            dependencyTaskIds: []
+          }
+        ]
+      : []
   };
 }
 
@@ -104,13 +121,28 @@ function failure(
   };
 }
 
-function viewModel(activeConversationId: string): AgentGUINodeViewModel {
+function viewModel(
+  activeConversationId: string,
+  options: { activeTurn?: boolean; activeTurnGuidance?: boolean } = {}
+): AgentGUINodeViewModel {
   return {
     shell: {
       workspaceId: "workspace-1",
       currentUserId: "user-1"
     },
     rail: { activeConversationId },
+    detail: {
+      conversationDetail: {
+        session: {
+          activeTurn: options.activeTurn
+            ? { turnId: "turn-active", phase: "running" }
+            : null,
+          capabilities: {
+            activeTurnGuidance: options.activeTurnGuidance === true
+          }
+        }
+      }
+    },
     composer: {
       draftContent: buildAgentComposerDraft({ prompt: "" }),
       tuttiModeOrchestrationIntensity: 50
@@ -125,8 +157,17 @@ const labels = {
   tuttiModePlanReplanFeedbackSuffix: () => " Re-plan"
 } as unknown as AgentGUIViewLabels;
 
-function renderWorkflow(initial: PlanPanelsProjection) {
+function renderWorkflow(
+  initial: PlanPanelsProjection,
+  options: {
+    activeTurn?: boolean;
+    activeTurnGuidance?: boolean;
+    cancelPlanIssueExecution?: (() => Promise<void>) | null;
+  } = {}
+) {
   let projection = initial;
+  const submitPromptPassthrough = vi.fn();
+  const submitGuidancePromptPassthrough = vi.fn();
   mocks.useTuttiModePlanPanels.mockImplementation(() => ({
     assignmentCatalog: {
       agents: [],
@@ -135,7 +176,7 @@ function renderWorkflow(initial: PlanPanelsProjection) {
     },
     decide,
     decidePlanIssueTask: null,
-    cancelPlanIssueExecution: null,
+    cancelPlanIssueExecution: options.cancelPlanIssueExecution ?? null,
     resolvePlanIssueTaskSession: null,
     retry: vi.fn(),
     loading: false,
@@ -144,18 +185,21 @@ function renderWorkflow(initial: PlanPanelsProjection) {
   const rendered = renderHook(
     ({ activeConversationId }: { activeConversationId: string }) =>
       useAgentGUITuttiWorkflow({
-        viewModel: viewModel(activeConversationId),
+        viewModel: viewModel(activeConversationId, options),
         labels,
         stableLinkAction: undefined,
         setTuttiModeActive: vi.fn(),
         setTuttiModeOrchestrationIntensity: vi.fn(),
         updateDraftContent: vi.fn(),
-        submitPromptPassthrough: vi.fn()
+        submitPromptPassthrough,
+        submitGuidancePromptPassthrough
       }),
     { initialProps: { activeConversationId: "session-a" } }
   );
   return {
     ...rendered,
+    submitPromptPassthrough,
+    submitGuidancePromptPassthrough,
     setProjection(next: PlanPanelsProjection): void {
       projection = next;
     }
@@ -262,5 +306,73 @@ describe("useAgentGUITuttiWorkflow materialization bridge", () => {
     rendered.rerender({ activeConversationId: "session-b" });
     rendered.rerender({ activeConversationId: "session-a" });
     expect(rendered.result.current.workflowDock.phase).toBeNull();
+  });
+});
+
+describe("useAgentGUITuttiWorkflow execution composer", () => {
+  const executionProjection = (): PlanPanelsProjection => ({
+    ...emptyProjection(),
+    planIssue: issue("workflow-a", { taskStatus: "running" })
+  });
+
+  it("steers an active source Turn when exact guidance is supported", () => {
+    const rendered = renderWorkflow(executionProjection(), {
+      activeTurn: true,
+      activeTurnGuidance: true
+    });
+
+    act(() =>
+      rendered.result.current.composer.submitPromptOrDecidePlan([
+        { type: "text", text: "Adjust the approach" }
+      ])
+    );
+
+    expect(rendered.submitGuidancePromptPassthrough).toHaveBeenCalledTimes(1);
+    expect(rendered.submitPromptPassthrough).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { activeTurn: false, activeTurnGuidance: true, name: "source is idle" },
+    {
+      activeTurn: true,
+      activeTurnGuidance: false,
+      name: "guidance is unsupported"
+    }
+  ])("uses an ordinary submit when $name", (options) => {
+    const rendered = renderWorkflow(executionProjection(), options);
+
+    act(() =>
+      rendered.result.current.composer.submitPromptOrDecidePlan([
+        { type: "text", text: "Adjust the approach" }
+      ])
+    );
+
+    expect(rendered.submitPromptPassthrough).toHaveBeenCalledTimes(1);
+    expect(rendered.submitGuidancePromptPassthrough).not.toHaveBeenCalled();
+  });
+
+  it("owns one in-flight durable execution stop", async () => {
+    let settle: (() => void) | undefined;
+    const cancelPlanIssueExecution = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve;
+        })
+    );
+    const rendered = renderWorkflow(executionProjection(), {
+      cancelPlanIssueExecution
+    });
+
+    let firstStop!: Promise<void>;
+    act(() => {
+      firstStop = rendered.result.current.composer.stopTuttiExecution();
+      void rendered.result.current.composer.stopTuttiExecution();
+    });
+
+    expect(cancelPlanIssueExecution).toHaveBeenCalledTimes(1);
+    expect(rendered.result.current.composer.tuttiExecutionStopping).toBe(true);
+    settle?.();
+    await act(async () => firstStop);
+    expect(rendered.result.current.composer.tuttiExecutionStopping).toBe(false);
   });
 });

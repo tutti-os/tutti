@@ -52,7 +52,6 @@ const planPanelLabels: TuttiModePlanPanelLabels = {
 
 const planIssuePanelLabels: TuttiPlanIssuePanelLabels = {
   openIssue: "Open Issue",
-  stopExecution: "Stop",
   listView: "List",
   boardView: "Board",
   parallelizable: "Parallel",
@@ -140,6 +139,7 @@ const issue: TuttiPlanIssueSnapshot = {
   issueId: "issue-1",
   topicId: "topic-1",
   title: "Ship the workflow",
+  dispatchPaused: false,
   tasks: [
     {
       taskId: "task-1",

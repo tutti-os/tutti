@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import {
   mergeTaskAssignmentDraft,
   taskAssignmentInputsFromDrafts,
+  tuttiPlanIssueExecutionIsActive,
   useTuttiModePlanPanels,
   type TuttiModePlanAssignmentCatalog,
   type TuttiModePlanTaskAssignmentDraft,
@@ -24,8 +25,11 @@ import type { TuttiWorkflowDockPhase } from "../TuttiWorkflowDock";
 export interface AgentGUITuttiWorkflowComposerController {
   planReviewSendActive: boolean;
   planReviewIntensityDiverged: boolean;
+  tuttiExecutionActive: boolean;
+  tuttiExecutionStopping: boolean;
   acceptPendingPlan: () => void;
   setTuttiModeActiveAndSettleReview: (active: boolean) => void;
+  stopTuttiExecution: () => Promise<void>;
   submitPromptOrDecidePlan: (
     ...args: Parameters<AgentGUINodeViewProps["actions"]["submitPrompt"]>
   ) => void;
@@ -34,7 +38,6 @@ export interface AgentGUITuttiWorkflowComposerController {
 export interface AgentGUITuttiWorkflowDockController {
   assignmentCatalog: TuttiModePlanAssignmentCatalog;
   assignmentDrafts: TuttiModePlanTaskAssignmentDrafts;
-  cancelExecution?: () => Promise<void>;
   cancelReview: () => void;
   changeIntensity: (value: number) => void;
   decideTask?: (
@@ -80,6 +83,9 @@ export function useAgentGUITuttiWorkflow(input: {
   submitPromptPassthrough: (
     ...args: Parameters<AgentGUINodeViewProps["actions"]["submitPrompt"]>
   ) => void;
+  submitGuidancePromptPassthrough: (
+    ...args: Parameters<AgentGUINodeViewProps["actions"]["submitPrompt"]>
+  ) => void;
 }): AgentGUITuttiWorkflowController {
   const {
     viewModel,
@@ -88,7 +94,8 @@ export function useAgentGUITuttiWorkflow(input: {
     setTuttiModeActive,
     setTuttiModeOrchestrationIntensity,
     updateDraftContent,
-    submitPromptPassthrough
+    submitPromptPassthrough,
+    submitGuidancePromptPassthrough
   } = input;
   const tuttiModePlanPanels = useTuttiModePlanPanels({
     enabled: true,
@@ -106,6 +113,8 @@ export function useAgentGUITuttiWorkflow(input: {
   // Dock shell through that handoff; accepted plan content remains daemon-owned.
   const [materializingPlan, setMaterializingPlan] =
     useState<MaterializingPlan | null>(null);
+  const [stoppingIssueId, setStoppingIssueId] = useState<string | null>(null);
+  const stoppingIssueIdRef = useRef<string | null>(null);
   const handlePlanAssignmentDraftChange = useStableEventCallback(
     (
       panelId: string,
@@ -231,12 +240,24 @@ export function useAgentGUITuttiWorkflow(input: {
           return;
         }
       }
+      const sourceSession = viewModel.detail.conversationDetail?.session;
+      const activeTurn = sourceSession?.activeTurn;
+      if (
+        tuttiPlanIssueExecutionIsActive(tuttiModePlanPanels.planIssue) &&
+        activeTurn &&
+        activeTurn.phase !== "settled" &&
+        sourceSession.capabilities?.activeTurnGuidance === true
+      ) {
+        submitGuidancePromptPassthrough(...args);
+        return;
+      }
       submitPromptPassthrough(...args);
     }
   );
   // Embedded issue panel view for the materialized plan issue; the acceptance
   // gate (accept / rework on pending tasks) settles inline here.
   const planIssue = tuttiModePlanPanels.planIssue;
+  const tuttiExecutionActive = tuttiPlanIssueExecutionIsActive(planIssue);
   const decidePlanIssueTask = useStableEventCallback(
     (taskId: string, decision: TuttiPlanIssueTaskDecision): Promise<void> =>
       tuttiModePlanPanels.decidePlanIssueTask
@@ -244,11 +265,30 @@ export function useAgentGUITuttiWorkflow(input: {
         : Promise.resolve()
   );
   const cancelPlanIssueExecution = useStableEventCallback(
-    (): Promise<void> =>
-      tuttiModePlanPanels.cancelPlanIssueExecution
-        ? tuttiModePlanPanels.cancelPlanIssueExecution()
-        : Promise.resolve()
+    async (): Promise<void> => {
+      const issueId = planIssue?.issueId ?? "";
+      if (
+        !tuttiExecutionActive ||
+        !issueId ||
+        stoppingIssueIdRef.current === issueId ||
+        !tuttiModePlanPanels.cancelPlanIssueExecution
+      ) {
+        return;
+      }
+      stoppingIssueIdRef.current = issueId;
+      setStoppingIssueId(issueId);
+      try {
+        await tuttiModePlanPanels.cancelPlanIssueExecution();
+      } finally {
+        if (stoppingIssueIdRef.current === issueId) {
+          stoppingIssueIdRef.current = null;
+        }
+        setStoppingIssueId((current) => (current === issueId ? null : current));
+      }
+    }
   );
+  const tuttiExecutionStopping =
+    tuttiExecutionActive && stoppingIssueId === planIssue?.issueId;
   // Clicking a task card jumps into the delegate conversation that ran it.
   const openPlanIssueTaskSession = useStableEventCallback(
     async (taskId: string): Promise<void> => {
@@ -352,6 +392,9 @@ export function useAgentGUITuttiWorkflow(input: {
       planReviewIntensityDiverged,
       planReviewSendActive,
       setTuttiModeActiveAndSettleReview,
+      stopTuttiExecution: cancelPlanIssueExecution,
+      tuttiExecutionActive,
+      tuttiExecutionStopping,
       submitPromptOrDecidePlan
     },
     workflowDock: {
@@ -360,10 +403,6 @@ export function useAgentGUITuttiWorkflow(input: {
         workflowDockPhase?.kind === "review"
           ? (planAssignmentDrafts[workflowDockPhase.panel.id] ?? {})
           : {},
-      cancelExecution:
-        tuttiModePlanPanels.cancelPlanIssueExecution !== null
-          ? cancelPlanIssueExecution
-          : undefined,
       cancelReview: cancelPendingPlan,
       changeIntensity: setTuttiModeOrchestrationIntensity,
       decideTask:

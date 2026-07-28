@@ -17,6 +17,7 @@ func GeneratedIssueManagerIssueFromDomain(item workspaceissues.Issue) tuttigener
 		SourceSessionId:     item.SourceSessionID,
 		SequentialExecution: item.SequentialExecution,
 		ParallelExecution:   item.ParallelExecution,
+		DispatchPaused:      item.DispatchPaused,
 		ExecutionProfile: tuttigenerated.IssueManagerExecutionProfile{
 			ReasoningIntensity:     item.ExecutionProfile.ReasoningIntensity,
 			OrchestrationIntensity: item.ExecutionProfile.OrchestrationIntensity,
