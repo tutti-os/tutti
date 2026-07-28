@@ -242,7 +242,7 @@ function createAssignmentOptionsSource(
       const [composerOptions, plans] = await Promise.all([
         tuttidClient.getAgentProviderComposerOptions(
           entry.provider as AgentTarget["provider"],
-          { agentTargetId }
+          { agentTargetId, workspaceId }
         ),
         tuttidClient.listModelPlans(workspaceId).catch(() => null)
       ]);

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,11 +24,7 @@ func TestGetLiveComposerModelOptionsClaudeExpiresForRediscovery(t *testing.T) {
 	}
 }
 
-// Cursor keeps its live model cache for the daemon's lifetime too: it has no
-// probe session at all, so an expired entry could only be re-discovered by a
-// running conversation — until then the picker would collapse to the single
-// selected model. Running sessions still override a stale entry.
-func TestGetLiveComposerModelOptionsCursorNeverExpires(t *testing.T) {
+func TestGetLiveComposerModelOptionsCursorExpiresForAccountRediscovery(t *testing.T) {
 	service := &Service{}
 	cachedAt := time.Now().UTC()
 	service.setLiveComposerModelOptions("cursor", "ws-1", "/repo", cachedAt, []ComposerConfigOptionValue{
@@ -35,13 +32,246 @@ func TestGetLiveComposerModelOptionsCursorNeverExpires(t *testing.T) {
 		{Value: "gpt-5.2[reasoning=medium,fast=false]", Label: "gpt-5.2"},
 	})
 
-	got, ok := service.getLiveComposerModelOptions("cursor", "ws-1", "/repo", cachedAt.Add(24*time.Hour))
-	if !ok {
-		t.Fatal("cursor live model cache expired, want last-known-good retained")
+	if _, ok := service.getLiveComposerModelOptions("cursor", "ws-1", "/repo", cachedAt.Add(24*time.Hour)); ok {
+		t.Fatal("cursor live model cache did not expire")
 	}
-	if len(got) != 2 {
-		t.Fatalf("cached options = %d, want 2", len(got))
+}
+
+func TestAvailableTaskAssignmentModelsRefreshesCursorCatalog(t *testing.T) {
+	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
+	runtime := newFakeRuntime()
+	runtime.startHook = func(_ RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
+		session.RuntimeContext = cursorModelRuntimeContext()
+		return session
 	}
+	service := newIsolatedAgentService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+	service.LiveModelDiscoveryDeleteDelay = time.Hour
+	scope := newComposerLiveModelScope(agentprovider.Cursor, "ws-1", "", "local:cursor")
+	service.setLiveComposerModelOptionsForScope(scope, time.Now().UTC(), []ComposerConfigOptionValue{
+		{ID: "cursor-opus", Label: "Opus", Value: "cursor-opus"},
+	})
+
+	models, err := service.AvailableTaskAssignmentModels(
+		context.Background(),
+		"ws-1",
+		"local:cursor",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("AvailableTaskAssignmentModels() error = %v", err)
+	}
+	want := []string{"default[]", "composer-2.5[fast=true]", "gpt-5.2[reasoning=medium,fast=false]"}
+	if !slices.Equal(models, want) {
+		t.Fatalf("AvailableTaskAssignmentModels() = %v, want refreshed catalog %v", models, want)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("hidden discovery starts = %d, want 1", len(runtime.startCalls))
+	}
+}
+
+func TestAvailableTaskAssignmentModelsRequiresFreshCursorProbe(t *testing.T) {
+	staleContext := map[string]any{
+		"configOptions": []any{map[string]any{
+			"id":      "model",
+			"options": []any{map[string]any{"name": "Opus", "value": "cursor-opus"}},
+		}},
+	}
+	for _, test := range []struct {
+		name  string
+		setup func(*Service, *fakeRuntime)
+	}{
+		{
+			name: "running session",
+			setup: func(_ *Service, runtime *fakeRuntime) {
+				futureUnixMS := time.Now().Add(time.Hour).UnixMilli()
+				runtime.sessions["ws-1:stale-running"] = ProviderRuntimeSession{
+					ID:              "stale-running",
+					WorkspaceID:     "ws-1",
+					AgentTargetID:   "local:cursor",
+					Provider:        agentprovider.Cursor,
+					RuntimeContext:  staleContext,
+					CreatedAtUnixMS: futureUnixMS,
+					UpdatedAtUnixMS: futureUnixMS,
+				}
+			},
+		},
+		{
+			name: "persisted session",
+			setup: func(service *Service, _ *fakeRuntime) {
+				service.SessionReader = fakeSessionReader{sessions: map[string]PersistedSession{
+					"ws-1:stale-persisted": {
+						ID:                     "stale-persisted",
+						WorkspaceID:            "ws-1",
+						AgentTargetID:          "local:cursor",
+						Provider:               agentprovider.Cursor,
+						InternalRuntimeContext: staleContext,
+						UpdatedAtUnixMS:        time.Now().Add(time.Hour).UnixMilli(),
+					},
+				}}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("TUTTI_STATE_DIR", t.TempDir())
+			runtime := newFakeRuntime()
+			runtime.startHook = func(_ RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
+				session.RuntimeContext = cursorModelRuntimeContext()
+				return session
+			}
+			service := newIsolatedAgentService(runtime)
+			service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+			service.LiveModelDiscoveryDeleteDelay = time.Hour
+			test.setup(service, runtime)
+
+			models, err := service.AvailableTaskAssignmentModels(
+				context.Background(),
+				"ws-1",
+				"local:cursor",
+				"",
+			)
+			if err != nil {
+				t.Fatalf("AvailableTaskAssignmentModels() error = %v", err)
+			}
+			want := []string{"default[]", "composer-2.5[fast=true]", "gpt-5.2[reasoning=medium,fast=false]"}
+			if !slices.Equal(models, want) {
+				t.Fatalf("AvailableTaskAssignmentModels() = %v, want fresh probe catalog %v", models, want)
+			}
+			if len(runtime.startCalls) != 1 {
+				t.Fatalf("hidden discovery starts = %d, want 1 fresh probe", len(runtime.startCalls))
+			}
+		})
+	}
+}
+
+func TestAvailableTaskAssignmentModelsDoesNotAcceptSupersededProbe(t *testing.T) {
+	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
+	runtime := newTaskAssignmentProbeRaceRuntime()
+	service := newIsolatedAgentService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+	service.LiveModelDiscoveryDeleteDelay = time.Hour
+
+	type result struct {
+		models []string
+		err    error
+	}
+	firstResult := make(chan result, 1)
+	go func() {
+		models, err := service.AvailableTaskAssignmentModels(context.Background(), "ws-1", "local:cursor", "")
+		firstResult <- result{models: models, err: err}
+	}()
+	<-runtime.firstProbeStarted
+
+	initialInvalidatedAt := service.liveModelInvalidatedAtUnixMSForProvider(agentprovider.Cursor)
+	time.Sleep(2 * time.Millisecond)
+	secondResult := make(chan result, 1)
+	go func() {
+		models, err := service.AvailableTaskAssignmentModels(context.Background(), "ws-1", "local:cursor", "")
+		secondResult <- result{models: models, err: err}
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for service.liveModelInvalidatedAtUnixMSForProvider(agentprovider.Cursor) <= initialInvalidatedAt {
+		if time.Now().After(deadline) {
+			t.Fatal("second validation did not invalidate the provider")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// Reproduce two invalidations sharing the same millisecond token. The
+	// generation under test must still distinguish the later validation.
+	service.liveModelDiscoveryMu.Lock()
+	service.liveModelInvalidatedAtUnixMS[agentprovider.Cursor] = initialInvalidatedAt
+	service.liveModelDiscoveryMu.Unlock()
+	close(runtime.releaseFirstProbe)
+
+	second := <-secondResult
+	want := []string{"default[]", "composer-2.5[fast=true]", "gpt-5.2[reasoning=medium,fast=false]"}
+	if second.err != nil {
+		t.Fatalf("second AvailableTaskAssignmentModels() error = %v", second.err)
+	}
+	if !slices.Equal(second.models, want) {
+		t.Fatalf("second AvailableTaskAssignmentModels() = %v, want post-invalidation catalog %v", second.models, want)
+	}
+	first := <-firstResult
+	if first.err == nil && !slices.Equal(first.models, want) {
+		t.Fatalf("superseded first validation accepted stale catalog %v", first.models)
+	}
+	if starts := runtime.startCount(); starts != 2 {
+		t.Fatalf("hidden discovery starts = %d, want independent probes for both invalidation generations", starts)
+	}
+	scope := newComposerLiveModelScope(agentprovider.Cursor, "ws-1", "", "local:cursor")
+	cached, ok := service.getLiveComposerModelOptionsForScope(scope, time.Now().UTC())
+	if !ok || !slices.Equal(composerConfigOptionModelValues(cached), want) {
+		t.Fatalf("cache after superseded probe = %v ok = %v, want current generation %v", cached, ok, want)
+	}
+}
+
+type taskAssignmentProbeRaceRuntime struct {
+	*fakeRuntime
+	mu                sync.Mutex
+	starts            int
+	firstProbeStarted chan struct{}
+	releaseFirstProbe chan struct{}
+}
+
+func newTaskAssignmentProbeRaceRuntime() *taskAssignmentProbeRaceRuntime {
+	return &taskAssignmentProbeRaceRuntime{
+		fakeRuntime:       newFakeRuntime(),
+		firstProbeStarted: make(chan struct{}),
+		releaseFirstProbe: make(chan struct{}),
+	}
+}
+
+func (runtime *taskAssignmentProbeRaceRuntime) Start(
+	ctx context.Context,
+	input RuntimeStartInput,
+) (ProviderRuntimeSession, error) {
+	runtime.mu.Lock()
+	runtime.starts++
+	ordinal := runtime.starts
+	runtime.mu.Unlock()
+	if ordinal == 1 {
+		close(runtime.firstProbeStarted)
+		select {
+		case <-ctx.Done():
+			return ProviderRuntimeSession{}, ctx.Err()
+		case <-runtime.releaseFirstProbe:
+		}
+	}
+	runtimeContext := cursorModelRuntimeContext()
+	if ordinal == 1 {
+		runtimeContext = map[string]any{
+			"configOptions": []any{map[string]any{
+				"id":      "model",
+				"options": []any{map[string]any{"name": "Opus", "value": "cursor-opus"}},
+			}},
+		}
+	}
+	nowUnixMS := time.Now().UnixMilli()
+	return ProviderRuntimeSession{
+		ID:              input.AgentSessionID,
+		AgentTargetID:   input.AgentTargetID,
+		Provider:        input.Provider,
+		WorkspaceID:     input.WorkspaceID,
+		RuntimeContext:  runtimeContext,
+		CreatedAtUnixMS: nowUnixMS,
+		UpdatedAtUnixMS: nowUnixMS,
+		Status:          "ready",
+	}, nil
+}
+
+func (*taskAssignmentProbeRaceRuntime) Sessions(string) []ProviderRuntimeSession {
+	return nil
+}
+
+func (*taskAssignmentProbeRaceRuntime) Session(string, string) (ProviderRuntimeSession, bool) {
+	return ProviderRuntimeSession{}, false
+}
+
+func (runtime *taskAssignmentProbeRaceRuntime) startCount() int {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	return runtime.starts
 }
 
 // Switching Claude auth context (e.g. OAuth subscription -> ANTHROPIC_API_KEY

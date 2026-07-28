@@ -82,6 +82,7 @@ type Service struct {
 	liveModelDiscoveryMu           sync.Mutex
 	liveModelDiscoveryAttempted    map[string]struct{}
 	liveModelInvalidatedAtUnixMS   map[string]int64
+	liveModelInvalidationGen       map[string]uint64
 	liveModelDiscoverySessions     map[string]liveModelDiscoverySessionRef
 	liveModelDiscoveryGroup        singleflight.Group
 	sessionSettingsMu              sync.Mutex

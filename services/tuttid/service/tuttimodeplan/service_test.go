@@ -2152,6 +2152,104 @@ func TestServiceDecideRejectsInvalidTaskAssignments(t *testing.T) {
 	}
 }
 
+func TestServiceDecideRejectsUnavailableAssignedModel(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	store := newMemoryWorkflowStore()
+	service := newTestService(t, store, now.Add(time.Minute), "operation-1")
+	documentPath, digest, err := service.Revisions.Write("workflow-1", taskGraphMarkdown("Guarded model"))
+	if err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	snapshot := workflowSnapshotFixture(
+		workflowbiz.CheckpointKindTaskReview,
+		workflowbiz.CheckpointStatusPending,
+		workflowbiz.WorkflowStatusPendingReview,
+		now,
+	)
+	snapshot.Revisions[0].DocumentPath = documentPath
+	snapshot.Revisions[0].SHA256 = digest
+	store.snapshots[workflowStoreKey("workspace-1", "workflow-1")] = snapshot
+	service.TaskAssignmentModelCatalog = staticTaskAssignmentModelCatalog{
+		models: []string{"cursor-auto", "cursor-sonnet"},
+	}
+
+	if _, err := service.Decide(context.Background(), DecideInput{
+		WorkspaceID:  "workspace-1",
+		WorkflowID:   "workflow-1",
+		CheckpointID: "checkpoint-1",
+		Decision:     workflowbiz.CheckpointStatusAccepted,
+		DecidedBy:    "user-1",
+		TaskAssignments: []workflowbiz.TaskAssignment{{
+			TaskID:        "task-1",
+			AgentTargetID: stringPointer("local:cursor"),
+			Model:         stringPointer("cursor-opus"),
+		}},
+	}); !errors.Is(err, ErrInvalidDecision) {
+		t.Fatalf("Decide(unavailable model) error = %v, want ErrInvalidDecision", err)
+	}
+	if checkpoint := store.snapshots[workflowStoreKey("workspace-1", "workflow-1")].Checkpoints[0]; checkpoint.Status != workflowbiz.CheckpointStatusPending {
+		t.Fatalf("unavailable model mutated checkpoint: %#v", checkpoint)
+	}
+}
+
+func TestServiceDecideRejectsUnavailableDocumentModelWithoutOverrides(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	store := newMemoryWorkflowStore()
+	service := newTestService(t, store, now.Add(time.Minute), "operation-1")
+	markdown := strings.Replace(
+		string(taskGraphMarkdown("Guarded document model")),
+		"    priority: medium\n",
+		"    priority: medium\n    agentTargetId: local:cursor\n    model: cursor-opus\n",
+		1,
+	)
+	documentPath, digest, err := service.Revisions.Write("workflow-1", []byte(markdown))
+	if err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	snapshot := workflowSnapshotFixture(
+		workflowbiz.CheckpointKindTaskReview,
+		workflowbiz.CheckpointStatusPending,
+		workflowbiz.WorkflowStatusPendingReview,
+		now,
+	)
+	snapshot.Revisions[0].DocumentPath = documentPath
+	snapshot.Revisions[0].SHA256 = digest
+	store.snapshots[workflowStoreKey("workspace-1", "workflow-1")] = snapshot
+	service.TaskAssignmentModelCatalog = staticTaskAssignmentModelCatalog{
+		models: []string{"cursor-auto", "cursor-sonnet"},
+	}
+
+	if _, err := service.Decide(context.Background(), DecideInput{
+		WorkspaceID:  "workspace-1",
+		WorkflowID:   "workflow-1",
+		CheckpointID: "checkpoint-1",
+		Decision:     workflowbiz.CheckpointStatusAccepted,
+		DecidedBy:    "user-1",
+	}); !errors.Is(err, ErrInvalidDecision) {
+		t.Fatalf("Decide(stale document model) error = %v, want ErrInvalidDecision", err)
+	}
+	if checkpoint := store.snapshots[workflowStoreKey("workspace-1", "workflow-1")].Checkpoints[0]; checkpoint.Status != workflowbiz.CheckpointStatusPending {
+		t.Fatalf("stale document model mutated checkpoint: %#v", checkpoint)
+	}
+}
+
+type staticTaskAssignmentModelCatalog struct {
+	models []string
+}
+
+func (catalog staticTaskAssignmentModelCatalog) AvailableTaskAssignmentModels(
+	context.Context,
+	string,
+	string,
+	string,
+) ([]string, error) {
+	return append([]string(nil), catalog.models...), nil
+}
+
 func TestServiceRetireConfigurationReviewWorkflowsCancelsLegacyPending(t *testing.T) {
 	t.Parallel()
 

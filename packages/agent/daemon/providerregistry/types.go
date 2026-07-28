@@ -443,12 +443,13 @@ type LiveModelDiscoveryDescriptor struct {
 }
 
 type ComposerBehaviorDescriptor struct {
-	CollapseModelOptionsToLatest        bool
-	ModelOptionsAuthoritative           bool
-	RefreshModelOptionsAfterSettings    bool
-	PrewarmDraftSession                 bool
-	PlanModeExclusiveWithPermissionMode bool
-	PreserveLiveModelCache              bool
+	CollapseModelOptionsToLatest          bool
+	ModelOptionsAuthoritative             bool
+	RefreshModelOptionsAfterSettings      bool
+	PrewarmDraftSession                   bool
+	PlanModeExclusiveWithPermissionMode   bool
+	PreserveLiveModelCache                bool
+	RefreshTaskAssignmentModelsOnDecision bool
 }
 
 type ModelCapabilityRuleKind string

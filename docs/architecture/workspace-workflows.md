@@ -421,6 +421,21 @@ on the checkpoint. Accept, reject, and cancel post the decision to the daemon;
 rejection feedback is mandatory. Closing the app does not discard the review:
 the next mount reconstructs it from the daemon snapshot.
 
+Task-assignment catalog requests carry both the workspace and exact Agent
+target so account-scoped provider discovery can populate the picker. Cursor
+catalog evidence uses the normal live-model TTL instead of being preserved
+indefinitely. On every pending accept, the workflow service applies any
+user-owned overrides in memory and validates every effective explicit task
+model from the complete plan before the checkpoint is committed; only the
+overrides remain persisted on the checkpoint. Cursor validation invalidates
+prior evidence and requires a new hidden account-scoped probe instead of
+reusing running-session or persisted catalogs. Each invalidation advances a
+monotonic provider generation carried through discovery singleflight; a probe
+may publish or satisfy validation only while its generation remains current.
+An unavailable model, failed refresh, or superseded probe rejects the decision
+before issue materialization. Idempotent replays of an already-decided
+checkpoint do not repeat discovery.
+
 The Tutti activation additionally carries a session-scoped orchestration
 intensity (0-100, default 50). The composer's Tutti Budget popup persists it
 as a new activation revision; each turn's frozen snapshot copies it, and the

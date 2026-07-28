@@ -53,6 +53,12 @@ func TestCursorComposerProfileComesFromProviderDescriptor(t *testing.T) {
 		!profile.LiveModelProbeSession || !profile.LiveModelAccountScoped {
 		t.Fatalf("cursor live model discovery profile = %#v", profile)
 	}
+	if profile.Behavior.PreserveLiveModelCache {
+		t.Fatalf("cursor live model cache must expire: %#v", profile.Behavior)
+	}
+	if !profile.Behavior.RefreshTaskAssignmentModelsOnDecision {
+		t.Fatalf("cursor task assignment models must refresh on decision: %#v", profile.Behavior)
+	}
 	if profile.SkillKind != string(providerregistry.SkillKindCursor) || profile.SkillInvocation != string(providerregistry.SkillInvocationTextTrigger) {
 		t.Fatalf("cursor skill profile = %#v", profile)
 	}

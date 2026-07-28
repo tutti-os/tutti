@@ -446,12 +446,13 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		MutationLocks: workspaceservice.NewIssueMutationLocks(),
 	}
 	tuttiModePlans := &tuttimodeplanservice.Service{
-		Store:                  workflowStore,
-		SourceSessionDeletions: sourceSessionDeletionStore,
-		Revisions:              workspacedata.WorkflowRevisionFiles{StateDir: tuttitypes.DefaultStateDir()},
-		Publisher:              eventstreamservice.WorkspaceWorkflowPublisher{Service: events},
-		IssueMaterializer:      tuttimodeplanservice.WorkspaceIssueMaterializer{Issues: &issueService},
-		FeatureFlags:           tuttiModeFeatureFlags,
+		Store:                      workflowStore,
+		SourceSessionDeletions:     sourceSessionDeletionStore,
+		Revisions:                  workspacedata.WorkflowRevisionFiles{StateDir: tuttitypes.DefaultStateDir()},
+		Publisher:                  eventstreamservice.WorkspaceWorkflowPublisher{Service: events},
+		IssueMaterializer:          tuttimodeplanservice.WorkspaceIssueMaterializer{Issues: &issueService},
+		FeatureFlags:               tuttiModeFeatureFlags,
+		TaskAssignmentModelCatalog: agentSessionService,
 		FeedbackDispatcher: &tuttiModePlanFeedbackDispatcher{
 			Agents:    agentSessionService,
 			TurnLinks: workflowStore,

@@ -166,21 +166,34 @@ func (c *composerLiveModelCache) invalidateProvider(provider string) int {
 // options can re-discover models after the provider's auth or config files
 // changed on disk.
 func (s *Service) InvalidateLiveComposerModels(provider string) {
+	s.invalidateLiveComposerModels(provider)
+}
+
+func (s *Service) invalidateLiveComposerModels(provider string) uint64 {
 	if s == nil {
-		return
+		return 0
 	}
 	normalized := agentprovider.NormalizeOpen(provider)
 	if normalized == "" {
-		return
+		return 0
 	}
 	nowUnixMS := time.Now().UnixMilli()
-	deletedCacheEntries := s.liveComposerModelCache().invalidateProvider(normalized)
 	prefix := "live-model:" + normalized + ":"
 	s.liveModelDiscoveryMu.Lock()
+	defer s.liveModelDiscoveryMu.Unlock()
 	if s.liveModelInvalidatedAtUnixMS == nil {
 		s.liveModelInvalidatedAtUnixMS = make(map[string]int64)
 	}
+	if s.liveModelInvalidationGen == nil {
+		s.liveModelInvalidationGen = make(map[string]uint64)
+	}
+	generation := s.liveModelInvalidationGen[normalized] + 1
+	if generation == 0 {
+		generation = 1
+	}
+	s.liveModelInvalidationGen[normalized] = generation
 	s.liveModelInvalidatedAtUnixMS[normalized] = nowUnixMS
+	deletedCacheEntries := s.liveComposerModelCache().invalidateProvider(normalized)
 	deletedAttemptMarkers := 0
 	for key := range s.liveModelDiscoveryAttempted {
 		if strings.HasPrefix(key, prefix) {
@@ -197,9 +210,10 @@ func (s *Service) InvalidateLiveComposerModels(provider string) {
 		"provider":              normalized,
 		"deletedCacheEntries":   deletedCacheEntries,
 		"deletedAttemptMarkers": deletedAttemptMarkers,
+		"generation":            generation,
 		"occurredAtUnixMs":      nowUnixMS,
 	})
-	s.liveModelDiscoveryMu.Unlock()
+	return generation
 }
 
 func (s *Service) liveModelCacheTTL(provider string) time.Duration {

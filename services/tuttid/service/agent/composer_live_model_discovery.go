@@ -153,6 +153,22 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 	providerTargetRef map[string]any,
 	settings ComposerSettings,
 ) ([]ComposerConfigOptionValue, error) {
+	return s.discoverLiveComposerModelsUncachedForScopeWithPolicy(
+		ctx,
+		scope,
+		providerTargetRef,
+		settings,
+		true,
+	)
+}
+
+func (s *Service) discoverLiveComposerModelsUncachedForScopeWithPolicy(
+	ctx context.Context,
+	scope composerLiveModelScope,
+	providerTargetRef map[string]any,
+	settings ComposerSettings,
+	allowRunningSessionReuse bool,
+) ([]ComposerConfigOptionValue, error) {
 	isExtension := providerTargetRefKind(providerTargetRef) == "agent_extension"
 	if isExtension {
 		logAgentExtensionComposerDebug("discovery_started", map[string]any{
@@ -175,11 +191,13 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 			return nil, err
 		}
 	}
-	if reused, hasProviderSession := s.liveModelOptionsFromRunningSessionForScope(scope); hasProviderSession {
-		if len(reused) > 0 {
-			return reused, nil
+	if allowRunningSessionReuse {
+		if reused, hasProviderSession := s.liveModelOptionsFromRunningSessionForScope(scope); hasProviderSession {
+			if len(reused) > 0 {
+				return reused, nil
+			}
+			return nil, errLiveModelDiscoveryAlreadyAttempted
 		}
-		return nil, errLiveModelDiscoveryAlreadyAttempted
 	}
 	// Spawning a hidden probe session is opt-in per provider: it creates a
 	// real provider session (and, for account-backed CLIs, server-side
@@ -195,12 +213,14 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 	}
 	// Recheck after waiting: another key may have started a reusable session
 	// while this request waited for the credential-sensitive startup slot.
-	if reused, hasProviderSession := s.liveModelOptionsFromRunningSessionForScope(scope); hasProviderSession {
-		releaseStartup()
-		if len(reused) > 0 {
-			return reused, nil
+	if allowRunningSessionReuse {
+		if reused, hasProviderSession := s.liveModelOptionsFromRunningSessionForScope(scope); hasProviderSession {
+			releaseStartup()
+			if len(reused) > 0 {
+				return reused, nil
+			}
+			return nil, errLiveModelDiscoveryAlreadyAttempted
 		}
-		return nil, errLiveModelDiscoveryAlreadyAttempted
 	}
 	var session ProviderRuntimeSession
 	visible := false
@@ -447,6 +467,25 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 	scope := newComposerLiveModelScopeForInput(input, effectiveSettings)
 	var liveModels []ComposerConfigOptionValue
 	modelSource := "claude-static"
+	if input.requireFreshLiveModelCatalog {
+		if strings.TrimSpace(input.WorkspaceID) == "" {
+			return ComposerOptions{}, ErrInvalidArgument
+		}
+		discovered, err := s.discoverFreshLiveComposerModels(
+			ctx,
+			input,
+			effectiveSettings,
+			input.liveModelCatalogInvalidationGeneration,
+		)
+		if err != nil {
+			return ComposerOptions{}, err
+		}
+		if len(discovered) == 0 {
+			return ComposerOptions{}, errLiveModelDiscoverySessionFailed
+		}
+		discovered = s.enrichModelCapabilityOptions(ctx, provider, discovered)
+		return mergeComposerModelsIntoComposerOptions(options, discovered, runtimeLiveModelCatalogSource), nil
+	}
 	if strings.TrimSpace(input.WorkspaceID) != "" {
 		now := time.Now().UTC()
 		reused, hasProviderSession := s.liveModelOptionsFromRunningSessionForScope(scope)

@@ -470,6 +470,10 @@ func Validate(descriptor ProviderDescriptor) error {
 		(descriptor.ComposerProfile.LiveModelDiscovery.HiddenProbe || descriptor.ComposerProfile.LiveModelDiscovery.AccountScoped) {
 		return fmt.Errorf("provider %q live model discovery behavior requires a discovery kind", providerID)
 	}
+	if descriptor.ComposerProfile.Behavior.RefreshTaskAssignmentModelsOnDecision &&
+		(!descriptor.ComposerProfile.LiveModelDiscovery.HiddenProbe || !descriptor.ComposerProfile.LiveModelDiscovery.AccountScoped) {
+		return fmt.Errorf("provider %q task assignment model refresh requires hidden, account-scoped live model discovery", providerID)
+	}
 	if descriptor.ComposerProfile.LiveModelDiscovery.Kind != "" && descriptor.ComposerProfile.ModelCatalog != "" {
 		return fmt.Errorf("provider %q cannot declare both live model discovery and a model catalog", providerID)
 	}

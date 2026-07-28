@@ -50,7 +50,10 @@ func cursorDescriptor() ProviderDescriptor {
 					{Command: "plan", Effect: SlashCommandEffectTogglePlanMode},
 				},
 			},
-			Behavior:                ComposerBehaviorDescriptor{CollapseModelOptionsToLatest: true, PreserveLiveModelCache: true},
+			Behavior: ComposerBehaviorDescriptor{
+				CollapseModelOptionsToLatest:          true,
+				RefreshTaskAssignmentModelsOnDecision: true,
+			},
 			ModelCapabilityRuleKind: ModelCapabilityRuleKindCursorComposerImage,
 			Skills:                  SkillDescriptor{Kind: SkillKindCursor, Invocation: SkillInvocationTextTrigger},
 		},

@@ -64,6 +64,83 @@ func (s *Service) validateComposerModelForCreate(
 	}
 }
 
+// AvailableTaskAssignmentModels returns a freshly discovered, authoritative
+// provider-native catalog for task-assignment validation when the provider
+// requires that stronger check. Other providers and explicit Model Plans keep
+// their existing validation path and return no catalog.
+func (s *Service) AvailableTaskAssignmentModels(
+	ctx context.Context,
+	workspaceID string,
+	agentTargetID string,
+	modelPlanID string,
+) ([]string, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentTargetID = strings.TrimSpace(agentTargetID)
+	if strings.TrimSpace(modelPlanID) != "" {
+		return nil, nil
+	}
+	if workspaceID == "" {
+		return nil, fmt.Errorf("%w: workspace is required for task model validation", ErrInvalidArgument)
+	}
+	if agentTargetID == "" {
+		return nil, nil
+	}
+	launchInput := CreateSessionInput{AgentTargetID: agentTargetID}
+	launch, err := s.resolveCreateSessionLaunch(ctx, workspaceID, &launchInput)
+	if err != nil {
+		return nil, err
+	}
+	provider := agentprovider.NormalizeOpen(launch.Provider)
+	if !composerProfileFor(provider).Behavior.RefreshTaskAssignmentModelsOnDecision {
+		return nil, nil
+	}
+
+	// A task decision is the last boundary before the selected model becomes
+	// durable. Drop cached and persisted evidence so an account change cannot
+	// validate against a catalog advertised by an older provider session.
+	invalidationGeneration := s.invalidateLiveComposerModels(provider)
+	options, err := s.GetComposerOptions(ctx, ComposerOptionsInput{
+		AgentTargetID:                          agentTargetID,
+		Provider:                               provider,
+		WorkspaceID:                            workspaceID,
+		IgnoreModelPlanBinding:                 true,
+		requireFreshLiveModelCatalog:           true,
+		liveModelCatalogInvalidationGeneration: invalidationGeneration,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("refresh %s task assignment models: %w", provider, err)
+	}
+	if s.liveModelInvalidationGenerationForProvider(provider) != invalidationGeneration {
+		return nil, fmt.Errorf("%w: current %s model catalog was superseded", ErrInvalidArgument, provider)
+	}
+	if strings.TrimSpace(stringFromAny(options.RuntimeContext["modelCatalogSource"])) != runtimeLiveModelCatalogSource {
+		return nil, fmt.Errorf("%w: current %s model catalog is unavailable", ErrInvalidArgument, provider)
+	}
+	models := make([]string, 0, len(options.ModelConfig.Options))
+	seen := make(map[string]struct{}, len(options.ModelConfig.Options))
+	for _, option := range options.ModelConfig.Options {
+		if option.Requested {
+			continue
+		}
+		model := strings.TrimSpace(option.Value)
+		if model == "" {
+			model = strings.TrimSpace(option.ID)
+		}
+		if model == "" {
+			continue
+		}
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+	}
+	if len(models) == 0 {
+		return nil, fmt.Errorf("%w: current %s model catalog is empty", ErrInvalidArgument, provider)
+	}
+	return models, nil
+}
+
 func (s *Service) availableComposerModelsForValidation(
 	ctx context.Context,
 	provider string,

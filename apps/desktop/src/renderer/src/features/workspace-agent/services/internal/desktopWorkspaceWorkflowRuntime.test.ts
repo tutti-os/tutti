@@ -325,10 +325,11 @@ test("desktop workflow runtime builds agent-scoped assignment option catalogs", 
       },
       async getAgentProviderComposerOptions(
         provider: string,
-        request?: { agentTargetId?: string }
+        request?: { agentTargetId?: string; workspaceId?: string }
       ) {
         assert.equal(provider, "codex");
         assert.equal(request?.agentTargetId, "workspace-agent:openrouter");
+        assert.equal(request?.workspaceId, "workspace-1");
         return {
           modelConfig: {
             configurable: true,

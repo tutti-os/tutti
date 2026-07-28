@@ -3,8 +3,11 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
+
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 var errLiveModelDiscoveryPending = errors.New("live model discovery continues in background")
@@ -22,30 +25,59 @@ func (s *Service) discoverLiveComposerModels(
 	input ComposerOptionsInput,
 	settings ComposerSettings,
 ) ([]ComposerConfigOptionValue, error) {
+	generation := s.liveModelInvalidationGenerationForProvider(input.Provider)
+	return s.discoverLiveComposerModelsAtGeneration(ctx, input, settings, generation, false)
+}
+
+func (s *Service) discoverFreshLiveComposerModels(
+	ctx context.Context,
+	input ComposerOptionsInput,
+	settings ComposerSettings,
+	generation uint64,
+) ([]ComposerConfigOptionValue, error) {
+	return s.discoverLiveComposerModelsAtGeneration(ctx, input, settings, generation, true)
+}
+
+func (s *Service) discoverLiveComposerModelsAtGeneration(
+	ctx context.Context,
+	input ComposerOptionsInput,
+	settings ComposerSettings,
+	generation uint64,
+	requireFreshProbe bool,
+) ([]ComposerConfigOptionValue, error) {
 	scope := newComposerLiveModelScopeForInput(input, settings)
 	if scope.workspaceID == "" {
 		return nil, ErrInvalidArgument
 	}
+	if s.liveModelInvalidationGenerationForProvider(scope.provider) != generation {
+		return nil, errLiveModelDiscoverySuperseded
+	}
 	cacheKey := scope.key()
-	resultCh := s.liveModelDiscoveryGroup.DoChan(cacheKey, func() (any, error) {
+	singleflightKey := fmt.Sprintf("%s:generation:%d:fresh:%t", cacheKey, generation, requireFreshProbe)
+	resultCh := s.liveModelDiscoveryGroup.DoChan(singleflightKey, func() (any, error) {
 		lifecycleCtx, cancelLifecycle := context.WithTimeout(ctx, liveModelDiscoveryLifecycleTimeout)
 		defer cancelLifecycle()
 		if newComposerLiveModelScopeForInput(input, settings).key() != cacheKey {
 			return nil, errLiveModelDiscoverySuperseded
 		}
-		invalidatedAtStart := s.liveModelInvalidatedAtUnixMSForProvider(scope.provider)
+		if s.liveModelInvalidationGenerationForProvider(scope.provider) != generation {
+			return nil, errLiveModelDiscoverySuperseded
+		}
 		now := time.Now().UTC()
-		if cached, ok := s.getLiveComposerModelOptionsForScope(scope, now); ok && len(cached) > 0 {
-			return cached, nil
+		if !requireFreshProbe {
+			if cached, ok := s.getLiveComposerModelOptionsForScope(scope, now); ok && len(cached) > 0 {
+				return cached, nil
+			}
+			if s.liveModelDiscoveryWasAttempted(cacheKey) {
+				return nil, errLiveModelDiscoveryAlreadyAttempted
+			}
 		}
-		if s.liveModelDiscoveryWasAttempted(cacheKey) {
-			return nil, errLiveModelDiscoveryAlreadyAttempted
-		}
-		discovered, err := s.discoverLiveComposerModelsUncachedForScope(
+		discovered, err := s.discoverLiveComposerModelsUncachedForScopeWithPolicy(
 			lifecycleCtx,
 			scope,
 			input.providerTargetRef,
 			settings,
+			!requireFreshProbe,
 		)
 		if err != nil {
 			if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
@@ -67,10 +99,14 @@ func (s *Service) discoverLiveComposerModels(
 			}
 			return nil, err
 		}
-		if s.liveModelInvalidatedAtUnixMSForProvider(scope.provider) > invalidatedAtStart {
+		if !s.setLiveComposerModelOptionsForScopeIfGeneration(
+			scope,
+			time.Now().UTC(),
+			discovered,
+			generation,
+		) {
 			return nil, errLiveModelDiscoverySuperseded
 		}
-		s.setLiveComposerModelOptionsForScope(scope, time.Now().UTC(), discovered)
 		return discovered, nil
 	})
 	waitTimer := time.NewTimer(liveModelDiscoveryTimeout)
@@ -84,9 +120,39 @@ func (s *Service) discoverLiveComposerModels(
 		if result.Err != nil {
 			return nil, result.Err
 		}
+		if s.liveModelInvalidationGenerationForProvider(scope.provider) != generation {
+			return nil, errLiveModelDiscoverySuperseded
+		}
 		models, _ := result.Val.([]ComposerConfigOptionValue)
 		return cloneComposerConfigOptionValues(models), nil
 	}
+}
+
+func (s *Service) liveModelInvalidationGenerationForProvider(provider string) uint64 {
+	normalized := agentprovider.NormalizeOpen(provider)
+	if normalized == "" {
+		return 0
+	}
+	s.liveModelDiscoveryMu.Lock()
+	defer s.liveModelDiscoveryMu.Unlock()
+	return s.liveModelInvalidationGen[normalized]
+}
+
+func (s *Service) setLiveComposerModelOptionsForScopeIfGeneration(
+	scope composerLiveModelScope,
+	now time.Time,
+	options []ComposerConfigOptionValue,
+	generation uint64,
+) bool {
+	s.liveModelDiscoveryMu.Lock()
+	defer s.liveModelDiscoveryMu.Unlock()
+	if s.liveModelInvalidationGen[scope.provider] != generation {
+		return false
+	}
+	if len(options) > 0 {
+		s.liveComposerModelCache().set(scope, now, options)
+	}
+	return true
 }
 
 func (s *Service) liveModelDiscoveryWasAttempted(cacheKey string) bool {

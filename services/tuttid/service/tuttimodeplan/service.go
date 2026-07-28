@@ -105,12 +105,13 @@ type PlanRevisionFeedbackInput struct {
 }
 
 type Service struct {
-	Store                  Store
-	SourceSessionDeletions SourceSessionDeletionStore
-	Revisions              RevisionContentStore
-	Publisher              Publisher
-	IssueMaterializer      IssueMaterializer
-	FeedbackDispatcher     FeedbackDispatcher
+	Store                      Store
+	SourceSessionDeletions     SourceSessionDeletionStore
+	Revisions                  RevisionContentStore
+	Publisher                  Publisher
+	IssueMaterializer          IssueMaterializer
+	FeedbackDispatcher         FeedbackDispatcher
+	TaskAssignmentModelCatalog TaskAssignmentModelCatalog
 	// FeatureFlags reads the desktop preferences feature-flag map. Nil keeps
 	// every write allowed; when set, Propose/Revise/Decide are rejected with
 	// ErrTuttiModeDisabled unless lab.tuttiMode is true.
@@ -540,7 +541,7 @@ func (s *Service) Decide(ctx context.Context, input DecideInput) (DecisionResult
 	if err != nil {
 		return DecisionResult{}, err
 	}
-	assignments, err := s.validatedDecisionTaskAssignments(input, snapshot, checkpoint)
+	assignments, err := s.validatedDecisionTaskAssignments(ctx, input, snapshot, checkpoint)
 	if err != nil {
 		return DecisionResult{}, err
 	}
@@ -629,48 +630,6 @@ func (s *Service) Decide(ctx context.Context, input DecideInput) (DecisionResult
 		NextAction: nextActionAfterOperation(nextAction, operation),
 		Operation:  operation,
 	}, nil
-}
-
-// validatedDecisionTaskAssignments enforces the accept-only, task-review-only
-// scope of per-task overrides and verifies every override targets a task in
-// the current revision document.
-func (s *Service) validatedDecisionTaskAssignments(
-	input DecideInput,
-	snapshot workflowbiz.Snapshot,
-	checkpoint workflowbiz.WorkflowCheckpoint,
-) ([]workflowbiz.TaskAssignment, error) {
-	assignments, err := workflowbiz.NormalizeTaskAssignments(input.TaskAssignments)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidDecision, err)
-	}
-	if len(assignments) == 0 {
-		return nil, nil
-	}
-	if input.Decision != workflowbiz.CheckpointStatusAccepted || checkpoint.Kind != workflowbiz.CheckpointKindTaskReview {
-		return nil, fmt.Errorf("%w: task assignments are only valid when accepting a task review", ErrInvalidDecision)
-	}
-	revision, found := revisionByID(snapshot.Revisions, checkpoint.RevisionID)
-	if !found {
-		return nil, ErrCheckpointMissing
-	}
-	raw, err := s.Revisions.Read(snapshot.Workflow.ID, revision.DocumentPath, revision.SHA256)
-	if err != nil {
-		return nil, err
-	}
-	document, err := ParsePlanMarkdown(raw)
-	if err != nil {
-		return nil, err
-	}
-	knownTasks := make(map[string]struct{}, len(document.Tasks))
-	for _, task := range document.Tasks {
-		knownTasks[task.ID] = struct{}{}
-	}
-	for _, assignment := range assignments {
-		if _, ok := knownTasks[assignment.TaskID]; !ok {
-			return nil, fmt.Errorf("%w: task assignment references unknown task %q", ErrInvalidDecision, assignment.TaskID)
-		}
-	}
-	return assignments, nil
 }
 
 func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error) {
