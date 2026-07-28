@@ -125,6 +125,11 @@ type bunGlobalBinCacheEntry struct {
 	binDir      string
 }
 
+type globalBinDiscoveryCacheEntry struct {
+	fingerprint executableFingerprint
+	binDir      string
+}
+
 // BunGlobalBinCache caches only successful `bun pm bin -g` discoveries until
 // the resolved Bun executable changes. Failures are retried so installing Bun
 // or correcting bunfig.toml does not require a daemon restart.
@@ -181,6 +186,70 @@ func (c *BunGlobalBinCache) set(bunPath string, binDir string) {
 	c.mu.Lock()
 	c.entries[bunPath] = bunGlobalBinCacheEntry{fingerprint: fingerprint, binDir: binDir}
 	c.mu.Unlock()
+}
+
+// GlobalBinDiscoveryCache caches successful global-bin discovery commands
+// such as `pnpm bin -g`, `npm prefix -g`, and `brew --prefix`. Entries are
+// invalidated whenever their manager executable changes; failed queries are
+// intentionally not cached so a newly-installed manager is visible without a
+// daemon restart.
+type GlobalBinDiscoveryCache struct {
+	mu      sync.RWMutex
+	entries map[string]globalBinDiscoveryCacheEntry
+	group   singleflight.Group
+}
+
+func NewGlobalBinDiscoveryCache() *GlobalBinDiscoveryCache {
+	return &GlobalBinDiscoveryCache{entries: make(map[string]globalBinDiscoveryCacheEntry)}
+}
+
+func (c *GlobalBinDiscoveryCache) load(managerPath, queryKey string, loader func() string) string {
+	if c == nil {
+		return loader()
+	}
+	key := globalBinDiscoveryCacheKey(managerPath, queryKey)
+	if binDir, ok := c.get(key, managerPath); ok {
+		return binDir
+	}
+	value, _, _ := c.group.Do(key, func() (any, error) {
+		if binDir, ok := c.get(key, managerPath); ok {
+			return binDir, nil
+		}
+		binDir := loader()
+		if binDir != "" {
+			c.set(key, managerPath, binDir)
+		}
+		return binDir, nil
+	})
+	return value.(string)
+}
+
+func (c *GlobalBinDiscoveryCache) get(key, managerPath string) (string, bool) {
+	fingerprint, ok := readExecutableFingerprint(managerPath)
+	if !ok {
+		return "", false
+	}
+	c.mu.RLock()
+	entry, found := c.entries[key]
+	c.mu.RUnlock()
+	if !found || !sameExecutableFingerprint(entry.fingerprint, fingerprint) {
+		return "", false
+	}
+	return entry.binDir, true
+}
+
+func (c *GlobalBinDiscoveryCache) set(key, managerPath, binDir string) {
+	fingerprint, ok := readExecutableFingerprint(managerPath)
+	if !ok {
+		return
+	}
+	c.mu.Lock()
+	c.entries[key] = globalBinDiscoveryCacheEntry{fingerprint: fingerprint, binDir: binDir}
+	c.mu.Unlock()
+}
+
+func globalBinDiscoveryCacheKey(managerPath, queryKey string) string {
+	return filepath.Clean(strings.TrimSpace(managerPath)) + "\x00" + strings.TrimSpace(queryKey)
 }
 
 func NewAdapterProbeCache() *AdapterProbeCache {

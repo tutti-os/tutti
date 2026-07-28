@@ -275,13 +275,14 @@ type Service struct {
 	// readiness probes run once per provider instead of once per caller/window.
 	StatusCache    *ProviderStatusCache
 	StatusCacheTTL time.Duration
-	// CLIVersionCache and AdapterProbeCache keep stable executable facts across
-	// forced auth refreshes. DetectionCommands bounds actual subprocess fan-out
-	// across concurrent requests.
-	CLIVersionCache   *CLIVersionCache
-	AdapterProbeCache *AdapterProbeCache
-	BunGlobalBinCache *BunGlobalBinCache
-	DetectionCommands *DetectionCommandLimiter
+	// CLIVersionCache, AdapterProbeCache and global-bin caches keep stable
+	// executable facts across forced auth refreshes. DetectionCommands bounds
+	// actual subprocess fan-out across concurrent requests.
+	CLIVersionCache         *CLIVersionCache
+	AdapterProbeCache       *AdapterProbeCache
+	BunGlobalBinCache       *BunGlobalBinCache
+	GlobalBinDiscoveryCache *GlobalBinDiscoveryCache
+	DetectionCommands       *DetectionCommandLimiter
 	// UpdateCache is separate from readiness caching because remote release
 	// discovery is opt-in and must never make ordinary local status reads touch
 	// the network.

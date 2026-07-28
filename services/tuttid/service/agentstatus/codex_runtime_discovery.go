@@ -130,26 +130,28 @@ func (s Service) runGlobalBinDirCommand(
 	if binaryPath == "" {
 		return ""
 	}
-	release, acquired := s.DetectionCommands.acquire(ctx)
-	if !acquired {
-		return ""
-	}
-	defer release()
+	return s.GlobalBinDiscoveryCache.load(binaryPath, strings.Join(args, "\x00"), func() string {
+		release, acquired := s.DetectionCommands.acquire(ctx)
+		if !acquired {
+			return ""
+		}
+		defer release()
 
-	commandCtx, cancel := context.WithTimeout(baseContext(ctx), bunGlobalBinDiscoveryTimeout)
-	defer cancel()
-	command := exec.CommandContext(commandCtx, binaryPath, args...)
-	command.Env = resolver.Env(overrides)
-	output := &boundedCommandOutput{limit: bunGlobalBinOutputLimit}
-	command.Stdout = output
-	if err := command.Run(); err != nil {
-		return ""
-	}
-	value := strings.TrimSpace(output.String())
-	if !filepath.IsAbs(value) {
-		return ""
-	}
-	return filepath.Clean(value)
+		commandCtx, cancel := context.WithTimeout(baseContext(ctx), bunGlobalBinDiscoveryTimeout)
+		defer cancel()
+		command := exec.CommandContext(commandCtx, binaryPath, args...)
+		command.Env = resolver.Env(overrides)
+		output := &boundedCommandOutput{limit: bunGlobalBinOutputLimit}
+		command.Stdout = output
+		if err := command.Run(); err != nil {
+			return ""
+		}
+		value := strings.TrimSpace(output.String())
+		if !filepath.IsAbs(value) {
+			return ""
+		}
+		return filepath.Clean(value)
+	})
 }
 
 func pnpmCommandNames() []string {
