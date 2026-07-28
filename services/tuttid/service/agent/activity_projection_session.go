@@ -22,6 +22,8 @@ func persistedSessionFromActivity(session agentactivitybiz.Session) PersistedSes
 		Provider:               strings.TrimSpace(session.Provider),
 		ProviderSessionID:      strings.TrimSpace(session.ProviderSessionID),
 		Cwd:                    strings.TrimSpace(session.Cwd),
+		RailSectionKind:        strings.TrimSpace(session.RailSectionKind),
+		RailProjectPath:        strings.TrimSpace(session.RailProjectPath),
 		RailSectionKey:         strings.TrimSpace(session.RailSectionKey),
 		Settings:               composerSettingsFromPayload(session.Settings),
 		Metadata:               session.Metadata,

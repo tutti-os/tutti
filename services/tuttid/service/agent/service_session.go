@@ -191,6 +191,8 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 		RuntimeContext:    persistedSessionRuntimeContext(session),
 	}, resumable)
 	result.ActiveTurnID = strings.TrimSpace(session.ActiveTurnID)
+	result.RailSectionKind = strings.TrimSpace(session.RailSectionKind)
+	result.RailProjectPath = strings.TrimSpace(session.RailProjectPath)
 	result.RailSectionKey = strings.TrimSpace(session.RailSectionKey)
 	result.Kind = strings.TrimSpace(session.Kind)
 	if result.Kind == "" {
@@ -230,6 +232,8 @@ func mergePersistedSessionState(session Session, persisted PersistedSession) Ses
 	session.ParentAgentSessionID = strings.TrimSpace(persisted.ParentAgentSessionID)
 	session.ParentTurnID = strings.TrimSpace(persisted.ParentTurnID)
 	session.ParentToolCallID = strings.TrimSpace(persisted.ParentToolCallID)
+	session.RailSectionKind = strings.TrimSpace(persisted.RailSectionKind)
+	session.RailProjectPath = strings.TrimSpace(persisted.RailProjectPath)
 	session.RailSectionKey = strings.TrimSpace(persisted.RailSectionKey)
 	if strings.TrimSpace(session.UserID) == "" {
 		session.UserID = strings.TrimSpace(persisted.UserID)

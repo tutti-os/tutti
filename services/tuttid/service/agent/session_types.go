@@ -242,6 +242,8 @@ type Session struct {
 	Provider             string
 	ProviderSessionID    string
 	Cwd                  string
+	RailSectionKind      string
+	RailProjectPath      string
 	RailSectionKey       string
 	Visible              bool
 	Resumable            bool
