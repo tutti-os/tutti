@@ -368,6 +368,16 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   single-process initialize/initialized handshake, Bun hoisted and isolated
   package layouts, missing optional-dependency stderr without `ENOENT`,
   unsupported `app-server`, and a broken Bun install that must not invoke npm.
+- Multiple installations:
+  Do not stop at the first PATH result. Enumerate PATH, Bun, pnpm, npm, and
+  Homebrew launchers; deduplicate logical package roots; then validate each
+  launcher's version, package layout, and app-server handshake. Automatic mode
+  starts the first ready candidate in discovery order, skipping a broken
+  shadowing launcher. An explicit choice is stored as its absolute launcher
+  path (not an ephemeral list id), must be selected from the current catalog
+  revision, and never silently falls back when it later becomes stale. Read
+  `GET /v1/agent-providers/codex/runtime-candidates` before changing it with
+  `PUT /v1/agent-providers/codex/runtime-selection`.
 - References:
   [resolver.go](../../../packages/agent/daemon/runtimecmd/resolver.go)
   [codex_bun_discovery.go](../../../services/tuttid/service/agentstatus/codex_bun_discovery.go)
