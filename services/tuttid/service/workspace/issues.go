@@ -15,14 +15,14 @@ import (
 const issueManagerLocalActorUserID = "local"
 
 type IssueManagerService struct {
-	RunLauncher                    IssueRunLauncher
-	RunReconciler                  IssueRunReconciler
-	SourceSessionDirectoryResolver IssueSourceSessionDirectoryResolver
-	Publisher                      IssueManagerEventPublisher
-	ExecutionRecoveryQueue         *WorkspaceExecutionRecoveryQueue
-	Store                          workspaceissues.Store
-	AgentTargetReader              IssueAssignmentAgentTargetReader
-	PlanningTimeline               IssuePlanningTimelineReporter
+	RunLauncher                  IssueRunLauncher
+	RunReconciler                IssueRunReconciler
+	SourceSessionContextResolver IssueSourceSessionContextResolver
+	Publisher                    IssueManagerEventPublisher
+	ExecutionRecoveryQueue       *WorkspaceExecutionRecoveryQueue
+	Store                        workspaceissues.Store
+	AgentTargetReader            IssueAssignmentAgentTargetReader
+	PlanningTimeline             IssuePlanningTimelineReporter
 	// TuttiModeExecutions owns the product transaction that atomically adds
 	// the execution aggregate to a validated reusable Issue/task graph.
 	TuttiModeExecutions *tuttimodeexecutionservice.Service

@@ -39,12 +39,17 @@ func (s IssueManagerService) resolveIssueTaskBaseDirectory(issue workspaceissues
 	if explicit := strings.TrimSpace(task.ExecutionDirectory); explicit != "" {
 		return explicit
 	}
-	if s.SourceSessionDirectoryResolver != nil && strings.TrimSpace(issue.SourceSessionID) != "" {
-		if directory, ok := s.SourceSessionDirectoryResolver.ResolveSourceSessionDirectory(issue.WorkspaceID, issue.SourceSessionID); ok {
-			return strings.TrimSpace(directory)
-		}
+	if source, ok := s.resolveIssueSourceSessionContext(issue); ok {
+		return strings.TrimSpace(source.WorkingDirectory)
 	}
 	return ""
+}
+
+func (s IssueManagerService) resolveIssueSourceSessionContext(issue workspaceissues.Issue) (IssueSourceSessionContext, bool) {
+	if s.SourceSessionContextResolver == nil || strings.TrimSpace(issue.SourceSessionID) == "" {
+		return IssueSourceSessionContext{}, false
+	}
+	return s.SourceSessionContextResolver.ResolveSourceSessionContext(issue.WorkspaceID, issue.SourceSessionID)
 }
 
 // sequentialTaskIsolation decides whether a parallelizable task may actually

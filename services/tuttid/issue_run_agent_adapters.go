@@ -164,6 +164,7 @@ func (l issueRunAgentLauncher) Launch(ctx context.Context, launch workspaceservi
 		Model:                optionalString(launch.Model),
 		ModelPlanID:          optionalString(launch.ModelPlanID),
 		Visible:              boolPointer(true),
+		RailPlacement:        agentRailPlacementFromIssueRun(launch.RailPlacement),
 	})
 	if err == nil ||
 		strings.TrimSpace(result.TurnID) != "" ||
@@ -187,16 +188,50 @@ func (l issueRunAgentLauncher) Launch(ctx context.Context, launch workspaceservi
 	return workspaceservice.NewIssueRunLaunchNotStartedError(err)
 }
 
-type issueSourceSessionDirectoryResolver struct {
+func agentRailPlacementFromIssueRun(
+	placement *workspaceservice.IssueRunRailPlacement,
+) *agenthost.RailPlacement {
+	if placement == nil {
+		return nil
+	}
+	return &agenthost.RailPlacement{
+		Version:     1,
+		Kind:        agenthost.RailPlacementKind(strings.TrimSpace(placement.Kind)),
+		ProjectPath: strings.TrimSpace(placement.ProjectPath),
+		SectionKey:  strings.TrimSpace(placement.SectionKey),
+	}
+}
+
+type issueSourceSessionContextResolver struct {
 	Sessions agentservice.SessionReader
 }
 
-func (r issueSourceSessionDirectoryResolver) ResolveSourceSessionDirectory(workspaceID string, agentSessionID string) (string, bool) {
+func (r issueSourceSessionContextResolver) ResolveSourceSessionContext(
+	workspaceID string,
+	agentSessionID string,
+) (workspaceservice.IssueSourceSessionContext, bool) {
 	if r.Sessions == nil {
-		return "", false
+		return workspaceservice.IssueSourceSessionContext{}, false
 	}
 	session, ok := r.Sessions.GetSession(workspaceID, agentSessionID)
-	return session.Cwd, ok
+	if !ok {
+		return workspaceservice.IssueSourceSessionContext{}, false
+	}
+	context := workspaceservice.IssueSourceSessionContext{
+		WorkingDirectory: strings.TrimSpace(session.Cwd),
+	}
+	if strings.TrimSpace(session.RailSectionKey) != "" {
+		context.RailPlacement = &workspaceservice.IssueRunRailPlacement{
+			Kind:        strings.TrimSpace(session.RailSectionKind),
+			ProjectPath: strings.TrimSpace(session.RailProjectPath),
+			SectionKey:  strings.TrimSpace(session.RailSectionKey),
+		}
+		if context.WorkingDirectory == "" &&
+			context.RailPlacement.Kind == "project" {
+			context.WorkingDirectory = context.RailPlacement.ProjectPath
+		}
+	}
+	return context, true
 }
 
 func optionalString(value string) *string {
