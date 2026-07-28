@@ -1264,6 +1264,12 @@ host.
 That layout carries the actions, open state, and reserved width into the one
 authoritative `AgentGuiWorkbenchHeader`.
 
+The standalone Files tool reuses the Desktop file-manager pane and its complete
+context menu. Its Open With submenu keeps Tutti's file viewer and in-app browser
+alongside system applications, default-browser handling, and the system
+application picker. Double-clicking a file still delegates to the desktop
+host's system-default opener; directories continue to navigate inside Files.
+
 Header ownership is explicit. A native standalone window selects the
 window-owned contract, so the shared sidebar composes the Workbench Header and
 body frame. An embedded Workbench selects the host-owned contract and projects

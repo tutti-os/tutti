@@ -128,7 +128,7 @@ export function StandaloneAgentToolSidebarPanel({
             persistWidth: false
           }}
           revealIntent={fileOpenRequest}
-          showInternalOpenWithActions={false}
+          showInternalOpenWithActions
           showPreviewPanel={false}
           workspaceID={workspaceId}
         />
