@@ -66,8 +66,18 @@ CREATE TABLE workspace_agent_runtime_operations (
     REFERENCES workspace_agent_turns(workspace_id, agent_session_id, turn_id) ON DELETE CASCADE
 );
 
-INSERT INTO workspace_agent_runtime_operations
-SELECT * FROM workspace_agent_runtime_operations_v4;
+INSERT INTO workspace_agent_runtime_operations (
+  operation_id, workspace_id, agent_session_id, kind, status, result, turn_id,
+  request_id, payload_json, lease_owner, lease_expires_at_unix_ms,
+  next_attempt_at_unix_ms, attempt, version, last_error, created_at_unix_ms,
+  updated_at_unix_ms, completed_at_unix_ms
+)
+SELECT
+  operation_id, workspace_id, agent_session_id, kind, status, result, turn_id,
+  request_id, payload_json, lease_owner, lease_expires_at_unix_ms,
+  next_attempt_at_unix_ms, attempt, version, last_error, created_at_unix_ms,
+  updated_at_unix_ms, completed_at_unix_ms
+FROM workspace_agent_runtime_operations_v4;
 
 CREATE UNIQUE INDEX idx_workspace_agent_runtime_operations_interactive_identity
   ON workspace_agent_runtime_operations(workspace_id, agent_session_id, turn_id, request_id)
@@ -106,8 +116,14 @@ CREATE TABLE workspace_agent_runtime_operation_events (
   UNIQUE (operation_id, kind)
 );
 
-INSERT INTO workspace_agent_runtime_operation_events
-SELECT * FROM workspace_agent_runtime_operation_events_v4;
+INSERT INTO workspace_agent_runtime_operation_events (
+  id, operation_id, workspace_id, agent_session_id, kind, payload_json,
+  created_at_unix_ms, published_at_unix_ms
+)
+SELECT
+  id, operation_id, workspace_id, agent_session_id, kind, payload_json,
+  created_at_unix_ms, published_at_unix_ms
+FROM workspace_agent_runtime_operation_events_v4;
 
 CREATE INDEX idx_workspace_agent_runtime_operation_events_workspace
   ON workspace_agent_runtime_operation_events(workspace_id, published_at_unix_ms, id);
