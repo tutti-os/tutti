@@ -138,7 +138,7 @@ func (s Service) statusForSpec(
 
 	if !installed {
 		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = "cli_not_found"
+		availability.ReasonCode = firstNonBlank(runtimeResolution.ReasonCode, "cli_not_found")
 		actions = append(actions, daemonAction(ActionInstall))
 	} else if !isCodexStatusSpec(spec) && cliBelowFloor {
 		// Descriptor-owned version floors are a CLI capability gate. Surface

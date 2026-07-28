@@ -23,7 +23,7 @@ func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, erro
 		Provider:   spec.Provider,
 		CheckedAt:  now,
 		BinaryPath: status.Adapter.BinaryPath,
-		Command:    cloneStrings(spec.AdapterCommand),
+		Command:    cloneStrings(runtimeResolution.AdapterCommand),
 		Checks:     cloneProviderChecks(status.Checks),
 		LastError:  cloneProviderLastError(status.LastError),
 	}

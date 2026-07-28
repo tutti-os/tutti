@@ -19,15 +19,16 @@ import (
 )
 
 type providerRuntimeResolution struct {
-	CLIPath         string
-	AdapterPath     string
-	AdapterVersion  string
-	AdapterCommand  []string
-	AdapterEnv      []string
-	ReasonCode      string
-	InstallDir      string
-	Env             []string
-	CodexRepairPlan *CodexRepairPlan
+	CLIPath                string
+	AdapterPath            string
+	AdapterVersion         string
+	AdapterCommand         []string
+	AdapterEnv             []string
+	ReasonCode             string
+	InstallDir             string
+	Env                    []string
+	CodexRepairPlan        *CodexRepairPlan
+	CodexSelectionExplicit bool
 }
 
 type installerExecutionSummary struct {
@@ -45,6 +46,33 @@ func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) 
 	}
 	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
 		return s.resolveExternalProviderRuntime(ctx, spec, resolver, env)
+	}
+	if isCodexStatusSpec(spec) && s.CodexRuntimeSelectionStore != nil {
+		selection, err := s.resolveCodexRuntimeSelection(ctx, spec)
+		result := providerRuntimeResolution{
+			AdapterEnv: cloneStrings(spec.AdapterEnv),
+			Env:        env,
+		}
+		if err != nil {
+			result.ReasonCode = "codex_runtime_selection_unavailable"
+			return result
+		}
+		result.ReasonCode = selection.ReasonCode
+		result.CodexSelectionExplicit = selection.Explicit
+		candidate, found := selection.candidate()
+		if !found {
+			return result
+		}
+		result.CLIPath = candidate.Candidate.LauncherPath
+		if !selection.Launchable {
+			return result
+		}
+		result.AdapterPath = candidate.Candidate.LauncherPath
+		result.AdapterCommand = cloneStrings(spec.AdapterCommand)
+		if len(result.AdapterCommand) > 0 {
+			result.AdapterCommand[0] = candidate.Candidate.LauncherPath
+		}
+		return result
 	}
 	cliPath := resolveBinaryWithResolver(resolver, spec.BinaryNames, nil)
 	adapterPath := resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), spec.AdapterEnv)

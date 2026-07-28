@@ -183,7 +183,8 @@ func writeGetAgentProviderRuntimeCandidatesError(err error) tuttigenerated.GetAg
 func writeSetAgentProviderRuntimeSelectionError(err error) tuttigenerated.SetAgentProviderRuntimeSelectionResponseObject {
 	if errors.Is(err, agentstatusservice.ErrInvalidProvider) ||
 		errors.Is(err, agentstatusservice.ErrRuntimeCatalogRevisionConflict) ||
-		errors.Is(err, agentstatusservice.ErrRuntimeCandidateNotFound) {
+		errors.Is(err, agentstatusservice.ErrRuntimeCandidateNotFound) ||
+		errors.Is(err, agentstatusservice.ErrRuntimeCandidateNotLaunchable) {
 		return tuttigenerated.SetAgentProviderRuntimeSelection400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(apierrors.WithCause(err)))}
 	}
 	if errors.Is(err, agentstatusservice.ErrRuntimeSelectionStoreUnavailable) {

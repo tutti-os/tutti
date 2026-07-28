@@ -562,6 +562,12 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 	})
 	defer clearActiveAction(installCtx, spec.Provider)
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
+	if isCodexStatusSpec(spec) && runtimeResolution.CodexSelectionExplicit && strings.TrimSpace(runtimeResolution.AdapterPath) == "" {
+		result.Status = RunActionFailed
+		result.ReasonCode = firstNonBlank(runtimeResolution.ReasonCode, "codex_runtime_selection_unavailable")
+		result.Message = "The selected Codex runtime is unavailable; choose another runtime or restore automatic selection"
+		return result, nil
+	}
 	if isCodexStatusSpec(spec) && strings.TrimSpace(runtimeResolution.CLIPath) != "" {
 		probe := s.probeAdapterRuntimeCommand(installCtx, spec, runtimeResolution, s.now())
 		if probe.Status == ProbeReady && !s.providerCLIRequiresInstall(spec, runtimeResolution) {

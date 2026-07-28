@@ -60,8 +60,18 @@ type SetCodexRuntimeSelectionInput struct {
 	Revision    string
 }
 
+type codexRuntimeResolvedSelection struct {
+	Selection   agentproviderbiz.RuntimeSelection
+	Explicit    bool
+	Validations []codexRuntimeCandidateValidation
+	Index       int
+	Launchable  bool
+	ReasonCode  string
+}
+
 var ErrRuntimeCatalogRevisionConflict = errors.New("codex runtime catalog revision conflicts with current discovery")
 var ErrRuntimeCandidateNotFound = errors.New("codex runtime candidate not found")
+var ErrRuntimeCandidateNotLaunchable = errors.New("codex runtime candidate is not launchable")
 var ErrRuntimeSelectionStoreUnavailable = errors.New("codex runtime selection store is unavailable")
 
 // GetCodexRuntimeCatalog discovers and validates every logically distinct
@@ -75,13 +85,12 @@ func (s Service) GetCodexRuntimeCatalog(ctx context.Context, provider string) (C
 	if err != nil || len(specs) == 0 {
 		return CodexRuntimeCatalog{}, ErrInvalidProvider
 	}
-	validations := s.validateCodexRuntimeCandidates(ctx, specs[0], s.discoverCodexRuntimeCandidates(ctx, specs[0]))
-	catalog := codexRuntimeCatalogFromValidations(validations)
-	selection, found, err := s.codexRuntimeSelection(ctx)
+	resolved, err := s.resolveCodexRuntimeSelection(ctx, specs[0])
 	if err != nil {
 		return CodexRuntimeCatalog{}, err
 	}
-	catalog.Selection = codexRuntimeCatalogSelection(catalog.Candidates, selection, found)
+	catalog := codexRuntimeCatalogFromValidations(resolved.Validations)
+	catalog.Selection = codexRuntimeCatalogSelection(catalog.Candidates, resolved)
 	return catalog, nil
 }
 
@@ -97,8 +106,8 @@ func (s Service) SetCodexRuntimeSelection(ctx context.Context, input SetCodexRun
 		if err := s.CodexRuntimeSelectionStore.DeleteAgentProviderRuntimeSelection(ctx, agentproviderbiz.Codex); err != nil {
 			return CodexRuntimeCatalog{}, err
 		}
-		catalog.Selection = codexRuntimeCatalogSelection(catalog.Candidates, agentproviderbiz.RuntimeSelection{}, false)
-		return catalog, nil
+		s.invalidateProviderStatus(agentproviderbiz.Codex)
+		return s.GetCodexRuntimeCatalog(ctx, agentproviderbiz.Codex)
 	}
 	if input.Mode != CodexRuntimeSelectionExplicit {
 		return CodexRuntimeCatalog{}, errors.New("codex runtime selection mode must be auto or explicit")
@@ -110,17 +119,55 @@ func (s Service) SetCodexRuntimeSelection(ctx context.Context, input SetCodexRun
 		if candidate.ID != input.CandidateID {
 			continue
 		}
-		selection, err := s.CodexRuntimeSelectionStore.PutAgentProviderRuntimeSelection(ctx, agentproviderbiz.RuntimeSelection{
+		if candidate.State != string(codexRuntimeCandidateValidationReady) {
+			return CodexRuntimeCatalog{}, ErrRuntimeCandidateNotLaunchable
+		}
+		if _, err := s.CodexRuntimeSelectionStore.PutAgentProviderRuntimeSelection(ctx, agentproviderbiz.RuntimeSelection{
 			Provider:     agentproviderbiz.Codex,
 			LauncherPath: candidate.LauncherPath,
-		})
-		if err != nil {
+		}); err != nil {
 			return CodexRuntimeCatalog{}, err
 		}
-		catalog.Selection = codexRuntimeCatalogSelection(catalog.Candidates, selection, true)
-		return catalog, nil
+		s.invalidateProviderStatus(agentproviderbiz.Codex)
+		return s.GetCodexRuntimeCatalog(ctx, agentproviderbiz.Codex)
 	}
 	return CodexRuntimeCatalog{}, ErrRuntimeCandidateNotFound
+}
+
+func (s Service) resolveCodexRuntimeSelection(ctx context.Context, spec ProviderSpec) (codexRuntimeResolvedSelection, error) {
+	selection, explicit, err := s.codexRuntimeSelection(ctx)
+	if err != nil {
+		return codexRuntimeResolvedSelection{}, err
+	}
+	validations := s.validateCodexRuntimeCandidates(ctx, spec, s.discoverCodexRuntimeCandidates(ctx, spec))
+	result := codexRuntimeResolvedSelection{Selection: selection, Explicit: explicit, Validations: validations, Index: -1}
+	if !explicit {
+		auto := selectCodexRuntimeAutomatically(validations)
+		result.Index, result.Launchable, result.ReasonCode = auto.CandidateIndex, auto.Launchable, auto.ReasonCode
+		return result, nil
+	}
+	for index, validation := range validations {
+		if validation.Candidate.LauncherPath != selection.LauncherPath {
+			continue
+		}
+		result.Index = index
+		result.Launchable = validation.State == codexRuntimeCandidateValidationReady
+		if result.Launchable {
+			result.ReasonCode = "explicit_ready_candidate"
+		} else {
+			result.ReasonCode = firstNonBlank(validation.ReasonCode, "codex_runtime_selection_unavailable")
+		}
+		return result, nil
+	}
+	result.ReasonCode = "codex_runtime_selection_stale"
+	return result, nil
+}
+
+func (selection codexRuntimeResolvedSelection) candidate() (codexRuntimeCandidateValidation, bool) {
+	if selection.Index < 0 || selection.Index >= len(selection.Validations) {
+		return codexRuntimeCandidateValidation{}, false
+	}
+	return selection.Validations[selection.Index], true
 }
 
 func (s Service) codexRuntimeSelection(ctx context.Context) (agentproviderbiz.RuntimeSelection, bool, error) {
@@ -167,20 +214,28 @@ func codexRuntimePackageLayoutOK(layout CodexPackageLayoutEvidence) bool {
 		(layout.PlatformPackagePresence == CodexPathNotApplicable && layout.PlatformBinaryPresence == CodexPathNotApplicable)
 }
 
-func codexRuntimeCatalogSelection(candidates []CodexRuntimeCatalogCandidate, selection agentproviderbiz.RuntimeSelection, found bool) CodexRuntimeSelection {
-	if !found {
-		return CodexRuntimeSelection{Mode: CodexRuntimeSelectionAuto, State: CodexRuntimeSelectionAutomatic}
+func codexRuntimeCatalogSelection(candidates []CodexRuntimeCatalogCandidate, resolved codexRuntimeResolvedSelection) CodexRuntimeSelection {
+	if !resolved.Explicit {
+		result := CodexRuntimeSelection{Mode: CodexRuntimeSelectionAuto, State: CodexRuntimeSelectionAutomatic}
+		if resolved.Launchable && resolved.Index >= 0 && resolved.Index < len(candidates) {
+			result.CandidateID = candidates[resolved.Index].ID
+			result.LauncherPath = candidates[resolved.Index].LauncherPath
+		}
+		return result
 	}
 	result := CodexRuntimeSelection{
 		Mode:         CodexRuntimeSelectionExplicit,
 		State:        CodexRuntimeSelectionStale,
-		LauncherPath: selection.LauncherPath,
-		UpdatedAt:    &selection.UpdatedAt,
+		LauncherPath: resolved.Selection.LauncherPath,
+		UpdatedAt:    &resolved.Selection.UpdatedAt,
 	}
-	for _, candidate := range candidates {
-		if candidate.LauncherPath == selection.LauncherPath {
+	for index, candidate := range candidates {
+		if candidate.LauncherPath == resolved.Selection.LauncherPath {
 			result.State = CodexRuntimeSelectionSelected
 			result.CandidateID = candidate.ID
+			if !resolved.Launchable || resolved.Index != index {
+				result.State = CodexRuntimeSelectionStale
+			}
 			break
 		}
 	}
