@@ -3999,6 +3999,66 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-providers/{provider}/runtime-candidates:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/WorkspaceAgentProvider"
+    get:
+      operationId: getAgentProviderRuntimeCandidates
+      tags:
+        - agent-session
+      summary: Discover and validate local runtime candidates for an agent provider
+      responses:
+        "200":
+          description: Current runtime candidates and selection policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProviderRuntimeCatalogResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-providers/{provider}/runtime-selection:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/WorkspaceAgentProvider"
+    put:
+      operationId: setAgentProviderRuntimeSelection
+      tags:
+        - agent-session
+      summary: Select one currently discovered runtime candidate or restore automatic selection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAgentProviderRuntimeSelectionRequest"
+      responses:
+        "200":
+          description: Updated runtime candidate catalog and selection policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProviderRuntimeCatalogResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/agent-providers/{provider}/probe:
     parameters:
       - name: provider
@@ -11360,6 +11420,150 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentProviderStatus"
+    AgentProviderRuntimeCandidateState:
+      type: string
+      enum:
+        - ready
+        - unsupported
+        - failed
+      x-enum-varnames:
+        - AgentProviderRuntimeCandidateStateReady
+        - AgentProviderRuntimeCandidateStateUnsupported
+        - AgentProviderRuntimeCandidateStateFailed
+    AgentProviderRuntimeSelectionMode:
+      type: string
+      enum:
+        - auto
+        - explicit
+      x-enum-varnames:
+        - AgentProviderRuntimeSelectionModeAuto
+        - AgentProviderRuntimeSelectionModeExplicit
+    AgentProviderRuntimeSelectionState:
+      type: string
+      enum:
+        - automatic
+        - selected
+        - stale
+      x-enum-varnames:
+        - AgentProviderRuntimeSelectionStateAutomatic
+        - AgentProviderRuntimeSelectionStateSelected
+        - AgentProviderRuntimeSelectionStateStale
+    AgentProviderRuntimeCandidate:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - launcherPath
+        - packageRoot
+        - sources
+        - version
+        - state
+        - reasonCode
+        - appServerReady
+        - packageLayoutOk
+      properties:
+        id:
+          type: string
+          minLength: 1
+          description: Opaque identifier valid only for the enclosing catalog revision
+        launcherPath:
+          type: string
+          minLength: 1
+        packageRoot:
+          type: string
+          nullable: true
+        sources:
+          type: array
+          items:
+            type: string
+            enum:
+              - path
+              - bun_global
+              - pnpm_global
+              - npm_global
+              - homebrew
+            x-enum-varnames:
+              - AgentProviderRuntimeCandidateSourcePath
+              - AgentProviderRuntimeCandidateSourceBunGlobal
+              - AgentProviderRuntimeCandidateSourcePnpmGlobal
+              - AgentProviderRuntimeCandidateSourceNpmGlobal
+              - AgentProviderRuntimeCandidateSourceHomebrew
+        version:
+          type: string
+          nullable: true
+        state:
+          $ref: "#/components/schemas/AgentProviderRuntimeCandidateState"
+        reasonCode:
+          type: string
+          nullable: true
+        appServerReady:
+          type: boolean
+        packageLayoutOk:
+          type: boolean
+    AgentProviderRuntimeSelection:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - state
+        - candidateId
+        - launcherPath
+        - updatedAt
+      properties:
+        mode:
+          $ref: "#/components/schemas/AgentProviderRuntimeSelectionMode"
+        state:
+          $ref: "#/components/schemas/AgentProviderRuntimeSelectionState"
+        candidateId:
+          type: string
+          nullable: true
+        launcherPath:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    AgentProviderRuntimeCatalogResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - capturedAt
+        - provider
+        - revision
+        - selection
+        - candidates
+      properties:
+        capturedAt:
+          type: string
+          format: date-time
+        provider:
+          $ref: "#/components/schemas/WorkspaceAgentProvider"
+        revision:
+          type: string
+          minLength: 1
+        selection:
+          $ref: "#/components/schemas/AgentProviderRuntimeSelection"
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentProviderRuntimeCandidate"
+    SetAgentProviderRuntimeSelectionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+      properties:
+        mode:
+          $ref: "#/components/schemas/AgentProviderRuntimeSelectionMode"
+        candidateId:
+          type: string
+          nullable: true
+          description: Required when mode is explicit; ignored when mode is auto
+        revision:
+          type: string
+          nullable: true
+          description: Required when mode is explicit and must match the catalog that supplied candidateId
     TuttiModeActivationStatus:
       type: string
       enum:

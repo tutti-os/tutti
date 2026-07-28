@@ -62,6 +62,42 @@ func (api DaemonAPI) ProbeAgentProvider(ctx context.Context, request tuttigenera
 	), nil
 }
 
+func (api DaemonAPI) GetAgentProviderRuntimeCandidates(ctx context.Context, request tuttigenerated.GetAgentProviderRuntimeCandidatesRequestObject) (tuttigenerated.GetAgentProviderRuntimeCandidatesResponseObject, error) {
+	if api.AgentStatusService == nil {
+		return tuttigenerated.GetAgentProviderRuntimeCandidates503JSONResponse{ServiceUnavailableErrorJSONResponse: agentStatusServiceUnavailableError()}, nil
+	}
+	catalog, err := api.AgentStatusService.GetCodexRuntimeCatalog(ctx, string(request.Provider))
+	if err != nil {
+		return writeGetAgentProviderRuntimeCandidatesError(err), nil
+	}
+	return tuttigenerated.GetAgentProviderRuntimeCandidates200JSONResponse(generatedAgentProviderRuntimeCatalog(catalog)), nil
+}
+
+func (api DaemonAPI) SetAgentProviderRuntimeSelection(ctx context.Context, request tuttigenerated.SetAgentProviderRuntimeSelectionRequestObject) (tuttigenerated.SetAgentProviderRuntimeSelectionResponseObject, error) {
+	if api.AgentStatusService == nil {
+		return tuttigenerated.SetAgentProviderRuntimeSelection503JSONResponse{ServiceUnavailableErrorJSONResponse: agentStatusServiceUnavailableError()}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.SetAgentProviderRuntimeSelection400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body")))}, nil
+	}
+	if !request.Body.Mode.Valid() {
+		return tuttigenerated.SetAgentProviderRuntimeSelection400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(apierrors.WithDeveloperMessage("mode must be auto or explicit")))}, nil
+	}
+	input := agentstatusservice.SetCodexRuntimeSelectionInput{
+		Mode:        agentstatusservice.CodexRuntimeSelectionMode(request.Body.Mode),
+		CandidateID: runtimeSelectionStringValue(request.Body.CandidateId),
+		Revision:    runtimeSelectionStringValue(request.Body.Revision),
+	}
+	if input.Mode == agentstatusservice.CodexRuntimeSelectionExplicit && (input.CandidateID == "" || input.Revision == "") {
+		return tuttigenerated.SetAgentProviderRuntimeSelection400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(apierrors.WithDeveloperMessage("candidateId and revision are required for explicit runtime selection")))}, nil
+	}
+	catalog, err := api.AgentStatusService.SetCodexRuntimeSelection(ctx, input)
+	if err != nil {
+		return writeSetAgentProviderRuntimeSelectionError(err), nil
+	}
+	return tuttigenerated.SetAgentProviderRuntimeSelection200JSONResponse(generatedAgentProviderRuntimeCatalog(catalog)), nil
+}
+
 func (api DaemonAPI) RunAgentProviderAction(ctx context.Context, request tuttigenerated.RunAgentProviderActionRequestObject) (tuttigenerated.RunAgentProviderActionResponseObject, error) {
 	if api.AgentStatusService == nil {
 		return tuttigenerated.RunAgentProviderAction503JSONResponse{
@@ -134,6 +170,28 @@ func writeProbeAgentProviderError(err error) tuttigenerated.ProbeAgentProviderRe
 	}
 }
 
+func writeGetAgentProviderRuntimeCandidatesError(err error) tuttigenerated.GetAgentProviderRuntimeCandidatesResponseObject {
+	if errors.Is(err, agentstatusservice.ErrInvalidProvider) {
+		return tuttigenerated.GetAgentProviderRuntimeCandidates400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(apierrors.WithCause(err)))}
+	}
+	if errors.Is(err, agentstatusservice.ErrRuntimeSelectionStoreUnavailable) {
+		return tuttigenerated.GetAgentProviderRuntimeCandidates503JSONResponse{ServiceUnavailableErrorJSONResponse: agentStatusServiceUnavailableError()}
+	}
+	return tuttigenerated.GetAgentProviderRuntimeCandidates502JSONResponse{WorkspaceOperationErrorJSONResponse: workspaceOperationError(apierrors.WorkspaceOperationFailed(apierrors.WithCause(err)))}
+}
+
+func writeSetAgentProviderRuntimeSelectionError(err error) tuttigenerated.SetAgentProviderRuntimeSelectionResponseObject {
+	if errors.Is(err, agentstatusservice.ErrInvalidProvider) ||
+		errors.Is(err, agentstatusservice.ErrRuntimeCatalogRevisionConflict) ||
+		errors.Is(err, agentstatusservice.ErrRuntimeCandidateNotFound) {
+		return tuttigenerated.SetAgentProviderRuntimeSelection400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(apierrors.WithCause(err)))}
+	}
+	if errors.Is(err, agentstatusservice.ErrRuntimeSelectionStoreUnavailable) {
+		return tuttigenerated.SetAgentProviderRuntimeSelection503JSONResponse{ServiceUnavailableErrorJSONResponse: agentStatusServiceUnavailableError()}
+	}
+	return tuttigenerated.SetAgentProviderRuntimeSelection502JSONResponse{WorkspaceOperationErrorJSONResponse: workspaceOperationError(apierrors.WorkspaceOperationFailed(apierrors.WithCause(err)))}
+}
+
 func writeRunAgentProviderActionError(err error) tuttigenerated.RunAgentProviderActionResponseObject {
 	if errors.Is(err, agentstatusservice.ErrInvalidProvider) || errors.Is(err, agentstatusservice.ErrInvalidAction) {
 		return tuttigenerated.RunAgentProviderAction400JSONResponse{
@@ -190,6 +248,47 @@ func generatedAgentProviderStatusList(snapshot agentstatusservice.Snapshot, defa
 		DefaultProvider: defaultProvider,
 		Providers:       generatedAgentProviderStatuses(snapshot.Providers),
 	}
+}
+
+func generatedAgentProviderRuntimeCatalog(catalog agentstatusservice.CodexRuntimeCatalog) tuttigenerated.AgentProviderRuntimeCatalogResponse {
+	candidates := make([]tuttigenerated.AgentProviderRuntimeCandidate, 0, len(catalog.Candidates))
+	for _, candidate := range catalog.Candidates {
+		sources := make([]tuttigenerated.AgentProviderRuntimeCandidateSources, 0, len(candidate.Sources))
+		for _, source := range candidate.Sources {
+			sources = append(sources, tuttigenerated.AgentProviderRuntimeCandidateSources(source))
+		}
+		candidates = append(candidates, tuttigenerated.AgentProviderRuntimeCandidate{
+			AppServerReady:  candidate.AppServerReady,
+			Id:              candidate.ID,
+			LauncherPath:    candidate.LauncherPath,
+			PackageLayoutOk: candidate.PackageLayoutOK,
+			PackageRoot:     stringPointerIfNotBlank(candidate.PackageRoot),
+			ReasonCode:      stringPointerIfNotBlank(candidate.ReasonCode),
+			Sources:         sources,
+			State:           tuttigenerated.AgentProviderRuntimeCandidateState(candidate.State),
+			Version:         stringPointerIfNotBlank(candidate.Version),
+		})
+	}
+	return tuttigenerated.AgentProviderRuntimeCatalogResponse{
+		Candidates: candidates,
+		CapturedAt: catalog.CapturedAt,
+		Provider:   tuttigenerated.WorkspaceAgentProvider(catalog.Provider),
+		Revision:   catalog.Revision,
+		Selection: tuttigenerated.AgentProviderRuntimeSelection{
+			CandidateId:  stringPointerIfNotBlank(catalog.Selection.CandidateID),
+			LauncherPath: stringPointerIfNotBlank(catalog.Selection.LauncherPath),
+			Mode:         tuttigenerated.AgentProviderRuntimeSelectionMode(catalog.Selection.Mode),
+			State:        tuttigenerated.AgentProviderRuntimeSelectionState(catalog.Selection.State),
+			UpdatedAt:    catalog.Selection.UpdatedAt,
+		},
+	}
+}
+
+func runtimeSelectionStringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
 }
 
 func generatedAgentProviderActionRun(result agentstatusservice.RunActionResult) tuttigenerated.AgentProviderActionRunResponse {

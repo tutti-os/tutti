@@ -1,6 +1,8 @@
 package agentprovider
 
 import (
+	"time"
+
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
@@ -73,4 +75,15 @@ func ModelPlanUsesResponsesToChatGateway(provider string) bool {
 
 func IsSupported(provider string) bool {
 	return Normalize(provider) != ""
+}
+
+// RuntimeSelection is the daemon-owned explicit launcher choice for a local
+// provider. The absence of a row means automatic selection remains enabled.
+// LauncherPath is deliberately persisted instead of a transient candidate id:
+// candidate ids are scoped to one discovery snapshot and must not survive an
+// upgrade, PATH change, or process restart.
+type RuntimeSelection struct {
+	Provider     string
+	LauncherPath string
+	UpdatedAt    time.Time
 }

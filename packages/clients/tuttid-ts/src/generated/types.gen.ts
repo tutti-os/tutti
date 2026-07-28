@@ -2046,6 +2046,63 @@ export type AgentProviderStatusListResponse = {
   providers: Array<AgentProviderStatus>;
 };
 
+export type AgentProviderRuntimeCandidateState =
+  | "ready"
+  | "unsupported"
+  | "failed";
+
+export type AgentProviderRuntimeSelectionMode = "auto" | "explicit";
+
+export type AgentProviderRuntimeSelectionState =
+  | "automatic"
+  | "selected"
+  | "stale";
+
+export type AgentProviderRuntimeCandidate = {
+  /**
+   * Opaque identifier valid only for the enclosing catalog revision
+   */
+  id: string;
+  launcherPath: string;
+  packageRoot: string | null;
+  sources: Array<
+    "path" | "bun_global" | "pnpm_global" | "npm_global" | "homebrew"
+  >;
+  version: string | null;
+  state: AgentProviderRuntimeCandidateState;
+  reasonCode: string | null;
+  appServerReady: boolean;
+  packageLayoutOk: boolean;
+};
+
+export type AgentProviderRuntimeSelection = {
+  mode: AgentProviderRuntimeSelectionMode;
+  state: AgentProviderRuntimeSelectionState;
+  candidateId: string | null;
+  launcherPath: string | null;
+  updatedAt: string | null;
+};
+
+export type AgentProviderRuntimeCatalogResponse = {
+  capturedAt: string;
+  provider: WorkspaceAgentProvider;
+  revision: string;
+  selection: AgentProviderRuntimeSelection;
+  candidates: Array<AgentProviderRuntimeCandidate>;
+};
+
+export type SetAgentProviderRuntimeSelectionRequest = {
+  mode: AgentProviderRuntimeSelectionMode;
+  /**
+   * Required when mode is explicit; ignored when mode is auto
+   */
+  candidateId?: string | null;
+  /**
+   * Required when mode is explicit and must match the catalog that supplied candidateId
+   */
+  revision?: string | null;
+};
+
 export type TuttiModeActivationStatus = "active" | "inactive";
 
 /**
@@ -10278,6 +10335,88 @@ export type GetAgentProviderComposerOptionsResponses = {
 
 export type GetAgentProviderComposerOptionsResponse =
   GetAgentProviderComposerOptionsResponses[keyof GetAgentProviderComposerOptionsResponses];
+
+export type GetAgentProviderRuntimeCandidatesData = {
+  body?: never;
+  path: {
+    provider: WorkspaceAgentProvider;
+  };
+  query?: never;
+  url: "/v1/agent-providers/{provider}/runtime-candidates";
+};
+
+export type GetAgentProviderRuntimeCandidatesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAgentProviderRuntimeCandidatesError =
+  GetAgentProviderRuntimeCandidatesErrors[keyof GetAgentProviderRuntimeCandidatesErrors];
+
+export type GetAgentProviderRuntimeCandidatesResponses = {
+  /**
+   * Current runtime candidates and selection policy
+   */
+  200: AgentProviderRuntimeCatalogResponse;
+};
+
+export type GetAgentProviderRuntimeCandidatesResponse =
+  GetAgentProviderRuntimeCandidatesResponses[keyof GetAgentProviderRuntimeCandidatesResponses];
+
+export type SetAgentProviderRuntimeSelectionData = {
+  body: SetAgentProviderRuntimeSelectionRequest;
+  path: {
+    provider: WorkspaceAgentProvider;
+  };
+  query?: never;
+  url: "/v1/agent-providers/{provider}/runtime-selection";
+};
+
+export type SetAgentProviderRuntimeSelectionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SetAgentProviderRuntimeSelectionError =
+  SetAgentProviderRuntimeSelectionErrors[keyof SetAgentProviderRuntimeSelectionErrors];
+
+export type SetAgentProviderRuntimeSelectionResponses = {
+  /**
+   * Updated runtime candidate catalog and selection policy
+   */
+  200: AgentProviderRuntimeCatalogResponse;
+};
+
+export type SetAgentProviderRuntimeSelectionResponse =
+  SetAgentProviderRuntimeSelectionResponses[keyof SetAgentProviderRuntimeSelectionResponses];
 
 export type ProbeAgentProviderData = {
   body?: never;

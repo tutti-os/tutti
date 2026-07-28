@@ -14,6 +14,8 @@ type stubAgentStatusService struct {
 	listFn      func(context.Context, agentstatusservice.ListInput) (agentstatusservice.Snapshot, error)
 	probeFn     func(context.Context, agentstatusservice.ProbeInput) (agentstatusservice.ProbeResult, error)
 	runActionFn func(context.Context, agentstatusservice.RunActionInput) (agentstatusservice.RunActionResult, error)
+	catalogFn   func(context.Context, string) (agentstatusservice.CodexRuntimeCatalog, error)
+	selectionFn func(context.Context, agentstatusservice.SetCodexRuntimeSelectionInput) (agentstatusservice.CodexRuntimeCatalog, error)
 }
 
 func (s stubAgentStatusService) List(ctx context.Context, input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
@@ -35,6 +37,74 @@ func (s stubAgentStatusService) RunAction(ctx context.Context, input agentstatus
 		return agentstatusservice.RunActionResult{}, nil
 	}
 	return s.runActionFn(ctx, input)
+}
+
+func (s stubAgentStatusService) GetCodexRuntimeCatalog(ctx context.Context, provider string) (agentstatusservice.CodexRuntimeCatalog, error) {
+	if s.catalogFn == nil {
+		return agentstatusservice.CodexRuntimeCatalog{}, nil
+	}
+	return s.catalogFn(ctx, provider)
+}
+
+func (s stubAgentStatusService) SetCodexRuntimeSelection(ctx context.Context, input agentstatusservice.SetCodexRuntimeSelectionInput) (agentstatusservice.CodexRuntimeCatalog, error) {
+	if s.selectionFn == nil {
+		return agentstatusservice.CodexRuntimeCatalog{}, nil
+	}
+	return s.selectionFn(ctx, input)
+}
+
+func TestDaemonAPIMapsCodexRuntimeCatalog(t *testing.T) {
+	capturedAt := time.Date(2026, 7, 28, 8, 0, 0, 0, time.UTC)
+	api := DaemonAPI{AgentStatusService: stubAgentStatusService{
+		catalogFn: func(_ context.Context, provider string) (agentstatusservice.CodexRuntimeCatalog, error) {
+			if provider != "codex" {
+				t.Fatalf("provider = %q, want codex", provider)
+			}
+			return agentstatusservice.CodexRuntimeCatalog{
+				CapturedAt: capturedAt,
+				Provider:   "codex",
+				Revision:   "catalog-revision",
+				Selection:  agentstatusservice.CodexRuntimeSelection{Mode: agentstatusservice.CodexRuntimeSelectionAuto, State: agentstatusservice.CodexRuntimeSelectionAutomatic},
+				Candidates: []agentstatusservice.CodexRuntimeCatalogCandidate{{
+					ID: "candidate", LauncherPath: "/opt/bun/bin/codex", Sources: []string{"bun_global"}, State: "ready", AppServerReady: true, PackageLayoutOK: true,
+				}},
+			}, nil
+		},
+	}}
+	response, err := api.GetAgentProviderRuntimeCandidates(context.Background(), tuttigenerated.GetAgentProviderRuntimeCandidatesRequestObject{Provider: "codex"})
+	if err != nil {
+		t.Fatalf("GetAgentProviderRuntimeCandidates() error = %v", err)
+	}
+	got, ok := response.(tuttigenerated.GetAgentProviderRuntimeCandidates200JSONResponse)
+	if !ok || got.Revision != "catalog-revision" || len(got.Candidates) != 1 || got.Candidates[0].LauncherPath != "/opt/bun/bin/codex" {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestDaemonAPIForwardsExplicitCodexRuntimeSelection(t *testing.T) {
+	api := DaemonAPI{AgentStatusService: stubAgentStatusService{
+		selectionFn: func(_ context.Context, input agentstatusservice.SetCodexRuntimeSelectionInput) (agentstatusservice.CodexRuntimeCatalog, error) {
+			if input.Mode != agentstatusservice.CodexRuntimeSelectionExplicit || input.CandidateID != "candidate" || input.Revision != "revision" {
+				t.Fatalf("input = %#v", input)
+			}
+			return agentstatusservice.CodexRuntimeCatalog{Provider: "codex", Revision: "revision", Selection: agentstatusservice.CodexRuntimeSelection{Mode: agentstatusservice.CodexRuntimeSelectionExplicit, State: agentstatusservice.CodexRuntimeSelectionSelected}}, nil
+		},
+	}}
+	candidateID, revision := "candidate", "revision"
+	response, err := api.SetAgentProviderRuntimeSelection(context.Background(), tuttigenerated.SetAgentProviderRuntimeSelectionRequestObject{
+		Provider: "codex",
+		Body: &tuttigenerated.SetAgentProviderRuntimeSelectionJSONRequestBody{
+			Mode:        tuttigenerated.AgentProviderRuntimeSelectionModeExplicit,
+			CandidateId: &candidateID,
+			Revision:    &revision,
+		},
+	})
+	if err != nil {
+		t.Fatalf("SetAgentProviderRuntimeSelection() error = %v", err)
+	}
+	if _, ok := response.(tuttigenerated.SetAgentProviderRuntimeSelection200JSONResponse); !ok {
+		t.Fatalf("response = %#v", response)
+	}
 }
 
 func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {

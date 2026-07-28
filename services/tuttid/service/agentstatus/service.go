@@ -12,6 +12,7 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	"golang.org/x/sync/errgroup"
 
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
@@ -291,6 +292,15 @@ type Service struct {
 	// CodexProtocolProbe is injectable for deterministic status tests. Nil uses
 	// the production app-server transport and formal initialize handshake.
 	CodexProtocolProbe func(context.Context, []string, []string) CodexProbeEvidence
+	// CodexRuntimeSelectionStore persists only an explicit Codex launcher
+	// choice. A missing selection always means automatic validated selection.
+	CodexRuntimeSelectionStore CodexRuntimeSelectionStore
+}
+
+type CodexRuntimeSelectionStore interface {
+	GetAgentProviderRuntimeSelection(context.Context, string) (agentproviderbiz.RuntimeSelection, bool, error)
+	PutAgentProviderRuntimeSelection(context.Context, agentproviderbiz.RuntimeSelection) (agentproviderbiz.RuntimeSelection, error)
+	DeleteAgentProviderRuntimeSelection(context.Context, string) error
 }
 
 const authStatusCommandTimeout = 5 * time.Second

@@ -7,6 +7,7 @@ import (
 
 	agentstore "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agentquickpromptbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentquickprompt"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
@@ -108,6 +109,14 @@ type AgentQuickPromptStore interface {
 type PreferencesStore interface {
 	GetDesktopPreferences(context.Context) (preferencesbiz.DesktopPreferences, error)
 	PutDesktopPreferences(context.Context, preferencesbiz.DesktopPreferences) (preferencesbiz.DesktopPreferences, error)
+}
+
+// AgentProviderRuntimeSelectionStore persists an explicit local runtime choice.
+// No value means the daemon must select a validated runtime automatically.
+type AgentProviderRuntimeSelectionStore interface {
+	GetAgentProviderRuntimeSelection(context.Context, string) (agentproviderbiz.RuntimeSelection, bool, error)
+	PutAgentProviderRuntimeSelection(context.Context, agentproviderbiz.RuntimeSelection) (agentproviderbiz.RuntimeSelection, error)
+	DeleteAgentProviderRuntimeSelection(context.Context, string) error
 }
 
 type AgentComposerDefaultsPatchStore interface {

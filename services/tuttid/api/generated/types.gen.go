@@ -400,6 +400,93 @@ func (e AgentProviderProbeStatus) Valid() bool {
 	}
 }
 
+// Defines values for AgentProviderRuntimeCandidateSources.
+const (
+	AgentProviderRuntimeCandidateSourceBunGlobal  AgentProviderRuntimeCandidateSources = "bun_global"
+	AgentProviderRuntimeCandidateSourceHomebrew   AgentProviderRuntimeCandidateSources = "homebrew"
+	AgentProviderRuntimeCandidateSourceNpmGlobal  AgentProviderRuntimeCandidateSources = "npm_global"
+	AgentProviderRuntimeCandidateSourcePath       AgentProviderRuntimeCandidateSources = "path"
+	AgentProviderRuntimeCandidateSourcePnpmGlobal AgentProviderRuntimeCandidateSources = "pnpm_global"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderRuntimeCandidateSources enum.
+func (e AgentProviderRuntimeCandidateSources) Valid() bool {
+	switch e {
+	case AgentProviderRuntimeCandidateSourceBunGlobal:
+		return true
+	case AgentProviderRuntimeCandidateSourceHomebrew:
+		return true
+	case AgentProviderRuntimeCandidateSourceNpmGlobal:
+		return true
+	case AgentProviderRuntimeCandidateSourcePath:
+		return true
+	case AgentProviderRuntimeCandidateSourcePnpmGlobal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentProviderRuntimeCandidateState.
+const (
+	AgentProviderRuntimeCandidateStateFailed      AgentProviderRuntimeCandidateState = "failed"
+	AgentProviderRuntimeCandidateStateReady       AgentProviderRuntimeCandidateState = "ready"
+	AgentProviderRuntimeCandidateStateUnsupported AgentProviderRuntimeCandidateState = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderRuntimeCandidateState enum.
+func (e AgentProviderRuntimeCandidateState) Valid() bool {
+	switch e {
+	case AgentProviderRuntimeCandidateStateFailed:
+		return true
+	case AgentProviderRuntimeCandidateStateReady:
+		return true
+	case AgentProviderRuntimeCandidateStateUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentProviderRuntimeSelectionMode.
+const (
+	AgentProviderRuntimeSelectionModeAuto     AgentProviderRuntimeSelectionMode = "auto"
+	AgentProviderRuntimeSelectionModeExplicit AgentProviderRuntimeSelectionMode = "explicit"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderRuntimeSelectionMode enum.
+func (e AgentProviderRuntimeSelectionMode) Valid() bool {
+	switch e {
+	case AgentProviderRuntimeSelectionModeAuto:
+		return true
+	case AgentProviderRuntimeSelectionModeExplicit:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentProviderRuntimeSelectionState.
+const (
+	AgentProviderRuntimeSelectionStateAutomatic AgentProviderRuntimeSelectionState = "automatic"
+	AgentProviderRuntimeSelectionStateSelected  AgentProviderRuntimeSelectionState = "selected"
+	AgentProviderRuntimeSelectionStateStale     AgentProviderRuntimeSelectionState = "stale"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderRuntimeSelectionState enum.
+func (e AgentProviderRuntimeSelectionState) Valid() bool {
+	switch e {
+	case AgentProviderRuntimeSelectionStateAutomatic:
+		return true
+	case AgentProviderRuntimeSelectionStateSelected:
+		return true
+	case AgentProviderRuntimeSelectionStateStale:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentProviderSkillOptionSourceKind.
 const (
 	AgentProviderSkillOptionSourceKindBundled       AgentProviderSkillOptionSourceKind = "bundled"
@@ -3934,6 +4021,51 @@ type AgentProviderProbeResponse struct {
 // AgentProviderProbeStatus defines model for AgentProviderProbeStatus.
 type AgentProviderProbeStatus string
 
+// AgentProviderRuntimeCandidate defines model for AgentProviderRuntimeCandidate.
+type AgentProviderRuntimeCandidate struct {
+	AppServerReady bool `json:"appServerReady"`
+
+	// Id Opaque identifier valid only for the enclosing catalog revision
+	Id              string                                 `json:"id"`
+	LauncherPath    string                                 `json:"launcherPath"`
+	PackageLayoutOk bool                                   `json:"packageLayoutOk"`
+	PackageRoot     *string                                `json:"packageRoot"`
+	ReasonCode      *string                                `json:"reasonCode"`
+	Sources         []AgentProviderRuntimeCandidateSources `json:"sources"`
+	State           AgentProviderRuntimeCandidateState     `json:"state"`
+	Version         *string                                `json:"version"`
+}
+
+// AgentProviderRuntimeCandidateSources defines model for AgentProviderRuntimeCandidate.Sources.
+type AgentProviderRuntimeCandidateSources string
+
+// AgentProviderRuntimeCandidateState defines model for AgentProviderRuntimeCandidateState.
+type AgentProviderRuntimeCandidateState string
+
+// AgentProviderRuntimeCatalogResponse defines model for AgentProviderRuntimeCatalogResponse.
+type AgentProviderRuntimeCatalogResponse struct {
+	Candidates []AgentProviderRuntimeCandidate `json:"candidates"`
+	CapturedAt time.Time                       `json:"capturedAt"`
+	Provider   WorkspaceAgentProvider          `json:"provider"`
+	Revision   string                          `json:"revision"`
+	Selection  AgentProviderRuntimeSelection   `json:"selection"`
+}
+
+// AgentProviderRuntimeSelection defines model for AgentProviderRuntimeSelection.
+type AgentProviderRuntimeSelection struct {
+	CandidateId  *string                            `json:"candidateId"`
+	LauncherPath *string                            `json:"launcherPath"`
+	Mode         AgentProviderRuntimeSelectionMode  `json:"mode"`
+	State        AgentProviderRuntimeSelectionState `json:"state"`
+	UpdatedAt    *time.Time                         `json:"updatedAt"`
+}
+
+// AgentProviderRuntimeSelectionMode defines model for AgentProviderRuntimeSelectionMode.
+type AgentProviderRuntimeSelectionMode string
+
+// AgentProviderRuntimeSelectionState defines model for AgentProviderRuntimeSelectionState.
+type AgentProviderRuntimeSelectionState string
+
 // AgentProviderSkillOption defines model for AgentProviderSkillOption.
 type AgentProviderSkillOption struct {
 	Description *string                            `json:"description,omitempty"`
@@ -6238,6 +6370,16 @@ type SetAgentModelBindingRequest struct {
 	ModelPolicyId *string `json:"modelPolicyId,omitempty"`
 }
 
+// SetAgentProviderRuntimeSelectionRequest defines model for SetAgentProviderRuntimeSelectionRequest.
+type SetAgentProviderRuntimeSelectionRequest struct {
+	// CandidateId Required when mode is explicit; ignored when mode is auto
+	CandidateId *string                           `json:"candidateId,omitempty"`
+	Mode        AgentProviderRuntimeSelectionMode `json:"mode"`
+
+	// Revision Required when mode is explicit and must match the catalog that supplied candidateId
+	Revision *string `json:"revision,omitempty"`
+}
+
 // SetAgentSessionAutomationRuleOverrideRequest defines model for SetAgentSessionAutomationRuleOverrideRequest.
 type SetAgentSessionAutomationRuleOverrideRequest struct {
 	Disabled bool     `json:"disabled"`
@@ -8361,6 +8503,9 @@ type DismissAccountRegistrationCreditsRewardJSONRequestBody = DismissAccountRegi
 
 // GetAgentProviderComposerOptionsJSONRequestBody defines body for GetAgentProviderComposerOptions for application/json ContentType.
 type GetAgentProviderComposerOptionsJSONRequestBody = GetAgentProviderComposerOptionsRequest
+
+// SetAgentProviderRuntimeSelectionJSONRequestBody defines body for SetAgentProviderRuntimeSelection for application/json ContentType.
+type SetAgentProviderRuntimeSelectionJSONRequestBody = SetAgentProviderRuntimeSelectionRequest
 
 // CreateAgentQuickPromptJSONRequestBody defines body for CreateAgentQuickPrompt for application/json ContentType.
 type CreateAgentQuickPromptJSONRequestBody = CreateAgentQuickPromptRequest

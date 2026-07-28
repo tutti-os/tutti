@@ -228,17 +228,18 @@ func buildDaemonAPI(
 	// probe (List side) — see agentRunOutcomeReporter.
 	runOutcomes := agentstatusservice.NewRunOutcomeStore()
 	agentStatusService := agentstatusservice.Service{
-		AnalyticsReporter:       analyticsReporter,
-		ManagedRuntime:          managedRuntimeResolver,
-		ClaudeCodeRuntimeDir:    filepath.Join(agentRuntimeDir, "claude-code"),
-		RunOutcomes:             runOutcomes,
-		StatusCache:             agentstatusservice.NewProviderStatusCache(),
-		CLIVersionCache:         agentstatusservice.NewCLIVersionCache(),
-		AdapterProbeCache:       agentstatusservice.NewAdapterProbeCache(),
-		BunGlobalBinCache:       agentstatusservice.NewBunGlobalBinCache(),
-		GlobalBinDiscoveryCache: agentstatusservice.NewGlobalBinDiscoveryCache(),
-		DetectionCommands:       agentstatusservice.NewDetectionCommandLimiter(4),
-		UpdateCache:             agentstatusservice.NewProviderUpdateCache(),
+		AnalyticsReporter:          analyticsReporter,
+		ManagedRuntime:             managedRuntimeResolver,
+		ClaudeCodeRuntimeDir:       filepath.Join(agentRuntimeDir, "claude-code"),
+		RunOutcomes:                runOutcomes,
+		StatusCache:                agentstatusservice.NewProviderStatusCache(),
+		CLIVersionCache:            agentstatusservice.NewCLIVersionCache(),
+		AdapterProbeCache:          agentstatusservice.NewAdapterProbeCache(),
+		BunGlobalBinCache:          agentstatusservice.NewBunGlobalBinCache(),
+		GlobalBinDiscoveryCache:    agentstatusservice.NewGlobalBinDiscoveryCache(),
+		DetectionCommands:          agentstatusservice.NewDetectionCommandLimiter(4),
+		UpdateCache:                agentstatusservice.NewProviderUpdateCache(),
+		CodexRuntimeSelectionStore: store,
 	}
 	accountService := accountservice.NewService("")
 	mobileRemoteService, err := buildMobileRemoteService(
