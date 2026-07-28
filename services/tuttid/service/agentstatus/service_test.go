@@ -3073,19 +3073,6 @@ func firstAction(t *testing.T, actions []Action) Action {
 	return actions[0]
 }
 
-func assertProviderCheck(t *testing.T, checks []ProviderCheck, name string, passed bool) {
-	t.Helper()
-	for _, check := range checks {
-		if check.Name == name {
-			if check.Passed != passed {
-				t.Fatalf("check %q passed = %v, want %v; checks=%#v", name, check.Passed, passed, checks)
-			}
-			return
-		}
-	}
-	t.Fatalf("check %q missing in %#v", name, checks)
-}
-
 // codexAppServerHandshakeOKCase is a POSIX `case` arm that answers
 // probeCodexAppServerHandshake's `initialize` request by actually reading
 // the request line from stdin, extracting the id the probe generated for

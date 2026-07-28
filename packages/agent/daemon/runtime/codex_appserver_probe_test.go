@@ -301,40 +301,6 @@ func assertScriptedProbeConnectionClosed(t *testing.T, connection *scriptedAppSe
 	}
 }
 
-func probeOutboundMethods(t *testing.T, connection *scriptedAppServerConnection) []string {
-	t.Helper()
-	connection.mu.Lock()
-	sent := append([][]byte(nil), connection.sent...)
-	connection.mu.Unlock()
-	var methods []string
-	for _, payload := range sent {
-		for _, line := range acpScanLines(payload) {
-			var message struct {
-				Method string `json:"method"`
-			}
-			if err := json.Unmarshal([]byte(line), &message); err != nil {
-				t.Fatalf("decode outbound message: %v", err)
-			}
-			if message.Method != "" {
-				methods = append(methods, message.Method)
-			}
-		}
-	}
-	return methods
-}
-
-func equalStringSlices(left, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
-}
-
 type blockingStartProbeTransport struct {
 	calls   atomic.Int32
 	entered chan struct{}
