@@ -229,6 +229,13 @@ Agent's tool configuration. The first message is composed as rule prompt +
 completed/failed event note; the target Agent reads source context through
 the mention instead of an inline transcript copy. Built-in Harness targets
 are always selectable, so automation works before any WorkspaceAgent exists.
+The target inherits the source Session's runtime working directory and
+canonical rail placement as separate values. A source running in an isolated
+worktree therefore keeps that worktree as its execution cwd while the
+follow-up remains grouped under the source project. For a project-backed
+source with an empty cwd, the canonical project path is the execution fallback;
+source lookup failure stops the launch rather than allocating a detached
+Session directory.
 
 Automation-origin sessions carry the originating rule id, source session id,
 and bounded depth in runtime context. Failure-triggered rescue may evaluate

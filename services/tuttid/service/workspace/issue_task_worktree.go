@@ -35,14 +35,11 @@ func (s IssueManagerService) taskWorktreeRoot() string {
 // resolveIssueTaskBaseDirectory mirrors the launch-time execution directory
 // resolution: the task's explicit directory wins, otherwise the planning
 // session's working directory is inherited.
-func (s IssueManagerService) resolveIssueTaskBaseDirectory(issue workspaceissues.Issue, task workspaceissues.Task) string {
+func resolveIssueTaskBaseDirectory(task workspaceissues.Task, sourceContext IssueSourceSessionContext) string {
 	if explicit := strings.TrimSpace(task.ExecutionDirectory); explicit != "" {
 		return explicit
 	}
-	if source, ok := s.resolveIssueSourceSessionContext(issue); ok {
-		return strings.TrimSpace(source.WorkingDirectory)
-	}
-	return ""
+	return strings.TrimSpace(sourceContext.WorkingDirectory)
 }
 
 func (s IssueManagerService) resolveIssueSourceSessionContext(issue workspaceissues.Issue) (IssueSourceSessionContext, bool) {
@@ -58,10 +55,10 @@ func (s IssueManagerService) resolveIssueSourceSessionContext(issue workspaceiss
 // worktree; anything else (shared non-git directory, unresolvable base)
 // degrades to exclusive dispatch so concurrent sessions can never trample
 // each other.
-func (s IssueManagerService) sequentialTaskIsolation(
-	issue workspaceissues.Issue,
+func sequentialTaskIsolation(
 	tasks []workspaceissues.Task,
 	task workspaceissues.Task,
+	sourceContext IssueSourceSessionContext,
 ) (issueTaskIsolation, bool) {
 	explicit := strings.TrimSpace(task.ExecutionDirectory)
 	if explicit != "" && filepath.IsAbs(explicit) {
@@ -79,7 +76,7 @@ func (s IssueManagerService) sequentialTaskIsolation(
 			return issueTaskIsolation{}, true
 		}
 	}
-	base := s.resolveIssueTaskBaseDirectory(issue, task)
+	base := resolveIssueTaskBaseDirectory(task, sourceContext)
 	if base == "" || !directoryIsGitRepo(base) {
 		return issueTaskIsolation{}, false
 	}

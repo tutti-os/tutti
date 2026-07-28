@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
+	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
 func TestAutomationLaunchPromptComposesInstructionMentionAndEventNote(t *testing.T) {
@@ -50,5 +51,35 @@ func TestAutomationOriginDepthDefaultsLegacyRowsAndReadsNestedDepth(t *testing.T
 	}
 	if depth, ok := automationOriginDepth(map[string]any{"automation": map[string]any{"ruleId": "rule", "depth": float64(2)}}); !ok || depth != 2 {
 		t.Fatalf("nested automation origin = %d, %v", depth, ok)
+	}
+}
+
+func TestAgentRailPlacementFromAutomationSourceKeepsLogicalProjectSeparateFromCwd(t *testing.T) {
+	got := agentRailPlacementFromAutomationSource(&AutomationSourceRailPlacement{
+		Kind:        " project ",
+		ProjectPath: " /workspace/project-a ",
+		SectionKey:  " project:/workspace/project-a ",
+	})
+	if got == nil ||
+		got.Version != 1 ||
+		got.Kind != "project" ||
+		got.ProjectPath != "/workspace/project-a" ||
+		got.SectionKey != "project:/workspace/project-a" {
+		t.Fatalf("rail placement = %#v", got)
+	}
+}
+
+func TestAutomationSourceContextFallsBackToProjectPathWhenCwdIsEmpty(t *testing.T) {
+	got := automationSourceContextFromSession(agentservice.Session{
+		RailSectionKind: "project",
+		RailProjectPath: "/workspace/project-a",
+		RailSectionKey:  "project:/workspace/project-a",
+	})
+	if got.WorkingDirectory != "/workspace/project-a" {
+		t.Fatalf("working directory = %q, want project path fallback", got.WorkingDirectory)
+	}
+	if got.RailPlacement == nil ||
+		got.RailPlacement.ProjectPath != "/workspace/project-a" {
+		t.Fatalf("rail placement = %#v", got.RailPlacement)
 	}
 }

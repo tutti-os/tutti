@@ -74,7 +74,8 @@ export function useAgentGUIOperationActions(
           conversations: input.conversationsRef.current,
           createConversation: enterConversationHome,
           options,
-          transientConversation: input.transientConversation
+          transientConversation: input.transientConversation,
+          userProjects: input.userProjectsRef.current
         })
       ) {
         return;
@@ -92,10 +93,7 @@ export function useAgentGUIOperationActions(
     ]
   );
 
-  const continueInNewConversation = useAgentGUIContinueConversation({
-    ...input,
-    createConversation: enterConversationHome
-  });
+  const continueInNewConversation = useAgentGUIContinueConversation(input);
 
   const isSessionMarkedNonResumable = useCallback(
     (agentSessionId: string): boolean => {

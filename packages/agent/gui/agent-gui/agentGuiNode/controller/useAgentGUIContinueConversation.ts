@@ -5,6 +5,7 @@ import { translate } from "../../../i18n/index";
 import type { AgentHostAccountUserProfile } from "../../../shared/contracts/dto";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import type { AgentGUIConversationUserProject } from "../model/agentGuiConversationProjectResolver";
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
 import {
   agentComposerDraftPrompt,
@@ -13,6 +14,7 @@ import {
 } from "../model/agentComposerDraft";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import { buildContinueInNewConversationPrompt } from "./agentGuiController.conversationHelpers";
+import { resolveAgentGUINewConversationProjectSelection } from "./agentGuiNewConversationRequest";
 import { reportAgentGUIActiveConversationCleared } from "./agentGuiController.reporting";
 import { isPendingNewConversationActivationForSession } from "./useAgentGUIActivation";
 import {
@@ -32,7 +34,6 @@ interface UseAgentGUIContinueConversationInput {
   activePendingActivation: PendingActivationIntentRecord | null;
   agentActivityRuntime: AgentActivityRuntime;
   conversations: readonly AgentGUIConversationSummary[];
-  createConversation(): void;
   currentUserId: string | null | undefined;
   draftByScopeKey: Record<string, AgentComposerDraft>;
   isComposerHomeRef: CurrentValue<boolean>;
@@ -46,8 +47,11 @@ interface UseAgentGUIContinueConversationInput {
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   setIsComposerHome: Dispatch<SetStateAction<boolean>>;
   setIsLoadingMessages: Dispatch<SetStateAction<boolean>>;
+  selectedProjectPathRef: CurrentValue<string | null>;
+  setSelectedProjectPath: Dispatch<SetStateAction<string | null>>;
   transientConversation: AgentGUIConversationSummary | null;
   unactivate(agentSessionId: string): Promise<void>;
+  userProjectsRef: CurrentValue<readonly AgentGUIConversationUserProject[]>;
   workspaceId: string;
 }
 
@@ -67,15 +71,24 @@ export function useAgentGUIContinueConversation(
     const current = inputRef.current;
     const currentConversationId = current.activeConversationIdRef.current;
     if (!currentConversationId) return;
+    const projectSelection = resolveAgentGUINewConversationProjectSelection({
+      activeConversationId: currentConversationId,
+      conversations: current.conversations,
+      transientConversation: current.transientConversation,
+      userProjects: current.userProjectsRef.current
+    });
+    if (projectSelection.kind !== "replace") {
+      current.setDetailError(
+        translate("agentHost.agentGui.sessionActivationFailed")
+      );
+      return;
+    }
     const activeConversation = resolveConversationSummaryById(
       current.conversations,
       currentConversationId,
       current.transientConversation
     );
-    if (!activeConversation) {
-      current.createConversation();
-      return;
-    }
+    if (!activeConversation) return;
     const sourceDraftScopeKey = resolveAgentComposerDraftScopeKey({
       agentSessionId: currentConversationId
     });
@@ -110,6 +123,8 @@ export function useAgentGUIContinueConversation(
       void current.unactivate(currentConversationId);
     }
     current.setIntent({ tag: "home" });
+    current.selectedProjectPathRef.current = projectSelection.projectPath;
+    current.setSelectedProjectPath(projectSelection.projectPath);
     current.isComposerHomeRef.current = true;
     current.setIsComposerHome(true);
     current.activeConversationIdRef.current = null;

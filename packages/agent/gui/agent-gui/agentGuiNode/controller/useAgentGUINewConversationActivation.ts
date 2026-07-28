@@ -95,14 +95,17 @@ export function resolveInitialRailPlacement(input: {
     selectedProjectPath,
     input.userProjects
   );
-  const sectionKey = selectedProject?.sectionKey?.trim() ?? "";
+  if (!selectedProject) {
+    return null;
+  }
+  const sectionKey = selectedProject.sectionKey?.trim() ?? "";
   if (!sectionKey) {
     return null;
   }
   return {
     version: 1,
     kind: "project",
-    projectPath: selectedProjectPath,
+    projectPath: selectedProject.path.trim(),
     sectionKey
   };
 }

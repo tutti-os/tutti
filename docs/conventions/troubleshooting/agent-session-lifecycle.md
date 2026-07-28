@@ -1640,6 +1640,11 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   while its explicitly selected child-project section says `No chats yet`.
   Switching provider filters may briefly retain the previous scope's row before
   the exact persisted membership makes the child section empty again.
+  Delegated Issue tasks, Agent CLI handoffs, Automation follow-ups, or
+  AgentGUI “New conversation” / “Continue in new conversation” can show a
+  related variant: the new Session appears in Chats or under a temporary
+  worktree instead of the source project, and Git commands no longer operate
+  on the intended checkout.
 - Quick checks:
   Inspect the session `cwd` from the activity snapshot. Generated no-project
   sessions should carry `runtimeContext.noProject: true` in the daemon report
@@ -1657,6 +1662,12 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `rail_section_key` in `workspace_agent_sessions`. If the cwd is inside a
   registered child project but the persisted key names an ancestor, check
   whether that child was registered only after the original import completed.
+  For a newly derived Session, compare those three fields with the source
+  Session and inspect whether the create adapter supplied both `cwd` and
+  `RailPlacement`. If an Issue has `source_session_id` but no Run was created,
+  verify that the source Session still resolves; dispatch intentionally waits
+  instead of guessing. For project Sessions with an empty cwd, verify that the
+  adapter used `rail_project_path` as the runtime fallback.
 - Root cause:
   Rail membership is classified once by the daemon when the session is first
   persisted, using `cwd`, runtime no-project markers, and current user projects.
@@ -1673,6 +1684,12 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   writes creates another ordering trap: the store may see an existing parent
   project but not the selected child while assigning the session's first,
   normally immutable rail key.
+  Derived-Session entry points add the inverse trap: copying only runtime cwd
+  loses logical ownership when the cwd is an isolated worktree, while copying
+  only rail placement can leave the Agent without the source checkout. Looking
+  up the source twice during one dispatch can also mix two different snapshots,
+  and silently accepting a missing source turns an invalid handoff into a
+  detached allocator-backed Session.
 - Fix:
   Build runtime state from a clone of the session launch `RuntimeContext`, overlay
   canonical session fields, and merge provider `StateAdapter` context as a patch
@@ -1696,6 +1713,11 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   key rather than racing the runtime's asynchronous activity reporter. AgentGUI
   must project sessions only by exact key equality and must not retain a cwd-based
   grouping fallback.
+  For handoff, Issue, Automation, and AgentGUI new-conversation flows, carry
+  runtime cwd and canonical rail placement independently. Resolve project
+  identity by exact section key, use the canonical project path when a
+  project-backed source cwd is empty, take one source snapshot per dispatch,
+  and fail closed when a required source Session cannot be resolved.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
@@ -1704,6 +1726,9 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `go test ./packages/agent/store-sqlite -run 'ImportedRail|ClassifiesRail'`,
   `node --import ./test/register-asset-stub.mjs --test --experimental-strip-types ./src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.test.ts`
   from `apps/desktop`, then run `pnpm check:changed`.
+  For derived-Session regressions, also run the focused AgentGUI
+  new-conversation tests plus
+  `go test ./service/workspace ./service/automationrule`.
 - References:
   [controller_state.go](../../../packages/agent/daemon/runtime/controller_state.go)
   [controller_state_test.go](../../../packages/agent/daemon/runtime/controller_state_test.go)
@@ -1715,6 +1740,8 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [desktopWorkspaceUserProjectService.ts](../../../apps/desktop/src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.ts)
   [agentGuiConversationProjectResolver.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationProjectResolver.ts)
   [useAgentGuiConversationList.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList.ts)
+  [issue_sequential_dispatch.go](../../../services/tuttid/service/workspace/issue_sequential_dispatch.go)
+  [daemon_executor.go](../../../services/tuttid/service/automationrule/daemon_executor.go)
 
 ### AgentGUI new conversation does nothing after leaving a Chats session
 
@@ -1742,13 +1769,16 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   Normalize default project selection at the AgentGUI controller's
   new-conversation command. Explicit section actions remain authoritative; an
   active Chats Session replaces the home selection with no project, an active
-  project Session keeps its working directory, and an action already on Home
-  preserves the user's explicit selection. Views forward the intent without
+  project Session resolves its immutable section key back to the canonical
+  registered project path, and an action already on Home preserves the user's
+  explicit selection. The continuation action shares this resolver before it
+  moves the source mention draft to Home. Views forward the intent without
   interpreting composer presentation fields.
 - Validation:
   Cover the command through final `session/activate` for three P0 scenarios:
-  active Chats clears a generated cwd, active Project preserves its cwd and
-  canonical placement, and Home preserves an explicit project selection.
+  active Chats clears a generated cwd, active Project with a nested/worktree
+  cwd preserves its canonical placement, Continue uses that same project, and
+  Home preserves an explicit project selection.
 - References:
   [agentGuiNewConversationRequest.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiNewConversationRequest.ts)
   [useAgentGUIOperationActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIOperationActions.ts)

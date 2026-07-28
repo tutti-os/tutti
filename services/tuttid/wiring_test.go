@@ -111,6 +111,25 @@ func TestIssueSourceSessionContextResolverReturnsExecutionAndRailIdentity(t *tes
 	}
 }
 
+func TestIssueSourceSessionContextResolverFallsBackToProjectPathWhenCwdIsEmpty(t *testing.T) {
+	resolver := issueSourceSessionContextResolver{Sessions: fakeIssueSourceSessionReader{
+		found: true,
+		session: agentservice.PersistedSession{
+			RailSectionKind: "project",
+			RailProjectPath: " /workspace/project ",
+			RailSectionKey:  "project:/workspace/project",
+		},
+	}}
+
+	got, ok := resolver.ResolveSourceSessionContext("workspace-1", "planning-session")
+	if !ok {
+		t.Fatal("ResolveSourceSessionContext() found = false")
+	}
+	if got.WorkingDirectory != "/workspace/project" {
+		t.Fatalf("working directory = %q, want project-path fallback", got.WorkingDirectory)
+	}
+}
+
 type fakeAnalyticsDebugEventStream struct{}
 
 func (fakeAnalyticsDebugEventStream) PublishFromServer(context.Context, string, []byte) error {
