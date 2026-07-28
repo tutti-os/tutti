@@ -80,7 +80,7 @@ func TestClaudeSessionForkTraversesProductionWiringAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ForkSession source -> child: %v", err)
 	}
-	childProviderSessionID := forked.Operation.OperationID
+	childProviderSessionID := "claude-child"
 	if forked.Operation.Status != storesqlite.SessionForkStatusCommitted ||
 		forked.Session.ProviderSessionID != childProviderSessionID ||
 		forked.Lineage == nil {
@@ -176,7 +176,7 @@ func TestClaudeSessionForkTraversesProductionWiringAcrossRestart(t *testing.T) {
 		t.Fatalf("ForkSession child -> grandchild: %v", err)
 	}
 	if nested.Operation.Status != storesqlite.SessionForkStatusCommitted ||
-		nested.Session.ProviderSessionID != nested.Operation.OperationID ||
+		nested.Session.ProviderSessionID != "claude-grandchild" ||
 		nested.Lineage == nil {
 		t.Fatalf("nested fork result=%#v", nested)
 	}
@@ -403,27 +403,27 @@ func (t *claudeForkIntegrationTransport) providerTurnIDsForSession(
 }
 
 func (t *claudeForkIntegrationTransport) forkTarget(
-	sourceID, targetID string,
-) (string, bool) {
+	sourceID string,
+) (string, string, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if targetID == "" {
-		return "", false
-	}
+	targetID := ""
 	targetTurnID := ""
 	switch {
 	case sourceID == "claude-source":
+		targetID = "claude-child"
 		targetTurnID = "child-prompt-1"
 	case t.providerTurnIDs[sourceID] != "":
+		targetID = "claude-grandchild"
 		targetTurnID = "grandchild-prompt-1"
 	default:
-		return "", false
+		return "", "", false
 	}
 	if t.providerTurnIDs == nil {
 		t.providerTurnIDs = make(map[string]string)
 	}
 	t.providerTurnIDs[targetID] = targetTurnID
-	return targetTurnID, true
+	return targetID, targetTurnID, true
 }
 
 type claudeForkIntegrationConnection struct {
@@ -464,10 +464,19 @@ func (c *claudeForkIntegrationConnection) Send(data []byte) error {
 		sourceID := claudeForkIntegrationString(
 			request.Payload["providerSessionId"],
 		)
-		targetID := claudeForkIntegrationString(
+		if claudeForkIntegrationString(
 			request.Payload["targetProviderSessionId"],
-		)
-		targetTurnID, ok := c.transport.forkTarget(sourceID, targetID)
+		) != "" {
+			return c.emit(
+				request.ID,
+				"error",
+				map[string]any{
+					"error":               "fixture received a deterministic provider target",
+					"deliveryDisposition": "not_started",
+				},
+			)
+		}
+		targetID, targetTurnID, ok := c.transport.forkTarget(sourceID)
 		if !ok {
 			return c.emit(
 				request.ID,
@@ -501,15 +510,25 @@ func (c *claudeForkIntegrationConnection) Send(data []byte) error {
 		)
 	case "exec":
 		turnID := claudeForkIntegrationString(request.Payload["turnId"])
-		providerTurnID := claudeForkIntegrationString(
-			request.Payload["providerTurnId"],
+		promptCorrelationID := claudeForkIntegrationString(
+			request.Payload["promptCorrelationId"],
 		)
+		if err := c.emit(
+			"",
+			"provider_turn_started",
+			map[string]any{
+				"turnId":         turnID,
+				"providerTurnId": promptCorrelationID,
+			},
+		); err != nil {
+			return err
+		}
 		if err := c.emit(
 			"",
 			"assistant_completed",
 			map[string]any{
 				"turnId":         turnID,
-				"providerTurnId": providerTurnID,
+				"providerTurnId": promptCorrelationID,
 				"content":        "continued child",
 			},
 		); err != nil {
@@ -520,7 +539,7 @@ func (c *claudeForkIntegrationConnection) Send(data []byte) error {
 			"turn_completed",
 			map[string]any{
 				"turnId":         turnID,
-				"providerTurnId": providerTurnID,
+				"providerTurnId": promptCorrelationID,
 				"stopReason":     "end_turn",
 			},
 		)
@@ -537,7 +556,7 @@ func (c *claudeForkIntegrationConnection) emit(
 	payload map[string]any,
 ) error {
 	data, err := json.Marshal(map[string]any{
-		"version": 3,
+		"version": 5,
 		"id":      id,
 		"type":    eventType,
 		"payload": payload,

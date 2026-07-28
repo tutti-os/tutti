@@ -25,8 +25,8 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 		return nil, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = adapterSession.providerSessionID
-	providerTurnID := newID()
-	a.beginClaudeSDKRootTurn(adapterSession, turnID, providerTurnID)
+	promptCorrelationID := newID()
+	a.beginClaudeSDKRootTurn(adapterSession, turnID, "")
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 	events := make([]activityshared.Event, 0, 4)
 	emitEvents := func(next []activityshared.Event) {
@@ -45,9 +45,6 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
 		}),
-		claudeSDKRootProviderTurnStartedEvent(session, turnID, providerTurnID, map[string]any{
-			"adapter": claudeSDKSidecarAdapterName,
-		}),
 	}
 	if event, ok := adapterSession.mirrorGoalSlashPrompt(session, visibleText); ok {
 		startEvents = append(startEvents, event)
@@ -57,17 +54,17 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 	waiter := a.registerClaudeSDKTurn(adapterSession, turnID, emit)
 	if err := a.startClaudeSDKReader(session.AgentSessionID, adapterSession); err != nil {
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
-		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, providerTurnID, err)...)
+		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, err)...)
 		return events, err
 	}
-	payload := claudeSDKExecPayload(ctx, session, turnID, providerTurnID, content, visibleText)
+	payload := claudeSDKExecPayload(ctx, session, turnID, promptCorrelationID, content, visibleText)
 	if err := adapterSession.send(claudeSDKSidecarRequest{
 		ID:      newID(),
 		Type:    "exec",
 		Payload: payload,
 	}); err != nil {
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
-		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, providerTurnID, err)...)
+		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, err)...)
 		return events, err
 	}
 
@@ -77,7 +74,7 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 			events = append(events, result.events...)
 		}
 		if result.err != nil {
-			events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, providerTurnID, result.err)...)
+			events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, promptCorrelationID, result.err)...)
 		}
 		return events, result.err
 	case <-ctx.Done():
@@ -100,16 +97,16 @@ func claudeSDKExecPayload(
 	ctx context.Context,
 	session Session,
 	turnID string,
-	providerTurnID string,
+	promptCorrelationID string,
 	content []PromptContentBlock,
 	visibleText string,
 ) map[string]any {
 	payload := map[string]any{
-		"agentSessionId": session.AgentSessionID,
-		"turnId":         turnID,
-		"providerTurnId": providerTurnID,
-		"prompt":         promptTextForClaudeSDK(content, visibleText),
-		"content":        promptContentForClaudeSDK(content, visibleText),
+		"agentSessionId":      session.AgentSessionID,
+		"turnId":              turnID,
+		"promptCorrelationId": promptCorrelationID,
+		"prompt":              promptTextForClaudeSDK(content, visibleText),
+		"content":             promptContentForClaudeSDK(content, visibleText),
 	}
 	if hostContext := renderTuttiModeHostContext(tuttiModeTurnSnapshotFromContext(ctx)); hostContext != "" {
 		payload["hostContext"] = hostContext

@@ -75,6 +75,17 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		return nil, false, nil
 	case "session_state":
 		return []activityshared.Event{newSessionActivityEvent(session, EventSessionUpdated, firstNonEmpty(session.Status, SessionStatusReady), claudeSDKRuntimeContext(session, adapterSession))}, false, nil
+	case "provider_turn_started":
+		if eventTurnID == "" || providerTurnID == "" {
+			return nil, false, errors.New("claude SDK provider turn start omitted identity")
+		}
+		a.beginClaudeSDKRootTurn(adapterSession, eventTurnID, providerTurnID)
+		return []activityshared.Event{claudeSDKRootProviderTurnStartedEvent(
+			session,
+			eventTurnID,
+			providerTurnID,
+			map[string]any{"adapter": claudeSDKSidecarAdapterName},
+		)}, false, nil
 	case "turn_started":
 		metadata := map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,

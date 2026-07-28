@@ -1,3 +1,10 @@
+import {
+  AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
+  createAgentSessionEngine,
+  selectEngineSession,
+  type AgentSessionEngine
+} from "@tutti-os/agent-activity-core";
+import { agentActivitySessionFromTuttidSession } from "@tutti-os/agent-activity-tuttid-adapter";
 import type {
   TuttidClient,
   WorkspaceAgentSession,
@@ -26,11 +33,7 @@ describe("WorkspaceConversationRailService", () => {
         };
       }
     } as unknown as TuttidClient;
-    const service = new WorkspaceConversationRailService(
-      workspace,
-      client,
-      new ManualClock()
-    );
+    const service = createRailService(client, new ManualClock());
 
     await Promise.all([service.start(), service.reconcile()]);
 
@@ -40,7 +43,7 @@ describe("WorkspaceConversationRailService", () => {
 
   test("keeps server section identity and loads the next exact page", async () => {
     const sectionQueries: Array<Record<string, unknown>> = [];
-    const receivedSessionPages: string[][] = [];
+    const receivedSessionIds: string[] = [];
     const client = {
       listWorkspaceAgentPinnedSessionPage: async () => ({
         page: { hasMore: false, sessions: [], totalCount: 0 },
@@ -87,14 +90,9 @@ describe("WorkspaceConversationRailService", () => {
         workspaceId: workspace.id
       })
     } as unknown as TuttidClient;
-    const service = new WorkspaceConversationRailService(
-      workspace,
-      client,
-      new ManualClock()
+    const service = createRailService(client, new ManualClock(), (sessionId) =>
+      receivedSessionIds.push(sessionId)
     );
-    service.attachSessionConsumer((sessions) => {
-      receivedSessionPages.push(sessions.map((session) => session.id));
-    });
 
     await service.start();
     await service.loadMore("section:project:/repo");
@@ -112,7 +110,7 @@ describe("WorkspaceConversationRailService", () => {
       sessionIds: ["session-1", "session-2"],
       totalCount: 2
     });
-    expect(receivedSessionPages).toEqual([["session-1"], ["session-2"]]);
+    expect(receivedSessionIds).toEqual(["session-1", "session-2"]);
     expect(service.getSnapshot()).not.toHaveProperty("sessions");
 
     service.dispose();
@@ -159,11 +157,7 @@ describe("WorkspaceConversationRailService", () => {
         };
       }
     } as unknown as TuttidClient;
-    const service = new WorkspaceConversationRailService(
-      workspace,
-      client,
-      new ManualClock()
-    );
+    const service = createRailService(client, new ManualClock());
 
     await service.start();
     await service.loadMore("section:conversations");
@@ -183,6 +177,112 @@ describe("WorkspaceConversationRailService", () => {
     service.dispose();
   });
 
+  test("does not drop an authoritative refresh while pagination is loading", async () => {
+    let sectionReads = 0;
+    let paginationAborted = false;
+    const client = {
+      listWorkspaceAgentSessionSectionPage: async (
+        _workspaceId: string,
+        _query: Record<string, unknown>,
+        options?: { signal?: AbortSignal }
+      ) =>
+        new Promise<never>((_resolve, reject) => {
+          options?.signal?.addEventListener(
+            "abort",
+            () => {
+              paginationAborted = true;
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true }
+          );
+        }),
+      listWorkspaceAgentSessionSections: async () => {
+        sectionReads += 1;
+        return {
+          pinned: { hasMore: false, sessions: [], totalCount: 0 },
+          sections: [
+            {
+              hasMore: true,
+              kind: "conversations" as const,
+              nextCursor: "cursor-1",
+              sectionKey: "conversations",
+              sessions: [createSession("session-1", sectionReads)],
+              totalCount: 2
+            }
+          ],
+          workspaceId: workspace.id
+        };
+      }
+    } as unknown as TuttidClient;
+    const service = createRailService(client, new ManualClock());
+
+    await service.start();
+    const loadMore = service.loadMore("section:conversations");
+    await Promise.resolve();
+    expect(service.getSnapshot().loadingMoreSectionId).toBe(
+      "section:conversations"
+    );
+
+    await service.refresh();
+    await loadMore;
+
+    expect(paginationAborted).toBe(true);
+    expect(sectionReads).toBe(2);
+    expect(service.getSnapshot().loadingMoreSectionId).toBeNull();
+    service.dispose();
+  });
+
+  test("does not ingest a first-page response after pause", async () => {
+    let resolveSections!: () => void;
+    let requestSignal: AbortSignal | undefined;
+    let engine!: AgentSessionEngine;
+    const client = {
+      listWorkspaceAgentSessionSections: async (
+        _workspaceId: string,
+        _query: Record<string, unknown>,
+        options?: { signal?: AbortSignal }
+      ) => {
+        requestSignal = options?.signal;
+        await new Promise<void>((resolve) => {
+          resolveSections = resolve;
+        });
+        return {
+          pinned: { hasMore: false, sessions: [], totalCount: 0 },
+          sections: [
+            {
+              hasMore: false,
+              kind: "conversations" as const,
+              sectionKey: "conversations",
+              sessions: [createSession("session-after-pause", 1)],
+              totalCount: 1
+            }
+          ],
+          workspaceId: workspace.id
+        };
+      }
+    } as unknown as TuttidClient;
+    const service = createRailService(
+      client,
+      new ManualClock(),
+      undefined,
+      (createdEngine) => {
+        engine = createdEngine;
+      }
+    );
+
+    const start = service.start();
+    service.pause();
+    expect(requestSignal?.aborted).toBe(true);
+    resolveSections();
+    await start;
+
+    expect(
+      selectEngineSession(engine.getSnapshot(), "session-after-pause")
+    ).toBeNull();
+    service.dispose();
+    engine.dispose();
+  });
+
   test("uses polling only while the live event lane is disconnected", async () => {
     const clock = new RecordingClock();
     const client = {
@@ -192,11 +292,7 @@ describe("WorkspaceConversationRailService", () => {
         workspaceId: workspace.id
       })
     } as unknown as TuttidClient;
-    const service = new WorkspaceConversationRailService(
-      workspace,
-      client,
-      clock
-    );
+    const service = createRailService(client, clock);
 
     await service.start();
     expect(clock.activeDelays()).toEqual([2_000]);
@@ -211,7 +307,7 @@ describe("WorkspaceConversationRailService", () => {
 
   test("keeps canonical session entities out of rail state", async () => {
     const session = createSession("session-1", 1);
-    const received: WorkspaceAgentSession[][] = [];
+    const receivedSessionIds: string[] = [];
     const client = {
       listWorkspaceAgentSessionSections: async () => ({
         pinned: { hasMore: false, sessions: [], totalCount: 0 },
@@ -227,16 +323,13 @@ describe("WorkspaceConversationRailService", () => {
         workspaceId: workspace.id
       })
     } as unknown as TuttidClient;
-    const service = new WorkspaceConversationRailService(
-      workspace,
-      client,
-      new ManualClock()
+    const service = createRailService(client, new ManualClock(), (sessionId) =>
+      receivedSessionIds.push(sessionId)
     );
-    service.attachSessionConsumer((sessions) => received.push([...sessions]));
 
     await service.start();
 
-    expect(received).toEqual([[session]]);
+    expect(receivedSessionIds).toEqual([session.id]);
     expect(service.getSnapshot()).toEqual({
       errorCode: null,
       loadingMoreSectionId: null,
@@ -251,6 +344,38 @@ describe("WorkspaceConversationRailService", () => {
     service.dispose();
   });
 });
+
+function createRailService(
+  client: TuttidClient,
+  clock: ClockPort,
+  onMappedSession?: (agentSessionId: string) => void,
+  onEngine?: (engine: AgentSessionEngine) => void
+): WorkspaceConversationRailService {
+  const engine = createAgentSessionEngine({
+    clock: { nowUnixMs: () => clock.now() },
+    commandPort: {
+      execute: () => Promise.reject(new Error("unexpected engine command"))
+    },
+    identity: {
+      origin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
+      workspaceId: workspace.id
+    },
+    scheduler: {
+      schedule: (delayMs, task) => clock.schedule(delayMs, task)
+    }
+  });
+  onEngine?.(engine);
+  return new WorkspaceConversationRailService(workspace, client, clock, {
+    engine,
+    getActiveConversationId: () => null,
+    mapSession: (session) => {
+      onMappedSession?.(session.id);
+      return agentActivitySessionFromTuttidSession(workspace.id, session, {
+        currentUserId: "account-user-1"
+      });
+    }
+  });
+}
 
 function createSession(
   id: string,

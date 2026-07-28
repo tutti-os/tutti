@@ -31,7 +31,7 @@ import { MobileQuickPromptLibraryService } from "./mobileQuickPromptLibraryServi
 import type { AppLifecycleState, MobileServicePorts } from "./servicePorts";
 import { WorkspaceActivityService } from "./workspaceActivityService";
 import { WorkspaceCatalogService } from "./workspaceCatalogService";
-import { WorkspaceConversationRailService } from "./workspaceConversationRailService";
+import type { WorkspaceConversationRailService } from "./workspaceConversationRailService";
 import { WorkspaceNavigationService } from "./workspaceNavigationService";
 
 const BACKGROUND_GRACE_MS = 15_000;
@@ -172,22 +172,17 @@ export class MobileApplicationService extends ObservableService<MobileApplicatio
     const generation = ++this.workspaceGeneration;
     const navigation = new WorkspaceNavigationService();
     const drafts = new ComposerDraftService();
-    const rail = new WorkspaceConversationRailService(
-      workspace,
-      authenticated.client,
-      this.ports.clock
-    );
     const activity = new WorkspaceActivityService(
       workspace,
       authenticated.client,
       authenticated.directory,
       navigation,
       drafts,
-      rail,
       this.ports.clock,
       authenticated.session.userId,
       this.ports.deviceLink
     );
+    const rail = activity.rail;
     const services = new ServiceCollection();
     services.set(IWorkspaceNavigationService, navigation);
     services.set(IComposerDraftService, drafts);

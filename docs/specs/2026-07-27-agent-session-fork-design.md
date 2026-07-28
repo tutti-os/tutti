@@ -358,9 +358,11 @@ provider child 已经创建但 binding 失败，operation 进入 `unknown`，不
 
 Claude SDK Driver 使用固定版本的官方公开 API：
 
-1. 新 Claude Turn 在提交前由 Go adapter 生成 SDK prompt UUID，并作为 canonical
-   `RootProviderTurnID` 传给 sidecar；旧版以 canonical Turn ID 代替 UUID 的历史记录不会猜测
-   或回填，因此 fail closed；
+1. Go adapter 在提交前生成的 UUID 仅用于出站 prompt 关联，不作为 provider 身份；
+   Claude Code 可能在持久化 transcript 时改写 caller UUID，因此 sidecar 必须等待 root
+   user-message 回显，读取 Claude 实际 UUID 后发出 `provider_turn_started`，canonical
+   `RootProviderTurnID` 只接受该已观察身份；旧版没有真实 SDK UUID 的历史记录不会猜测或
+   回填，因此 fail closed；
 2. capability 通过 stateless sidecar 调用
    `getSessionMessages(..., {includeSystemMessages: true})`，只返回 root user-message UUID
    allowlist，但保留 system message 用于精确 checkpoint 与完整 prefix 校验；
@@ -369,17 +371,23 @@ Claude SDK Driver 使用固定版本的官方公开 API：
 4. 调用 `forkSession(source, {upToMessageId, title: frozenTargetTitle})`；
 5. 再次读取 source，并读取 child 的 `getSessionInfo` / `getSessionMessages`；两次
    `getSessionMessages` 均使用 `includeSystemMessages: true`。source 选中 prefix
-   必须在调用前后不变，child 必须与该完整 prefix 做结构等价验证
-   (`type/message/parent_tool_use_id`，忽略已重映射的 UUID/session id)；
-6. 只有完整验证后才按已证明的逐消息双射生成 source→child provider Turn UUID mapping，
-   返回 `provider_owned` receipt；消息内容只在 sidecar 内比较，不返回或记录；
+   必须在调用前后不变。官方 SDK 可能已将尾随 system message 写入 child transcript，
+   但在后续 user message 扩展 parent chain 前不从 `getSessionMessages` 返回它；因此 child
+   与去除尾随 system message 后的 SDK 可观察 prefix 做结构等价验证
+   (`type/message/parent_tool_use_id`，忽略已重映射的 UUID/session id)，receipt 仍绑定
+   source 的完整 inclusive checkpoint；
+6. 只有完整验证后才按已证明的可观察 root user-message 顺序双射生成 source→child
+   provider Turn UUID mapping，返回绑定完整 source checkpoint 与可观察 child prefix 的
+   `provider_owned` receipt；消息内容只在 sidecar 内比较，不返回或记录；
 7. Store 在 `provider_accepted` checkpoint 原子保存 mapping/receipt，并在 canonical clone
    时重写每个 child Turn 的 `RootProviderTurnID`，使 fork child 可以继续 Fork；
 8. child 恢复时拒绝 source 的 stale `resumeCursor`，只从 canonical child
    `providerSessionId` 启动；该约束覆盖进程重启后的首次续聊。
 
 `forkSession` 调用前失败是 `not_started`；一旦调用开始，transport、SDK 或 post-verify
-失败都是 `unknown`。这样不会因响应丢失或复验失败而创建第二个 provider child。
+失败都是 `unknown`。Claude provider child UUID 由 SDK 生成，driver 不声明 deterministic
+target identity；Host 仍预留 deterministic canonical target Session ID，但绝不重放
+`unknown` provider mutation。这样不会因响应丢失或复验失败而创建第二个 provider child。
 
 损坏 target 的修复规则更严格：只有首条 `session_meta` 已精确验证 child identity，且包括
 partial tail 在内的全部原始字节都是 source rollout 的严格前缀时，才允许从 source 原位

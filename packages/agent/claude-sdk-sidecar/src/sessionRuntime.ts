@@ -179,7 +179,7 @@ export class SessionRuntime {
     this.goalExecQueue = new GoalExecQueue((input) =>
       this.dispatchExec(
         input.turnId,
-        input.providerTurnId,
+        input.promptCorrelationId,
         input.prompt,
         input.content,
         input.turnOrigin,
@@ -248,10 +248,10 @@ export class SessionRuntime {
     turnOrigin?: string,
     goal?: GoalCommandDispatch,
     hostContext = "",
-    providerTurnId = ""
+    promptCorrelationId = ""
   ): void {
     if (this.driver) {
-      this.driver.exec(turnId, prompt, providerTurnId);
+      this.driver.exec(turnId, prompt, promptCorrelationId);
       return;
     }
     if (this.sessionClosed) {
@@ -267,7 +267,7 @@ export class SessionRuntime {
     if (goal?.operationId && goal.revision > 0) {
       this.goalExecQueue.accept({
         turnId,
-        providerTurnId,
+        promptCorrelationId,
         prompt,
         content,
         turnOrigin,
@@ -278,7 +278,7 @@ export class SessionRuntime {
     }
     this.dispatchExec(
       turnId,
-      providerTurnId,
+      promptCorrelationId,
       prompt,
       content,
       turnOrigin,
@@ -289,7 +289,7 @@ export class SessionRuntime {
 
   private dispatchExec(
     turnId: string,
-    providerTurnId: string | undefined,
+    promptCorrelationId: string | undefined,
     prompt: string,
     content?: unknown,
     turnOrigin?: string,
@@ -299,7 +299,7 @@ export class SessionRuntime {
     this.turns.closeSyntheticBeforeUserTurn();
     const turn: RuntimeTurn = {
       turnId,
-      promptUuid: providerTurnId?.trim() || crypto.randomUUID(),
+      promptUuid: promptCorrelationId?.trim() || crypto.randomUUID(),
       ...(turnOrigin ? { origin: turnOrigin } : {}),
       ...(goal
         ? {
@@ -346,6 +346,7 @@ export class SessionRuntime {
           }
         }
         generation.expectPromptEcho(turn.promptUuid);
+        this.turns.expectProviderTurnIdentity(turn.turnId);
         generation.promptQueue.push({
           uuid: turn.promptUuid,
           type: "user",

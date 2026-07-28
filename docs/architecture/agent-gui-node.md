@@ -328,6 +328,15 @@ and `getSessionMessages`. It returns a verification receipt plus the
 source-to-child provider Turn UUID mapping. Store persists that evidence at
 `provider_accepted` and rewrites cloned Turns to the child UUIDs in the
 canonical commit.
+Claude's official `forkSession` allocates the provider child UUID, so this
+driver does not attest deterministic provider identity. Host still reserves a
+deterministic canonical target Session ID, dispatches the provider mutation
+once, and fails closed without replay when delivery becomes `unknown`.
+For live Claude Turns, a daemon-generated prompt UUID is correlation only:
+Claude Code may rewrite it before persisting the transcript. The sidecar binds
+provider Turn identity from the observed root user-message UUID and emits
+`provider_turn_started`; the daemon must not publish canonical provider
+identity before that observation.
 Binding failure becomes `unknown`; Host neither commits the canonical child nor
 reissues `thread/fork`.
 
@@ -573,14 +582,47 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 
 ### 4.5 Rail query and presentation state
 
-The Rail query cache stores section metadata, ordered Session IDs, cursors, and totals only. Session entities always come from the engine.
+The headless `AgentGUIConversationRailQueryController` is the single
+cross-platform owner of Rail query scope, first-page refresh, cursor
+pagination, stale-request fences, membership reconciliation, and Engine
+ingestion. Desktop and Native Mobile both construct it through
+`createAgentGUIConversationRailQueryController`, the canonical factory
+exported by `@tutti-os/agent-gui/conversation-rail-controller`; a host must not
+instantiate the internal implementation or recreate that state machine in its
+app layer.
 
-Mobile follows the same ownership rule even though its Native Rail controller is
-host-owned: each first-page or pagination response passes Session DTOs
-transiently through the shared mapper into Engine upserts, while the Rail
-snapshot retains only memberships, ordered IDs, cursors, totals, and loading
-state. Refreshing a bounded Rail page is not deletion evidence and must not
-replace or prune canonical Engine entities.
+The Rail query cache stores section metadata, ordered Session IDs, cursors, and
+totals only. Each first-page or pagination response passes Session DTOs
+transiently through the host mapper into Engine upserts, while the Rail
+snapshot retains only memberships, ordered IDs, cursors, totals, loading, and
+failure state. Refreshing a bounded Rail page is not deletion evidence and
+must not replace or prune canonical Engine entities.
+
+The public headless snapshot contains query and membership state only.
+Desktop-localized conversation summaries are projected from the snapshot plus
+canonical Engine state outside the controller, so the Native entrypoint does
+not depend on Desktop presentation or locale bundles. The public factory
+accepts only the Engine, active-conversation identity getter, canonical runtime
+queries, workspace identity, and small scheduling/page-size ports; cache
+records, diagnostic trackers, and request-generation seams remain package
+internals. Surface identity such as a Desktop AgentGUI `nodeId` is
+adapter-owned diagnostic context: the Desktop runtime adapter enriches
+diagnostic payloads instead of passing it into the headless controller
+interface.
+
+Resolved query results may be reused from the workspace cache. In-flight
+first-page entity payloads are controller-generation scoped and must not be
+shared across mounted controllers: detach, pause, or a scope change must fence
+both Engine ingestion and cache writes from the obsolete request.
+The canonical factory owns one resolved-query cache per workspace Engine, so
+Desktop and Mobile receive the same remount semantics without exposing cache
+access through `AgentActivityRuntime` or a host adapter.
+
+Hosts own the transport adapter, DTO mapping, runtime-availability policy, and
+surface lifecycle. For example, Mobile owns disconnected polling and
+foreground/background pause-resume around the shared controller. Native hosts
+also own their renderer, localized status projection, and interaction layout;
+those host concerns must not leak back into the shared query controller.
 
 Cross-platform hosts may reuse the DOM-free canonical Rail summary projection
 from `@tutti-os/agent-gui/conversation-rail-projection`. They must still obtain
@@ -631,13 +673,17 @@ setting but is not currently a create-request field; Mobile must not add it as
 an extra property. Supporting an explicit first-Turn opt-out requires changing
 OpenAPI and the create adapter first.
 
-Hosts install the complete query/mutation cohort from
-`@tutti-os/agent-gui/conversation-rail-runtime`; the shared factory owns the
-workspace-scoped cache lifetime while transport adapters own only protocol
-mapping and authorization. Batch deletion requires both authoritative section
-candidate lookup and the batch mutation. AgentGUI fails that paired capability
-closed when either method is absent, so the view cannot expose an action that
-will resolve to an empty optional-method path.
+Desktop and Mobile construct the headless controller through
+`@tutti-os/agent-gui/conversation-rail-controller` and supply its narrow
+query/diagnostic runtime port. The shared factory owns the workspace-scoped
+cache lifetime while transport adapters own only protocol mapping,
+authorization, and host-specific diagnostic context. Hosts that expose the
+full AgentGUI mutation surface additionally install the complete query/mutation
+cohort from `@tutti-os/agent-gui/conversation-rail-runtime`. Batch deletion
+requires both authoritative section candidate lookup and the batch mutation.
+AgentGUI fails that paired capability closed when either method is absent, so
+the view cannot expose an action that will resolve to an empty optional-method
+path.
 
 The full first-page query is the only Rail read that resolves a navigation
 scope and clears its pending state. Targeted section refresh and pagination may

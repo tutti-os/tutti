@@ -34,7 +34,21 @@ import type {
   AgentHostAgentSessionComposerSettings,
   AgentHostUnactivateAgentSessionResult
 } from "./shared/contracts/dto";
-import type { WorkspaceQueryCache } from "./shared/query/workspaceQueryCache";
+import type {
+  AgentConversationRailDeleteSessionsBatchInput,
+  AgentConversationRailDeleteSessionsBatchResult,
+  AgentConversationRailListPinnedSessionsPageInput,
+  AgentConversationRailListSessionSectionPageInput,
+  AgentConversationRailListSessionSectionsInput,
+  AgentConversationRailListSessionsPageInput,
+  AgentConversationRailSessionPage,
+  AgentConversationRailSessionSection,
+  AgentConversationRailSessionSectionDeletionCandidates,
+  AgentConversationRailSessionSectionScopeInput,
+  AgentConversationRailSessionSectionsResult,
+  AgentConversationRailSessionsPageResult,
+  AgentConversationRailUserProject
+} from "./agentConversationRailContracts";
 
 export interface AgentActivityRuntimeUpdateSessionSettingsResult {
   agentSessionId: string;
@@ -63,79 +77,22 @@ export interface AgentActivityRuntimeListGeneratedFilesInput {
   workspaceId: string;
 }
 
-export interface AgentActivityRuntimeListSessionsPageInput {
-  agentTargetId?: string | null;
-  cursor?: string;
-  limit?: number;
-  searchQuery?: string;
-  signal?: AbortSignal;
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeSessionPageResult {
-  hasMore: boolean;
-  nextCursor?: string;
-  sessions: AgentActivitySession[];
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeListSessionSectionsInput {
-  agentTargetId?: string | null;
-  limitPerSection?: number;
-  signal?: AbortSignal;
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeListSessionSectionPageInput {
-  agentTargetId?: string | null;
-  cursor?: string;
-  limit?: number;
-  sectionKey: string;
-  signal?: AbortSignal;
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeListPinnedSessionsPageInput {
-  agentTargetId?: string | null;
-  cursor?: string;
-  limit?: number;
-  signal?: AbortSignal;
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeUserProject {
-  createdAtUnixMs: number;
-  id: string;
-  label: string;
-  lastUsedAtUnixMs?: number;
-  path: string;
-  pinnedAtUnixMs: number;
-  sectionKey: string;
-  updatedAtUnixMs: number;
-}
-
-export interface AgentActivityRuntimeSessionSection {
-  kind: "conversations" | "project";
-  sectionKey: string;
-  userProject?: AgentActivityRuntimeUserProject;
-  sessions: AgentActivitySession[];
-  hasMore: boolean;
-  totalCount: number;
-  nextCursor?: string;
-}
-
-export interface AgentActivityRuntimeSessionPage {
-  sessions: AgentActivitySession[];
-  hasMore: boolean;
-  totalCount: number;
-  nextCursor?: string;
-}
-
-export interface AgentActivityRuntimeSessionSectionsResult {
-  pinned?: AgentActivityRuntimeSessionPage;
-  sections: AgentActivityRuntimeSessionSection[];
-  workspaceId: string;
-}
+export type AgentActivityRuntimeListSessionsPageInput =
+  AgentConversationRailListSessionsPageInput;
+export type AgentActivityRuntimeSessionPageResult =
+  AgentConversationRailSessionsPageResult;
+export type AgentActivityRuntimeListSessionSectionsInput =
+  AgentConversationRailListSessionSectionsInput;
+export type AgentActivityRuntimeListSessionSectionPageInput =
+  AgentConversationRailListSessionSectionPageInput;
+export type AgentActivityRuntimeListPinnedSessionsPageInput =
+  AgentConversationRailListPinnedSessionsPageInput;
+export type AgentActivityRuntimeUserProject = AgentConversationRailUserProject;
+export type AgentActivityRuntimeSessionSection =
+  AgentConversationRailSessionSection;
+export type AgentActivityRuntimeSessionPage = AgentConversationRailSessionPage;
+export type AgentActivityRuntimeSessionSectionsResult =
+  AgentConversationRailSessionSectionsResult;
 
 export interface AgentActivityRuntimeGeneratedFile {
   label: string;
@@ -290,34 +247,14 @@ export interface AgentActivityRuntimeStagePastedTextResult {
   sizeBytes: number;
 }
 
-export interface AgentActivityRuntimeSessionSectionScopeInput {
-  agentTargetId?: string | null;
-  excludePinned?: boolean;
-  sectionKey: string;
-  signal?: AbortSignal;
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeSessionSectionDeletionCandidates {
-  agentTargetId?: string | null;
-  excludePinned: boolean;
-  sectionKey: string;
-  sessionIds: string[];
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeDeleteSessionsBatchInput {
-  sessionIds: string[];
-  signal?: AbortSignal;
-  workspaceId: string;
-}
-
-export interface AgentActivityRuntimeDeleteSessionsBatchResult {
-  cleanupFailedSessionIds: string[];
-  removedMessages: number;
-  removedSessionIds: string[];
-  removedSessions: number;
-}
+export type AgentActivityRuntimeSessionSectionScopeInput =
+  AgentConversationRailSessionSectionScopeInput;
+export type AgentActivityRuntimeSessionSectionDeletionCandidates =
+  AgentConversationRailSessionSectionDeletionCandidates;
+export type AgentActivityRuntimeDeleteSessionsBatchInput =
+  AgentConversationRailDeleteSessionsBatchInput;
+export type AgentActivityRuntimeDeleteSessionsBatchResult =
+  AgentConversationRailDeleteSessionsBatchResult;
 
 export interface AgentActivityRuntimeSessionAttachment {
   attachmentId: string;
@@ -389,9 +326,6 @@ export interface AgentActivityRuntime {
   ): Promise<AgentActivityUpdateTuttiModeActivationResult>;
   getSnapshot(workspaceId: string): AgentActivitySnapshot;
   getSessionEngine(workspaceId: string): AgentSessionEngine;
-  getSessionSectionsQueryCache?(
-    workspaceId: string
-  ): WorkspaceQueryCache<unknown>;
   listSessionMessages(
     input: AgentActivityRuntimeListSessionMessagesInput
   ): Promise<AgentActivityMessagePage>;

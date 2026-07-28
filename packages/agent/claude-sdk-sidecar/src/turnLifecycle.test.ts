@@ -19,6 +19,13 @@ test("turn lifecycle activates and settles a queued turn", () => {
   assert.equal(activations.count, 1);
   assert.equal(settlements.count, 1);
   assert.deepEqual(events[0], {
+    type: "provider_turn_started",
+    payload: {
+      turnId: "turn-1",
+      providerTurnId: "prompt-1"
+    }
+  });
+  assert.deepEqual(events[1], {
     type: "turn_completed",
     payload: {
       stopReason: "end_turn",
@@ -39,10 +46,43 @@ test("turn lifecycle announces a goal arm before its first output", () => {
 
   lifecycle.activateForUserMessage("prompt-goal");
 
-  assert.deepEqual(events[0], {
-    type: "turn_started",
-    payload: { turnId: "goal-arm-1", turnOrigin: "goal_arm" }
+  assert.deepEqual(
+    events.find((event) => event.type === "turn_started"),
+    {
+      type: "turn_started",
+      payload: { turnId: "goal-arm-1", turnOrigin: "goal_arm" }
+    }
+  );
+});
+
+test("turn lifecycle uses Claude's persisted root user UUID as provider identity", () => {
+  const { lifecycle, events } = createLifecycle();
+  lifecycle.enqueue({
+    turnId: "turn-rewritten",
+    promptUuid: "outbound-correlation-id",
+    settled: false
   });
+
+  lifecycle.expectProviderTurnIdentity("turn-rewritten");
+  lifecycle.activateForUserMessage("persisted-claude-user-uuid");
+  lifecycle.settleActive("turn_completed");
+
+  assert.deepEqual(events, [
+    {
+      type: "provider_turn_started",
+      payload: {
+        turnId: "turn-rewritten",
+        providerTurnId: "persisted-claude-user-uuid"
+      }
+    },
+    {
+      type: "turn_completed",
+      payload: {
+        turnId: "turn-rewritten",
+        providerTurnId: "persisted-claude-user-uuid"
+      }
+    }
+  ]);
 });
 
 test("goal activation carries its immutable command identity", () => {

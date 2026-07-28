@@ -2,7 +2,15 @@ import type { ClaudeSDKSidecarEventEmitter } from "./protocol.ts";
 
 export type RuntimeTurn = {
   readonly turnId: string;
+  /**
+   * Correlates the outbound SDK prompt with mocks and SDK versions that
+   * preserve caller UUIDs. Claude Code may rewrite it before persistence, so
+   * it is not provider identity.
+   */
   readonly promptUuid: string;
+  awaitingProviderTurnIdentity?: boolean;
+  providerTurnId?: string;
+  providerTurnStarted?: boolean;
   readonly synthetic?: boolean;
   awaitingContinuation?: boolean;
   readonly origin?: string;
@@ -97,26 +105,41 @@ export class TurnLifecycle {
     this.turns.push(turn);
   }
 
-  activateForPromptUuid(promptUuid: string): void {
-    if (!promptUuid) {
-      return;
-    }
-    const matched = this.turns.find(
-      (turn) => !turn.settled && turn.promptUuid === promptUuid
+  expectProviderTurnIdentity(turnId: string): void {
+    const turn = this.turns.find(
+      (candidate) => !candidate.settled && candidate.turnId === turnId.trim()
     );
-    if (matched) {
-      if (!matched.synthetic) {
-        this.rejectingTimedOutContinuation = false;
-      }
-      this.activate(matched);
+    if (turn && !turn.synthetic && !turn.providerTurnId?.trim()) {
+      turn.awaitingProviderTurnIdentity = true;
     }
   }
 
   activateForUserMessage(promptUuid: string): void {
-    this.activateForPromptUuid(promptUuid);
-    if (!this.active) {
+    const normalizedPromptUuid = promptUuid.trim();
+    if (!normalizedPromptUuid) {
       this.ensureActive("user");
+      return;
     }
+    const matched = this.turns.find(
+      (turn) => !turn.settled && turn.promptUuid === normalizedPromptUuid
+    );
+    const candidate =
+      matched ??
+      this.turns.find(
+        (turn) =>
+          !turn.settled &&
+          !turn.synthetic &&
+          turn.awaitingProviderTurnIdentity === true
+      );
+    if (candidate) {
+      if (!candidate.synthetic) {
+        this.rejectingTimedOutContinuation = false;
+      }
+      this.bindProviderTurnId(candidate, normalizedPromptUuid);
+      this.activate(candidate);
+      return;
+    }
+    this.ensureActive("user");
   }
 
   ensureActive(messageType: string): RuntimeTurn | undefined {
@@ -211,7 +234,9 @@ export class TurnLifecycle {
       payload: {
         ...payload,
         turnId: turn.turnId,
-        ...(turn.promptUuid ? { providerTurnId: turn.promptUuid } : {})
+        ...(this.providerTurnId(turn)
+          ? { providerTurnId: this.providerTurnId(turn) }
+          : {})
       }
     });
     this.clearContinuationStartTimer();
@@ -306,7 +331,9 @@ export class TurnLifecycle {
         type: "goal_command_started",
         payload: {
           turnId: turn.turnId,
-          ...(turn.promptUuid ? { providerTurnId: turn.promptUuid } : {}),
+          ...(this.providerTurnId(turn)
+            ? { providerTurnId: this.providerTurnId(turn) }
+            : {}),
           operationId: turn.goalOperationId,
           revision: turn.goalRevision,
           repairEpoch: turn.goalRepairEpoch ?? 0,
@@ -365,9 +392,36 @@ export class TurnLifecycle {
       payload: {
         ...payload,
         turnId: turn.turnId,
-        ...(turn.promptUuid ? { providerTurnId: turn.promptUuid } : {})
+        ...(this.providerTurnId(turn)
+          ? { providerTurnId: this.providerTurnId(turn) }
+          : {})
       }
     });
+  }
+
+  private bindProviderTurnId(turn: RuntimeTurn, providerTurnId: string): void {
+    if (
+      turn.synthetic ||
+      !providerTurnId ||
+      turn.providerTurnId?.trim() ||
+      turn.providerTurnStarted
+    ) {
+      return;
+    }
+    turn.providerTurnId = providerTurnId;
+    turn.awaitingProviderTurnIdentity = false;
+    turn.providerTurnStarted = true;
+    this.emit({
+      type: "provider_turn_started",
+      payload: {
+        turnId: turn.turnId,
+        providerTurnId
+      }
+    });
+  }
+
+  private providerTurnId(turn: RuntimeTurn): string {
+    return turn.providerTurnId?.trim() || turn.promptUuid.trim();
   }
 
   private compactQueue(): void {

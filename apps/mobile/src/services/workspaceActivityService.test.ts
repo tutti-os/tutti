@@ -13,7 +13,6 @@ import { ComposerDraftService } from "./composerDraftService";
 import type { ClockPort } from "./servicePorts";
 import type { AgentLiveDelivery, DeviceLinkPort } from "./servicePorts";
 import { WorkspaceActivityService } from "./workspaceActivityService";
-import { WorkspaceConversationRailService } from "./workspaceConversationRailService";
 import { WorkspaceNavigationService } from "./workspaceNavigationService";
 
 const workspace: WorkspaceSummary = {
@@ -23,6 +22,17 @@ const workspace: WorkspaceSummary = {
 };
 
 describe("WorkspaceActivityService", () => {
+  test("disposes the conversation Rail it owns", () => {
+    const service = createService(
+      createClient({ listMessages: emptyMessagePage })
+    );
+    const disposeRail = jest.spyOn(service.rail, "dispose");
+
+    service.dispose();
+
+    expect(disposeRail).toHaveBeenCalledTimes(1);
+  });
+
   test("projects canonical session identity and authoritative message paging", async () => {
     const messageQueries: Array<Record<string, unknown>> = [];
     const client = createClient({
@@ -1048,7 +1058,6 @@ function createService(
     new AgentDirectoryService(client),
     new WorkspaceNavigationService(),
     new ComposerDraftService(),
-    new WorkspaceConversationRailService(workspace, client, clock),
     clock,
     "account-user-1",
     options.deviceLink
@@ -1121,6 +1130,13 @@ function createClient(options: {
     name: string;
   }>;
 }): TuttidClient {
+  const railSessions = () =>
+    options.sessions?.() ??
+    (() => {
+      const session =
+        options.session === undefined ? createSession() : options.session();
+      return session ? [session] : [];
+    })();
   return {
     createWorkspaceAgentSession: options.create,
     deleteWorkspaceAgentSessionsBatch: options.deleteBatch,
@@ -1128,14 +1144,46 @@ function createClient(options: {
     getWorkspaceAgentSession: options.detail,
     listAgentTargets: async () => ({ targets: options.targets ?? [] }),
     listWorkspaceAgentSessionMessages: options.listMessages,
+    listWorkspaceAgentPinnedSessionPage: async () => {
+      const sessions = railSessions().filter(
+        (session) => session.pinnedAtUnixMs != null
+      );
+      return {
+        page: {
+          hasMore: false,
+          sessions,
+          totalCount: sessions.length
+        },
+        workspaceId: workspace.id
+      };
+    },
+    listWorkspaceAgentSessionSectionPage: async (
+      _workspaceId: string,
+      request: Parameters<
+        NonNullable<TuttidClient["listWorkspaceAgentSessionSectionPage"]>
+      >[1]
+    ) => {
+      const sessions = railSessions().filter(
+        (session) =>
+          session.pinnedAtUnixMs == null &&
+          session.railSectionKey === request.sectionKey
+      );
+      return {
+        section: {
+          hasMore: false,
+          kind:
+            request.sectionKey === "conversations"
+              ? ("conversations" as const)
+              : ("project" as const),
+          sectionKey: request.sectionKey,
+          sessions,
+          totalCount: sessions.length
+        },
+        workspaceId: workspace.id
+      };
+    },
     listWorkspaceAgentSessionSections: async () => {
-      const sessions =
-        options.sessions?.() ??
-        (() => {
-          const session =
-            options.session === undefined ? createSession() : options.session();
-          return session ? [session] : [];
-        })();
+      const sessions = railSessions();
       if (sessions.length === 0) {
         return {
           pinned: { hasMore: false, sessions: [], totalCount: 0 },
@@ -1336,7 +1384,7 @@ function messagePage(
 }
 
 async function flushAsyncWork(): Promise<void> {
-  for (let turn = 0; turn < 12; turn += 1) {
+  for (let turn = 0; turn < 24; turn += 1) {
     await Promise.resolve();
   }
 }

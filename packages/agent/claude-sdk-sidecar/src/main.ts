@@ -70,7 +70,7 @@ export async function handleRequest(
               }
             : undefined,
           stringValue(payload.hostContext),
-          stringValue(payload.providerTurnId)
+          stringValue(payload.promptCorrelationId)
         );
         emit({ id, type: "ok" });
         return;
@@ -92,7 +92,6 @@ export async function handleRequest(
           providerTurnIds: Array.isArray(payload.providerTurnIds)
             ? payload.providerTurnIds.map(stringValue)
             : [],
-          targetSessionId: stringValue(payload.targetProviderSessionId),
           cwd: stringValue(payload.cwd),
           title: stringValue(payload.title)
         });
@@ -184,6 +183,12 @@ export async function handleRequest(
         "deliveryDisposition" in error &&
         typeof error.deliveryDisposition === "string"
           ? { deliveryDisposition: error.deliveryDisposition }
+          : {}),
+        ...(error &&
+        typeof error === "object" &&
+        "stage" in error &&
+        typeof error.stage === "string"
+          ? { stage: error.stage }
           : {})
       }
     });

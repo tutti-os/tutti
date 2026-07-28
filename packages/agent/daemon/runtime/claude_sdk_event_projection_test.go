@@ -38,6 +38,44 @@ func TestClaudeCodeSDKAdapterMapsSyntheticTurnStarted(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterMapsObservedProviderTurnIdentity(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	adapter.beginClaudeSDKRootTurn(adapterSession, "canonical-turn-1", "")
+
+	events, terminal, err := adapter.sidecarTurnEvents(
+		adapterSession,
+		session,
+		"canonical-turn-1",
+		claudeSDKSidecarEvent{
+			Type: "provider_turn_started",
+			Payload: map[string]any{
+				"turnId":         "canonical-turn-1",
+				"providerTurnId": "persisted-claude-user-uuid",
+			},
+		},
+	)
+	if err != nil || terminal {
+		t.Fatalf("provider_turn_started err=%v terminal=%v", err, terminal)
+	}
+	if len(events) != 1 ||
+		events[0].Type != activityshared.EventRootProviderTurnStarted ||
+		events[0].Payload.TurnID != "canonical-turn-1" ||
+		events[0].Payload.ProviderTurnID != "persisted-claude-user-uuid" {
+		t.Fatalf("events = %#v, want observed provider identity", events)
+	}
+	if adapter.claudeSDKRootTurnID(adapterSession, "") != "canonical-turn-1" {
+		t.Fatalf("root turn id = %q", adapter.claudeSDKRootTurnID(adapterSession, ""))
+	}
+	if !adapter.consumeClaudeSDKRootProviderTurn(
+		adapterSession,
+		"persisted-claude-user-uuid",
+	) {
+		t.Fatal("observed provider identity was not registered")
+	}
+}
+
 func TestClaudeCodeSDKAdapterCompletesCanonicalTurnByProviderIdentity(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)

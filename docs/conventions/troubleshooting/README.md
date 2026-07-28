@@ -24,7 +24,10 @@ Use the focused runtime index or open one area directly:
   Also covers new-conversation requests that silently fail after a Chats
   Session working directory is mistaken for a selected project, and one hung
   provider startup blocking unrelated Agent sessions. Includes canonical
-  completion delayed behind a streaming activity-report backlog.
+  completion delayed behind a streaming activity-report backlog and completed
+  Claude Code Turns that lack a Fork entry because provider identity was not
+  observed from the durable transcript. Also covers Claude Fork operations that
+  fail because an empty SDK query never creates a durable provider child.
 - [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
   Includes provider-native work that continues invisibly after root cancellation
   and late child creation racing the durable cancel boundary.

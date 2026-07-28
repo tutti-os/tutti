@@ -12,8 +12,14 @@ export class SidecarTestDriver {
     this.interactions = interactions;
   }
 
-  exec(turnId: string, prompt: string, providerTurnId = ""): void {
+  exec(turnId: string, prompt: string, promptCorrelationId = ""): void {
     this.turns.activateTransient(turnId);
+    if (promptCorrelationId) {
+      emit({
+        type: "provider_turn_started",
+        payload: { turnId, providerTurnId: promptCorrelationId }
+      });
+    }
     if (prompt.includes("approval")) {
       void this.interactions
         .handleToolPermission(
@@ -26,9 +32,9 @@ export class SidecarTestDriver {
           }
         )
         .then(() =>
-          this.completeTurn(turnId, providerTurnId, "Approval accepted.")
+          this.completeTurn(turnId, promptCorrelationId, "Approval accepted.")
         )
-        .catch((error) => this.failTurn(turnId, providerTurnId, error));
+        .catch((error) => this.failTurn(turnId, promptCorrelationId, error));
       return;
     }
     if (prompt.includes("ask-user")) {
@@ -50,9 +56,9 @@ export class SidecarTestDriver {
           }
         )
         .then(() =>
-          this.completeTurn(turnId, providerTurnId, "Question answered.")
+          this.completeTurn(turnId, promptCorrelationId, "Question answered.")
         )
-        .catch((error) => this.failTurn(turnId, providerTurnId, error));
+        .catch((error) => this.failTurn(turnId, promptCorrelationId, error));
       return;
     }
     if (prompt.includes("exit-plan")) {
@@ -65,20 +71,22 @@ export class SidecarTestDriver {
             toolUseID: "test-exit-plan-tool"
           }
         )
-        .then(() => this.completeTurn(turnId, providerTurnId, "Plan captured."))
-        .catch((error) => this.failTurn(turnId, providerTurnId, error));
+        .then(() =>
+          this.completeTurn(turnId, promptCorrelationId, "Plan captured.")
+        )
+        .catch((error) => this.failTurn(turnId, promptCorrelationId, error));
       return;
     }
     emit({
       type: "assistant_delta",
       payload: {
         turnId,
-        ...(providerTurnId ? { providerTurnId } : {}),
+        ...(promptCorrelationId ? { providerTurnId: promptCorrelationId } : {}),
         content: `Echo: ${prompt}`,
         snapshot: `Echo: ${prompt}`
       }
     });
-    this.completeTurn(turnId, providerTurnId, `Echo: ${prompt}`);
+    this.completeTurn(turnId, promptCorrelationId, `Echo: ${prompt}`);
   }
 
   guide(prompt: string): void {

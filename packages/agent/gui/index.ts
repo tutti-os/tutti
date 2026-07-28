@@ -195,16 +195,6 @@ export type {
   AgentActivityRuntimeUpdateSessionSettingsInput,
   AgentActivityRuntimeUpdateSessionSettingsResult
 } from "./agentActivityRuntime";
-export {
-  AGENT_CONVERSATION_RAIL_RUNTIME_METHODS,
-  createAgentConversationRailRuntime,
-  inspectAgentConversationBatchDeletionCapability
-} from "./agentConversationRailRuntime";
-export type {
-  AgentConversationBatchDeletionCapability,
-  AgentConversationRailRuntime,
-  AgentConversationRailRuntimeSource
-} from "./agentConversationRailRuntime";
 export type {
   AgentHostApi,
   AgentHostAgentTargetAuthenticatedAccount,

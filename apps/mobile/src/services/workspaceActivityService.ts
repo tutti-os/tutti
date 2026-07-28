@@ -3,9 +3,9 @@ import {
   createAgentActivitySnapshotProjector,
   createAgentSessionEngine,
   dispatchSessionMutation,
+  selectEngineSessionRuntimeAvailability,
   type AgentActivitySessionSettings,
   type AgentActivityInteraction,
-  type AgentActivitySession,
   type AgentActivitySessionReconcileExecutor,
   type AgentSessionEngine,
   type EngineExternalCommand,
@@ -31,7 +31,7 @@ import {
   projectWorkspaceActivitySnapshot,
   resolveWorkspaceComposerTarget
 } from "./workspaceActivityProjection";
-import type { WorkspaceConversationRailService } from "./workspaceConversationRailService";
+import { WorkspaceConversationRailService } from "./workspaceConversationRailService";
 import { createMobileActivityCommandId } from "./workspaceActivityCommandSupport";
 import { requestWorkspaceActivityInteractionResponse } from "./workspaceActivityInteractionCommand";
 import type { WorkspaceActivitySnapshot } from "./workspaceActivityTypes";
@@ -51,6 +51,7 @@ const MESSAGE_PAGE_SIZE = 100;
 export class WorkspaceActivityService extends ObservableService<WorkspaceActivitySnapshot> {
   readonly _serviceBrand: undefined;
   readonly media: WorkspaceMediaService;
+  readonly rail: WorkspaceConversationRailService;
   private readonly engine: AgentSessionEngine;
   private readonly liveLane: WorkspaceAgentLiveLane;
   private readonly messagePages: WorkspaceActivityMessagePageLoader;
@@ -82,7 +83,6 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     private readonly directory: AgentDirectoryService,
     private readonly navigation: WorkspaceNavigationService,
     private readonly drafts: ComposerDraftService,
-    private readonly rail: WorkspaceConversationRailService,
     private readonly clock: ClockPort,
     currentUserId: string,
     deviceLink?: DeviceLinkPort
@@ -107,6 +107,12 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
       scheduler: {
         schedule: (delayMs, task) => this.clock.schedule(delayMs, task)
       }
+    });
+    this.rail = new WorkspaceConversationRailService(workspace, client, clock, {
+      engine: this.engine,
+      getActiveConversationId: () =>
+        this.navigation.getSnapshot().selectedAgentSessionId,
+      mapSession: this.mapping.mapSession
     });
     this.liveLane = new WorkspaceAgentLiveLane({
       clock: this.clock,
@@ -169,13 +175,12 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
         this.loadComposerOptions();
       }),
       this.drafts.subscribe(() => this.onDependencyChanged()),
-      this.rail.attachSessionConsumer((sessions) => {
-        if (this.disposed || this.paused) return;
-        this.applyRailSessionPage(sessions.map(this.mapping.mapSession));
-      }),
       this.rail.subscribe(() => {
         const rail = this.rail.getSnapshot();
         if (rail.status === "ready" && !this.disposed && !this.paused) {
+          this.markRailSessionsAvailable(
+            selectWorkspaceConversationRailSessionIds(rail.sections)
+          );
           this.navigation.reconcileSessionIds(
             selectWorkspaceConversationRailSessionIds(rail.sections)
           );
@@ -555,6 +560,7 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     this.liveLane.dispose();
     this.cancelPolls();
     for (const dispose of this.disposables.splice(0)) dispose();
+    this.rail.dispose();
     this.pendingSubmissionsByDraftKey.clear();
     this.ambiguousDraftKeys.clear();
     this.engine.dispose();
@@ -696,25 +702,23 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     this.messagePollTask = null;
   }
 
-  private applyRailSessionPage(
-    sessions: readonly AgentActivitySession[]
-  ): void {
-    if (sessions.length === 0) return;
-    this.engine.dispatch({
-      sessions,
-      type: "session/snapshotReceived"
-    });
-    for (const session of sessions) {
-      if (!this.paused) {
-        this.engine.dispatch(
-          {
-            agentSessionId: session.agentSessionId,
-            availability: { state: "available" },
-            type: "session/runtimeAvailabilityChanged"
-          },
-          { batch: true }
-        );
+  private markRailSessionsAvailable(agentSessionIds: readonly string[]): void {
+    const state = this.engine.getSnapshot();
+    for (const agentSessionId of agentSessionIds) {
+      if (
+        selectEngineSessionRuntimeAvailability(state, agentSessionId)?.state ===
+        "available"
+      ) {
+        continue;
       }
+      this.engine.dispatch(
+        {
+          agentSessionId,
+          availability: { state: "available" },
+          type: "session/runtimeAvailabilityChanged"
+        },
+        { batch: true }
+      );
     }
   }
 

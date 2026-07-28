@@ -1,14 +1,9 @@
 import { createHash } from "node:crypto";
 import {
+  forkSession,
   getSessionInfo,
-  getSessionMessages,
-  query,
-  type Options,
-  type Query
+  getSessionMessages
 } from "@anthropic-ai/claude-agent-sdk";
-import { resolveClaudeCodeExecutablePath } from "./executablePath.ts";
-import { AsyncPromptQueue } from "./promptQueue.ts";
-import { claudeSettingsEnv } from "./settingsEnv.ts";
 
 type SDKMessage = {
   type?: unknown;
@@ -26,21 +21,25 @@ type ForkInspectInput = {
 type ForkInput = ForkInspectInput & {
   providerTurnId: string;
   providerTurnIds: string[];
-  targetSessionId: string;
   title: string;
 };
 
 type ClaudeForkSDK = {
+  forkSession: typeof forkSession;
   getSessionMessages: typeof getSessionMessages;
   getSessionInfo: typeof getSessionInfo;
-  query: typeof query;
 };
 
 const defaultClaudeForkSDK: ClaudeForkSDK = {
+  forkSession,
   getSessionMessages,
-  getSessionInfo,
-  query
+  getSessionInfo
 };
+
+type ClaudeForkStage =
+  | "source_validation"
+  | "provider_fork"
+  | "child_verification";
 
 export async function inspectClaudeForkCheckpoints(
   input: ForkInspectInput,
@@ -61,26 +60,30 @@ export async function forkClaudeSession(
   sdk: ClaudeForkSDK = defaultClaudeForkSDK
 ): Promise<Record<string, unknown>> {
   let forkStarted = false;
+  let stage: ClaudeForkStage = "source_validation";
   try {
-    return await forkClaudeSessionVerified(input, sdk, () => {
-      forkStarted = true;
+    return await forkClaudeSessionVerified(input, sdk, (nextStage) => {
+      stage = nextStage;
+      if (nextStage === "provider_fork") {
+        forkStarted = true;
+      }
     });
-  } catch {
-    throw new ClaudeForkError(forkStarted ? "unknown" : "not_started");
+  } catch (error) {
+    throw new ClaudeForkError(
+      forkStarted ? "unknown" : "not_started",
+      stage,
+      error
+    );
   }
 }
 
 async function forkClaudeSessionVerified(
   input: ForkInput,
   sdk: ClaudeForkSDK,
-  onForkStarted: () => void
+  onStage: (stage: ClaudeForkStage) => void
 ): Promise<Record<string, unknown>> {
   requireIdentity(input.sessionId, "provider session id");
   requireIdentity(input.providerTurnId, "provider turn id");
-  requireUUID(input.targetSessionId, "target provider session id");
-  if (input.targetSessionId === input.sessionId) {
-    throw new Error("target provider session id equals source session id");
-  }
   const expectedTurnIds = normalizedIdentities(input.providerTurnIds);
   if (
     expectedTurnIds.length === 0 ||
@@ -103,29 +106,19 @@ async function forkClaudeSessionVerified(
   const checkpointId = sourceMessageIds.at(-1) ?? "";
   requireIdentity(checkpointId, "checkpoint message id");
 
-  const existingChild = await readExistingChild(
-    input.targetSessionId,
-    options,
-    transcriptReadOptions,
-    sdk
-  );
-  if (existingChild.exists) {
-    onForkStarted();
-    return verifiedForkResult({
-      input,
-      checkpointId,
-      sourcePrefix,
-      sourceMessageIds,
-      childSessionId: input.targetSessionId,
-      childMessages: existingChild.messages,
-      expectedTurnIds
-    });
+  onStage("provider_fork");
+  const forkResult = await sdk.forkSession(input.sessionId, {
+    ...options,
+    upToMessageId: checkpointId,
+    ...(input.title.trim() ? { title: input.title.trim() } : {})
+  });
+  const childSessionId = messageIdentity(forkResult?.sessionId);
+  requireUUID(childSessionId, "forked provider session id");
+  if (childSessionId === input.sessionId) {
+    throw new Error("forked provider session id equals source session id");
   }
 
-  onForkStarted();
-  await initializeDeterministicFork(input, checkpointId, sdk);
-  const childSessionId = input.targetSessionId;
-
+  onStage("child_verification");
   const [sourceB, childInfo, childMessages] = await Promise.all([
     sdk.getSessionMessages(input.sessionId, transcriptReadOptions) as Promise<
       SDKMessage[]
@@ -150,7 +143,11 @@ async function forkClaudeSessionVerified(
     sourceMessageIdsB,
     "source transcript identities changed during fork"
   );
-  if (messageIdentity(childInfo?.sessionId) !== childSessionId) {
+  const childInfoSessionId = messageIdentity(childInfo?.sessionId);
+  if (childInfoSessionId && childInfoSessionId !== childSessionId) {
+    throw new Error("forked Claude session resolved to another session");
+  }
+  if (!childInfoSessionId && childMessages.length === 0) {
     throw new Error("forked Claude session is not independently discoverable");
   }
   return verifiedForkResult({
@@ -162,82 +159,6 @@ async function forkClaudeSessionVerified(
     childMessages,
     expectedTurnIds
   });
-}
-
-async function readExistingChild(
-  childSessionId: string,
-  infoOptions: { dir?: string },
-  transcriptReadOptions: { dir?: string; includeSystemMessages: true },
-  sdk: ClaudeForkSDK
-): Promise<{ exists: boolean; messages: SDKMessage[] }> {
-  const [info, messages] = await Promise.all([
-    sdk.getSessionInfo(childSessionId, infoOptions),
-    sdk.getSessionMessages(childSessionId, transcriptReadOptions) as Promise<
-      SDKMessage[]
-    >
-  ]);
-  const infoSessionId = messageIdentity(info?.sessionId);
-  if (infoSessionId && infoSessionId !== childSessionId) {
-    throw new Error("deterministic Claude child resolved to another session");
-  }
-  return {
-    exists: infoSessionId === childSessionId || messages.length !== 0,
-    messages
-  };
-}
-
-// LIMITATION / SDK upgrade checkpoint:
-//
-// The pinned official SDK's direct forkSession() API chooses a random child
-// UUID and has no idempotency key, so it cannot implement Host's deterministic
-// replay contract. query() is used only to initialize
-// resume + forkSession + sessionId + resumeSessionAt with an empty prompt.
-//
-// A provider interruption can still leave the requested UUID present but with
-// a partial or unverifiable transcript. We deliberately return delivery
-// "unknown" in that case: deleting provider-owned state or creating a second
-// UUID would violate exactly-once safety.
-//
-// When upgrading @anthropic-ai/claude-agent-sdk, re-check whether
-// forkSession() supports a caller-supplied child UUID/idempotency key and an
-// atomic or reliably reconcilable durable result. If it does, replace this
-// query() workaround and revisit the fail-closed partial-child path above.
-async function initializeDeterministicFork(
-  input: ForkInput,
-  checkpointId: string,
-  sdk: ClaudeForkSDK
-): Promise<void> {
-  const promptQueue = new AsyncPromptQueue();
-  const cwd = input.cwd.trim() || process.cwd();
-  const settingsEnv = claudeSettingsEnv(cwd);
-  const env = {
-    ...process.env,
-    ...settingsEnv
-  };
-  const executablePath = resolveClaudeCodeExecutablePath(env);
-  const title = input.title.trim();
-  const options: Options = {
-    cwd,
-    env,
-    resume: input.sessionId,
-    forkSession: true,
-    sessionId: input.targetSessionId,
-    resumeSessionAt: checkpointId,
-    ...(title ? { title } : {}),
-    ...(executablePath ? { pathToClaudeCodeExecutable: executablePath } : {})
-  };
-  const forkQuery = sdk.query({
-    // Initialization performs the provider fork. Deliberately never enqueue a
-    // user message: the child must end exactly at the selected checkpoint.
-    prompt: promptQueue.iterate(),
-    options
-  }) as Query;
-  try {
-    await forkQuery.initializationResult();
-  } finally {
-    promptQueue.close();
-    forkQuery.close();
-  }
 }
 
 function verifiedForkResult(input: {
@@ -261,22 +182,17 @@ function verifiedForkResult(input: {
     childMessages,
     "forked transcript prefix"
   );
+  const observableSourcePrefix = forkObservablePrefix(sourcePrefix);
   assertStructuralEquality(
-    sourcePrefix,
+    observableSourcePrefix,
     childMessages,
     "forked Claude transcript does not equal the selected source prefix"
   );
 
-  const sourceIndexById = new Map(
-    sourcePrefix.map((message, index) => [messageIdentity(message), index])
-  );
-  const targetProviderTurnIds = expectedTurnIds.map((sourceId) => {
-    const index = sourceIndexById.get(sourceId);
-    if (index === undefined) {
-      throw new Error("source provider turn is absent from verified prefix");
-    }
-    return childMessageIds[index];
-  });
+  const targetProviderTurnIds = rootProviderTurnIds(childMessages);
+  if (targetProviderTurnIds.length !== expectedTurnIds.length) {
+    throw new Error("forked Claude transcript has a different root Turn count");
+  }
   const targetCheckpointId = childMessageIds.at(-1) ?? "";
   const receipt = createHash("sha256")
     .update(
@@ -302,11 +218,37 @@ function verifiedForkResult(input: {
 
 class ClaudeForkError extends Error {
   readonly deliveryDisposition: "not_started" | "unknown";
+  readonly stage: ClaudeForkStage;
 
-  constructor(deliveryDisposition: "not_started" | "unknown") {
-    super("Claude SDK session fork failed");
+  constructor(
+    deliveryDisposition: "not_started" | "unknown",
+    stage: ClaudeForkStage,
+    cause: unknown
+  ) {
+    super(
+      `Claude SDK session fork failed at ${stage}: ${forkErrorMessage(cause)}`
+    );
     this.deliveryDisposition = deliveryDisposition;
+    this.stage = stage;
   }
+}
+
+function forkObservablePrefix(messages: SDKMessage[]): SDKMessage[] {
+  let end = messages.length;
+  while (end > 0 && messages[end - 1]?.type === "system") {
+    end -= 1;
+  }
+  return messages.slice(0, end);
+}
+
+function forkErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+  return "unknown error";
 }
 
 function exactSourcePrefix(

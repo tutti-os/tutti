@@ -32,6 +32,54 @@ import type { AgentGUIViewLabels } from "../view/AgentGUINodeView.types";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 
 describe("useAgentGUIConversationRailQuery search", () => {
+  it("adds the Desktop node identity through the runtime diagnostic adapter", async () => {
+    const engine = createTestAgentSessionEngine("workspace-1");
+    const reportDiagnostic = vi.fn();
+    const runtime = {
+      getSessionEngine: () => engine,
+      async listSessionSections() {
+        throw new Error("section membership unavailable");
+      },
+      async listSessionSectionPage() {
+        throw new Error("section membership unavailable");
+      },
+      reportDiagnostic
+    } as unknown as AgentActivityRuntime;
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <AgentActivityRuntimeProvider runtime={runtime}>
+        {children}
+      </AgentActivityRuntimeProvider>
+    );
+
+    const { unmount } = renderHook(
+      () =>
+        useAgentGUIConversationRailQuery({
+          activeConversationId: null,
+          conversationFilter: { kind: "all" },
+          conversationQuery: "",
+          nodeId: "desktop-node-1",
+          sectionAgentTargetFallbackId: null,
+          userProjects: [],
+          workspaceId: "workspace-1"
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() =>
+      expect(reportDiagnostic).toHaveBeenCalledWith(
+        expect.objectContaining({
+          details: expect.objectContaining({
+            nodeId: "desktop-node-1"
+          }),
+          event: "agent_gui.conversation_rail.first_pages_failed"
+        })
+      )
+    );
+
+    unmount();
+    engine.dispose();
+  });
+
   it("fails batch deletion closed and reports a partial runtime contract", async () => {
     const engine = createTestAgentSessionEngine("workspace-1");
     const reportDiagnostic = vi.fn();

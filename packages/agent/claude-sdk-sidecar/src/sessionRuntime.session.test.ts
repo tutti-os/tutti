@@ -19,6 +19,73 @@ import {
 } from "./sessionRuntimeTestQueries.session.ts";
 import { waitForEvent } from "./sessionRuntimeTestQueries.nested.ts";
 
+test("Claude-persisted user UUID becomes the provider Turn identity", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-identity",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          const iterator = prompt[Symbol.asyncIterator]();
+          const outbound = await iterator.next();
+          yield {
+            ...outbound.value,
+            uuid: "persisted-claude-user-uuid",
+            type: "user",
+            parent_tool_use_id: null,
+            session_id: "provider-session-identity"
+          } as never;
+          yield { type: "result", subtype: "success" } as never;
+        },
+        close() {}
+      })
+    );
+
+    await session.start();
+    session.exec(
+      "turn-identity",
+      "hello",
+      undefined,
+      undefined,
+      undefined,
+      "",
+      "outbound-correlation-id"
+    );
+    await waitForEvent(events, "turn_completed");
+
+    const providerStarted = events.find(
+      (event) => event.type === "provider_turn_started"
+    );
+    const completed = events.find((event) => event.type === "turn_completed");
+    assert.equal(
+      providerStarted?.payload?.providerTurnId,
+      "persisted-claude-user-uuid"
+    );
+    assert.equal(
+      completed?.payload?.providerTurnId,
+      "persisted-claude-user-uuid"
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
 test("tutti host context shares one SDK prompt with unchanged user input", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const messages: Array<{

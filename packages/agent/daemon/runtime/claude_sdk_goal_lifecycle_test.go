@@ -646,8 +646,8 @@ func TestClaudeSDKGoalArmTurnCarriesDurableGoalIdentity(t *testing.T) {
 		t.Fatalf("ApplyGoal set: %v", err)
 	}
 	turnID := payloadString(setRequest.Payload, "turnId")
-	if payloadString(setRequest.Payload, "providerTurnId") != turnID {
-		t.Fatalf("goal provider turn id != SDK prompt UUID: %#v", setRequest.Payload)
+	if payloadString(setRequest.Payload, "promptCorrelationId") != turnID {
+		t.Fatalf("goal prompt correlation id != turn id: %#v", setRequest.Payload)
 	}
 	if payloadString(setRequest.Payload, "goalOperationId") != "goal-op-7" || payloadInt64(setRequest.Payload, "goalRevision") != 7 {
 		t.Fatalf("goal exec payload = %#v", setRequest.Payload)

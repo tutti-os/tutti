@@ -1,25 +1,25 @@
-import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
+import type { AgentConversationRailRuntimePort } from "../../../agentConversationRailContracts";
 import type { WorkspaceQueryCache } from "../../../shared/query/workspaceQueryCache";
-import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { AgentGuiScheduler } from "../agentGuiScheduler";
 import type { ConversationRailDiagnosticLogger } from "./agentGuiConversationRailDiagnostics";
 import type { CachedConversationRailQuery } from "./agentGuiConversationRailQueryCache";
 import { userProjectCollectionKey } from "./agentGuiConversationRailQueryScope";
 
 export interface ConversationRailQueryScope {
-  conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
+  conversationFilter:
+    | { kind: "all" }
+    | { agentTargetId: string; kind: "agentTarget" };
   sectionAgentTargetFallbackId: string | null;
-  userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
+  userProjects: readonly { id: string }[];
 }
 
 export type ConversationRailQueryRuntime = Pick<
-  AgentActivityRuntime,
+  AgentConversationRailRuntimePort,
   | "listPinnedSessionsPage"
   | "listSessionSectionPage"
   | "listSessionSections"
   | "listSessionsPage"
-  | "getSessionSectionsQueryCache"
   | "reportDiagnostic"
 >;
 
@@ -33,6 +33,8 @@ export interface ConversationRailQueryControllerInput {
   getActiveConversationId(): string | null;
   nodeId?: string | null;
   runtime: ConversationRailQueryRuntime;
+  sectionPageSize?: number;
+  sectionRefreshLimitMax?: number;
   sessionSectionsQueryCache?: WorkspaceQueryCache<CachedConversationRailQuery>;
   scheduler?: AgentGuiScheduler;
   workspaceId: string;

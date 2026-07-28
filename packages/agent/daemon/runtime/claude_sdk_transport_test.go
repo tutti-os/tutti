@@ -97,7 +97,7 @@ func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 		startedProviderTurnID == "turn-sdk-1" ||
 		completedProviderTurnID != startedProviderTurnID {
 		t.Fatalf(
-			"provider turn lifecycle start=%q complete=%q, want one real SDK prompt UUID",
+			"provider turn lifecycle start=%q complete=%q, want one observed provider user-message UUID",
 			startedProviderTurnID,
 			completedProviderTurnID,
 		)

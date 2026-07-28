@@ -321,11 +321,16 @@ export class SDKMessageRouter {
     const notificationText = readUserMessageNotificationText(
       message as { message?: { content?: unknown } }
     );
-    if (notificationText.includes("<task-notification>")) {
+    const taskNotification = notificationText.includes("<task-notification>");
+    if (taskNotification) {
       this.activities.handleTaskNotificationFromText(notificationText);
     }
     const activeTurnIdBefore = this.turns.activeId;
-    this.turns.activateForUserMessage(readSDKMessageUuid(message));
+    if (!parentToolUseID && !taskNotification) {
+      this.turns.activateForUserMessage(readSDKMessageUuid(message));
+    } else {
+      this.turns.ensureActive("user");
+    }
     if (
       !parentToolUseID &&
       this.turns.activeId &&

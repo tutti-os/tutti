@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -27,7 +28,7 @@ func TestClaudeSDKForkCapabilitiesUsesStatelessTranscriptInspection(t *testing.T
 	}
 	if capabilities.DriverKind != claudeSDKForkDriverKind ||
 		capabilities.DriverVersion != claudeSDKForkDriverVersion ||
-		!capabilities.DeterministicTargetSessionID ||
+		capabilities.DeterministicTargetSessionID ||
 		!capabilities.ThroughTurn ||
 		!capabilities.ThroughProviderTurnIDsKnown ||
 		!reflect.DeepEqual(
@@ -61,9 +62,8 @@ func TestClaudeSDKForkReturnsProviderOwnedIdentityEvidence(t *testing.T) {
 
 	result, err := adapter.Fork(t.Context(), SessionForkInput{
 		Source: source, ProviderTurnID: "prompt-2",
-		ProviderTurnIDs:         []string{"prompt-1", "prompt-2"},
-		TargetProviderSessionID: "claude-child",
-		TargetTitle:             "Claude session (2)",
+		ProviderTurnIDs: []string{"prompt-1", "prompt-2"},
+		TargetTitle:     "Claude session (2)",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestClaudeSDKForkReturnsProviderOwnedIdentityEvidence(t *testing.T) {
 	requests := conn.requests()
 	if len(requests) != 1 || requests[0].Type != "fork_session" ||
 		payloadString(requests[0].Payload, "title") != "Claude session (2)" ||
-		payloadString(requests[0].Payload, "targetProviderSessionId") != "claude-child" {
+		payloadString(requests[0].Payload, "targetProviderSessionId") != "" {
 		t.Fatalf("requests=%#v", requests)
 	}
 }
@@ -90,7 +90,8 @@ func TestClaudeSDKForkPreservesUnknownDispositionAfterDispatch(t *testing.T) {
 	conn := &claudeSDKForkTestConnection{
 		responseType: "error",
 		responsePayload: map[string]any{
-			"error":               "Claude SDK session fork failed",
+			"error":               "Claude SDK session fork failed at provider_fork: connection lost",
+			"stage":               "provider_fork",
 			"deliveryDisposition": "unknown",
 		},
 	}
@@ -99,11 +100,13 @@ func TestClaudeSDKForkPreservesUnknownDispositionAfterDispatch(t *testing.T) {
 	source.ProviderSessionID = "claude-source"
 	result, err := adapter.Fork(t.Context(), SessionForkInput{
 		Source: source, ProviderTurnID: "prompt-1",
-		ProviderTurnIDs:         []string{"prompt-1"},
-		TargetProviderSessionID: "claude-child", TargetTitle: "Child",
+		ProviderTurnIDs: []string{"prompt-1"}, TargetTitle: "Child",
 	})
 	if err == nil || result.DeliveryDisposition != SessionForkDeliveryUnknown {
 		t.Fatalf("result=%#v error=%v", result, err)
+	}
+	if !strings.Contains(err.Error(), "provider_fork: connection lost") {
+		t.Fatalf("error=%q, want original provider stage and cause", err)
 	}
 }
 
@@ -141,8 +144,7 @@ func TestClaudeSDKForkedChildCanResumeAndStartTurn(t *testing.T) {
 
 	result, err := adapter.Fork(t.Context(), SessionForkInput{
 		Source: source, ProviderTurnID: "prompt-1",
-		ProviderTurnIDs:         []string{"prompt-1"},
-		TargetProviderSessionID: "claude-child", TargetTitle: "Child",
+		ProviderTurnIDs: []string{"prompt-1"}, TargetTitle: "Child",
 	})
 	if err != nil {
 		t.Fatalf("Fork: %v", err)

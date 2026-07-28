@@ -14,20 +14,6 @@ test("desktop agent activity runtime installs the complete conversation rail cap
   }
 });
 
-test("desktop agent activity runtime scopes section query caches by workspace", () => {
-  const runtime = createDesktopAgentActivityRuntime(
-    createWorkspaceAgentActivityService()
-  );
-
-  const first = runtime.getSessionSectionsQueryCache?.("workspace-1");
-  const same = runtime.getSessionSectionsQueryCache?.(" workspace-1 ");
-  const other = runtime.getSessionSectionsQueryCache?.("workspace-2");
-
-  assert.ok(first);
-  assert.equal(first, same);
-  assert.notEqual(first, other);
-});
-
 test("desktop agent activity runtime forwards package diagnostics to renderer diagnostics", () => {
   const rendererDiagnostics: unknown[] = [];
   const runtime = createDesktopAgentActivityRuntime(

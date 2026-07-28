@@ -15,17 +15,6 @@ describe("createAgentConversationRailRuntime", () => {
     }
   });
 
-  it("owns normalized workspace query caches outside mounted rail controllers", () => {
-    const runtime = createAgentConversationRailRuntime(createSource());
-
-    const first = runtime.getSessionSectionsQueryCache("workspace-1");
-    const same = runtime.getSessionSectionsQueryCache(" workspace-1 ");
-    const other = runtime.getSessionSectionsQueryCache("workspace-2");
-
-    expect(first).toBe(same);
-    expect(first).not.toBe(other);
-  });
-
   it("forwards exact query and mutation inputs to the host source", async () => {
     const source = createSource();
     const runtime = createAgentConversationRailRuntime(source);

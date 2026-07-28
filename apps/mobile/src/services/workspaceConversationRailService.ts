@@ -1,8 +1,17 @@
 import type {
+  AgentActivitySession,
+  AgentSessionEngine
+} from "@tutti-os/agent-activity-core";
+import {
+  createAgentGUIConversationRailQueryController,
+  type AgentGUIConversationRailQueryController,
+  type AgentGUIConversationRailQuerySnapshot,
+  type ConversationRailQueryRuntime
+} from "@tutti-os/agent-gui/conversation-rail-controller";
+import type {
   TuttidClient,
   UserProject,
   WorkspaceAgentSession,
-  WorkspaceAgentSessionSection,
   WorkspaceSummary
 } from "@tutti-os/client-tuttid-ts";
 import { ObservableService } from "./observableService";
@@ -35,133 +44,98 @@ export interface WorkspaceConversationRailSnapshot {
   status: "idle" | "loading" | "ready";
 }
 
-type WorkspaceConversationRailSessionConsumer = (
-  sessions: readonly WorkspaceAgentSession[]
-) => void;
+interface WorkspaceConversationRailServiceDependencies {
+  engine: AgentSessionEngine;
+  getActiveConversationId(): string | null;
+  mapSession(session: WorkspaceAgentSession): AgentActivitySession;
+}
 
+/**
+ * Mobile host wrapper around the shared headless conversation-Rail controller.
+ *
+ * The shared controller owns section membership, cursor paging, stale-request
+ * fences, cache refresh, and canonical Engine ingestion. Mobile owns only its
+ * disconnected polling cadence and foreground/background availability.
+ */
 export class WorkspaceConversationRailService extends ObservableService<WorkspaceConversationRailSnapshot> {
   readonly _serviceBrand: undefined;
+  private readonly controller: AgentGUIConversationRailQueryController;
   private disposed = false;
   private liveConnected = false;
   private paused = false;
+  private attached = false;
+  private controllerDetach: (() => void) | null = null;
   private loadPromise: Promise<void> | null = null;
   private pollTask: { cancel(): void } | null = null;
-  private sessionConsumer: WorkspaceConversationRailSessionConsumer | null =
-    null;
   private snapshot: WorkspaceConversationRailSnapshot = {
     errorCode: null,
     loadingMoreSectionId: null,
     sections: [],
     status: "idle"
   };
+  private readonly unsubscribeController: () => void;
 
   constructor(
     readonly workspace: WorkspaceSummary,
-    private readonly client: TuttidClient,
-    private readonly clock: ClockPort
+    client: TuttidClient,
+    private readonly clock: ClockPort,
+    dependencies: WorkspaceConversationRailServiceDependencies
   ) {
     super();
+    this.controller = createAgentGUIConversationRailQueryController({
+      engine: dependencies.engine,
+      getActiveConversationId: dependencies.getActiveConversationId,
+      runtime: createMobileConversationRailRuntime({
+        client,
+        mapSession: dependencies.mapSession,
+        workspaceId: workspace.id
+      }),
+      scheduler: {
+        schedule: (delayMs, task) => this.clock.schedule(delayMs, task)
+      },
+      sectionPageSize: SESSION_PAGE_SIZE,
+      sectionRefreshLimitMax: SESSION_SECTION_LIMIT_MAX,
+      workspaceId: workspace.id
+    });
+    this.unsubscribeController = this.controller.subscribe((snapshot) => {
+      this.applyControllerSnapshot(snapshot);
+    });
+    this.controller.configure({
+      conversationFilter: { kind: "all" },
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    });
+    this.applyControllerSnapshot(this.controller.getSnapshot());
   }
 
   getSnapshot = (): WorkspaceConversationRailSnapshot => this.snapshot;
 
-  attachSessionConsumer(
-    consumer: WorkspaceConversationRailSessionConsumer
-  ): () => void {
-    if (this.sessionConsumer && this.sessionConsumer !== consumer) {
-      throw new Error(
-        "mobile conversation rail already has a session consumer"
-      );
-    }
-    this.sessionConsumer = consumer;
-    return () => {
-      if (this.sessionConsumer === consumer) this.sessionConsumer = null;
-    };
-  }
-
   start(): Promise<void> {
+    if (this.disposed || this.paused) return Promise.resolve();
+    this.ensureAttached();
     return this.refresh();
   }
 
   refresh(): Promise<void> {
-    if (
-      this.loadPromise ||
-      this.snapshot.loadingMoreSectionId ||
-      this.paused ||
-      this.disposed
-    ) {
-      return this.loadPromise ?? Promise.resolve();
-    }
-    const loadedPerSection = Math.min(
-      SESSION_SECTION_LIMIT_MAX,
-      this.snapshot.sections.reduce(
-        (maximum, section) => Math.max(maximum, section.sessionIds.length),
-        SESSION_PAGE_SIZE
-      )
-    );
+    if (this.paused || this.disposed) return Promise.resolve();
+    this.ensureAttached();
     if (this.snapshot.status === "idle") {
       this.snapshot = { ...this.snapshot, status: "loading" };
       this.emitChange();
     }
-    this.loadPromise = this.client
-      .listWorkspaceAgentSessionSections(this.workspace.id, {
-        limitPerSection: loadedPerSection
-      })
-      .then((response) => {
-        if (this.disposed || this.paused) return;
-        const freshSections = [
-          ...(response.pinned.totalCount > 0
-            ? [
-                membershipFromPage({
-                  hasMore: response.pinned.hasMore,
-                  id: "pinned",
-                  kind: "pinned" as const,
-                  nextCursor: response.pinned.nextCursor,
-                  project: null,
-                  sectionKey: null,
-                  sessions: response.pinned.sessions,
-                  totalCount: response.pinned.totalCount
-                })
-              ]
-            : []),
-          ...response.sections.map(membershipFromSection)
-        ];
-        const sections = reconcileRefreshedMemberships(
-          freshSections,
-          this.snapshot.sections
-        );
-        const freshSessions = uniqueSessions(response);
-        this.snapshot = {
-          errorCode: null,
-          loadingMoreSectionId: null,
-          sections,
-          status: "ready"
-        };
-        this.sessionConsumer?.(freshSessions);
-        this.emitChange();
-      })
-      .catch(() => {
-        if (this.disposed) return;
-        this.snapshot = {
-          ...this.snapshot,
-          errorCode: "request_failed",
-          status: "ready"
-        };
-        this.emitChange();
-      })
+    const request = this.controller
+      .refresh()
+      .then(() => undefined)
       .finally(() => {
-        this.loadPromise = null;
+        if (this.loadPromise === request) this.loadPromise = null;
         this.schedulePoll();
       });
-    return this.loadPromise;
+    this.loadPromise = request;
+    return request;
   }
 
   async reconcile(): Promise<WorkspaceConversationRailSnapshot> {
-    if (this.loadPromise) {
-      await this.loadPromise;
-    } else {
-      await this.refresh();
-    }
+    await this.refresh();
     if (this.disposed || this.paused) {
       throw new Error("mobile conversation rail is unavailable");
     }
@@ -169,89 +143,18 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
   }
 
   async loadMore(sectionId: string): Promise<void> {
-    await this.loadPromise;
-    const section = this.snapshot.sections.find(
-      (candidate) => candidate.id === sectionId
-    );
-    if (
-      !section ||
-      !section.hasMore ||
-      !section.nextCursor ||
-      this.snapshot.loadingMoreSectionId ||
-      this.paused ||
-      this.disposed
-    ) {
-      return;
-    }
+    if (this.paused || this.disposed) return;
     this.pollTask?.cancel();
     this.pollTask = null;
-    this.snapshot = {
-      ...this.snapshot,
-      errorCode: null,
-      loadingMoreSectionId: sectionId
-    };
-    this.emitChange();
-    try {
-      const page =
-        section.kind === "pinned"
-          ? (
-              await this.client.listWorkspaceAgentPinnedSessionPage(
-                this.workspace.id,
-                {
-                  cursor: section.nextCursor,
-                  limit: SESSION_PAGE_SIZE
-                }
-              )
-            ).page
-          : (
-              await this.client.listWorkspaceAgentSessionSectionPage(
-                this.workspace.id,
-                {
-                  cursor: section.nextCursor,
-                  limit: SESSION_PAGE_SIZE,
-                  sectionKey: section.sectionKey!
-                }
-              )
-            ).section;
-      if (this.disposed || this.paused) return;
-      const sections = this.snapshot.sections.map((candidate) =>
-        candidate.id === sectionId
-          ? {
-              ...candidate,
-              hasMore: page.hasMore,
-              nextCursor: page.nextCursor ?? null,
-              sessionIds: uniqueIds([
-                ...candidate.sessionIds,
-                ...page.sessions.map((session) => session.id)
-              ]),
-              totalCount: page.totalCount
-            }
-          : candidate
-      );
-      this.snapshot = {
-        errorCode: null,
-        loadingMoreSectionId: null,
-        sections,
-        status: "ready"
-      };
-      this.sessionConsumer?.(page.sessions);
-    } catch {
-      if (this.disposed) return;
-      this.snapshot = {
-        ...this.snapshot,
-        errorCode: "request_failed",
-        loadingMoreSectionId: null
-      };
-    } finally {
-      if (!this.disposed && this.snapshot.loadingMoreSectionId === sectionId) {
-        this.snapshot = {
-          ...this.snapshot,
-          loadingMoreSectionId: null
-        };
-      }
-      if (!this.disposed) this.emitChange();
-      this.schedulePoll();
+    const querySectionId = mobileRailQuerySectionId(sectionId);
+    this.controller.loadMoreSectionConversations({ id: querySectionId });
+    if (
+      this.controller.getSnapshot().sectionPageStates.get(querySectionId)
+        ?.isLoading
+    ) {
+      await this.waitForSectionPage(querySectionId);
     }
+    this.schedulePoll();
   }
 
   pause(): void {
@@ -259,11 +162,13 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
     this.paused = true;
     this.pollTask?.cancel();
     this.pollTask = null;
+    this.detachController();
   }
 
   resume(): void {
     if (!this.paused || this.disposed) return;
     this.paused = false;
+    this.ensureAttached();
     void this.refresh();
   }
 
@@ -281,8 +186,92 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
     this.pollTask?.cancel();
     this.pollTask = null;
     this.loadPromise = null;
-    this.sessionConsumer = null;
+    this.detachController();
+    this.unsubscribeController();
     this.clearListeners();
+  }
+
+  private applyControllerSnapshot(
+    snapshot: AgentGUIConversationRailQuerySnapshot
+  ): void {
+    if (this.disposed) return;
+    const sections = (snapshot.runtimeRailMemberships ?? []).map(
+      (membership): WorkspaceConversationRailMembership => {
+        const page = snapshot.sectionPageStates.get(membership.id);
+        return {
+          hasMore: page?.hasMore ?? false,
+          id: mobileRailDisplaySectionId(membership.id, membership.kind),
+          kind: membership.kind,
+          nextCursor: page?.nextCursor ?? null,
+          project: membership.project
+            ? {
+                createdAtUnixMs: membership.project.createdAtUnixMs ?? 0,
+                id: membership.project.id,
+                label: membership.project.label,
+                lastUsedAtUnixMs: membership.project.lastUsedAtUnixMs ?? 0,
+                path: membership.project.path,
+                pinnedAtUnixMs: membership.project.pinnedAtUnixMs,
+                sectionKey: membership.project.sectionKey ?? membership.id,
+                updatedAtUnixMs: membership.project.updatedAtUnixMs ?? 0
+              }
+            : null,
+          sectionKey: membership.kind === "pinned" ? null : membership.id,
+          sessionIds: membership.sessionIds,
+          totalCount: page?.totalCount ?? membership.sessionIds.length
+        };
+      }
+    );
+    const loadingMoreSectionId =
+      [...snapshot.sectionPageStates].find(
+        ([, state]) => state.isLoading
+      )?.[0] ?? null;
+    const next: WorkspaceConversationRailSnapshot = {
+      errorCode: snapshot.runtimeRailFailed ? "request_failed" : null,
+      loadingMoreSectionId:
+        loadingMoreSectionId === null
+          ? null
+          : mobileRailDisplaySectionId(
+              loadingMoreSectionId,
+              loadingMoreSectionId === "pinned" ? "pinned" : "conversations"
+            ),
+      sections,
+      status:
+        snapshot.runtimeRailMemberships === null &&
+        snapshot.runtimeRailSectionsPending
+          ? "loading"
+          : "ready"
+    };
+    if (sameRailSnapshot(this.snapshot, next)) return;
+    this.snapshot = next;
+    this.emitChange();
+  }
+
+  private ensureAttached(): void {
+    if (this.attached || this.disposed || this.paused) return;
+    this.attached = true;
+    this.controllerDetach = this.controller.attach();
+  }
+
+  private detachController(): void {
+    if (!this.attached) return;
+    this.attached = false;
+    this.controllerDetach?.();
+    this.controllerDetach = null;
+  }
+
+  private waitForSectionPage(sectionId: string): Promise<void> {
+    return new Promise((resolve) => {
+      const unsubscribe = this.controller.subscribe((snapshot) => {
+        if (
+          this.disposed ||
+          this.paused ||
+          snapshot.sectionPageStates.get(sectionId)?.isLoading !== true
+        ) {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
   }
 
   private schedulePoll(): void {
@@ -295,91 +284,138 @@ export class WorkspaceConversationRailService extends ObservableService<Workspac
   }
 }
 
-function membershipFromSection(
-  section: WorkspaceAgentSessionSection
-): WorkspaceConversationRailMembership {
-  return membershipFromPage({
-    ...section,
-    id: `section:${section.sectionKey}`,
-    kind: section.kind,
-    nextCursor: section.nextCursor,
-    project: section.userProject ?? null,
-    sectionKey: section.sectionKey
-  });
+function mobileRailQuerySectionId(sectionId: string): string {
+  return sectionId.startsWith("section:")
+    ? sectionId.slice("section:".length)
+    : sectionId;
 }
 
-function membershipFromPage(input: {
-  hasMore: boolean;
-  id: string;
-  kind: WorkspaceConversationRailSectionKind;
-  nextCursor?: string;
-  project: UserProject | null;
-  sectionKey: string | null;
-  sessions: readonly WorkspaceAgentSession[];
-  totalCount: number;
-}): WorkspaceConversationRailMembership {
+function mobileRailDisplaySectionId(
+  sectionId: string,
+  kind: WorkspaceConversationRailSectionKind
+): string {
+  return kind === "pinned" ? "pinned" : `section:${sectionId}`;
+}
+
+function createMobileConversationRailRuntime(input: {
+  client: TuttidClient;
+  mapSession(session: WorkspaceAgentSession): AgentActivitySession;
+  workspaceId: string;
+}): ConversationRailQueryRuntime {
   return {
-    hasMore: input.hasMore,
-    id: input.id,
-    kind: input.kind,
-    nextCursor: input.nextCursor ?? null,
-    project: input.project,
-    sectionKey: input.sectionKey,
-    sessionIds: input.sessions.map((session) => session.id),
-    totalCount: input.totalCount
+    async listPinnedSessionsPage(query) {
+      const response = await input.client.listWorkspaceAgentPinnedSessionPage(
+        input.workspaceId,
+        {
+          ...(query.agentTargetId
+            ? { agentTargetId: query.agentTargetId }
+            : {}),
+          ...(query.cursor ? { cursor: query.cursor } : {}),
+          ...(query.limit === undefined ? {} : { limit: query.limit })
+        },
+        { signal: query.signal }
+      );
+      return {
+        hasMore: response.page.hasMore,
+        ...(response.page.nextCursor
+          ? { nextCursor: response.page.nextCursor }
+          : {}),
+        sessions: response.page.sessions.map(input.mapSession),
+        totalCount: response.page.totalCount
+      };
+    },
+    async listSessionSectionPage(query) {
+      const response = await input.client.listWorkspaceAgentSessionSectionPage(
+        input.workspaceId,
+        {
+          ...(query.agentTargetId
+            ? { agentTargetId: query.agentTargetId }
+            : {}),
+          ...(query.cursor ? { cursor: query.cursor } : {}),
+          ...(query.limit === undefined ? {} : { limit: query.limit }),
+          sectionKey: query.sectionKey
+        },
+        { signal: query.signal }
+      );
+      return {
+        hasMore: response.section.hasMore,
+        kind: response.section.kind,
+        ...(response.section.nextCursor
+          ? { nextCursor: response.section.nextCursor }
+          : {}),
+        sectionKey: response.section.sectionKey,
+        sessions: response.section.sessions.map(input.mapSession),
+        totalCount: response.section.totalCount,
+        ...(response.section.userProject
+          ? { userProject: response.section.userProject }
+          : {})
+      };
+    },
+    async listSessionSections(query) {
+      const response = await input.client.listWorkspaceAgentSessionSections(
+        input.workspaceId,
+        {
+          ...(query.agentTargetId
+            ? { agentTargetId: query.agentTargetId }
+            : {}),
+          ...(query.limitPerSection === undefined
+            ? {}
+            : { limitPerSection: query.limitPerSection })
+        },
+        { signal: query.signal }
+      );
+      return {
+        ...(response.pinned.totalCount > 0
+          ? {
+              pinned: {
+                hasMore: response.pinned.hasMore,
+                ...(response.pinned.nextCursor
+                  ? { nextCursor: response.pinned.nextCursor }
+                  : {}),
+                sessions: response.pinned.sessions.map(input.mapSession),
+                totalCount: response.pinned.totalCount
+              }
+            }
+          : {}),
+        sections: response.sections.map((section) => ({
+          hasMore: section.hasMore,
+          kind: section.kind,
+          ...(section.nextCursor ? { nextCursor: section.nextCursor } : {}),
+          sectionKey: section.sectionKey,
+          sessions: section.sessions.map(input.mapSession),
+          totalCount: section.totalCount,
+          ...(section.userProject ? { userProject: section.userProject } : {})
+        })),
+        workspaceId: input.workspaceId
+      };
+    }
   };
 }
 
-function uniqueSessions(response: {
-  pinned: { sessions: readonly WorkspaceAgentSession[] };
-  sections: readonly WorkspaceAgentSessionSection[];
-}): WorkspaceAgentSession[] {
-  const sessionsById = new Map<string, WorkspaceAgentSession>();
-  for (const session of response.pinned.sessions) {
-    sessionsById.set(session.id, session);
-  }
-  for (const section of response.sections) {
-    for (const session of section.sessions) {
-      sessionsById.set(session.id, session);
-    }
-  }
-  return [...sessionsById.values()];
-}
-
-function reconcileRefreshedMemberships(
-  fresh: readonly WorkspaceConversationRailMembership[],
-  current: readonly WorkspaceConversationRailMembership[]
-): WorkspaceConversationRailMembership[] {
-  const freshOwnerBySessionId = new Map<string, string>();
-  for (const section of fresh) {
-    for (const sessionId of section.sessionIds) {
-      freshOwnerBySessionId.set(sessionId, section.id);
-    }
-  }
-  return fresh.map((section) => {
-    const previous = current.find((candidate) => candidate.id === section.id);
-    if (!previous || previous.sessionIds.length <= section.sessionIds.length) {
-      return section;
-    }
-    const freshIds = new Set(section.sessionIds);
-    const preservedTail = previous.sessionIds.filter(
-      (sessionId) =>
-        !freshIds.has(sessionId) && !freshOwnerBySessionId.has(sessionId)
-    );
-    const sessionIds = [...section.sessionIds, ...preservedTail].slice(
-      0,
-      section.totalCount
-    );
-    const hasMore = sessionIds.length < section.totalCount;
-    return {
-      ...section,
-      hasMore,
-      nextCursor: hasMore ? (previous.nextCursor ?? section.nextCursor) : null,
-      sessionIds
-    };
-  });
-}
-
-function uniqueIds(ids: readonly string[]): string[] {
-  return [...new Set(ids)];
+function sameRailSnapshot(
+  left: WorkspaceConversationRailSnapshot,
+  right: WorkspaceConversationRailSnapshot
+): boolean {
+  return (
+    left.errorCode === right.errorCode &&
+    left.loadingMoreSectionId === right.loadingMoreSectionId &&
+    left.status === right.status &&
+    left.sections.length === right.sections.length &&
+    left.sections.every((section, index) => {
+      const other = right.sections[index];
+      return (
+        other !== undefined &&
+        section.id === other.id &&
+        section.hasMore === other.hasMore &&
+        section.nextCursor === other.nextCursor &&
+        section.totalCount === other.totalCount &&
+        section.project === other.project &&
+        section.sessionIds.length === other.sessionIds.length &&
+        section.sessionIds.every(
+          (sessionId, sessionIndex) =>
+            sessionId === other.sessionIds[sessionIndex]
+        )
+      );
+    })
+  );
 }

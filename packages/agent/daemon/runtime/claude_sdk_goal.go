@@ -425,11 +425,11 @@ func (a *ClaudeCodeSDKAdapter) sendGoalCommandExec(
 	ctx, cancel := context.WithTimeout(ctx, claudeSDKGoalCommandTimeout)
 	defer cancel()
 	payload := map[string]any{
-		"agentSessionId": session.AgentSessionID,
-		"turnId":         turnID,
-		"providerTurnId": turnID,
-		"prompt":         command,
-		"content":        promptContentForClaudeSDK(nil, command),
+		"agentSessionId":      session.AgentSessionID,
+		"turnId":              turnID,
+		"promptCorrelationId": turnID,
+		"prompt":              command,
+		"content":             promptContentForClaudeSDK(nil, command),
 	}
 	if !isGoalClearCommandArgs(args) {
 		payload["turnOrigin"] = "goal_arm"

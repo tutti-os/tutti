@@ -1,13 +1,8 @@
-import type { AgentActivityRuntime } from "./agentActivityRuntime.tsx";
-import {
-  createWorkspaceQueryCache,
-  type WorkspaceQueryCache
-} from "./shared/query/workspaceQueryCache.ts";
-
+import type { AgentConversationRailRuntimePort } from "./agentConversationRailContracts.ts";
 const AGENT_CONVERSATION_BATCH_DELETION_RUNTIME_METHODS = [
   "deleteSessionsBatch",
   "listSessionSectionDeletionCandidates"
-] as const satisfies ReadonlyArray<keyof AgentActivityRuntime>;
+] as const satisfies ReadonlyArray<keyof AgentConversationRailRuntimePort>;
 
 const AGENT_CONVERSATION_RAIL_SOURCE_METHODS = [
   "deleteSessionsBatch",
@@ -16,12 +11,11 @@ const AGENT_CONVERSATION_RAIL_SOURCE_METHODS = [
   "listSessionSectionPage",
   "listSessionSections",
   "listSessionsPage"
-] as const satisfies ReadonlyArray<keyof AgentActivityRuntime>;
+] as const satisfies ReadonlyArray<keyof AgentConversationRailRuntimePort>;
 
 export const AGENT_CONVERSATION_RAIL_RUNTIME_METHODS = [
-  "getSessionSectionsQueryCache",
   ...AGENT_CONVERSATION_RAIL_SOURCE_METHODS
-] as const satisfies ReadonlyArray<keyof AgentActivityRuntime>;
+] as const satisfies ReadonlyArray<keyof AgentConversationRailRuntimePort>;
 
 type AgentConversationRailSourceMethod =
   (typeof AGENT_CONVERSATION_RAIL_SOURCE_METHODS)[number];
@@ -30,13 +24,13 @@ type AgentConversationBatchDeletionRuntimeMethod =
 
 export type AgentConversationRailRuntime = Required<
   Pick<
-    AgentActivityRuntime,
+    AgentConversationRailRuntimePort,
     (typeof AGENT_CONVERSATION_RAIL_RUNTIME_METHODS)[number]
   >
 >;
 
 export type AgentConversationRailRuntimeSource = Required<
-  Pick<AgentActivityRuntime, AgentConversationRailSourceMethod>
+  Pick<AgentConversationRailRuntimePort, AgentConversationRailSourceMethod>
 >;
 
 export interface AgentConversationBatchDeletionCapability {
@@ -48,21 +42,8 @@ export interface AgentConversationBatchDeletionCapability {
 export function createAgentConversationRailRuntime(
   source: AgentConversationRailRuntimeSource
 ): AgentConversationRailRuntime {
-  const sessionSectionsQueryCaches = new Map<
-    string,
-    WorkspaceQueryCache<unknown>
-  >();
-
   return {
     deleteSessionsBatch: (input) => source.deleteSessionsBatch(input),
-    getSessionSectionsQueryCache(workspaceId) {
-      const key = workspaceId.trim();
-      const current = sessionSectionsQueryCaches.get(key);
-      if (current) return current;
-      const created = createWorkspaceQueryCache<unknown>();
-      sessionSectionsQueryCaches.set(key, created);
-      return created;
-    },
     listPinnedSessionsPage: (input) => source.listPinnedSessionsPage(input),
     listSessionSectionDeletionCandidates: (input) =>
       source.listSessionSectionDeletionCandidates(input),
@@ -74,7 +55,10 @@ export function createAgentConversationRailRuntime(
 
 export function inspectAgentConversationBatchDeletionCapability(
   runtime: Partial<
-    Pick<AgentActivityRuntime, AgentConversationBatchDeletionRuntimeMethod>
+    Pick<
+      AgentConversationRailRuntimePort,
+      AgentConversationBatchDeletionRuntimeMethod
+    >
   >
 ): AgentConversationBatchDeletionCapability {
   const missingMethods =

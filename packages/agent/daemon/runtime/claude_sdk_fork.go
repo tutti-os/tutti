@@ -8,11 +8,10 @@ import (
 
 const (
 	claudeSDKForkDriverKind = "claude-agent-sdk-session-fork"
-	// sidecar-v4 uses the official SDK query resume/fork options because the
-	// pinned direct forkSession API cannot accept Host's deterministic child
-	// UUID. On an SDK upgrade, check for caller-selected child identity,
-	// idempotency, and atomic/reconcilable persistence before replacing it.
-	claudeSDKForkDriverVersion = "0.3.201/sidecar-v4-deterministic"
+	// The official SDK forkSession API allocates the provider child identity.
+	// Host therefore permits one dispatch and fails closed instead of replaying
+	// an unknown result that could create a duplicate provider child.
+	claudeSDKForkDriverVersion = "0.3.201/sidecar-v6-official-fork-api"
 )
 
 func (a *ClaudeCodeSDKAdapter) ForkCapabilities(
@@ -47,7 +46,7 @@ func (a *ClaudeCodeSDKAdapter) ForkCapabilities(
 		DriverKind:                   claudeSDKForkDriverKind,
 		DriverVersion:                claudeSDKForkDriverVersion,
 		StateBindingMode:             "provider_owned",
-		DeterministicTargetSessionID: true,
+		DeterministicTargetSessionID: false,
 		ThroughTurn:                  len(turnIDs) != 0,
 		ThroughProviderTurnIDs:       turnIDs,
 		ThroughProviderTurnIDsKnown:  true,
@@ -66,11 +65,6 @@ func (a *ClaudeCodeSDKAdapter) Fork(
 	if a == nil || a.transport == nil {
 		return result, ErrSessionForkUnsupported
 	}
-	targetProviderSessionID := strings.TrimSpace(input.TargetProviderSessionID)
-	if targetProviderSessionID == "" ||
-		targetProviderSessionID == result.ForkedFromProviderSessionID {
-		return result, errors.New("deterministic Claude fork target session id is required")
-	}
 	event, sent, err := a.statelessClaudeSDKForkRequest(
 		ctx,
 		input.Source,
@@ -78,12 +72,11 @@ func (a *ClaudeCodeSDKAdapter) Fork(
 			ID:   newID(),
 			Type: "fork_session",
 			Payload: map[string]any{
-				"providerSessionId":       strings.TrimSpace(input.Source.ProviderSessionID),
-				"providerTurnId":          strings.TrimSpace(input.ProviderTurnID),
-				"providerTurnIds":         append([]string(nil), input.ProviderTurnIDs...),
-				"targetProviderSessionId": targetProviderSessionID,
-				"cwd":                     strings.TrimSpace(input.Source.CWD),
-				"title":                   strings.TrimSpace(input.TargetTitle),
+				"providerSessionId": strings.TrimSpace(input.Source.ProviderSessionID),
+				"providerTurnId":    strings.TrimSpace(input.ProviderTurnID),
+				"providerTurnIds":   append([]string(nil), input.ProviderTurnIDs...),
+				"cwd":               strings.TrimSpace(input.Source.CWD),
+				"title":             strings.TrimSpace(input.TargetTitle),
 			},
 		},
 	)
@@ -117,7 +110,7 @@ func (a *ClaudeCodeSDKAdapter) Fork(
 		payloadString(event.Payload, "deliveryDisposition"),
 	)
 	if result.ProviderSessionID == "" ||
-		result.ProviderSessionID != targetProviderSessionID ||
+		result.ProviderSessionID == result.ForkedFromProviderSessionID ||
 		result.StateBindingMode != "provider_owned" ||
 		result.StateBindingReceipt == "" ||
 		result.DeliveryDisposition != SessionForkDeliveryAccepted {

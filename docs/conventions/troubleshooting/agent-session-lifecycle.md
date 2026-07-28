@@ -1911,6 +1911,82 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [controller_test.go](../../../packages/agent/daemon/runtime/controller_test.go)
 
+### Claude Code completes but the Turn has no Fork entry
+
+- Symptom:
+  A Claude Code Turn is settled and has assistant output, but AgentGUI does not
+  offer Fork. The session capability reports `forkThroughTurn=false`, or its
+  supported provider Turn list is empty even though the Claude transcript is
+  readable.
+- Quick checks:
+  Compare the canonical Turn's `root_provider_turn_id` with the UUID of the
+  matching root user message returned by the official Claude SDK
+  `getSessionMessages` API. If they differ, inspect the live sidecar event
+  sequence for `provider_turn_started`. Do not infer identity from transcript
+  position or substitute the canonical Tutti Turn ID.
+- Root cause:
+  The outbound user-message UUID is only a prompt correlation value. Claude
+  Code may rewrite that UUID before persisting the transcript. Publishing the
+  caller-generated value as canonical provider identity makes strict prefix
+  verification correctly reject the Turn, which removes the Fork capability.
+- Fix:
+  Mark the next root prompt echo as causally expected before submitting it.
+  Bind provider Turn identity from that observed root user-message UUID, emit
+  `provider_turn_started`, and only then persist the root provider lifecycle.
+  Keep historical Turns without observed provider identity fail-closed rather
+  than guessing or backfilling them.
+- Validation:
+  Cover a query whose root user echo rewrites the outbound UUID. Assert
+  `provider_turn_started` and terminal events both carry the persisted UUID,
+  then verify the daemon stores the same identity and the fork capability
+  accepts it. Restart the daemon/sidecar before manually checking a newly
+  completed Claude Code Turn; historical affected Turns remain intentionally
+  non-forkable.
+- References:
+  [sessionRuntime.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.ts)
+  [turnLifecycle.ts](../../../packages/agent/claude-sdk-sidecar/src/turnLifecycle.ts)
+  [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
+  [claude_sdk_events.go](../../../packages/agent/daemon/runtime/claude_sdk_events.go)
+
+### Claude Code Fork fails after the action is clicked
+
+- Symptom:
+  Fork is available for a completed Claude Code Turn, but clicking it produces
+  a failed operation. The durable operation becomes `unknown`, no target
+  canonical Session is committed, and the target provider Session is absent.
+- Quick checks:
+  Inspect the latest `workspace_agent_session_fork_operations` row and query the
+  target UUID with the official SDK `getSessionInfo` and
+  `getSessionMessages`. If both are empty, check whether the sidecar used
+  `query({forkSession: true})` with an empty prompt and treated
+  `initializationResult()` as provider mutation completion.
+- Root cause:
+  Query initialization only completes the SDK/CLI handshake. Without a prompt,
+  it does not durably create the requested child transcript. Unit tests can
+  hide the defect if their fake marks the child created inside
+  `initializationResult()`. A catch that replaces the original exception with
+  a generic Fork error also erases whether failure occurred during source
+  validation, provider mutation, or child verification.
+- Fix:
+  Use the official `forkSession(source, {upToMessageId, title})` transcript
+  mutation. Accept its provider-generated child UUID, advertise the driver as
+  non-deterministic, and let Host keep only the canonical target Session ID
+  deterministic. Preserve the failure stage and original SDK reason.
+  After provider mutation starts, any failure is `unknown` and must never be
+  replayed.
+- Validation:
+  Exercise the official SDK with an in-memory SessionStore, including a Turn
+  whose inclusive checkpoint ends in a system message. Verify the provider
+  child is independently readable, root user UUIDs are remapped, the canonical
+  child resumes by the returned provider Session ID, and a second Fork from
+  that child succeeds. Cover pre-mutation `not_started`, post-mutation
+  `unknown`, and Host's no-replay behavior for non-deterministic drivers.
+- References:
+  [sessionFork.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionFork.ts)
+  [sessionFork.test.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionFork.test.ts)
+  [claude_sdk_fork.go](../../../packages/agent/daemon/runtime/claude_sdk_fork.go)
+  [session_fork.go](../../../packages/agent/host/session_fork.go)
+
 ### Claude Code cancel leaves Write/tool cards or thinking stuck in progress
 
 - Symptom:

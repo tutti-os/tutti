@@ -603,11 +603,11 @@ func TestClaudeCodeSDKAdapterExecSendsStructuredPromptContent(t *testing.T) {
 	if sent[0].Payload["prompt"] != "what is in this image?" {
 		t.Fatalf("exec prompt = %#v, want legacy text prompt", sent[0].Payload["prompt"])
 	}
-	providerTurnID := payloadString(sent[0].Payload, "providerTurnId")
-	if providerTurnID == "" || providerTurnID == "turn-image" {
+	promptCorrelationID := payloadString(sent[0].Payload, "promptCorrelationId")
+	if promptCorrelationID == "" || promptCorrelationID == "turn-image" {
 		t.Fatalf(
-			"exec provider turn id = %q, want a distinct SDK prompt UUID",
-			providerTurnID,
+			"exec prompt correlation id = %q, want a distinct UUID",
+			promptCorrelationID,
 		)
 	}
 	content, ok := sent[0].Payload["content"].([]any)

@@ -279,23 +279,36 @@ sections come from current user projects and session membership comes from
 persisted `rail_section_key`, not frontend cwd grouping or project-root
 filters.
 The published `@tutti-os/agent-gui/conversation-rail-runtime` entrypoint owns
-the complete host-neutral rail capability cohort and its workspace-scoped query
-caches. Product hosts provide one source implementing the six canonical rail
-queries and mutations, then install the result of
-`createAgentConversationRailRuntime` on `AgentActivityRuntime`; they must not
-copy the forwarding methods or cache lifetime into renderer composition code.
+the host-neutral Rail query/mutation cohort. The sibling
+`@tutti-os/agent-gui/conversation-rail-controller` entrypoint owns the
+controller interface, workspace-Engine-scoped query caches, and
+`createAgentGUIConversationRailQueryController` factory. Product hosts provide
+the canonical Rail queries and construct the controller with their workspace
+Engine through that factory; they must not instantiate the package-internal
+implementation or copy query scope, first-page refresh, cursor pagination,
+stale-request fencing, membership reconciliation, Engine ingestion, forwarding
+methods, or cache lifetime into app or renderer composition code.
 Transport adapters still own HTTP/IPC DTO mapping, authorization, and protocol
 errors. In particular, `listSessionSectionDeletionCandidates` and
 `deleteSessionsBatch` are one atomic batch-deletion capability. AgentGUI disables
 the action and reports
 `agent.gui.conversation_batch_delete.capability_incomplete` when a host exposes
 only one half, instead of accepting a click that cannot complete.
-Native Mobile currently owns a narrower Rail controller, but it obeys the same
-entity boundary: the controller retains only section membership, ordered
-Session ids, cursors, totals, and request state. Generated Session DTOs from
-first-page and pagination responses are transient adapter input and are
-immediately upserted into the workspace Engine; they are never retained in a
-second Mobile Rail entity store.
+Desktop and Native Mobile use the same headless Rail controller. Generated
+Session DTOs from first-page and pagination responses are transient adapter
+input and are immediately upserted into the workspace Engine; they are never
+retained in a second host Rail entity store. Hosts retain only transport
+mapping, runtime-availability policy, surface lifecycle, presentation, and
+host-specific refresh cadence such as Mobile disconnected polling.
+The pure Rail contracts are the canonical source for both the controller and
+the compatibility-named `AgentActivityRuntime` Rail aliases. The public
+controller snapshot exposes memberships, ordered ids, pagination, search, and
+request state only; Desktop joins it with Engine state for localized
+conversation summaries outside the headless entrypoint. Resolved cache entries
+are shared by controllers created for the same workspace Engine; the factory,
+not `AgentActivityRuntime` or a host adapter, owns that registry. In-flight
+first-page entity payloads stay scoped to one attached controller generation so
+an obsolete mount cannot ingest or cache them.
 Every daemon `WorkspaceAgentSession` response carries the persisted membership
 as required `railSectionKey`. The desktop adapter rejects a missing or blank
 value as a protocol contract error; it must not manufacture `conversations` or
@@ -352,11 +365,13 @@ Activating a conversation must not by itself call `listSessionSections` again.
 Likewise, active detail provider changes should not reload section first pages.
 Page sessions must be upserted into the workspace engine, while the rail query
 cache retains only ordered session ids, cursors, totals, and section metadata.
-Desktop keeps that cache on the workspace-scoped runtime rather than a mounted
-AgentGUI controller. Fresh first pages are reused for 30 seconds across panel
-remounts and repeated target switches; stale pages remain visible while one
-coalesced background request revalidates the scope. The cache never owns session
-entities, titles, lifecycle, or interaction state.
+The shared conversation-Rail controller factory keeps resolved cache entries
+per workspace `AgentSessionEngine`, rather than exposing cache ownership through
+a host runtime or mounted controller. Fresh first pages are reused for 30
+seconds across controller remounts and repeated target switches. In-flight
+request coalescing remains controller-local; the factory shares only resolved
+entries across controllers. The cache never owns session entities, titles,
+lifecycle, or interaction state.
 Pin and delete are engine mutations, not direct runtime calls from AgentGUI.
 The engine records the pending mutation, emits one semantic command, and feeds
 the command result back through its reducer loop. Successful pin results and
@@ -366,13 +381,15 @@ port is the only transport executor. Settled mutation records use a bounded
 window; they are workflow evidence, not an unbounded history store.
 When one of those canonical commits changes page membership, the rail query
 controller reloads only the affected first pages. Its public snapshot contains
-both derived engine conversations and daemon membership. The snapshot itself is
-the committed value: the controller keeps it unchanged while draft page requests
-are pending, then rebuilds and publishes it once from the latest engine state and
-resolved membership. The controller does not inspect engine mutation records.
-The view has no independent engine subscription or stale-page cache. A failed
-targeted read leaves the committed snapshot visible and locks
-membership-sensitive actions until an authoritative scoped refresh succeeds.
+daemon membership and query publication state, not derived Engine
+conversations. The controller keeps committed membership visible while draft
+page requests are pending, then publishes the resolved membership once. The
+Desktop adapter independently subscribes to the Engine and joins that canonical
+state with the headless snapshot to derive localized conversations; it does not
+own a second Session or Rail query cache. The controller does not inspect Engine
+mutation records. A failed targeted read leaves committed membership visible
+and locks membership-sensitive actions until an authoritative scoped refresh
+succeeds.
 Attach compares current canonical membership with the last observed membership
 and invalidates interrupted draft work before bootstrap, so changes completed
 while every panel is closed are revalidated without mutation-history coupling.
