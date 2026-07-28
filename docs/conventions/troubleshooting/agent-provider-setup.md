@@ -402,6 +402,12 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   platform optional dependency versions. The daemon default chain intentionally
   excludes mirrors that only sync the aggregate package. Preserve
   `TUTTI_AGENT_NPM_REGISTRY` as an explicit single-registry pin with no fallback.
+  Before a managed global npm retry, remove only the selected package's sibling
+  staging directories (for example, `@tutti-os/.tutti-agent-<hash>`), and repeat
+  that cleanup after a failed or canceled attempt. Do not remove the global
+  `node_modules` tree because the selected prefix can contain unrelated
+  user-installed packages. This lets a later daemon restart recover from a
+  desktop-close cancellation instead of repeatedly failing with `ENOTEMPTY`.
 - Validation:
   Install into a temporary prefix/cache and verify the provider probe, not only
   npm's exit code. Confirm `tutti-agent app-server` can start far enough to pass
