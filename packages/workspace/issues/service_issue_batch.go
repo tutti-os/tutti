@@ -6,6 +6,22 @@ import "context"
 // graph as one store operation. Callers never observe a partially created Plan
 // Issue, and no compensating delete is required when a task insert fails.
 func (s Service) CreateIssueWithTasks(ctx context.Context, input CreateIssueWithTasksInput) (Issue, []Task, error) {
+	issue, tasks, err := s.PrepareIssueWithTasks(ctx, input)
+	if err != nil {
+		return Issue{}, nil, err
+	}
+	store, err := s.store()
+	if err != nil {
+		return Issue{}, nil, err
+	}
+	return store.CreateIssueWithTasks(ctx, issue, tasks)
+}
+
+// PrepareIssueWithTasks validates and normalizes a new Issue graph without
+// persisting it. Product adapters use this when their owning transaction must
+// atomically include additional durable state alongside the reusable Issue
+// aggregate.
+func (s Service) PrepareIssueWithTasks(ctx context.Context, input CreateIssueWithTasksInput) (Issue, []Task, error) {
 	store, err := s.store()
 	if err != nil {
 		return Issue{}, nil, err
@@ -33,5 +49,5 @@ func (s Service) CreateIssueWithTasks(ctx context.Context, input CreateIssueWith
 			input.Issue.AutoTokenBudgetHistoryHint,
 		)
 	}
-	return store.CreateIssueWithTasks(ctx, issue, tasks)
+	return issue, tasks, nil
 }

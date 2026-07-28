@@ -134,6 +134,24 @@ package, so generic Issue consumers cannot become a second Tutti workflow
 authority. AgentGUI neither parses an Agent message into this graph nor calls
 Issue creation itself.
 
+After materialization, `tutti_mode_plan` graphs are read-only through every
+generic Issue Manager mutation surface. Issue/task/context/run/dispatch,
+profile, and budget writers return the typed conflict reason
+`tutti_issue_managed`, including the source Session recovery target. Manual
+and `traditional_plan` Issues keep their existing mutation behavior. Only the
+source Agent may use `tutti plan issue mutate`, with the exact active
+checkpoint, graph revision, and stable request ID.
+
+Source graph changes are transactional and revisioned. A successful mutation
+increments `graphRevision`, rebinds the active checkpoint to that revision,
+retires any prepared or dispatched Goal Review and reviewer wake for the stale
+graph, and returns the revision required by the next exact-set schedule.
+Reusing the same request ID and payload replays the committed result; different
+content is a conflict. Obsolete tasks are logically superseded rather than deleted:
+their task row, Runs, outputs, and audit history remain queryable, while active
+projections and scheduling exclude them. Completed tasks are immutable, and a
+running task must first reach a terminal settlement before supersession.
+
 `sourceSessionId` is the durable planning link for both origins. Issue and Task
 headers can open that source Session, while successful atomic creation projects
 one idempotent, credential-free workspace-Issue mention back into the source
@@ -141,11 +159,30 @@ timeline. Tutti Mode Plan additionally keeps its durable workflow, immutable
 revisions, checkpoints, and the operation's `issueId`; those records represent
 review provenance and do not compete with the Issue as the execution entity.
 
+A `tutti_mode_plan` Issue is a managed read model only when it also carries a
+non-empty `sourceSessionId`; the UI fails closed when either marker is missing.
+Managed Issue and Task surfaces expose no generic create, edit, delete, move,
+run, acceptance, or context-reference mutations. Their only modification
+entrypoint opens the exact source Session, appends a localized Issue/Task
+mention to the existing composer draft, and focuses the composer without
+submitting. The Issue Manager host adapter owns that exact-Session launch; the
+shared package never reaches into AgentGUI or replaces an existing draft.
+
 Completion uses a three-step acceptance ladder:
 
 ```text
 agent_claimed -> auto_checked -> user_accepted
 ```
+
+That ladder and the generic dispatch frontier remain authoritative for manual
+and `traditional_plan` Issues. A `tutti_mode_plan` Issue instead belongs to its
+daemon execution aggregate: materialization creates no Run, `autoAccept` has no
+dispatch authority, and only the source Agent's checkpoint/revision-fenced
+exact-set schedule command may admit Runs. The admission transaction creates
+the selected Runs, task projections, and recoverable launch intents together;
+it never silently fills capacity with another eligible task. Budget capacity
+uses the same shared evaluator as generic dispatch and reserves estimated
+allowance for same-Issue active Runs.
 
 Issue runs settle live from the canonical root-turn settlement fan-out: the
 Issue-run observer sits on the opt-in settle list (root-provider-lifecycle
@@ -158,10 +195,14 @@ window — a streaming session with a lagging (empty) persisted active-turn id
 is alive, not abandoned.
 
 A successful Run moves its task to `pending_acceptance`/`agent_claimed`; it is
-only the executor's completion claim. Only an explicit user acceptance reaches
-`user_accepted` and closes the Task as `completed`. Failed Runs leave the task
-retryable and do not satisfy dependencies. Repeated terminal completion and
-review settlement are idempotent.
+only the executor's completion claim. For manual and `traditional_plan`
+Issues, explicit user acceptance reaches `user_accepted`. For a
+`tutti_mode_plan` Issue, the source Agent must review the durable settlement
+checkpoint and either schedule the exact next set or explicitly acknowledge
+it. Either command accepts the reviewed successful task transactionally;
+failed and canceled task projections remain terminal. Repeated terminal
+completion, settlement repair, schedule, and acknowledge mutations are
+idempotent.
 
 Parallelism stays honest at two boundaries. Materializing a plan normalizes
 the durable `parallelizable` flag against dependencies: a task that depends on
@@ -174,17 +215,19 @@ merged forward instead of stranding on `tutti/task/*` branches; the planning
 guide pairs this with the convention of an integration task after every
 parallel group.
 
-Two adjacent flows reuse this ladder without weakening it. A task whose
-durable `autoAccept` flag is set (proposed by the planning agent, adjustable
-in plan review) skips the human gate: run completion is accepted
-programmatically through the same `UpdateTask` path a manual acceptance takes,
-so dispatch advance and the whole-issue completion check stay identical.
+For generic dispatch, a task whose durable `autoAccept` flag is set skips the
+human gate: run completion is accepted programmatically through the same
+`UpdateTask` path a manual acceptance takes, so dispatch advance and the
+whole-issue completion check stay identical. Tutti-owned execution treats that
+field as compatibility metadata only.
 Sending a `pending_acceptance` task back to `not_started` (rework) resets its
 acceptance to `agent_claimed` and immediately re-opens the dispatch frontier —
-the daemon re-dispatches without waiting for an unrelated event. When every
-non-canceled task of a `tutti_mode_plan` Issue is `completed`/`user_accepted`,
-the daemon notifies the source conversation once (deduped per Issue) so the
-planning agent resumes with a verification/summary turn.
+the daemon re-dispatches without waiting for an unrelated event. Tutti-owned
+terminal Runs never enter the generic notifier or auto-dispatch paths. Each
+terminal Run appends an ordered durable execution checkpoint for the source
+Agent. Once all tasks are terminal and every terminal Run has a settlement
+checkpoint, an `all_tasks_terminal` checkpoint advances the execution to
+`pending_goal_review`; completion cannot bypass that review boundary.
 
 The npm package name should be `@tutti-os/workspace-issue-manager`.
 It participates in the shared public npm release group documented in

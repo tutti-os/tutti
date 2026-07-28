@@ -8,6 +8,7 @@ import (
 	"math"
 	"strings"
 
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -25,25 +26,56 @@ var (
 )
 
 type sessionRuntimeSnapshot struct {
-	Version                  int
-	AgentTargetID            string
-	WorkspaceAgentRevision   int64
-	HarnessAgentTargetID     string
-	Provider                 string
-	Model                    string
-	ModelConfigurationSource string
-	ModelPlanID              string
-	ModelPlanRevision        uint64
-	ModelFingerprint         string
-	ModelDefaultModel        string
-	Name                     string
-	Description              string
-	Instructions             string
-	CallConditions           []string
-	CapabilitiesExplicit     bool
-	Skills                   []string
-	Tools                    []string
-	EffectiveConfig          map[string]any
+	Version                     int
+	AgentTargetID               string
+	WorkspaceAgentRevision      int64
+	HarnessAgentTargetID        string
+	Provider                    string
+	Model                       string
+	ModelConfigurationSource    string
+	ModelPlanID                 string
+	ModelPlanRevision           uint64
+	ModelFingerprint            string
+	ModelDefaultModel           string
+	Name                        string
+	Description                 string
+	Instructions                string
+	CallConditions              []string
+	CapabilitiesExplicit        bool
+	Skills                      []string
+	Tools                       []string
+	CommandCapabilityProjection *runtimeprep.CommandCapabilityProjection
+	EffectiveConfig             map[string]any
+}
+
+func (s *Service) AgentSessionCommandCapabilityProjection(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+) (*runtimeprep.CommandCapabilityProjection, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return nil, ErrInvalidArgument
+	}
+	result, err := s.ApplicationHost().GetSession(ctx, agenthost.SessionRef{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	snapshot, exists, err := sessionRuntimeSnapshotFromContext(
+		result.Canonical.InternalRuntimeContext,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if !exists || snapshot.CommandCapabilityProjection == nil {
+		return &runtimeprep.CommandCapabilityProjection{}, nil
+	}
+	return cloneCommandCapabilityProjection(
+		snapshot.CommandCapabilityProjection,
+	), nil
 }
 
 func runtimeContextWithSessionRuntimeSnapshot(
@@ -108,6 +140,15 @@ func runtimeContextWithSessionRuntimeSnapshot(
 	if len(agentDefinition) > 0 {
 		snapshot["agentDefinition"] = agentDefinition
 	}
+	if projection := cloneCommandCapabilityProjection(
+		input.CommandCapabilityProjection,
+	); projection != nil {
+		snapshot["commandCapabilityProjection"] = map[string]any{
+			"allowedIds":            projection.AllowedIDs,
+			"includeIntegrationIds": projection.IncludeIntegrationIDs,
+			"excludeIds":            projection.ExcludeIDs,
+		}
+	}
 	result[sessionRuntimeSnapshotContextKey] = snapshot
 	return result
 }
@@ -156,23 +197,24 @@ func sessionRuntimeSnapshotFromContext(runtimeContext map[string]any) (sessionRu
 		return sessionRuntimeSnapshot{}, true, fmt.Errorf("%w: model configuration is missing", ErrSessionRuntimeSnapshotUnavailable)
 	}
 	snapshot := sessionRuntimeSnapshot{
-		Version:                  int(version),
-		AgentTargetID:            snapshotString(payload["agentTargetId"]),
-		HarnessAgentTargetID:     snapshotString(payload["harnessAgentTargetId"]),
-		Provider:                 agentprovider.Normalize(snapshotString(payload["provider"])),
-		Model:                    snapshotString(payload["model"]),
-		ModelConfigurationSource: snapshotString(configuration["source"]),
-		ModelPlanID:              snapshotString(configuration["modelPlanId"]),
-		ModelFingerprint:         snapshotString(configuration["fingerprint"]),
-		ModelDefaultModel:        snapshotString(configuration["defaultModel"]),
-		Name:                     snapshotNestedString(payload, "agentDefinition", "name"),
-		Description:              snapshotAgentDefinitionDescription(payload),
-		Instructions:             snapshotNestedString(payload, "agentDefinition", "instructions"),
-		CallConditions:           snapshotNestedStrings(payload, "agentDefinition", "callConditions"),
-		CapabilitiesExplicit:     snapshotNestedBool(payload, "agentDefinition", "capabilitiesExplicit"),
-		Skills:                   snapshotNestedStrings(payload, "agentDefinition", "skills"),
-		Tools:                    snapshotNestedStrings(payload, "agentDefinition", "tools"),
-		EffectiveConfig:          snapshotMap(payload["effectiveConfig"]),
+		Version:                     int(version),
+		AgentTargetID:               snapshotString(payload["agentTargetId"]),
+		HarnessAgentTargetID:        snapshotString(payload["harnessAgentTargetId"]),
+		Provider:                    agentprovider.Normalize(snapshotString(payload["provider"])),
+		Model:                       snapshotString(payload["model"]),
+		ModelConfigurationSource:    snapshotString(configuration["source"]),
+		ModelPlanID:                 snapshotString(configuration["modelPlanId"]),
+		ModelFingerprint:            snapshotString(configuration["fingerprint"]),
+		ModelDefaultModel:           snapshotString(configuration["defaultModel"]),
+		Name:                        snapshotNestedString(payload, "agentDefinition", "name"),
+		Description:                 snapshotAgentDefinitionDescription(payload),
+		Instructions:                snapshotNestedString(payload, "agentDefinition", "instructions"),
+		CallConditions:              snapshotNestedStrings(payload, "agentDefinition", "callConditions"),
+		CapabilitiesExplicit:        snapshotNestedBool(payload, "agentDefinition", "capabilitiesExplicit"),
+		Skills:                      snapshotNestedStrings(payload, "agentDefinition", "skills"),
+		Tools:                       snapshotNestedStrings(payload, "agentDefinition", "tools"),
+		CommandCapabilityProjection: snapshotCommandCapabilityProjection(payload),
+		EffectiveConfig:             snapshotMap(payload["effectiveConfig"]),
 	}
 	if revision, ok := snapshotInt64(payload["workspaceAgentRevision"]); ok {
 		snapshot.WorkspaceAgentRevision = revision
@@ -368,6 +410,45 @@ func normalizedSnapshotStrings(values []string) []string {
 		result = append(result, value)
 	}
 	return result
+}
+
+func cloneCommandCapabilityProjection(
+	projection *runtimeprep.CommandCapabilityProjection,
+) *runtimeprep.CommandCapabilityProjection {
+	if projection == nil {
+		return nil
+	}
+	return &runtimeprep.CommandCapabilityProjection{
+		AllowedIDs: normalizedSnapshotStrings(
+			projection.AllowedIDs,
+		),
+		IncludeIntegrationIDs: normalizedSnapshotStrings(
+			projection.IncludeIntegrationIDs,
+		),
+		ExcludeIDs: normalizedSnapshotStrings(projection.ExcludeIDs),
+	}
+}
+
+func snapshotCommandCapabilityProjection(
+	payload map[string]any,
+) *runtimeprep.CommandCapabilityProjection {
+	allowed := snapshotNestedStrings(
+		payload, "commandCapabilityProjection", "allowedIds",
+	)
+	includes := snapshotNestedStrings(
+		payload, "commandCapabilityProjection", "includeIntegrationIds",
+	)
+	excludes := snapshotNestedStrings(
+		payload, "commandCapabilityProjection", "excludeIds",
+	)
+	if len(allowed) == 0 && len(includes) == 0 && len(excludes) == 0 {
+		return nil
+	}
+	return &runtimeprep.CommandCapabilityProjection{
+		AllowedIDs:            allowed,
+		IncludeIntegrationIDs: includes,
+		ExcludeIDs:            excludes,
+	}
 }
 
 func snapshotNestedString(payload map[string]any, objectKey string, fieldKey string) string {

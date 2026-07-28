@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
@@ -19,6 +20,7 @@ type IssueExecutionCoordinator struct {
 	Issues              *IssueManagerService
 	RunSessionCanceller IssueRunSessionCanceller
 	SettlementReader    IssueRunSettlementReader
+	Clock               func() time.Time
 }
 
 // CancelIssueExecution stops an Issue's execution as one user intent: it
@@ -35,6 +37,31 @@ func (c *IssueExecutionCoordinator) CancelIssueExecution(ctx context.Context, wo
 	if err != nil {
 		return 0, err
 	}
+	return c.cancelIssueRuns(ctx, workspaceID, issueID, running)
+}
+
+// CancelTuttiModeIssueExecution is the product-authorized stop path for an
+// Issue already proven to be owned by a Tutti execution. Generic Issue
+// cancellation remains rejected for managed graphs.
+func (c *IssueExecutionCoordinator) CancelTuttiModeIssueExecution(
+	ctx context.Context, workspaceID string, issueID string,
+) (int, error) {
+	if c == nil || c.Issues == nil {
+		return 0, workspaceissues.ErrInvalidArgument
+	}
+	running, err := c.Issues.pauseTuttiModeIssueExecution(ctx, workspaceID, issueID)
+	if err != nil {
+		return 0, err
+	}
+	return c.cancelIssueRuns(ctx, workspaceID, issueID, running)
+}
+
+func (c *IssueExecutionCoordinator) cancelIssueRuns(
+	ctx context.Context,
+	workspaceID string,
+	issueID string,
+	running []workspaceissues.Run,
+) (int, error) {
 	canceled := 0
 	cancelErrors := make([]error, 0)
 	for _, run := range running {
@@ -45,11 +72,20 @@ func (c *IssueExecutionCoordinator) CancelIssueExecution(ctx context.Context, wo
 		}
 		var result IssueRunCancelResult
 		if c.RunSessionCanceller != nil && strings.TrimSpace(run.AgentSessionID) != "" {
+			clientSubmitID, identityErr := c.Issues.issueRunClientSubmitID(ctx, run)
+			if identityErr != nil {
+				cancelErrors = append(cancelErrors, fmt.Errorf(
+					"resolve cancel identity for run %s: %w", run.RunID, identityErr,
+				))
+				c.Issues.enqueueWorkspaceRunReconcile(workspaceID)
+				continue
+			}
 			var cancelErr error
 			result, cancelErr = c.RunSessionCanceller.RequestRunCancellation(ctx, IssueRunCancellationRequest{
 				WorkspaceID:    workspaceID,
 				AgentSessionID: run.AgentSessionID,
 				RunID:          run.RunID,
+				ClientSubmitID: clientSubmitID,
 			})
 			if cancelErr != nil {
 				slog.Warn("cancel Issue run agent session failed",
@@ -135,6 +171,41 @@ func (s IssueManagerService) pauseIssueExecution(ctx context.Context, workspaceI
 	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
 	if err != nil {
 		return nil, err
+	}
+	if err := workspaceissues.RejectManagedIssueMutation(detail.Issue); err != nil {
+		return nil, err
+	}
+	if !detail.Issue.DispatchPaused {
+		issue := detail.Issue
+		issue.DispatchPaused = true
+		if _, err := s.Store.UpdateIssue(ctx, issue); err != nil {
+			return nil, err
+		}
+	}
+	allRunning, err := s.domainService().ListRunningRuns(ctx, workspaceID, defaultIssueRunReconcileLimit)
+	if err != nil {
+		return nil, err
+	}
+	running := make([]workspaceissues.Run, 0, len(allRunning))
+	for _, run := range allRunning {
+		if run.IssueID == issueID {
+			running = append(running, run)
+		}
+	}
+	return running, nil
+}
+
+func (s IssueManagerService) pauseTuttiModeIssueExecution(
+	ctx context.Context, workspaceID string, issueID string,
+) ([]workspaceissues.Run, error) {
+	unlock := s.MutationLocks.Lock(workspaceID, issueID)
+	defer unlock()
+	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
+	if err != nil {
+		return nil, err
+	}
+	if detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan {
+		return nil, workspaceissues.ErrInvalidArgument
 	}
 	if !detail.Issue.DispatchPaused {
 		issue := detail.Issue

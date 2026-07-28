@@ -6,8 +6,10 @@ import (
 	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
+	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 )
 
 const issueManagerLocalActorUserID = "local"
@@ -17,16 +19,16 @@ type IssueManagerService struct {
 	RunReconciler                  IssueRunReconciler
 	SourceSessionDirectoryResolver IssueSourceSessionDirectoryResolver
 	Publisher                      IssueManagerEventPublisher
-	RunReconcileQueue              *IssueRunReconcileQueue
+	ExecutionRecoveryQueue         *WorkspaceExecutionRecoveryQueue
 	Store                          workspaceissues.Store
 	AgentTargetReader              IssueAssignmentAgentTargetReader
 	PlanningTimeline               IssuePlanningTimelineReporter
+	// TuttiModeExecutions owns the product transaction that atomically adds
+	// the execution aggregate to a validated reusable Issue/task graph.
+	TuttiModeExecutions *tuttimodeexecutionservice.Service
 	// TaskWorktreeRoot overrides where per-run task worktrees are created;
 	// empty falls back to <state dir>/task-worktrees.
 	TaskWorktreeRoot string
-	// CompletionNotifier hands control back to the planning conversation once
-	// every task of a tutti-mode-plan Issue is completed and accepted.
-	CompletionNotifier TuttiPlanIssueCompletionNotifier
 	// MutationLocks serializes task/run mutations per Issue so the concurrent
 	// settle paths cannot interleave read-modify-write cycles into
 	// contradictory task states. Nil (bare test services) means no locking.
@@ -34,43 +36,14 @@ type IssueManagerService struct {
 	// RunOperationLocks fences lock-free external launch/cancel operations for
 	// one durable Run without holding a mutex across Agent or filesystem work.
 	RunLaunchGate *IssueRunLaunchGate
+	// TuttiModeRunLaunchLeaseDuration and RunLaunchLeaseRenewalScheduler keep
+	// one durable launch intent owned while its external delivery is in flight.
+	// Zero/nil use the production one-minute lease and ticker scheduler.
+	TuttiModeRunLaunchLeaseDuration time.Duration
+	RunLaunchLeaseRenewalScheduler  IssueRunLaunchLeaseRenewalScheduler
 	// RunCancellationRequester compensates a launch when Stop arrived while
 	// the external Agent create call was already in flight.
 	RunCancellationRequester IssueRunSessionCanceller
-}
-
-type TuttiPlanIssueCompletionNotifier interface {
-	NotifyTuttiPlanIssueCompleted(
-		ctx context.Context,
-		workspaceID string,
-		issue workspaceissues.Issue,
-		tasks []workspaceissues.Task,
-	)
-	// NotifyTuttiPlanIssueTaskFailed reports a failed task run back to the
-	// planning conversation so execution problems never leave it silent.
-	NotifyTuttiPlanIssueTaskFailed(
-		ctx context.Context,
-		workspaceID string,
-		issue workspaceissues.Issue,
-		task workspaceissues.Task,
-		run workspaceissues.Run,
-	)
-	// NotifyTuttiPlanIssueTaskSettled wakes the planning conversation after a
-	// successful task run settles. The planning agent — not a mechanical
-	// daemon chain — decides how execution advances: it reviews the result,
-	// accepts or reworks a task that is pending acceptance, and can reshape
-	// the remaining graph through the Issue CLI. decisionNeeded is true when
-	// the settled task parked at pending_acceptance (no autoAccept), so the
-	// planning agent is now the acceptance authority.
-	NotifyTuttiPlanIssueTaskSettled(
-		ctx context.Context,
-		workspaceID string,
-		issue workspaceissues.Issue,
-		task workspaceissues.Task,
-		run workspaceissues.Run,
-		allTasks []workspaceissues.Task,
-		decisionNeeded bool,
-	)
 }
 
 type IssueManagerEventPublisher interface {
@@ -193,6 +166,12 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 	if reservedTuttiID != input.Issue.TuttiModeWorkflowOwned || tuttiPlanningSource != input.Issue.TuttiModeWorkflowOwned {
 		return workspaceissues.IssueDetail{}, workspaceissues.ErrInvalidArgument
 	}
+	if tuttiPlanningSource {
+		expectedIssueID, ok := workflowbiz.TuttiModePlanIssueID(input.Issue.TuttiModeWorkflowID)
+		if !ok || input.Issue.IssueID != expectedIssueID {
+			return workspaceissues.IssueDetail{}, workspaceissues.ErrInvalidArgument
+		}
+	}
 	if input.Issue.ParallelExecution && !parallelIssueTasksAreIsolated(input.Tasks) {
 		return workspaceissues.IssueDetail{}, workspaceissues.ErrInvalidArgument
 	}
@@ -216,7 +195,7 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 		})
 	}
 	normalizeParallelizableAgainstDependencies(taskItems)
-	issue, tasks, err := s.domainService().CreateIssueWithTasks(ctx, workspaceissues.CreateIssueWithTasksInput{
+	createInput := workspaceissues.CreateIssueWithTasksInput{
 		Issue: workspaceissues.CreateIssueInput{
 			IssueID:             input.Issue.IssueID,
 			TopicID:             input.Issue.TopicID,
@@ -239,7 +218,27 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 			),
 		},
 		Tasks: taskItems,
-	})
+	}
+	var issue workspaceissues.Issue
+	var tasks []workspaceissues.Task
+	var err error
+	if tuttiPlanningSource {
+		if s.TuttiModeExecutions == nil {
+			return workspaceissues.IssueDetail{}, tuttimodeexecutionservice.ErrServiceUnavailable
+		}
+		issue, tasks, err = s.domainService().PrepareIssueWithTasks(ctx, createInput)
+		if err == nil {
+			issue, tasks, _, err = s.TuttiModeExecutions.Materialize(ctx, tuttimodeexecutionservice.MaterializeInput{
+				Issue:               issue,
+				Tasks:               tasks,
+				WorkflowID:          input.Issue.TuttiModeWorkflowID,
+				ReviewMode:          input.ReviewMode,
+				ReviewAgentTargetID: input.ReviewAgentTargetID,
+			})
+		}
+	} else {
+		issue, tasks, err = s.domainService().CreateIssueWithTasks(ctx, createInput)
+	}
 	if err != nil {
 		return workspaceissues.IssueDetail{}, err
 	}
@@ -267,8 +266,14 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 			time.UnixMilli(issue.CreatedAtUnixMS).UTC(),
 		)
 	}
-	if input.Issue.SequentialExecution || input.Issue.ParallelExecution {
+	if !tuttiPlanningSource && (input.Issue.SequentialExecution || input.Issue.ParallelExecution) {
 		s.dispatchEligibleIssueTasks(ctx, workspaceID, issue.IssueID)
+	}
+	if tuttiPlanningSource {
+		// Materialization atomically prepares the initial durable main wake.
+		// Queue the workspace after commit so production delivery does not
+		// depend on a daemon restart or a later Run transition.
+		s.enqueueWorkspaceRunReconcile(workspaceID)
 	}
 	return s.GetIssueDetail(ctx, workspaceID, issue.IssueID)
 }
@@ -299,6 +304,17 @@ func (s IssueManagerService) GetIssueDetail(ctx context.Context, workspaceID str
 	}
 	applyVisibleIssueSubtaskCount(&detail.Issue, detail.Tasks, detail.LatestRun)
 	return detail, nil
+}
+
+func (s IssueManagerService) GetTuttiModeExecutionByIssue(
+	ctx context.Context,
+	workspaceID string,
+	issueID string,
+) (executionbiz.Aggregate, error) {
+	if s.TuttiModeExecutions == nil {
+		return executionbiz.Aggregate{}, tuttimodeexecutionservice.ErrServiceUnavailable
+	}
+	return s.TuttiModeExecutions.GetByIssue(ctx, workspaceID, issueID)
 }
 
 func (s IssueManagerService) SearchIssueOutputs(ctx context.Context, params workspaceissues.RunOutputSearchParams) ([]workspaceissues.RunOutputSearchHit, error) {
@@ -498,7 +514,6 @@ func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string,
 	})
 	if task.Status == workspaceissues.StatusCompleted && task.AcceptanceState == workspaceissues.AcceptanceUserAccepted {
 		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
-		s.notifyTuttiPlanIssueCompletedBestEffort(ctx, workspaceID, issueID)
 	}
 	// A rework (back to not_started) re-opens the execution frontier; without
 	// this the rejected head of a sequential Issue waits for an unrelated event.
@@ -578,33 +593,6 @@ func normalizeParallelizableAgainstDependencies(items []workspaceissues.CreateTa
 		}
 		group[items[index].TaskID] = struct{}{}
 	}
-}
-
-// notifyTuttiPlanIssueCompletedBestEffort hands control back to the planning
-// conversation once every task of a tutti-mode-plan Issue is completed and
-// user-accepted. The acceptance that crosses the finish line triggers it —
-// including programmatic auto-accepts.
-func (s IssueManagerService) notifyTuttiPlanIssueCompletedBestEffort(ctx context.Context, workspaceID string, issueID string) {
-	if s.CompletionNotifier == nil {
-		return
-	}
-	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
-	if err != nil ||
-		detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan ||
-		strings.TrimSpace(detail.Issue.SourceSessionID) == "" ||
-		len(detail.Tasks) == 0 {
-		return
-	}
-	for _, task := range detail.Tasks {
-		if task.Status == workspaceissues.StatusCanceled {
-			continue
-		}
-		if task.Status != workspaceissues.StatusCompleted ||
-			task.AcceptanceState != workspaceissues.AcceptanceUserAccepted {
-			return
-		}
-	}
-	s.CompletionNotifier.NotifyTuttiPlanIssueCompleted(ctx, workspaceID, detail.Issue, detail.Tasks)
 }
 
 func (s IssueManagerService) DeleteTask(ctx context.Context, workspaceID string, issueID string, taskID string) (bool, error) {
@@ -692,10 +680,10 @@ func (s IssueManagerService) domainService() workspaceissues.Service {
 }
 
 func (s IssueManagerService) enqueueWorkspaceRunReconcile(workspaceID string) {
-	if s.RunReconcileQueue == nil {
+	if s.ExecutionRecoveryQueue == nil {
 		return
 	}
-	s.RunReconcileQueue.Enqueue(workspaceID)
+	s.ExecutionRecoveryQueue.Enqueue(workspaceID)
 }
 
 func (s IssueManagerService) reconcileWorkspaceRunsBestEffort(ctx context.Context, workspaceID string) {

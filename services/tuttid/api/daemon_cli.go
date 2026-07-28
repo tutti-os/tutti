@@ -22,11 +22,16 @@ func (api DaemonAPI) ListCliCapabilities(ctx context.Context, request tuttigener
 	if request.Params.WorkspaceID != nil {
 		workspaceID = *request.Params.WorkspaceID
 	}
+	agentSessionID := ""
+	if request.Params.AgentSessionID != nil {
+		agentSessionID = *request.Params.AgentSessionID
+	}
 	includeHidden := request.Params.IncludeHidden != nil && *request.Params.IncludeHidden
 	includeIntegration := request.Params.IncludeIntegration != nil && *request.Params.IncludeIntegration
 	capabilities := api.CLIRegistry.Capabilities(ctx, cliservice.InvokeContext{
 		Source:                         "cli",
 		WorkspaceID:                    workspaceID,
+		AgentSessionID:                 agentSessionID,
 		SkipCapabilityFilters:          includeHidden,
 		IncludeIntegrationCapabilities: includeHidden || includeIntegration,
 	})

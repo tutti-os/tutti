@@ -99,6 +99,9 @@ func (s *Service) prepareRuntimeForResume(ctx context.Context, session Persisted
 	input.AgentCapabilitiesExplicit = snapshot.CapabilitiesExplicit || len(snapshot.Skills) > 0 || len(snapshot.Tools) > 0
 	input.AgentSkills = append([]string(nil), snapshot.Skills...)
 	input.AgentTools = append([]string(nil), snapshot.Tools...)
+	input.CommandCapabilityProjection = cloneCommandCapabilityProjection(
+		snapshot.CommandCapabilityProjection,
+	)
 	if err := s.applyHarnessFromSessionRuntimeSnapshot(ctx, snapshot, &input); err != nil {
 		return preparedRuntime{}, err
 	}

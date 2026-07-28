@@ -33,6 +33,7 @@ type Service struct {
 	WorkspaceAgentResolver         WorkspaceAgentResolver
 	SessionReader                  SessionReader
 	SessionPurgeStore              agenthost.SessionPurgeStore
+	SessionDeletionGuard           agenthost.SessionDeletionGuard
 	AgentSessionResourceReleaser   AgentSessionResourceReleaser
 	UserProjectReader              UserProjectReader
 	MessageReader                  MessageReader
@@ -47,8 +48,7 @@ type Service struct {
 	SubmitClaimStore               SubmitClaimStore
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
 	TuttiModeActivations           TuttiModeActivationPort
-	SourceSessionDeletions         SourceSessionDeletionPort
-	SessionDeletionEvents          SessionDeletionEventPublisher
+	TuttiModeSourceActivity        TuttiModeSourceActivityObserver
 	TurnCancelObserver             TurnCancelObserver
 	RuntimeOperationClock          func() time.Time
 	RuntimeOperationOwner          string
@@ -99,6 +99,18 @@ type Service struct {
 	// modelPlanBinding wires the optional workspace model access plan
 	// integration; see ConfigureModelPlanBinding.
 	modelPlanBinding modelPlanBindingRuntime
+}
+
+type TuttiModeSourceActivity struct {
+	WorkspaceID      string
+	SessionID        string
+	Kind             string
+	ActivityID       string
+	OccurredAtUnixMS int64
+}
+
+type TuttiModeSourceActivityObserver interface {
+	ObserveTuttiModeSourceActivity(context.Context, TuttiModeSourceActivity) error
 }
 
 type GoalReconcileInboxStore = agenthost.GoalReconcileInboxStore
@@ -470,9 +482,8 @@ type SessionSectionDeletionCandidateReader interface {
 type SessionBatchDeleter interface {
 	PlanClearSessions(context.Context, string) (agentactivitybiz.DeleteSessionsPlan, error)
 	PlanDeleteSessions(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error)
-	// DeleteSessionsBatch is a persistence-only fallback for isolated stores.
-	// Production deletion uses SourceSessionDeletionPort so workflow
-	// policy remains in the Tutti mode plan service.
+	// DeleteSessionsBatch is the canonical store mutation delegated by Host
+	// after product deletion admission and runtime closure.
 	DeleteSessionsBatch(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error)
 }
 
@@ -609,13 +620,18 @@ type CreateSessionInput struct {
 	IgnoreModelPlanBinding bool
 	Provider               string
 	CapabilityRefs         []CapabilityReference
-	InitialContent         []PromptContentBlock
-	InitialDisplayPrompt   string
-	Metadata               map[string]any
-	ClientSubmitID         string
-	Title                  *string
-	Cwd                    *string
-	PermissionModeID       *string
+	// CommandCapabilityProjection is an internal, session-scoped command
+	// discovery policy. A non-empty AllowedIDs is an exact capability set. The
+	// policy is persisted in the immutable runtime snapshot so a resumed
+	// dedicated session cannot regain commands outside that set.
+	CommandCapabilityProjection *runtimeprep.CommandCapabilityProjection
+	InitialContent              []PromptContentBlock
+	InitialDisplayPrompt        string
+	Metadata                    map[string]any
+	ClientSubmitID              string
+	Title                       *string
+	Cwd                         *string
+	PermissionModeID            *string
 	// StrictPermissionMode rejects an explicit unsupported permission mode
 	// instead of applying the provider default. It is used by unattended
 	// automation so a typo cannot silently broaden authority.

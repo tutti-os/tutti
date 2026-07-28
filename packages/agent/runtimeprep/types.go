@@ -56,6 +56,12 @@ type PrepareInput struct {
 	AgentTools                []string
 	ExtraSkills               []ProviderSkillBundle
 	Metadata                  map[string]any
+	// CommandCapabilityProjection narrows the command guide for a dedicated
+	// internal session. A non-empty AllowedIDs is an exact public/integration
+	// set; otherwise public commands remain visible unless explicitly excluded.
+	// Only the named integration commands are promoted into that session's
+	// agent-facing snapshot.
+	CommandCapabilityProjection *CommandCapabilityProjection
 	// ModelEndpoint routes the session through a managed model access plan
 	// endpoint when the agent target is bound to one. Nil keeps the
 	// provider's native credential source. Credentials must never reach

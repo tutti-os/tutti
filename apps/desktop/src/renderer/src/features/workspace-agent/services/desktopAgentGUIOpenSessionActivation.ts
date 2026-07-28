@@ -10,6 +10,10 @@ import {
   type DesktopAgentGUIProvider,
   type DesktopAgentGUIWorkbenchState
 } from "../desktopAgentGUINodeState.ts";
+import {
+  resolveDesktopAgentGUIOpenSessionComposerActivation,
+  type DesktopAgentGUIOpenSessionComposerRequest
+} from "./desktopAgentGUIOpenSessionComposerActivation.ts";
 
 export interface ConsumeDesktopAgentGUIOpenSessionActivationInput {
   activation: WorkbenchHostActivation | null;
@@ -25,6 +29,10 @@ export interface ConsumeDesktopAgentGUIOpenSessionActivationInput {
   onOpenSessionRequest?(
     this: void,
     request: { agentSessionId: string; sequence: number }
+  ): void;
+  onOpenSessionComposerRequest?(
+    this: void,
+    request: DesktopAgentGUIOpenSessionComposerRequest | null
   ): void;
   onStateChange(this: void, state: DesktopAgentGUIWorkbenchState): void;
   provider: DesktopAgentGUIProvider;
@@ -48,6 +56,7 @@ export function consumeDesktopAgentGUIOpenSessionActivation({
   nodeId,
   onActivationError,
   onOpenSessionRequest,
+  onOpenSessionComposerRequest,
   onStateChange,
   provider,
   resolveAgentTargetProvider,
@@ -62,6 +71,13 @@ export function consumeDesktopAgentGUIOpenSessionActivation({
   markHandled(request.sequence);
   clearNodeActivation?.(nodeId, request.sequence);
   onOpenSessionRequest?.(request);
+  const composerRequest =
+    resolveDesktopAgentGUIOpenSessionComposerActivation(activation);
+  onOpenSessionComposerRequest?.(
+    composerRequest?.agentSessionId === request.agentSessionId
+      ? composerRequest
+      : null
+  );
   void agentActivityRuntime
     .activateSession({
       workspaceId,

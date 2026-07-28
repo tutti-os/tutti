@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,6 +38,7 @@ import (
 	issuemanagercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/issuemanager"
 	managedmodelscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/managedmodels"
 	referencescli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/references"
+	tuttigoalreviewcli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/tuttigoalreview"
 	tuttimodeplancli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/tuttimodeplan"
 	workbenchappscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/workbenchapps"
 	collabrunservice "github.com/tutti-os/tutti/services/tuttid/service/collabrun"
@@ -54,6 +54,7 @@ import (
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	tuttiagentservice "github.com/tutti-os/tutti/services/tuttid/service/tuttiagent"
 	tuttimodeactivationservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeactivation"
+	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 	tuttimodeplanservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeplan"
 	userprojectservice "github.com/tutti-os/tutti/services/tuttid/service/userproject"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
@@ -77,9 +78,27 @@ func configureWorkspaceAgentResolution(
 	}
 }
 
-func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service, computerService *computersvc.Service, modelGateway *modelgatewayservice.Gateway) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, *agentservice.ProviderAuthWatcher, error) {
+func buildDaemonAPI(
+	ctx context.Context,
+	store workspacedata.CatalogStore,
+	analyticsReporter reporterservice.Reporter,
+	browserService *browsersvc.Service,
+	computerService *computersvc.Service,
+	modelGateway *modelgatewayservice.Gateway,
+	installTuttiModeWatchdog func(tuttimodeexecutionservice.Worker),
+) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, *agentservice.ProviderAuthWatcher, error) {
 	workspaceStore, _ := store.(workspacedata.WorkbenchStore)
 	issueStore, _ := store.(workspaceissues.Store)
+	tuttiModeExecutionStore, _ := store.(tuttimodeexecutionservice.Store)
+	tuttiModeArchiveStore, _ := store.(tuttimodeexecutionservice.ArchiveStore)
+	tuttiModeDeletionAdmissionStore, _ := store.(tuttimodeexecutionservice.SourceDeletionAdmissionStore)
+	tuttiModeWakeStore, _ := store.(tuttimodeexecutionservice.WakeStore)
+	tuttiModeReviewerActivity, ok := store.(tuttimodeexecutionservice.ReviewerActivityReader)
+	if !ok {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf(
+			"tutti mode reviewer activity reader is unavailable",
+		)
+	}
 	preferencesStore, _ := store.(workspacedata.PreferencesStore)
 	agentTargetStore, _ := store.(workspacedata.AgentTargetStore)
 	managedCredentialsStore, _ := store.(workspacedata.ManagedCredentialsStore)
@@ -90,7 +109,6 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	appStore, _ := store.(workspacedata.AppStore)
 	appFactoryStore, _ := store.(workspacedata.AppFactoryStore)
 	workflowStore, _ := store.(tuttimodeplanservice.Store)
-	sourceSessionDeletionStore, _ := store.(tuttimodeplanservice.SourceSessionDeletionStore)
 	tuttiModeActivationStore, _ := store.(tuttimodeactivationservice.Store)
 	fileAdapter := workspacedata.LocalFilesAdapter{}
 
@@ -325,6 +343,18 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent session purge store is unavailable")
 	}
 	agentSessionService.SessionPurgeStore = agentSessionPurgeStore
+	if tuttiModeDeletionAdmissionStore != nil {
+		sourceDeletionGuard := &tuttimodeexecutionservice.SourceDeletionGuard{
+			Store:   tuttiModeDeletionAdmissionStore,
+			Context: ctx,
+		}
+		if err := sourceDeletionGuard.Recover(ctx); err != nil {
+			return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf(
+				"recover source session deletion admissions: %w", err,
+			)
+		}
+		agentSessionService.SessionDeletionGuard = sourceDeletionGuard
+	}
 	agentSessionService.UserProjectReader = userProjectService
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
@@ -433,8 +463,30 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	issueRunLaunchGate := workspaceservice.NewIssueRunLaunchGate()
 	issueRunCanceller := issueRunSessionCanceller{Host: agentHost, Sessions: agentSessionService}
+	tuttiModeMainWakeOwner := "tuttid-main-wake:" + uuid.NewString()
+	tuttiModeExecutions := &tuttimodeexecutionservice.Service{
+		Store:    tuttiModeExecutionStore,
+		Archives: tuttiModeArchiveStore,
+		Wakes:    tuttiModeWakeStore,
+		MainWakeTargets: tuttiModeMainWakeAgentAdapter{
+			Host:     agentHost,
+			Sessions: agentSessionService,
+		},
+		ReviewerActivity: tuttiModeReviewerActivity,
+	}
+	tuttiModeExecutions.ReviewerTargets = tuttiModeReviewerAgentAdapter{
+		Host:     agentHost,
+		Sessions: agentSessionService,
+	}
+	tuttiModeSourceActivity := tuttiModeSourceActivityAdapter{
+		Executions: tuttiModeExecutions,
+	}
+	agentSessionService.TuttiModeSourceActivity = tuttiModeSourceActivity
+	tuttiModeMainWakeRecovery := &tuttiModeMainWakeReadyRecovery{
+		Delegate: tuttiModeExecutions,
+	}
 	issueService := workspaceservice.IssueManagerService{
-		RunLauncher:                    issueRunAgentLauncher{Sessions: agentSessionService},
+		RunLauncher:                    issueRunAgentLauncher{Sessions: agentSessionService, Host: agentHost},
 		RunLaunchGate:                  issueRunLaunchGate,
 		RunCancellationRequester:       issueRunCanceller,
 		SourceSessionDirectoryResolver: issueSourceSessionDirectoryResolver{Sessions: agentActivityProjection},
@@ -442,26 +494,19 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Store:                          issueStore,
 		AgentTargetReader:              agentTargetStore,
 		PlanningTimeline:               agentservice.IssuePlanningTimelineReporter{Projection: agentActivityProjection},
-		CompletionNotifier: &tuttiPlanIssueCompletionDispatcher{
-			Agents: agentSessionService,
-		},
-		MutationLocks: workspaceservice.NewIssueMutationLocks(),
+		TuttiModeExecutions:            tuttiModeExecutions,
+		MutationLocks:                  workspaceservice.NewIssueMutationLocks(),
 	}
 	tuttiModePlans := &tuttimodeplanservice.Service{
-		Store:                  workflowStore,
-		SourceSessionDeletions: sourceSessionDeletionStore,
-		Revisions:              workspacedata.WorkflowRevisionFiles{StateDir: tuttitypes.DefaultStateDir()},
-		Publisher:              eventstreamservice.WorkspaceWorkflowPublisher{Service: events},
-		IssueMaterializer:      tuttimodeplanservice.WorkspaceIssueMaterializer{Issues: &issueService},
-		FeatureFlags:           tuttiModeFeatureFlags,
+		Store:             workflowStore,
+		Revisions:         workspacedata.WorkflowRevisionFiles{StateDir: tuttitypes.DefaultStateDir()},
+		Publisher:         eventstreamservice.WorkspaceWorkflowPublisher{Service: events},
+		IssueMaterializer: tuttimodeplanservice.WorkspaceIssueMaterializer{Issues: &issueService},
+		FeatureFlags:      tuttiModeFeatureFlags,
 		FeedbackDispatcher: &tuttiModePlanFeedbackDispatcher{
 			Agents:    agentSessionService,
 			TurnLinks: workflowStore,
 		},
-	}
-	if sourceSessionDeletionStore != nil {
-		agentSessionService.SourceSessionDeletions = tuttiModePlans
-		agentSessionService.SessionDeletionEvents = agentActivityProjection
 	}
 	// Recover accepted Tutti Mode plans before buildDaemonAPI returns the
 	// public service graph. This is a one-shot durable recovery pass, not a
@@ -488,14 +533,62 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		SettlementReader:    issueRunSettlementReader{Host: agentHost},
 	}
 	issueService.RunReconciler = issueExecutionCoordinator
+	tuttiModeExecutions.ArchiveRuns = issueExecutionCoordinator
 	// A user's stop on a planning conversation cascades to every running task
 	// run its accepted plan dispatched.
 	agentSessionService.TurnCancelObserver = issueExecutionCoordinator
-	issueService.RunReconcileQueue = workspaceservice.NewIssueRunReconcileQueue(workspaceservice.IssueRunReconcileQueueOptions{
-		Context:   ctx,
-		Delay:     3 * time.Second,
-		Interval:  15 * time.Second,
-		Reconcile: issueExecutionCoordinator.ReconcileRunningRuns,
+	issueService.ExecutionRecoveryQueue = workspaceservice.NewWorkspaceExecutionRecoveryQueue(workspaceservice.WorkspaceExecutionRecoveryQueueOptions{
+		Context:  ctx,
+		Delay:    3 * time.Second,
+		Interval: 15 * time.Second,
+		Reconcile: func(ctx context.Context, workspaceID string) (workspaceservice.WorkspaceExecutionRecoveryResult, error) {
+			runResult, err := reconcileTuttiModeRunsAndMainWakes(
+				ctx,
+				workspaceID,
+				tuttiModeMainWakeOwner,
+				issueExecutionCoordinator.ReconcileTuttiModeRunLaunchesAndRunningRuns,
+				tuttiModeMainWakeRecovery,
+			)
+			if err != nil {
+				return workspaceservice.WorkspaceExecutionRecoveryResult{}, err
+			}
+			pendingArchives, err := tuttiModeExecutions.RecoverArchivesAndCount(ctx, workspaceID)
+			return workspaceservice.WorkspaceExecutionRecoveryResult{
+				Pending: runResult.RunningCount > runResult.CompletedCount ||
+					pendingArchives > 0,
+			}, err
+		},
+	})
+	tuttiModeExecutions.ArchiveRecoveryQueue = issueService.ExecutionRecoveryQueue
+	if tuttiModeArchiveStore != nil {
+		workspaces, err := store.List(ctx)
+		if err != nil {
+			return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("list workspaces for Tutti archive recovery: %w", err)
+		}
+		for _, workspace := range workspaces {
+			pendingArchives, err := tuttiModeExecutions.RecoverArchivesAndCount(ctx, workspace.ID)
+			if err != nil {
+				return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf(
+					"recover Tutti archives for workspace %s: %w", workspace.ID, err,
+				)
+			}
+			if pendingArchives > 0 {
+				issueService.ExecutionRecoveryQueue.Enqueue(workspace.ID)
+			}
+		}
+	}
+	agentActivityProjection.SetRootTurnObserver(rootTurnObserverFanout{
+		agentRuntimeController,
+		tuttiModeSourceTurnActivityObserver{
+			Activities: tuttiModeSourceActivity,
+		},
+		tuttiModeMainWakeTurnObserver{
+			Settlements: tuttiModeExecutions,
+			Queue:       issueService.ExecutionRecoveryQueue,
+		},
+		tuttiModeReviewerTurnObserver{
+			Settlements: tuttiModeExecutions,
+		},
 	})
 	appCenterService := &workspaceservice.AppCenterService{
 		Store:                 appStore,
@@ -573,10 +666,45 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		agentRuntime.Close()
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("reconcile interrupted app factory jobs: %w", err)
 	}
-	if workspaces, err := workspaceService.List(ctx); err == nil {
-		for _, workspace := range workspaces {
-			issueService.RunReconcileQueue.Enqueue(workspace.ID)
+	workspaces, err := workspaceService.List(ctx)
+	if err != nil {
+		agentRuntime.Close()
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf(
+			"list workspaces for Issue Run startup recovery: %w",
+			err,
+		)
+	}
+	for _, workspace := range workspaces {
+		if _, err := issueExecutionCoordinator.ReconcileTuttiModeRunLaunchesAndRunningRuns(ctx, workspace.ID); err != nil {
+			agentRuntime.Close()
+			return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf(
+				"recover Tutti mode Run launch intents at startup for workspace %q: %w",
+				workspace.ID,
+				err,
+			)
 		}
+		repairTuttiModeMainWakesAtStartup(
+			ctx,
+			tuttiModeExecutions,
+			workspace.ID,
+		)
+	}
+	tuttiModeWatchdogWorker := newTuttiModeWatchdogWorker(
+		ctx, tuttiModeExecutions, tuttiModeMainWakeOwner,
+		func(ctx context.Context) ([]string, error) {
+			summaries, err := workspaceService.List(ctx)
+			if err != nil {
+				return nil, err
+			}
+			ids := make([]string, 0, len(summaries))
+			for _, summary := range summaries {
+				ids = append(ids, summary.ID)
+			}
+			return ids, nil
+		},
+	)
+	if installTuttiModeWatchdog != nil {
+		installTuttiModeWatchdog(tuttiModeWatchdogWorker)
 	}
 	cliProviders := []cliservice.Provider{
 		diagnosticscli.NewProvider(),
@@ -595,7 +723,19 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 			agentTargets,
 			preferences,
 		),
-		tuttimodeplancli.NewProvider(workspaceService, tuttiModePlans, agentSessionService),
+		tuttimodeplancli.NewProviderWithExecution(
+			workspaceService,
+			tuttiModePlans,
+			agentSessionService,
+			&issueService,
+			&issueService,
+			tuttiModeExecutions,
+			tuttiModeExecutions,
+		),
+		tuttigoalreviewcli.NewProvider(
+			tuttiModeExecutions,
+			agentSessionService,
+		),
 	}
 	if browserService != nil {
 		cliProviders = append(cliProviders, browsercli.NewProvider(workspaceService, browserService))
@@ -607,6 +747,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	if err != nil {
 		agentRuntime.Close()
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create cli registry: %w", err)
+	}
+	cliRegistry.AgentSessionCapabilities = agentSessionCLIProjectionResolver{
+		Sessions: agentSessionService,
 	}
 	cliRegistry.AppCommands = appCLIRegistry
 	agentRuntimePreparer.CommandCatalog = runtimePrepCommandCatalog{Catalog: cliRegistry}
@@ -689,178 +832,16 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		IssueService:               issueService,
 		IssueExecutionService:      issueExecutionCoordinator,
 		TuttiModePlanService:       tuttiModePlans,
+		TuttiModeExecutionService:  tuttiModeExecutions,
 		TuttiModeActivationService: tuttiModeActivations,
+		TuttiModeGoalReviewService: tuttiModeExecutions,
 		CLIRegistry:                cliRegistry,
 		AnalyticsReporter:          analyticsReporter,
-	}, appCenterService, agentRuntime, providerAuthWatcher, nil
-}
-
-type issueRunAgentSessionCreator interface {
-	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
-}
-
-type issueRunSessionCanceller struct {
-	Host     issueRunSettlementHost
-	Sessions *agentservice.Service
-}
-
-type issueRunSettlementHost interface {
-	FindTurnByClientSubmitID(context.Context, agenthost.SessionRef, string) (string, bool, error)
-	GetTurn(context.Context, agenthost.SessionRef, string) (agentstoresqlite.Turn, bool, error)
-}
-
-type issueRunSettlementReader struct {
-	Host issueRunSettlementHost
-}
-
-func (r issueRunSettlementReader) ReadRunSettlement(ctx context.Context, workspaceID string, agentSessionID string, clientSubmitID string) (workspaceservice.IssueRunSettlement, bool, error) {
-	if r.Host == nil {
-		return workspaceservice.IssueRunSettlement{}, false, nil
-	}
-	ref := agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID}
-	turnID, found, err := r.Host.FindTurnByClientSubmitID(ctx, ref, clientSubmitID)
-	if err != nil || !found {
-		return workspaceservice.IssueRunSettlement{}, false, err
-	}
-	turn, found, err := r.Host.GetTurn(ctx, ref, turnID)
-	if err != nil || !found || strings.TrimSpace(turn.Phase) != "settled" {
-		return workspaceservice.IssueRunSettlement{}, false, err
-	}
-	status := workspaceissues.StatusFailed
-	switch strings.TrimSpace(turn.Outcome) {
-	case "completed":
-		status = workspaceissues.StatusCompleted
-	case "canceled":
-		status = workspaceissues.StatusCanceled
-	case "":
-		return workspaceservice.IssueRunSettlement{}, false, nil
-	}
-	return workspaceservice.IssueRunSettlement{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		TurnID:         turnID,
-		Status:         status,
-		ErrorMessage:   strings.TrimSpace(turn.ErrorMessage),
-	}, true, nil
-}
-
-func (c issueRunSessionCanceller) RequestRunCancellation(ctx context.Context, request workspaceservice.IssueRunCancellationRequest) (workspaceservice.IssueRunCancelResult, error) {
-	if c.Host == nil || c.Sessions == nil {
-		return workspaceservice.IssueRunCancelResult{}, errors.New("issue run session canceller is unavailable")
-	}
-	ref := agenthost.SessionRef{WorkspaceID: request.WorkspaceID, AgentSessionID: request.AgentSessionID}
-	turnID, found, err := c.Host.FindTurnByClientSubmitID(ctx, ref, "issue-run:"+request.RunID)
-	if err != nil {
-		return workspaceservice.IssueRunCancelResult{}, err
-	}
-	if !found {
-		return workspaceservice.IssueRunCancelResult{State: workspaceservice.IssueRunCancelNotFound}, nil
-	}
-	result, err := c.Sessions.CancelTurn(ctx, request.WorkspaceID, request.AgentSessionID, turnID)
-	if err != nil {
-		return workspaceservice.IssueRunCancelResult{}, err
-	}
-	reader := issueRunSettlementReader{Host: c.Host}
-	settlement, settled, readErr := reader.ReadRunSettlement(ctx, request.WorkspaceID, request.AgentSessionID, "issue-run:"+request.RunID)
-	if readErr != nil {
-		return workspaceservice.IssueRunCancelResult{}, readErr
-	}
-	switch result.Reason {
-	case agentservice.CancelTurnReasonTurnCanceled:
-		if !settled {
-			settlement = workspaceservice.IssueRunSettlement{
-				WorkspaceID:    request.WorkspaceID,
-				AgentSessionID: request.AgentSessionID,
-				TurnID:         turnID,
-				Status:         workspaceissues.StatusCanceled,
+		OnListenerReady: func() {
+			tuttiModeMainWakeRecovery.MarkReady()
+			for _, workspace := range workspaces {
+				issueService.ExecutionRecoveryQueue.Enqueue(workspace.ID)
 			}
-		}
-		return workspaceservice.IssueRunCancelResult{
-			State:      workspaceservice.IssueRunCancelCanceled,
-			Settlement: &settlement,
-		}, nil
-	case agentservice.CancelTurnReasonAlreadySettled:
-		if !settled {
-			return workspaceservice.IssueRunCancelResult{}, errors.New("settled Agent turn is unavailable")
-		}
-		return workspaceservice.IssueRunCancelResult{
-			State:      workspaceservice.IssueRunCancelSettled,
-			Settlement: &settlement,
-		}, nil
-	case agentservice.CancelTurnReasonNotFound:
-		return workspaceservice.IssueRunCancelResult{State: workspaceservice.IssueRunCancelNotFound}, nil
-	default:
-		return workspaceservice.IssueRunCancelResult{State: workspaceservice.IssueRunCancelAccepted}, nil
-	}
-}
-
-type issueRunAgentLauncher struct {
-	Sessions issueRunAgentSessionCreator
-}
-
-func (l issueRunAgentLauncher) Launch(ctx context.Context, launch workspaceservice.IssueRunLaunch) error {
-	if l.Sessions == nil {
-		return errors.New("issue run agent launcher is unavailable")
-	}
-	title := launch.Title
-	reasoningIntensity := launch.ReasoningIntensity
-	permissionModeID := optionalString(launch.PermissionModeID)
-	_, err := l.Sessions.Create(ctx, launch.WorkspaceID, agentservice.CreateSessionInput{
-		AgentSessionID:       launch.AgentSessionID,
-		AgentTargetID:        launch.AgentTargetID,
-		ReasoningIntensity:   &reasoningIntensity,
-		ReasoningEffort:      optionalString(launch.ReasoningEffort),
-		PermissionModeID:     permissionModeID,
-		StrictPermissionMode: permissionModeID != nil,
-		InitialContent:       []agentservice.PromptContentBlock{{Type: "text", Text: launch.Prompt}},
-		ClientSubmitID:       "issue-run:" + launch.RunID,
-		Title:                &title,
-		Cwd:                  optionalString(launch.ExecutionDirectory),
-		Model:                optionalString(launch.Model),
-		ModelPlanID:          optionalString(launch.ModelPlanID),
-		Visible:              boolPointer(true),
-	})
-	return err
-}
-
-type issueSourceSessionDirectoryResolver struct {
-	Sessions agentservice.SessionReader
-}
-
-func (r issueSourceSessionDirectoryResolver) ResolveSourceSessionDirectory(workspaceID string, agentSessionID string) (string, bool) {
-	if r.Sessions == nil {
-		return "", false
-	}
-	session, ok := r.Sessions.GetSession(workspaceID, agentSessionID)
-	return session.Cwd, ok
-}
-
-func optionalString(value string) *string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	return &value
-}
-
-func boolPointer(value bool) *bool {
-	return &value
-}
-
-// modelPolicySessionTargetResolver lets the review engine resolve a session's
-// agent target from the persisted activity projection when a state report
-// does not carry it.
-type modelPolicySessionTargetResolver struct {
-	projection *agentservice.ActivityProjection
-}
-
-func (r modelPolicySessionTargetResolver) ResolveSessionAgentTarget(workspaceID string, agentSessionID string) (string, bool) {
-	if r.projection == nil {
-		return "", false
-	}
-	session, ok := r.projection.GetSession(workspaceID, agentSessionID)
-	if !ok {
-		return "", false
-	}
-	return session.AgentTargetID, session.AgentTargetID != ""
+		},
+	}, appCenterService, agentRuntime, providerAuthWatcher, nil
 }

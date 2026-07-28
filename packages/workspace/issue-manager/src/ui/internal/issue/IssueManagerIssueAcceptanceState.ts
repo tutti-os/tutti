@@ -3,6 +3,7 @@ import type {
   IssueManagerRun,
   IssueManagerTaskSummary
 } from "../../../contracts/index.ts";
+import { isIssueManagerTuttiModePlanIssue } from "../../../services/controllerModel.ts";
 
 export function resolveIssueManagerIssueAcceptanceTaskId(input: {
   latestRun: IssueManagerRun | null;
@@ -11,6 +12,7 @@ export function resolveIssueManagerIssueAcceptanceTaskId(input: {
   tasks: readonly IssueManagerTaskSummary[];
 }): string | null {
   if (
+    isIssueManagerTuttiModePlanIssue(input.selectedIssue) ||
     input.selectedIssue?.status !== "pending_acceptance" ||
     input.latestRun?.status !== "completed" ||
     input.selectedTaskId

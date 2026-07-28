@@ -8,6 +8,8 @@ import (
 )
 
 func registerIssueRoutes(mux *http.ServeMux, wrapper *tuttigenerated.ServerInterfaceWrapper) {
+	registerTuttiModeExecutionRoutes(mux, wrapper)
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

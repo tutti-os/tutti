@@ -25,6 +25,10 @@ const labels: TuttiWorkflowDockLabels = {
   materializingHint: "Turning the accepted plan into tasks",
   materializingTitle: "Creating tasks",
   retry: "Try again",
+  switchToSelfReview: "Switch to self review",
+  switchingToSelfReview: "Switching",
+  selfReviewEnabled: "Self review enabled",
+  selfReviewFailed: "Couldn't enable self review",
   reviewHint: "Send to accept",
   reviewHintReplan: "Send to re-plan",
   reviewTitle: "Plan review"
@@ -180,6 +184,39 @@ function renderDock(phase: TuttiWorkflowDockPhase) {
 }
 
 describe("TuttiWorkflowDock", () => {
+  it("offers an explicit audited self-review fallback when independent review fails", async () => {
+    const onSwitchToSelfReview = vi.fn(async () => {});
+    render(
+      <TuttiWorkflowDock
+        assignmentCatalog={assignmentCatalog}
+        assignmentDrafts={{}}
+        intensityPopoverLabels={intensityPopoverLabels}
+        labels={labels}
+        phase={{
+          auditId: "audit-review-1",
+          kind: "reviewFailure",
+          message: "Independent review failed"
+        }}
+        planPanelLabels={planPanelLabels}
+        planIssuePanelLabels={planIssuePanelLabels}
+        onAssignmentDraftChange={vi.fn()}
+        onCancelReview={vi.fn()}
+        onIntensityChange={vi.fn()}
+        onRetry={vi.fn()}
+        onSwitchToSelfReview={onSwitchToSelfReview}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch to self review" })
+    );
+    expect(onSwitchToSelfReview).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Self review enabled")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Independent review failed · audit-review-1/)
+    ).toBeInTheDocument();
+  });
+
   it("starts a newly actionable review expanded and carries it across phases", () => {
     const { actions, rerender } = renderDock({
       kind: "review",

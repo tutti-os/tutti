@@ -7,6 +7,8 @@ import {
   agentGuiWorkbenchOpenSessionActivationType,
   agentGuiWorkbenchPrefillPromptActivationType,
   type AgentGuiWorkbenchPrefillPromptPayload,
+  type AgentGuiWorkbenchOpenSessionComposerAppend,
+  type AgentGuiWorkbenchOpenSessionPayload,
   type AgentGuiWorkbenchProvider
 } from "./types.ts";
 
@@ -79,6 +81,7 @@ export function agentGuiWorkbenchProviderFromLaunchRequest(
 export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
   agentTargetId?: string | null;
   agentSessionId?: string;
+  composerAppend?: AgentGuiWorkbenchOpenSessionComposerAppend;
   openInNewWindow?: boolean;
   provider: unknown;
 }) {
@@ -90,6 +93,14 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
         ? { agentTargetId: input.agentTargetId.trim() }
         : {}),
       ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
+      ...(input.composerAppend?.draftPrompt.trim()
+        ? {
+            composerAppend: {
+              draftPrompt: input.composerAppend.draftPrompt.trim(),
+              focusComposer: true
+            }
+          }
+        : {}),
       ...(input.openInNewWindow ? { openInNewWindow: true } : {}),
       provider
     },
@@ -136,9 +147,7 @@ export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
 export interface AgentGuiWorkbenchLaunchDescriptor {
   activation:
     | {
-        payload: {
-          agentSessionId: string;
-        };
+        payload: AgentGuiWorkbenchOpenSessionPayload;
         type: typeof agentGuiWorkbenchOpenSessionActivationType;
       }
     | {
@@ -182,6 +191,9 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
   }
 
   const targetAgentSessionId = agentSessionIdFromLaunchPayload(request.payload);
+  const composerAppend = openSessionComposerAppendFromLaunchPayload(
+    request.payload
+  );
   const openInNewWindow = openInNewWindowFromLaunchRequest(request);
   const instanceId = createAgentGuiWorkbenchInstanceId();
 
@@ -189,7 +201,8 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
     activation: targetAgentSessionId
       ? {
           payload: {
-            agentSessionId: targetAgentSessionId
+            agentSessionId: targetAgentSessionId,
+            ...(composerAppend ? { composerAppend } : {})
           },
           type: agentGuiWorkbenchOpenSessionActivationType
         }
@@ -205,6 +218,27 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
         : { kind: "dock-entry" },
     targetAgentSessionId
   };
+}
+
+function openSessionComposerAppendFromLaunchPayload(
+  payload: unknown
+): AgentGuiWorkbenchOpenSessionComposerAppend | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const composerAppend = (payload as { composerAppend?: unknown })
+    .composerAppend;
+  if (
+    !composerAppend ||
+    typeof composerAppend !== "object" ||
+    Array.isArray(composerAppend)
+  ) {
+    return null;
+  }
+  const draftPrompt = (composerAppend as { draftPrompt?: unknown }).draftPrompt;
+  return typeof draftPrompt === "string" && draftPrompt.trim()
+    ? { draftPrompt: draftPrompt.trim(), focusComposer: true }
+    : null;
 }
 
 /**

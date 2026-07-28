@@ -2,6 +2,7 @@ package tuttimodeplan
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -204,5 +205,94 @@ Narrative body.
 	}
 	if document.Tasks[0].PermissionModeID != "acceptEdits" || document.Tasks[0].ReasoningEffort != "high" {
 		t.Fatalf("task overrides = %#v", document.Tasks[0])
+	}
+}
+
+func TestParsePlanMarkdownDefaultsGoalReviewToSelf(t *testing.T) {
+	document, err := ParsePlanMarkdown([]byte(`---
+schema: tutti-mode-plan/v1
+title: Self review plan
+topicId: default
+tasks:
+  - id: only
+    title: Do the work
+---
+Narrative body.
+`))
+	if err != nil {
+		t.Fatalf("ParsePlanMarkdown() error = %v", err)
+	}
+	review := reflect.ValueOf(document).FieldByName("Review")
+	if !review.IsValid() {
+		t.Fatal("PlanDocument.Review is missing")
+	}
+	if mode := review.FieldByName("Mode"); !mode.IsValid() || mode.String() != "self" {
+		t.Fatalf("Review.Mode = %#v, want self", mode)
+	}
+	if target := review.FieldByName("AgentTargetID"); !target.IsValid() || target.String() != "" {
+		t.Fatalf("Review.AgentTargetID = %#v, want empty", target)
+	}
+}
+
+func TestParsePlanMarkdownValidatesIndependentGoalReviewTarget(t *testing.T) {
+	valid := `---
+schema: tutti-mode-plan/v1
+title: Independent review plan
+topicId: default
+review:
+  mode: " independent "
+  agentTargetId: " reviewer-agent "
+tasks:
+  - id: only
+    title: Do the work
+---
+Narrative body.
+`
+	document, err := ParsePlanMarkdown([]byte(valid))
+	if err != nil {
+		t.Fatalf("ParsePlanMarkdown(independent) error = %v", err)
+	}
+	review := reflect.ValueOf(document).FieldByName("Review")
+	if !review.IsValid() ||
+		review.FieldByName("Mode").String() != "independent" ||
+		review.FieldByName("AgentTargetID").String() != "reviewer-agent" {
+		t.Fatalf("independent Review = %#v", review)
+	}
+
+	_, err = ParsePlanMarkdown([]byte(strings.Replace(
+		valid,
+		"  agentTargetId: \" reviewer-agent \"\n",
+		"",
+		1,
+	)))
+	if !errors.Is(err, ErrInvalidPlanMarkdown) {
+		t.Fatalf("independent review without target error = %v, want ErrInvalidPlanMarkdown", err)
+	}
+
+	for name, replacement := range map[string]string{
+		"blank independent target": "  mode: independent\n  agentTargetId: \"   \"\n",
+		"invalid mode":             "  mode: committee\n  agentTargetId: reviewer-agent\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := strings.Replace(
+				valid,
+				"  mode: \" independent \"\n  agentTargetId: \" reviewer-agent \"\n",
+				replacement,
+				1,
+			)
+			if _, err := ParsePlanMarkdown([]byte(candidate)); !errors.Is(err, ErrInvalidPlanMarkdown) {
+				t.Fatalf("ParsePlanMarkdown() error = %v, want ErrInvalidPlanMarkdown", err)
+			}
+		})
+	}
+
+	selfWithTarget := strings.Replace(
+		valid,
+		"  mode: \" independent \"\n  agentTargetId: \" reviewer-agent \"\n",
+		"  mode: self\n  agentTargetId: reviewer-agent\n",
+		1,
+	)
+	if _, err := ParsePlanMarkdown([]byte(selfWithTarget)); !errors.Is(err, ErrInvalidPlanMarkdown) {
+		t.Fatalf("self review with target error = %v, want ErrInvalidPlanMarkdown", err)
 	}
 }

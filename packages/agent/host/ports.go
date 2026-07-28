@@ -135,6 +135,15 @@ type SessionBatchManagementStore interface {
 	DeleteSessionsBatch(context.Context, storesqlite.DeleteSessionsBatchInput) (storesqlite.DeleteSessionsBatchResult, error)
 }
 
+// SessionDeletionGuard lets a host adapter enforce product policy around the
+// provider-neutral canonical closure. Admission is authoritative and occurs
+// before runtime or canonical side effects. Reporting is observational and
+// cannot change the Host command result.
+type SessionDeletionGuard interface {
+	AdmitDeleteSessions(context.Context, DeleteSessionsPlan) error
+	ReportDeleteSessions(context.Context, DeleteSessionsReport)
+}
+
 // SessionPurgeStore is the narrow permanent-removal boundary. Retention and
 // local-file ownership policies remain outside Host.
 type SessionPurgeStore interface {

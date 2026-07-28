@@ -43,6 +43,13 @@ test("isIssueManagerTuttiModePlanIssue fails closed for non-Tutti planning sourc
   );
   assert.equal(
     isIssueManagerTuttiModePlanIssue({ planningSource: "tutti_mode_plan" }),
+    false
+  );
+  assert.equal(
+    isIssueManagerTuttiModePlanIssue({
+      planningSource: "tutti_mode_plan",
+      sourceSessionId: "source-session-1"
+    }),
     true
   );
 });

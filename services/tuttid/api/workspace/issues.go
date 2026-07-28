@@ -150,6 +150,8 @@ func GeneratedIssueManagerTaskFromDomain(item workspaceissues.Task) tuttigenerat
 		AutoAccept:         item.AutoAccept,
 		AcceptanceState:    tuttigenerated.IssueManagerAcceptanceState(item.AcceptanceState),
 		AcceptanceSummary:  item.AcceptanceSummary,
+		SupersededAtUnix:   unixSecondsFromMillis(item.SupersededAtUnixMS),
+		SupersededByTaskId: item.SupersededByTaskID,
 		CreatedAtUnix:      unixSecondsFromMillis(item.CreatedAtUnixMS),
 		UpdatedAtUnix:      unixSecondsFromMillis(item.UpdatedAtUnixMS),
 	}

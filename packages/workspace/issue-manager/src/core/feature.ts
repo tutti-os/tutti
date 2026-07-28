@@ -22,6 +22,7 @@ import type {
   IssueManagerFileAdapter,
   IssueManagerIdentityAdapter,
   IssueManagerModelPlanOptionsAdapter,
+  IssueManagerManagedIssueActionsAdapter,
   IssueManagerNodeState,
   IssueManagerShareAdapter
 } from "../contracts/index.ts";
@@ -56,6 +57,7 @@ export interface IssueManagerFeature {
   i18n: IssueManagerI18nRuntime;
   identityAdapter: IssueManagerIdentityAdapter;
   mentionActionHandler?: IssueManagerMentionActionHandler;
+  managedIssueActions?: IssueManagerManagedIssueActionsAdapter;
   notifications?: IssueManagerNotificationSink;
   referenceSourceAggregator?: ReferenceSourceAggregator;
   shareAdapter?: IssueManagerShareAdapter;
@@ -78,6 +80,7 @@ export interface CreateIssueManagerFeatureInput {
   i18n?: I18nRuntime<string>;
   identityAdapter: IssueManagerIdentityAdapter;
   mentionActionHandler?: IssueManagerMentionActionHandler;
+  managedIssueActions?: IssueManagerManagedIssueActionsAdapter;
   notifications?: IssueManagerNotificationSink;
   referenceSourceAggregator?: ReferenceSourceAggregator;
   shareAdapter?: IssueManagerShareAdapter;
@@ -113,6 +116,7 @@ export function createIssueManagerFeature(
     i18n: createIssueManagerI18nRuntime(input.i18n),
     identityAdapter: input.identityAdapter,
     mentionActionHandler: input.mentionActionHandler,
+    managedIssueActions: input.managedIssueActions,
     notifications: input.notifications,
     referenceSourceAggregator: input.referenceSourceAggregator,
     shareAdapter: input.shareAdapter,

@@ -9,6 +9,7 @@ import (
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
+	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
@@ -101,6 +102,7 @@ const (
 	ReasonWorkspaceAppUnavailable                        = "workspace_app_service_unavailable"
 	ReasonWorkspaceIssueContextRefNotFound               = "workspace_issue_context_ref_not_found"
 	ReasonWorkspaceIssueContextRefExists                 = "workspace_issue_context_ref_already_exists"
+	ReasonTuttiIssueManaged                              = "tutti_issue_managed"
 	ReasonWorkspaceIssueExists                           = "workspace_issue_already_exists"
 	ReasonWorkspaceIssueNotFound                         = "workspace_issue_not_found"
 	ReasonWorkspaceIssueResourceExists                   = "workspace_issue_resource_exists"
@@ -119,6 +121,7 @@ const (
 	ReasonWorkspaceTerminalNotRunning                    = "workspace_terminal_not_running"
 	ReasonWorkspaceTerminalUnavailable                   = "workspace_terminal_service_unavailable"
 	ReasonWorkspaceWorkbenchUnavailable                  = "workspace_workbench_service_unavailable"
+	ReasonTuttiExecutionActive                           = "tutti_execution_active"
 )
 
 type ProtocolError struct {
@@ -331,6 +334,19 @@ func Classify(err error) *ProtocolError {
 	if errors.As(err, &protocolErr) {
 		return protocolErr
 	}
+	var protectedSourceErr *executionbiz.ProtectedSourceError
+	if errors.As(err, &protectedSourceErr) {
+		return New(
+			StatusWorkspaceIssueExists,
+			tuttigenerated.TuttiExecutionActive,
+			ReasonTuttiExecutionActive,
+			WithCause(err),
+			WithParams(map[string]any{
+				"workspaceId":     protectedSourceErr.WorkspaceID,
+				"protectedIssues": protectedSourceErr.Issues,
+			}),
+		)
+	}
 	var runtimeAppErr *agentruntime.AppError
 	if errors.As(err, &runtimeAppErr) {
 		reason := strings.TrimSpace(runtimeAppErr.Code)
@@ -367,6 +383,18 @@ func Classify(err error) *ProtocolError {
 			ReasonUnsupportedPermissionModeID,
 			WithCause(err),
 			WithParams(params),
+		)
+	}
+	var managedIssueErr *workspaceissues.ManagedIssueMutationError
+	if errors.As(err, &managedIssueErr) {
+		return WorkspaceIssueResourceExists(
+			ReasonTuttiIssueManaged,
+			WithCause(err),
+			WithParams(map[string]any{
+				"issueId":           managedIssueErr.ManagedIssueID(),
+				"sourceSessionId":   managedIssueErr.ManagedSourceSessionID(),
+				"recommendedAction": "open_source_session",
+			}),
 		)
 	}
 	switch {
@@ -410,6 +438,8 @@ func Classify(err error) *ProtocolError {
 	case errors.Is(err, workspacefiles.ErrAdapterNotConfigured), errors.Is(err, workspacefiles.ErrResolverNotConfigured):
 		return WorkspaceFileServiceUnavailable(WithCause(err))
 	case errors.Is(err, workspaceissues.ErrInvalidArgument):
+		return InvalidRequest(ReasonMalformedRequest, WithCause(err))
+	case errors.Is(err, executionbiz.ErrInvalidExecution):
 		return InvalidRequest(ReasonMalformedRequest, WithCause(err))
 	case errors.Is(err, workspaceissues.ErrStoreNotConfigured):
 		return WorkspaceIssueServiceUnavailable(WithCause(err))

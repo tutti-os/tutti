@@ -81,7 +81,13 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 		input.hostFacts = facts
 	}
 	input.CLICommand = firstNonEmptyText(input.CLICommand, p.CLICommand, resolveCLICommand(p.StateDir))
-	resolver, err := resolveCommandCapabilities(ctx, p.CommandCatalog, workspaceID, input.CLICommand)
+	resolver, err := resolveCommandCapabilities(
+		ctx,
+		p.CommandCatalog,
+		workspaceID,
+		input.CLICommand,
+		input.CommandCapabilityProjection,
+	)
 	if err != nil {
 		return PreparedRuntime{}, err
 	}
@@ -168,7 +174,13 @@ func (p *DefaultPreparer) RenderSkillBundle(ctx context.Context, input PrepareIn
 	if facts, factsErr := normalizeHostFacts(p.Profile.HostFacts); factsErr == nil {
 		input.hostFacts = facts
 	}
-	resolver, err := resolveCommandCapabilities(ctx, p.CommandCatalog, workspaceID, input.CLICommand)
+	resolver, err := resolveCommandCapabilities(
+		ctx,
+		p.CommandCatalog,
+		workspaceID,
+		input.CLICommand,
+		input.CommandCapabilityProjection,
+	)
 	if err != nil {
 		return SkillBundle{}, err
 	}

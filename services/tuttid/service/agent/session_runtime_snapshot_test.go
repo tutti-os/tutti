@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -17,6 +18,15 @@ import (
 type revisionPlanSource struct {
 	current   modelplanbiz.Plan
 	revisions map[uint64]modelplanbiz.Plan
+}
+
+type snapshotCommandCatalog []runtimeprep.CommandCapability
+
+func (catalog snapshotCommandCatalog) Capabilities(
+	context.Context,
+	runtimeprep.CommandContext,
+) []runtimeprep.CommandCapability {
+	return append([]runtimeprep.CommandCapability(nil), catalog...)
 }
 
 func (s revisionPlanSource) GetModelPlan(context.Context, string, string) (modelplanbiz.Plan, error) {
@@ -54,8 +64,16 @@ func TestSessionRuntimeSnapshotIsVersionedAndRedactionSafe(t *testing.T) {
 		AgentCapabilitiesExplicit: true,
 		AgentSkills:               []string{"go", "tests"},
 		AgentTools:                []string{"shell"},
-		Model:                     &model,
-		PermissionModeID:          &permissionMode,
+		CommandCapabilityProjection: &runtimeprep.CommandCapabilityProjection{
+			AllowedIDs: []string{
+				"issue-manager.issue.get",
+				"tutti-goal-review.goal-review.verdict",
+			},
+			IncludeIntegrationIDs: []string{"tutti-goal-review.goal-review.verdict"},
+			ExcludeIDs:            []string{"tutti-mode-plan.plan.issue.complete"},
+		},
+		Model:            &model,
+		PermissionModeID: &permissionMode,
 	}, "codex", resolution)
 
 	encoded, err := json.Marshal(contextPayload)
@@ -87,8 +105,238 @@ func TestSessionRuntimeSnapshotIsVersionedAndRedactionSafe(t *testing.T) {
 	if !snapshot.CapabilitiesExplicit {
 		t.Fatal("snapshot lost explicit capability selection")
 	}
+	if snapshot.CommandCapabilityProjection == nil ||
+		!reflect.DeepEqual(snapshot.CommandCapabilityProjection.AllowedIDs, []string{
+			"issue-manager.issue.get",
+			"tutti-goal-review.goal-review.verdict",
+		}) ||
+		len(snapshot.CommandCapabilityProjection.IncludeIntegrationIDs) != 1 ||
+		snapshot.CommandCapabilityProjection.IncludeIntegrationIDs[0] !=
+			"tutti-goal-review.goal-review.verdict" ||
+		len(snapshot.CommandCapabilityProjection.ExcludeIDs) != 1 ||
+		snapshot.CommandCapabilityProjection.ExcludeIDs[0] !=
+			"tutti-mode-plan.plan.issue.complete" {
+		t.Fatalf(
+			"snapshot command capability projection = %#v",
+			snapshot.CommandCapabilityProjection,
+		)
+	}
 	if snapshot.Name != "Focused Writer" || snapshot.Description != "Make narrow repository changes." {
 		t.Fatalf("snapshot name/description = %q/%q", snapshot.Name, snapshot.Description)
+	}
+}
+
+func TestPersistedReviewerProjectionResolvesExactCommandSetAfterResume(
+	t *testing.T,
+) {
+	t.Parallel()
+
+	model := "gpt-review"
+	runtimeContext := runtimeContextWithSessionRuntimeSnapshot(
+		nil,
+		CreateSessionInput{
+			AgentTargetID:        "local:codex",
+			HarnessAgentTargetID: "local:codex",
+			Model:                &model,
+			CommandCapabilityProjection: &runtimeprep.CommandCapabilityProjection{
+				AllowedIDs: []string{
+					"issue-manager.issue.get",
+					"issue-manager.issue.task.list",
+					"issue-manager.issue.task.get",
+					"issue-manager.issue.task.run.list",
+					"issue-manager.issue.task.run.get",
+					"tutti-goal-review.goal-review.verdict",
+				},
+				IncludeIntegrationIDs: []string{
+					"tutti-goal-review.goal-review.verdict",
+				},
+			},
+		},
+		"codex",
+		modelPlanResolution{
+			ModelConfiguration: newProviderNativeModelConfiguration(
+				"codex", "local:codex",
+			),
+		},
+	)
+	encoded, err := json.Marshal(runtimeContext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted map[string]any
+	if err := json.Unmarshal(encoded, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, exists, err := sessionRuntimeSnapshotFromContext(persisted)
+	if err != nil || !exists {
+		t.Fatalf("persisted snapshot = %#v, exists=%v, error=%v", snapshot, exists, err)
+	}
+
+	preparer := runtimeprep.NewDefaultPreparer(t.TempDir())
+	preparer.CLICommand = "tutti"
+	preparer.CommandCatalog = snapshotCommandCatalog{
+		{
+			ID: "issue-manager.issue.get", Path: []string{"issue", "get"},
+			Visibility: "public",
+		},
+		{
+			ID: "issue-manager.issue.update", Path: []string{"issue", "update"},
+			Visibility: "public",
+		},
+		{
+			ID: "issue-manager.issue.task.list", Path: []string{"issue", "task", "list"},
+			Visibility: "public",
+		},
+		{
+			ID: "issue-manager.issue.task.get", Path: []string{"issue", "task", "get"},
+			Visibility: "public",
+		},
+		{
+			ID:   "issue-manager.issue.task.run.list",
+			Path: []string{"issue", "task", "run", "list"}, Visibility: "public",
+		},
+		{
+			ID:   "issue-manager.issue.task.run.get",
+			Path: []string{"issue", "task", "run", "get"}, Visibility: "public",
+		},
+		{
+			ID: "agent-context.agent.start", Path: []string{"agent", "start"},
+			Visibility: "public",
+		},
+		{
+			ID:   "tutti-mode-plan.plan.issue.schedule",
+			Path: []string{"plan", "issue", "schedule"}, Visibility: "public",
+		},
+		{
+			ID:   "tutti-mode-plan.plan.issue.mutate",
+			Path: []string{"plan", "issue", "mutate"}, Visibility: "public",
+		},
+		{
+			ID:   "tutti-mode-plan.plan.issue.acknowledge",
+			Path: []string{"plan", "issue", "acknowledge"}, Visibility: "public",
+		},
+		{
+			ID:   "tutti-mode-plan.plan.issue.complete",
+			Path: []string{"plan", "issue", "complete"}, Visibility: "public",
+		},
+		{
+			ID:   "tutti-goal-review.goal-review.verdict",
+			Path: []string{"goal-review", "verdict"}, Visibility: "integration",
+		},
+		{
+			ID: "browser.hidden", Path: []string{"browser", "navigate"},
+			Visibility: "integration",
+		},
+	}
+	bundle, err := preparer.RenderSkillBundle(
+		context.Background(),
+		runtimeprep.PrepareInput{
+			WorkspaceID: "workspace-1", AgentSessionID: "review-session-1",
+			AgentTargetID: "local:codex", Provider: "codex",
+			CommandCapabilityProjection: cloneCommandCapabilityProjection(
+				snapshot.CommandCapabilityProjection,
+			),
+		},
+	)
+	if err != nil {
+		t.Fatalf("RenderSkillBundle(resumed reviewer) error = %v", err)
+	}
+	var rendered strings.Builder
+	for _, skill := range bundle.Skills {
+		rendered.WriteString(skill.Content)
+		for _, file := range skill.Files {
+			rendered.WriteString(file.Content)
+		}
+	}
+	guide := rendered.String()
+	for _, allowed := range []string{
+		"tutti issue get",
+		"tutti goal-review verdict",
+	} {
+		if !strings.Contains(guide, allowed) {
+			t.Fatalf("resumed reviewer guide missing %q:\n%s", allowed, guide)
+		}
+	}
+	for _, forbidden := range []string{
+		"tutti issue update",
+		"tutti plan issue schedule",
+		"tutti plan issue mutate",
+		"tutti plan issue acknowledge",
+		"tutti plan issue complete",
+		"tutti agent start",
+		"tutti browser navigate",
+	} {
+		if strings.Contains(guide, forbidden) {
+			t.Fatalf("resumed reviewer guide leaked %q:\n%s", forbidden, guide)
+		}
+	}
+}
+
+func TestAgentSessionCommandCapabilityProjectionReadsCanonicalSnapshot(t *testing.T) {
+	t.Parallel()
+
+	runtimeContext := runtimeContextWithSessionRuntimeSnapshot(
+		nil,
+		CreateSessionInput{
+			AgentTargetID: "local:codex",
+			CommandCapabilityProjection: &runtimeprep.CommandCapabilityProjection{
+				AllowedIDs: []string{
+					"issue-manager.issue.get",
+					"tutti-goal-review.goal-review.verdict",
+				},
+				IncludeIntegrationIDs: []string{
+					"tutti-goal-review.goal-review.verdict",
+				},
+				ExcludeIDs: []string{"issue-manager.issue.update"},
+			},
+		},
+		"codex",
+		modelPlanResolution{
+			ModelConfiguration: newProviderNativeModelConfiguration(
+				"codex", "local:codex",
+			),
+		},
+	)
+	service := NewService(newFakeRuntime())
+	service.SessionReader = fakeSessionReader{sessions: map[string]PersistedSession{
+		"workspace-1:review-session-1": {
+			ID: "review-session-1", WorkspaceID: "workspace-1",
+			AgentTargetID: "local:codex", Provider: "codex",
+			InternalRuntimeContext: runtimeContext,
+		},
+	}}
+	configureTestApplicationHost(service)
+
+	projection, err := service.AgentSessionCommandCapabilityProjection(
+		context.Background(), "workspace-1", "review-session-1",
+	)
+	if err != nil {
+		t.Fatalf("AgentSessionCommandCapabilityProjection() error = %v", err)
+	}
+	if projection == nil ||
+		!reflect.DeepEqual(projection.AllowedIDs, []string{
+			"issue-manager.issue.get",
+			"tutti-goal-review.goal-review.verdict",
+		}) ||
+		!reflect.DeepEqual(projection.IncludeIntegrationIDs, []string{
+			"tutti-goal-review.goal-review.verdict",
+		}) ||
+		!reflect.DeepEqual(projection.ExcludeIDs, []string{
+			"issue-manager.issue.update",
+		}) {
+		t.Fatalf("projection = %#v", projection)
+	}
+
+	projection.AllowedIDs[0] = "mutated"
+	projection.IncludeIntegrationIDs[0] = "mutated"
+	reloaded, err := service.AgentSessionCommandCapabilityProjection(
+		context.Background(), "workspace-1", "review-session-1",
+	)
+	if err != nil ||
+		reloaded.AllowedIDs[0] != "issue-manager.issue.get" ||
+		reloaded.IncludeIntegrationIDs[0] !=
+			"tutti-goal-review.goal-review.verdict" {
+		t.Fatalf("canonical projection mutated: %#v error=%v", reloaded, err)
 	}
 }
 
@@ -203,7 +451,12 @@ func TestPrepareRuntimeForResumeUsesExactModelPlanRevision(t *testing.T) {
 		AgentDescription:       "Use the original description.",
 		AgentInstructions:      "old instructions",
 		AgentSkills:            []string{"old-skill"},
-		Model:                  &model,
+		CommandCapabilityProjection: &runtimeprep.CommandCapabilityProjection{
+			AllowedIDs:            []string{"issue-manager.issue.get"},
+			IncludeIntegrationIDs: []string{"tutti-goal-review.goal-review.verdict"},
+			ExcludeIDs:            []string{"tutti-mode-plan.plan.issue.complete"},
+		},
+		Model: &model,
 	}, "codex", resolution)
 	resumedModel := "gpt-alt"
 	_, err = service.prepareRuntimeForResume(context.Background(), PersistedSession{
@@ -235,6 +488,15 @@ func TestPrepareRuntimeForResumeUsesExactModelPlanRevision(t *testing.T) {
 	}
 	if preparedInput.AgentName != "Old Writer" || preparedInput.AgentDescription != "Use the original description." {
 		t.Fatalf("prepared name/description = %q/%q", preparedInput.AgentName, preparedInput.AgentDescription)
+	}
+	if preparedInput.CommandCapabilityProjection == nil ||
+		len(preparedInput.CommandCapabilityProjection.AllowedIDs) != 1 ||
+		len(preparedInput.CommandCapabilityProjection.IncludeIntegrationIDs) != 1 ||
+		len(preparedInput.CommandCapabilityProjection.ExcludeIDs) != 1 {
+		t.Fatalf(
+			"prepared command capability projection = %#v",
+			preparedInput.CommandCapabilityProjection,
+		)
 	}
 }
 

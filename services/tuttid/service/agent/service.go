@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -518,6 +517,9 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 		AgentTools:                append([]string(nil), input.AgentTools...),
 		ExtraSkills:               sessionSkillBundlesToProviderSkillBundles(input.ExtraSkills),
 		Metadata:                  input.Metadata,
+		CommandCapabilityProjection: cloneCommandCapabilityProjection(
+			input.CommandCapabilityProjection,
+		),
 		ExternalRolloutSourcePath: input.ExternalRolloutSourcePath,
 	})
 	if err != nil {
@@ -659,19 +661,6 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 		return Session{}, ErrSessionNotFound
 	}
 	return s.projectHostSessionResult(ctx, result.Canonical, result.Session, result.Live, true)
-}
-
-func (s *Service) releaseAgentResources(ctx context.Context, agentSessionID string) {
-	if s.AgentSessionResourceReleaser == nil {
-		return
-	}
-	if err := s.AgentSessionResourceReleaser.ReleaseAgent(ctx, agentSessionID); err != nil {
-		slog.WarnContext(ctx, "release Agent session resources failed",
-			"agentSessionId", strings.TrimSpace(agentSessionID),
-			"error", err,
-			"event", "agent.session.resource_release_failed",
-		)
-	}
 }
 
 func (s *Service) UpdatePin(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (Session, error) {

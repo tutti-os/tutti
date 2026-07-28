@@ -13,6 +13,10 @@ func serviceUnavailableError(err *apierrors.ProtocolError) tuttigenerated.Servic
 	return tuttigenerated.ServiceUnavailableErrorJSONResponse(protocolErrorResponse(err))
 }
 
+func tuttiExecutionActiveError(err *apierrors.ProtocolError) tuttigenerated.TuttiExecutionActiveErrorJSONResponse {
+	return tuttigenerated.TuttiExecutionActiveErrorJSONResponse(protocolErrorResponse(err))
+}
+
 func workspaceNotFoundError(err *apierrors.ProtocolError) tuttigenerated.WorkspaceNotFoundErrorJSONResponse {
 	return tuttigenerated.WorkspaceNotFoundErrorJSONResponse(protocolErrorResponse(err))
 }

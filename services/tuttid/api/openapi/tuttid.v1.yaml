@@ -210,6 +210,12 @@ paths:
           schema:
             type: string
           description: Optional workspace context. When omitted, the daemon uses the startup workspace.
+        - name: agentSessionID
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional canonical Agent Session identity. When present, discovery is constrained by that Session's persisted command capability projection.
         - name: includeHidden
           in: query
           required: false
@@ -3148,6 +3154,8 @@ paths:
           $ref: "#/components/responses/InvalidRequestError"
         "404":
           $ref: "#/components/responses/WorkspaceNotFoundError"
+        "409":
+          $ref: "#/components/responses/TuttiExecutionActiveError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
         "502":
@@ -3211,6 +3219,8 @@ paths:
           $ref: "#/components/responses/InvalidRequestError"
         "404":
           $ref: "#/components/responses/WorkspaceNotFoundError"
+        "409":
+          $ref: "#/components/responses/TuttiExecutionActiveError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
         "502":
@@ -3642,6 +3652,80 @@ paths:
           $ref: "#/components/responses/InvalidRequestError"
         "404":
           $ref: "#/components/responses/WorkspaceNotFoundError"
+        "409":
+          $ref: "#/components/responses/TuttiExecutionActiveError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: issueID
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    post:
+      operationId: archiveTuttiModeExecution
+      tags:
+        - workspace-workflow
+      summary: Stop and durably archive one Tutti execution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveTuttiModeExecutionRequest"
+      responses:
+        "200":
+          description: Current durable archive operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TuttiModeArchiveOperation"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
+        "409":
+          $ref: "#/components/responses/TuttiModeArchiveConflictError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    get:
+      operationId: getTuttiModeArchiveOperation
+      tags:
+        - workspace-workflow
+      summary: Get the current archive operation for one Tutti execution
+      parameters:
+        - name: operationId
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Current durable archive operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TuttiModeArchiveOperation"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceIssueResourceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
         "502":
@@ -4815,6 +4899,46 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/IssueID"
+    post:
+      operationId: switchTuttiModeGoalReviewToSelf
+      tags:
+        - workspace
+      summary: Switch a failed independent Tutti Mode Goal Review to self review
+      description: >-
+        Performs the explicit audited fallback for one failed independent
+        reviewer operation. The authenticated local actor is resolved by the
+        daemon and cannot be supplied in the request body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwitchTuttiModeGoalReviewToSelfRequest"
+      responses:
+        "200":
+          description: Goal Review switched to self review, or an idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SwitchTuttiModeGoalReviewToSelfResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/TuttiModeGoalReviewNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/TuttiModeGoalReviewConflictError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/files/recent:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -5593,6 +5717,13 @@ components:
       schema:
         type: string
         minLength: 1
+    IssueID:
+      name: issueID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     WorkspaceAppID:
       name: appID
       in: path
@@ -5803,6 +5934,25 @@ components:
                   code: invalid_request
                   reason: missing_workspace_id
                   developerMessage: workspace id is required
+    TuttiExecutionActiveError:
+      description: One or more source sessions own a nonterminal Tutti execution
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            protectedSource:
+              value:
+                error:
+                  code: tutti_execution_active
+                  reason: tutti_execution_active
+                  params:
+                    workspaceId: workspace-1
+                    protectedIssues:
+                      - issueId: issue-1
+                        executionId: execution-1
+                        sourceSessionId: session-1
+                        status: running
     MethodNotAllowedError:
       description: HTTP method is not supported on this route
       content:
@@ -5977,7 +6127,86 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ApiErrorResponse"
+    TuttiModeGoalReviewNotFoundError:
+      description: Tutti Mode execution or Goal Review was not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            goalReviewNotFound:
+              value:
+                error:
+                  code: tutti_mode_goal_review_not_found
+                  reason: tutti_goal_review_not_found
+    TuttiModeGoalReviewConflictError:
+      description: Goal Review fallback conflicts with current durable state or request history
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            goalReviewConflict:
+              value:
+                error:
+                  code: tutti_mode_goal_review_conflict
+                  reason: tutti_goal_review_conflict
+    TuttiModeArchiveConflictError:
+      description: Archive request id conflicts with a different durable archive request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            archiveRequestConflict:
+              value:
+                error:
+                  code: tutti_mode_archive_conflict
+                  reason: tutti_archive_request_conflict
   schemas:
+    SwitchTuttiModeGoalReviewToSelfRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - checkpointId
+        - expectedGraphRevision
+        - requestId
+        - reason
+      properties:
+        checkpointId:
+          type: string
+          minLength: 1
+        expectedGraphRevision:
+          type: integer
+          format: int64
+          minimum: 1
+        requestId:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          minLength: 1
+    SwitchTuttiModeGoalReviewToSelfResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - executionId
+        - reviewId
+        - reviewMode
+        - replayed
+      properties:
+        executionId:
+          type: string
+          minLength: 1
+        reviewId:
+          type: string
+          minLength: 1
+        reviewMode:
+          type: string
+          enum:
+            - self
+        replayed:
+          type: boolean
     HealthStatusResponse:
       type: object
       additionalProperties: false
@@ -6657,6 +6886,12 @@ components:
             - workspace_agent_not_found
             - collaboration_run_not_found
             - automation_rule_not_found
+            - tutti_mode_goal_review_not_found
+            - tutti_mode_goal_review_conflict
+            - tutti_mode_goal_review_operation_failed
+            - tutti_mode_goal_review_service_unavailable
+            - tutti_mode_archive_conflict
+            - tutti_execution_active
         reason:
           type: string
         params:
@@ -12067,6 +12302,83 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ExternalAgentImportError"
+    ArchiveTuttiModeExecutionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - requestId
+        - reason
+      properties:
+        requestId:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          minLength: 1
+    TuttiModeArchiveOperation:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - executionId
+        - issueId
+        - operationId
+        - requestId
+        - status
+        - requestedBy
+        - reason
+        - attemptCount
+        - lastError
+        - createdAtUnixMs
+        - updatedAtUnixMs
+        - completedAtUnixMs
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        executionId:
+          type: string
+          minLength: 1
+        issueId:
+          type: string
+          minLength: 1
+        operationId:
+          type: string
+          minLength: 1
+        requestId:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum:
+            - requested
+            - canceling_runs
+            - archiving
+            - completed
+            - failed
+        requestedBy:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          minLength: 1
+        attemptCount:
+          type: integer
+          minimum: 0
+        lastError:
+          type: string
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        completedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
     DeleteWorkspaceAgentSessionResponse:
       type: object
       additionalProperties: false

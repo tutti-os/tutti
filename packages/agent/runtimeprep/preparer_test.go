@@ -375,6 +375,74 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 }
 
+func TestDefaultPreparerCodexDedicatedProjectionNarrowsAutomaticCLIApproval(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	catalog := append(testCommandCapabilities(), CommandCapability{
+		ID:         "tutti-goal-review.goal-review.verdict",
+		Path:       []string{"goal-review", "verdict"},
+		Summary:    "Submit Goal Review verdict",
+		Visibility: "integration",
+		Output:     CommandCapabilityOutput{DefaultMode: "json", JSON: true},
+	})
+	preparer := NewDefaultPreparer(stateDir)
+	preparer.CommandCatalog = staticCommandCatalog(catalog)
+
+	_, err := preparer.Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "review-session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+		CommandCapabilityProjection: &CommandCapabilityProjection{
+			AllowedIDs: []string{
+				"issue-manager.issue.get",
+				"tutti-goal-review.goal-review.verdict",
+			},
+			IncludeIntegrationIDs: []string{
+				"tutti-goal-review.goal-review.verdict",
+			},
+			ExcludeIDs: []string{
+				"issue-manager.issue.update",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runtimeRoot, err := LocalStore{StateDir: stateDir}.RuntimeRoot(
+		"workspace-1",
+		"review-session-1",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rulesPath := filepath.Join(runtimeRoot, "codex-home", "rules", "default.rules")
+	rules, err := os.ReadFile(rulesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(rules)
+	for _, want := range []string{
+		`prefix_rule(pattern=["tutti", "issue", "get"], decision="allow")`,
+		`prefix_rule(pattern=["tutti", "goal-review", "verdict"], decision="allow")`,
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("dedicated Codex approval rules = %q, want %q", content, want)
+		}
+	}
+	for _, denied := range []string{
+		`prefix_rule(pattern=["tutti"], decision="allow")`,
+		`prefix_rule(pattern=["tutti", "issue", "update"], decision="allow")`,
+	} {
+		if strings.Contains(content, denied) {
+			t.Fatalf("dedicated Codex approval rules = %q, must omit %q", content, denied)
+		}
+	}
+}
+
 func TestExposeUserCodexModelsCacheSharesFirstRefreshAcrossSessions(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

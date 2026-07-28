@@ -129,6 +129,25 @@ func TestWiringUsesSupervisedAgentHostRun(t *testing.T) {
 	}
 }
 
+func TestWiringComposesTuttiModeGoalReviewLifecycle(t *testing.T) {
+	raw, err := os.ReadFile("wiring_daemon_api.go")
+	if err != nil {
+		t.Fatalf("read wiring_daemon_api.go: %v", err)
+	}
+	source := string(raw)
+	for _, required := range []string{
+		"tuttiModeExecutions.ReviewerTargets = tuttiModeReviewerAgentAdapter{",
+		"tuttiModeReviewerTurnObserver{",
+		"tuttigoalreviewcli.NewProvider(",
+		"TuttiModeGoalReviewService: tuttiModeExecutions",
+		"cliRegistry.AgentSessionCapabilities = agentSessionCLIProjectionResolver{",
+	} {
+		if !strings.Contains(source, required) {
+			t.Fatalf("production wiring is missing Goal Review composition: %s", required)
+		}
+	}
+}
+
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

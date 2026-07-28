@@ -113,6 +113,16 @@ export function agentGUITuttiModeLabels(
       collapse: t("agentHost.agentGui.tuttiModePlan.collapse"),
       cancel: t("agentHost.agentGui.tuttiModePlan.cancel"),
       retry: t("agentHost.agentGui.tuttiModePlan.retry"),
+      switchToSelfReview: t(
+        "agentHost.agentGui.tuttiModePlan.switchToSelfReview"
+      ),
+      switchingToSelfReview: t(
+        "agentHost.agentGui.tuttiModePlan.switchingToSelfReview"
+      ),
+      selfReviewEnabled: t(
+        "agentHost.agentGui.tuttiModePlan.selfReviewEnabled"
+      ),
+      selfReviewFailed: t("agentHost.agentGui.tuttiModePlan.selfReviewFailed"),
       issueRunning: (count) =>
         t("agentHost.agentGui.tuttiModePlan.issueStripRunning", { count }),
       issuePendingAcceptance: (count) =>

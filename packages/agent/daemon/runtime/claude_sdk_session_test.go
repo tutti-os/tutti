@@ -244,6 +244,7 @@ func TestClaudeSDKSidecarCommandUsesVendoredEntryWithManagedNodeEnv(t *testing.T
 func TestClaudeSDKSidecarCommandUsesManagedNodeCacheRoot(t *testing.T) {
 	t.Setenv(claudeSDKSidecarCommandEnv, "")
 	t.Setenv(claudeSDKSidecarEntryPathEnv, "")
+	t.Setenv(claudeSDKAppRuntimeRootEnv, "")
 
 	cacheRoot := t.TempDir()
 	nodePath := filepath.Join(cacheRoot, runtime.GOOS+"-"+runtime.GOARCH, "node", "bin", claudeSDKNodeBinaryName())

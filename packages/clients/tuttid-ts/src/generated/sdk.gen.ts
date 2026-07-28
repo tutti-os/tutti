@@ -22,6 +22,9 @@ import type {
   ApplyWorkspaceGitPatchData,
   ApplyWorkspaceGitPatchErrors,
   ApplyWorkspaceGitPatchResponses,
+  ArchiveTuttiModeExecutionData,
+  ArchiveTuttiModeExecutionErrors,
+  ArchiveTuttiModeExecutionResponses,
   AttachEventStreamData,
   AttachEventStreamErrors,
   AttachEventStreamResponses,
@@ -241,6 +244,9 @@ import type {
   GetStartupWorkspaceData,
   GetStartupWorkspaceErrors,
   GetStartupWorkspaceResponses,
+  GetTuttiModeArchiveOperationData,
+  GetTuttiModeArchiveOperationErrors,
+  GetTuttiModeArchiveOperationResponses,
   GetWorkspaceAgentData,
   GetWorkspaceAgentErrors,
   GetWorkspaceAgentResponses,
@@ -574,6 +580,9 @@ import type {
   SubmitWorkspaceAgentPlanDecisionData,
   SubmitWorkspaceAgentPlanDecisionErrors,
   SubmitWorkspaceAgentPlanDecisionResponses,
+  SwitchTuttiModeGoalReviewToSelfData,
+  SwitchTuttiModeGoalReviewToSelfErrors,
+  SwitchTuttiModeGoalReviewToSelfResponses,
   TerminateWorkspaceTerminalData,
   TerminateWorkspaceTerminalErrors,
   TerminateWorkspaceTerminalResponses,
@@ -2897,6 +2906,44 @@ export const getWorkspaceAgentSession = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * Get the current archive operation for one Tutti execution
+ */
+export const getTuttiModeArchiveOperation = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetTuttiModeArchiveOperationData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetTuttiModeArchiveOperationResponses,
+    GetTuttiModeArchiveOperationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive",
+    ...options
+  });
+
+/**
+ * Stop and durably archive one Tutti execution
+ */
+export const archiveTuttiModeExecution = <ThrowOnError extends boolean = false>(
+  options: Options<ArchiveTuttiModeExecutionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ArchiveTuttiModeExecutionResponses,
+    ArchiveTuttiModeExecutionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
  * Fork one workspace agent session at an exact canonical boundary
  */
 export const forkWorkspaceAgentSession = <ThrowOnError extends boolean = false>(
@@ -3541,6 +3588,30 @@ export const createWorkspaceFileDirectory = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/files/directory",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Switch a failed independent Tutti Mode Goal Review to self review
+ *
+ * Performs the explicit audited fallback for one failed independent reviewer operation. The authenticated local actor is resolved by the daemon and cannot be supplied in the request body.
+ */
+export const switchTuttiModeGoalReviewToSelf = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SwitchTuttiModeGoalReviewToSelfData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    SwitchTuttiModeGoalReviewToSelfResponses,
+    SwitchTuttiModeGoalReviewToSelfErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self",
     ...options,
     headers: {
       "Content-Type": "application/json",

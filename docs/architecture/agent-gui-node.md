@@ -639,6 +639,15 @@ candidate lookup and the batch mutation. AgentGUI fails that paired capability
 closed when either method is absent, so the view cannot expose an action that
 will resolve to an empty optional-method path.
 
+Conversation deletion is transactional from the renderer's perspective. The
+canonical delete command must succeed before AgentGUI clears the active
+Session, changes Rail selection, unactivates runtime state, removes rows, or
+discards local drafts. The same rule applies to batch deletion: a protected
+Tutti execution conflict leaves the whole selection and local collection
+unchanged. The conflict parser recognizes only the daemon's typed
+`tutti_execution_active` payload; archive/view commands remain an optional
+host capability until the generated execution adapter is present.
+
 The full first-page query is the only Rail read that resolves a navigation
 scope and clears its pending state. Targeted section refresh and pagination may
 update only an already-resolved matching scope. A subordinate result must not
@@ -952,6 +961,12 @@ materialization and execution handoffs so the UI does not jump. The expanded
 plan panel starts with the plan title and body; it does not repeat mode,
 review-kind, or pending-state badges already communicated by the workflow
 banner.
+
+An independent-review failure is a distinct workflow presentation, not a
+generic retry loop. The dock may offer an explicitly user-triggered self-review
+fallback through an optional host command and shows its pending, success, or
+failure result together with the audit identifier. It never switches review
+mode automatically.
 
 An active Tutti Mode composer badge is an intensity-settings entry, not a
 destructive toggle. Clicking it opens the UI-local `TuttiBudgetPopover`, seeded

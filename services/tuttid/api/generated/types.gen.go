@@ -714,29 +714,35 @@ func (e AgentTargetSource) Valid() bool {
 
 // Defines values for ApiErrorDetailsCode.
 const (
-	AgentQuickPromptConflict          ApiErrorDetailsCode = "agent_quick_prompt_conflict"
-	AgentQuickPromptNotFound          ApiErrorDetailsCode = "agent_quick_prompt_not_found"
-	AgentQuickPromptOperationFailed   ApiErrorDetailsCode = "agent_quick_prompt_operation_failed"
-	AgentSessionForkOperationNotFound ApiErrorDetailsCode = "agent_session_fork_operation_not_found"
-	AgentTargetNotFound               ApiErrorDetailsCode = "agent_target_not_found"
-	AutomationRuleNotFound            ApiErrorDetailsCode = "automation_rule_not_found"
-	CollaborationRunNotFound          ApiErrorDetailsCode = "collaboration_run_not_found"
-	InvalidRequest                    ApiErrorDetailsCode = "invalid_request"
-	MethodNotAllowed                  ApiErrorDetailsCode = "method_not_allowed"
-	ModelPlanNotFound                 ApiErrorDetailsCode = "model_plan_not_found"
-	ModelPlanReferenced               ApiErrorDetailsCode = "model_plan_referenced"
-	ModelPolicyReferenced             ApiErrorDetailsCode = "model_policy_referenced"
-	PreferencesOperationFailed        ApiErrorDetailsCode = "preferences_operation_failed"
-	ServiceUnavailable                ApiErrorDetailsCode = "service_unavailable"
-	Unauthorized                      ApiErrorDetailsCode = "unauthorized"
-	WorkspaceAgentNotFound            ApiErrorDetailsCode = "workspace_agent_not_found"
-	WorkspaceAppNotFound              ApiErrorDetailsCode = "workspace_app_not_found"
-	WorkspaceFileNotFound             ApiErrorDetailsCode = "workspace_file_not_found"
-	WorkspaceIssueResourceExists      ApiErrorDetailsCode = "workspace_issue_resource_exists"
-	WorkspaceIssueResourceNotFound    ApiErrorDetailsCode = "workspace_issue_resource_not_found"
-	WorkspaceNotFound                 ApiErrorDetailsCode = "workspace_not_found"
-	WorkspaceOperationFailed          ApiErrorDetailsCode = "workspace_operation_failed"
-	WorkspaceTerminalNotFound         ApiErrorDetailsCode = "workspace_terminal_not_found"
+	AgentQuickPromptConflict              ApiErrorDetailsCode = "agent_quick_prompt_conflict"
+	AgentQuickPromptNotFound              ApiErrorDetailsCode = "agent_quick_prompt_not_found"
+	AgentQuickPromptOperationFailed       ApiErrorDetailsCode = "agent_quick_prompt_operation_failed"
+	AgentSessionForkOperationNotFound     ApiErrorDetailsCode = "agent_session_fork_operation_not_found"
+	AgentTargetNotFound                   ApiErrorDetailsCode = "agent_target_not_found"
+	AutomationRuleNotFound                ApiErrorDetailsCode = "automation_rule_not_found"
+	CollaborationRunNotFound              ApiErrorDetailsCode = "collaboration_run_not_found"
+	InvalidRequest                        ApiErrorDetailsCode = "invalid_request"
+	MethodNotAllowed                      ApiErrorDetailsCode = "method_not_allowed"
+	ModelPlanNotFound                     ApiErrorDetailsCode = "model_plan_not_found"
+	ModelPlanReferenced                   ApiErrorDetailsCode = "model_plan_referenced"
+	ModelPolicyReferenced                 ApiErrorDetailsCode = "model_policy_referenced"
+	PreferencesOperationFailed            ApiErrorDetailsCode = "preferences_operation_failed"
+	ServiceUnavailable                    ApiErrorDetailsCode = "service_unavailable"
+	TuttiExecutionActive                  ApiErrorDetailsCode = "tutti_execution_active"
+	TuttiModeArchiveConflict              ApiErrorDetailsCode = "tutti_mode_archive_conflict"
+	TuttiModeGoalReviewConflict           ApiErrorDetailsCode = "tutti_mode_goal_review_conflict"
+	TuttiModeGoalReviewNotFound           ApiErrorDetailsCode = "tutti_mode_goal_review_not_found"
+	TuttiModeGoalReviewOperationFailed    ApiErrorDetailsCode = "tutti_mode_goal_review_operation_failed"
+	TuttiModeGoalReviewServiceUnavailable ApiErrorDetailsCode = "tutti_mode_goal_review_service_unavailable"
+	Unauthorized                          ApiErrorDetailsCode = "unauthorized"
+	WorkspaceAgentNotFound                ApiErrorDetailsCode = "workspace_agent_not_found"
+	WorkspaceAppNotFound                  ApiErrorDetailsCode = "workspace_app_not_found"
+	WorkspaceFileNotFound                 ApiErrorDetailsCode = "workspace_file_not_found"
+	WorkspaceIssueResourceExists          ApiErrorDetailsCode = "workspace_issue_resource_exists"
+	WorkspaceIssueResourceNotFound        ApiErrorDetailsCode = "workspace_issue_resource_not_found"
+	WorkspaceNotFound                     ApiErrorDetailsCode = "workspace_not_found"
+	WorkspaceOperationFailed              ApiErrorDetailsCode = "workspace_operation_failed"
+	WorkspaceTerminalNotFound             ApiErrorDetailsCode = "workspace_terminal_not_found"
 )
 
 // Valid indicates whether the value is a known member of the ApiErrorDetailsCode enum.
@@ -769,6 +775,18 @@ func (e ApiErrorDetailsCode) Valid() bool {
 	case PreferencesOperationFailed:
 		return true
 	case ServiceUnavailable:
+		return true
+	case TuttiExecutionActive:
+		return true
+	case TuttiModeArchiveConflict:
+		return true
+	case TuttiModeGoalReviewConflict:
+		return true
+	case TuttiModeGoalReviewNotFound:
+		return true
+	case TuttiModeGoalReviewOperationFailed:
+		return true
+	case TuttiModeGoalReviewServiceUnavailable:
 		return true
 	case Unauthorized:
 		return true
@@ -1870,6 +1888,21 @@ func (e SubmitWorkspaceAgentPlanDecisionRequestPromptKind) Valid() bool {
 	}
 }
 
+// Defines values for SwitchTuttiModeGoalReviewToSelfResponseReviewMode.
+const (
+	Self SwitchTuttiModeGoalReviewToSelfResponseReviewMode = "self"
+)
+
+// Valid indicates whether the value is a known member of the SwitchTuttiModeGoalReviewToSelfResponseReviewMode enum.
+func (e SwitchTuttiModeGoalReviewToSelfResponseReviewMode) Valid() bool {
+	switch e {
+	case Self:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TuttiModeActivationSource.
 const (
 	TuttiModeActivationSourceBadgeRemove  TuttiModeActivationSource = "badge_remove"
@@ -1900,6 +1933,33 @@ func (e TuttiModeActivationStatus) Valid() bool {
 	case TuttiModeActivationStatusActive:
 		return true
 	case TuttiModeActivationStatusInactive:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TuttiModeArchiveOperationStatus.
+const (
+	TuttiModeArchiveOperationStatusArchiving     TuttiModeArchiveOperationStatus = "archiving"
+	TuttiModeArchiveOperationStatusCancelingRuns TuttiModeArchiveOperationStatus = "canceling_runs"
+	TuttiModeArchiveOperationStatusCompleted     TuttiModeArchiveOperationStatus = "completed"
+	TuttiModeArchiveOperationStatusFailed        TuttiModeArchiveOperationStatus = "failed"
+	TuttiModeArchiveOperationStatusRequested     TuttiModeArchiveOperationStatus = "requested"
+)
+
+// Valid indicates whether the value is a known member of the TuttiModeArchiveOperationStatus enum.
+func (e TuttiModeArchiveOperationStatus) Valid() bool {
+	switch e {
+	case TuttiModeArchiveOperationStatusArchiving:
+		return true
+	case TuttiModeArchiveOperationStatusCancelingRuns:
+		return true
+	case TuttiModeArchiveOperationStatusCompleted:
+		return true
+	case TuttiModeArchiveOperationStatusFailed:
+		return true
+	case TuttiModeArchiveOperationStatusRequested:
 		return true
 	default:
 		return false
@@ -3147,31 +3207,31 @@ func (e WorkspaceWorkflowPlanRevisionSchemaVersion) Valid() bool {
 
 // Defines values for WorkspaceWorkflowStatus.
 const (
-	Accepted      WorkspaceWorkflowStatus = "accepted"
-	Canceled      WorkspaceWorkflowStatus = "canceled"
-	Completed     WorkspaceWorkflowStatus = "completed"
-	Failed        WorkspaceWorkflowStatus = "failed"
-	InProgress    WorkspaceWorkflowStatus = "in_progress"
-	PendingReview WorkspaceWorkflowStatus = "pending_review"
-	Rejected      WorkspaceWorkflowStatus = "rejected"
+	WorkspaceWorkflowStatusAccepted      WorkspaceWorkflowStatus = "accepted"
+	WorkspaceWorkflowStatusCanceled      WorkspaceWorkflowStatus = "canceled"
+	WorkspaceWorkflowStatusCompleted     WorkspaceWorkflowStatus = "completed"
+	WorkspaceWorkflowStatusFailed        WorkspaceWorkflowStatus = "failed"
+	WorkspaceWorkflowStatusInProgress    WorkspaceWorkflowStatus = "in_progress"
+	WorkspaceWorkflowStatusPendingReview WorkspaceWorkflowStatus = "pending_review"
+	WorkspaceWorkflowStatusRejected      WorkspaceWorkflowStatus = "rejected"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowStatus enum.
 func (e WorkspaceWorkflowStatus) Valid() bool {
 	switch e {
-	case Accepted:
+	case WorkspaceWorkflowStatusAccepted:
 		return true
-	case Canceled:
+	case WorkspaceWorkflowStatusCanceled:
 		return true
-	case Completed:
+	case WorkspaceWorkflowStatusCompleted:
 		return true
-	case Failed:
+	case WorkspaceWorkflowStatusFailed:
 		return true
-	case InProgress:
+	case WorkspaceWorkflowStatusInProgress:
 		return true
-	case PendingReview:
+	case WorkspaceWorkflowStatusPendingReview:
 		return true
-	case Rejected:
+	case WorkspaceWorkflowStatusRejected:
 		return true
 	default:
 		return false
@@ -4013,6 +4073,12 @@ type AppReferenceSearchResponse struct {
 	Items       []AppReferenceListReferenceItem `json:"items"`
 	NextCursor  *string                         `json:"nextCursor"`
 	WorkspaceId string                          `json:"workspaceId"`
+}
+
+// ArchiveTuttiModeExecutionRequest defines model for ArchiveTuttiModeExecutionRequest.
+type ArchiveTuttiModeExecutionRequest struct {
+	Reason    string `json:"reason"`
+	RequestId string `json:"requestId"`
 }
 
 // AuthenticateAgentTargetRuntimeRequest defines model for AuthenticateAgentTargetRuntimeRequest.
@@ -5232,10 +5298,16 @@ type IssueManagerTask struct {
 	Priority       IssueManagerPriority `json:"priority"`
 	SortIndex      int                  `json:"sortIndex"`
 	Status         IssueManagerStatus   `json:"status"`
-	TaskId         string               `json:"taskId"`
-	Title          string               `json:"title"`
-	UpdatedAtUnix  int64                `json:"updatedAtUnix"`
-	WorkspaceId    string               `json:"workspaceId"`
+
+	// SupersededAtUnix Logical supersession timestamp. Zero means the task remains in the active graph; non-zero preserves the task and its execution history while excluding it from future scheduling.
+	SupersededAtUnix int64 `json:"supersededAtUnix"`
+
+	// SupersededByTaskId Replacement task ID when supersession introduced one.
+	SupersededByTaskId string `json:"supersededByTaskId"`
+	TaskId             string `json:"taskId"`
+	Title              string `json:"title"`
+	UpdatedAtUnix      int64  `json:"updatedAtUnix"`
+	WorkspaceId        string `json:"workspaceId"`
 }
 
 // IssueManagerTaskContextRef defines model for IssueManagerTaskContextRef.
@@ -5815,6 +5887,25 @@ type SubmitWorkspaceAgentPlanDecisionRequestAction string
 // SubmitWorkspaceAgentPlanDecisionRequestPromptKind defines model for SubmitWorkspaceAgentPlanDecisionRequest.PromptKind.
 type SubmitWorkspaceAgentPlanDecisionRequestPromptKind string
 
+// SwitchTuttiModeGoalReviewToSelfRequest defines model for SwitchTuttiModeGoalReviewToSelfRequest.
+type SwitchTuttiModeGoalReviewToSelfRequest struct {
+	CheckpointId          string `json:"checkpointId"`
+	ExpectedGraphRevision int64  `json:"expectedGraphRevision"`
+	Reason                string `json:"reason"`
+	RequestId             string `json:"requestId"`
+}
+
+// SwitchTuttiModeGoalReviewToSelfResponse defines model for SwitchTuttiModeGoalReviewToSelfResponse.
+type SwitchTuttiModeGoalReviewToSelfResponse struct {
+	ExecutionId string                                            `json:"executionId"`
+	Replayed    bool                                              `json:"replayed"`
+	ReviewId    string                                            `json:"reviewId"`
+	ReviewMode  SwitchTuttiModeGoalReviewToSelfResponseReviewMode `json:"reviewMode"`
+}
+
+// SwitchTuttiModeGoalReviewToSelfResponseReviewMode defines model for SwitchTuttiModeGoalReviewToSelfResponse.ReviewMode.
+type SwitchTuttiModeGoalReviewToSelfResponseReviewMode string
+
 // TrackEvent defines model for TrackEvent.
 type TrackEvent struct {
 	ClientTs int64                   `json:"client_ts"`
@@ -5874,6 +5965,26 @@ type TuttiModeActivationSource string
 
 // TuttiModeActivationStatus defines model for TuttiModeActivationStatus.
 type TuttiModeActivationStatus string
+
+// TuttiModeArchiveOperation defines model for TuttiModeArchiveOperation.
+type TuttiModeArchiveOperation struct {
+	AttemptCount      int                             `json:"attemptCount"`
+	CompletedAtUnixMs int64                           `json:"completedAtUnixMs"`
+	CreatedAtUnixMs   int64                           `json:"createdAtUnixMs"`
+	ExecutionId       string                          `json:"executionId"`
+	IssueId           string                          `json:"issueId"`
+	LastError         string                          `json:"lastError"`
+	OperationId       string                          `json:"operationId"`
+	Reason            string                          `json:"reason"`
+	RequestId         string                          `json:"requestId"`
+	RequestedBy       string                          `json:"requestedBy"`
+	Status            TuttiModeArchiveOperationStatus `json:"status"`
+	UpdatedAtUnixMs   int64                           `json:"updatedAtUnixMs"`
+	WorkspaceId       string                          `json:"workspaceId"`
+}
+
+// TuttiModeArchiveOperationStatus defines model for TuttiModeArchiveOperation.Status.
+type TuttiModeArchiveOperationStatus string
 
 // TuttiModePlanBudget defines model for TuttiModePlanBudget.
 type TuttiModePlanBudget struct {
@@ -7386,6 +7497,9 @@ type CliCommandID = string
 // CollaborationRunID defines model for CollaborationRunID.
 type CollaborationRunID = string
 
+// IssueID defines model for IssueID.
+type IssueID = string
+
 // IssueManagerContextRefID defines model for IssueManagerContextRefID.
 type IssueManagerContextRefID = string
 
@@ -7509,6 +7623,18 @@ type PreferencesOperationError = ApiErrorResponse
 // ServiceUnavailableError defines model for ServiceUnavailableError.
 type ServiceUnavailableError = ApiErrorResponse
 
+// TuttiExecutionActiveError defines model for TuttiExecutionActiveError.
+type TuttiExecutionActiveError = ApiErrorResponse
+
+// TuttiModeArchiveConflictError defines model for TuttiModeArchiveConflictError.
+type TuttiModeArchiveConflictError = ApiErrorResponse
+
+// TuttiModeGoalReviewConflictError defines model for TuttiModeGoalReviewConflictError.
+type TuttiModeGoalReviewConflictError = ApiErrorResponse
+
+// TuttiModeGoalReviewNotFoundError defines model for TuttiModeGoalReviewNotFoundError.
+type TuttiModeGoalReviewNotFoundError = ApiErrorResponse
+
 // UnauthorizedError defines model for UnauthorizedError.
 type UnauthorizedError = ApiErrorResponse
 
@@ -7562,6 +7688,9 @@ type GetAgentProviderStatusesParams struct {
 type ListCliCapabilitiesParams struct {
 	// WorkspaceID Optional workspace context. When omitted, the daemon uses the startup workspace.
 	WorkspaceID *string `form:"workspaceID,omitempty" json:"workspaceID,omitempty"`
+
+	// AgentSessionID Optional canonical Agent Session identity. When present, discovery is constrained by that Session's persisted command capability projection.
+	AgentSessionID *string `form:"agentSessionID,omitempty" json:"agentSessionID,omitempty"`
 
 	// IncludeHidden Include capabilities hidden from ordinary CLI command discovery by provider availability filters and command visibility. Intended for metadata consumers, not ordinary user command routing.
 	IncludeHidden *bool `form:"includeHidden,omitempty" json:"includeHidden,omitempty"`
@@ -7738,6 +7867,11 @@ type ListWorkspaceIssueTasksParams struct {
 // AttachWorkspaceTerminalParams defines parameters for AttachWorkspaceTerminal.
 type AttachWorkspaceTerminalParams struct {
 	AfterSeq *TerminalAfterSeq `form:"afterSeq,omitempty" json:"afterSeq,omitempty"`
+}
+
+// GetTuttiModeArchiveOperationParams defines parameters for GetTuttiModeArchiveOperation.
+type GetTuttiModeArchiveOperationParams struct {
+	OperationId string `form:"operationId" json:"operationId"`
 }
 
 // ListWorkspaceWorkflowsParams defines parameters for ListWorkspaceWorkflows.
@@ -7997,6 +8131,9 @@ type CreateWorkspaceIssueTaskRunJSONRequestBody = CreateIssueManagerRunRequest
 // CompleteWorkspaceIssueTaskRunJSONRequestBody defines body for CompleteWorkspaceIssueTaskRun for application/json ContentType.
 type CompleteWorkspaceIssueTaskRunJSONRequestBody = CompleteIssueManagerRunRequest
 
+// SwitchTuttiModeGoalReviewToSelfJSONRequestBody defines body for SwitchTuttiModeGoalReviewToSelf for application/json ContentType.
+type SwitchTuttiModeGoalReviewToSelfJSONRequestBody = SwitchTuttiModeGoalReviewToSelfRequest
+
 // CreateModelPlanJSONRequestBody defines body for CreateModelPlan for application/json ContentType.
 type CreateModelPlanJSONRequestBody = PutModelPlanRequest
 
@@ -8023,6 +8160,9 @@ type CreateWorkspaceTerminalJSONRequestBody = CreateWorkspaceTerminalRequest
 
 // ResizeWorkspaceTerminalJSONRequestBody defines body for ResizeWorkspaceTerminal for application/json ContentType.
 type ResizeWorkspaceTerminalJSONRequestBody = ResizeWorkspaceTerminalRequest
+
+// ArchiveTuttiModeExecutionJSONRequestBody defines body for ArchiveTuttiModeExecution for application/json ContentType.
+type ArchiveTuttiModeExecutionJSONRequestBody = ArchiveTuttiModeExecutionRequest
 
 // PutWorkspaceWorkbenchJSONRequestBody defines body for PutWorkspaceWorkbench for application/json ContentType.
 type PutWorkspaceWorkbenchJSONRequestBody = PutWorkspaceWorkbenchRequest

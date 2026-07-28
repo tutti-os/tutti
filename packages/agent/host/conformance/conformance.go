@@ -61,6 +61,8 @@ type Fixture struct {
 	AcceptGoalControlsOnly bool
 	FailCommitObserver     bool
 	WorktreeGCSweepErr     error
+	DeleteAdmissionErr     error
+	DeleteSessionPlans     [][]string
 }
 
 type SessionObservation struct {
@@ -131,6 +133,10 @@ type Metrics struct {
 	LastInitialTitle         string
 	LastResumeRecreate       bool
 	RecoverySteps            []string
+	DeleteAdmissionPlans     []agenthost.DeleteSessionsPlan
+	DeleteReports            []agenthost.DeleteSessionsReport
+	CanonicalDeleteCalls     int
+	DeletionEvents           []string
 }
 
 // Driver adapts one host implementation to the shared lifecycle scenarios.
@@ -152,6 +158,7 @@ type Driver interface {
 	UpdateSettings(context.Context, agenthost.UpdateSettingsInput) (SessionObservation, error)
 	UpdatePin(context.Context, agenthost.UpdatePinInput) (SessionObservation, error)
 	DeleteSession(context.Context, agenthost.SessionRef) (agenthost.DeleteSessionResult, error)
+	DeleteSessions(context.Context, agenthost.DeleteSessionsInput) (agenthost.DeleteSessionsResult, error)
 	PurgeDeletedSessions(context.Context, agenthost.PurgeDeletedSessionsInput) (agenthost.PurgeDeletedSessionsResult, error)
 	GoalControl(context.Context, agenthost.GoalControlInput) (GoalObservation, error)
 	FenceGoalGeneration(context.Context, agenthost.FenceGoalGenerationInput) (agenthost.FenceGoalGenerationResult, error)

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -76,6 +77,51 @@ func TestListCliCapabilitiesCanIncludeIntegrationCapabilities(t *testing.T) {
 	if commands[1].Visibility == nil || *commands[1].Visibility != tuttigenerated.Integration {
 		t.Fatalf("integration visibility = %#v", commands[1].Visibility)
 	}
+}
+
+func TestListCliCapabilitiesAppliesPersistedAgentSessionProjection(t *testing.T) {
+	agentSessionID := "review-session-1"
+	workspaceID := "workspace-1"
+	registry := newTestFilteredCLIRegistry(t)
+	registry.AgentSessionCapabilities = apiAgentSessionCapabilityResolver{}
+	api := DaemonAPI{CLIRegistry: registry}
+
+	response, err := api.ListCliCapabilities(
+		context.Background(),
+		tuttigenerated.ListCliCapabilitiesRequestObject{
+			Params: tuttigenerated.ListCliCapabilitiesParams{
+				WorkspaceID:    &workspaceID,
+				AgentSessionID: &agentSessionID,
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("ListCliCapabilities: %v", err)
+	}
+	commands := response.(tuttigenerated.ListCliCapabilities200JSONResponse).Commands
+	if got, want := generatedCommandIDs(commands), []string{
+		"diagnostics.internal",
+	}; !equalStringSlices(got, want) {
+		t.Fatalf("projected command ids = %#v, want %#v", got, want)
+	}
+}
+
+type apiAgentSessionCapabilityResolver struct{}
+
+func (apiAgentSessionCapabilityResolver) ResolveAgentSessionCapabilityProjection(
+	_ context.Context,
+	workspaceID string,
+	sessionID string,
+) (cliservice.AgentSessionCapabilityProjection, error) {
+	if workspaceID != "workspace-1" || sessionID != "review-session-1" {
+		return cliservice.AgentSessionCapabilityProjection{}, errors.New(
+			"unexpected agent session identity",
+		)
+	}
+	return cliservice.AgentSessionCapabilityProjection{
+		IncludeIntegrationIDs: []string{"diagnostics.internal"},
+		ExcludeIDs:            []string{"diagnostics.visible"},
+	}, nil
 }
 
 func TestGeneratedCliWaitContractPreservesExecutionAndContinuation(t *testing.T) {

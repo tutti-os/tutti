@@ -611,12 +611,29 @@ type DeleteSessionsInput struct {
 	SessionIDs  []string
 }
 
+// DeleteSessionsPlan is the exact canonical deletion closure resolved by Host.
+// Adapters may inspect it through SessionDeletionGuard but must not expand or
+// replace it with product-specific ownership semantics.
+type DeleteSessionsPlan struct {
+	WorkspaceID string
+	SessionIDs  []string
+}
+
 type DeleteSessionsResult struct {
 	RemovedSessionIDs []string
 	RemovedSessions   int
 	RemovedMessages   int
 	RuntimeClosedIDs  []string
 	CleanupFailedIDs  []string
+}
+
+// DeleteSessionsReport describes the terminal outcome of one admitted plan.
+// Err is non-nil when that attempt failed, including when the canonical closure
+// changed and Host must replan before admitting another attempt.
+type DeleteSessionsReport struct {
+	Plan   DeleteSessionsPlan
+	Result DeleteSessionsResult
+	Err    error
 }
 
 type ClearSessionsResult = DeleteSessionsResult

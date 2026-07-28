@@ -92,6 +92,10 @@ export function useStandaloneAgentLaunchRouting({
     (input: {
       agentSessionId: string;
       agentTargetId: string | null;
+      composerAppend?: {
+        draftPrompt: string;
+        focusComposer: true;
+      };
       provider: string;
     }) => {
       setNodeState((current) => ({
@@ -101,7 +105,12 @@ export function useStandaloneAgentLaunchRouting({
         provider: normalizeDesktopAgentGUIProvider(input.provider)
       }));
       setActivation({
-        payload: { agentSessionId: input.agentSessionId },
+        payload: {
+          agentSessionId: input.agentSessionId,
+          ...(input.composerAppend
+            ? { composerAppend: input.composerAppend }
+            : {})
+        },
         sequence: ++activationSequenceRef.current,
         type: desktopAgentGUIOpenSessionActivationType
       });

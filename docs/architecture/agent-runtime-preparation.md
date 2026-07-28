@@ -37,5 +37,29 @@ Product-owned responsibilities remain outside the module:
 - account login and token exchange;
 - deployment capability availability and profile selection.
 
+## Dedicated Command Projections
+
+An internal dedicated Session may persist a `CommandCapabilityProjection` in
+its immutable runtime snapshot. Runtime preparation uses that projection to
+render one consistent command guide across initial launch and resume. For
+Codex, a projected Session also receives exact command-path approval rules
+instead of the normal whole-CLI prefix rule. The daemon independently resolves
+the persisted projection for session-aware capability discovery and command
+invocation, and fails closed when that projection cannot be resolved.
+When `AllowedIDs` is non-empty it is an exact set across public and promoted
+integration commands; an unavailable required command fails runtime
+preparation rather than silently broadening or degrading the dedicated
+Session.
+
+This mechanism narrows normal agent behavior but is not an operating-system
+security boundary. Tutti's local daemon credential is available to trusted
+same-user CLI clients through the global listener-info file. A hostile
+same-user process that escapes the supplied Session context can therefore make
+an unscoped request. Features that require protection from a malicious
+provider process must add process/filesystem credential isolation (or remove
+unscoped credentials) rather than treating runtime environment variables,
+generated command guides, provider approval rules, or daemon projection checks
+as sufficient isolation.
+
 See the [runtimeprep package README](../../packages/agent/runtimeprep/README.md)
 for the public integration contract.

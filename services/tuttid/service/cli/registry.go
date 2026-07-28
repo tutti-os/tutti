@@ -68,11 +68,12 @@ func InvokeErrorReason(err error) string {
 }
 
 type Registry struct {
-	commands          map[string]Command
-	order             []string
-	commandProviderID map[string]string
-	providerFilters   map[string]CapabilityFilterProvider
-	AppCommands       DynamicCommandRegistry
+	commands                 map[string]Command
+	order                    []string
+	commandProviderID        map[string]string
+	providerFilters          map[string]CapabilityFilterProvider
+	AppCommands              DynamicCommandRegistry
+	AgentSessionCapabilities AgentSessionCapabilityResolver
 }
 
 type Provider interface {
@@ -82,6 +83,20 @@ type Provider interface {
 
 type CapabilityFilterProvider interface {
 	FilterCapabilities(context.Context, InvokeContext, []Capability) []Capability
+}
+
+type AgentSessionCapabilityProjection struct {
+	AllowedIDs            []string
+	IncludeIntegrationIDs []string
+	ExcludeIDs            []string
+}
+
+type AgentSessionCapabilityResolver interface {
+	ResolveAgentSessionCapabilityProjection(
+		context.Context,
+		string,
+		string,
+	) (AgentSessionCapabilityProjection, error)
 }
 
 type DynamicCommandRegistry interface {
@@ -167,6 +182,13 @@ func (r *Registry) Capabilities(ctx context.Context, invokeContext InvokeContext
 	if !invokeContext.SkipCapabilityFilters {
 		allowedByProvider = r.filteredCapabilityIDsByProvider(ctx, invokeContext)
 	}
+	projection, projected, err := r.resolveAgentSessionProjection(ctx, invokeContext)
+	if err != nil {
+		return []Capability{}
+	}
+	if projected {
+		invokeContext.IncludeIntegrationCapabilities = true
+	}
 	result := make([]Capability, 0, len(r.commands))
 	for _, id := range r.order {
 		if command, ok := r.commands[id]; ok {
@@ -176,11 +198,18 @@ func (r *Registry) Capabilities(ctx context.Context, invokeContext InvokeContext
 			if !capabilityDiscoverable(command.Capability, invokeContext) {
 				continue
 			}
+			if projected && !projection.allows(command.Capability) {
+				continue
+			}
 			result = append(result, command.Capability)
 		}
 	}
 	if r.AppCommands != nil {
-		result = append(result, r.AppCommands.Capabilities(ctx, invokeContext)...)
+		appCapabilities := r.AppCommands.Capabilities(ctx, invokeContext)
+		if projected {
+			appCapabilities = projection.filter(appCapabilities)
+		}
+		result = append(result, appCapabilities...)
 	}
 	return result
 }
@@ -261,9 +290,19 @@ func (r *Registry) Invoke(ctx context.Context, request InvokeRequest) (CommandOu
 	command, ok := r.commands[commandID]
 	if !ok {
 		if r.AppCommands != nil {
+			if err := r.authorizeDynamicAgentSessionCommand(
+				ctx, request.Context, commandID,
+			); err != nil {
+				return CommandOutput{}, err
+			}
 			return r.AppCommands.Invoke(ctx, request)
 		}
 		return CommandOutput{}, ErrCommandNotFound
+	}
+	if err := r.authorizeAgentSessionCapability(
+		ctx, request.Context, command.Capability,
+	); err != nil {
+		return CommandOutput{}, err
 	}
 	if request.OutputMode == "" {
 		request.OutputMode = command.Capability.Output.DefaultMode
@@ -272,4 +311,130 @@ func (r *Registry) Invoke(ctx context.Context, request InvokeRequest) (CommandOu
 		request.Context.Source = "cli"
 	}
 	return command.Handler(ctx, request)
+}
+
+func (r *Registry) resolveAgentSessionProjection(
+	ctx context.Context,
+	invokeContext InvokeContext,
+) (agentSessionCapabilityProjection, bool, error) {
+	workspaceID := strings.TrimSpace(invokeContext.WorkspaceID)
+	sessionID := strings.TrimSpace(invokeContext.AgentSessionID)
+	if sessionID == "" {
+		return agentSessionCapabilityProjection{}, false, nil
+	}
+	if workspaceID == "" || r.AgentSessionCapabilities == nil {
+		return agentSessionCapabilityProjection{}, true, ServiceUnavailableError(
+			"agent_session_capability_projection_unavailable",
+			errors.New("agent session capability resolver is unavailable"),
+		)
+	}
+	projection, err := r.AgentSessionCapabilities.ResolveAgentSessionCapabilityProjection(
+		ctx, workspaceID, sessionID,
+	)
+	if err != nil {
+		return agentSessionCapabilityProjection{}, true, ServiceUnavailableError(
+			"agent_session_capability_projection_unavailable", err,
+		)
+	}
+	return newAgentSessionCapabilityProjection(projection), true, nil
+}
+
+func (r *Registry) authorizeAgentSessionCapability(
+	ctx context.Context,
+	invokeContext InvokeContext,
+	capability Capability,
+) error {
+	projection, projected, err := r.resolveAgentSessionProjection(ctx, invokeContext)
+	if err != nil {
+		return err
+	}
+	if projected && !projection.allows(capability) {
+		return ErrCommandNotFound
+	}
+	return nil
+}
+
+func (r *Registry) authorizeDynamicAgentSessionCommand(
+	ctx context.Context,
+	invokeContext InvokeContext,
+	commandID string,
+) error {
+	projection, projected, err := r.resolveAgentSessionProjection(ctx, invokeContext)
+	if err != nil || !projected {
+		return err
+	}
+	invokeContext.IncludeIntegrationCapabilities = true
+	for _, capability := range r.AppCommands.Capabilities(ctx, invokeContext) {
+		if strings.TrimSpace(capability.ID) == commandID {
+			if projection.allows(capability) {
+				return nil
+			}
+			break
+		}
+	}
+	return ErrCommandNotFound
+}
+
+type agentSessionCapabilityProjection struct {
+	allowedIDs             map[string]struct{}
+	includedIntegrationIDs map[string]struct{}
+	excludedIDs            map[string]struct{}
+}
+
+func newAgentSessionCapabilityProjection(
+	projection AgentSessionCapabilityProjection,
+) agentSessionCapabilityProjection {
+	result := agentSessionCapabilityProjection{
+		allowedIDs:             make(map[string]struct{}),
+		includedIntegrationIDs: make(map[string]struct{}),
+		excludedIDs:            make(map[string]struct{}),
+	}
+	for _, id := range projection.AllowedIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			result.allowedIDs[id] = struct{}{}
+		}
+	}
+	for _, id := range projection.IncludeIntegrationIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			result.includedIntegrationIDs[id] = struct{}{}
+		}
+	}
+	for _, id := range projection.ExcludeIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			result.excludedIDs[id] = struct{}{}
+		}
+	}
+	return result
+}
+
+func (projection agentSessionCapabilityProjection) filter(
+	capabilities []Capability,
+) []Capability {
+	result := make([]Capability, 0, len(capabilities))
+	for _, capability := range capabilities {
+		if projection.allows(capability) {
+			result = append(result, capability)
+		}
+	}
+	return result
+}
+
+func (projection agentSessionCapabilityProjection) allows(
+	capability Capability,
+) bool {
+	id := strings.TrimSpace(capability.ID)
+	if len(projection.allowedIDs) > 0 {
+		if _, allowed := projection.allowedIDs[id]; !allowed {
+			return false
+		}
+	}
+	if _, excluded := projection.excludedIDs[id]; excluded {
+		return false
+	}
+	if NormalizeCapabilityVisibility(capability.Visibility) !=
+		CapabilityVisibilityIntegration {
+		return true
+	}
+	_, included := projection.includedIntegrationIDs[id]
+	return included
 }

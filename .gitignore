@@ -12,6 +12,7 @@ coverage/
 .pnpm-store/
 .cache/
 .tmp/
+.worktrees/
 .superpowers/
 .claude/
 .agents/

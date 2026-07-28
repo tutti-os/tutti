@@ -22,11 +22,12 @@ const defaultSQLiteBusyTimeoutMillisec = 5000
 const defaultSQLiteReaderConnections = 4
 
 type SQLiteStore struct {
-	dbPath      string
-	writeDB     *sql.DB
-	readDB      *sql.DB
-	agentWriter *agentstore.Store
-	agentReader *agentstore.Store
+	dbPath                 string
+	writeDB                *sql.DB
+	readDB                 *sql.DB
+	agentWriter            *agentstore.Store
+	agentReader            *agentstore.Store
+	sourceActivityRowsHook func(tuttiModeSourceActivityRows) tuttiModeSourceActivityRows
 }
 
 func OpenSQLiteStore(dbPath string) (*SQLiteStore, error) {

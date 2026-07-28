@@ -24,7 +24,10 @@ import type {
   IssueManagerCreateTopicInput,
   IssueManagerUpdateTopicInput
 } from "../../../../contracts/index.ts";
-import type { IssueManagerFeature } from "../../../../core/index.ts";
+import {
+  buildWorkspaceIssueMentionHref,
+  type IssueManagerFeature
+} from "../../../../core/index.ts";
 import type { IssueManagerI18nRuntime } from "../../../../i18n/issueManagerI18n.ts";
 import type { IssueManagerControllerService } from "../../../../services/issueManagerControllerService.interface.ts";
 import {
@@ -103,6 +106,7 @@ export interface IssueManagerController {
     taskId: string;
     visibleTaskIds?: readonly string[];
   }) => Promise<void>;
+  modifyManagedInMainConversation: () => Promise<void>;
   agentTargetOptions: readonly IssueManagerAgentTargetOption[];
   modelPlanOptions?: readonly IssueManagerModelPlanOption[];
   executionDirectoryProjectService: WorkspaceUserProjectService | null;
@@ -340,6 +344,43 @@ export function useIssueManagerController({
     isTuttiModePlanIssue:
       issueDetail.value?.issue.issueId === nodeState.selectedIssueId &&
       isIssueManagerTuttiModePlanIssue(issueDetail.value.issue),
+    async modifyManagedInMainConversation() {
+      const issue = issueDetail.value?.issue;
+      const sourceSessionId = issue?.sourceSessionId?.trim() ?? "";
+      if (
+        !issue ||
+        !isIssueManagerTuttiModePlanIssue(issue) ||
+        !feature.managedIssueActions ||
+        !sourceSessionId
+      ) {
+        feature.notifications?.tips(
+          copy.t("messages.managedSourceUnavailable")
+        );
+        return;
+      }
+      const task = taskDetail.value?.task;
+      const label = task?.title.trim() || issue.title.trim() || issue.issueId;
+      const href = buildWorkspaceIssueMentionHref({
+        issueId: issue.issueId,
+        workspaceId,
+        topicId: issue.topicId,
+        ...(task ? { taskId: task.taskId } : {})
+      });
+      const reference = `[${label.replaceAll("[", "\\[").replaceAll("]", "\\]")}](${href})`;
+      try {
+        await feature.managedIssueActions.openSourceSession({
+          draftPrompt: copy.t("messages.modifyManagedPrompt", { reference }),
+          issueId: issue.issueId,
+          sourceSessionId,
+          ...(task ? { taskId: task.taskId } : {}),
+          workspaceId
+        });
+      } catch {
+        feature.notifications?.tips(
+          copy.t("messages.managedSourceUnavailable")
+        );
+      }
+    },
     nodeState,
     notification,
     async openMention(mention) {

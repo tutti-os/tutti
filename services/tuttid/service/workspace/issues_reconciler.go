@@ -21,24 +21,30 @@ type IssueRunReconcileResult struct {
 	RunningCount   int
 }
 
-type IssueRunReconcileQueue struct {
+type WorkspaceExecutionRecoveryResult struct {
+	Pending bool
+}
+
+type WorkspaceExecutionRecoveryQueue struct {
 	mu        sync.Mutex
 	pending   map[string]struct{}
 	active    bool
 	ctx       context.Context
 	delay     time.Duration
 	interval  time.Duration
-	reconcile func(context.Context, string) (IssueRunReconcileResult, error)
+	reconcile func(context.Context, string) (WorkspaceExecutionRecoveryResult, error)
 }
 
-type IssueRunReconcileQueueOptions struct {
+type WorkspaceExecutionRecoveryQueueOptions struct {
 	Context   context.Context
 	Delay     time.Duration
 	Interval  time.Duration
-	Reconcile func(context.Context, string) (IssueRunReconcileResult, error)
+	Reconcile func(context.Context, string) (WorkspaceExecutionRecoveryResult, error)
 }
 
-func NewIssueRunReconcileQueue(options IssueRunReconcileQueueOptions) *IssueRunReconcileQueue {
+func NewWorkspaceExecutionRecoveryQueue(
+	options WorkspaceExecutionRecoveryQueueOptions,
+) *WorkspaceExecutionRecoveryQueue {
 	delay := options.Delay
 	if delay <= 0 {
 		delay = defaultIssueRunReconcileDelay
@@ -51,7 +57,7 @@ func NewIssueRunReconcileQueue(options IssueRunReconcileQueueOptions) *IssueRunR
 	if queueContext == nil {
 		queueContext = context.Background()
 	}
-	return &IssueRunReconcileQueue{
+	return &WorkspaceExecutionRecoveryQueue{
 		pending:   make(map[string]struct{}),
 		ctx:       queueContext,
 		delay:     delay,
@@ -60,7 +66,7 @@ func NewIssueRunReconcileQueue(options IssueRunReconcileQueueOptions) *IssueRunR
 	}
 }
 
-func (q *IssueRunReconcileQueue) Enqueue(workspaceID string) {
+func (q *WorkspaceExecutionRecoveryQueue) Enqueue(workspaceID string) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if q == nil || q.reconcile == nil || workspaceID == "" {
 		return
@@ -78,7 +84,7 @@ func (q *IssueRunReconcileQueue) Enqueue(workspaceID string) {
 	go q.loop(delay)
 }
 
-func (q *IssueRunReconcileQueue) loop(nextDelay time.Duration) {
+func (q *WorkspaceExecutionRecoveryQueue) loop(nextDelay time.Duration) {
 	for {
 		timer := time.NewTimer(nextDelay)
 		select {
@@ -105,7 +111,7 @@ func (q *IssueRunReconcileQueue) loop(nextDelay time.Duration) {
 		requeue := make([]string, 0)
 		for _, workspaceID := range workspaces {
 			result, err := q.reconcile(q.ctx, workspaceID)
-			if err != nil || result.RunningCount > result.CompletedCount {
+			if err != nil || result.Pending {
 				requeue = append(requeue, workspaceID)
 			}
 		}
@@ -137,13 +143,20 @@ func (c *IssueExecutionCoordinator) ReconcileRunningRuns(ctx context.Context, wo
 		return result, nil
 	}
 	now := time.Now().UnixMilli()
+	if c.Clock != nil {
+		now = c.Clock().UTC().UnixMilli()
+	}
 	for _, run := range runs {
 		if c.SettlementReader != nil && strings.TrimSpace(run.AgentSessionID) != "" {
+			clientSubmitID, identityErr := c.Issues.issueRunClientSubmitID(ctx, run)
+			if identityErr != nil {
+				return result, identityErr
+			}
 			settlement, found, readErr := c.SettlementReader.ReadRunSettlement(
 				ctx,
 				run.WorkspaceID,
 				run.AgentSessionID,
-				"issue-run:"+run.RunID,
+				clientSubmitID,
 			)
 			if readErr != nil {
 				return result, readErr
@@ -166,6 +179,7 @@ func (c *IssueExecutionCoordinator) ReconcileRunningRuns(ctx context.Context, wo
 		if !ok {
 			continue
 		}
+		c.requestTimedOutRunCancellation(ctx, run)
 		if _, err := c.Issues.CompleteRun(ctx, run.WorkspaceID, run.IssueID, run.TaskID, run.RunID, CompleteIssueManagerRunInput{
 			Status:       string(status),
 			ErrorMessage: errorMessage,
@@ -174,6 +188,82 @@ func (c *IssueExecutionCoordinator) ReconcileRunningRuns(ctx context.Context, wo
 			return result, err
 		}
 		result.CompletedCount++
+	}
+	return result, nil
+}
+
+func (c *IssueExecutionCoordinator) requestTimedOutRunCancellation(
+	ctx context.Context,
+	run workspaceissues.Run,
+) {
+	gate := c.Issues.runLaunchGate()
+	if gate.requestCancel(run.WorkspaceID, run.RunID) {
+		return
+	}
+	gate.clear(run.WorkspaceID, run.RunID)
+	if c.Issues.prepareAndRecoverTuttiModeRunCancelCompensation(
+		ctx,
+		IssueRunLaunch{
+			WorkspaceID: run.WorkspaceID, IssueID: run.IssueID,
+			TaskID: run.TaskID, RunID: run.RunID,
+			AgentSessionID: run.AgentSessionID,
+		},
+	) {
+		return
+	}
+	canceller := c.RunSessionCanceller
+	if canceller == nil {
+		canceller = c.Issues.RunCancellationRequester
+	}
+	if canceller == nil || strings.TrimSpace(run.AgentSessionID) == "" {
+		c.Issues.enqueueWorkspaceRunReconcile(run.WorkspaceID)
+		return
+	}
+	clientSubmitID, err := c.Issues.issueRunClientSubmitID(ctx, run)
+	if err != nil {
+		c.Issues.enqueueWorkspaceRunReconcile(run.WorkspaceID)
+		return
+	}
+	if _, err := canceller.RequestRunCancellation(ctx, IssueRunCancellationRequest{
+		WorkspaceID:    run.WorkspaceID,
+		AgentSessionID: run.AgentSessionID,
+		RunID:          run.RunID,
+		ClientSubmitID: clientSubmitID,
+	}); err != nil {
+		c.Issues.enqueueWorkspaceRunReconcile(run.WorkspaceID)
+	}
+}
+
+// ReconcileTuttiModeRunLaunchesAndRunningRuns closes both durable crash
+// windows on the existing periodic Issue reconciliation cadence: an expired
+// launch owner is requeued and redelivered before canonical Run settlement is
+// inspected. Active leases remain fenced and keep the workspace queued.
+func (c *IssueExecutionCoordinator) ReconcileTuttiModeRunLaunchesAndRunningRuns(
+	ctx context.Context,
+	workspaceID string,
+) (IssueRunReconcileResult, error) {
+	if c == nil || c.Issues == nil {
+		return IssueRunReconcileResult{}, nil
+	}
+	if c.Issues.TuttiModeExecutions != nil {
+		if _, err := c.Issues.TuttiModeExecutions.RepairRunSettlements(ctx, workspaceID); err != nil {
+			return IssueRunReconcileResult{}, err
+		}
+	}
+	if err := c.Issues.RecoverTuttiModeRunCancelCompensations(ctx, workspaceID); err != nil {
+		return IssueRunReconcileResult{}, err
+	}
+	if err := c.Issues.RecoverTuttiModeRunLaunches(ctx, workspaceID); err != nil {
+		return IssueRunReconcileResult{}, err
+	}
+	result, err := c.ReconcileRunningRuns(ctx, workspaceID)
+	if err != nil {
+		return result, err
+	}
+	if c.Issues.TuttiModeExecutions != nil {
+		if _, err := c.Issues.TuttiModeExecutions.RepairRunSettlements(ctx, workspaceID); err != nil {
+			return result, err
+		}
 	}
 	return result, nil
 }

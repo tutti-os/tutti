@@ -11,11 +11,96 @@ import (
 	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
+	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 )
+
+type issueLookupFailingStore struct {
+	workspaceissues.Store
+	err error
+}
+
+func (store issueLookupFailingStore) GetIssue(
+	context.Context,
+	string,
+	string,
+) (workspaceissues.Issue, error) {
+	return workspaceissues.Issue{}, store.err
+}
+
+func TestCompleteRunFailsClosedWhenIssueOwnershipCannotBeRead(t *testing.T) {
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID: "workspace-ownership-fence", Name: "Ownership fence",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := IssueManagerService{Store: store}
+	if _, err := service.CreateIssue(ctx, "workspace-ownership-fence", CreateIssueManagerIssueInput{
+		IssueID: "issue-ownership-fence", TopicID: workspaceissues.DefaultTopicID,
+		Title: "Ownership fence",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := service.CreateRun(
+		ctx, "workspace-ownership-fence", "issue-ownership-fence", "",
+		CreateIssueManagerRunInput{RunID: "run-ownership-fence", AgentProvider: "codex"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lookupErr := errors.New("injected Issue ownership lookup failure")
+	service.Store = issueLookupFailingStore{Store: store, err: lookupErr}
+	if _, err := service.CompleteRun(
+		ctx, run.WorkspaceID, run.IssueID, run.TaskID, run.RunID,
+		CompleteIssueManagerRunInput{Status: string(workspaceissues.StatusCompleted)},
+	); !errors.Is(err, lookupErr) {
+		t.Fatalf("CompleteRun() error = %v, want ownership lookup failure", err)
+	}
+	persisted, err := store.GetRun(ctx, run.WorkspaceID, run.IssueID, run.TaskID, run.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Status != workspaceissues.StatusRunning {
+		t.Fatalf("Run status = %q, want running after fail-closed ownership lookup", persisted.Status)
+	}
+}
+
+func TestCancelIssueExecutionRejectsGenericMutationOfManagedIssue(t *testing.T) {
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	const workspaceID = "workspace-managed-cancel"
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Managed cancel"}); err != nil {
+		t.Fatal(err)
+	}
+	issue, err := store.CreateIssue(ctx, workspaceissues.Issue{
+		IssueID: "issue-managed", WorkspaceID: workspaceID,
+		TopicID: workspaceissues.DefaultTopicID, Title: "Managed",
+		PlanningSource:  workspaceissues.PlanningSourceTuttiModePlan,
+		SourceSessionID: "source-session",
+		Budget:          workspaceissues.DefaultBudget(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := IssueManagerService{Store: store, MutationLocks: NewIssueMutationLocks()}
+	coordinator := IssueExecutionCoordinator{Issues: &service}
+	if _, err := coordinator.CancelIssueExecution(ctx, workspaceID, issue.IssueID); !errors.Is(err, workspaceissues.ErrManagedIssueMutation) {
+		t.Fatalf("CancelIssueExecution() error = %v, want managed mutation conflict", err)
+	}
+	persisted, err := store.GetIssue(ctx, workspaceID, issue.IssueID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.DispatchPaused {
+		t.Fatal("managed Issue was paused by rejected generic cancellation")
+	}
+}
 
 func TestIssueManagerRejectsNonFiniteBudgetBeforePersistence(t *testing.T) {
 	t.Parallel()
@@ -111,6 +196,33 @@ func TestIssueManagerReservesTuttiModePlanIssueIDsForWorkflowMaterialization(t *
 	}
 
 	reservedID := workflowbiz.TuttiModePlanIssueIDPrefix + "workflow-1"
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	createIssueManagerTuttiWorkflowFixture(t, store, workspaceID, "workflow-1", "session-1", now)
+	service.TuttiModeExecutions = &tuttimodeexecutionservice.Service{
+		Store: store,
+		Clock: func() time.Time { return now },
+	}
+	mismatchedID := workflowbiz.TuttiModePlanIssueIDPrefix + "different-workflow"
+	if _, err := service.CreateIssueFromPlan(ctx, workspaceID, CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:                mismatchedID,
+			TopicID:                workspaceissues.DefaultTopicID,
+			Title:                  "Mismatched workflow identity",
+			PlanningSource:         string(workspaceissues.PlanningSourceTuttiModePlan),
+			SourceSessionID:        "session-1",
+			TuttiModeWorkflowOwned: true,
+			TuttiModeWorkflowID:    "workflow-1",
+		},
+		Tasks: task,
+	}); !errors.Is(err, workspaceissues.ErrInvalidArgument) {
+		t.Errorf("CreateIssueFromPlan(mismatched workflow identity) error = %v, want ErrInvalidArgument", err)
+	}
+	if _, err := store.GetIssue(ctx, workspaceID, mismatchedID); !errors.Is(err, workspaceissues.ErrIssueNotFound) {
+		t.Errorf("GetIssue(mismatched workflow identity) error = %v, want ErrIssueNotFound", err)
+	}
+	if _, err := service.TuttiModeExecutions.GetByIssue(ctx, workspaceID, mismatchedID); !errors.Is(err, executionbiz.ErrExecutionNotFound) {
+		t.Errorf("GetByIssue(mismatched workflow identity) error = %v, want ErrExecutionNotFound", err)
+	}
 	detail, err := service.CreateIssueFromPlan(ctx, workspaceID, CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
 			IssueID:                reservedID,
@@ -119,6 +231,7 @@ func TestIssueManagerReservesTuttiModePlanIssueIDsForWorkflowMaterialization(t *
 			PlanningSource:         string(workspaceissues.PlanningSourceTuttiModePlan),
 			SourceSessionID:        "session-1",
 			TuttiModeWorkflowOwned: true,
+			TuttiModeWorkflowID:    "workflow-1",
 		},
 		Tasks: task,
 	})
@@ -127,6 +240,54 @@ func TestIssueManagerReservesTuttiModePlanIssueIDsForWorkflowMaterialization(t *
 	}
 	if detail.Issue.IssueID != reservedID || detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan {
 		t.Fatalf("materialized detail = %#v", detail)
+	}
+}
+
+func createIssueManagerTuttiWorkflowFixture(
+	t *testing.T,
+	store *workspacedata.SQLiteStore,
+	workspaceID string,
+	workflowID string,
+	sourceSessionID string,
+	now time.Time,
+) {
+	t.Helper()
+	revisionID := "revision-" + workflowID
+	err := store.CreateWorkspaceWorkflowProposal(context.Background(), workflowbiz.ProposalAggregate{
+		Workflow: workflowbiz.Workflow{
+			ID:                workflowID,
+			WorkspaceID:       workspaceID,
+			Type:              workflowbiz.WorkflowTypeTuttiModePlan,
+			Owner:             workflowbiz.WorkflowOwnerTutti,
+			TriggerKind:       workflowbiz.TriggerKindAgentCLI,
+			SourceSessionID:   sourceSessionID,
+			Status:            workflowbiz.WorkflowStatusPendingReview,
+			CurrentRevisionID: revisionID,
+			CreatedAt:         now,
+			UpdatedAt:         now,
+		},
+		Plan: workflowbiz.TuttiModePlan{WorkflowID: workflowID},
+		Revision: workflowbiz.PlanRevision{
+			ID:            revisionID,
+			WorkflowID:    workflowID,
+			Sequence:      1,
+			SchemaVersion: "tutti-mode-plan/v1",
+			DocumentPath:  "plans/" + revisionID + ".md",
+			SHA256:        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			CreatedAt:     now,
+		},
+		Checkpoint: workflowbiz.WorkflowCheckpoint{
+			ID:         "review-" + workflowID,
+			WorkflowID: workflowID,
+			Kind:       workflowbiz.CheckpointKindTaskReview,
+			RevisionID: revisionID,
+			Status:     workflowbiz.CheckpointStatusPending,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkspaceWorkflowProposal() error = %v", err)
 	}
 }
 
@@ -391,25 +552,25 @@ func TestIssueRunReconcileCompletionDoesNotInferAgentStateFromProjectionSilence(
 	}
 }
 
-func TestIssueRunReconcileQueueRetriesTransientErrors(t *testing.T) {
+func TestWorkspaceExecutionRecoveryQueueRetriesTransientErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	completed := make(chan struct{})
 	var calls int
 	var mu sync.Mutex
-	queue := NewIssueRunReconcileQueue(IssueRunReconcileQueueOptions{
+	queue := NewWorkspaceExecutionRecoveryQueue(WorkspaceExecutionRecoveryQueueOptions{
 		Context:  ctx,
 		Delay:    time.Millisecond,
 		Interval: time.Millisecond,
-		Reconcile: func(context.Context, string) (IssueRunReconcileResult, error) {
+		Reconcile: func(context.Context, string) (WorkspaceExecutionRecoveryResult, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			calls++
 			if calls == 1 {
-				return IssueRunReconcileResult{}, errors.New("temporary read failure")
+				return WorkspaceExecutionRecoveryResult{}, errors.New("temporary read failure")
 			}
 			close(completed)
-			return IssueRunReconcileResult{}, nil
+			return WorkspaceExecutionRecoveryResult{}, nil
 		},
 	})
 	queue.Enqueue("workspace-1")
@@ -417,6 +578,40 @@ func TestIssueRunReconcileQueueRetriesTransientErrors(t *testing.T) {
 	case <-completed:
 	case <-time.After(time.Second):
 		t.Fatal("reconcile queue did not retry a transient error")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("reconcile calls = %d, want 2", calls)
+	}
+}
+
+func TestWorkspaceExecutionRecoveryQueueRetriesExplicitPendingRecovery(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	completed := make(chan struct{})
+	var calls int
+	var mu sync.Mutex
+	queue := NewWorkspaceExecutionRecoveryQueue(WorkspaceExecutionRecoveryQueueOptions{
+		Context:  ctx,
+		Delay:    time.Millisecond,
+		Interval: time.Millisecond,
+		Reconcile: func(context.Context, string) (WorkspaceExecutionRecoveryResult, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			calls++
+			if calls == 1 {
+				return WorkspaceExecutionRecoveryResult{Pending: true}, nil
+			}
+			close(completed)
+			return WorkspaceExecutionRecoveryResult{}, nil
+		},
+	})
+	queue.Enqueue("workspace-1")
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("reconcile queue did not retry an explicit pending outcome")
 	}
 	mu.Lock()
 	defer mu.Unlock()

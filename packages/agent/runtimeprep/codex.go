@@ -104,16 +104,47 @@ func installCodexApprovalRules(codexHome string, input PrepareInput) error {
 	if err := os.MkdirAll(rulesDir, 0o700); err != nil {
 		return fmt.Errorf("create codex rules directory: %w", err)
 	}
-	content := codexApprovalRules(input.CLICommand)
+	content := codexApprovalRules(input)
 	if err := os.WriteFile(filepath.Join(rulesDir, "default.rules"), []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write codex approval rules: %w", err)
 	}
 	return nil
 }
 
-func codexApprovalRules(cliCommand string) string {
-	command := normalizeCLICommandName(cliCommand)
-	return "prefix_rule(pattern=[" + strconv.Quote(command) + "], decision=\"allow\")\n"
+func codexApprovalRules(input PrepareInput) string {
+	command := normalizeCLICommandName(input.CLICommand)
+	if input.CommandCapabilityProjection == nil {
+		return codexApprovalRule([]string{command})
+	}
+	if input.commandCapabilities == nil {
+		return ""
+	}
+	var rules strings.Builder
+	seen := make(map[string]struct{}, len(input.commandCapabilities.commands))
+	for _, capability := range input.commandCapabilities.commands {
+		pattern := append([]string{command}, normalizedCommandPath(capability.Path)...)
+		key := strings.Join(pattern, "\x00")
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		rules.WriteString(codexApprovalRule(pattern))
+	}
+	return rules.String()
+}
+
+func codexApprovalRule(pattern []string) string {
+	quoted := make([]string, 0, len(pattern))
+	for _, segment := range pattern {
+		if segment = strings.TrimSpace(segment); segment != "" {
+			quoted = append(quoted, strconv.Quote(segment))
+		}
+	}
+	if len(quoted) == 0 {
+		return ""
+	}
+	return "prefix_rule(pattern=[" + strings.Join(quoted, ", ") +
+		"], decision=\"allow\")\n"
 }
 
 func exposeUserCodexFiles(codexHome string) error {

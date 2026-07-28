@@ -58,12 +58,19 @@ func TestRenderTuttiModeHostContextCarriesWorkedWorkflowExamples(t *testing.T) {
 		"Identify independent workstreams and shape them as parallel groups",
 		"each runs in an isolated git worktree branched from the shared checkout",
 		"follow every parallel group with an integration task",
-		"autoAccept: true",
-		"Set `autoAccept: true` on every task by default",
-		"Omit autoAccept only on a task whose outcome the user personally must inspect",
+		"No task starts automatically after plan acceptance",
+		"`autoAccept` is retained only for compatibility and has no dispatch authority",
+		"`tutti plan issue schedule --issue-id <issueId>",
+		"schedule exactly the task IDs you selected",
+		"unsafe concurrent set is rejected",
+		"schedule those tasks one at a time",
 		"the first task must initialize one (`git init` plus an initial commit)",
 		"this conversation becomes the plan's orchestrator",
 		"stopping this conversation stops every running task",
+		"all tasks becoming terminal starts Goal Review",
+		"`tutti plan issue complete --issue-id <issueId> --checkpoint-id <checkpointId>",
+		"review whether the user's goal is actually satisfied",
+		"never infer completion from task counts",
 		"end the turn as soon as propose returns a workflowId",
 		"`tutti plan revise --workflow-id <workflowId> --file <absolute path> --request-id <new id>`",
 		"`tutti issue topic list --json`",
@@ -73,7 +80,15 @@ func TestRenderTuttiModeHostContextCarriesWorkedWorkflowExamples(t *testing.T) {
 			t.Fatalf("host context = %q, want %q", contextText, expected)
 		}
 	}
-	for _, forbidden := range []string{"plan wait", "plan-wait"} {
+	for _, forbidden := range []string{
+		"plan wait",
+		"plan-wait",
+		"dispatches the tasks",
+		"Set `autoAccept: true` on every task by default so accepted plans run unattended",
+		"adjust the remaining graph through `tutti issue` commands",
+		"autoAccept: true",
+		"silently degrades to one-at-a-time execution",
+	} {
 		if strings.Contains(contextText, forbidden) {
 			t.Fatalf("host context = %q, must not instruct a wait command (%q)", contextText, forbidden)
 		}

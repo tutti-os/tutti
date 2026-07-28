@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
@@ -13,6 +14,7 @@ type batchRuntime struct {
 	RuntimeController
 	live       map[string]bool
 	closeOrder []string
+	events     *[]string
 }
 
 func (r *batchRuntime) Session(_, sessionID string) (ProviderRuntimeSession, bool) {
@@ -21,6 +23,9 @@ func (r *batchRuntime) Session(_, sessionID string) (ProviderRuntimeSession, boo
 
 func (r *batchRuntime) Close(_ context.Context, input RuntimeCloseInput) error {
 	r.closeOrder = append(r.closeOrder, input.AgentSessionID)
+	if r.events != nil {
+		*r.events = append(*r.events, "close:"+input.AgentSessionID)
+	}
 	delete(r.live, input.AgentSessionID)
 	return nil
 }
@@ -33,6 +38,9 @@ type batchManagementStore struct {
 	calls                int
 	useExactPlan         bool
 	clearPlanAfterDelete bool
+	plans                [][]string
+	planCalls            int
+	events               *[]string
 }
 
 type batchCleanup struct {
@@ -58,6 +66,14 @@ func (c *batchCleanup) Cleanup(_ context.Context, input RuntimeCleanupInput) err
 
 func (s *batchManagementStore) PlanDeleteSessions(_ context.Context, input storesqlite.DeleteSessionsBatchInput) (storesqlite.DeleteSessionsPlan, error) {
 	plan := s.plan
+	if len(s.plans) > 0 {
+		index := s.planCalls
+		if index >= len(s.plans) {
+			index = len(s.plans) - 1
+		}
+		plan = s.plans[index]
+		s.planCalls++
+	}
 	if len(plan) == 0 && !s.useExactPlan {
 		plan = input.SessionIDs
 	}
@@ -88,6 +104,9 @@ func TestDeleteSessionClosesLiveRuntimeBeforeFirstCanonicalReport(t *testing.T) 
 
 func (s *batchManagementStore) DeleteSessionsBatch(_ context.Context, input storesqlite.DeleteSessionsBatchInput) (storesqlite.DeleteSessionsBatchResult, error) {
 	s.calls++
+	if s.events != nil {
+		*s.events = append(*s.events, "delete:"+strings.Join(input.ExpectedSessionIDs, ","))
+	}
 	if s.changes > 0 {
 		s.changes--
 		return storesqlite.DeleteSessionsBatchResult{}, storesqlite.ErrDeleteSessionsPlanChanged
@@ -104,6 +123,87 @@ func (s *batchManagementStore) DeleteSessionsBatch(_ context.Context, input stor
 		RemovedSessions:   len(input.SessionIDs),
 		RemovedMessages:   3,
 	}, nil
+}
+
+type batchDeletionGuard struct {
+	admissionErr error
+	plans        []DeleteSessionsPlan
+	reports      []DeleteSessionsReport
+	events       *[]string
+}
+
+func (g *batchDeletionGuard) AdmitDeleteSessions(_ context.Context, plan DeleteSessionsPlan) error {
+	g.plans = append(g.plans, plan)
+	if g.events != nil {
+		*g.events = append(*g.events, "admit:"+strings.Join(plan.SessionIDs, ","))
+	}
+	return g.admissionErr
+}
+
+func (g *batchDeletionGuard) ReportDeleteSessions(_ context.Context, report DeleteSessionsReport) {
+	g.reports = append(g.reports, report)
+	if g.events != nil {
+		status := "success"
+		if report.Err != nil {
+			status = "failure"
+		}
+		*g.events = append(*g.events, "report-"+status+":"+strings.Join(report.Plan.SessionIDs, ","))
+	}
+}
+
+func TestDeleteSessionsAdmissionRejectsBeforeCanonicalSideEffects(t *testing.T) {
+	rejected := errors.New("delete admission rejected")
+	runtime := &batchRuntime{live: map[string]bool{"child": true, "root": true}}
+	store := &batchManagementStore{runtime: runtime, plan: []string{"child", "root"}}
+	guard := &batchDeletionGuard{admissionErr: rejected}
+	host := New(Config{Runtime: runtime, SessionBatchManagement: store, SessionDeletionGuard: guard})
+
+	_, err := host.DeleteSessions(t.Context(), DeleteSessionsInput{
+		WorkspaceID: "workspace-1", SessionIDs: []string{"root"},
+	})
+	if !errors.Is(err, rejected) {
+		t.Fatalf("DeleteSessions() error = %v, want admission rejection", err)
+	}
+	wantPlan := DeleteSessionsPlan{WorkspaceID: "workspace-1", SessionIDs: []string{"child", "root"}}
+	if !reflect.DeepEqual(guard.plans, []DeleteSessionsPlan{wantPlan}) {
+		t.Fatalf("admission plans = %#v, want %#v", guard.plans, []DeleteSessionsPlan{wantPlan})
+	}
+	if len(runtime.closeOrder) != 0 || store.calls != 0 || len(guard.reports) != 0 {
+		t.Fatalf("rejected deletion side effects: closes=%#v deletes=%d reports=%#v", runtime.closeOrder, store.calls, guard.reports)
+	}
+}
+
+func TestDeleteSessionsReadmitsChangedClosureBeforeAdditionalRuntimeClose(t *testing.T) {
+	events := make([]string, 0)
+	runtime := &batchRuntime{live: map[string]bool{"child": true, "root": true}, events: &events}
+	store := &batchManagementStore{
+		runtime: runtime, plans: [][]string{{"root"}, {"child", "root"}}, changes: 1, events: &events,
+	}
+	guard := &batchDeletionGuard{events: &events}
+	host := New(Config{Runtime: runtime, SessionBatchManagement: store, SessionDeletionGuard: guard})
+
+	result, err := host.DeleteSessions(t.Context(), DeleteSessionsInput{
+		WorkspaceID: "workspace-1", SessionIDs: []string{"root"},
+	})
+	if err != nil {
+		t.Fatalf("DeleteSessions() error = %v", err)
+	}
+	wantEvents := []string{
+		"admit:root",
+		"close:root",
+		"delete:root",
+		"report-failure:root",
+		"admit:child,root",
+		"close:child",
+		"delete:child,root",
+		"report-success:child,root",
+	}
+	if !reflect.DeepEqual(events, wantEvents) {
+		t.Fatalf("deletion events = %#v, want %#v", events, wantEvents)
+	}
+	if !reflect.DeepEqual(result.RuntimeClosedIDs, []string{"child", "root"}) {
+		t.Fatalf("runtime closed ids = %#v", result.RuntimeClosedIDs)
+	}
 }
 
 func TestDeleteSessionIsIdempotentWhenCanonicalSessionIsAlreadyGone(t *testing.T) {

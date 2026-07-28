@@ -128,6 +128,9 @@ func (s Service) UpdateIssue(ctx context.Context, input UpdateIssueInput) (Issue
 	if err != nil {
 		return Issue{}, err
 	}
+	if err := RejectManagedIssueMutation(issue); err != nil {
+		return Issue{}, err
+	}
 	if input.HasTitle {
 		title := strings.TrimSpace(input.Title)
 		if title == "" {
@@ -315,6 +318,9 @@ func (s Service) DeleteIssue(ctx context.Context, workspaceID string, issueID st
 	}
 	issue, err := store.GetIssue(ctx, workspaceID, issueID)
 	if err != nil {
+		return false, err
+	}
+	if err := RejectManagedIssueMutation(issue); err != nil {
 		return false, err
 	}
 	removed, err := store.DeleteIssue(ctx, workspaceID, issueID, actorUserID)

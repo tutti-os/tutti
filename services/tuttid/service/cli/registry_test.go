@@ -222,6 +222,112 @@ func TestRegistryHidesIntegrationCapabilitiesFromDefaultList(t *testing.T) {
 	}
 }
 
+func TestRegistryAgentSessionProjectionGovernsDiscoveryAndInvocation(t *testing.T) {
+	read := testCommandWithPath("issue-manager.issue.get", []string{"issue", "get"})
+	mutate := testCommandWithPath("issue-manager.issue.update", []string{"issue", "update"})
+	agentStart := testCommandWithPath("agent-context.agent.start", []string{"agent", "start"})
+	verdict := testCommandWithPath(
+		"tutti-goal-review.goal-review.verdict",
+		[]string{"goal-review", "verdict"},
+	)
+	verdict.Capability.Visibility = CapabilityVisibilityIntegration
+	registry := newTestRegistry(t, read, mutate, agentStart, verdict)
+	dynamicInvoked := false
+	registry.AppCommands = fakeDynamicCommandRegistry{
+		capabilities: []Capability{{
+			ID:      "workspace-app.mutate",
+			Path:    []string{"app", "mutate"},
+			Summary: "Mutate app state",
+			Source: CapabilitySource{
+				Kind: CapabilitySourceApp,
+			},
+		}},
+		invoked: &dynamicInvoked,
+	}
+	registry.AgentSessionCapabilities = staticAgentSessionCapabilityResolver{
+		projection: AgentSessionCapabilityProjection{
+			AllowedIDs: []string{
+				"issue-manager.issue.get",
+				"tutti-goal-review.goal-review.verdict",
+			},
+			IncludeIntegrationIDs: []string{"tutti-goal-review.goal-review.verdict"},
+			ExcludeIDs:            []string{"issue-manager.issue.update"},
+		},
+	}
+	invokeContext := InvokeContext{
+		Source: "cli", WorkspaceID: "workspace-1",
+		AgentSessionID: "review-session-1",
+	}
+
+	capabilities := registry.Capabilities(context.Background(), invokeContext)
+	if got, want := capabilityIDs(capabilities), []string{
+		"issue-manager.issue.get",
+		"tutti-goal-review.goal-review.verdict",
+	}; !stringSlicesEqual(got, want) {
+		t.Fatalf("reviewer capability ids = %#v, want %#v", got, want)
+	}
+	if _, err := registry.Invoke(context.Background(), InvokeRequest{
+		CommandID: "issue-manager.issue.update",
+		Context:   invokeContext,
+	}); !errors.Is(err, ErrCommandNotFound) {
+		t.Fatalf("excluded reviewer invocation error = %v, want ErrCommandNotFound", err)
+	}
+	if _, err := registry.Invoke(context.Background(), InvokeRequest{
+		CommandID: "agent-context.agent.start",
+		Context:   invokeContext,
+	}); !errors.Is(err, ErrCommandNotFound) {
+		t.Fatalf("non-allowlisted reviewer invocation error = %v, want ErrCommandNotFound", err)
+	}
+	if _, err := registry.Invoke(context.Background(), InvokeRequest{
+		CommandID: "workspace-app.mutate",
+		Context:   invokeContext,
+	}); !errors.Is(err, ErrCommandNotFound) || dynamicInvoked {
+		t.Fatalf(
+			"dynamic reviewer invocation error/invoked = %v/%v, want rejected before handler",
+			err, dynamicInvoked,
+		)
+	}
+	if _, err := registry.Invoke(context.Background(), InvokeRequest{
+		CommandID: "tutti-goal-review.goal-review.verdict",
+		Context:   invokeContext,
+	}); err != nil {
+		t.Fatalf("included reviewer verdict invocation error = %v", err)
+	}
+}
+
+func TestRegistryAgentSessionProjectionFailsClosedWhenUnavailable(t *testing.T) {
+	registry := newTestRegistry(t, testCommand("doctor.ping"))
+	registry.AgentSessionCapabilities = staticAgentSessionCapabilityResolver{
+		err: errors.New("session projection unavailable"),
+	}
+	invokeContext := InvokeContext{
+		Source: "cli", WorkspaceID: "workspace-1",
+		AgentSessionID: "review-session-1",
+	}
+	if capabilities := registry.Capabilities(context.Background(), invokeContext); len(capabilities) != 0 {
+		t.Fatalf("capabilities = %#v, want fail-closed empty list", capabilities)
+	}
+	if _, err := registry.Invoke(context.Background(), InvokeRequest{
+		CommandID: "doctor.ping",
+		Context:   invokeContext,
+	}); !errors.Is(err, ErrServiceUnavailable) {
+		t.Fatalf("Invoke() error = %v, want ErrServiceUnavailable", err)
+	}
+}
+
+type staticAgentSessionCapabilityResolver struct {
+	projection AgentSessionCapabilityProjection
+	err        error
+}
+
+func (resolver staticAgentSessionCapabilityResolver) ResolveAgentSessionCapabilityProjection(
+	context.Context,
+	string,
+	string,
+) (AgentSessionCapabilityProjection, error) {
+	return resolver.projection, resolver.err
+}
+
 type filteringTestProvider struct {
 	testProvider
 	visibleIDs map[string]bool
@@ -241,14 +347,18 @@ func (p *filteringTestProvider) FilterCapabilities(_ context.Context, invokeCont
 
 type fakeDynamicCommandRegistry struct {
 	capabilities []Capability
+	invoked      *bool
 }
 
 func (f fakeDynamicCommandRegistry) Capabilities(context.Context, InvokeContext) []Capability {
 	return append([]Capability(nil), f.capabilities...)
 }
 
-func (fakeDynamicCommandRegistry) Invoke(context.Context, InvokeRequest) (CommandOutput, error) {
-	return CommandOutput{}, ErrCommandNotFound
+func (f fakeDynamicCommandRegistry) Invoke(context.Context, InvokeRequest) (CommandOutput, error) {
+	if f.invoked != nil {
+		*f.invoked = true
+	}
+	return CommandOutput{Kind: OutputModePlain, Text: "dynamic invoked"}, nil
 }
 
 func capabilityIDs(capabilities []Capability) []string {

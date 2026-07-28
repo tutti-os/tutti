@@ -57,9 +57,15 @@ type DaemonAPI struct {
 	IssueService               workspaceapi.IssueManagerService
 	IssueExecutionService      workspaceapi.IssueExecutionService
 	TuttiModePlanService       TuttiModePlanService
+	TuttiModeExecutionService  TuttiModeExecutionService
 	TuttiModeActivationService TuttiModeActivationService
+	TuttiModeGoalReviewService TuttiModeGoalReviewService
 	CLIRegistry                *cliservice.Registry
 	AnalyticsReporter          reporterservice.Reporter
+	// OnListenerReady starts daemon work that may wake an Agent whose next
+	// action calls back into tuttid. Wiring invokes it only after publishing
+	// listener information.
+	OnListenerReady func()
 }
 
 type TuttiAgentReadiness interface {

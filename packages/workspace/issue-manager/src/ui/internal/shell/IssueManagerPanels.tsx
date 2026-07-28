@@ -38,6 +38,7 @@ import {
   issueManagerEditorRiseInDelay2ClassName
 } from "./IssueManagerEditorMotion.ts";
 import { IssueManagerExecutionProfileFields } from "../orchestration/IssueManagerOrchestrationFields.tsx";
+import { ManagedTuttiIssueActions } from "../orchestration/ManagedTuttiIssueActions.tsx";
 
 export { IssueManagerEmptyIllustration } from "../panel/IssueManagerPanelSurface.tsx";
 
@@ -178,23 +179,27 @@ export function IssueManagerIssuePane({
                       {selectedIssue.title}
                     </h2>
                   </IssueManagerTitleTooltip>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => controller.setIssueEditorMode("edit")}
-                    >
-                      {copy.t("actions.edit")}
-                    </Button>
-                    <Button
-                      className="text-[var(--state-danger)] hover:bg-[var(--on-danger)] hover:text-[var(--state-danger)]"
-                      type="button"
-                      variant="ghost"
-                      onClick={() => setDeleteDialogOpen(true)}
-                    >
-                      {copy.t("actions.delete")}
-                    </Button>
-                  </div>
+                  {controller.isTuttiModePlanIssue ? (
+                    <ManagedTuttiIssueActions controller={controller} />
+                  ) : (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => controller.setIssueEditorMode("edit")}
+                      >
+                        {copy.t("actions.edit")}
+                      </Button>
+                      <Button
+                        className="text-[var(--state-danger)] hover:bg-[var(--on-danger)] hover:text-[var(--state-danger)]"
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setDeleteDialogOpen(true)}
+                      >
+                        {copy.t("actions.delete")}
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-[11px] font-normal leading-[1.3] text-[var(--text-secondary)]">
                   <Badge
@@ -280,6 +285,7 @@ export function IssueManagerIssuePane({
                 onSelectTask={controller.selectTask}
                 selectedTaskId={selectedTaskId}
                 tasks={visibleTasks}
+                readOnly={controller.isTuttiModePlanIssue}
               />
             </div>
           )}

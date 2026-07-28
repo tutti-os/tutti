@@ -273,29 +273,8 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		}
 	})
 
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/workflows", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.ListWorkspaceWorkflows(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/workflows/{workflowID}", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.GetWorkspaceWorkflow(w, r)
-	})
-
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/workflows/{workflowID}/checkpoints/{checkpointID}/decision", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.DecideWorkspaceWorkflowCheckpoint(w, r)
-	})
+	registerWorkspaceWorkflowRoutes(mux, wrapper)
+	registerTuttiModeGoalReviewRoutes(mux, wrapper)
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-context/workspace-app-mentions", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

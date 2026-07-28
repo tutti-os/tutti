@@ -420,24 +420,40 @@ function ReadyWorkspaceWorkbenchWithSession({
             userProjectPath
           }) => {
             const normalizedDraftPrompt = draftPrompt?.trim() ?? "";
+            const normalizedAgentSessionId = agentSessionId?.trim() ?? "";
             await host.launchNode(
-              normalizedDraftPrompt
-                ? createWorkspaceAgentGuiDraftLaunchRequest({
+              normalizedAgentSessionId
+                ? createWorkspaceAgentGuiSessionLaunchRequest({
                     agentTargetId,
-                    autoSubmit,
-                    draftPrompt: normalizedDraftPrompt,
-                    model,
-                    modelPlanId,
-                    openInNewWindow,
-                    provider,
-                    userProjectPath
-                  })
-                : createWorkspaceAgentGuiSessionLaunchRequest({
-                    agentTargetId,
-                    agentSessionId,
+                    agentSessionId: normalizedAgentSessionId,
+                    ...(normalizedDraftPrompt
+                      ? {
+                          composerAppend: {
+                            draftPrompt: normalizedDraftPrompt,
+                            focusComposer: true
+                          }
+                        }
+                      : {}),
                     openInNewWindow,
                     provider
                   })
+                : normalizedDraftPrompt
+                  ? createWorkspaceAgentGuiDraftLaunchRequest({
+                      agentTargetId,
+                      autoSubmit,
+                      draftPrompt: normalizedDraftPrompt,
+                      model,
+                      modelPlanId,
+                      openInNewWindow,
+                      provider,
+                      userProjectPath
+                    })
+                  : createWorkspaceAgentGuiSessionLaunchRequest({
+                      agentTargetId,
+                      agentSessionId,
+                      openInNewWindow,
+                      provider
+                    })
             );
           }
         );

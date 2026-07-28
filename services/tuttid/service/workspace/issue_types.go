@@ -5,6 +5,7 @@ import (
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	executionbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeexecution"
 )
 
 // IssueAssignmentAgentTargetReader resolves a task's assigned agent target at
@@ -38,11 +39,16 @@ type CreateIssueManagerIssueInput struct {
 	// generic CLI adapters never set it; only the accepted workflow materializer
 	// may create an Issue in the reserved deterministic namespace.
 	TuttiModeWorkflowOwned bool
+	// TuttiModeWorkflowID is the accepted workflow identity atomically bound to
+	// the execution aggregate. It is ignored for traditional Plan Issues.
+	TuttiModeWorkflowID string
 }
 
 type CreateIssueManagerIssueFromPlanInput struct {
-	Issue CreateIssueManagerIssueInput
-	Tasks []CreateIssueManagerTaskItemInput
+	Issue               CreateIssueManagerIssueInput
+	Tasks               []CreateIssueManagerTaskItemInput
+	ReviewMode          string
+	ReviewAgentTargetID string
 }
 
 type EstimateIssueManagerAutoTokenBudgetInput struct {
@@ -182,4 +188,30 @@ type CompleteIssueManagerRunInput struct {
 	Cost                     workspaceissues.Cost
 	RemainingQuotaPercent    float64
 	HasRemainingQuotaPercent bool
+}
+
+type ScheduleTuttiModeIssueInput struct {
+	IssueID               string
+	SourceSessionID       string
+	CheckpointID          string
+	ExpectedGraphRevision int64
+	TaskIDs               []string
+	RequestID             string
+}
+
+type ScheduleTuttiModeIssueResult struct {
+	ExecutionID   string
+	CheckpointID  string
+	GraphRevision int64
+	RunIDs        []string
+	Replayed      bool
+}
+
+type MutateTuttiModeIssueInput struct {
+	IssueID               string
+	SourceSessionID       string
+	CheckpointID          string
+	ExpectedGraphRevision int64
+	Operations            []executionbiz.MutationOperation
+	RequestID             string
 }

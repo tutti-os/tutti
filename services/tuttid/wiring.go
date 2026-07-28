@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
@@ -25,23 +26,30 @@ import (
 	modelgatewayservice "github.com/tutti-os/tutti/services/tuttid/service/modelgateway"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
+	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
 type tuttiWiring struct {
-	api                     tuttiapi.DaemonAPI
-	appCenterService        *workspaceservice.AppCenterService
-	workspaceStore          *workspacedata.SQLiteStore
-	analyticsReporter       reporterservice.Reporter
-	browserService          *browsersvc.Service
-	computerService         *computersvc.Service
-	agentTargetSetup        *agentextensionservice.SetupService
-	agentRuntime            *agentdaemon.Runtime
-	providerAuthWatcher     *agentservice.ProviderAuthWatcher
-	agentCLIUpdateScheduler *agentstatusservice.ProviderUpdateScheduler
-	mobileRemoteService     *mobileremoteservice.Service
-	modelGateway            *modelgatewayservice.Gateway
+	api                          tuttiapi.DaemonAPI
+	appCenterService             *workspaceservice.AppCenterService
+	workspaceStore               *workspacedata.SQLiteStore
+	analyticsReporter            reporterservice.Reporter
+	browserService               *browsersvc.Service
+	computerService              *computersvc.Service
+	agentTargetSetup             *agentextensionservice.SetupService
+	agentRuntime                 *agentdaemon.Runtime
+	providerAuthWatcher          *agentservice.ProviderAuthWatcher
+	agentCLIUpdateScheduler      *agentstatusservice.ProviderUpdateScheduler
+	tuttiModeWakeRecoveryStarter func()
+	tuttiModeWatchdogMu          sync.Mutex
+	tuttiModeWatchdogWorker      *tuttimodeexecutionservice.Worker
+	tuttiModeWatchdogCancel      context.CancelFunc
+	tuttiModeWatchdogDone        <-chan struct{}
+	tuttiModeWatchdogClosed      bool
+	mobileRemoteService          *mobileremoteservice.Service
+	modelGateway                 *modelgatewayservice.Gateway
 }
 
 type analyticsDebugEventPublisher struct {
@@ -115,6 +123,7 @@ func buildTuttiServer() (*http.Server, net.Listener, *tuttiWiring, error) {
 		_ = wiring.Close()
 		return nil, nil, nil, fmt.Errorf("write tuttid listener info: %w", err)
 	}
+	wiring.startTuttiModeWakeRecovery()
 	wiring.startAgentCLIUpdateScheduler()
 
 	routes := wiring.routes()
@@ -148,7 +157,10 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 		return fmt.Errorf("start model gateway: %w", err)
 	}
 	w.modelGateway = modelGateway
-	api, appCenterService, agentRuntime, providerAuthWatcher, err := buildDaemonAPI(ctx, workspaceStore, nil, w.browserService, w.computerService, modelGateway)
+	api, appCenterService, agentRuntime, providerAuthWatcher, err := buildDaemonAPI(
+		ctx, workspaceStore, nil, w.browserService, w.computerService,
+		modelGateway, w.installTuttiModeWatchdogWorker,
+	)
 	if err != nil {
 		_ = modelGateway.Close()
 		w.modelGateway = nil
@@ -200,7 +212,68 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	w.analyticsReporter = analyticsReporter
 	w.api = api
 	w.appCenterService = appCenterService
+	w.tuttiModeWakeRecoveryStarter = api.OnListenerReady
 	return nil
+}
+
+func (w *tuttiWiring) startTuttiModeWakeRecovery() {
+	if w == nil {
+		return
+	}
+	w.tuttiModeWatchdogMu.Lock()
+	if w.tuttiModeWatchdogClosed ||
+		w.tuttiModeWakeRecoveryStarter == nil {
+		w.tuttiModeWatchdogMu.Unlock()
+		return
+	}
+	start := w.tuttiModeWakeRecoveryStarter
+	w.tuttiModeWakeRecoveryStarter = nil
+	w.tuttiModeWatchdogMu.Unlock()
+	start()
+
+	w.tuttiModeWatchdogMu.Lock()
+	defer w.tuttiModeWatchdogMu.Unlock()
+	if w.tuttiModeWatchdogClosed ||
+		w.tuttiModeWatchdogWorker == nil ||
+		w.tuttiModeWatchdogDone != nil {
+		return
+	}
+	workerCtx, cancel := context.WithCancel(context.Background())
+	w.tuttiModeWatchdogCancel = cancel
+	w.tuttiModeWatchdogDone = startTuttiModeWatchdogWorker(
+		workerCtx, *w.tuttiModeWatchdogWorker,
+	)
+}
+
+func (w *tuttiWiring) installTuttiModeWatchdogWorker(
+	worker tuttimodeexecutionservice.Worker,
+) {
+	if w == nil {
+		return
+	}
+	w.tuttiModeWatchdogMu.Lock()
+	defer w.tuttiModeWatchdogMu.Unlock()
+	if w.tuttiModeWatchdogClosed {
+		return
+	}
+	w.tuttiModeWatchdogWorker = &worker
+}
+
+func (w *tuttiWiring) stopTuttiModeWatchdogWorker() {
+	if w == nil {
+		return
+	}
+	w.tuttiModeWatchdogMu.Lock()
+	w.tuttiModeWatchdogClosed = true
+	cancel := w.tuttiModeWatchdogCancel
+	done := w.tuttiModeWatchdogDone
+	w.tuttiModeWatchdogMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		<-done
+	}
 }
 
 func (w *tuttiWiring) startAgentCLIUpdateScheduler() {
@@ -261,6 +334,7 @@ func (w *tuttiWiring) Close() error {
 	if w == nil {
 		return nil
 	}
+	w.stopTuttiModeWatchdogWorker()
 
 	var closeErr error
 	if w.mobileRemoteService != nil {

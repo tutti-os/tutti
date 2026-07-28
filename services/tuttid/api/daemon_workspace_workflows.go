@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	tuttimodeplanservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeplan"
+	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
 type TuttiModePlanService interface {
@@ -21,6 +23,33 @@ type TuttiModePlanService interface {
 	ListBySourceSession(context.Context, string, string) ([]tuttimodeplanservice.SnapshotView, error)
 	ListPendingBySourceSession(context.Context, string, string) ([]tuttimodeplanservice.SnapshotView, error)
 	Decide(context.Context, tuttimodeplanservice.DecideInput) (tuttimodeplanservice.DecisionResult, error)
+}
+
+func registerWorkspaceWorkflowRoutes(
+	mux *http.ServeMux,
+	wrapper *tuttigenerated.ServerInterfaceWrapper,
+) {
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/workflows", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListWorkspaceWorkflows(w, r)
+	})
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/workflows/{workflowID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetWorkspaceWorkflow(w, r)
+	})
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/workflows/{workflowID}/checkpoints/{checkpointID}/decision", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.DecideWorkspaceWorkflowCheckpoint(w, r)
+	})
 }
 
 func (api DaemonAPI) ListWorkspaceWorkflows(ctx context.Context, request tuttigenerated.ListWorkspaceWorkflowsRequestObject) (tuttigenerated.ListWorkspaceWorkflowsResponseObject, error) {

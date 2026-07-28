@@ -320,6 +320,9 @@ func (s Service) CreateRun(ctx context.Context, input CreateRunInput) (Run, erro
 	if err != nil {
 		return Run{}, err
 	}
+	if err := RejectManagedIssueMutation(issue); err != nil {
+		return Run{}, err
+	}
 	if task == nil {
 		task, err = s.ensureIssueRunTask(ctx, store, issue, actorUserID)
 		if err != nil {
@@ -654,6 +657,13 @@ func (s Service) AddContextRefs(ctx context.Context, input AddContextRefsInput) 
 	if parentKind == ContextRefParentTask && taskID == "" {
 		return nil, ErrInvalidArgument
 	}
+	issue, err := store.GetIssue(ctx, workspaceID, issueID)
+	if err != nil {
+		return nil, err
+	}
+	if err := RejectManagedIssueMutation(issue); err != nil {
+		return nil, err
+	}
 	refs := make([]ContextRef, 0, len(input.Refs))
 	now := s.nowUnixMS()
 	for _, ref := range input.Refs {
@@ -684,10 +694,6 @@ func (s Service) AddContextRefs(ctx context.Context, input AddContextRefsInput) 
 	if err != nil {
 		return nil, err
 	}
-	issue, err := store.GetIssue(ctx, workspaceID, issueID)
-	if err != nil {
-		return nil, err
-	}
 	if err := store.TouchTopicActivity(ctx, workspaceID, issue.TopicID, now); err != nil {
 		return nil, err
 	}
@@ -713,16 +719,19 @@ func (s Service) RemoveContextRef(ctx context.Context, input RemoveContextRefInp
 	if parentKind == ContextRefParentIssue {
 		taskID = ""
 	}
+	issue, err := store.GetIssue(ctx, workspaceID, issueID)
+	if err != nil {
+		return false, err
+	}
+	if err := RejectManagedIssueMutation(issue); err != nil {
+		return false, err
+	}
 	removed, err := store.RemoveContextRef(ctx, workspaceID, issueID, taskID, parentKind, contextRefID)
 	if err != nil {
 		return false, err
 	}
 	if !removed {
 		return false, ErrContextRefNotFound
-	}
-	issue, err := store.GetIssue(ctx, workspaceID, issueID)
-	if err != nil {
-		return false, err
 	}
 	if err := store.TouchTopicActivity(ctx, workspaceID, issue.TopicID, s.nowUnixMS()); err != nil {
 		return false, err

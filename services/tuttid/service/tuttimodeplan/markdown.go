@@ -37,6 +37,7 @@ type PlanDocument struct {
 	TopicID   string        `yaml:"topicId"`
 	Execution PlanExecution `yaml:"execution"`
 	Budget    PlanBudget    `yaml:"budget"`
+	Review    PlanReview    `yaml:"review"`
 	Tasks     []PlanTask    `yaml:"tasks"`
 	Body      string        `yaml:"-"`
 }
@@ -51,6 +52,11 @@ type PlanBudget struct {
 	Mode                  string  `yaml:"mode"`
 	TokenLimit            int64   `yaml:"tokenLimit"`
 	QuotaWaterlinePercent float64 `yaml:"quotaWaterlinePercent"`
+}
+
+type PlanReview struct {
+	Mode          string `yaml:"mode"`
+	AgentTargetID string `yaml:"agentTargetId"`
 }
 
 type PlanTask struct {
@@ -104,6 +110,7 @@ func ParsePlanMarkdown(raw []byte) (PlanDocument, error) {
 			TokenLimit:            budget.TokenLimit,
 			QuotaWaterlinePercent: budget.QuotaWaterlinePercent,
 		},
+		Review: PlanReview{Mode: "self"},
 	}
 	decoder := yaml.NewDecoder(strings.NewReader(remainder[:closing]))
 	decoder.KnownFields(true)
@@ -169,6 +176,11 @@ func normalizeAndValidatePlanDocument(document *PlanDocument) error {
 	}
 	document.Execution.Mode = strings.ToLower(strings.TrimSpace(document.Execution.Mode))
 	document.Budget.Mode = strings.ToLower(strings.TrimSpace(document.Budget.Mode))
+	document.Review.Mode = strings.ToLower(strings.TrimSpace(document.Review.Mode))
+	document.Review.AgentTargetID = strings.TrimSpace(document.Review.AgentTargetID)
+	if document.Review.Mode == "" {
+		document.Review.Mode = "self"
+	}
 	if document.Title == "" || document.TopicID == "" || strings.TrimSpace(document.Body) == "" {
 		return fmt.Errorf("%w: title, topicId, and body are required", ErrInvalidPlanMarkdown)
 	}
@@ -199,6 +211,18 @@ func normalizeAndValidatePlanDocument(document *PlanDocument) error {
 		QuotaWaterlinePercent: document.Budget.QuotaWaterlinePercent,
 	}); !ok {
 		return fmt.Errorf("%w: budget is invalid", ErrInvalidPlanMarkdown)
+	}
+	switch document.Review.Mode {
+	case "self":
+		if document.Review.AgentTargetID != "" {
+			return fmt.Errorf("%w: self review cannot set agentTargetId", ErrInvalidPlanMarkdown)
+		}
+	case "independent":
+		if document.Review.AgentTargetID == "" {
+			return fmt.Errorf("%w: independent review requires agentTargetId", ErrInvalidPlanMarkdown)
+		}
+	default:
+		return fmt.Errorf("%w: review mode must be self or independent", ErrInvalidPlanMarkdown)
 	}
 
 	graph := make([]workspaceissues.Task, 0, len(document.Tasks))

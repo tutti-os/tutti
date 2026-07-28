@@ -41,6 +41,7 @@ import {
   type DesktopAgentGUINodeState
 } from "../desktopAgentGUINodeState";
 import { consumeDesktopAgentGUIOpenSessionActivation } from "../services/desktopAgentGUIOpenSessionActivation.ts";
+import type { DesktopAgentGUIOpenSessionComposerRequest } from "../services/desktopAgentGUIOpenSessionComposerActivation.ts";
 import {
   consumeDesktopAgentGUIPrefillPromptActivation,
   type DesktopAgentGUIPrefillPromptRequest
@@ -274,6 +275,8 @@ function DesktopAgentGUISurfaceImpl({
   const [openSessionRequest, setOpenSessionRequest] = useState<NonNullable<
     AgentGUIProps["runtimeRequests"]["openSession"]
   > | null>(null);
+  const [openSessionComposerRequest, setOpenSessionComposerRequest] =
+    useState<DesktopAgentGUIOpenSessionComposerRequest | null>(null);
   const [prefillPromptRequest, setPrefillPromptRequest] =
     useState<DesktopAgentGUIPrefillPromptRequest | null>(
       () => prefillPromptBootstrapRequest
@@ -382,6 +385,7 @@ function DesktopAgentGUISurfaceImpl({
       nodeId: surface.nodeId,
       onActivationError: handleOpenSessionActivationError,
       onOpenSessionRequest: setOpenSessionRequest,
+      onOpenSessionComposerRequest: setOpenSessionComposerRequest,
       // Persistence is owned by handleUpdateNode (the single writer).
       onStateChange: DESKTOP_AGENT_GUI_NOOP,
       provider,
@@ -535,6 +539,7 @@ function DesktopAgentGUISurfaceImpl({
     [frame.height, frame.width]
   );
   const composerFocusRequestSequence =
+    openSessionComposerRequest?.sequence ??
     composerAppendRequest?.sequence ??
     (surface.activation?.type === workbenchFocusInputActivationType ||
     surface.activation?.type === desktopAgentGUIPrefillPromptActivationType
@@ -623,7 +628,13 @@ function DesktopAgentGUISurfaceImpl({
       agentSettings: DESKTOP_AGENT_GUI_AGENT_SETTINGS
     },
     runtimeRequests: {
-      composerAppend: composerAppendRequest,
+      composerAppend: openSessionComposerRequest
+        ? {
+            agentSessionId: openSessionComposerRequest.agentSessionId,
+            prompt: openSessionComposerRequest.draftPrompt,
+            sequence: openSessionComposerRequest.sequence
+          }
+        : composerAppendRequest,
       composerFocusSequence: composerFocusRequestSequence,
       newConversationSequence: newConversationRequestSequence,
       sessionAction: sessionActionRequest,

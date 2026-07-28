@@ -177,35 +177,35 @@ export function useAgentGUIConversationBatchDeletion(
       setIsDeletingProjectConversations(true);
       setDetailError(null);
       setListError(null);
-      const activeDeletedConversationId = activeConversationIdRef.current;
-      if (
-        activeDeletedConversationId &&
-        targetIds.has(activeDeletedConversationId)
-      ) {
-        const nextActive =
-          conversationsRef.current.find(
-            (conversation) => !targetIds.has(conversation.id)
-          )?.id ?? null;
-        if (nextActive) {
-          markSelectedConversationDetailPending(nextActive);
-        }
-        activeConversationIdRef.current = nextActive;
-        flushSync(() => {
-          if (nextActive) {
-            setIntent({ tag: "active", id: nextActive });
-          } else {
-            setIsLoadingMessages(false);
-            setIntent({ tag: "home" });
-          }
-          setActiveConversationId(nextActive);
-        });
-        persistActiveConversation(nextActive);
-      }
       void deleteSessionsBatch({
         sessionIds: [...targetIds],
         workspaceId
       })
         .then((result) => {
+          const activeDeletedConversationId = activeConversationIdRef.current;
+          if (
+            activeDeletedConversationId &&
+            targetIds.has(activeDeletedConversationId)
+          ) {
+            const nextActive =
+              conversationsRef.current.find(
+                (conversation) => !targetIds.has(conversation.id)
+              )?.id ?? null;
+            if (nextActive) {
+              markSelectedConversationDetailPending(nextActive);
+            }
+            activeConversationIdRef.current = nextActive;
+            flushSync(() => {
+              if (nextActive) {
+                setIntent({ tag: "active", id: nextActive });
+              } else {
+                setIsLoadingMessages(false);
+                setIntent({ tag: "home" });
+              }
+              setActiveConversationId(nextActive);
+            });
+            persistActiveConversation(nextActive);
+          }
           if (result.cleanupFailedSessionIds.length > 0) {
             try {
               void Promise.resolve(

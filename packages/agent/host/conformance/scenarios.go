@@ -25,7 +25,19 @@ var (
 		Name: "delete live session before canonical report",
 		run:  runDeleteLiveSessionBeforeCanonicalReport,
 	}
-	purgeDeletedSessionsScenario = Scenario{Name: "purge deleted sessions", run: runPurgeDeletedSessions}
+	purgeDeletedSessionsScenario     = Scenario{Name: "purge deleted sessions", run: runPurgeDeletedSessions}
+	deleteAdmissionRejectionScenario = Scenario{
+		Name: "delete admission rejection has no canonical side effects",
+		run:  runDeleteAdmissionRejection,
+	}
+	deleteAdmissionExactClosureScenario = Scenario{
+		Name: "delete admission receives exact canonical closure",
+		run:  runDeleteAdmissionExactClosure,
+	}
+	deleteAdmissionReplanScenario = Scenario{
+		Name: "delete admission guards changed closure before additional runtime close",
+		run:  runDeleteAdmissionReplan,
+	}
 )
 
 // Scenarios returns the lifecycle surface that every host adapter must support.
@@ -49,6 +61,9 @@ func Scenarios() []Scenario {
 		pinSessionScenario,
 		deleteSessionScenario,
 		deleteLiveOnlySessionScenario,
+		deleteAdmissionRejectionScenario,
+		deleteAdmissionExactClosureScenario,
+		deleteAdmissionReplanScenario,
 		purgeDeletedSessionsScenario,
 	}
 }
@@ -69,6 +84,16 @@ func SubmissionFenceScenarios() []Scenario {
 
 func TitlePolicyScenarios() []Scenario {
 	return []Scenario{{Name: "clear canonical title", run: runClearCanonicalTitle}}
+}
+
+// DeletionAdmissionScenarios verifies the provider-neutral guard around the
+// exact canonical closure owned and replanned by Host.
+func DeletionAdmissionScenarios() []Scenario {
+	return []Scenario{
+		deleteAdmissionRejectionScenario,
+		deleteAdmissionExactClosureScenario,
+		deleteAdmissionReplanScenario,
+	}
 }
 
 // CoordinatorScenarios covers commands and recovery behavior owned by the Host
@@ -134,6 +159,9 @@ func ApplicationCoreScenarios() []Scenario {
 		pinSessionScenario,
 		deleteSessionScenario,
 		deleteLiveOnlySessionScenario,
+		deleteAdmissionRejectionScenario,
+		deleteAdmissionExactClosureScenario,
+		deleteAdmissionReplanScenario,
 		purgeDeletedSessionsScenario,
 	}
 }

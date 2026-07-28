@@ -10,6 +10,7 @@ type Config struct {
 	CanonicalStore         CanonicalStore
 	SessionManagement      SessionManagementStore
 	SessionBatchManagement SessionBatchManagementStore
+	SessionDeletionGuard   SessionDeletionGuard
 	SessionPurge           SessionPurgeStore
 	SessionForks           SessionForkStore
 	SessionForkRecovery    SessionForkRecoveryStore
@@ -49,6 +50,7 @@ type Host struct {
 	store                  CanonicalStore
 	sessionManagement      SessionManagementStore
 	sessionBatchManagement SessionBatchManagementStore
+	sessionDeletionGuard   SessionDeletionGuard
 	sessionPurge           SessionPurgeStore
 	sessionForks           SessionForkStore
 	sessionForkRecovery    SessionForkRecoveryStore
@@ -95,7 +97,7 @@ func New(config Config) *Host {
 		sessionMutationActor = NewSessionActor()
 	}
 	host := &Host{
-		store: config.CanonicalStore, sessionManagement: config.SessionManagement, sessionBatchManagement: config.SessionBatchManagement, sessionPurge: config.SessionPurge,
+		store: config.CanonicalStore, sessionManagement: config.SessionManagement, sessionBatchManagement: config.SessionBatchManagement, sessionDeletionGuard: config.SessionDeletionGuard, sessionPurge: config.SessionPurge,
 		sessionForks: config.SessionForks, sessionForkRuntime: config.SessionForkRuntime,
 		sessionForkContext: config.SessionForkContext, sessionForkState: config.SessionForkState,
 		runtime:             config.Runtime,

@@ -566,6 +566,9 @@ type ServerInterface interface {
 	// Complete one issue-manager task run
 	// (PATCH /v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/runs/{runID})
 	CompleteWorkspaceIssueTaskRun(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID IssueManagerIssueID, taskID IssueManagerTaskID, runID IssueManagerRunID)
+	// Switch a failed independent Tutti Mode Goal Review to self review
+	// (POST /v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self)
+	SwitchTuttiModeGoalReviewToSelf(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID IssueID)
 	// List workspace model access plans
 	// (GET /v1/workspaces/{workspaceID}/model-plans)
 	ListModelPlans(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
@@ -635,6 +638,12 @@ type ServerInterface interface {
 	// Attach a WebSocket stream to one workspace terminal session
 	// (GET /v1/workspaces/{workspaceID}/terminals/{terminalID}/ws)
 	AttachWorkspaceTerminal(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, terminalID TerminalID, params AttachWorkspaceTerminalParams)
+	// Get the current archive operation for one Tutti execution
+	// (GET /v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive)
+	GetTuttiModeArchiveOperation(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID string, params GetTuttiModeArchiveOperationParams)
+	// Stop and durably archive one Tutti execution
+	// (POST /v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive)
+	ArchiveTuttiModeExecution(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID string)
 	// Get one workspace workbench snapshot
 	// (GET /v1/workspaces/{workspaceID}/workbench)
 	GetWorkspaceWorkbench(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
@@ -1216,6 +1225,19 @@ func (siw *ServerInterfaceWrapper) ListCliCapabilities(w http.ResponseWriter, r 
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "workspaceID"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "agentSessionID" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "agentSessionID", r.URL.Query(), &params.AgentSessionID, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agentSessionID"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentSessionID", Err: err})
 		}
 		return
 	}
@@ -8067,6 +8089,47 @@ func (siw *ServerInterfaceWrapper) CompleteWorkspaceIssueTaskRun(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// SwitchTuttiModeGoalReviewToSelf operation middleware
+func (siw *ServerInterfaceWrapper) SwitchTuttiModeGoalReviewToSelf(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "issueID" -------------
+	var issueID IssueID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issueID", r.PathValue("issueID"), &issueID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issueID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SwitchTuttiModeGoalReviewToSelf(w, r, workspaceID, issueID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListModelPlans operation middleware
 func (siw *ServerInterfaceWrapper) ListModelPlans(w http.ResponseWriter, r *http.Request) {
 
@@ -8954,6 +9017,104 @@ func (siw *ServerInterfaceWrapper) AttachWorkspaceTerminal(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// GetTuttiModeArchiveOperation operation middleware
+func (siw *ServerInterfaceWrapper) GetTuttiModeArchiveOperation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "issueID" -------------
+	var issueID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issueID", r.PathValue("issueID"), &issueID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issueID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTuttiModeArchiveOperationParams
+
+	// ------------- Required query parameter "operationId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "operationId", r.URL.Query(), &params.OperationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "operationId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operationId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTuttiModeArchiveOperation(w, r, workspaceID, issueID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ArchiveTuttiModeExecution operation middleware
+func (siw *ServerInterfaceWrapper) ArchiveTuttiModeExecution(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "issueID" -------------
+	var issueID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issueID", r.PathValue("issueID"), &issueID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issueID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ArchiveTuttiModeExecution(w, r, workspaceID, issueID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetWorkspaceWorkbench operation middleware
 func (siw *ServerInterfaceWrapper) GetWorkspaceWorkbench(w http.ResponseWriter, r *http.Request) {
 
@@ -9472,6 +9633,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/runs", wrapper.CreateWorkspaceIssueTaskRun)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/runs/{runID}", wrapper.GetWorkspaceIssueTaskRun)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/runs/{runID}", wrapper.CompleteWorkspaceIssueTaskRun)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self", wrapper.SwitchTuttiModeGoalReviewToSelf)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/model-plans", wrapper.ListModelPlans)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/model-plans", wrapper.CreateModelPlan)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/model-plans/detect", wrapper.DetectModelPlan)
@@ -9495,6 +9657,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/terminals/{terminalID}/resize", wrapper.ResizeWorkspaceTerminal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/terminals/{terminalID}/snapshot", wrapper.GetWorkspaceTerminalSnapshot)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/terminals/{terminalID}/ws", wrapper.AttachWorkspaceTerminal)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive", wrapper.GetTuttiModeArchiveOperation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive", wrapper.ArchiveTuttiModeExecution)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/workbench", wrapper.GetWorkspaceWorkbench)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/workbench", wrapper.PutWorkspaceWorkbench)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/workflows", wrapper.ListWorkspaceWorkflows)
@@ -9525,6 +9689,14 @@ type ModelPolicyReferencedErrorJSONResponse ApiErrorResponse
 type PreferencesOperationErrorJSONResponse ApiErrorResponse
 
 type ServiceUnavailableErrorJSONResponse ApiErrorResponse
+
+type TuttiExecutionActiveErrorJSONResponse ApiErrorResponse
+
+type TuttiModeArchiveConflictErrorJSONResponse ApiErrorResponse
+
+type TuttiModeGoalReviewConflictErrorJSONResponse ApiErrorResponse
+
+type TuttiModeGoalReviewNotFoundErrorJSONResponse ApiErrorResponse
 
 type UnauthorizedErrorJSONResponse ApiErrorResponse
 
@@ -14607,6 +14779,22 @@ func (response ClearWorkspaceAgentSessions405JSONResponse) VisitClearWorkspaceAg
 	return err
 }
 
+type ClearWorkspaceAgentSessions409JSONResponse struct {
+	TuttiExecutionActiveErrorJSONResponse
+}
+
+func (response ClearWorkspaceAgentSessions409JSONResponse) VisitClearWorkspaceAgentSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ClearWorkspaceAgentSessions502JSONResponse struct {
 	WorkspaceOperationErrorJSONResponse
 }
@@ -14958,6 +15146,22 @@ func (response DeleteWorkspaceAgentSessionsBatch405JSONResponse) VisitDeleteWork
 	return err
 }
 
+type DeleteWorkspaceAgentSessionsBatch409JSONResponse struct {
+	TuttiExecutionActiveErrorJSONResponse
+}
+
+func (response DeleteWorkspaceAgentSessionsBatch409JSONResponse) VisitDeleteWorkspaceAgentSessionsBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteWorkspaceAgentSessionsBatch502JSONResponse struct {
 	WorkspaceOperationErrorJSONResponse
 }
@@ -15305,6 +15509,22 @@ func (response DeleteWorkspaceAgentSession405JSONResponse) VisitDeleteWorkspaceA
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceAgentSession409JSONResponse struct {
+	TuttiExecutionActiveErrorJSONResponse
+}
+
+func (response DeleteWorkspaceAgentSession409JSONResponse) VisitDeleteWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -27232,6 +27452,22 @@ func (response DeleteWorkspaceIssue405JSONResponse) VisitDeleteWorkspaceIssueRes
 	return err
 }
 
+type DeleteWorkspaceIssue409JSONResponse struct {
+	WorkspaceIssueResourceExistsErrorJSONResponse
+}
+
+func (response DeleteWorkspaceIssue409JSONResponse) VisitDeleteWorkspaceIssueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteWorkspaceIssue502JSONResponse struct {
 	WorkspaceOperationErrorJSONResponse
 }
@@ -27467,6 +27703,22 @@ func (response UpdateWorkspaceIssue405JSONResponse) VisitUpdateWorkspaceIssueRes
 	return err
 }
 
+type UpdateWorkspaceIssue409JSONResponse struct {
+	WorkspaceIssueResourceExistsErrorJSONResponse
+}
+
+func (response UpdateWorkspaceIssue409JSONResponse) VisitUpdateWorkspaceIssueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateWorkspaceIssue502JSONResponse struct {
 	WorkspaceOperationErrorJSONResponse
 }
@@ -27580,6 +27832,22 @@ func (response CancelWorkspaceIssueExecution405JSONResponse) VisitCancelWorkspac
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceIssueExecution409JSONResponse struct {
+	WorkspaceIssueResourceExistsErrorJSONResponse
+}
+
+func (response CancelWorkspaceIssueExecution409JSONResponse) VisitCancelWorkspaceIssueExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -27832,6 +28100,22 @@ func (response RemoveWorkspaceIssueContextRef405JSONResponse) VisitRemoveWorkspa
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveWorkspaceIssueContextRef409JSONResponse struct {
+	WorkspaceIssueResourceExistsErrorJSONResponse
+}
+
+func (response RemoveWorkspaceIssueContextRef409JSONResponse) VisitRemoveWorkspaceIssueContextRefResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -28828,6 +29112,22 @@ func (response DeleteWorkspaceIssueTask405JSONResponse) VisitDeleteWorkspaceIssu
 	return err
 }
 
+type DeleteWorkspaceIssueTask409JSONResponse struct {
+	WorkspaceIssueResourceExistsErrorJSONResponse
+}
+
+func (response DeleteWorkspaceIssueTask409JSONResponse) VisitDeleteWorkspaceIssueTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteWorkspaceIssueTask502JSONResponse struct {
 	WorkspaceOperationErrorJSONResponse
 }
@@ -29061,6 +29361,22 @@ func (response UpdateWorkspaceIssueTask405JSONResponse) VisitUpdateWorkspaceIssu
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateWorkspaceIssueTask409JSONResponse struct {
+	WorkspaceIssueResourceExistsErrorJSONResponse
+}
+
+func (response UpdateWorkspaceIssueTask409JSONResponse) VisitUpdateWorkspaceIssueTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -29315,6 +29631,22 @@ func (response RemoveWorkspaceIssueTaskContextRef405JSONResponse) VisitRemoveWor
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveWorkspaceIssueTaskContextRef409JSONResponse struct {
+	WorkspaceIssueResourceExistsErrorJSONResponse
+}
+
+func (response RemoveWorkspaceIssueTaskContextRef409JSONResponse) VisitRemoveWorkspaceIssueTaskContextRefResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -29832,6 +30164,140 @@ type CompleteWorkspaceIssueTaskRun503JSONResponse struct {
 }
 
 func (response CompleteWorkspaceIssueTaskRun503JSONResponse) VisitCompleteWorkspaceIssueTaskRunResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SwitchTuttiModeGoalReviewToSelfRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	IssueID     IssueID     `json:"issueID"`
+	Body        *SwitchTuttiModeGoalReviewToSelfJSONRequestBody
+}
+
+type SwitchTuttiModeGoalReviewToSelfResponseObject interface {
+	VisitSwitchTuttiModeGoalReviewToSelfResponse(w http.ResponseWriter) error
+}
+
+type SwitchTuttiModeGoalReviewToSelf200JSONResponse SwitchTuttiModeGoalReviewToSelfResponse
+
+func (response SwitchTuttiModeGoalReviewToSelf200JSONResponse) VisitSwitchTuttiModeGoalReviewToSelfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SwitchTuttiModeGoalReviewToSelf400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response SwitchTuttiModeGoalReviewToSelf400JSONResponse) VisitSwitchTuttiModeGoalReviewToSelfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SwitchTuttiModeGoalReviewToSelf401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response SwitchTuttiModeGoalReviewToSelf401JSONResponse) VisitSwitchTuttiModeGoalReviewToSelfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SwitchTuttiModeGoalReviewToSelf404JSONResponse struct {
+	TuttiModeGoalReviewNotFoundErrorJSONResponse
+}
+
+func (response SwitchTuttiModeGoalReviewToSelf404JSONResponse) VisitSwitchTuttiModeGoalReviewToSelfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SwitchTuttiModeGoalReviewToSelf405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response SwitchTuttiModeGoalReviewToSelf405JSONResponse) VisitSwitchTuttiModeGoalReviewToSelfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SwitchTuttiModeGoalReviewToSelf409JSONResponse struct {
+	TuttiModeGoalReviewConflictErrorJSONResponse
+}
+
+func (response SwitchTuttiModeGoalReviewToSelf409JSONResponse) VisitSwitchTuttiModeGoalReviewToSelfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SwitchTuttiModeGoalReviewToSelf502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response SwitchTuttiModeGoalReviewToSelf502JSONResponse) VisitSwitchTuttiModeGoalReviewToSelfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SwitchTuttiModeGoalReviewToSelf503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response SwitchTuttiModeGoalReviewToSelf503JSONResponse) VisitSwitchTuttiModeGoalReviewToSelfResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -32498,6 +32964,258 @@ func (response AttachWorkspaceTerminal503JSONResponse) VisitAttachWorkspaceTermi
 	return err
 }
 
+type GetTuttiModeArchiveOperationRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	IssueID     string      `json:"issueID"`
+	Params      GetTuttiModeArchiveOperationParams
+}
+
+type GetTuttiModeArchiveOperationResponseObject interface {
+	VisitGetTuttiModeArchiveOperationResponse(w http.ResponseWriter) error
+}
+
+type GetTuttiModeArchiveOperation200JSONResponse TuttiModeArchiveOperation
+
+func (response GetTuttiModeArchiveOperation200JSONResponse) VisitGetTuttiModeArchiveOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTuttiModeArchiveOperation400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GetTuttiModeArchiveOperation400JSONResponse) VisitGetTuttiModeArchiveOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTuttiModeArchiveOperation401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetTuttiModeArchiveOperation401JSONResponse) VisitGetTuttiModeArchiveOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTuttiModeArchiveOperation404JSONResponse struct {
+	WorkspaceIssueResourceNotFoundErrorJSONResponse
+}
+
+func (response GetTuttiModeArchiveOperation404JSONResponse) VisitGetTuttiModeArchiveOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTuttiModeArchiveOperation405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetTuttiModeArchiveOperation405JSONResponse) VisitGetTuttiModeArchiveOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTuttiModeArchiveOperation502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response GetTuttiModeArchiveOperation502JSONResponse) VisitGetTuttiModeArchiveOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTuttiModeArchiveOperation503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetTuttiModeArchiveOperation503JSONResponse) VisitGetTuttiModeArchiveOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveTuttiModeExecutionRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	IssueID     string      `json:"issueID"`
+	Body        *ArchiveTuttiModeExecutionJSONRequestBody
+}
+
+type ArchiveTuttiModeExecutionResponseObject interface {
+	VisitArchiveTuttiModeExecutionResponse(w http.ResponseWriter) error
+}
+
+type ArchiveTuttiModeExecution200JSONResponse TuttiModeArchiveOperation
+
+func (response ArchiveTuttiModeExecution200JSONResponse) VisitArchiveTuttiModeExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveTuttiModeExecution400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ArchiveTuttiModeExecution400JSONResponse) VisitArchiveTuttiModeExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveTuttiModeExecution401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ArchiveTuttiModeExecution401JSONResponse) VisitArchiveTuttiModeExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveTuttiModeExecution404JSONResponse struct {
+	WorkspaceIssueResourceNotFoundErrorJSONResponse
+}
+
+func (response ArchiveTuttiModeExecution404JSONResponse) VisitArchiveTuttiModeExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveTuttiModeExecution405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ArchiveTuttiModeExecution405JSONResponse) VisitArchiveTuttiModeExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveTuttiModeExecution409JSONResponse struct {
+	TuttiModeArchiveConflictErrorJSONResponse
+}
+
+func (response ArchiveTuttiModeExecution409JSONResponse) VisitArchiveTuttiModeExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveTuttiModeExecution502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ArchiveTuttiModeExecution502JSONResponse) VisitArchiveTuttiModeExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveTuttiModeExecution503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ArchiveTuttiModeExecution503JSONResponse) VisitArchiveTuttiModeExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetWorkspaceWorkbenchRequestObject struct {
 	WorkspaceID WorkspaceID `json:"workspaceID"`
 }
@@ -33646,6 +34364,9 @@ type StrictServerInterface interface {
 	// Complete one issue-manager task run
 	// (PATCH /v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/runs/{runID})
 	CompleteWorkspaceIssueTaskRun(ctx context.Context, request CompleteWorkspaceIssueTaskRunRequestObject) (CompleteWorkspaceIssueTaskRunResponseObject, error)
+	// Switch a failed independent Tutti Mode Goal Review to self review
+	// (POST /v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self)
+	SwitchTuttiModeGoalReviewToSelf(ctx context.Context, request SwitchTuttiModeGoalReviewToSelfRequestObject) (SwitchTuttiModeGoalReviewToSelfResponseObject, error)
 	// List workspace model access plans
 	// (GET /v1/workspaces/{workspaceID}/model-plans)
 	ListModelPlans(ctx context.Context, request ListModelPlansRequestObject) (ListModelPlansResponseObject, error)
@@ -33715,6 +34436,12 @@ type StrictServerInterface interface {
 	// Attach a WebSocket stream to one workspace terminal session
 	// (GET /v1/workspaces/{workspaceID}/terminals/{terminalID}/ws)
 	AttachWorkspaceTerminal(ctx context.Context, request AttachWorkspaceTerminalRequestObject) (AttachWorkspaceTerminalResponseObject, error)
+	// Get the current archive operation for one Tutti execution
+	// (GET /v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive)
+	GetTuttiModeArchiveOperation(ctx context.Context, request GetTuttiModeArchiveOperationRequestObject) (GetTuttiModeArchiveOperationResponseObject, error)
+	// Stop and durably archive one Tutti execution
+	// (POST /v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive)
+	ArchiveTuttiModeExecution(ctx context.Context, request ArchiveTuttiModeExecutionRequestObject) (ArchiveTuttiModeExecutionResponseObject, error)
 	// Get one workspace workbench snapshot
 	// (GET /v1/workspaces/{workspaceID}/workbench)
 	GetWorkspaceWorkbench(ctx context.Context, request GetWorkspaceWorkbenchRequestObject) (GetWorkspaceWorkbenchResponseObject, error)
@@ -39331,6 +40058,42 @@ func (sh *strictHandler) CompleteWorkspaceIssueTaskRun(w http.ResponseWriter, r 
 	}
 }
 
+// SwitchTuttiModeGoalReviewToSelf operation middleware
+func (sh *strictHandler) SwitchTuttiModeGoalReviewToSelf(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID IssueID) {
+	var request SwitchTuttiModeGoalReviewToSelfRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.IssueID = issueID
+
+	var body SwitchTuttiModeGoalReviewToSelfJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SwitchTuttiModeGoalReviewToSelf(ctx, request.(SwitchTuttiModeGoalReviewToSelfRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SwitchTuttiModeGoalReviewToSelf")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SwitchTuttiModeGoalReviewToSelfResponseObject); ok {
+		if err := validResponse.VisitSwitchTuttiModeGoalReviewToSelfResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListModelPlans operation middleware
 func (sh *strictHandler) ListModelPlans(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
 	var request ListModelPlansRequestObject
@@ -40022,6 +40785,70 @@ func (sh *strictHandler) AttachWorkspaceTerminal(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AttachWorkspaceTerminalResponseObject); ok {
 		if err := validResponse.VisitAttachWorkspaceTerminalResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTuttiModeArchiveOperation operation middleware
+func (sh *strictHandler) GetTuttiModeArchiveOperation(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID string, params GetTuttiModeArchiveOperationParams) {
+	var request GetTuttiModeArchiveOperationRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.IssueID = issueID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTuttiModeArchiveOperation(ctx, request.(GetTuttiModeArchiveOperationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTuttiModeArchiveOperation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTuttiModeArchiveOperationResponseObject); ok {
+		if err := validResponse.VisitGetTuttiModeArchiveOperationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ArchiveTuttiModeExecution operation middleware
+func (sh *strictHandler) ArchiveTuttiModeExecution(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID string) {
+	var request ArchiveTuttiModeExecutionRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.IssueID = issueID
+
+	var body ArchiveTuttiModeExecutionJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ArchiveTuttiModeExecution(ctx, request.(ArchiveTuttiModeExecutionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ArchiveTuttiModeExecution")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ArchiveTuttiModeExecutionResponseObject); ok {
+		if err := validResponse.VisitArchiveTuttiModeExecutionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

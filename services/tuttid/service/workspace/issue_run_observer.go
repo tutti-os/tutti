@@ -74,7 +74,14 @@ func (c *IssueExecutionCoordinator) ObserveRunSettlement(ctx context.Context, se
 			c.Issues.enqueueWorkspaceRunReconcile(workspaceID)
 			continue
 		}
-		canonicalSettlement, found, resolveErr := c.SettlementReader.ReadRunSettlement(ctx, workspaceID, agentSessionID, "issue-run:"+run.RunID)
+		clientSubmitID, identityErr := c.Issues.issueRunClientSubmitID(ctx, run)
+		if identityErr != nil {
+			c.Issues.enqueueWorkspaceRunReconcile(workspaceID)
+			continue
+		}
+		canonicalSettlement, found, resolveErr := c.SettlementReader.ReadRunSettlement(
+			ctx, workspaceID, agentSessionID, clientSubmitID,
+		)
 		if resolveErr != nil || !found || strings.TrimSpace(canonicalSettlement.TurnID) == "" {
 			c.Issues.enqueueWorkspaceRunReconcile(workspaceID)
 			continue

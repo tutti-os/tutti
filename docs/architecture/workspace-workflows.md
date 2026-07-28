@@ -24,6 +24,10 @@ Ownership is split as follows:
 - `services/tuttid/service/tuttimodeplan` validates Markdown revisions,
   enforces transitions, projects executable work, and coordinates downstream
   operations.
+- `services/tuttid/biz/tuttimodeexecution` defines the durable Tutti execution
+  aggregate and checkpoint vocabulary.
+- `services/tuttid/service/tuttimodeexecution` owns Tutti execution
+  materialization and later orchestration commands.
 - `services/tuttid/data/workspace` stores workflow metadata in SQLite. Plan
   content is kept in immutable files under the Tutti state directory.
 - `services/tuttid/service/cli/providers/tuttimodeplan` exposes Agent-callable
@@ -61,7 +65,10 @@ Agent invocation never fabricates a slash-command activation.
 | `WorkflowOperation`         | SQLite                                       | Idempotent record of a downstream side effect such as generating a task graph, creating a revision, or creating an Issue. A successful Issue operation stores the Issue ID.                                                            |
 | `WorkflowMutation`          | SQLite                                       | Durable caller mutation ledger for propose/revise response-loss recovery. Its scoped request ID is the identity; the input SHA-256 detects conflicting reuse, and the row points to the committed workflow/revision/checkpoint result. |
 | `ActionableItem`            | Derived only                                 | Read-only projection of a task from the accepted current task-graph revision. It is never a second task store.                                                                                                                         |
-| Workspace Issue and Task    | SQLite in Issue Manager                      | Execution entity materialized from accepted `ActionableItem`s. It links back through `sourceSessionId`; the workflow operation links forward through `issueId`.                                                                        |
+| Workspace Issue and Task    | SQLite in Issue Manager                      | Reusable Issue graph materialized from accepted `ActionableItem`s. It links back through `sourceSessionId`; the workflow operation links forward through `issueId`.                                                                    |
+| Tutti execution             | SQLite                                       | Tutti-owned orchestration authority for one accepted workflow and Issue. Initial status is `awaiting_schedule` at graph revision 1.                                                                                                    |
+| Execution checkpoint        | SQLite                                       | Ordered durable orchestration gate. Materialization creates one active `initial_schedule` checkpoint and no Issue Run; every terminal Run later appends one deterministic settlement checkpoint.                                       |
+| Execution mutation          | SQLite                                       | Source-session-scoped mutation ledger for exact checkpoint/revision graph changes. It provides replay/conflict detection and records the incremented graph revision.                                                                   |
 
 The relation is:
 
@@ -93,6 +100,8 @@ Agent Session / Turn / Tool Call (workflow provenance)
                                   |
           accepted current task-graph revision
                   -> ActionableItem projection
+                  -> Workspace Issue + Tasks
+                  -> Tutti execution + initial_schedule checkpoint
 ```
 
 `ActionableItem` exists only when the current revision is a `task_graph`, its
@@ -115,6 +124,17 @@ context. Until it exposes a trusted current Turn/tool-call seam, CLI proposal
 creation leaves `sourceTurnId` and `sourceToolCallId` empty. In particular,
 App CLI `ParentCommandID` is nested-command context and must never be recorded
 as an Agent tool-call ID.
+
+The same caller authority applies after Issue materialization. Generic Issue
+Manager mutations cannot modify a `tutti_mode_plan` graph; they return
+`tutti_issue_managed` with `recommendedAction = open_source_session`. The
+source Agent uses `tutti plan issue mutate` and supplies the active execution
+checkpoint and expected graph revision. Admission validates all operations and
+the resulting dependency graph in one SQLite transaction, advances the graph
+revision, rebinds the checkpoint, and cancels stale prepared/dispatched Goal
+Review state and reviewer wakes. Logical supersession preserves obsolete
+task/Run/output history while removing that task from the active projection;
+running tasks must settle before they can be superseded.
 
 ## Activation And Turn Snapshot Flow
 
@@ -275,7 +295,9 @@ review rejected ("request changes")
 review accepted
   -> the decision durably records any per-task assignment overrides
   -> daemon derives ActionableItems (document values merged with overrides)
-  -> deterministic create_issue operation materializes one Issue and its tasks
+  -> deterministic create_issue operation atomically materializes one Issue,
+     its tasks, one Tutti execution, and one active initial_schedule checkpoint
+  -> materialization creates no Run and invokes no task launcher
   -> operation succeeds with issueId and CLI reports issue_created
 ```
 
@@ -347,25 +369,34 @@ kind is the task review; the configuration-review row below is legacy-only
 | Task review                   | Cancel   | workflow becomes canceled                                                         | stop                                             |
 | Configuration review (legacy) | Cancel   | workflow becomes canceled                                                         | stop                                             |
 
-Source Agent Session deletion is another workflow transition owned by this
-service. The policy cancels only `pending_review` or `in_progress` workflows,
-their pending checkpoints, and pending/running operations. It records actor
-`tutti`, reason `source_session_deleted`, and one service clock value. The data
-layer does not contain those choices. Instead, it receives an explicit
-`SourceSessionDeletionCommand` and applies the Agent Session closure, Tutti
-activation/Turn snapshot cleanup, and authorized workflow transitions in one
-SQLite transaction. Batch deletion includes descendant Session IDs; workspace
-clear scopes the transition to all active workflows, including orphaned source
-Session provenance.
+Source Agent Session deletion is guarded at the Agent Host boundary against the
+entire canonical deletion closure. Before Host closes a runtime or mutates
+persistence, the daemon records one durable deletion admission for that exact
+closure. Any execution whose source Session is in the closure and whose status
+is not `completed` or `archived` rejects the whole request with
+`tutti_execution_active` plus the complete protected Issue set. This applies
+equally to single deletion, batch deletion, and workspace clear. Materialization
+checks the same durable admission in its creation transaction, so a new
+execution cannot race an admitted source deletion.
 
-The committed result includes the removed Session IDs plus each affected
-workflow, source Session, and current checkpoint identity, with the child
-states that changed. Only after commit does `service/tuttimodeplan` publish
-`workspace.workflow.updated`; the Agent service separately publishes exactly
-one `session_deleted` invalidation for every removed Session. A failed
-workflow transition rolls back Session and activation deletion as well. Test
-stores may use the persistence-only fallback, but production composition must
-wire Agent deletion through the Tutti Mode Plan coordinator.
+After admission, Host owns runtime closure and delegates canonical Session,
+activation snapshot, and Turn deletion to the daemon store in one SQLite
+transaction. Host reports terminal success or failure so the admission becomes
+`finalized` or `superseded`; a replan must pass admission again. At daemon
+startup, admissions left `admitted` by a previous process are superseded before
+Host serves requests. This keeps the source deletion guard on the provider-
+neutral lifecycle path instead of pre-closing runtimes in an adapter.
+
+Stopping Tutti Mode is an archive saga, not source Session deletion. The archive
+request atomically changes the execution to `archiving`, pauses Issue dispatch,
+cancels pending checkpoints, wakes, reviewer work, and prepared launches, and
+records a durable idempotent operation with actor and reason. The service then
+cancels every running Issue Run through the exact-run coordinator and waits for
+authoritative settlement. Only after no Run remains `running` may the execution
+become `archived` with `archived_at`, `archived_by`, and `archive_reason`.
+Cancellation failure leaves a durable failed operation and the execution fenced;
+startup recovery retries each incomplete archive independently. There is no
+force-archive path.
 
 ## HTTP, Events, And Recovery
 
@@ -385,6 +416,10 @@ The schema-first HTTP surface is:
   authoritative snapshot;
 - `POST /v1/workspaces/{workspaceID}/workflows/{workflowID}/checkpoints/{checkpointID}/decision`
   records a user decision.
+- `POST /v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive`
+  starts or replays the durable archive saga;
+- `GET /v1/workspaces/{workspaceID}/tutti-executions/{issueID}/archive?operationId=...`
+  returns its authoritative operation state.
 
 `workspace.tuttimode.updated` and `workspace.workflow.updated` are advisory
 invalidation events. The former identifies the changed Session and activation
@@ -430,31 +465,84 @@ granularity from it.
 ## Issue Projection
 
 Accepting a current task graph synchronously asks the daemon-owned Issue
-materializer to create an Issue from the derived `ActionableItem`s. It maps
-the Markdown execution profile, budget, assignments, model choices,
-directories, and dependency graph into the Issue Manager contract and records
-`planningSource = tutti_mode_plan`. Per-task assignments (agent target, model
-plan, model, permission mode, reasoning effort) persist on the materialized
-Issue tasks and are honored at launch: an explicit reasoning effort wins over
-the Issue-inherited intensity, and an explicit permission mode launches
-strictly—an unsupported or stale mode fails the run instead of silently
-broadening to the provider default.
+materializer to create an Issue from the derived `ActionableItem`s. One SQLite
+transaction creates the Issue, tasks, Tutti execution aggregate at
+`awaiting_schedule`/graph revision 1, and its active `initial_schedule`
+checkpoint. It maps the Markdown execution profile, budget, assignments,
+model choices, directories, and dependency graph into the Issue Manager
+contract and records `planningSource = tutti_mode_plan`.
+
+Materialization is inert: it creates no Run and calls no task launcher. The
+source Agent must later schedule an explicit task set through the checkpoint-
+and-revision-fenced Tutti execution command surface. Existing `autoAccept`
+values remain readable migration metadata but have no dispatch authority for
+Tutti-owned executions. Manual and `traditional_plan` Issues keep the generic
+Issue Manager dispatch behavior.
+
+`plan issue schedule` derives source authority from the trusted invoke context.
+While holding the Issue mutation lock, the daemon validates the entire
+requested set, including isolation. One SQLite transaction revalidates the
+durable caller, active checkpoint, graph revision, task/dependency state,
+budget, and workspace capacity. Fixed-budget admission reserves one estimated
+allowance for every same-Issue active Run before evaluating the requested set.
+The transaction then creates every Run, task-running projection, and durable
+launch intent while resolving that checkpoint. Any rejection leaves the
+execution and Issue graph unchanged.
+
+Agent launch happens after commit. The launch-intent row is the source of truth
+for `clientSubmitId`; delivery workers claim it with a durable lease and pass
+that stored value unchanged into Agent Host. The active worker renews the lease
+throughout worktree creation and Agent delivery. Ordinary recovery never steals
+a leased intent, and startup recovery requeues only an expired lease, so a
+second daemon replica starting while the first launch is live cannot enter the
+launcher. Response-loss recovery retries the same deterministic
+`issue-run:<runID>` identity, allowing Host to converge on the existing
+canonical Turn rather than creating a second one. Tutti settlement,
+reconciliation, and cancellation resolve this persisted identity from the
+launch intent; only generic Issue Runs derive the deterministic default.
+The existing Issue Run reconciliation queue also requeues expired launch
+ownership and recovers prepared intents on every pass. A daemon that restarts
+before the previous owner's last lease expires therefore retries immediately
+after that expiry instead of leaving the Run stranded until its hard timeout.
+
+A definite launch failure is terminal only when the adapter can prove that no
+canonical Turn exists. An empty create result alone is insufficient: the
+adapter also checks Host by the exact persisted `clientSubmitId`. A found Turn,
+a lookup error, `ErrSubmitDeliveryUnknown`, or a create error carrying a Turn ID
+remains recoverable. Only a clean Host not-found permits terminalization. That
+write is one owner-fenced SQLite transaction: the currently leased launch
+intent, Run, Task, Issue projection, and deterministic `task_failed` checkpoint
+either commit together or all roll back. An expired owner therefore cannot
+settle a Run after another daemon has reclaimed its lease.
+
+Every terminal Issue Run (`completed`, `failed`, or `canceled`) creates one
+ordered deterministic checkpoint. Completion remains
+`pending_acceptance`/`agent_claimed` until the source Agent reviews that
+checkpoint. The Agent may resolve the checkpoint by scheduling an exact next
+task set, or acknowledge it when another Run is active or a later settlement is
+already queued. Acknowledge accepts a successful task, promotes the next
+pending checkpoint, and never invokes the generic dispatch frontier. Failed
+and canceled checkpoints preserve their terminal task projection. Settlement
+repair runs at startup and on the periodic Issue reconciliation cadence, so a
+crash after Run persistence cannot lose the review gate.
+
+When every task is terminal and every terminal Run has its settlement
+checkpoint, the execution appends one ordered `all_tasks_terminal` checkpoint
+with `requiresGoalReview`. Promoting it moves the execution to
+`pending_goal_review`; the generic acknowledge command deliberately cannot
+resolve this boundary.
 
 After acceptance the source conversation embeds a live "issue panel view"
 (board/list) of the materialized Issue, fed by the same workspace issue events
-the Issue Manager consumes. The embed surfaces per-task structure
-(parallelizable, auto-accept, dependencies) and settles the acceptance gate
-inline: a `pending_acceptance` task offers accept/rework, which the desktop
-adapter posts as the thin `UpdateTask` status transitions the Issue Manager
-already owns. Everything else stays a jump into the full Issue surface. Tasks
-flagged `autoAccept` (a durable Issue task field the planning agent proposes
-and the review can toggle) bypass that gate, and once every non-canceled task
-is completed and accepted the daemon sends one completion message back to the
-source session so control returns to the main conversation.
+the Issue Manager consumes. The embed surfaces the durable task structure and
+execution state; Tutti-owned scheduling, mutation, and completion authority
+comes from the source conversation rather than generic Issue mutation or
+automatic dispatch.
 
-The workflow remains the review and provenance record; the Issue becomes the
-execution record. No renderer or Agent turn recreates the graph, and no Agent
-is instructed to issue a second create call. If materialization fails, the
+The workflow remains the review and provenance record; the Issue remains the
+task/run evidence graph; and the Tutti execution is the orchestration
+authority. No renderer or Agent turn recreates the graph, and no Agent is
+instructed to issue a second create call. If materialization fails, the
 `create_issue` operation records a durable failure code and message, and the
 authoritative workflow snapshot remains inspectable through `tutti plan get`
 and the HTTP detail endpoint. Startup recovery, replaying the accepted decision,

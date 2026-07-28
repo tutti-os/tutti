@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+// MaxWorkspaceParallelRuns is the shared admission ceiling for Issue task
+// Runs, regardless of whether the generic dispatcher or Tutti execution
+// admits them.
+const MaxWorkspaceParallelRuns = 4
+
 const (
 	DefaultReasoningIntensity     = 50
 	DefaultOrchestrationIntensity = 50
@@ -154,6 +159,65 @@ func IssueBudgetAllowsNextAutomaticRun(issue Issue) bool {
 	}
 	remaining := issue.Budget.TokenLimit - issue.Budget.ConsumedTokens
 	return remaining >= CompileEstimatedRunTokenBudget(issue.ExecutionProfile)
+}
+
+// IssueAutomaticBudgetSlots reserves one estimated allowance for every
+// already-active Run before admitting more work for the same Issue.
+func IssueAutomaticBudgetSlots(issue Issue, activeRunCount int) int {
+	if !IssueBudgetAllowsNextAutomaticRun(issue) {
+		return 0
+	}
+	if issue.Budget.TokenLimit <= 0 {
+		return MaxWorkspaceParallelRuns
+	}
+	allowance := CompileEstimatedRunTokenBudget(issue.ExecutionProfile)
+	remaining := issue.Budget.TokenLimit - issue.Budget.ConsumedTokens
+	if allowance <= 0 || remaining < allowance {
+		return 0
+	}
+	slots := int(remaining/allowance) - activeRunCount
+	if slots < 0 {
+		return 0
+	}
+	return slots
+}
+
+// IssueAutomaticRunAdmissionSlots is the shared concurrency and budget policy
+// for every automatic Issue Run admission path. Persistence adapters supply
+// authoritative counts, then compare-and-set the selected Runs atomically.
+func IssueAutomaticRunAdmissionSlots(issue Issue, workspaceActiveRunCount int, issueActiveRunCount int) int {
+	workspaceSlots := MaxWorkspaceParallelRuns - workspaceActiveRunCount
+	if workspaceSlots < 0 {
+		workspaceSlots = 0
+	}
+	return min(workspaceSlots, IssueAutomaticBudgetSlots(issue, issueActiveRunCount))
+}
+
+// IssueTaskEligibleForRun is the shared task/dependency predicate used by
+// generic dispatch and source-Agent exact-set scheduling. Callers retain
+// ownership of ordering, isolation, and transactional mutation.
+func IssueTaskEligibleForRun(task Task, tasksByID map[string]Task) bool {
+	if task.IsSuperseded() || task.Status != StatusNotStarted ||
+		strings.TrimSpace(task.AgentTargetID) == "" {
+		return false
+	}
+	for _, dependencyID := range task.DependencyTaskIDs {
+		dependency, ok := tasksByID[dependencyID]
+		if !ok || dependency.IsSuperseded() ||
+			dependency.Status != StatusCompleted ||
+			dependency.AcceptanceState != AcceptanceUserAccepted {
+			return false
+		}
+	}
+	return true
+}
+
+func IssueRunClientSubmitID(runID string) string {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return ""
+	}
+	return "issue-run:" + runID
 }
 
 // CompileAutoTokenBudgetWithHistory blends the deterministic scale/intensity
