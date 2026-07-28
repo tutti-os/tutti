@@ -294,6 +294,20 @@ export function useAgentGUIDetailScroll(input: Input) {
         return;
       }
       const measuredSafeArea = readBottomDockSafeArea(bottomDock);
+      if (
+        cachedSafeArea?.bottomDock === bottomDock &&
+        cachedSafeArea.timelineOverflowHeight ===
+          measuredSafeArea.timelineOverflowHeight &&
+        cachedSafeArea.floatingOverflowHeight ===
+          measuredSafeArea.floatingOverflowHeight
+      ) {
+        bottomDockSafeAreaRef.current = {
+          bottomDock,
+          revision: bottomDockStoreRevision,
+          ...measuredSafeArea
+        };
+        return;
+      }
       const nextSafeArea: BottomDockSafeArea = {
         bottomDock,
         revision: bottomDockStoreRevision,

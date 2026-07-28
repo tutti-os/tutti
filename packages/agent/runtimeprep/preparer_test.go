@@ -1870,6 +1870,149 @@ func envValue(env []string, key string) string {
 	return ""
 }
 
+func TestDefaultPreparerCodexExposesRelativeModelInstructionsFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	instructionsName := "gpt5.5-unrestricted.md"
+	instructionsBody := "# Unrestricted model instructions\n"
+	if err := os.WriteFile(filepath.Join(userCodexHome, instructionsName), []byte(instructionsBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	userCodexConfig := strings.Join([]string{
+		`model_instructions_file = "gpt5.5-unrestricted.md"`,
+		`model = "gpt-5.5"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-instructions",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	sandboxInstructions := filepath.Join(codexHome, instructionsName)
+	info, err := os.Lstat(sandboxInstructions)
+	if err != nil {
+		t.Fatalf("relative model instructions file not exposed into sandbox: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("sandbox model instructions file mode = %v, want symlink", info.Mode())
+	}
+	linkTarget, err := os.Readlink(sandboxInstructions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linkTarget != filepath.Join(userCodexHome, instructionsName) {
+		t.Fatalf("sandbox instructions symlink target = %q, want user instructions", linkTarget)
+	}
+	got, err := os.ReadFile(sandboxInstructions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != instructionsBody {
+		t.Fatalf("sandbox instructions body = %q, want %q", string(got), instructionsBody)
+	}
+}
+
+func TestDefaultPreparerCodexRejectsMissingModelInstructionsFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// config.toml references a file that doesn't exist
+	userCodexConfig := strings.Join([]string{
+		`model_instructions_file = "missing-instructions.md"`,
+		`model = "gpt-5.5"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	_, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-missing-instructions",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err == nil {
+		t.Fatalf("Prepare() should fail when model_instructions_file points to a missing file")
+	}
+	if !strings.Contains(err.Error(), "model_instructions_file") {
+		t.Fatalf("Prepare() error = %v, want error mentioning model_instructions_file", err)
+	}
+}
+
+func TestDefaultPreparerCodexPreservesAbsoluteModelInstructionsFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	absPath := filepath.Join(t.TempDir(), "absolute-instructions.md")
+	if err := os.WriteFile(absPath, []byte("# absolute\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	userCodexConfig := strings.Join([]string{
+		`model_instructions_file = "` + absPath + `"`,
+		`model = "gpt-5.5"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-abs-instructions",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	// Absolute paths are not materialized; they're readable from host filesystem.
+	if _, err := os.Stat(filepath.Join(codexHome, "absolute-instructions.md")); !os.IsNotExist(err) {
+		t.Fatalf("absolute instructions file should not be materialized into sandbox, err = %v", err)
+	}
+}
+
 func writeSidecarTestFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
