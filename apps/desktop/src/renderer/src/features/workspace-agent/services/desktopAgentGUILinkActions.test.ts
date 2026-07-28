@@ -178,6 +178,32 @@ test("desktop agent gui link actions open urls through the workspace browser", a
   ]);
 });
 
+test("desktop agent gui commerce actions open urls in the external browser", async () => {
+  const openedUrls: string[] = [];
+
+  const handled = await runDesktopAgentGUILinkAction(
+    {
+      source: "agent-external-action",
+      type: "open-url",
+      url: "https://example.com/plans"
+    },
+    {
+      getAgentSession: failGetAgentSession,
+      launchAgentGui: failLaunchAgentGui,
+      launchWorkspaceIssueManager: failLaunchWorkspaceIssueManager,
+      launchWorkspaceFiles: failLaunchWorkspaceFiles,
+      openBrowserUrl: failOpenBrowserUrl,
+      openExternalUrl(url) {
+        openedUrls.push(url);
+      },
+      workspaceId: "workspace-1"
+    }
+  );
+
+  assert.equal(handled, true);
+  assert.deepEqual(openedUrls, ["https://example.com/plans"]);
+});
+
 test("desktop agent gui link actions launch agent sessions in the same workspace", async () => {
   const launchedSessions: unknown[] = [];
 

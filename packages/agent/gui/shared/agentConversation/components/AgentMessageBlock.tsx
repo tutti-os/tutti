@@ -13,7 +13,10 @@ import { AgentPlanCard } from "./AgentPlanCard";
 import { AgentCollaborationRow } from "./AgentCollaborationRow";
 import { translate } from "../../../i18n/index";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
-import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
+import {
+  AGENT_EXTERNAL_LINK_ACTION_SOURCE,
+  type WorkspaceLinkAction
+} from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import {
   AgentMessageMarkdown,
   type AgentMessageMarkdownWorkspaceAppIcon
@@ -102,6 +105,20 @@ export function AgentMessageBlock({
         basePath,
         href,
         source: "agent-markdown"
+      });
+      if (action) {
+        onLinkAction?.(action);
+      }
+    },
+    [basePath, onLinkAction, workspaceRoot]
+  );
+  const handleExternalLinkClick = useCallback(
+    (href: string): void => {
+      const action = resolveAgentConversationLinkAction({
+        workspaceRoot,
+        basePath,
+        href,
+        source: AGENT_EXTERNAL_LINK_ACTION_SOURCE
       });
       if (action) {
         onLinkAction?.(action);
@@ -199,13 +216,13 @@ export function AgentMessageBlock({
         <AgentVisibleErrorMessage
           message={message}
           onAuthLogin={onAuthLogin}
-          onExternalLink={handleLinkClick}
+          onExternalLink={handleExternalLinkClick}
         />
       ) : recoveredError ? (
         <AgentVisibleErrorMessage
           message={recoveredError}
           onAuthLogin={onAuthLogin}
-          onExternalLink={handleLinkClick}
+          onExternalLink={handleExternalLinkClick}
         />
       ) : message.systemNotice ? (
         <AgentSystemNoticeMessage message={message} />

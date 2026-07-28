@@ -152,6 +152,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       },
       launchGroupChat: requestGroupChatLaunch,
       openBrowserUrl: requestWorkspaceBrowserLaunch,
+      openExternalUrl: (url) => input.hostFilesApi.openExternal(url),
       workspaceId: input.workspaceId
     });
   };

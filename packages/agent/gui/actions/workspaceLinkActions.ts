@@ -2,6 +2,7 @@ import type { WorkspaceIssueMentionMode } from "@tutti-os/workspace-issue-manage
 import { parseRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import { getAgentCustomMentionKind } from "../shared/agentCustomMentionKinds";
 import {
+  AGENT_EXTERNAL_LINK_ACTION_SOURCE,
   resolveAgentSessionMentionLinkAction,
   resolveWorkspaceUrlLinkAction,
   type OpenAgentSessionLinkAction,
@@ -17,7 +18,7 @@ import {
   workspaceFilePathBasename
 } from "./workspaceFilePathCandidate";
 
-export { resolveWorkspaceUrlLinkAction };
+export { AGENT_EXTERNAL_LINK_ACTION_SOURCE, resolveWorkspaceUrlLinkAction };
 export {
   isDirectAgentGeneratedMediaPath,
   resolveWorkspaceFilePathCandidate
