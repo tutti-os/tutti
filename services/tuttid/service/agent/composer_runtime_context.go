@@ -23,28 +23,13 @@ func (s *Service) mergeRuntimeComposerContextForComposerOptions(
 	// that result into a different cache key and make it unreachable.
 	scope := newComposerLiveModelScopeForInput(input, requestSettings)
 	runtimeContext := s.composerRuntimeContextFromSession(scope)
-	capabilities := stringSliceFromAny(runtimeContext["capabilities"])
-	if len(capabilities) == 0 {
-		// Capability facts (image input, plan mode, ...) come from the agent
-		// initialize handshake, so they are installation-scoped, not
-		// project/settings-scoped. A composer without a scope-matching
-		// session (home composer, fresh daemon) inherits them from the
-		// newest session of the same extension installation.
-		capabilities = s.extensionSessionCapabilitiesFallback(scope)
-	}
 	if len(runtimeContext) == 0 {
-		if len(capabilities) > 0 {
-			if options.RuntimeContext == nil {
-				options.RuntimeContext = map[string]any{}
-			}
-			options.RuntimeContext["capabilities"] = capabilities
-		}
 		return options, nil
 	}
 	if options.RuntimeContext == nil {
 		options.RuntimeContext = map[string]any{}
 	}
-	if len(capabilities) > 0 {
+	if capabilities := stringSliceFromAny(runtimeContext["capabilities"]); len(capabilities) > 0 {
 		options.RuntimeContext["capabilities"] = capabilities
 	}
 	if commands := filterComposerCommandsBySlashPolicy(
@@ -153,85 +138,28 @@ func (s *Service) composerRuntimeContextFromSession(
 		if scope.agentTargetID != "" && strings.TrimSpace(session.AgentTargetID) != scope.agentTargetID {
 			continue
 		}
-		if !scope.matchesExtensionRuntimeContext(session.InternalRuntimeContext) ||
-			!composerRuntimeContextHasComposerData(session.InternalRuntimeContext) {
+		if !scope.matchesExtensionRuntimeContext(session.InternalRuntimeContext) {
+			continue
+		}
+		runtimeContext := clonePayload(session.InternalRuntimeContext)
+		if len(session.Metadata.Capabilities) > 0 {
+			// Persistence splits capabilities into session metadata. Rejoin
+			// them only after the exact runtime identity has matched, then
+			// decide whether this session carries reusable composer evidence.
+			if runtimeContext == nil {
+				runtimeContext = map[string]any{}
+			}
+			runtimeContext["capabilities"] = append([]string(nil), session.Metadata.Capabilities...)
+		}
+		if !composerRuntimeContextHasComposerData(runtimeContext) {
 			continue
 		}
 		updatedAt := firstNonZeroInt64(session.UpdatedAtUnixMS, session.CreatedAtUnixMS)
 		if len(selected) > 0 && (updatedAt < selectedUpdatedAt || (updatedAt == selectedUpdatedAt && session.ID <= selectedID)) {
 			continue
 		}
-		selected = clonePayload(session.InternalRuntimeContext)
-		if len(session.Metadata.Capabilities) > 0 {
-			// Persistence splits capabilities into session metadata; rejoin
-			// them so a cold-start composer keeps the advertised list.
-			selected["capabilities"] = append([]string(nil), session.Metadata.Capabilities...)
-		}
+		selected = runtimeContext
 		selectedUpdatedAt = updatedAt
-		selectedID = session.ID
-	}
-	return selected
-}
-
-// extensionSessionCapabilitiesFallback returns the non-empty capability list
-// advertised by the most recently created live or persisted session of the
-// same provider and agent target, ignoring installation, project scope, and
-// settings signature. Capability facts come from the agent initialize
-// handshake, so candidates order by creation (handshake) time: updatedAt is
-// bumped by read-side writes and says nothing about runtime facts. Local
-// reinstalls rotate the installation id, so pinning the installation would
-// invalidate the evidence on every reinstall; the result is still
-// intersected with the current installation's declared capabilities by
-// applyExtensionComposerCapabilities. The exact-scope lookup stays
-// authoritative for config options and commands.
-func (s *Service) extensionSessionCapabilitiesFallback(scope composerLiveModelScope) []string {
-	if scope.workspaceID == "" || scope.provider == "" {
-		return nil
-	}
-	liveSessions := s.controller().Sessions(scope.workspaceID)
-	sort.SliceStable(liveSessions, func(i, j int) bool {
-		if liveSessions[i].CreatedAtUnixMS != liveSessions[j].CreatedAtUnixMS {
-			return liveSessions[i].CreatedAtUnixMS > liveSessions[j].CreatedAtUnixMS
-		}
-		return liveSessions[i].ID > liveSessions[j].ID
-	})
-	for _, session := range liveSessions {
-		if agentprovider.NormalizeOpen(session.Provider) != scope.provider {
-			continue
-		}
-		if scope.agentTargetID != "" && strings.TrimSpace(session.AgentTargetID) != scope.agentTargetID {
-			continue
-		}
-		if capabilities := stringSliceFromAny(session.RuntimeContext["capabilities"]); len(capabilities) > 0 {
-			return capabilities
-		}
-	}
-	if s.SessionReader == nil {
-		return nil
-	}
-	persisted, ok := s.SessionReader.ListSessions(scope.workspaceID)
-	if !ok {
-		return nil
-	}
-	var selected []string
-	var selectedCreatedAt int64 = -1
-	var selectedID string
-	for _, session := range persisted {
-		if agentprovider.NormalizeOpen(session.Provider) != scope.provider {
-			continue
-		}
-		if scope.agentTargetID != "" && strings.TrimSpace(session.AgentTargetID) != scope.agentTargetID {
-			continue
-		}
-		if len(session.Metadata.Capabilities) == 0 {
-			continue
-		}
-		createdAt := session.CreatedAtUnixMS
-		if len(selected) > 0 && (createdAt < selectedCreatedAt || (createdAt == selectedCreatedAt && session.ID <= selectedID)) {
-			continue
-		}
-		selected = append([]string(nil), session.Metadata.Capabilities...)
-		selectedCreatedAt = createdAt
 		selectedID = session.ID
 	}
 	return selected
